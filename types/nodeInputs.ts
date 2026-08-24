@@ -70,6 +70,21 @@ export type ResolvedNodeInput = {
 
 export type NodeInputSnapshot = {
   assetId?: string;
+  /** Server-authored only. Marks a formally approved branch-B character check. */
+  characterCompliance?: Readonly<{
+    branch: "B";
+    checkId: string;
+    checkedAt: string;
+    expiresAt: string;
+    modelConfigurationRevision: string;
+    modelId: string;
+    policyRevision: string;
+    providerAccountFingerprint: string;
+    providerConfigurationVersion: number;
+    providerCredentialVersion: number;
+    providerProfileId: string;
+    sourceChecksumSha256: string;
+  }>;
   kind: NodeInputKind;
   order: number;
   role: NodeInputRole;

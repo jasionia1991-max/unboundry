@@ -18,7 +18,10 @@ import {
   currentSchemaManifest,
 } from "./database.ts";
 import { safeCanonicalAliyunOssEndpoint } from "./outboundNetwork.ts";
-import { databaseMatchesSchemaContract } from "./runtimeLifecycle.ts";
+import {
+  databaseMatchesSchema40Contract,
+  databaseMatchesSchemaContract,
+} from "./runtimeLifecycle.ts";
 
 const providerDocumentAad = Buffer.from(
   "unboundry:provider-profiles:v1",
@@ -44,7 +47,7 @@ const providerDrivers = new Set([
 const knownMigrationNames = Object.freeze(
   currentSchemaManifest.map(({ name }) => name),
 );
-const supportedBackupSchemaVersions = new Set([37, 38, 39, 40]);
+const supportedBackupSchemaVersions = new Set([37, 38, 39, 40, 41]);
 const builtInProviderBaseUrls = Object.freeze({
   mureka: "https://api.mureka.ai",
   openrouter: "https://openrouter.ai/api/v1",
@@ -1101,6 +1104,8 @@ function inspectOpenBackupDatabase(
       ? databaseMatchesFrozenSchema37Contract(database)
       : userVersion === 38
       ? databaseMatchesFrozenSchema38Contract(database)
+      : userVersion === 40
+      ? databaseMatchesSchema40Contract(database)
       : databaseMatchesSchemaContract(database);
     if (!schemaMatches) {
       fail(

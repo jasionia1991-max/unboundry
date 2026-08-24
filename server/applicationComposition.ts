@@ -9,6 +9,10 @@ import { providerApplicationApi } from "./providerApplicationApi";
 import { providerRuntimeApi } from "./providerRuntimeApi";
 import { seedanceTrustedAssetApplicationApi } from "./seedanceTrustedAssetApplicationApi";
 import { seedanceTrustedAssetRuntimeApi } from "./seedanceTrustedAssetRuntimeApi";
+import { seedanceCharacterComplianceApplicationApi } from
+  "./seedanceCharacterComplianceApplicationApi";
+import { seedanceCharacterComplianceRuntimeApi } from
+  "./seedanceCharacterComplianceRuntimeApi";
 import { configureSeedanceTrustedVideoReferenceResolver } from "./seedanceTrustedVideoReferences";
 
 providerRuntimeApi.configureReferenceStore(
@@ -35,6 +39,9 @@ imageToolApplicationApi.configureSeedanceValidationQueries(Object.freeze({
 seedanceTrustedAssetApplicationApi.configure(
   seedanceTrustedAssetRuntimeApi.application,
 );
+seedanceCharacterComplianceApplicationApi.configure(
+  seedanceCharacterComplianceRuntimeApi.application,
+);
 configureSeedanceTrustedVideoReferenceResolver(
   seedanceTrustedAssetRuntimeApi.videoReferences,
 );
@@ -48,4 +55,5 @@ export const applicationComposition = Object.freeze({
   media: mediaApplicationApi,
   provider: providerApplicationApi,
   seedanceTrustedAssets: seedanceTrustedAssetApplicationApi,
+  seedanceCharacterCompliance: seedanceCharacterComplianceApplicationApi,
 });

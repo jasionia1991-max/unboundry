@@ -6,6 +6,10 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 
+## 当前候选：v0.6.41 角色风险预检关闭态（2026-08-25，发布前）
+
+INC-SEEDANCE-002已按正式合同核验自动选择C分支：第三方审核票据没有Seedance正式提交字段，虚拟人像权益订阅超预算，公开审核Provider合同也不足以完成A的分类与隐私证明。候选把产品准确命名为「角色风险预检」并在菜单层禁用入口，同时保留独立的「角色可信素材」入口；不显示蓝勾，不声称Seedance验证、版权认证或法律合规。独立终审原始`1 P0 + 5 P1`已全部关闭，无剩余P0/P1；schema41、可插拔应用边界、Generation付费前双门和schema40→41迁移的受影响定向均已绿。冻结功能commit的本Goal唯一safe full为`121/121 specs、1061/1061 tests PASS`。真实审核、Generation、OSS、订阅/购买和费用均0；生产仍为v0.6.40，GitHub和生产发布尚未完成。详情以[`spec/INC_SEEDANCE_002_AI_CHARACTER_SINGLE_IMAGE_COMPLIANCE_CHECKPOINT.md`](spec/INC_SEEDANCE_002_AI_CHARACTER_SINGLE_IMAGE_COMPLIANCE_CHECKPOINT.md)为准。
+
 ## 当前事件：v0.6.40 已技术发布（2026-08-25，真实链受外部订阅阻断）
 
 生产当前运行`v0.6.40 / schema40`且技术健康；PR #92、Quality CI、tag、GitHub Release、冻结备份、fresh build、原子切换、公网/回环、数据不变和5资源门均通过。受限Provider诊断只保留HTTP状态、错误码和RequestId，不保留远端Message、Body或密钥，并把创建/查询失败写入既有状态字段。Project `default`已只为目标IAM用户补`ArkFullAccess`，用户详情明确显示项目限制；一次误加的用户级策略被立即撤销且无残留。随后唯一H5创建`1/1`返回远端`403 SubscriptionRequired`，无Provider session ID、H5Link或BytedToken；认证查询、Asset创建/查询、Generation与OSS均0。当前为`PRODUCTION_V0_6_40_TECHNICAL_PASS / PROJECT_PERMISSION_APPLIED / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / BLOCKED_EXTERNAL_CAPABILITY / USER_RECHECK`，本事件不购买、不重试。回执见[`spec/V0_6_40_PRODUCTION_RECEIPT_2026-08-24.json`](spec/V0_6_40_PRODUCTION_RECEIPT_2026-08-24.json)；v0.6.39历史回执和v0.6.38既有`USER_PASS`均保持不变。

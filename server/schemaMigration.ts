@@ -100,6 +100,7 @@ type UnexpectedMigrationStage =
   | "schema-38-apply"
   | "schema-39-apply"
   | "schema-40-apply"
+  | "schema-41-apply"
   | "target-logical-inspection"
   | "target-validation";
 
@@ -109,6 +110,7 @@ export type SchemaMigrationCheckpoint =
   | "schema-38-applied"
   | "schema-39-applied"
   | "schema-40-applied"
+  | "schema-41-applied"
   | "schema-committed"
   | "duration-probe-complete"
   | "backfill-row"
@@ -218,6 +220,11 @@ function failUnexpectedMigration(stage: UnexpectedMigrationStage): never {
       fail(
         "SCHEMA_MIGRATION_FAILED_SCHEMA40_APPLY",
         "Schema 40 migration application failed",
+      );
+    case "schema-41-apply":
+      fail(
+        "SCHEMA_MIGRATION_FAILED_SCHEMA41_APPLY",
+        "Schema 41 migration application failed",
       );
     case "target-logical-inspection":
       fail(
@@ -766,7 +773,7 @@ function assertExactCurrent(database: DatabaseSync) {
     !databaseMatchesMigrationManifest(database) ||
     !databaseMatchesSchemaContract(database) ||
     database.prepare("PRAGMA foreign_key_check").all().length !== 0
-  ) fail("SCHEMA_MIGRATION_TARGET_INVALID", "Migrated database is not exact schema 40");
+  ) fail("SCHEMA_MIGRATION_TARGET_INVALID", "Migrated database is not exact schema 41");
 }
 
 function safeTestClockAllowed(dataDirectory: string) {
@@ -1380,7 +1387,11 @@ export async function migrateSchema37To39(
             emitCheckpoint("schema-39-applied");
             unexpectedStage = "schema-40-apply";
           }
-          if (migratedVersion === 40) emitCheckpoint("schema-40-applied");
+          if (migratedVersion === 40) {
+            emitCheckpoint("schema-40-applied");
+            unexpectedStage = "schema-41-apply";
+          }
+          if (migratedVersion === 41) emitCheckpoint("schema-41-applied");
           assertPinnedPaths();
           assertPinnedMarker();
         },
@@ -1424,7 +1435,7 @@ export async function migrateSchema37To39(
       !databaseMatchesMigrationManifest(database) ||
       !databaseMatchesSchemaContract(database) ||
       database.prepare("PRAGMA foreign_key_check").all().length !== 0
-    ) fail("SCHEMA_MIGRATION_TARGET_INVALID", "Migrated database is not exact schema 40");
+    ) fail("SCHEMA_MIGRATION_TARGET_INVALID", "Migrated database is not exact schema 41");
     if (!databaseHasCompleteLegacyMediaMetadata(database)) {
       fail(
         "SCHEMA_MIGRATION_BACKFILL_INCOMPLETE",

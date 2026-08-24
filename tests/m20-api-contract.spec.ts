@@ -62,6 +62,8 @@ test("the private API documents and reads canvas, project and model configuratio
     "/api/library",
     "/api/library/{kind}/{assetId}",
     "/api/media/image/{assetId}/seedance/authorization-sessions",
+    "/api/media/image/{assetId}/seedance/character-compliance-checks",
+    "/api/media/image/{assetId}/seedance/character-compliance-current",
     "/api/media/image/{assetId}/seedance/trusted-binding",
     "/api/media/image/{assetId}/seedance/trusted-bindings",
     "/api/models",
@@ -69,6 +71,10 @@ test("the private API documents and reads canvas, project and model configuratio
     "/api/projects",
     "/api/projects/{projectId}",
     "/api/seedance/authorization-sessions/{sessionId}",
+    "/api/seedance/character-compliance/capability",
+    "/api/seedance/character-compliance/checks/{checkId}",
+    "/api/seedance/character-compliance/checks/{checkId}/cancel",
+    "/api/seedance/character-compliance/checks/{checkId}/retry",
     "/api/seedance/trusted-assets/capability",
     "/api/templates",
     "/api/templates/{templateId}",
@@ -93,6 +99,14 @@ test("the private API documents and reads canvas, project and model configuratio
   expect((specification.paths["/api/seedance/trusted-assets/capability"] as {
     get: { operationId: string };
   }).get.operationId).toBe("readSeedanceTrustedAssetCapability");
+  expect((specification.paths[
+    "/api/seedance/character-compliance/capability"
+  ] as { get: { operationId: string } }).get.operationId)
+    .toBe("readSeedanceCharacterComplianceCapability");
+  expect((specification.paths[
+    "/api/media/image/{assetId}/seedance/character-compliance-checks"
+  ] as { post: { operationId: string } }).post.operationId)
+    .toBe("createSeedanceCharacterComplianceCheck");
   expect((specification.paths[
     "/api/media/image/{assetId}/seedance/authorization-sessions"
   ] as { post: { operationId: string; responses: Record<string, unknown> } }))
@@ -445,13 +459,26 @@ test("the private API documents and reads canvas, project and model configuratio
   );
   expect(invalidSeedanceValidation.status()).toBe(400);
   expect(invalidSeedanceValidation.headers()["cache-control"]).toBe("no-store");
+  const characterComplianceCapability = await request.get(
+    "/api/seedance/character-compliance/capability",
+  );
+  expect(characterComplianceCapability.ok()).toBeTruthy();
+  expect(characterComplianceCapability.headers()["cache-control"]).toBe("no-store");
+  await expect(characterComplianceCapability.json()).resolves.toMatchObject({
+    available: false,
+    branch: "C",
+    canCreateChecks: false,
+    formalSeedanceTicketAccepted: false,
+    productName: "角色风险预检",
+    reasonCode: "NO_COMPLIANT_PROVIDER",
+  });
 
   await page.goto("/admin/api-contract");
   await expect(page.getByTestId("admin-api-contract-page")).toBeVisible();
   await expect(page.getByRole("heading", { name: "项目自己的数据接口" }))
     .toBeVisible();
-  await expect(page.locator(".api-contract-grid article")).toHaveCount(41);
-  await expect(page.getByText("当前共 31 条接口路径", { exact: true }))
+  await expect(page.locator(".api-contract-grid article")).toHaveCount(47);
+  await expect(page.getByText("当前共 37 条接口路径", { exact: true }))
     .toBeVisible();
 
   const finalCanvasDelete = await request.delete(`/api/canvas/${canvasId}`);

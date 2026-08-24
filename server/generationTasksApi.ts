@@ -19,6 +19,10 @@ import type {
 import type { ImageGenerationToolInput } from "../types/imageTools";
 import { generationTaskApplication } from "./generationTasks";
 import { resolveSeedanceTrustedVideoReferences } from "./seedanceTrustedVideoReferences";
+import {
+  resolveSeedanceCharacterReferences,
+  SeedanceCharacterReferenceError,
+} from "./seedanceCharacterReferences";
 
 const {
   GenerationProviderAttemptBlockedError,
@@ -1017,14 +1021,35 @@ export async function generationTasks(
       }
       const schema = generationModelSchema(body.kind, model);
       const { imageTool, parameters, references } = strictInput;
-      const persistedInputs = body.kind === "video" &&
-          model.provider_driver === "volcengine-ark"
-        ? await resolveSeedanceTrustedVideoReferences({
+      let persistedInputs = strictInput.snapshot;
+      if (body.kind === "video" && model.provider_driver === "volcengine-ark") {
+        try {
+          persistedInputs = await resolveSeedanceTrustedVideoReferences({
             inputs: strictInput.snapshot,
             ownerId,
             providerProfileId: model.provider_profile_id,
-          })
-        : strictInput.snapshot;
+          });
+          persistedInputs = await resolveSeedanceCharacterReferences({
+            generation: {
+              credentialVersion: Number(runtime.credentialVersion),
+              modelId: model.id,
+              providerConfigurationVersion: providerConfigurationVersion(
+                runtime.providerProfile,
+              ),
+              providerProfileId: model.provider_profile_id,
+            },
+            inputs: persistedInputs,
+            ownerId,
+            phase: "task-create",
+          });
+        } catch (error) {
+          if (error instanceof SeedanceCharacterReferenceError) {
+            json(response, 409, { code: error.code, error: error.message });
+            return;
+          }
+          throw error;
+        }
+      }
       if (body.kind === "audio" && parameters.outputCount !== 1) {
         json(response, 409, {
           code: "OUTPUT_COUNT_UNSUPPORTED",

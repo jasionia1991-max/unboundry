@@ -162,7 +162,7 @@ function parseFrozenSourceContract(values) {
   const admissionText = values.get("--last-provider-admission-at");
   if (
     !/^[a-f0-9]{64}$/.test(expectedDatabaseLogicalSha256) ||
-    ![37, 38, 39, 40].includes(expectedSchemaVersion) ||
+    ![37, 38, 39, 40, 41].includes(expectedSchemaVersion) ||
     String(expectedSchemaVersion) !== schemaText ||
     !generationFrozenAt ||
     !admissionText

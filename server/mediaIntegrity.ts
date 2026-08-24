@@ -4,7 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 
 const checksumPattern = /^[a-f0-9]{64}$/i;
 const mediaKinds = new Set(["audio", "image", "video"]);
-const supportedSchemaVersions = new Set([37, 38, 39, 40]);
+const supportedSchemaVersions = new Set([37, 38, 39, 40, 41]);
 const activePublicationStates = new Set([
   "reserved",
   "staged",
@@ -437,7 +437,7 @@ export function inspectMediaIntegrity(input: Readonly<{
     if (schemaVersion === undefined || !supportedSchemaVersions.has(schemaVersion)) {
       fail(
         "MEDIA_REPORT_SCHEMA_UNSUPPORTED",
-        "Media report requires schema 37, 38, 39 or 40",
+        "Media report requires schema 37, 38, 39, 40 or 41",
       );
     }
     const media = queryRows<MediaRow>(database, `

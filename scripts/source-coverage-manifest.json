@@ -59,17 +59,17 @@
     },
     "scripts/backup-data.mjs": {
       "mode": "behavior-test",
-      "scriptSha256": "c878b002c7853367bed0300cdce47a64a792aeb5e960c53b829af815049a344b",
+      "scriptSha256": "ee909ea47623b13d23f06b835b764572068ad6eaa74a6c1fdf39e01186762f31",
       "target": "tests/m10-backup.spec.ts",
       "marker": "an encrypted frozen snapshot verifies and restores without plaintext or source writes",
-      "targetSha256": "d2471fcd2f6e98f29d670a7f1a447655731c27f579fe47e436812c83bd919458"
+      "targetSha256": "93410cb6f8e91313b4ab9ceae97f0b01bfa74a2f22112134770254e34cfd1234"
     },
     "scripts/backup-final-candidate.mjs": {
       "mode": "behavior-test",
-      "scriptSha256": "30ec96e07f1f35c2131e46612ded6a329537aab4f3e6781b7ba23b79112f7f73",
+      "scriptSha256": "a03502caec65f712dcbdb0b9635d4fe6edee0e3cc268eba62f07d330da0983f7",
       "target": "tests/m10-backup.spec.ts",
       "marker": "final-candidate exact-v37 chain rehydrates fake OSS offline and validates normal runtime startup",
-      "targetSha256": "d2471fcd2f6e98f29d670a7f1a447655731c27f579fe47e436812c83bd919458"
+      "targetSha256": "93410cb6f8e91313b4ab9ceae97f0b01bfa74a2f22112134770254e34cfd1234"
     },
     "scripts/backup-to-oss.mjs": {
       "mode": "frozen",
@@ -90,7 +90,7 @@
       "scriptSha256": "c4ed308be00ed27239b6b53aa0f57cc51cda69422058d3ba41460657e45a8336",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "Full snapshot bridge/final fixtures prove the release closure",
-      "targetSha256": "d53b5464f39029ebf907d0d2ea321a178aae26a1d77940495262cde84355f878"
+      "targetSha256": "bc163d5597575cb81b8da8d7bdf7c2749779a5392866de7141aace04471d24f2"
     },
     "scripts/check-greenfield.mjs": {
       "mode": "behavior-test",
@@ -104,14 +104,14 @@
       "scriptSha256": "9b1807c98cd6e59a288fd8b81d29299bb5b34b67e7bed9a2003c8989c95d01e7",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "scripts/check-restart-persistence.mjs",
-      "targetSha256": "d53b5464f39029ebf907d0d2ea321a178aae26a1d77940495262cde84355f878"
+      "targetSha256": "bc163d5597575cb81b8da8d7bdf7c2749779a5392866de7141aace04471d24f2"
     },
     "scripts/check-v051-exact-runtime.mjs": {
       "mode": "behavior-test",
-      "scriptSha256": "457e2f61c3fcbeba1a066e6bce4eecdb7cb7563c06afcc40cf4432baa8e08c12",
+      "scriptSha256": "46f2f3d355c1ece895e649e3dceb8f485aeeeeed2eb3418b98b311d9a827ac08",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "scripts/check-v051-exact-runtime.mjs",
-      "targetSha256": "d53b5464f39029ebf907d0d2ea321a178aae26a1d77940495262cde84355f878"
+      "targetSha256": "bc163d5597575cb81b8da8d7bdf7c2749779a5392866de7141aace04471d24f2"
     },
     "scripts/deploy.mjs": {
       "mode": "frozen",
@@ -138,7 +138,14 @@
       "scriptSha256": "5090797ba194569f47454fda4b4ff0fe0a6fd0fbf70aa470fd4c9a8296ca4a9e",
       "target": "tests/m91-schema-migration.spec.ts",
       "marker": "dry-run and CLI validate exact v37 plus logical SHA without source writes",
-      "targetSha256": "5afa0019115ead6a705a58bb4ba297a66c5fb4d76d5b562a40d9be867588b561"
+      "targetSha256": "e44c7edaef8fae2674080c9866d0a65bf66d546187d437f78f924e16456c5d33"
+    },
+    "scripts/migrate-schema40-to41.mjs": {
+      "mode": "behavior-test",
+      "scriptSha256": "4864b2f6b0e99acbca8efeeddd09b2bc82ec85d0d19f780ec83e8ec35db703d0",
+      "target": "tests/m91-schema-migration.spec.ts",
+      "marker": "exact schema 40 dry-run and apply migrate only the v41 compliance boundary",
+      "targetSha256": "e44c7edaef8fae2674080c9866d0a65bf66d546187d437f78f924e16456c5d33"
     },
     "scripts/node-typescript-runtime.mjs": {
       "mode": "behavior-test",
@@ -156,10 +163,10 @@
     },
     "scripts/rehearse-release.mjs": {
       "mode": "behavior-test",
-      "scriptSha256": "bbae8c35a209949f02f68e3191d6e17d2fd266e8c86946e44c752a8a045e83b6",
+      "scriptSha256": "198cbb6e14115530fc48e03ee560500623526afdfbb8d8b3008a039e14a8c780",
       "target": "tests/m95-release-switch.spec.ts",
       "marker": "schema 37 bridge rehearsal migrates without HTTP, atomically switches, drains and retains N-1",
-      "targetSha256": "565880f864066d79a22e8ee757b77ecdb30bb8f5c0f28b1127d145dae8ae4ebf"
+      "targetSha256": "967be4921ad348bf0213bb1b762f0f04304374cc31b53ee7e85ad9d78084b8fd"
     },
     "scripts/validate-release-ops.mjs": {
       "mode": "behavior-test",
@@ -179,7 +186,7 @@
       "scriptSha256": "5911ac412144b89b4a774dc4478f3562fd2191bac5da4875e4bccd8b715287b8",
       "target": "tests/m87-media-integrity.spec.ts",
       "marker": "the read-only media report CLI requires a frozen absolute source and leaves it unchanged",
-      "targetSha256": "a6ee97c7f971a38191222da08b53d8ab6faa529dae19fa9bcdfcb310b0667dfc"
+      "targetSha256": "18375d5fda1047e35c2f3d8a4d7cb615fe1b8a885ca22229959e1f3cebe4fe10"
     },
     "scripts/reset-account-password.mjs": {
       "mode": "behavior-test",
@@ -193,11 +200,11 @@
       "scriptSha256": "dbc1b06fc7ca761b66cde24bf0e1e293951b87de10db2ab959abbf6ac9a20b76",
       "target": "tests/m10-backup.spec.ts",
       "marker": "an encrypted frozen snapshot verifies and restores without plaintext or source writes",
-      "targetSha256": "d2471fcd2f6e98f29d670a7f1a447655731c27f579fe47e436812c83bd919458"
+      "targetSha256": "93410cb6f8e91313b4ab9ceae97f0b01bfa74a2f22112134770254e34cfd1234"
     },
     "scripts/run-linux-production-validation.mjs": {
       "mode": "frozen",
-      "scriptSha256": "ccee6d31f22378372424f2f9d91d2a0b4144ad7bb8a9e9501378415f2ab0d281",
+      "scriptSha256": "53b0729040c1c9a915c0b91cfbb4e33a5cbb238d05225bdb5a3a1ed02936c574",
       "reason": "Runs immutable production artifacts in a Linux namespace and creates encrypted validation evidence; automatic execution is forbidden.",
       "manualNpmScripts": []
     },
@@ -206,7 +213,7 @@
       "scriptSha256": "891d9c3db99cf458f88248e503c221e1f450f78f16b9f4d15af8d2f36f5c0efd",
       "target": "tests/m10-backup.spec.ts",
       "marker": "an encrypted frozen snapshot verifies and restores without plaintext or source writes",
-      "targetSha256": "d2471fcd2f6e98f29d670a7f1a447655731c27f579fe47e436812c83bd919458"
+      "targetSha256": "93410cb6f8e91313b4ab9ceae97f0b01bfa74a2f22112134770254e34cfd1234"
     }
   }
 }

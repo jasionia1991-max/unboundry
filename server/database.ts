@@ -2430,6 +2430,136 @@ const migrations: readonly Migration[] = [
         );
     `,
   },
+  {
+    version: 41,
+    name: "seedance-character-compliance-precheck",
+    sql: `
+      CREATE TABLE seedance_character_compliance_disclosures (
+        id TEXT PRIMARY KEY,
+        owner_id TEXT NOT NULL,
+        source_kind TEXT NOT NULL DEFAULT 'image' CHECK (source_kind = 'image'),
+        source_asset_id TEXT NOT NULL,
+        version TEXT NOT NULL,
+        accepted_at TEXT NOT NULL,
+        expires_at TEXT,
+        revoked_at TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE (id, owner_id, source_kind, source_asset_id),
+        UNIQUE (owner_id, source_kind, source_asset_id, version)
+      );
+      CREATE INDEX seedance_character_compliance_disclosures_owner_asset
+        ON seedance_character_compliance_disclosures (
+          owner_id, source_asset_id, accepted_at DESC
+        );
+
+      CREATE TABLE seedance_character_compliance_checks (
+        id TEXT PRIMARY KEY,
+        owner_id TEXT NOT NULL,
+        source_kind TEXT NOT NULL DEFAULT 'image' CHECK (source_kind = 'image'),
+        source_asset_id TEXT NOT NULL,
+        source_checksum_sha256 TEXT NOT NULL CHECK (
+          length(source_checksum_sha256) = 64
+          AND source_checksum_sha256 NOT GLOB '*[^0-9a-f]*'
+        ),
+        model_id TEXT NOT NULL,
+        model_configuration_revision TEXT NOT NULL,
+        disclosure_id TEXT NOT NULL,
+        branch TEXT NOT NULL CHECK (branch IN ('A', 'B', 'C')),
+        state TEXT NOT NULL CHECK (
+          state IN (
+            'NOT_REQUIRED', 'NOT_SUBMITTED', 'DISCLOSURE_REQUIRED', 'QUEUED',
+            'CHECKING', 'APPROVED', 'REJECTED_REAL_PERSON',
+            'REJECTED_PUBLIC_FIGURE', 'REJECTED_COPYRIGHT_IP',
+            'REJECTED_MINOR_OR_SENSITIVE', 'REJECTED_UNCERTAIN',
+            'FAILED_RETRYABLE', 'FAILED_TERMINAL', 'STALE_SOURCE', 'EXPIRED',
+            'REVOKED'
+          )
+        ),
+        idempotency_key TEXT NOT NULL,
+        provider_profile_id TEXT,
+        provider_region TEXT,
+        provider_account_fingerprint TEXT,
+        provider_configuration_version INTEGER CHECK (
+          provider_configuration_version IS NULL
+          OR provider_configuration_version >= 1
+        ),
+        provider_credential_version INTEGER CHECK (
+          provider_credential_version IS NULL OR provider_credential_version >= 1
+        ),
+        policy_revision TEXT NOT NULL,
+        provider_check_id TEXT,
+        provider_display_name TEXT,
+        provider_status TEXT,
+        risk_codes TEXT NOT NULL DEFAULT '[]' CHECK (
+          json_valid(risk_codes) AND json_type(risk_codes) = 'array'
+        ),
+        checked_at TEXT,
+        expires_at TEXT,
+        failure_code TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (disclosure_id, owner_id, source_kind, source_asset_id)
+          REFERENCES seedance_character_compliance_disclosures (
+            id, owner_id, source_kind, source_asset_id
+          ),
+        FOREIGN KEY (provider_profile_id) REFERENCES provider_profiles(id),
+        UNIQUE (id, owner_id),
+        UNIQUE (owner_id, idempotency_key)
+      );
+      CREATE UNIQUE INDEX seedance_character_compliance_checks_provider
+        ON seedance_character_compliance_checks (
+          provider_profile_id, provider_region, provider_check_id
+        ) WHERE provider_check_id IS NOT NULL;
+      CREATE INDEX seedance_character_compliance_checks_owner_source_updated
+        ON seedance_character_compliance_checks (
+          owner_id, source_asset_id, updated_at DESC
+        );
+
+      CREATE TABLE seedance_character_compliance_attempts (
+        id TEXT PRIMARY KEY,
+        check_id TEXT NOT NULL,
+        owner_id TEXT NOT NULL,
+        attempt_number INTEGER NOT NULL CHECK (attempt_number >= 1),
+        operation TEXT NOT NULL CHECK (
+          operation IN ('create', 'inspect', 'cancel')
+        ),
+        outcome TEXT NOT NULL CHECK (
+          outcome IN (
+            'admission-pending', 'accepted', 'response-received',
+            'outcome-unknown', 'definitive-rejected', 'provider-failed',
+            'cancelled'
+          )
+        ),
+        state TEXT NOT NULL CHECK (
+          state IN (
+            'NOT_REQUIRED', 'NOT_SUBMITTED', 'DISCLOSURE_REQUIRED', 'QUEUED',
+            'CHECKING', 'APPROVED', 'REJECTED_REAL_PERSON',
+            'REJECTED_PUBLIC_FIGURE', 'REJECTED_COPYRIGHT_IP',
+            'REJECTED_MINOR_OR_SENSITIVE', 'REJECTED_UNCERTAIN',
+            'FAILED_RETRYABLE', 'FAILED_TERMINAL', 'STALE_SOURCE', 'EXPIRED',
+            'REVOKED'
+          )
+        ),
+        provider_status TEXT,
+        failure_code TEXT,
+        diagnostic TEXT NOT NULL DEFAULT '{}' CHECK (
+          json_valid(diagnostic) AND json_type(diagnostic) = 'object'
+        ),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (check_id, owner_id)
+          REFERENCES seedance_character_compliance_checks (id, owner_id)
+          ON DELETE CASCADE,
+        UNIQUE (check_id, attempt_number, operation)
+      );
+      CREATE INDEX seedance_character_compliance_attempts_owner_check
+        ON seedance_character_compliance_attempts (
+          owner_id, check_id, attempt_number
+        );
+    `,
+  },
 ];
 
 export const currentSchemaManifest = Object.freeze(
@@ -2438,7 +2568,7 @@ export const currentSchemaManifest = Object.freeze(
 
 export const currentSchemaVersion = currentSchemaManifest.at(-1)?.version ?? 0;
 
-// This is the known-safe physical schema that a v40 process can use. Keep the
+// This is the known-safe physical schema that a v41 process can use. Keep the
 // migration ledger as the source of version ordering, and keep the column-name
 // checks order-independent so the finite documented v21 catalog repairs and
 // v31/v32 template repair can each be admitted only by an exact sqlite_schema
@@ -2549,6 +2679,25 @@ export const currentSchemaContract = Object.freeze({
       "updated_at", "archived_at",
     ]),
     schema_migrations: Object.freeze(["version", "name", "applied_at"]),
+    seedance_character_compliance_attempts: Object.freeze([
+      "id", "check_id", "owner_id", "attempt_number", "operation", "state",
+      "outcome", "provider_status", "failure_code", "diagnostic", "created_at",
+      "updated_at",
+    ]),
+    seedance_character_compliance_checks: Object.freeze([
+      "id", "owner_id", "source_kind", "source_asset_id",
+      "source_checksum_sha256", "model_id", "model_configuration_revision",
+      "disclosure_id", "branch", "state", "idempotency_key",
+      "provider_profile_id", "provider_region", "provider_account_fingerprint",
+      "provider_configuration_version", "provider_credential_version",
+      "policy_revision", "provider_check_id",
+      "provider_display_name", "provider_status", "risk_codes", "checked_at",
+      "expires_at", "failure_code", "created_at", "updated_at",
+    ]),
+    seedance_character_compliance_disclosures: Object.freeze([
+      "id", "owner_id", "source_kind", "source_asset_id", "version",
+      "accepted_at", "expires_at", "revoked_at", "created_at",
+    ]),
     seedance_asset_bindings: Object.freeze([
       "id", "group_id", "owner_id", "source_kind", "source_asset_id",
       "source_checksum_sha256", "provider_profile_id",
@@ -2629,6 +2778,15 @@ export const currentSchemaContract = Object.freeze({
       partial: true,
       sqlHash: "685328d0a6544c219d95ce9d027dafba6a02be94404e18f4f4e7d5c73b53951a",
       table: "seedance_asset_bindings",
+      unique: true,
+    }),
+    seedance_character_compliance_checks_provider: Object.freeze({
+      columns: Object.freeze([
+        "provider_profile_id", "provider_region", "provider_check_id",
+      ]),
+      partial: true,
+      sqlHash: "08e7530f0926759d29b5e0645be4fc949d9cadb54c78bb68b61d304aa04c7ca9",
+      table: "seedance_character_compliance_checks",
       unique: true,
     }),
     seedance_identity_groups_provider_identity: Object.freeze({
@@ -2828,6 +2986,22 @@ export const currentSchemaContract = Object.freeze({
       sqlHash: "067946208bb04421d5a8bb8eeee02541c8d9e4093553066ab1d329fba10869d9",
       table: "seedance_authorization_sessions",
     }),
+    seedance_character_compliance_attempts_owner_check: Object.freeze({
+      sqlHash: "de87bffb0fc387695e143f937dc41b32251bbbf57aa0631328a49ca6fc11ca4c",
+      table: "seedance_character_compliance_attempts",
+    }),
+    seedance_character_compliance_checks_owner_source_updated: Object.freeze({
+      sqlHash: "82c7fe499534174e0f4b52e5a19b1598576f71c74abae4a02c546f5091398840",
+      table: "seedance_character_compliance_checks",
+    }),
+    seedance_character_compliance_checks_provider: Object.freeze({
+      sqlHash: "08e7530f0926759d29b5e0645be4fc949d9cadb54c78bb68b61d304aa04c7ca9",
+      table: "seedance_character_compliance_checks",
+    }),
+    seedance_character_compliance_disclosures_owner_asset: Object.freeze({
+      sqlHash: "7538ccfbbb03c3fb185ff2d5cc257ed8d3d7a0e2da80e2ab421621580ddc489e",
+      table: "seedance_character_compliance_disclosures",
+    }),
     seedance_identity_groups_owner_updated: Object.freeze({
       sqlHash: "facf255f0047fde7bf8e98789f67fe413246ad7d09825457c6481a873a9e88db",
       table: "seedance_identity_groups",
@@ -2938,6 +3112,15 @@ export const currentSchemaContract = Object.freeze({
     ]),
     schema_migrations: Object.freeze([
       "c1b7313cc662808476c3815653e069743817c9d0a29a423d0c7810d995d94ec7",
+    ]),
+    seedance_character_compliance_attempts: Object.freeze([
+      "0b6849c1a98c8ac08216aa70fd23cb0dc3823ebc9eb0a7d5042793eeae2cd9e3",
+    ]),
+    seedance_character_compliance_checks: Object.freeze([
+      "32654b19499cbfbf194d93c2fa442efa9272de9725dc9d47a20724158cc3ff18",
+    ]),
+    seedance_character_compliance_disclosures: Object.freeze([
+      "e123d310da61beb5c37f2a071ee0c691596f812aa6b2bebfea90b4c5b048dcb5",
     ]),
     seedance_asset_bindings: Object.freeze([
       "f186f39949cd380e63efd18b2e356e814e99b18f6867397c6429528023109cef",
@@ -3051,9 +3234,19 @@ function schemaObject(
   `).get(type, name) as { sql?: unknown; tbl_name?: unknown } | undefined;
 }
 
-/** Exact physical-schema guard shared by runtime readiness and writer opens. */
-export function databaseMatchesSchemaContract(database: DatabaseSync) {
-  const expectedTables = Object.keys(currentSchemaContract.tables).sort();
+const schema41Tables = new Set([
+  "seedance_character_compliance_attempts",
+  "seedance_character_compliance_checks",
+  "seedance_character_compliance_disclosures",
+]);
+
+function databaseMatchesSchemaContractExceptTables(
+  database: DatabaseSync,
+  excludedTables: ReadonlySet<string>,
+) {
+  const expectedTables = Object.keys(currentSchemaContract.tables)
+    .filter((tableName) => !excludedTables.has(tableName))
+    .sort();
   const actualTables = (database.prepare(`
     SELECT name
     FROM sqlite_schema
@@ -3085,11 +3278,16 @@ export function databaseMatchesSchemaContract(database: DatabaseSync) {
 
   const expectedExplicitIndexNames = Object.keys(
     currentSchemaContract.explicitIndexes,
-  ).sort();
+  ).filter((indexName) => !excludedTables.has(
+    currentSchemaContract.explicitIndexes[
+      indexName as keyof typeof currentSchemaContract.explicitIndexes
+    ].table,
+  )).sort();
   const optionalExplicitIndexNames = new Set<string>();
   for (const [indexName, condition] of Object.entries(
     currentSchemaContract.conditionallyOptionalExplicitIndexes,
   )) {
+    if (excludedTables.has(condition.table)) continue;
     const table = schemaObject(database, "table", condition.table);
     if (schemaSqlHash(table?.sql) === condition.tableSqlHash) {
       optionalExplicitIndexNames.add(indexName);
@@ -3126,6 +3324,7 @@ export function databaseMatchesSchemaContract(database: DatabaseSync) {
   for (const [indexName, expected] of Object.entries(
     currentSchemaContract.indexes,
   )) {
+    if (excludedTables.has(expected.table)) continue;
     if (
       !/^[a-z][a-z0-9_]*$/.test(indexName) ||
       !/^[a-z][a-z0-9_]*$/.test(expected.table)
@@ -3160,7 +3359,13 @@ export function databaseMatchesSchemaContract(database: DatabaseSync) {
     ) return false;
   }
 
-  const expectedTriggerNames = Object.keys(currentSchemaContract.triggers).sort();
+  const expectedTriggerNames = Object.keys(currentSchemaContract.triggers)
+    .filter((triggerName) => !excludedTables.has(
+      currentSchemaContract.triggers[
+        triggerName as keyof typeof currentSchemaContract.triggers
+      ].table,
+    ))
+    .sort();
   const actualTriggerNames = (database.prepare(`
     SELECT name
     FROM sqlite_schema
@@ -3171,6 +3376,7 @@ export function databaseMatchesSchemaContract(database: DatabaseSync) {
   for (const [triggerName, expected] of Object.entries(
     currentSchemaContract.triggers,
   )) {
+    if (excludedTables.has(expected.table)) continue;
     const trigger = schemaObject(database, "trigger", triggerName);
     if (
       String(trigger?.tbl_name ?? "") !== expected.table ||
@@ -3184,6 +3390,16 @@ export function databaseMatchesSchemaContract(database: DatabaseSync) {
     ORDER BY name
   `).all() as Array<{ name?: unknown }>).map((row) => String(row.name));
   return actualViewNames.length === 0;
+}
+
+/** Exact physical-schema guard shared by runtime readiness and writer opens. */
+export function databaseMatchesSchemaContract(database: DatabaseSync) {
+  return databaseMatchesSchemaContractExceptTables(database, new Set());
+}
+
+/** Frozen v40 guard used only by the authorized v40-to-v41 release migration. */
+export function databaseMatchesSchema40Contract(database: DatabaseSync) {
+  return databaseMatchesSchemaContractExceptTables(database, schema41Tables);
 }
 
 export function appDataDirectory() {

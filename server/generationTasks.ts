@@ -194,6 +194,7 @@ import {
 } from "../types/imageTools";
 import type { RuntimeRoleCoordinator } from "./runtimeRole";
 import { resolveSeedanceTrustedVideoReferences } from "./seedanceTrustedVideoReferences";
+import { resolveSeedanceCharacterReferences } from "./seedanceCharacterReferences";
 
 export type GenerationRuntimeAdapters = Readonly<{
   arkVideo: Readonly<{
@@ -4595,6 +4596,56 @@ function videoTaskMediaSnapshots(value: unknown): VideoTaskMediaSnapshot[] {
         sourceChecksumSha256: String(trusted.sourceChecksumSha256),
       };
     }
+    let characterCompliance: NodeInputSnapshot["characterCompliance"];
+    if (item.characterCompliance !== undefined) {
+      const compliance = item.characterCompliance;
+      if (
+        item.kind !== "image" ||
+        !["reference-image", "subject"].includes(role) ||
+        !compliance || typeof compliance !== "object" ||
+        Array.isArray(compliance) || compliance.branch !== "B" ||
+        !/^[a-z0-9._-]{1,160}$/i.test(String(compliance.checkId ?? "")) ||
+        !Number.isFinite(Date.parse(String(compliance.checkedAt ?? ""))) ||
+        !Number.isFinite(Date.parse(String(compliance.expiresAt ?? ""))) ||
+        !/^[a-z0-9._:-]{1,160}$/i.test(
+          String(compliance.modelConfigurationRevision ?? ""),
+        ) ||
+        !/^[a-z0-9._:-]{1,160}$/i.test(String(compliance.modelId ?? "")) ||
+        !/^[a-z0-9._:-]{1,160}$/i.test(String(compliance.policyRevision ?? "")) ||
+        !/^[a-f0-9]{64}$/.test(
+          String(compliance.providerAccountFingerprint ?? ""),
+        ) ||
+        !Number.isSafeInteger(Number(compliance.providerConfigurationVersion)) ||
+        Number(compliance.providerConfigurationVersion) < 1 ||
+        !Number.isSafeInteger(Number(compliance.providerCredentialVersion)) ||
+        Number(compliance.providerCredentialVersion) < 1 ||
+        !/^[a-z0-9._-]{1,160}$/i.test(
+          String(compliance.providerProfileId ?? ""),
+        ) ||
+        !/^[a-f0-9]{64}$/.test(
+          String(compliance.sourceChecksumSha256 ?? ""),
+        )
+      ) {
+        throw new ProviderMediaError(
+          "MEDIA_INVALID",
+          "视频任务保存的角色合规快照无效",
+        );
+      }
+      characterCompliance = {
+        branch: "B",
+        checkId: String(compliance.checkId),
+        checkedAt: String(compliance.checkedAt),
+        expiresAt: String(compliance.expiresAt),
+        modelConfigurationRevision: String(compliance.modelConfigurationRevision),
+        modelId: String(compliance.modelId),
+        policyRevision: String(compliance.policyRevision),
+        providerAccountFingerprint: String(compliance.providerAccountFingerprint),
+        providerConfigurationVersion: Number(compliance.providerConfigurationVersion),
+        providerCredentialVersion: Number(compliance.providerCredentialVersion),
+        providerProfileId: String(compliance.providerProfileId),
+        sourceChecksumSha256: String(compliance.sourceChecksumSha256),
+      };
+    }
     media.push({
       assetId: item.assetId,
       kind: item.kind,
@@ -4602,16 +4653,30 @@ function videoTaskMediaSnapshots(value: unknown): VideoTaskMediaSnapshot[] {
       role,
       sourceNodeId: item.sourceNodeId,
       ...(trustedAsset ? { trustedAsset } : {}),
+      ...(characterCompliance ? { characterCompliance } : {}),
     });
   }
   return media.sort((left, right) => left.order - right.order);
 }
 
 async function arkVideoMediaInputs(task: GenerationTask): Promise<ArkVideoMediaInput[]> {
-  const snapshots = await resolveSeedanceTrustedVideoReferences({
+  const trustedSnapshots = await resolveSeedanceTrustedVideoReferences({
     inputs: videoTaskMediaSnapshots(task.parameters.inputs),
     ownerId: task.ownerId!,
     providerProfileId: task.providerProfileId!,
+  }) as VideoTaskMediaSnapshot[];
+  const snapshots = await resolveSeedanceCharacterReferences({
+    generation: {
+      credentialVersion: Number(task.credentialRevision),
+      modelId: String(task.model),
+      providerConfigurationVersion: Number(
+        task.modelConfiguration.providerConfigurationVersion,
+      ),
+      providerProfileId: task.providerProfileId!,
+    },
+    inputs: trustedSnapshots,
+    ownerId: task.ownerId!,
+    phase: "provider-submit",
   }) as VideoTaskMediaSnapshot[];
   const rules = referenceMediaRulesForTask(task) ?? arkVideoMediaRules;
   const validated = snapshots.map((snapshot): ArkVideoMediaRecord => {
@@ -4649,6 +4714,12 @@ async function arkVideoMediaInputs(task: GenerationTask): Promise<ArkVideoMediaI
         role: snapshot.role,
       });
       continue;
+    }
+    if (snapshot.characterCompliance) {
+      throw new ProviderMediaError(
+        "MEDIA_INVALID",
+        "当前 Seedance 正式提交合同不接受角色风险预检票据",
+      );
     }
     const url = await providerMediaUrlForOwner({
       assetId: snapshot.assetId,

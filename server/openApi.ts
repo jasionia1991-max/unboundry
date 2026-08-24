@@ -506,6 +506,134 @@ export const openApiDocument = {
         },
       },
     },
+    "/api/seedance/character-compliance/capability": {
+      get: {
+        operationId: "readSeedanceCharacterComplianceCapability",
+        summary: "Read the owner-scoped character risk precheck capability",
+        responses: {
+          "200": {
+            description: "Current A/B/C branch without credentials or legal claims",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/SeedanceCharacterComplianceCapability",
+                },
+              },
+            },
+          },
+          "401": { description: "Sign-in required" },
+        },
+      },
+    },
+    "/api/media/image/{assetId}/seedance/character-compliance-checks": {
+      post: {
+        operationId: "createSeedanceCharacterComplianceCheck",
+        summary: "Create one disclosed and owner-scoped character risk precheck",
+        parameters: [{ $ref: "#/components/parameters/SeedanceImageAssetId" }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/SeedanceCharacterComplianceCreateRequest",
+              },
+            },
+          },
+        },
+        responses: {
+          "202": {
+            description: "Persisted check state; not a legal or Seedance eligibility result",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/SeedanceCharacterComplianceCheck" },
+              },
+            },
+          },
+          "401": { description: "Sign-in required" },
+          "404": { description: "Owner-scoped image not found" },
+          "409": { description: "Disclosure missing or source conflict" },
+          "503": { description: "No compliant Provider is available; no media was sent" },
+        },
+      },
+    },
+    "/api/media/image/{assetId}/seedance/character-compliance-current": {
+      get: {
+        operationId: "readCurrentSeedanceCharacterComplianceCheck",
+        summary: "Read the newest identity-bound risk precheck for an image",
+        parameters: [{ $ref: "#/components/parameters/SeedanceImageAssetId" }],
+        responses: {
+          "200": {
+            description: "Current check with stale and expiry reconciliation",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/SeedanceCharacterComplianceCheck" },
+              },
+            },
+          },
+          "401": { description: "Sign-in required" },
+          "404": { description: "No owner-scoped check exists" },
+        },
+      },
+    },
+    "/api/seedance/character-compliance/checks/{checkId}": {
+      get: {
+        operationId: "readSeedanceCharacterComplianceCheck",
+        summary: "Read and reconcile one owner-scoped character risk precheck",
+        parameters: [{ $ref: "#/components/parameters/SeedanceComplianceCheckId" }],
+        responses: {
+          "200": {
+            description: "Current durable check state",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/SeedanceCharacterComplianceCheck" },
+              },
+            },
+          },
+          "401": { description: "Sign-in required" },
+          "404": { description: "Owner-scoped check not found" },
+        },
+      },
+    },
+    "/api/seedance/character-compliance/checks/{checkId}/cancel": {
+      post: {
+        operationId: "cancelSeedanceCharacterComplianceCheck",
+        summary: "Cancel one pending owner-scoped character risk precheck",
+        parameters: [{ $ref: "#/components/parameters/SeedanceComplianceCheckId" }],
+        responses: {
+          "200": {
+            description: "Cancelled check state",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/SeedanceCharacterComplianceCheck" },
+              },
+            },
+          },
+          "401": { description: "Sign-in required" },
+          "404": { description: "Owner-scoped check not found" },
+          "409": { description: "Terminal check cannot be cancelled" },
+        },
+      },
+    },
+    "/api/seedance/character-compliance/checks/{checkId}/retry": {
+      post: {
+        operationId: "retrySeedanceCharacterComplianceCheck",
+        summary: "Retry a check only after definitive Provider non-admission",
+        parameters: [{ $ref: "#/components/parameters/SeedanceComplianceCheckId" }],
+        responses: {
+          "200": {
+            description: "Retried check state",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/SeedanceCharacterComplianceCheck" },
+              },
+            },
+          },
+          "401": { description: "Sign-in required" },
+          "404": { description: "Owner-scoped check not found" },
+          "409": { description: "Check is not safe or eligible to retry" },
+        },
+      },
+    },
     "/api/seedance/trusted-assets/capability": {
       get: {
         operationId: "readSeedanceTrustedAssetCapability",
@@ -1451,6 +1579,12 @@ export const openApiDocument = {
         required: true,
         schema: { type: "string", pattern: "^[A-Za-z0-9._-]{1,160}$" },
       },
+      SeedanceComplianceCheckId: {
+        in: "path",
+        name: "checkId",
+        required: true,
+        schema: { type: "string", pattern: "^[A-Za-z0-9._:-]{1,160}$" },
+      },
       SeedanceSessionId: {
         in: "path",
         name: "sessionId",
@@ -1459,6 +1593,112 @@ export const openApiDocument = {
       },
     },
     schemas: {
+      SeedanceCharacterComplianceState: {
+        type: "string",
+        enum: [
+          "NOT_REQUIRED", "NOT_SUBMITTED", "DISCLOSURE_REQUIRED", "QUEUED",
+          "CHECKING", "APPROVED", "REJECTED_REAL_PERSON",
+          "REJECTED_PUBLIC_FIGURE", "REJECTED_COPYRIGHT_IP",
+          "REJECTED_MINOR_OR_SENSITIVE", "REJECTED_UNCERTAIN",
+          "FAILED_RETRYABLE", "FAILED_TERMINAL", "STALE_SOURCE", "EXPIRED",
+          "REVOKED",
+        ],
+      },
+      SeedanceCharacterComplianceCapability: {
+        type: "object",
+        required: [
+          "available", "branch", "canCreateChecks",
+          "formalSeedanceTicketAccepted", "productName", "providerDisplayName",
+          "reason", "reasonCode",
+        ],
+        properties: {
+          available: { type: "boolean" },
+          branch: { type: "string", enum: ["A", "B", "C"] },
+          canCreateChecks: { type: "boolean" },
+          formalSeedanceTicketAccepted: { type: "boolean" },
+          productName: { type: "string", const: "角色风险预检" },
+          providerDisplayName: {
+            oneOf: [{ type: "string", minLength: 1 }, { type: "null" }],
+          },
+          reason: { type: "string", minLength: 1 },
+          reasonCode: {
+            type: "string",
+            enum: [
+              "AVAILABLE", "NO_COMPLIANT_PROVIDER",
+              "PROVIDER_CONFIGURATION_UNAVAILABLE",
+            ],
+          },
+        },
+        additionalProperties: false,
+      },
+      SeedanceCharacterComplianceCreateRequest: {
+        type: "object",
+        required: [
+          "disclosureAccepted", "disclosureVersion",
+          "modelConfigurationRevision", "modelId",
+        ],
+        properties: {
+          disclosureAccepted: { type: "boolean", const: true },
+          disclosureVersion: { type: "string", pattern: "^[A-Za-z0-9._:-]{1,160}$" },
+          modelConfigurationRevision: {
+            type: "string", pattern: "^[A-Za-z0-9._:-]{1,160}$",
+          },
+          modelId: { type: "string", pattern: "^[A-Za-z0-9._:-]{1,160}$" },
+        },
+        additionalProperties: false,
+      },
+      SeedanceCharacterComplianceCheck: {
+        type: "object",
+        required: [
+          "branch", "checkedAt", "createdAt", "disclosureVersion",
+          "expiresAt", "id", "providerDisplayName", "riskCodes", "source",
+          "state", "updatedAt",
+        ],
+        properties: {
+          branch: { type: "string", enum: ["A", "B", "C"] },
+          checkedAt: {
+            oneOf: [{ type: "string", format: "date-time" }, { type: "null" }],
+          },
+          createdAt: { type: "string", format: "date-time" },
+          disclosureVersion: { type: "string" },
+          expiresAt: {
+            oneOf: [{ type: "string", format: "date-time" }, { type: "null" }],
+          },
+          id: { type: "string" },
+          providerDisplayName: {
+            oneOf: [{ type: "string" }, { type: "null" }],
+          },
+          riskCodes: {
+            type: "array",
+            uniqueItems: true,
+            items: {
+              type: "string",
+              enum: [
+                "REAL_PERSON", "PUBLIC_FIGURE", "COPYRIGHT_IP",
+                "MINOR_OR_SENSITIVE", "UNCERTAIN",
+              ],
+            },
+          },
+          source: {
+            type: "object",
+            required: [
+              "assetId", "checksumSha256", "kind",
+              "modelConfigurationRevision", "modelId",
+            ],
+            properties: {
+              assetId: { type: "string" },
+              checksumSha256: { type: "string", pattern: "^[a-f0-9]{64}$" },
+              kind: { type: "string", const: "image" },
+              modelConfigurationRevision: { type: "string" },
+              modelId: { type: "string" },
+            },
+            additionalProperties: false,
+          },
+          state: { $ref: "#/components/schemas/SeedanceCharacterComplianceState" },
+          updatedAt: { type: "string", format: "date-time" },
+        },
+        additionalProperties: false,
+      },
       SeedanceTrustedAssetStatus: {
         type: "string",
         enum: [

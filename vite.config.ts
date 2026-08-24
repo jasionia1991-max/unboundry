@@ -104,6 +104,10 @@ const {
     httpHandler: seedanceTrustedAssetApi,
     mediaHttpHandler: seedanceTrustedAssetMediaApi,
   },
+  seedanceCharacterCompliance: {
+    httpHandler: seedanceCharacterComplianceApi,
+    mediaHttpHandler: seedanceCharacterComplianceMediaApi,
+  },
 } = applicationComposition;
 
 const mediaLifecycleStartupRecoveryAllowsReadiness =
@@ -914,14 +918,26 @@ function imageToolApi(runtime: RuntimeInstance): Plugin {
       ),
     );
     middlewares.use(
+      "/api/seedance/character-compliance",
+      apiBoundary(
+        "seedance.character-compliance",
+        seedanceCharacterComplianceApi,
+        runtime,
+      ),
+    );
+    middlewares.use(
       "/api/seedance",
       apiBoundary("seedance.trusted-assets", seedanceTrustedAssetApi, runtime),
     );
     middlewares.use(
       "/api/media/image",
       apiBoundary(
-        "seedance.trusted-assets.media",
-        seedanceTrustedAssetMediaApi,
+        "seedance.image-tools.media",
+        (request, response) =>
+          /\/seedance\/character-compliance-(?:checks|current)(?:\?|$)/
+              .test(request.url ?? "")
+            ? seedanceCharacterComplianceMediaApi(request, response)
+            : seedanceTrustedAssetMediaApi(request, response),
         runtime,
       ),
     );
