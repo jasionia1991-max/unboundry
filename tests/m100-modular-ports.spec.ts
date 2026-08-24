@@ -75,8 +75,10 @@ import { createSeedanceTrustedAssetApplication } from
   "../server/seedanceTrustedAssetApplication";
 import { createSeedanceTrustedVideoReferenceResolver } from
   "../server/seedanceTrustedVideoReferences";
-import type { SeedanceTrustedAssetPort } from
-  "../server/seedanceTrustedAssetPort";
+import {
+  SeedanceTrustedAssetProviderError,
+  type SeedanceTrustedAssetPort,
+} from "../server/seedanceTrustedAssetPort";
 import {
   createMediaPublicationService,
   mediaPublicationService,
@@ -2020,6 +2022,68 @@ test("composition root wires public module APIs and delegates readiness SQL", as
         providerCalls.releases += 1;
       },
     });
+    const failureSource = {
+      assetId: "trusted-image-failure",
+      checksumSha256: "c".repeat(64),
+      kind: "image" as const,
+    };
+    trustedDatabase.prepare(`
+      INSERT INTO media_assets (
+        kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
+        content_type, checksum_sha256
+      ) VALUES ('image', ?, ?, ?, 4, ?, ?, 'image/png', ?)
+    `).run(
+      failureSource.assetId,
+      "trusted-owner",
+      "trusted-image-failure.png",
+      timestamp,
+      timestamp,
+      failureSource.checksumSha256,
+    );
+    const failurePort: SeedanceTrustedAssetPort = Object.freeze({
+      ...port,
+      async createAuthorizationSession() {
+        throw new SeedanceTrustedAssetProviderError("PERMISSION", {
+          httpStatus: 403,
+          providerCode: "AccessDenied",
+          requestId: "request-persisted-789",
+        });
+      },
+    });
+    const failureApplication = createSeedanceTrustedAssetApplication({
+      context: async () => ({ identity, port: failurePort }),
+      media: (ownerId, assetId) => ownerId === "trusted-owner" &&
+          assetId === failureSource.assetId
+        ? {
+            checksumSha256: failureSource.checksumSha256,
+            contentType: "image/png",
+            storageStatus: "ready",
+          }
+        : undefined,
+      now: () => new Date(clock += 1_000),
+      providerReferences,
+      store,
+    });
+    await expect(failureApplication.createAuthorizationSession({
+      assetId: failureSource.assetId,
+      ownerId: "trusted-owner",
+    })).rejects.toMatchObject({ code: "CAPABILITY_UNAVAILABLE" });
+    const persistedFailure = store.sessionByIdempotencyKey({
+      identity,
+      key: seedanceControlIdempotencyKey({
+        identity,
+        operation: "session",
+        ownerId: "trusted-owner",
+        source: failureSource,
+      }),
+      ownerId: "trusted-owner",
+    });
+    expect(persistedFailure).toMatchObject({
+      providerStatus:
+        "CREATE_SESSION_FAILED|PERMISSION|HTTP_403|PROVIDER_AccessDenied|" +
+        "REQUEST_request-persisted-789",
+      status: "FAILED",
+    });
     const trustedApplication = createSeedanceTrustedAssetApplication({
       context: async () => ({ identity, port }),
       media: (ownerId, assetId) => ownerId === "trusted-owner" &&
@@ -2072,6 +2136,60 @@ test("composition root wires public module APIs and delegates readiness SQL", as
       ownerId: "trusted-owner",
     })).resolves.toMatchObject({ status: "ACTIVE" });
     expect(providerCalls.inspectAsset).toBe(2);
+    const inspectFailurePort: SeedanceTrustedAssetPort = Object.freeze({
+      ...port,
+      async inspectAsset() {
+        throw new SeedanceTrustedAssetProviderError("RATE_LIMIT", {
+          httpStatus: 429,
+          providerCode: "RequestLimitExceeded",
+          requestId: "request-asset-inspect-456",
+        });
+      },
+      async inspectAuthorizationSession() {
+        throw new SeedanceTrustedAssetProviderError("REMOTE", {
+          httpStatus: 503,
+          providerCode: "ServiceUnavailable",
+          requestId: "request-session-inspect-123",
+        });
+      },
+    });
+    const inspectFailureApplication = createSeedanceTrustedAssetApplication({
+      context: async () => ({ identity, port: inspectFailurePort }),
+      media: (ownerId, assetId) => ownerId === "trusted-owner" &&
+          assetId === "trusted-image-app"
+        ? appMedia()
+        : undefined,
+      now: () => new Date(clock += 1_000),
+      providerReferences,
+      store,
+    });
+    await expect(inspectFailureApplication.readTrustedBinding({
+      assetId: "trusted-image-app",
+      ownerId: "trusted-owner",
+    })).rejects.toMatchObject({ code: "CAPABILITY_UNAVAILABLE" });
+    expect(store.bindingById("trusted-owner", appBinding.id)).toMatchObject({
+      failureCode: "PROVIDER_RATE_LIMIT",
+      providerStatus:
+        "INSPECT_ASSET_FAILED|RATE_LIMIT|HTTP_429|" +
+        "PROVIDER_RequestLimitExceeded|REQUEST_request-asset-inspect-456",
+      status: "ACTIVE",
+    });
+    const pendingFailureSession = store.upsertSession({
+      ...store.sessionById("trusted-owner", firstSession.id)!,
+      providerSessionId: "provider-session-app-1",
+      status: "WAITING_AUTHORIZATION",
+      updatedAt: new Date(clock += 1_000).toISOString(),
+    });
+    await expect(inspectFailureApplication.readAuthorizationSession({
+      ownerId: "trusted-owner",
+      sessionId: pendingFailureSession.id,
+    })).rejects.toMatchObject({ code: "CAPABILITY_UNAVAILABLE" });
+    expect(store.sessionById("trusted-owner", pendingFailureSession.id)).toMatchObject({
+      providerStatus:
+        "INSPECT_SESSION_FAILED|REMOTE|HTTP_503|PROVIDER_ServiceUnavailable|" +
+        "REQUEST_request-session-inspect-123",
+      status: "WAITING_AUTHORIZATION",
+    });
     const resolveTrustedVideo = createSeedanceTrustedVideoReferenceResolver({
       context: async (_ownerId, profileId) => profileId === identity.profileId
         ? { identity, port }

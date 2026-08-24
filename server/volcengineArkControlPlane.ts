@@ -50,9 +50,24 @@ export type VolcengineArkControlPlaneErrorCode =
   | "RATE_LIMIT"
   | "REMOTE";
 
+export type VolcengineArkControlPlaneErrorDiagnostic = Readonly<{
+  httpStatus: number | null;
+  providerCode: string | null;
+  requestId: string | null;
+}>;
+
+const emptyErrorDiagnostic: VolcengineArkControlPlaneErrorDiagnostic =
+  Object.freeze({ httpStatus: null, providerCode: null, requestId: null });
+
 export class VolcengineArkControlPlaneError extends Error {
-  constructor(readonly code: VolcengineArkControlPlaneErrorCode) {
+  readonly diagnostic: VolcengineArkControlPlaneErrorDiagnostic;
+
+  constructor(
+    readonly code: VolcengineArkControlPlaneErrorCode,
+    diagnostic: VolcengineArkControlPlaneErrorDiagnostic = emptyErrorDiagnostic,
+  ) {
     super(errorMessage(code));
+    this.diagnostic = Object.freeze({ ...diagnostic });
     this.name = "VolcengineArkControlPlaneError";
   }
 }
@@ -186,8 +201,11 @@ function errorMessage(code: VolcengineArkControlPlaneErrorCode) {
   return "火山方舟控制面返回格式无法识别";
 }
 
-function fail(code: VolcengineArkControlPlaneErrorCode): never {
-  throw new VolcengineArkControlPlaneError(code);
+function fail(
+  code: VolcengineArkControlPlaneErrorCode,
+  diagnostic?: VolcengineArkControlPlaneErrorDiagnostic,
+): never {
+  throw new VolcengineArkControlPlaneError(code, diagnostic);
 }
 
 function boundedInteger(
@@ -386,6 +404,44 @@ function providerErrorCode(body: JsonObject) {
     "ErrorCode",
     "error_code",
   ]));
+}
+
+function safeDiagnosticToken(value: unknown, maximumLength: number) {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized.length > 0 && normalized.length <= maximumLength &&
+      /^[A-Za-z0-9._:/-]+$/.test(normalized)
+    ? normalized
+    : null;
+}
+
+function providerRequestId(body: JsonObject, headers: Headers) {
+  const metadata = asObject(firstValue(body, ["ResponseMetadata", "response_metadata"]));
+  const fromBody = safeDiagnosticToken(firstValue(metadata ?? body, [
+    "RequestId",
+    "RequestID",
+    "request_id",
+    "requestId",
+  ]), 256);
+  if (fromBody) return fromBody;
+  for (const name of ["x-request-id", "x-volc-request-id", "x-tt-logid"]) {
+    const value = safeDiagnosticToken(headers.get(name), 256);
+    if (value) return value;
+  }
+  return null;
+}
+
+function errorDiagnostic(
+  response: Response,
+  body: JsonObject = {},
+): VolcengineArkControlPlaneErrorDiagnostic {
+  return Object.freeze({
+    httpStatus: response.status >= 100 && response.status <= 599
+      ? response.status
+      : null,
+    providerCode: safeDiagnosticToken(providerErrorCode(body), 128),
+    requestId: providerRequestId(body, response.headers),
+  });
 }
 
 function classifyProviderError(status: number, providerCode: string | null) {
@@ -598,17 +654,17 @@ async function requestJson(
     linked.dispose();
     fail("FORMAT");
   }
-  if (response.status === 401 || response.status === 429) {
-    linked.dispose();
-    fail(classifyProviderError(response.status, null));
-  }
   let parsed: JsonObject;
   try {
     try {
       parsed = await readLimitedJson(response, context.credentials);
     } catch (error) {
       if (!response.ok && error instanceof VolcengineArkControlPlaneError) {
-        fail(classifyProviderError(response.status, null));
+        const diagnostic = errorDiagnostic(response);
+        fail(
+          classifyProviderError(response.status, diagnostic.providerCode),
+          diagnostic,
+        );
       }
       throw error;
     }
@@ -620,7 +676,11 @@ async function requestJson(
     !response.ok ||
     responseErrorCode && !allowedProviderErrorCodes.has(responseErrorCode)
   ) {
-    fail(classifyProviderError(response.status, responseErrorCode));
+    const diagnostic = errorDiagnostic(response, parsed);
+    fail(
+      classifyProviderError(response.status, diagnostic.providerCode),
+      diagnostic,
+    );
   }
   return parsed;
 }

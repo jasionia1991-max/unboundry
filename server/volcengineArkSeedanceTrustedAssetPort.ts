@@ -5,6 +5,10 @@ import type {
   SeedanceTrustedAssetPort,
 } from "./seedanceTrustedAssetPort";
 import {
+  SeedanceTrustedAssetProviderError,
+  type SeedanceTrustedAssetProviderErrorCode,
+} from "./seedanceTrustedAssetPort";
+import {
   requestVolcengineArkSeedanceAssetControlPlane,
   VOLCENGINE_ARK_CONTROL_PLANE_REGION,
   VolcengineArkControlPlaneError,
@@ -14,35 +18,8 @@ import {
 
 type JsonObject = Record<string, unknown>;
 
-export type SeedanceTrustedAssetProviderErrorCode =
-  | "AUTH"
-  | "FORMAT"
-  | "IDENTITY_MISMATCH"
-  | "NETWORK"
-  | "PERMISSION"
-  | "RATE_LIMIT"
-  | "REMOTE";
-
-export class SeedanceTrustedAssetProviderError extends Error {
-  constructor(readonly code: SeedanceTrustedAssetProviderErrorCode) {
-    super(
-      code === "IDENTITY_MISMATCH"
-        ? "方舟可信素材账号身份已变化"
-        : code === "RATE_LIMIT"
-        ? "方舟可信素材控制面请求过于频繁"
-        : code === "FORMAT"
-        ? "方舟可信素材响应格式无效"
-        : code === "AUTH"
-        ? "方舟可信素材控制面凭证无效"
-        : code === "PERMISSION"
-        ? "方舟可信素材控制面权限不足"
-        : code === "NETWORK"
-        ? "无法连接方舟可信素材控制面"
-        : "方舟可信素材控制面暂时不可用",
-    );
-    this.name = "SeedanceTrustedAssetProviderError";
-  }
-}
+export { SeedanceTrustedAssetProviderError } from "./seedanceTrustedAssetPort";
+export type { SeedanceTrustedAssetProviderErrorCode } from "./seedanceTrustedAssetPort";
 
 export type VolcengineArkSeedanceTrustedAssetOptions = Readonly<{
   fetcher?: typeof fetch;
@@ -203,7 +180,9 @@ export function createVolcengineArkSeedanceTrustedAssetPort(
       );
     } catch (error) {
       if (error instanceof SeedanceTrustedAssetProviderError) throw error;
-      if (error instanceof VolcengineArkControlPlaneError) fail(error.code);
+      if (error instanceof VolcengineArkControlPlaneError) {
+        throw new SeedanceTrustedAssetProviderError(error.code, error.diagnostic);
+      }
       fail("REMOTE");
     }
   };

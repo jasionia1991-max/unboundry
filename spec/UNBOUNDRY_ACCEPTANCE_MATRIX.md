@@ -3,7 +3,7 @@
 基线日期：2026-07-27  
 当前状态更新：2026-08-24
 
-INC-SEEDANCE-001的v0.6.39已发布并通过生产技术门：正式地域Ark主机、H5必填CallbackURL、冻结备份恢复、fresh build、切换与健康检查均完成。新事件唯一H5创建仍返回HTTP503，且现有实现未保留远端状态码、错误码和RequestId，只能写`REMOTE_CREATE_REJECTED_UNCLASSIFIED`；创建预算`1/1`已耗尽，真人H5与真实Asset链未发生，状态保持`PROVIDER_PROTOCOL_REAL_FAIL_CLOSED`。
+`AUTHORITATIVE_ACCEPTANCE_LEDGER`：INC-SEEDANCE-001生产仍为v0.6.39/schema40且技术健康；v0.6.40候选已补受限Provider诊断并完成m42/m100定向验证。当前生产AK已匹配到IAM用户`tapnow-ark-catalog-ro-20260803`，Project `default`缺少`ArkFullAccess`，补权停在最终确认前；新控制面账本`0/50`，真实链尚未重启，状态保持`PROVIDER_PROTOCOL_REAL_FAIL_CLOSED`。
 
 2026-08-24 `CURRENT_RELEASE = v0.6.36 / schema39 / PRODUCTION_V0_6_36_USER_REJECTED`：发布、备份、健康和R9零付费技术事实继续保留，但用户抽查证明快速切分、棋盘格、扩图说明、费用文案和全工具review不合格，不能再标“待确认”。INC-IMGEDIT-005本地候选已完成定向、浏览器和独立审查；用户已明确确认并允许`v0.6.37`上线，R9正在执行。Provider/OSS/费用0；v0.6.35六项真实Provider `6/6 / 60 USD`仅为历史技术证据，不得复用。
 
@@ -400,9 +400,11 @@ F14本地门日志SHA-256：targeted `b9d260babe051c1f89ef86256ade2d57fda19b5700
 | IMGEDIT-046 | P0 | Provider协议、生产发布和用户验收分层 | fake自动化、真实控制面协议、GitHub、生产技术、零付费浏览器和用户确认严格分层；只有用户可写USER_PASS | v0.6.38 tag/PR/CI/Release、schema40双备份/演练/切换和生产浏览器通过；真实H5创建1/1失败后无重试，Asset/生成/OSS均0；用户在生产实页明确回复“通过”；完整回执V0_6_38_PRODUCTION_RECEIPT | PRODUCTION_PUBLISHED_USER_PASS / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / USER_PASS |
 | IMGEDIT-047 | P0 | 可信素材正式接口根因 | 逐Action核对正式主机、Version、Region、Service、必填Body与响应，不用503猜测或第三方代理合同替代 | 官方合同确认管控面Base URL与四个私域素材Action使用地域Ark主机，H5创建必填CallbackURL；v0.6.38两项均偏离 | ROOT_CAUSE_CONFIRMED |
 | IMGEDIT-048 | P0 | 地域控制面主机与CallbackURL修复 | 目录发现和可信素材URL/Host/签名主机一致；CallbackURL只接受HTTPS且缺失时零请求失败关闭 | v0.6.39已发布；m42 `16/16`、m81 `41/41`、m38最终`15/15`；唯一safe full原始`1055/1056`，唯一0.10ms性能抖动同源码m1复验`1/1 PASS`，未重复full；生产配置与健康门通过 | PRODUCTION_TECHNICAL_PASS |
-| IMGEDIT-049 | P0 | 真实H5与Group链 | 新部署只创建一次H5；真人完成认证；只读查询取得同项目GroupId；未知结果不重提 | 唯一H5创建返回HTTP503并保存`FAILED/CREATE_FAILED`，没有H5Link/BytedToken；当前日志无法分类远端原因，预算`1/1`已耗尽，认证查询`0/15` | REAL_FAIL_CLOSED / H5_CREATE_BUDGET_EXHAUSTED |
-| IMGEDIT-050 | P0 | 真实Asset、Active与asset://链 | 对同一owner/source/checksum只创建一次Asset；远端Active后才由服务端构造asset://，跨身份与失效继续拒绝 | 本地fake合同由IMGEDIT-043～045覆盖；因IMGEDIT-049未取得GroupId，生产Asset创建`0/1`、查询`0/33`，没有Active或asset:// | BLOCKED_IMGEDIT_049 |
-| IMGEDIT-051 | P0 | 新事件治理与验收分层 | 方案、Checkpoint、CURRENT_STATE、TASKS、矩阵、交接与生产回执一致；旧USER_PASS、Provider真实PASS和技术上线状态不得串写 | v0.6.39发布事实、远端未分类失败、精确`1/50`账本和下一轮新授权门已同步；v0.6.38既有USER_PASS仅作历史事实保留 | DOC_ALIGNMENT_COMPLETE / PROVIDER_REAL_FAIL_CLOSED |
+| IMGEDIT-049 | P0 | 真实H5与Group链 | 新部署只创建一次H5；真人完成认证；只读查询取得同项目GroupId；未知结果不重提 | v0.6.39历史唯一H5失败已封存；v0.6.40新账本H5`0/1`、认证查询`0/15`，只在补权与发布后执行 | PENDING_V0_6_40 / REAL_FAIL_CLOSED |
+| IMGEDIT-050 | P0 | 真实Asset、Active与asset://链 | 对同一owner/source/checksum只创建一次Asset；远端Active后才由服务端构造asset://，跨身份与失效继续拒绝 | 本地fake合同由IMGEDIT-043～045覆盖；v0.6.40新账本Asset创建`0/1`、查询`0/33`，没有Active或asset:// | BLOCKED_IMGEDIT_049 |
+| IMGEDIT-051 | P0 | 新事件治理与验收分层 | 方案、Checkpoint、CURRENT_STATE、TASKS、矩阵、交接与生产回执一致；旧USER_PASS、Provider真实PASS和技术上线状态不得串写 | v0.6.40版本/发布/权限处置/请求预算已同步；m38 `15/15 PASS`；生产仍为v0.6.39，v0.6.38既有USER_PASS仅作历史事实保留 | V0_6_40_DOC_ALIGNMENT_PASS / PROVIDER_REAL_FAIL_CLOSED |
+| IMGEDIT-052 | P0 | Provider失败可审计且不泄密 | 四个可信素材Action失败只保留HTTP状态、受限错误码与RequestId；远端Message、Body、AK/SK不得进入错误、响应或数据库 | 最终定向m42+m100+m81+m9 `71/71 PASS`；唯一safe full原始`1055/1056`，仅AGENTS治理短语失败，产品1055项均通过；修正后m38 `15/15 PASS` | TARGETED_AUTO_PASS / SAFE_FULL_EXECUTED_WITH_DOC_RECHECK_PASS |
+| IMGEDIT-053 | P0 | 当前方舟身份最小Project权限 | 只读匹配生产AK所属身份；缺失时只对对应Project和该身份补`ArkFullAccess`，不扩大用户、Project或策略 | 已匹配IAM用户`tapnow-ark-catalog-ro-20260803`，Project `default`授权数0；最小补权向导停在最终确认前，尚未写入 | PROJECT_PERMISSION_CONFIRMATION_PENDING |
 
 `IMGEDIT-010～020` 由 `spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_PLAN_2026-08-23.md` 和对应 Checkpoint 驱动。D0～D13工程、生产技术发布及六项各一次真实Provider技术冒烟均已完成，最终总账`6/6 / 60 USD`、无重试；整体状态`REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK`。016～019不得把自动、真实技术或生产证据冒充用户质量通过。历史 `IMGEDIT-001～006、008、009 = PASS` 继续只证明既有外观、安全禁用和裁剪结果合同，不自动证明新功能已经实现。`IMGEDIT-007` 继续 `PAUSED`。
 

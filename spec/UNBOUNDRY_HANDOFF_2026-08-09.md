@@ -8,11 +8,11 @@
 
 ## 当前事件：INC-SEEDANCE-001 可信素材真实链路恢复
 
-真实仓库`/Users/mymy/Documents/unboundry/app`；产品候选工作树`/private/tmp/unboundry-inc006-v0.6.38-2026-08-24`，候选commit`8bc89c0`/tree`4c504919`；PR #90已合并为`1540d6b`且main tree一致。v0.6.39 tag/Release已经发布，生产release为`/opt/unboundry/releases/v0.6.39-seedance-trusted-chain-20260824`。先读AGENTS规定路线，再读`spec/INC_SEEDANCE_001_TRUSTED_ASSET_REAL_CHAIN_RECOVERY_PLAN_2026-08-24.md`和对应Checkpoint。
+真实仓库`/Users/mymy/Documents/unboundry/app`；v0.6.40隔离候选工作树`/private/tmp/unboundry-inc-seedance-002-v0640-HdGrer`，分支`codex/inc-seedance-002-provider-diagnostics-v0.6.40`，基线`origin/main@8d38bd8`。生产仍运行v0.6.39 release`/opt/unboundry/releases/v0.6.39-seedance-trusted-chain-20260824`；其tag/Release/回执不可变。先读AGENTS规定路线，再读`spec/INC_SEEDANCE_001_TRUSTED_ASSET_REAL_CHAIN_RECOVERY_PLAN_2026-08-24.md`和对应Checkpoint。
 
 v0.6.39已把管控面Base URL与可信素材四Action统一到`ark.cn-beijing.volcengineapi.com`，H5创建发送公网HTTPS CallbackURL，缺失或非法时零请求fail-closed。m42 `16/16`、m81 `41/41`、m38 `15/15 PASS`；唯一safe full原始`1055/1056`，同源码只复验唯一m1性能抖动并`1/1 PASS`。冻结备份恢复、fresh build、CallbackURL配置、原子切换、公网/回环/service/schema40/数据/inventory门均通过。
 
-生产唯一H5创建仍返回HTTP503并保存`FAILED/CREATE_FAILED`，没有H5Link/BytedToken。现有实现没有保留Provider状态码、错误码或RequestId，只能写`REMOTE_CREATE_REJECTED_UNCLASSIFIED`；官方要求当前AK具备对应Project的`ArkFullAccess`，但该权限未取得可验证证据，不能猜成根因。账本为H5创建`1/1`、认证查询`0/15`、Asset创建`0/1`、Asset查询`0/33`、Generation/OSS/费用0。下一轮必须先补安全可审计错误证据、确认权限并取得新版本/发布/权限处置/请求预算；不得移动v0.6.39 tag、复用H5预算或读受保护`spec/public-templates-director-split-revision.json`。唯一下一动作以Checkpoint为准。
+v0.6.39唯一H5创建返回HTTP503并保存`FAILED/CREATE_FAILED`，没有H5Link/BytedToken；该历史账本`1/50`已封存。v0.6.40候选只安全保留Provider HTTP状态、错误码和RequestId并覆盖四个失败边界，远端Message、Body、AK/SK不落库；m42 `16/16`、m100 `13/13 PASS`。只读核验确认生产AK属于IAM用户`tapnow-ark-catalog-ro-20260803`，其仅有目录只读策略，Project `default`授权数0；最小`ArkFullAccess`补权向导停在最终确认前。v0.6.40版本、发布、GitHub、SSH、最小补权及新50次控制面预算均已授权，新账本仍为`0/50`，Generation/OSS/费用0。不得移动v0.6.39 tag、复用历史预算或读受保护`spec/public-templates-director-split-revision.json`；唯一下一动作以Checkpoint为准。
 
 ## 当前线上：图片全屏完整适配与Seedance可信素材（v0.6.38，2026-08-24 USER PASS）
 

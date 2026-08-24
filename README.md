@@ -6,9 +6,9 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 
-## 当前生产：v0.6.39（2026-08-24，技术上线通过 / 真实链继续 fail-closed）
+## 当前事件：v0.6.40 候选（2026-08-24，生产仍为 v0.6.39）
 
-生产当前运行`v0.6.39 / schema40`且技术健康。v0.6.39已把Seedance可信素材控制面统一到正式地域Ark主机，并给H5创建补齐公网HTTPS CallbackURL；PR #90、CI、tag/Release、冻结备份恢复校验、fresh build与原子切换均完成。新事件唯一一次H5创建仍返回HTTP503并保存为`FAILED/CREATE_FAILED`，未取得H5Link/BytedToken；现有脱敏层未保留Provider状态码、错误码或RequestId，无法把失败诚实归因到权限、参数、签名或响应解析。按预算未重试，认证查询、Asset创建/查询、付费Generation与OSS测试写入均为0。当前为`PRODUCTION_V0_6_39_TECHNICAL_PASS / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / H5_CREATE_BUDGET_EXHAUSTED`。完整现状见[`spec/UNBOUNDRY_CURRENT_STATE.md`](spec/UNBOUNDRY_CURRENT_STATE.md)与[`spec/V0_6_39_PRODUCTION_RECEIPT_2026-08-24.json`](spec/V0_6_39_PRODUCTION_RECEIPT_2026-08-24.json)。v0.6.38既有用户验收仍作为历史事实保留，不自动覆盖v0.6.39真实协议结果。
+生产当前运行`v0.6.39 / schema40`且技术健康；v0.6.40已取得版本、发布、GitHub、SSH生产和50次控制面预算授权。候选新增受限Provider诊断：只保留HTTP状态、错误码和RequestId，不保留远端Message、Body或密钥，并把创建/查询失败写入既有状态字段。最终定向4 specs `71/71 PASS`；唯一safe full原始`1055/1056`，唯一失败为AGENTS治理短语，产品1055项均通过，修正后m38 `15/15 PASS`，未重复full。只读身份核验确认生产AK属于IAM用户`tapnow-ark-catalog-ro-20260803`，该用户目前只有目录只读策略；Project `default` 的`ArkFullAccess`正等待最终确认提交。新预算尚未消费：H5创建`0/1`、认证查询`0/15`、Asset创建`0/1`、Asset查询`0/33`，付费Generation与OSS测试写入均0。当前为`V0_6_40_CANDIDATE_FROZEN / PROJECT_PERMISSION_CONFIRMATION_PENDING / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED`。完整现状见[`spec/UNBOUNDRY_CURRENT_STATE.md`](spec/UNBOUNDRY_CURRENT_STATE.md)；v0.6.39历史回执和v0.6.38既有`USER_PASS`均保持不变。
 
 ## 上一用户验收：v0.6.38 已获用户通过，真实协议仍为fail-closed
 
