@@ -1,9 +1,9 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产仍为`v0.6.38 / schema40 / USER_PASS / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED`。INC-SEEDANCE-001的v0.6.39候选已获版本、发布和精确Provider预算授权，当前完成候选冻结与发布；真人H5尚未执行。
+> **当前状态**：生产已为`v0.6.39 / schema40`且技术健康。INC-SEEDANCE-001的正式主机与CallbackURL修复已发布；新事件唯一H5创建仍返回503，创建预算已耗尽，真实链保持fail-closed。
 
 更新时间：2026-08-24
-状态：`生产v0.6.38 / schema40 / USER_PASS；INC-SEEDANCE-001 V0_6_39_RELEASE_CANDIDATE_AUTHORIZED / TARGETED_AUTO_PASS / PROVIDER_BUDGET_VALID / HUMAN_H5_PENDING；本事件Provider 0/50、Generation/OSS/费用0。`
+状态：`生产v0.6.39 / schema40 / PRODUCTION_TECHNICAL_PASS；INC-SEEDANCE-001 PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / H5_CREATE_BUDGET_EXHAUSTED；本事件Provider 1/50（H5 1/1，其余0）、Generation/OSS/费用0。`
 
 ### 2026-08-24 Seedance可信素材真实链路恢复（INC-SEEDANCE-001）
 
@@ -15,9 +15,12 @@
 - [x] 取得v0.6.39版本号、commit/GitHub/发布及CallbackURL配置授权；`VERSION_GATE_VALID / RELEASE_GATE_VALID`
 - [x] 取得最多50次新控制面预算：H5创建1、认证查询15、Asset创建1、Asset查询33；付费Generation0、OSS测试写入0
 - [x] v0.6.39候选定向m42 `16/16`、m81 `41/41`、最终m38 `15/15`；唯一safe full原始`1055/1056`，唯一m1性能抖动`25.10ms`对`25.00ms`，同源码只复验m1 `1/1 PASS`，未重复full
-- [ ] v0.6.39发布后由用户本人完成人脸H5；旧v0.6.38 H5预算不得复用
+- [x] PR #90、Quality CI、merge、tag/GitHub Release、冻结备份与恢复副本、fresh build、CallbackURL配置、原子切换、公网/回环/service/schema40/数据/inventory门完成
+- [x] 生产唯一H5创建已执行，HTTP503并保存`FAILED/CREATE_FAILED`；未取得H5Link/BytedToken，按1/1预算及未知副作用门未重试
+- [x] 官方合同复核确认当前主机、Body和响应字段与v0.6.39实现一致，并补充AK需具备对应Project `ArkFullAccess`前提；生产未保留远端状态码/错误码/RequestId，权限原因尚不能确证
 - [ ] 生产完成H5→Group→Asset→Active→服务端`asset://`，否则保持`REAL_FAIL_CLOSED`
-- [ ] 建立新生产回执、零付费浏览器复验和独立用户验收状态
+- [x] 建立v0.6.39生产回执并同步权威文档；认证查询0/15、Asset创建0/1、Asset查询0/33、付费Generation0、OSS测试写入0
+- [ ] 新授权前先增加安全可审计的Provider失败类别/RequestId保留，并由用户确认对应Project的ArkFullAccess；不得移动v0.6.39 tag或复用已消费H5预算
 
 权威方案：`spec/INC_SEEDANCE_001_TRUSTED_ASSET_REAL_CHAIN_RECOVERY_PLAN_2026-08-24.md`；实时断点：`spec/INC_SEEDANCE_001_TRUSTED_ASSET_REAL_CHAIN_RECOVERY_CHECKPOINT.md`。
 

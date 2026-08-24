@@ -1,25 +1,28 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网仍为v0.6.38/schema40且技术健康，用户验收仍是`PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`，Provider协议仍为`REAL_FAIL_CLOSED`。INC-SEEDANCE-001的v0.6.39候选已获得版本、发布和精确Provider预算授权，当前先完成候选冻结与发布；H5真人认证尚未执行。
+> **状态分层**：现网为v0.6.39/schema40且技术健康；v0.6.38既有用户验收仍是历史`USER_PASS`。INC-SEEDANCE-001的正式主机与CallbackURL修复已发布，但v0.6.39唯一H5创建仍失败，Provider协议保持`REAL_FAIL_CLOSED`。
 
 更新日期：2026-08-24
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
 当前代码包版本：**v0.6.39**
-本地候选代码版本：**v0.6.39**（未发布）
-当前治理标记：`CURRENT_V0_6_38_USER_PASS`
-当前热修门：`V0_6_39_RELEASE_CANDIDATE_AUTHORIZED / TARGETED_AUTO_PASS / PROVIDER_BUDGET_VALID / HUMAN_H5_PENDING`
+本地候选代码版本：**v0.6.39**（无未发布产品代码；仅生产回执文档同步）
+当前治理标记：`CURRENT_V0_6_39_USER_RECHECK`
+当前热修门：`PRODUCTION_V0_6_39_TECHNICAL_PASS / H5_CREATE_BUDGET_EXHAUSTED / NEXT_VERSION_AND_BUDGET_REQUIRED`
 
 ## 一句话
 
-**生产是 v0.6.38 / schema40且用户已验收；v0.6.39候选已修复Seedance正式接口主机与必填CallbackURL合同并获发布/控制面授权，尚未发布或发起本事件真实请求。**
+**生产是 v0.6.39 / schema40且技术健康；地域Ark主机与CallbackURL修复已上线，但唯一H5创建仍被远端快速拒绝且现有日志无法分类，真实Group/Asset/Active/asset://链未完成。**
 
-## INC-SEEDANCE-001 Seedance可信素材真实链路恢复（LOCAL_PROTOCOL_REPAIR_CANDIDATE）
+## INC-SEEDANCE-001 Seedance可信素材真实链路恢复（PRODUCTION_V0_6_39 / REAL_FAIL_CLOSED）
 
 - 权威方案：`spec/INC_SEEDANCE_001_TRUSTED_ASSET_REAL_CHAIN_RECOVERY_PLAN_2026-08-24.md`；实时断点：`spec/INC_SEEDANCE_001_TRUSTED_ASSET_REAL_CHAIN_RECOVERY_CHECKPOINT.md`。
 - 正式合同确认管控面 Base URL 与四个私域素材 Action 使用`ark.cn-beijing.volcengineapi.com`；H5创建另要求必填公网HTTPS `CallbackURL`。
-- v0.6.38实现同时存在控制面主机错误和CallbackURL缺失。本地候选已统一修正URL/Host/V4签名主机，并新增`UNBOUNDRY_SEEDANCE_ARK_CALLBACK_URL`，缺失或非法时请求前fail-closed。
-- m42先以类型红确认新合同未实现；修复后最终`16/16 PASS`，source/snapshot`23946d2b…b5ff5a`。本事件真实Provider、Generation、费用和OSS写入均为0。
-- 当前`v0.6.39 / VERSION_GATE_VALID / RELEASE_GATE_VALID / PROVIDER_BUDGET_VALID`；新账本为H5创建1、认证查询15、Asset创建1、Asset查询33，付费Generation与OSS测试写入0。生产、旧回执和v0.6.38 `USER_PASS`不变，真实链完成前Provider协议不得升级为PASS。
+- v0.6.38实现同时存在控制面主机错误和CallbackURL缺失；v0.6.39已统一URL/Host/V4签名主机并配置`UNBOUNDRY_SEEDANCE_ARK_CALLBACK_URL=https://canvas.mymy.ltd/`，缺失或非法时请求前fail-closed。
+- m42最终`16/16`、m81 `41/41`、m38 `15/15 PASS`。唯一safe full原始`1055/1056`，唯一为m1性能抖动，同源码m1复验`1/1 PASS`，未重复full。
+- tag源码commit`8bc89c0`/tree`4c504919`；PR #90合并`1540d6b`且tree相同，Quality CI成功，GitHub Release已发布。生产release`/opt/unboundry/releases/v0.6.39-seedance-trusted-chain-20260824`，冻结备份`/var/lib/unboundry-rollbacks/v0.6.39-cutover-frozen-OFeGIs` source/restore各366文件且双清单SHA`fcb8791d…8e20`；公网/回环/service/schema40/数据/inventory通过。
+- 新事件唯一`CreateVisualValidateSession`于`2026-08-24T13:54:10Z`返回本地HTTP503，session保存`FAILED/CREATE_FAILED`，没有Provider session ID、H5Link或BytedToken。现有脱敏层丢弃远端HTTP状态、错误码与RequestId，只能确认远端边界快速失败，不能把原因写成ArkFullAccess、参数、签名或格式中的任一项。
+- 官方私域人像指南明确AK需具备对应Project的`ArkFullAccess`；这是下一轮必须人工核对的前提，不是本次已证实根因。账本：H5创建`1/1`，认证查询`0/15`，Asset创建`0/1`，Asset查询`0/33`，总计`1/50`；Generation task/attempt、费用、OSS测试写入均0。
+- 当前`PRODUCTION_V0_6_39_TECHNICAL_PASS / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / H5_CREATE_BUDGET_EXHAUSTED`。完整回执`spec/V0_6_39_PRODUCTION_RECEIPT_2026-08-24.json`；新版本、权限处置和新H5预算未授权前禁止继续真实链。
 
 ## INC-IMGEDIT-006 图片全屏完整适配与Seedance可信素材（PRODUCTION_V0_6_38 / USER_PASS）
 

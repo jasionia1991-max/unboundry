@@ -2,7 +2,7 @@
 
 更新日期：2026-08-24
 
-状态：`V0_6_39_RELEASE_CANDIDATE_AUTHORIZED / TARGETED_AUTO_PASS / PROVIDER_BUDGET_VALID / HUMAN_H5_PENDING`
+状态：`PRODUCTION_V0_6_39_TECHNICAL_PASS / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / H5_CREATE_BUDGET_EXHAUSTED`
 
 版本门：`v0.6.39 / VERSION_GATE_VALID`
 
@@ -14,9 +14,9 @@
 
 `CreateVisualValidateSession → GetVisualValidateResult → CreateAsset → GetAsset(Active) → 服务端 asset://`
 
-生产 v0.6.38/schema40、INC-IMGEDIT-006 的 `USER_PASS` 和历史回执保持不变。本事件不得把旧的 H5 失败改写为成功。用户已单独授权 v0.6.39 的 commit、push、PR、合并、tag、GitHub Release、SSH生产发布与 CallbackURL 配置；真实控制面严格受第5节新账本约束，付费Generation和OSS测试写入固定为0。
+v0.6.39 已完成 commit、push、PR、合并、tag、GitHub Release、SSH生产发布与 CallbackURL 配置；生产当前运行 v0.6.39/schema40 且技术健康。INC-IMGEDIT-006 的 v0.6.38 `USER_PASS` 继续作为历史事实保留，不自动覆盖本事件的真实Provider结果。真实控制面严格受第5节账本约束，付费Generation和OSS测试写入固定为0。
 
-## 2. 已确认根因
+## 2. 已确认的协议偏差与本次真实结果
 
 v0.6.38 的真实 H5 创建返回 503 后，代码与 2026-08-24 火山方舟正式合同逐字段对照，确认请求存在两项确定性协议偏差：
 
@@ -31,7 +31,9 @@ v0.6.38 的真实 H5 创建返回 503 后，代码与 2026-08-24 火山方舟正
 - 创建素材资产：<https://docs.volcengine.com/docs/82379/2318271?lang=zh>
 - 管理私域素材库 / GetAsset 示例：<https://docs.volcengine.com/docs/82379/2333589?lang=zh>
 
-上述偏差足以使第一个 H5 创建在 Provider 边界失败；由于 v0.6.38 只保留脱敏失败码且没有远端 RequestId，当前不能声称它们是那次 503 的唯一远端错误，也不能据此声称真实链已通过。
+v0.6.39 已修复上述两项协议偏差，并再次按正式合同复核主机、Body和响应字段。官方私域人像指南还明确：调用AK必须具备对应Project的 `ArkFullAccess`；本次没有获得该权限的可验证证据，因此它是下一轮的必核前提，但不能写成本次已证实根因。
+
+生产唯一一次 `CreateVisualValidateSession` 于 `2026-08-24T13:54:10Z` 返回本地HTTP503，耗时约150ms，session保存为 `FAILED/CREATE_FAILED`，没有Provider session ID、H5Link或BytedToken。当前实现丢弃Provider HTTP状态、错误码和RequestId，所以只能分类为 `REMOTE_CREATE_REJECTED_UNCLASSIFIED`；不得猜成权限、参数、签名或响应格式中的任一项。
 
 ## 3. 最小修复
 
@@ -45,7 +47,7 @@ v0.6.38 的真实 H5 创建返回 503 后，代码与 2026-08-24 火山方舟正
 - 新增运行时配置 `UNBOUNDRY_SEEDANCE_ARK_CALLBACK_URL`。
 - 只接受非空 HTTPS URL；缺失、HTTP 或非法值时不发布 A 分支能力，不发 Provider 请求。
 - `CreateVisualValidateSession` 必须发送 `CallbackURL + ProjectName`。
-- 生产候选值计划为 `https://canvas.mymy.ltd/`，只有发布阶段取得授权后才允许写入生产配置。
+- 生产已设置 `https://canvas.mymy.ltd/`，并随v0.6.39服务启动生效。
 
 ### R3 回归与安全门
 
@@ -68,12 +70,12 @@ v0.6.38 的真实 H5 创建返回 503 后，代码与 2026-08-24 火山方舟正
 
 ## 5. 外部请求预算（已授权）
 
-用户已授权本事件固定上限 50 次控制面请求：
+用户已授权本事件固定上限 50 次控制面请求；截至本回执实际账本为：
 
-- `CreateVisualValidateSession`：最多 1；
-- `GetVisualValidateResult`：最多 15；
-- `CreateAsset`：最多 1；
-- `GetAsset`（含 Active 最终复核）：最多 33；
+- `CreateVisualValidateSession`：`1/1`，已耗尽；
+- `GetVisualValidateResult`：`0/15`；
+- `CreateAsset`：`0/1`；
+- `GetAsset`（含 Active 最终复核）：`0/33`；
 - 付费 Generation：0；
 - OSS 测试写入：0；
 - 购买、开通、新账号、云权限修改：0。
@@ -88,10 +90,17 @@ v0.6.38 的真实 H5 创建返回 503 后，代码与 2026-08-24 火山方舟正
 | R1 | 官方合同对照与根因冻结 | PASS |
 | R2 | 正式地域Base URL、CallbackURL 和回归测试 | TARGETED_AUTO_PASS |
 | R3 | 文档、验收矩阵与检查点对齐 | PASS |
-| R4 | 候选冻结、commit/GitHub/发布 | IN_PROGRESS_AUTHORIZED_V0_6_39 |
-| R5 | 生产真实 H5/Group/Asset/Active 链 | AUTHORIZED_HUMAN_H5_PENDING |
-| R6 | 生产零付费浏览器复验与新回执 | BLOCKED_R5 |
+| R4 | 候选冻结、commit/GitHub/发布 | PASS |
+| R5 | 生产真实 H5/Group/Asset/Active 链 | REAL_FAIL_CLOSED / H5_CREATE_BUDGET_EXHAUSTED |
+| R6 | 生产健康、数据、零付费账本与新回执 | PASS |
 
 ## 7. 回滚
 
-本地未提交候选的回滚点是 `origin/main`：`b94e01edb207072906e102b5234b6290b338cd2e`。生产仍是 v0.6.38；v0.6.39 发布必须使用不可变 release、发布前冻结备份和既有 schema40 回滚门。
+生产不可变release为 `/opt/unboundry/releases/v0.6.39-seedance-trusted-chain-20260824`；切换冻结备份为 `/var/lib/unboundry-rollbacks/v0.6.39-cutover-frozen-OFeGIs`。source/restore各366文件且双清单SHA一致；回滚仍须保留schema40、现有数据和CallbackURL安全配置。
+
+## 8. 当前硬门与下一步
+
+1. 本事件H5创建预算已耗尽，禁止重试，也不得移动v0.6.39 tag；
+2. 新一轮必须先让Provider失败安全保留可审计类别与RequestId，并由用户确认当前AK对应Project的 `ArkFullAccess`；
+3. 只有取得新版本、权限处置范围、发布授权和新H5预算后，才能继续 `H5 → Group → Asset → Active → asset://`；
+4. 在上述链真正完成前，状态必须保持 `PROVIDER_PROTOCOL_REAL_FAIL_CLOSED`。

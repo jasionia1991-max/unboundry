@@ -1,0 +1,139 @@
+{
+  "receiptType": "UNBOUNDRY_V0_6_39_PRODUCTION_AND_SEEDANCE_TRUSTED_CHAIN_RECEIPT",
+  "recordedAt": "2026-08-24",
+  "status": {
+    "production": "PRODUCTION_V0_6_39_TECHNICAL_PASS",
+    "providerProtocol": "PROVIDER_PROTOCOL_REAL_FAIL_CLOSED",
+    "providerFailureClass": "REMOTE_CREATE_REJECTED_UNCLASSIFIED",
+    "requestGate": "H5_CREATE_BUDGET_EXHAUSTED",
+    "userAcceptance": "NOT_REQUESTED_FOR_V0_6_39"
+  },
+  "source": {
+    "version": "0.6.39",
+    "candidateCommit": "8bc89c0fa5c7fbf4f37de000facd01f8de181282",
+    "tree": "4c5049197c40785786db4fc6a0221ecea12c5244",
+    "pullRequest": 90,
+    "mergeCommit": "1540d6bddc6ce70f788eacbb535ccc015419f1a2",
+    "qualityRun": 32734545414,
+    "qualityJob": 97454152619,
+    "qualityConclusion": "success",
+    "tag": "v0.6.39",
+    "tagObject": "7e26cabd703d76c8d7ec4a8a67037eb9065e127a",
+    "releaseUrl": "https://github.com/jasionia1991-max/unboundry/releases/tag/v0.6.39",
+    "sourceArchiveSha256": "beba46635c5d95e5384e69625fb25a0b970bd6ecee4335f8f46d14f83e9b568c"
+  },
+  "verification": {
+    "targeted": [
+      { "scope": "m42-volcengine-ark-control-plane", "passed": 16, "total": 16 },
+      { "scope": "m81-runtime-governance", "passed": 41, "total": 41 },
+      { "scope": "m38-governance", "passed": 15, "total": 15 }
+    ],
+    "safeFull": {
+      "specs": 120,
+      "testsPassed": 1055,
+      "testsTotal": 1056,
+      "externalRequests": 0,
+      "longTasks": 0,
+      "singleFailure": "m1 dense canvas p95 25.10ms exceeded 25.00ms by 0.10ms",
+      "sameSourceFocusedRecheck": "m1 1/1 PASS",
+      "secondFullRun": false
+    },
+    "documentationSync": {
+      "firstM38": "14/15; only the current governance marker syntax failed",
+      "fix": "CURRENT_V0_6_39_USER_RECHECK and the three progressive modularization governance markers were aligned",
+      "focusedRecheck": "m38 15/15 PASS",
+      "productFullRepeated": false
+    }
+  },
+  "production": {
+    "releasePath": "/opt/unboundry/releases/v0.6.39-seedance-trusted-chain-20260824",
+    "node": "22.23.2",
+    "npm": "10.9.8",
+    "releaseFileCount": 5951,
+    "releaseInventorySha256": "1c938bc1a0f709248c373340542bcfd676d513a7645d8a8e0d9a29f0fdb0902c",
+    "backupPath": "/var/lib/unboundry-rollbacks/v0.6.39-cutover-frozen-OFeGIs",
+    "backupSourceFileCount": 366,
+    "backupRestoreFileCount": 366,
+    "backupManifestSha256": "fcb8791d128655581ace932343a21b37dfad64f949043dc6c8148d8cd2848e20",
+    "schema": 40,
+    "databaseQuickCheck": "ok",
+    "foreignKeyViolations": 0,
+    "service": {
+      "active": true,
+      "enabled": true,
+      "nRestarts": 0
+    },
+    "health": {
+      "loopbackVersion": "0.6.39",
+      "publicVersion": "0.6.39",
+      "liveHttpStatus": 200,
+      "readyHttpStatus": 200,
+      "readyState": "active"
+    },
+    "callback": {
+      "configured": true,
+      "url": "https://canvas.mymy.ltd/",
+      "storage": "root-only environment file",
+      "secretValuesExposed": false
+    },
+    "dataCountsBeforeAndAfter": {
+      "generationTasks": 785,
+      "generationAttempts": 793,
+      "activeGenerationTasks": 0,
+      "media": 833,
+      "publicationAttempts": 423,
+      "canvases": 63,
+      "unchanged": true
+    },
+    "publicAssetSha256": {
+      "/": "ab341b6c4714e29c4ddba283bb9eaeac1b84107607f9663f0303b77ef92813c7",
+      "/assets/index-BDQNE4f5.js": "d0ff7b38f8795fc0ea323f62f90a664103b783ce38656895cd0d8f8a6c55cd83",
+      "/assets/index-B5ETM-Lx.css": "0486bc6d3ffbc2223df22c89f9f1609c5cc86169d46ee53a67253b21ac8f7370",
+      "/favicon.svg": "6d2795e7ca70fe26408c5f057c59224421cafe44288ac1a1c2b19bf6e4f2010b"
+    }
+  },
+  "seedanceTrustedAssetAttempt": {
+    "canvasId": "0c913068-5e3f-4443-9ded-b49c6357ec4f",
+    "sourceAssetId": "82cb1dcc-0ba6-4b9c-a2a4-1bf1f45d5c62",
+    "sourceChecksum": "631ba0264ecc3799abf1d1bed1aca049c4385c910e2835e99065142e9cbb8a1d",
+    "localSessionId": "cfbdf650-a807-4a86-ab9b-9174544dfa08",
+    "createdAt": "2026-08-24T13:54:10.690Z",
+    "localHttpStatus": 503,
+    "durationMillisecondsApprox": 150,
+    "sessionStatus": "FAILED",
+    "providerStatus": "CREATE_FAILED",
+    "providerSessionId": null,
+    "h5Link": null,
+    "bytedToken": null,
+    "providerHttpStatusRetained": false,
+    "providerErrorCodeRetained": false,
+    "providerRequestIdRetained": false,
+    "exactRemoteCauseKnown": false,
+    "officialContractRecheck": {
+      "hostBodyAndResponseFieldsMatchV0639": true,
+      "arkFullAccessForCorrespondingProjectRequired": true,
+      "productionPermissionEvidenceVerified": false,
+      "permissionDeclaredRootCause": false
+    }
+  },
+  "requestLedger": {
+    "controlPlaneUsed": 1,
+    "controlPlaneAuthorized": 50,
+    "createVisualValidateSession": { "used": 1, "authorized": 1 },
+    "getVisualValidateResult": { "used": 0, "authorized": 15 },
+    "createAsset": { "used": 0, "authorized": 1 },
+    "getAsset": { "used": 0, "authorized": 33 },
+    "paidGeneration": { "used": 0, "authorized": 0 },
+    "ossTestWrites": { "used": 0, "authorized": 0 },
+    "cost": 0
+  },
+  "hardStop": {
+    "reason": "The only authorized H5 create was consumed without H5Link or BytedToken; Group, Asset, Active and asset:// cannot continue.",
+    "retryAllowed": false,
+    "nextRequirements": [
+      "Preserve a safe auditable provider failure category and RequestId in a new version",
+      "Verify the current AK has ArkFullAccess for the corresponding Project",
+      "Obtain a new version, release authorization, permission-change scope if needed, and a new H5 create budget"
+    ]
+  }
+}
