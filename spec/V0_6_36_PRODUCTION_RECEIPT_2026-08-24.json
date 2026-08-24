@@ -180,7 +180,58 @@
     "releaseInitiatedOssWrites": 0
   },
   "productionBrowserAcceptance": {
-    "status": "R9_IN_PROGRESS",
+    "status": "PRODUCTION_ZERO_PAID_BROWSER_PASS",
+    "project": "v0.6.34 图片工具技术冒烟副本 2026-08-23",
+    "viewports": [
+      "1280x720",
+      "1440x900",
+      "1728x900"
+    ],
+    "toolsChecked": [
+      "crop",
+      "multi-angle",
+      "redraw",
+      "outpaint",
+      "erase",
+      "annotation",
+      "enhance",
+      "resize",
+      "cutout",
+      "split",
+      "seedance",
+      "fullscreen"
+    ],
+    "allToolsSingleHost": true,
+    "allPanelsInsideViewport": true,
+    "modalBackgroundInert": true,
+    "popoverBackgroundNotInert": true,
+    "transparentNodeCheckerboard": true,
+    "checkerboardToolSurfaces": 8,
+    "toolbar": "400x48",
+    "moreMenu": "238x272 with 8 items",
+    "multiAnglePanel": "600x308",
+    "largeEditorAt1440x900": "1120x868",
+    "largeEditorAt1280x720": "1120x688",
+    "escapeFocusLoopAndReturn": "PASS",
+    "closeButton": "PASS",
+    "outsideClose": "PASS",
+    "colorMenuAtomicSwitch": "PASS",
+    "annotationTooltips": 10,
+    "consoleErrorsOrWarnings": 0,
+    "networkEvidence": {
+      "representativeSequence": "multi-angle -> fullscreen -> crop -> redraw -> enhance -> cutout -> seedance",
+      "requests": 1,
+      "request": "GET /api/image-edit-sources/:assetId",
+      "mutatingRequests": 0,
+      "generationOrProviderRequests": 0,
+      "truncated": false,
+      "followupRequests": 1,
+      "followupRequest": "GET /api/image-tools/capabilities",
+      "followupMutatingRequests": 0,
+      "followupGenerationOrProviderRequests": 0,
+      "followupTruncated": false
+    },
+    "productionCountsUnchangedAfterBrowserAcceptance": true,
     "realProviderRequests": 0,
     "realOssWrites": 0
   },
@@ -198,5 +249,5 @@
     "status": "USER_RECHECK",
     "scope": "v0.6.36 image-tool interaction and UI remediation"
   },
-  "completionBoundary": "v0.6.36 is technically published and healthy with zero Provider requests and zero OSS writes. R9 production browser acceptance and explicit user confirmation are still pending."
+  "completionBoundary": "v0.6.36 is technically published and passed zero-paid production browser acceptance with zero Provider requests and zero OSS writes. USER_PASS still requires explicit user confirmation."
 }

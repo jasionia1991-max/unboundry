@@ -10,7 +10,8 @@
 - tag `v0.6.36`→commit `c2cbd5470a733a053306363993a94da1bc27a89e`/tree`197417a580802694c8f533272f74cc3d82112ea8`；PR #83 squash merge`24d1fc6f2af22b98f1a6aff31ac371440328d154`且main tree一致。
 - 唯一safe full原始`1050/1052`，m24 `2/2`与m37 `35/35`定向修正复验通过，未重复full；版本门m38+m81 `56/56`和最终治理m38 `15/15`通过。
 - 生产release`/opt/unboundry/releases/v0.6.36-image-tool-ui-remediation-20260824`，冻结备份`v0.6.36-frozen-r8a4f2`的source/restore各366文件，双清单SHA`64e0ed92…143e`。schema39、主库/Library integrity/FK、切换前后数据、service、公网/回环、inventory和5资源全部通过，发布Provider/OSS/费用0。
-- 当前状态`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；R9生产零付费实页验收和用户明确确认仍未完成，禁止写`USER_PASS`。
+- R9生产既有项目逐一打开12工具，单一Host、三视口代表矩阵、透明棋盘格、modal inert、关闭/外点/Escape/焦点/菜单互斥通过；mutating/Generation/Provider0、console0，生产数据不变。
+- 当前状态`PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK`；只有用户明确确认仍未完成，禁止写`USER_PASS`。
 
 ## 0. v0.6.33 裁剪准备态紧凑加载体验（2026-08-23，已发布并获用户确认）
 

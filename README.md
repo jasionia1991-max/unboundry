@@ -8,11 +8,11 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 ## 当前生产：v0.6.36（2026-08-24，USER RECHECK）
 
-生产当前运行`v0.6.36 / schema39`，状态`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。PR #83、tag/main同tree、Quality gates、完整主库+Library+媒体冻结备份、精确tag构建、原子切换和生产技术终门均已完成；发布流程Provider请求、OSS写入和费用均为0。R9生产零付费实页验收进行中，仍需用户最终确认。完整现状见[`spec/UNBOUNDRY_CURRENT_STATE.md`](spec/UNBOUNDRY_CURRENT_STATE.md)。
+生产当前运行`v0.6.36 / schema39`，状态`PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK`。PR #83、tag/main同tree、Quality gates、完整主库+Library+媒体冻结备份、精确tag构建、原子切换和生产技术终门均已完成；生产既有项目12工具、三视口代表矩阵、透明棋盘格、关闭/焦点/菜单互斥和零变更请求检查通过。发布及验收Provider请求、OSS写入和费用均为0，仍需用户最终确认。完整现状见[`spec/UNBOUNDRY_CURRENT_STATE.md`](spec/UNBOUNDRY_CURRENT_STATE.md)。
 
-## 当前验收：v0.6.36（R9 生产零付费复验中）
+## 当前验收：v0.6.36（R9 技术通过，待用户复验）
 
-INC-IMGEDIT-004 R0～R8已完成单一活动工具、Portal Host、统一透明surface、紧凑/大型编辑器、三视口/四zoom、逐工具浏览器证据、独立审查、GitHub和生产发布。唯一一次safe full原始`1050/1052`，m24 `2/2`与m37 `35/35`定向修正复验通过且未重复full；版本门m38+m81 `56/56`和最终治理m38 `15/15`通过。R9只使用生产既有图片与零提交方式复验，真实Provider/OSS/费用保持0；用户明确确认前不能写`USER_PASS`。
+INC-IMGEDIT-004 R0～R9已完成单一活动工具、Portal Host、统一透明surface、紧凑/大型编辑器、三视口/四zoom、逐工具浏览器证据、独立审查、GitHub、生产发布和生产零付费实页技术验收。唯一一次safe full原始`1050/1052`，m24 `2/2`与m37 `35/35`定向修正复验通过且未重复full；版本门m38+m81 `56/56`和治理m38通过。真实Provider/OSS/费用0；用户明确确认前不能写`USER_PASS`。
 
 ## v0.6.32 图片裁剪同站编辑源
 

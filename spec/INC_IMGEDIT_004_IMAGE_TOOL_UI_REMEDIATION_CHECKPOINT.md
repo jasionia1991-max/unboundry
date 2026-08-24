@@ -2,10 +2,10 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-24 12:12:59 +0800
-- 状态：`GOAL_ACTIVE / R8_AUTO_PASS / R9_IN_PROGRESS / PRODUCTION_PUBLISHED_AUTO_PASS / LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / USER_RECHECK`
-- 当前阶段：`R9 生产零付费验收与用户复验 / IN_PROGRESS`
-- 唯一允许的下一动作：使用生产既有图片和零提交方式执行图片工具实页验收；核对单一活动Host、modal inert、透明棋盘格、全部紧凑/大型面板、Escape/焦点和三个目标视口，记录控制台与Generation/Provider请求为0，随后收口生产回执与治理文档但保持`USER_RECHECK`
+- 更新时间：2026-08-24 12:24:00 +0800
+- 状态：`GOAL_COMPLETE / R8_AUTO_PASS / R9_AUTO_PASS / PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / USER_RECHECK`
+- 当前阶段：`R9 生产零付费验收与用户复验 / AUTO_PASS / USER_RECHECK`
+- 唯一允许的下一动作：等待用户打开`https://canvas.mymy.ltd`生产实页完成主观质量复验并明确回复；只有该明确确认可以把`USER_RECHECK`升级为`USER_PASS`，否则不得自动续跑、生成图片或改写验收状态
 - 当前仓库：`/Users/mymy/Documents/unboundry/app`
 - 文档分支：`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24`
 - 立项 HEAD / origin-main：`f369d1dba1eef05aebc7f1a443256ceb82778ea0`
@@ -101,7 +101,7 @@ node -p "require('./package.json').version"
 | R6 | 逐工具功能与回归验证 | AUTO_PASS / LOCAL_BROWSER_PASS |
 | R7 | 候选冻结与独立审查 | AUTO_PASS / LOCAL_ENGINEERING_COMPLETE / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS |
 | R8 | GitHub 与生产发布 | AUTO_PASS / PRODUCTION_PUBLISHED_AUTO_PASS / VERSION_V0_6_36 |
-| R9 | 生产零付费验收与用户复验 | IN_PROGRESS / USER_RECHECK |
+| R9 | 生产零付费验收与用户复验 | AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK |
 
 同时最多一个阶段为 `IN_PROGRESS`。
 
@@ -393,3 +393,17 @@ Provider / OSS / 费用：
 - 外部影响：本Goal真实Provider请求/尝试/成功0，费用0，OSS写入0；未修改schema、用户历史项目、媒体、备份或旧release
 - 回滚点：上一不可变release`/opt/unboundry/releases/v0.6.35-image-toolbar-hotfix-20260824`与新冻结备份均保留
 - 唯一下一动作：使用生产既有图片和零提交方式执行图片工具实页验收；核对单一活动Host、modal inert、透明棋盘格、全部紧凑/大型面板、Escape/焦点和三个目标视口，记录控制台与Generation/Provider请求为0，随后收口生产回执与治理文档但保持`USER_RECHECK`
+
+## 20. R9 生产零付费验收与用户复验
+
+- 时间：2026-08-24 12:24:00 +0800
+- 状态：`AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK`
+- 生产素材与边界：使用既有项目`v0.6.34 图片工具技术冒烟副本 2026-08-23`和既有透明抠图结果，只打开/关闭工具，不改标题、Prompt、参数或画布，不点击任何提交/生成/导出/保存动作
+- 全工具：在生产1440×900实页逐一打开crop、multi-angle、redraw、outpaint、erase、annotation、enhance、resize、cutout、split、seedance、fullscreen共12工具；每次`hostCount=1`且activeTool精确匹配。全部panel bounds在viewport内；modal均root inert+aria-hidden，popover均不误设inert
+- 视口与壳层：1280×720复验多角度600×308和重绘1120×688不越界；1440×900复验全部工具、400×48顶部toolbar及238×272更多菜单；1728×900复验快速切分1120×868不越界。四档Canvas zoom由R7冻结候选m2对全部12工具直接覆盖，R9不改变生产历史项目zoom
+- 透明与大型编辑器：生产透明节点命中`image-node-image-surface image-transparent-preview`并有CSS棋盘格；cutout、crop、redraw、erase、outpaint、annotation、split与fullscreen的checkerboard surface均存在，棋盘格只作CSS背景。裁剪安全编辑源就绪后Host内图片1张；没有导出或改变字节
+- 交互：多角度→全屏原子切换仍只有1个Host；Escape关闭、Tab/Shift+Tab留在modal、关闭后焦点返回触发按钮；增强关闭按钮、抠图外点关闭、颜色菜单→多角度原子互斥均通过。标注10个图标的aria-label/data-tooltip逐项存在
+- 网络与控制台：干净代表序列`multi-angle→fullscreen→crop→redraw→enhance→cutout→seedance`仅1个GET `/api/image-edit-sources/...`，mutating0、Generation/Provider0、事件未截断；后续菜单/关闭/互斥序列仅1个GET `/api/image-tools/capabilities`，mutating0、Generation/Provider0、事件未截断。console error/warn0
+- 数据与外部影响：浏览器验收后生产tasks759、attempts767、active0、media800、publications390/active0、canvas62、templates50、integrity ok/FK0，均与R8切换后相同；本Goal真实Provider请求/尝试/成功0、费用0、OSS写入0
+- 证据边界：自动、隔离浏览器和生产Agent验收已完成；用户尚未在v0.6.36生产实页明确确认主观质量，因此保持`USER_RECHECK`，不声明`USER_PASS`
+- 唯一下一动作：等待用户打开`https://canvas.mymy.ltd`生产实页完成主观质量复验并明确回复；只有该明确确认可以把`USER_RECHECK`升级为`USER_PASS`，否则不得自动续跑、生成图片或改写验收状态

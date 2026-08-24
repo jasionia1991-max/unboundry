@@ -8,7 +8,7 @@
 
 ## 当前线上：图片工具交互与 UI 返工（v0.6.36，2026-08-24 USER RECHECK）
 
-v0.6.36已把图片工具统一到单一活动状态与screen-space Portal Host，并完成透明棋盘格、紧凑/大型编辑器、全屏和键盘焦点返工。tag commit `c2cbd5470a733a053306363993a94da1bc27a89e` / tree `197417a580802694c8f533272f74cc3d82112ea8`；PR #83 squash merge `24d1fc6f2af22b98f1a6aff31ac371440328d154`且main tree相同。生产current为`/opt/unboundry/releases/v0.6.36-image-tool-ui-remediation-20260824`，冻结备份为`/var/lib/unboundry-rollbacks/v0.6.36-frozen-r8a4f2`，source/restore各366文件、双清单SHA`64e0ed924f3732a38df608d7338845cc3198b8aeabf576d8248c1438ccff4143`。schema39、主库/Library一致性、切换前后数据、service、公网/回环、inventory和5个资源均通过；发布Provider/OSS/费用0。R9生产零付费浏览器验收进行中，用户未确认前状态为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。
+v0.6.36已把图片工具统一到单一活动状态与screen-space Portal Host，并完成透明棋盘格、紧凑/大型编辑器、全屏和键盘焦点返工。tag commit `c2cbd5470a733a053306363993a94da1bc27a89e` / tree `197417a580802694c8f533272f74cc3d82112ea8`；PR #83 squash merge `24d1fc6f2af22b98f1a6aff31ac371440328d154`且main tree相同。生产current为`/opt/unboundry/releases/v0.6.36-image-tool-ui-remediation-20260824`，冻结备份为`/var/lib/unboundry-rollbacks/v0.6.36-frozen-r8a4f2`，source/restore各366文件、双清单SHA`64e0ed924f3732a38df608d7338845cc3198b8aeabf576d8248c1438ccff4143`。schema39、主库/Library一致性、切换前后数据、service、公网/回环、inventory和5个资源均通过；R9生产既有项目12工具零付费实页技术验收也已通过，Provider/OSS/费用0。用户未确认前状态为`PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK`。
 
 ## 当前线上：裁剪准备态紧凑加载体验（v0.6.33，2026-08-23 USER PASS）
 
