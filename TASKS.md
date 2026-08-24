@@ -1,11 +1,17 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产仍运行`v0.6.36 / schema39`且图片工具质量被拒收。INC-IMGEDIT-005已完成本地工程、定向、三视口浏览器、唯一一次safe full与第三轮独立审查；v0.6.37版本门与发布门有效，当前`LOCAL_ENGINEERING_COMPLETE / R9_IN_PROGRESS`。
+> **当前状态**：生产运行`v0.6.37 / schema39`且技术健康。INC-IMGEDIT-005已完成工程、GitHub、生产发布与零付费浏览器复验；当前`PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK`。
 
 更新时间：2026-08-24
-状态：`生产v0.6.36技术发布事实保留；图片工具USER_REJECTED；INC-IMGEDIT-005 LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / INDEPENDENT_REVIEW_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / VERSION_GATE_VALID / RELEASE_GATE_VALID / R9_IN_PROGRESS。`
+状态：`生产v0.6.37 / schema39；INC-IMGEDIT-005 LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / INDEPENDENT_REVIEW_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / PR_MERGED / PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK。`
 
-### 2026-08-24 图片工具产品质量拒收返工（INC-IMGEDIT-005，R8_COMPLETE / R9_IN_PROGRESS）
+### 2026-08-24 图片工具产品质量拒收返工（INC-IMGEDIT-005，R9_COMPLETE / USER_RECHECK）
+
+- v0.6.37注释tag→`d28996b`/tree`c710145c`；PR #85合并为`0d65c98`且Quality gates SUCCESS，GitHub Release已发布
+- 生产已原子切换到`/opt/unboundry/releases/v0.6.37-inc-imgedit-005-20260824`；冻结备份双清单一致，schema39、数据不变、service、公网/回环、inventory和5资源全部通过
+- 生产零付费浏览器复验完成三视口代表矩阵、有效内容切分、图片全屏详情、扩图语义、Seedance三层、单一Host/inert和无预计金额；写请求0、Generation/Provider0、console error/warn0
+- Provider/尝试/成功/费用与真实OSS测试写入均为0；v0.6.37发布授权已消费。权威回执`spec/V0_6_37_PRODUCTION_RECEIPT_2026-08-24.json`
+- 唯一下一动作：等待用户在v0.6.37生产实页明确回复“通过”；此前保持`USER_RECHECK`，禁止自动写`USER_PASS`
 
 - 版本定向首转m81 `41/41 PASS`，m38仅因候选版本字段多写括号说明为`14/15`；精确改为既有治理格式后，只m38最小复验`15/15 PASS`。没有第二次full
 - 功能与版本冻结提交为`3bb6fb0`；origin/main仍为`a4bb48c`，受保护JSON未进入diff/stage，下一步是最终治理树m38与GitHub交付

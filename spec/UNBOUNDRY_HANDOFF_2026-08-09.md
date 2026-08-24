@@ -4,11 +4,15 @@
 
 ## 先读当前快照
 
-新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-23 的权威现状、产品合同和用户验收边界。下面各节是历史增量，出现「当前」时只代表该时点。
+新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-24 的权威现状、产品合同和用户验收边界。下面各节是历史增量，出现「当前」时只代表该时点。
 
-## 当前线上：图片工具交互与 UI 返工（v0.6.36，2026-08-24 USER RECHECK）
+## 当前线上：图片工具产品质量返工（v0.6.37，2026-08-24 USER RECHECK）
 
-v0.6.36已把图片工具统一到单一活动状态与screen-space Portal Host，并完成透明棋盘格、紧凑/大型编辑器、全屏和键盘焦点返工。tag commit `c2cbd5470a733a053306363993a94da1bc27a89e` / tree `197417a580802694c8f533272f74cc3d82112ea8`；PR #83 squash merge `24d1fc6f2af22b98f1a6aff31ac371440328d154`且main tree相同。生产current为`/opt/unboundry/releases/v0.6.36-image-tool-ui-remediation-20260824`，冻结备份为`/var/lib/unboundry-rollbacks/v0.6.36-frozen-r8a4f2`，source/restore各366文件、双清单SHA`64e0ed924f3732a38df608d7338845cc3198b8aeabf576d8248c1438ccff4143`。schema39、主库/Library一致性、切换前后数据、service、公网/回环、inventory和5个资源均通过；R9生产既有项目12工具零付费实页技术验收也已通过，Provider/OSS/费用0。用户未确认前状态为`PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK`。
+v0.6.37已完成有效内容切分、图片全屏详情、透明Surface、统一空白区放置、扩图参数真实性、本地/模型语义、Seedance分层和顶部9项/更多8项全review。tag commit `d28996b23431c1f28821d51d39631cc9f3ac6838` / tree `c710145c3666356920742701c1f9db1e3f734db7`；PR #85 squash merge `0d65c9867d20b09e785a80740ffafbf007048426`且main tree相同，Quality gates SUCCESS，GitHub Release已发布。生产current为`/opt/unboundry/releases/v0.6.37-inc-imgedit-005-20260824`，冻结备份为`/var/lib/unboundry-rollbacks/v0.6.37-frozen-taKYwu`，双清单一致。schema39、主库/Library、切换前后数据、service、公网/回环、inventory和5资源均通过；生产三视口代表矩阵、单一Host/inert、全屏详情、有效内容切分、Seedance三层、无预计金额及零写网络门通过。Provider/OSS/费用0。权威回执`spec/V0_6_37_PRODUCTION_RECEIPT_2026-08-24.json`；用户明确确认前保持`PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK`。
+
+## 上一线上：图片工具交互与 UI 返工（v0.6.36，2026-08-24 USER REJECTED）
+
+v0.6.36已把图片工具统一到单一活动状态与screen-space Portal Host，并完成透明棋盘格、紧凑/大型编辑器、全屏和键盘焦点返工。tag commit `c2cbd5470a733a053306363993a94da1bc27a89e` / tree `197417a580802694c8f533272f74cc3d82112ea8`；PR #83 squash merge `24d1fc6f2af22b98f1a6aff31ac371440328d154`且main tree相同。生产release与冻结备份继续不可变保留。用户随后明确拒收其图片工具产品质量，历史自动技术证据不能写成用户通过；问题由v0.6.37继续修复。
 
 ## 当前线上：裁剪准备态紧凑加载体验（v0.6.33，2026-08-23 USER PASS）
 

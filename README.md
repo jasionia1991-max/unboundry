@@ -6,13 +6,13 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 
-## 当前生产：v0.6.36（2026-08-24，USER REJECTED）
+## 当前生产：v0.6.37（2026-08-24，USER RECHECK）
 
-生产当前仍运行`v0.6.36 / schema39`且技术健康，但用户已明确拒收图片工具质量，状态为`PRODUCTION_V0_6_36_USER_REJECTED`。本地隔离分支已纠正快速切分透明留白、整面棋盘格、预计费用、扩图说明和额外UI问题，并复审顶部9项及更多菜单8项；该代码尚未发布。完整现状见[`spec/UNBOUNDRY_CURRENT_STATE.md`](spec/UNBOUNDRY_CURRENT_STATE.md)。
+生产当前运行`v0.6.37 / schema39`且技术健康。INC-IMGEDIT-005已纠正快速切分透明留白、整面棋盘格、预计费用、扩图参数、全屏详情、派生节点覆盖、Seedance分层和本地/模型语义，并复审顶部9项及更多菜单8项。PR #85、CI、tag/Release、冻结备份、fresh build、原子切换和生产零付费浏览器复验均已完成；等待用户生产实页确认。完整现状见[`spec/UNBOUNDRY_CURRENT_STATE.md`](spec/UNBOUNDRY_CURRENT_STATE.md)。
 
-## 当前验收：v0.6.37 发布进行中
+## 当前验收：v0.6.37 已技术发布，等待用户复验
 
-用户抽查证明原R9技术检查不足，不能再视为待确认。INC-IMGEDIT-005已完成全部17个入口、三视口、四zoom、透明/横竖方图、本地与模型语义、Seedance分层和空白区放置复审；三轮独立审查最终无P0/P1/P2，safe m100+m2 `24/24 PASS`。本Goal唯一一次safe full原始`1052/1053`，唯一失败为旧治理正则不接受当前用户拒收/候选未定版本状态；精确修正后m38 `15/15 PASS`，未运行第二次full。真实Provider/OSS/费用0。用户已确认并允许`v0.6.37`上线，package已同步为0.6.37，R9正在执行。
+INC-IMGEDIT-005已完成全部17个入口、三视口、四zoom、透明/横竖方图、本地与模型语义、Seedance分层和空白区放置复审；独立审查最终无P0/P1/P2，safe m100+m2 `24/24 PASS`。唯一一次safe full原始`1052/1053`，唯一失败为旧治理正则；精确修正后m38 `15/15 PASS`，未运行第二次full。生产浏览器代表序列写请求0、Generation/Provider0、console error/warn0，数据不变。权威回执为[`spec/V0_6_37_PRODUCTION_RECEIPT_2026-08-24.json`](spec/V0_6_37_PRODUCTION_RECEIPT_2026-08-24.json)；只有用户在生产实页明确回复“通过”后才升级`USER_PASS`。
 
 ## v0.6.32 图片裁剪同站编辑源
 
