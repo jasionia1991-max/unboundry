@@ -10,9 +10,9 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 生产当前运行`v0.6.35 / schema39`，状态`PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK`。PR #81、tag/main同tree、main CI、完整主库+Library+媒体冻结备份、精确tag构建、原子切换和生产技术终门均已完成；发布流程自身没有Provider请求或OSS写入。六项真实技术冒烟各一次成功、无重试，主体抠图真实Alpha通过；质量仍待用户复验。完整现状见[`spec/UNBOUNDRY_CURRENT_STATE.md`](spec/UNBOUNDRY_CURRENT_STATE.md)。
 
-## 当前本地候选：v0.6.35（版本门和发布门有效）
+## 当前本地候选：v0.6.36（R8 发布施工中）
 
-生产冒烟在Provider前发现的三项共同缺陷已随v0.6.35发布。候选m100+m2+m27 `43/43`、m38+m81 `56/56`、唯一一次safe full `1052/1052 PASS`；生产技术门通过。六项各一次真实请求完成Provider、Media、Canvas和刷新恢复闭环，最终`6/6 / 60 USD`、无重试；主体抠图另有真实Alpha字节证明。仅剩用户视觉质量复验。
+INC-IMGEDIT-004 R0～R7已完成单一活动工具、Portal Host、统一透明surface、紧凑/大型编辑器、三视口/四zoom、逐工具浏览器证据和独立审查。唯一一次safe full原始`1050/1052`，m24 `2/2`与m37 `35/35`定向修正复验通过且未重复full。用户已明确把未占用目标版本递增为v0.6.36并允许发布；精确版本提交`72f0b0d`的m38+m81 `56/56 PASS`，R8正冻结GitHub候选。真实Provider/OSS/费用预算保持0，生产仍为v0.6.35，不能提前写成已发布或`USER_PASS`。
 
 ## v0.6.32 图片裁剪同站编辑源
 

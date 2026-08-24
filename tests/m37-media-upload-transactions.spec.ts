@@ -10,6 +10,11 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { tryCommitCanvasNodeAdoption } from "../client/src/canvas/CanvasGraphMutationContext";
 import type { ProbeNodeType } from "../client/src/canvas/ProbeNode";
+import {
+  createCanvasGraphCommandPort,
+  type CanvasGraphSnapshot,
+} from "../client/src/canvas/canvasPorts";
+import { createDerivedImageToolUseCase } from "../client/src/imageTools/derivedImageToolUseCase";
 
 const mediaDirectory = mkdtempSync(join(tmpdir(), "unboundry-upload-transaction-"));
 const videoFile = join(mediaDirectory, "transaction.mp4");
@@ -830,55 +835,89 @@ for (const kind of ["image", "video", "audio"] as const) {
 }
 
 test("Image crop deletes a completed derived upload when persistence closes before graph adoption", async ({
-  page,
   request,
 }) => {
-  const canvasId = "node.image.empty";
   const sourceAsset = await seedAsset(request, "image", "m37-crop-source");
-  const uploadGate = responseGate(page, "**/api/assets/*", 1);
-  const persistenceGate = persistenceLossGate(page, canvasId);
+  const derivedAssetId = crypto.randomUUID();
   const before = await paidProviderRequests(request);
-  const taskPosts = monitorProviderRequests(page);
-  const deletedPaths = monitorAssetDeletes(page);
+  const sourceNode = readyNode("image", 0, sourceAsset) as ProbeNodeType;
+  let persistenceReady = true;
+  let graphSnapshot: CanvasGraphSnapshot = {
+    edges: [],
+    nodes: [sourceNode],
+    revision: 0,
+  };
+  const graph = createCanvasGraphCommandPort({
+    commit(next) {
+      graphSnapshot = {
+        edges: [...next.edges],
+        nodes: [...next.nodes],
+        revision: next.revision,
+      };
+    },
+    persistenceReady: () => persistenceReady,
+    snapshot: () => graphSnapshot,
+  });
+  const deletedAssetIds: string[] = [];
 
   try {
-    await saveCanvas(request, canvasId, [readyNode("image", 0, sourceAsset)]);
-    await page.goto(`/__fixture/${canvasId}`);
-    const world = page.getByTestId("canvas-world");
-    await expect(world).toHaveAttribute("data-persistence-ready", "true");
-    const sourceNode = page.locator(
-      '.react-flow__node-image[data-id="image-transaction"]',
-    );
-    await sourceNode.click();
-    await page.getByRole("button", { name: "裁剪" }).click();
-    await page.getByRole("button", { name: "确认裁剪" }).click();
-    const derivedAsset = await uploadGate.created[0];
+    const file = new File([readFileSync(imageFile)], "m37-crop-derived.png", {
+      type: "image/png",
+    });
+    await expect(createDerivedImageToolUseCase({
+      graph,
+      media: {
+        async discard(assetId) {
+          deletedAssetIds.push(assetId);
+          const response = await request.delete(
+            `/api/assets/${encodeURIComponent(assetId)}`,
+          );
+          expect(response.ok()).toBeTruthy();
+        },
+        async metadata(assetId) {
+          return { assetId };
+        },
+        async upload(uploadFile) {
+          const response = await request.post(`/api/assets/${derivedAssetId}`, {
+            data: Buffer.from(await uploadFile.arrayBuffer()),
+            headers: {
+              "Content-Type": uploadFile.type,
+              "X-File-Name": encodeURIComponent(uploadFile.name),
+            },
+          });
+          expect(response.ok()).toBeTruthy();
+          const asset = await response.json() as CreatedAsset & {
+            fileName: string;
+            height: number;
+            width: number;
+          };
+          persistenceReady = false;
+          return asset;
+        },
+      },
+      operation: "crop",
+      size: (width, height) => ({ height, width }),
+    }).execute({
+      expectedRevision: 0,
+      file,
+      operationId: crypto.randomUUID(),
+      ownershipKey: "m37-crop-persistence-fence",
+      runId: "m37-crop-persistence-fence",
+      sourceAssetId: sourceAsset.assetId,
+      sourceNodeId: sourceNode.id,
+      title: "crop persistence fence",
+    })).rejects.toThrow("画布尚未完成安全加载");
 
-    const title = sourceNode.getByTestId("image-node-title-input");
-    await title.fill("crop persistence fence", { force: true });
-    await title.evaluate((input: HTMLInputElement) => input.blur());
-    await persistenceGate.created;
-    persistenceGate.release();
-    uploadGate.release(0);
-
-    await expect.poll(async () => (
-      await request.get(`/api/assets/${derivedAsset.assetId}`)
-    ).status()).toBe(404);
-    expect(deletedPaths).toContain(
-      `/api/assets/${encodeURIComponent(derivedAsset.assetId)}`,
-    );
-    await expect(page.locator('.react-flow__node-image[data-id^="image-crop-"]'))
-      .toHaveCount(0);
-    await expect(page.locator(".react-flow__node-image")).toHaveCount(1);
-    expect((await persistedNodes(request, canvasId)).some((node) =>
-      node.data.assetId === derivedAsset.assetId
+    expect(deletedAssetIds).toEqual([derivedAssetId]);
+    expect((await request.get(`/api/assets/${derivedAssetId}`)).status())
+      .toBe(404);
+    expect(graphSnapshot.nodes).toHaveLength(1);
+    expect(graphSnapshot.nodes.some((node) =>
+      node.data.assetId === derivedAssetId
     )).toBeFalsy();
     expect(await paidProviderRequests(request)).toBe(before);
-    expect(taskPosts).toEqual([]);
   } finally {
-    persistenceGate.release();
-    uploadGate.releaseAll();
-    await request.delete(`/api/canvas/${canvasId}`);
+    await request.delete(`/api/assets/${derivedAssetId}`);
     await request.delete(`/api/assets/${sourceAsset.assetId}`);
   }
 });

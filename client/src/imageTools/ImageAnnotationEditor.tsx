@@ -5,7 +5,6 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { createPortal } from "react-dom";
 import type {
   ImageAnnotationDocument,
   ImageAnnotationElement,
@@ -25,6 +24,15 @@ type AnnotationTool =
   | "arrow"
   | "number"
   | "text";
+
+const annotationToolIcons: Readonly<Record<AnnotationTool, string>> = {
+  arrow: "→",
+  brush: "✎",
+  number: "#",
+  rectangle: "□",
+  select: "↖",
+  text: "T",
+};
 
 function annotationPath(points: readonly ImageAnnotationPoint[]) {
   return points.map((point) => `${point.x},${point.y}`).join(" ");
@@ -110,12 +118,14 @@ function AnnotationShape({
 
 export function ImageAnnotationEditor({
   document: initialDocument,
+  onBusyChange,
   onChange,
   onClose,
   onExport,
   src,
 }: Readonly<{
   document?: ImageAnnotationDocument;
+  onBusyChange?(busy: boolean): void;
   onChange(document: ImageAnnotationDocument): void;
   onClose(): void;
   onExport(document: ImageAnnotationDocument): Promise<void>;
@@ -153,17 +163,15 @@ export function ImageAnnotationEditor({
 
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      if (textDraft) {
-        setTextComposing(false);
-        setTextDraft(undefined);
-        return;
-      }
-      onClose();
+      if (event.key !== "Escape" || !textDraft) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      setTextComposing(false);
+      setTextDraft(undefined);
     };
     window.addEventListener("keydown", closeOnEscape, true);
     return () => window.removeEventListener("keydown", closeOnEscape, true);
-  }, [onClose, textDraft]);
+  }, [textDraft]);
 
   const point = (event: Readonly<{
     clientX: number;
@@ -346,6 +354,7 @@ export function ImageAnnotationEditor({
 
   const exportImage = async () => {
     setBusy(true);
+    onBusyChange?.(true);
     setError("");
     try {
       await onExport(annotationDocument);
@@ -353,6 +362,7 @@ export function ImageAnnotationEditor({
       setError(failure instanceof Error ? failure.message : "标注导出失败");
     } finally {
       setBusy(false);
+      onBusyChange?.(false);
     }
   };
 
@@ -365,16 +375,13 @@ export function ImageAnnotationEditor({
     onChange(next);
   };
 
-  return createPortal(
+  return (
     <div
-      aria-label="图片标注"
-      aria-modal="true"
       className="image-annotation-overlay nodrag nopan nowheel"
       data-testid="image-annotation-overlay"
-      role="dialog"
     >
       <div className="image-annotation-toolbar" data-testid="image-annotation-toolbar">
-        <button aria-label="关闭标注" onClick={onClose} type="button">×</button>
+        <button aria-label="关闭标注" disabled={busy} onClick={onClose} type="button">×</button>
         {([
           ["select", "选择"],
           ["brush", "画笔"],
@@ -386,31 +393,37 @@ export function ImageAnnotationEditor({
           <button
             aria-label={label}
             aria-pressed={tool === value}
+            data-tooltip={label}
+            disabled={busy}
             key={value}
             onClick={() => setTool(value)}
             type="button"
-          >{label}</button>
+          >{annotationToolIcons[value]}</button>
         ))}
         <button
           aria-label="删除标注"
-          disabled={!selectedId}
+          data-tooltip="删除"
+          disabled={busy || !selectedId}
           onClick={removeSelected}
           type="button"
-        >删除</button>
+        >⌫</button>
         <button
           aria-label="撤销标注"
-          disabled={history.current.length === 0}
+          data-tooltip="撤销"
+          disabled={busy || history.current.length === 0}
           onClick={() => restore(history, redo)}
           type="button"
         >↶</button>
         <button
           aria-label="恢复标注"
-          disabled={redo.current.length === 0}
+          data-tooltip="重做"
+          disabled={busy || redo.current.length === 0}
           onClick={() => restore(redo, history)}
           type="button"
         >↷</button>
-        <button disabled={busy} onClick={() => void exportImage()} type="button">
-          {busy ? "正在导出" : "导出标注图"}
+        <button aria-label="导出标注图" data-tooltip="导出标注图" disabled={busy}
+          onClick={() => void exportImage()} type="button">
+          {busy ? "…" : "↓"}
         </button>
       </div>
       <div
@@ -510,7 +523,6 @@ export function ImageAnnotationEditor({
         <span>{annotationDocument.elements.length} 个标注</span>
         {error && <span role="alert">{error}</span>}
       </div>
-    </div>,
-    document.body,
+    </div>
   );
 }

@@ -101,6 +101,12 @@ import {
 import { knownModelParameterSchema } from "../types/modelParameters";
 import { createImageToolDispatcher } from
   "../client/src/imageTools/imageToolDispatcher";
+import {
+  imageToolDescriptors,
+  imageToolIds,
+  initialImageToolUiState,
+  reduceImageToolUiState,
+} from "../client/src/imageTools/imageToolUiContract";
 import { createDerivedImageToolUseCase } from
   "../client/src/imageTools/derivedImageToolUseCase";
 import { createBatchDerivedImageToolUseCase } from
@@ -473,6 +479,39 @@ function modularImageToolSnapshot() {
 }
 
 test("image tool capability snapshot is complete, unique and fail-closed", () => {
+  expect(Object.keys(imageToolDescriptors).sort()).toEqual(
+    [...imageToolIds].sort(),
+  );
+  expect(imageToolDescriptors.split).toMatchObject({
+    inertBackground: true,
+    presentation: "modal",
+    surface: "checkerboard",
+  });
+  expect(imageToolDescriptors["multi-angle"]).toMatchObject({
+    maximumWidth: 600,
+    presentation: "popover",
+  });
+  let uiState = initialImageToolUiState;
+  for (const tool of imageToolIds) {
+    uiState = reduceImageToolUiState(uiState, { tool, type: "open-tool" });
+    expect(uiState).toEqual({
+      activeTool: tool,
+      colorMenuOpen: false,
+      moreMenuOpen: false,
+    });
+  }
+  uiState = reduceImageToolUiState(uiState, { type: "toggle-more-menu" });
+  expect(uiState).toEqual({
+    activeTool: null,
+    colorMenuOpen: false,
+    moreMenuOpen: true,
+  });
+  uiState = reduceImageToolUiState(uiState, { tool: "crop", type: "open-tool" });
+  expect(reduceImageToolUiState(uiState, {
+    tool: "redraw",
+    type: "close-tool",
+  }).activeTool).toBe("crop");
+
   const parsed = parseImageToolCapabilitySnapshot(modularImageToolSnapshot());
   expect(parsed.operations).toHaveLength(imageToolOperations.length);
   expect(imageToolCapability(parsed, "redraw")).toMatchObject({

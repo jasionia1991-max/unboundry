@@ -1380,6 +1380,107 @@ sup {
   background-size: 16px 16px;
 }
 
+.image-node-image-surface {
+  background-color: #202126;
+  background-image:
+    linear-gradient(45deg, rgb(255 255 255 / 8%) 25%, transparent 25%),
+    linear-gradient(-45deg, rgb(255 255 255 / 8%) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgb(255 255 255 / 8%) 75%),
+    linear-gradient(-45deg, transparent 75%, rgb(255 255 255 / 8%) 75%);
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  background-size: 16px 16px;
+}
+
+.image-tool-host {
+  position: fixed;
+  inset: 0;
+  z-index: 10030;
+  color: #f2f2f2;
+  font-size: var(--tap-font-primary);
+  pointer-events: auto;
+}
+
+.image-tool-host-modal {
+  display: grid;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.82);
+  place-items: center;
+}
+
+.image-tool-host-panel {
+  box-sizing: border-box;
+  min-width: 0;
+  max-height: calc(100vh - 32px);
+  outline: none;
+  pointer-events: auto;
+}
+
+.image-tool-host-modal .image-tool-host-panel {
+  position: fixed;
+  inset: 16px;
+  width: calc(100vw - 32px);
+  height: calc(100vh - 32px);
+  margin: auto;
+}
+
+.image-tool-host-popover .image-tool-host-panel {
+  position: fixed;
+  overflow: auto;
+  max-height: calc(100vh - 32px);
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  scrollbar-width: thin;
+}
+
+.image-tool-modal,
+.image-tool-popover {
+  width: 100%;
+  height: 100%;
+}
+
+.image-tool-host-popover .image-tool-popover {
+  height: auto;
+}
+
+.image-tool-surface {
+  position: relative;
+  box-sizing: border-box;
+  min-width: 0;
+  border-radius: 14px;
+}
+
+.image-tool-surface-checkerboard {
+  background-color: #202126;
+  background-image:
+    linear-gradient(45deg, rgb(255 255 255 / 8%) 25%, transparent 25%),
+    linear-gradient(-45deg, rgb(255 255 255 / 8%) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgb(255 255 255 / 8%) 75%),
+    linear-gradient(-45deg, transparent 75%, rgb(255 255 255 / 8%) 75%);
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  background-size: 16px 16px;
+}
+
+.image-tool-host-panel :focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 2px rgba(245, 245, 245, 0.72);
+}
+
+.image-detail-surface {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  padding: 4px;
+  place-items: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .image-tool-host *,
+  .image-tool-host *::before,
+  .image-tool-host *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
 .image-node-title {
   position: absolute;
   top: -26px;
@@ -1473,7 +1574,7 @@ sup {
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 16px;
-  background: rgba(18, 18, 18, 0.98);
+  background: transparent;
 }
 
 .image-detail-preview {
@@ -3253,6 +3354,7 @@ sup {
 }
 
 .image-annotation-toolbar button {
+  position: relative;
   min-width: 36px;
   height: 36px;
   padding: 0 10px;
@@ -3262,6 +3364,34 @@ sup {
   background: transparent;
   cursor: pointer;
   font-size: var(--tap-font-secondary);
+}
+
+.image-annotation-toolbar button[data-tooltip]::after {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  z-index: 3;
+  padding: 5px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  opacity: 0;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(31, 31, 31, 0.96);
+  content: attr(data-tooltip);
+  font-size: var(--tap-font-secondary);
+  line-height: 16px;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(-2px);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+  white-space: nowrap;
+}
+
+.image-annotation-toolbar button[data-tooltip]:hover::after,
+.image-annotation-toolbar button[data-tooltip]:focus-visible::after {
+  opacity: 1;
+  transform: translateX(-50%);
 }
 
 .image-annotation-toolbar button:hover,
@@ -7279,6 +7409,691 @@ sup {
       640px,
       calc(100vw - var(--tap-dock-clear-left) - 14px)
     );
+  }
+}
+
+/* INC-IMGEDIT-004: screen-space image tool shells. */
+.image-tool-compact-panel,
+.image-tool-sheet,
+.image-multi-angle-panel {
+  box-sizing: border-box;
+  display: grid;
+  overflow: hidden;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 32px);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  color: #f2f2f2;
+  background: rgba(31, 31, 31, 0.98);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.46);
+  font-size: var(--tap-font-primary);
+  backdrop-filter: blur(16px);
+}
+
+.image-tool-compact-panel {
+  width: min(400px, calc(100vw - 32px));
+}
+
+.image-tool-panel-header {
+  display: flex;
+  min-height: 54px;
+  padding: 9px 12px 9px 14px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.image-tool-panel-header > span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.image-tool-panel-header strong,
+.image-tool-panel-header small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.image-tool-panel-header strong {
+  color: #f5f5f5;
+  font-size: var(--tap-font-primary);
+  font-weight: 600;
+}
+
+.image-tool-panel-header small {
+  color: #969696;
+  font-size: var(--tap-font-secondary);
+}
+
+.image-tool-panel-header > button {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  flex: 0 0 30px;
+  border: 0;
+  border-radius: 9px;
+  color: #b7b7b7;
+  background: transparent;
+  cursor: pointer;
+  font-size: var(--tap-font-primary);
+}
+
+.image-tool-panel-header > button:hover:not(:disabled) {
+  color: #f5f5f5;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.image-tool-panel-body {
+  min-height: 0;
+  padding: 14px;
+  overflow: auto;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  scrollbar-width: thin;
+}
+
+.image-tool-panel-body p {
+  margin: 0;
+  color: #b5b5b5;
+  font-size: var(--tap-font-secondary);
+  line-height: 1.55;
+}
+
+.image-tool-panel-body [role="alert"] {
+  color: #ff9ea6;
+  font-size: var(--tap-font-secondary);
+  line-height: 1.45;
+}
+
+.image-tool-panel-footer {
+  display: flex;
+  min-height: 56px;
+  padding: 10px 12px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(24, 24, 24, 0.88);
+}
+
+.image-tool-panel-footer > span {
+  min-width: 0;
+  margin-right: auto;
+  overflow: hidden;
+  color: #a4a4a4;
+  font-size: var(--tap-font-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.image-tool-panel-footer button,
+.image-enhance-options button,
+.image-split-options button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 9px;
+  color: #ededed;
+  background: #303030;
+  cursor: pointer;
+  font-size: var(--tap-font-primary);
+  white-space: nowrap;
+}
+
+.image-tool-panel-footer button.primary {
+  color: #202020;
+  background: #ededed;
+  font-weight: 600;
+}
+
+.image-tool-panel-header button:disabled,
+.image-tool-panel-footer button:disabled,
+.image-enhance-options button:disabled,
+.image-split-options button:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.image-resize-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: end;
+  gap: 10px;
+}
+
+.image-resize-fields label {
+  display: grid;
+  gap: 6px;
+  color: #cfcfcf;
+  font-size: var(--tap-font-secondary);
+}
+
+.image-resize-fields input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9px;
+  color: #f5f5f5;
+  background: #171717;
+  font-size: var(--tap-font-primary);
+}
+
+.image-resize-lock {
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9px;
+  color: #bdbdbd;
+  background: #292929;
+  font-size: var(--tap-font-secondary);
+  white-space: nowrap;
+}
+
+.image-resize-lock[aria-pressed="true"] {
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #f2f2f2;
+  background: #3a3a3a;
+}
+
+.image-resize-fields [role="alert"] {
+  grid-column: 1 / -1;
+}
+
+.image-tool-split-shell {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  padding: 16px;
+  place-items: center;
+}
+
+.image-tool-sheet {
+  width: min(920px, calc(100vw - 32px));
+  height: min(620px, calc(100vh - 32px));
+}
+
+.image-split-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 210px;
+  gap: 16px;
+}
+
+.image-split-preview {
+  height: 100%;
+  min-height: 220px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background-color: #202126;
+  background-image:
+    linear-gradient(45deg, rgb(255 255 255 / 8%) 25%, transparent 25%),
+    linear-gradient(-45deg, rgb(255 255 255 / 8%) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgb(255 255 255 / 8%) 75%),
+    linear-gradient(-45deg, transparent 75%, rgb(255 255 255 / 8%) 75%);
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  background-size: 16px 16px;
+}
+
+.image-split-options {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.image-split-options button {
+  display: grid;
+  min-height: 62px;
+  padding: 9px 12px;
+  justify-items: start;
+  gap: 3px;
+  text-align: left;
+}
+
+.image-split-options button strong {
+  font-size: var(--tap-font-primary);
+}
+
+.image-split-options button small {
+  color: #999;
+  font-size: var(--tap-font-secondary);
+}
+
+.image-split-options button[aria-pressed="true"] {
+  border-color: rgba(255, 255, 255, 0.34);
+  background: #444;
+}
+
+.image-split-body > [role="alert"] {
+  grid-column: 1 / -1;
+}
+
+.image-enhance-options {
+  display: grid;
+  gap: 10px;
+}
+
+.image-enhance-options button {
+  display: grid;
+  min-height: 58px;
+  padding: 9px 12px;
+  justify-items: start;
+  gap: 3px;
+  text-align: left;
+}
+
+.image-enhance-options button strong {
+  font-size: var(--tap-font-primary);
+}
+
+.image-enhance-options button small {
+  color: #9e9e9e;
+  font-size: var(--tap-font-secondary);
+}
+
+.image-processing-alpha {
+  background-color: rgba(31, 31, 31, 0.98);
+}
+
+.image-seedance-validation-panel .image-tool-panel-body {
+  display: grid;
+  gap: 10px;
+}
+
+.image-seedance-validation-panel label {
+  color: #c8c8c8;
+  display: grid;
+  gap: 5px;
+  font-size: var(--tap-font-secondary);
+}
+
+.image-seedance-validation-panel select {
+  min-height: 34px;
+  padding: 0 9px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 9px;
+  color: #fff;
+  background: #171717;
+  font-size: var(--tap-font-primary);
+}
+
+.image-multi-angle-panel {
+  width: min(600px, calc(100vw - 32px));
+  height: min(308px, calc(100vh - 32px));
+  padding: 0;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 0;
+  transform: none;
+}
+
+.image-multi-angle-panel .image-tool-panel-header {
+  grid-column: auto;
+}
+
+.image-multi-angle-body {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 14px;
+  overflow: hidden;
+}
+
+.image-multi-angle-controls {
+  min-width: 0;
+  padding: 0;
+  gap: 10px;
+  overflow: auto;
+}
+
+.image-multi-angle-controls > label:not(.image-multi-angle-wide) {
+  height: 28px;
+  grid-template-columns: 42px minmax(0, 1fr) 44px;
+}
+
+.image-multi-angle-submit,
+.image-multi-angle-error {
+  position: static;
+}
+
+.image-multi-angle-error {
+  max-width: none;
+  text-align: left;
+}
+
+@media (max-width: 640px), (max-height: 520px) {
+  .image-multi-angle-panel {
+    height: min(480px, calc(100vh - 32px));
+  }
+
+  .image-multi-angle-body,
+  .image-split-body {
+    grid-template-columns: minmax(0, 1fr);
+    overflow: auto;
+  }
+
+  .image-multi-angle-preview {
+    min-height: 150px;
+  }
+
+  .image-split-preview {
+    min-height: 180px;
+  }
+
+  .image-split-options {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .image-resize-fields {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .image-tool-panel-footer {
+    flex-wrap: wrap;
+  }
+}
+
+/* INC-IMGEDIT-004: large editors share one viewport-safe transparent stage. */
+.image-tool-editor-surface {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  background-color: #202126;
+}
+
+.image-tool-editor-surface .image-crop-overlay,
+.image-tool-editor-surface .image-redraw-overlay,
+.image-tool-editor-surface .image-outpaint-overlay,
+.image-tool-editor-surface .image-annotation-overlay {
+  position: relative;
+  inset: auto;
+  z-index: auto;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  background: rgba(12, 12, 12, 0.72);
+}
+
+.image-tool-editor-surface .image-crop-overlay {
+  padding: 12px;
+}
+
+.image-tool-editor-surface .image-crop-stage,
+.image-tool-editor-surface .image-redraw-stage,
+.image-tool-editor-surface .image-annotation-stage {
+  background-color: #202126;
+  background-image:
+    linear-gradient(45deg, rgb(255 255 255 / 8%) 25%, transparent 25%),
+    linear-gradient(-45deg, rgb(255 255 255 / 8%) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgb(255 255 255 / 8%) 75%),
+    linear-gradient(-45deg, transparent 75%, rgb(255 255 255 / 8%) 75%);
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  background-size: 16px 16px;
+}
+
+.image-tool-editor-surface .image-redraw-overlay {
+  display: grid;
+  padding: 12px;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  justify-items: center;
+  gap: 10px;
+}
+
+.image-tool-editor-surface .image-redraw-toolbar,
+.image-tool-editor-surface .image-redraw-stage,
+.image-tool-editor-surface .image-redraw-prompt {
+  position: relative;
+  top: auto;
+  left: auto;
+  transform: none;
+}
+
+.image-tool-editor-surface .image-redraw-toolbar {
+  width: auto;
+  min-width: min(385px, 100%);
+  height: 48px;
+  padding: 5px;
+  border-radius: 16px;
+}
+
+.image-tool-editor-surface .image-redraw-stage {
+  align-self: center;
+  max-width: 100%;
+  max-height: 100%;
+  border-color: rgba(255, 255, 255, 0.24);
+  border-radius: 10px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.36);
+}
+
+.image-tool-editor-surface .image-redraw-prompt {
+  box-sizing: border-box;
+  width: min(720px, 100%);
+  height: auto;
+  min-height: 112px;
+  padding: 8px;
+}
+
+.image-tool-editor-surface .image-redraw-prompt textarea {
+  box-sizing: border-box;
+  width: 100%;
+  height: 56px;
+}
+
+.image-tool-editor-surface .image-redraw-error {
+  position: static;
+  max-width: 100%;
+}
+
+.image-editor-header {
+  display: flex;
+  min-height: 54px;
+  padding: 9px 12px 9px 14px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(24, 24, 24, 0.94);
+}
+
+.image-editor-header > span {
+  display: grid;
+  gap: 2px;
+}
+
+.image-editor-header strong {
+  color: #f5f5f5;
+  font-size: var(--tap-font-primary);
+}
+
+.image-editor-header small {
+  color: #999;
+  font-size: var(--tap-font-secondary);
+}
+
+.image-editor-header button {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  color: #bbb;
+  background: transparent;
+  font-size: var(--tap-font-primary);
+}
+
+.image-tool-editor-surface .image-outpaint-overlay {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.image-tool-editor-surface .image-outpaint-stage {
+  display: grid;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: none;
+  max-height: none;
+  padding: 14px;
+  grid-template-rows: minmax(0, 1fr) auto;
+  place-items: center;
+}
+
+.image-tool-editor-surface .image-outpaint-frame {
+  position: relative;
+  box-sizing: border-box;
+  display: grid;
+  overflow: hidden;
+  max-width: min(820px, 100%);
+  max-height: 100%;
+  border: 1px dashed rgba(255, 255, 255, 0.4);
+  border-radius: 10px;
+  background-color: #202126;
+  background-image:
+    linear-gradient(45deg, rgb(255 255 255 / 8%) 25%, transparent 25%),
+    linear-gradient(-45deg, rgb(255 255 255 / 8%) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgb(255 255 255 / 8%) 75%),
+    linear-gradient(-45deg, transparent 75%, rgb(255 255 255 / 8%) 75%);
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  background-size: 16px 16px;
+  place-items: center;
+}
+
+.image-outpaint-original {
+  position: relative;
+  display: grid;
+  max-width: 100%;
+  max-height: 100%;
+  border: 2px solid rgba(245, 245, 245, 0.72);
+  place-items: center;
+}
+
+.image-outpaint-original span {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 3px 7px;
+  border-radius: 7px;
+  color: #ededed;
+  background: rgba(20, 20, 20, 0.78);
+  font-size: var(--tap-font-secondary);
+  pointer-events: none;
+}
+
+.image-tool-editor-surface .image-outpaint-stage img {
+  display: block;
+  max-width: min(680px, 100%);
+  max-height: calc(100vh - 310px);
+}
+
+.image-tool-editor-surface .image-outpaint-controls {
+  position: relative;
+  right: auto;
+  bottom: auto;
+  left: auto;
+  box-sizing: border-box;
+  display: flex;
+  width: 100%;
+  max-width: none;
+  min-height: 82px;
+  padding: 10px 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+  border-width: 1px 0 0;
+  border-radius: 0;
+  background: rgba(24, 24, 24, 0.94);
+  transform: none;
+}
+
+.image-tool-editor-surface .image-outpaint-controls label {
+  flex: 0 1 260px;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: var(--tap-font-secondary);
+}
+
+.image-tool-editor-surface .image-outpaint-controls textarea {
+  box-sizing: border-box;
+  width: auto;
+  min-width: 260px;
+  min-height: 52px;
+  flex: 1 1 360px;
+  font-size: var(--tap-font-primary);
+}
+
+.image-tool-editor-surface .image-outpaint-controls > span,
+.image-tool-editor-surface .image-outpaint-controls [role="alert"] {
+  font-size: var(--tap-font-secondary);
+}
+
+.image-tool-editor-surface .image-outpaint-controls > button {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  flex: 0 0 34px;
+  border: 0;
+  border-radius: 50%;
+  color: #202020;
+  background: #ededed;
+  font-size: var(--tap-font-primary);
+}
+
+.image-tool-editor-surface .image-annotation-overlay {
+  display: grid;
+  padding: 12px;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  justify-items: center;
+  gap: 10px;
+}
+
+.image-tool-editor-surface .image-annotation-toolbar {
+  min-height: 48px;
+  padding: 5px;
+}
+
+.image-tool-editor-surface .image-annotation-toolbar button {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0;
+  font-size: var(--tap-font-primary);
+}
+
+.image-tool-editor-surface .image-annotation-stage {
+  align-self: center;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 10px;
+}
+
+.image-tool-editor-surface .image-annotation-status {
+  width: min(786px, 100%);
+  min-height: 28px;
+  justify-content: space-between;
+}
+
+@media (max-width: 720px), (max-height: 620px) {
+  .image-tool-editor-surface .image-redraw-overlay,
+  .image-tool-editor-surface .image-annotation-overlay {
+    padding: 8px;
+    gap: 6px;
+  }
+
+  .image-tool-editor-surface .image-redraw-prompt {
+    min-height: 96px;
+  }
+
+  .image-tool-editor-surface .image-redraw-prompt textarea {
+    height: 44px;
+  }
+
+  .image-tool-editor-surface .image-outpaint-controls {
+    max-height: 180px;
+    overflow: auto;
   }
 }
 

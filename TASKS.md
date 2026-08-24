@@ -1,11 +1,39 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产已为`v0.6.35 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK`。PR #81、PR/main CI、tag/main同tree、精确tag fresh build、完整主库+Library+媒体冻结备份、原子切换与生产技术门均通过。六项真实技术冒烟各一次成功、无重试，最终`6/6 / 60 USD`；仅剩用户视觉质量复验。
+> **当前状态**：生产仍为`v0.6.35 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS`，但图片工具用户质量复验未通过。`INC-IMGEDIT-004` R7本地候选已完成；用户已把目标补丁递增为`v0.6.36`并允许发布，R8已恢复施工。
 
 更新时间：2026-08-24
-状态：`v0.6.35 PRODUCTION_PUBLISHED_AUTO_PASS；REAL_PROVIDER_TECHNICAL_SMOKE_PASS 6/6；USER_QUALITY_RECHECK。`
+状态：`生产v0.6.35；本地候选v0.6.36 R8_IN_PROGRESS；INC-IMGEDIT-004 R7_AUTO_PASS / LOCAL_ENGINEERING_COMPLETE / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS；USER_QUALITY_REMEDIATION_REQUIRED。`
 
-### 2026-08-23 图片工具栏剩余能力单 Goal（INC-IMGEDIT-003，D13_AUTO_PASS / USER_QUALITY_RECHECK）
+### 2026-08-24 图片工具交互与 UI 一次性返工（INC-IMGEDIT-004，GOAL_ACTIVE / R7_AUTO_PASS / R8_IN_PROGRESS / VERSION_V0_6_36）
+
+- 用户生产实页检查未通过；自动测试和六项真实Provider链只证明技术链，不能证明功能交互、UI或视觉质量正常。
+- 已确认P0/P1：多个工具可叠开；多角度/快速切分/Seedance底部裁切；重绘/擦除/标注与Creator碰撞；透明图在编辑器/全屏为黑底；扩图和紧凑面板布局失衡。顶部工具栏、更多菜单和颜色标记作为回归保护。
+- 根因方案：单一`ActiveImageTool`互斥状态、Portal化`ImageToolHost`、共享`ImageToolModal/ImageToolPopover/ImageToolSurface`，业务动作继续复用现有Dispatcher/use case，不建立大控制器。
+- 主方案：`spec/INC_IMGEDIT_004_IMAGE_TOOL_UI_REMEDIATION_PLAN_2026-08-24.md`；唯一断点：`spec/INC_IMGEDIT_004_IMAGE_TOOL_UI_REMEDIATION_CHECKPOINT.md`；新Session提示词：`spec/INC_IMGEDIT_004_IMAGE_TOOL_UI_REMEDIATION_GOAL_PROMPT_2026-08-24.md`。
+- 阶段R0～R9同时最多一个`IN_PROGRESS`；完成每阶段先同步Checkpoint、`IMGEDIT-021～028`和本区块，再进入下一阶段。
+- 验收覆盖三个视口、四档zoom、横/竖/方图、透明PNG、全部图片工具、叠层恶意切换、Escape/焦点/键盘/IME/busy/reduced-motion及零Provider请求。
+- R0实时恢复确认分支HEAD与最新`origin/main`同为`f369d1d`，package0.6.35、Node22.23.1/npm10.9.8；生产只读探针为`0.6.35 / live / ready active schema39`。safe runner preflight 120 specs通过、4173 listener不变；未运行产品spec/full，产品/测试/schema/生产未改。
+- R0源码基线确认ImageNode仍有多组独立open state，紧凑/多角度面板仍依赖NodeToolbar相对定位，大型编辑层缺统一inert/focus/top-layer合同；这与登记缺陷一致。受保护JSON仍未跟踪且不在diff/stage，其他worktree没有同范围施工证据。
+- R0时版本门为`v0.6.35`；R8身份预检发现同名版本已不可变发布后，用户明确要求补丁递增一个版本并写出“允许发布”，当前两项门更新为`v0.6.36 / RELEASE_GATE_VALID`。INC-IMGEDIT-003预算已用完，本Goal真实Provider/尝试/费用均为0，生产技术通过后仍需用户明确`USER_PASS`。
+- R1已冻结12个`ActiveImageTool`、modal/popover分类、checkerboard/plain surface、inert/outside-close/max-width descriptor和原子菜单互斥reducer；只管理UI可见状态，不接业务payload、任务、上传或轮询。m100合同`13/13 PASS`。旧实现m2按预期`9/10`，唯一失败精确证明统一Host、modal inert和共享透明Surface尚未实现；R2必须让同一红证据转绿。两次均为精确提交隔离worktree、Node22.23.1/npm10.9.8、source/listener unchanged，Provider/OSS/费用0。
+- R2已用单一reducer替代全部图片工具独立open状态，并把Crop/Redraw/Erase/Outpaint/Annotation/Fullscreen和六类面板接入同一个Portal `ImageToolHost`；打开工具会原子关闭更多/颜色菜单，modal给`#root`设置inert，Host统一Escape、Tab循环、焦点返回、z-index、popover flip/shift/clamp和共享棋盘格Surface。Host不持有业务payload、任务、上传或轮询。
+- 精确提交`661a7a4`的safe m2 `10/10`、m100 `13/13 PASS`；加强焦点断言后先以`9/10`抓出modal期间卸载toolbar导致旧触发元素断连，修正为保留DOM并依靠root inert后，最终`c5f9795`只复验m2 `10/10 PASS`。Node22.23.1/npm10.9.8、source/snapshot/listener均unchanged，Provider/OSS/费用0；没有运行full。IMGEDIT-021收口AUTO_PASS，022/023/026/027按真实范围保持PARTIAL。
+- R3已统一多角度、调整像素、快速切分、增强、抠图和Seedance的header/body/footer、14/12px灰阶视觉、busy关闭与固定动作区；快速切分改为920px modal sheet，多角度恢复真实600×308 screen-space尺寸并移除`scale(0.819)`。调整像素/快速切分busy同步给Host，未改任何业务payload或Generation/Media/Canvas合同。
+- R3最终精确提交`1dd3fa5`的safe m2 `10/10 PASS`、m18 `2/2 PASS`，三目标视口均有panel/footer bounds直接断言，零Generation/Provider；首次m2 `9/10`只暴露Seedance新header让旧非精确关闭locator歧义，收紧测试locator后最小复验通过。source/snapshot`288cea88…0ddf`、4173 listener unchanged，未运行full；IMGEDIT-025为TARGETED_AUTO_PASS，022/026/028按实际范围保持PARTIAL。
+- R4把裁剪、重绘、擦除、扩图和标注全部放入统一checkerboard `ImageToolSurface`和Host内screen-space大型网格；重绘/擦除拆为顶部工具条、中央contain舞台、底部Prompt，扩图明确原图/新增边界，标注使用紧凑图标和中文aria/tooltip，导出busy同步Host。棋盘格只由CSS呈现，不进入导出字节；业务Dispatcher、mask/payload、Generation/Media/Canvas合同未改。
+- R4最终精确提交`e01ee2f`的safe m2 `10/10 PASS`、m18 `2/2 PASS`；大型编辑器bounds、棋盘格computed-style、裁剪安全Blob、标注IME/撤销重做/导出、重绘mask坐标和fake任务payload通过。首次m2 `9/10`只暴露新增测试把class误写成testid，最小修正后复验通过；source/snapshot`2548fe1b…5566`、4173 listener unchanged，Provider/OSS/费用0，未运行full。IMGEDIT-024为TARGETED_AUTO_PASS，022/023/026/028按实际范围保持PARTIAL。
+- R5让产品内全屏dialog透出统一棋盘格，并直接验证Escape、外点、Tab/Shift+Tab、焦点返回、reduced-motion及0.15/0.85/1.0/1.5四档zoom下screen UI几何完全不变。定向测试抓出并修复外点默认指针聚焦覆盖Host焦点返回；第二轮只暴露测试未恢复zoom，补清理后最终精确`c5b86f9` safe m2 `10/10 PASS`，source/snapshot`03febf86…75c8`、listener unchanged，Provider/OSS/费用0，未运行full。
+- R6完成全部图片工具隔离浏览器矩阵：保存13张截图和JSON receipt，覆盖1280×720、1440×900、1728×900、横竖方/真实Alpha、三类壳层、恶意切换、modal inert、控制台与CDP零请求计数；所有活动工具Host精确1个且bounds不越viewport。最终产品树与R5相同，只有m2新增Seedance busy gate；调试确定旧失败是busy后按钮文案变为“校验中…”导致旧locator失配，修正后精确`5f48f62` safe m2 `10/10 PASS`、source/snapshot`76461c61…bbfbf`、4173 listener unchanged。真实Provider/OSS/费用0；一次误从主树启动的safe命令在产品spec前被既有`backups/`负控停止，产品测试0且未绕过。证据目录为`spec/evidence/inc-imgedit-004-r6/`。
+- R7独立只读审查报告5项候选缺口：普通透明上传节点缺棋盘格、标注图标缺实际tooltip、busy后焦点可能停在disabled按钮、URL-only旧节点可打开空裁剪Host、四档zoom只有全屏直接证据。`39cd494`按最小范围修正：所有已加载图片节点使用CSS棋盘格底层surface；Host在busy收回失效焦点并保持Tab循环；标注补hover/focus-visible tooltip；无asset裁剪fail-closed；m2逐一覆盖全部12工具四zoom。
+- R7定向候选在精确`39cd494`隔离worktree完成safe m2 `10/10`、m18 `2/2`、m100 `13/13 PASS`，三次退出0，source/snapshot均`8c3cd1a6…f5b98`、4173 listener unchanged；TypeScript/build/架构/source coverage和零网络门随safe入口通过，真实Provider/OSS/费用0。
+- 本Goal唯一一次safe full在精确`4fd25cc`执行：120 specs / 1052 tests，原始`1050/1052`，异常仅m24异步目录计数时序和m37在modal inert后使用非法背景编辑前置条件；skipped/retries/blocked/reportErrors均0，source/snapshot`ce6403b6…41a8414`。未运行第二次full。m24确定性等待在`e2c412e`复验`2/2 PASS`；m37改为真实派生use case在上传后/graph adoption前关闭持久层并验证DELETE/404、无节点和Provider不变，在最终`161f417`复验`35/35 PASS`。R7收口为`LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS`，不把原始full改写成全绿；下一动作是R8同名不可变tag/release身份预检。
+- R8只读预检确认远端`v0.6.35`注释tag对象`3fa72d3`已解引用到旧候选`fc99101`/tree`cb13fef`，生产仍指向`/opt/unboundry/releases/v0.6.35-image-toolbar-hotfix-20260824`；本候选`6380723`/tree`8f22a7c`与其不同。Runbook不存在既不移动tag/覆盖release、又能让另一棵源码继续使用同一精确版本身份的合法路径。R8已落档为`BLOCKED_VERSION_IDENTITY_COLLISION`；唯一恢复条件是用户提供尚未使用的具体版本号，并独立给出按该版本上线的发布句子。未push、PR、merge、tag或改生产。
+- 用户随后明确要求在v0.6.35上增加一个小版本号并写出“允许发布”；按确定性SemVer补丁递增落实为`v0.6.36 / VERSION_GATE_VALID / RELEASE_GATE_VALID`。远端`v0.6.36` tag不存在，原身份阻断解除；R8恢复为`IN_PROGRESS`，先同步package/runtime/m81与治理文档，再跑版本直接相关的safe m38+m81，不重复R7唯一一次full。
+- package/lock、`releaseRoleFromEnvironment`和m81 final角色断言已同步到0.6.36；CURRENT_STATE/README/AGENTS/上线规矩与Checkpoint同步表达“生产仍为v0.6.35、本地候选为v0.6.36”，不改写v0.6.35历史发布事实。
+- 精确版本提交`72f0b0d`在全新detached worktree完成safe m38 `15/15`+m81 `41/41`=`56/56 PASS`，退出0且异常计数0；source/snapshot`a7613c8e…903a765`、4173 listener unchanged，TypeScript/build/架构/source coverage/凭据/网络门通过，真实Provider/OSS/费用0。R7唯一一次full继续复用，不因版本与文档改动重复；最终治理文档提交后只复验m38。
+
+### 2026-08-23 图片工具栏剩余能力单 Goal（INC-IMGEDIT-003，D13_AUTO_PASS / USER_QUALITY_REMEDIATION_REQUIRED）
 
 - 用户已批准最终 V5 方案并要求后续长任务严格由项目文档驱动，防止新 Session 或上下文压缩后失忆漂移。主方案：`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_PLAN_2026-08-23.md`；实时断点：`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_CHECKPOINT.md`；新 Session 提示词：`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_GOAL_PROMPT_2026-08-23.md`。
 - 单 Goal 连续范围：最小图片工具应用边界、颜色标记、调整像素、快速分割、标注、个人素材库、多角度、遮罩/重绘、扩图、擦除、保守/创意增强、主体抠图和 Seedance 素材校验；裁剪只回归，打光 `IMGEDIT-007` 继续 `PAUSED`。

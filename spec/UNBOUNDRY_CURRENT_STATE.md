@@ -1,17 +1,17 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网为v0.6.35/schema39，状态`PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK`。生产技术门和六项真实技术链已通过，仅剩用户视觉质量复验。
+> **状态分层**：现网为v0.6.35/schema39，生产技术门和六项真实技术链已通过；用户随后确认图片工具交互与UI不合格，当前为`PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_REMEDIATION_REQUIRED`，没有`USER_PASS`。
 
 更新日期：2026-08-24
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.35**
-本地候选代码版本：**v0.6.35**
+当前代码包版本：**v0.6.36**
+本地候选代码版本：**v0.6.36**
 当前治理标记：`CURRENT_V0_6_35_USER_RECHECK`
-当前热修门：`V0_6_35_PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK`
+当前热修门：`V0_6_35_PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_REMEDIATION_REQUIRED`
 
 ## 一句话
 
-**生产是 v0.6.35 / schema39，状态 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_QUALITY_RECHECK`。** PR #81 squash merge为`cc62bfb`；注释tag解引用`fc99101`，tag与`origin/main` tree均为`cb13fef`。生产current为`/opt/unboundry/releases/v0.6.35-image-toolbar-hotfix-20260824`，发布技术门已通过；没有用户质量`USER_PASS`。
+**生产是 v0.6.35 / schema39，技术发布和真实Provider链通过，但图片工具用户质量复验未通过。** PR #81 squash merge为`cc62bfb`；注释tag解引用`fc99101`，tag与`origin/main` tree均为`cb13fef`。生产current为`/opt/unboundry/releases/v0.6.35-image-toolbar-hotfix-20260824`；当前必须执行INC-IMGEDIT-004交互/UI返工，不能把技术链成功称为功能或UI正常。
 
 v0.6.34冻结前定向`234/234 PASS`；唯一一次safe full原始`1048/1052`，只修正一个真实图片预检缺陷与三个测试确定性问题后，精确四spec `106/106 PASS`，没有第二次full。GitHub、冻结备份与恢复副本、精确tag源码构建、schema39数据门、原子切换、公网/回环/service/inventory/资源门均已完成。
 
@@ -19,9 +19,21 @@ v0.6.34冻结前定向`234/234 PASS`；唯一一次safe full原始`1048/1052`，
 
 v0.6.34版本号、tag和发布授权均已执行并消费，禁止移动tag或覆盖release。用户于2026-08-24明确确认`v0.6.35`并独立回复“按v0.6.35上线吧”；新授权只覆盖共同生成热修及Goal内剩余D13，不扩大到Mureka、团队/多人协作、真实Agent协议、Storyboard完整编辑、图片打光或其他既有`PARTIAL/PAUSED/BLOCK`项。
 
-## INC-IMGEDIT-003 图片工具栏剩余能力单 Goal（D13技术完成，用户质量待复验）
+## INC-IMGEDIT-004 图片工具交互与 UI 一次性返工（R7_AUTO_PASS / R8_IN_PROGRESS / VERSION_V0_6_36）
 
-- 用户已批准最终V5方案并明确启动Goal；D0～D13技术工作已完成，当前状态`V0_6_35_PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK`。主方案为`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_PLAN_2026-08-23.md`。
+- 用户在生产实页反馈图片工具“几乎都不正常”且没有对齐项目UI规范；只读复核确认多个工具可叠层、部分面板在视口底部裁切、重绘/擦除/标注与底层Creator碰撞、透明图在编辑器/全屏显示黑底、扩图与紧凑面板布局失衡。顶部400×48工具栏、更多菜单和颜色标记基本符合既有基线，作为回归保护。
+- 根因冻结为：多套独立open状态缺少互斥；多个面板依附节点`NodeToolbar`而不是screen-space Portal；缺少统一modal/popover/surface、焦点、viewport和透明背景合同。
+- R0～R6已完成单一活动状态、Portal `ImageToolHost`、modal inert、焦点返回、共享棋盘格surface、紧凑/大型面板、三目标视口和13张本地浏览器证据；当前没有生产或GitHub新事实。
+- 主方案：`spec/INC_IMGEDIT_004_IMAGE_TOOL_UI_REMEDIATION_PLAN_2026-08-24.md`；唯一断点：`spec/INC_IMGEDIT_004_IMAGE_TOOL_UI_REMEDIATION_CHECKPOINT.md`；新Session Goal：`spec/INC_IMGEDIT_004_IMAGE_TOOL_UI_REMEDIATION_GOAL_PROMPT_2026-08-24.md`。
+- R7独立只读审查报告普通透明上传节点surface、标注tooltip、busy焦点、URL-only裁剪空壳和全工具zoom证据五项缺口；产品/测试候选`39cd494`已按最小范围修正。精确候选safe m2 `10/10`、m18 `2/2`、m100 `13/13 PASS`，source/snapshot`8c3cd1a6…f5b98`、4173 listener unchanged，真实Provider/OSS/费用0。
+- 唯一一次safe full在精确`4fd25cc`执行，原始`1050/1052`；两个失败为m24异步目录结果时序和m37在modal inert后使用非法背景编辑前置条件。未重复full；m24在`e2c412e`定向`2/2 PASS`，m37在最终候选`161f417`以真实派生use case直接验证上传后持久化关闭补偿并`35/35 PASS`。当前工程状态`LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS`，不把原始full改写成全绿。
+- `IMGEDIT-021～028`当前为本地自动/浏览器分层通过或`USER_RECHECK`；R7已收口。R8只读预检曾确认`v0.6.35`已被旧源码不可变占用；用户随后明确要求补丁递增一个版本并写出“允许发布”，确定性目标变为未占用的`v0.6.36`，原身份阻断解除。当前正在同步package/runtime/test与治理合同，尚未push/PR/tag/生产写入。
+- 本Goal当前版本门为`v0.6.36`，独立“允许发布”句子有效，只在R8/R9消费。INC-IMGEDIT-003的6次/60 USD已全部消费；本返工真实Provider成功、尝试和费用预算固定为0。
+- v0.6.36精确版本提交`72f0b0d`已通过safe m38 `15/15`与m81 `41/41`，合计`56/56 PASS`，source/snapshot`a7613c8e…903a765`、4173 listener unchanged，Provider/OSS/费用0；最终治理文档树只补跑m38后进入GitHub发布，不重复R7唯一一次full。
+
+## INC-IMGEDIT-003 图片工具栏剩余能力单 Goal（D13技术完成，用户质量未通过并转INC-IMGEDIT-004）
+
+- 用户已批准最终V5方案并明确启动Goal；D0～D13技术工作已完成，技术状态`V0_6_35_PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS`。用户质量随后未通过，整体转入`USER_QUALITY_REMEDIATION_REQUIRED`，由INC-IMGEDIT-004继续；历史主方案为`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_PLAN_2026-08-23.md`。
 - 为防止长任务在新 Session 或上下文压缩后漂移，已建立唯一实时断点 `spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_CHECKPOINT.md` 和可复制 Goal 合同 `spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_GOAL_PROMPT_2026-08-23.md`。D0～D13 每阶段必须先回写断点、矩阵和 TASKS，再继续下一阶段。
 - 计划范围包含颜色标记、调整像素、快速分割、标注、个人素材库、多角度、遮罩/重绘、扩图、擦除、增强、主体抠图和 Seedance 素材校验；裁剪只回归，打光继续 `PAUSED`。
 - 生产D13冒烟先发现多角度漏传`imageTool`身份，随后重绘暴露六项生成工具共用非法持久输入顺序0；同时确认源节点1K会被模型默认2K覆盖。两次都在Provider前fail-closed，没有task/attempt/Provider和费用。本地热修提交`a411a63`，最终安全定向m100+m2+m27 `43/43 PASS`、外部/Provider请求0。
@@ -179,7 +191,7 @@ v0.6.34版本号、tag和发布授权均已执行并消费，禁止移动tag或�
 - 当前数据门：schema39、integrity/外键/生产切换门均已通过；六项技术冒烟后tasks728、attempts736、active0，真实Provider预算为`6/6 / 60 USD`。
 - 生产并发配置已恢复推荐值：per_user 20 / image 10 / video 2 / audio 2 / text 10 / RPM 120
 - 正式安全全量：v0.6.35冻结候选唯一一次执行 `1052/1052 PASS`；此前v0.6.34原始full及精确修正复验继续按原始证据保留，不改写
-- 生产技术门和真实Provider技术冒烟已完成，状态 `PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK`；v0.6.35版本号与发布授权已消费，仅剩用户视觉质量复验
+- 生产技术门和真实Provider技术冒烟已完成；用户随后确认图片工具交互/UI未通过，当前为`PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_REMEDIATION_REQUIRED`。v0.6.35版本号与发布授权已消费，下一工程动作只能由INC-IMGEDIT-004新Goal启动
 
 ## 历史发布记录（v0.6.25 及更早时点）
 
@@ -295,8 +307,8 @@ v0.6.34版本号、tag和发布授权均已执行并消费，禁止移动tag或�
 ## 新会话默认动作
 
 1. 先读本文 + `上线规矩.md` + `TASKS.md` 顶部。
-2. 只读核对当前隔离worktree、分支、HEAD、工作树和`package.json`；当前package应为`0.6.35`，历史计划中的旧版本号不得当成当前施工身份。
-3. 当前生产为 v0.6.35/schema39，状态 `PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK`；D13技术工作已完成，唯一下一动作是用户生产视觉质量复验，不得自动记录`USER_PASS`或追加Provider请求。
+2. 只读核对当前隔离worktree、分支、HEAD、工作树和`package.json`；当前本地候选package应为`0.6.36`，历史计划中的旧版本号不得当成当前施工身份。
+3. 当前生产仍为v0.6.35/schema39，技术状态`PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS`，但图片工具用户质量复验未通过；当前工程入口为INC-IMGEDIT-004主方案与Checkpoint，R8目标为已授权的v0.6.36。本返工真实Provider预算为0，不得自动记录`USER_PASS`或追加Provider请求。
 4. 云腾三模型只归属云腾 Provider；不得借用优创密钥、不得新增“天空”计费 Provider、不得自动追加真实 Provider POST。
 5. `VIEW-005`已由本地隔离安全定向证据关闭为`AUTO_PASS`；其余`PAUSED/BLOCK/PARTIAL`项只有在用户重新立项后才能施工，本次证据不得被解释为新版本或生产授权。
 6. 若用户说生成或工作流再次异常，先查当前线上任务、Provider profile、attempt 和结果所有权，再给方案；不得擅自改生产库或重提付费请求。
