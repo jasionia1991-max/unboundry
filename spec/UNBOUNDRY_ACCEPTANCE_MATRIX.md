@@ -3,7 +3,7 @@
 基线日期：2026-07-27  
 当前状态更新：2026-08-24
 
-INC-IMGEDIT-006已启动：生产仍为v0.6.37/schema39，v0.6.38版本门与发布门有效；R0冻结`ACTIVE_BRANCH=A`，R2/R3/R4定向通过，R5A正在实现正式Provider adapter与fake状态机。Provider控制面账本`1/200`，付费生成与费用0。新事件不得继承INC-IMGEDIT-005的自动、生产或用户结论。
+INC-IMGEDIT-006已启动：生产仍为v0.6.37/schema39，v0.6.38版本门与发布门有效；R0冻结`ACTIVE_BRANCH=A`，R2/R3/R4/R5A定向通过，R6正在实现应用编排与服务端可信引用门。Provider控制面账本`1/200`，付费生成与费用0。新事件不得继承INC-IMGEDIT-005的自动、生产或用户结论。
 
 2026-08-24 `CURRENT_RELEASE = v0.6.36 / schema39 / PRODUCTION_V0_6_36_USER_REJECTED`：发布、备份、健康和R9零付费技术事实继续保留，但用户抽查证明快速切分、棋盘格、扩图说明、费用文案和全工具review不合格，不能再标“待确认”。INC-IMGEDIT-005本地候选已完成定向、浏览器和独立审查；用户已明确确认并允许`v0.6.37`上线，R9正在执行。Provider/OSS/费用0；v0.6.35六项真实Provider `6/6 / 60 USD`仅为历史技术证据，不得复用。
 
@@ -405,7 +405,7 @@ F14本地门日志SHA-256：targeted `b9d260babe051c1f89ef86256ade2d57fda19b5700
 
 INC-IMGEDIT-005 R0～R9已完成工程、GitHub、生产技术与零付费浏览器层。`IMGEDIT-029～037`达到生产自动复验，`IMGEDIT-038`为`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；用户尚未在v0.6.37生产实页明确确认，不能写`USER_PASS`。
 
-`IMGEDIT-039～046`由`spec/INC_IMGEDIT_006_FULLSCREEN_FIT_AND_SEEDANCE_TRUSTED_ASSET_PLAN_2026-08-24.md`与对应Checkpoint驱动。R5A是当前唯一施工阶段；旧全屏、Seedance本地预检、自动化或生产技术证据不得直接关闭新条目。真实Provider控制面按分项和总账计数，生成预算固定为0；最终生产技术通过仍只能进入`USER_RECHECK`。
+`IMGEDIT-039～046`由`spec/INC_IMGEDIT_006_FULLSCREEN_FIT_AND_SEEDANCE_TRUSTED_ASSET_PLAN_2026-08-24.md`与对应Checkpoint驱动。R6是当前唯一施工阶段；旧全屏、Seedance本地预检、自动化或生产技术证据不得直接关闭新条目。真实Provider控制面按分项和总账计数，生成预算固定为0；最终生产技术通过仍只能进入`USER_RECHECK`。
 
 D12 候选验证已完成：冻结前直接受影响定向`234/234 PASS`，四类审查无新阻断；唯一一次safe full原始`1048/1052`，精确修复后同一四个失败spec`106/106 PASS`，未运行第二次full。该证据只支持`LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / D13_READY`，不自动把`IMGEDIT-016～019`升级为真实Provider、生产或用户质量PASS。
 

@@ -54,6 +54,7 @@ export interface SeedanceTrustedAssetPort {
       checksumSha256: string;
       contentType: string;
       kind: "image";
+      providerUrl: string;
     }>;
   }>): Promise<SeedanceProviderAsset>;
   inspectAsset(input: Readonly<{

@@ -2,9 +2,9 @@
 
 > 更新时间：2026-08-24
 >
-> 当前阶段：`R5A_IN_PROGRESS`
+> 当前阶段：`R6_IN_PROGRESS`
 >
-> 当前结论：R4已冻结schema40的Group/Asset/Session分表、稳定Provider账号指纹、owner/source隔离、幂等和安全DTO/OpenAPI合同并通过定向验证；R5A实现正式Provider adapter与fake状态机。
+> 当前结论：R5A已实现正式V4签名的H5会话、认证结果、Asset创建/查询适配器及fake状态机；R6把可信Binding安全接入应用服务与`asset://`生成边界。
 
 ## 1. 实时身份
 
@@ -71,9 +71,9 @@ PURCHASE_REQUIRED=NO
 | R2 | `TARGETED_AUTO_PASS` | Grid行、viewer双轴与img最小尺寸根因修复；safe m2全屏/透明及其余既有用例12项通过，唯一失败为R3预留旧Seedance入口 |
 | R3 | `TARGETED_AUTO_PASS` | 图片旧入口与旧请求均为0；旧记录摘要永远注明非方舟远端；Video Seedance参考图自动附带local-technical-preflight |
 | R4 | `TARGETED_AUTO_PASS` | schema40 Group/Asset/Session分表、组合外键、owner查询、稳定账号指纹、幂等upsert与五条OpenAPI路径已冻结；safe m100+m20 14/14通过 |
-| R5A | `IN_PROGRESS` | 正式Provider adapter及fake合同；本Goal冻结A分支 |
+| R5A | `TARGETED_AUTO_PASS` | 仅允许CreateVisualValidateSession/GetVisualValidateResult/CreateAsset/GetAsset；V4签名、A分支状态映射、10秒上限、QPM门、身份锁与脱敏错误fake通过 |
 | R5B/R5C | `NOT_APPLICABLE_CURRENT_BRANCH` | 仅保留能力降级合同，不作为当前实现分支 |
-| R6 | `NOT_STARTED` | asset://服务端可信引用、任务恢复与失效门 |
+| R6 | `IN_PROGRESS` | 应用编排、asset://服务端可信引用、任务恢复与失效门 |
 | R7 | `NOT_STARTED` | UI、错误、刷新、幂等、三视口浏览器矩阵 |
 | R8 | `NOT_STARTED` | 候选冻结、独立只读审查、唯一一次safe full |
 | R9 | `NOT_STARTED` | v0.6.38 GitHub交付 |
@@ -98,6 +98,8 @@ PURCHASE_REQUIRED=NO
 - R4新增schema40三表及精确物理schema合同；Group/Session/Binding分别保存，组合外键绑定owner、profile、稳定账号指纹、地域和项目，Binding另绑定`image + asset id + checksum`。H5完整URL仅允许创建响应一次性返回，status DTO与数据库均无该字段，摄像头/活体/人脸/密钥不落库。
 - R4新增五条OpenAPI路径与2KiB绑定请求上限，创建返回202，读取严格owner scope；客户端DTO不返回Provider账号指纹、Group/Session/Asset内部标识。稳定账号指纹不包含可轮换AK/SK，Group/Session/Asset幂等键由owner/profile/account/region/project/source共同派生。
 - R4 build通过；最终safe m100+m20=`14/14 PASS`、退出0，fresh schema40精确合同、FK、Group幂等复用、跨owner不可读、无持久H5 URL及OpenAPI隐私断言通过。source/snapshot`c505e70f07b0cc7ee4a633c7b13de4baa6ba1f5fcfafb13210e5d594f0288f03`，4173 unchanged，真实Provider/Generation/OSS/费用0。
+- R5A复用既有方舟V4签名、固定`Service=ark / Version=2024-01-01 / region=cn-beijing`，新增严格四Action allowlist；H5创建只返回一次短期HTTPS链接并保存不透明BytedToken，认证结果只接受匹配Group ID，Asset只接受服务端准备的HTTPS图片URL并轮询到Active。
+- R5A适配器把Pending/Processing/Active/一致性失败/撤销/删除/过期映射到冻结状态机；profile/account/region/project变化在请求前失败，QPM默认3，单请求最长10秒，AK/SK和远端详情继续由既有响应扫描与固定错误屏蔽。build通过；safe m42=`15/15 PASS`、source/snapshot`be3b5f87b6c514517f21742c3dc90fdb1f3581c20b849a50552d009bd401d62c`，4173 unchanged，真实Provider/Generation/OSS/费用0。
 - 本Goal唯一一次safe full保留给R8冻结候选；文档同步不触发业务全量测试。
 - 自动化必须使用Node22.23.1/npm10.9.8、fresh临时data/runtime/cache和动态loopback端口，禁止4173、生产数据、真实Provider、真实OSS和任何付费生成。
 
@@ -110,4 +112,4 @@ PURCHASE_REQUIRED=NO
 
 ## 9. 唯一下一动作
 
-实现A分支正式方舟H5/Group/Asset Provider adapter、结构化错误、超时/QPM门和fake状态机；只运行fake，不发真实Provider请求。
+实现owner-scoped应用编排、刷新/重启恢复和服务端可信引用；只有当前Binding满足owner/source checksum/Provider身份/Active/未过期时才构造`asset://`，伪造或失效在计费提交前失败。
