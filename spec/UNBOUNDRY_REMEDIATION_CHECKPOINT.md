@@ -5,12 +5,12 @@
 状态：`HISTORICAL_CHECKPOINT / APPEND_ONLY`
 用途：保留各次施工与发布时点证据，不再充当当前恢复入口。**当前状态、未发布工作区与下一步只看 `UNBOUNDRY_CURRENT_STATE.md`；本文件任何旧命令或旧授权都不可复用。**
 
-## 0. v0.6.38 图片全屏完整适配与Seedance可信素材（2026-08-24 已发布，真实协议fail-closed，待用户复验）
+## 0. v0.6.38 图片全屏完整适配与Seedance可信素材（2026-08-24 已发布并获用户确认，真实协议fail-closed）
 
 - tag`v0.6.38`→`ff8b80c0628f94ecf1b5cf7bdb8445433aed8a6c`/tree`c8e1e19b55cac6e50150cf2ee2160234d5a33726`；PR #87 Quality CI SUCCESS后合并为`1a1756ae98138d8885d9043ca93d81e4d4ade67b`，GitHub Release已发布。
 - 生产current为`/opt/unboundry/releases/v0.6.38-inc-imgedit-006-20260824`，schema40/live/ready active，service active+enabled且NRestarts0；切换冻结备份`/var/lib/unboundry-rollbacks/v0.6.38-cutover-frozen-hoN2aM`的source/restore各366文件，双清单SHA`5ebe6ef5…b7a7`。
 - 生产444×818图片三视口与755×1332第二竖图均四边完整、比例不变、contain；详情、未核验/失败态、inert和console门通过。唯一H5创建返回503并保存`FAILED/CREATE_FAILED`，创建预算1/1消费后没有重试，Asset/生成/OSS均0；控制面总计2/200。
-- 状态`PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / USER_RECHECK`；回执`spec/V0_6_38_PRODUCTION_RECEIPT_2026-08-24.json`。禁止写`PROVIDER_PROTOCOL_REAL_PASS`或`USER_PASS`。
+- 用户已在生产实页明确回复“通过”，状态`PRODUCTION_PUBLISHED_USER_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / USER_PASS`；回执`spec/V0_6_38_PRODUCTION_RECEIPT_2026-08-24.json`。用户确认不把Provider协议失败改写为`PROVIDER_PROTOCOL_REAL_PASS`。
 
 ## 0. v0.6.37 图片工具产品质量拒收返工（2026-08-24，已技术发布、待用户复验）
 

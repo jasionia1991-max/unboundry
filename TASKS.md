@@ -1,11 +1,11 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产运行`v0.6.38 / schema40`且技术健康。INC-IMGEDIT-006已完成GitHub、生产发布和零付费浏览器门；真实H5创建唯一一次失败后fail-closed，当前等待用户复验。
+> **当前状态**：生产运行`v0.6.38 / schema40`且技术健康。INC-IMGEDIT-006已完成GitHub、生产发布和零付费浏览器门；真实H5创建唯一一次失败后fail-closed。用户已在生产实页明确回复“通过”，当前为`USER_PASS`。
 
 更新时间：2026-08-24
-状态：`生产v0.6.38 / schema40 / PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / USER_RECHECK；INC-IMGEDIT-006 R11_COMPLETE / ACTIVE_BRANCH_A；Provider控制面2/200，付费生成、费用与OSS写入0。`
+状态：`生产v0.6.38 / schema40 / PRODUCTION_PUBLISHED_USER_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / USER_PASS；INC-IMGEDIT-006 R11_COMPLETE_USER_PASS / ACTIVE_BRANCH_A；Provider控制面2/200，付费生成、费用与OSS写入0。`
 
-### 2026-08-24 图片全屏完整适配与Seedance可信素材（INC-IMGEDIT-006，PRODUCTION_V0_6_38 / USER_RECHECK）
+### 2026-08-24 图片全屏完整适配与Seedance可信素材（INC-IMGEDIT-006，PRODUCTION_V0_6_38 / USER_PASS）
 
 - 权威方案：`spec/INC_IMGEDIT_006_FULLSCREEN_FIT_AND_SEEDANCE_TRUSTED_ASSET_PLAN_2026-08-24.md`；实时断点：`spec/INC_IMGEDIT_006_FULLSCREEN_FIT_AND_SEEDANCE_TRUSTED_ASSET_CHECKPOINT.md`
 - 隔离分支/工作树：`codex/inc-imgedit-006-v0.6.38-2026-08-24` / `/private/tmp/unboundry-inc006-v0.6.38-2026-08-24`；起点HEAD与`origin/main`同为`349a915`，package0.6.37、schema39
@@ -34,7 +34,8 @@
 - 真实控制面账本为权益只读`1/10`、H5创建`1/1`、其余0、总`2/200`。唯一创建返回HTTP503并保存为`FAILED/CREATE_FAILED`，未取得H5 URL；因写请求副作用未知没有重试，也未创建/查询Asset。付费生成、Generation task/attempt增量、费用和OSS写入均0。
 - R11：444×818竖图在1280×720、1440×900、1728×900均`contain`、四边完整、比例不变；755×1332第二竖图同样通过。详情、旧预检免责声明、A分支未核验/失败诚实状态、modal inert和console 0 error/warn通过。
 - 发布回执同步后的m38治理门先后精确暴露schema39硬编码和三份渐进治理头仍为`CURRENT_V0_6_37_USER_RECHECK`；两次有效原始结果均为`14/15`，错误selector另为0产品测试。只修正测试治理合同、AGENTS和治理头后最终m38 `15/15 PASS`，source/snapshot`08ab2c7e…5142`、4173 unchanged；没有修改tag内产品runtime，也没有运行第二次full。
-- 权威回执：`spec/V0_6_38_PRODUCTION_RECEIPT_2026-08-24.json`。唯一下一动作是用户在v0.6.38生产实页复验；此前保持`USER_RECHECK`，不得写`USER_PASS`，不得重试H5创建。
+- 用户于2026-08-24在v0.6.38生产实页明确回复“通过”，`IMGEDIT-039/046`与INC-IMGEDIT-006整体用户层正式收口为`USER_PASS`。真实H5协议仍为`PROVIDER_PROTOCOL_REAL_FAIL_CLOSED`，不得借用户验收重试H5创建、冒充Asset Active或写`PROVIDER_PROTOCOL_REAL_PASS`。权威回执：`spec/V0_6_38_PRODUCTION_RECEIPT_2026-08-24.json`。
+- USER_PASS文档同步后只运行治理定向m38，`15/15 PASS`、退出0，source/snapshot`1a1a9217…a05a`、4173 unchanged；没有产品runtime改动，没有运行full、Provider请求或生产写入。
 
 ### 2026-08-24 图片工具产品质量拒收返工（INC-IMGEDIT-005，R9_COMPLETE / USER_RECHECK）
 
