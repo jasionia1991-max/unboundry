@@ -1,17 +1,25 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网为v0.6.38/schema40且技术健康。INC-IMGEDIT-006已完成GitHub、生产发布和零付费浏览器门；真实H5创建唯一一次失败并fail-closed。用户已在生产实页明确回复“通过”，当前为`PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`；Provider协议仍为`REAL_FAIL_CLOSED`。
+> **状态分层**：现网仍为v0.6.38/schema40且技术健康，用户验收仍是`PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`，Provider协议仍为`REAL_FAIL_CLOSED`。INC-SEEDANCE-001的v0.6.39候选已获得版本、发布和精确Provider预算授权，当前先完成候选冻结与发布；H5真人认证尚未执行。
 
 更新日期：2026-08-24
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.38**
-本地候选代码版本：**v0.6.38**
+当前代码包版本：**v0.6.39**
+本地候选代码版本：**v0.6.39**（未发布）
 当前治理标记：`CURRENT_V0_6_38_USER_PASS`
-当前热修门：`INC_IMGEDIT_006_R11_COMPLETE_USER_PASS / PRODUCTION_PUBLISHED_USER_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / USER_PASS`
+当前热修门：`V0_6_39_RELEASE_CANDIDATE_AUTHORIZED / TARGETED_AUTO_PASS / PROVIDER_BUDGET_VALID / HUMAN_H5_PENDING`
 
 ## 一句话
 
-**生产是 v0.6.38 / schema40且技术健康；全屏生产几何通过，Seedance真实H5创建失败后诚实停止，用户已明确验收通过。** 当前release为`/opt/unboundry/releases/v0.6.38-inc-imgedit-006-20260824`；发布授权和H5创建预算均已消费。
+**生产是 v0.6.38 / schema40且用户已验收；v0.6.39候选已修复Seedance正式接口主机与必填CallbackURL合同并获发布/控制面授权，尚未发布或发起本事件真实请求。**
+
+## INC-SEEDANCE-001 Seedance可信素材真实链路恢复（LOCAL_PROTOCOL_REPAIR_CANDIDATE）
+
+- 权威方案：`spec/INC_SEEDANCE_001_TRUSTED_ASSET_REAL_CHAIN_RECOVERY_PLAN_2026-08-24.md`；实时断点：`spec/INC_SEEDANCE_001_TRUSTED_ASSET_REAL_CHAIN_RECOVERY_CHECKPOINT.md`。
+- 正式合同确认管控面 Base URL 与四个私域素材 Action 使用`ark.cn-beijing.volcengineapi.com`；H5创建另要求必填公网HTTPS `CallbackURL`。
+- v0.6.38实现同时存在控制面主机错误和CallbackURL缺失。本地候选已统一修正URL/Host/V4签名主机，并新增`UNBOUNDRY_SEEDANCE_ARK_CALLBACK_URL`，缺失或非法时请求前fail-closed。
+- m42先以类型红确认新合同未实现；修复后最终`16/16 PASS`，source/snapshot`23946d2b…b5ff5a`。本事件真实Provider、Generation、费用和OSS写入均为0。
+- 当前`v0.6.39 / VERSION_GATE_VALID / RELEASE_GATE_VALID / PROVIDER_BUDGET_VALID`；新账本为H5创建1、认证查询15、Asset创建1、Asset查询33，付费Generation与OSS测试写入0。生产、旧回执和v0.6.38 `USER_PASS`不变，真实链完成前Provider协议不得升级为PASS。
 
 ## INC-IMGEDIT-006 图片全屏完整适配与Seedance可信素材（PRODUCTION_V0_6_38 / USER_PASS）
 

@@ -1,9 +1,25 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产运行`v0.6.38 / schema40`且技术健康。INC-IMGEDIT-006已完成GitHub、生产发布和零付费浏览器门；真实H5创建唯一一次失败后fail-closed。用户已在生产实页明确回复“通过”，当前为`USER_PASS`。
+> **当前状态**：生产仍为`v0.6.38 / schema40 / USER_PASS / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED`。INC-SEEDANCE-001的v0.6.39候选已获版本、发布和精确Provider预算授权，当前完成候选冻结与发布；真人H5尚未执行。
 
 更新时间：2026-08-24
-状态：`生产v0.6.38 / schema40 / PRODUCTION_PUBLISHED_USER_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / USER_PASS；INC-IMGEDIT-006 R11_COMPLETE_USER_PASS / ACTIVE_BRANCH_A；Provider控制面2/200，付费生成、费用与OSS写入0。`
+状态：`生产v0.6.38 / schema40 / USER_PASS；INC-SEEDANCE-001 V0_6_39_RELEASE_CANDIDATE_AUTHORIZED / TARGETED_AUTO_PASS / PROVIDER_BUDGET_VALID / HUMAN_H5_PENDING；本事件Provider 0/50、Generation/OSS/费用0。`
+
+### 2026-08-24 Seedance可信素材真实链路恢复（INC-SEEDANCE-001）
+
+- [x] 对照火山方舟正式合同，确认管控面 Base URL 和可信素材四Action均使用`ark.cn-beijing.volcengineapi.com`
+- [x] 确认`CreateVisualValidateSession`必填公网HTTPS `CallbackURL`；v0.6.38未发送
+- [x] 修正控制面URL/Host/V4签名主机，并新增`UNBOUNDRY_SEEDANCE_ARK_CALLBACK_URL` fail-closed配置
+- [x] m42预期红后最终`16/16 PASS`，source/snapshot`23946d2b…b5ff5a`；真实Provider、Generation、OSS和费用0
+- [x] 方案、Checkpoint、CURRENT_STATE、TASKS、验收矩阵和交接文档同步
+- [x] 取得v0.6.39版本号、commit/GitHub/发布及CallbackURL配置授权；`VERSION_GATE_VALID / RELEASE_GATE_VALID`
+- [x] 取得最多50次新控制面预算：H5创建1、认证查询15、Asset创建1、Asset查询33；付费Generation0、OSS测试写入0
+- [x] v0.6.39候选定向m42 `16/16`、m81 `41/41`、最终m38 `15/15`；唯一safe full原始`1055/1056`，唯一m1性能抖动`25.10ms`对`25.00ms`，同源码只复验m1 `1/1 PASS`，未重复full
+- [ ] v0.6.39发布后由用户本人完成人脸H5；旧v0.6.38 H5预算不得复用
+- [ ] 生产完成H5→Group→Asset→Active→服务端`asset://`，否则保持`REAL_FAIL_CLOSED`
+- [ ] 建立新生产回执、零付费浏览器复验和独立用户验收状态
+
+权威方案：`spec/INC_SEEDANCE_001_TRUSTED_ASSET_REAL_CHAIN_RECOVERY_PLAN_2026-08-24.md`；实时断点：`spec/INC_SEEDANCE_001_TRUSTED_ASSET_REAL_CHAIN_RECOVERY_CHECKPOINT.md`。
 
 ### 2026-08-24 图片全屏完整适配与Seedance可信素材（INC-IMGEDIT-006，PRODUCTION_V0_6_38 / USER_PASS）
 

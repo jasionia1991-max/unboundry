@@ -74,13 +74,13 @@ test("Ark control-plane signs the official paginated model-list request with the
 
   expect(calls).toHaveLength(1);
   expect(calls[0].url).toBe(
-    "https://open.volcengineapi.com/?Action=ListFoundationModels&Version=2024-01-01",
+    "https://ark.cn-beijing.volcengineapi.com/?Action=ListFoundationModels&Version=2024-01-01",
   );
   expect(calls[0].init?.method).toBe("POST");
   expect(calls[0].init?.redirect).toBe("error");
   expect(calls[0].init?.body).toBe('{"PageNumber":1,"PageSize":2}');
   const headers = new Headers(calls[0].init?.headers);
-  expect(headers.get("host")).toBe("open.volcengineapi.com");
+  expect(headers.get("host")).toBe("ark.cn-beijing.volcengineapi.com");
   expect(headers.get("x-date")).toBe("20260803T010203Z");
   expect(headers.get("x-content-sha256")).toBe(
     "19d7ea0681915fb10e24d7ca93a7a3138c8b1798bcc9f8c8295c3a8de3bd1932",
@@ -88,7 +88,7 @@ test("Ark control-plane signs the official paginated model-list request with the
   expect(headers.get("authorization")).toBe(
     "HMAC-SHA256 Credential=AKIDEXAMPLECONTROL/20260803/cn-beijing/ark/request, " +
       "SignedHeaders=host;x-content-sha256;x-date, " +
-      "Signature=e04a15beb5d4893558a8abcc28c832f426e111fdd6493c9c200b6fe6d7e08a85",
+      "Signature=f79bb510a9f59f94b465a2adf66b1261083e9d00d6a544bf2e49a3f1a1ff04cf",
   );
   expect(catalog).toEqual({
     items: [{
@@ -106,13 +106,20 @@ test("Ark control-plane signs the official paginated model-list request with the
   const trustedCalls: Array<{
     action: string | null;
     body: Record<string, unknown>;
+    headers: Headers;
+    url: string;
   }> = [];
   let visualResultReads = 0;
   let assetReads = 0;
   const trustedFetcher: typeof fetch = async (input, init) => {
     const action = actionOf(input);
     const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-    trustedCalls.push({ action, body });
+    trustedCalls.push({
+      action,
+      body,
+      headers: new Headers(init?.headers),
+      url: String(input),
+    });
     if (action === "CreateVisualValidateSession") {
       return json({ Result: {
         BytedToken: "validation-token-1",
@@ -149,6 +156,7 @@ test("Ark control-plane signs the official paginated model-list request with the
   });
   const controlRequests: string[] = [];
   const trustedPort = createVolcengineArkSeedanceTrustedAssetPort({
+    callbackUrl: "https://canvas.example.com/",
     credentials,
     identity,
     providerDisplayName: "Volcengine Ark",
@@ -227,9 +235,20 @@ test("Ark control-plane signs the official paginated model-list request with the
     "GetAsset",
   ]);
   expect(trustedCalls.map(({ action }) => action)).toEqual(controlRequests);
+  expect(trustedCalls.map(({ url }) => url)).toEqual(controlRequests.map(
+    (action) =>
+      `https://ark.cn-beijing.volcengineapi.com/?Action=${action}&Version=2024-01-01`,
+  ));
+  expect(trustedCalls.every(({ headers }) =>
+    headers.get("host") === "ark.cn-beijing.volcengineapi.com"
+  )).toBe(true);
   expect(trustedCalls.map(({ body }) => body.ProjectName)).toEqual(
     Array(6).fill("default"),
   );
+  expect(trustedCalls[0].body).toEqual({
+    CallbackURL: "https://canvas.example.com/",
+    ProjectName: "default",
+  });
   expect(trustedCalls[3].body).toEqual({
     AssetType: "Image",
     GroupId: "group-verified-1",
@@ -464,6 +483,23 @@ test("Ark read-only action allowlist contains only the three approved actions", 
   expect(isVolcengineArkSeedanceAssetAction("GetAsset")).toBe(true);
   expect(isVolcengineArkSeedanceAssetAction("DeleteAsset")).toBe(false);
   expect(isVolcengineArkSeedanceAssetAction("CreateAsset&Action=DeleteAsset")).toBe(false);
+});
+
+test("Ark trusted-asset authorization rejects a missing public HTTPS callback before transport", () => {
+  const identity = Object.freeze({
+    accountFingerprint: "e".repeat(64),
+    profileId: "ark-profile",
+    project: "default",
+    region: "cn-beijing",
+  });
+  for (const callbackUrl of ["", "http://canvas.example.com/", "not-a-url"]) {
+    expect(() => createVolcengineArkSeedanceTrustedAssetPort({
+      callbackUrl,
+      credentials,
+      identity,
+      providerDisplayName: "Volcengine Ark",
+    })).toThrow(expect.objectContaining({ code: "FORMAT" }));
+  }
 });
 
 for (const scenario of [
@@ -709,6 +745,7 @@ test("Ark control-plane aborts a stalled injected fetch at the bounded timeout",
     region: "cn-beijing",
   });
   const rateLimitedPort = createVolcengineArkSeedanceTrustedAssetPort({
+    callbackUrl: "https://canvas.example.com/",
     credentials,
     identity,
     providerDisplayName: "Volcengine Ark",

@@ -5,6 +5,14 @@
 状态：`HISTORICAL_CHECKPOINT / APPEND_ONLY`
 用途：保留各次施工与发布时点证据，不再充当当前恢复入口。**当前状态、未发布工作区与下一步只看 `UNBOUNDRY_CURRENT_STATE.md`；本文件任何旧命令或旧授权都不可复用。**
 
+## 0A. INC-SEEDANCE-001 可信素材真实链路恢复（2026-08-24 本地候选）
+
+- 生产仍为v0.6.38/schema40，用户验收与历史回执不变；Provider协议仍`REAL_FAIL_CLOSED`。
+- 正式接口对照确认 v0.6.38 复用了错误的`open.volcengineapi.com`，并遗漏H5必填`CallbackURL`；本地隔离分支已修复为地域Ark主机和HTTPS CallbackURL fail-closed。
+- 权威方案和唯一断点分别为`spec/INC_SEEDANCE_001_TRUSTED_ASSET_REAL_CHAIN_RECOVERY_PLAN_2026-08-24.md`与对应Checkpoint。
+- 当前`v0.6.39 / VERSION_GATE_VALID / RELEASE_GATE_VALID / PROVIDER_BUDGET_VALID`；本事件真实Provider 0/50、Generation、费用和OSS写入0。
+- 唯一下一动作以INC-SEEDANCE-001 Checkpoint为准；先冻结并发布v0.6.39，再创建唯一一次H5交给用户真人认证；不得复用v0.6.38旧预算。
+
 ## 0. v0.6.38 图片全屏完整适配与Seedance可信素材（2026-08-24 已发布并获用户确认，真实协议fail-closed）
 
 - tag`v0.6.38`→`ff8b80c0628f94ecf1b5cf7bdb8445433aed8a6c`/tree`c8e1e19b55cac6e50150cf2ee2160234d5a33726`；PR #87 Quality CI SUCCESS后合并为`1a1756ae98138d8885d9043ca93d81e4d4ade67b`，GitHub Release已发布。

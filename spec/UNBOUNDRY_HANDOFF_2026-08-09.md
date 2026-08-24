@@ -6,6 +6,14 @@
 
 新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-24 的权威现状、产品合同和用户验收边界。下面各节是历史增量，出现「当前」时只代表该时点。
 
+## 当前本地事件：INC-SEEDANCE-001 可信素材真实链路恢复
+
+真实仓库`/Users/mymy/Documents/unboundry/app`；隔离工作树`/private/tmp/unboundry-inc006-v0.6.38-2026-08-24`，分支`codex/inc-seedance-001-trusted-chain-2026-08-24`，基线`origin/main b94e01e`。先读AGENTS规定路线，再读`spec/INC_SEEDANCE_001_TRUSTED_ASSET_REAL_CHAIN_RECOVERY_PLAN_2026-08-24.md`和对应Checkpoint。
+
+本地已确认并修复两项正式协议偏差：管控面Base URL与可信素材四Action应走`ark.cn-beijing.volcengineapi.com`；H5创建必须发送公网HTTPS CallbackURL。当前新增`UNBOUNDRY_SEEDANCE_ARK_CALLBACK_URL`，缺失或非法时零请求fail-closed。最终m42 `16/16 PASS`，source/snapshot`23946d2b…b5ff5a`。
+
+生产仍是v0.6.38/schema40和`USER_PASS / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED`。v0.6.39版本、发布、GitHub、SSH生产、CallbackURL配置和最多50次控制面预算已经明确授权；付费Generation与OSS测试写入固定为0，H5必须由用户本人完成。不得读受保护`spec/public-templates-director-split-revision.json`。唯一下一动作以新Checkpoint为准。
+
 ## 当前线上：图片全屏完整适配与Seedance可信素材（v0.6.38，2026-08-24 USER PASS）
 
 v0.6.38已发布全屏双轴contain、透明Surface、旧本地预检语义修正、schema40可信素材安全表和只由服务端构造的`asset://`合同。tag`ff8b80c`/tree`c8e1e19`，PR #87合并`1a1756a`且Quality CI SUCCESS，GitHub Release已发布。生产current`/opt/unboundry/releases/v0.6.38-inc-imgedit-006-20260824`，切换冻结备份`v0.6.38-cutover-frozen-hoN2aM`双清单一致；schema40、数据、service、公网/回环、inventory和5资源通过。生产三视口竖图完整显示、详情和A分支失败诚实状态通过；唯一H5创建返回503后未重试，Asset/生成/OSS均0，控制面2/200。用户已在生产实页明确回复“通过”，当前为`PRODUCTION_PUBLISHED_USER_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / USER_PASS`；该用户确认不代表Provider协议成功。回执`spec/V0_6_38_PRODUCTION_RECEIPT_2026-08-24.json`。
