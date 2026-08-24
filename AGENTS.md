@@ -23,7 +23,7 @@
 
 ## 2. 当前授权边界
 
-- **2026-08-24 当前权威状态**：生产运行`v0.6.36/schema39`且技术健康，但用户已明确拒收图片工具质量，状态`PRODUCTION_V0_6_36_USER_REJECTED`。INC-IMGEDIT-005隔离候选已完成R0～R8，定向、三视口浏览器与三轮独立审查通过；唯一一次safe full原始`1052/1053`，唯一失败为旧治理正则不接受用户拒收/未定版本状态，精确修正后m38 `15/15 PASS`，未运行第二次full。用户已明确确认并允许`v0.6.37`上线，当前状态`LOCAL_ENGINEERING_COMPLETE / R9_IN_PROGRESS / VERSION_GATE_VALID / RELEASE_GATE_VALID`。权威方案为`spec/INC_IMGEDIT_005_IMAGE_TOOL_PRODUCT_REMEDIATION_PLAN_2026-08-24.md`，实时断点为对应Checkpoint。Provider/OSS/费用0；
+- **2026-08-24 当前权威状态**：生产运行`v0.6.37/schema39`且技术健康，状态`PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK`。INC-IMGEDIT-005已完成R0～R9、定向、三视口浏览器、独立审查、GitHub PR #85/CI/Release、冻结备份、fresh build、原子发布和生产零付费复验；唯一一次safe full原始`1052/1053`，唯一失败为旧治理正则，精确修正后m38 `15/15 PASS`且未运行第二次full。权威方案为`spec/INC_IMGEDIT_005_IMAGE_TOOL_PRODUCT_REMEDIATION_PLAN_2026-08-24.md`，实时断点为对应Checkpoint，回执为`spec/V0_6_37_PRODUCTION_RECEIPT_2026-08-24.json`。v0.6.37发布授权已消费，Provider/OSS/费用0；只有用户生产实页明确确认后才能写`USER_PASS`；
 - **v0.6.28 历史时点**：精确源码commit`ee6ce437730cf78ef4488217b778f6b0ef2aaee5`、tree`2811ada65140779d4a5e10cbd8ed6fa54893638b`，tag`v0.6.28`，PR #58 merge`753d24f8ee6e4facb3c88e876c4a38b456addc75`；正式safe full执行`1032/1034`，两个失败分别为0.3ms性能抖动与候选文档精确字符串，修正文档后只复验失败spec并`16/16 PASS`，未重复full。生产回执`spec/V0_6_28_PRODUCTION_RECEIPT_2026-08-21.json`；
 - v0.6.18生产源码commit为`e47f50c0bde0ee23585f27b71ad8df240973161a1`、tree为`48bee3c2c050ced3d2854390ca1ef1d0aba8fae5`；注释标签`v0.6.18`精确指向该源码。PR #32已于2026-08-19合并到`main`，merge commit为`265c8f63e867e122ecab2f145c362d5bdab3bd19`。生产凭证为`spec/INC_GEN_009_UI_ALIGN_PRODUCTION_RECEIPT_2026-08-19.json`；
 - v0.6.18正式安全全量为`118/118 specs、983/983 tests PASS`，异常0。管理员后台「优创尺寸映射」面板样式对齐暗黑 UI、比例下拉、文案大白话；出图逻辑不变。优创专用协议按文档像素发 1K/2K/4K，生产默认画质保持 1K；

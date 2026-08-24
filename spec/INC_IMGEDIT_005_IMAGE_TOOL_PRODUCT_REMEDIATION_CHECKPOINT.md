@@ -2,9 +2,9 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-24（v0.6.37发布门恢复）
-- 状态：`LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / INDEPENDENT_REVIEW_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / R9_IN_PROGRESS`
-- 当前阶段：`R9 GitHub与生产发布 / IN_PROGRESS`
+- 更新时间：2026-08-24（v0.6.37生产发布与零付费复验完成）
+- 状态：`LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / INDEPENDENT_REVIEW_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / PR_MERGED / PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK`
+- 当前阶段：`R9 GitHub与生产发布 / COMPLETE`
 - 权威方案：`spec/INC_IMGEDIT_005_IMAGE_TOOL_PRODUCT_REMEDIATION_PLAN_2026-08-24.md`
 - 当前仓库：`/Users/mymy/Documents/unboundry/app`
 - 当前隔离工作树：`/private/tmp/unboundry-inc005-review-otSo4O`
@@ -12,17 +12,17 @@
 - 建档 HEAD：`a4bb48c60dc7f62b23f4ca776da47f7931ba6e6f`
 - package：`0.6.37`
 - schema：`39`
-- 生产：`v0.6.36 / TECHNICALLY_HEALTHY / USER_REJECTED`
-- 本地候选：功能与版本冻结提交`3bb6fb0`；已完成本地工程、定向、浏览器、独立审查和唯一一次safe full；尚未push/PR/tag/发布
-- 候选版本：`v0.6.37 / VERSION_GATE_VALID`
-- 发布授权：用户明确“允许发布：v0.6.37 上线” / `RELEASE_GATE_VALID`；一次性授权尚未消费
+- 生产：`v0.6.37 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS`
+- 本地候选：功能与版本冻结提交`3bb6fb0`，候选文档提交`d28996b`；tag精确指向`d28996b`
+- 候选版本：`v0.6.37 / PUBLISHED`
+- 发布授权：用户明确“允许发布：v0.6.37 上线” / `CONSUMED`
 - 真实Provider/尝试/成功/费用：`0 / 0 / 0 / 0`
-- 用户质量：`USER_REJECTED`；没有`USER_PASS`
+- 用户质量：`USER_RECHECK`；没有`USER_PASS`
 - 受保护文件：`spec/public-templates-director-split-revision.json`永久禁止读取、修改、暂存、提交、删除或改名
 
 ## 1. 唯一下一动作
 
-在已确认v0.6.37 tag/release均不存在且origin/main未漂移后，同步package/lock/runtime/m81和治理文档；运行m38+m81安全定向，冻结并提交精确候选，再执行tag/push/PR/CI/merge与生产发布。
+等待用户在生产实页复验v0.6.37图片工具并明确回复“通过”；只有收到该确认后才能把本事件升级为`USER_PASS`。在此之前不再执行发布、Provider、OSS或生产写操作。
 
 ## 2. 阶段状态
 
@@ -37,13 +37,13 @@
 | R6 全部17项UI与交互review | TARGETED_AUTO_PASS |
 | R7 定向自动与浏览器矩阵 | TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS |
 | R8 候选冻结、safe full和独立审查 | COMPLETE / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS |
-| R9 GitHub与生产发布 | IN_PROGRESS / VERSION_GATE_VALID / RELEASE_GATE_VALID |
+| R9 GitHub与生产发布 | COMPLETE / PR_MERGED / PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK |
 
 同时最多一个阶段为`IN_PROGRESS`。
 
 ## 3. 验收条目
 
-`IMGEDIT-029～037`已具定向自动与本地浏览器矩阵证据；`IMGEDIT-038`达到`LOCAL_CANDIDATE_PASS / USER_RECHECK / RELEASE_IN_PROGRESS`。
+`IMGEDIT-029～037`已具定向自动、本地浏览器与生产零付费浏览器证据；`IMGEDIT-038`达到`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`。
 
 ## 4. R0 实时恢复与现有修正审计
 
@@ -211,6 +211,19 @@
 - 版本定向结论：m81 `41/41 PASS`与m38最小复验`15/15 PASS`；首转`55/56`的治理格式失败保留，不写成合并`56/56`一次全通过
 - 提交前门：origin/main仍为`a4bb48c`，`git diff --check`通过，受保护JSON未进入diff/stage；功能与版本候选已提交为`3bb6fb0`
 - 唯一下一动作：提交本次候选身份文档收口，对最终治理树仅复验m38；通过后创建不可变注释v0.6.37 tag并push分支/tag、PR/CI/merge
+
+### R9完成：GitHub、生产发布与零付费生产复验
+
+- GitHub：注释tag `v0.6.37`解引用到`d28996b23431c1f28821d51d39631cc9f3ac6838`，tree `c710145c3666356920742701c1f9db1e3f734db7`；PR #85已合并为`0d65c9867d20b09e785a80740ffafbf007048426`且main tree相同；Quality run `32702822675` / job `97357681949`为`SUCCESS`；GitHub Release已发布
+- 生产：fresh Node22构建发布到`/opt/unboundry/releases/v0.6.37-inc-imgedit-005-20260824`；current已原子切换，上一不可变v0.6.36 release保留；公网/回环version均为0.6.37，live/ready均200，service active/enabled且NRestarts0
+- 备份：`/var/lib/unboundry-rollbacks/v0.6.37-frozen-taKYwu`；冻结与恢复副本各366文件，双清单SHA-256均为`061f28281966d7124701f6ca7e94edc5737cffc03efbdef3a9c5f968f3a3e7a0`；主库schema39与Library schema1完整性/FK均通过
+- 数据门：切换前后tasks780、attempts788、active0、media814/1474742837 bytes、publications404/active0、canvas62、templates50/48、Library2完全一致；公网5资源与release逐字节一致
+- 生产浏览器：既有项目完成三视口代表矩阵、400×48九按钮、238×272八项更多菜单、单一Host、modal inert、全屏详情、有效内容快速切分、安全Blob裁剪、Seedance三层状态和无预计金额复验；代表序列12请求、写请求0、Generation/Provider0，console error/warn0，生产数据不变
+- 外部影响：发布和复验新增Provider请求、尝试、成功、费用与真实OSS写入均为0；schema未变；没有删除用户数据、历史媒体、备份或旧release
+- 权威回执：`spec/V0_6_37_PRODUCTION_RECEIPT_2026-08-24.json`
+- 授权：v0.6.37版本与发布授权已消费，不得复用
+- R9结论：`PR_MERGED / PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK`
+- 唯一下一动作：等待用户在生产实页明确确认；收到“通过”后才更新`USER_PASS`
 
 ## 14. Checkpoint更新模板
 

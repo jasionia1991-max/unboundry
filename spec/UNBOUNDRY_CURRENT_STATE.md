@@ -1,27 +1,30 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网仍为v0.6.36/schema39且技术健康，但用户已明确拒收图片工具生产质量。INC-IMGEDIT-005本地工程、定向、三视口浏览器、唯一一次safe full与第三轮独立审查已完成；v0.6.37版本门与发布门有效，状态为`PRODUCTION_V0_6_36_USER_REJECTED / INC_IMGEDIT_005_LOCAL_ENGINEERING_COMPLETE / R9_IN_PROGRESS`，没有`USER_PASS`。
+> **状态分层**：现网为v0.6.37/schema39且技术健康。INC-IMGEDIT-005已完成本地工程、定向、三视口浏览器、唯一一次safe full、独立审查、GitHub、生产发布和零付费生产复验；状态为`PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK`，没有`USER_PASS`。
 
 更新日期：2026-08-24
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
 当前代码包版本：**v0.6.37**
 本地候选代码版本：**v0.6.37**
-当前治理标记：`CURRENT_V0_6_36_USER_REJECTED_INC_IMGEDIT_005_R9`
-当前热修门：`INC_IMGEDIT_005_LOCAL_ENGINEERING_COMPLETE / INDEPENDENT_REVIEW_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / VERSION_GATE_VALID / RELEASE_GATE_VALID / R9_IN_PROGRESS`
+当前治理标记：`CURRENT_V0_6_37_USER_RECHECK`
+当前热修门：`INC_IMGEDIT_005_LOCAL_ENGINEERING_COMPLETE / INDEPENDENT_REVIEW_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / PR_MERGED / PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK`
 
 ## 一句话
 
-**生产是 v0.6.36 / schema39且技术健康，但用户已明确拒收图片工具质量；不能再写“只待确认”。** PR #83、tag和生产release仍是不可改写的历史事实。v0.6.37功能与版本候选已在隔离分支提交为`3bb6fb0`，用户已明确确认并允许上线，R9正在执行。生产切换前仍保持v0.6.36。
+**生产是 v0.6.37 / schema39且技术健康，INC-IMGEDIT-005已完成生产自动验收，等待用户实页复验。** tag `v0.6.37`指向`d28996b`，PR #85合并为`0d65c98`且main/tag tree一致；生产release为`/opt/unboundry/releases/v0.6.37-inc-imgedit-005-20260824`。发布授权已消费，只有用户明确确认后才能写`USER_PASS`。
 
-## INC-IMGEDIT-005 图片工具产品质量拒收返工（R8_COMPLETE / R9_IN_PROGRESS）
+## INC-IMGEDIT-005 图片工具产品质量拒收返工（R9_COMPLETE / USER_RECHECK）
 
 - 用户在前一轮本地纠正后继续指出：图片全屏缺少提示词、模型、尺寸等详情；派生结果使用固定坐标覆盖；Seedance素材校验只有本地规则；擦除、扩图、增强等本地与模型处理方式不透明
 - 只读检查确认图片详情确实只有标题/下载/关闭，视频详情已有完整信息；多个派生use case仍使用`source.x + source.width + 140`；Seedance返回`remoteValidationAvailable:false / local-technical-preflight`；擦除/重绘/扩图为本地mask或准备图加模型生成，保守增强为本地轻滤镜
 - 权威方案为`spec/INC_IMGEDIT_005_IMAGE_TOOL_PRODUCT_REMEDIATION_PLAN_2026-08-24.md`，实时断点为`spec/INC_IMGEDIT_005_IMAGE_TOOL_PRODUCT_REMEDIATION_CHECKPOINT.md`
 - 方案覆盖图片详情、统一空白区放置、有效内容切分、透明Surface、扩图参数真实性、预计金额移除、处理引擎语义、Seedance三层校验及顶部9项/更多8项全review；验收新增`IMGEDIT-029～038`
 - R0～R8本地工程完成；三轮独立审查关闭全部P1/P2，最终`INDEPENDENT_REVIEW_PASS`。最终safe m100+m2 `24/24 PASS`，source/snapshot`015a7329…95c8`。唯一一次safe full原始120 specs / 1053 tests为`1052/1053 PASS`，唯一失败是旧m38治理正则不能表达用户拒收与未定候选版本；精确修正后只复验m38并`15/15 PASS`，未运行第二次full
-- 用户已明确给出`版本号确认：v0.6.37`与`允许发布：v0.6.37 上线`；v0.6.37本地/远端tag及GitHub Release均不存在，R9已解除阻断并进入版本同步、候选冻结和发布流程
-- 真实Provider/尝试/成功/费用继续固定为0；旧6次/60 USD和v0.6.36发布授权不得复用
+- 用户已明确给出`版本号确认：v0.6.37`与`允许发布：v0.6.37 上线`；该一次性授权已完成并消费
+- tag `v0.6.37`解引用到`d28996b`/tree`c710145c`；PR #85合并为`0d65c98`且main tree相同，Quality gates SUCCESS，GitHub Release已发布
+- 生产已原子切换到`/opt/unboundry/releases/v0.6.37-inc-imgedit-005-20260824`；冻结备份`/var/lib/unboundry-rollbacks/v0.6.37-frozen-taKYwu`双清单一致；schema39、主库/Library、数据计数、service、公网/回环、inventory和5资源全部通过
+- 生产零付费浏览器复验完成三视口代表矩阵、全屏详情、有效内容切分、扩图语义、Seedance三层、单一Host/inert、无预计金额和零写网络门；console error/warn0，数据不变
+- 真实Provider/尝试/成功/费用和真实OSS测试写入继续固定为0；旧6次/60 USD与v0.6.37发布授权不得复用。回执：`spec/V0_6_37_PRODUCTION_RECEIPT_2026-08-24.json`
 
 v0.6.34冻结前定向`234/234 PASS`；唯一一次safe full原始`1048/1052`，只修正一个真实图片预检缺陷与三个测试确定性问题后，精确四spec `106/106 PASS`，没有第二次full。GitHub、冻结备份与恢复副本、精确tag源码构建、schema39数据门、原子切换、公网/回环/service/inventory/资源门均已完成。
 

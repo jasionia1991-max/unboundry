@@ -5,6 +5,14 @@
 状态：`HISTORICAL_CHECKPOINT / APPEND_ONLY`
 用途：保留各次施工与发布时点证据，不再充当当前恢复入口。**当前状态、未发布工作区与下一步只看 `UNBOUNDRY_CURRENT_STATE.md`；本文件任何旧命令或旧授权都不可复用。**
 
+## 0. v0.6.37 图片工具产品质量拒收返工（2026-08-24，已技术发布、待用户复验）
+
+- tag `v0.6.37`→commit `d28996b23431c1f28821d51d39631cc9f3ac6838`/tree `c710145c3666356920742701c1f9db1e3f734db7`；PR #85 squash merge`0d65c9867d20b09e785a80740ffafbf007048426`且main tree一致；Quality gates SUCCESS，GitHub Release已发布。
+- 最终直接受影响m100+m2 `24/24 PASS`；唯一safe full原始`1052/1053`，唯一m38治理格式失败精确修正后`15/15 PASS`，未运行第二次full；独立审查无剩余P0/P1/P2。
+- 生产release`/opt/unboundry/releases/v0.6.37-inc-imgedit-005-20260824`，冻结备份`/var/lib/unboundry-rollbacks/v0.6.37-frozen-taKYwu`的source/restore各366文件，双清单SHA`061f2828…e7a0`。schema39、主库/Library integrity/FK、切换前后数据、service、公网/回环、inventory和5资源全部通过。
+- 生产三视口代表矩阵确认400×48九按钮、238×272更多菜单、单一Host、modal inert、全屏详情、有效内容快速切分、安全Blob裁剪、Seedance三层、无预计金额；代表序列写请求0、Generation/Provider0，console error/warn0，生产数据不变。
+- Provider请求/尝试/成功/费用和真实OSS测试写入均为0；发布授权已消费。状态`PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK`；权威回执`spec/V0_6_37_PRODUCTION_RECEIPT_2026-08-24.json`。
+
 ## 0. v0.6.36 图片工具交互与 UI 返工（2026-08-24，已技术发布、待用户复验）
 
 - tag `v0.6.36`→commit `c2cbd5470a733a053306363993a94da1bc27a89e`/tree`197417a580802694c8f533272f74cc3d82112ea8`；PR #83 squash merge`24d1fc6f2af22b98f1a6aff31ac371440328d154`且main tree一致。

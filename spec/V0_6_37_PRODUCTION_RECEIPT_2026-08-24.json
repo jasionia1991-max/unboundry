@@ -1,0 +1,201 @@
+{
+  "version": "v0.6.37",
+  "date": "2026-08-24",
+  "status": "PRODUCTION_PUBLISHED_AUTO_PASS",
+  "scope": {
+    "summary": "INC-IMGEDIT-005图片工具产品质量拒收返工：有效内容切分、统一空白区放置、图片全屏详情、透明Surface、扩图参数真实性、本地与模型语义、Seedance分层校验及17项全review。",
+    "schemaChanged": false,
+    "schemaVersion": 39,
+    "releaseInitiatedProviderRequests": 0,
+    "releaseInitiatedProviderAttempts": 0,
+    "releaseInitiatedOssWrites": 0,
+    "releaseCostUsd": 0,
+    "protectedJsonReadOrMutated": false
+  },
+  "source": {
+    "candidateCommit": "d28996b23431c1f28821d51d39631cc9f3ac6838",
+    "tag": "v0.6.37",
+    "tagObject": "13c92ee46fb9a34c60e17593f782321b1c112686",
+    "tagCommit": "d28996b23431c1f28821d51d39631cc9f3ac6838",
+    "tagTree": "c710145c3666356920742701c1f9db1e3f734db7",
+    "pullRequest": 85,
+    "pullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/85",
+    "mergeCommit": "0d65c9867d20b09e785a80740ffafbf007048426",
+    "mainTree": "c710145c3666356920742701c1f9db1e3f734db7",
+    "mainTreeEqualsTagTree": true,
+    "productionSource": "annotated tag v0.6.37",
+    "pullRequestQualityGateRun": 32702822675,
+    "pullRequestQualityGateJob": 97357681949,
+    "pullRequestQualityGateConclusion": "SUCCESS",
+    "githubRelease": "https://github.com/jasionia1991-max/unboundry/releases/tag/v0.6.37"
+  },
+  "verification": {
+    "directlyAffectedTargeted": {
+      "scope": "m100-modular-ports + m2-image-node",
+      "tests": 24,
+      "passed": 24,
+      "failed": 0,
+      "sourceAndSnapshotSha256": "015a73299059eb26c2e5cd6e6c2fc43c5e8de1694f23a08618a971fd9a4e95c8"
+    },
+    "formalSafeFullRuns": 1,
+    "formalSafeFull": {
+      "specs": 120,
+      "tests": 1053,
+      "passed": 1052,
+      "failed": 1,
+      "blocked": 0,
+      "retries": 0,
+      "skipped": 0,
+      "reportErrors": 0,
+      "exitCode": 1,
+      "sourceAndSnapshotSha256": "d8e52414f50b6c24d1018659dfcde8003057a6681f19eab699ffa9b1e3b7970b"
+    },
+    "safeFullFailureClassification": "The only failure was the old m38 governance format, not a product test. It was corrected and rechecked narrowly; no second full was run.",
+    "versionSyncTargeted": {
+      "m81": "41/41 PASS",
+      "firstM38": "14/15 PASS due only to candidate-version field formatting",
+      "finalM38": "15/15 PASS",
+      "finalGovernanceSourceAndSnapshotSha256": "bef2bb446b5b492bbcc496232a25da05c68df99bff0a245107a7f916d3e29734"
+    },
+    "independentReview": "INDEPENDENT_REVIEW_PASS / no remaining P0, P1 or P2",
+    "secondFullRun": false,
+    "realProviderRequestsDuringAutomatedTests": 0,
+    "realOssWritesDuringAutomatedTests": 0
+  },
+  "release": {
+    "archiveSha256": "598fb80d216c460d56dc04b873627e01e3c73bc94ef44649dc48386d377c04fe",
+    "releasePath": "/opt/unboundry/releases/v0.6.37-inc-imgedit-005-20260824",
+    "previousRelease": "/opt/unboundry/releases/v0.6.36-image-tool-ui-remediation-20260824",
+    "currentTarget": "/opt/unboundry/releases/v0.6.37-inc-imgedit-005-20260824",
+    "freshBuild": {
+      "node": "v22.23.2",
+      "npm": "10.9.8",
+      "npmCiIgnoreScripts": "PASS",
+      "typecheck": "PASS",
+      "viteBuild": "PASS",
+      "knownChunkSizeWarningOnly": true
+    },
+    "inventory": {
+      "files": 5937,
+      "inventoryLines": 5936,
+      "sha256": "12f6107fb1f0e3eaa318fb3eb4dd880137823ffe09c39ac15185a63136f4ee0b",
+      "postSwitchCheck": "PASS"
+    }
+  },
+  "preCutoverActivity": {
+    "quietGateSeconds": 76,
+    "firstCheckAt": "2026-08-24T07:47:13.004Z",
+    "secondCheckAt": "2026-08-24T07:48:29.304Z",
+    "activeTasksAtFirstCheck": 0,
+    "activeTasksAtSecondCheck": 0,
+    "activeMediaPublicationsAtFirstCheck": 0,
+    "activeMediaPublicationsAtSecondCheck": 0
+  },
+  "frozenBackup": {
+    "path": "/var/lib/unboundry-rollbacks/v0.6.37-frozen-taKYwu",
+    "createdOnce": true,
+    "backupScriptInitialMediaFiles": 355,
+    "finalFrozenAndRestoreFiles": 366,
+    "frozenManifestSha256": "061f28281966d7124701f6ca7e94edc5737cffc03efbdef3a9c5f968f3a3e7a0",
+    "restoreManifestSha256": "061f28281966d7124701f6ca7e94edc5737cffc03efbdef3a9c5f968f3a3e7a0",
+    "schemaVersion": 39,
+    "integrity": "ok",
+    "foreignKeyViolations": 0,
+    "librarySchemaVersion": 1,
+    "libraryIntegrity": "ok",
+    "libraryForeignKeyViolations": 0,
+    "libraryEntries": 2,
+    "librarySupplement": "The plaintext server backup was supplemented with a consistent node:sqlite online backup of library.sqlite before both manifests were generated.",
+    "restoredCountsEqualPreCutover": true,
+    "deletedOrOverwritten": false
+  },
+  "productionAcceptance": {
+    "cutoverAt": "2026-08-24T15:49:24+08:00",
+    "loopbackVersion": "0.6.37",
+    "publicVersion": "0.6.37",
+    "loopbackLive": 200,
+    "loopbackReady": 200,
+    "publicLive": 200,
+    "publicReady": 200,
+    "readyMode": "active",
+    "activeLeaseHeld": true,
+    "serviceActive": true,
+    "serviceEnabled": true,
+    "serviceRestarts": 0,
+    "schemaVersion": 39,
+    "integrity": "ok",
+    "foreignKeyViolations": 0,
+    "librarySchemaVersion": 1,
+    "libraryIntegrity": "ok",
+    "countsBeforeAndAfterEqual": true,
+    "counts": {
+      "generationTasks": 780,
+      "providerAttempts": 788,
+      "activeTasks": 0,
+      "mediaAssets": 814,
+      "mediaBytes": 1474742837,
+      "mediaPublicationAttempts": 404,
+      "activeMediaPublications": 0,
+      "canvasDocuments": 62,
+      "libraryEntries": 2,
+      "publicTemplates": 50,
+      "publishedPublicTemplates": 48
+    },
+    "publicAssetsCompared": 5,
+    "publicAssetsEqualRelease": true,
+    "publicAssetSha256": {
+      "CanvasShell-iX4j9eKd.js": "25b556f8c0242d97eacf5975494dec84fbec187413872209be00f6f96c2ad455",
+      "WorkspacePage--fIaCvo1.js": "0912b67c8f9027b00ee4e9dd2ef42eec3a5f77238fd93b6029be33e1f1b1ebce",
+      "index-Cb8_UCrB.css": "9c56b7fec89bf91b77aa06792376556e1cd24849f8260132632de23ba31d7f57",
+      "index-D_htwXPM.js": "89deae214f710258a6d7b949234cf1be8b8feaa51ff165bbb4cc3d1de674a35d",
+      "projectStorage-bHHvVbZr.js": "3c833bb4553d2814ce94fc0791d8dca5663bb627293d6f30ef17fa1d55e51495"
+    },
+    "journalLinesInspected": 32,
+    "journalUnexpectedErrorMatches": 0,
+    "journalGenerationProviderOssMatches": 0,
+    "releaseInitiatedProviderRequests": 0,
+    "releaseInitiatedOssWrites": 0
+  },
+  "productionBrowserAcceptance": {
+    "status": "PRODUCTION_ZERO_PAID_BROWSER_PASS",
+    "project": "v0.6.34 图片工具技术冒烟副本 2026-08-23",
+    "viewports": ["1280x720", "1440x900", "1728x900"],
+    "toolbar": "400x48 with nine 40x40 buttons",
+    "moreMenu": "238x272 with eight ordered items",
+    "allToolsSingleHost": true,
+    "allPanelsInsideViewport": true,
+    "modalBackgroundInert": true,
+    "popoverBackgroundNotInert": true,
+    "fullscreenDetails": "Prompt, source, model, 1440x2560, 9:16, 2K, 3.9 MB and source asset",
+    "quickSplit": "visible image body recognized before 2x2/3x3/4x4 confirmation",
+    "cropSafeBlobReady": true,
+    "seedanceLayeredStatus": true,
+    "userVisibleEstimatedCostText": false,
+    "consoleErrorsOrWarnings": 0,
+    "networkEvidence": {
+      "representativeSequence": "multi-angle -> fullscreen -> crop -> redraw -> enhance -> cutout -> seedance",
+      "requests": 12,
+      "mutatingRequests": 0,
+      "generationOrProviderRequests": 0,
+      "truncated": false
+    },
+    "productionCountsUnchangedAfterBrowserAcceptance": true,
+    "realProviderRequests": 0,
+    "realOssWrites": 0
+  },
+  "rollback": {
+    "required": false,
+    "automaticRollbackGuardWasArmed": true,
+    "previousReleaseRetained": true,
+    "frozenBackupRetained": true,
+    "productionDataDeleted": false,
+    "productionMediaDeleted": false,
+    "immutableReleaseDeleted": false
+  },
+  "authorizationConsumed": true,
+  "userAcceptance": {
+    "status": "USER_RECHECK",
+    "scope": "v0.6.37 INC-IMGEDIT-005 image-tool product remediation"
+  },
+  "completionBoundary": "v0.6.37 is technically published and passed zero-paid production browser acceptance. USER_PASS still requires explicit user confirmation on the production page."
+}
