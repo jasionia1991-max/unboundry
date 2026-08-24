@@ -166,6 +166,83 @@ test.afterEach(async ({ request }, testInfo) => {
   }
 });
 
+test("Image fullscreen contains the complete 1086x1448 source inside the viewer", async ({
+  page,
+}) => {
+  await page.setViewportSize({ height: 720, width: 1280 });
+  await page.goto("/__fixture/node.image.success");
+  const node = page.locator('.react-flow__node-image[data-id="image-primary"]');
+  await node.click();
+  await page.getByTestId("image-node-toolbar")
+    .getByRole("button", { name: "全屏查看" })
+    .click();
+
+  const preview = page.getByTestId("image-detail-preview");
+  const verticalFixture = "data:image/svg+xml," + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="1086" height="1448" viewBox="0 0 1086 1448">' +
+      '<rect width="1086" height="1448" fill="#363636"/>' +
+      '<rect x="2" y="2" width="1082" height="1444" fill="none" stroke="#fff" stroke-width="4"/>' +
+      '<circle cx="543" cy="360" r="120" fill="#999"/>' +
+      '<path d="M260 1320c30-600 536-600 566 0" fill="#777"/>' +
+    "</svg>",
+  );
+  await preview.evaluate((image: HTMLImageElement, src) => {
+    image.src = src;
+  }, verticalFixture);
+  await expect.poll(() => preview.evaluate((image: HTMLImageElement) => ({
+    height: image.naturalHeight,
+    width: image.naturalWidth,
+  }))).toEqual({ height: 1448, width: 1086 });
+
+  const geometry = await page.getByTestId("image-detail").evaluate((dialog) => {
+    const viewer = dialog.querySelector<HTMLElement>(".image-detail-viewer");
+    const image = dialog.querySelector<HTMLImageElement>(".image-detail-preview");
+    if (!viewer || !image) throw new Error("fullscreen geometry missing");
+    const viewerBounds = viewer.getBoundingClientRect();
+    const imageBounds = image.getBoundingClientRect();
+    return {
+      image: {
+        bottom: imageBounds.bottom,
+        height: imageBounds.height,
+        left: imageBounds.left,
+        right: imageBounds.right,
+        top: imageBounds.top,
+        width: imageBounds.width,
+      },
+      naturalRatio: image.naturalWidth / image.naturalHeight,
+      renderedRatio: imageBounds.width / imageBounds.height,
+      viewer: {
+        bottom: viewerBounds.bottom,
+        left: viewerBounds.left,
+        right: viewerBounds.right,
+        top: viewerBounds.top,
+      },
+    };
+  });
+  expect(geometry.image.top).toBeGreaterThanOrEqual(geometry.viewer.top);
+  expect(geometry.image.left).toBeGreaterThanOrEqual(geometry.viewer.left);
+  expect(geometry.image.right).toBeLessThanOrEqual(geometry.viewer.right);
+  expect(geometry.image.bottom).toBeLessThanOrEqual(geometry.viewer.bottom);
+  expect(geometry.renderedRatio).toBeCloseTo(geometry.naturalRatio, 4);
+});
+
+test("Image tools do not present local Seedance preflight as trusted-material validation", async ({
+  page,
+}) => {
+  await page.setViewportSize({ height: 900, width: 1440 });
+  await page.goto("/__fixture/node.image.success");
+  const node = page.locator('.react-flow__node-image[data-id="image-primary"]');
+  await node.click();
+  await page.getByTestId("image-node-toolbar")
+    .getByRole("button", { name: "浏览全部" })
+    .click();
+  const menu = page.getByTestId("image-node-more-menu");
+  await expect(menu.getByRole("menuitem", { name: "Seedance 素材校验" }))
+    .toHaveCount(0);
+  await expect(menu.getByRole("menuitem", { name: "角色可信素材" }))
+    .toBeVisible();
+});
+
 test("Image empty and local upload states match the observed geometry", async ({
   page,
   request,

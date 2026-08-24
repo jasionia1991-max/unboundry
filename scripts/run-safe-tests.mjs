@@ -2051,8 +2051,8 @@ async function discover(specs, suiteRoot, sourceRoot, browserRoot) {
         })}`,
       );
     }
-    if (discovery.tests !== 1053) {
-      fail(`the frozen 1053-test inventory changed to ${discovery.tests}`);
+    if (discovery.tests !== 1055) {
+      fail(`the frozen 1055-test inventory changed to ${discovery.tests}`);
     }
     const idsByFile = {};
     const { entries } = collectReportEntries(reportFile, sourceRoot);

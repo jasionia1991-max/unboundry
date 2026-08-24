@@ -1,6 +1,6 @@
 # INC-IMGEDIT-006 图片全屏完整适配与 Seedance 可信素材最终修订方案
 
-> 状态：`GOAL_ACTIVE / R0_AUTO_PASS / R1_IN_PROGRESS`
+> 状态：`GOAL_ACTIVE / R1_EXPECTED_RED_COMPLETE / R2_IN_PROGRESS`
 >
 > 日期：2026-08-24
 >
