@@ -28,6 +28,11 @@ import {
 } from "../server/generationQueryPort";
 import { applicationComposition } from "../server/applicationComposition";
 import {
+  applyPendingSchemaMigrationsInTransaction,
+  currentSchemaVersion,
+  databaseMatchesSchemaContract,
+} from "../server/database";
+import {
   MediaGenerationProviderRegistry,
   type MediaGenerationExecution,
   type MediaGenerationProvider,
@@ -61,6 +66,11 @@ import {
 import type { MediaRecord } from "../server/mediaRegistry";
 import { validatePng, validateTransparentPng } from "../server/assetStorage";
 import type { ProviderProfile } from "../server/providerProfiles";
+import {
+  createSeedanceTrustedAssetStore,
+  seedanceControlIdempotencyKey,
+  seedanceProviderAccountFingerprint,
+} from "../server/seedanceTrustedAssetStore";
 import {
   createMediaPublicationService,
   mediaPublicationService,
@@ -1736,6 +1746,155 @@ test("composition root wires public module APIs and delegates readiness SQL", as
     database.close();
   }
 
+  const trustedDatabase = new DatabaseSync(":memory:");
+  try {
+    trustedDatabase.exec(
+      "PRAGMA foreign_keys = ON;" +
+        "CREATE TABLE IF NOT EXISTS schema_migrations (\n" +
+        "      version INTEGER PRIMARY KEY,\n" +
+        "      name TEXT NOT NULL,\n" +
+        "      applied_at TEXT NOT NULL\n" +
+        "    ); BEGIN IMMEDIATE;",
+    );
+    applyPendingSchemaMigrationsInTransaction(trustedDatabase, {
+      sourceVersion: 0,
+    });
+    trustedDatabase.exec("COMMIT");
+    expect(currentSchemaVersion).toBe(40);
+    expect(databaseMatchesSchemaContract(trustedDatabase)).toBe(true);
+    const timestamp = "2026-08-24T10:00:00.000Z";
+    trustedDatabase.prepare(`
+      INSERT INTO users (
+        id, login_name, display_name, password_hash, role, status,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, 'user', 'active', ?, ?)
+    `).run("trusted-owner", "trusted-owner", "Trusted owner", "hash", timestamp, timestamp);
+    trustedDatabase.prepare(`
+      INSERT INTO provider_profiles (
+        id, display_name, driver, status, created_at, updated_at
+      ) VALUES (?, ?, 'volcengine-ark', 'enabled', ?, ?)
+    `).run("ark-trusted", "Volcengine Ark", timestamp, timestamp);
+    trustedDatabase.prepare(`
+      INSERT INTO media_assets (
+        kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
+        content_type, checksum_sha256
+      ) VALUES ('image', ?, ?, ?, 4, ?, ?, 'image/png', ?)
+    `).run(
+      "trusted-image",
+      "trusted-owner",
+      "trusted-image.png",
+      timestamp,
+      timestamp,
+      "a".repeat(64),
+    );
+    const identity = Object.freeze({
+      accountFingerprint: seedanceProviderAccountFingerprint({
+        accountId: "account-stable-across-key-rotation",
+        project: "default",
+        region: "cn-beijing",
+      }),
+      profileId: "ark-trusted",
+      project: "default",
+      region: "cn-beijing",
+    });
+    const store = createSeedanceTrustedAssetStore(trustedDatabase);
+    const groupKey = seedanceControlIdempotencyKey({
+      identity,
+      operation: "group",
+      ownerId: "trusted-owner",
+    });
+    const group = store.upsertGroup({
+      ...identity,
+      acceptedAt: null,
+      authorizationStatus: "SESSION_PENDING",
+      createdAt: timestamp,
+      expiresAt: null,
+      id: "group-local-1",
+      idempotencyKey: groupKey,
+      ownerId: "trusted-owner",
+      providerGroupId: null,
+      providerStatus: "Pending",
+      revokedAt: null,
+      updatedAt: timestamp,
+    });
+    expect(group.id).toBe("group-local-1");
+    expect(store.upsertGroup({
+      ...group,
+      id: "must-not-create-a-second-group",
+      providerGroupId: "provider-group-1",
+      authorizationStatus: "WAITING_AUTHORIZATION",
+    })).toMatchObject({
+      id: "group-local-1",
+      providerGroupId: "provider-group-1",
+    });
+    const session = store.upsertSession({
+      ...identity,
+      createdAt: timestamp,
+      expiresAt: "2026-08-24T10:30:00.000Z",
+      groupId: "group-local-1",
+      id: "session-local-1",
+      idempotencyKey: seedanceControlIdempotencyKey({
+        identity,
+        operation: "session",
+        ownerId: "trusted-owner",
+        source: {
+          assetId: "trusted-image",
+          checksumSha256: "a".repeat(64),
+          kind: "image",
+        },
+      }),
+      ownerId: "trusted-owner",
+      providerSessionId: "provider-session-opaque-1",
+      providerStatus: "Waiting",
+      status: "WAITING_AUTHORIZATION",
+      updatedAt: timestamp,
+    });
+    expect(session).not.toHaveProperty("authorizationUrl");
+    expect(store.sessionById("different-owner", session.id)).toBeUndefined();
+    const binding = store.upsertBinding({
+      ...identity,
+      checkedAt: null,
+      createdAt: timestamp,
+      failureCode: null,
+      failureMessage: null,
+      groupId: group.id,
+      id: "binding-local-1",
+      idempotencyKey: seedanceControlIdempotencyKey({
+        identity,
+        operation: "asset",
+        ownerId: "trusted-owner",
+        source: {
+          assetId: "trusted-image",
+          checksumSha256: "a".repeat(64),
+          kind: "image",
+        },
+      }),
+      ownerId: "trusted-owner",
+      providerAssetId: null,
+      providerAssetType: null,
+      providerStatus: null,
+      sourceAssetId: "trusted-image",
+      sourceChecksumSha256: "a".repeat(64),
+      sourceKind: "image",
+      status: "ASSET_PROCESSING",
+      updatedAt: timestamp,
+    });
+    expect(binding.status).toBe("ASSET_PROCESSING");
+    expect(store.bindingForSource({
+      identity,
+      ownerId: "different-owner",
+      sourceAssetId: "trusted-image",
+    })).toBeUndefined();
+    const persistedColumns = trustedDatabase.prepare(`
+      SELECT name FROM pragma_table_info('seedance_authorization_sessions')
+      ORDER BY cid
+    `).all().map((row) => String((row as { name: unknown }).name));
+    expect(persistedColumns).not.toContain("authorization_url");
+    expect(JSON.stringify(persistedColumns)).not.toMatch(/biometric|camera|face|secret/i);
+  } finally {
+    trustedDatabase.close();
+  }
+
   const [compositionSource, viteSource] = await Promise.all([
     readFile(join(process.cwd(), "server/applicationComposition.ts"), "utf8"),
     readFile(join(process.cwd(), "vite.config.ts"), "utf8"),
@@ -1745,7 +1904,7 @@ test("composition root wires public module APIs and delegates readiness SQL", as
     /canvasPersistence|generationTasks|generationSafety|providerProfiles/,
   );
   expect(compositionSource.match(/from "\.\/[^\"]+(?:Application|Runtime)Api"/g))
-    .toHaveLength(8);
+    .toHaveLength(9);
   expect(viteSource).not.toMatch(
     /server\/(?:canvasPersistence|generationAttemptQueries|generationSafety|generationTasks|providerProfiles)/,
   );

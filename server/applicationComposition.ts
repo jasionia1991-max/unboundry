@@ -7,6 +7,7 @@ import { mediaApplicationApi } from "./mediaApplicationApi";
 import { publishedSeedanceValidationModel } from "./modelCatalog";
 import { providerApplicationApi } from "./providerApplicationApi";
 import { providerRuntimeApi } from "./providerRuntimeApi";
+import { seedanceTrustedAssetApplicationApi } from "./seedanceTrustedAssetApplicationApi";
 
 providerRuntimeApi.configureReferenceStore(
   mediaApplicationApi.providerReferenceStore,
@@ -38,4 +39,5 @@ export const applicationComposition = Object.freeze({
   library: libraryApplicationApi,
   media: mediaApplicationApi,
   provider: providerApplicationApi,
+  seedanceTrustedAssets: seedanceTrustedAssetApplicationApi,
 });

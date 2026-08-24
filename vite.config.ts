@@ -100,6 +100,10 @@ const {
     publication: mediaPublicationService,
   },
   provider: { adminProviderProfilesApi },
+  seedanceTrustedAssets: {
+    httpHandler: seedanceTrustedAssetApi,
+    mediaHttpHandler: seedanceTrustedAssetMediaApi,
+  },
 } = applicationComposition;
 
 const mediaLifecycleStartupRecoveryAllowsReadiness =
@@ -906,6 +910,18 @@ function imageToolApi(runtime: RuntimeInstance): Plugin {
       apiBoundary(
         "image-tools.seedance-validation",
         seedanceAssetValidationApi,
+        runtime,
+      ),
+    );
+    middlewares.use(
+      "/api/seedance",
+      apiBoundary("seedance.trusted-assets", seedanceTrustedAssetApi, runtime),
+    );
+    middlewares.use(
+      "/api/media/image",
+      apiBoundary(
+        "seedance.trusted-assets.media",
+        seedanceTrustedAssetMediaApi,
         runtime,
       ),
     );

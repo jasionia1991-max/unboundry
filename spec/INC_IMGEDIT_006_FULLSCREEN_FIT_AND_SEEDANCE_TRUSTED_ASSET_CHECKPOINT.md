@@ -2,9 +2,9 @@
 
 > 更新时间：2026-08-24
 >
-> 当前阶段：`R4_IN_PROGRESS`
+> 当前阶段：`R5A_IN_PROGRESS`
 >
-> 当前结论：R3已移除图片工具旧伪校验入口，旧记录固定降级为历史本地预检，Seedance视频参考图自动生成本地技术预检；R4冻结A分支持久化、API、隐私与幂等合同。
+> 当前结论：R4已冻结schema40的Group/Asset/Session分表、稳定Provider账号指纹、owner/source隔离、幂等和安全DTO/OpenAPI合同并通过定向验证；R5A实现正式Provider adapter与fake状态机。
 
 ## 1. 实时身份
 
@@ -70,8 +70,8 @@ PURCHASE_REQUIRED=NO
 | R1 | `EXPECTED_RED_COMPLETE` | safe m2 13项执行，11通过/2预期失败：1086×1448图片bottom=1237而viewer bottom=699；旧“Seedance 素材校验”菜单仍为1项 |
 | R2 | `TARGETED_AUTO_PASS` | Grid行、viewer双轴与img最小尺寸根因修复；safe m2全屏/透明及其余既有用例12项通过，唯一失败为R3预留旧Seedance入口 |
 | R3 | `TARGETED_AUTO_PASS` | 图片旧入口与旧请求均为0；旧记录摘要永远注明非方舟远端；Video Seedance参考图自动附带local-technical-preflight |
-| R4 | `IN_PROGRESS` | Group/Asset/Session、schema、API、OpenAPI、隐私和幂等合同 |
-| R5A | `NOT_STARTED` | 正式Provider adapter及fake合同；本Goal冻结A分支 |
+| R4 | `TARGETED_AUTO_PASS` | schema40 Group/Asset/Session分表、组合外键、owner查询、稳定账号指纹、幂等upsert与五条OpenAPI路径已冻结；safe m100+m20 14/14通过 |
+| R5A | `IN_PROGRESS` | 正式Provider adapter及fake合同；本Goal冻结A分支 |
 | R5B/R5C | `NOT_APPLICABLE_CURRENT_BRANCH` | 仅保留能力降级合同，不作为当前实现分支 |
 | R6 | `NOT_STARTED` | asset://服务端可信引用、任务恢复与失效门 |
 | R7 | `NOT_STARTED` | UI、错误、刷新、幂等、三视口浏览器矩阵 |
@@ -82,7 +82,7 @@ PURCHASE_REQUIRED=NO
 
 ## 6. 验收状态
 
-- `IMGEDIT-039 / 040 / 042 = TARGETED_AUTO_PASS`；`IMGEDIT-041 = R0_AUTO_PASS / ACTIVE_BRANCH_A`；`IMGEDIT-043 = R4_IN_PROGRESS`；其余仍为 `NOT_STARTED`。
+- `IMGEDIT-039 / 040 / 042 / 043 = TARGETED_AUTO_PASS`；`IMGEDIT-041 = R0_AUTO_PASS / ACTIVE_BRANCH_A`；其余仍为 `NOT_STARTED`。
 - 自动、浏览器、Provider协议、生产技术和用户主观验收必须分层，任何Agent不得写 `USER_PASS`。
 
 ## 7. 测试与浏览器证据
@@ -95,6 +95,9 @@ PURCHASE_REQUIRED=NO
 - R2同一safe m2执行13项，12项通过，唯一失败是R3预留的旧“Seedance 素材校验”入口；全屏新矩阵覆盖1086×1448、3:4、9:16、16:9、1:1、超宽图×1280×720/1440×900/1728×900，全部四边在viewer内且比例不变。
 - 长提示词形成内部滚动且图片几何逐字不变；透明棋盘格只在img border box，viewer无棋盘格；全屏下载字节与原始透明PNG逐字节相等。source/snapshot`e104f1d82248418fc67505edd85da4a320c3e193c25c22640670c1de2a70ada4`，4173 unchanged，Provider/OSS/费用0。
 - R3 safe m100+m2+m30合计`35/35 PASS`、退出0；旧入口、旧panel和旧HTTP请求为0，旧记录摘要明确“不代表方舟可信素材或真人授权”；Seedance视频参考图由现有输入解析自动产生`scope=local-technical-preflight`，该状态不进入可信Asset或task snapshot。source/snapshot`378e9526044fe266db472f34e5269571d77eefe383c5c326468d8161e4a26b5d`，4173 unchanged，Provider/OSS/费用0。
+- R4新增schema40三表及精确物理schema合同；Group/Session/Binding分别保存，组合外键绑定owner、profile、稳定账号指纹、地域和项目，Binding另绑定`image + asset id + checksum`。H5完整URL仅允许创建响应一次性返回，status DTO与数据库均无该字段，摄像头/活体/人脸/密钥不落库。
+- R4新增五条OpenAPI路径与2KiB绑定请求上限，创建返回202，读取严格owner scope；客户端DTO不返回Provider账号指纹、Group/Session/Asset内部标识。稳定账号指纹不包含可轮换AK/SK，Group/Session/Asset幂等键由owner/profile/account/region/project/source共同派生。
+- R4 build通过；最终safe m100+m20=`14/14 PASS`、退出0，fresh schema40精确合同、FK、Group幂等复用、跨owner不可读、无持久H5 URL及OpenAPI隐私断言通过。source/snapshot`c505e70f07b0cc7ee4a633c7b13de4baa6ba1f5fcfafb13210e5d594f0288f03`，4173 unchanged，真实Provider/Generation/OSS/费用0。
 - 本Goal唯一一次safe full保留给R8冻结候选；文档同步不触发业务全量测试。
 - 自动化必须使用Node22.23.1/npm10.9.8、fresh临时data/runtime/cache和动态loopback端口，禁止4173、生产数据、真实Provider、真实OSS和任何付费生成。
 
@@ -107,4 +110,4 @@ PURCHASE_REQUIRED=NO
 
 ## 9. 唯一下一动作
 
-冻结A分支Group/Asset/Session领域类型、owner/account/region/project/source-checksum隔离、幂等键、隐私清理、schema40迁移与OpenAPI合同；先以fake和合同测试证明，不发真实Provider请求。
+实现A分支正式方舟H5/Group/Asset Provider adapter、结构化错误、超时/QPM门和fake状态机；只运行fake，不发真实Provider请求。
