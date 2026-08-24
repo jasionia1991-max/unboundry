@@ -277,8 +277,7 @@ test("Image tools do not present local Seedance preflight as trusted-material va
   const menu = page.getByTestId("image-node-more-menu");
   await expect(menu.getByRole("menuitem", { name: "Seedance 素材校验" }))
     .toHaveCount(0);
-  await expect(menu.getByRole("menuitem", { name: "角色可信素材" }))
-    .toBeVisible();
+  await expect(page.getByTestId("image-seedance-validation-panel")).toHaveCount(0);
 });
 
 test("Image empty and local upload states match the observed geometry", async ({
@@ -459,18 +458,10 @@ test("Image empty and local upload states match the observed geometry", async ({
     width: 238,
     height: 272,
   });
-  await expect(moreMenu.getByRole("menuitem")).toHaveCount(8);
-  await expect(moreMenu.locator("button:not(:disabled)")).toHaveCount(8);
-  const seedanceMenuItem = moreMenu.getByRole("menuitem", {
-    name: "Seedance 素材校验",
-  });
-  expect(await seedanceMenuItem.evaluate((element) => {
-    const bounds = element.getBoundingClientRect();
-    return element.contains(document.elementFromPoint(
-      bounds.left + bounds.width / 2,
-      bounds.top + bounds.height / 2,
-    ));
-  })).toBe(true);
+  await expect(moreMenu.getByRole("menuitem")).toHaveCount(7);
+  await expect(moreMenu.locator("button:not(:disabled)")).toHaveCount(7);
+  await expect(moreMenu.getByRole("menuitem", { name: "Seedance 素材校验" }))
+    .toHaveCount(0);
   await expect(moreMenu).toContainText("快速切分");
   await expect(moreMenu).toContainText("2×2　3×3　4×4");
   await expect(moreMenu).not.toContainText(/预计|USD|CNY/);
@@ -1187,43 +1178,13 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   request,
 }) => {
   const generationRequests: string[] = [];
-  const seedanceValidationBodies: Array<{
-    assetId: string;
-    modelId: string;
-    role: string;
-  }> = [];
-  let seedanceValidationStarted = false;
-  let releaseSeedanceValidation = () => {};
-  const seedanceValidationGate = new Promise<void>((resolve) => {
-    releaseSeedanceValidation = resolve;
-  });
+  let seedanceValidationRequests = 0;
   await page.route("**/api/image-tools/seedance-validation", async (route) => {
-    const body = route.request().postDataJSON() as {
-      assetId: string;
-      modelId: string;
-      role: string;
-    };
-    seedanceValidationBodies.push(body);
-    seedanceValidationStarted = true;
-    await seedanceValidationGate;
+    seedanceValidationRequests += 1;
     await route.fulfill({
-      body: JSON.stringify({
-        assetId: body.assetId,
-        checkedAt: "2026-08-23T13:00:00.000Z",
-        expiresAt: "2099-08-23T13:05:00.000Z",
-        kind: "validation",
-        modelConfigurationRevision: "cccccccccccccccccccccccc",
-        modelDisplayName: "Seedance 2.0 Mini",
-        modelId: body.modelId,
-        operation: "seedance-validate",
-        problems: [],
-        remoteValidationAvailable: false,
-        role: body.role,
-        scope: "local-technical-preflight",
-        status: "eligible",
-      }),
+      body: JSON.stringify({ error: "图片工具不应再发起旧本地预检请求" }),
       contentType: "application/json",
-      status: 200,
+      status: 410,
     });
   });
   page.on("request", (browserRequest) => {
@@ -1719,96 +1680,12 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   }).toEqual({ annotationNodes: 1, edges: 8, nodes: 9 });
   await restoredNode.click();
   await restoredToolbar.getByRole("button", { name: "浏览全部" }).click();
-  await page.getByTestId("image-node-more-menu")
-    .getByRole("menuitem", { name: "Seedance 素材校验" }).click();
-  const seedancePanel = page.getByTestId("image-seedance-validation-panel");
-  await expect(seedancePanel).not.toContainText(/预计|USD|CNY/);
-  await expectInsideViewport(seedancePanel);
-  await expectInsideViewport(seedancePanel.locator(".image-tool-panel-footer"));
-  await expectScreenSpaceSizeInvariant(page, seedancePanel);
-  await expect(seedancePanel).toContainText("本工具只运行本地结构预检");
-  await expect(seedancePanel.getByTestId("seedance-local-preflight-state"))
-    .toContainText("未运行");
-  await expect(seedancePanel.getByTestId("seedance-provider-access-state"))
-    .toContainText("未执行 · 当前没有零费用只读远端资格证据");
-  await expect(seedancePanel.getByTestId("seedance-provider-access-state"))
-    .toContainText("实际提交时由方舟确认");
-  await expect(seedancePanel.getByTestId("seedance-trusted-material-state"))
-    .toContainText("未知 · 当前素材没有可核验的 asset:// 可信素材证明");
-  await expect(seedancePanel.getByRole("combobox", { name: "Seedance 视频模型" }))
-    .toHaveValue("fixture-seedance-2-mini");
-  await expect(seedancePanel.getByRole("combobox", { name: "Seedance 素材角色" }))
-    .toHaveValue("reference-image");
-  const seedanceSubmit = seedancePanel.getByRole("button", {
-    name: "运行本地技术预检",
-  });
-  const seedanceSubmitPromise = seedanceSubmit.click();
-  await expect.poll(() => seedanceValidationStarted).toBe(true);
-  await expect(seedancePanel.getByRole("button", { name: "校验中…" }))
-    .toBeDisabled();
-  await expect(seedancePanel.getByRole("button", {
-    name: "关闭 Seedance 素材校验",
-  })).toBeDisabled();
-  const seedanceHostPanel = page.getByTestId("image-tool-host")
-    .locator(".image-tool-host-panel");
-  await expect(seedanceHostPanel).toBeFocused();
-  await page.keyboard.press("Tab");
-  await expect.poll(() => seedanceHostPanel.evaluate((panel) =>
-    panel.contains(document.activeElement)
-  )).toBe(true);
-  await page.keyboard.press("Shift+Tab");
-  await expect.poll(() => seedanceHostPanel.evaluate((panel) =>
-    panel.contains(document.activeElement)
-  )).toBe(true);
-  await page.keyboard.press("Escape");
-  await expect(seedancePanel).toBeVisible();
-  await page.getByTestId("image-tool-host").click({ position: { x: 4, y: 4 } });
-  await expect(seedancePanel).toBeVisible();
-  releaseSeedanceValidation();
-  await seedanceSubmitPromise;
-  await expect(seedancePanel.locator("[data-state=eligible]"))
-    .toContainText("通过 · 格式、尺寸、保存状态、模型与角色符合本地规则");
-  await expect(seedancePanel.getByTestId("seedance-provider-access-state"))
-    .toHaveAttribute("data-state", "not-checked");
-  await expect(seedancePanel.getByTestId("seedance-trusted-material-state"))
-    .toHaveAttribute("data-state", "unknown");
-  expect(seedanceValidationBodies).toHaveLength(1);
-  expect(seedanceValidationBodies[0]).toMatchObject({
-    modelId: "fixture-seedance-2-mini",
-    role: "reference-image",
-  });
-  await expect.poll(async () => {
-    const saved = await (await request.get("/api/canvas/node.image.empty")).json() as {
-      nodes?: Array<{
-        data?: { imageSeedanceValidation?: Record<string, unknown> };
-        id?: string;
-      }>;
-    };
-    return saved.nodes?.find((savedNode) => savedNode.id === "image-primary")
-      ?.data?.imageSeedanceValidation;
-  }).toMatchObject({
-    modelConfigurationRevision: "cccccccccccccccccccccccc",
-    modelId: "fixture-seedance-2-mini",
-    remoteValidationAvailable: false,
-    role: "reference-image",
-    status: "eligible",
-  });
-  await seedancePanel.getByRole("button", { exact: true, name: "关闭" }).click();
-  await page.reload();
-  await expect(page.getByTestId("canvas-world")).toHaveAttribute(
-    "data-persistence-ready",
-    "true",
-  );
-  await restoredNode.click();
-  await restoredToolbar.getByRole("button", { name: "浏览全部" }).click();
-  await page.getByTestId("image-node-more-menu")
-    .getByRole("menuitem", { name: "Seedance 素材校验" }).click();
-  await expect(seedancePanel.locator("[data-state=eligible]"))
-    .toContainText("通过 · 格式、尺寸、保存状态、模型与角色符合本地规则");
-  await seedancePanel.getByRole("combobox", { name: "Seedance 素材角色" })
-    .selectOption("subject");
-  await expect(seedancePanel.locator("[data-state=stale]"))
-    .toContainText("请重新预检");
+  const postAnnotationMenu = page.getByTestId("image-node-more-menu");
+  await expect(postAnnotationMenu.getByRole("menuitem", {
+    name: "Seedance 素材校验",
+  })).toHaveCount(0);
+  await expect(page.getByTestId("image-seedance-validation-panel")).toHaveCount(0);
+  expect(seedanceValidationRequests).toBe(0);
   expect(generationRequests).toEqual([]);
 });
 

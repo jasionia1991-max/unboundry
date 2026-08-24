@@ -311,6 +311,17 @@ export function UpstreamInputCards({
           {activeInput.summary && (
             <p className="upstream-input-summary">{activeInput.summary}</p>
           )}
+          {activeInput.localTechnicalPreflight && (
+            <p
+              className="upstream-input-local-preflight"
+              data-state={activeInput.localTechnicalPreflight.status}
+              data-testid={`seedance-local-preflight-${activeInput.edgeId}`}
+            >
+              {activeInput.localTechnicalPreflight.status === "eligible"
+                ? "本地技术预检通过，不代表方舟可信素材或真人授权已通过"
+                : `本地技术预检未通过：${activeInput.localTechnicalPreflight.problems.join("；")}`}
+            </p>
+          )}
           <label className="upstream-input-role-row">
             <span>角色</span>
             {activeRoleChoices.length > 1 && onRoleChange ? (

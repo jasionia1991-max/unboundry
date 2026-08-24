@@ -123,7 +123,7 @@ export const imageToolDescriptors = Object.freeze({
     closeOnOutside: true,
     id: "seedance",
     inertBackground: false,
-    label: "Seedance 素材校验",
+    label: "角色可信素材",
     maximumWidth: 420,
     presentation: "popover",
     surface: "plain",

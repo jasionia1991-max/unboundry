@@ -43,7 +43,6 @@ import { NodeParameterControl } from "./NodeParameterControl";
 import { EmptyMediaUploadToolbar } from "./EmptyMediaUploadToolbar";
 import { generationOwnershipKey, type ProbeNodeType } from "./ProbeNode";
 import {
-  usePublishedModels,
   usePublishedModelSelection,
 } from "../models/ModelCatalog";
 import { useGenerationCanvas } from "../generation/GenerationCanvasContext";
@@ -183,16 +182,12 @@ import {
   promptGenerationOwnershipEvidence,
   type PromptGenerationOperation,
 } from "../imageTools/promptGenerationImageToolUseCase";
-import { createSeedanceAssetValidationUseCase } from
-  "../imageTools/seedanceAssetValidationUseCase";
 import type {
   ImageGenerationToolInput,
   ImageToolCapability,
 } from "../../../types/imageTools";
 import {
-  seedanceAssetValidationState,
-  seedanceImageRoles,
-  type SeedanceImageRole,
+  legacySeedancePreflightSummary,
 } from "../../../types/imageTools";
 
 type CropBox = { height: number; width: number; x: number; y: number };
@@ -1631,7 +1626,6 @@ function ImageNodeImpl({
   const eraseCapability = useImageToolCapability("erase");
   const creativeEnhanceCapability = useImageToolCapability("enhance-creative");
   const removeBackgroundCapability = useImageToolCapability("remove-background");
-  const seedanceCapability = useImageToolCapability("seedance-validate");
   const singleNodeChrome = useSingleNodeChrome(selected, dragging);
   const mediaLoad = useMediaLoadRecovery(data.imageSrc);
   const imageShowsTransparency = data.imageHasTransparency === true ||
@@ -1749,9 +1743,6 @@ function ImageNodeImpl({
     data.imageModelId,
     data.imageModelName,
   );
-  const seedanceModels = (usePublishedModels("video") ?? []).filter(
-    (model) => model.mediaInputPolicy === "seedance-2",
-  );
   const imageModels = imageModelSelection.models;
   const selectedImageModel = imageModelSelection.model;
   const selectedImageModelId = imageModelSelection.selectedId;
@@ -1840,15 +1831,6 @@ function ImageNodeImpl({
   const [enhanceError, setEnhanceError] = useState("");
   const [cutoutBusy, setCutoutBusy] = useState(false);
   const [cutoutError, setCutoutError] = useState("");
-  const [seedanceBusy, setSeedanceBusy] = useState(false);
-  const [seedanceError, setSeedanceError] = useState("");
-  const [seedanceModelId, setSeedanceModelId] = useState(
-    data.imageSeedanceValidation?.modelId ?? "",
-  );
-  const [seedanceRole, setSeedanceRole] =
-    useState<SeedanceImageRole>(
-      data.imageSeedanceValidation?.role ?? "reference-image",
-    );
   const annotationOpen = activeImageTool === "annotation";
   const cropOpen = activeImageTool === "crop";
   const cutoutOpen = activeImageTool === "cutout";
@@ -1861,7 +1843,6 @@ function ImageNodeImpl({
   const multiAngleOpen = activeImageTool === "multi-angle";
   const outpaintOpen = activeImageTool === "outpaint";
   const redrawOpen = activeImageTool === "redraw";
-  const seedanceOpen = activeImageTool === "seedance";
   const imageToolModalOpen = activeImageTool
     ? imageToolDescriptors[activeImageTool].inertBackground
     : false;
@@ -1881,8 +1862,6 @@ function ImageNodeImpl({
     ? enhanceBusy
     : activeImageTool === "cutout"
     ? cutoutBusy
-    : activeImageTool === "seedance"
-    ? seedanceBusy
     : false;
   const openImageTool = useCallback((
     tool: ImageToolId,
@@ -1900,7 +1879,6 @@ function ImageNodeImpl({
     setAnnotationBusy(false);
     dispatchToolUi({ tool, type: "close-tool" });
   }, []);
-  const [seedanceExpiryEpoch, setSeedanceExpiryEpoch] = useState(0);
   const [retryTaskId, setRetryTaskId] = useState<string>();
   const [reconcileBusy, setReconcileBusy] = useState(false);
   const [reconcileConfirmedMissing, setReconcileConfirmedMissing] = useState(false);
@@ -1924,31 +1902,6 @@ function ImageNodeImpl({
     visibleGenerationError(data.imageGenerationError),
   );
   const [uploadErrorNeutral, setUploadErrorNeutral] = useState(false);
-  const selectedSeedanceModelId = seedanceModels.some(
-    (model) => model.id === seedanceModelId,
-  ) ? seedanceModelId : seedanceModels[0]?.id ?? "";
-  const selectedSeedanceModel = seedanceModels.find(
-    (model) => model.id === selectedSeedanceModelId,
-  );
-  const supportedSeedanceRoles = seedanceImageRoles.filter((role) =>
-    selectedSeedanceModel?.parameterSchema?.inputPolicy?.roles?.image
-      ?.includes(role)
-  );
-  const effectiveSeedanceRole = supportedSeedanceRoles.includes(seedanceRole)
-    ? seedanceRole
-    : supportedSeedanceRoles[0] ?? seedanceRole;
-  const currentSeedanceValidationState = data.imageSeedanceValidation
-    ? (() => {
-        void seedanceExpiryEpoch;
-        return seedanceAssetValidationState(data.imageSeedanceValidation, {
-          assetId: typeof data.assetId === "string" ? data.assetId : undefined,
-          modelConfigurationRevision:
-            selectedSeedanceModel?.configurationRevision,
-          modelId: selectedSeedanceModel?.id,
-          role: effectiveSeedanceRole,
-        });
-      })()
-    : undefined;
   useEffect(() => {
     if (localToolOpen !== "split") {
       setSplitVisibleBounds(undefined);
@@ -1985,16 +1938,6 @@ function ImageNodeImpl({
       cancelled = true;
     };
   }, [data.assetId, localToolOpen]);
-  useEffect(() => {
-    if (!seedanceOpen || !data.imageSeedanceValidation) return;
-    const remaining = Date.parse(data.imageSeedanceValidation.expiresAt) - Date.now();
-    if (remaining <= 0) return;
-    const timer = window.setTimeout(
-      () => setSeedanceExpiryEpoch((epoch) => epoch + 1),
-      Math.min(remaining + 20, 2_147_000_000),
-    );
-    return () => window.clearTimeout(timer);
-  }, [data.imageSeedanceValidation, seedanceOpen]);
   const setUploadError = (message: string, errorCode?: string | null) => {
     setUploadErrorNeutral(
       Boolean(message) && !generationFailureIsDefinitive(errorCode),
@@ -4519,38 +4462,6 @@ function ImageNodeImpl({
     } finally { setBusy(false); }
   };
 
-  const validateSeedance = async () => {
-    const sourceAssetId = typeof data.assetId === "string" ? data.assetId : "";
-    if (!sourceAssetId || !selectedSeedanceModel?.configurationRevision) {
-      setSeedanceError(sourceAssetId
-        ? "当前没有带有效规则版本的 Seedance 模型"
-        : "图片尚未完成安全保存");
-      return;
-    }
-    setSeedanceBusy(true);
-    setSeedanceError("");
-    try {
-      const result = await imageToolDispatcher.execute("seedance-validate", {
-        assetId: sourceAssetId,
-        modelId: selectedSeedanceModel.id,
-        role: effectiveSeedanceRole,
-      });
-      if (result.kind !== "validation") {
-        throw new Error("Seedance 素材校验返回了错误的结果类型");
-      }
-      checkpoint();
-      setNodes((nodes) => nodes.map((node) => node.id === id
-        ? { ...node, data: { ...node.data, imageSeedanceValidation: result } }
-        : node));
-    } catch (caught) {
-      setSeedanceError(caught instanceof Error
-        ? caught.message
-        : "Seedance 素材校验失败");
-    } finally {
-      setSeedanceBusy(false);
-    }
-  };
-
   const toggleColorMark = (color: string) => {
     if (imageColorFilter === color && data.imageColorMarks?.includes(color)) {
       setImageColorFilter();
@@ -4607,7 +4518,6 @@ function ImageNodeImpl({
       }>) => exportAnnotations(input.annotations),
     })
     .register(createSaveLibraryAssetUseCase())
-    .register(createSeedanceAssetValidationUseCase())
     .register(createDownloadImageToolUseCase())
     .register(createFullscreenImageToolUseCase());
 
@@ -4801,22 +4711,6 @@ function ImageNodeImpl({
                 <span aria-hidden="true" className="image-more-icon split" />
                 <span>快速切分</span>
                 <span className="image-more-sizes">2×2　3×3　4×4　›</span>
-              </button>
-              <button
-                data-capability-status={seedanceCapability.status}
-                disabled={seedanceCapability.status !== "available"}
-                onClick={() => {
-                  setSeedanceError("");
-                  openImageTool(
-                    "seedance",
-                    moreRef.current?.querySelector<HTMLElement>("button"),
-                  );
-                }}
-                role="menuitem"
-                type="button"
-              >
-                <span aria-hidden="true" className="image-more-icon compliance" />
-                Seedance 素材校验
               </button>
             </div>
           )}
@@ -5041,82 +4935,6 @@ function ImageNodeImpl({
             </div>
           </ImageToolSurface>
         )}
-        {preview && seedanceOpen && (
-          <div className="image-tool-compact-panel image-seedance-validation-panel"
-            data-testid="image-seedance-validation-panel">
-            <header className="image-tool-panel-header">
-              <span><strong>Seedance 素材校验</strong><small>三层状态，不提交视频生成</small></span>
-              <button aria-label="关闭 Seedance 素材校验" disabled={seedanceBusy}
-                onClick={() => closeImageTool("seedance")} type="button">×</button>
-            </header>
-            <div className="image-tool-panel-body">
-              <p>本工具只运行本地结构预检；Provider访问与方舟可信素材资格不会在这里冒充已通过。</p>
-              <label>视频模型
-                <select aria-label="Seedance 视频模型" disabled={seedanceBusy}
-                  onChange={(event) => setSeedanceModelId(event.target.value)}
-                  value={selectedSeedanceModelId}>
-                  {seedanceModels.map((model) => (
-                    <option key={model.id} value={model.id}>{model.displayName}</option>
-                  ))}
-                </select>
-              </label>
-              <label>素材角色
-                <select aria-label="Seedance 素材角色" disabled={seedanceBusy}
-                  onChange={(event) => setSeedanceRole(
-                    event.target.value as SeedanceImageRole)}
-                  value={effectiveSeedanceRole}>
-                  {supportedSeedanceRoles.map((role) => (
-                    <option key={role} value={role}>{({
-                      "first-frame": "首帧",
-                      "last-frame": "尾帧",
-                      subject: "主体",
-                      "reference-image": "参考图",
-                    } as const)[role]}</option>
-                  ))}
-                </select>
-              </label>
-              {!selectedSeedanceModel && <div role="alert">当前没有已发布的 Seedance 模型</div>}
-              <div className="image-seedance-validation-layers">
-                <div className="image-seedance-validation-layer"
-                  data-state={currentSeedanceValidationState ?? "not-run"}
-                  data-testid="seedance-local-preflight-state">
-                  <strong>1. 本地结构预检</strong>
-                  <span>{currentSeedanceValidationState === "eligible"
-                    ? "通过 · 格式、尺寸、保存状态、模型与角色符合本地规则"
-                    : currentSeedanceValidationState === "stale"
-                      ? "已过期 · 素材、模型或角色已变化，请重新预检"
-                      : currentSeedanceValidationState === "ineligible"
-                        ? data.imageSeedanceValidation?.problems.join("；")
-                        : "未运行"}</span>
-                </div>
-                <div className="image-seedance-validation-layer"
-                  data-state="not-checked"
-                  data-testid="seedance-provider-access-state">
-                  <strong>2. Provider 可访问性</strong>
-                  <span>未执行 · 当前没有零费用只读远端资格证据，实际提交时由方舟确认</span>
-                </div>
-                <div className="image-seedance-validation-layer"
-                  data-state="unknown"
-                  data-testid="seedance-trusted-material-state">
-                  <strong>3. 方舟可信素材</strong>
-                  <span>未知 · 当前素材没有可核验的 asset:// 可信素材证明</span>
-                </div>
-              </div>
-              {seedanceError && <div role="alert">{seedanceError}</div>}
-            </div>
-            <footer className="image-tool-panel-footer">
-              <button disabled={seedanceBusy} onClick={() => closeImageTool("seedance")}
-                type="button">关闭</button>
-              <button className="primary"
-                disabled={seedanceBusy || seedanceCapability.status !== "available" ||
-                  !selectedSeedanceModel?.configurationRevision ||
-                  supportedSeedanceRoles.length < 1 || typeof data.assetId !== "string"}
-                onClick={() => void validateSeedance()} type="button">
-                {seedanceBusy ? "校验中…" : "运行本地技术预检"}
-              </button>
-            </footer>
-          </div>
-        )}
         {preview && annotationOpen && (
           <ImageToolSurface className="image-tool-editor-surface">
             <ImageAnnotationEditor
@@ -5264,6 +5082,11 @@ function ImageNodeImpl({
                       : "—"}</dd></div>
                     <div><dt>文件大小</dt><dd>{imageDetailFileSize(data.mediaByteSize)}</dd></div>
                     <div><dt>来源素材</dt><dd>{data.imageToolSourceAssetId || "—"}</dd></div>
+                    {data.imageSeedanceValidation && (
+                      <div><dt>旧版记录</dt><dd>{legacySeedancePreflightSummary(
+                        data.imageSeedanceValidation,
+                      )}</dd></div>
+                    )}
                     <div><dt>创建日期</dt><dd>—</dd></div>
                   </dl>
                 </section>

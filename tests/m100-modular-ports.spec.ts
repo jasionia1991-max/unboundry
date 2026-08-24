@@ -92,6 +92,7 @@ import {
   imageToolCapability,
   imageToolMaximums,
   imageToolOperations,
+  legacySeedancePreflightSummary,
   parseImageToolCapabilitySnapshot,
   parseSeedanceAssetValidation,
   seedanceAssetValidationState,
@@ -719,6 +720,9 @@ test("image tool capability snapshot is complete, unique and fail-closed", () =>
     remoteValidationAvailable: false,
     status: "eligible",
   });
+  expect(legacySeedancePreflightSummary(validation)).toBe(
+    "旧版本地预检通过，不代表方舟可信素材或真人授权已通过",
+  );
   expect(seedanceAssetValidationState(validation, {
     assetId: "seedance-image-1",
     modelConfigurationRevision: "rules-1",

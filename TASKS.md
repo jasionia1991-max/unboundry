@@ -1,11 +1,11 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产运行`v0.6.37 / schema39`且技术健康。INC-IMGEDIT-006全屏R2定向通过；R3正在删除旧Seedance伪校验语义并保持旧画布兼容。
+> **当前状态**：生产运行`v0.6.37 / schema39`且技术健康。INC-IMGEDIT-006 R3定向通过；R4正在冻结A分支schema40、API、隐私与幂等合同。
 
 更新时间：2026-08-24
-状态：`生产v0.6.37 / schema39 / USER_RECHECK；INC-IMGEDIT-006 GOAL_ACTIVE / R2_TARGETED_AUTO_PASS / R3_IN_PROGRESS / ACTIVE_BRANCH_A / VERSION_GATE_VALID_v0.6.38 / RELEASE_GATE_VALID；Provider控制面1/200，付费生成与费用0。`
+状态：`生产v0.6.37 / schema39 / USER_RECHECK；INC-IMGEDIT-006 GOAL_ACTIVE / R3_TARGETED_AUTO_PASS / R4_IN_PROGRESS / ACTIVE_BRANCH_A / SCHEMA40_REQUIRED / VERSION_GATE_VALID_v0.6.38 / RELEASE_GATE_VALID；Provider控制面1/200，付费生成与费用0。`
 
-### 2026-08-24 图片全屏完整适配与Seedance可信素材（INC-IMGEDIT-006，R3_IN_PROGRESS）
+### 2026-08-24 图片全屏完整适配与Seedance可信素材（INC-IMGEDIT-006，R4_IN_PROGRESS）
 
 - 权威方案：`spec/INC_IMGEDIT_006_FULLSCREEN_FIT_AND_SEEDANCE_TRUSTED_ASSET_PLAN_2026-08-24.md`；实时断点：`spec/INC_IMGEDIT_006_FULLSCREEN_FIT_AND_SEEDANCE_TRUSTED_ASSET_CHECKPOINT.md`
 - 隔离分支/工作树：`codex/inc-imgedit-006-v0.6.38-2026-08-24` / `/private/tmp/unboundry-inc006-v0.6.38-2026-08-24`；起点HEAD与`origin/main`同为`349a915`，package0.6.37、schema39
@@ -17,7 +17,8 @@
 - R1 safe m2执行13项，11通过/2项预期失败：1086×1448图片bottom=1237而viewer bottom=699；旧“Seedance 素材校验”菜单仍存在1项。source/snapshot`ad7aff0c…c1789`、4173 unchanged，Provider/OSS/费用0
 - R2以Grid确定行、viewer双轴约束和img最小尺寸的最小CSS根因修复收口；safe m2中全屏/透明与其余既有12项通过，唯一失败为R3预留旧Seedance入口
 - 全屏矩阵覆盖六类比例×三视口，长提示词不改图片几何；透明下载与原PNG逐字节一致。source/snapshot`e104f1d8…ada4`、4173 unchanged，Provider/OSS/费用0
-- 当前唯一下一动作：移除图片工具旧“Seedance 素材校验”入口，旧local preflight保持历史兼容，并把本地结构预检移入视频节点参考素材流程
+- R3移除图片工具旧入口/panel/HTTP调用；旧记录只显示历史本地预检，视频节点对Seedance参考图自动产生本地技术预检且不进可信Asset/task snapshot。safe m100+m2+m30 `35/35 PASS`，source/snapshot`378e9526…6b5d`、4173 unchanged，Provider/OSS/费用0
+- A分支需要重启恢复与owner/account/project/source checksum绑定，已决定schema39→40；当前唯一下一动作是冻结并测试Group/Asset/Session、API、隐私、幂等、迁移与OpenAPI合同，不发真实Provider请求
 
 ### 2026-08-24 图片工具产品质量拒收返工（INC-IMGEDIT-005，R9_COMPLETE / USER_RECHECK）
 

@@ -1,6 +1,6 @@
 # INC-IMGEDIT-006 图片全屏完整适配与 Seedance 可信素材最终修订方案
 
-> 状态：`GOAL_ACTIVE / R2_TARGETED_AUTO_PASS / R3_IN_PROGRESS`
+> 状态：`GOAL_ACTIVE / R3_TARGETED_AUTO_PASS / R4_IN_PROGRESS`
 >
 > 日期：2026-08-24
 >
@@ -10,7 +10,7 @@
 >
 > 候选版本：`v0.6.38 / VERSION_GATE_VALID`
 >
-> schema 变化：`UNDECIDED`；只有 A/B 能力分支确认需要持久化时才评估 `schema39 -> schema40`
+> schema 变化：`schema39 -> schema40 REQUIRED`；A分支需要owner/account/project/source-checksum绑定与重启恢复，R4冻结表/API/迁移合同后实施
 >
 > 发布授权：`RELEASE_GATE_VALID`；用户于本 Goal 明确给出“允许发布：v0.6.38 上线”，v0.6.37 既有授权保持已消费
 >

@@ -410,6 +410,14 @@ export function seedanceAssetValidationState(
   return validation.status;
 }
 
+export function legacySeedancePreflightSummary(
+  validation: SeedanceAssetValidation,
+) {
+  return validation.status === "eligible"
+    ? "旧版本地预检通过，不代表方舟可信素材或真人授权已通过"
+    : "旧版本地预检未通过，不代表方舟远端结论";
+}
+
 export function parseImageToolCapabilitySnapshot(
   value: unknown,
 ): ImageToolCapabilitySnapshot {

@@ -3,7 +3,7 @@
 基线日期：2026-07-27  
 当前状态更新：2026-08-24
 
-INC-IMGEDIT-006已启动：生产仍为v0.6.37/schema39，v0.6.38版本门与发布门有效；R0冻结`ACTIVE_BRANCH=A`，R2全屏定向通过，R3正在纠正旧Seedance语义。Provider控制面账本`1/200`，付费生成与费用0。新事件不得继承INC-IMGEDIT-005的自动、生产或用户结论。
+INC-IMGEDIT-006已启动：生产仍为v0.6.37/schema39，v0.6.38版本门与发布门有效；R0冻结`ACTIVE_BRANCH=A`，R2/R3定向通过，R4正在冻结schema40与可信素材安全合同。Provider控制面账本`1/200`，付费生成与费用0。新事件不得继承INC-IMGEDIT-005的自动、生产或用户结论。
 
 2026-08-24 `CURRENT_RELEASE = v0.6.36 / schema39 / PRODUCTION_V0_6_36_USER_REJECTED`：发布、备份、健康和R9零付费技术事实继续保留，但用户抽查证明快速切分、棋盘格、扩图说明、费用文案和全工具review不合格，不能再标“待确认”。INC-IMGEDIT-005本地候选已完成定向、浏览器和独立审查；用户已明确确认并允许`v0.6.37`上线，R9正在执行。Provider/OSS/费用0；v0.6.35六项真实Provider `6/6 / 60 USD`仅为历史技术证据，不得复用。
 
@@ -393,8 +393,8 @@ F14本地门日志SHA-256：targeted `b9d260babe051c1f89ef86256ade2d57fda19b5700
 | IMGEDIT-039 | P0 | 全屏双轴完整适配 | 1086×1448、3:4、9:16、16:9、1:1和超宽图在三视口内四边完整、比例不变，长详情独立滚动且不用滚动裁切冒充完整 | R1精确红后以最小CSS根因修复；六比例×三视口及长提示词矩阵通过 | TARGETED_AUTO_PASS |
 | IMGEDIT-040 | P0 | 全屏透明Surface和导出字节 | 棋盘格只覆盖透明图片实际绘制矩形，viewer保持纯灰黑，下载与导出字节不含棋盘格 | 棋盘格仅img矩形、viewer无背景图；全屏下载与原透明PNG逐字节相等 | TARGETED_AUTO_PASS |
 | IMGEDIT-041 | P0 | Seedance A/B/C能力分流 | 以当前账号真实权益、正式接口、地域、认证方式和购买边界冻结唯一能力分支；能力不足时不得fake | R0真实只读权益和官方合同确认A分支；账本1/200，购买0，文档同步与静态检查通过 | R0_AUTO_PASS / ACTIVE_BRANCH_A |
-| IMGEDIT-042 | P0 | 旧本地预检语义兼容 | `local-technical-preflight`永远只作历史本地预检；旧画布可解析、刷新、复制、保存和导出，替换图片原子失效，不冒充远端 | R1精确证明旧“Seedance 素材校验”菜单仍为1项；R3正在移除伪语义并接入视频节点自动本地预检 | R1_EXPECTED_RED_COMPLETE / R3_IN_PROGRESS |
-| IMGEDIT-043 | P0 | Group/Asset/Session安全合同 | owner、Provider账号、地域、项目、source kind/id/checksum隔离；会话、Group、Asset分离，隐私、幂等、schema与OpenAPI可审查 | A分支已冻结，R4待形成合同与定向证据 | NOT_STARTED |
+| IMGEDIT-042 | P0 | 旧本地预检语义兼容 | `local-technical-preflight`永远只作历史本地预检；旧画布可解析、刷新、复制、保存和导出，替换图片原子失效，不冒充远端 | 旧入口/panel/请求为0；旧记录摘要明确非方舟结论；视频节点自动本地预检不进入可信Asset/task snapshot | TARGETED_AUTO_PASS |
+| IMGEDIT-043 | P0 | Group/Asset/Session安全合同 | owner、Provider账号、地域、项目、source kind/id/checksum隔离；会话、Group、Asset分离，隐私、幂等、schema与OpenAPI可审查 | A分支已冻结且schema40必要；R4正在实现合同与定向证据 | R4_IN_PROGRESS |
 | IMGEDIT-044 | P0 | asset://可信服务端引用 | 仅服务端在当前账号、owner、source checksum和远端Active成立时生成并在提交前复核；客户端伪造、跨账号、失效与恢复异常全部拒绝 | R6待实现，普通URL/Data URL不得回归 | NOT_STARTED |
 | IMGEDIT-045 | P0 | Seedance UI、状态、交互和错误 | A分支真实表达H5授权、处理中、Active、拒绝、过期、撤销和失败；modal inert、键盘、焦点、刷新恢复、无预计金额完整 | R5A/R7待实现和三视口浏览器验证 | NOT_STARTED |
 | IMGEDIT-046 | P0 | Provider协议、生产发布和用户验收分层 | fake自动化、真实控制面协议、GitHub、生产技术、零付费浏览器和用户确认严格分层；只有用户可写USER_PASS | v0.6.38门有效；R8～R11待执行，当前真实控制面1/200、付费生成0 | NOT_STARTED |
