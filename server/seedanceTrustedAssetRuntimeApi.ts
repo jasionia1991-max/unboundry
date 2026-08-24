@@ -34,7 +34,11 @@ async function context(ownerId: string, expectedProfileId?: string) {
     return undefined;
   }
   const accountId = process.env.UNBOUNDRY_SEEDANCE_ARK_ACCOUNT_ID?.trim();
-  if (!accountId || accountId.length > 512) return undefined;
+  const callbackUrl = process.env.UNBOUNDRY_SEEDANCE_ARK_CALLBACK_URL?.trim();
+  if (
+    !accountId || accountId.length > 512 ||
+    !callbackUrl || callbackUrl.length > 16_384
+  ) return undefined;
   const credentials = await providerApplicationApi.getArkControlPlaneCredentials(
     published.profileId,
   );
@@ -53,10 +57,12 @@ async function context(ownerId: string, expectedProfileId?: string) {
     published.profileId,
     identity.accountFingerprint,
     credentials.revision,
+    callbackUrl,
   ].join("\u0000");
   let port = ports.get(key);
   if (!port) {
     port = createVolcengineArkSeedanceTrustedAssetPort({
+      callbackUrl,
       credentials,
       identity,
       providerDisplayName: published.displayName,

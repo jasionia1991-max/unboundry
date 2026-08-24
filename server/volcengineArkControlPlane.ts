@@ -1,6 +1,7 @@
 import { createHash, createHmac } from "node:crypto";
 
-export const VOLCENGINE_ARK_CONTROL_PLANE_HOST = "open.volcengineapi.com";
+export const VOLCENGINE_ARK_CONTROL_PLANE_HOST =
+  "ark.cn-beijing.volcengineapi.com";
 export const VOLCENGINE_ARK_CONTROL_PLANE_SERVICE = "ark";
 export const VOLCENGINE_ARK_CONTROL_PLANE_VERSION = "2024-01-01";
 export const VOLCENGINE_ARK_CONTROL_PLANE_REGION = "cn-beijing";
@@ -292,6 +293,7 @@ function signedHeaders(
   date: Date,
 ) {
   if (!actionSet.has(action)) fail("FORMAT");
+  const host = VOLCENGINE_ARK_CONTROL_PLANE_HOST;
   const xDate = utcTimestamp(date);
   const shortDate = xDate.slice(0, 8);
   const contentType = "application/json; charset=utf-8";
@@ -301,7 +303,7 @@ function signedHeaders(
     ["Version", VOLCENGINE_ARK_CONTROL_PLANE_VERSION],
   ].map(([key, value]) => `${rfc3986(key)}=${rfc3986(value)}`).sort().join("&");
   const canonicalHeaders = [
-    `host:${VOLCENGINE_ARK_CONTROL_PLANE_HOST}`,
+    `host:${host}`,
     `x-content-sha256:${payloadHash}`,
     `x-date:${xDate}`,
   ].join("\n") + "\n";
@@ -336,7 +338,7 @@ function signedHeaders(
   return {
     Authorization: `HMAC-SHA256 Credential=${credentials.accessKeyId}/${scope}, SignedHeaders=${headerNames}, Signature=${signature}`,
     "Content-Type": contentType,
-    Host: VOLCENGINE_ARK_CONTROL_PLANE_HOST,
+    Host: host,
     "X-Content-Sha256": payloadHash,
     "X-Date": xDate,
     query,
@@ -572,7 +574,7 @@ async function requestJson(
   let response: Response;
   try {
     response = await context.fetcher(
-      `https://${VOLCENGINE_ARK_CONTROL_PLANE_HOST}/?${headers.query}`,
+      `https://${headers.Host}/?${headers.query}`,
       {
         body,
         headers: {

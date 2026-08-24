@@ -152,6 +152,7 @@ function mapAssetStatus(value: string | null) {
 
 export function createVolcengineArkSeedanceTrustedAssetPort(
   input: Readonly<{
+    callbackUrl: string;
     credentials: VolcengineArkControlPlaneCredentials;
     identity: SeedanceProviderIdentity;
     providerDisplayName: string;
@@ -166,6 +167,7 @@ export function createVolcengineArkSeedanceTrustedAssetPort(
       input.credentials.projectName !== input.identity.project ||
     !input.providerDisplayName.trim()
   ) fail("IDENTITY_MISMATCH");
+  const callbackUrl = httpsUrl(input.callbackUrl);
   const qpm = options.qpm ?? 3;
   if (!Number.isSafeInteger(qpm) || qpm < 1 || qpm > 120) fail("FORMAT");
   const gate = new BoundedTokenBuckets({
@@ -220,7 +222,7 @@ export function createVolcengineArkSeedanceTrustedAssetPort(
       const response = await request(
         identity,
         "CreateVisualValidateSession",
-        {},
+        { CallbackURL: callbackUrl },
       );
       const payload = result(response);
       return Object.freeze({
