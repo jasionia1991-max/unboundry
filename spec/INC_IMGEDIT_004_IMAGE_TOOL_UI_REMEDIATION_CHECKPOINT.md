@@ -2,23 +2,23 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-24 12:02:20 +0800
-- 状态：`GOAL_ACTIVE / R8_IN_PROGRESS / LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / UI_REMEDIATION_REQUIRED`
-- 当前阶段：`R8 GitHub 与生产发布 / IN_PROGRESS`
-- 唯一允许的下一动作：提交包含v0.6.36版本门与定向结果的最终GitHub候选；在该精确文档树只复验safe m38，通过后确认受保护文件不在diff/stage，创建不可变v0.6.36注释tag、push分支/tag、开PR并等待CI
+- 更新时间：2026-08-24 12:24:00 +0800
+- 状态：`GOAL_COMPLETE / R8_AUTO_PASS / R9_AUTO_PASS / PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / USER_RECHECK`
+- 当前阶段：`R9 生产零付费验收与用户复验 / AUTO_PASS / USER_RECHECK`
+- 唯一允许的下一动作：等待用户打开`https://canvas.mymy.ltd`生产实页完成主观质量复验并明确回复；只有该明确确认可以把`USER_RECHECK`升级为`USER_PASS`，否则不得自动续跑、生成图片或改写验收状态
 - 当前仓库：`/Users/mymy/Documents/unboundry/app`
 - 文档分支：`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24`
 - 立项 HEAD / origin-main：`f369d1dba1eef05aebc7f1a443256ceb82778ea0`
 - package：`0.6.36`
 - schema：`39`
-- 生产：`v0.6.35 / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_REMEDIATION_REQUIRED`
+- 生产：`v0.6.36 / PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；v0.6.35六项真实Provider技术链为历史证据，不在本Goal重跑
 - 用户质量：未通过；没有 `USER_PASS`
 - 目标版本：`v0.6.36 / VERSION_GATE_VALID`；用户“在现有v0.6.35上加一个小版本号”的确定性补丁递增指令按SemVer落实为v0.6.36
 - 发布授权：用户于本 Goal 独立明确“`允许发布`” / `RELEASE_GATE_VALID_FOR_V0_6_36`
 - 真实 Provider/付费预算：`0次 / 0 USD`
 - 产品代码：单一活动状态、Portal Host、modal inert、焦点返回、共享surface，以及六类紧凑/大型安全面板已实现；R7独立审查的五项发现已按最小范围修正
 - 测试代码：m2已直接覆盖Host/inert/surface/焦点返回、三目标视口、全部12工具四档zoom、busy焦点、标注tooltip、无asset裁剪fail-closed和零生成请求
-- 文档范围：Checkpoint、TASKS、验收矩阵、CURRENT_STATE候选事实；最终本地候选`161f417e401e6ad332a756510fc6e4c59136b972`，唯一一次safe full原始`1050/1052`，两项失败完成最小定向修正复验且未执行第二次full
+- 文档范围：Checkpoint、TASKS、验收矩阵、CURRENT_STATE候选事实；冻结候选`c2cbd5470a733a053306363993a94da1bc27a89e`、tree`197417a580802694c8f533272f74cc3d82112ea8`已由v0.6.36注释tag和PR #83绑定；唯一一次safe full原始`1050/1052`，两项失败完成最小定向修正复验且未执行第二次full
 
 ## 1. 权威恢复顺序
 
@@ -100,8 +100,8 @@ node -p "require('./package.json').version"
 | R5 | 全屏与交互完整性 | AUTO_PASS |
 | R6 | 逐工具功能与回归验证 | AUTO_PASS / LOCAL_BROWSER_PASS |
 | R7 | 候选冻结与独立审查 | AUTO_PASS / LOCAL_ENGINEERING_COMPLETE / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS |
-| R8 | GitHub 与生产发布 | IN_PROGRESS / VERSION_V0_6_36 / GATES_VALID |
-| R9 | 生产零付费验收与用户复验 | NOT_STARTED |
+| R8 | GitHub 与生产发布 | AUTO_PASS / PRODUCTION_PUBLISHED_AUTO_PASS / VERSION_V0_6_36 |
+| R9 | 生产零付费验收与用户复验 | AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK |
 
 同时最多一个阶段为 `IN_PROGRESS`。
 
@@ -370,3 +370,40 @@ Provider / OSS / 费用：
 - 阻断：原`v0.6.35`身份冲突已由新的未占用`v0.6.36`门解除；当前无阻断
 - 回滚点：R8阻断落档提交`2f857084594dd0643272351409be8bf4f26eacca`
 - 唯一下一动作：提交本次定向结果形成最终GitHub候选；在该精确文档树只复验m38，通过后进入tag/push/PR/CI
+
+### R8 GitHub 候选交付完成
+
+- 时间：2026-08-24 12:06:49 +0800
+- 冻结候选：`c2cbd5470a733a053306363993a94da1bc27a89e`，tree`197417a580802694c8f533272f74cc3d82112ea8`；最终治理文档树safe m38 `15/15 PASS`、退出0，source/snapshot`a5e44a88e9007b5c5abf0260ba6268357b148db8c4c87042b19d7961dbaa64d3`，4173 listener unchanged
+- GitHub：不可变注释tag`v0.6.36`已推送并解引用到冻结候选；PR #83 Quality gates run `32688680243` / job `97318299251`成功，随后squash merge为`24d1fc6f2af22b98f1a6aff31ac371440328d154`
+- 身份门：`origin/main`与`v0.6.36`的tree均为`197417a580802694c8f533272f74cc3d82112ea8`。合并命令在远端合并完成后仅因本地另一worktree占用`main`而无法自动切换分支；远端PR、main和tag均已只读复核，不构成发布阻断
+- 工作树与保护：主工作树只有受保护JSON未跟踪；该文件不在diff/stage/tag/PR。真实Provider请求/尝试/成功、费用和OSS写入仍为0
+- 阻断：无
+- 唯一下一动作：按`RELEASE_RUNBOOK.md`执行生产只读预检；确认v0.6.35当前指针、service、schema39、integrity/FK和数据计数后，为v0.6.36创建正式冻结备份与恢复副本，再从精确注释tag源码构建不可变release并原子切换
+
+### R8 生产发布完成
+
+- 时间：2026-08-24 12:12:59 +0800
+- 状态：`AUTO_PASS / PRODUCTION_PUBLISHED_AUTO_PASS / VERSION_V0_6_36`
+- 精确源码与构建：从注释tag`v0.6.36`的`c2cbd54`/tree`197417a5…12ea8`以`git archive`同步到唯一staging；archive SHA-256 `f14500f8f1bc0938b9c4e71415a9acef9c7ed2be0a2ad9d20f168eb4fda81c6a`。服务器Node22.23.2/npm10.9.8 fresh `npm ci --ignore-scripts`、typecheck和Vite build通过；仅保留既有chunk-size warning。release inventory为5932行/5933文件，SHA-256 `d05c702a66153112b6363db3e6c45478986948e7916a3e3052d695fbe718fcd6`且切换后复验通过
+- 静默门与备份：相隔68秒的两次只读检查均为active generation0、active media publication0。正式冻结根`/var/lib/unboundry-rollbacks/v0.6.36-frozen-r8a4f2`，使用服务器明文备份脚本并以SQLite online backup补齐`library.sqlite`；frozen-source/restore-copy各366文件，双清单SHA-256同为`64e0ed924f3732a38df608d7338845cc3198b8aeabf576d8248c1438ccff4143`
+- 恢复门：restore-copy为主库schema39/integrity ok/FK0，Library schema1/integrity ok/FK0/entries2；tasks759、attempts767、active0、media800/1436473382 bytes、publications390/active0、canvas documents62、templates50/48，全部等于切换前
+- 原子切换：`/opt/unboundry/current`从`v0.6.35-image-toolbar-hotfix-20260824`原子切到`/opt/unboundry/releases/v0.6.36-image-tool-ui-remediation-20260824`；自动回滚保护已武装但未触发。service active/enabled、NRestarts0，回环与公网version0.6.36/live/ready active/schema39通过
+- 发布后数据与资源：主库/Library健康和上述计数逐项保持；5个公网JS/CSS与release SHA-256逐字节相同。切换后journal23行，unexpected error匹配0，Generation/Provider/OSS写入诊断匹配0
+- 外部影响：本Goal真实Provider请求/尝试/成功0，费用0，OSS写入0；未修改schema、用户历史项目、媒体、备份或旧release
+- 回滚点：上一不可变release`/opt/unboundry/releases/v0.6.35-image-toolbar-hotfix-20260824`与新冻结备份均保留
+- 唯一下一动作：使用生产既有图片和零提交方式执行图片工具实页验收；核对单一活动Host、modal inert、透明棋盘格、全部紧凑/大型面板、Escape/焦点和三个目标视口，记录控制台与Generation/Provider请求为0，随后收口生产回执与治理文档但保持`USER_RECHECK`
+
+## 20. R9 生产零付费验收与用户复验
+
+- 时间：2026-08-24 12:24:00 +0800
+- 状态：`AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK`
+- 生产素材与边界：使用既有项目`v0.6.34 图片工具技术冒烟副本 2026-08-23`和既有透明抠图结果，只打开/关闭工具，不改标题、Prompt、参数或画布，不点击任何提交/生成/导出/保存动作
+- 全工具：在生产1440×900实页逐一打开crop、multi-angle、redraw、outpaint、erase、annotation、enhance、resize、cutout、split、seedance、fullscreen共12工具；每次`hostCount=1`且activeTool精确匹配。全部panel bounds在viewport内；modal均root inert+aria-hidden，popover均不误设inert
+- 视口与壳层：1280×720复验多角度600×308和重绘1120×688不越界；1440×900复验全部工具、400×48顶部toolbar及238×272更多菜单；1728×900复验快速切分1120×868不越界。四档Canvas zoom由R7冻结候选m2对全部12工具直接覆盖，R9不改变生产历史项目zoom
+- 透明与大型编辑器：生产透明节点命中`image-node-image-surface image-transparent-preview`并有CSS棋盘格；cutout、crop、redraw、erase、outpaint、annotation、split与fullscreen的checkerboard surface均存在，棋盘格只作CSS背景。裁剪安全编辑源就绪后Host内图片1张；没有导出或改变字节
+- 交互：多角度→全屏原子切换仍只有1个Host；Escape关闭、Tab/Shift+Tab留在modal、关闭后焦点返回触发按钮；增强关闭按钮、抠图外点关闭、颜色菜单→多角度原子互斥均通过。标注10个图标的aria-label/data-tooltip逐项存在
+- 网络与控制台：干净代表序列`multi-angle→fullscreen→crop→redraw→enhance→cutout→seedance`仅1个GET `/api/image-edit-sources/...`，mutating0、Generation/Provider0、事件未截断；后续菜单/关闭/互斥序列仅1个GET `/api/image-tools/capabilities`，mutating0、Generation/Provider0、事件未截断。console error/warn0
+- 数据与外部影响：浏览器验收后生产tasks759、attempts767、active0、media800、publications390/active0、canvas62、templates50、integrity ok/FK0，均与R8切换后相同；本Goal真实Provider请求/尝试/成功0、费用0、OSS写入0
+- 证据边界：自动、隔离浏览器和生产Agent验收已完成；用户尚未在v0.6.36生产实页明确确认主观质量，因此保持`USER_RECHECK`，不声明`USER_PASS`
+- 唯一下一动作：等待用户打开`https://canvas.mymy.ltd`生产实页完成主观质量复验并明确回复；只有该明确确认可以把`USER_RECHECK`升级为`USER_PASS`，否则不得自动续跑、生成图片或改写验收状态

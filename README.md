@@ -6,13 +6,13 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 
-## 当前生产：v0.6.35（2026-08-24，USER QUALITY RECHECK）
+## 当前生产：v0.6.36（2026-08-24，USER RECHECK）
 
-生产当前运行`v0.6.35 / schema39`，状态`PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK`。PR #81、tag/main同tree、main CI、完整主库+Library+媒体冻结备份、精确tag构建、原子切换和生产技术终门均已完成；发布流程自身没有Provider请求或OSS写入。六项真实技术冒烟各一次成功、无重试，主体抠图真实Alpha通过；质量仍待用户复验。完整现状见[`spec/UNBOUNDRY_CURRENT_STATE.md`](spec/UNBOUNDRY_CURRENT_STATE.md)。
+生产当前运行`v0.6.36 / schema39`，状态`PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK`。PR #83、tag/main同tree、Quality gates、完整主库+Library+媒体冻结备份、精确tag构建、原子切换和生产技术终门均已完成；生产既有项目12工具、三视口代表矩阵、透明棋盘格、关闭/焦点/菜单互斥和零变更请求检查通过。发布及验收Provider请求、OSS写入和费用均为0，仍需用户最终确认。完整现状见[`spec/UNBOUNDRY_CURRENT_STATE.md`](spec/UNBOUNDRY_CURRENT_STATE.md)。
 
-## 当前本地候选：v0.6.36（R8 发布施工中）
+## 当前验收：v0.6.36（R9 技术通过，待用户复验）
 
-INC-IMGEDIT-004 R0～R7已完成单一活动工具、Portal Host、统一透明surface、紧凑/大型编辑器、三视口/四zoom、逐工具浏览器证据和独立审查。唯一一次safe full原始`1050/1052`，m24 `2/2`与m37 `35/35`定向修正复验通过且未重复full。用户已明确把未占用目标版本递增为v0.6.36并允许发布；精确版本提交`72f0b0d`的m38+m81 `56/56 PASS`，R8正冻结GitHub候选。真实Provider/OSS/费用预算保持0，生产仍为v0.6.35，不能提前写成已发布或`USER_PASS`。
+INC-IMGEDIT-004 R0～R9已完成单一活动工具、Portal Host、统一透明surface、紧凑/大型编辑器、三视口/四zoom、逐工具浏览器证据、独立审查、GitHub、生产发布和生产零付费实页技术验收。唯一一次safe full原始`1050/1052`，m24 `2/2`与m37 `35/35`定向修正复验通过且未重复full；版本门m38+m81 `56/56`和治理m38通过。真实Provider/OSS/费用0；用户明确确认前不能写`USER_PASS`。
 
 ## v0.6.32 图片裁剪同站编辑源
 

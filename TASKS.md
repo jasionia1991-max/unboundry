@@ -1,11 +1,11 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产仍为`v0.6.35 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS`，但图片工具用户质量复验未通过。`INC-IMGEDIT-004` R7本地候选已完成；用户已把目标补丁递增为`v0.6.36`并允许发布，R8已恢复施工。
+> **当前状态**：生产已运行`v0.6.36 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS`。`INC-IMGEDIT-004` R0～R9工程和技术验收已完成，真实Provider/OSS/费用0；只等用户生产实页主观复验，仍为`USER_RECHECK`。
 
 更新时间：2026-08-24
-状态：`生产v0.6.35；本地候选v0.6.36 R8_IN_PROGRESS；INC-IMGEDIT-004 R7_AUTO_PASS / LOCAL_ENGINEERING_COMPLETE / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS；USER_QUALITY_REMEDIATION_REQUIRED。`
+状态：`生产v0.6.36；INC-IMGEDIT-004 R8_AUTO_PASS / R9_AUTO_PASS / PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / LOCAL_ENGINEERING_COMPLETE / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / USER_RECHECK。`
 
-### 2026-08-24 图片工具交互与 UI 一次性返工（INC-IMGEDIT-004，GOAL_ACTIVE / R7_AUTO_PASS / R8_IN_PROGRESS / VERSION_V0_6_36）
+### 2026-08-24 图片工具交互与 UI 一次性返工（INC-IMGEDIT-004，GOAL_COMPLETE / R9_AUTO_PASS / USER_RECHECK / VERSION_V0_6_36）
 
 - 用户生产实页检查未通过；自动测试和六项真实Provider链只证明技术链，不能证明功能交互、UI或视觉质量正常。
 - 已确认P0/P1：多个工具可叠开；多角度/快速切分/Seedance底部裁切；重绘/擦除/标注与Creator碰撞；透明图在编辑器/全屏为黑底；扩图和紧凑面板布局失衡。顶部工具栏、更多菜单和颜色标记作为回归保护。
@@ -32,6 +32,10 @@
 - 用户随后明确要求在v0.6.35上增加一个小版本号并写出“允许发布”；按确定性SemVer补丁递增落实为`v0.6.36 / VERSION_GATE_VALID / RELEASE_GATE_VALID`。远端`v0.6.36` tag不存在，原身份阻断解除；R8恢复为`IN_PROGRESS`，先同步package/runtime/m81与治理文档，再跑版本直接相关的safe m38+m81，不重复R7唯一一次full。
 - package/lock、`releaseRoleFromEnvironment`和m81 final角色断言已同步到0.6.36；CURRENT_STATE/README/AGENTS/上线规矩与Checkpoint同步表达“生产仍为v0.6.35、本地候选为v0.6.36”，不改写v0.6.35历史发布事实。
 - 精确版本提交`72f0b0d`在全新detached worktree完成safe m38 `15/15`+m81 `41/41`=`56/56 PASS`，退出0且异常计数0；source/snapshot`a7613c8e…903a765`、4173 listener unchanged，TypeScript/build/架构/source coverage/凭据/网络门通过，真实Provider/OSS/费用0。R7唯一一次full继续复用，不因版本与文档改动重复；最终治理文档提交后只复验m38。
+- 最终冻结候选`c2cbd54`的治理文档树safe m38 `15/15 PASS`、退出0，source/snapshot`a5e44a88…64d3`、4173 listener unchanged。注释tag`v0.6.36`已推送并指向该候选；PR #83 Quality gates run `32688680243`成功，squash merge`24d1fc6`，且tag与`origin/main` tree同为`197417a5…12ea8`。主工作树只有受保护JSON未跟踪；生产尚未切换，下一动作是Runbook生产只读预检与正式冻结备份。
+- R8生产发布已完成：精确tag源码在Node22.23.2/npm10.9.8 fresh安装、typecheck和Vite build通过；release inventory 5932行、SHA`d05c702a…fcd6`。60秒静默门两次active0；冻结根`v0.6.36-frozen-r8a4f2`的source/restore各366文件、双清单SHA`64e0ed92…143e`，主库schema39/integrity/FK和Library schema1/integrity/FK/2条均通过，恢复计数与切换前一致。
+- 生产已原子切到`/opt/unboundry/releases/v0.6.36-image-tool-ui-remediation-20260824`，回环/公网version0.6.36、live、ready active/schema39、service active/enabled、NRestarts0；tasks759/attempts767/active0、media800/1436473382、publications390/active0、canvas62、templates50/48、Library2切换前后完全相同，5个公网资源逐字节一致，journal错误与Generation/Provider/OSS诊断0。R8收口`PRODUCTION_PUBLISHED_AUTO_PASS`，R9继续零付费生产实页验收；没有`USER_PASS`。
+- R9生产实页零付费验收完成：既有透明抠图项目上逐一打开12工具，Host始终精确1个、全部面板在viewport内、modal inert、popover非inert；生产透明节点及8类surface棋盘格通过。1280×720、1440×900、1728×900代表矩阵、关闭按钮、外点、Escape、焦点循环/返回、更多/颜色互斥和标注tooltip通过。干净交互序列只有两个只读GET，mutating/Generation/Provider均0，console error/warn0；验收后生产计数与integrity/FK不变。工程收口`PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK`，等待用户明确确认，不能自动写`USER_PASS`。
 
 ### 2026-08-23 图片工具栏剩余能力单 Goal（INC-IMGEDIT-003，D13_AUTO_PASS / USER_QUALITY_REMEDIATION_REQUIRED）
 

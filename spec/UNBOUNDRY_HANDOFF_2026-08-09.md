@@ -6,6 +6,10 @@
 
 新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-23 的权威现状、产品合同和用户验收边界。下面各节是历史增量，出现「当前」时只代表该时点。
 
+## 当前线上：图片工具交互与 UI 返工（v0.6.36，2026-08-24 USER RECHECK）
+
+v0.6.36已把图片工具统一到单一活动状态与screen-space Portal Host，并完成透明棋盘格、紧凑/大型编辑器、全屏和键盘焦点返工。tag commit `c2cbd5470a733a053306363993a94da1bc27a89e` / tree `197417a580802694c8f533272f74cc3d82112ea8`；PR #83 squash merge `24d1fc6f2af22b98f1a6aff31ac371440328d154`且main tree相同。生产current为`/opt/unboundry/releases/v0.6.36-image-tool-ui-remediation-20260824`，冻结备份为`/var/lib/unboundry-rollbacks/v0.6.36-frozen-r8a4f2`，source/restore各366文件、双清单SHA`64e0ed924f3732a38df608d7338845cc3198b8aeabf576d8248c1438ccff4143`。schema39、主库/Library一致性、切换前后数据、service、公网/回环、inventory和5个资源均通过；R9生产既有项目12工具零付费实页技术验收也已通过，Provider/OSS/费用0。用户未确认前状态为`PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK`。
+
 ## 当前线上：裁剪准备态紧凑加载体验（v0.6.33，2026-08-23 USER PASS）
 
 v0.6.33把HTTP/OSS图片的裁剪准备态改为320×180紧凑加载卡片，不增加原图重复读取；仅内存`blob:`/`data:`预览显示缩略图，安全同站Blob仍是唯一裁剪/导出数据源。tag commit `669958f4e325cc182c31cf0f27861e26b64736b1` / tree `c3a1c27cbe0c230d7005f260c5b57b96ad274acd`；PR #77 squash merge `8675a34b14b17fdf69b5e08b0469c520e4df79cb`。生产 current `/opt/unboundry/releases/v0.6.33-crop-loading-20260823`，冻结备份 `/var/lib/unboundry-rollbacks/v0.6.33-frozen-sLmph1`。正式full原始记录`1049/1050`，同源码只复验唯一失败m22后`37/37 PASS`；生产schema/integrity/FK、切换前后数据、service、公网/回环、inventory和5资源全部通过。用户已在线上复验并明确回复“通过”，状态`PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`；回执`spec/V0_6_33_PRODUCTION_RECEIPT_2026-08-23.json`。

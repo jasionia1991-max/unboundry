@@ -1,0 +1,253 @@
+{
+  "version": "v0.6.36",
+  "date": "2026-08-24",
+  "status": "PRODUCTION_PUBLISHED_AUTO_PASS",
+  "scope": {
+    "summary": "一次性返工图片工具互斥状态、screen-space Portal宿主、紧凑与大型编辑层、透明棋盘格、全屏和键盘焦点交互。",
+    "schemaChanged": false,
+    "schemaVersion": 39,
+    "releaseInitiatedProviderRequests": 0,
+    "releaseInitiatedProviderAttempts": 0,
+    "releaseInitiatedOssWrites": 0,
+    "releaseCostUsd": 0,
+    "protectedJsonReadOrMutated": false
+  },
+  "source": {
+    "candidateCommit": "c2cbd5470a733a053306363993a94da1bc27a89e",
+    "tag": "v0.6.36",
+    "tagObject": "a4512bea6d3954b5d67aa674dedfb5d9687b4bd1",
+    "tagCommit": "c2cbd5470a733a053306363993a94da1bc27a89e",
+    "tagTree": "197417a580802694c8f533272f74cc3d82112ea8",
+    "pullRequest": 83,
+    "pullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/83",
+    "mergeCommit": "24d1fc6f2af22b98f1a6aff31ac371440328d154",
+    "mainTree": "197417a580802694c8f533272f74cc3d82112ea8",
+    "mainTreeEqualsTagTree": true,
+    "productionSource": "annotated tag v0.6.36",
+    "pullRequestQualityGateRun": 32688680243,
+    "pullRequestQualityGateJob": 97318299251,
+    "pullRequestQualityGateConclusion": "SUCCESS"
+  },
+  "verification": {
+    "directlyAffectedTargeted": {
+      "scope": "m2-image-node + m18-typography + m100-modular-ports",
+      "tests": 25,
+      "passed": 25,
+      "failed": 0
+    },
+    "versionSyncTargeted": {
+      "scope": "m38-generation-runtime-incidents + m81-deployment-hardening",
+      "tests": 56,
+      "passed": 56,
+      "failed": 0,
+      "sourceAndSnapshotSha256": "a7613c8e9b7139ffcbf3e012e452f3c163f8bd57791f8e7d07d004622903a765"
+    },
+    "formalSafeFullRuns": 1,
+    "formalSafeFull": {
+      "baselineHead": "4fd25ccb49b98573ab2e2ce8a6f28798f2ea3968",
+      "sourceAndSnapshotSha256": "ce6403b6136452263550846c2bdc1515fdba3abf0146b83f8d2ef6c8c41a8414",
+      "specs": 120,
+      "tests": 1052,
+      "passed": 1050,
+      "failed": 2,
+      "blocked": 0,
+      "retries": 0,
+      "skipped": 0,
+      "reportErrors": 0,
+      "exitCode": 1
+    },
+    "targetedCorrections": [
+      {
+        "scope": "m24-character-contract",
+        "tests": 2,
+        "passed": 2,
+        "failed": 0,
+        "head": "e2c412e"
+      },
+      {
+        "scope": "m37-media-upload-transactions",
+        "tests": 35,
+        "passed": 35,
+        "failed": 0,
+        "head": "161f417"
+      }
+    ],
+    "documentationTargeted": {
+      "scope": "m38-generation-runtime-incidents",
+      "tests": 15,
+      "passed": 15,
+      "failed": 0,
+      "sourceAndSnapshotSha256": "a5e44a88e9007b5c5abf0260ba6268357b148db8c4c87042b19d7961dbaa64d3"
+    },
+    "secondFullRun": false,
+    "localBrowserEvidence": "spec/evidence/inc-imgedit-004-r6/browser-receipt.json",
+    "localBrowserScreenshots": 13,
+    "realProviderRequestsDuringAutomatedTests": 0,
+    "realOssWritesDuringAutomatedTests": 0
+  },
+  "release": {
+    "archiveSha256": "f14500f8f1bc0938b9c4e71415a9acef9c7ed2be0a2ad9d20f168eb4fda81c6a",
+    "releasePath": "/opt/unboundry/releases/v0.6.36-image-tool-ui-remediation-20260824",
+    "previousRelease": "/opt/unboundry/releases/v0.6.35-image-toolbar-hotfix-20260824",
+    "currentTarget": "/opt/unboundry/releases/v0.6.36-image-tool-ui-remediation-20260824",
+    "freshBuild": {
+      "node": "v22.23.2",
+      "npm": "10.9.8",
+      "npmCiIgnoreScripts": "PASS",
+      "typecheck": "PASS",
+      "viteBuild": "PASS",
+      "knownChunkSizeWarningOnly": true
+    },
+    "inventory": {
+      "files": 5933,
+      "inventoryLines": 5932,
+      "sha256": "d05c702a66153112b6363db3e6c45478986948e7916a3e3052d695fbe718fcd6",
+      "postSwitchCheck": "PASS"
+    }
+  },
+  "preCutoverActivity": {
+    "quietGateSeconds": 68,
+    "firstCheckAt": "2026-08-24T04:10:10.066Z",
+    "secondCheckAt": "2026-08-24T04:11:18.640Z",
+    "activeTasksAtFirstCheck": 0,
+    "activeTasksAtSecondCheck": 0,
+    "activeMediaPublicationsAtFirstCheck": 0,
+    "activeMediaPublicationsAtSecondCheck": 0
+  },
+  "frozenBackup": {
+    "path": "/var/lib/unboundry-rollbacks/v0.6.36-frozen-r8a4f2",
+    "createdOnce": true,
+    "backupScriptInitialMediaFiles": 355,
+    "finalFrozenAndRestoreFiles": 366,
+    "frozenManifestSha256": "64e0ed924f3732a38df608d7338845cc3198b8aeabf576d8248c1438ccff4143",
+    "restoreManifestSha256": "64e0ed924f3732a38df608d7338845cc3198b8aeabf576d8248c1438ccff4143",
+    "schemaVersion": 39,
+    "integrity": "ok",
+    "foreignKeyViolations": 0,
+    "librarySchemaVersion": 1,
+    "libraryIntegrity": "ok",
+    "libraryForeignKeyViolations": 0,
+    "libraryEntries": 2,
+    "librarySupplement": "The plaintext server backup was supplemented with a consistent node:sqlite online backup of library.sqlite before both manifests were generated.",
+    "restoredCountsEqualPreCutover": true,
+    "deletedOrOverwritten": false
+  },
+  "productionAcceptance": {
+    "cutoverAt": "2026-08-24T12:12:17+08:00",
+    "loopbackVersion": "0.6.36",
+    "publicVersion": "0.6.36",
+    "loopbackLive": 200,
+    "loopbackReady": 200,
+    "publicLive": 200,
+    "publicReady": 200,
+    "readyMode": "active",
+    "activeLeaseHeld": true,
+    "serviceActive": true,
+    "serviceEnabled": true,
+    "serviceRestarts": 0,
+    "schemaVersion": 39,
+    "integrity": "ok",
+    "foreignKeyViolations": 0,
+    "librarySchemaVersion": 1,
+    "libraryIntegrity": "ok",
+    "countsBeforeAndAfterEqual": true,
+    "counts": {
+      "generationTasks": 759,
+      "providerAttempts": 767,
+      "activeTasks": 0,
+      "mediaAssets": 800,
+      "mediaBytes": 1436473382,
+      "mediaPublicationAttempts": 390,
+      "activeMediaPublications": 0,
+      "canvasDocuments": 62,
+      "libraryEntries": 2,
+      "publicTemplates": 50,
+      "publishedPublicTemplates": 48
+    },
+    "publicAssetsCompared": 5,
+    "publicAssetsEqualRelease": true,
+    "publicAssetSha256": {
+      "CanvasShell-BzmBa5MP.js": "0eeff67d7be9b284c284c187313514e084f9b759cffb14483d4bc652238e2a99",
+      "WorkspacePage-xZsSC_jH.js": "b2fc4fbe1160ddfefbc85f7aa5fcea1d7413db1ff55077602295c7bce8566a38",
+      "index-BGXGem4z.js": "eb93e8a2724ba32f4a6e8014d002d3a4880dfc85db0abba36121f780e0a73c03",
+      "index-Gk7UsTGX.css": "eaf6998ecc175a8c33b23a0a10d78e26d33ed0d03d2986eadb3eadfdd80a5678",
+      "projectStorage-CFfWMTM2.js": "a42b65cd92540d63abbdb968b0bc1fd95f4fc19d1e77fa58d7d6d1eefe9f3ef0"
+    },
+    "journalLinesInspected": 23,
+    "journalUnexpectedErrorMatches": 0,
+    "journalGenerationProviderOssMatches": 0,
+    "releaseInitiatedProviderRequests": 0,
+    "releaseInitiatedOssWrites": 0
+  },
+  "productionBrowserAcceptance": {
+    "status": "PRODUCTION_ZERO_PAID_BROWSER_PASS",
+    "project": "v0.6.34 图片工具技术冒烟副本 2026-08-23",
+    "viewports": [
+      "1280x720",
+      "1440x900",
+      "1728x900"
+    ],
+    "toolsChecked": [
+      "crop",
+      "multi-angle",
+      "redraw",
+      "outpaint",
+      "erase",
+      "annotation",
+      "enhance",
+      "resize",
+      "cutout",
+      "split",
+      "seedance",
+      "fullscreen"
+    ],
+    "allToolsSingleHost": true,
+    "allPanelsInsideViewport": true,
+    "modalBackgroundInert": true,
+    "popoverBackgroundNotInert": true,
+    "transparentNodeCheckerboard": true,
+    "checkerboardToolSurfaces": 8,
+    "toolbar": "400x48",
+    "moreMenu": "238x272 with 8 items",
+    "multiAnglePanel": "600x308",
+    "largeEditorAt1440x900": "1120x868",
+    "largeEditorAt1280x720": "1120x688",
+    "escapeFocusLoopAndReturn": "PASS",
+    "closeButton": "PASS",
+    "outsideClose": "PASS",
+    "colorMenuAtomicSwitch": "PASS",
+    "annotationTooltips": 10,
+    "consoleErrorsOrWarnings": 0,
+    "networkEvidence": {
+      "representativeSequence": "multi-angle -> fullscreen -> crop -> redraw -> enhance -> cutout -> seedance",
+      "requests": 1,
+      "request": "GET /api/image-edit-sources/:assetId",
+      "mutatingRequests": 0,
+      "generationOrProviderRequests": 0,
+      "truncated": false,
+      "followupRequests": 1,
+      "followupRequest": "GET /api/image-tools/capabilities",
+      "followupMutatingRequests": 0,
+      "followupGenerationOrProviderRequests": 0,
+      "followupTruncated": false
+    },
+    "productionCountsUnchangedAfterBrowserAcceptance": true,
+    "realProviderRequests": 0,
+    "realOssWrites": 0
+  },
+  "rollback": {
+    "required": false,
+    "automaticRollbackGuardWasArmed": true,
+    "previousReleaseRetained": true,
+    "frozenBackupRetained": true,
+    "productionDataDeleted": false,
+    "productionMediaDeleted": false,
+    "immutableReleaseDeleted": false
+  },
+  "authorizationConsumed": true,
+  "userAcceptance": {
+    "status": "USER_RECHECK",
+    "scope": "v0.6.36 image-tool interaction and UI remediation"
+  },
+  "completionBoundary": "v0.6.36 is technically published and passed zero-paid production browser acceptance with zero Provider requests and zero OSS writes. USER_PASS still requires explicit user confirmation."
+}

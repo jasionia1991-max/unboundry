@@ -1,17 +1,17 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网为v0.6.35/schema39，生产技术门和六项真实技术链已通过；用户随后确认图片工具交互与UI不合格，当前为`PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_REMEDIATION_REQUIRED`，没有`USER_PASS`。
+> **状态分层**：现网为v0.6.36/schema39；INC-IMGEDIT-004工程、GitHub、生产技术发布和R9零付费实页技术验收已通过，当前为`PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK`，没有`USER_PASS`。
 
 更新日期：2026-08-24
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
 当前代码包版本：**v0.6.36**
 本地候选代码版本：**v0.6.36**
-当前治理标记：`CURRENT_V0_6_35_USER_RECHECK`
-当前热修门：`V0_6_35_PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_REMEDIATION_REQUIRED`
+当前治理标记：`CURRENT_V0_6_36_USER_RECHECK`
+当前热修门：`V0_6_36_PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK`
 
 ## 一句话
 
-**生产是 v0.6.35 / schema39，技术发布和真实Provider链通过，但图片工具用户质量复验未通过。** PR #81 squash merge为`cc62bfb`；注释tag解引用`fc99101`，tag与`origin/main` tree均为`cb13fef`。生产current为`/opt/unboundry/releases/v0.6.35-image-toolbar-hotfix-20260824`；当前必须执行INC-IMGEDIT-004交互/UI返工，不能把技术链成功称为功能或UI正常。
+**生产是 v0.6.36 / schema39，INC-IMGEDIT-004已完成工程、生产技术发布和零付费实页技术验收，只待用户主观确认。** PR #83 squash merge为`24d1fc6`；注释tag解引用`c2cbd54`，tag与`origin/main` tree均为`197417a5…12ea8`。生产current为`/opt/unboundry/releases/v0.6.36-image-tool-ui-remediation-20260824`；技术通过不等于`USER_PASS`。
 
 v0.6.34冻结前定向`234/234 PASS`；唯一一次safe full原始`1048/1052`，只修正一个真实图片预检缺陷与三个测试确定性问题后，精确四spec `106/106 PASS`，没有第二次full。GitHub、冻结备份与恢复副本、精确tag源码构建、schema39数据门、原子切换、公网/回环/service/inventory/资源门均已完成。
 
@@ -19,17 +19,19 @@ v0.6.34冻结前定向`234/234 PASS`；唯一一次safe full原始`1048/1052`，
 
 v0.6.34版本号、tag和发布授权均已执行并消费，禁止移动tag或覆盖release。用户于2026-08-24明确确认`v0.6.35`并独立回复“按v0.6.35上线吧”；新授权只覆盖共同生成热修及Goal内剩余D13，不扩大到Mureka、团队/多人协作、真实Agent协议、Storyboard完整编辑、图片打光或其他既有`PARTIAL/PAUSED/BLOCK`项。
 
-## INC-IMGEDIT-004 图片工具交互与 UI 一次性返工（R7_AUTO_PASS / R8_IN_PROGRESS / VERSION_V0_6_36）
+## INC-IMGEDIT-004 图片工具交互与 UI 一次性返工（R9_AUTO_PASS / USER_RECHECK / VERSION_V0_6_36）
 
 - 用户在生产实页反馈图片工具“几乎都不正常”且没有对齐项目UI规范；只读复核确认多个工具可叠层、部分面板在视口底部裁切、重绘/擦除/标注与底层Creator碰撞、透明图在编辑器/全屏显示黑底、扩图与紧凑面板布局失衡。顶部400×48工具栏、更多菜单和颜色标记基本符合既有基线，作为回归保护。
 - 根因冻结为：多套独立open状态缺少互斥；多个面板依附节点`NodeToolbar`而不是screen-space Portal；缺少统一modal/popover/surface、焦点、viewport和透明背景合同。
-- R0～R6已完成单一活动状态、Portal `ImageToolHost`、modal inert、焦点返回、共享棋盘格surface、紧凑/大型面板、三目标视口和13张本地浏览器证据；当前没有生产或GitHub新事实。
+- R0～R6已完成单一活动状态、Portal `ImageToolHost`、modal inert、焦点返回、共享棋盘格surface、紧凑/大型面板、三目标视口和13张本地浏览器证据；该实现已随v0.6.36发布。
 - 主方案：`spec/INC_IMGEDIT_004_IMAGE_TOOL_UI_REMEDIATION_PLAN_2026-08-24.md`；唯一断点：`spec/INC_IMGEDIT_004_IMAGE_TOOL_UI_REMEDIATION_CHECKPOINT.md`；新Session Goal：`spec/INC_IMGEDIT_004_IMAGE_TOOL_UI_REMEDIATION_GOAL_PROMPT_2026-08-24.md`。
 - R7独立只读审查报告普通透明上传节点surface、标注tooltip、busy焦点、URL-only裁剪空壳和全工具zoom证据五项缺口；产品/测试候选`39cd494`已按最小范围修正。精确候选safe m2 `10/10`、m18 `2/2`、m100 `13/13 PASS`，source/snapshot`8c3cd1a6…f5b98`、4173 listener unchanged，真实Provider/OSS/费用0。
 - 唯一一次safe full在精确`4fd25cc`执行，原始`1050/1052`；两个失败为m24异步目录结果时序和m37在modal inert后使用非法背景编辑前置条件。未重复full；m24在`e2c412e`定向`2/2 PASS`，m37在最终候选`161f417`以真实派生use case直接验证上传后持久化关闭补偿并`35/35 PASS`。当前工程状态`LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS`，不把原始full改写成全绿。
-- `IMGEDIT-021～028`当前为本地自动/浏览器分层通过或`USER_RECHECK`；R7已收口。R8只读预检曾确认`v0.6.35`已被旧源码不可变占用；用户随后明确要求补丁递增一个版本并写出“允许发布”，确定性目标变为未占用的`v0.6.36`，原身份阻断解除。当前正在同步package/runtime/test与治理合同，尚未push/PR/tag/生产写入。
+- `IMGEDIT-021～028`已完成本地自动/浏览器分层证据；冻结候选`c2cbd54`由注释tag`v0.6.36`绑定，PR #83 Quality gates成功并squash merge为`24d1fc6`，tag与`origin/main` tree同为`197417a5…12ea8`。生产已原子切到v0.6.36，R8健康/数据/资源门和R9零付费生产实页技术验收均通过；只待用户主观确认。
 - 本Goal当前版本门为`v0.6.36`，独立“允许发布”句子有效，只在R8/R9消费。INC-IMGEDIT-003的6次/60 USD已全部消费；本返工真实Provider成功、尝试和费用预算固定为0。
-- v0.6.36精确版本提交`72f0b0d`已通过safe m38 `15/15`与m81 `41/41`，合计`56/56 PASS`，source/snapshot`a7613c8e…903a765`、4173 listener unchanged，Provider/OSS/费用0；最终治理文档树只补跑m38后进入GitHub发布，不重复R7唯一一次full。
+- v0.6.36精确版本提交`72f0b0d`已通过safe m38 `15/15`与m81 `41/41`，合计`56/56 PASS`，source/snapshot`a7613c8e…903a765`；最终冻结候选`c2cbd54`又完成治理文档树m38 `15/15 PASS`，source/snapshot`a5e44a88…64d3`。各轮4173 listener unchanged，Provider/OSS/费用0；未重复R7唯一一次full。
+- R8生产：release`/opt/unboundry/releases/v0.6.36-image-tool-ui-remediation-20260824`，inventory SHA`d05c702a…fcd6`；冻结备份`/var/lib/unboundry-rollbacks/v0.6.36-frozen-r8a4f2`的source/restore各366文件且双清单SHA`64e0ed92…143e`。切换前后主库schema39/integrity/FK、Library schema1/integrity/FK和tasks759/attempts767/active0、media800/1436473382、publications390/active0、canvas62、templates50/48、Library2完全一致；公网5资源一致，journal错误0，发布Provider/OSS/费用0。
+- R9生产零付费实页：既有透明抠图项目逐一打开12工具，单一Host、modal inert、透明棋盘格、全部紧凑/大型层、三目标视口代表矩阵、关闭/外点/Escape/焦点与菜单互斥通过；干净序列只有两个只读GET，mutating/Generation/Provider0，console error/warn0。验收后tasks759、attempts767、active0、media800、publications390、canvas62、templates50及integrity/FK不变。当前只剩用户主观质量确认，保持`USER_RECHECK`。
 
 ## INC-IMGEDIT-003 图片工具栏剩余能力单 Goal（D13技术完成，用户质量未通过并转INC-IMGEDIT-004）
 
@@ -308,7 +310,7 @@ v0.6.34版本号、tag和发布授权均已执行并消费，禁止移动tag或�
 
 1. 先读本文 + `上线规矩.md` + `TASKS.md` 顶部。
 2. 只读核对当前隔离worktree、分支、HEAD、工作树和`package.json`；当前本地候选package应为`0.6.36`，历史计划中的旧版本号不得当成当前施工身份。
-3. 当前生产仍为v0.6.35/schema39，技术状态`PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS`，但图片工具用户质量复验未通过；当前工程入口为INC-IMGEDIT-004主方案与Checkpoint，R8目标为已授权的v0.6.36。本返工真实Provider预算为0，不得自动记录`USER_PASS`或追加Provider请求。
+3. 当前生产为v0.6.36/schema39，技术状态`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；当前工程入口为INC-IMGEDIT-004主方案与Checkpoint，R9只做生产零付费实页验收和文档收口。本返工真实Provider预算为0，不得自动记录`USER_PASS`或追加Provider请求。
 4. 云腾三模型只归属云腾 Provider；不得借用优创密钥、不得新增“天空”计费 Provider、不得自动追加真实 Provider POST。
 5. `VIEW-005`已由本地隔离安全定向证据关闭为`AUTO_PASS`；其余`PAUSED/BLOCK/PARTIAL`项只有在用户重新立项后才能施工，本次证据不得被解释为新版本或生产授权。
 6. 若用户说生成或工作流再次异常，先查当前线上任务、Provider profile、attempt 和结果所有权，再给方案；不得擅自改生产库或重提付费请求。
