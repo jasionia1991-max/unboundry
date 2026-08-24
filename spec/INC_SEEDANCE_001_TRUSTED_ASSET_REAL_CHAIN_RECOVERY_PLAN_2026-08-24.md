@@ -1,8 +1,8 @@
 # INC-SEEDANCE-001 Seedance 可信素材真实链路恢复方案
 
-更新日期：2026-08-24
+更新日期：2026-08-25
 
-状态：`PRODUCTION_V0_6_39_TECHNICAL_PASS / V0_6_40_CANDIDATE_FROZEN / PROJECT_PERMISSION_CONFIRMATION_PENDING / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED`
+状态：`PRODUCTION_V0_6_40_TECHNICAL_PASS / PROJECT_PERMISSION_APPLIED / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / BLOCKED_EXTERNAL_CAPABILITY`
 
 版本门：`v0.6.40 / VERSION_GATE_VALID`
 
@@ -27,8 +27,9 @@ v0.6.40候选：
 - 在不改变固定用户错误文案的前提下，只保留受限的Provider HTTP状态、错误码和RequestId，并写入既有`provider_status`；禁止保存远端Message、Body、AK或SK。
 - H5创建、认证结果查询、Asset创建和Asset查询四个失败边界均使用同一安全分类；无诊断时继续fail-closed。
 - 最终定向m42+m100+m81+m9为4 specs、`71/71 PASS`。唯一safe full原始`1055/1056`，唯一失败为AGENTS治理精确短语，产品1055项均通过；修正后m38 `15/15 PASS`，未重复full。测试库存仍为120 specs/1056 tests，真实Provider、Generation、OSS和费用0。
-- 只读核验已把生产AK精确匹配到IAM用户`tapnow-ark-catalog-ro-20260803`；该身份只有`TapNowArkCatalogReadOnly`，Project `default`当前授权数为0。
-- Project级补权向导已选中唯一目标用户与系统策略`ArkFullAccess`，当前停在最终“确定”前；浏览器动作时确认完成前不得提交。
+- 只读核验已把生产AK精确匹配到IAM用户`tapnow-ark-catalog-ro-20260803`；Project `default`已只为该身份补`ArkFullAccess`，原`TapNowArkCatalogReadOnly`保留。
+- 一次从无Project范围的用户入口误加的用户级策略已立即撤销且无残留；正确Project入口提交结果1成功、0失败。
+- 唯一H5创建返回远端`HTTP 403 / SubscriptionRequired`，无Provider session ID、H5Link或BytedToken；当前账号未开通Assets API，真实链转为C分支外部能力阻断。
 
 官方合同：
 
@@ -69,15 +70,15 @@ v0.6.40候选：
 6. 不提交付费视频生成、不新增OSS测试写入；
 7. 请求计数、状态转换和失败关闭写入v0.6.40新回执，用户验收与Provider协议验收分层。
 
-## 5. 外部请求预算（v0.6.40新事件，已授权且尚未消费）
+## 5. 外部请求预算（v0.6.40新事件，已授权并按门停止）
 
 该账本不复用v0.6.39的历史失败请求，截至当前为：
 
-- `CreateVisualValidateSession`：`0/1`；
+- `CreateVisualValidateSession`：`1/1`；
 - `GetVisualValidateResult`：`0/15`；
 - `CreateAsset`：`0/1`；
 - `GetAsset`（含Active最终复核）：`0/33`；
-- 控制面合计：`0/50`；
+- 控制面合计：`1/50`；
 - 付费Generation：0；
 - OSS测试写入：0；
 - 购买、开通、新账号：0；只允许在缺失时为当前方舟身份补对应Project的`ArkFullAccess`。
@@ -91,11 +92,11 @@ v0.6.40候选：
 | R0 | 恢复权威状态、核对Git、生产历史与v0.6.40新预算 | PASS |
 | R1 | 受限Provider诊断实现与定向回归 | TARGETED_AUTO_PASS |
 | R2 | 当前生产AK身份与Project权限只读核验 | PASS |
-| R3 | 仅为Project `default`的当前IAM用户补`ArkFullAccess` | PROJECT_PERMISSION_CONFIRMATION_PENDING |
+| R3 | 仅为Project `default`的当前IAM用户补`ArkFullAccess` | PASS / PROJECT_PERMISSION_APPLIED |
 | R4 | 文档、验收矩阵、候选测试与检查点对齐 | PASS |
 | R5 | commit/GitHub/CI/merge/tag/Release与生产发布 | PASS |
-| R6 | 生产真实H5/Group/Asset/Active/asset://链 | IN_PROGRESS / USER_CONFIRMATION_PENDING |
-| R7 | 生产健康、数据、零付费账本与v0.6.40新回执 | TECHNICAL_PASS / REAL_CHAIN_PENDING |
+| R6 | 生产真实H5/Group/Asset/Active/asset://链 | PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / BLOCKED_EXTERNAL_CAPABILITY |
+| R7 | 生产健康、数据、零付费账本与v0.6.40新回执 | TECHNICAL_PASS / RECEIPT_ALIGNED |
 
 ## 7. 回滚
 
@@ -104,7 +105,7 @@ v0.6.40候选：
 ## 8. 当前硬门与下一步
 
 1. 不得移动v0.6.39 tag，也不得把v0.6.39的`1/50`写入v0.6.40新账本；
-2. 浏览器补权提交前必须再次显示Project=`default`、用户=`tapnow-ark-catalog-ro-20260803`、策略=`ArkFullAccess`并取得动作时确认；
-3. 候选冻结、GitHub、生产发布与生产健康门通过后，H5只允许创建一次；任何创建超时、5xx或结果未知都停止，不重提；
-4. 真人H5完成后最多查询15次；取得同Project GroupId后只创建一次Asset，最多查询33次直到Active并完成服务端`asset://`复核；
-5. 在上述链真正完成前，状态必须保持`PROVIDER_PROTOCOL_REAL_FAIL_CLOSED`；付费Generation和OSS测试写入始终为0。
+2. 浏览器补权已在动作时再次显示Project=`default`、用户=`tapnow-ark-catalog-ro-20260803`、策略=`ArkFullAccess`并取得确认后提交；用户级误授权已撤销且无残留；
+3. 唯一H5创建已执行并返回远端`403 SubscriptionRequired`，无H5Link或BytedToken；创建预算`1/1`耗尽，不重提；
+4. 因没有真人H5和GroupId，认证查询、Asset创建/查询与`asset://`复核均未进入；
+5. 当前账号未订阅Assets API，状态保持`PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / BLOCKED_EXTERNAL_CAPABILITY`；本事件不购买，付费Generation和OSS测试写入始终为0。

@@ -1,9 +1,9 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产已为`v0.6.40 / schema40`且技术健康；GitHub与生产技术发布已完成，Project `default`补权停在最终确认前，真实链尚未启动。
+> **当前状态**：生产为`v0.6.40 / schema40`且技术健康；Project `default`补权已完成，唯一H5创建返回远端`403 SubscriptionRequired`，真实链受外部订阅能力阻断。
 
-更新时间：2026-08-24
-状态：`生产v0.6.40 / schema40 / PRODUCTION_TECHNICAL_PASS；PROJECT_PERMISSION_CONFIRMATION_PENDING / PROVIDER_PROTOCOL_REAL_RECHECK_PENDING / USER_RECHECK；新预算0/50、Generation/OSS/费用0。`
+更新时间：2026-08-25
+状态：`生产v0.6.40 / schema40 / PRODUCTION_TECHNICAL_PASS；PROJECT_PERMISSION_APPLIED / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / BLOCKED_EXTERNAL_CAPABILITY / USER_RECHECK；新预算1/50、Generation/OSS/费用0。`
 
 ### 2026-08-24 Seedance可信素材真实链路恢复（INC-SEEDANCE-001）
 
@@ -24,14 +24,15 @@
 - [x] 最终定向m42+m100+m81+m9为4 specs、`71/71 PASS`；source/snapshot `ce05428c…c64`，测试库存仍为120 specs/1056 tests，真实Provider/Generation/OSS/费用0
 - [x] 唯一safe full执行120 specs/1056 tests，原始`1055/1056`；唯一失败是AGENTS当前生产短语多一个“仍”字，产品1055项均通过，source/snapshot `ce05428c…c64`，未重复full
 - [x] 只读匹配生产AK与IAM用户`tapnow-ark-catalog-ro-20260803`；确认其只有`TapNowArkCatalogReadOnly`，Project `default`授权数为0
-- [ ] 收到浏览器最终即时确认后，仅为Project `default`向该IAM用户添加系统策略`ArkFullAccess`
+- [x] 用户动作时确认后，仅为Project `default`向该IAM用户添加系统策略`ArkFullAccess`，结果1成功0失败；一次误加用户级策略已立即撤销且无残留
 - [x] 修正治理短语后只复验m38 `15/15 PASS`，source/snapshot `c62658c6…8c70`，未重复full；v0.6.40候选冻结
 - [x] commit`70e3730`、PR #92、Quality CI、merge`21eb483`、tag/Release `v0.6.40`完成；tag与main tree均为`1defaa5`
 - [x] fresh生产release`/opt/unboundry/releases/v0.6.40-seedance-provider-diagnostics-20260824`完成；冻结备份`v0.6.40-cutover-frozen-OtzczQ`双副本各366文件且清单一致
 - [x] 原子切换后公网/回环v0.6.40、live/ready active/schema40、service active+enabled/NRestarts0、数据库/媒体计数不变、5资源逐字节一致
-- [ ] 用户回复“确认授权”后提交Project `default`对当前IAM身份的`ArkFullAccess`；随后执行唯一H5创建与真人认证
+- [x] 用户回复“确认授权”后提交Project `default`对当前IAM身份的`ArkFullAccess`；用户详情确认该策略受`default(默认项目)`限制，原只读策略保留
 - [x] 完成commit、push、PR/CI/merge/tag/Release和生产发布
-- [ ] 使用新账本完成H5→Group→Asset→Active→服务端`asset://`；H5创建最多1次，未知结果禁止重提
+- [x] 使用新账本执行唯一H5创建`1/1`；远端返回`403 SubscriptionRequired`，session FAILED且无H5Link/BytedToken，不重提
+- [ ] H5→Group→Asset→Active→服务端`asset://`未完成：当前账号未订阅Assets API，保持`BLOCKED_EXTERNAL_CAPABILITY`；认证查询、Asset创建/查询均0，不购买、不进入后续阶段
 
 权威方案：`spec/INC_SEEDANCE_001_TRUSTED_ASSET_REAL_CHAIN_RECOVERY_PLAN_2026-08-24.md`；实时断点：`spec/INC_SEEDANCE_001_TRUSTED_ASSET_REAL_CHAIN_RECOVERY_CHECKPOINT.md`。
 

@@ -5,13 +5,13 @@
 状态：`HISTORICAL_CHECKPOINT / APPEND_ONLY`
 用途：保留各次施工与发布时点证据，不再充当当前恢复入口。**当前状态、未发布工作区与下一步只看 `UNBOUNDRY_CURRENT_STATE.md`；本文件任何旧命令或旧授权都不可复用。**
 
-## 0A. INC-SEEDANCE-001 可信素材真实链路恢复（2026-08-24 v0.6.40已技术发布）
+## 0A. INC-SEEDANCE-001 可信素材真实链路恢复（2026-08-25 BLOCKED_EXTERNAL_CAPABILITY）
 
-- 生产为v0.6.40/schema40且技术健康，用户验收与历史回执不变；Provider真实链仍待Project补权和真人认证。
+- 生产为v0.6.40/schema40且技术健康，用户验收与历史回执不变；Project `default`最小补权已完成。
 - 正式接口对照确认v0.6.38的主机与CallbackURL偏差；v0.6.39已修复，v0.6.40已上线受限Provider诊断。
 - 权威方案和唯一断点分别为`spec/INC_SEEDANCE_001_TRUSTED_ASSET_REAL_CHAIN_RECOVERY_PLAN_2026-08-24.md`与对应Checkpoint。
 - PR #92、Quality CI、tag/Release、fresh生产release、冻结双副本、原子切换、公网/回环、数据不变和5资源门均通过；回执`spec/V0_6_40_PRODUCTION_RECEIPT_2026-08-24.json`。
-- 当前v0.6.40新事件真实Provider 0/50、Generation、费用和OSS写入0。唯一下一动作以INC-SEEDANCE-001 Checkpoint为准；收到用户“确认授权”才提交补权，再创建唯一一次H5交给用户真人认证。
+- v0.6.40新事件唯一H5创建已消费`1/1`，远端明确返回`403 SubscriptionRequired`，无Provider session ID、H5Link或BytedToken；认证查询、Asset创建/查询均0，Generation、费用和OSS写入0。真实链按`PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / BLOCKED_EXTERNAL_CAPABILITY`停止，不购买、不重试；唯一下一动作以INC-SEEDANCE-001 Checkpoint为准。
 
 ## 0. v0.6.38 图片全屏完整适配与Seedance可信素材（2026-08-24 已发布并获用户确认，真实协议fail-closed）
 
