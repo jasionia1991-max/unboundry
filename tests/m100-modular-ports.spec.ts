@@ -122,6 +122,8 @@ import { createOutpaintEraseImageToolUseCase } from
   "../client/src/imageTools/outpaintEraseImageToolUseCase";
 import { createPromptGenerationImageToolUseCase } from
   "../client/src/imageTools/promptGenerationImageToolUseCase";
+import { findVacantImageToolPlacement } from
+  "../client/src/imageTools/imageToolPlacement";
 import {
   createFakeImageToolCapabilityAdapter,
   ImageToolCapabilityAdapterRegistry,
@@ -485,7 +487,7 @@ test("image tool capability snapshot is complete, unique and fail-closed", () =>
   expect(imageToolDescriptors.split).toMatchObject({
     inertBackground: true,
     presentation: "modal",
-    surface: "checkerboard",
+    surface: "plain",
   });
   expect(imageToolDescriptors["multi-angle"]).toMatchObject({
     maximumWidth: 600,
@@ -511,6 +513,107 @@ test("image tool capability snapshot is complete, unique and fail-closed", () =>
     tool: "redraw",
     type: "close-tool",
   }).activeTool).toBe("crop");
+
+  const placementNodes = [{
+    data: { assetId: "source-asset", label: "Image" },
+    id: "source-image",
+    position: { x: 0, y: 0 },
+    style: { height: 250, width: 250 },
+    type: "image" as const,
+  }, {
+    data: { label: "Image" },
+    id: "occupied-result",
+    position: { x: 390, y: 0 },
+    style: { height: 250, width: 250 },
+    type: "image" as const,
+  }];
+  const firstVacant = findVacantImageToolPlacement({
+    height: 250,
+    nodes: placementNodes,
+    sourceNodeId: "source-image",
+    width: 250,
+  });
+  expect(firstVacant).not.toEqual({ x: 390, y: 0 });
+  const secondVacant = findVacantImageToolPlacement({
+    height: 250,
+    nodes: [...placementNodes, {
+      data: { label: "Image" },
+      id: "first-new-result",
+      position: firstVacant,
+      style: { height: 250, width: 250 },
+      type: "image" as const,
+    }],
+    sourceNodeId: "source-image",
+    width: 250,
+  });
+  expect(secondVacant).not.toEqual(firstVacant);
+
+  const parentedSourceNodes = [{
+    data: { label: "Group" },
+    id: "source-group",
+    position: { x: 1_000, y: 500 },
+    style: { height: 520, width: 520 },
+    type: "group" as const,
+  }, {
+    data: { assetId: "nested-source-asset", label: "Image" },
+    id: "nested-source-image",
+    parentId: "source-group",
+    position: { x: 50, y: 60 },
+    style: { height: 250, width: 250 },
+    type: "image" as const,
+  }, {
+    data: { label: "Image" },
+    id: "nested-preferred-occupied",
+    position: { x: 1_440, y: 560 },
+    style: { height: 250, width: 250 },
+    type: "image" as const,
+  }];
+  const nestedVacant = findVacantImageToolPlacement({
+    height: 250,
+    nodes: parentedSourceNodes,
+    sourceNodeId: "nested-source-image",
+    width: 250,
+  });
+  expect(nestedVacant).not.toEqual({ x: 1_440, y: 560 });
+
+  const measuredVacant = findVacantImageToolPlacement({
+    height: 250,
+    nodes: parentedSourceNodes.map((node) => node.id === "nested-preferred-occupied"
+      ? { ...node, measured: { height: 500, width: 700 } }
+      : node),
+    sourceNodeId: "nested-source-image",
+    width: 250,
+  });
+  const measuredOccupied = { height: 500, width: 700, x: 1_440, y: 560 };
+  const overlapsMeasured = measuredVacant.x < measuredOccupied.x + measuredOccupied.width + 40 &&
+    measuredVacant.x + 250 + 40 > measuredOccupied.x &&
+    measuredVacant.y < measuredOccupied.y + measuredOccupied.height + 40 &&
+    measuredVacant.y + 250 + 40 > measuredOccupied.y;
+  expect(overlapsMeasured).toBe(false);
+
+  const firstBatch = findVacantImageToolPlacement({
+    height: 580,
+    nodes: parentedSourceNodes,
+    sourceNodeId: "nested-source-image",
+    width: 580,
+  });
+  const secondBatch = findVacantImageToolPlacement({
+    height: 580,
+    nodes: [...parentedSourceNodes, {
+      data: { label: "Image tool batch" },
+      id: "first-batch-bounds",
+      position: firstBatch,
+      style: { height: 580, width: 580 },
+      type: "group" as const,
+    }],
+    sourceNodeId: "nested-source-image",
+    width: 580,
+  });
+  const batchOverlap = firstBatch.x < secondBatch.x + 580 + 40 &&
+    firstBatch.x + 580 + 40 > secondBatch.x &&
+    firstBatch.y < secondBatch.y + 580 + 40 &&
+    firstBatch.y + 580 + 40 > secondBatch.y;
+  expect(batchOverlap).toBe(false);
 
   const parsed = parseImageToolCapabilitySnapshot(modularImageToolSnapshot());
   expect(parsed.operations).toHaveLength(imageToolOperations.length);
@@ -919,6 +1022,13 @@ test("Canvas graph/save ports are independently replaceable and preserve write f
   });
   expect(imageToolSnapshot.nodes).toHaveLength(2);
   expect(imageToolSnapshot.edges).toHaveLength(1);
+  expect(imageToolSnapshot.nodes[1]?.data).toMatchObject({
+    imageAssetOrigin: "image-tool",
+    imageHasTransparency: false,
+    imageToolOperation: "crop",
+    imageToolOperationId: "operation-1",
+    imageToolSourceAssetId: "source-asset",
+  });
   expect(discarded).toEqual([]);
   await expect(derived.execute({
     expectedRevision: 5,
@@ -982,6 +1092,16 @@ test("Canvas graph/save ports are independently replaceable and preserve write f
   });
   expect(imageToolSnapshot.nodes).toHaveLength(6);
   expect(imageToolSnapshot.edges).toHaveLength(5);
+  expect(imageToolSnapshot.nodes.slice(2).map((node) => node.data)).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        imageAssetOrigin: "image-tool",
+        imageToolOperation: "quick-split",
+        imageToolOperationId: "operation-split-1",
+        imageToolSourceAssetId: "source-asset",
+      }),
+    ]),
+  );
   expect(batchDiscarded).toEqual([]);
 
   for (const grid of [3, 4] as const) {
@@ -1149,6 +1269,9 @@ test("Canvas graph/save ports are independently replaceable and preserve write f
     };
     const uploads: string[] = [];
     let capturedMaskedOrder: number | undefined;
+    let capturedMaskedImageTool:
+      import("../types/imageTools").ImageGenerationToolInput | undefined;
+    let capturedMaskedPrompt: string | undefined;
     const masked = createOutpaintEraseImageToolUseCase({
       async afterPlaceholderCreated() {},
       capability: modularImageToolCapability(operation, {
@@ -1179,6 +1302,8 @@ test("Canvas graph/save ports are independently replaceable and preserve write f
       ownershipKey: (evidence) => JSON.stringify(evidence),
       createLifecycle(plan) {
         capturedMaskedOrder = plan.payload.inputs[0].order;
+        capturedMaskedImageTool = plan.payload.imageTool;
+        capturedMaskedPrompt = plan.payload.prompt;
         const task = { attempt: 1, canvasId: "masked-canvas", costCurrency: "USD",
           createdAt: "2026-08-23T12:00:00.000Z", generationInputKey: plan.inputKey,
           generationOwnershipKey: plan.ownershipKey, id: `${operation}-task`,
@@ -1222,6 +1347,33 @@ test("Canvas graph/save ports are independently replaceable and preserve write f
       inputRole: "reference-image",
     });
     expect(capturedMaskedOrder).toBe(1);
+    expect(capturedMaskedPrompt).toBe(
+      operation === "erase" ? "移除对象并补全背景" : "自然延展",
+    );
+    expect(capturedMaskedImageTool).toMatchObject({
+      mask: {
+        assetId: `${operation}-upload-${operation === "outpaint" ? 2 : 1}`,
+        featherPixels: 0,
+        height: operation === "outpaint" ? 1080 : 720,
+        version: 1,
+        width: operation === "outpaint" ? 1920 : 1280,
+      },
+      operation,
+      operationId: `${operation}-operation`,
+      sourceAssetId: `${operation}-source-asset`,
+      sourceNodeId: `${operation}-source`,
+      ...(operation === "outpaint"
+        ? {
+            outpaint,
+            preparedInput: {
+              assetId: "outpaint-upload-1",
+              height: 1080,
+              version: 1,
+              width: 1920,
+            },
+          }
+        : {}),
+    });
   }
   for (const operation of ["enhance-creative", "remove-background"] as const) {
     let processingSnapshot: CanvasGraphSnapshot = {

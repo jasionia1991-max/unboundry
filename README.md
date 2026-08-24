@@ -6,13 +6,13 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 
-## 当前生产：v0.6.36（2026-08-24，USER RECHECK）
+## 当前生产：v0.6.36（2026-08-24，USER REJECTED）
 
-生产当前运行`v0.6.36 / schema39`，状态`PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK`。PR #83、tag/main同tree、Quality gates、完整主库+Library+媒体冻结备份、精确tag构建、原子切换和生产技术终门均已完成；生产既有项目12工具、三视口代表矩阵、透明棋盘格、关闭/焦点/菜单互斥和零变更请求检查通过。发布及验收Provider请求、OSS写入和费用均为0，仍需用户最终确认。完整现状见[`spec/UNBOUNDRY_CURRENT_STATE.md`](spec/UNBOUNDRY_CURRENT_STATE.md)。
+生产当前仍运行`v0.6.36 / schema39`且技术健康，但用户已明确拒收图片工具质量，状态为`PRODUCTION_V0_6_36_USER_REJECTED`。本地隔离分支已纠正快速切分透明留白、整面棋盘格、预计费用、扩图说明和额外UI问题，并复审顶部9项及更多菜单8项；该代码尚未发布。完整现状见[`spec/UNBOUNDRY_CURRENT_STATE.md`](spec/UNBOUNDRY_CURRENT_STATE.md)。
 
-## 当前验收：v0.6.36（R9 技术通过，待用户复验）
+## 当前验收：v0.6.37 发布进行中
 
-INC-IMGEDIT-004 R0～R9已完成单一活动工具、Portal Host、统一透明surface、紧凑/大型编辑器、三视口/四zoom、逐工具浏览器证据、独立审查、GitHub、生产发布和生产零付费实页技术验收。唯一一次safe full原始`1050/1052`，m24 `2/2`与m37 `35/35`定向修正复验通过且未重复full；版本门m38+m81 `56/56`和治理m38通过。真实Provider/OSS/费用0；用户明确确认前不能写`USER_PASS`。
+用户抽查证明原R9技术检查不足，不能再视为待确认。INC-IMGEDIT-005已完成全部17个入口、三视口、四zoom、透明/横竖方图、本地与模型语义、Seedance分层和空白区放置复审；三轮独立审查最终无P0/P1/P2，safe m100+m2 `24/24 PASS`。本Goal唯一一次safe full原始`1052/1053`，唯一失败为旧治理正则不接受当前用户拒收/候选未定版本状态；精确修正后m38 `15/15 PASS`，未运行第二次full。真实Provider/OSS/费用0。用户已确认并允许`v0.6.37`上线，package已同步为0.6.37，R9正在执行。
 
 ## v0.6.32 图片裁剪同站编辑源
 

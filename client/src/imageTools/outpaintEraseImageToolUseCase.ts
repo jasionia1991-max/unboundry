@@ -13,6 +13,7 @@ import type { SingleNodeGenerationLifecycle } from
 import type { DerivedImageMediaPort } from "./derivedImageToolUseCase";
 import { createGenerationImageToolUseCase } from
   "./generationImageToolUseCase";
+import { findVacantImageToolPlacement } from "./imageToolPlacement";
 
 export type OutpaintEraseOperation = "erase" | "outpaint";
 
@@ -208,9 +209,7 @@ export function createOutpaintEraseImageToolUseCase(input: Readonly<{
             label: "Image", sourceKind: "image", title: `${command.title || "Image"}-${noun}`,
           },
           id: targetNodeId,
-          position: { x: source.position.x +
-            (typeof source.style?.width === "number" ? source.style.width : 250) + 140,
-            y: source.position.y },
+          position: { x: 0, y: 0 },
           selected: true, style: { ...NODE_DEFAULT_SIZES.image }, type: "image",
         };
         const edge: CuttableEdge = { data: { inputOrder: 1, inputRole: "reference-image" },
@@ -224,7 +223,15 @@ export function createOutpaintEraseImageToolUseCase(input: Readonly<{
             sourceAssetId: command.sourceAssetId },
           scope: "image-tool",
           update: (snapshot) => ({ ...snapshot, edges: [...snapshot.edges, edge],
-            nodes: [...snapshot.nodes.map((node) => ({ ...node, selected: false })), targetNode] }),
+            nodes: [...snapshot.nodes.map((node) => ({ ...node, selected: false })), {
+              ...targetNode,
+              position: findVacantImageToolPlacement({
+                height: NODE_DEFAULT_SIZES.image.height,
+                nodes: snapshot.nodes,
+                sourceNodeId: command.sourceNodeId,
+                width: NODE_DEFAULT_SIZES.image.width,
+              }),
+            }] }),
         });
         if (graphResult.status !== "applied") {
           throw new Error(`原图片或画布版本已发生变化，请重新打开${noun}工具`);

@@ -11,6 +11,7 @@ import type { SingleNodeGenerationLifecycle } from
   "../generation/singleNodeGenerationLifecycle";
 import { createGenerationImageToolUseCase } from
   "./generationImageToolUseCase";
+import { findVacantImageToolPlacement } from "./imageToolPlacement";
 
 export type MultiAngleGenerationPlan = Readonly<{
   aspectRatio?: string;
@@ -167,12 +168,7 @@ export function createMultiAngleImageToolUseCase(input: Readonly<{
           title: `${command.title || "Image"}-多角度`,
         },
         id: targetNodeId,
-        position: {
-          x: source.position.x +
-            (typeof source.style?.width === "number" ? source.style.width : 250) +
-            140,
-          y: source.position.y,
-        },
+        position: { x: 0, y: 0 },
         selected: true,
         style: { ...NODE_DEFAULT_SIZES.image },
         type: "image",
@@ -203,7 +199,12 @@ export function createMultiAngleImageToolUseCase(input: Readonly<{
           edges: [...snapshot.edges, edge],
           nodes: [
             ...snapshot.nodes.map((node) => ({ ...node, selected: false })),
-            targetNode,
+            { ...targetNode, position: findVacantImageToolPlacement({
+              height: NODE_DEFAULT_SIZES.image.height,
+              nodes: snapshot.nodes,
+              sourceNodeId: command.sourceNodeId,
+              width: NODE_DEFAULT_SIZES.image.width,
+            }) },
           ],
         }),
       });

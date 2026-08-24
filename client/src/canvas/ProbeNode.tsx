@@ -111,6 +111,8 @@ export type ProbeNodeType = Node<
     content?: string;
     contentHtml?: string;
     imageGeneratedSuccess?: boolean;
+    imageHasTransparency?: boolean;
+    imageAssetOrigin?: "image-tool" | "local-upload";
     imageAnnotations?: ImageAnnotationDocument;
     imageColorMarks?: string[];
     imageGenerationErrorCode?: string;

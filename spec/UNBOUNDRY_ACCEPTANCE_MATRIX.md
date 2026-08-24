@@ -1,9 +1,11 @@
 # Unboundry 绿地复刻验收矩阵
 
 基线日期：2026-07-27  
-当前状态更新：2026-08-23
+当前状态更新：2026-08-24
 
-2026-08-24 `CURRENT_RELEASE = v0.6.35 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK`：唯一一次safe full `1052/1052`，PR #81、PR/main CI、tag/main同tree、精确tag fresh build、完整主库+Library+媒体冻结备份、原子切换和生产技术终门均通过。六项各一次真实请求已完成Provider、Media、Canvas和刷新恢复技术闭环，主体抠图另有真实PNG Alpha字节证明；最终`6/6 / 60 USD`、无重试。质量仍待用户复验。`VIEW-005`保持`AUTO_PASS`，其他`PARTIAL/PAUSED/BLOCK`不自动升级。
+v0.6.37版本门与发布门已生效；m81 `41/41 PASS`，m38首转治理格式失败后精确复验`15/15 PASS`。R9正在冻结候选，未运行第二次full，Provider/OSS/费用为0。
+
+2026-08-24 `CURRENT_RELEASE = v0.6.36 / schema39 / PRODUCTION_V0_6_36_USER_REJECTED`：发布、备份、健康和R9零付费技术事实继续保留，但用户抽查证明快速切分、棋盘格、扩图说明、费用文案和全工具review不合格，不能再标“待确认”。INC-IMGEDIT-005本地候选已完成定向、浏览器和独立审查；用户已明确确认并允许`v0.6.37`上线，R9正在执行。Provider/OSS/费用0；v0.6.35六项真实Provider `6/6 / 60 USD`仅为历史技术证据，不得复用。
 
 本文件下方旧版本的 `USER_RECHECK/PENDING` 均保留各自验收时点，不再承担当前线上版本播报，也不得被直接当成下一施工计划。当前版本、当前计划和授权边界只以 `spec/UNBOUNDRY_CURRENT_STATE.md` 为准。
 
@@ -372,16 +374,28 @@ F14本地门日志SHA-256：targeted `b9d260babe051c1f89ef86256ade2d57fda19b5700
 | IMGEDIT-020 | P1 | Seedance素材校验 | 本地技术预检绑定asset/model/role并可过期；仅在官方接口存在时声明远端资格，不生成视频或作法律保证 | owner-scoped Media、已发布模型真实参数规则、配置revision、过期/身份漂移stale、刷新恢复、m100/m2/m20安全定向和零视频生成/Provider请求 | AUTO_PASS / LOCAL_TECHNICAL_PREFLIGHT_ONLY |
 | IMGEDIT-021 | P0 | 图片工具单一活动状态 | 任意时刻最多一个图片工具活动；打开新工具原子关闭旧工具和临时菜单；modal时底层toolbar/节点/Creator不可交互 | R2以单一reducer接管12工具和临时菜单；R6恶意切换与13张隔离截图均为活动Host精确1个；R9生产逐一打开12工具、原子切换与颜色菜单互斥，Host始终精确1个，modal root inert/aria-hidden | AUTO_PASS / LOCAL_BROWSER_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS |
 | IMGEDIT-022 | P0 | screen-space宿主与视口安全 | modal/popover经Portal按屏幕坐标渲染，不随Canvas zoom缩放；三个目标视口和四档zoom中面板、关闭及提交区均在viewport内 | R3～R6覆盖三个视口；R7 m2对全部12工具逐一直接断言四档zoom。R9生产1440×900全部工具、1280×720多角度/重绘、1728×900快速切分均不越viewport；未改变生产项目zoom | TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS |
-| IMGEDIT-023 | P1 | 透明图片统一显示 | 节点、重绘/擦除、扩图、标注和全屏对透明PNG统一使用棋盘格与contain；黑色内容可与透明区分；棋盘格不进入导出字节 | R4/R6/R7覆盖编辑surface、Alpha与字节不变；R9生产既有透明抠图节点命中checkerboard class，cutout及7类大型surface均有CSS棋盘格；未导出或改变字节 | TARGETED_AUTO_PASS / LOCAL_BROWSER_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS |
-| IMGEDIT-024 | P0 | 大型图片编辑层 | 重绘、擦除、扩图、标注使用隔离的大型编辑舞台；工具、Prompt、状态和动作区不碰撞Creator；原图/新增区/蒙版坐标清楚 | R4自动覆盖，R6保存四类截图；R9生产重绘/擦除/扩图/标注均为1120px大型层、动作区可见、checkerboard且底层inert | TARGETED_AUTO_PASS / LOCAL_BROWSER_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS |
-| IMGEDIT-025 | P1 | 图片工具面板规范 | 多角度、调整像素、快速切分、增强、抠图、Seedance符合紧凑/大型壳层分类、14/12px、灰阶、圆角和主次动作；不得叠层或裁切 | R3/R6覆盖统一壳层；R9生产多角度600×308、调整像素/增强/抠图/Seedance 400px紧凑面板、快速切分1120px大型层全部不裁切且Host精确1个 | TARGETED_AUTO_PASS / LOCAL_BROWSER_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS |
+| IMGEDIT-023 | P1 | 透明图片统一显示 | 节点、重绘/擦除、扩图、标注和全屏对透明PNG统一使用棋盘格与contain；黑色内容可与透明区分；棋盘格不进入导出字节 | 用户截图确认v0.6.36把棋盘格铺满大型编辑层，明确拒收。拒收修复把普通工具壳和stage改为纯灰黑，只在真正透明输出节点保留透明提示；透明填充PNG的Alpha边界另有直接测试 | USER_REJECTED_V0_6_36 / LOCAL_REMEDIATION_TARGETED_PASS / RELEASE_RECHECK_REQUIRED |
+| IMGEDIT-024 | P0 | 大型图片编辑层 | 重绘、擦除、扩图、标注使用隔离的大型编辑舞台；工具、Prompt、状态和动作区不碰撞Creator；原图/新增区/蒙版坐标清楚 | 用户截图明确拒收大型编辑层整页棋盘格与扩图关系不清。拒收修复后重绘/擦除/扩图/标注在1280×720、1440×900、1728×900均不越界、stage无棋盘格，扩图显示输入→输出尺寸和参数提交说明 | USER_REJECTED_V0_6_36 / LOCAL_REMEDIATION_TARGETED_PASS / RELEASE_RECHECK_REQUIRED |
+| IMGEDIT-025 | P1 | 图片工具面板规范 | 多角度、调整像素、快速切分、增强、抠图、Seedance符合紧凑/大型壳层分类、14/12px、灰阶、圆角和主次动作；不得叠层或裁切 | 用户要求全工具重审。拒收复审实际打开六类面板，修复快速切分Alpha语义、更多菜单Seedance行被Creator遮挡以及原生蓝色focus/accent；所有图片工具预计费用展示已删除 | USER_REJECTED_V0_6_36 / LOCAL_REMEDIATION_TARGETED_PASS / RELEASE_RECHECK_REQUIRED |
 | IMGEDIT-026 | P1 | 图片工具无障碍与状态 | Escape关闭最上层、Tab/Shift+Tab焦点循环、关闭后返回触发按钮；IME、focus-visible、busy、错误、reduced-motion完整 | R2～R7自动覆盖IME/busy/error/reduced-motion；R9生产Escape、Tab/Shift+Tab、焦点返回、增强关闭按钮、抠图外点关闭和标注10个tooltip通过 | TARGETED_AUTO_PASS / LOCAL_BROWSER_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS |
-| IMGEDIT-027 | P1 | 图片工具既有UI回归 | 400×48工具栏、九个40×40按钮、238×272更多菜单、颜色标记、裁剪安全Blob、下载和业务payload无回归 | m2/m100与m37覆盖业务合同；R9生产toolbar精确400×48、更多菜单238×272/8项，颜色菜单互斥，裁剪只GET安全编辑源并成功显示1张图；没有点击下载、提交或改变payload | TARGETED_AUTO_PASS / LOCAL_BROWSER_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / PRODUCTION_ZERO_PAID_BROWSER_PASS |
-| IMGEDIT-028 | P0 | 图片工具真人逐项验收 | 三个目标视口、四档zoom、横竖方图和透明图逐项完成功能与UI检查；生产技术通过不能替代用户确认 | R6/R7完成本地全矩阵；R8发布v0.6.36；R9生产既有项目逐一打开12工具并完成三视口代表矩阵，mutating/Generation/Provider0、console0，验收后生产数据不变。用户主观质量确认仍待完成 | LOCAL_BROWSER_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK |
+| IMGEDIT-027 | P1 | 图片工具既有UI回归 | 400×48工具栏、九个40×40按钮、238×272更多菜单、颜色标记、裁剪安全Blob、下载和业务payload无回归 | v0.6.36旧review漏掉更多菜单最底行被Creator遮挡。拒收复审已实际检查顶部9项和更多8项，素材库保存/下载执行于临时数据，裁剪安全Blob、颜色切换、暂停打光和全屏通过；m2新增最底行命中断言 | USER_REJECTED_V0_6_36 / LOCAL_REMEDIATION_TARGETED_PASS / RELEASE_RECHECK_REQUIRED |
+| IMGEDIT-028 | P0 | 图片工具真人逐项验收 | 三个目标视口、四档zoom、横竖方图和透明图逐项完成功能与UI检查；生产技术通过不能替代用户确认 | 用户已明确拒收v0.6.36，旧R9自动浏览器结果不得继续写作待确认。拒收修复本地完成17项全工具复审、三视口与零Provider；仍需新版本发布后由用户重新验收 | USER_REJECTED / LOCAL_BROWSER_PASS / RELEASE_AND_USER_RECHECK_REQUIRED |
+| IMGEDIT-029 | P0 | 图片全屏详情 | 图片全屏真实展示提示词、模型、尺寸、比例、质量、文件大小、来源和存在时的创建日期；本地上传/本地处理准确标识，缺失字段不伪造 | R1精确红证据后R2实现详情侧栏；safe m2 `11/11 PASS`；R7在1280×720实页确认本地上传、Prompt、1280×720、16:9、文件大小和纯灰舞台 | TARGETED_AUTO_PASS / LOCAL_BROWSER_PASS |
+| IMGEDIT-030 | P0 | 派生结果空白区放置 | 扩图、擦除、重绘、增强、抠图、多角度、裁剪、调整像素、标注和快速切分结果不覆盖现有节点；单项/批量坐标可刷新恢复 | R3统一纯几何空白区放置；m100证明碰撞与批量合同；R7连续本地派生为`(832,300)`、`(1222,300)`且刷新保持，不覆盖源`(442,300)` | TARGETED_AUTO_PASS / LOCAL_BROWSER_PASS |
+| IMGEDIT-031 | P0 | 快速切分有效内容 | 舞台与contain留白不参与切分；普通图按位图、透明图按Alpha有效边界；2×2/3×3/4×4预览与导出共用边界 | m2透明400×300/可见200×200输出四张100×100；R7透明预览直接读`100,50,200,200`，并实页切换3×3/4×4为9张/16张 | TARGETED_AUTO_PASS / LOCAL_BROWSER_PASS |
+| IMGEDIT-032 | P1 | 透明Surface产品语义 | 棋盘格只揭示图片实际矩形中的透明像素，不铺满modal/编辑器/全屏背景，不进入导出字节 | R6持久化Alpha；R7节点只在272.7×204.75图片frame显示棋盘格，全屏只在400×300图片矩形显示，dialog/viewer纯灰；不透明9:16/1:1无透明标记 | TARGETED_AUTO_PASS / LOCAL_BROWSER_PASS |
+| IMGEDIT-033 | P0 | 扩图参数真实性 | 用户范围、输入/输出尺寸、prepared input、mask、feather、Prompt、模型、质量和来源身份从UI贯通请求及结果节点 | R4 m100直接断言outpaint、preparedInput、mask、Prompt、operation/source和结果元数据；R7在1280×720确认扩图大型层完整、无费用文案且Host/inert正确，真实Provider0 | TARGETED_AUTO_PASS / LOCAL_BROWSER_PASS |
+| IMGEDIT-034 | P1 | 图片工具无预计金额 | 图片工具用户界面不存在预计USD/CNY或残留占位；后台真实账单、结算和费用保护不变 | R6源码扫描和逐面板DOM否定；R7三视口代表工具、图片详情、Seedance和大型层再次确认无预计金额，后台capability/task费用字段保持不渲染 | TARGETED_AUTO_PASS / LOCAL_BROWSER_PASS |
+| IMGEDIT-035 | P0 | 本地与模型执行语义 | 裁剪/尺寸/切分/标注/保守增强与重绘/擦除/扩图/创意增强/抠图/多角度的真实执行边界在UI、请求和结果中一致 | R4 m100+m2覆盖payload/节点；R7实页显示调整像素“本地处理”、扩图/擦除/多角度图片模型边界和Seedance仅本地预检，生成式入口零真实提交 | TARGETED_AUTO_PASS / LOCAL_BROWSER_PASS |
+| IMGEDIT-036 | P0 | Seedance分层校验 | 本地结构预检、Provider可访问性和可信素材状态分层；未知状态不冒充远端通过；校验过程零生成任务 | R5自动覆盖三层；R7 1440×900实页确认Provider“未执行/提交时确认”和可信素材“未知/无asset://证明”，Generation/Provider/OSS/费用0 | TARGETED_AUTO_PASS / LOCAL_BROWSER_PASS |
+| IMGEDIT-037 | P0 | 图片工具17项全review | 顶部9项和更多8项逐一完成打开/切换/关闭、键盘、UI、参数、输出、放置和请求边界检查 | R6/R7完成17项定向与三视口；R8三轮独立审查关闭全部P1/P2，最终m100+m2 `24/24 PASS`，透明编辑器、详情替换、可见Prompt、扩图几何、极小Alpha及measured放置均有直接证据 | TARGETED_AUTO_PASS / LOCAL_BROWSER_PASS / INDEPENDENT_REVIEW_PASS |
+| IMGEDIT-038 | P0 | 新候选与用户复验分层 | 现有未提交修正不得继承PASS；新候选完成定向、浏览器、safe full和独立审查；生产发布后仍等待用户明确确认 | R8本地候选完成定向、三视口浏览器与三轮独立审查；唯一一次safe full原始`1052/1053`，唯一m38治理断言精确修正后`15/15 PASS`，未运行第二次full。v0.6.37版本门与发布门已生效，R9执行中 | LOCAL_CANDIDATE_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / RELEASE_IN_PROGRESS / USER_RECHECK |
 
 `IMGEDIT-010～020` 由 `spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_PLAN_2026-08-23.md` 和对应 Checkpoint 驱动。D0～D13工程、生产技术发布及六项各一次真实Provider技术冒烟均已完成，最终总账`6/6 / 60 USD`、无重试；整体状态`REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_RECHECK`。016～019不得把自动、真实技术或生产证据冒充用户质量通过。历史 `IMGEDIT-001～006、008、009 = PASS` 继续只证明既有外观、安全禁用和裁剪结果合同，不自动证明新功能已经实现。`IMGEDIT-007` 继续 `PAUSED`。
 
-`IMGEDIT-021～028` 由`spec/INC_IMGEDIT_004_IMAGE_TOOL_UI_REMEDIATION_PLAN_2026-08-24.md`和对应Checkpoint驱动。用户已明确指出v0.6.35图片工具交互/UI未通过，故INC-IMGEDIT-003的技术证据继续保留但不能关闭这些新验收条目。新Goal真实Provider预算为0；自动或Agent浏览器通过最多升级到`AUTO_PASS/USER_RECHECK`，只有用户生产实页明确确认才能写`PASS/USER_PASS`。
+`IMGEDIT-021～028`保留INC-IMGEDIT-004历史与拒收状态；`IMGEDIT-029～038`由`spec/INC_IMGEDIT_005_IMAGE_TOOL_PRODUCT_REMEDIATION_PLAN_2026-08-24.md`和对应Checkpoint驱动。现有未提交修正、旧自动化和旧浏览器证据不能直接关闭新增条目。新方案真实Provider预算为0；自动或Agent浏览器通过最多升级到`AUTO_PASS/USER_RECHECK`，只有用户生产实页明确确认才能写`PASS/USER_PASS`。
+
+INC-IMGEDIT-005 R0～R8已按实时`origin/main@a4bb48c`连续完成。`IMGEDIT-029～037`关闭本地自动与浏览器层，`IMGEDIT-038`达到本地候选层；用户已确认并允许`v0.6.37`上线，R9正在执行。生产与用户层级仍未完成，不能写`USER_PASS`。
 
 D12 候选验证已完成：冻结前直接受影响定向`234/234 PASS`，四类审查无新阻断；唯一一次safe full原始`1048/1052`，精确修复后同一四个失败spec`106/106 PASS`，未运行第二次full。该证据只支持`LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / D13_READY`，不自动把`IMGEDIT-016～019`升级为真实Provider、生产或用户质量PASS。
 

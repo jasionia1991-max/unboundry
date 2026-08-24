@@ -26,6 +26,80 @@ function validDimension(value: number) {
     value <= localImageDimensionLimit;
 }
 
+export type VisibleImageBounds = Readonly<{
+  height: number;
+  sourceHeight: number;
+  sourceWidth: number;
+  width: number;
+  x: number;
+  y: number;
+}>;
+
+export function visibleImageBoundsSupportGrid(
+  bounds: Pick<VisibleImageBounds, "height" | "width">,
+  grid: 2 | 3 | 4,
+) {
+  return bounds.width >= grid && bounds.height >= grid;
+}
+
+function visibleBounds(
+  context: CanvasRenderingContext2D,
+  sourceWidth: number,
+  sourceHeight: number,
+): VisibleImageBounds {
+  let left = sourceWidth;
+  let top = sourceHeight;
+  let right = -1;
+  let bottom = -1;
+  const rowsPerRead = 128;
+  for (let chunkY = 0; chunkY < sourceHeight; chunkY += rowsPerRead) {
+    const height = Math.min(rowsPerRead, sourceHeight - chunkY);
+    const pixels = context.getImageData(0, chunkY, sourceWidth, height).data;
+    for (let offset = 3; offset < pixels.length; offset += 4) {
+      if (pixels[offset] === 0) continue;
+      const pixel = (offset - 3) / 4;
+      const x = pixel % sourceWidth;
+      const y = chunkY + Math.floor(pixel / sourceWidth);
+      left = Math.min(left, x);
+      top = Math.min(top, y);
+      right = Math.max(right, x);
+      bottom = Math.max(bottom, y);
+    }
+  }
+  if (right < left || bottom < top) {
+    throw new Error("图片没有可切分的可见内容");
+  }
+  return {
+    height: bottom - top + 1,
+    sourceHeight,
+    sourceWidth,
+    width: right - left + 1,
+    x: left,
+    y: top,
+  };
+}
+
+function imageCanvas(image: HTMLImageElement) {
+  const canvas = document.createElement("canvas");
+  canvas.width = image.naturalWidth;
+  canvas.height = image.naturalHeight;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) throw new Error("当前浏览器无法处理图片");
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(image, 0, 0);
+  return { canvas, context };
+}
+
+export async function analyzeVisibleImageBounds(assetId: string) {
+  const decoded = await decodedImage(assetId);
+  try {
+    const { canvas, context } = imageCanvas(decoded.image);
+    return visibleBounds(context, canvas.width, canvas.height);
+  } finally {
+    decoded.release();
+  }
+}
+
 async function pngFile(canvas: HTMLCanvasElement, fileName: string) {
   const blob = await new Promise<Blob>((resolve, reject) =>
     canvas.toBlob(
@@ -151,18 +225,27 @@ export async function splitLocalImage(input: Readonly<{
 }>) {
   const decoded = await decodedImage(input.assetId);
   try {
+    const { canvas: sourceCanvas, context: sourceContext } = imageCanvas(decoded.image);
+    const bounds = visibleBounds(
+      sourceContext,
+      sourceCanvas.width,
+      sourceCanvas.height,
+    );
+    if (!visibleImageBoundsSupportGrid(bounds, input.grid)) {
+      throw new Error(
+        `图片可见内容至少需要 ${input.grid}×${input.grid} 像素才能切分为 ${input.grid}×${input.grid}`,
+      );
+    }
     const files: File[] = [];
     for (let row = 0; row < input.grid; row += 1) {
-      const sourceY = Math.round(row * decoded.image.naturalHeight / input.grid);
-      const sourceBottom = Math.round(
-        (row + 1) * decoded.image.naturalHeight / input.grid,
+      const sourceY = bounds.y + Math.round(row * bounds.height / input.grid);
+      const sourceBottom = bounds.y + Math.round(
+        (row + 1) * bounds.height / input.grid,
       );
       for (let column = 0; column < input.grid; column += 1) {
-        const sourceX = Math.round(
-          column * decoded.image.naturalWidth / input.grid,
-        );
-        const sourceRight = Math.round(
-          (column + 1) * decoded.image.naturalWidth / input.grid,
+        const sourceX = bounds.x + Math.round(column * bounds.width / input.grid);
+        const sourceRight = bounds.x + Math.round(
+          (column + 1) * bounds.width / input.grid,
         );
         const width = sourceRight - sourceX;
         const height = sourceBottom - sourceY;

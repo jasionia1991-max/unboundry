@@ -2553,16 +2553,22 @@ test("current-state documentation has one recovery authority and matches package
   )?.[1];
   expect(productionVersion).toBeTruthy();
   const currentVersionMarker = currentState.match(
-    /当前治理标记：`(CURRENT_V\d+_\d+_\d+_(?:USER_PASS|USER_RECHECK))`/,
+    /当前治理标记：`(CURRENT_V\d+_\d+_\d+_(?:USER_PASS|USER_RECHECK|USER_REJECTED(?:_[A-Z0-9_]+)?))`/,
   )?.[1];
   expect(currentVersionMarker).toBeTruthy();
   expect(currentState).toContain(`当前代码包版本：**v${packageDocument.version}**`);
   expect(agents).toContain(`生产运行\`v${productionVersion}/schema39\``);
-  expect(currentState).toContain(
-    `本地候选代码版本：**v${packageDocument.version}**`,
+  expect(currentState).toMatch(
+    new RegExp(
+      `本地候选代码版本：\\*\\*(?:v${packageDocument.version.replaceAll(".", "\\.")}|未指定（package仍为${packageDocument.version.replaceAll(".", "\\.")}，仅本地未发布纠正）)\\*\\*`,
+    ),
   );
+  const currentVersionPrefix = currentVersionMarker!.match(
+    /^CURRENT_V\d+_\d+_\d+/,
+  )?.[0];
+  expect(currentVersionPrefix).toBeTruthy();
   for (const document of [progressiveAudit, progressiveCheckpoint, progressivePlan]) {
-    expect(document).toContain(currentVersionMarker!);
+    expect(document).toContain(currentVersionPrefix!);
     expect(document).toContain("只在真实新功能触发");
   }
   expect(readme).toContain(

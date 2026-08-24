@@ -12,6 +12,7 @@ import type { SingleNodeGenerationLifecycle } from
 import type { DerivedImageMediaPort } from "./derivedImageToolUseCase";
 import { createGenerationImageToolUseCase } from
   "./generationImageToolUseCase";
+import { findVacantImageToolPlacement } from "./imageToolPlacement";
 
 export type RedrawGenerationPlan = Readonly<{
   aspectRatio?: string;
@@ -201,12 +202,7 @@ export function createRedrawImageToolUseCase(input: Readonly<{
             title: `${command.title || "Image"}-重绘`,
           },
           id: targetNodeId,
-          position: {
-            x: source.position.x +
-              (typeof source.style?.width === "number" ? source.style.width : 250) +
-              140,
-            y: source.position.y,
-          },
+          position: { x: 0, y: 0 },
           selected: true,
           style: { ...NODE_DEFAULT_SIZES.image },
           type: "image",
@@ -237,7 +233,12 @@ export function createRedrawImageToolUseCase(input: Readonly<{
             edges: [...snapshot.edges, edge],
             nodes: [
               ...snapshot.nodes.map((node) => ({ ...node, selected: false })),
-              targetNode,
+              { ...targetNode, position: findVacantImageToolPlacement({
+                height: NODE_DEFAULT_SIZES.image.height,
+                nodes: snapshot.nodes,
+                sourceNodeId: command.sourceNodeId,
+                width: NODE_DEFAULT_SIZES.image.width,
+              }) },
             ],
           }),
         });
