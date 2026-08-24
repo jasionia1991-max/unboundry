@@ -4,7 +4,7 @@
 
 ## 先读当前快照
 
-新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-24 的权威现状、产品合同和用户验收边界。下面各节是历史增量，出现「当前」时只代表该时点。
+新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-25 的权威现状、产品合同和用户验收边界。下面各节是历史增量，出现「当前」时只代表该时点。
 
 ## 当前事件：INC-SEEDANCE-001 可信素材真实链路恢复
 
@@ -12,7 +12,7 @@
 
 v0.6.39已把管控面Base URL与可信素材四Action统一到`ark.cn-beijing.volcengineapi.com`，H5创建发送公网HTTPS CallbackURL，缺失或非法时零请求fail-closed。m42 `16/16`、m81 `41/41`、m38 `15/15 PASS`；唯一safe full原始`1055/1056`，同源码只复验唯一m1性能抖动并`1/1 PASS`。冻结备份恢复、fresh build、CallbackURL配置、原子切换、公网/回环/service/schema40/数据/inventory门均通过。
 
-v0.6.39唯一H5创建返回HTTP503并保存`FAILED/CREATE_FAILED`，没有H5Link/BytedToken；该历史账本`1/50`已封存。v0.6.40只安全保留Provider HTTP状态、错误码和RequestId并覆盖四个失败边界，远端Message、Body、AK/SK不落库；最终定向`71/71 PASS`，唯一safe full原始`1055/1056`后仅复验治理m38并`15/15 PASS`。PR #92/CI/merge/tag/Release已完成，生产fresh release、冻结双副本、原子切换、公网/回环、schema40、数据不变和5资源门通过；回执`spec/V0_6_40_PRODUCTION_RECEIPT_2026-08-24.json`。只读核验确认生产AK属于IAM用户`tapnow-ark-catalog-ro-20260803`，其仅有目录只读策略，Project `default`授权数0；最小`ArkFullAccess`补权向导停在最终确认前。新账本仍为`0/50`，Generation/OSS/费用0。不得移动任何历史tag、复用历史预算或读受保护`spec/public-templates-director-split-revision.json`；唯一下一动作以Checkpoint为准。
+v0.6.39唯一H5创建返回HTTP503并保存`FAILED/CREATE_FAILED`，没有H5Link/BytedToken；该历史账本`1/50`已封存。v0.6.40只安全保留Provider HTTP状态、错误码和RequestId并覆盖四个失败边界，远端Message、Body、AK/SK不落库；最终定向`71/71 PASS`，唯一safe full原始`1055/1056`后仅复验治理m38并`15/15 PASS`。PR #92/CI/merge/tag/Release已完成，生产fresh release、冻结双副本、原子切换、公网/回环、schema40、数据不变和5资源门通过；回执`spec/V0_6_40_PRODUCTION_RECEIPT_2026-08-24.json`。Project `default`已只为目标IAM用户补`ArkFullAccess`，一次用户级误授权被立即撤销且无残留；唯一H5创建`1/1`返回远端`403 SubscriptionRequired`，无H5Link/BytedToken，后续查询与Asset均0。状态为`PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / BLOCKED_EXTERNAL_CAPABILITY`，不得购买、重试、移动历史tag、复用预算或读受保护`spec/public-templates-director-split-revision.json`；唯一下一动作以Checkpoint为准。
 
 ## 当前线上：图片全屏完整适配与Seedance可信素材（v0.6.38，2026-08-24 USER PASS）
 

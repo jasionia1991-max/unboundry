@@ -1,11 +1,12 @@
 {
   "receiptType": "UNBOUNDRY_V0_6_40_PRODUCTION_AND_SEEDANCE_TRUSTED_CHAIN_RECEIPT",
   "recordedAt": "2026-08-24",
+  "updatedAt": "2026-08-25",
   "status": {
     "production": "PRODUCTION_V0_6_40_TECHNICAL_PASS",
-    "providerProtocol": "PROVIDER_PROTOCOL_REAL_RECHECK_PENDING",
-    "projectPermission": "PROJECT_PERMISSION_CONFIRMATION_PENDING",
-    "requestGate": "CONTROL_PLANE_NOT_STARTED",
+    "providerProtocol": "PROVIDER_PROTOCOL_REAL_FAIL_CLOSED",
+    "projectPermission": "PROJECT_PERMISSION_APPLIED",
+    "requestGate": "H5_CREATE_BUDGET_EXHAUSTED_BLOCKED_EXTERNAL_CAPABILITY",
     "userAcceptance": "USER_RECHECK"
   },
   "source": {
@@ -117,13 +118,45 @@
     "project": "default",
     "existingPolicy": "TapNowArkCatalogReadOnly",
     "requestedPolicy": "ArkFullAccess",
-    "finalConfirmationSubmitted": false,
+    "finalConfirmationSubmitted": true,
+    "submittedAt": "2026-08-25T00:01:23+08:00",
+    "result": {
+      "succeeded": 1,
+      "failed": 0,
+      "projectRestrictionVerified": "default(默认项目)",
+      "originalReadOnlyPolicyRetained": true
+    },
+    "scopeIncident": {
+      "summary": "The IAM user-add-permission route did not display Project scope and transiently added user-level ArkFullAccess. The operation was stopped, that exact user-level policy was immediately revoked, and zero user-level ArkFullAccess entries remained before using the correct Project route.",
+      "lastingUserLevelArkFullAccess": false,
+      "providerControlRequestsDuringRemediation": 0
+    },
     "otherUsersProjectsKeysOrPoliciesChanged": false
   },
+  "realChainAttempt": {
+    "attemptedAt": "2026-08-24T16:08:12.405Z",
+    "action": "CreateVisualValidateSession",
+    "localHttpStatus": 503,
+    "sessionStatus": "FAILED",
+    "providerDiagnostic": {
+      "classification": "PERMISSION",
+      "httpStatus": 403,
+      "code": "SubscriptionRequired",
+      "requestId": "202608250008127B4DD9D53F9A85BDEFF9"
+    },
+    "providerSessionIdReturned": false,
+    "h5LinkReturned": false,
+    "bytedTokenReturned": false,
+    "remoteSideEffect": "No authorization session identifier or URL was returned; the explicit SubscriptionRequired response blocks the chain before human authentication.",
+    "conclusion": "The target Project permission is present, but the current account has not subscribed to the Ark Assets API capability. Permission was not the remaining root cause.",
+    "effectiveCapabilityBranch": "C_BLOCKED_EXTERNAL_CAPABILITY",
+    "retryPerformed": false,
+    "purchasePerformed": false
+  },
   "requestLedger": {
-    "controlPlaneUsed": 0,
+    "controlPlaneUsed": 1,
     "controlPlaneAuthorized": 50,
-    "createVisualValidateSession": { "used": 0, "authorized": 1 },
+    "createVisualValidateSession": { "used": 1, "authorized": 1 },
     "getVisualValidateResult": { "used": 0, "authorized": 15 },
     "createAsset": { "used": 0, "authorized": 1 },
     "getAsset": { "used": 0, "authorized": 33 },
@@ -132,12 +165,11 @@
     "cost": 0
   },
   "nextGate": {
-    "reason": "Production is healthy, but the Project permission change still awaits action-time user confirmation and the real H5 authentication requires the user.",
+    "reason": "Production is healthy and the Project permission is applied, but Ark returned HTTP 403 SubscriptionRequired. This event does not authorize purchasing the Assets API, the only H5 create budget is consumed, and no H5 link exists for human authentication.",
     "nextActions": [
-      "After the user replies 确认授权, verify the final summary and submit the Project default ArkFullAccess change exactly once",
-      "Create exactly one H5 validation session from a ready source that does not reuse the failed v0.6.39 idempotency record",
-      "Ask the user to finish H5 face authentication, then poll within the authorized read budget",
-      "Create exactly one Asset and poll it to Active before verifying the server-generated asset:// binding"
+      "Do not retry CreateVisualValidateSession, poll authentication, create an Asset, purchase a service, or move the immutable v0.6.40 tag",
+      "Treat the current account as C branch BLOCKED_EXTERNAL_CAPABILITY for real operations even though the deployed v0.6.40 UI still exposes the configured A-branch entry",
+      "If the user later chooses to subscribe to the official Assets API, start a separate event with a new version, release authorization, permission decision, and request budget"
     ]
   }
 }

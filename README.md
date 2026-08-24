@@ -6,9 +6,9 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 
-## 当前事件：v0.6.40 已技术发布（2026-08-24，真实链待补权与真人认证）
+## 当前事件：v0.6.40 已技术发布（2026-08-25，真实链受外部订阅阻断）
 
-生产当前运行`v0.6.40 / schema40`且技术健康；PR #92、Quality CI、tag、GitHub Release、冻结备份、fresh build、原子切换、公网/回环、数据不变和5资源门均通过。受限Provider诊断只保留HTTP状态、错误码和RequestId，不保留远端Message、Body或密钥，并把创建/查询失败写入既有状态字段。最终定向4 specs `71/71 PASS`；唯一safe full原始`1055/1056`，唯一失败为AGENTS治理短语，产品1055项均通过，修正后m38 `15/15 PASS`，未重复full。只读身份核验确认生产AK属于IAM用户`tapnow-ark-catalog-ro-20260803`，该用户目前只有目录只读策略；Project `default` 的`ArkFullAccess`正等待最终确认提交。新预算尚未消费：H5创建`0/1`、认证查询`0/15`、Asset创建`0/1`、Asset查询`0/33`，付费Generation与OSS测试写入均0。当前为`PRODUCTION_V0_6_40_TECHNICAL_PASS / PROJECT_PERMISSION_CONFIRMATION_PENDING / PROVIDER_PROTOCOL_REAL_RECHECK_PENDING / USER_RECHECK`。回执见[`spec/V0_6_40_PRODUCTION_RECEIPT_2026-08-24.json`](spec/V0_6_40_PRODUCTION_RECEIPT_2026-08-24.json)；v0.6.39历史回执和v0.6.38既有`USER_PASS`均保持不变。
+生产当前运行`v0.6.40 / schema40`且技术健康；PR #92、Quality CI、tag、GitHub Release、冻结备份、fresh build、原子切换、公网/回环、数据不变和5资源门均通过。受限Provider诊断只保留HTTP状态、错误码和RequestId，不保留远端Message、Body或密钥，并把创建/查询失败写入既有状态字段。Project `default`已只为目标IAM用户补`ArkFullAccess`，用户详情明确显示项目限制；一次误加的用户级策略被立即撤销且无残留。随后唯一H5创建`1/1`返回远端`403 SubscriptionRequired`，无Provider session ID、H5Link或BytedToken；认证查询、Asset创建/查询、Generation与OSS均0。当前为`PRODUCTION_V0_6_40_TECHNICAL_PASS / PROJECT_PERMISSION_APPLIED / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / BLOCKED_EXTERNAL_CAPABILITY / USER_RECHECK`，本事件不购买、不重试。回执见[`spec/V0_6_40_PRODUCTION_RECEIPT_2026-08-24.json`](spec/V0_6_40_PRODUCTION_RECEIPT_2026-08-24.json)；v0.6.39历史回执和v0.6.38既有`USER_PASS`均保持不变。
 
 ## 上一用户验收：v0.6.38 已获用户通过，真实协议仍为fail-closed
 
