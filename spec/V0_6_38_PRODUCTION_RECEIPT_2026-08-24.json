@@ -1,7 +1,7 @@
 {
   "version": "v0.6.38",
   "date": "2026-08-24",
-  "status": "PRODUCTION_PUBLISHED_AUTO_PASS_PROVIDER_PROTOCOL_REAL_FAIL_CLOSED_USER_RECHECK",
+  "status": "PRODUCTION_PUBLISHED_USER_PASS_PROVIDER_PROTOCOL_REAL_FAIL_CLOSED_USER_PASS",
   "scope": {
     "summary": "INC-IMGEDIT-006图片全屏双轴完整适配、透明Surface与Seedance可信素材A分支安全协议。生产发布与零付费浏览器门通过；唯一一次真实H5会话创建返回失败并按预算停止，未进入Asset创建。",
     "schemaChanged": true,
@@ -66,6 +66,16 @@
       "listener4173": "unchanged",
       "productRuntimeChangedAfterTag": false,
       "secondFullRun": false
+    },
+    "userPassDocumentationGovernance": {
+      "scope": "m38-generation-runtime-incidents",
+      "tests": 15,
+      "passed": 15,
+      "failed": 0,
+      "sourceAndSnapshotSha256": "1a1a92174ce07a74dc73fbdb944f9f21ac0fa3842742ecd5338980facd35a05a",
+      "listener4173": "unchanged",
+      "productRuntimeChanged": false,
+      "fullSuiteRun": false
     }
   },
   "release": {
@@ -224,8 +234,11 @@
   },
   "authorizationConsumed": true,
   "userAcceptance": {
-    "status": "USER_RECHECK",
-    "scope": "v0.6.38 INC-IMGEDIT-006 production fullscreen and truthful Seedance fail-closed state"
+    "status": "USER_PASS",
+    "acceptedAt": "2026-08-24T20:21:43+08:00",
+    "userStatement": "通过",
+    "scope": "v0.6.38 INC-IMGEDIT-006 production fullscreen and truthful Seedance fail-closed state",
+    "providerProtocolStatusUnchanged": "PROVIDER_PROTOCOL_REAL_FAIL_CLOSED"
   },
-  "completionBoundary": "v0.6.38 is published and the fullscreen/zero-paid production browser gates passed. The real trusted-asset protocol did not pass because the sole authorized H5 create failed; it was not retried and no Asset was created. USER_PASS is not claimed."
+  "completionBoundary": "v0.6.38 is published and the user explicitly accepted the production fullscreen and truthful Seedance fail-closed state. The real trusted-asset protocol did not pass because the sole authorized H5 create failed; it was not retried and no Asset was created. USER_PASS does not promote the Provider protocol to REAL_PASS."
 }

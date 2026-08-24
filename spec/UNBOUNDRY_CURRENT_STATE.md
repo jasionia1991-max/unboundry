@@ -1,19 +1,19 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网为v0.6.38/schema40且技术健康。INC-IMGEDIT-006已完成GitHub、生产发布和零付费浏览器门；真实H5创建唯一一次失败并fail-closed。当前为`USER_RECHECK`，没有`USER_PASS`。
+> **状态分层**：现网为v0.6.38/schema40且技术健康。INC-IMGEDIT-006已完成GitHub、生产发布和零付费浏览器门；真实H5创建唯一一次失败并fail-closed。用户已在生产实页明确回复“通过”，当前为`PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`；Provider协议仍为`REAL_FAIL_CLOSED`。
 
 更新日期：2026-08-24
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
 当前代码包版本：**v0.6.38**
 本地候选代码版本：**v0.6.38**
-当前治理标记：`CURRENT_V0_6_38_USER_RECHECK`
-当前热修门：`INC_IMGEDIT_006_R11_COMPLETE / PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / USER_RECHECK`
+当前治理标记：`CURRENT_V0_6_38_USER_PASS`
+当前热修门：`INC_IMGEDIT_006_R11_COMPLETE_USER_PASS / PRODUCTION_PUBLISHED_USER_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / USER_PASS`
 
 ## 一句话
 
-**生产是 v0.6.38 / schema40且技术健康；全屏生产几何通过，Seedance真实H5创建失败后诚实停止。** 当前release为`/opt/unboundry/releases/v0.6.38-inc-imgedit-006-20260824`；发布授权已消费。只有用户生产实页明确确认后才能写`USER_PASS`。
+**生产是 v0.6.38 / schema40且技术健康；全屏生产几何通过，Seedance真实H5创建失败后诚实停止，用户已明确验收通过。** 当前release为`/opt/unboundry/releases/v0.6.38-inc-imgedit-006-20260824`；发布授权和H5创建预算均已消费。
 
-## INC-IMGEDIT-006 图片全屏完整适配与Seedance可信素材（PRODUCTION_V0_6_38 / USER_RECHECK）
+## INC-IMGEDIT-006 图片全屏完整适配与Seedance可信素材（PRODUCTION_V0_6_38 / USER_PASS）
 
 - 权威方案为`spec/INC_IMGEDIT_006_FULLSCREEN_FIT_AND_SEEDANCE_TRUSTED_ASSET_PLAN_2026-08-24.md`，实时断点为`spec/INC_IMGEDIT_006_FULLSCREEN_FIT_AND_SEEDANCE_TRUSTED_ASSET_CHECKPOINT.md`，生产回执为`spec/V0_6_38_PRODUCTION_RECEIPT_2026-08-24.json`；v0.6.38发布授权已执行并消费。
 - R2已修复1086×1448、3:4、9:16、16:9、1:1和超宽图在三视口的双轴完整适配；R3移除会冒充远端可信素材的旧本地校验入口。
@@ -26,7 +26,7 @@
 - R10/R11已完成双备份、schema39→40副本演练、旧runtime拒绝不改写、fresh build、原子切换、公网/回环/service/inventory/数据/5资源与三视口浏览器门；冻结备份`v0.6.38-cutover-frozen-hoN2aM`双清单`5ebe6ef5…b7a7`。
 - 生产全屏代表图444×818在1280×720、1440×900、1728×900均四边完整、比例不变且contain；755×1332第二竖图同样通过，console error/warn0。
 - Provider控制面账本为`2/200`：权益只读1、唯一H5创建1，其余0。H5创建返回HTTP503并保存为`FAILED/CREATE_FAILED`，没有H5 URL；因创建预算耗尽且副作用未知未重试，未进入Asset阶段。付费生成、Generation task/attempt增量、费用和OSS写入0。
-- 当前状态`PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / USER_RECHECK`。真实协议失败不得写`PROVIDER_PROTOCOL_REAL_PASS`，用户未确认不得写`USER_PASS`。
+- 用户于2026-08-24在生产实页明确回复“通过”，当前状态`PRODUCTION_PUBLISHED_USER_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / USER_PASS`。该确认覆盖全屏完整显示与Seedance失败态的真实呈现，不把真实协议失败改写为`PROVIDER_PROTOCOL_REAL_PASS`。
 
 ## INC-IMGEDIT-005 图片工具产品质量拒收返工（R9_COMPLETE / USER_RECHECK）
 

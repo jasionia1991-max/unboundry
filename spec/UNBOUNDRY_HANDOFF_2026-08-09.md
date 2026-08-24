@@ -6,9 +6,9 @@
 
 新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-24 的权威现状、产品合同和用户验收边界。下面各节是历史增量，出现「当前」时只代表该时点。
 
-## 当前线上：图片全屏完整适配与Seedance可信素材（v0.6.38，2026-08-24 USER RECHECK）
+## 当前线上：图片全屏完整适配与Seedance可信素材（v0.6.38，2026-08-24 USER PASS）
 
-v0.6.38已发布全屏双轴contain、透明Surface、旧本地预检语义修正、schema40可信素材安全表和只由服务端构造的`asset://`合同。tag`ff8b80c`/tree`c8e1e19`，PR #87合并`1a1756a`且Quality CI SUCCESS，GitHub Release已发布。生产current`/opt/unboundry/releases/v0.6.38-inc-imgedit-006-20260824`，切换冻结备份`v0.6.38-cutover-frozen-hoN2aM`双清单一致；schema40、数据、service、公网/回环、inventory和5资源通过。生产三视口竖图完整显示、详情和A分支失败诚实状态通过；唯一H5创建返回503后未重试，Asset/生成/OSS均0，控制面2/200。当前为`PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / USER_RECHECK`，回执`spec/V0_6_38_PRODUCTION_RECEIPT_2026-08-24.json`。
+v0.6.38已发布全屏双轴contain、透明Surface、旧本地预检语义修正、schema40可信素材安全表和只由服务端构造的`asset://`合同。tag`ff8b80c`/tree`c8e1e19`，PR #87合并`1a1756a`且Quality CI SUCCESS，GitHub Release已发布。生产current`/opt/unboundry/releases/v0.6.38-inc-imgedit-006-20260824`，切换冻结备份`v0.6.38-cutover-frozen-hoN2aM`双清单一致；schema40、数据、service、公网/回环、inventory和5资源通过。生产三视口竖图完整显示、详情和A分支失败诚实状态通过；唯一H5创建返回503后未重试，Asset/生成/OSS均0，控制面2/200。用户已在生产实页明确回复“通过”，当前为`PRODUCTION_PUBLISHED_USER_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / USER_PASS`；该用户确认不代表Provider协议成功。回执`spec/V0_6_38_PRODUCTION_RECEIPT_2026-08-24.json`。
 
 ## 上一线上：图片工具产品质量返工（v0.6.37，2026-08-24 USER RECHECK）
 

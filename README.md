@@ -6,11 +6,11 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 
-## 当前生产：v0.6.38（2026-08-24，USER RECHECK）
+## 当前生产：v0.6.38（2026-08-24，USER PASS）
 
-生产当前运行`v0.6.38 / schema40`且技术健康。INC-IMGEDIT-006已修复全屏双轴完整适配和透明Surface，移除本地预检冒充方舟可信素材的语义，并加入owner/account/source隔离的可信素材协议。PR #87、CI、tag/Release、双备份、迁移、fresh build、原子切换和生产零付费浏览器复验均完成；唯一真实H5创建返回503后fail-closed，没有Asset创建、付费生成或OSS写入。等待用户生产实页确认。完整现状见[`spec/UNBOUNDRY_CURRENT_STATE.md`](spec/UNBOUNDRY_CURRENT_STATE.md)与[`spec/V0_6_38_PRODUCTION_RECEIPT_2026-08-24.json`](spec/V0_6_38_PRODUCTION_RECEIPT_2026-08-24.json)。
+生产当前运行`v0.6.38 / schema40`且技术健康。INC-IMGEDIT-006已修复全屏双轴完整适配和透明Surface，移除本地预检冒充方舟可信素材的语义，并加入owner/account/source隔离的可信素材协议。PR #87、CI、tag/Release、双备份、迁移、fresh build、原子切换和生产零付费浏览器复验均完成；唯一真实H5创建返回503后fail-closed，没有Asset创建、付费生成或OSS写入。用户已在生产实页明确回复“通过”，当前为`PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`；该用户确认不把Provider协议失败改写为成功。完整现状见[`spec/UNBOUNDRY_CURRENT_STATE.md`](spec/UNBOUNDRY_CURRENT_STATE.md)与[`spec/V0_6_38_PRODUCTION_RECEIPT_2026-08-24.json`](spec/V0_6_38_PRODUCTION_RECEIPT_2026-08-24.json)。
 
-## 当前验收：v0.6.38 已技术发布，真实协议fail-closed，等待用户复验
+## 当前验收：v0.6.38 已获用户通过，真实协议仍为fail-closed
 
 INC-IMGEDIT-005已完成全部17个入口、三视口、四zoom、透明/横竖方图、本地与模型语义、Seedance分层和空白区放置复审；独立审查最终无P0/P1/P2，safe m100+m2 `24/24 PASS`。唯一一次safe full原始`1052/1053`，唯一失败为旧治理正则；精确修正后m38 `15/15 PASS`，未运行第二次full。生产浏览器代表序列写请求0、Generation/Provider0、console error/warn0，数据不变。权威回执为[`spec/V0_6_37_PRODUCTION_RECEIPT_2026-08-24.json`](spec/V0_6_37_PRODUCTION_RECEIPT_2026-08-24.json)；只有用户在生产实页明确回复“通过”后才升级`USER_PASS`。
 

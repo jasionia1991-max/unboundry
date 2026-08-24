@@ -2,9 +2,9 @@
 
 > 更新时间：2026-08-24
 >
-> 当前阶段：`R11_COMPLETE_USER_RECHECK`
+> 当前阶段：`R11_COMPLETE_USER_PASS`
 >
-> 当前结论：v0.6.38已完成GitHub、schema40生产发布和零付费生产浏览器门。全屏技术验收通过；唯一授权的真实H5会话创建返回503并以`CREATE_FAILED`收口，因创建预算`1/1`且远端副作用未知没有重试，未进入Asset创建。当前为`PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / USER_RECHECK`，禁止写`USER_PASS`。
+> 当前结论：v0.6.38已完成GitHub、schema40生产发布和零付费生产浏览器门。全屏技术验收通过；唯一授权的真实H5会话创建返回503并以`CREATE_FAILED`收口，因创建预算`1/1`且远端副作用未知没有重试，未进入Asset创建。用户已在生产实页明确回复“通过”，当前为`PRODUCTION_PUBLISHED_USER_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / USER_PASS`；用户验收不改写真实协议失败。
 
 ## 1. 实时身份
 
@@ -26,7 +26,7 @@
 - R0核对：本地tag、远端tag和GitHub Release均不存在 `v0.6.38`
 - 当前生产：`v0.6.38 / schema40 / live / ready active`
 - 当前release：`/opt/unboundry/releases/v0.6.38-inc-imgedit-006-20260824`
-- 当前用户层：`USER_RECHECK`；INC-IMGEDIT-006没有用户主观确认，不得写`USER_PASS`。
+- 当前用户层：`USER_PASS`；用户于2026-08-24在生产实页明确回复“通过”，覆盖全屏完整显示与Seedance失败态的准确呈现。
 
 ## 3. R0 能力分流
 
@@ -78,12 +78,12 @@ PURCHASE_REQUIRED=NO
 | R8 | `SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS` | 唯一safe full原始1053/1055；两个精确合同遗漏修正后m10+m9 18/18，未重复full |
 | R9 | `COMPLETE` | tag`v0.6.38`、PR #87、Quality CI SUCCESS、merge`1a1756a`、GitHub Release完成；tag/main-at-merge tree均`c8e1e19` |
 | R10 | `PRODUCTION_PUBLISHED_AUTO_PASS / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED` | 双备份、schema39→40副本演练、旧runtime拒绝且不改写、fresh build、原子切换和生产技术门通过；唯一H5创建真实请求失败后停止，未创建Asset |
-| R11 | `PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK` | 三视口全屏几何、详情、A分支失败诚实呈现、console和零生成/零OSS门通过；待用户生产实页确认 |
+| R11 | `PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_PASS` | 三视口全屏几何、详情、A分支失败诚实呈现、console和零生成/零OSS门通过；用户已在生产实页明确回复“通过” |
 
 ## 6. 验收状态
 
-- `IMGEDIT-039 = PRODUCTION_VIEWPORT_PASS`；`IMGEDIT-040 / 042 / 043 / 044 / 045 = TARGETED_AUTO_PASS`并已随schema40生产发布；`IMGEDIT-041 = ACTIVE_BRANCH_A / REAL_CREATE_FAIL_CLOSED`；`IMGEDIT-046 = PRODUCTION_PUBLISHED / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / USER_RECHECK`。
-- 自动、浏览器、Provider协议、生产技术和用户主观验收必须分层，任何Agent不得写 `USER_PASS`。
+- `IMGEDIT-039 = PRODUCTION_VIEWPORT_PASS / USER_PASS`；`IMGEDIT-040 / 042 / 043 / 044 / 045 = TARGETED_AUTO_PASS`并已随schema40生产发布；`IMGEDIT-041 = ACTIVE_BRANCH_A / REAL_CREATE_FAIL_CLOSED`；`IMGEDIT-046 = PRODUCTION_PUBLISHED_USER_PASS / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / USER_PASS`。
+- 自动、浏览器、Provider协议、生产技术和用户主观验收继续分层；本次`USER_PASS`来自用户明确生产实页确认，不得扩张为`PROVIDER_PROTOCOL_REAL_PASS`。
 
 ## 7. 测试与浏览器证据
 
@@ -123,6 +123,7 @@ PURCHASE_REQUIRED=NO
 - 唯一H5创建真实请求后新三表各1行：group保持`NOT_STARTED`，session为`FAILED/CREATE_FAILED`且无Provider session ID，binding未创建远端Asset。账本因此为权益1、H5创建1、其余0、总2/200；付费生成、Generation task/attempt增量和OSS写入均0。
 - R11生产浏览器三视口几何：444×818自然比`0.542787`，渲染比`0.542786/0.542778/0.542778`且四边均在viewport内；755×1332自然比`0.566817`、渲染比`0.566808`，`object-fit:contain`且四边完整。详情字段、旧本地预检免责声明、modal inert、A分支未核验/失败态与console 0 error/warn通过。
 - R11发布回执同步后的治理复验诚实保留三步：错误selector在选择阶段0产品测试；首次有效m38为`14/15`，发现测试仍把当前生产写死为schema39；改成从权威生产标记动态读取后第二次`14/15`，继续发现三份渐进治理文档顶部仍为`CURRENT_V0_6_37_USER_RECHECK`。精确同步AGENTS与三份治理头后最终m38 `15/15 PASS`、退出0，source/snapshot`08ab2c7ee3e579f5f509dc8abbdee322fd4afdcab0ad64d421645a839a235142`，4173 unchanged；未改发布tag内产品runtime，未运行第二次full。
+- 用户明确通过后的权威文档同步只运行m38治理定向，最终`15/15 PASS`、退出0，source/snapshot`1a1a92174ce07a74dc73fbdb944f9f21ac0fa3842742ecd5338980facd35a05a`，4173 unchanged；没有产品runtime改动、full、Provider请求或生产写入。
 
 ## 8. GitHub、生产、阻断与回滚
 
@@ -134,6 +135,6 @@ PURCHASE_REQUIRED=NO
 - 当前阻断：真实可信素材协议被唯一H5创建失败阻断；因为创建预算已耗尽且写请求副作用未知，本Goal不得继续重试或进入Asset阶段。全屏与生产发布不受该外部协议失败影响。
 - 回滚点：上一不可变release`/opt/unboundry/releases/v0.6.37-inc-imgedit-005-20260824`与切换冻结备份完整保留；本次没有触发回滚。
 
-## 9. 唯一下一动作
+## 9. 收口
 
-等待用户在已发布的v0.6.38生产实页复验全屏完整显示与Seedance失败态。只有用户明确确认后才可另行同步`USER_PASS`；本Goal内不再发起任何Provider控制面写请求。
+用户已在已发布的v0.6.38生产实页明确回复“通过”，INC-IMGEDIT-006用户层正式收口为`USER_PASS`。本Goal不再发起任何Provider控制面写请求；唯一H5创建失败仍保持`PROVIDER_PROTOCOL_REAL_FAIL_CLOSED`。
