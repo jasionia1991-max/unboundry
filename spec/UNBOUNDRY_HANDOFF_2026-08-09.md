@@ -6,13 +6,13 @@
 
 新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-24 的权威现状、产品合同和用户验收边界。下面各节是历史增量，出现「当前」时只代表该时点。
 
-## 当前本地事件：INC-SEEDANCE-001 可信素材真实链路恢复
+## 当前事件：INC-SEEDANCE-001 可信素材真实链路恢复
 
-真实仓库`/Users/mymy/Documents/unboundry/app`；隔离工作树`/private/tmp/unboundry-inc006-v0.6.38-2026-08-24`，分支`codex/inc-seedance-001-trusted-chain-2026-08-24`，基线`origin/main b94e01e`。先读AGENTS规定路线，再读`spec/INC_SEEDANCE_001_TRUSTED_ASSET_REAL_CHAIN_RECOVERY_PLAN_2026-08-24.md`和对应Checkpoint。
+真实仓库`/Users/mymy/Documents/unboundry/app`；产品候选工作树`/private/tmp/unboundry-inc006-v0.6.38-2026-08-24`，候选commit`8bc89c0`/tree`4c504919`；PR #90已合并为`1540d6b`且main tree一致。v0.6.39 tag/Release已经发布，生产release为`/opt/unboundry/releases/v0.6.39-seedance-trusted-chain-20260824`。先读AGENTS规定路线，再读`spec/INC_SEEDANCE_001_TRUSTED_ASSET_REAL_CHAIN_RECOVERY_PLAN_2026-08-24.md`和对应Checkpoint。
 
-本地已确认并修复两项正式协议偏差：管控面Base URL与可信素材四Action应走`ark.cn-beijing.volcengineapi.com`；H5创建必须发送公网HTTPS CallbackURL。当前新增`UNBOUNDRY_SEEDANCE_ARK_CALLBACK_URL`，缺失或非法时零请求fail-closed。最终m42 `16/16 PASS`，source/snapshot`23946d2b…b5ff5a`。
+v0.6.39已把管控面Base URL与可信素材四Action统一到`ark.cn-beijing.volcengineapi.com`，H5创建发送公网HTTPS CallbackURL，缺失或非法时零请求fail-closed。m42 `16/16`、m81 `41/41`、m38 `15/15 PASS`；唯一safe full原始`1055/1056`，同源码只复验唯一m1性能抖动并`1/1 PASS`。冻结备份恢复、fresh build、CallbackURL配置、原子切换、公网/回环/service/schema40/数据/inventory门均通过。
 
-生产仍是v0.6.38/schema40和`USER_PASS / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED`。v0.6.39版本、发布、GitHub、SSH生产、CallbackURL配置和最多50次控制面预算已经明确授权；付费Generation与OSS测试写入固定为0，H5必须由用户本人完成。不得读受保护`spec/public-templates-director-split-revision.json`。唯一下一动作以新Checkpoint为准。
+生产唯一H5创建仍返回HTTP503并保存`FAILED/CREATE_FAILED`，没有H5Link/BytedToken。现有实现没有保留Provider状态码、错误码或RequestId，只能写`REMOTE_CREATE_REJECTED_UNCLASSIFIED`；官方要求当前AK具备对应Project的`ArkFullAccess`，但该权限未取得可验证证据，不能猜成根因。账本为H5创建`1/1`、认证查询`0/15`、Asset创建`0/1`、Asset查询`0/33`、Generation/OSS/费用0。下一轮必须先补安全可审计错误证据、确认权限并取得新版本/发布/权限处置/请求预算；不得移动v0.6.39 tag、复用H5预算或读受保护`spec/public-templates-director-split-revision.json`。唯一下一动作以Checkpoint为准。
 
 ## 当前线上：图片全屏完整适配与Seedance可信素材（v0.6.38，2026-08-24 USER PASS）
 

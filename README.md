@@ -6,11 +6,11 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 
-## 当前生产：v0.6.38（2026-08-24，USER PASS）
+## 当前生产：v0.6.39（2026-08-24，技术上线通过 / 真实链继续 fail-closed）
 
-生产当前运行`v0.6.38 / schema40`且技术健康。INC-IMGEDIT-006已修复全屏双轴完整适配和透明Surface，移除本地预检冒充方舟可信素材的语义，并加入owner/account/source隔离的可信素材协议。PR #87、CI、tag/Release、双备份、迁移、fresh build、原子切换和生产零付费浏览器复验均完成；唯一真实H5创建返回503后fail-closed，没有Asset创建、付费生成或OSS写入。用户已在生产实页明确回复“通过”，当前为`PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`；该用户确认不把Provider协议失败改写为成功。完整现状见[`spec/UNBOUNDRY_CURRENT_STATE.md`](spec/UNBOUNDRY_CURRENT_STATE.md)与[`spec/V0_6_38_PRODUCTION_RECEIPT_2026-08-24.json`](spec/V0_6_38_PRODUCTION_RECEIPT_2026-08-24.json)。
+生产当前运行`v0.6.39 / schema40`且技术健康。v0.6.39已把Seedance可信素材控制面统一到正式地域Ark主机，并给H5创建补齐公网HTTPS CallbackURL；PR #90、CI、tag/Release、冻结备份恢复校验、fresh build与原子切换均完成。新事件唯一一次H5创建仍返回HTTP503并保存为`FAILED/CREATE_FAILED`，未取得H5Link/BytedToken；现有脱敏层未保留Provider状态码、错误码或RequestId，无法把失败诚实归因到权限、参数、签名或响应解析。按预算未重试，认证查询、Asset创建/查询、付费Generation与OSS测试写入均为0。当前为`PRODUCTION_V0_6_39_TECHNICAL_PASS / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / H5_CREATE_BUDGET_EXHAUSTED`。完整现状见[`spec/UNBOUNDRY_CURRENT_STATE.md`](spec/UNBOUNDRY_CURRENT_STATE.md)与[`spec/V0_6_39_PRODUCTION_RECEIPT_2026-08-24.json`](spec/V0_6_39_PRODUCTION_RECEIPT_2026-08-24.json)。v0.6.38既有用户验收仍作为历史事实保留，不自动覆盖v0.6.39真实协议结果。
 
-## 当前验收：v0.6.38 已获用户通过，真实协议仍为fail-closed
+## 上一用户验收：v0.6.38 已获用户通过，真实协议仍为fail-closed
 
 INC-IMGEDIT-005已完成全部17个入口、三视口、四zoom、透明/横竖方图、本地与模型语义、Seedance分层和空白区放置复审；独立审查最终无P0/P1/P2，safe m100+m2 `24/24 PASS`。唯一一次safe full原始`1052/1053`，唯一失败为旧治理正则；精确修正后m38 `15/15 PASS`，未运行第二次full。生产浏览器代表序列写请求0、Generation/Provider0、console error/warn0，数据不变。权威回执为[`spec/V0_6_37_PRODUCTION_RECEIPT_2026-08-24.json`](spec/V0_6_37_PRODUCTION_RECEIPT_2026-08-24.json)；只有用户在生产实页明确回复“通过”后才升级`USER_PASS`。
 
