@@ -2,9 +2,9 @@
 
 > 更新时间：2026-08-24
 >
-> 当前阶段：`R2_IN_PROGRESS`
+> 当前阶段：`R3_IN_PROGRESS`
 >
-> 当前结论：R1两项旧问题红证据已精确成立；R2只修全屏双轴完整适配与透明矩形，Seedance语义产品改动留给R3。
+> 当前结论：R2以最小CSS根因修复让全屏六类比例、三视口、长提示词和透明下载字节证据通过；R3开始删除旧伪校验入口并保留旧画布本地预检兼容。
 
 ## 1. 实时身份
 
@@ -68,8 +68,8 @@ PURCHASE_REQUIRED=NO
 |---|---|---|
 | R0 | `AUTO_PASS` | Git、生产、版本、正式API和账号权益已核对；Checkpoint、矩阵、TASKS同步且`git diff --check`通过 |
 | R1 | `EXPECTED_RED_COMPLETE` | safe m2 13项执行，11通过/2预期失败：1086×1448图片bottom=1237而viewer bottom=699；旧“Seedance 素材校验”菜单仍为1项 |
-| R2 | `IN_PROGRESS` | 六类素材、三视口双轴完整与透明矩形 |
-| R3 | `NOT_STARTED` | 旧预检仅历史语义，视频节点自动本地预检 |
+| R2 | `TARGETED_AUTO_PASS` | Grid行、viewer双轴与img最小尺寸根因修复；safe m2全屏/透明及其余既有用例12项通过，唯一失败为R3预留旧Seedance入口 |
+| R3 | `IN_PROGRESS` | 旧预检仅历史语义，视频节点自动本地预检 |
 | R4 | `NOT_STARTED` | Group/Asset/Session、schema、API、OpenAPI、隐私和幂等合同 |
 | R5A | `NOT_STARTED` | 正式Provider adapter及fake合同；本Goal冻结A分支 |
 | R5B/R5C | `NOT_APPLICABLE_CURRENT_BRANCH` | 仅保留能力降级合同，不作为当前实现分支 |
@@ -82,7 +82,7 @@ PURCHASE_REQUIRED=NO
 
 ## 6. 验收状态
 
-- `IMGEDIT-041 = R0_AUTO_PASS / ACTIVE_BRANCH_A`；`IMGEDIT-039 = R1_EXPECTED_RED_COMPLETE / R2_IN_PROGRESS`；`IMGEDIT-042 = R1_EXPECTED_RED_COMPLETE`；其余仍为 `NOT_STARTED`。
+- `IMGEDIT-039 / 040 = TARGETED_AUTO_PASS`；`IMGEDIT-041 = R0_AUTO_PASS / ACTIVE_BRANCH_A`；`IMGEDIT-042 = R1_EXPECTED_RED_COMPLETE / R3_IN_PROGRESS`；其余仍为 `NOT_STARTED`。
 - 自动、浏览器、Provider协议、生产技术和用户主观验收必须分层，任何Agent不得写 `USER_PASS`。
 
 ## 7. 测试与浏览器证据
@@ -92,6 +92,8 @@ PURCHASE_REQUIRED=NO
 - Seedance失败：期望旧“Seedance 素材校验”入口为0，实际仍为1，精确证明本地预检仍以可信素材校验产品语义出现。
 - source/snapshot同为`ad7aff0cce84ba1ff4bc1c050521bc0e407b8a9d3694f7b0104d3bcfdbdc1789`，4173 listener unchanged；Provider/Generation/OSS/费用0。
 - 测试库存随两项直接红证据由1053增至1055，并同步safe runner及source coverage manifest；最初两次尝试分别在缺本地依赖和manifest同步门停止，产品spec均未执行，不记作产品结果。
+- R2同一safe m2执行13项，12项通过，唯一失败是R3预留的旧“Seedance 素材校验”入口；全屏新矩阵覆盖1086×1448、3:4、9:16、16:9、1:1、超宽图×1280×720/1440×900/1728×900，全部四边在viewer内且比例不变。
+- 长提示词形成内部滚动且图片几何逐字不变；透明棋盘格只在img border box，viewer无棋盘格；全屏下载字节与原始透明PNG逐字节相等。source/snapshot`e104f1d82248418fc67505edd85da4a320c3e193c25c22640670c1de2a70ada4`，4173 unchanged，Provider/OSS/费用0。
 - 本Goal唯一一次safe full保留给R8冻结候选；文档同步不触发业务全量测试。
 - 自动化必须使用Node22.23.1/npm10.9.8、fresh临时data/runtime/cache和动态loopback端口，禁止4173、生产数据、真实Provider、真实OSS和任何付费生成。
 
@@ -104,4 +106,4 @@ PURCHASE_REQUIRED=NO
 
 ## 9. 唯一下一动作
 
-只修全屏Grid行、viewer双轴约束和透明图片实际矩形；以六类比例、三视口和长详情几何转绿为R2退出条件，不提前修改Seedance产品语义。
+移除图片工具中的旧“Seedance 素材校验”入口与伪远端面板；旧`local-technical-preflight`数据继续解析保存但固定显示为历史本地预检，并把本地结构预检自动放入视频节点选择参考素材的内部流程。

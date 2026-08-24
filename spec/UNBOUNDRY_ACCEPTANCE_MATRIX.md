@@ -3,7 +3,7 @@
 基线日期：2026-07-27  
 当前状态更新：2026-08-24
 
-INC-IMGEDIT-006已启动：生产仍为v0.6.37/schema39，v0.6.38版本门与发布门有效；R0冻结`ACTIVE_BRANCH=A`，R1两项预期红证据已成立，R2正在修全屏。Provider控制面账本`1/200`，付费生成与费用0。新事件不得继承INC-IMGEDIT-005的自动、生产或用户结论。
+INC-IMGEDIT-006已启动：生产仍为v0.6.37/schema39，v0.6.38版本门与发布门有效；R0冻结`ACTIVE_BRANCH=A`，R2全屏定向通过，R3正在纠正旧Seedance语义。Provider控制面账本`1/200`，付费生成与费用0。新事件不得继承INC-IMGEDIT-005的自动、生产或用户结论。
 
 2026-08-24 `CURRENT_RELEASE = v0.6.36 / schema39 / PRODUCTION_V0_6_36_USER_REJECTED`：发布、备份、健康和R9零付费技术事实继续保留，但用户抽查证明快速切分、棋盘格、扩图说明、费用文案和全工具review不合格，不能再标“待确认”。INC-IMGEDIT-005本地候选已完成定向、浏览器和独立审查；用户已明确确认并允许`v0.6.37`上线，R9正在执行。Provider/OSS/费用0；v0.6.35六项真实Provider `6/6 / 60 USD`仅为历史技术证据，不得复用。
 
@@ -390,10 +390,10 @@ F14本地门日志SHA-256：targeted `b9d260babe051c1f89ef86256ade2d57fda19b5700
 | IMGEDIT-036 | P0 | Seedance分层校验 | 本地结构预检、Provider可访问性和可信素材状态分层；未知状态不冒充远端通过；校验过程零生成任务 | R5自动覆盖三层；R9生产确认本地预检、Provider提交时确认和可信素材未知三层准确分离，Generation/Provider/OSS/费用0 | TARGETED_AUTO_PASS / LOCAL_BROWSER_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS |
 | IMGEDIT-037 | P0 | 图片工具17项全review | 顶部9项和更多8项逐一完成打开/切换/关闭、键盘、UI、参数、输出、放置和请求边界检查 | R6/R7完成17项定向与三视口；R8独立审查无剩余；R9生产代表矩阵验证400×48九按钮、238×272八项更多菜单、单一Host、inert、焦点和零写请求 | TARGETED_AUTO_PASS / LOCAL_BROWSER_PASS / INDEPENDENT_REVIEW_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS |
 | IMGEDIT-038 | P0 | 新候选与用户复验分层 | 现有未提交修正不得继承PASS；新候选完成定向、浏览器、safe full和独立审查；生产发布后仍等待用户明确确认 | v0.6.37 tag/PR #85/CI/Release/备份/fresh build/原子切换/生产技术门和零付费浏览器复验均完成；唯一safe full原始`1052/1053`，m38精确复验`15/15 PASS`，未运行第二次full | PRODUCTION_PUBLISHED_AUTO_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK |
-| IMGEDIT-039 | P0 | 全屏双轴完整适配 | 1086×1448、3:4、9:16、16:9、1:1和超宽图在三视口内四边完整、比例不变，长详情独立滚动且不用滚动裁切冒充完整 | R1精确得到image bottom1237 > viewer bottom699；R2正在修复 | R1_EXPECTED_RED_COMPLETE / R2_IN_PROGRESS |
-| IMGEDIT-040 | P0 | 全屏透明Surface和导出字节 | 棋盘格只覆盖透明图片实际绘制矩形，viewer保持纯灰黑，下载与导出字节不含棋盘格 | R2待实现；自动与浏览器证据不得复用旧版本 | NOT_STARTED |
+| IMGEDIT-039 | P0 | 全屏双轴完整适配 | 1086×1448、3:4、9:16、16:9、1:1和超宽图在三视口内四边完整、比例不变，长详情独立滚动且不用滚动裁切冒充完整 | R1精确红后以最小CSS根因修复；六比例×三视口及长提示词矩阵通过 | TARGETED_AUTO_PASS |
+| IMGEDIT-040 | P0 | 全屏透明Surface和导出字节 | 棋盘格只覆盖透明图片实际绘制矩形，viewer保持纯灰黑，下载与导出字节不含棋盘格 | 棋盘格仅img矩形、viewer无背景图；全屏下载与原透明PNG逐字节相等 | TARGETED_AUTO_PASS |
 | IMGEDIT-041 | P0 | Seedance A/B/C能力分流 | 以当前账号真实权益、正式接口、地域、认证方式和购买边界冻结唯一能力分支；能力不足时不得fake | R0真实只读权益和官方合同确认A分支；账本1/200，购买0，文档同步与静态检查通过 | R0_AUTO_PASS / ACTIVE_BRANCH_A |
-| IMGEDIT-042 | P0 | 旧本地预检语义兼容 | `local-technical-preflight`永远只作历史本地预检；旧画布可解析、刷新、复制、保存和导出，替换图片原子失效，不冒充远端 | R1精确证明旧“Seedance 素材校验”菜单仍为1项；R3待实现 | R1_EXPECTED_RED_COMPLETE |
+| IMGEDIT-042 | P0 | 旧本地预检语义兼容 | `local-technical-preflight`永远只作历史本地预检；旧画布可解析、刷新、复制、保存和导出，替换图片原子失效，不冒充远端 | R1精确证明旧“Seedance 素材校验”菜单仍为1项；R3正在移除伪语义并接入视频节点自动本地预检 | R1_EXPECTED_RED_COMPLETE / R3_IN_PROGRESS |
 | IMGEDIT-043 | P0 | Group/Asset/Session安全合同 | owner、Provider账号、地域、项目、source kind/id/checksum隔离；会话、Group、Asset分离，隐私、幂等、schema与OpenAPI可审查 | A分支已冻结，R4待形成合同与定向证据 | NOT_STARTED |
 | IMGEDIT-044 | P0 | asset://可信服务端引用 | 仅服务端在当前账号、owner、source checksum和远端Active成立时生成并在提交前复核；客户端伪造、跨账号、失效与恢复异常全部拒绝 | R6待实现，普通URL/Data URL不得回归 | NOT_STARTED |
 | IMGEDIT-045 | P0 | Seedance UI、状态、交互和错误 | A分支真实表达H5授权、处理中、Active、拒绝、过期、撤销和失败；modal inert、键盘、焦点、刷新恢复、无预计金额完整 | R5A/R7待实现和三视口浏览器验证 | NOT_STARTED |

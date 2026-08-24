@@ -178,23 +178,7 @@ test("Image fullscreen contains the complete 1086x1448 source inside the viewer"
     .click();
 
   const preview = page.getByTestId("image-detail-preview");
-  const verticalFixture = "data:image/svg+xml," + encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" width="1086" height="1448" viewBox="0 0 1086 1448">' +
-      '<rect width="1086" height="1448" fill="#363636"/>' +
-      '<rect x="2" y="2" width="1082" height="1444" fill="none" stroke="#fff" stroke-width="4"/>' +
-      '<circle cx="543" cy="360" r="120" fill="#999"/>' +
-      '<path d="M260 1320c30-600 536-600 566 0" fill="#777"/>' +
-    "</svg>",
-  );
-  await preview.evaluate((image: HTMLImageElement, src) => {
-    image.src = src;
-  }, verticalFixture);
-  await expect.poll(() => preview.evaluate((image: HTMLImageElement) => ({
-    height: image.naturalHeight,
-    width: image.naturalWidth,
-  }))).toEqual({ height: 1448, width: 1086 });
-
-  const geometry = await page.getByTestId("image-detail").evaluate((dialog) => {
+  const readGeometry = () => page.getByTestId("image-detail").evaluate((dialog) => {
     const viewer = dialog.querySelector<HTMLElement>(".image-detail-viewer");
     const image = dialog.querySelector<HTMLImageElement>(".image-detail-preview");
     if (!viewer || !image) throw new Error("fullscreen geometry missing");
@@ -219,11 +203,65 @@ test("Image fullscreen contains the complete 1086x1448 source inside the viewer"
       },
     };
   });
-  expect(geometry.image.top).toBeGreaterThanOrEqual(geometry.viewer.top);
-  expect(geometry.image.left).toBeGreaterThanOrEqual(geometry.viewer.left);
-  expect(geometry.image.right).toBeLessThanOrEqual(geometry.viewer.right);
-  expect(geometry.image.bottom).toBeLessThanOrEqual(geometry.viewer.bottom);
-  expect(geometry.renderedRatio).toBeCloseTo(geometry.naturalRatio, 4);
+  const imageSizes = [
+    { height: 1448, label: "1086x1448", width: 1086 },
+    { height: 1200, label: "3:4", width: 900 },
+    { height: 1600, label: "9:16", width: 900 },
+    { height: 900, label: "16:9", width: 1600 },
+    { height: 900, label: "1:1", width: 900 },
+    { height: 600, label: "ultrawide", width: 2400 },
+  ];
+  const viewports = [
+    { height: 720, width: 1280 },
+    { height: 900, width: 1440 },
+    { height: 900, width: 1728 },
+  ];
+  for (const viewport of viewports) {
+    await page.setViewportSize(viewport);
+    for (const size of imageSizes) {
+      const fixture = "data:image/svg+xml," + encodeURIComponent(
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${size.width}" height="${size.height}" viewBox="0 0 ${size.width} ${size.height}">` +
+          `<rect width="${size.width}" height="${size.height}" fill="#363636"/>` +
+          `<rect x="2" y="2" width="${size.width - 4}" height="${size.height - 4}" fill="none" stroke="#fff" stroke-width="4"/>` +
+        "</svg>",
+      );
+      await preview.evaluate((image: HTMLImageElement, src) => {
+        image.src = src;
+      }, fixture);
+      await expect.poll(() => preview.evaluate((image: HTMLImageElement) => ({
+        height: image.naturalHeight,
+        width: image.naturalWidth,
+      }))).toEqual({ height: size.height, width: size.width });
+      const geometry = await readGeometry();
+      expect.soft(geometry.image.top, `${size.label} top`).toBeGreaterThanOrEqual(
+        geometry.viewer.top,
+      );
+      expect.soft(geometry.image.left, `${size.label} left`).toBeGreaterThanOrEqual(
+        geometry.viewer.left,
+      );
+      expect.soft(geometry.image.right, `${size.label} right`).toBeLessThanOrEqual(
+        geometry.viewer.right,
+      );
+      expect.soft(geometry.image.bottom, `${size.label} bottom`).toBeLessThanOrEqual(
+        geometry.viewer.bottom,
+      );
+      expect.soft(geometry.renderedRatio, `${size.label} ratio`)
+        .toBeCloseTo(geometry.naturalRatio, 4);
+    }
+  }
+
+  await page.setViewportSize({ height: 720, width: 1280 });
+  const beforeLongPrompt = await readGeometry();
+  const prompt = page.locator(".image-detail-prompt");
+  await prompt.evaluate((element) => {
+    element.textContent = "长提示词不会挤坏图片区。".repeat(200);
+  });
+  await expect.poll(() => prompt.evaluate(
+    (element) => element.scrollHeight > element.clientHeight,
+  )).toBe(true);
+  const afterLongPrompt = await readGeometry();
+  expect(afterLongPrompt.image).toEqual(beforeLongPrompt.image);
+  await expect(page.locator(".image-detail-viewer")).toHaveCSS("overflow", "hidden");
 });
 
 test("Image tools do not present local Seedance preflight as trusted-material validation", async ({
@@ -809,12 +847,24 @@ test("Image quick split crops transparent padding and divides only the visible b
   await page.getByRole("button", { name: "关闭标注" }).click();
   await node.click();
   await toolbar.getByRole("button", { name: "全屏查看" }).click();
-  await expect(page.getByTestId("image-detail-preview"))
+  const fullscreenPreview = page.getByTestId("image-detail-preview");
+  await expect(fullscreenPreview)
     .toHaveClass(/image-transparent-preview/);
+  await expect(fullscreenPreview).not.toHaveCSS("background-image", "none");
+  await expect(page.locator(".image-detail-viewer"))
+    .toHaveCSS("background-image", "none");
   await expect(page.getByTestId("image-detail")).toHaveCSS(
     "background-color",
     "rgb(17, 17, 17)",
   );
+  const [fullscreenDownload] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByTestId("image-detail").getByRole("button", { name: "下载" }).click(),
+  ]);
+  const fullscreenDownloadPath = await fullscreenDownload.path();
+  expect(fullscreenDownloadPath).toBeTruthy();
+  expect(readFileSync(fullscreenDownloadPath!))
+    .toEqual(Buffer.from(pngBase64, "base64"));
   await page.keyboard.press("Escape");
   await page.getByTestId("image-node-toolbar")
     .getByRole("button", { name: "浏览全部" }).click();
