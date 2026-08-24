@@ -2,16 +2,16 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-24 12:06:49 +0800
-- 状态：`GOAL_ACTIVE / R8_IN_PROGRESS / LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / UI_REMEDIATION_REQUIRED`
-- 当前阶段：`R8 GitHub 与生产发布 / IN_PROGRESS`
-- 唯一允许的下一动作：按`RELEASE_RUNBOOK.md`执行生产只读预检；确认v0.6.35当前指针、service、schema39、integrity/FK和数据计数后，为v0.6.36创建正式冻结备份与恢复副本，再从精确注释tag源码构建不可变release并原子切换
+- 更新时间：2026-08-24 12:12:59 +0800
+- 状态：`GOAL_ACTIVE / R8_AUTO_PASS / R9_IN_PROGRESS / PRODUCTION_PUBLISHED_AUTO_PASS / LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / USER_RECHECK`
+- 当前阶段：`R9 生产零付费验收与用户复验 / IN_PROGRESS`
+- 唯一允许的下一动作：使用生产既有图片和零提交方式执行图片工具实页验收；核对单一活动Host、modal inert、透明棋盘格、全部紧凑/大型面板、Escape/焦点和三个目标视口，记录控制台与Generation/Provider请求为0，随后收口生产回执与治理文档但保持`USER_RECHECK`
 - 当前仓库：`/Users/mymy/Documents/unboundry/app`
 - 文档分支：`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24`
 - 立项 HEAD / origin-main：`f369d1dba1eef05aebc7f1a443256ceb82778ea0`
 - package：`0.6.36`
 - schema：`39`
-- 生产：`v0.6.35 / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_REMEDIATION_REQUIRED`
+- 生产：`v0.6.36 / PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；v0.6.35六项真实Provider技术链为历史证据，不在本Goal重跑
 - 用户质量：未通过；没有 `USER_PASS`
 - 目标版本：`v0.6.36 / VERSION_GATE_VALID`；用户“在现有v0.6.35上加一个小版本号”的确定性补丁递增指令按SemVer落实为v0.6.36
 - 发布授权：用户于本 Goal 独立明确“`允许发布`” / `RELEASE_GATE_VALID_FOR_V0_6_36`
@@ -100,8 +100,8 @@ node -p "require('./package.json').version"
 | R5 | 全屏与交互完整性 | AUTO_PASS |
 | R6 | 逐工具功能与回归验证 | AUTO_PASS / LOCAL_BROWSER_PASS |
 | R7 | 候选冻结与独立审查 | AUTO_PASS / LOCAL_ENGINEERING_COMPLETE / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS |
-| R8 | GitHub 与生产发布 | IN_PROGRESS / VERSION_V0_6_36 / GATES_VALID |
-| R9 | 生产零付费验收与用户复验 | NOT_STARTED |
+| R8 | GitHub 与生产发布 | AUTO_PASS / PRODUCTION_PUBLISHED_AUTO_PASS / VERSION_V0_6_36 |
+| R9 | 生产零付费验收与用户复验 | IN_PROGRESS / USER_RECHECK |
 
 同时最多一个阶段为 `IN_PROGRESS`。
 
@@ -380,3 +380,16 @@ Provider / OSS / 费用：
 - 工作树与保护：主工作树只有受保护JSON未跟踪；该文件不在diff/stage/tag/PR。真实Provider请求/尝试/成功、费用和OSS写入仍为0
 - 阻断：无
 - 唯一下一动作：按`RELEASE_RUNBOOK.md`执行生产只读预检；确认v0.6.35当前指针、service、schema39、integrity/FK和数据计数后，为v0.6.36创建正式冻结备份与恢复副本，再从精确注释tag源码构建不可变release并原子切换
+
+### R8 生产发布完成
+
+- 时间：2026-08-24 12:12:59 +0800
+- 状态：`AUTO_PASS / PRODUCTION_PUBLISHED_AUTO_PASS / VERSION_V0_6_36`
+- 精确源码与构建：从注释tag`v0.6.36`的`c2cbd54`/tree`197417a5…12ea8`以`git archive`同步到唯一staging；archive SHA-256 `f14500f8f1bc0938b9c4e71415a9acef9c7ed2be0a2ad9d20f168eb4fda81c6a`。服务器Node22.23.2/npm10.9.8 fresh `npm ci --ignore-scripts`、typecheck和Vite build通过；仅保留既有chunk-size warning。release inventory为5932行/5933文件，SHA-256 `d05c702a66153112b6363db3e6c45478986948e7916a3e3052d695fbe718fcd6`且切换后复验通过
+- 静默门与备份：相隔68秒的两次只读检查均为active generation0、active media publication0。正式冻结根`/var/lib/unboundry-rollbacks/v0.6.36-frozen-r8a4f2`，使用服务器明文备份脚本并以SQLite online backup补齐`library.sqlite`；frozen-source/restore-copy各366文件，双清单SHA-256同为`64e0ed924f3732a38df608d7338845cc3198b8aeabf576d8248c1438ccff4143`
+- 恢复门：restore-copy为主库schema39/integrity ok/FK0，Library schema1/integrity ok/FK0/entries2；tasks759、attempts767、active0、media800/1436473382 bytes、publications390/active0、canvas documents62、templates50/48，全部等于切换前
+- 原子切换：`/opt/unboundry/current`从`v0.6.35-image-toolbar-hotfix-20260824`原子切到`/opt/unboundry/releases/v0.6.36-image-tool-ui-remediation-20260824`；自动回滚保护已武装但未触发。service active/enabled、NRestarts0，回环与公网version0.6.36/live/ready active/schema39通过
+- 发布后数据与资源：主库/Library健康和上述计数逐项保持；5个公网JS/CSS与release SHA-256逐字节相同。切换后journal23行，unexpected error匹配0，Generation/Provider/OSS写入诊断匹配0
+- 外部影响：本Goal真实Provider请求/尝试/成功0，费用0，OSS写入0；未修改schema、用户历史项目、媒体、备份或旧release
+- 回滚点：上一不可变release`/opt/unboundry/releases/v0.6.35-image-toolbar-hotfix-20260824`与新冻结备份均保留
+- 唯一下一动作：使用生产既有图片和零提交方式执行图片工具实页验收；核对单一活动Host、modal inert、透明棋盘格、全部紧凑/大型面板、Escape/焦点和三个目标视口，记录控制台与Generation/Provider请求为0，随后收口生产回执与治理文档但保持`USER_RECHECK`
