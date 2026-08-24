@@ -2548,16 +2548,21 @@ test("current-state documentation has one recovery authority and matches package
     ),
   ]);
   const packageDocument = JSON.parse(packageSource) as { version: string };
-  const productionVersion = currentState.match(
-    /\*\*生产是 v(\d+\.\d+\.\d+) \/ schema39/,
-  )?.[1];
+  const productionMarker = currentState.match(
+    /\*\*生产是 v(\d+\.\d+\.\d+) \/ schema(\d+)/,
+  );
+  const productionVersion = productionMarker?.[1];
+  const productionSchemaVersion = productionMarker?.[2];
   expect(productionVersion).toBeTruthy();
+  expect(productionSchemaVersion).toBeTruthy();
   const currentVersionMarker = currentState.match(
     /当前治理标记：`(CURRENT_V\d+_\d+_\d+_(?:USER_PASS|USER_RECHECK|USER_REJECTED(?:_[A-Z0-9_]+)?))`/,
   )?.[1];
   expect(currentVersionMarker).toBeTruthy();
   expect(currentState).toContain(`当前代码包版本：**v${packageDocument.version}**`);
-  expect(agents).toContain(`生产运行\`v${productionVersion}/schema39\``);
+  expect(agents).toContain(
+    `生产运行\`v${productionVersion}/schema${productionSchemaVersion}\``,
+  );
   expect(currentState).toMatch(
     new RegExp(
       `本地候选代码版本：\\*\\*(?:v${packageDocument.version.replaceAll(".", "\\.")}|未指定（package仍为${packageDocument.version.replaceAll(".", "\\.")}，仅本地未发布纠正）)\\*\\*`,
