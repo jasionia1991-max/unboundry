@@ -2,10 +2,10 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-24 05:29:02 +0800
-- 状态：`GOAL_ACTIVE / R8_BLOCKED_VERSION_IDENTITY_COLLISION / LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / UI_REMEDIATION_REQUIRED`
-- 当前阶段：`R8 GitHub 与生产发布 / BLOCKED`
-- 唯一允许的下一动作：等待用户明确提供一个尚未使用的具体版本号，并独立给出按该版本上线的发布句子；恢复后重新核对tag不存在、package/runtime版本门和实时Git，再从R8继续。不得移动`v0.6.35` tag、覆盖既有release、以未授权后缀另造版本或先行push/PR/SSH发布
+- 更新时间：2026-08-24 11:58:49 +0800
+- 状态：`GOAL_ACTIVE / R8_IN_PROGRESS / LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / UI_REMEDIATION_REQUIRED`
+- 当前阶段：`R8 GitHub 与生产发布 / IN_PROGRESS`
+- 唯一允许的下一动作：提交R8恢复断点；把package/lock、final runtime role、m81版本断言和当前治理文档同步到`v0.6.36`，在精确版本候选上只运行版本直接相关的safe m38+m81定向门，不重复R7唯一一次full；通过后冻结候选并进入GitHub发布
 - 当前仓库：`/Users/mymy/Documents/unboundry/app`
 - 文档分支：`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24`
 - 立项 HEAD / origin-main：`f369d1dba1eef05aebc7f1a443256ceb82778ea0`
@@ -13,8 +13,8 @@
 - schema：`39`
 - 生产：`v0.6.35 / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_REMEDIATION_REQUIRED`
 - 用户质量：未通过；没有 `USER_PASS`
-- 目标版本：`v0.6.35 / VERSION_GATE_VALID`
-- 发布授权：用户于本 Goal 独立明确“`v0.6.35 上线`” / `RELEASE_GATE_VALID`
+- 目标版本：`v0.6.36 / VERSION_GATE_VALID`；用户“在现有v0.6.35上加一个小版本号”的确定性补丁递增指令按SemVer落实为v0.6.36
+- 发布授权：用户于本 Goal 独立明确“`允许发布`” / `RELEASE_GATE_VALID_FOR_V0_6_36`
 - 真实 Provider/付费预算：`0次 / 0 USD`
 - 产品代码：单一活动状态、Portal Host、modal inert、焦点返回、共享surface，以及六类紧凑/大型安全面板已实现；R7独立审查的五项发现已按最小范围修正
 - 测试代码：m2已直接覆盖Host/inert/surface/焦点返回、三目标视口、全部12工具四档zoom、busy焦点、标注tooltip、无asset裁剪fail-closed和零生成请求
@@ -100,7 +100,7 @@ node -p "require('./package.json').version"
 | R5 | 全屏与交互完整性 | AUTO_PASS |
 | R6 | 逐工具功能与回归验证 | AUTO_PASS / LOCAL_BROWSER_PASS |
 | R7 | 候选冻结与独立审查 | AUTO_PASS / LOCAL_ENGINEERING_COMPLETE / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS |
-| R8 | GitHub 与生产发布 | BLOCKED / VERSION_IDENTITY_COLLISION |
+| R8 | GitHub 与生产发布 | IN_PROGRESS / VERSION_V0_6_36 / GATES_VALID |
 | R9 | 生产零付费验收与用户复验 | NOT_STARTED |
 
 同时最多一个阶段为 `IN_PROGRESS`。
@@ -357,3 +357,15 @@ Provider / OSS / 费用：
 - 恢复条件：用户明确提供一个尚未使用的具体版本号，并独立给出按该版本上线的发布句子；恢复时还需实时确认该tag不存在并按Runbook同步package/lock/runtime版本门
 - 回滚点：R7最终治理提交`323088f261f5c3ad6839865e0986fec3ce794581`；R8预检启动提交`6380723375c77a1652bcd3326e5d24b16c9354e6`。R8未产生外部写入，无需生产回滚
 - 唯一下一动作：等待用户提供新的具体版本号和对应独立发布句子；恢复后重新读取本Checkpoint、核对Git/tag/package，再从R8继续
+
+### R8 恢复：v0.6.36 新版本门
+
+- 时间：2026-08-24 11:58:49 +0800
+- 用户最新指令：在现有v0.6.35上“加一个小版本号”，并独立写出“允许发布”；按确定性SemVer补丁递增解释为`v0.6.36 / VERSION_GATE_VALID / RELEASE_GATE_VALID`
+- 实时恢复：branch`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24`，HEAD`2f857084594dd0643272351409be8bf4f26eacca`、tree`5b20d766ce0248a325783120be32a1667e9295a0`，origin/main`f369d1dba1eef05aebc7f1a443256ceb82778ea0`；主工作树只有受保护JSON未跟踪
+- 版本身份：`git ls-remote`确认远端`refs/tags/v0.6.36`及其解引用均不存在；v0.6.35 tag/release保持不可变，不移动、不覆盖
+- 工具链与生产：Node22.23.1/npm10.9.8、package当前仍0.6.35；生产只读仍为v0.6.35/schema39。R8版本候选尚未形成，未push、PR、merge、tag或改生产
+- Provider / OSS / 费用：真实Provider请求、尝试、成功0；费用0；真实OSS写入0
+- 阻断：原`v0.6.35`身份冲突已由新的未占用`v0.6.36`门解除；当前无阻断
+- 回滚点：R8阻断落档提交`2f857084594dd0643272351409be8bf4f26eacca`
+- 唯一下一动作：提交本恢复断点；同步v0.6.36 package/runtime/test/治理合同并运行版本直接相关的safe m38+m81定向门

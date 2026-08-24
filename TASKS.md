@@ -1,11 +1,11 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产为`v0.6.35 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS`，但图片工具用户质量复验未通过。`INC-IMGEDIT-004` R7本地候选已完成；R8因`v0.6.35`不可变版本身份已被旧源码占用而阻断。
+> **当前状态**：生产仍为`v0.6.35 / schema39 / PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS`，但图片工具用户质量复验未通过。`INC-IMGEDIT-004` R7本地候选已完成；用户已把目标补丁递增为`v0.6.36`并允许发布，R8已恢复施工。
 
 更新时间：2026-08-24
 状态：`v0.6.35 PRODUCTION_PUBLISHED_AUTO_PASS；REAL_PROVIDER_TECHNICAL_SMOKE_PASS 6/6；INC-IMGEDIT-004 R7_AUTO_PASS / LOCAL_ENGINEERING_COMPLETE / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS；USER_QUALITY_REMEDIATION_REQUIRED。`
 
-### 2026-08-24 图片工具交互与 UI 一次性返工（INC-IMGEDIT-004，GOAL_ACTIVE / R7_AUTO_PASS / R8_BLOCKED_VERSION_IDENTITY_COLLISION）
+### 2026-08-24 图片工具交互与 UI 一次性返工（INC-IMGEDIT-004，GOAL_ACTIVE / R7_AUTO_PASS / R8_IN_PROGRESS / VERSION_V0_6_36）
 
 - 用户生产实页检查未通过；自动测试和六项真实Provider链只证明技术链，不能证明功能交互、UI或视觉质量正常。
 - 已确认P0/P1：多个工具可叠开；多角度/快速切分/Seedance底部裁切；重绘/擦除/标注与Creator碰撞；透明图在编辑器/全屏为黑底；扩图和紧凑面板布局失衡。顶部工具栏、更多菜单和颜色标记作为回归保护。
@@ -29,6 +29,7 @@
 - R7定向候选在精确`39cd494`隔离worktree完成safe m2 `10/10`、m18 `2/2`、m100 `13/13 PASS`，三次退出0，source/snapshot均`8c3cd1a6…f5b98`、4173 listener unchanged；TypeScript/build/架构/source coverage和零网络门随safe入口通过，真实Provider/OSS/费用0。
 - 本Goal唯一一次safe full在精确`4fd25cc`执行：120 specs / 1052 tests，原始`1050/1052`，异常仅m24异步目录计数时序和m37在modal inert后使用非法背景编辑前置条件；skipped/retries/blocked/reportErrors均0，source/snapshot`ce6403b6…41a8414`。未运行第二次full。m24确定性等待在`e2c412e`复验`2/2 PASS`；m37改为真实派生use case在上传后/graph adoption前关闭持久层并验证DELETE/404、无节点和Provider不变，在最终`161f417`复验`35/35 PASS`。R7收口为`LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS`，不把原始full改写成全绿；下一动作是R8同名不可变tag/release身份预检。
 - R8只读预检确认远端`v0.6.35`注释tag对象`3fa72d3`已解引用到旧候选`fc99101`/tree`cb13fef`，生产仍指向`/opt/unboundry/releases/v0.6.35-image-toolbar-hotfix-20260824`；本候选`6380723`/tree`8f22a7c`与其不同。Runbook不存在既不移动tag/覆盖release、又能让另一棵源码继续使用同一精确版本身份的合法路径。R8已落档为`BLOCKED_VERSION_IDENTITY_COLLISION`；唯一恢复条件是用户提供尚未使用的具体版本号，并独立给出按该版本上线的发布句子。未push、PR、merge、tag或改生产。
+- 用户随后明确要求在v0.6.35上增加一个小版本号并写出“允许发布”；按确定性SemVer补丁递增落实为`v0.6.36 / VERSION_GATE_VALID / RELEASE_GATE_VALID`。远端`v0.6.36` tag不存在，原身份阻断解除；R8恢复为`IN_PROGRESS`，先同步package/runtime/m81与治理文档，再跑版本直接相关的safe m38+m81，不重复R7唯一一次full。
 
 ### 2026-08-23 图片工具栏剩余能力单 Goal（INC-IMGEDIT-003，D13_AUTO_PASS / USER_QUALITY_REMEDIATION_REQUIRED）
 
