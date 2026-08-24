@@ -1512,8 +1512,7 @@ export const openApiDocument = {
       SeedanceAuthorizationSessionCreated: {
         type: "object",
         required: [
-          "authorizationUrl", "createdAt", "expiresAt", "id", "status",
-          "updatedAt",
+          "createdAt", "expiresAt", "id", "status", "updatedAt",
         ],
         properties: {
           authorizationUrl: { type: "string", format: "uri" },

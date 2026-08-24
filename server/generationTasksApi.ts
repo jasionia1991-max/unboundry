@@ -18,6 +18,7 @@ import type {
 } from "../types/nodeInputs";
 import type { ImageGenerationToolInput } from "../types/imageTools";
 import { generationTaskApplication } from "./generationTasks";
+import { resolveSeedanceTrustedVideoReferences } from "./seedanceTrustedVideoReferences";
 
 const {
   GenerationProviderAttemptBlockedError,
@@ -1016,6 +1017,14 @@ export async function generationTasks(
       }
       const schema = generationModelSchema(body.kind, model);
       const { imageTool, parameters, references } = strictInput;
+      const persistedInputs = body.kind === "video" &&
+          model.provider_driver === "volcengine-ark"
+        ? await resolveSeedanceTrustedVideoReferences({
+            inputs: strictInput.snapshot,
+            ownerId,
+            providerProfileId: model.provider_profile_id,
+          })
+        : strictInput.snapshot;
       if (body.kind === "audio" && parameters.outputCount !== 1) {
         json(response, 409, {
           code: "OUTPUT_COUNT_UNSUPPORTED",
@@ -1087,7 +1096,7 @@ export async function generationTasks(
           : {
               ...parameters,
               inputSchemaVersion: 1,
-              inputs: strictInput.snapshot,
+              inputs: persistedInputs,
             },
         prompt: strictInput.finalPrompt,
         providerModelId: model.provider_model_id,

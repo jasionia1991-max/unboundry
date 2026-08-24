@@ -74,6 +74,14 @@ export type NodeInputSnapshot = {
   order: number;
   role: NodeInputRole;
   sourceNodeId: string;
+  /** Server-authored only. Browser input is ignored and rebuilt from a verified binding. */
+  trustedAsset?: Readonly<{
+    bindingId: string;
+    checkedAt: string;
+    providerAssetId: string;
+    providerProfileId: string;
+    sourceChecksumSha256: string;
+  }>;
 };
 
 export type NodeInputProblem = {

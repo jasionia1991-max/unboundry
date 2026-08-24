@@ -8,6 +8,8 @@ import { publishedSeedanceValidationModel } from "./modelCatalog";
 import { providerApplicationApi } from "./providerApplicationApi";
 import { providerRuntimeApi } from "./providerRuntimeApi";
 import { seedanceTrustedAssetApplicationApi } from "./seedanceTrustedAssetApplicationApi";
+import { seedanceTrustedAssetRuntimeApi } from "./seedanceTrustedAssetRuntimeApi";
+import { configureSeedanceTrustedVideoReferenceResolver } from "./seedanceTrustedVideoReferences";
 
 providerRuntimeApi.configureReferenceStore(
   mediaApplicationApi.providerReferenceStore,
@@ -30,6 +32,12 @@ imageToolApplicationApi.configureSeedanceValidationQueries(Object.freeze({
     ),
   model: publishedSeedanceValidationModel,
 }));
+seedanceTrustedAssetApplicationApi.configure(
+  seedanceTrustedAssetRuntimeApi.application,
+);
+configureSeedanceTrustedVideoReferenceResolver(
+  seedanceTrustedAssetRuntimeApi.videoReferences,
+);
 
 export const applicationComposition = Object.freeze({
   auth: authApplicationApi,

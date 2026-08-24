@@ -2,9 +2,9 @@
 
 > 更新时间：2026-08-24
 >
-> 当前阶段：`R6_IN_PROGRESS`
+> 当前阶段：`R7_IN_PROGRESS`
 >
-> 当前结论：R5A已实现正式V4签名的H5会话、认证结果、Asset创建/查询适配器及fake状态机；R6把可信Binding安全接入应用服务与`asset://`生成边界。
+> 当前结论：R6已完成owner-scoped编排、重启可恢复持久状态、服务端判别联合与生成提交前远端Active复核；R7实现图片入口、状态UI、错误与三视口浏览器矩阵。
 
 ## 1. 实时身份
 
@@ -73,8 +73,8 @@ PURCHASE_REQUIRED=NO
 | R4 | `TARGETED_AUTO_PASS` | schema40 Group/Asset/Session分表、组合外键、owner查询、稳定账号指纹、幂等upsert与五条OpenAPI路径已冻结；safe m100+m20 14/14通过 |
 | R5A | `TARGETED_AUTO_PASS` | 仅允许CreateVisualValidateSession/GetVisualValidateResult/CreateAsset/GetAsset；V4签名、A分支状态映射、10秒上限、QPM门、身份锁与脱敏错误fake通过 |
 | R5B/R5C | `NOT_APPLICABLE_CURRENT_BRANCH` | 仅保留能力降级合同，不作为当前实现分支 |
-| R6 | `IN_PROGRESS` | 应用编排、asset://服务端可信引用、任务恢复与失效门 |
-| R7 | `NOT_STARTED` | UI、错误、刷新、幂等、三视口浏览器矩阵 |
+| R6 | `TARGETED_AUTO_PASS` | owner/source/profile/account/region/project/checksum与远端Active共同构造可信引用；伪造asset://、错账号、失效、旧快照均在生成Provider边界前拒绝 |
+| R7 | `IN_PROGRESS` | UI、错误、刷新、幂等、三视口浏览器矩阵 |
 | R8 | `NOT_STARTED` | 候选冻结、独立只读审查、唯一一次safe full |
 | R9 | `NOT_STARTED` | v0.6.38 GitHub交付 |
 | R10 | `NOT_STARTED` | 备份、必要迁移、fresh build、生产与真实控制面协议验收 |
@@ -82,7 +82,7 @@ PURCHASE_REQUIRED=NO
 
 ## 6. 验收状态
 
-- `IMGEDIT-039 / 040 / 042 / 043 = TARGETED_AUTO_PASS`；`IMGEDIT-041 = R0_AUTO_PASS / ACTIVE_BRANCH_A`；其余仍为 `NOT_STARTED`。
+- `IMGEDIT-039 / 040 / 042 / 043 / 044 = TARGETED_AUTO_PASS`；`IMGEDIT-041 = R0_AUTO_PASS / ACTIVE_BRANCH_A`；其余仍为 `NOT_STARTED`。
 - 自动、浏览器、Provider协议、生产技术和用户主观验收必须分层，任何Agent不得写 `USER_PASS`。
 
 ## 7. 测试与浏览器证据
@@ -100,6 +100,9 @@ PURCHASE_REQUIRED=NO
 - R4 build通过；最终safe m100+m20=`14/14 PASS`、退出0，fresh schema40精确合同、FK、Group幂等复用、跨owner不可读、无持久H5 URL及OpenAPI隐私断言通过。source/snapshot`c505e70f07b0cc7ee4a633c7b13de4baa6ba1f5fcfafb13210e5d594f0288f03`，4173 unchanged，真实Provider/Generation/OSS/费用0。
 - R5A复用既有方舟V4签名、固定`Service=ark / Version=2024-01-01 / region=cn-beijing`，新增严格四Action allowlist；H5创建只返回一次短期HTTPS链接并保存不透明BytedToken，认证结果只接受匹配Group ID，Asset只接受服务端准备的HTTPS图片URL并轮询到Active。
 - R5A适配器把Pending/Processing/Active/一致性失败/撤销/删除/过期映射到冻结状态机；profile/account/region/project变化在请求前失败，QPM默认3，单请求最长10秒，AK/SK和远端详情继续由既有响应扫描与固定错误屏蔽。build通过；safe m42=`15/15 PASS`、source/snapshot`be3b5f87b6c514517f21742c3dc90fdb1f3581c20b849a50552d009bd401d62c`，4173 unchanged，真实Provider/Generation/OSS/费用0。
+- R6新增应用编排：H5链接只在首次POST返回，重复点击复用同一session；真人授权完成后绑定同一owner/profile/account/region/project/source checksum创建Asset，Provider URL仅来自owner-scoped短期签名引用，远端不确定结果不自动重复创建。
+- Ark视频媒体引用升级为`inline-data / public-url / trusted-asset`判别联合；`asset://`只由服务端用已持久Binding构造，普通HTTPS/Data URL保持原路径。任务快照冻结binding ID、profile、Provider Asset ID、source checksum、checkedAt和角色；初次提交与实际Provider提交前都重新核验远端Active，身份/校验和/过期/撤销/删除/伪造快照均fail-closed。
+- R6 build通过；safe m100+m16+m20+m5=`46/46 PASS`、退出0，测试库存仍为120 specs/1055 tests，architecture76既有例外且新增0，source/snapshot`c0266eaa022251a063c10ecfb688f9392815bc9064ec7e5d3438fe7a2b41592b`，4173 unchanged，真实Provider/Generation/OSS/费用0。
 - 本Goal唯一一次safe full保留给R8冻结候选；文档同步不触发业务全量测试。
 - 自动化必须使用Node22.23.1/npm10.9.8、fresh临时data/runtime/cache和动态loopback端口，禁止4173、生产数据、真实Provider、真实OSS和任何付费生成。
 
@@ -112,4 +115,4 @@ PURCHASE_REQUIRED=NO
 
 ## 9. 唯一下一动作
 
-实现owner-scoped应用编排、刷新/重启恢复和服务端可信引用；只有当前Binding满足owner/source checksum/Provider身份/Active/未过期时才构造`asset://`，伪造或失效在计费提交前失败。
+实现“角色可信素材”A分支UI：首次H5授权、处理中/Active/失败状态、刷新恢复、双击幂等、modal inert/焦点/键盘与三视口零Provider浏览器矩阵。

@@ -486,6 +486,32 @@ export type PublishedSeedanceValidationModel = Readonly<{
   parameterSchema: ModelParameterSchema;
 }>;
 
+export type PublishedSeedanceTrustedAssetProvider = Readonly<{
+  displayName: string;
+  profileId: string;
+}>;
+
+/** Exact enabled Seedance Provider identity used by the trusted-asset boundary. */
+export function publishedSeedanceTrustedAssetProvider(
+  ownerId: string,
+): PublishedSeedanceTrustedAssetProvider | undefined {
+  const row = modelRows(db(), ownerId).find((candidate) =>
+    candidate.archived_at === null &&
+    candidate.capability === "video" &&
+    candidate.provider_driver === "volcengine-ark" &&
+    candidate.provider_status === "enabled" &&
+    candidate.status === "published" &&
+    candidate.enabled === 1 &&
+    mediaInputPolicy(candidate) === "seedance-2"
+  );
+  return row
+    ? Object.freeze({
+        displayName: row.provider_display_name,
+        profileId: row.provider_profile_id,
+      })
+    : undefined;
+}
+
 /** Public Model Catalog query used by the image-tool application boundary. */
 export function publishedSeedanceValidationModel(
   ownerId: string,

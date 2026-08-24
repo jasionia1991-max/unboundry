@@ -202,6 +202,27 @@ export function createSeedanceTrustedAssetStore(database: DatabaseSync) {
       WHERE owner_id = ? AND id = ?
     `).get(ownerId, id) as Record<string, unknown> | undefined,
   );
+  const bindingById = (ownerId: string, id: string) => mapBinding(
+    database.prepare(`
+      SELECT * FROM seedance_asset_bindings WHERE owner_id = ? AND id = ?
+    `).get(ownerId, id) as Record<string, unknown> | undefined,
+  );
+  const bindingForGroup = (input: Readonly<{
+    groupId: string;
+    identity: SeedanceProviderIdentity;
+    ownerId: string;
+  }>) => mapBinding(database.prepare(`
+    SELECT * FROM seedance_asset_bindings
+    WHERE owner_id = ? AND group_id = ?
+      AND provider_profile_id = ? AND provider_account_fingerprint = ?
+      AND provider_region = ? AND provider_project = ?
+    ORDER BY updated_at DESC, id DESC
+    LIMIT 1
+  `).get(
+    input.ownerId,
+    input.groupId,
+    ...identityColumns(input.identity),
+  ) as Record<string, unknown> | undefined);
   const groupByIdempotency = (record: SeedanceIdentityGroupRecord) => mapGroup(
     database.prepare(`
       SELECT * FROM seedance_identity_groups
@@ -227,9 +248,43 @@ export function createSeedanceTrustedAssetStore(database: DatabaseSync) {
     record.idempotencyKey,
   ) as Record<string, unknown> | undefined);
   return Object.freeze({
+    bindingById,
+    bindingForGroup,
     bindingForSource,
     groupById,
+    groupByIdempotencyKey(input: Readonly<{
+      identity: SeedanceProviderIdentity;
+      key: string;
+      ownerId: string;
+    }>) {
+      return mapGroup(database.prepare(`
+        SELECT * FROM seedance_identity_groups
+        WHERE owner_id = ? AND provider_profile_id = ?
+          AND provider_account_fingerprint = ? AND provider_region = ?
+          AND provider_project = ? AND idempotency_key = ?
+      `).get(
+        input.ownerId,
+        ...identityColumns(input.identity),
+        input.key,
+      ) as Record<string, unknown> | undefined);
+    },
     sessionById,
+    sessionByIdempotencyKey(input: Readonly<{
+      identity: SeedanceProviderIdentity;
+      key: string;
+      ownerId: string;
+    }>) {
+      return mapSession(database.prepare(`
+        SELECT * FROM seedance_authorization_sessions
+        WHERE owner_id = ? AND provider_profile_id = ?
+          AND provider_account_fingerprint = ? AND provider_region = ?
+          AND provider_project = ? AND idempotency_key = ?
+      `).get(
+        input.ownerId,
+        ...identityColumns(input.identity),
+        input.key,
+      ) as Record<string, unknown> | undefined);
+    },
     upsertBinding(record: SeedanceAssetBindingRecord) {
       database.prepare(`
         INSERT INTO seedance_asset_bindings (

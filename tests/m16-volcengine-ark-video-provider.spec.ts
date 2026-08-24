@@ -130,25 +130,29 @@ test("Seedance Mini serializes ordered multimodal inputs after text without pers
           kind: "audio",
           order: 4,
           role: "reference-audio",
-          url: "https://signed.example.test/audio.mp3?expires=300",
+          reference: { kind: "public-url", value: "https://signed.example.test/audio.mp3?expires=300" },
         },
         {
           kind: "video",
           order: 3,
           role: "subject",
-          url: "https://signed.example.test/subject.mp4?expires=300",
+          reference: { kind: "public-url", value: "https://signed.example.test/subject.mp4?expires=300" },
         },
         {
           kind: "image",
           order: 1,
           role: "first-frame",
-          url: "https://signed.example.test/first.png?expires=300",
+          reference: { kind: "public-url", value: "https://signed.example.test/first.png?expires=300" },
         },
         {
           kind: "image",
           order: 2,
+          reference: {
+            bindingId: "binding-server-verified-1",
+            kind: "trusted-asset",
+            providerAssetId: "provider-asset-verified-1",
+          },
           role: "subject",
-          url: "https://signed.example.test/subject.png?expires=300",
         },
       ],
       model: "doubao-seedance-2-0-mini-260615",
@@ -175,7 +179,7 @@ test("Seedance Mini serializes ordered multimodal inputs after text without pers
         type: "image_url",
       },
       {
-        image_url: { url: "https://signed.example.test/subject.png?expires=300" },
+        image_url: { url: "asset://provider-asset-verified-1" },
         role: "reference_image",
         type: "image_url",
       },
@@ -211,13 +215,13 @@ test("Seedance Mini accepts a verified local MP3 as official audio Base64 withou
           kind: "image",
           order: 1,
           role: "reference-image",
-          url: "https://signed.example.test/reference.png?expires=300",
+          reference: { kind: "public-url", value: "https://signed.example.test/reference.png?expires=300" },
         },
         {
           kind: "audio",
           order: 2,
           role: "reference-audio",
-          url: `data:audio/mp3;base64,${encoded}`,
+          reference: { kind: "inline-data", value: `data:audio/mp3;base64,${encoded}` },
         },
       ],
       model: "doubao-seedance-2-0-mini-260615",
@@ -243,7 +247,7 @@ test("Seedance Mini rejects invalid multimodal kind, role, order, URL and count 
     kind: "image",
     order: 1,
     role: "reference-image",
-    url: "https://signed.example.test/reference.png?expires=300",
+    reference: { kind: "public-url", value: "https://signed.example.test/reference.png?expires=300" },
   };
   const cases: Array<{ inputs: unknown; label: string }> = [
     {
@@ -259,14 +263,31 @@ test("Seedance Mini rejects invalid multimodal kind, role, order, URL and count 
       label: "order",
     },
     {
-      inputs: [{ ...valid, url: "http://127.0.0.1/private.png" }],
+      inputs: [{ ...valid, reference: { kind: "public-url", value: "http://127.0.0.1/private.png" } }],
       label: "url",
+    },
+    {
+      inputs: [{ ...valid, reference: { kind: "public-url", value: "asset://forged-client-value" } }],
+      label: "forged-asset-url",
+    },
+    {
+      inputs: [{
+        ...valid,
+        kind: "video",
+        reference: {
+          bindingId: "binding-server-verified-1",
+          kind: "trusted-asset",
+          providerAssetId: "provider-asset-verified-1",
+        },
+        role: "reference-video",
+      }],
+      label: "trusted-asset-kind",
     },
     {
       inputs: Array.from({ length: 10 }, (_, index) => ({
         ...valid,
         order: index + 1,
-        url: `https://signed.example.test/reference-${index + 1}.png`,
+        reference: { kind: "public-url", value: `https://signed.example.test/reference-${index + 1}.png` },
       })),
       label: "count",
     },

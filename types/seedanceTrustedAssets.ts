@@ -42,7 +42,7 @@ export type SeedanceAuthorizationSessionView = Readonly<{
 export type SeedanceAuthorizationSessionCreateView =
   SeedanceAuthorizationSessionView & Readonly<{
     /** Returned only by the create call and never persisted or returned by status reads. */
-    authorizationUrl: string;
+    authorizationUrl?: string;
   }>;
 
 export type SeedanceTrustedBindingView = Readonly<{

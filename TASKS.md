@@ -1,11 +1,11 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产运行`v0.6.37 / schema39`且技术健康。INC-IMGEDIT-006 R5A定向通过；R6正在实现应用编排与服务端可信`asset://`边界。
+> **当前状态**：生产运行`v0.6.37 / schema39`且技术健康。INC-IMGEDIT-006 R6定向通过；R7正在实现可信素材UI、恢复与三视口验收。
 
 更新时间：2026-08-24
-状态：`生产v0.6.37 / schema39 / USER_RECHECK；INC-IMGEDIT-006 GOAL_ACTIVE / R5A_TARGETED_AUTO_PASS / R6_IN_PROGRESS / ACTIVE_BRANCH_A / SCHEMA40_REQUIRED / VERSION_GATE_VALID_v0.6.38 / RELEASE_GATE_VALID；Provider控制面1/200，付费生成与费用0。`
+状态：`生产v0.6.37 / schema39 / USER_RECHECK；INC-IMGEDIT-006 GOAL_ACTIVE / R6_TARGETED_AUTO_PASS / R7_IN_PROGRESS / ACTIVE_BRANCH_A / SCHEMA40_REQUIRED / VERSION_GATE_VALID_v0.6.38 / RELEASE_GATE_VALID；Provider控制面1/200，付费生成与费用0。`
 
-### 2026-08-24 图片全屏完整适配与Seedance可信素材（INC-IMGEDIT-006，R6_IN_PROGRESS）
+### 2026-08-24 图片全屏完整适配与Seedance可信素材（INC-IMGEDIT-006，R7_IN_PROGRESS）
 
 - 权威方案：`spec/INC_IMGEDIT_006_FULLSCREEN_FIT_AND_SEEDANCE_TRUSTED_ASSET_PLAN_2026-08-24.md`；实时断点：`spec/INC_IMGEDIT_006_FULLSCREEN_FIT_AND_SEEDANCE_TRUSTED_ASSET_CHECKPOINT.md`
 - 隔离分支/工作树：`codex/inc-imgedit-006-v0.6.38-2026-08-24` / `/private/tmp/unboundry-inc006-v0.6.38-2026-08-24`；起点HEAD与`origin/main`同为`349a915`，package0.6.37、schema39
@@ -21,7 +21,9 @@
 - R4已新增schema40的Group/Session/Binding分表与精确物理schema，组合外键绑定owner/profile/稳定账号指纹/region/project，Binding另绑定image asset和checksum；幂等键覆盖同一身份与source，跨owner读取失败。
 - 五条可信素材API/OpenAPI已冻结：创建快速返回202，H5完整URL只允许创建响应一次性返回，不进入status DTO或数据库；客户端不接收Provider账号指纹和Group/Session/Asset内部ID。build通过，safe m100+m20 `14/14 PASS`，source/snapshot`c505e70f…f0288f03`，4173 unchanged，真实Provider/Generation/OSS/费用0。
 - R5A已按正式`ark/2024-01-01/cn-beijing`合同只放行H5创建、认证结果、Asset创建、Asset查询四个Action，复用V4签名与凭据回显扫描；身份变化请求前拒绝，默认QPM3、10秒超时和结构化脱敏错误。safe m42 `15/15 PASS`，source/snapshot`be3b5f87…401d62c`，真实Provider/Generation/OSS/费用0。
-- 当前唯一下一动作是实现owner-scoped应用编排、刷新/重启恢复与服务端可信`asset://`引用门；只有Active且owner/source checksum/Provider身份均匹配才能进入生成请求
+- R6完成owner-scoped H5/Group/Asset编排与重启恢复；服务端只在Binding的owner/source checksum/profile/account/region/project及远端Active全部匹配时构造`asset://`，任务快照冻结Binding/Provider Asset/checksum/checkedAt/角色，提交与真正Provider边界前双重只读复核。客户端伪造、跨账号、失效和旧快照均拒绝，普通HTTPS/Data URL不回归。
+- R6 build及safe m100+m16+m20+m5 `46/46 PASS`，architecture新增例外0，source/snapshot`c0266eaa…b41592b`，4173 unchanged；真实Provider/Generation/OSS/费用0。
+- 当前唯一下一动作是实现图片“角色可信素材”A分支UI、刷新/失败恢复、双击幂等、modal inert/焦点/键盘及三视口零Provider浏览器矩阵
 
 ### 2026-08-24 图片工具产品质量拒收返工（INC-IMGEDIT-005，R9_COMPLETE / USER_RECHECK）
 
