@@ -446,22 +446,24 @@ SHA256(
 - 真实审核和真实 Generation 必须是两个独立预算；
 - 自动技术通过进入 `USER_RECHECK`，只有用户在真实页面明确确认才写 `USER_PASS`。
 
+2026-08-25执行结果：PR #96、main Quality、merge、注释tag/GitHub Release `v0.6.41`完成；冻结双副本、schema40→41恢复副本演练、fresh build、生产迁移和原子切换通过。公网/回环/service/schema41/数据/inventory/5资源门及三视口零付费浏览器通过；真实审核、Generation、OSS和费用均0。当前严格停在`USER_RECHECK`，未写`USER_PASS`。
+
 ## 14. 验收编号
 
 | ID | P | 验收合同 | 当前状态 |
 |---|---|---|---|
-| SEEDANCE-CHAR-001 | P0 | AI 角色单图与真人可信 Asset 语义、表和 UI 完全隔离 | NOT_STARTED |
-| SEEDANCE-CHAR-002 | P0 | A/B/C 能力分支由正式合同证明，未知默认 C | NOT_STARTED |
-| SEEDANCE-CHAR-003 | P0 | 首次告知、明确同意、owner/ready/checksum 准入在外部请求前完成 | NOT_STARTED |
-| SEEDANCE-CHAR-004 | P0 | 16 态状态机、逐图独立、替换/策略/模型变化失效 | NOT_STARTED |
-| SEEDANCE-CHAR-005 | P0 | Check/Attempt/Disclosure 独立持久化、幂等和结果未知防重 | NOT_STARTED |
-| SEEDANCE-CHAR-006 | P0 | 真人、公众人物、版权IP、未成年人、低置信保守拒绝；非人物可 NOT_REQUIRED | NOT_STARTED |
-| SEEDANCE-CHAR-007 | P0 | 蓝勾只来自服务端当前有效 APPROVED；客户端和旧字段不能伪造 | NOT_STARTED |
-| SEEDANCE-CHAR-008 | P0 | Generation 创建前与 Provider 边界双重复核，失效在付费前拒绝 | NOT_STARTED |
-| SEEDANCE-CHAR-009 | P0 | B 分支旁路票据正式可验证；否则只能 A 风险预检或 C 关闭 | NOT_STARTED |
-| SEEDANCE-CHAR-010 | P0 | 隐私、最短保留、无生物特征/原始Body/秘密日志、callback防重放 | NOT_STARTED |
-| SEEDANCE-CHAR-011 | P1 | ImageToolHost、三视口、四zoom、键盘/焦点/刷新恢复和明确文案 | NOT_STARTED |
-| SEEDANCE-CHAR-012 | P0 | 自动、真实审核、真实Generation、生产技术与USER_PASS严格分层 | NOT_STARTED |
+| SEEDANCE-CHAR-001 | P0 | AI 角色单图与真人可信 Asset 语义、表和 UI 完全隔离 | TARGETED_AUTO_PASS / PRODUCTION_BROWSER_PASS |
+| SEEDANCE-CHAR-002 | P0 | A/B/C 能力分支由正式合同证明，未知默认 C | BRANCH_C / CONTRACT_FAIL_CLOSED |
+| SEEDANCE-CHAR-003 | P0 | 首次告知、明确同意、owner/ready/checksum 准入在外部请求前完成 | TARGETED_AUTO_PASS / C_ZERO_EXTERNAL_REQUEST |
+| SEEDANCE-CHAR-004 | P0 | 16 态状态机、逐图独立、替换/策略/模型变化失效 | TARGETED_AUTO_PASS |
+| SEEDANCE-CHAR-005 | P0 | Check/Attempt/Disclosure 独立持久化、幂等和结果未知防重 | TARGETED_AUTO_PASS / SCHEMA41 |
+| SEEDANCE-CHAR-006 | P0 | 真人、公众人物、版权IP、未成年人、低置信保守拒绝；非人物可 NOT_REQUIRED | BRANCH_C / ENTRY_DISABLED |
+| SEEDANCE-CHAR-007 | P0 | 蓝勾只来自服务端当前有效 APPROVED；客户端和旧字段不能伪造 | TARGETED_AUTO_PASS / BLUE_CHECK_ZERO |
+| SEEDANCE-CHAR-008 | P0 | Generation 创建前与 Provider 边界双重复核，失效在付费前拒绝 | TARGETED_AUTO_PASS / GENERATION_ZERO |
+| SEEDANCE-CHAR-009 | P0 | B 分支旁路票据正式可验证；否则只能 A 风险预检或 C 关闭 | BLOCKED_EXTERNAL_CAPABILITY / BRANCH_C |
+| SEEDANCE-CHAR-010 | P0 | 隐私、最短保留、无生物特征/原始Body/秘密日志、callback防重放 | C_ZERO_EXTERNAL_DATA / TARGETED_AUTO_PASS |
+| SEEDANCE-CHAR-011 | P1 | ImageToolHost、三视口、四zoom、键盘/焦点/刷新恢复和明确文案 | PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK |
+| SEEDANCE-CHAR-012 | P0 | 自动、真实审核、真实Generation、生产技术与USER_PASS严格分层 | PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK |
 
 ## 15. 测试策略
 
@@ -487,9 +489,9 @@ SHA256(
 - 生产浏览器零付费检查不能证明审核模型质量；
 - 用户确认只覆盖其实际查看和操作的页面/素材，不外推到所有人物或版权类别。
 
-## 16. 当前预算与授权
+## 16. 方案冻结时预算与授权
 
-本计划事件只授权写文档：
+以下是方案最初冻结时的只写文档预算；2026-08-25新Goal随后给出的v0.6.41精确实施与发布授权已经消费，实际用量以Checkpoint和生产回执为准：
 
 | 动作 | 当前额度 |
 |---|---:|
@@ -503,7 +505,7 @@ SHA256(
 
 历史 v0.6.39/v0.6.40 授权和 50 次控制面账本均已消费或封存，不得复用。实施开始前，用户至少需要重新给出：目标版本、是否允许改代码/迁移、是否允许 commit/GitHub、Provider 身份与每类精确预算、是否允许真实审核、是否允许真实 Generation、是否允许生产与发布。
 
-## 17. 已知阻断与必须回答的问题
+## 17. 方案冻结时的已知阻断
 
 1. 哪个正式 Provider 能合法提供 AI/原创角色、真人、公众人物、版权 IP 的结构化判断？
 2. 该 Provider 是否允许用结果直接旁路 Seedance，票据如何传入？
@@ -523,7 +525,7 @@ SHA256(
 
 历史方案冻结时的下一步是等待实施授权；用户已于2026-08-25新开本Goal并精确授权v0.6.41实施与发布，因此该等待门已消费。实际执行按B→A→C选择C，当前工程、验证和后续发布状态只以对应Checkpoint为准；本段不再作为活动停止门。
 
-## 18. 2026-08-25 实施选择附录
+## 19. 2026-08-25 实施选择附录
 
 - B：官方Seedance提交合同没有第三方审核ticket字段；私域虚拟人像权益额外订阅超预算，不能证明。
 - A：公开审核Provider合同不足以同时证明本方案要求的风险分类、用途与隐私边界，不能诚实启用。

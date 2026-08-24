@@ -1,0 +1,190 @@
+{
+  "receiptType": "UNBOUNDRY_V0_6_41_SEEDANCE_CHARACTER_COMPLIANCE_PRODUCTION_RECEIPT",
+  "recordedAt": "2026-08-25",
+  "status": {
+    "branch": "C_CLOSED_ACCURATE",
+    "production": "PRODUCTION_V0_6_41_TECHNICAL_PASS",
+    "browser": "PRODUCTION_ZERO_PAID_BROWSER_PASS",
+    "providerAudit": "NOT_RUN_BRANCH_C",
+    "seedanceGeneration": "NOT_RUN_BRANCH_C",
+    "userAcceptance": "USER_RECHECK"
+  },
+  "source": {
+    "version": "0.6.41",
+    "functionalCommit": "9f4ed1589bb4d8d65619186035a076f572409255",
+    "governanceCommit": "b58bba6",
+    "pullRequest": 96,
+    "mergeCommit": "59599df43898d45b25fadb422cfa3bfc8bc42dfb",
+    "tree": "2e7f1cd61da8e729a69b15d0299c71ab54f84eb6",
+    "qualityRun": 32776214629,
+    "qualityJob": 97587765759,
+    "qualityConclusion": "success",
+    "tag": "v0.6.41",
+    "tagObject": "bb725da91a6e33db2994295f51287ecc231fc6d7",
+    "tagPeeledCommit": "59599df43898d45b25fadb422cfa3bfc8bc42dfb",
+    "releaseUrl": "https://github.com/jasionia1991-max/unboundry/releases/tag/v0.6.41",
+    "sourceArchiveSha256": "b924bd6ee0ad8e9ef9e03ffd28b176ed73e8e340d65c76006bb373112c6edfc1",
+    "sourceArchiveBytes": 29686377
+  },
+  "verification": {
+    "independentReview": {
+      "initialFindings": { "p0": 1, "p1": 5 },
+      "finalFindings": { "p0": 0, "p1": 0 }
+    },
+    "targeted": {
+      "scope": "m101+m2+m20+m5+m10+m91+m92+m95 plus affected review rechecks",
+      "status": "pass"
+    },
+    "safeFull": {
+      "commit": "9f4ed1589bb4d8d65619186035a076f572409255",
+      "specsPassed": 121,
+      "specsTotal": 121,
+      "testsPassed": 1061,
+      "testsTotal": 1061,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0,
+      "node": "22.23.1",
+      "npm": "10.9.8",
+      "sourceSnapshotSha256": "07a69e52e9b10cf5fcab53a576792ccd23cf5fcbd129f3830fc7b9a2a60c2863",
+      "sourceUnchanged": true,
+      "listener4173Unchanged": true,
+      "secondFullRun": false
+    },
+    "documentationFocusedRecheck": {
+      "scope": "m38",
+      "passed": 15,
+      "total": 15,
+      "sourceSnapshotSha256": "b4ef08e116a97003d78739cc4e47c2d90a3dda0c90783942d49156125df8bf06",
+      "productFullRepeated": false
+    }
+  },
+  "production": {
+    "releasePath": "/opt/unboundry/releases/v0.6.41-seedance-character-compliance-20260825",
+    "previousReleasePath": "/opt/unboundry/releases/v0.6.40-seedance-provider-diagnostics-20260824",
+    "node": "22.23.2",
+    "npm": "10.9.8",
+    "freshBuild": true,
+    "releaseFileCount": 5968,
+    "releaseInventorySha256": "7a2f12ddad25f590a9575f781f7ab185bce2b01095ea6e9cb180fc3d87e884b3",
+    "backupPath": "/var/lib/unboundry-rollbacks/v0.6.41-cutover-frozen-K1ASo1",
+    "backupSourceFileCount": 366,
+    "backupRestoreFileCount": 366,
+    "backupManifestSha256": "5a5b2f9e05fda15022d9271906478644f1da1cf43ac84e6ef701b819517adb5a",
+    "legacyBackupAttempt": {
+      "status": "QUARANTINED_NOT_USED",
+      "path": "/var/lib/unboundry-rollbacks/v0.6.41-frozen-bG98ty.legacy-backup-rejected-schema40",
+      "reason": "host legacy backup wrapper hard-coded schema39 and rejected the live schema40 snapshot"
+    },
+    "migration": {
+      "sourceVersion": 40,
+      "targetVersion": 41,
+      "sourceLogicalSha256": "900f0df5b5e548e2779d83099ef9b75b899f8632377c441d878c31766b33ad73",
+      "restoreCopyDryRunTargetLogicalSha256": "ae7a8eaf7853823655a1fd2cfc986c2a6984a999f76671fe1b3f8068de7f000a",
+      "restoreCopyAppliedTargetLogicalSha256": "2c5784f1d4d85cc5615565eacce0c58916db6c18359f9baf53c34e8d7751bba5",
+      "productionTargetLogicalSha256": "598ee242a50aca29df63bd231869d6daca72e335909f8237212a8b111b22b29c",
+      "restoreCopyIntegrity": "ok",
+      "restoreCopyForeignKeyViolations": 0,
+      "productionIntegrity": "ok",
+      "productionForeignKeyViolations": 0
+    },
+    "service": {
+      "active": true,
+      "enabled": true,
+      "nRestarts": 0,
+      "newWarnings": 0,
+      "newNginxErrors": 0
+    },
+    "health": {
+      "loopbackVersion": "0.6.41",
+      "publicVersion": "0.6.41",
+      "liveHttpStatus": 200,
+      "readyHttpStatus": 200,
+      "readyState": "active",
+      "schemaVersion": 41
+    },
+    "dataCountsBeforeAndAfter": {
+      "generationTasks": 785,
+      "generationAttempts": 793,
+      "activeGenerationTasks": 0,
+      "mediaAssets": 833,
+      "mediaDatabaseBytes": 1479438723,
+      "mediaFiles": 355,
+      "mediaFileBytes": 284663380,
+      "publicationAttempts": 423,
+      "canvases": 63,
+      "dataFiles": 366,
+      "newComplianceChecks": 0,
+      "newComplianceAttempts": 0,
+      "newComplianceDisclosures": 0,
+      "unchangedExceptSchemaMigration": true
+    },
+    "publicAssetSha256": {
+      "/": "3b6765d0d2027e3bf7c8f999fd6c1728589bcbc0cb8507797bcd788196c570d0",
+      "/assets/index-C6yWjnzJ.js": "2ef32ea49a28669ec903c5dab5844ebc3b2e2d5f7b2d9b8393325f122e549d60",
+      "/assets/index-B5ETM-Lx.css": "0486bc6d3ffbc2223df22c89f9f1609c5cc86169d46ee53a67253b21ac8f7370",
+      "/favicon.svg": "6d2795e7ca70fe26408c5f057c59224421cafe44288ac1a1c2b19bf6e4f2010b",
+      "/templates/ecommerce-image-expert-213.png": "48f64fe87da50860cc669b0835497b041f5b93f7deb14acb3116447891fab82f"
+    }
+  },
+  "browserAcceptance": {
+    "project": "v0.6.34 图片工具技术冒烟副本 2026-08-23",
+    "viewports": ["1280x720", "1440x900", "1920x1080"],
+    "riskEntry": {
+      "label": "角色风险预检（当前不可用）",
+      "visible": true,
+      "disabled": true,
+      "refreshRecovery": true
+    },
+    "trustedAssetEntry": {
+      "label": "角色可信素材",
+      "visible": true,
+      "enabled": true,
+      "opened": false
+    },
+    "consoleErrorsOrWarnings": 0,
+    "generationTasksDelta": 0,
+    "generationAttemptsDelta": 0,
+    "complianceRowsDelta": 0,
+    "providerRequests": 0,
+    "paidGeneration": 0,
+    "ossWrites": 0
+  },
+  "requestLedger": {
+    "providerControlPlaneUsed": 0,
+    "providerControlPlaneAuthorized": 60,
+    "capabilityContractUsed": 0,
+    "capabilityContractAuthorized": 20,
+    "realComplianceAuditCreatesUsed": 0,
+    "realComplianceAuditCreatesAuthorized": 3,
+    "realComplianceStatusQueriesUsed": 0,
+    "realComplianceStatusQueriesAuthorized": 30,
+    "otherRestrictedReadsUsed": 0,
+    "otherRestrictedReadsAuthorized": 7,
+    "seedanceGenerationUsed": 0,
+    "seedanceGenerationAuthorizedOnlyAfterBranchB": 1,
+    "ossResultWritesUsed": 0,
+    "complianceAuditCostCny": 0,
+    "generationCostCny": 0,
+    "subscriptionsOrPurchases": 0
+  },
+  "safety": {
+    "userAttachmentSentExternally": false,
+    "realPersonOrProtectedIpUsed": false,
+    "incSeedance001StateMigrated": false,
+    "incSeedance001H5RequestResubmitted": false,
+    "blueCheckDisplayed": false,
+    "seedanceVerifiedClaim": false,
+    "copyrightCertifiedClaim": false,
+    "legalComplianceClaim": false,
+    "forbiddenFileReadOrChanged": false
+  },
+  "nextGate": {
+    "status": "USER_RECHECK",
+    "action": "User opens the v0.6.41 production image-tool menu and confirms the disabled 角色风险预检 entry and preserved 角色可信素材 entry.",
+    "authorizationRequired": false,
+    "userPassWritten": false
+  }
+}

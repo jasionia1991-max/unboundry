@@ -5,7 +5,14 @@
 状态：`HISTORICAL_CHECKPOINT / APPEND_ONLY`
 用途：保留各次施工与发布时点证据，不再充当当前恢复入口。**当前状态、未发布工作区与下一步只看 `UNBOUNDRY_CURRENT_STATE.md`；本文件任何旧命令或旧授权都不可复用。**
 
-## 0A. INC-SEEDANCE-001 可信素材真实链路恢复（2026-08-25 BLOCKED_EXTERNAL_CAPABILITY）
+## 0A. INC-SEEDANCE-002 AI角色单图合规验证（2026-08-25 v0.6.41 / USER_RECHECK）
+
+- 按正式合同选择C分支：disabled「角色风险预检（当前不可用）」并保留enabled「角色可信素材」，不显示蓝勾或声称Seedance/版权/法律认证。
+- 独立终审P0/P1为0；唯一safe full `121/121 specs、1061/1061 tests PASS`。PR #96、main CI、merge、tag/Release完成。
+- 生产release `/opt/unboundry/releases/v0.6.41-seedance-character-compliance-20260825`，冻结source/restore各366文件，schema40→41恢复副本演练和生产迁移、fresh原子发布、公网/回环/service/数据/inventory/5资源门通过。
+- 三视口零付费浏览器与刷新恢复通过，console0、任务/attempt/合规行增量0；真实审核、Generation、OSS、购买和费用均0。回执`spec/V0_6_41_PRODUCTION_RECEIPT_2026-08-25.json`；当前严格为`USER_RECHECK`。
+
+## 0B. INC-SEEDANCE-001 可信素材真实链路恢复（2026-08-25 BLOCKED_EXTERNAL_CAPABILITY）
 
 - 生产为v0.6.40/schema40且技术健康，用户验收与历史回执不变；Project `default`最小补权已完成。
 - 正式接口对照确认v0.6.38的主机与CallbackURL偏差；v0.6.39已修复，v0.6.40已上线受限Provider诊断。

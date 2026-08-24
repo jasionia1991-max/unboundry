@@ -6,13 +6,13 @@
 
 新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-25 的权威现状、产品合同和用户验收边界。下面各节是历史增量，出现「当前」时只代表该时点。
 
-## 当前候选事件：INC-SEEDANCE-002 AI角色单图合规验证
+## 当前线上事件：INC-SEEDANCE-002 AI角色单图合规验证（v0.6.41 / USER_RECHECK）
 
-真实仓库`/Users/mymy/Documents/unboundry/app`；隔离工作树`/private/tmp/unboundry-seedance-ai-character-plan-20260825-vpJ0CN`；分支`codex/seedance-ai-character-compliance-plan-2026-08-25`；基线及冻结前`origin/main`均为`73f63adfa294f0d13c55d9998100115baa967c44`。用户已精确授权v0.6.41完整实施、GitHub、schema迁移和生产发布。受保护`spec/public-templates-director-split-revision.json`禁止读取、修改、移动、删除、stage或提交。
+真实仓库`/Users/mymy/Documents/unboundry/app`；隔离工作树`/private/tmp/unboundry-seedance-ai-character-plan-20260825-vpJ0CN`；分支`codex/seedance-ai-character-compliance-plan-2026-08-25`。v0.6.41一次性实施与发布授权已消费。受保护`spec/public-templates-director-split-revision.json`未读取、修改、移动、删除、stage或提交。
 
 正式一手合同没有证明第三方角色审核票据可进入Seedance提交合同，虚拟人像权益订阅超预算；Sightengine/Hive公开合同不足以完成A的风险分类和隐私证明。因此已按B→A→C自动选择C：产品名「角色风险预检」，入口准确关闭，无蓝勾、无法律/版权/Seedance验证承诺。schema41独立三表、完整Port/Application/Store/fake/API/OpenAPI/16态、ImageToolHost关闭UI、Generation双门和schema40→41迁移已完成；INC-SEEDANCE-001状态与H5请求未迁移、未重提。
 
-最终定向m101 `4/4`、m2 `13/13`、m20 `1/1`、m5 `21/21`、m10 `17/17`、m91 `9/9`、m92 `2/2`、m95 `5/5 PASS`；Node22.23.1/npm10.9.8、fresh临时数据、动态loopback、4173 unchanged。Provider控制面、真实审核、状态查询、Generation、OSS、订阅/购买和费用均0。权威方案与实时断点为`spec/INC_SEEDANCE_002_AI_CHARACTER_SINGLE_IMAGE_COMPLIANCE_PLAN_2026-08-25.md`及对应Checkpoint；当前停在R9独立P0/P1终审之前，生产仍为v0.6.40/schema40，唯一safe full尚未运行。之后需连续完成候选commit、唯一full、PR/CI/merge、v0.6.41 tag/Release、生产备份/恢复副本迁移/fresh原子发布/零付费浏览器，最终只能写`USER_RECHECK`。
+最终定向m101 `4/4`、m2 `13/13`、m20 `1/1`、m5 `21/21`、m10 `17/17`、m91 `9/9`、m92 `2/2`、m95 `5/5 PASS`；独立终审P0/P1为0，唯一safe full `121/121 specs、1061/1061 tests PASS`。PR #96、main CI、merge`59599df`、tag/Release完成。生产current为`/opt/unboundry/releases/v0.6.41-seedance-character-compliance-20260825`，schema41，冻结双副本、恢复副本迁移、fresh build、原子切换、公网/回环/service/数据/inventory/5资源与三视口零付费浏览器全部通过。Provider控制面、真实审核、状态查询、Generation、OSS、订阅/购买和费用均0。权威回执`spec/V0_6_41_PRODUCTION_RECEIPT_2026-08-25.json`；当前只待用户实页确认，保持`USER_RECHECK`。
 
 ## 当前事件：INC-SEEDANCE-001 可信素材真实链路恢复
 
