@@ -29,6 +29,7 @@ v0.6.34版本号、tag和发布授权均已执行并消费，禁止移动tag或�
 - 唯一一次safe full在精确`4fd25cc`执行，原始`1050/1052`；两个失败为m24异步目录结果时序和m37在modal inert后使用非法背景编辑前置条件。未重复full；m24在`e2c412e`定向`2/2 PASS`，m37在最终候选`161f417`以真实派生use case直接验证上传后持久化关闭补偿并`35/35 PASS`。当前工程状态`LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS`，不把原始full改写成全绿。
 - `IMGEDIT-021～028`当前为本地自动/浏览器分层通过或`USER_RECHECK`；R7已收口。R8只读预检曾确认`v0.6.35`已被旧源码不可变占用；用户随后明确要求补丁递增一个版本并写出“允许发布”，确定性目标变为未占用的`v0.6.36`，原身份阻断解除。当前正在同步package/runtime/test与治理合同，尚未push/PR/tag/生产写入。
 - 本Goal当前版本门为`v0.6.36`，独立“允许发布”句子有效，只在R8/R9消费。INC-IMGEDIT-003的6次/60 USD已全部消费；本返工真实Provider成功、尝试和费用预算固定为0。
+- v0.6.36精确版本提交`72f0b0d`已通过safe m38 `15/15`与m81 `41/41`，合计`56/56 PASS`，source/snapshot`a7613c8e…903a765`、4173 listener unchanged，Provider/OSS/费用0；最终治理文档树只补跑m38后进入GitHub发布，不重复R7唯一一次full。
 
 ## INC-IMGEDIT-003 图片工具栏剩余能力单 Goal（D13技术完成，用户质量未通过并转INC-IMGEDIT-004）
 

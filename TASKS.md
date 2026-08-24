@@ -31,6 +31,7 @@
 - R8只读预检确认远端`v0.6.35`注释tag对象`3fa72d3`已解引用到旧候选`fc99101`/tree`cb13fef`，生产仍指向`/opt/unboundry/releases/v0.6.35-image-toolbar-hotfix-20260824`；本候选`6380723`/tree`8f22a7c`与其不同。Runbook不存在既不移动tag/覆盖release、又能让另一棵源码继续使用同一精确版本身份的合法路径。R8已落档为`BLOCKED_VERSION_IDENTITY_COLLISION`；唯一恢复条件是用户提供尚未使用的具体版本号，并独立给出按该版本上线的发布句子。未push、PR、merge、tag或改生产。
 - 用户随后明确要求在v0.6.35上增加一个小版本号并写出“允许发布”；按确定性SemVer补丁递增落实为`v0.6.36 / VERSION_GATE_VALID / RELEASE_GATE_VALID`。远端`v0.6.36` tag不存在，原身份阻断解除；R8恢复为`IN_PROGRESS`，先同步package/runtime/m81与治理文档，再跑版本直接相关的safe m38+m81，不重复R7唯一一次full。
 - package/lock、`releaseRoleFromEnvironment`和m81 final角色断言已同步到0.6.36；CURRENT_STATE/README/AGENTS/上线规矩与Checkpoint同步表达“生产仍为v0.6.35、本地候选为v0.6.36”，不改写v0.6.35历史发布事实。
+- 精确版本提交`72f0b0d`在全新detached worktree完成safe m38 `15/15`+m81 `41/41`=`56/56 PASS`，退出0且异常计数0；source/snapshot`a7613c8e…903a765`、4173 listener unchanged，TypeScript/build/架构/source coverage/凭据/网络门通过，真实Provider/OSS/费用0。R7唯一一次full继续复用，不因版本与文档改动重复；最终治理文档提交后只复验m38。
 
 ### 2026-08-23 图片工具栏剩余能力单 Goal（INC-IMGEDIT-003，D13_AUTO_PASS / USER_QUALITY_REMEDIATION_REQUIRED）
 

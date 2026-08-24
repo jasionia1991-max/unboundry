@@ -2,10 +2,10 @@
 
 ## 0. 当前断点
 
-- 更新时间：2026-08-24 11:58:49 +0800
+- 更新时间：2026-08-24 12:02:20 +0800
 - 状态：`GOAL_ACTIVE / R8_IN_PROGRESS / LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS / UI_REMEDIATION_REQUIRED`
 - 当前阶段：`R8 GitHub 与生产发布 / IN_PROGRESS`
-- 唯一允许的下一动作：提交R8恢复断点；把package/lock、final runtime role、m81版本断言和当前治理文档同步到`v0.6.36`，在精确版本候选上只运行版本直接相关的safe m38+m81定向门，不重复R7唯一一次full；通过后冻结候选并进入GitHub发布
+- 唯一允许的下一动作：提交包含v0.6.36版本门与定向结果的最终GitHub候选；在该精确文档树只复验safe m38，通过后确认受保护文件不在diff/stage，创建不可变v0.6.36注释tag、push分支/tag、开PR并等待CI
 - 当前仓库：`/Users/mymy/Documents/unboundry/app`
 - 文档分支：`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24`
 - 立项 HEAD / origin-main：`f369d1dba1eef05aebc7f1a443256ceb82778ea0`
@@ -364,8 +364,9 @@ Provider / OSS / 费用：
 - 用户最新指令：在现有v0.6.35上“加一个小版本号”，并独立写出“允许发布”；按确定性SemVer补丁递增解释为`v0.6.36 / VERSION_GATE_VALID / RELEASE_GATE_VALID`
 - 实时恢复：branch`codex/inc-imgedit-004-ui-remediation-docs-2026-08-24`，HEAD`2f857084594dd0643272351409be8bf4f26eacca`、tree`5b20d766ce0248a325783120be32a1667e9295a0`，origin/main`f369d1dba1eef05aebc7f1a443256ceb82778ea0`；主工作树只有受保护JSON未跟踪
 - 版本身份：`git ls-remote`确认远端`refs/tags/v0.6.36`及其解引用均不存在；v0.6.35 tag/release保持不可变，不移动、不覆盖
-- 工具链与生产：Node22.23.1/npm10.9.8、package/lock/runtime/m81已同步为0.6.36；生产只读仍为v0.6.35/schema39。R8版本候选尚待定向门冻结，未push、PR、merge、tag或改生产
+- 工具链与生产：Node22.23.1/npm10.9.8、package/lock/runtime/m81已同步为0.6.36；生产只读仍为v0.6.35/schema39。精确版本提交`72f0b0dfb8bd9023404a6c2bd6845c3239510955`已通过版本直接相关定向门，未push、PR、merge、tag或改生产
 - Provider / OSS / 费用：真实Provider请求、尝试、成功0；费用0；真实OSS写入0
+- 版本定向验证：本Goal新建detached worktree`/private/tmp/unboundry-inc004-r8-version-hsjpCw`，offline npm ci；命令`PATH=/Users/mymy/.local/bin:$PATH node scripts/run-safe-tests.mjs run --spec tests/m38-generation-runtime-incidents.spec.ts --spec tests/m81-deployment-hardening.spec.ts`，精确HEAD`72f0b0d`，m38 `15/15`、m81 `41/41`，合计`56/56 PASS`、退出0，failed/skipped/retries/blocked/reportErrors均0；source/snapshot`a7613c8e9b7139ffcbf3e012e452f3c163f8bd57791f8e7d07d004622903a765`、4173 listener`24c91e57…b8244` unchanged。safe入口附带TypeScript/build、架构76既有例外/新增0、source coverage、凭据与loopback网络门通过；真实Provider/OSS/费用0
 - 阻断：原`v0.6.35`身份冲突已由新的未占用`v0.6.36`门解除；当前无阻断
 - 回滚点：R8阻断落档提交`2f857084594dd0643272351409be8bf4f26eacca`
-- 唯一下一动作：提交v0.6.36版本合同候选；在精确提交的隔离worktree运行版本直接相关safe m38+m81定向门，通过后冻结GitHub候选
+- 唯一下一动作：提交本次定向结果形成最终GitHub候选；在该精确文档树只复验m38，通过后进入tag/push/PR/CI
