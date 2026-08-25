@@ -1,6 +1,6 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网仍为v0.6.41/schema41且保持USER_RECHECK；INC-GEN-013本地v0.6.42/schema41候选已完成定向验收与P0/P1终审，safe full和发布待执行。
+> **状态分层**：现网仍为v0.6.41/schema41且保持USER_RECHECK；INC-GEN-013本地v0.6.42/schema41候选已完成定向验收、P0/P1终审和唯一safe full，GitHub与发布待执行。
 
 更新日期：2026-08-25
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
@@ -8,7 +8,7 @@
 本地候选代码版本：**v0.6.42**
 本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_41_USER_RECHECK`
-当前热修门：`INC_GEN_013_LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / P0_P1_REVIEW_PASS / SAFE_FULL_PENDING / PRODUCTION_V0_6_41_USER_RECHECK`
+当前热修门：`INC_GEN_013_LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / P0_P1_REVIEW_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_RECHECK / PRODUCTION_V0_6_41_USER_RECHECK`
 
 ## 一句话
 
@@ -25,7 +25,8 @@
 - 本地实现已完成；schema/OpenAPI不变。定向m1`6/6`、m2`5/5`、m3`6/6`、m40`14/14`、m79`3/3`、m22最终`37/37`，build/diff-check通过。
 - rich fixture精确为3组/39节点/73边、zoom15.6%；p95`9.9ms`、max`10.3ms`、long task和dropped frame均0、媒体请求0、最终画布PUT1。
 - 独立终审原始2个P1已关闭：accepted但未绑定的精确任务可进入恢复，外来租约立即abort旧poller；当前无已知P0/P1。
-- 新验收`GEN-011～012 / CANVAS-020～022`为`TARGETED_AUTO_PASS / PRODUCTION_PENDING`；唯一safe full、GitHub和生产尚未执行，真实Provider/Generation/OSS写入/费用均0，最终不得越过`USER_RECHECK`。
+- 本Goal唯一safe full在功能候选`31f0fcbc…ee4b`原始`1060/1061`；唯一未改动m0筛选计数瞬态失败在相同源码快照定向`23/23 PASS`，未重复full；source/snapshot `3baf4f5d…97e41`、4173 unchanged。
+- 新验收`GEN-011～012 / CANVAS-020～022`为`TARGETED_AUTO_PASS / PRODUCTION_PENDING`；GitHub和生产尚未执行，真实Provider/Generation/OSS写入/费用均0，最终不得越过`USER_RECHECK`。
 
 ## INC-SEEDANCE-002 AI角色单图合规验证（BRANCH_C / PRODUCTION_V0_6_41_TECHNICAL_PASS / USER_RECHECK）
 

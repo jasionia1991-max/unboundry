@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻验收矩阵
 
-2026-08-25 INC-GEN-013本地`v0.6.42/schema41`候选已完成：`GEN-011～012 / CANVAS-020～022 = TARGETED_AUTO_PASS / PRODUCTION_PENDING`。m22最终`37/37`、m2`5/5`、m79`3/3`及直接依赖m1/m3/m40均通过；rich fixture为3组/39节点/73边，p95 9.9ms、max 10.3ms、long task与dropped frame为0、媒体请求0、最终画布PUT1。独立终审2个P1已关闭；safe full与生产尚未执行，不得写`USER_PASS`。
+2026-08-25 INC-GEN-013本地`v0.6.42/schema41`候选已完成：`GEN-011～012 / CANVAS-020～022 = TARGETED_AUTO_PASS / PRODUCTION_PENDING`。m22最终`37/37`、m2`5/5`、m79`3/3`及直接依赖m1/m3/m40均通过；rich fixture为3组/39节点/73边，p95 9.9ms、max 10.3ms、long task与dropped frame为0、媒体请求0、最终画布PUT1。独立终审2个P1已关闭；唯一safe full原始`1060/1061`，唯一未改动m0瞬态失败在相同源码快照定向`23/23 PASS`且未重复full；生产尚未执行，不得写`USER_PASS`。
 
 基线日期：2026-07-27  
 当前状态更新：2026-08-24

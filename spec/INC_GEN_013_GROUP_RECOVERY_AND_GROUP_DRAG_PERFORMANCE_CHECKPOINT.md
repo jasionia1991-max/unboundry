@@ -2,7 +2,7 @@
 
 更新时间：2026-08-25
 
-状态：`LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / P0_P1_REVIEW_PASS / V0_6_42_CANDIDATE / SAFE_FULL_PENDING / RELEASE_PENDING`
+状态：`LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / P0_P1_REVIEW_PASS / V0_6_42_CANDIDATE / SAFE_FULL_EXECUTED_WITH_TARGETED_RECHECK / RELEASE_PENDING`
 
 权威方案：`spec/INC_GEN_013_GROUP_RECOVERY_AND_GROUP_DRAG_PERFORMANCE_PLAN_2026-08-25.md`
 
@@ -90,8 +90,9 @@
 - [x] 风险驱动回归：m1-selection-drag`6/6`、m2`5/5`、m3`6/6`、m40`14/14`、m79`3/3`；m22最终`37/37`。一次组合运行旧toast瞬态断言失败后改为持久租约证据；两次P1终审发现均已修复。
 - [x] 独立只读审查原始发现2个P1（admission-to-binding窗口、外来租约未abort）；均已关闭，最终无已知P0/P1。
 - [x] build与`git diff --check`通过；真实Provider、Generation、OSS写入、费用和生产变更均为0。
-- [ ] 唯一safe full、GitHub PR/CI/merge、tag/Release、生产发布与零付费生产矩阵尚未执行。
+- [x] 本Goal唯一safe full在精确功能候选`31f0fcbc40cd7236bdfe3fdf4657c53de9b3ee4b`执行：121/121 specs、1060/1061 tests通过；唯一失败为未改动AI角色库筛选的瞬态计数断言。未重复full；相同源码快照只复跑失败spec `tests/m0-shell.spec.ts`，23/23通过。source/snapshot均为`3baf4f5d…97e41`，4173 listener保持`24c91e57…8244`不变；不把原始full改写成全绿。
+- [ ] GitHub PR/CI/merge、tag/Release、生产发布与零付费生产矩阵尚未执行。
 
 ## 8. 唯一下一步
 
-冻结`v0.6.42/schema41`干净候选后执行本Goal唯一一次safe full；通过后按Runbook完成GitHub、不可变发布和零付费生产矩阵。任何真实Provider/Generation/OSS写入继续为0，最终只进入`USER_RECHECK`。
+按Runbook完成GitHub PR/CI/merge、不可变`v0.6.42` tag/Release和零付费生产矩阵。任何真实Provider/Generation/OSS写入继续为0，最终只进入`USER_RECHECK`。

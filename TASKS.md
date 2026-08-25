@@ -1,9 +1,9 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产仍为`v0.6.41 / schema41`且技术健康；INC-GEN-013本地`v0.6.42/schema41`候选已完成定向验收和P0/P1终审，唯一safe full与发布链待执行。
+> **当前状态**：生产仍为`v0.6.41 / schema41`且技术健康；INC-GEN-013本地`v0.6.42/schema41`候选已完成定向验收、P0/P1终审和唯一safe full，GitHub与发布链待执行。
 
 更新时间：2026-08-25
-状态：`INC-GEN-013 LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / P0_P1_REVIEW_PASS / V0_6_42_CANDIDATE；生产仍为v0.6.41 / schema41 / USER_RECHECK。`
+状态：`INC-GEN-013 LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / P0_P1_REVIEW_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_RECHECK / V0_6_42_CANDIDATE；生产仍为v0.6.41 / schema41 / USER_RECHECK。`
 
 ### 2026-08-25 整组刷新恢复与组合框拖动性能治理（INC-GEN-013，LOCAL_ENGINEERING_COMPLETE / V0_6_42_CANDIDATE）
 
@@ -22,7 +22,8 @@
 - [x] 定向m1`6/6`、m2`5/5`、m3`6/6`、m40`14/14`、m79`3/3`、m22最终`37/37`；build与diff-check通过
 - [x] 独立只读审查发现的2个P1均已关闭：已接收未绑定窗口可精确准入，外来租约会立即abort旧poller；无已知剩余P0/P1
 - [x] 版本门与发布门绑定`v0.6.42/schema41`；远端同名tag/Release不存在，生产尚未改变
-- [ ] 本Goal唯一safe full、GitHub PR/CI/merge、tag/Release、生产发布和零付费生产矩阵待执行
+- [x] 本Goal唯一safe full原始`1060/1061`；唯一未改动m0筛选计数瞬态失败，相同源码快照只复跑该spec `23/23 PASS`，未重复full；source/snapshot `3baf4f5d…97e41`、4173 unchanged
+- [ ] GitHub PR/CI/merge、tag/Release、生产发布和零付费生产矩阵待执行
 
 权威方案：`spec/INC_GEN_013_GROUP_RECOVERY_AND_GROUP_DRAG_PERFORMANCE_PLAN_2026-08-25.md`；实时断点：`spec/INC_GEN_013_GROUP_RECOVERY_AND_GROUP_DRAG_PERFORMANCE_CHECKPOINT.md`。本Goal新授权只绑定v0.6.42；真实Provider、Generation、OSS写入和费用固定为0。
 
