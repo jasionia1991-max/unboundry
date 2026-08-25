@@ -1,9 +1,9 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产运行`v0.6.43 / schema41`且技术健康；INC-UI-011等待生产实页复验。INC-GEN-014已完成R0～R5和定向验证，正在准备v0.6.44冻结候选。
+> **当前状态**：生产运行`v0.6.43 / schema41`且技术健康；INC-UI-011等待生产实页复验。INC-GEN-014首轮独立终审问题已关闭，正在复核v0.6.44候选。
 
 更新时间：2026-08-25
-状态：`INC-GEN-014 R0_TO_R5_COMPLETE / R6_TARGETED_PASS / RELEASE_CANDIDATE_PREPARING；INC-UI-011 PRODUCTION_V0_6_43_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / LOCAL_USER_PASS / USER_RECHECK。`
+状态：`INC-GEN-014 R0_TO_R5_COMPLETE / R6_REVIEW_FINDINGS_CLOSED / FOLLOWUP_REVIEW_PENDING；INC-UI-011 PRODUCTION_V0_6_43_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / LOCAL_USER_PASS / USER_RECHECK。`
 
 ### 2026-08-25 工作流自动恢复与密钥校验解耦（INC-GEN-014，R0～R5_COMPLETE / R6_TARGETED_PASS）
 
@@ -28,7 +28,10 @@
 - [x] v0.6.44运行时同步后safe m81 `41/41 PASS`；source/snapshot`66a14287…0158f`，4173不变
 - [x] 文档治理m38首轮产品`14/15`仅为CURRENT_STATE机器句式，修正后最小复验`15/15 PASS`；source/snapshot`6428b45b…6414`
 - [x] account/canvas/application scope与队列异常收口后最小复验m22 `37/37 PASS`；功能候选source/snapshot`2c889063…3042`
-- [ ] R6尚待v0.6.44版本同步、m81/m38、候选冻结、独立终审、唯一safe full、GitHub与生产技术验收
+- [x] 首轮独立只读终审发现`2 P0 + 2 P1`：服务端投影缺事务语义CAS、terminal success可能回退旧plan、无Web Locks时缺跨标签writer、人工继续分支绕过projection边界
+- [x] 四项均已关闭：projection PUT在Canvas事务内按account/run/node/task/ownership/input/result做目标CAS；当前plan/input不一致即保留历史；无Web Locks零GET/PUT fail-closed；accepted-task人工继续统一经过persist/projection边界
+- [x] 终审修复后最小受影响safe：m22 `37/37`、m85 `26/26`、m20 `1/1 PASS`；动态loopback/临时数据、4173不变、真实Provider/Generation/OSS/费用0
+- [ ] R6尚待同一独立审查线程复核、唯一safe full、GitHub与生产技术验收
 - [ ] 真实Provider、Generation、OSS和费用均未发生
 
 权威方案：`spec/INC_GEN_014_WORKFLOW_SELF_HEALING_AND_CREDENTIAL_VERIFY_DECOUPLING_PLAN_2026-08-25.md`。

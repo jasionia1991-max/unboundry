@@ -1079,6 +1079,86 @@ test("an older issued baseline on the same canvas still permits DATA-005 last-wr
       { id: "writer-A-last" },
     ]);
   });
+
+  await withCanvasServer("canvas-generation-projection-cas", async ({ api, dataDirectory }) => {
+    const canvasId = `m85-projection-cas-${randomUUID()}`;
+    const boundNode = {
+      data: {
+        label: "文案",
+        textGenerationInputKey: "input-a",
+        textGenerationOwnershipKey: "owner-a",
+        textGenerationTaskId: "task-a",
+        textPrompt: "old prompt",
+        workflowExecutionRunId: "run-a",
+      },
+      id: "text-a",
+      position: { x: 0, y: 0 },
+      type: "text",
+    };
+    seedProject(dataDirectory, canvasId, { nodes: [boundNode] });
+    const staleProjectionBaseline = await api("GET", canvasId);
+    const staleToken = loadTokenFrom(staleProjectionBaseline);
+
+    const editedNode = {
+      ...boundNode,
+      data: {
+        label: "文案",
+        textPrompt: "new prompt from another tab",
+      },
+    };
+    expect((await api("PUT", canvasId, {
+      edges: [],
+      nodes: [editedNode],
+      observedLoadToken: staleToken,
+      observedRevision: 1,
+      revision: 1,
+      saveSequence: 1,
+      saveSessionId: "semantic-writer-session",
+      viewport,
+    })).status).toBe(200);
+
+    const resultKey = "result-a";
+    const projection = {
+      accountId: "__test__",
+      applicationId: `run-a:text-a:task-a:${resultKey}`,
+      inputFingerprint: "input-a",
+      kind: "text",
+      nodeId: "text-a",
+      ownershipKey: "owner-a",
+      resultKey,
+      runId: "run-a",
+      semanticRevision: "3d-tuztzn-fa9br",
+      taskId: "task-a",
+    };
+    expect(await api("PUT", canvasId, {
+      edges: [],
+      generationProjection: projection,
+      nodes: [{
+        ...boundNode,
+        data: {
+          ...boundNode.data,
+          content: "old result must not overwrite",
+          contentHtml: "<p>old result must not overwrite</p>",
+          groupRunSuccessOwnershipKey: "owner-a",
+          groupRunSuccessResultKey: resultKey,
+          groupRunSuccessTaskId: "task-a",
+        },
+      }],
+      observedLoadToken: staleToken,
+      observedRevision: 1,
+      revision: 1,
+      saveSequence: 1,
+      saveSessionId: "projection-writer-session",
+      viewport,
+    })).toEqual({
+      body: {
+        code: "CANVAS_GENERATION_PROJECTION_CONFLICT",
+        error: "Generation result projection no longer matches the current node",
+      },
+      status: 409,
+    });
+    expect((await api("GET", canvasId)).body.nodes).toEqual([editedNode]);
+  });
 });
 
 test("observed revision and load token must be supplied together", async () => {

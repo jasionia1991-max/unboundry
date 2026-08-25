@@ -196,6 +196,7 @@ test("all four headless executors preflight, run, recover and apply without moun
   const posts: string[] = [];
   const recoveryOrder: string[] = [];
   let flushes = 0;
+  let mutateTextSemanticBeforeRead = false;
   const response = (body: unknown, status = 200) => new Response(
     JSON.stringify(body),
     { headers: { "Content-Type": "application/json" }, status },
@@ -266,6 +267,12 @@ test("all four headless executors preflight, run, recover and apply without moun
       ? url.split("/").at(-1)
       : undefined;
     if (taskId && tasks.has(taskId)) {
+      if (taskId === "headless-task-text" && mutateTextSemanticBeforeRead) {
+        mutateTextSemanticBeforeRead = false;
+        nodes = nodes.map((node) => node.id === "headless-text"
+          ? { ...node, data: { ...node.data, textPrompt: "changed after acceptance" } }
+          : node);
+      }
       recoveryOrder.push(`get:${taskId}`);
       return response(tasks.get(taskId));
     }
@@ -387,6 +394,25 @@ test("all four headless executors preflight, run, recover and apply without moun
       ownershipKey: "wrong-owner",
       taskId: "headless-task-text",
     };
+    await expect(createNodeExecutorRegistry().get(
+      nodes.find((node) => node.id === "headless-text"),
+    )!.recover("headless-text", context)).resolves.toMatchObject({
+      errorCode: "RESULT_OWNERSHIP_CONFLICT",
+      status: "failed",
+    });
+    expect(posts).toHaveLength(4);
+    nodes = nodes.map((node) => node.id === "headless-text"
+      ? boundNodes.get("text")!
+      : node);
+    context.acceptedTask = {
+      kind: "text",
+      nodeId: "headless-text",
+      ownershipKey: String(
+        boundNodes.get("text")!.data.textGenerationOwnershipKey,
+      ),
+      taskId: "headless-task-text",
+    };
+    mutateTextSemanticBeforeRead = true;
     await expect(createNodeExecutorRegistry().get(
       nodes.find((node) => node.id === "headless-text"),
     )!.recover("headless-text", context)).resolves.toMatchObject({
@@ -1337,6 +1363,10 @@ test("workflow execution has no component registration or render-retention depen
   expect(provider).toContain("另一轮正在使用${conflictRole}");
   expect(provider).toContain("（节点 ${conflictingNodeId}）");
   expect(provider).toContain('running.abortController.abort("foreign-lease")');
+  const persistedRun = provider.indexOf("return await runGroupNodeWithPersist({");
+  expect(persistedRun).toBeGreaterThan(-1);
+  expect(provider.indexOf("return executor.recover(", persistedRun))
+    .toBeGreaterThan(persistedRun);
   expect(canvas).not.toContain("retainWorkflowNodesForRender");
   expect(executors).not.toContain("document.");
   expect(executors).not.toContain("window.");
@@ -1850,6 +1880,16 @@ test("group persist retry happens once for a still-saving canvas and never for o
   expect(mergeGroupResultProjection(semanticConflict, projection).status).toBe(
     "conflict",
   );
+  const incompleteProof = structuredClone(latest);
+  incompleteProof.nodes[1].data = {
+    ...incompleteProof.nodes[1].data,
+    groupRunSuccessOwnershipKey: "owner-a",
+    groupRunSuccessResultKey: "result-a",
+    groupRunSuccessTaskId: "task-a",
+  };
+  expect(mergeGroupResultProjection(incompleteProof, projection).status).toBe(
+    "apply",
+  );
 
   let loads = 0;
   let puts = 0;
@@ -1863,7 +1903,11 @@ test("group persist retry happens once for a still-saving canvas and never for o
       },
       put: async (input) => {
         puts += 1;
-        const request = JSON.parse(input.payload) as { revision: number };
+        const request = JSON.parse(input.payload) as {
+          generationProjection: GroupResultProjection;
+          revision: number;
+        };
+        expect(request.generationProjection).toEqual(projection);
         return puts === 1
           ? { body: { code: "CANVAS_REVISION_CONFLICT" }, ok: false, status: 409 }
           : {
@@ -1880,6 +1924,32 @@ test("group persist retry happens once for a still-saving canvas and never for o
   });
   expect(reconciled).toMatchObject({ attempts: 2, status: "applied" });
   expect({ loads, puts }).toEqual({ loads: 2, puts: 2 });
+
+  const projectionHost = globalThis as unknown as { window?: Window };
+  const previousProjectionWindow = projectionHost.window;
+  const locklessWindow = new EventTarget() as Window;
+  Object.defineProperty(locklessWindow, "navigator", { value: {} });
+  projectionHost.window = locklessWindow;
+  let locklessTransportCalls = 0;
+  try {
+    await expect(reconcileGroupResultProjection({
+      projection,
+      transport: {
+        load: async () => {
+          locklessTransportCalls += 1;
+          return { body: latest, ok: true, status: 200 };
+        },
+        put: async () => {
+          locklessTransportCalls += 1;
+          return { body: undefined, ok: false, status: 500 };
+        },
+      },
+    })).resolves.toMatchObject({ attempts: 0, status: "exhausted" });
+  } finally {
+    if (previousProjectionWindow) projectionHost.window = previousProjectionWindow;
+    else delete projectionHost.window;
+  }
+  expect(locklessTransportCalls).toBe(0);
 
   let dedupedPuts = 0;
   const dedupedTransport = {

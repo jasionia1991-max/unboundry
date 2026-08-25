@@ -11,7 +11,7 @@
 1. Provider 任务或节点执行已经成功时，Canvas 保存冲突不能再把成功改判为失败、阻断整个工作流或诱导重新付费生成；系统应自动对账、自动合并可安全写回的原结果，并让仍在当前运行授权内的后续节点继续。
 2. 「我的连接」中的只读 API Key 校验必须与运行中的生成任务解耦；只有替换和删除正在被任务使用的密钥继续受保护。
 
-本文是经过最终审计的实施合同。没有修改业务代码，没有授权真实 Provider、OSS、生产、GitHub 或发布操作；下一版本号尚未确认，`v0.6.43` 的历史发布授权已消费，不得复用。
+本文是经过最终审计的实施合同。方案冻结时没有修改业务代码，也未授权真实 Provider、OSS、生产、GitHub 或发布操作；其后用户在INC-GEN-014 Goal中明确确认`v0.6.44`并授予本Goal内受控实施、验证、GitHub和生产发布权限。`v0.6.43`的历史发布授权仍已消费，不得复用。
 
 ## 0. 最终结论
 
@@ -431,7 +431,7 @@ API catch 不得把所有错误统一返回 `keyStatus: "invalid"`。结构化�
 7. 权威方案、TASKS、CURRENT_STATE、验收矩阵和实施 checkpoint 同步；
 8. 自动证据只能写 `AUTO_PASS`，生产技术验证只能写 `PRODUCTION_*_PASS`；用户在目标账号真实页面确认后才允许写 `USER_PASS`。
 
-当前状态严格保持：`PLAN_FROZEN / IMPLEMENTATION_NOT_STARTED`。
+当前状态：`PLAN_FROZEN / R0_TO_R5_IMPLEMENTED / R6_REVIEW_FINDINGS_CLOSED / FOLLOWUP_REVIEW_PENDING`。
 
 ## 13. 本次文档落地凭证
 
@@ -444,3 +444,10 @@ API catch 不得把所有错误统一返回 `keyStatus: "invalid"`。结构化�
 - 修正后 m38：`15/15 PASS`，failed/skipped/retries/blocked/reportErrors 均为 0；source/snapshot `a88ec4a5c53d17b22cbc12ce6349510f0c6a1415b5ee1f854503ff90cbca3f2f`，4173 listener unchanged。
 - 本批未运行 m22、m73 或 full：没有业务代码变化，相关测试只属于未来实施 R1～R6。
 - 业务代码、schema、package、生产、Provider、Generation、OSS 和费用均未改变；未 commit、push、PR、tag 或发布。
+
+## 14. 实施Goal进展（2026-08-25）
+
+- 实施仍严格遵循本方案R0～R6、WSH-01～14与KEYV-01～10；schema保持41。
+- 首轮独立只读终审发现的`2 P0 + 2 P1`已关闭：服务端Canvas事务内目标语义CAS、当前plan/input精确围栏、无Web Locks零写fail-closed、accepted-task人工继续统一projection边界。
+- 修复后最小受影响safe为m22 `37/37`、m85 `26/26`、m20 `1/1 PASS`；真实Provider、Generation、OSS和费用仍为0。
+- 当前尚待同一独立审查线程复核、唯一safe full、GitHub与生产技术验收；不得写`USER_PASS`。

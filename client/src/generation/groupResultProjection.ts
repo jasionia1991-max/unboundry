@@ -176,7 +176,11 @@ function projectionAlreadyApplied(
 ) {
   return node.data.groupRunSuccessOwnershipKey === projection.ownershipKey &&
     node.data.groupRunSuccessResultKey === projection.resultKey &&
-    node.data.groupRunSuccessTaskId === projection.taskId;
+    node.data.groupRunSuccessTaskId === projection.taskId &&
+    projectionResultIsComplete(
+      node.data as Record<string, unknown>,
+      projection.kind,
+    );
 }
 
 function projectionTargetStillMatches(
@@ -328,6 +332,7 @@ async function reconcileWithoutLock(input: {
       saveSequence += 1;
       const payload = JSON.stringify({
         edges: merged.document.edges,
+        generationProjection: input.projection,
         nodes: merged.document.nodes,
         observedLoadToken: loaded.body.loadToken,
         observedRevision: loaded.body.revision,
@@ -379,6 +384,13 @@ export function reconcileGroupResultProjection(input: {
   const locks = typeof window === "undefined"
     ? undefined
     : (window.navigator as Navigator & { locks?: BrowserLockManager }).locks;
+  if (typeof window !== "undefined" && !locks) {
+    return Promise.resolve({
+      applicationId: input.projection.applicationId,
+      attempts: 0,
+      status: "exhausted" as const,
+    });
+  }
   if (!locks) return reconcileWithoutLock(input);
   return locks.request(
     `unboundry-group-result-projection:${JSON.stringify([

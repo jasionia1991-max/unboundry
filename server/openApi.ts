@@ -2245,6 +2245,9 @@ export const openApiDocument = {
         ],
         properties: {
           revision: { type: "integer", minimum: 0 },
+          generationProjection: {
+            $ref: "#/components/schemas/GenerationProjectionCommit",
+          },
           graphRevision: { type: "integer", minimum: 0 },
           loadToken: {
             type: "string",
@@ -2275,6 +2278,36 @@ export const openApiDocument = {
             items: { type: "object", additionalProperties: true },
           },
           viewport: { $ref: "#/components/schemas/Viewport" },
+        },
+        additionalProperties: false,
+      },
+      GenerationProjectionCommit: {
+        type: "object",
+        description:
+          "Narrow workflow-result projection CAS. The server checks this binding against the current target node inside the canvas write transaction; it is never used for ordinary canvas saves.",
+        required: [
+          "accountId",
+          "applicationId",
+          "inputFingerprint",
+          "kind",
+          "nodeId",
+          "ownershipKey",
+          "resultKey",
+          "runId",
+          "semanticRevision",
+          "taskId",
+        ],
+        properties: {
+          accountId: { type: "string", minLength: 1, maxLength: 512 },
+          applicationId: { type: "string", minLength: 1, maxLength: 512 },
+          inputFingerprint: { type: "string", minLength: 1, maxLength: 512 },
+          kind: { type: "string", enum: ["audio", "image", "text", "video"] },
+          nodeId: { type: "string", minLength: 1, maxLength: 512 },
+          ownershipKey: { type: "string", minLength: 1, maxLength: 512 },
+          resultKey: { type: "string", minLength: 1, maxLength: 512 },
+          runId: { type: "string", minLength: 1, maxLength: 512 },
+          semanticRevision: { type: "string", minLength: 1, maxLength: 512 },
+          taskId: { type: "string", minLength: 1, maxLength: 512 },
         },
         additionalProperties: false,
       },
@@ -2435,6 +2468,7 @@ export const openApiDocument = {
           code: {
             type: "string",
             enum: [
+              "CANVAS_GENERATION_PROJECTION_CONFLICT",
               "CANVAS_LOAD_REQUIRED",
               "CANVAS_PROJECT_DELETED",
               "CANVAS_PROJECT_NOT_OWNED",

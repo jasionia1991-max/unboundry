@@ -44,6 +44,7 @@ function inImmediateTransaction<T>(store: DatabaseSync, operation: () => T): T {
 
 type CanvasDocument = {
   edges: unknown[];
+  generationProjection?: GenerationProjectionCommit;
   nodes: unknown[];
   observedLoadToken?: string;
   observedRevision?: number;
@@ -52,6 +53,19 @@ type CanvasDocument = {
   saveSequence?: number;
   saveSessionId?: string;
   viewport: { x: number; y: number; zoom: number };
+};
+
+type GenerationProjectionCommit = {
+  accountId: string;
+  applicationId: string;
+  inputFingerprint: string;
+  kind: "audio" | "image" | "text" | "video";
+  nodeId: string;
+  ownershipKey: string;
+  resultKey: string;
+  runId: string;
+  semanticRevision: string;
+  taskId: string;
 };
 
 type CanvasRow = {
@@ -81,6 +95,8 @@ type CanvasPersistenceFault = (input: CanvasPersistenceBarrierInput) => void;
 const canvasSaveSessionGlobalHighWaterLimit = 50_000;
 const canvasSaveSessionOwnerHighWaterLimit = 5_000;
 const canvasSaveSessionPattern = /^[a-z0-9-]{8,80}$/i;
+const generationProjectionKinds = new Set(["audio", "image", "text", "video"]);
+const generationProjectionValuePattern = /^[\w.:/-]{1,512}$/;
 let canvasSaveSessionGlobalHighWaterLimitForTests: number | undefined;
 let canvasSaveSessionOwnerHighWaterLimitForTests: number | undefined;
 let beforeCanvasSaveTransactionForTests: CanvasPersistenceBarrier | undefined;
@@ -613,6 +629,8 @@ function valid(value: unknown): value is CanvasDocument {
   return (
     Number.isInteger(document.revision) &&
     document.revision >= 0 &&
+    (document.generationProjection === undefined ||
+      validGenerationProjection(document.generationProjection)) &&
     ((document.observedLoadToken === undefined &&
       document.observedRevision === undefined) ||
       (typeof document.observedLoadToken === "string" &&
@@ -644,6 +662,123 @@ function valid(value: unknown): value is CanvasDocument {
         Number.isSafeInteger(document.saveSequence) &&
         Number(document.saveSequence) > 0))
   );
+}
+
+function validGenerationProjection(value: unknown): value is GenerationProjectionCommit {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const projection = value as Partial<GenerationProjectionCommit>;
+  if (!generationProjectionKinds.has(String(projection.kind))) return false;
+  const fields = [
+    projection.accountId,
+    projection.applicationId,
+    projection.inputFingerprint,
+    projection.nodeId,
+    projection.ownershipKey,
+    projection.resultKey,
+    projection.runId,
+    projection.semanticRevision,
+    projection.taskId,
+  ];
+  return fields.every((field) =>
+    typeof field === "string" && generationProjectionValuePattern.test(field)
+  ) && projection.applicationId ===
+    `${projection.runId}:${projection.nodeId}:${projection.taskId}:${projection.resultKey}` &&
+    projection.semanticRevision === generationProjectionSemanticRevision(
+      projection as GenerationProjectionCommit,
+    );
+}
+
+function stableProjectionValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stableProjectionValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, item]) => item !== undefined)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, item]) => [key, stableProjectionValue(item)]),
+    );
+  }
+  return value;
+}
+
+function generationProjectionSemanticRevision(projection: GenerationProjectionCommit) {
+  const source = JSON.stringify(stableProjectionValue({
+    inputFingerprint: projection.inputFingerprint,
+    kind: projection.kind,
+    nodeId: projection.nodeId,
+    ownershipKey: projection.ownershipKey,
+    runId: projection.runId,
+    taskId: projection.taskId,
+  }));
+  let left = 0x811c9dc5;
+  let right = 0x9e3779b9;
+  for (let index = 0; index < source.length; index += 1) {
+    const code = source.charCodeAt(index);
+    left = Math.imul(left ^ code, 0x01000193) >>> 0;
+    right = Math.imul(right ^ code, 0x85ebca6b) >>> 0;
+  }
+  return `${source.length.toString(36)}-${left.toString(36)}-${right.toString(36)}`;
+}
+
+function record(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function projectionResultComplete(
+  nodeData: Record<string, unknown>,
+  projection: GenerationProjectionCommit,
+) {
+  if (
+    nodeData.groupRunSuccessOwnershipKey !== projection.ownershipKey ||
+    nodeData.groupRunSuccessResultKey !== projection.resultKey ||
+    nodeData.groupRunSuccessTaskId !== projection.taskId
+  ) return false;
+  if (projection.kind === "text") {
+    return typeof nodeData.content === "string" && nodeData.content.trim().length > 0 &&
+      typeof nodeData.contentHtml === "string" && nodeData.contentHtml.length > 0;
+  }
+  return typeof nodeData.assetId === "string" && nodeData.assetId.length > 0 &&
+    typeof nodeData[`${projection.kind}Src`] === "string" &&
+    String(nodeData[`${projection.kind}Src`]).length > 0 &&
+    (projection.kind !== "image" || nodeData.imageGeneratedSuccess === true) &&
+    (projection.kind !== "audio" || nodeData.audioGeneratedResult === true);
+}
+
+function generationProjectionConflict(input: {
+  incomingNodes: unknown[];
+  ownerId: string;
+  projection: GenerationProjectionCommit;
+  row: CanvasRow | undefined;
+}) {
+  const { projection, row } = input;
+  if (!row || projection.accountId !== input.ownerId) return true;
+  const currentNode = (JSON.parse(row.nodes) as unknown[]).map(record).find(
+    (node) => node?.id === projection.nodeId,
+  );
+  const incomingNode = input.incomingNodes.map(record).find(
+    (node) => node?.id === projection.nodeId,
+  );
+  const currentData = record(currentNode?.data);
+  const incomingData = record(incomingNode?.data);
+  if (!currentNode || !currentData || !incomingNode || !incomingData) return true;
+
+  // Re-read and compare the target under BEGIN IMMEDIATE. This is the
+  // projection-specific semantic CAS that closes the GET -> PUT race while
+  // preserving DATA-005 last-writer-wins for ordinary canvas saves.
+  const currentAlreadyApplied =
+    currentData.groupRunSuccessOwnershipKey === projection.ownershipKey &&
+    currentData.groupRunSuccessResultKey === projection.resultKey &&
+    currentData.groupRunSuccessTaskId === projection.taskId;
+  if (currentAlreadyApplied) return true;
+  return currentNode.type !== projection.kind ||
+    currentData.workflowExecutionRunId !== projection.runId ||
+    currentData[`${projection.kind}GenerationTaskId`] !== projection.taskId ||
+    currentData[`${projection.kind}GenerationOwnershipKey`] !== projection.ownershipKey ||
+    currentData[`${projection.kind}GenerationInputKey`] !== projection.inputFingerprint ||
+    incomingNode.type !== projection.kind ||
+    !projectionResultComplete(incomingData, projection);
 }
 
 export async function canvasPersistence(
@@ -816,6 +951,23 @@ export async function canvasPersistence(
       json(response, 409, {
         code: "CANVAS_PROJECT_NOT_OWNED",
         error: "项目不存在或不属于当前账号",
+      });
+      return;
+    }
+
+    if (
+      document.generationProjection &&
+      generationProjectionConflict({
+        incomingNodes: nodes,
+        ownerId,
+        projection: document.generationProjection,
+        row,
+      })
+    ) {
+      store.exec("ROLLBACK");
+      json(response, 409, {
+        code: "CANVAS_GENERATION_PROJECTION_CONFLICT",
+        error: "Generation result projection no longer matches the current node",
       });
       return;
     }

@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻验收矩阵
 
-2026-08-25 INC-GEN-014已完成R0～R5与定向安全验证：`WSH-01～14 / KEYV-01～10 = CANDIDATE_TARGETED_PASS`。m22 `37/37`覆盖execution/projection拆分、最新Canvas白名单合并、语义冲突、application去重、有界恢复、当前run继续与accepted-only零POST；m73 `16/16`覆盖运行任务verify、mutation保护、credential/profile CAS、AUTH/unknown分类与账号隔离；m20 `1/1`覆盖结构化OpenAPI；v0.6.44运行时同步后m81 `41/41`。最新source/snapshot`66a14287…0158f`，4173不变，真实Provider、Generation、OSS与费用为0。尚待独立终审和唯一safe full；不是USER_PASS。实时断点见`spec/INC_GEN_014_WORKFLOW_SELF_HEALING_AND_CREDENTIAL_VERIFY_DECOUPLING_CHECKPOINT.md`。
+2026-08-25 INC-GEN-014已完成R0～R5与定向安全验证：`WSH-01～14 / KEYV-01～10 = CANDIDATE_TARGETED_PASS`。m22 `37/37`覆盖execution/projection拆分、最新Canvas白名单合并、语义冲突、application去重、有界恢复、当前run继续与accepted-only零POST；m73 `16/16`覆盖运行任务verify、mutation保护、credential/profile CAS、AUTH/unknown分类与账号隔离；m20 `1/1`覆盖结构化OpenAPI；v0.6.44运行时同步后m81 `41/41`。首轮独立终审的`2 P0 + 2 P1`已按事务内目标语义CAS、当前plan/input精确围栏、无Web Locks零写fail-closed、accepted-task统一projection边界全部关闭；修复后m22 `37/37`、m85 `26/26`、m20 `1/1 PASS`。4173不变，真实Provider、Generation、OSS与费用为0。尚待独立复核和唯一safe full；不是USER_PASS。实时断点见`spec/INC_GEN_014_WORKFLOW_SELF_HEALING_AND_CREDENTIAL_VERIFY_DECOUPLING_CHECKPOINT.md`。
 
 同日治理复验：m38首轮产品`14/15`仅为CURRENT_STATE生产句式不匹配既有正则，修正后`15/15 PASS`，source/snapshot`6428b45b…6414`。该修正不改变业务源码；没有重复m22/m73/m20/m81。
 

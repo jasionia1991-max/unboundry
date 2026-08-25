@@ -786,14 +786,18 @@ async function applyTerminalTask(
     };
   }
   const current = createExecutionPlan(plan.kind, plan.node.id, context);
-  if (isPlan(current) && current.currentOwnershipKey !== ownershipKey) {
+  if (
+    !isPlan(current) ||
+    current.currentOwnershipKey !== ownershipKey ||
+    current.inputKey !== plan.inputKey
+  ) {
     return {
       errorCode: "RESULT_OWNERSHIP_CONFLICT",
       message: "节点已变化，旧结果已保留在生成任务中，未覆盖当前内容",
       status: "failed",
     };
   }
-  const effectivePlan = isPlan(current) ? current : plan;
+  const effectivePlan = current;
   const patch = successNodePatch(effectivePlan, task, ownershipKey);
   const resultKey = groupRunResultKey(plan.kind === "text"
     ? {

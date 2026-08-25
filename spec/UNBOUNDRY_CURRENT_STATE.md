@@ -1,6 +1,6 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网为v0.6.43/schema41且技术健康；INC-UI-011等待生产实页复验。INC-GEN-014已完成R0～R5与定向验证，正在准备v0.6.44冻结候选。
+> **状态分层**：现网为v0.6.43/schema41且技术健康；INC-UI-011等待生产实页复验。INC-GEN-014首轮独立终审问题已关闭，正在复核v0.6.44候选。
 
 更新日期：2026-08-25
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
@@ -13,7 +13,7 @@
 
 ## 一句话
 
-**生产是 v0.6.43 / schema41；INC-GEN-014的v0.6.44/schema41本地候选已完成R0～R5和定向验证，正在冻结终审候选。**
+**生产是 v0.6.43 / schema41；INC-GEN-014的v0.6.44/schema41本地候选已完成R0～R5、定向验证和首轮终审修复，正在独立复核。**
 
 ## INC-GEN-014 工作流自动恢复与密钥校验解耦（R0～R5_COMPLETE / R6_TARGETED_PASS）
 
@@ -30,6 +30,8 @@
 - verify只做只读远端probe与状态CAS，不再调用paid-work mutation guard；保存/替换/删除保护未放宽。credential revision或profile configuration变化返回CHANGED；只有AUTH写invalid，PERMISSION/网络/限流/5xx/格式为unknown；API返回稳定code。
 - 当前候选安全定向m22 `37/37`、m73 `16/16`、m20 `1/1`，TypeScript/生产构建与源码门通过；source/snapshot`ca81902e…a21b`、4173不变，真实Provider/Generation/OSS/费用仍为0。
 - package/lock与final runtime role已同步为v0.6.44，schema保持41；safe m81 `41/41 PASS`，source/snapshot`66a14287…0158f`、4173不变。
+- 首轮独立只读终审发现`2 P0 + 2 P1`，现已全部关闭：投影写入新增服务端事务内目标语义CAS；terminal success不再回退失效旧plan；无Web Locks浏览器零投影写fail-closed；accepted-task人工继续统一经过persist/projection边界。
+- 修复后最小受影响safe为m22 `37/37`、m85 `26/26`、m20 `1/1 PASS`；只用动态loopback、临时数据与fake边界，4173和真实Provider/Generation/OSS/费用均不变。当前等待同一独立审查线程复核，不冒充最终P0/P1=0或safe full。
 - 文档治理m38首轮产品`14/15`只因生产句式未匹配既有正则，修正文案后最小复验`15/15 PASS`；source/snapshot`6428b45b…6414`，未重复业务spec。
 - account/canvas/application三重scope和投影队列异常收口后，最小复验m22 `37/37 PASS`；功能候选source/snapshot`2c889063…3042`，4173不变。
 

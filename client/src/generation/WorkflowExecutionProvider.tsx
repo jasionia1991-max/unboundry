@@ -1055,15 +1055,6 @@ export function WorkflowExecutionProvider({
             }
             running.activeNodeIds.add(nodeId);
             try {
-              if (resumeInFlightNodeIds.has(nodeId)) {
-                return await executor.recover(
-                  nodeId,
-                  createExecutorContext(
-                    () => running.cancelled,
-                    { acceptedTask: running.checkpoint.acceptedTasks?.[nodeId] },
-                  ),
-                );
-              }
               return await runGroupNodeWithPersist({
                 isCancelled: () => running.cancelled,
                 persist: () => persistGroupCanvasAfterNode({
@@ -1075,6 +1066,15 @@ export function WorkflowExecutionProvider({
                   });
                 },
                 run: async () => {
+                  if (resumeInFlightNodeIds.has(nodeId)) {
+                    return executor.recover(
+                      nodeId,
+                      createExecutorContext(
+                        () => running.cancelled,
+                        { acceptedTask: running.checkpoint.acceptedTasks?.[nodeId] },
+                      ),
+                    );
+                  }
                   return runRegisteredNodeWithRefreshRecovery({
                     context: createExecutorContext(
                       () => running.cancelled,
