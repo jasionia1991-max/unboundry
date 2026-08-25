@@ -2,7 +2,7 @@
 
 更新时间：2026-08-26
 
-状态：`R0～R6_LOCAL_COMPLETE / P0_P1_REVIEW_PASS / SAFE_FULL_PASS / GITHUB_PENDING`
+状态：`PRODUCTION_V0_6_44_TECHNICAL_PASS / USER_RECHECK`
 
 权威方案：`spec/INC_GEN_014_WORKFLOW_SELF_HEALING_AND_CREDENTIAL_VERIFY_DECOUPLING_PLAN_2026-08-25.md`
 
@@ -30,6 +30,8 @@
 - 同一独立只读终审线程最终复核结论：`P0=0 / P1=0 / GO`。全部终审轮次均未运行测试、未写文件、未访问网络/Provider/OSS/生产，主Agent已逐项复核并关闭问题。
 - 首轮正式full只发现m20 OpenAPI枚举快照遗漏，产品其余`1060/1061`通过；同步冲突码后定向m20 `1/1 PASS`。修正后clean-record full在commit`626d209`/tree`f55860b`完成`121/121 specs、1061/1061 tests PASS`，异常0，source/snapshot`c5f8dc61…bd07`、4173不变。
 - full证据文档同步后治理定向m38 `15/15 PASS`，异常0，source/snapshot`7c888dbd…6eae`、4173不变；没有重复业务full。
+- PR #103与PR/main CI通过，merge`3ff3df4`绑定不可移动tag/Release v0.6.44。fresh build、冻结source/restore、恢复副本、60秒quiet gate、原子切换、公网/回环/数据/inventory/静态资源门全部通过，未触发回退。
+- 生产回执同步后仅运行治理定向m38；两轮`14/15`分别准确指出AGENTS与三份渐进治理文档仍是旧生产标记。统一当前权威标记后最小复验`15/15 PASS`，异常0，source/snapshot`18914338…321a6`、4173不变；没有修改产品runtime或重复full。
 
 ## 2. 冻结身份与环境
 
@@ -39,10 +41,10 @@
 | 分支 | `codex/inc-gen-014-workflow-self-healing-plan-2026-08-25` |
 | 候选 HEAD / origin/main基线 | `626d209f40cd2f34406cf2576b7d13dba8ee69e3 / 42bc0ac60ee248ddbee4c4626cca3c1c19fe9295` |
 | package / schema | `0.6.44 / 41` |
-| 生产 | `v0.6.43 / schema41`，live/ready通过 |
+| 生产 | `v0.6.44 / schema41`，live/ready active，NRestarts0 |
 | Node / npm | `22.23.1 / 10.9.8` |
 | 4173 | 既有`127.0.0.1:4173`监听者已记录；本Goal不使用、不终止 |
-| v0.6.44 | tag/remote tag/GitHub Release均不存在 |
+| v0.6.44 | 不可移动tag/远端tag/GitHub Release均完成，peeled commit `3ff3df4` |
 
 ## 3. 网络与费用账本
 
@@ -81,4 +83,4 @@
 
 ## 7. 唯一下一动作
 
-复核远端身份并推进push、PR、CI、merge、不可移动v0.6.44 tag与GitHub Release。
+用户刷新生产涉事画布，确认原成功结果无需重提即可恢复且工作流继续，并在「我的连接」手动执行一次非生成校验后回复通过或不通过。

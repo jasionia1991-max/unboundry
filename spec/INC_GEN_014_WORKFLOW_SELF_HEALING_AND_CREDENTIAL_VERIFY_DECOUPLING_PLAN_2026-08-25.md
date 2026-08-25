@@ -431,7 +431,7 @@ API catch 不得把所有错误统一返回 `keyStatus: "invalid"`。结构化�
 7. 权威方案、TASKS、CURRENT_STATE、验收矩阵和实施 checkpoint 同步；
 8. 自动证据只能写 `AUTO_PASS`，生产技术验证只能写 `PRODUCTION_*_PASS`；用户在目标账号真实页面确认后才允许写 `USER_PASS`。
 
-当前状态：`PLAN_FROZEN / R0_TO_R6_LOCAL_COMPLETE / P0_P1_REVIEW_PASS / SAFE_FULL_PASS / GITHUB_PENDING`。
+当前状态：`PLAN_FROZEN / PRODUCTION_V0_6_44_TECHNICAL_PASS / USER_RECHECK`。
 
 ## 13. 本次文档落地凭证
 
@@ -455,3 +455,4 @@ API catch 不得把所有错误统一返回 `keyStatus: "invalid"`。结构化�
 - 第三轮复核新增的direct persist receipt活性P1已关闭：普通DAG与accepted-only路径都把`projectionState=applied`结算为逐节点receipt，pending可安全移除。
 - 同一独立只读终审线程最终结论：`P0=0 / P1=0 / GO`。
 - 修正后clean-record safe full在commit`626d209`/tree`f55860b`完成`121/121 specs、1061/1061 tests PASS`，异常0，source/snapshot`c5f8dc61…bd07`、4173不变；下一门为GitHub与生产技术验收，不得写`USER_PASS`。
+- GitHub与生产门已完成：PR #103、CI、merge`3ff3df4`、不可移动tag/Release v0.6.44、fresh build、冻结恢复双副本、原子切换、公网/回环/数据/inventory/静态资源全部通过；回执`spec/V0_6_44_PRODUCTION_RECEIPT_2026-08-26.json`。当前严格为`PRODUCTION_V0_6_44_TECHNICAL_PASS / USER_RECHECK`。

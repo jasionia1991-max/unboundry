@@ -1,9 +1,9 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产运行`v0.6.43 / schema41`且技术健康；INC-UI-011等待生产实页复验。INC-GEN-014独立终审与最终safe full均通过，v0.6.44候选进入GitHub发布门。
+> **当前状态**：生产运行`v0.6.44 / schema41`且技术健康；INC-GEN-014已完成GitHub与生产技术验收，等待用户实页复验。
 
 更新时间：2026-08-26
-状态：`INC-GEN-014 R0_TO_R6_LOCAL_COMPLETE / P0_P1_REVIEW_PASS / SAFE_FULL_PASS / GITHUB_PENDING；INC-UI-011 PRODUCTION_V0_6_43_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / LOCAL_USER_PASS / USER_RECHECK。`
+状态：`INC-GEN-014 PRODUCTION_V0_6_44_TECHNICAL_PASS / USER_RECHECK；INC-UI-011 HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK。`
 
 ### 2026-08-25 工作流自动恢复与密钥校验解耦（INC-GEN-014，R0～R5_COMPLETE / R6_TARGETED_PASS）
 
@@ -39,8 +39,14 @@
 - [x] 首轮正式full在冻结候选发现唯一m20 OpenAPI枚举快照遗漏：产品`1060/1061`通过；同步新投影冲突码后定向m20 `1/1 PASS`
 - [x] 修正后clean-record safe full：`121/121 specs、1061/1061 tests PASS`，failed/skipped/retries/blocked/reportErrors均0；commit`626d209`/tree`f55860b`、source/snapshot`c5f8dc61…bd07`，4173不变
 - [x] full证据同步后治理定向m38 `15/15 PASS`，异常0，source/snapshot`7c888dbd…6eae`、4173不变；未重复业务full
-- [ ] R6本地门完成；尚待GitHub、v0.6.44不可移动tag/Release与生产技术验收
+- [x] PR #103、PR/main Quality CI、merge`3ff3df4`、不可移动tag `v0.6.44`和GitHub Release通过
+- [x] fresh tag源码独立构建：Node 22.23.2/npm 10.9.8、5977文件、inventory`75e2917…0199`
+- [x] 60秒静默门tasks `814→814`、attempts `822→822`、active `0→0`；冻结source/restore各366文件且manifest一致，恢复副本schema41/integrity ok/FK0
+- [x] 原子切换后公网/回环v0.6.44、live/ready active、service active+enabled/NRestarts0、schema41、inventory和静态资源门通过；无需回退，v0.6.43与备份保留
+- [x] 切换前后tasks814/attempts822/active0/media849/publications439/canvases67/dataFiles366不变；未触碰用户业务画布
+- [x] 权威生产回执：`spec/V0_6_44_PRODUCTION_RECEIPT_2026-08-26.json`；状态严格为`PRODUCTION_V0_6_44_TECHNICAL_PASS / USER_RECHECK`
 - [x] 真实Provider、Generation、OSS和费用均未发生；probe `0/12`、真实生成`0/2`、费用`0/20 USD`
+- [x] 生产回执落档后只复验治理定向m38；两轮`14/15`依次精确暴露AGENTS与三份渐进治理文档仍引用旧生产标记，统一为`CURRENT_V0_6_44_USER_RECHECK`后`15/15 PASS`，source/snapshot`18914338…321a6`、4173不变；未重复业务spec或full
 
 权威方案：`spec/INC_GEN_014_WORKFLOW_SELF_HEALING_AND_CREDENTIAL_VERIFY_DECOUPLING_PLAN_2026-08-25.md`。
 
