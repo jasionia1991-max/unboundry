@@ -1,5 +1,11 @@
 # Unboundry 绿地复刻验收矩阵
 
+2026-08-25 INC-GEN-014已完成R0～R5与定向安全验证：`WSH-01～14 / KEYV-01～10 = CANDIDATE_TARGETED_PASS`。m22 `37/37`覆盖execution/projection拆分、最新Canvas白名单合并、语义冲突、application去重、有界恢复、当前run继续与accepted-only零POST；m73 `16/16`覆盖运行任务verify、mutation保护、credential/profile CAS、AUTH/unknown分类与账号隔离；m20 `1/1`覆盖结构化OpenAPI；v0.6.44运行时同步后m81 `41/41`。最新source/snapshot`66a14287…0158f`，4173不变，真实Provider、Generation、OSS与费用为0。尚待独立终审和唯一safe full；不是USER_PASS。实时断点见`spec/INC_GEN_014_WORKFLOW_SELF_HEALING_AND_CREDENTIAL_VERIFY_DECOUPLING_CHECKPOINT.md`。
+
+同日治理复验：m38首轮产品`14/15`仅为CURRENT_STATE生产句式不匹配既有正则，修正后`15/15 PASS`，source/snapshot`6428b45b…6414`。该修正不改变业务源码；没有重复m22/m73/m20/m81。
+
+投影scope与异常收口后最小复验m22仍为`37/37 PASS`；功能候选source/snapshot`2c889063…3042`。WSH/KEYV状态保持`CANDIDATE_TARGETED_PASS`，等待独立终审与唯一safe full。
+
 2026-08-25 INC-GEN-013已发布`v0.6.42/schema41`：`GEN-011～012 / CANVAS-020～022 = PRODUCTION_AUTO_PASS / USER_RECHECK`。m22最终`37/37`、m2`5/5`、m79`3/3`及直接依赖m1/m3/m40均通过；rich fixture为3组/39节点/73边，p95 9.9ms、max 10.3ms、long task与dropped frame为0、媒体请求0、最终画布PUT1。唯一safe full原始`1060/1061`，唯一未改动m0瞬态失败在相同源码快照定向`23/23 PASS`且未重复full。PR #98、CI、tag/Release、冻结备份、fresh原子发布及三视口零付费复杂组拖动/撤销/刷新均通过；任务/attempt/media无增量，最终位置精确还原，应用console0。回执`spec/V0_6_42_PRODUCTION_RECEIPT_2026-08-25.json`；用户确认前不得写`USER_PASS`。
 
 基线日期：2026-07-27  

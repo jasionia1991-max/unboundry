@@ -1,4 +1,5 @@
 import { shouldIgnoreStaleCanvasSaveProblem } from "./groupRunPersist";
+import type { GroupResultProjection } from "./groupResultProjection";
 
 export type WorkflowNodeShape = {
   data: Record<string, unknown>;
@@ -23,6 +24,8 @@ export type NodeRunSuccessProof = {
 export type NodeRunResult = {
   errorCode?: string;
   message?: string;
+  projection?: GroupResultProjection;
+  projectionState?: "applied" | "pending";
   successProof?: NodeRunSuccessProof;
   status: NodeRunStatus;
 };

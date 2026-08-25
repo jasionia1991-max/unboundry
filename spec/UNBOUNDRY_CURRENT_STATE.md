@@ -1,18 +1,37 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网为v0.6.43/schema41且技术健康；INC-UI-011本地已`USER_PASS`，生产技术与零付费浏览器已通过，等待用户生产实页复验。
+> **状态分层**：现网为v0.6.43/schema41且技术健康；INC-UI-011等待生产实页复验。INC-GEN-014已完成R0～R5与定向验证，正在准备v0.6.44冻结候选。
 
 更新日期：2026-08-25
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.43**
-本地候选代码版本：**v0.6.43**
+当前代码包版本：**v0.6.44**
+本地候选代码版本：**v0.6.44**
 本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_43_USER_RECHECK`
+当前计划标记：`INC_GEN_014_R0_TO_R5_COMPLETE / R6_TARGETED_PASS / RELEASE_CANDIDATE_PREPARING`
 当前热修门：`INC_UI_011_PRODUCTION_V0_6_43_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / LOCAL_USER_PASS / USER_RECHECK`
 
 ## 一句话
 
-**生产是 v0.6.43 / schema41；节点排序菜单层级修复已完成自动、GitHub、发布和零付费生产技术验收，本地已通过，等待用户在生产涉事页复验。**
+**生产是 v0.6.43 / schema41；INC-GEN-014的v0.6.44/schema41本地候选已完成R0～R5和定向验证，正在冻结终审候选。**
+
+## INC-GEN-014 工作流自动恢复与密钥校验解耦（R0～R5_COMPLETE / R6_TARGETED_PASS）
+
+- 用户报告涉事账号整组生成再次因“画布保存状态异常”出现后续节点未运行，同时「我的连接」的API Key校验被运行任务保护阻止。
+- 当前代码已核实两个独立根因：整组执行仍把Canvas投影失败降级为节点执行失败；`verifyAccountCredential`写回状态时误用密钥替换/删除的paid-work guard。
+- 最终方案已冻结：Generation Task/Attempt/Media/ownership proof作为执行事实，Canvas只作结果投影；使用applicationId幂等、generation-owned字段三方合并和有界自动对账。当前存活run可继续，刷新恢复只GET原任务且新的付费pending POST为0。
+- 密钥校验始终允许，使用credential/profile快照和CAS写回；替换/删除继续受运行任务保护；瞬态失败不得伪装成invalid。
+- 权威方案：`spec/INC_GEN_014_WORKFLOW_SELF_HEALING_AND_CREDENTIAL_VERIFY_DECOUPLING_PLAN_2026-08-25.md`。
+- 文档一致性定向m38首轮`14/15`，修正计划状态与既有生产治理标记混写后`15/15 PASS`；没有运行业务spec或full。
+- 新Goal只读身份核验通过：HEAD/origin/main均为`42bc0ac…fe9295`，生产仍为`v0.6.43/schema41`；`v0.6.44`tag/Release未占用，版本及本Goal发布授权已确认。
+- 实时断点：`spec/INC_GEN_014_WORKFLOW_SELF_HEALING_AND_CREDENTIAL_VERIFY_DECOUPLING_CHECKPOINT.md`；当前真实Provider、Generation、OSS和费用仍为0。
+- R1安全预期红精确完成：m22 `35/37`仅两项冻结失败，证明投影失败仍会降级节点并阻断下游；m73 `14/16`仅两项冻结失败，证明运行任务错误拒绝verify且瞬态错误丢失结构化code。4173监听者不变。
+- R2～R5实现完成：节点结果proof成立即execution success；Canvas写回使用最新owner-scoped文档、generation-owned白名单、applicationId、语义/ownership/input围栏、Web Lock单writer、4次退避与单次超时/abort。冲突时不覆盖、不重提，原结果留在任务历史。
+- verify只做只读远端probe与状态CAS，不再调用paid-work mutation guard；保存/替换/删除保护未放宽。credential revision或profile configuration变化返回CHANGED；只有AUTH写invalid，PERMISSION/网络/限流/5xx/格式为unknown；API返回稳定code。
+- 当前候选安全定向m22 `37/37`、m73 `16/16`、m20 `1/1`，TypeScript/生产构建与源码门通过；source/snapshot`ca81902e…a21b`、4173不变，真实Provider/Generation/OSS/费用仍为0。
+- package/lock与final runtime role已同步为v0.6.44，schema保持41；safe m81 `41/41 PASS`，source/snapshot`66a14287…0158f`、4173不变。
+- 文档治理m38首轮产品`14/15`只因生产句式未匹配既有正则，修正文案后最小复验`15/15 PASS`；source/snapshot`6428b45b…6414`，未重复业务spec。
+- account/canvas/application三重scope和投影队列异常收口后，最小复验m22 `37/37 PASS`；功能候选source/snapshot`2c889063…3042`，4173不变。
 
 ## INC-UI-011 节点排序菜单层级修复（PRODUCTION_V0_6_43_TECHNICAL_PASS / USER_RECHECK）
 

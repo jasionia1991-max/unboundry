@@ -864,6 +864,17 @@ test("account credential verification maps AUTH to invalid and success to valid"
       "invalid",
     );
 
+    const permission = await verifyAccountCredential(
+      store,
+      "user-a",
+      "profile-1",
+      async () => new Response("forbidden", { status: 403 }),
+    ).catch((error: Error & { code?: string }) => error);
+    expect(permission).toMatchObject({ code: "PERMISSION" });
+    expect(accountCredentialRow(store, "user-a", "profile-1")?.key_status).toBe(
+      "unknown",
+    );
+
     const verified = await verifyAccountCredential(
       store,
       "user-a",
@@ -878,6 +889,16 @@ test("account credential verification maps AUTH to invalid and success to valid"
     expect(verified.keyStatus).toBe("valid");
     expect(accountCredentialRow(store, "user-a", "profile-1")?.key_status).toBe(
       "valid",
+    );
+    const transient = await verifyAccountCredential(
+      store,
+      "user-a",
+      "profile-1",
+      async () => new Response("temporarily unavailable", { status: 503 }),
+    ).catch((error: Error & { code?: string }) => error);
+    expect(transient).toMatchObject({ code: "REMOTE" });
+    expect(accountCredentialRow(store, "user-a", "profile-1")?.key_status).toBe(
+      "unknown",
     );
   } finally {
     store.close();
@@ -1142,12 +1163,12 @@ test("credential verification and the paid boundary serialize fail-closed", asyn
         status: 401,
       }),
     ).catch((error: Error & { code?: string }) => error);
-    expect(boundaryWon).toMatchObject({ code: "ACCOUNT_CREDENTIAL_IN_USE" });
+    expect(boundaryWon).toMatchObject({ code: "AUTH" });
     expect(accountCredentialRow(
       store,
       "verify-boundary-user",
       profile.id,
-    )?.key_status).toBe("valid");
+    )?.key_status).toBe("invalid");
     expect(taskStore.getProviderAttemptForTask(task.id)).toMatchObject({
       outcome: "boundary-claimed",
     });
@@ -1290,7 +1311,7 @@ test("Provider profile mutation and verification cannot strand paid continuation
   let store: ReturnType<typeof openAppDatabase> | undefined;
   try {
     openAppDatabase(directory).close();
-    const profile = await saveProviderProfile({
+    let profile = await saveProviderProfile({
       apiKey: "sk-provider-paid-work-1111",
       baseUrl: "https://openrouter.ai/api/v1",
       driver: "openrouter",
@@ -1305,6 +1326,45 @@ test("Provider profile mutation and verification cannot strand paid continuation
       ) VALUES ('profile-user', 'profile-user', 'Profile', 'test-only', 'user',
         'active', ?, ?)
     `).run(timestamp, timestamp);
+    await saveAccountCredential(
+      store,
+      "profile-user",
+      profile.id,
+      "sk-account-profile-cas-1111",
+    );
+    let releaseAccountProbe!: () => void;
+    let accountProbeStarted!: () => void;
+    const accountProbeEntered = new Promise<void>((resolve) => {
+      accountProbeStarted = resolve;
+    });
+    const accountProbeHold = new Promise<void>((resolve) => {
+      releaseAccountProbe = resolve;
+    });
+    const staleAccountVerification = verifyAccountCredential(
+      store,
+      "profile-user",
+      profile.id,
+      async () => {
+        accountProbeStarted();
+        await accountProbeHold;
+        return new Response(JSON.stringify({ data: [] }), {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        });
+      },
+    );
+    await accountProbeEntered;
+    profile = await saveProviderProfile({
+      baseUrl: profile.baseUrl,
+      driver: profile.driver,
+      label: "Paid profile after configuration CAS",
+    }, profile.id);
+    releaseAccountProbe();
+    await expect(staleAccountVerification).rejects.toMatchObject({
+      code: "ACCOUNT_CREDENTIAL_CHANGED",
+    });
+    expect(accountCredentialRow(store, "profile-user", profile.id)?.key_status)
+      .toBe("unchecked");
     store.prepare(`
       INSERT INTO model_profiles (
         id, display_name, provider_profile_id, provider_model_id,
@@ -1351,7 +1411,9 @@ test("Provider profile mutation and verification cannot strand paid continuation
       label: "Must remain unchanged",
     }, profile.id).catch((error: Error & { code?: string }) => error);
     expect(blockedBoundary).toMatchObject({ code: "PROVIDER_PROFILE_IN_USE" });
-    expect((await getProviderProfile(profile.id))?.label).toBe("Paid profile");
+    expect((await getProviderProfile(profile.id))?.label).toBe(
+      "Paid profile after configuration CAS",
+    );
 
     const blockedVerification = await verifyProviderProfile(
       profile.id,

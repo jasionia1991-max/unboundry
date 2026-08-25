@@ -75,6 +75,15 @@ import {
   reconcileGenerationTask,
   retryGenerationTask,
 } from "../client/src/generation/generationTasks";
+import {
+  enqueueGroupResultProjection,
+  groupResultProjectionApplicationId,
+  groupResultSemanticRevision,
+  mergeGroupResultProjection,
+  reconcileGroupResultProjection,
+  waitForGroupResultProjections,
+  type GroupResultProjection,
+} from "../client/src/generation/groupResultProjection";
 
 test("headless workflow registry owns all four executable node kinds", () => {
   expect(createNodeExecutorRegistry().kinds().sort()).toEqual([
@@ -385,7 +394,9 @@ test("all four headless executors preflight, run, recover and apply without moun
       status: "failed",
     });
     expect(posts).toHaveLength(4);
-    expect(flushes).toBeGreaterThanOrEqual(12);
+    // Admission/binding remains durable before paid work. Terminal success is
+    // now projected by the outer group persistence boundary exactly once.
+    expect(flushes).toBe(8);
   } finally {
     globalThis.fetch = previousFetch;
     if (previousWindow) host.window = previousWindow;
@@ -1645,11 +1656,13 @@ test("save gate waits for a durable canvas revision before running the node", as
   expect(revision).toBe(16);
 });
 
-test("group persist waits for paint and save before the next node can start", async () => {
+test("a pure projection failure does not block the current run downstream", async () => {
   const events: string[] = [];
+  let persistCalls = 0;
   const persist = async () => {
     events.push("persist");
-    return undefined;
+    persistCalls += 1;
+    return persistCalls === 1 ? "画布保存状态异常" : undefined;
   };
   const started: string[] = [];
   const result = await runWorkflowGraph({
@@ -1723,14 +1736,179 @@ test("group persist retry happens once for a still-saving canvas and never for o
     status: "skipped",
   });
 
+  const projectionBase = {
+    accountId: "account-a",
+    canvasId: "canvas-a",
+    dataPatch: {
+      content: "durable result",
+      contentHtml: "<p>durable result</p>",
+      groupRunSuccessOwnershipKey: "owner-a",
+      groupRunSuccessResultKey: "result-a",
+      groupRunSuccessTaskId: "task-a",
+      textGenerationInputKey: undefined,
+      textGenerationOwnershipKey: undefined,
+      textGenerationTaskId: "task-a",
+      textGenerating: false,
+      title: "must-not-overwrite-user-title",
+      workflowExecutionRunId: undefined,
+    },
+    inputFingerprint: "input-a",
+    kind: "text" as const,
+    nodeId: "node-a",
+    ownershipKey: "owner-a",
+    resultKey: "result-a",
+    runId: "run-a",
+    taskId: "task-a",
+  };
+  const projection: GroupResultProjection = {
+    ...projectionBase,
+    applicationId: groupResultProjectionApplicationId(projectionBase),
+    semanticRevision: groupResultSemanticRevision(projectionBase),
+  };
+  const queuedApplications: string[] = [];
   const persistFailed = await runGroupNodeWithPersist({
     persist: async () => "画布保存超时，请稍后再试",
-    run: async () => ({ status: "success" }),
+    project: (candidate) => queuedApplications.push(candidate.applicationId),
+    run: async () => ({
+      projection,
+      status: "success",
+    }),
   });
-  expect(persistFailed).toEqual({
-    message: "画布保存超时，请稍后再试",
-    status: "failed",
+  expect(persistFailed).toMatchObject({
+    projectionState: "pending",
+    status: "success",
   });
+  expect(queuedApplications).toEqual(["run-a:node-a:task-a:result-a"]);
+
+  const duplicateApplications: string[] = [];
+  const projectOnce = (candidate: GroupResultProjection) => {
+    if (!duplicateApplications.includes(candidate.applicationId)) {
+      duplicateApplications.push(candidate.applicationId);
+    }
+  };
+  const repeat = () => runGroupNodeWithPersist({
+    persist: async () => "画布保存状态异常",
+    project: projectOnce,
+    run: async () => ({
+      projection: { ...projection, applicationId: "same-application" },
+      status: "success",
+    }),
+  });
+  await Promise.all([repeat(), repeat()]);
+  expect(duplicateApplications).toEqual(["same-application"]);
+
+  const latest = {
+    currentWriterSequence: 7,
+    currentWriterSessionId: "writer-session-a",
+    edges: [{ id: "edge-a", source: "other", target: "node-a" }],
+    graphRevision: 9,
+    loadToken: "load-token-a",
+    nodes: [
+      {
+        data: { label: "other" },
+        id: "other",
+        position: { x: 1, y: 2 },
+        type: "text",
+      },
+      {
+        data: {
+          textGenerationInputKey: "input-a",
+          textGenerationOwnershipKey: "owner-a",
+          textGenerationTaskId: "task-a",
+          title: "user title",
+          workflowExecutionRunId: "run-a",
+        },
+        id: "node-a",
+        position: { x: 30, y: 40 },
+        style: { height: 200, width: 300 },
+        type: "text",
+      },
+    ] as ProbeNodeType[],
+    revision: 11,
+    saveEpoch: "epoch-a",
+    sessionHighWaterAttemptId: null,
+    sessionHighWaterSequence: 0,
+    viewport: { x: 8, y: 9, zoom: 0.7 },
+  };
+  const merged = mergeGroupResultProjection(latest, projection);
+  expect(merged.status).toBe("apply");
+  if (merged.status === "apply") {
+    expect(merged.document.viewport).toEqual(latest.viewport);
+    expect(merged.document.edges).toEqual(latest.edges);
+    expect(merged.document.nodes[0]).toEqual(latest.nodes[0]);
+    expect(merged.document.nodes[1]).toMatchObject({
+      data: { content: "durable result", title: "user title" },
+      position: { x: 30, y: 40 },
+      style: { height: 200, width: 300 },
+    });
+    expect(mergeGroupResultProjection(merged.document, projection).status).toBe(
+      "already-applied",
+    );
+  }
+  const semanticConflict = structuredClone(latest);
+  semanticConflict.nodes[1].data.textGenerationInputKey = "input-edited";
+  expect(mergeGroupResultProjection(semanticConflict, projection).status).toBe(
+    "conflict",
+  );
+
+  let loads = 0;
+  let puts = 0;
+  const reconciled = await reconcileGroupResultProjection({
+    maxAttempts: 3,
+    projection,
+    transport: {
+      load: async () => {
+        loads += 1;
+        return { body: latest, ok: true, status: 200 };
+      },
+      put: async (input) => {
+        puts += 1;
+        const request = JSON.parse(input.payload) as { revision: number };
+        return puts === 1
+          ? { body: { code: "CANVAS_REVISION_CONFLICT" }, ok: false, status: 409 }
+          : {
+              body: {
+                graphRevision: request.revision + 1,
+                loadToken: "load-token-b",
+                revision: request.revision + 1,
+              },
+              ok: true,
+              status: 200,
+            };
+      },
+    },
+  });
+  expect(reconciled).toMatchObject({ attempts: 2, status: "applied" });
+  expect({ loads, puts }).toEqual({ loads: 2, puts: 2 });
+
+  let dedupedPuts = 0;
+  const dedupedTransport = {
+    load: async () => ({ body: latest, ok: true, status: 200 }),
+    put: async (input: { payload: string }) => {
+      dedupedPuts += 1;
+      const request = JSON.parse(input.payload) as { revision: number };
+      return {
+        body: {
+          graphRevision: request.revision + 1,
+          loadToken: "load-token-deduped",
+          revision: request.revision + 1,
+        },
+        ok: true,
+        status: 200,
+      };
+    },
+  };
+  const firstApplication = enqueueGroupResultProjection(projection, {
+    transport: dedupedTransport,
+  });
+  const duplicateApplication = enqueueGroupResultProjection(projection, {
+    transport: dedupedTransport,
+  });
+  expect(duplicateApplication).toBe(firstApplication);
+  await expect(waitForGroupResultProjections(projection.runId)).resolves.toEqual([
+    expect.objectContaining({ status: "applied" }),
+  ]);
+  expect(dedupedPuts).toBe(1);
 
   const keepOriginalFailure = await runGroupNodeWithPersist({
     persist: async () => "画布保存超时，请稍后再试",

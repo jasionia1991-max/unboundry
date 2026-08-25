@@ -1,9 +1,37 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产运行`v0.6.43 / schema41`且技术健康；INC-UI-011本地已`USER_PASS`，生产技术与零付费浏览器已通过，等待用户生产实页复验。
+> **当前状态**：生产运行`v0.6.43 / schema41`且技术健康；INC-UI-011等待生产实页复验。INC-GEN-014已完成R0～R5和定向验证，正在准备v0.6.44冻结候选。
 
 更新时间：2026-08-25
-状态：`INC-UI-011 PRODUCTION_V0_6_43_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / LOCAL_USER_PASS / USER_RECHECK。`
+状态：`INC-GEN-014 R0_TO_R5_COMPLETE / R6_TARGETED_PASS / RELEASE_CANDIDATE_PREPARING；INC-UI-011 PRODUCTION_V0_6_43_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / LOCAL_USER_PASS / USER_RECHECK。`
+
+### 2026-08-25 工作流自动恢复与密钥校验解耦（INC-GEN-014，R0～R5_COMPLETE / R6_TARGETED_PASS）
+
+- [x] 核实整组回归根因：`createSaveGateRun`和`runGroupNodeWithPersist`仍会把Canvas保存失败转成节点失败，DAG因此阻断后续节点
+- [x] 核实连接校验根因：`verifyAccountCredential`记录校验状态时误调用运行任务禁止密钥变更的保护
+- [x] 复核INC-GEN-013边界：accepted-only解决刷新后精确核对原任务，但没有解除当前run对Canvas投影成功的依赖
+- [x] 审计同类产品可借鉴边界：结果历史独立、展示失败不等于生成失败、断线重连；不把公开UI当成服务端幂等证明
+- [x] 冻结最终方案：执行事实与Canvas投影双状态轴、applicationId幂等、字段白名单三方合并、同run继续、刷新零POST、校验快照CAS
+- [x] 冻结风险、耦合边界、回归策略、阶段计划和WSH/KEYV验收矩阵
+- [x] 文档一致性定向m38首轮`14/15`，修正计划状态与生产治理标记混写后`15/15 PASS`；未重复业务测试或full
+- [x] 新Goal身份硬门通过：HEAD/origin/main均为`42bc0ac…fe9295`，生产`v0.6.43/schema41`，`v0.6.44`未被tag/Release占用
+- [x] 版本确认为`v0.6.44`且本Goal完成本地门和独立终审后允许发布；schema首选保持41
+- [x] 建立实时断点`spec/INC_GEN_014_WORKFLOW_SELF_HEALING_AND_CREDENTIAL_VERIFY_DECOUPLING_CHECKPOINT.md`
+- [x] R1安全预期红完成：m22 `35/37`，唯一两项失败证明纯投影失败阻断下游、成功结果被persist失败降级
+- [x] R1安全预期红完成：m73 `14/16`，唯一两项失败证明瞬态错误丢失结构化code、运行任务错误阻断verify
+- [x] R2拆分执行事实与Canvas投影；成功结果立即供当前DAG下游消费
+- [x] R3新增窄职责结果投影：最新Canvas白名单合并、applicationId幂等、单writer、有界重试/超时/abort和语义围栏
+- [x] R4 verify与mutation guard解耦；credential/profile双版本CAS，只有AUTH invalid，瞬态与PERMISSION为unknown，API返回稳定code
+- [x] R5沿用现有校验按钮与准确反馈，只在projection自动预算耗尽/语义冲突时给任务历史入口
+- [x] 当前候选定向safe：m22 `37/37`、m73 `16/16`、m20 `1/1`；source/snapshot`ca81902e…a21b`，4173不变
+- [x] package/lock和final runtime role同步为`v0.6.44`，schema保持41；历史版本角色未移除
+- [x] v0.6.44运行时同步后safe m81 `41/41 PASS`；source/snapshot`66a14287…0158f`，4173不变
+- [x] 文档治理m38首轮产品`14/15`仅为CURRENT_STATE机器句式，修正后最小复验`15/15 PASS`；source/snapshot`6428b45b…6414`
+- [x] account/canvas/application scope与队列异常收口后最小复验m22 `37/37 PASS`；功能候选source/snapshot`2c889063…3042`
+- [ ] R6尚待v0.6.44版本同步、m81/m38、候选冻结、独立终审、唯一safe full、GitHub与生产技术验收
+- [ ] 真实Provider、Generation、OSS和费用均未发生
+
+权威方案：`spec/INC_GEN_014_WORKFLOW_SELF_HEALING_AND_CREDENTIAL_VERIFY_DECOUPLING_PLAN_2026-08-25.md`。
 
 ### 2026-08-25 节点排序菜单层级修复（INC-UI-011，PRODUCTION_V0_6_43 / USER_RECHECK）
 

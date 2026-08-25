@@ -1334,9 +1334,31 @@ export const openApiDocument = {
               },
             },
           },
-          "400": { description: "Missing or invalid key" },
+          "400": {
+            description:
+              "Verification failed. Only explicit AUTH reports invalid; transient failures report unknown with a stable code.",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["code", "error", "keyStatus"],
+                  properties: {
+                    code: { type: "string" },
+                    error: { type: "string" },
+                    keyStatus: {
+                      type: "string",
+                      enum: ["invalid", "unknown"],
+                    },
+                  },
+                },
+              },
+            },
+          },
           "401": { description: "Sign-in required" },
-          "409": { description: "Account deletion active or account inactive" },
+          "409": {
+            description:
+              "Credential/profile changed during verification, account deletion active, or account inactive",
+          },
         },
       },
     },

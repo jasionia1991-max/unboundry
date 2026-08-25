@@ -70,6 +70,10 @@ import {
 } from "./groupRunCheckpoint";
 import { runExclusiveCanvasSubmit } from "./saveGate";
 import { listGenerationTasks } from "./generationTasks";
+import {
+  enqueueGroupResultProjection,
+  waitForGroupResultProjections,
+} from "./groupResultProjection";
 
 export type { NodeRunResult };
 
@@ -776,7 +780,16 @@ export function WorkflowExecutionProvider({
 
           for (const binding of accepted) {
             if (running.cancelled || abortController.signal.aborted) break;
-            if (nodeStates.get(binding.nodeId) === "success") continue;
+            const durableProof = groupRunSuccessProof(
+              getNodes().find((candidate) => candidate.id === binding.nodeId),
+            );
+            const expectedProof = running.checkpoint.successProofs[binding.nodeId];
+            if (
+              nodeStates.get(binding.nodeId) === "success" &&
+              durableProof?.taskId === expectedProof?.taskId &&
+              durableProof?.ownershipKey === expectedProof?.ownershipKey &&
+              durableProof?.resultKey === expectedProof?.resultKey
+            ) continue;
             const node = getNodes().find((candidate) => candidate.id === binding.nodeId);
             const executor = registry.get(node);
             if (!executor || executor.kind !== binding.kind) {
@@ -785,13 +798,22 @@ export function WorkflowExecutionProvider({
               running.activeNodeIds.add(binding.nodeId);
               nodeStates.set(binding.nodeId, "running");
               try {
-                const result = await executor.recover(
-                  binding.nodeId,
-                  createExecutorContext(
-                    () => running.cancelled,
-                    { acceptedTask: binding },
+                const result = await runGroupNodeWithPersist({
+                  isCancelled: () => running.cancelled,
+                  persist: () => persistGroupCanvasAfterNode({ save }),
+                  project: (projection) => {
+                    void enqueueGroupResultProjection(projection, {
+                      signal: abortController.signal,
+                    });
+                  },
+                  run: () => executor.recover(
+                    binding.nodeId,
+                    createExecutorContext(
+                      () => running.cancelled,
+                      { acceptedTask: binding },
+                    ),
                   ),
-                );
+                });
                 if (result.status === "success") {
                   nodeStates.set(binding.nodeId, "success");
                   if (result.successProof) {
@@ -835,7 +857,11 @@ export function WorkflowExecutionProvider({
             running.checkpoint,
             getNodes(),
           );
-          const complete = !running.cancelled &&
+          const projectionResults = await waitForGroupResultProjections(runId);
+          const projectionsSettled = projectionResults.every((result) =>
+            result.status === "applied" || result.status === "already-applied"
+          );
+          const complete = !running.cancelled && projectionsSettled &&
             !verification.mismatchNodeId &&
             [...executableIds].every((nodeId) =>
               nodeStates.get(nodeId) === "success" &&
@@ -1043,6 +1069,11 @@ export function WorkflowExecutionProvider({
                 persist: () => persistGroupCanvasAfterNode({
                   save,
                 }),
+                project: (projection) => {
+                  void enqueueGroupResultProjection(projection, {
+                    signal: abortController.signal,
+                  });
+                },
                 run: async () => {
                   return runRegisteredNodeWithRefreshRecovery({
                     context: createExecutorContext(
@@ -1083,6 +1114,12 @@ export function WorkflowExecutionProvider({
             }
           },
         });
+
+        const projectionResults = await waitForGroupResultProjections(runId);
+        const projectionIncomplete = projectionResults.some((projection) =>
+          projection.status !== "applied" &&
+          projection.status !== "already-applied"
+        );
 
         const nodeIdsInStates = (states: WorkflowGraphNodeState[]) =>
           [...nodeStates.entries()]
@@ -1131,7 +1168,22 @@ export function WorkflowExecutionProvider({
           status: result.status,
         });
         if (result.status === "success") {
-          if (!clearGroupRunCheckpoint(scope, expectedLease())) {
+          if (projectionIncomplete) {
+            const interrupted = {
+              ...running.checkpoint,
+              nodeStates: Object.fromEntries(nodeStates),
+              status: "interrupted" as const,
+              updatedAt: Date.now(),
+            };
+            running.checkpoint = interrupted;
+            writeGroupRunCheckpoint(interrupted, expectedLease());
+            notify("生成已完成；结果自动写回未完成，请从任务面板找回原结果", "info");
+            publishGroupRunSummary({
+              ...summaryBase(),
+              reason: "生成已完成，但结果写回遇到语义冲突或已耗尽自动重试",
+              status: "success",
+            });
+          } else if (!clearGroupRunCheckpoint(scope, expectedLease())) {
             const interrupted = {
               ...running.checkpoint,
               nodeStates: Object.fromEntries(nodeStates),
