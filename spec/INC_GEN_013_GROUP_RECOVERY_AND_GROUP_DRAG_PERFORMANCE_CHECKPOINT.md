@@ -2,7 +2,7 @@
 
 更新时间：2026-08-25
 
-状态：`LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / P0_P1_REVIEW_PASS / V0_6_42_CANDIDATE / SAFE_FULL_EXECUTED_WITH_TARGETED_RECHECK / RELEASE_PENDING`
+状态：`PRODUCTION_V0_6_42_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK`
 
 权威方案：`spec/INC_GEN_013_GROUP_RECOVERY_AND_GROUP_DRAG_PERFORMANCE_PLAN_2026-08-25.md`
 
@@ -12,7 +12,7 @@
 - group run checkpoint 已向后兼容保存已接收任务完整绑定；刷新只核对精确 accepted task，pending 不自动提交，保存/revision/proof 完成前不清 checkpoint。
 - `GroupNode.tsx` 旧自定义 `beginMove` 已移除；组合框使用 React Flow 原生拖动并统一进入 `CanvasSurface` 拖动态与 persistence quiet gate。
 - 这不是后续 commit 把修复撤回；它是历史旁路和测试覆盖缺口，但对用户而言属于需要修复的实际体验回归。
-- 人工「继续剩余节点」和放弃仍保留；本地自动与性能门已过，生产真实画布尚未复验，不能写 `USER_PASS`。
+- 人工「继续剩余节点」和放弃仍保留；本地自动、生产技术与三视口零付费浏览器门已过，用户原事故账号尚未复验，不能写 `USER_PASS`。
 
 ## 2. 文档工作区
 
@@ -23,7 +23,7 @@
 | 分支 | `codex/inc-canvas-recovery-group-drag-plan-2026-08-25` |
 | 基线 / origin/main | `a0c8d285789ac2e51ff73e7c1ff48cd8676b560a` |
 | package / schema | `0.6.42 / 41` |
-| 生产 | `v0.6.41 / schema41 / USER_RECHECK` |
+| 生产 | `v0.6.42 / schema41 / USER_RECHECK`；`/opt/unboundry/releases/v0.6.42-group-recovery-drag-performance-20260825` |
 
 受保护 `spec/public-templates-director-split-revision.json` 未读取、修改、移动、删除、stage 或提交；真实主工作树未清理。
 
@@ -91,8 +91,11 @@
 - [x] 独立只读审查原始发现2个P1（admission-to-binding窗口、外来租约未abort）；均已关闭，最终无已知P0/P1。
 - [x] build与`git diff --check`通过；真实Provider、Generation、OSS写入、费用和生产变更均为0。
 - [x] 本Goal唯一safe full在精确功能候选`31f0fcbc40cd7236bdfe3fdf4657c53de9b3ee4b`执行：121/121 specs、1060/1061 tests通过；唯一失败为未改动AI角色库筛选的瞬态计数断言。未重复full；相同源码快照只复跑失败spec `tests/m0-shell.spec.ts`，23/23通过。source/snapshot均为`3baf4f5d…97e41`，4173 listener保持`24c91e57…8244`不变；不把原始full改写成全绿。
-- [ ] GitHub PR/CI/merge、tag/Release、生产发布与零付费生产矩阵尚未执行。
+- [x] GitHub：PR #98、PR/main Quality CI、squash merge `22038897c85f1d3d518088844540bea582158308`、不可移动 `v0.6.42` tag与Release均完成；tag与main tree一致。
+- [x] 生产：冻结source/restore各366文件，schema41恢复副本`integrity_check=ok / foreign_key_check=0`；fresh build、原子切换、公网/回环/service/schema41/数据/inventory/全静态资源门通过，`NRestarts=0`。
+- [x] 零付费浏览器：1280×720、1440×900、1920×1080下对既有36节点/3组/60边项目执行fit、整组拖动、保存、undo、刷新；3次拖动停止与3次undo各只产生一次图数据保存，坐标精确恢复，console应用错误/警告0。
+- [x] 原事故画布在当前登录账号下因owner隔离不可访问，未绕过权限；因此只完成同规模技术矩阵，真实事故账号仍为`USER_RECHECK`。tasks/attempts/media/publications增量0，真实Provider/Generation/OSS写入/费用0。权威回执`spec/V0_6_42_PRODUCTION_RECEIPT_2026-08-25.json`。
 
 ## 8. 唯一下一步
 
-按Runbook完成GitHub PR/CI/merge、不可变`v0.6.42` tag/Release和零付费生产矩阵。任何真实Provider/Generation/OSS写入继续为0，最终只进入`USER_RECHECK`。
+用户用原事故账号打开对应画布，刷新确认已接收任务会自动核对并回填结果，再拖动目标大组合框确认跟手且刷新后位置正确；明确回复“通过”前保持`USER_RECHECK`。一次性GitHub与生产授权已消费，后续新代码、Provider或发布动作需要新授权。

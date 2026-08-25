@@ -6,7 +6,15 @@
 
 新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-25 的权威现状、产品合同和用户验收边界。下面各节是历史增量，出现「当前」时只代表该时点。
 
-## 当前线上事件：INC-SEEDANCE-002 AI角色单图合规验证（v0.6.41 / USER_RECHECK）
+## 当前线上事件：INC-GEN-013 整组刷新恢复与组合框拖动性能（v0.6.42 / USER_RECHECK）
+
+真实仓库`/Users/mymy/Documents/unboundry/app`；实施隔离工作树`/private/tmp/unboundry-canvas-recovery-group-drag-plan-20260825`。v0.6.42一次性实施、GitHub与生产授权已消费；后续新代码、Provider或发布动作需要新授权。
+
+accepted-only恢复只轮询checkpoint中精确绑定的已接收任务，pending不自动提交，结果写回受ownership/snapshot/revision保护，并在save/revision/proof确认后才清checkpoint；组合框已移除自建pointermove旁路，统一使用React Flow原生拖动和既有quiet gate。rich fixture 3组/39节点/73边下p95`9.9ms`、max`10.3ms`、long task与dropped frame均0、拖动中PUT0、结束PUT1。唯一safe full原始`1060/1061 PASS`，相同源码只复验唯一失败m0并`23/23 PASS`；独立终审无剩余P0/P1。
+
+PR #98及PR/main Quality CI、merge`22038897c85f1d3d518088844540bea582158308`、不可移动tag/GitHub Release均完成。生产current为`/opt/unboundry/releases/v0.6.42-group-recovery-drag-performance-20260825`，schema41，冻结双副本、恢复副本校验、fresh build、原子切换、公网/回环/service/数据/inventory/全静态资源门通过。三视口对当前账号既有36节点/3组/60边项目的fit、整组拖动、保存、undo、刷新通过；原事故画布因owner隔离未绕过访问，仍需用户原账号复验。Provider、Generation、OSS写入和费用均0；权威回执`spec/V0_6_42_PRODUCTION_RECEIPT_2026-08-25.json`，当前严格保持`USER_RECHECK`。
+
+## 上一线上事件：INC-SEEDANCE-002 AI角色单图合规验证（v0.6.41 / USER_RECHECK）
 
 真实仓库`/Users/mymy/Documents/unboundry/app`；隔离工作树`/private/tmp/unboundry-seedance-ai-character-plan-20260825-vpJ0CN`；分支`codex/seedance-ai-character-compliance-plan-2026-08-25`。v0.6.41一次性实施与发布授权已消费。受保护`spec/public-templates-director-split-revision.json`未读取、修改、移动、删除、stage或提交。
 

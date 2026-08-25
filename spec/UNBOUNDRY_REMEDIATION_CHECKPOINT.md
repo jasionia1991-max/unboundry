@@ -5,6 +5,13 @@
 状态：`HISTORICAL_CHECKPOINT / APPEND_ONLY`
 用途：保留各次施工与发布时点证据，不再充当当前恢复入口。**当前状态、未发布工作区与下一步只看 `UNBOUNDRY_CURRENT_STATE.md`；本文件任何旧命令或旧授权都不可复用。**
 
+## 0. INC-GEN-013 整组刷新恢复与组合框拖动性能（2026-08-25 v0.6.42 / USER_RECHECK）
+
+- accepted-only恢复、精确任务绑定、ownership/snapshot/revision门、save/revision/proof后清checkpoint及React Flow原生组合框拖动均已落地；独立终审无剩余P0/P1。
+- rich fixture 3组/39节点/73边性能门通过；唯一safe full原始`1060/1061 PASS`，相同源码只复验唯一失败m0并`23/23 PASS`，没有第二次full。
+- PR #98、PR/main Quality CI、merge、不可移动tag/Release完成；生产release`/opt/unboundry/releases/v0.6.42-group-recovery-drag-performance-20260825`，冻结双副本、恢复副本校验、fresh原子发布、公网/回环/service/schema41/数据/inventory/全资源门通过。
+- 三视口零付费浏览器矩阵通过；原事故画布因当前登录账号owner隔离未绕过，仍待用户原账号复验。真实Provider、Generation、OSS写入和费用均0；回执`spec/V0_6_42_PRODUCTION_RECEIPT_2026-08-25.json`，当前严格为`USER_RECHECK`。
+
 ## 0A. INC-SEEDANCE-002 AI角色单图合规验证（2026-08-25 v0.6.41 / USER_RECHECK）
 
 - 按正式合同选择C分支：disabled「角色风险预检（当前不可用）」并保留enabled「角色可信素材」，不显示蓝勾或声称Seedance/版权/法律认证。

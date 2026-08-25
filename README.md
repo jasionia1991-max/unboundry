@@ -6,7 +6,11 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 
-## 当前线上：v0.6.41 角色风险预检关闭态（2026-08-25，USER RECHECK）
+## 当前线上：v0.6.42 整组刷新恢复与组合框拖动性能（2026-08-25，USER RECHECK）
+
+INC-GEN-013已把group run checkpoint升级为accepted-task精确绑定：刷新只核对已被服务端接收的任务，不自动提交pending节点，结果写回必须通过ownership/snapshot/revision门；组合框改用React Flow原生拖动，拖动中不保存，结束后合并一次保存。独立终审P0/P1已清零；唯一safe full原始`1060/1061 PASS`，相同源码只复验唯一失败m0并`23/23 PASS`，没有重跑full。PR #98、CI、不可移动tag/Release、schema41恢复副本、fresh原子发布及三视口零付费浏览器均通过；真实Provider、Generation、OSS写入和费用均0。当前状态`PRODUCTION_V0_6_42_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK`，回执见[`spec/V0_6_42_PRODUCTION_RECEIPT_2026-08-25.json`](spec/V0_6_42_PRODUCTION_RECEIPT_2026-08-25.json)。
+
+## 上一线上事件：v0.6.41 角色风险预检关闭态（2026-08-25，USER RECHECK）
 
 INC-SEEDANCE-002已按正式合同核验自动选择C分支：第三方审核票据没有Seedance正式提交字段，虚拟人像权益订阅超预算，公开审核Provider合同也不足以完成A的分类与隐私证明。v0.6.41把产品准确命名为「角色风险预检」并在菜单层禁用入口，同时保留独立的「角色可信素材」入口；不显示蓝勾，不声称Seedance验证、版权认证或法律合规。独立终审无剩余P0/P1；唯一safe full `121/121 specs、1061/1061 tests PASS`。PR #96、CI、tag/Release、schema41迁移、fresh原子发布与三视口零付费浏览器均通过；真实审核、Generation、OSS、订阅/购买和费用均0。当前状态`PRODUCTION_V0_6_41_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK`，回执见[`spec/V0_6_41_PRODUCTION_RECEIPT_2026-08-25.json`](spec/V0_6_41_PRODUCTION_RECEIPT_2026-08-25.json)。
 

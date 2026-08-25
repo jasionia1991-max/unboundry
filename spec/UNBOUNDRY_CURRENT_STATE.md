@@ -1,20 +1,20 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网仍为v0.6.41/schema41且保持USER_RECHECK；INC-GEN-013本地v0.6.42/schema41候选已完成定向验收、P0/P1终审和唯一safe full，GitHub与发布待执行。
+> **状态分层**：现网为v0.6.42/schema41且技术健康；INC-GEN-013工程、GitHub、冻结备份、原子发布和三视口零付费验收已完成，保持USER_RECHECK。
 
 更新日期：2026-08-25
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
 当前代码包版本：**v0.6.42**
 本地候选代码版本：**v0.6.42**
 本地候选schema：**41**
-当前治理标记：`CURRENT_V0_6_41_USER_RECHECK`
-当前热修门：`INC_GEN_013_LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / P0_P1_REVIEW_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_RECHECK / PRODUCTION_V0_6_41_USER_RECHECK`
+当前治理标记：`CURRENT_V0_6_42_USER_RECHECK`
+当前热修门：`INC_GEN_013_PRODUCTION_V0_6_42_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK`
 
 ## 一句话
 
-**生产是 v0.6.41 / schema41；整组刷新恢复与组合框拖动性能的v0.6.42本地候选已完成定向验收，等待唯一safe full和发布，现网尚未改变。**
+**生产是 v0.6.42 / schema41；整组刷新恢复与组合框拖动性能已完成自动、GitHub、发布和零付费生产技术验收，等待用户在涉事账号实页复验。**
 
-## INC-GEN-013 整组刷新恢复与组合框拖动性能治理（LOCAL_ENGINEERING_COMPLETE / V0_6_42_CANDIDATE）
+## INC-GEN-013 整组刷新恢复与组合框拖动性能治理（PRODUCTION_V0_6_42_TECHNICAL_PASS / USER_RECHECK）
 
 - 权威方案：`spec/INC_GEN_013_GROUP_RECOVERY_AND_GROUP_DRAG_PERFORMANCE_PLAN_2026-08-25.md`
 - 实时断点：`spec/INC_GEN_013_GROUP_RECOVERY_AND_GROUP_DRAG_PERFORMANCE_CHECKPOINT.md`
@@ -26,7 +26,10 @@
 - rich fixture精确为3组/39节点/73边、zoom15.6%；p95`9.9ms`、max`10.3ms`、long task和dropped frame均0、媒体请求0、最终画布PUT1。
 - 独立终审原始2个P1已关闭：accepted但未绑定的精确任务可进入恢复，外来租约立即abort旧poller；当前无已知P0/P1。
 - 本Goal唯一safe full在功能候选`31f0fcbc…ee4b`原始`1060/1061`；唯一未改动m0筛选计数瞬态失败在相同源码快照定向`23/23 PASS`，未重复full；source/snapshot `3baf4f5d…97e41`、4173 unchanged。
-- 新验收`GEN-011～012 / CANVAS-020～022`为`TARGETED_AUTO_PASS / PRODUCTION_PENDING`；GitHub和生产尚未执行，真实Provider/Generation/OSS写入/费用均0，最终不得越过`USER_RECHECK`。
+- PR #98、PR/main Quality CI、merge`2203889`、tag/GitHub Release完成；tag/main tree同为`c6035375…e80a`。
+- 生产release`/opt/unboundry/releases/v0.6.42-group-recovery-drag-performance-20260825`共5971文件，inventory`a48a4ce…9666e`；冻结source/restore各366文件，双清单`19c40c3…d3e28`，standalone rehearsal schema41/integrity ok/FK0。
+- 公网/回环v0.6.42、service active+enabled/NRestarts0、数据和全部构建JS/CSS一致；三视口复杂组拖动、停止、撤销、刷新保持通过，最终位置精确还原，应用console error/warn0。
+- 新验收`GEN-011～012 / CANVAS-020～022`为`PRODUCTION_AUTO_PASS / USER_RECHECK`；tasks/attempts/media/publications无增量，真实Provider/Generation/OSS写入/费用均0。回执`spec/V0_6_42_PRODUCTION_RECEIPT_2026-08-25.json`。
 
 ## INC-SEEDANCE-002 AI角色单图合规验证（BRANCH_C / PRODUCTION_V0_6_41_TECHNICAL_PASS / USER_RECHECK）
 
