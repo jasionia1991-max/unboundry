@@ -6,6 +6,12 @@
 
 新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-25 的权威现状、产品合同和用户验收边界。下面各节是历史增量，出现「当前」时只代表该时点。
 
+## 当前发布候选：INC-UI-011 节点排序菜单层级修复（v0.6.43 / 本地USER_PASS）
+
+真实仓库`/Users/mymy/Documents/unboundry/app`；隔离工作树`/private/tmp/unboundry-inc-ui-011-group-layout-menu-docs-20260825`；分支`codex/inc-ui-011-group-layout-menu-plan-2026-08-25`。只把「宫格 / 水平」菜单Portal到`document.body`，使用fixed屏幕坐标并补齐翻转/收边、手势隔离、ARIA和关闭合同；没有提高组合框层级、修改排序算法、后端、schema或Provider合同。
+
+旧实现预期红m2 `4/5`，最终m2 `5/5`、TypeScript 408/408、生产构建和三视口本地浏览器通过，打开/关闭画布PUT0，Provider/Generation/OSS/费用0。用户已在可见本地密集fixture明确回复「通过 继续」，并随后独立确认v0.6.43、授权push、PR、合并、tag、GitHub Release、SSH与生产发布。候选保持schema41；必须先完成候选与CI门，再做冻结备份/恢复演练、fresh build和原子切换。生产技术通过后仍需用户线上实页复验，不能自动继承本地USER_PASS。
+
 ## 当前线上事件：INC-GEN-013 整组刷新恢复与组合框拖动性能（v0.6.42 / USER_RECHECK）
 
 真实仓库`/Users/mymy/Documents/unboundry/app`；实施隔离工作树`/private/tmp/unboundry-canvas-recovery-group-drag-plan-20260825`。v0.6.42一次性实施、GitHub与生产授权已消费；后续新代码、Provider或发布动作需要新授权。

@@ -1,11 +1,11 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产运行`v0.6.42 / schema41`且技术健康；INC-GEN-013已完成工程、GitHub、冻结备份、原子发布与三视口零付费验收，等待用户实页复验。
+> **当前状态**：生产运行`v0.6.42 / schema41`且技术健康；INC-UI-011本地用户验收通过，已冻结为`v0.6.43 / schema41`发布候选并获得本次单次GitHub与生产授权。
 
 更新时间：2026-08-25
-状态：`INC-GEN-013 PRODUCTION_V0_6_42_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK。`
+状态：`INC-UI-011 V0_6_43_RELEASE_CANDIDATE / LOCAL_AUTO_PASS / USER_PASS。`
 
-### 2026-08-25 节点排序菜单层级修复（INC-UI-011，LOCAL_AUTO_PASS / USER_PASS）
+### 2026-08-25 节点排序菜单层级修复（INC-UI-011，V0_6_43_RELEASE_CANDIDATE / USER_PASS）
 
 - [x] 根据用户截图核实遮挡表现，并定位为组合框父级层叠上下文低于组内节点
 - [x] 排除只提高菜单`z-index`和提高整个组合框层级两种不可靠方案
@@ -21,8 +21,14 @@
 - [x] 打开、Escape/外部/滚轮关闭图快照不变，画布`PUT=0`；Provider/Generation/OSS/购买/费用均0
 - [x] 用户在可见本地密集组合框测试页亲自复验，并于2026-08-25明确回复「通过 继续」；本地候选收口为`USER_PASS`
 - [x] `USER_PASS`文档同步后定向safe m38 `15/15 PASS`，failed/skipped/retries/blocked/reportErrors均0，4173不变
+- [x] 用户另行确认版本号`v0.6.43`，并一次性授权push、PR、合并、tag、GitHub Release、SSH和生产发布
+- [x] package/lock和最终runtime角色同步为`0.6.43`，schema保持41
+- [x] v0.6.43运行时版本同步后定向safe m81 `41/41 PASS`，TypeScript 408/408、Vite构建、源码快照和4173隔离门通过
+- [ ] 唯一safe full通过，冻结精确候选commit/tree
+- [ ] PR与main Quality CI、不可移动tag和GitHub Release通过
+- [ ] 冻结备份/恢复演练、fresh build、原子生产发布与发布后技术门通过
 
-权威方案：`spec/INC_UI_011_GROUP_LAYOUT_MENU_LAYERING_PLAN_2026-08-25.md`。本地人工验收已完成；版本号和发布授权保持独立闸门，尚未push、PR或上线。下一步只有在用户另行确认版本号并明确授权发布后才能进入GitHub与生产流程。
+权威方案：`spec/INC_UI_011_GROUP_LAYOUT_MENU_LAYERING_PLAN_2026-08-25.md`。本地人工验收已完成；v0.6.43版本门和本次单次发布授权已经确认。当前按候选验证→GitHub→备份/恢复演练→fresh原子发布顺序推进，生产技术通过后仍保持`USER_RECHECK`，直到用户在线上实页另行确认。
 
 ### 2026-08-25 整组刷新恢复与组合框拖动性能治理（INC-GEN-013，PRODUCTION_V0_6_42 / USER_RECHECK）
 

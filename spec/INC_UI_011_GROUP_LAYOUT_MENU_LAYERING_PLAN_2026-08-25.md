@@ -1,10 +1,11 @@
 # INC-UI-011：节点排序菜单层级最小修复方案
 
-状态：`LOCAL_AUTO_PASS / USER_PASS`
+状态：`V0_6_43_RELEASE_CANDIDATE / LOCAL_AUTO_PASS / USER_PASS`
 日期：`2026-08-25`
 基线：`origin/main@b84c509`，现网 `v0.6.42 / schema41`
-版本门：`VERSION_UNCONFIRMED`
-发布门：`RELEASE_NOT_AUTHORIZED`
+目标版本：`v0.6.43 / schema41`
+版本门：`VERSION_CONFIRMED`
+发布门：`RELEASE_AUTHORIZED_ONCE`
 
 ## 结论
 
@@ -49,7 +50,7 @@
 - 不修改`CanvasSurface`的组合框创建、拖动、持久化或整组执行逻辑。
 - 不抽象全局弹层系统，不顺手迁移颜色菜单或其他工具条菜单。
 - 不修改后端、数据库、schema、OpenAPI、Provider、Generation、OSS或账号权限。
-- 本方案不确认新版本号；本次Goal只授权本地commit，不授权push、PR、tag、GitHub Release、SSH或生产发布。
+- 用户随后已独立确认版本号`v0.6.43`，并一次性授权push、PR、合并、tag、GitHub Release、SSH和生产发布；授权不扩大到真实Provider、Generation、OSS写入、购买/订阅、费用或schema变更。
 
 ## 安全合同
 
@@ -87,13 +88,13 @@
 - `R1 MINIMAL_IMPLEMENTATION`：只落Portal、屏幕定位、避让、关闭与无画布手势合同。
 - `R2 TARGETED_AUTO_PASS`：完成m2、类型/构建和零副作用验证。
 - `R3 LOCAL_USER_RECHECK`：本地三视口证据通过后交给用户复验；用户已于2026-08-25在可见本地测试页明确回复「通过 继续」，本阶段完成为`USER_PASS`。
-- `R4 RELEASE_GATE`：只有用户另行确认版本号并明确允许发布后，才能进入GitHub和生产流程。
+- `R4 RELEASE_GATE`：用户已另行确认v0.6.43并明确允许发布；按候选验证、PR/main CI、tag/Release、冻结备份/恢复演练、fresh build、原子切换和发布后技术门顺序推进。
 
 ## 当前授权边界与唯一下一步
 
-本次Goal已明确授权本地实施、定向验证和本地提交；版本号与发布仍未授权。用户已完成本地人工复验，当前完成态为`LOCAL_AUTO_PASS / USER_PASS`；该状态不包含push、PR、发布或生产验收。
+原Goal只授权本地实施、定向验证和本地提交；用户最新独立指令已确认`v0.6.43`，并一次性授权push、PR、合并、tag、GitHub Release、SSH和生产发布。用户已完成本地人工复验，当前为`V0_6_43_RELEASE_CANDIDATE / LOCAL_AUTO_PASS / USER_PASS`；生产发布后的用户验收仍需另行实页确认。
 
-唯一下一步：只有用户另行确认版本号并明确授权发布，才能进入GitHub和生产流程。
+唯一下一步：冻结并验证精确v0.6.43候选；通过后按授权继续GitHub和生产发布链，不调用Provider、Generation或OSS。
 
 ## 本地实施与验证证据（2026-08-25）
 
@@ -113,7 +114,7 @@
 - 同一次安全入口的源码门完成TypeScript `408/408`跟踪文件类型检查，Vite生产构建退出0；没有重复运行相同树的独立type/build或safe full。
 - 本地浏览器视口`1280×720`、`1440×900`、`1920×1080`全部通过：默认向下、底部不足向上、左右8px收边、菜单按钮中心为最上层自身、Escape返焦、应用console/pageerror为0。fixture页面重载产生的浏览器通用资源404不计为应用异常。
 - 打开、Escape关闭、外部关闭、滚轮关闭的节点/边/组合框图快照和保存指纹不变，画布保存`PUT=0`；Portal空白区pointer手势与wheel均未改变viewport，菜单交互未触发节点/组合框拖动、画布平移或缩放。
-- 真实Provider请求`0`、Generation任务`0`、OSS写入`0`、购买/订阅`0`、费用`0`；package版本仍为`0.6.42`，schema仍为`41`。
+- 真实Provider请求`0`、Generation任务`0`、OSS写入`0`、购买/订阅`0`、费用`0`；原本地功能证据冻结于package `0.6.42`，随后仅将package/lock与最终runtime角色同步为候选`0.6.43`，schema仍为`41`，产品逻辑未再改动。
 
 ### 验收结论
 
@@ -124,4 +125,10 @@
 - `LAYOUT-MENU-005`：`AUTO_PASS`
 - `LAYOUT-MENU-006`：`AUTO_PASS`
 
-人工验收：用户于2026-08-25在可见本地密集组合框测试页完成复验并明确回复「通过 继续」，因此本地候选收口为`USER_PASS`。同步权威文档后，定向safe m38为`15/15 PASS`，failed/skipped/retries/blocked/reportErrors均0，4173监听者不变。该结论不继承或产生任何历史GitHub、版本、发布、SSH或生产授权。
+人工验收：用户于2026-08-25在可见本地密集组合框测试页完成复验并明确回复「通过 继续」，因此本地候选收口为`USER_PASS`。同步权威文档后，定向safe m38为`15/15 PASS`，failed/skipped/retries/blocked/reportErrors均0，4173监听者不变。用户随后独立确认v0.6.43并给出本次GitHub、SSH和生产发布授权；该授权只覆盖本版本，发布完成即消费。
+
+### v0.6.43候选版本门
+
+- 仅同步package/lock到`0.6.43`并将该版本加入最终runtime角色白名单及m81断言；schema仍为41，菜单产品逻辑没有再修改。
+- 定向命令：`PATH=/Users/mymy/.local/bin:$PATH node scripts/run-safe-tests.mjs run --spec tests/m81-deployment-hardening.spec.ts`；结果`41/41 PASS`，failed/skipped/retries/blocked/reportErrors均0，TypeScript 408/408、Vite生产构建通过。
+- Node`22.23.1`、npm`10.9.8`；source/snapshot均为`51840be8a56240185e59d80391f242751cbbbe5169bfcfc6643396de9f91fa0e`，4173监听者保持PID 21403且哈希不变。

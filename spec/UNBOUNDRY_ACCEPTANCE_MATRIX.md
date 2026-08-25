@@ -284,6 +284,12 @@ F14本地门日志SHA-256：targeted `b9d260babe051c1f89ef86256ade2d57fda19b5700
 | CANVAS-020 | P0 | 组合框统一拖动与持久化门 | 组合框拖动必须进入CanvasSurface统一交互路径；拖动期间不计算drag-originated fingerprint、不enqueue保存，单标签纯拖动PUT为0，停止后最多一次合并保存 | m2确认旧beginMove移除；m79 pointerdown PUT0/最终PUT1；生产三视口每次拖动停止各1次graph save，无持续保存风暴 | PRODUCTION_AUTO_PASS / USER_RECHECK |
 | CANVAS-021 | P1 | 富组合框性能门 | 固定production build、3组/39节点/73边、每组12子节点/24边、约2900×1660、zoom约15.6%的本地fake fixture中，long task >=100ms为0、frame p95<=25ms、max<100ms、>24ms dropped frame<=5 | m79 exact fixture：p95 9.9ms、max10.3ms、long task0、dropped0、媒体请求0；生产36节点/3组/60边/max12子节点三视口交互通过 | PRODUCTION_AUTO_PASS / USER_RECHECK |
 | CANVAS-022 | P1 | 组合框拖动语义回归 | 组合框和子节点视觉同步，子节点相对坐标不漂移；刷新保持最终位置；pointercancel/blur/Escape/unmount/canvas switch不让拖动态卡死；group run/stop、撤销、多选和工具栏不回归 | m2/m79覆盖完整语义；生产1280/1440/1920拖动、停止、撤销、刷新通过，最终坐标逐值恢复，应用console0 | PRODUCTION_AUTO_PASS / USER_RECHECK |
+| LAYOUT-MENU-001 | P0 | 节点排序菜单层级 | 密集组合框、约15.6% zoom时「宫格 / 水平」完整位于所有节点之上，按钮中心`elementFromPoint()`命中自身 | 旧实现m2 `4/5`预期红；Portal修复后m2 `5/5`，三视口最上层命中；用户本地实页通过 | V0_6_43_RELEASE_CANDIDATE / USER_PASS |
+| LAYOUT-MENU-002 | P0 | 宫格/水平行为不变 | 菜单点击继续复用既有`layout()`，宫格与水平重排结果不变 | m2既有宫格/水平断言保持通过 | V0_6_43_RELEASE_CANDIDATE / USER_PASS |
+| LAYOUT-MENU-003 | P0 | 打开关闭零持久化副作用 | 只打开、Escape或外部关闭不改变节点/边/组合框快照，不产生画布保存PUT | m2快照/指纹不变、PUT0；三视口本地复验通过 | V0_6_43_RELEASE_CANDIDATE / USER_PASS |
+| LAYOUT-MENU-004 | P1 | 视口避让 | 1280×720、1440×900、1920×1080均不越界；底部不足向上翻转，左右保留8px安全边距 | 三视口自动与可见本地浏览器证据通过 | V0_6_43_RELEASE_CANDIDATE / USER_PASS |
+| LAYOUT-MENU-005 | P0 | Portal手势隔离 | 根节点带`nodrag nopan nowheel`，菜单交互不触发节点/组合框拖动、画布平移或缩放 | m2 pointer/wheel/viewport断言通过 | V0_6_43_RELEASE_CANDIDATE / USER_PASS |
+| LAYOUT-MENU-006 | P1 | 可访问关闭与清理 | Escape关闭并返焦；失选、画布切换、卸载无残留菜单/监听器/控制台错误 | m2与三视口浏览器证据通过，应用console/pageerror0 | V0_6_43_RELEASE_CANDIDATE / USER_PASS |
 | AUTH-004 | P0 | 登录页 | 登录（含首次创建管理员）成功后直接进入工作空间，不再停在登录前的画布 URL | m81 登录落地用例、登录后 `window.location` 强制 `/canvas/projects`；2026-08-09 用户实页确认通过 | PASS |
 | AUTH-005 | P0 | 账号管理 | 管理员可创建第二个及更多管理员账号（角色可选），创建写审计；普通管理员之间可互相停用/删除/改角色/重置密码 | m11 7/7（多管理员创建与互管）、m78 7/7、OpenAPI 同步；2026-08-09 用户实页确认通过 | PASS |
 | AUTH-006 | P0 | 账号管理 | 第一个创建的管理员自动成为受保护最高权限账号（mymy/麦哥）；其他管理员永远不能停用/删除/降级/重置密码/改权限它；root 自己也不能在网页上改自己角色/删除自己；账号管理页显示“最高权限”徽标并禁用操作 | v37 迁移（最早管理员置 protected）、m11 受保护矩阵、真实库副本演练确认麦哥被标记；2026-08-09 用户实页确认通过 | PASS |
