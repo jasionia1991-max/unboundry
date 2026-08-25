@@ -1,9 +1,9 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产运行`v0.6.43 / schema41`且技术健康；INC-UI-011等待生产实页复验。INC-GEN-014独立终审`P0=0/P1=0/GO`，正在冻结v0.6.44 safe full候选。
+> **当前状态**：生产运行`v0.6.43 / schema41`且技术健康；INC-UI-011等待生产实页复验。INC-GEN-014独立终审与最终safe full均通过，v0.6.44候选进入GitHub发布门。
 
-更新时间：2026-08-25
-状态：`INC-GEN-014 R0_TO_R5_COMPLETE / R6_P0_P1_REVIEW_PASS / SAFE_FULL_PENDING；INC-UI-011 PRODUCTION_V0_6_43_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / LOCAL_USER_PASS / USER_RECHECK。`
+更新时间：2026-08-26
+状态：`INC-GEN-014 R0_TO_R6_LOCAL_COMPLETE / P0_P1_REVIEW_PASS / SAFE_FULL_PASS / GITHUB_PENDING；INC-UI-011 PRODUCTION_V0_6_43_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / LOCAL_USER_PASS / USER_RECHECK。`
 
 ### 2026-08-25 工作流自动恢复与密钥校验解耦（INC-GEN-014，R0～R5_COMPLETE / R6_TARGETED_PASS）
 
@@ -36,8 +36,11 @@
 - [x] 第三轮复核发现`1 P1`活性缺口：pending recover后direct Canvas persist成功未形成逐节点receipt，checkpoint会永久保留
 - [x] 活性P1已关闭：普通DAG和accepted-only路径均把`projectionState=applied`转换为逐节点receipt并与queue receipt统一结算；m22 `37/37 PASS`、generation POST 0
 - [x] 同一独立只读终审线程最终结论`P0=0 / P1=0 / GO`；全部审查轮次零写、零测试、零网络
-- [ ] R6尚待唯一safe full、GitHub与生产技术验收
-- [ ] 真实Provider、Generation、OSS和费用均未发生
+- [x] 首轮正式full在冻结候选发现唯一m20 OpenAPI枚举快照遗漏：产品`1060/1061`通过；同步新投影冲突码后定向m20 `1/1 PASS`
+- [x] 修正后clean-record safe full：`121/121 specs、1061/1061 tests PASS`，failed/skipped/retries/blocked/reportErrors均0；commit`626d209`/tree`f55860b`、source/snapshot`c5f8dc61…bd07`，4173不变
+- [x] full证据同步后治理定向m38 `15/15 PASS`，异常0，source/snapshot`7c888dbd…6eae`、4173不变；未重复业务full
+- [ ] R6本地门完成；尚待GitHub、v0.6.44不可移动tag/Release与生产技术验收
+- [x] 真实Provider、Generation、OSS和费用均未发生；probe `0/12`、真实生成`0/2`、费用`0/20 USD`
 
 权威方案：`spec/INC_GEN_014_WORKFLOW_SELF_HEALING_AND_CREDENTIAL_VERIFY_DECOUPLING_PLAN_2026-08-25.md`。
 

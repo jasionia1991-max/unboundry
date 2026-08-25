@@ -1,19 +1,19 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网为v0.6.43/schema41且技术健康；INC-UI-011等待生产实页复验。INC-GEN-014独立终审`P0=0/P1=0/GO`，正在冻结v0.6.44 safe full候选。
+> **状态分层**：现网为v0.6.43/schema41且技术健康；INC-UI-011等待生产实页复验。INC-GEN-014独立终审与最终safe full均通过，v0.6.44候选进入GitHub发布门。
 
-更新日期：2026-08-25
+更新日期：2026-08-26
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
 当前代码包版本：**v0.6.44**
 本地候选代码版本：**v0.6.44**
 本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_43_USER_RECHECK`
-当前计划标记：`INC_GEN_014_R0_TO_R5_COMPLETE / R6_TARGETED_PASS / RELEASE_CANDIDATE_PREPARING`
+当前计划标记：`INC_GEN_014_R0_TO_R6_LOCAL_COMPLETE / P0_P1_REVIEW_PASS / SAFE_FULL_PASS / GITHUB_PENDING`
 当前热修门：`INC_UI_011_PRODUCTION_V0_6_43_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / LOCAL_USER_PASS / USER_RECHECK`
 
 ## 一句话
 
-**生产是 v0.6.43 / schema41；INC-GEN-014的v0.6.44/schema41本地候选已完成R0～R5、定向验证与独立终审，正在执行唯一safe full。**
+**生产是 v0.6.43 / schema41；INC-GEN-014的v0.6.44/schema41本地候选已完成实现、风险驱动验证、独立终审与最终safe full，下一门为GitHub发布。**
 
 ## INC-GEN-014 工作流自动恢复与密钥校验解耦（R0～R5_COMPLETE / R6_TARGETED_PASS）
 
@@ -37,6 +37,7 @@
 - 同一独立只读终审线程最终复核为`P0=0 / P1=0 / GO`，未发现新增重复付费、结果覆盖、credential隔离或API语义问题；审查全程零写、零测试、零网络。
 - 文档治理m38首轮产品`14/15`只因生产句式未匹配既有正则，修正文案后最小复验`15/15 PASS`；source/snapshot`6428b45b…6414`，未重复业务spec。
 - account/canvas/application三重scope和投影队列异常收口后，最小复验m22 `37/37 PASS`；功能候选source/snapshot`2c889063…3042`，4173不变。
+- 首轮正式full只发现m20 OpenAPI枚举快照未包含新投影冲突码，产品其余`1060/1061`全部通过；补齐该契约后定向m20 `1/1 PASS`。修正后clean-record safe full在commit`626d209`/tree`f55860b`完成`121/121 specs、1061/1061 tests PASS`，failed/skipped/retries/blocked/reportErrors均0，source/snapshot`c5f8dc61…bd07`、4173 unchanged。真实Provider/Generation/OSS/probe/费用仍为0。
 
 ## INC-UI-011 节点排序菜单层级修复（PRODUCTION_V0_6_43_TECHNICAL_PASS / USER_RECHECK）
 
