@@ -6167,9 +6167,6 @@ sup {
 
 .group-color-menu,
 .group-layout-menu {
-  position: absolute;
-  top: 56px;
-  left: 0;
   display: flex;
   padding: 8px;
   gap: 6px;
@@ -6177,6 +6174,12 @@ sup {
   border-radius: 12px;
   background: rgba(31, 31, 31, 0.96);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+}
+
+.group-color-menu {
+  position: absolute;
+  top: 56px;
+  left: 0;
 }
 
 .group-color-menu button {
@@ -6189,7 +6192,8 @@ sup {
 }
 
 .group-layout-menu {
-  left: 40px;
+  position: fixed;
+  z-index: 1000;
   flex-direction: column;
 }
 

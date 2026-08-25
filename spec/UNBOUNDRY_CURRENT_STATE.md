@@ -1,11 +1,11 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网为v0.6.42/schema41且技术健康；INC-GEN-013工程、GitHub、冻结备份、原子发布和三视口零付费验收已完成，保持USER_RECHECK。
+> **状态分层**：现网仍为v0.6.42/schema41且技术健康；INC-UI-011本地用户验收已通过，现已冻结为v0.6.43/schema41发布候选并获得本次单次GitHub与生产授权。
 
 更新日期：2026-08-25
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.42**
-本地候选代码版本：**v0.6.42**
+当前代码包版本：**v0.6.43**
+本地候选代码版本：**v0.6.43**
 本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_42_USER_RECHECK`
 当前热修门：`INC_GEN_013_PRODUCTION_V0_6_42_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK`
@@ -13,6 +13,17 @@
 ## 一句话
 
 **生产是 v0.6.42 / schema41；整组刷新恢复与组合框拖动性能已完成自动、GitHub、发布和零付费生产技术验收，等待用户在涉事账号实页复验。**
+
+## INC-UI-011 节点排序菜单层级修复（V0_6_43_RELEASE_CANDIDATE / USER_PASS）
+
+- 用户截图显示组合框「节点排序」菜单向下展开后被组内节点遮挡；代码核实为组合框`zIndex: 0`、子节点`zIndex: 1`形成的父级层叠上下文问题，单独提高菜单`z-index`不能脱离父级。
+- 已完成最小修复：只将「宫格 / 水平」菜单Portal到`document.body`并使用触发按钮屏幕矩形定位，补齐上下翻转、左右8px收边、`nodrag nopan nowheel`、ARIA、Escape返焦、外部/失选/画布切换/滚轮关闭；没有提高组合框或降低子节点层级，也没有修改排序算法。
+- 密集fixture旧实现预期红为m2 `4/5`，唯一失败是按钮中心非最上层；最终safe m2 `5/5 PASS`，source/snapshot`d729b635…d6d4f`，TypeScript 408/408与生产构建通过，4173不变。
+- `1280×720`、`1440×900`、`1920×1080`三视口的遮挡、翻转、左右收边、Escape、应用console/pageerror和零手势通过；打开/关闭图快照不变、画布`PUT=0`。
+- 用户于2026-08-25在可见本地密集组合框测试页亲自复验，并明确回复「通过 继续」；因此本地候选已由`USER_RECHECK`收口为`USER_PASS`。这不代表已发布或生产验收。
+- `USER_PASS`权威文档同步后的定向safe m38为`15/15 PASS`，failed/skipped/retries/blocked/reportErrors均0，4173监听者不变。
+- Provider、Generation、OSS写入、购买/订阅和费用均0；package已冻结为0.6.43、schema保持41。用户已另行确认v0.6.43，并一次性授权push、PR、合并、tag、GitHub Release、SSH和生产发布；当前尚未push、PR或上线，必须依次通过候选、CI、冻结备份/恢复演练、fresh build与原子切换门。权威方案：`spec/INC_UI_011_GROUP_LAYOUT_MENU_LAYERING_PLAN_2026-08-25.md`。
+- v0.6.43运行时版本同步后的定向safe m81为`41/41 PASS`；唯一safe full在精确commit`92e8325`/tree`89cf2be`完成`121/121 specs、1061/1061 tests PASS`，failed/skipped/retries/blocked/reportErrors均0，TypeScript 408/408、Vite构建、source/snapshot一致、immutable release builder和4173不变门均通过。后续证据文档只做m38定向复验，不重复full。
 
 ## INC-GEN-013 整组刷新恢复与组合框拖动性能治理（PRODUCTION_V0_6_42_TECHNICAL_PASS / USER_RECHECK）
 

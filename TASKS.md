@@ -1,9 +1,35 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产运行`v0.6.42 / schema41`且技术健康；INC-GEN-013已完成工程、GitHub、冻结备份、原子发布与三视口零付费验收，等待用户实页复验。
+> **当前状态**：生产运行`v0.6.42 / schema41`且技术健康；INC-UI-011本地用户验收通过，已冻结为`v0.6.43 / schema41`发布候选并获得本次单次GitHub与生产授权。
 
 更新时间：2026-08-25
-状态：`INC-GEN-013 PRODUCTION_V0_6_42_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK。`
+状态：`INC-UI-011 V0_6_43_RELEASE_CANDIDATE / LOCAL_AUTO_PASS / USER_PASS。`
+
+### 2026-08-25 节点排序菜单层级修复（INC-UI-011，V0_6_43_RELEASE_CANDIDATE / USER_PASS）
+
+- [x] 根据用户截图核实遮挡表现，并定位为组合框父级层叠上下文低于组内节点
+- [x] 排除只提高菜单`z-index`和提高整个组合框层级两种不可靠方案
+- [x] 冻结最小修复：仅将「宫格 / 水平」菜单Portal到`document.body`，按触发按钮屏幕矩形定位
+- [x] 补齐安全边界：视口翻转/收边、`nodrag nopan nowheel`、Escape/外部/画布移动关闭、焦点返回、打开关闭零画布`PUT`
+- [x] 冻结密集fixture的`elementFromPoint()`最上层命中验收及风险驱动定向验证顺序
+- [x] 落地权威方案文档并登记为仅文档、未实施；版本未确认、发布未授权
+- [x] 旧实现预期红：safe m2 `4/5`，唯一失败为密集fixture菜单按钮中心不是最上层
+- [x] 完成Portal、fixed屏幕定位、上下翻转、左右8px收边、ARIA、Escape返焦和外部/失选/画布切换/滚轮关闭
+- [x] Portal带`nodrag nopan nowheel`；菜单空白区pointer与wheel未触发节点/组合框拖动、画布平移或缩放
+- [x] 最终safe m2 `5/5 PASS`；TypeScript 408/408与生产构建通过，source/snapshot`d729b635…d6d4f`，4173不变
+- [x] `1280×720`、`1440×900`、`1920×1080`三视口遮挡/翻转/收边/Escape/应用console-pageerror通过
+- [x] 打开、Escape/外部/滚轮关闭图快照不变，画布`PUT=0`；Provider/Generation/OSS/购买/费用均0
+- [x] 用户在可见本地密集组合框测试页亲自复验，并于2026-08-25明确回复「通过 继续」；本地候选收口为`USER_PASS`
+- [x] `USER_PASS`文档同步后定向safe m38 `15/15 PASS`，failed/skipped/retries/blocked/reportErrors均0，4173不变
+- [x] 用户另行确认版本号`v0.6.43`，并一次性授权push、PR、合并、tag、GitHub Release、SSH和生产发布
+- [x] package/lock和最终runtime角色同步为`0.6.43`，schema保持41
+- [x] v0.6.43运行时版本同步后定向safe m81 `41/41 PASS`，TypeScript 408/408、Vite构建、源码快照和4173隔离门通过
+- [x] 唯一safe full `121/121 specs、1061/1061 tests PASS`，失败/跳过/重试/阻塞/报告错误均0；精确候选commit`92e8325`/tree`89cf2be`、source/snapshot`e8f7e47…6507`，4173不变
+- [x] full证据同步后的定向safe m38 `15/15 PASS`，失败/跳过/重试/阻塞/报告错误均0，4173不变
+- [ ] PR与main Quality CI、不可移动tag和GitHub Release通过
+- [ ] 冻结备份/恢复演练、fresh build、原子生产发布与发布后技术门通过
+
+权威方案：`spec/INC_UI_011_GROUP_LAYOUT_MENU_LAYERING_PLAN_2026-08-25.md`。本地人工验收已完成；v0.6.43版本门和本次单次发布授权已经确认。当前按候选验证→GitHub→备份/恢复演练→fresh原子发布顺序推进，生产技术通过后仍保持`USER_RECHECK`，直到用户在线上实页另行确认。
 
 ### 2026-08-25 整组刷新恢复与组合框拖动性能治理（INC-GEN-013，PRODUCTION_V0_6_42 / USER_RECHECK）
 

@@ -3,7 +3,7 @@ import {
   useReactFlow,
   type NodeProps,
 } from "@xyflow/react";
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useCanvasCheckpoint } from "./CanvasHistory";
 import { useCanvasGraphMutation } from "./CanvasGraphMutationContext";
@@ -40,6 +40,38 @@ const colors = [
   "rgba(59, 130, 246, 0.16)",
   "rgba(168, 85, 247, 0.16)",
 ];
+
+const LAYOUT_MENU_GAP = 8;
+const LAYOUT_MENU_MARGIN = 8;
+const LAYOUT_MENU_FALLBACK_SIZE = { height: 96, width: 114 };
+
+function placeLayoutMenu(
+  anchor: DOMRect,
+  menuSize = LAYOUT_MENU_FALLBACK_SIZE,
+) {
+  const below = window.innerHeight - anchor.bottom - LAYOUT_MENU_MARGIN;
+  const above = anchor.top - LAYOUT_MENU_MARGIN;
+  const placement =
+    below < menuSize.height + LAYOUT_MENU_GAP && above > below
+      ? "up"
+      : "down";
+  const unclampedTop = placement === "up"
+    ? anchor.top - LAYOUT_MENU_GAP - menuSize.height
+    : anchor.bottom + LAYOUT_MENU_GAP;
+  const maxLeft = Math.max(
+    LAYOUT_MENU_MARGIN,
+    window.innerWidth - LAYOUT_MENU_MARGIN - menuSize.width,
+  );
+  const maxTop = Math.max(
+    LAYOUT_MENU_MARGIN,
+    window.innerHeight - LAYOUT_MENU_MARGIN - menuSize.height,
+  );
+  return {
+    left: Math.min(Math.max(anchor.left, LAYOUT_MENU_MARGIN), maxLeft),
+    placement,
+    top: Math.min(Math.max(unclampedTop, LAYOUT_MENU_MARGIN), maxTop),
+  } as const;
+}
 
 function nodeSize(node: ProbeNodeType) {
   return {
@@ -94,6 +126,19 @@ function GroupNodeImpl({
   );
   const [colorMenu, setColorMenu] = useState(false);
   const [layoutMenu, setLayoutMenu] = useState(false);
+  const [layoutMenuPosition, setLayoutMenuPosition] = useState<{
+    left: number;
+    placement: "down" | "up";
+    top: number;
+  }>(() => ({
+    left: LAYOUT_MENU_MARGIN,
+    placement: "down",
+    top: LAYOUT_MENU_MARGIN,
+  }));
+  const layoutMenuRef = useRef<HTMLDivElement>(null);
+  const layoutTriggerRef = useRef<HTMLButtonElement>(null);
+  const previousCanvasIdRef = useRef(canvasId);
+  const layoutMenuId = `group-layout-menu-${id}`;
   const [titleHovered, setTitleHovered] = useState(false);
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [templateTitle, setTemplateTitle] = useState("");
@@ -145,6 +190,13 @@ function GroupNodeImpl({
   }, [singleNodeChrome]);
 
   useEffect(() => {
+    if (previousCanvasIdRef.current !== canvasId) {
+      previousCanvasIdRef.current = canvasId;
+      setLayoutMenu(false);
+    }
+  }, [canvasId]);
+
+  useEffect(() => {
     if (!executing) return;
     setColorMenu(false);
     setLayoutMenu(false);
@@ -161,6 +213,48 @@ function GroupNodeImpl({
     document.addEventListener("keydown", closeOnEscape);
     return () => document.removeEventListener("keydown", closeOnEscape);
   }, [templateDialogOpen, templateSaving]);
+
+  useLayoutEffect(() => {
+    if (!layoutMenu) return;
+    const anchor = layoutTriggerRef.current?.getBoundingClientRect();
+    const menu = layoutMenuRef.current?.getBoundingClientRect();
+    if (!anchor || !menu) return;
+    setLayoutMenuPosition(placeLayoutMenu(anchor, menu));
+  }, [layoutMenu]);
+
+  useEffect(() => {
+    if (!layoutMenu) return;
+    const closeOnPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (
+        layoutTriggerRef.current?.contains(target) ||
+        layoutMenuRef.current?.contains(target)
+      ) {
+        return;
+      }
+      setLayoutMenu(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      setLayoutMenu(false);
+      layoutTriggerRef.current?.focus();
+    };
+    const closeOnWheel = () => setLayoutMenu(false);
+    document.addEventListener("keydown", closeOnEscape, true);
+    document.addEventListener("pointerdown", closeOnPointerDown, true);
+    window.addEventListener("wheel", closeOnWheel, {
+      capture: true,
+      passive: true,
+    });
+    return () => {
+      document.removeEventListener("keydown", closeOnEscape, true);
+      document.removeEventListener("pointerdown", closeOnPointerDown, true);
+      window.removeEventListener("wheel", closeOnWheel, true);
+    };
+  }, [layoutMenu]);
 
   const updateData = (patch: Partial<ProbeNodeType["data"]>) => {
     if (executing) return;
@@ -451,11 +545,21 @@ function GroupNodeImpl({
           </button>
           <button
             aria-label="组合框布局"
+            aria-controls={layoutMenuId}
+            aria-expanded={layoutMenu}
+            aria-haspopup="menu"
             disabled={executing}
             onClick={() => {
-              setLayoutMenu((open) => !open);
+              if (layoutMenu) {
+                setLayoutMenu(false);
+              } else {
+                const anchor = layoutTriggerRef.current?.getBoundingClientRect();
+                if (anchor) setLayoutMenuPosition(placeLayoutMenu(anchor));
+                setLayoutMenu(true);
+              }
               setColorMenu(false);
             }}
+            ref={layoutTriggerRef}
             type="button"
           >
             <svg aria-hidden="true" viewBox="0 0 24 24">
@@ -556,24 +660,6 @@ function GroupNodeImpl({
               ))}
             </div>
           )}
-          {layoutMenu && (
-            <div className="group-layout-menu" role="menu">
-              <button
-                disabled={executing}
-                onClick={() => layout("grid")}
-                type="button"
-              >
-                宫格
-              </button>
-              <button
-                disabled={executing}
-                onClick={() => layout("horizontal")}
-                type="button"
-              >
-                水平
-              </button>
-            </div>
-          )}
         </div>
       )}
       <div
@@ -630,6 +716,37 @@ function GroupNodeImpl({
         onPointerLeave={() => setTitleHovered(false)}
         style={{ background: data.groupColor ?? "transparent" }}
       />
+      {layoutMenu && createPortal(
+        <div
+          className="group-layout-menu nodrag nopan nowheel"
+          data-placement={layoutMenuPosition.placement}
+          data-testid="group-layout-menu"
+          id={layoutMenuId}
+          onPointerDown={(event) => event.stopPropagation()}
+          onWheel={(event) => event.stopPropagation()}
+          ref={layoutMenuRef}
+          role="menu"
+          style={{
+            left: layoutMenuPosition.left,
+            top: layoutMenuPosition.top,
+          }}
+        >
+          <button
+            disabled={executing}
+            onClick={() => layout("grid")}
+            type="button"
+          >
+            宫格
+          </button>
+          <button
+            disabled={executing}
+            onClick={() => layout("horizontal")}
+            type="button"
+          >
+            水平
+          </button>
+        </div>
+      , document.body)}
       {templateDialogOpen && createPortal(
         <div
           className="group-template-dialog-backdrop"
