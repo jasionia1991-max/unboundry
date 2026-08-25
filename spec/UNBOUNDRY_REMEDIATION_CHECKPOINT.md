@@ -9,7 +9,7 @@
 
 - 本地密集组合框旧实现预期红m2 `4/5`，Portal修复后m2 `5/5`、TypeScript 408/408、生产构建和三视口通过；菜单最上层命中、上下翻转/左右收边、Escape返焦、零画布PUT和零手势副作用均有证据。
 - 用户已在可见本地测试页明确回复「通过 继续」，本地功能状态为`USER_PASS`；随后独立确认版本`v0.6.43`，并一次性授权push、PR、合并、tag、GitHub Release、SSH与生产发布。
-- 候选保持schema41；真实Provider、Generation、OSS写入、购买/订阅和费用固定为0。当前停在候选验证，尚未push、PR或上线；发布完成后用户生产实页验收仍为`USER_RECHECK`。
+- 候选保持schema41；定向m81 `41/41`及唯一safe full `121/121 specs、1061/1061 tests PASS`，失败/跳过/重试/阻塞/报告错误均0。真实Provider、Generation、OSS写入、购买/订阅和费用固定为0。当前尚未push、PR或上线；发布完成后用户生产实页验收仍为`USER_RECHECK`。
 
 ## 0.1 INC-GEN-013 整组刷新恢复与组合框拖动性能（2026-08-25 v0.6.42 / USER_RECHECK）
 

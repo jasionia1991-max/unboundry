@@ -24,7 +24,8 @@
 - [x] 用户另行确认版本号`v0.6.43`，并一次性授权push、PR、合并、tag、GitHub Release、SSH和生产发布
 - [x] package/lock和最终runtime角色同步为`0.6.43`，schema保持41
 - [x] v0.6.43运行时版本同步后定向safe m81 `41/41 PASS`，TypeScript 408/408、Vite构建、源码快照和4173隔离门通过
-- [ ] 唯一safe full通过，冻结精确候选commit/tree
+- [x] 唯一safe full `121/121 specs、1061/1061 tests PASS`，失败/跳过/重试/阻塞/报告错误均0；精确候选commit`92e8325`/tree`89cf2be`、source/snapshot`e8f7e47…6507`，4173不变
+- [x] full证据同步后的定向safe m38 `15/15 PASS`，失败/跳过/重试/阻塞/报告错误均0，4173不变
 - [ ] PR与main Quality CI、不可移动tag和GitHub Release通过
 - [ ] 冻结备份/恢复演练、fresh build、原子生产发布与发布后技术门通过
 

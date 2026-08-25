@@ -23,7 +23,7 @@
 - 用户于2026-08-25在可见本地密集组合框测试页亲自复验，并明确回复「通过 继续」；因此本地候选已由`USER_RECHECK`收口为`USER_PASS`。这不代表已发布或生产验收。
 - `USER_PASS`权威文档同步后的定向safe m38为`15/15 PASS`，failed/skipped/retries/blocked/reportErrors均0，4173监听者不变。
 - Provider、Generation、OSS写入、购买/订阅和费用均0；package已冻结为0.6.43、schema保持41。用户已另行确认v0.6.43，并一次性授权push、PR、合并、tag、GitHub Release、SSH和生产发布；当前尚未push、PR或上线，必须依次通过候选、CI、冻结备份/恢复演练、fresh build与原子切换门。权威方案：`spec/INC_UI_011_GROUP_LAYOUT_MENU_LAYERING_PLAN_2026-08-25.md`。
-- v0.6.43运行时版本同步后的定向safe m81为`41/41 PASS`，TypeScript 408/408、Vite构建、source/snapshot一致及4173不变门均通过；唯一safe full尚待候选提交后执行。
+- v0.6.43运行时版本同步后的定向safe m81为`41/41 PASS`；唯一safe full在精确commit`92e8325`/tree`89cf2be`完成`121/121 specs、1061/1061 tests PASS`，failed/skipped/retries/blocked/reportErrors均0，TypeScript 408/408、Vite构建、source/snapshot一致、immutable release builder和4173不变门均通过。后续证据文档只做m38定向复验，不重复full。
 
 ## INC-GEN-013 整组刷新恢复与组合框拖动性能治理（PRODUCTION_V0_6_42_TECHNICAL_PASS / USER_RECHECK）
 

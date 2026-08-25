@@ -132,3 +132,6 @@
 - 仅同步package/lock到`0.6.43`并将该版本加入最终runtime角色白名单及m81断言；schema仍为41，菜单产品逻辑没有再修改。
 - 定向命令：`PATH=/Users/mymy/.local/bin:$PATH node scripts/run-safe-tests.mjs run --spec tests/m81-deployment-hardening.spec.ts`；结果`41/41 PASS`，failed/skipped/retries/blocked/reportErrors均0，TypeScript 408/408、Vite生产构建通过。
 - Node`22.23.1`、npm`10.9.8`；source/snapshot均为`51840be8a56240185e59d80391f242751cbbbe5169bfcfc6643396de9f91fa0e`，4173监听者保持PID 21403且哈希不变。
+- 唯一safe full命令：`PATH=/Users/mymy/.local/bin:$PATH node scripts/run-safe-tests.mjs full`；在精确候选commit`92e8325bbc4b102c9e9d3b655ce141beaa9b8389`/tree`89cf2beeaf55a39956a7c484dbb052a5d3e8c465`上完成`121/121 specs、1061/1061 tests PASS`，failed/skipped/retries/blocked/reportErrors均0。
+- safe full source/snapshot均为`e8f7e47bb7ddaf7ec25ff46ab70c75c8516197141ac82e588ca8fdd65e996507`，immutable release builder `1/1 PASS`，4173监听哈希不变；真实外部网络、Provider、Generation、OSS写入和费用仍为0。后续仅同步证据文档，不重复full。
+- full证据同步后只运行定向safe m38并`15/15 PASS`，failed/skipped/retries/blocked/reportErrors均0；source/snapshot`0868c6a84f3a404475fa045a9f93a12d1f2d2f6221dc2aafd1906b59d8eaac01`，4173监听哈希不变。该文档证据同步不重复业务测试或full。
