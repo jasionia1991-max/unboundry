@@ -1,6 +1,6 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网为v0.6.43/schema41且技术健康；INC-UI-011等待生产实页复验。INC-GEN-014第二轮独立终审问题已关闭，正在最终复核v0.6.44候选。
+> **状态分层**：现网为v0.6.43/schema41且技术健康；INC-UI-011等待生产实页复验。INC-GEN-014第三轮独立终审问题已关闭，正在最终复核v0.6.44候选。
 
 更新日期：2026-08-25
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
@@ -33,6 +33,7 @@
 - 首轮独立只读终审发现`2 P0 + 2 P1`，现已全部关闭：投影写入新增服务端事务内目标语义CAS；terminal success不再回退失效旧plan；无Web Locks浏览器零投影写fail-closed；accepted-task人工继续统一经过persist/projection边界。
 - 修复后最小受影响safe为m22 `37/37`、m85 `26/26`、m20 `1/1 PASS`；只用动态loopback、临时数据与fake边界，4173和真实Provider/Generation/OSS/费用均不变。当前等待同一独立审查线程复核，不冒充最终P0/P1=0或safe full。
 - 第二轮独立复核确认首轮4项关闭，另发现`1 P1`：projection exhausted后人工继续可能因success proof跳过节点并误清checkpoint。现已用持久`projectionPendingNodeIds`和逐节点settled receipt关闭；人工/自动继续只GET accepted原task并重建projection，m22最小复验`37/37 PASS`。当前仍等待最终独立复核。
+- 第三轮复核另发现`1 P1`活性缺口：pending recover后direct Canvas persist成功未形成receipt。普通DAG与accepted-only现均把`projectionState=applied`转换成逐节点receipt并与queue receipt统一结算，m22 `37/37 PASS`、generation POST 0；仍等待最终独立复核。
 - 文档治理m38首轮产品`14/15`只因生产句式未匹配既有正则，修正文案后最小复验`15/15 PASS`；source/snapshot`6428b45b…6414`，未重复业务spec。
 - account/canvas/application三重scope和投影队列异常收口后，最小复验m22 `37/37 PASS`；功能候选source/snapshot`2c889063…3042`，4173不变。
 

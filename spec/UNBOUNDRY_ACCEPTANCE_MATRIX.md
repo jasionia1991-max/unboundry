@@ -8,6 +8,8 @@
 
 第二轮独立复核确认首轮`2 P0 + 2 P1`均关闭，新增`1 P1`为projection exhausted后人工继续可能跳过success节点并误清checkpoint。候选现以持久`projectionPendingNodeIds`记录未settled节点，人工/自动继续只GET原accepted task重建projection，只有`applied/already-applied` receipt才允许移除并最终清checkpoint；m22最小复验`37/37 PASS`。状态仍为`CANDIDATE_TARGETED_PASS / FINAL_REVIEW_PENDING`，不是USER_PASS。
 
+第三轮复核发现pending recover后direct Canvas persist成功未形成逐节点receipt的`1 P1`活性缺口；普通DAG与accepted-only现均将`projectionState=applied`转换为receipt并与queue receipt统一结算。m22 `37/37 PASS`、generation POST 0；继续保持`FINAL_REVIEW_PENDING`。
+
 2026-08-25 INC-GEN-013已发布`v0.6.42/schema41`：`GEN-011～012 / CANVAS-020～022 = PRODUCTION_AUTO_PASS / USER_RECHECK`。m22最终`37/37`、m2`5/5`、m79`3/3`及直接依赖m1/m3/m40均通过；rich fixture为3组/39节点/73边，p95 9.9ms、max 10.3ms、long task与dropped frame为0、媒体请求0、最终画布PUT1。唯一safe full原始`1060/1061`，唯一未改动m0瞬态失败在相同源码快照定向`23/23 PASS`且未重复full。PR #98、CI、tag/Release、冻结备份、fresh原子发布及三视口零付费复杂组拖动/撤销/刷新均通过；任务/attempt/media无增量，最终位置精确还原，应用console0。回执`spec/V0_6_42_PRODUCTION_RECEIPT_2026-08-25.json`；用户确认前不得写`USER_PASS`。
 
 基线日期：2026-07-27  

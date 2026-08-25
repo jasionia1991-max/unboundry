@@ -1368,6 +1368,9 @@ test("workflow execution has no component registration or render-retention depen
   expect(persistedRun).toBeGreaterThan(-1);
   expect(provider.indexOf("return executor.recover(", persistedRun))
     .toBeGreaterThan(persistedRun);
+  expect(provider).toContain("recordDirectProjectionReceipt(binding.nodeId, result)");
+  expect(provider).toContain("recordDirectProjectionReceipt(nodeId, nodeResult)");
+  expect(provider).toContain("...directProjectionReceipts");
   expect(canvas).not.toContain("retainWorkflowNodesForRender");
   expect(executors).not.toContain("document.");
   expect(executors).not.toContain("window.");

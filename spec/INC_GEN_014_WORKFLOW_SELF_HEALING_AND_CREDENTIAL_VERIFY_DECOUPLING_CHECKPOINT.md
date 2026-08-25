@@ -2,7 +2,7 @@
 
 更新时间：2026-08-25
 
-状态：`R0～R5_COMPLETE / R6_SECOND_REVIEW_FINDING_CLOSED / FINAL_REVIEW_PENDING`
+状态：`R0～R5_COMPLETE / R6_THIRD_REVIEW_FINDING_CLOSED / FINAL_REVIEW_PENDING`
 
 权威方案：`spec/INC_GEN_014_WORKFLOW_SELF_HEALING_AND_CREDENTIAL_VERIFY_DECOUPLING_PLAN_2026-08-25.md`
 
@@ -25,6 +25,8 @@
 - 修复后最小受影响安全验证：m22 `37/37 PASS`、m85 `26/26 PASS`、m20 `1/1 PASS`，均使用动态loopback/临时数据，4173不变，Provider/Generation/OSS/费用为0。一次误写不存在的m20 spec名在产品测试前退出，不计产品测试。
 - 第二轮独立复核确认首轮`2 P0 + 2 P1`均关闭，但新增发现`1 P1`：projection exhausted后队列清空，人工继续可能因success proof排除该节点并把空队列误判为settled，提前清除checkpoint。
 - 新P1已关闭：checkpoint持久保存`projectionPendingNodeIds`；pending success不会进入initial-success跳过集合，人工/自动继续都只GET accepted原task并重建projection；只有每个pending节点收到`applied/already-applied` receipt才从集合移除并允许清checkpoint。m22最小复验`37/37 PASS`，真实POST/Provider/费用为0。
+- 第三轮复核确认提前清理安全性已关闭，但发现`1 P1`活性缺口：pending节点recover后若普通Canvas persist直接成功，该`projectionState=applied`未转换为逐节点receipt，pending会永久保留。
+- 活性P1已关闭：普通DAG和accepted-only两条路径都把direct persist成功转换为`applied` receipt，与后台queue receipts一并结算；对应pending node可移除并安全清checkpoint。m22最小复验`37/37 PASS`，generation POST仍为0。
 
 ## 2. 冻结身份与环境
 
@@ -64,7 +66,7 @@
 - [x] R3：applicationId、白名单三方合并、单writer、有界重试/超时、abort、刷新零POST。
 - [x] R4：credential verify双版本CAS、结构化错误与mutation保护隔离。
 - [x] R5：最小UI收口；沿用现有始终可用的校验按钮与真实服务端文案，不堆叠技术状态。
-- [ ] R6：首轮与第二轮独立终审问题均已修复；尚待同一审查线程最终复核、候选再冻结、唯一safe full、GitHub与生产技术验收。
+- [ ] R6：三轮独立终审问题均已修复；尚待同一审查线程最终复核、候选再冻结、唯一safe full、GitHub与生产技术验收。
 
 ## 6. 当前候选验收映射
 

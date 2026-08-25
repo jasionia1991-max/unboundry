@@ -72,6 +72,7 @@ import { runExclusiveCanvasSubmit } from "./saveGate";
 import { listGenerationTasks } from "./generationTasks";
 import {
   enqueueGroupResultProjection,
+  type GroupResultProjectionResult,
   waitForGroupResultProjections,
   unresolvedProjectionNodeIds,
 } from "./groupResultProjection";
@@ -710,6 +711,23 @@ export function WorkflowExecutionProvider({
           notify("浏览器无法保存整组进度，为避免刷新后重复生成，本轮已阻止", "error");
           return;
         }
+        const directProjectionReceipts: GroupResultProjectionResult[] = [];
+        const recordDirectProjectionReceipt = (
+          nodeId: string,
+          result: NodeRunResult | undefined,
+        ) => {
+          if (
+            result?.status !== "success" ||
+            result.projectionState !== "applied" ||
+            !result.projection
+          ) return;
+          directProjectionReceipts.push({
+            applicationId: result.projection.applicationId,
+            attempts: 1,
+            nodeId,
+            status: "applied",
+          });
+        };
 
         const summaryBase = (): Omit<GroupRunSummary, "status"> => ({
           accountId,
@@ -824,6 +842,7 @@ export function WorkflowExecutionProvider({
                     ),
                   ),
                 });
+                recordDirectProjectionReceipt(binding.nodeId, result);
                 if (result.status === "success") {
                   nodeStates.set(binding.nodeId, "success");
                   if (result.successProof) {
@@ -867,7 +886,10 @@ export function WorkflowExecutionProvider({
             running.checkpoint,
             getNodes(),
           );
-          const projectionResults = await waitForGroupResultProjections(runId);
+          const projectionResults = [
+            ...directProjectionReceipts,
+            ...await waitForGroupResultProjections(runId),
+          ];
           const projectionPendingNodeIds = unresolvedProjectionNodeIds(
             running.checkpoint.projectionPendingNodeIds ?? [],
             projectionResults,
@@ -1021,6 +1043,7 @@ export function WorkflowExecutionProvider({
           isCancelled: () => running.cancelled,
           onNodeStateChange: (nodeId, state, completed, total, nodeResult) => {
             nodeStates.set(nodeId, state);
+            recordDirectProjectionReceipt(nodeId, nodeResult);
             if (state === "success") {
               const candidate = nodeResult?.successProof;
               const proof = candidate?.taskId && candidate.ownershipKey &&
@@ -1132,7 +1155,10 @@ export function WorkflowExecutionProvider({
           },
         });
 
-        const projectionResults = await waitForGroupResultProjections(runId);
+        const projectionResults = [
+          ...directProjectionReceipts,
+          ...await waitForGroupResultProjections(runId),
+        ];
         const projectionPendingNodeIds = unresolvedProjectionNodeIds(
           running.checkpoint.projectionPendingNodeIds ?? [],
           projectionResults,
