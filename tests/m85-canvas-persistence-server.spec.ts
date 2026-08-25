@@ -15,7 +15,14 @@ import {
   setCanvasPersistenceBarriersForTests,
 } from "../server/canvasPersistence";
 import { openAppDatabase } from "../server/database";
+import { stableValueFingerprint } from "../types/canvasFingerprint";
 import { deleteProjectRows } from "../server/projects";
+import {
+  canvasLegacyGenerationReconciliation,
+  legacyTerminalDetachApplicationIdForBinding,
+  legacyTerminalNodeDataFingerprint,
+} from
+  "../server/canvasLegacyGenerationReconciliation";
 
 type ApiResult = {
   body: Record<string, unknown>;
@@ -34,6 +41,13 @@ type Harness = {
   api: (
     method: string,
     canvasId: string,
+    body?: unknown,
+    options?: { cookie?: string; headers?: Record<string, string> },
+  ) => Promise<ApiResult>;
+  reconcile: (
+    method: string,
+    canvasId: string,
+    operation: "generation-reconciliation-policy" | "generation-terminal-detach",
     body?: unknown,
     options?: { cookie?: string; headers?: Record<string, string> },
   ) => Promise<ApiResult>;
@@ -87,6 +101,15 @@ async function withCanvasServer(
   const server = createServer((request, response) => {
     const route = request.url ?? "/";
     const dispatch = () => {
+      if (route.startsWith("/api/canvases/")) {
+        request.url = route.slice("/api/canvases/".length) || "/";
+        void canvasLegacyGenerationReconciliation(request, response).catch(() => {
+          if (response.writableEnded || response.destroyed) return;
+          response.statusCode = 500;
+          response.end(JSON.stringify({ code: "INTERNAL_ERROR" }));
+        });
+        return;
+      }
       if (!route.startsWith("/api/canvas/")) {
         response.statusCode = 404;
         response.end();
@@ -141,7 +164,32 @@ async function withCanvasServer(
         status: response.status,
       };
     };
-    await run({ api, dataDirectory, origin });
+    const reconcile: Harness["reconcile"] = async (
+      method,
+      canvasId,
+      operation,
+      body,
+      requestOptions = {},
+    ) => {
+      const response = await fetch(
+        `${origin}/api/canvases/${canvasId}/${operation}`,
+        {
+          body: body === undefined ? undefined : JSON.stringify(body),
+          headers: {
+            ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+            ...requestOptions.headers,
+            ...(requestOptions.cookie ? { Cookie: requestOptions.cookie } : {}),
+          },
+          method,
+        },
+      );
+      const text = await response.text();
+      return {
+        body: text ? JSON.parse(text) as Record<string, unknown> : {},
+        status: response.status,
+      };
+    };
+    await run({ api, dataDirectory, origin, reconcile });
   } finally {
     setCanvasPersistenceBarriersForTests();
     await stopServer(server).catch(() => undefined);
@@ -256,6 +304,59 @@ function seedAuthenticatedSession(
   return `unboundry_session=${token}`;
 }
 
+function seedGenerationTask(
+  dataDirectory: string,
+  input: {
+    canvasId: string;
+    kind: "audio" | "image" | "text" | "video";
+    nodeId: string;
+    ownerId: string;
+    resultText?: string;
+    state: "cancelled" | "failed" | "running" | "success";
+    taskId: string;
+  },
+) {
+  const store = openAppDatabase(dataDirectory);
+  const timestamp = "2026-08-26T00:00:00.000Z";
+  try {
+    store.prepare(`
+      INSERT INTO generation_tasks (
+        id, canvas_id, node_id, kind, prompt, model, parameters,
+        idempotency_key, request_fingerprint, state, attempt,
+        created_at, updated_at, owner_id, cost_currency,
+        model_configuration, credential_revision
+      ) VALUES (?, ?, ?, ?, 'fixture', 'fixture-model', '{}', ?, ?, ?, 2,
+        ?, ?, ?, 'CNY', '{}', 0)
+    `).run(
+      input.taskId,
+      input.canvasId,
+      input.nodeId,
+      input.kind,
+      `idem-${input.taskId}`,
+      `fingerprint-${input.taskId}`,
+      input.state,
+      timestamp,
+      timestamp,
+      input.ownerId,
+    );
+    if (input.resultText !== undefined) {
+      store.prepare("UPDATE generation_tasks SET result_text = ? WHERE id = ?")
+        .run(input.resultText, input.taskId);
+    }
+    store.prepare(`
+      INSERT INTO generation_provider_attempts (
+        task_id, execution_attempt, provider_profile_id, provider_model_id,
+        kind, evidence, created_at, owner_id, credential_revision, outcome,
+        provider_task_id, finished_at
+      ) VALUES (?, 2, 'profile-fixture', 'model-fixture', ?,
+        'historical-execution-attempt', ?, ?, 0, 'completed',
+        'provider-task-fixture', ?)
+    `).run(input.taskId, input.kind, timestamp, input.ownerId, timestamp);
+  } finally {
+    store.close();
+  }
+}
+
 function saveBody(
   nodeId: string,
   revision: number,
@@ -277,6 +378,464 @@ function saveBody(
     viewport,
   };
 }
+
+test("legacy terminal detach is owner-scoped, atomic, idempotent and fail-closed", async () => {
+  const previousMode = process.env.UNBOUNDRY_LEGACY_TERMINAL_RECONCILIATION_MODE;
+  const previousAllowlist =
+    process.env.UNBOUNDRY_LEGACY_TERMINAL_RECONCILIATION_ALLOWLIST;
+  process.env.UNBOUNDRY_LEGACY_TERMINAL_RECONCILIATION_MODE = "on";
+  delete process.env.UNBOUNDRY_LEGACY_TERMINAL_RECONCILIATION_ALLOWLIST;
+  try {
+    await withCanvasServer("legacy-terminal-detach", async ({
+      dataDirectory,
+      reconcile,
+    }) => {
+      const ownerId = randomUUID();
+      const otherOwnerId = randomUUID();
+      const canvasId = `m85-terminal-${randomUUID()}`;
+      const node = (input: {
+        kind: "image" | "text";
+        nodeId: string;
+        ownershipKey: string;
+        runId: string;
+        taskId: string;
+      }) => ({
+        data: {
+          [`${input.kind}Generating`]: true,
+          [`${input.kind}GenerationError`]: "old terminal error",
+          [`${input.kind}GenerationInputKey`]: `input-${input.nodeId}`,
+          [`${input.kind}GenerationOwnershipKey`]: input.ownershipKey,
+          [`${input.kind}GenerationTaskId`]: input.taskId,
+          label: input.nodeId,
+          userField: `preserve-${input.nodeId}`,
+          workflowExecutionRunId: input.runId,
+        },
+        id: input.nodeId,
+        position: { x: 0, y: 0 },
+        type: input.kind,
+      });
+      const terminalNode = node({
+        kind: "text",
+        nodeId: "text-terminal",
+        ownershipKey: "owner-terminal",
+        runId: "run-terminal",
+        taskId: "task-terminal",
+      });
+      const activeNode = node({
+        kind: "image",
+        nodeId: "image-active",
+        ownershipKey: "owner-active",
+        runId: "run-active",
+        taskId: "task-active",
+      });
+      const conflictNode = node({
+        kind: "text",
+        nodeId: "text-conflict",
+        ownershipKey: "canvas-owner-conflict",
+        runId: "run-conflict",
+        taskId: "task-conflict",
+      });
+      const successResultKey = stableValueFingerprint({
+        content: "server result",
+        contentHtml: "<p>server result</p>",
+      });
+      const proofNodeBase = node({
+        kind: "text",
+        nodeId: "text-proof",
+        ownershipKey: "owner-proof",
+        runId: "run-proof",
+        taskId: "task-proof",
+      });
+      const proofNode = {
+        ...proofNodeBase,
+        data: {
+          ...proofNodeBase.data,
+          content: "server result",
+          contentHtml: "<p>server result</p>",
+          groupRunSuccessOwnershipKey: "owner-proof",
+          groupRunSuccessResultKey: successResultKey,
+          groupRunSuccessTaskId: "task-proof",
+        },
+      };
+      seedUser(dataDirectory, ownerId);
+      seedUser(dataDirectory, otherOwnerId);
+      seedProject(dataDirectory, canvasId, {
+        graphRevision: 11,
+        nodes: [terminalNode, activeNode, conflictNode, proofNode],
+        revision: 7,
+      }, ownerId);
+      seedGenerationTask(dataDirectory, {
+        canvasId,
+        kind: "text",
+        nodeId: "text-terminal",
+        ownerId,
+        state: "failed",
+        taskId: "task-terminal",
+      });
+      seedGenerationTask(dataDirectory, {
+        canvasId,
+        kind: "image",
+        nodeId: "image-active",
+        ownerId,
+        state: "running",
+        taskId: "task-active",
+      });
+      seedGenerationTask(dataDirectory, {
+        canvasId,
+        kind: "text",
+        nodeId: "text-conflict",
+        ownerId,
+        state: "failed",
+        taskId: "task-conflict",
+      });
+      seedGenerationTask(dataDirectory, {
+        canvasId,
+        kind: "text",
+        nodeId: "text-proof",
+        ownerId,
+        resultText: "server result",
+        state: "success",
+        taskId: "task-proof",
+      });
+      const ownerCookie = seedAuthenticatedSession(dataDirectory, ownerId);
+      const otherCookie = seedAuthenticatedSession(dataDirectory, otherOwnerId);
+      const body = (input: {
+        inputFingerprint: string;
+        kind: "image" | "text";
+        nodeId: string;
+        ownershipKey: string;
+        runId: string;
+        taskId: string;
+      }) => {
+        const seededNode = [terminalNode, activeNode, conflictNode, proofNode].find(
+          (candidate) => candidate.id === input.nodeId,
+        );
+        if (!seededNode) throw new Error("missing terminal fixture node");
+        const binding = {
+          accountId: ownerId,
+          canvasId,
+          nodeDataFingerprint: legacyTerminalNodeDataFingerprint(seededNode.data),
+          ...input,
+        };
+        return {
+          accountId: ownerId,
+          applicationId: legacyTerminalDetachApplicationIdForBinding(binding),
+          canvasId,
+          nodeDataFingerprint: binding.nodeDataFingerprint,
+          observedTerminalState: "failed",
+          ...input,
+        };
+      };
+      expect(await reconcile(
+        "GET",
+        canvasId,
+        "generation-reconciliation-policy",
+        undefined,
+        { cookie: otherCookie },
+      )).toEqual({
+        body: { code: "CANVAS_NOT_FOUND", error: "Canvas not found" },
+        status: 404,
+      });
+      expect(await reconcile(
+        "GET",
+        canvasId,
+        "generation-reconciliation-policy",
+        undefined,
+        { cookie: ownerCookie },
+      )).toEqual({ body: { mode: "on", writeEnabled: true }, status: 200 });
+
+      process.env.UNBOUNDRY_LEGACY_TERMINAL_RECONCILIATION_MODE = "off";
+      expect(await reconcile(
+        "GET",
+        canvasId,
+        "generation-reconciliation-policy",
+        undefined,
+        { cookie: ownerCookie },
+      )).toEqual({ body: { mode: "off", writeEnabled: false }, status: 200 });
+      process.env.UNBOUNDRY_LEGACY_TERMINAL_RECONCILIATION_MODE = "allowlist";
+      process.env.UNBOUNDRY_LEGACY_TERMINAL_RECONCILIATION_ALLOWLIST = "[]";
+      expect(await reconcile(
+        "GET",
+        canvasId,
+        "generation-reconciliation-policy",
+        undefined,
+        { cookie: ownerCookie },
+      )).toEqual({ body: { mode: "allowlist", writeEnabled: false }, status: 200 });
+      expect((await reconcile(
+        "POST",
+        canvasId,
+        "generation-terminal-detach",
+        body({
+          inputFingerprint: "input-text-terminal",
+          kind: "text",
+          nodeId: "text-terminal",
+          ownershipKey: "owner-terminal",
+          runId: "run-terminal",
+          taskId: "task-terminal",
+        }),
+        { cookie: ownerCookie },
+      ))).toMatchObject({
+        body: { code: "LEGACY_RECONCILIATION_WRITE_DISABLED" },
+        status: 409,
+      });
+      process.env.UNBOUNDRY_LEGACY_TERMINAL_RECONCILIATION_ALLOWLIST =
+        JSON.stringify([{ accountId: ownerId, canvasId }]);
+      expect(await reconcile(
+        "GET",
+        canvasId,
+        "generation-reconciliation-policy",
+        undefined,
+        { cookie: ownerCookie },
+      )).toEqual({ body: { mode: "allowlist", writeEnabled: true }, status: 200 });
+
+      process.env.UNBOUNDRY_LEGACY_TERMINAL_RECONCILIATION_MODE = "detect";
+      expect((await reconcile(
+        "POST",
+        canvasId,
+        "generation-terminal-detach",
+        body({
+          inputFingerprint: "input-text-terminal",
+          kind: "text",
+          nodeId: "text-terminal",
+          ownershipKey: "owner-terminal",
+          runId: "run-terminal",
+          taskId: "task-terminal",
+        }),
+        { cookie: ownerCookie },
+      ))).toMatchObject({
+        body: { code: "LEGACY_RECONCILIATION_WRITE_DISABLED" },
+        status: 409,
+      });
+      process.env.UNBOUNDRY_LEGACY_TERMINAL_RECONCILIATION_MODE = "on";
+
+      expect((await reconcile(
+        "POST",
+        canvasId,
+        "generation-terminal-detach",
+        body({
+          inputFingerprint: "input-image-active",
+          kind: "image",
+          nodeId: "image-active",
+          ownershipKey: "owner-active",
+          runId: "run-active",
+          taskId: "task-active",
+        }),
+        { cookie: ownerCookie },
+      ))).toMatchObject({
+        body: { code: "GENERATION_TERMINAL_TASK_CONFLICT" },
+        status: 409,
+      });
+      expect((await reconcile(
+        "POST",
+        canvasId,
+        "generation-terminal-detach",
+        {
+          ...body({
+            inputFingerprint: "input-text-terminal",
+            kind: "text",
+            nodeId: "text-terminal",
+            ownershipKey: "owner-terminal",
+            runId: "run-terminal",
+            taskId: "task-terminal",
+          }),
+          observedTerminalState: "success",
+        },
+        { cookie: ownerCookie },
+      ))).toMatchObject({
+        body: { code: "GENERATION_TERMINAL_STATE_CONFLICT" },
+        status: 409,
+      });
+      expect((await reconcile(
+        "POST",
+        canvasId,
+        "generation-terminal-detach",
+        body({
+          inputFingerprint: "input-text-conflict",
+          kind: "text",
+          nodeId: "text-conflict",
+          ownershipKey: "request-owner-conflict",
+          runId: "run-conflict",
+          taskId: "task-conflict",
+        }),
+        { cookie: ownerCookie },
+      ))).toMatchObject({
+        body: { code: "GENERATION_TERMINAL_BINDING_CONFLICT" },
+        status: 409,
+      });
+      const successProofBinding = {
+        accountId: ownerId,
+        canvasId,
+        inputFingerprint: "input-text-proof",
+        kind: "text" as const,
+        nodeDataFingerprint: legacyTerminalNodeDataFingerprint(proofNode.data),
+        nodeId: "text-proof",
+        observedTerminalState: "success" as const,
+        ownershipKey: "owner-proof",
+        resultKey: successResultKey,
+        runId: "run-proof",
+        taskId: "task-proof",
+      };
+      expect((await reconcile(
+        "POST",
+        canvasId,
+        "generation-terminal-detach",
+        {
+          ...successProofBinding,
+          applicationId: legacyTerminalDetachApplicationIdForBinding({
+            ...successProofBinding,
+            resultKey: "wrong-result-key",
+          }),
+          resultKey: "wrong-result-key",
+        },
+        { cookie: ownerCookie },
+      ))).toMatchObject({
+        body: { code: "GENERATION_TERMINAL_PROOF_CONFLICT" },
+        status: 409,
+      });
+      expect((await reconcile(
+        "POST",
+        canvasId,
+        "generation-terminal-detach",
+        {
+          ...successProofBinding,
+          applicationId: legacyTerminalDetachApplicationIdForBinding(
+            successProofBinding,
+          ),
+        },
+        { cookie: ownerCookie },
+      ))).toMatchObject({ body: { status: "detached" }, status: 200 });
+      const editedNodeRequest = body({
+        inputFingerprint: "input-text-terminal",
+        kind: "text",
+        nodeId: "text-terminal",
+        ownershipKey: "owner-terminal",
+        runId: "run-terminal",
+        taskId: "task-terminal",
+      });
+      editedNodeRequest.nodeDataFingerprint = legacyTerminalNodeDataFingerprint({
+        ...terminalNode.data,
+        userField: "edited-after-detection",
+      });
+      editedNodeRequest.applicationId = legacyTerminalDetachApplicationIdForBinding(
+        {
+          accountId: editedNodeRequest.accountId,
+          canvasId: editedNodeRequest.canvasId,
+          inputFingerprint: editedNodeRequest.inputFingerprint,
+          kind: editedNodeRequest.kind,
+          nodeDataFingerprint: editedNodeRequest.nodeDataFingerprint,
+          nodeId: editedNodeRequest.nodeId,
+          ownershipKey: editedNodeRequest.ownershipKey,
+          runId: editedNodeRequest.runId,
+          taskId: editedNodeRequest.taskId,
+        },
+      );
+      expect((await reconcile(
+        "POST",
+        canvasId,
+        "generation-terminal-detach",
+        editedNodeRequest,
+        { cookie: ownerCookie },
+      ))).toMatchObject({
+        body: { code: "GENERATION_TERMINAL_BINDING_CONFLICT" },
+        status: 409,
+      });
+
+      const beforeStore = databaseAt(dataDirectory);
+      const before = {
+        attempts: beforeStore.prepare(
+          "SELECT COUNT(*) AS count FROM generation_provider_attempts",
+        ).get(),
+        tasks: beforeStore.prepare(
+          "SELECT id, state, attempt FROM generation_tasks ORDER BY id",
+        ).all(),
+      };
+      beforeStore.close();
+      const detachRequest = body({
+        inputFingerprint: "input-text-terminal",
+        kind: "text",
+        nodeId: "text-terminal",
+        ownershipKey: "owner-terminal",
+        runId: "run-terminal",
+        taskId: "task-terminal",
+      });
+      const detached = await reconcile(
+        "POST",
+        canvasId,
+        "generation-terminal-detach",
+        detachRequest,
+        { cookie: ownerCookie },
+      );
+      expect(detached.status).toBe(200);
+      expect(detached.body.status).toBe("detached");
+      expect(detached.body.document).toMatchObject({
+        graphRevision: 13,
+        revision: 9,
+      });
+      const detachedDocument = detached.body.document as { nodes: Array<{
+        data: Record<string, unknown>;
+        id: string;
+      }> };
+      expect(detachedDocument.nodes.find((item) => item.id === "text-terminal")?.data)
+        .toEqual({
+          label: "text-terminal",
+          legacyTerminalDetachApplicationId: detachRequest.applicationId,
+          textGenerating: false,
+          userField: "preserve-text-terminal",
+        });
+      const repeated = await reconcile(
+        "POST",
+        canvasId,
+        "generation-terminal-detach",
+        detachRequest,
+        { cookie: ownerCookie },
+      );
+      expect(repeated).toMatchObject({
+        body: {
+          document: { graphRevision: 13, revision: 9 },
+          status: "already-detached",
+        },
+        status: 200,
+      });
+      expect((await reconcile(
+        "POST",
+        canvasId,
+        "generation-terminal-detach",
+        body({
+          inputFingerprint: "input-text-terminal",
+          kind: "text",
+          nodeId: "text-terminal",
+          ownershipKey: "wrong-after-detach",
+          runId: "run-terminal",
+          taskId: "task-terminal",
+        }),
+        { cookie: ownerCookie },
+      ))).toMatchObject({
+        body: { code: "GENERATION_TERMINAL_BINDING_CONFLICT" },
+        status: 409,
+      });
+      const afterStore = databaseAt(dataDirectory);
+      const after = {
+        attempts: afterStore.prepare(
+          "SELECT COUNT(*) AS count FROM generation_provider_attempts",
+        ).get(),
+        tasks: afterStore.prepare(
+          "SELECT id, state, attempt FROM generation_tasks ORDER BY id",
+        ).all(),
+      };
+      afterStore.close();
+      expect(after).toEqual(before);
+    }, { authBypass: false });
+  } finally {
+    restoreEnvironment(
+      "UNBOUNDRY_LEGACY_TERMINAL_RECONCILIATION_MODE",
+      previousMode,
+    );
+    restoreEnvironment(
+      "UNBOUNDRY_LEGACY_TERMINAL_RECONCILIATION_ALLOWLIST",
+      previousAllowlist,
+    );
+  }
+});
 
 async function saveWithCurrentBaseline(
   api: Harness["api"],
@@ -1102,8 +1661,9 @@ test("an older issued baseline on the same canvas still permits DATA-005 last-wr
     const editedNode = {
       ...boundNode,
       data: {
-        label: "文案",
-        textPrompt: "new prompt from another tab",
+        ...boundNode.data,
+        label: "另一标签修改的标题",
+        userField: "preserve concurrent edit",
       },
     };
     expect((await api("PUT", canvasId, {
@@ -1157,7 +1717,40 @@ test("an older issued baseline on the same canvas still permits DATA-005 last-wr
       },
       status: 409,
     });
-    expect((await api("GET", canvasId)).body.nodes).toEqual([editedNode]);
+    const freshProjectionBaseline = await api("GET", canvasId);
+    expect(freshProjectionBaseline.body.nodes).toEqual([editedNode]);
+    expect(await api("PUT", canvasId, {
+      edges: [],
+      generationProjection: projection,
+      nodes: [{
+        ...editedNode,
+        data: {
+          ...editedNode.data,
+          content: "fresh result",
+          contentHtml: "<p>fresh result</p>",
+          groupRunSuccessOwnershipKey: "owner-a",
+          groupRunSuccessResultKey: resultKey,
+          groupRunSuccessTaskId: "task-a",
+        },
+      }],
+      observedLoadToken: loadTokenFrom(freshProjectionBaseline),
+      observedRevision: 2,
+      revision: 2,
+      saveSequence: 1,
+      saveSessionId: "fresh-projection-session",
+      viewport,
+    })).toMatchObject({ body: { revision: 3 }, status: 200 });
+    expect((await api("GET", canvasId)).body.nodes).toEqual([{
+      ...editedNode,
+      data: {
+        ...editedNode.data,
+        content: "fresh result",
+        contentHtml: "<p>fresh result</p>",
+        groupRunSuccessOwnershipKey: "owner-a",
+        groupRunSuccessResultKey: resultKey,
+        groupRunSuccessTaskId: "task-a",
+      },
+    }]);
   });
 });
 

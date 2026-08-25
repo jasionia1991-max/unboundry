@@ -8,7 +8,7 @@
 
 事件目标：修复历史画布中“持久化节点仍标记生成中，但服务端原任务已经终态”的孤立生成态。页面打开后应自动核对原任务、优先恢复可安全应用的原结果；无法安全应用时应停止假呼吸灯并保留历史结果，绝不自动新建付费任务、覆盖用户新编辑或把未知状态伪装成失败。
 
-本文件合并了初版方案与后续诚实审计结论，是 INC-GEN-015 的唯一实施合同。当前只完成文档落地：没有修改业务代码、测试、schema、package、生产或用户画布，也没有 commit、push、PR、tag、Release、Provider、Generation、OSS 或费用动作。
+本文件合并了初版方案与后续诚实审计结论，是 INC-GEN-015 的唯一实施合同。方案冻结时只完成文档落地；2026-08-26后续获授权实施的实时状态以`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_CHECKPOINT.md`为准，不用本段历史基线覆盖当前断点。
 
 ## 0. 最终结论
 
@@ -387,10 +387,10 @@ checkpoint 一旦被可信恢复 owner 接管，历史核对器必须 abort。�
 9. Git/PR/tag/Release、冻结恢复、fresh build、原子发布和生产数据/资源门完成；
 10. 自动证据只写 `AUTO_PASS`，生产技术证据只写 `PRODUCTION_*_PASS`；用户在目标老画布刷新并确认视觉状态后才允许写 `USER_PASS`。
 
-当前状态保持：`FINAL_AUDITED_PLAN / DOCUMENTATION_ONLY / IMPLEMENTATION_NOT_STARTED / RELEASE_NOT_AUTHORIZED`。
+当前实施状态：`INDEPENDENT_REVIEW_GO / SAFE_FULL_PENDING / RELEASE_V0_6_45_AUTHORIZED`；前四轮阻断均已关闭，同一独立线程第五轮最终`P0=0/P1=0/GO`。产品源码快照`172e053d…af1f`下m41 `54/54`、m22 `41/41`、m20 `1/1 PASS`；仅增强m85测试后的快照`15a5564e…57b3`下m85 `27/27 PASS`。生产仍为v0.6.44，尚未运行唯一safe full、发布或写目标Canvas。
 
 ## 15. 下一步与授权边界
 
-下一步只在用户另行明确“按 INC-GEN-015 开始实施”后：从最新 `origin/main` 建立新的隔离实现工作树，创建实时 checkpoint，执行 R0 身份/fixture/账本冻结并补 R1 预期红。
+用户已通过本Goal明确授权实施与v0.6.45发布；独立终审门已达到`P0=0/P1=0/GO`，当前唯一下一步是冻结提交候选并运行本Goal唯一一次safe full。full通过后才继续GitHub与生产灰度。
 
-本次“出最终合并版方案并落地成文档”不等于实施、commit、GitHub、Provider、生产或发布授权；未来发布仍需新的版本号与明确允许发布。
+方案阶段本身不等于实施或发布；本次后续Goal已单独提供v0.6.45实施、GitHub与生产灰度授权，仍不得突破零Generation重提、零Provider提交、零费用和数据安全边界。

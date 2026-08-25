@@ -869,7 +869,6 @@ function taskSummary(
       }
     : retryDecision;
   const bindingMatches = Boolean(
-    task.state === "failed" &&
     retryBinding &&
     retryBinding.taskId === task.id &&
     retryBinding.kind === task.kind &&
@@ -897,6 +896,9 @@ function taskSummary(
     generationInputKey: bindingMatches
       ? retryBinding?.generationInputKey
       : undefined,
+    generationOwnershipKey: bindingMatches
+      ? retryBinding?.generationOwnershipKey
+      : undefined,
     kind: task.kind,
     model: task.model,
     nodeId: task.nodeId,
@@ -911,6 +913,7 @@ function taskSummary(
     resultMedia: resultMedia
       ? {
           byteSize: resultMedia.byteSize,
+          checksumSha256: resultMedia.checksumSha256,
           contentType: resultMedia.contentType,
           durationSeconds: resultMedia.durationSeconds,
           durationStatus: resultMedia.durationStatus,
@@ -923,6 +926,7 @@ function taskSummary(
       assetId: output.assetId,
       media: {
         byteSize: output.byteSize,
+        checksumSha256: output.checksumSha256,
         contentType: output.contentType,
         durationSeconds: output.durationSeconds,
         durationStatus: output.durationStatus,
@@ -938,11 +942,13 @@ function taskSummary(
       : undefined,
     state: task.state,
     updatedAt: task.updatedAt,
+    workflowExecutionRunId: bindingMatches
+      ? retryBinding?.workflowExecutionRunId
+      : undefined,
   };
 }
 
 function taskSummaryForOwner(task: GenerationTask, ownerId?: string) {
-  if (task.state !== "failed") return taskSummary(task);
   const binding = taskStore()
     .retryBindingsForCanvas(task.canvasId, ownerId)
     .get(task.id);

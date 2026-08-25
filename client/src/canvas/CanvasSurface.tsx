@@ -99,8 +99,13 @@ import {
   TEMPLATE_MODEL_SELECTION_REQUIRED_ID,
   viewportForBounds,
 } from "./templatePlacement";
-import { GenerationCanvasContext } from "../generation/GenerationCanvasContext";
+import {
+  GenerationCanvasContext,
+  type AuthoritativeGenerationCanvasMutation,
+} from "../generation/GenerationCanvasContext";
 import { createGroupRunSummaryScope } from "../generation/groupRunSummary";
+import { legacyTerminalNodeDataFingerprint } from
+  "../generation/legacyTerminalGenerationReconciler";
 import {
   shouldAcceptCanvasRevision,
   waitForPaint,
@@ -4647,6 +4652,69 @@ export function CanvasSurface({
     }
     throw new Error("画布保存超时，请稍后再试");
   }, [persistenceFixture]);
+  const adoptAuthoritativeGenerationMutation = useCallback((
+    mutation: AuthoritativeGenerationCanvasMutation,
+  ) => {
+    if (
+      !persistenceReadyRef.current || persistenceConflict.current ||
+      !Number.isSafeInteger(mutation.document.revision) ||
+      mutation.document.revision < persistenceRevision.current ||
+      !Number.isSafeInteger(mutation.document.graphRevision) ||
+      !isCanvasLoadToken(mutation.document.loadToken)
+    ) return false;
+    const currentTarget = (pendingGuardedNodes.current ?? nodesRef.current).find(
+      (node) => node.id === mutation.expected.nodeId,
+    );
+    if (
+      !currentTarget || currentTarget.type !== mutation.expected.kind ||
+      legacyTerminalNodeDataFingerprint(currentTarget.data) !==
+        mutation.expected.nodeDataFingerprint
+    ) return false;
+    const normalizedDocument = {
+      ...mutation.document,
+      nodes: normalizeCanvasParentLinks(
+        normalizePersistedMediaNodes(mutation.document.nodes),
+      ),
+      edges: mutation.document.edges.map((edge) =>
+        stripSelectionFlowMarkers(
+          edge.style && typeof edge.style === "object"
+            ? { ...edge, style: undefined }
+            : edge,
+        )
+      ),
+    };
+    persistenceRevision.current = mutation.document.revision;
+    persistenceGraphRevision.current = mutation.document.graphRevision;
+    persistenceObservedRevision.current = mutation.document.revision;
+    persistenceObservedLoadToken.current = mutation.document.loadToken;
+    persistedDocumentFingerprint.current = canvasDocumentFingerprint(
+      normalizedDocument,
+    );
+    persistedGraphFingerprint.current = canvasGraphFingerprint(
+      normalizedDocument,
+    );
+    setConfirmedPersistenceRevision(mutation.document.revision);
+    setConfirmedGraphRevision(mutation.document.graphRevision);
+    setNodes((current) => current.map((node) => {
+      if (node.id !== mutation.expected.nodeId || node.type !== mutation.expected.kind) {
+        return node;
+      }
+      const data = node.data as Record<string, unknown>;
+      if (
+        data.workflowExecutionRunId !== mutation.expected.runId ||
+        data[`${mutation.expected.kind}GenerationTaskId`] !==
+          mutation.expected.taskId ||
+        data[`${mutation.expected.kind}GenerationOwnershipKey`] !==
+          mutation.expected.ownershipKey ||
+        data[`${mutation.expected.kind}GenerationInputKey`] !==
+          mutation.expected.inputFingerprint
+      ) return node;
+      const nextData = { ...data, ...mutation.dataPatch };
+      for (const field of mutation.clearedFields ?? []) delete nextData[field];
+      return { ...node, data: nextData as ProbeNodeType["data"] };
+    }));
+    return true;
+  }, [setNodes]);
   useEffect(() => {
     if (!onGenerationRetryGateChange) return;
     const scopeId = persistenceScopeId;
@@ -4671,6 +4739,7 @@ export function CanvasSurface({
         fixtureId ?? "",
       ),
       canvasRevision: generationCanvasRevision,
+      adoptAuthoritativeGenerationMutation,
       flushCanvasSave,
       isFixture: Boolean(fixtureId),
       notify: showWorkflowToast,
@@ -4680,6 +4749,7 @@ export function CanvasSurface({
     }),
     [
       accountId,
+      adoptAuthoritativeGenerationMutation,
       fixtureId,
       flushCanvasSave,
       generationCanvasRevision,
@@ -4756,6 +4826,7 @@ export function CanvasSurface({
         graph={workflowGraphPort}
         getEdges={() => pendingGuardedEdges.current ?? edgesRef.current}
         getNodes={() => pendingGuardedNodes.current ?? nodesRef.current}
+        nodesSnapshot={nodes}
         notify={showWorkflowToast}
         onRetainedNodeIdsChange={setWorkflowRetainedNodeIds}
         setNodes={guardedSetNodes}

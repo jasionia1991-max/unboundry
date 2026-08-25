@@ -54,6 +54,7 @@ const STRIP_DATA_KEYS = new Set([
   "groupRunSuccessOwnershipKey",
   "groupRunSuccessResultKey",
   "groupRunSuccessTaskId",
+  "legacyTerminalDetachApplicationId",
   "imageGeneratedSuccess",
   "imageGenerationError",
   "imageGenerationErrorCode",

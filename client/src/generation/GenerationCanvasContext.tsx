@@ -1,4 +1,29 @@
 import { createContext, useContext } from "react";
+import type { CuttableEdge } from "../canvas/canvasTypes";
+import type { ProbeNodeType } from "../canvas/ProbeNode";
+import type { Viewport } from "@xyflow/react";
+
+export type AuthoritativeGenerationCanvasMutation = {
+  clearedFields?: readonly string[];
+  dataPatch: Record<string, unknown>;
+  document: {
+    edges: CuttableEdge[];
+    graphRevision: number;
+    loadToken: string;
+    nodes: ProbeNodeType[];
+    revision: number;
+    viewport: Viewport;
+  };
+  expected: {
+    inputFingerprint: string;
+    kind: "audio" | "image" | "text" | "video";
+    nodeDataFingerprint: string;
+    nodeId: string;
+    ownershipKey: string;
+    runId: string;
+    taskId: string;
+  };
+};
 
 export type GenerationCanvasState = {
   /** 当前登录账号 ID，用于把本地草稿/同步频道按账号隔离。 */
@@ -16,6 +41,9 @@ export type GenerationCanvasState = {
   persistenceReady: boolean;
   /** Retry may enter the save gate; unlike canvasRevision, dirty state does not disable it. */
   retryGenerationEnabled: boolean;
+  adoptAuthoritativeGenerationMutation: (
+    mutation: AuthoritativeGenerationCanvasMutation,
+  ) => boolean;
   /** Wait until the current on-screen graph is durably saved before submitting. */
   flushCanvasSave: () => Promise<void>;
   /**
@@ -32,6 +60,7 @@ export const GenerationCanvasContext = createContext<GenerationCanvasState>({
   fixtureScopeId: "",
   isFixture: false,
   notify: () => undefined,
+  adoptAuthoritativeGenerationMutation: () => false,
   persistenceReady: true,
   retryGenerationEnabled: false,
   flushCanvasSave: async () => {},

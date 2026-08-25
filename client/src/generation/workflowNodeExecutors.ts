@@ -152,7 +152,10 @@ function generationOwnershipUpstream(
 function createExecutionPlan(
   kind: WorkflowExecutorKind,
   nodeId: string,
-  context: NodeExecutorContext,
+  context: Pick<
+    NodeExecutorContext,
+    "canvasId" | "graph" | "isFixture" | "modelCatalog"
+  >,
 ): ExecutionPlan | NodeRunResult {
   const snapshot = context.graph.snapshot();
   const nodes = snapshot.nodes;
@@ -334,6 +337,23 @@ function createExecutionPlan(
       prompt: inputPreflight.finalPrompt,
     },
   };
+}
+
+export function currentWorkflowGenerationBinding(input: {
+  context: Pick<
+    NodeExecutorContext,
+    "canvasId" | "graph" | "isFixture" | "modelCatalog"
+  >;
+  kind: WorkflowExecutorKind;
+  nodeId: string;
+}) {
+  const plan = createExecutionPlan(input.kind, input.nodeId, input.context);
+  return isPlan(plan)
+    ? {
+        inputFingerprint: plan.inputKey,
+        ownershipKey: plan.currentOwnershipKey,
+      }
+    : undefined;
 }
 
 function isPlan(value: ExecutionPlan | NodeRunResult): value is ExecutionPlan {

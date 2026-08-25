@@ -54,6 +54,8 @@ test("the private API documents and reads canvas, project and model configuratio
     "/api/auth/password",
     "/api/canvas/{canvasId}",
     "/api/canvas/{canvasId}/group-download",
+    "/api/canvases/{canvasId}/generation-reconciliation-policy",
+    "/api/canvases/{canvasId}/generation-terminal-detach",
     "/api/characters",
     "/api/health/live",
     "/api/health/ready",
@@ -238,6 +240,71 @@ test("the private API documents and reads canvas, project and model configuratio
     .toBe("#/components/schemas/CanvasSaveConflict");
   expect(canvasPath.put.responses["503"].content["application/json"].schema.$ref)
     .toBe("#/components/schemas/CanvasSaveUnavailable");
+  expect((specification.paths[
+    "/api/canvases/{canvasId}/generation-reconciliation-policy"
+  ] as { get: { operationId: string; responses: { "200": JsonResponse } } }))
+    .toMatchObject({
+      get: {
+        operationId: "readLegacyTerminalGenerationReconciliationPolicy",
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/LegacyTerminalReconciliationPolicy",
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+  expect((specification.paths[
+    "/api/canvases/{canvasId}/generation-terminal-detach"
+  ] as {
+    post: {
+      operationId: string;
+      requestBody: JsonResponse;
+      responses: { "200": JsonResponse; "409": unknown };
+    };
+  })).toMatchObject({
+    post: {
+      operationId: "detachLegacyTerminalGenerationBinding",
+      requestBody: {
+        content: {
+          "application/json": {
+            schema: { $ref: "#/components/schemas/LegacyTerminalDetachRequest" },
+          },
+        },
+      },
+      responses: {
+        "200": {
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/LegacyTerminalDetachResult" },
+            },
+          },
+        },
+        "409": expect.any(Object),
+      },
+    },
+  });
+  for (const schemaName of [
+    "GenerationProjectionCommit",
+    "LegacyTerminalDetachRequest",
+  ] as const) {
+    const schema = specification.components.schemas[schemaName] as {
+      properties: Record<string, unknown>;
+      required: string[];
+    };
+    expect(schema.required.every((field: string) =>
+      Object.hasOwn(schema.properties, field)
+    )).toBe(true);
+  }
+  expect(specification.components.schemas.GenerationProjectionCommit.required)
+    .not.toContain("nodeDataFingerprint");
+  expect(specification.components.schemas.LegacyTerminalDetachRequest.required)
+    .toContain("nodeDataFingerprint");
   expect(Object.keys(
     specification.components.schemas.CanvasSaveRequest.properties as object,
   ).sort()).toEqual([
@@ -478,8 +545,8 @@ test("the private API documents and reads canvas, project and model configuratio
   await expect(page.getByTestId("admin-api-contract-page")).toBeVisible();
   await expect(page.getByRole("heading", { name: "项目自己的数据接口" }))
     .toBeVisible();
-  await expect(page.locator(".api-contract-grid article")).toHaveCount(47);
-  await expect(page.getByText("当前共 37 条接口路径", { exact: true }))
+  await expect(page.locator(".api-contract-grid article")).toHaveCount(49);
+  await expect(page.getByText("当前共 39 条接口路径", { exact: true }))
     .toBeVisible();
 
   const finalCanvasDelete = await request.delete(`/api/canvas/${canvasId}`);

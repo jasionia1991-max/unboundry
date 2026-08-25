@@ -25,7 +25,10 @@ import {
   type NodeExecutor,
   type NodeExecutorContext,
 } from "./nodeExecutorRegistry";
-import { createNodeExecutorRegistry } from "./workflowNodeExecutors";
+import {
+  createNodeExecutorRegistry,
+  currentWorkflowGenerationBinding,
+} from "./workflowNodeExecutors";
 import {
   persistGroupCanvasAfterNode,
   runGroupNodeWithPersist,
@@ -56,12 +59,15 @@ import {
   groupRunLeaseHeartbeatMs,
   groupRunSnapshotFingerprint,
   groupRunSuccessProof,
+  hasConflictingActiveGroupRunLeaseForCanvas,
   isGroupRunLeaseActive,
   markGroupRunStarting,
   readGroupRunCheckpoint,
+  readGroupRunCheckpoints,
   readGroupRunLease,
   releaseGroupRunLease,
   renewGroupRunLease,
+  runWithGroupRunCanvasAdmission,
   taskMatchesAcceptedBinding,
   type AcceptedTaskBinding,
   type GroupRunCheckpoint,
@@ -74,8 +80,26 @@ import {
   enqueueGroupResultProjection,
   type GroupResultProjectionResult,
   waitForGroupResultProjections,
+  reconcileGroupResultProjection,
   unresolvedProjectionNodeIds,
 } from "./groupResultProjection";
+import { getGenerationTask } from "./generationTasks";
+import {
+  classifyLegacyTerminalGenerationTask,
+  detachLegacyTerminalGeneration,
+  getLegacyTerminalGenerationPolicy,
+  isIncompleteLegacyTerminalGenerationBinding,
+  legacyTerminalCanvasWriteAllowed,
+  legacyTerminalGenerationCandidate,
+  legacyTerminalGenerationCandidateStillMatches,
+  type LegacyTerminalGenerationCandidate,
+  type LegacyTerminalGenerationState,
+} from "./legacyTerminalGenerationReconciler";
+import {
+  clearLegacyGenerationSubmissionBlocks,
+  LegacyTerminalGenerationStateProvider,
+  replaceLegacyGenerationSubmissionBlocks,
+} from "./legacyTerminalGenerationState";
 
 export type { NodeRunResult };
 
@@ -216,6 +240,7 @@ export function WorkflowExecutionProvider({
   graph,
   getEdges,
   getNodes,
+  nodesSnapshot,
   notify,
   onRetainedNodeIdsChange,
   setNodes,
@@ -224,16 +249,19 @@ export function WorkflowExecutionProvider({
   graph: CanvasGraphCommandPort;
   getEdges: () => CuttableEdge[];
   getNodes: () => ProbeNodeType[];
+  nodesSnapshot: ProbeNodeType[];
   notify: (message: string, kind?: "error" | "info" | "success") => void;
   onRetainedNodeIdsChange: (nodeIds: ReadonlySet<string>) => void;
   setNodes: Dispatch<SetStateAction<ProbeNodeType[]>>;
 }) {
   const {
     accountId,
+    adoptAuthoritativeGenerationMutation,
     canvasId,
     fixtureScopeId,
     flushCanvasSave,
     isFixture,
+    persistenceReady,
     waitForCanvasRevision,
   } = useGenerationCanvas();
   const save = useMemo<CanvasSavePort>(() => ({
@@ -276,6 +304,37 @@ export function WorkflowExecutionProvider({
   }>());
   const runLocks = useRef(new Map<string, ReadonlySet<string>>());
   const automaticRecoveryScopes = useRef(new Set<string>());
+  const legacyReconciliationRunToken = useRef(0);
+  const legacyRecheckAttempts = useRef(new Map<string, number>());
+  const getLegacyNodes = useRef(getNodes);
+  getLegacyNodes.current = getNodes;
+  const [legacyGenerationStates, setLegacyGenerationStates] = useState<
+    ReadonlyMap<string, LegacyTerminalGenerationState>
+  >(new Map());
+  const legacyBindingSignature = useMemo(() => JSON.stringify(
+    nodesSnapshot.flatMap((node) => {
+      const candidate = legacyTerminalGenerationCandidate({
+        accountId,
+        canvasId,
+        node,
+      });
+      if (candidate) {
+        return [[
+          candidate.nodeId,
+          candidate.kind,
+          candidate.nodeDataFingerprint,
+          candidate.runId,
+          candidate.taskId,
+          candidate.ownershipKey,
+          candidate.inputFingerprint,
+        ]];
+      }
+      return isIncompleteLegacyTerminalGenerationBinding(node)
+        ? [[node.id, node.type, "incomplete"]]
+        : [];
+    }),
+  ), [accountId, canvasId, nodesSnapshot]);
+  const hasLegacyGenerationBindings = legacyBindingSignature !== "[]";
   const [executingGroupIds, setExecutingGroupIds] = useState<
     ReadonlySet<string>
   >(new Set());
@@ -295,6 +354,36 @@ export function WorkflowExecutionProvider({
     setLockedNodeIds(nextLocks);
     onRetainedNodeIdsChange(nextLocks);
   }, [onRetainedNodeIdsChange]);
+
+  const setLegacyGenerationState = useCallback((
+    nodeId: string,
+    state: LegacyTerminalGenerationState,
+  ) => {
+    setLegacyGenerationStates((current) => {
+      if (current.get(nodeId) === state) return current;
+      const next = new Map(current);
+      next.set(nodeId, state);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    setLegacyGenerationStates(new Map());
+    legacyRecheckAttempts.current.clear();
+  }, [accountId, canvasId]);
+
+  useEffect(() => {
+    setLegacyGenerationStates(new Map());
+  }, [legacyBindingSignature]);
+
+  useEffect(() => {
+    replaceLegacyGenerationSubmissionBlocks({
+      accountId,
+      canvasId,
+      states: legacyGenerationStates,
+    });
+    return () => clearLegacyGenerationSubmissionBlocks(accountId, canvasId);
+  }, [accountId, canvasId, legacyGenerationStates]);
 
   useEffect(() => {
     if (executingGroupIds.size === 0 && startingGroupIds.current.size === 0) {
@@ -1361,16 +1450,17 @@ export function WorkflowExecutionProvider({
       // Canvas hydration and model-catalog hydration are asynchronous. Wait for
       // the exact checkpoint graph to be visible before the single auto attempt.
       for (let attempt = 0; attempt < 40 && !disposed; attempt += 1) {
-        const checkpoint = readGroupRunCheckpoint(scope);
-        const accepted = Object.keys(checkpoint?.acceptedTasks ?? {});
         const nodeIds = new Set(getNodes().map((node) => node.id));
-        if (
-          checkpoint &&
-          accepted.length > 0 &&
+        const checkpoints = readGroupRunCheckpoints(scope).filter((checkpoint) =>
+          Object.keys(checkpoint.acceptedTasks ?? {}).length > 0 &&
           nodeIds.has(checkpoint.groupId) &&
           checkpoint.executableNodeIds.every((nodeId) => nodeIds.has(nodeId))
-        ) {
-          await executeGroup(checkpoint.groupId, checkpoint, true);
+        );
+        if (checkpoints.length > 0) {
+          for (const checkpoint of checkpoints) {
+            if (disposed) return;
+            await executeGroup(checkpoint.groupId, checkpoint, true);
+          }
           return;
         }
         await new Promise((resolve) => window.setTimeout(resolve, 250));
@@ -1381,6 +1471,307 @@ export function WorkflowExecutionProvider({
       disposed = true;
     };
   }, [accountId, canvasId, executeGroup, fixtureScopeId, getNodes, isFixture]);
+
+  useEffect(() => {
+    if (isFixture || !persistenceReady || modelCatalogStatus === "loading") return;
+    const scope = { accountId, canvasId, fixtureScopeId };
+    if (!hasLegacyGenerationBindings) return;
+    const scopeKey = JSON.stringify(scope);
+    const runToken = ++legacyReconciliationRunToken.current;
+    const scopeIsCurrent = () =>
+      legacyReconciliationRunToken.current === runToken;
+    const controller = new AbortController();
+    let recheckTimer: number | undefined;
+    let nextRecheckDelayMs: number | undefined;
+    const requestRecheck = (delayMs: number) => {
+      nextRecheckDelayMs = nextRecheckDelayMs === undefined
+        ? delayMs
+        : Math.min(nextRecheckDelayMs, delayMs);
+    };
+    const armRecheck = () => {
+      if (!scopeIsCurrent() || nextRecheckDelayMs === undefined) return;
+      const delayMs = nextRecheckDelayMs;
+      nextRecheckDelayMs = undefined;
+      recheckTimer = window.setTimeout(() => {
+        recheckTimer = undefined;
+        if (scopeIsCurrent()) void run();
+      }, delayMs);
+    };
+    const boundedUnknownRecheck = (key: string) => {
+      const attempts = (legacyRecheckAttempts.current.get(key) ?? 0) + 1;
+      legacyRecheckAttempts.current.set(key, attempts);
+      const delay = [1_000, 2_000, 4_000][attempts - 1];
+      if (delay !== undefined) requestRecheck(delay);
+    };
+    const exactCheckpointOwns = (
+      candidate: LegacyTerminalGenerationCandidate,
+    ) => {
+      const checkpoint = readGroupRunCheckpoints(scope).find(
+        (item) => item.runId === candidate.runId,
+      );
+      const binding = checkpoint?.acceptedTasks?.[candidate.nodeId];
+      return Boolean(
+        checkpoint && binding && binding.kind === candidate.kind &&
+        binding.nodeId === candidate.nodeId && binding.taskId === candidate.taskId &&
+        binding.ownershipKey === candidate.ownershipKey,
+      );
+    };
+    const activeLeaseOwns = (candidate: LegacyTerminalGenerationCandidate) =>
+      isGroupRunLeaseActive(readGroupRunLease(scope, candidate.runId));
+    const run = async () => {
+      if (!scopeIsCurrent()) return;
+      const nodes = nodesSnapshot;
+      for (const node of nodes) {
+        if (isIncompleteLegacyTerminalGenerationBinding(node)) {
+          setLegacyGenerationState(node.id, "UNKNOWN_BLOCKED");
+        }
+      }
+      const candidates = nodes.flatMap((node) => {
+        const candidate = legacyTerminalGenerationCandidate({
+          accountId,
+          canvasId,
+          node,
+        });
+        return candidate ? [candidate] : [];
+      });
+      const semanticMatches = new Map(candidates.map((candidate) => {
+        const current = currentWorkflowGenerationBinding({
+          context: {
+            canvasId,
+            graph,
+            isFixture,
+            modelCatalog: executorModelCatalog,
+          },
+          kind: candidate.kind,
+          nodeId: candidate.nodeId,
+        });
+        return [
+          candidate.nodeId,
+          current?.inputFingerprint === candidate.inputFingerprint &&
+            current.ownershipKey === candidate.ownershipKey,
+        ];
+      }));
+      let policy;
+      try {
+        policy = await getLegacyTerminalGenerationPolicy(
+          canvasId,
+          controller.signal,
+        );
+      } catch {
+        if (!scopeIsCurrent()) return;
+        for (const node of nodes) {
+          if (
+            isIncompleteLegacyTerminalGenerationBinding(node) ||
+            legacyTerminalGenerationCandidate({ accountId, canvasId, node })
+          ) setLegacyGenerationState(node.id, "UNKNOWN_BLOCKED");
+        }
+        boundedUnknownRecheck(`policy:${scopeKey}`);
+        armRecheck();
+        return;
+      }
+      legacyRecheckAttempts.current.delete(`policy:${scopeKey}`);
+      if (!scopeIsCurrent()) return;
+      if (policy.mode === "off") {
+        for (const node of nodes) {
+          if (
+            isIncompleteLegacyTerminalGenerationBinding(node) ||
+            legacyTerminalGenerationCandidate({ accountId, canvasId, node })
+          ) setLegacyGenerationState(node.id, "PASSTHROUGH");
+        }
+        return;
+      }
+      if (candidates.length === 0) return;
+      const taskReads = new Map<string, ReturnType<typeof getGenerationTask>>();
+      const readTask = (taskId: string) => {
+        const existing = taskReads.get(taskId);
+        if (existing) return existing;
+        const pending = getGenerationTask(taskId, controller.signal);
+        taskReads.set(taskId, pending);
+        return pending;
+      };
+      let cursor = 0;
+      const worker = async () => {
+        while (scopeIsCurrent()) {
+          const candidate = candidates[cursor++];
+          if (!candidate) return;
+          const candidateKey = JSON.stringify(candidate);
+          if (runLocks.current.has(candidate.runId)) {
+            requestRecheck(1_000);
+            continue;
+          }
+          const conflictingLease = await hasConflictingActiveGroupRunLeaseForCanvas(
+            canvasId,
+            candidate.nodeId,
+            candidate.runId,
+          );
+          if (!scopeIsCurrent()) return;
+          if (
+            exactCheckpointOwns(candidate) || activeLeaseOwns(candidate) ||
+            conflictingLease
+          ) {
+            setLegacyGenerationState(candidate.nodeId, "DETECTING");
+            requestRecheck(1_000);
+            continue;
+          }
+          setLegacyGenerationState(candidate.nodeId, "DETECTING");
+          let task;
+          try {
+            task = await readTask(candidate.taskId);
+          } catch {
+            if (!scopeIsCurrent()) return;
+            setLegacyGenerationState(candidate.nodeId, "UNKNOWN_BLOCKED");
+            boundedUnknownRecheck(`task:${candidateKey}`);
+            continue;
+          }
+          legacyRecheckAttempts.current.delete(`task:${candidateKey}`);
+          if (!scopeIsCurrent()) return;
+          let decision;
+          try {
+            decision = classifyLegacyTerminalGenerationTask({ candidate, task });
+          } catch {
+            setLegacyGenerationState(candidate.nodeId, "UNKNOWN_BLOCKED");
+            boundedUnknownRecheck(`classification:${candidateKey}`);
+            continue;
+          }
+          if (decision.state === "UNKNOWN_BLOCKED") {
+            setLegacyGenerationState(candidate.nodeId, decision.state);
+            boundedUnknownRecheck(`classification:${candidateKey}`);
+            continue;
+          }
+          legacyRecheckAttempts.current.delete(`classification:${candidateKey}`);
+          if (decision.state === "ACTIVE_CONFIRMED") {
+            setLegacyGenerationState(candidate.nodeId, decision.state);
+            legacyRecheckAttempts.current.delete(`locks:${candidateKey}`);
+            legacyRecheckAttempts.current.delete(`write:${candidateKey}`);
+            requestRecheck(1_000);
+            continue;
+          }
+          if (!policy.writeEnabled) {
+            setLegacyGenerationState(candidate.nodeId, "UNKNOWN_BLOCKED");
+            boundedUnknownRecheck(`write:${candidateKey}`);
+            continue;
+          }
+          const locks = (window.navigator as Navigator & {
+            locks?: { request: unknown };
+          }).locks;
+          if (!legacyTerminalCanvasWriteAllowed({
+            webLocksAvailable: Boolean(locks),
+            writeEnabled: policy.writeEnabled,
+          })) {
+            setLegacyGenerationState(candidate.nodeId, "UNKNOWN_BLOCKED");
+            boundedUnknownRecheck(`locks:${candidateKey}`);
+            continue;
+          }
+          legacyRecheckAttempts.current.delete(`locks:${candidateKey}`);
+          try {
+            const result = await runWithGroupRunCanvasAdmission(
+              canvasId,
+              async () => {
+                if (
+                  !scopeIsCurrent() ||
+                  runLocks.current.has(candidate.runId) ||
+                  exactCheckpointOwns(candidate) || activeLeaseOwns(candidate) ||
+                  await hasConflictingActiveGroupRunLeaseForCanvas(
+                    canvasId,
+                    candidate.nodeId,
+                    candidate.runId,
+                  )
+                ) return "deferred" as const;
+                await waitForCanvasRevision();
+                const freshNode = getLegacyNodes.current().find(
+                  (node) => node.id === candidate.nodeId,
+                );
+                if (!legacyTerminalGenerationCandidateStillMatches(freshNode, candidate)) {
+                  return "conflict" as const;
+                }
+                if (
+                  decision.state === "RESTORED" &&
+                  semanticMatches.get(candidate.nodeId) === true
+                ) {
+                  const projection = await reconcileGroupResultProjection({
+                    projection: decision.projection,
+                    signal: controller.signal,
+                  });
+                  if (!scopeIsCurrent()) return "unknown" as const;
+                  if (
+                    projection.status === "applied" ||
+                    projection.status === "already-applied"
+                  ) {
+                    if (!projection.authoritativeMutation) return "unknown" as const;
+                    const adopted = adoptAuthoritativeGenerationMutation({
+                      ...projection.authoritativeMutation,
+                      expected: candidate,
+                    });
+                    return adopted ? "restored" as const : "unknown" as const;
+                  }
+                  if (projection.status !== "conflict") return "unknown" as const;
+                }
+                const detached = await detachLegacyTerminalGeneration({
+                  candidate,
+                  observedTerminalState: decision.task.state as
+                    | "cancelled"
+                    | "failed"
+                    | "success",
+                  resultKey: decision.state === "RESTORED"
+                    ? decision.projection.resultKey
+                    : undefined,
+                  signal: controller.signal,
+                });
+                if (!scopeIsCurrent()) return "unknown" as const;
+                const adopted = adoptAuthoritativeGenerationMutation({
+                  ...detached.mutation,
+                  expected: candidate,
+                });
+                return adopted ? "detached" as const : "unknown" as const;
+              },
+            );
+            if (result === "restored") {
+              setLegacyGenerationState(candidate.nodeId, "RESTORED");
+            } else if (result === "detached") {
+              setLegacyGenerationState(candidate.nodeId, "CONFLICT_PRESERVED");
+            } else if (result === "deferred") {
+              setLegacyGenerationState(candidate.nodeId, "DETECTING");
+              requestRecheck(1_000);
+            } else if (result === "unknown" || result === "conflict") {
+              setLegacyGenerationState(candidate.nodeId, "UNKNOWN_BLOCKED");
+              if (result === "unknown") {
+                boundedUnknownRecheck(`write:${candidateKey}`);
+              }
+            }
+          } catch {
+            if (scopeIsCurrent()) {
+              setLegacyGenerationState(candidate.nodeId, "UNKNOWN_BLOCKED");
+              boundedUnknownRecheck(`write:${candidateKey}`);
+            }
+          }
+        }
+      };
+      await Promise.all(
+        Array.from({ length: Math.min(3, candidates.length) }, () => worker()),
+      );
+      armRecheck();
+    };
+    void run();
+    return () => {
+      if (legacyReconciliationRunToken.current === runToken) {
+        legacyReconciliationRunToken.current += 1;
+      }
+      controller.abort("legacy-terminal-reconciliation-scope-changed");
+      if (recheckTimer !== undefined) window.clearTimeout(recheckTimer);
+    };
+  }, [
+    accountId,
+    adoptAuthoritativeGenerationMutation,
+    canvasId,
+    fixtureScopeId,
+    hasLegacyGenerationBindings,
+    isFixture,
+    legacyBindingSignature,
+    modelCatalogStatus,
+    persistenceReady,
+    setLegacyGenerationState,
+    waitForCanvasRevision,
+  ]);
 
   useEffect(() => {
     const scope = { accountId, canvasId, fixtureScopeId };
@@ -1450,7 +1841,9 @@ export function WorkflowExecutionProvider({
 
   return (
     <WorkflowExecutionContext.Provider value={value}>
-      {children}
+      <LegacyTerminalGenerationStateProvider states={legacyGenerationStates}>
+        {children}
+      </LegacyTerminalGenerationStateProvider>
     </WorkflowExecutionContext.Provider>
   );
 }

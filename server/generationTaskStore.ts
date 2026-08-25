@@ -88,9 +88,11 @@ export type GenerationTaskRetryFence = {
 export type GenerationTaskCanvasRetryBinding = {
   canvasRevision: number;
   generationInputKey: string;
+  generationOwnershipKey?: string;
   kind: GenerationTaskKind;
   nodeId: string;
   taskId: string;
+  workflowExecutionRunId?: string;
 };
 
 export type GenerationTaskAbandonInput = {
@@ -369,6 +371,8 @@ function canvasRetryBindings(
     const data = node.data as Record<string, unknown>;
     const taskId = data[`${kind}GenerationTaskId`];
     const generationInputKey = data[`${kind}GenerationInputKey`];
+    const generationOwnershipKey = data[`${kind}GenerationOwnershipKey`];
+    const workflowExecutionRunId = data.workflowExecutionRunId;
     if (
       typeof taskId !== "string" ||
       !identifierPattern.test(taskId) ||
@@ -385,9 +389,17 @@ function canvasRetryBindings(
     bindings.set(taskId, {
       canvasRevision,
       generationInputKey,
+      ...(typeof generationOwnershipKey === "string" &&
+          generationOwnershipKey.length > 0 && generationOwnershipKey.length <= 2_000
+        ? { generationOwnershipKey }
+        : {}),
       kind,
       nodeId: node.id,
       taskId,
+      ...(typeof workflowExecutionRunId === "string" &&
+          workflowExecutionRunId.length > 0 && workflowExecutionRunId.length <= 2_000
+        ? { workflowExecutionRunId }
+        : {}),
     });
   }
   return bindings;
