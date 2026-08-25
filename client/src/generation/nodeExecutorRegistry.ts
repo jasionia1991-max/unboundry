@@ -12,10 +12,12 @@ import {
   isGenerationCapabilityKind,
   type GenerationCapabilityKind,
 } from "../../../types/nodeVocabulary";
+import type { AcceptedTaskBinding } from "./groupRunCheckpoint";
 
 export type WorkflowExecutorKind = GenerationCapabilityKind;
 
 export type NodeExecutorContext = {
+  acceptedTask?: AcceptedTaskBinding;
   accountId: string;
   canvasId: string;
   fixtureScopeId: string;
@@ -28,6 +30,8 @@ export type NodeExecutorContext = {
   };
   runId: string;
   save: CanvasSavePort;
+  signal?: AbortSignal;
+  onTaskAccepted?: (binding: AcceptedTaskBinding) => Promise<void> | void;
 };
 
 export type NodeExecutor = {

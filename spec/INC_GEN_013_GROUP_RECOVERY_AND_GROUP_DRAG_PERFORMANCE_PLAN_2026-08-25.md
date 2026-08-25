@@ -326,7 +326,7 @@ endCanvasInteraction(...)
 
 ## 11. 提交、发布和回滚边界
 
-- 当前仅获准落地文档；未获准改代码、commit、push、PR、tag、GitHub Release 或生产发布。
+- 用户已通过2026-08-25一次性Goal明确授权按本方案实施，并绑定`v0.6.42/schema41`完成commit、push、PR、tag、GitHub Release、生产发布和零付费验证；该授权只用于本Goal且执行后消费。
 - 后续若获实施授权，建议拆为三个可审查提交：恢复合同、组合框拖动、测试与治理文档。
 - 本事件预计无数据库迁移；checkpoint 新字段向后兼容，旧版本可忽略。
 - 回滚时保留现有人工「继续剩余节点」安全路径；不得通过删除 checkpoint 绕开重复付费门。

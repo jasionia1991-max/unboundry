@@ -1289,15 +1289,17 @@ export async function waitForGenerationTask(
     const task = await getGenerationTask(taskId, signal);
     if (["success", "failed", "cancelled"].includes(task.state)) return task;
     await new Promise<void>((resolve, reject) => {
-      const timer = window.setTimeout(resolve, 1_000);
-      signal?.addEventListener(
-        "abort",
-        () => {
-          window.clearTimeout(timer);
-          reject(new DOMException("Aborted", "AbortError"));
-        },
-        { once: true },
-      );
+      const onAbort = () => {
+        window.clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
+        reject(new DOMException("Aborted", "AbortError"));
+      };
+      const timer = window.setTimeout(() => {
+        signal?.removeEventListener("abort", onAbort);
+        resolve();
+      }, 1_000);
+      signal?.addEventListener("abort", onAbort, { once: true });
+      if (signal?.aborted) onAbort();
     });
   }
   // The server task is still active after the local waiting window. Return the

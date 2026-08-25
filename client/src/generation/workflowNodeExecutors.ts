@@ -768,6 +768,7 @@ async function applyTerminalTask(
       };
     }
     await context.save.flush();
+    await context.save.waitForRevision();
     clearGenerationSubmissionIntent(
       plan.kind,
       context.canvasId,
@@ -817,6 +818,7 @@ async function applyTerminalTask(
     };
   }
   await context.save.flush();
+  await context.save.waitForRevision();
   clearGenerationSubmissionIntent(
     plan.kind,
     context.canvasId,
@@ -845,7 +847,7 @@ async function waitForTerminalTask(
   task: GenerationTaskSummary,
 ) {
   if (["cancelled", "failed", "success"].includes(task.state)) return task;
-  return waitForGenerationTask(task.id);
+  return waitForGenerationTask(task.id, context.signal);
 }
 
 function createExecutor(kind: WorkflowExecutorKind): NodeExecutor {
@@ -873,7 +875,59 @@ function createExecutor(kind: WorkflowExecutorKind): NodeExecutor {
         : { status: "success" };
     },
     recover: async (nodeId, context) => {
-      const plan = createBoundRecoveryPlan(kind, nodeId, context);
+      let plan = createBoundRecoveryPlan(kind, nodeId, context);
+      const accepted = context.acceptedTask;
+      if (!isPlan(plan) && accepted) {
+        const currentNode = context.graph.snapshot().nodes.find((node) =>
+          node.id === nodeId
+        );
+        if (
+          !currentNode ||
+          currentNode.type !== kind ||
+          accepted.kind !== kind ||
+          accepted.nodeId !== nodeId
+        ) {
+          return {
+            errorCode: "RESULT_OWNERSHIP_CONFLICT",
+            message: "当前节点输入与已接收任务凭证不一致，未读取或覆盖结果",
+            status: "failed",
+          };
+        }
+        const acceptedTask = await getGenerationTask(
+          accepted.taskId,
+          context.signal,
+        );
+        if (!taskMatches(acceptedTask, kind, context.canvasId, nodeId)) {
+          return { message: "已接收任务与当前节点不一致", status: "failed" };
+        }
+        const applied = await applyFencedNodeUpdate({
+          context,
+          kind,
+          nodeId,
+          ownershipKey: accepted.ownershipKey,
+          taskId: taskIdFor(currentNode, kind),
+          update: (node) => ({
+            ...node,
+            data: {
+              ...node.data,
+              [`${kind}GenerationOwnershipKey`]: accepted.ownershipKey,
+              [`${kind}GenerationTaskId`]: accepted.taskId,
+              [`${kind}Generating`]: true,
+              workflowExecutionRunId: context.runId,
+            },
+          }),
+        });
+        if (applied.status !== "applied") {
+          return {
+            errorCode: "RESULT_OWNERSHIP_CONFLICT",
+            message: "当前节点已变化，未绑定已接收任务",
+            status: "failed",
+          };
+        }
+        await context.save.flush();
+        await context.save.waitForRevision();
+        plan = createBoundRecoveryPlan(kind, nodeId, context);
+      }
       if (!isPlan(plan)) return plan;
       const taskId = taskIdFor(plan.node, kind);
       const ownershipKey = plan.node.data[`${kind}GenerationOwnershipKey`];
@@ -883,7 +937,19 @@ function createExecutor(kind: WorkflowExecutorKind): NodeExecutor {
           status: "failed",
         };
       }
-      const task = await getGenerationTask(taskId);
+      if (accepted && (
+        accepted.kind !== kind ||
+        accepted.nodeId !== nodeId ||
+        accepted.taskId !== taskId ||
+        accepted.ownershipKey !== ownershipKey
+      )) {
+        return {
+          errorCode: "RESULT_OWNERSHIP_CONFLICT",
+          message: "恢复任务与已接收任务凭证不一致，未读取或覆盖结果",
+          status: "failed",
+        };
+      }
+      const task = await getGenerationTask(taskId, context.signal);
       if (!taskMatches(task, kind, context.canvasId, nodeId)) {
         return { message: "已有任务与当前节点不一致", status: "failed" };
       }
@@ -948,6 +1014,12 @@ function createExecutor(kind: WorkflowExecutorKind): NodeExecutor {
         admittedTask = admitted.ensured.task;
         ownershipKey = admitted.ensured.generationOwnershipKey ??
           plan.effectiveOwnershipKey;
+        await context.onTaskAccepted?.({
+          kind,
+          nodeId,
+          ownershipKey,
+          taskId: admittedTask.id,
+        });
         const applied = await applyFencedNodeUpdate({
           context,
           kind,

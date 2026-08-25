@@ -2381,6 +2381,28 @@ export function CanvasSurface({
     }, VIEWPORT_QUIET_MS);
   }, []);
 
+  const finishNodeDrag = useCallback(() => {
+    if (!nodeDragging.current) return;
+    nodeDragging.current = false;
+    markCanvasInteraction();
+  }, [markCanvasInteraction]);
+
+  useEffect(() => {
+    const finishForPointerCancel = () => finishNodeDrag();
+    const finishForEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") finishNodeDrag();
+    };
+    window.addEventListener("pointercancel", finishForPointerCancel);
+    window.addEventListener("blur", finishForPointerCancel);
+    window.addEventListener("keydown", finishForEscape);
+    return () => {
+      finishNodeDrag();
+      window.removeEventListener("pointercancel", finishForPointerCancel);
+      window.removeEventListener("blur", finishForPointerCancel);
+      window.removeEventListener("keydown", finishForEscape);
+    };
+  }, [finishNodeDrag, persistenceId]);
+
   const applyViewport = useCallback((next: Viewport) => {
     // Open the viewport-interaction gate before React Flow receives the
     // command. setViewport can synchronously reconcile mounted group nodes;
@@ -5184,8 +5206,7 @@ export function CanvasSurface({
         }}
         onNodeDragStop={() => {
           if (!persistenceReady) return;
-          nodeDragging.current = false;
-          markCanvasInteraction();
+          finishNodeDrag();
         }}
         onNodeClick={(_, node) => {
           if (!persistenceReady) return;

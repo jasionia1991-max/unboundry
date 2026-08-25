@@ -2,17 +2,17 @@
 
 更新时间：2026-08-25
 
-状态：`PLAN_FROZEN / IMPLEMENTATION_NOT_STARTED / USER_REVIEW`
+状态：`LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / P0_P1_REVIEW_PASS / V0_6_42_CANDIDATE / SAFE_FULL_PENDING / RELEASE_PENDING`
 
 权威方案：`spec/INC_GEN_013_GROUP_RECOVERY_AND_GROUP_DRAG_PERFORMANCE_PLAN_2026-08-25.md`
 
 ## 1. 当前结论
 
 - 截图提示是防重复付费安全门，不是 Provider 报错；服务端原任务已成功且结果媒体仍在 OSS，没有数据丢失证据。
-- 当前缺口是 group run checkpoint 没有可靠保存已接收任务的完整绑定，刷新后无法在严格归属门下自动接回原任务。
-- 组合框拖动卡顿的直接代码路径是 `GroupNode.tsx` 旧自定义 `beginMove`：pointer move 每次直接 `setNodes`，并绕过 `CanvasSurface` 的统一拖动态和 persistence quiet gate。
+- group run checkpoint 已向后兼容保存已接收任务完整绑定；刷新只核对精确 accepted task，pending 不自动提交，保存/revision/proof 完成前不清 checkpoint。
+- `GroupNode.tsx` 旧自定义 `beginMove` 已移除；组合框使用 React Flow 原生拖动并统一进入 `CanvasSurface` 拖动态与 persistence quiet gate。
 - 这不是后续 commit 把修复撤回；它是历史旁路和测试覆盖缺口，但对用户而言属于需要修复的实际体验回归。
-- 当前唯一安全人工恢复仍是任务面板的「继续剩余节点」或明确放弃，不得删除 checkpoint 或重新开一轮绕过。
+- 人工「继续剩余节点」和放弃仍保留；本地自动与性能门已过，生产真实画布尚未复验，不能写 `USER_PASS`。
 
 ## 2. 文档工作区
 
@@ -22,7 +22,7 @@
 | 文档隔离工作树 | `/private/tmp/unboundry-canvas-recovery-group-drag-plan-20260825` |
 | 分支 | `codex/inc-canvas-recovery-group-drag-plan-2026-08-25` |
 | 基线 / origin/main | `a0c8d285789ac2e51ff73e7c1ff48cd8676b560a` |
-| package / schema | `0.6.41 / 41` |
+| package / schema | `0.6.42 / 41` |
 | 生产 | `v0.6.41 / schema41 / USER_RECHECK` |
 
 受保护 `spec/public-templates-director-split-revision.json` 未读取、修改、移动、删除、stage 或提交；真实主工作树未清理。
@@ -80,17 +80,18 @@
 - 候选性能门：long task >=100ms 为0；frame p95 <=25ms；max <100ms；>24ms dropped frame <=5。
 - 性能门只在固定 production build 环境判定；用户真实画布最终仍为 `USER_RECHECK`。
 
-## 7. 当前未执行
+## 7. 当前执行证据
 
-- [ ] 未修改应用代码
-- [ ] 未修改数据库 schema 或 OpenAPI
-- [x] 文档治理定向m38最终`15/15 PASS`；首次因CURRENT_STATE一句话未满足既有机器正则而`14/15`，修正文案后按最小spec复验通过
-- [ ] 未运行INC-GEN-013新功能测试、safe full 或生产浏览器矩阵
-- [ ] 未 commit、push、创建 PR/tag/Release
-- [ ] 未执行 Provider、OSS、付费请求或生产写入
-- [ ] 未取得新版本号和发布授权
-- [ ] 未进入 `USER_RECHECK` 或 `USER_PASS`
+- [x] R0身份门：隔离worktree/分支、基线`a0c8d285…b560a`、Node`22.23.1`/npm`10.9.8`、4173 listener SHA`24c91e57…8244`均锁定；受保护JSON未读取、修改或stage。
+- [x] R1 expected-red：m22为`35/37`，捕获accepted回调缺失和畸形binding未拒绝；m2为`4/5`，捕获旧`beginMove`旁路。
+- [x] R2～R4：四类executor在admission后即时写binding；accepted-only只GET精确任务，pending POST为0；同run单租约/单poller，page-exit、续租失败、外来租约均abort；先save+revision+proof后清理。
+- [x] R5～R6：移除GroupNode自建pointermove；pointerup/pointercancel/blur/Escape/unmount/canvas switch均释放拖动态；拖动按下期间PUT为0，结束至稳定最多1次PUT。
+- [x] R7 rich fixture：3组/39节点/73边、每组12子节点和24边、2900×1660、zoom15.6%；p95`9.9ms`、max`10.3ms`、>=100ms long task`0`、dropped frame`0`、媒体请求`0`、最终画布PUT`1`，相对坐标/刷新/undo-redo/多选均通过。
+- [x] 风险驱动回归：m1-selection-drag`6/6`、m2`5/5`、m3`6/6`、m40`14/14`、m79`3/3`；m22最终`37/37`。一次组合运行旧toast瞬态断言失败后改为持久租约证据；两次P1终审发现均已修复。
+- [x] 独立只读审查原始发现2个P1（admission-to-binding窗口、外来租约未abort）；均已关闭，最终无已知P0/P1。
+- [x] build与`git diff --check`通过；真实Provider、Generation、OSS写入、费用和生产变更均为0。
+- [ ] 唯一safe full、GitHub PR/CI/merge、tag/Release、生产发布与零付费生产矩阵尚未执行。
 
 ## 8. 唯一下一步
 
-等待用户另行明确启动实施。获得授权后，从权威方案 R0 开始：重新只读冻结基线与精确 fixture，先补 REC/DRAG 预期红；不得从写代码、发布或删除 checkpoint 开始。
+冻结`v0.6.42/schema41`干净候选后执行本Goal唯一一次safe full；通过后按Runbook完成GitHub、不可变发布和零付费生产矩阵。任何真实Provider/Generation/OSS写入继续为0，最终只进入`USER_RECHECK`。
