@@ -1,0 +1,260 @@
+{
+  "receiptType": "UNBOUNDRY_V0_6_45_LEGACY_TERMINAL_RECONCILIATION_PRODUCTION_RECEIPT",
+  "recordedAt": "2026-08-26",
+  "status": {
+    "production": "PRODUCTION_V0_6_45_DEPLOYED_TARGET_ALLOWLIST_WAITING_AUTHENTICATED_PAGE",
+    "userAcceptance": "USER_RECHECK",
+    "goalComplete": false
+  },
+  "source": {
+    "version": "0.6.45",
+    "schemaVersion": 41,
+    "releaseCandidateCommit": "f243e8eab0d534f9c7c0518b3898f6cd67857057",
+    "releaseCandidateTree": "2c8ae98bb1869e7454e5b96849ee9116e4ee04f0",
+    "fullEvidenceDocumentationCommit": "a0beab219cc16cc43ea7b0327857622809afaf82",
+    "pullRequest": 105,
+    "pullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/105",
+    "pullRequestQualityRun": 32905435255,
+    "pullRequestQualityJob": 97988354463,
+    "mergeCommit": "72e1b607120bfc26d5df8ea18448f340826da2bf",
+    "mergeTree": "3f1367b2d4426a14fba186b1b17ba9c34642d25b",
+    "mainQualityRun": 32905499782,
+    "mainQualityJob": 97988554246,
+    "qualityConclusion": "success",
+    "tag": "v0.6.45",
+    "tagObject": "c6c54abc6501368f24b48f664b23dc91db85abb4",
+    "tagPeeledCommit": "72e1b607120bfc26d5df8ea18448f340826da2bf",
+    "tagMoved": false,
+    "releaseUrl": "https://github.com/jasionia1991-max/unboundry/releases/tag/v0.6.45",
+    "releaseDraft": false,
+    "releasePrerelease": false,
+    "releasePublishedAt": "2026-08-25T22:19:08Z",
+    "sourceArchiveSha256": "32f87d966853084cde9d108cbf7a1394f7be518c9d5fcf9fb2449489abc5a507",
+    "sourceArchiveBytes": 29801726
+  },
+  "verification": {
+    "independentReview": {
+      "final": "P0=0 / P1=0 / GO",
+      "providerRequests": 0,
+      "writes": 0
+    },
+    "soleSafeFull": {
+      "commit": "f243e8eab0d534f9c7c0518b3898f6cd67857057",
+      "tree": "2c8ae98bb1869e7454e5b96849ee9116e4ee04f0",
+      "specsExecuted": 121,
+      "specsTotal": 121,
+      "testsPassed": 1069,
+      "testsTotal": 1069,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0,
+      "node": "22.23.1",
+      "npm": "10.9.8",
+      "sourceSnapshotSha256": "df8cdec086998654d8635cedb433737b100fed7389ca1073cbc2d059999a3d68",
+      "sourceUnchanged": true,
+      "listener4173Unchanged": true,
+      "fullRepeated": false
+    },
+    "documentationFocusedRecheck": {
+      "scope": "tests/m38-generation-runtime-incidents.spec.ts",
+      "passed": 15,
+      "total": 15,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0,
+      "sourceSnapshotSha256": "03cfc07437408c3b8d519b37930c21580a00efda8c570ea930e50b9499f44cd0",
+      "listener4173Unchanged": true,
+      "businessSpecsRepeated": false,
+      "fullRepeated": false
+    }
+  },
+  "production": {
+    "host": "live-cockpit",
+    "releasePath": "/opt/unboundry/releases/v0.6.45-inc-gen-015-legacy-terminal-reconcile-20260826",
+    "previousReleasePath": "/opt/unboundry/releases/v0.6.44-inc-gen-014-workflow-self-healing-20260826",
+    "freshSource": "IMMUTABLE_LOCAL_TAG_ARCHIVE_TRANSFER",
+    "node": "22.23.2",
+    "npm": "10.9.8",
+    "freshBuild": true,
+    "releaseFileCount": 5983,
+    "releaseInventorySha256": "fe7b1c8eaf76cd291a530ab01726348192d6ddc9fce2c71cf0db5c393e397c5c",
+    "releaseInventoryVerifiedAfterCutover": true,
+    "authoritativeBackupPath": "/var/lib/unboundry-rollbacks/v0.6.45-cutover-final-lWEjzz",
+    "backupSourceFileCount": 366,
+    "backupRestoreFileCount": 366,
+    "backupManifestSha256": "89a1fa1289c6ab61e87f4029dc8c985c879c7e31a333221a34e9b1c73aaa380b",
+    "restoreValidation": {
+      "schemaVersion": 41,
+      "integrity": "ok",
+      "foreignKeyViolations": 0,
+      "databaseBytes": 15187968,
+      "generationTasks": 814,
+      "generationAttempts": 822,
+      "activeGenerationTasks": 0,
+      "mediaAssets": 849,
+      "publicationAttempts": 439,
+      "canvases": 67
+    },
+    "migration": "NOT_REQUIRED_SCHEMA41_UNCHANGED",
+    "quietGate": {
+      "startedAt": "2026-08-25T22:30:37.291Z",
+      "endedAt": "2026-08-25T22:31:37.323Z",
+      "generationTasksAtStart": 814,
+      "generationTasksAtEnd": 814,
+      "generationAttemptsAtStart": 822,
+      "generationAttemptsAtEnd": 822,
+      "activeAtStart": 0,
+      "activeAtEnd": 0,
+      "latestAttemptAt": "2026-08-25T08:52:45.641Z",
+      "historyModifiedByRelease": false
+    },
+    "cutoverAt": "2026-08-25T22:31:40Z",
+    "service": {
+      "active": true,
+      "enabled": true,
+      "nRestarts": 0,
+      "newApplicationWarnings": 0
+    },
+    "health": {
+      "loopbackVersionHttpStatus": 200,
+      "loopbackVersion": "0.6.45",
+      "publicVersionHttpStatus": 200,
+      "publicVersion": "0.6.45",
+      "liveHttpStatus": 200,
+      "readyHttpStatus": 200,
+      "readyState": "active",
+      "schemaVersion": 41
+    },
+    "dataCountsBeforeAndAfterDeployment": {
+      "generationTasks": 814,
+      "generationAttempts": 822,
+      "activeGenerationTasks": 0,
+      "mediaAssets": 849,
+      "mediaDatabaseBytes": 1513748944,
+      "publicationAttempts": 439,
+      "canvases": 67,
+      "dataFiles": 366,
+      "dataBytes": 304270000,
+      "unchangedAcrossCutoverAndCompletedRolloutStages": true
+    },
+    "publicAssetSha256": {
+      "/": "dc333c7c02c9abbc789180054903d0f0b4feca6f4b04beeee65c65c1d6751603",
+      "/assets/index-BxiYSvuO.css": "99f31c96f4816d9dde9fba424755eed80ab88cf94fac39d8cfe34eab2b056e14",
+      "/assets/index-DquY81ti.js": "1aa4dd620553e3c750eed68a7c1b30f721fbff6663a8b435b0ffacc3f853329f",
+      "/favicon.svg": "6d2795e7ca70fe26408c5f057c59224421cafe44288ac1a1c2b19bf6e4f2010b"
+    },
+    "preSwitchFailures": [
+      {
+        "stage": "backup-manifest-output-parsing",
+        "newReleaseActivated": false,
+        "automaticRollbackConfirmed": true,
+        "productionReturnedTo": "v0.6.44"
+      },
+      {
+        "stage": "restore-validation-sudo-node-path",
+        "newReleaseActivated": false,
+        "automaticRollbackConfirmed": true,
+        "productionReturnedTo": "v0.6.44"
+      },
+      {
+        "stage": "restore-validation-shell-json-match",
+        "newReleaseActivated": false,
+        "automaticRollbackConfirmed": true,
+        "productionReturnedTo": "v0.6.44"
+      }
+    ],
+    "failedAttemptBackupsRetained": [
+      "/var/lib/unboundry-rollbacks/v0.6.45-cutover-final-qqAwGT",
+      "/var/lib/unboundry-rollbacks/v0.6.45-cutover-final-rEjL3S",
+      "/var/lib/unboundry-rollbacks/v0.6.45-cutover-final-UWnGC2"
+    ],
+    "rollback": {
+      "requiredForFinalCutover": false,
+      "previousReleaseRetained": true,
+      "automaticRollbackTrapArmedDuringCutover": true,
+      "finalState": "NEW_RELEASE_HEALTHY"
+    }
+  },
+  "rollout": {
+    "detect": {
+      "modeConfirmedInProcess": true,
+      "writeEnabled": false,
+      "targetRevisionBeforeAndAfter": 327,
+      "targetGraphRevisionBeforeAndAfter": 52,
+      "generationTasksBeforeAndAfter": 814,
+      "generationAttemptsBeforeAndAfter": 822,
+      "activeBeforeAndAfter": 0,
+      "mediaBeforeAndAfter": 849,
+      "publicationsBeforeAndAfter": 439,
+      "result": "ZERO_WRITE_CONFIRMED"
+    },
+    "technicalAllowlist": {
+      "accountId": "02c9dbba-5b72-408b-9045-eaaec20b799a",
+      "canvasId": "b31fdb89-a061-40e6-80c6-b40c8ffb813b",
+      "pageLoaded": true,
+      "revisionBeforeAndAfter": 75,
+      "graphRevisionBeforeAndAfter": 44,
+      "updatedAtBeforeAndAfter": "2026-08-25T14:42:17.710Z",
+      "generationTasksBeforeAndAfter": 814,
+      "generationAttemptsBeforeAndAfter": 822,
+      "activeBeforeAndAfter": 0,
+      "result": "ALLOWLIST_POLICY_ACTIVE_ZERO_WRITE_WITHOUT_CANDIDATE"
+    },
+    "targetAllowlist": {
+      "accountId": "d8322476-6bb3-4f51-b9ca-7042642abb84",
+      "accountLoginName": "zzx",
+      "canvasId": "60a739ce-9cb4-4c46-9c77-92e9f6f22b49",
+      "modeConfirmedInProcess": true,
+      "currentRevision": 327,
+      "currentGraphRevision": 52,
+      "candidateNodes": 5,
+      "candidateKinds": {
+        "text": 3,
+        "image": 2
+      },
+      "distinctRunIds": 3,
+      "originalTasksSuccess": 5,
+      "activeTasks": 0,
+      "authenticatedPageOpened": false,
+      "reason": "Available browser sessions are authenticated as account mymy/02c9dbba, not target owner zzx/d8322476; target navigation correctly redirected to the workspace with zero target write. Cookies, localStorage and browser profiles were not read.",
+      "result": "WAITING_TARGET_OWNER_AUTHENTICATED_PAGE"
+    },
+    "on": {
+      "attempted": false,
+      "reason": "Target allowlist acceptance is incomplete; expanding rollout would violate the frozen gate order."
+    },
+    "currentMode": "allowlist",
+    "currentAllowlistScope": "TARGET_OWNER_AND_CANVAS_ONLY",
+    "offRollbackAvailable": true
+  },
+  "requestLedger": {
+    "providerCredentialProbesUsed": 0,
+    "realGenerationUsed": 0,
+    "paidGenerationUsd": 0,
+    "generationPostsDuringRecoveryValidation": 0,
+    "providerSubmissionsDuringRecoveryValidation": 0,
+    "automaticRetriesDuringRecoveryValidation": 0,
+    "mediaWritesUsed": 0,
+    "ossObjectWritesUsed": 0
+  },
+  "safety": {
+    "protectedFileReadOrChanged": false,
+    "historicalTaskOrMediaDeleted": false,
+    "historicalReleaseOrBackupDeleted": false,
+    "historicalTagOrReleaseMoved": false,
+    "productionPaidTaskUsedForAcceptance": false,
+    "targetCanvasMutatedBeforeAuthenticatedOwnerPage": false,
+    "browserCookiesLocalStorageOrProfileRead": false,
+    "releaseAuthorizationConsumed": true
+  },
+  "nextGate": {
+    "status": "TARGET_OWNER_AUTHENTICATION_REQUIRED",
+    "action": "Sign in to production as account zzx in a controllable browser and open the target canvas. The allowlist is already restricted to that exact account and canvas. Then verify the five nodes, zero paid/provider/media writes, and only after target acceptance advance to on.",
+    "authorizationRequired": false,
+    "userPassWritten": false
+  }
+}

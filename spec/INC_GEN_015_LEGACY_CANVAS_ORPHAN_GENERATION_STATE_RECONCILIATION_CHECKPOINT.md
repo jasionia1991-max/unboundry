@@ -2,7 +2,7 @@
 
 更新时间：2026-08-26
 
-状态：`R0_R4_COMPLETE / INDEPENDENT_REVIEW_GO / SAFE_FULL_PASS / GITHUB_RELEASE_PENDING / RELEASE_V0_6_45_AUTHORIZED`
+状态：`R0_R6_PARTIAL / PRODUCTION_V0_6_45_DEPLOYED / TARGET_ALLOWLIST_WAITING_AUTHENTICATED_PAGE / USER_RECHECK`
 
 权威方案：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_PLAN_2026-08-26.md`
 
@@ -16,10 +16,10 @@
 | 实施基线 | `origin/main@49197fb36924b4df11a8c39236275a4ceec8c553` |
 | 工作树文档基线 | `0813e6283b12418b19fcf8be7fc04becee424336` |
 | package / schema | `0.6.45 / 41` |
-| 生产 | `v0.6.44 / schema41`，`/opt/unboundry/current`指向不可变v0.6.44 release，service active+enabled、NRestarts0 |
+| 生产 | `v0.6.45 / schema41`，`/opt/unboundry/current`指向不可变v0.6.45 release，service active+enabled、NRestarts0；当前target-only allowlist |
 | 固定运行时 | `Node 22.23.1 / npm 10.9.8` |
 | 4173 | 既有监听哈希`24c91e57…8244`，所有安全运行前后不变 |
-| v0.6.45 | 本地tag与GitHub Release均未占用；本Goal发布授权有效 |
+| v0.6.45 | PR #105已合并；不可移动tag与GitHub Release已发布；生产已部署 |
 
 受保护`spec/public-templates-director-split-revision.json`未读取、修改、暂存、移动或删除。真实主工作树和其他工作树的用户改动未清理或覆盖。
 
@@ -53,11 +53,15 @@
 - [x] 第四轮修复产品源码快照`172e053d09bcd4b68bee5eb4b518ad4dace5162025fe1b8dc44708949ff6af1f`：m41 `54/54`、m22 `41/41`、m20 `1/1 PASS`；仅增强m85测试后的当前快照`15a5564ea6229d9f64a7c3a9dbcf09bae1c567110976fa427fd376edfdb857b3`下m85 `27/27 PASS`。TypeScript与diff门退出0，4173不变。
 - [x] 同一独立只读线程第五轮逐项确认第四轮4项均`CLOSED`，最终`P0=0 / P1=0 / GO`；未发现新的重复付费、unknown解锁、无Web Locks写、活动任务误清、结果覆盖或跨owner/API语义缺口。审查零写、零测试、零网络、零生产操作。
 - [x] 冻结候选commit`f243e8eab0d534f9c7c0518b3898f6cd67857057`/tree`2c8ae98bb1869e7454e5b96849ee9116e4ee04f0`完成本Goal唯一safe full：`121/121 specs、1069/1069 tests PASS`，failed/skipped/retries/blocked/reportErrors均0；source/snapshot`df8cdec086998654d8635cedb433737b100fed7389ca1073cbc2d059999a3d68`，4173监听哈希`24c91e57…8244`不变。不得运行第二次full。
+- [x] GitHub PR #105、PR/main Quality CI、merge`72e1b60`、tag/Release `v0.6.45`完成；fresh tag构建5983文件、inventory`fe7b1c8e…7c5c`。
+- [x] 冻结备份/恢复各366文件且manifest`89a1fa12…380b`一致，schema41/integrity ok/FK0；原子切换后公网/回环v0.6.45、service active+enabled/NRestarts0。
+- [x] detect与技术Canvas allowlist实页零写；全部数据账本不变，零Generation/Provider/Media/OSS/费用。
+- [x] 当前灰度已限制为目标owner`zzx`+目标Canvas；可控浏览器当前登录`mymy`，owner隔离重定向正确，未读取Cookie/localStorage/Profile，目标仍revision327/graph52与5候选节点。
 
 ## 3. 当前阶段
 
-第五轮独立终审已为`P0=0 / P1=0 / GO`，冻结候选的本Goal唯一safe full已全绿。尚未运行GitHub发布或生产灰度。当前生产仍为v0.6.44，目标用户Canvas尚未写入。
+v0.6.45已发布并部署，detect与技术allowlist已通过；目标精确allowlist已就绪。唯一未完成门是用目标owner`zzx`的已登录可控浏览器打开目标Canvas，完成5节点收口证据后再进入`on`。目标尚未写入，生产保持健康。
 
 ## 4. 唯一下一动作
 
-推送冻结候选并完成PR/main Quality CI、不可移动tag `v0.6.45`与GitHub Release；不得运行第二次full。
+用户在可控浏览器登录生产账号`zzx`并打开目标Canvas；完成后核对5节点、数据/费用账本，再决定是否进入`on`。不得运行第二次full或提前扩大灰度。

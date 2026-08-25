@@ -73,7 +73,7 @@
 
 本文件只记录验收条目的历史证据与状态，不承担当前版本播报。当前线上版本、未发布候选与下一步只以 `spec/UNBOUNDRY_CURRENT_STATE.md` 为准。以下日期段落均为对应时点快照；既有用户验收与未完成状态继续保留，不因新版本自动升级。
 
-2026-08-26 `INC-GEN-015 = INDEPENDENT_REVIEW_GO / SAFE_FULL_PASS / GITHUB_RELEASE_PENDING / RELEASE_V0_6_45_AUTHORIZED`：v0.6.45/schema41候选已实现LGR-01～12，前四轮全部阻断均已关闭；同一独立线程第五轮逐项复核最终为`P0=0/P1=0/GO`。冻结候选commit`f243e8e`/tree`2c8ae98`的本Goal唯一safe full为`121/121 specs、1069/1069 tests PASS`，failed/skipped/retries/blocked/reportErrors均0，source/snapshot`df8cdec0…3d68`，4173不变；不得重复full。真实Generation/Provider/Media/OSS/费用0。GitHub发布与生产灰度尚未完成，因此不得写PRODUCTION_PASS/USER_PASS。
+2026-08-26 `INC-GEN-015 = PRODUCTION_V0_6_45_DEPLOYED / TARGET_ALLOWLIST_WAITING_AUTHENTICATED_PAGE / USER_RECHECK`：v0.6.45/schema41、PR #105、PR/main CI、tag/Release、fresh build、366文件冻结恢复和原子切换已完成；唯一safe full为`121/121 specs、1069/1069 tests PASS`且未重复。detect与技术Canvas allowlist实页均零写，tasks814/attempts822/active0/media849/publications439/canvases67不变。目标owner`zzx`未登录可控浏览器，目标精确allowlist虽已启用但revision327/graph52与5节点仍未收口；不得进入`on`或写PRODUCTION_PASS/USER_PASS。回执：`spec/V0_6_45_PRODUCTION_RECEIPT_2026-08-26.json`。
 
 | ID | Priority | Acceptance | Planned evidence | Status |
 |---|---:|---|---|---|

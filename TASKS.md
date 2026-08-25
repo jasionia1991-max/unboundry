@@ -1,9 +1,9 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产运行`v0.6.44 / schema41`且技术健康；INC-GEN-015同一独立线程第五轮终审已给出`P0=0 / P1=0 / GO`，冻结候选的本Goal唯一safe full已全绿，当前进入GitHub发布门，尚未写目标生产Canvas。
+> **当前状态**：生产已运行`v0.6.45 / schema41`且技术健康；GitHub发布、冻结备份、原子切换、detect与技术Canvas allowlist均通过。目标Canvas已进入精确allowlist，但可控浏览器当前登录`mymy`而目标owner为`zzx`，等待目标owner登录后打开页面完成5节点收口；尚未进入`on`。
 
 更新时间：2026-08-26
-状态：`INC-GEN-015 INDEPENDENT_REVIEW_GO / SAFE_FULL_PASS / GITHUB_RELEASE_PENDING / RELEASE_V0_6_45_AUTHORIZED；生产仍为CURRENT_V0_6_44_USER_RECHECK。`
+状态：`INC-GEN-015 PRODUCTION_V0_6_45_DEPLOYED / TARGET_ALLOWLIST_WAITING_AUTHENTICATED_PAGE / USER_RECHECK。`
 
 ### 2026-08-26 老画布孤立生成态与终态结果自动收口（INC-GEN-015，TARGETED_AUTO_PASS）
 
@@ -34,10 +34,15 @@
 - [x] 第四轮修复产品源码快照`172e053d…af1f`下m41 `54/54`、m22 `41/41`、m20 `1/1 PASS`；仅增强m85测试后的当前快照`15a5564e…57b3`下m85 `27/27 PASS`，TypeScript/diff门通过，Generation POST 0、4173不变
 - [x] 同一独立只读审查线程第五轮逐项确认第四轮4项阻断均`CLOSED`，最终结论`P0=0 / P1=0 / GO`；审查全程零写、零测试、零网络、零生产操作
 - [x] 冻结候选commit`f243e8eab0d534f9c7c0518b3898f6cd67857057`/tree`2c8ae98bb1869e7454e5b96849ee9116e4ee04f0`完成本Goal唯一safe full：`121/121 specs、1069/1069 tests PASS`，failed/skipped/retries/blocked/reportErrors均0；source/snapshot`df8cdec0…3d68`，4173监听不变
+- [x] PR #105、PR/main Quality CI、merge`72e1b60`、不可移动tag `v0.6.45`与GitHub Release完成
+- [x] fresh tag构建5983文件、inventory`fe7b1c8e…7c5c`；冻结备份/恢复各366文件且manifest一致，schema41/integrity ok/FK0
+- [x] 原子切换后公网/回环v0.6.45、service active+enabled/NRestarts0；tasks814/attempts822/active0/media849/publications439/canvases67/dataFiles366不变
+- [x] detect模式目标revision327/graph52零写；技术Canvas allowlist实页加载后revision75/graph44/updated_at均不变，零Generation/Provider/Media/OSS/费用
+- [x] 目标owner`zzx`与Canvas已成为当前唯一allowlist；可控浏览器会话登录的是`mymy`，访问目标按owner隔离正确重定向，未读取Cookie/localStorage/Profile且目标仍零写
 - [x] 真实Generation POST、Provider submit/probe、Media/OSS写和费用均为0；目标生产Canvas尚未写入
-- [ ] Git/PR/CI/tag/Release、生产detect→allowlist→on灰度与回执待完成
+- [ ] 目标owner`zzx`登录可控浏览器并打开目标Canvas后，核对5节点安全收口与零费用账本；通过后才能进入`on`并完成最终回执
 
-权威方案：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_PLAN_2026-08-26.md`；实时断点：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_CHECKPOINT.md`。当前唯一下一步是推送冻结候选并完成PR/main CI、不可移动tag与GitHub Release；不得运行第二次full。
+权威方案：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_PLAN_2026-08-26.md`；实时断点：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_CHECKPOINT.md`；生产回执：`spec/V0_6_45_PRODUCTION_RECEIPT_2026-08-26.json`。当前唯一下一步是让`zzx`登录可控浏览器并打开目标Canvas；allowlist已精确就绪，不得运行第二次full或提前扩大到`on`。
 
 ### 2026-08-25 工作流自动恢复与密钥校验解耦（INC-GEN-014，R0～R5_COMPLETE / R6_TARGETED_PASS）
 
