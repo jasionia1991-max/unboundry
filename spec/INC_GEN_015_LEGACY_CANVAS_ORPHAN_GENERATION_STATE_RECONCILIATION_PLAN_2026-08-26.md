@@ -387,10 +387,10 @@ checkpoint 一旦被可信恢复 owner 接管，历史核对器必须 abort。�
 9. Git/PR/tag/Release、冻结恢复、fresh build、原子发布和生产数据/资源门完成；
 10. 自动证据只写 `AUTO_PASS`，生产技术证据只写 `PRODUCTION_*_PASS`；用户在目标老画布刷新并确认视觉状态后才允许写 `USER_PASS`。
 
-当前实施状态：`INDEPENDENT_REVIEW_GO / SAFE_FULL_PENDING / RELEASE_V0_6_45_AUTHORIZED`；前四轮阻断均已关闭，同一独立线程第五轮最终`P0=0/P1=0/GO`。产品源码快照`172e053d…af1f`下m41 `54/54`、m22 `41/41`、m20 `1/1 PASS`；仅增强m85测试后的快照`15a5564e…57b3`下m85 `27/27 PASS`。生产仍为v0.6.44，尚未运行唯一safe full、发布或写目标Canvas。
+当前实施状态：`INDEPENDENT_REVIEW_GO / SAFE_FULL_PASS / GITHUB_RELEASE_PENDING / RELEASE_V0_6_45_AUTHORIZED`；前四轮阻断均已关闭，同一独立线程第五轮最终`P0=0/P1=0/GO`。冻结候选commit`f243e8eab0d534f9c7c0518b3898f6cd67857057`/tree`2c8ae98bb1869e7454e5b96849ee9116e4ee04f0`的本Goal唯一safe full为`121/121 specs、1069/1069 tests PASS`，failed/skipped/retries/blocked/reportErrors均0，source/snapshot`df8cdec086998654d8635cedb433737b100fed7389ca1073cbc2d059999a3d68`，4173不变。生产仍为v0.6.44，尚未发布或写目标Canvas；不得运行第二次full。
 
 ## 15. 下一步与授权边界
 
-用户已通过本Goal明确授权实施与v0.6.45发布；独立终审门已达到`P0=0/P1=0/GO`，当前唯一下一步是冻结提交候选并运行本Goal唯一一次safe full。full通过后才继续GitHub与生产灰度。
+用户已通过本Goal明确授权实施与v0.6.45发布；独立终审门已达到`P0=0/P1=0/GO`且本Goal唯一safe full已全绿，当前唯一下一步是完成GitHub发布后按`detect → allowlist → on`执行生产灰度。
 
 方案阶段本身不等于实施或发布；本次后续Goal已单独提供v0.6.45实施、GitHub与生产灰度授权，仍不得突破零Generation重提、零Provider提交、零费用和数据安全边界。

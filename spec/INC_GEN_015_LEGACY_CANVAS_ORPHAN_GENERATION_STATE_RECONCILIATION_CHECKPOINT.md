@@ -2,7 +2,7 @@
 
 更新时间：2026-08-26
 
-状态：`R0_R4_COMPLETE / INDEPENDENT_REVIEW_GO / SAFE_FULL_PENDING / RELEASE_V0_6_45_AUTHORIZED`
+状态：`R0_R4_COMPLETE / INDEPENDENT_REVIEW_GO / SAFE_FULL_PASS / GITHUB_RELEASE_PENDING / RELEASE_V0_6_45_AUTHORIZED`
 
 权威方案：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_PLAN_2026-08-26.md`
 
@@ -52,11 +52,12 @@
 - [x] 第四轮4项阻断均已关闭：policy严格键集合；锁外和Canvas admission内均检查同节点其他活动run；projection事务要求当前revision精确等于observed revision并以新GET重试保留编辑；服务端由task result派生权威resultKey，与请求和节点proof三方精确匹配。
 - [x] 第四轮修复产品源码快照`172e053d09bcd4b68bee5eb4b518ad4dace5162025fe1b8dc44708949ff6af1f`：m41 `54/54`、m22 `41/41`、m20 `1/1 PASS`；仅增强m85测试后的当前快照`15a5564ea6229d9f64a7c3a9dbcf09bae1c567110976fa427fd376edfdb857b3`下m85 `27/27 PASS`。TypeScript与diff门退出0，4173不变。
 - [x] 同一独立只读线程第五轮逐项确认第四轮4项均`CLOSED`，最终`P0=0 / P1=0 / GO`；未发现新的重复付费、unknown解锁、无Web Locks写、活动任务误清、结果覆盖或跨owner/API语义缺口。审查零写、零测试、零网络、零生产操作。
+- [x] 冻结候选commit`f243e8eab0d534f9c7c0518b3898f6cd67857057`/tree`2c8ae98bb1869e7454e5b96849ee9116e4ee04f0`完成本Goal唯一safe full：`121/121 specs、1069/1069 tests PASS`，failed/skipped/retries/blocked/reportErrors均0；source/snapshot`df8cdec086998654d8635cedb433737b100fed7389ca1073cbc2d059999a3d68`，4173监听哈希`24c91e57…8244`不变。不得运行第二次full。
 
 ## 3. 当前阶段
 
-第五轮独立终审已为`P0=0 / P1=0 / GO`，冻结候选等待本Goal唯一safe full。尚未运行GitHub发布或生产灰度。当前生产仍为v0.6.44，目标用户Canvas尚未写入。
+第五轮独立终审已为`P0=0 / P1=0 / GO`，冻结候选的本Goal唯一safe full已全绿。尚未运行GitHub发布或生产灰度。当前生产仍为v0.6.44，目标用户Canvas尚未写入。
 
 ## 4. 唯一下一动作
 
-显式暂存并提交冻结候选，确认受保护文件未进入索引，然后运行本Goal唯一一次safe full；不得重复full。
+推送冻结候选并完成PR/main Quality CI、不可移动tag `v0.6.45`与GitHub Release；不得运行第二次full。

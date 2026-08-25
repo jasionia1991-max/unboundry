@@ -1,9 +1,9 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产运行`v0.6.44 / schema41`且技术健康；INC-GEN-015同一独立线程第五轮终审已给出`P0=0 / P1=0 / GO`，当前冻结候选等待本Goal唯一safe full，尚未发布或写目标生产Canvas。
+> **当前状态**：生产运行`v0.6.44 / schema41`且技术健康；INC-GEN-015同一独立线程第五轮终审已给出`P0=0 / P1=0 / GO`，冻结候选的本Goal唯一safe full已全绿，当前进入GitHub发布门，尚未写目标生产Canvas。
 
 更新时间：2026-08-26
-状态：`INC-GEN-015 INDEPENDENT_REVIEW_GO / SAFE_FULL_PENDING / RELEASE_V0_6_45_AUTHORIZED；生产仍为CURRENT_V0_6_44_USER_RECHECK。`
+状态：`INC-GEN-015 INDEPENDENT_REVIEW_GO / SAFE_FULL_PASS / GITHUB_RELEASE_PENDING / RELEASE_V0_6_45_AUTHORIZED；生产仍为CURRENT_V0_6_44_USER_RECHECK。`
 
 ### 2026-08-26 老画布孤立生成态与终态结果自动收口（INC-GEN-015，TARGETED_AUTO_PASS）
 
@@ -33,10 +33,11 @@
 - [x] 第四轮4项阻断均已关闭：policy严格键集合；锁外与Canvas admission内均检查同节点其他活动run lease；generation projection在服务端事务内要求精确observed revision并可从新GET重试且保留并发编辑；服务端从success task结果派生权威resultKey并与请求/节点proof三方精确匹配
 - [x] 第四轮修复产品源码快照`172e053d…af1f`下m41 `54/54`、m22 `41/41`、m20 `1/1 PASS`；仅增强m85测试后的当前快照`15a5564e…57b3`下m85 `27/27 PASS`，TypeScript/diff门通过，Generation POST 0、4173不变
 - [x] 同一独立只读审查线程第五轮逐项确认第四轮4项阻断均`CLOSED`，最终结论`P0=0 / P1=0 / GO`；审查全程零写、零测试、零网络、零生产操作
+- [x] 冻结候选commit`f243e8eab0d534f9c7c0518b3898f6cd67857057`/tree`2c8ae98bb1869e7454e5b96849ee9116e4ee04f0`完成本Goal唯一safe full：`121/121 specs、1069/1069 tests PASS`，failed/skipped/retries/blocked/reportErrors均0；source/snapshot`df8cdec0…3d68`，4173监听不变
 - [x] 真实Generation POST、Provider submit/probe、Media/OSS写和费用均为0；目标生产Canvas尚未写入
-- [ ] 冻结候选独立只读终审、唯一safe full、Git/PR/CI/tag/Release、生产detect→allowlist→on灰度与回执待完成
+- [ ] Git/PR/CI/tag/Release、生产detect→allowlist→on灰度与回执待完成
 
-权威方案：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_PLAN_2026-08-26.md`；实时断点：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_CHECKPOINT.md`。当前唯一下一步是冻结并提交候选后运行本Goal唯一一次safe full；full完成前不得发布。
+权威方案：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_PLAN_2026-08-26.md`；实时断点：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_CHECKPOINT.md`。当前唯一下一步是推送冻结候选并完成PR/main CI、不可移动tag与GitHub Release；不得运行第二次full。
 
 ### 2026-08-25 工作流自动恢复与密钥校验解耦（INC-GEN-014，R0～R5_COMPLETE / R6_TARGETED_PASS）
 

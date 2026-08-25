@@ -1,6 +1,6 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网为v0.6.44/schema41且技术健康；INC-GEN-015同一独立线程第五轮终审已给出`P0=0/P1=0/GO`，冻结候选等待本Goal唯一safe full，尚未发布或写目标生产Canvas。
+> **状态分层**：现网为v0.6.44/schema41且技术健康；INC-GEN-015同一独立线程第五轮终审已给出`P0=0/P1=0/GO`，冻结候选的本Goal唯一safe full已全绿，当前进入GitHub发布门，尚未写目标生产Canvas。
 
 更新日期：2026-08-26
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
@@ -8,14 +8,14 @@
 本地候选代码版本：**v0.6.45**
 本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_44_USER_RECHECK`
-当前计划标记：`INC_GEN_015_INDEPENDENT_REVIEW_GO / SAFE_FULL_PENDING / RELEASE_V0_6_45_AUTHORIZED`
+当前计划标记：`INC_GEN_015_INDEPENDENT_REVIEW_GO / SAFE_FULL_PASS / GITHUB_RELEASE_PENDING / RELEASE_V0_6_45_AUTHORIZED`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
 
 ## 一句话
 
-**生产是 v0.6.44 / schema41且技术健康；INC-GEN-015第五轮独立终审已为`P0=0/P1=0/GO`，冻结候选等待唯一safe full，尚未发布或写目标生产Canvas。**
+**生产是 v0.6.44 / schema41且技术健康；INC-GEN-015第五轮独立终审已为`P0=0/P1=0/GO`，冻结候选唯一safe full已全绿，当前进入GitHub发布门，尚未写目标生产Canvas。**
 
-## INC-GEN-015 老画布孤立生成态与终态结果自动收口（INDEPENDENT_REVIEW_GO / SAFE_FULL_PENDING）
+## INC-GEN-015 老画布孤立生成态与终态结果自动收口（INDEPENDENT_REVIEW_GO / SAFE_FULL_PASS / GITHUB_RELEASE_PENDING）
 
 - 用户在INC-GEN-014生产复验时发现老问题Canvas仍有节点显示呼吸灯，但实际上没有生成任务在运行。
 - 2026-08-26只读证据：目标Canvas有5个持久`Generating=true`节点（3 Text/2 Image、3个runId），对应5个原任务全部success；Canvas和全局active均为0，因此呼吸灯是持久状态残留，不是后台真实生成。
@@ -34,7 +34,8 @@
 - 第三轮修复后同一source/snapshot`5f28ce23…11c1`下m41 `54/54`、m22 `41/41 PASS`，新增deferred恢复、malformed policy fail-closed和零Generation证据。真实Generation POST、Provider submit/probe、Media/OSS写和费用仍为0；当前没有commit、GitHub或生产变化，目标Canvas尚未写入；唯一下一步仍是同一独立审查线程最终复核。
 - 同一审查线程第四轮复核为`NO-GO / P0=2 / P1=2`：额外policy字段可穿透、其他活动run lease未阻断旧detach、旧projection快照可覆盖并发用户编辑、terminal-detach未把success proof精确绑定权威resultKey。现已严格policy键集合；在锁外与admission内检查同节点其他活动run；projection事务要求精确observed revision并从新GET安全重试；服务端派生权威resultKey并与请求/节点proof三方匹配。
 - 第四轮修复产品源码快照`172e053d…af1f`下m41 `54/54`、m22 `41/41`、m20 `1/1 PASS`；仅增强m85测试后的当前快照`15a5564e…57b3`下m85 `27/27 PASS`。TypeScript/diff门通过，真实Generation POST、Provider submit/probe、Media/OSS写和费用仍为0；当前没有commit、GitHub或生产变化，目标Canvas尚未写入；唯一下一步仍是同一独立审查线程最终复核。
-- 同一独立线程第五轮逐项确认第四轮4项阻断全部`CLOSED`，最终结论`P0=0 / P1=0 / GO`；未发现新的重复付费、unknown解锁、无Web Locks写、活动任务误清、结果覆盖或跨owner/API语义缺口。审查全程零写、零测试、零网络；当前唯一下一步是冻结提交候选并运行本Goal唯一safe full。
+- 同一独立线程第五轮逐项确认第四轮4项阻断全部`CLOSED`，最终结论`P0=0 / P1=0 / GO`；未发现新的重复付费、unknown解锁、无Web Locks写、活动任务误清、结果覆盖或跨owner/API语义缺口。审查全程零写、零测试、零网络。
+- 冻结候选commit`f243e8eab0d534f9c7c0518b3898f6cd67857057`/tree`2c8ae98bb1869e7454e5b96849ee9116e4ee04f0`的本Goal唯一safe full已通过：`121/121 specs、1069/1069 tests PASS`，failed/skipped/retries/blocked/reportErrors均0；source/snapshot`df8cdec086998654d8635cedb433737b100fed7389ca1073cbc2d059999a3d68`，4173监听不变。不得重复full；当前唯一下一步是GitHub发布。
 
 ## INC-GEN-014 工作流自动恢复与密钥校验解耦（R0～R5_COMPLETE / R6_TARGETED_PASS）
 
