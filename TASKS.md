@@ -1,11 +1,11 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产运行`v0.6.42 / schema41`且技术健康；INC-UI-011本地用户验收通过，已冻结为`v0.6.43 / schema41`发布候选并获得本次单次GitHub与生产授权。
+> **当前状态**：生产运行`v0.6.43 / schema41`且技术健康；INC-UI-011本地已`USER_PASS`，生产技术与零付费浏览器已通过，等待用户生产实页复验。
 
 更新时间：2026-08-25
-状态：`INC-UI-011 V0_6_43_RELEASE_CANDIDATE / LOCAL_AUTO_PASS / USER_PASS。`
+状态：`INC-UI-011 PRODUCTION_V0_6_43_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / LOCAL_USER_PASS / USER_RECHECK。`
 
-### 2026-08-25 节点排序菜单层级修复（INC-UI-011，V0_6_43_RELEASE_CANDIDATE / USER_PASS）
+### 2026-08-25 节点排序菜单层级修复（INC-UI-011，PRODUCTION_V0_6_43 / USER_RECHECK）
 
 - [x] 根据用户截图核实遮挡表现，并定位为组合框父级层叠上下文低于组内节点
 - [x] 排除只提高菜单`z-index`和提高整个组合框层级两种不可靠方案
@@ -26,10 +26,14 @@
 - [x] v0.6.43运行时版本同步后定向safe m81 `41/41 PASS`，TypeScript 408/408、Vite构建、源码快照和4173隔离门通过
 - [x] 唯一safe full `121/121 specs、1061/1061 tests PASS`，失败/跳过/重试/阻塞/报告错误均0；精确候选commit`92e8325`/tree`89cf2be`、source/snapshot`e8f7e47…6507`，4173不变
 - [x] full证据同步后的定向safe m38 `15/15 PASS`，失败/跳过/重试/阻塞/报告错误均0，4173不变
-- [ ] PR与main Quality CI、不可移动tag和GitHub Release通过
-- [ ] 冻结备份/恢复演练、fresh build、原子生产发布与发布后技术门通过
+- [x] PR #100、PR/main Quality CI、merge`0f7a41d`、不可移动tag `v0.6.43`和GitHub Release通过
+- [x] 权威冻结备份source/restore各366文件且清单一致；schema41恢复副本integrity ok/FK0
+- [x] fresh release共5973文件、inventory`d9e0886…d0291`，原子切换后公网/回环v0.6.43、service active+enabled/NRestarts0、schema41和静态资源门通过
+- [x] 生产零付费浏览器：目标组合框菜单「宫格/水平」可见，宫格中心命中自身、z-index 1000，Escape关闭并返焦；revision 233、graph_revision 92和updated_at前后不变
+- [x] tasks799/attempts807/active0/media841/publications431/canvases66在权威切换前后不变；Provider、Generation、OSS、购买和费用均0
+- [x] 建立权威回执`spec/V0_6_43_PRODUCTION_RECEIPT_2026-08-25.json`；一次性发布授权已消费，生产仍为`USER_RECHECK`
 
-权威方案：`spec/INC_UI_011_GROUP_LAYOUT_MENU_LAYERING_PLAN_2026-08-25.md`。本地人工验收已完成；v0.6.43版本门和本次单次发布授权已经确认。当前按候选验证→GitHub→备份/恢复演练→fresh原子发布顺序推进，生产技术通过后仍保持`USER_RECHECK`，直到用户在线上实页另行确认。
+权威方案：`spec/INC_UI_011_GROUP_LAYOUT_MENU_LAYERING_PLAN_2026-08-25.md`。本地人工验收已完成，v0.6.43已发布且技术/零付费浏览器通过，一次性授权已消费。当前唯一下一步是用户刷新生产涉事页复验菜单；明确回复通过前不得写生产`USER_PASS`。
 
 ### 2026-08-25 整组刷新恢复与组合框拖动性能治理（INC-GEN-013，PRODUCTION_V0_6_42 / USER_RECHECK）
 
