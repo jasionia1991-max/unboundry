@@ -1,9 +1,9 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产运行`v0.6.43 / schema41`且技术健康；INC-UI-011等待生产实页复验。INC-GEN-014首轮独立终审问题已关闭，正在复核v0.6.44候选。
+> **当前状态**：生产运行`v0.6.43 / schema41`且技术健康；INC-UI-011等待生产实页复验。INC-GEN-014第二轮独立终审问题已关闭，正在最终复核v0.6.44候选。
 
 更新时间：2026-08-25
-状态：`INC-GEN-014 R0_TO_R5_COMPLETE / R6_REVIEW_FINDINGS_CLOSED / FOLLOWUP_REVIEW_PENDING；INC-UI-011 PRODUCTION_V0_6_43_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / LOCAL_USER_PASS / USER_RECHECK。`
+状态：`INC-GEN-014 R0_TO_R5_COMPLETE / R6_SECOND_REVIEW_FINDING_CLOSED / FINAL_REVIEW_PENDING；INC-UI-011 PRODUCTION_V0_6_43_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / LOCAL_USER_PASS / USER_RECHECK。`
 
 ### 2026-08-25 工作流自动恢复与密钥校验解耦（INC-GEN-014，R0～R5_COMPLETE / R6_TARGETED_PASS）
 
@@ -31,7 +31,9 @@
 - [x] 首轮独立只读终审发现`2 P0 + 2 P1`：服务端投影缺事务语义CAS、terminal success可能回退旧plan、无Web Locks时缺跨标签writer、人工继续分支绕过projection边界
 - [x] 四项均已关闭：projection PUT在Canvas事务内按account/run/node/task/ownership/input/result做目标CAS；当前plan/input不一致即保留历史；无Web Locks零GET/PUT fail-closed；accepted-task人工继续统一经过persist/projection边界
 - [x] 终审修复后最小受影响safe：m22 `37/37`、m85 `26/26`、m20 `1/1 PASS`；动态loopback/临时数据、4173不变、真实Provider/Generation/OSS/费用0
-- [ ] R6尚待同一独立审查线程复核、唯一safe full、GitHub与生产技术验收
+- [x] 第二轮独立复核确认首轮4项关闭，但新增`1 P1`：projection exhausted队列清理后，人工继续可能跳过已成功节点并误清checkpoint
+- [x] 新P1已关闭：checkpoint持久保存pending projection节点，人工/自动继续只GET原accepted task重建projection，只有`applied/already-applied` receipt才移除pending并允许清理；m22 `37/37 PASS`
+- [ ] R6尚待同一独立审查线程最终复核、唯一safe full、GitHub与生产技术验收
 - [ ] 真实Provider、Generation、OSS和费用均未发生
 
 权威方案：`spec/INC_GEN_014_WORKFLOW_SELF_HEALING_AND_CREDENTIAL_VERIFY_DECOUPLING_PLAN_2026-08-25.md`。

@@ -34,8 +34,24 @@ export type GroupResultProjectionStatus =
 export type GroupResultProjectionResult = {
   applicationId: string;
   attempts: number;
+  nodeId: string;
   status: GroupResultProjectionStatus;
 };
+
+export function unresolvedProjectionNodeIds(
+  previous: readonly string[],
+  results: readonly GroupResultProjectionResult[],
+) {
+  const unresolved = new Set(previous);
+  for (const result of results) {
+    if (result.status === "applied" || result.status === "already-applied") {
+      unresolved.delete(result.nodeId);
+    } else {
+      unresolved.add(result.nodeId);
+    }
+  }
+  return [...unresolved];
+}
 
 type BrowserLockManager = {
   request<T>(
@@ -304,7 +320,7 @@ async function reconcileWithoutLock(input: {
   let saveSequence = 0;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     if (input.signal?.aborted) {
-      return { applicationId: input.projection.applicationId, attempts: attempt - 1, status: "aborted" };
+      return { applicationId: input.projection.applicationId, attempts: attempt - 1, nodeId: input.projection.nodeId, status: "aborted" };
     }
     const loadAttempt = boundedAttemptSignal(input.signal, 4_000);
     let loaded;
@@ -325,6 +341,7 @@ async function reconcileWithoutLock(input: {
         return {
           applicationId: input.projection.applicationId,
           attempts: attempt,
+          nodeId: input.projection.nodeId,
           status: merged.status,
         };
       }
@@ -360,19 +377,19 @@ async function reconcileWithoutLock(input: {
         observedLoadToken: loaded.body.loadToken,
         revision: loaded.body.revision,
       })) {
-        return { applicationId: input.projection.applicationId, attempts: attempt, status: "applied" };
+        return { applicationId: input.projection.applicationId, attempts: attempt, nodeId: input.projection.nodeId, status: "applied" };
       }
       if (!retryableStatus(saved.status)) {
-        return { applicationId: input.projection.applicationId, attempts: attempt, status: "exhausted" };
+        return { applicationId: input.projection.applicationId, attempts: attempt, nodeId: input.projection.nodeId, status: "exhausted" };
       }
     } else if (!retryableStatus(loaded.status)) {
-      return { applicationId: input.projection.applicationId, attempts: attempt, status: "exhausted" };
+      return { applicationId: input.projection.applicationId, attempts: attempt, nodeId: input.projection.nodeId, status: "exhausted" };
     }
     if (attempt < maxAttempts && !(await abortableDelay(80 * 2 ** (attempt - 1), input.signal))) {
-      return { applicationId: input.projection.applicationId, attempts: attempt, status: "aborted" };
+      return { applicationId: input.projection.applicationId, attempts: attempt, nodeId: input.projection.nodeId, status: "aborted" };
     }
   }
-  return { applicationId: input.projection.applicationId, attempts: maxAttempts, status: "exhausted" };
+  return { applicationId: input.projection.applicationId, attempts: maxAttempts, nodeId: input.projection.nodeId, status: "exhausted" };
 }
 
 export function reconcileGroupResultProjection(input: {
@@ -388,6 +405,7 @@ export function reconcileGroupResultProjection(input: {
     return Promise.resolve({
       applicationId: input.projection.applicationId,
       attempts: 0,
+      nodeId: input.projection.nodeId,
       status: "exhausted" as const,
     });
   }
@@ -430,6 +448,7 @@ export function enqueueGroupResultProjection(
     .catch(() => ({
       applicationId: projection.applicationId,
       attempts: 0,
+      nodeId: projection.nodeId,
       status: options.signal?.aborted
         ? ("aborted" as const)
         : ("exhausted" as const),

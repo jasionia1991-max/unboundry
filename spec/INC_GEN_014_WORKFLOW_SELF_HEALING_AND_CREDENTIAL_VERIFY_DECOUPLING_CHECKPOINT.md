@@ -2,7 +2,7 @@
 
 更新时间：2026-08-25
 
-状态：`R0～R5_COMPLETE / R6_REVIEW_FINDINGS_CLOSED / FOLLOWUP_REVIEW_PENDING`
+状态：`R0～R5_COMPLETE / R6_SECOND_REVIEW_FINDING_CLOSED / FINAL_REVIEW_PENDING`
 
 权威方案：`spec/INC_GEN_014_WORKFLOW_SELF_HEALING_AND_CREDENTIAL_VERIFY_DECOUPLING_PLAN_2026-08-25.md`
 
@@ -23,6 +23,8 @@
 - 首轮独立只读终审发现`2 P0 + 2 P1`：DATA-005的GET→PUT窗口可能覆盖并发语义修改、terminal success在当前plan失效时回退旧plan、无Web Locks浏览器缺少跨标签writer、人工继续的accepted-task分支绕过projection边界。
 - 四项均已关闭：Canvas PUT携带完整projection绑定并在`BEGIN IMMEDIATE`内对当前节点执行语义CAS；terminal success要求当前plan仍存在且input fingerprint完全一致；浏览器无Web Locks时投影零GET/PUT fail-closed；人工继续与普通执行统一进入`runGroupNodeWithPersist`。
 - 修复后最小受影响安全验证：m22 `37/37 PASS`、m85 `26/26 PASS`、m20 `1/1 PASS`，均使用动态loopback/临时数据，4173不变，Provider/Generation/OSS/费用为0。一次误写不存在的m20 spec名在产品测试前退出，不计产品测试。
+- 第二轮独立复核确认首轮`2 P0 + 2 P1`均关闭，但新增发现`1 P1`：projection exhausted后队列清空，人工继续可能因success proof排除该节点并把空队列误判为settled，提前清除checkpoint。
+- 新P1已关闭：checkpoint持久保存`projectionPendingNodeIds`；pending success不会进入initial-success跳过集合，人工/自动继续都只GET accepted原task并重建projection；只有每个pending节点收到`applied/already-applied` receipt才从集合移除并允许清checkpoint。m22最小复验`37/37 PASS`，真实POST/Provider/费用为0。
 
 ## 2. 冻结身份与环境
 
@@ -62,7 +64,7 @@
 - [x] R3：applicationId、白名单三方合并、单writer、有界重试/超时、abort、刷新零POST。
 - [x] R4：credential verify双版本CAS、结构化错误与mutation保护隔离。
 - [x] R5：最小UI收口；沿用现有始终可用的校验按钮与真实服务端文案，不堆叠技术状态。
-- [ ] R6：定向与首轮独立终审问题关闭；尚待同一审查线程复核、候选再冻结、唯一safe full、GitHub与生产技术验收。
+- [ ] R6：首轮与第二轮独立终审问题均已修复；尚待同一审查线程最终复核、候选再冻结、唯一safe full、GitHub与生产技术验收。
 
 ## 6. 当前候选验收映射
 
@@ -74,4 +76,4 @@
 
 ## 7. 唯一下一动作
 
-提交首轮终审修复并交回同一独立审查线程复核；确认剩余P0/P1为0后冻结精确候选并运行本Goal唯一safe full。
+提交第二轮终审修复并交回同一独立审查线程最终复核；确认剩余P0/P1为0后冻结精确候选并运行本Goal唯一safe full。

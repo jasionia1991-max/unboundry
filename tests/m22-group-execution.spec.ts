@@ -81,6 +81,7 @@ import {
   groupResultSemanticRevision,
   mergeGroupResultProjection,
   reconcileGroupResultProjection,
+  unresolvedProjectionNodeIds,
   waitForGroupResultProjections,
   type GroupResultProjection,
 } from "../client/src/generation/groupResultProjection";
@@ -1795,6 +1796,20 @@ test("group persist retry happens once for a still-saving canvas and never for o
     applicationId: groupResultProjectionApplicationId(projectionBase),
     semanticRevision: groupResultSemanticRevision(projectionBase),
   };
+  expect(unresolvedProjectionNodeIds(["old-node"], [
+    {
+      applicationId: "old-application",
+      attempts: 1,
+      nodeId: "old-node",
+      status: "applied",
+    },
+    {
+      applicationId: projection.applicationId,
+      attempts: 4,
+      nodeId: projection.nodeId,
+      status: "exhausted",
+    },
+  ])).toEqual(["node-a"]);
   const queuedApplications: string[] = [];
   const persistFailed = await runGroupNodeWithPersist({
     persist: async () => "画布保存超时，请稍后再试",

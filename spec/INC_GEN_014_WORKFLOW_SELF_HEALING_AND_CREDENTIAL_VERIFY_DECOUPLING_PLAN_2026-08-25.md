@@ -431,7 +431,7 @@ API catch 不得把所有错误统一返回 `keyStatus: "invalid"`。结构化�
 7. 权威方案、TASKS、CURRENT_STATE、验收矩阵和实施 checkpoint 同步；
 8. 自动证据只能写 `AUTO_PASS`，生产技术验证只能写 `PRODUCTION_*_PASS`；用户在目标账号真实页面确认后才允许写 `USER_PASS`。
 
-当前状态：`PLAN_FROZEN / R0_TO_R5_IMPLEMENTED / R6_REVIEW_FINDINGS_CLOSED / FOLLOWUP_REVIEW_PENDING`。
+当前状态：`PLAN_FROZEN / R0_TO_R5_IMPLEMENTED / R6_SECOND_REVIEW_FINDING_CLOSED / FINAL_REVIEW_PENDING`。
 
 ## 13. 本次文档落地凭证
 
@@ -451,3 +451,4 @@ API catch 不得把所有错误统一返回 `keyStatus: "invalid"`。结构化�
 - 首轮独立只读终审发现的`2 P0 + 2 P1`已关闭：服务端Canvas事务内目标语义CAS、当前plan/input精确围栏、无Web Locks零写fail-closed、accepted-task人工继续统一projection边界。
 - 修复后最小受影响safe为m22 `37/37`、m85 `26/26`、m20 `1/1 PASS`；真实Provider、Generation、OSS和费用仍为0。
 - 当前尚待同一独立审查线程复核、唯一safe full、GitHub与生产技术验收；不得写`USER_PASS`。
+- 第二轮复核新增的checkpoint提前清理P1已用持久pending projection节点与逐节点settled receipt关闭；继续入口只GET原accepted task重建projection，保持generation POST=0。

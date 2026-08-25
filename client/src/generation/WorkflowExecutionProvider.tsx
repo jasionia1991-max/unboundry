@@ -73,6 +73,7 @@ import { listGenerationTasks } from "./generationTasks";
 import {
   enqueueGroupResultProjection,
   waitForGroupResultProjections,
+  unresolvedProjectionNodeIds,
 } from "./groupResultProjection";
 
 export type { NodeRunResult };
@@ -528,9 +529,12 @@ export function WorkflowExecutionProvider({
         );
         const resumeInFlightNodeIds = new Set(
           resumeCheckpoint
-            ? Object.entries(resumeCheckpoint.nodeStates)
-                .filter(([, state]) => state === "running")
-                .map(([nodeId]) => nodeId)
+            ? [
+                ...Object.entries(resumeCheckpoint.nodeStates)
+                  .filter(([, state]) => state === "running")
+                  .map(([nodeId]) => nodeId),
+                ...(resumeCheckpoint.projectionPendingNodeIds ?? []),
+              ]
             : [],
         );
         if (executableIds.size === 0) {
@@ -582,6 +586,9 @@ export function WorkflowExecutionProvider({
             return;
           }
           initialSuccessNodeIds = verification.verified;
+          for (const nodeId of resumeCheckpoint.projectionPendingNodeIds ?? []) {
+            initialSuccessNodeIds.delete(nodeId);
+          }
         }
 
         if (isStartingCancelled()) return;
@@ -688,6 +695,8 @@ export function WorkflowExecutionProvider({
           fixtureScopeId,
           groupId,
           nodeStates: Object.fromEntries(nodeStates),
+          projectionPendingNodeIds:
+            resumeCheckpoint?.projectionPendingNodeIds ?? [],
           runId,
           snapshotFingerprint,
           startedAt,
@@ -785,6 +794,7 @@ export function WorkflowExecutionProvider({
             );
             const expectedProof = running.checkpoint.successProofs[binding.nodeId];
             if (
+              !running.checkpoint.projectionPendingNodeIds?.includes(binding.nodeId) &&
               nodeStates.get(binding.nodeId) === "success" &&
               durableProof?.taskId === expectedProof?.taskId &&
               durableProof?.ownershipKey === expectedProof?.ownershipKey &&
@@ -858,9 +868,15 @@ export function WorkflowExecutionProvider({
             getNodes(),
           );
           const projectionResults = await waitForGroupResultProjections(runId);
-          const projectionsSettled = projectionResults.every((result) =>
-            result.status === "applied" || result.status === "already-applied"
+          const projectionPendingNodeIds = unresolvedProjectionNodeIds(
+            running.checkpoint.projectionPendingNodeIds ?? [],
+            projectionResults,
           );
+          running.checkpoint = {
+            ...running.checkpoint,
+            projectionPendingNodeIds,
+          };
+          const projectionsSettled = projectionPendingNodeIds.length === 0;
           const complete = !running.cancelled && projectionsSettled &&
             !verification.mismatchNodeId &&
             [...executableIds].every((nodeId) =>
@@ -874,6 +890,7 @@ export function WorkflowExecutionProvider({
             running.checkpoint = {
               ...running.checkpoint,
               nodeStates: Object.fromEntries(nodeStates),
+              projectionPendingNodeIds,
               status: "interrupted",
               updatedAt: Date.now(),
             };
@@ -1116,10 +1133,11 @@ export function WorkflowExecutionProvider({
         });
 
         const projectionResults = await waitForGroupResultProjections(runId);
-        const projectionIncomplete = projectionResults.some((projection) =>
-          projection.status !== "applied" &&
-          projection.status !== "already-applied"
+        const projectionPendingNodeIds = unresolvedProjectionNodeIds(
+          running.checkpoint.projectionPendingNodeIds ?? [],
+          projectionResults,
         );
+        const projectionIncomplete = projectionPendingNodeIds.length > 0;
 
         const nodeIdsInStates = (states: WorkflowGraphNodeState[]) =>
           [...nodeStates.entries()]
@@ -1172,6 +1190,7 @@ export function WorkflowExecutionProvider({
             const interrupted = {
               ...running.checkpoint,
               nodeStates: Object.fromEntries(nodeStates),
+              projectionPendingNodeIds,
               status: "interrupted" as const,
               updatedAt: Date.now(),
             };
