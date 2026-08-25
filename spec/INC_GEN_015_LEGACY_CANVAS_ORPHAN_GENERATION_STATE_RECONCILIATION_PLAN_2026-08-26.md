@@ -387,10 +387,10 @@ checkpoint 一旦被可信恢复 owner 接管，历史核对器必须 abort。�
 9. Git/PR/tag/Release、冻结恢复、fresh build、原子发布和生产数据/资源门完成；
 10. 自动证据只写 `AUTO_PASS`，生产技术证据只写 `PRODUCTION_*_PASS`；用户在目标老画布刷新并确认视觉状态后才允许写 `USER_PASS`。
 
-当前实施状态：`INDEPENDENT_REVIEW_GO / SAFE_FULL_PASS / GITHUB_RELEASE_PENDING / RELEASE_V0_6_45_AUTHORIZED`；前四轮阻断均已关闭，同一独立线程第五轮最终`P0=0/P1=0/GO`。冻结候选commit`f243e8eab0d534f9c7c0518b3898f6cd67857057`/tree`2c8ae98bb1869e7454e5b96849ee9116e4ee04f0`的本Goal唯一safe full为`121/121 specs、1069/1069 tests PASS`，failed/skipped/retries/blocked/reportErrors均0，source/snapshot`df8cdec086998654d8635cedb433737b100fed7389ca1073cbc2d059999a3d68`，4173不变。生产仍为v0.6.44，尚未发布或写目标Canvas；不得运行第二次full。
+当前实施状态：`PRODUCTION_V0_6_45_DEPLOYED / TARGET_ALLOWLIST_WAITING_AUTHENTICATED_PAGE / USER_RECHECK`。独立终审、唯一safe full、PR/main CI、tag/Release、fresh build、冻结恢复、原子切换、detect与技术Canvas allowlist均完成；生产v0.6.45/schema41健康且全部数据/费用账本不变。目标owner`zzx`未登录可控浏览器，目标精确allowlist已就绪但5节点尚未收口；不得提前进入`on`或运行第二次full。实时证据见`spec/V0_6_45_PRODUCTION_RECEIPT_2026-08-26.json`。
 
 ## 15. 下一步与授权边界
 
-用户已通过本Goal明确授权实施与v0.6.45发布；独立终审门已达到`P0=0/P1=0/GO`且本Goal唯一safe full已全绿，当前唯一下一步是完成GitHub发布后按`detect → allowlist → on`执行生产灰度。
+用户已通过本Goal明确授权实施与v0.6.45发布；当前唯一下一步是让目标owner`zzx`登录可控浏览器并打开目标Canvas。目标验收通过后才继续`on`，否则维持target-only allowlist或切回`detect/off`。
 
 方案阶段本身不等于实施或发布；本次后续Goal已单独提供v0.6.45实施、GitHub与生产灰度授权，仍不得突破零Generation重提、零Provider提交、零费用和数据安全边界。
