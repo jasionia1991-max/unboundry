@@ -1,0 +1,243 @@
+{
+  "receiptType": "UNBOUNDRY_V0_6_43_GROUP_LAYOUT_MENU_LAYERING_PRODUCTION_RECEIPT",
+  "recordedAt": "2026-08-25",
+  "status": {
+    "production": "PRODUCTION_V0_6_43_TECHNICAL_PASS",
+    "browser": "PRODUCTION_ZERO_PAID_BROWSER_PASS",
+    "localUserAcceptance": "USER_PASS",
+    "productionUserAcceptance": "USER_RECHECK"
+  },
+  "source": {
+    "version": "0.6.43",
+    "schemaVersion": 41,
+    "functionalCommit": "941745b",
+    "localUserPassCommit": "084f384",
+    "releaseCandidateCommit": "92e8325bbc4b102c9e9d3b655ce141beaa9b8389",
+    "releaseCandidateTree": "89cf2beeaf55a39956a7c484dbb052a5d3e8c465",
+    "governanceCommit": "a5d45e5d1a34e9193aaccd3f8a3f8603837415c7",
+    "pullRequest": 100,
+    "pullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/100",
+    "pullRequestQualityRun": 32826816134,
+    "pullRequestQualityJob": 97736546883,
+    "mergeCommit": "0f7a41d7fc644d66371a1b660c119dc9c333ee24",
+    "mergeTree": "758aec5ec22d4669718773a82de1893c010c9370",
+    "mainQualityRun": 32826897761,
+    "mainQualityJob": 97736796721,
+    "qualityConclusion": "success",
+    "tag": "v0.6.43",
+    "tagObject": "6d58e02d3b3dc6398a082e3d63c55e21e745ff0a",
+    "tagPeeledCommit": "0f7a41d7fc644d66371a1b660c119dc9c333ee24",
+    "tagMoved": false,
+    "releaseUrl": "https://github.com/jasionia1991-max/unboundry/releases/tag/v0.6.43",
+    "releaseDraft": false,
+    "releasePrerelease": false,
+    "releasePublishedAt": "2026-08-25T08:30:48Z",
+    "sourceArchiveSha256": "54b3c0e6204cd20b0c94ba8e95c43160d5c7dbc7fae630fadbcebce149e5ccd6",
+    "sourceArchiveBytes": 29703696
+  },
+  "verification": {
+    "expectedRed": {
+      "scope": "tests/m2-group-node.spec.ts",
+      "passed": 4,
+      "total": 5,
+      "soleFailure": "dense group layout menu center was covered by another element"
+    },
+    "targetedFinal": {
+      "scope": "tests/m2-group-node.spec.ts",
+      "passed": 5,
+      "total": 5,
+      "typescriptTrackedFiles": "408/408",
+      "viteBuild": "pass",
+      "listener4173Unchanged": true
+    },
+    "versionFocused": {
+      "scope": "tests/m81-release-identity.spec.ts",
+      "passed": 41,
+      "total": 41,
+      "sourceSnapshotSha256": "51840be8",
+      "listener4173Unchanged": true
+    },
+    "safeFull": {
+      "commit": "92e8325bbc4b102c9e9d3b655ce141beaa9b8389",
+      "specsExecuted": 121,
+      "specsTotal": 121,
+      "testsPassed": 1061,
+      "testsTotal": 1061,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0,
+      "node": "22.23.1",
+      "npm": "10.9.8",
+      "sourceSnapshotSha256": "e8f7e47bb7ddaf7ec25ff46ab70c75c8516197141ac82e588ca8fdd65e996507",
+      "sourceUnchanged": true,
+      "listener4173Unchanged": true,
+      "secondFullRun": false
+    },
+    "documentationFocusedRecheck": {
+      "scope": "tests/m38-generation-runtime-incidents.spec.ts",
+      "passed": 15,
+      "total": 15,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0,
+      "sourceSnapshotSha256": "4edeecf5a9a4eb6e7578302e7676c50b32a6435a35ced35ae8cd8080688f220f",
+      "listener4173Unchanged": true,
+      "productFullRepeated": false
+    }
+  },
+  "production": {
+    "host": "live-cockpit",
+    "releasePath": "/opt/unboundry/releases/v0.6.43-inc-ui-011-menu-layering-20260825",
+    "previousReleasePath": "/opt/unboundry/releases/v0.6.42-group-recovery-drag-performance-20260825",
+    "freshSource": "GITHUB_RELEASE_ARCHIVE",
+    "node": "22.23.2",
+    "npm": "10.9.8",
+    "freshBuild": true,
+    "releaseFileCount": 5973,
+    "releaseInventorySha256": "d9e0886cf432d46e88b295611f069d7d03d2cc07858bc1bff6e1e0183add0291",
+    "releaseInventoryVerifiedAfterCutover": true,
+    "authoritativeBackupPath": "/var/lib/unboundry-rollbacks/v0.6.43-cutover-final-7JttJt",
+    "backupSourceFileCount": 366,
+    "backupRestoreFileCount": 366,
+    "backupManifestSha256": "31dd802edc0e0e59465e972461ee9ec34e24203160d903507666af8dcb665caa",
+    "restoreValidation": {
+      "schemaVersion": 41,
+      "integrity": "ok",
+      "foreignKeyViolations": 0,
+      "databaseSha256": "27199f5a5df941f8fa4190bf606989c50c382797133b55b73402f0bcf289e79a",
+      "databaseBytes": 14864384,
+      "generationTasks": 799,
+      "generationAttempts": 807,
+      "activeGenerationTasks": 0,
+      "mediaAssets": 841,
+      "mediaDatabaseBytes": 1496266488,
+      "publicationAttempts": 431,
+      "canvases": 66,
+      "complianceChecks": 0,
+      "complianceAttempts": 0,
+      "complianceDisclosures": 0
+    },
+    "migration": "NOT_REQUIRED_SCHEMA41_UNCHANGED",
+    "quietGate": {
+      "startedAt": "2026-08-25T08:42:14Z",
+      "endedAt": "2026-08-25T08:43:14Z",
+      "generationTasksAtStart": 799,
+      "generationTasksAtEnd": 799,
+      "generationAttemptsAtStart": 807,
+      "generationAttemptsAtEnd": 807,
+      "activeAtStart": 0,
+      "activeAtEnd": 0,
+      "latestAttemptAt": "2026-08-25T08:28:49.626Z",
+      "historyModifiedByRelease": false
+    },
+    "cutoverAt": "2026-08-25T08:43:54Z",
+    "service": {
+      "active": true,
+      "enabled": true,
+      "nRestarts": 0,
+      "mainPid": 796217,
+      "newApplicationWarnings": 0
+    },
+    "health": {
+      "loopbackVersionHttpStatus": 200,
+      "loopbackVersion": "0.6.43",
+      "publicVersionHttpStatus": 200,
+      "publicVersion": "0.6.43",
+      "liveHttpStatus": 200,
+      "readyHttpStatus": 200,
+      "readyState": "active",
+      "schemaVersion": 41
+    },
+    "dataCountsBeforeAndAfter": {
+      "generationTasks": 799,
+      "generationAttempts": 807,
+      "activeGenerationTasks": 0,
+      "mediaAssets": 841,
+      "mediaDatabaseBytes": 1496266488,
+      "mediaFiles": 355,
+      "mediaFileBytes": 284663380,
+      "publicationAttempts": 431,
+      "canvases": 66,
+      "dataFiles": 366,
+      "complianceChecks": 0,
+      "complianceAttempts": 0,
+      "complianceDisclosures": 0,
+      "unchangedAcrossAuthoritativeCutover": true
+    },
+    "publicAssetSha256": {
+      "/": "0fe1ddc7f2f5069167c0ec48404ac4b4414e84b7147755ee8f0b5a7c77dc2d1e",
+      "/assets/CanvasShell-CDhlVADs.js": "34c072fc801b18f273ee59d05798234131153a20ebc8759f404088b2a18c3afa",
+      "/assets/WorkspacePage-BHIsS6FL.js": "c01db673a7b0da881c73bd517d8d231b7bcb24281214e8a7310272bef9f539de",
+      "/assets/index-Dj66ZFHu.js": "3198337a42280d8568da0b73cd4958db74007e9a1cf614024669282a09cf2b9c",
+      "/assets/index-qUXutbir.css": "970c65327349d0875ca6bd9b5a09f395abf7cdc2f470b3222c6fe24c036c8ce1",
+      "/assets/projectStorage-DL4xac1K.js": "ea5dfda042d744e81baf10951d8bed9c8a74c0799d7c62a4eae7af8c5759e604",
+      "/favicon.svg": "6d2795e7ca70fe26408c5f057c59224421cafe44288ac1a1c2b19bf6e4f2010b",
+      "/templates/ecommerce-image-expert-213.png": "48f64fe87da50860cc669b0835497b041f5b93f7deb14acb3116447891fab82f"
+    },
+    "recoveredCutoverAttempts": [
+      {
+        "backupPath": "/var/lib/unboundry-rollbacks/v0.6.43-cutover-final-XIIECA",
+        "result": "ROLLED_BACK_BEFORE_CUTOVER",
+        "reason": "restore rehearsal path whitelist rejected final naming"
+      },
+      {
+        "backupPath": "/var/lib/unboundry-rollbacks/v0.6.43-cutover-final-VewIBX",
+        "result": "ROLLED_BACK_AND_RUNTIME_POINTER_RECONCILED",
+        "reason": "probe-loop rollback trap did not restart the restored runtime until explicit reconciliation",
+        "consistencyRestoredBeforeFinalAttempt": true
+      }
+    ]
+  },
+  "browserAcceptance": {
+    "projectId": "1a65570e-fd16-4b70-89f8-bfd9ff3ba9b1",
+    "projectTitle": "未命名项目",
+    "targetGroupTitle": "电商服装详情页组图（6张·1:1）",
+    "productionUrl": "https://canvas.mymy.ltd/canvas/1a65570e-fd16-4b70-89f8-bfd9ff3ba9b1",
+    "groupSelected": true,
+    "layoutTriggerVisible": true,
+    "gridItemVisible": true,
+    "horizontalItemVisible": true,
+    "gridCenterHitOwnButton": true,
+    "menuZIndex": 1000,
+    "escapeClosedMenu": true,
+    "escapeFocusReturnedToTrigger": true,
+    "canvasRevisionBefore": 233,
+    "canvasRevisionAfter": 233,
+    "graphRevisionBefore": 92,
+    "graphRevisionAfter": 92,
+    "canvasUpdatedAtBefore": "2026-08-25T05:53:20.418Z",
+    "canvasUpdatedAtAfter": "2026-08-25T05:53:20.418Z",
+    "canvasWrites": 0,
+    "providerRequests": 0,
+    "generationTasksDelta": 0,
+    "paidGeneration": 0,
+    "ossWrites": 0
+  },
+  "requestLedger": {
+    "providerControlPlaneUsed": 0,
+    "realGenerationUsed": 0,
+    "paidGenerationUsed": 0,
+    "ossObjectWritesUsed": 0,
+    "subscriptionsOrPurchases": 0,
+    "costCny": 0
+  },
+  "safety": {
+    "protectedFileReadOrChanged": false,
+    "historicalTaskOrMediaDeleted": false,
+    "historicalReleaseOrBackupDeleted": false,
+    "historicalTagOrReleaseMoved": false,
+    "productionPaidTaskUsedForAcceptance": false,
+    "releaseAuthorizationConsumed": true
+  },
+  "nextGate": {
+    "status": "USER_RECHECK",
+    "action": "User refreshes the affected production canvas, selects the dense group, opens the layout menu, confirms it is not covered, and replies whether it passes.",
+    "authorizationRequired": false,
+    "localUserPassWritten": true,
+    "productionUserPassWritten": false
+  }
+}
