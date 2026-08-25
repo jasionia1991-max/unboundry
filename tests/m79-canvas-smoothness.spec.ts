@@ -135,6 +135,91 @@ function denseDocument(nodeCount: number) {
   return { edges, nodes, revision: 0, viewport: { x: 0, y: 0, zoom: 1 } };
 }
 
+function richGroupDocument() {
+  const nodes: Array<Record<string, unknown>> = [];
+  const edges: Array<Record<string, unknown>> = [];
+  for (let groupIndex = 0; groupIndex < 3; groupIndex += 1) {
+    const groupId = `rich-group-${groupIndex + 1}`;
+    nodes.push({
+      data: {
+        label: "Group",
+        title: `复杂组合 ${groupIndex + 1}`,
+        variant: "group",
+      },
+      id: groupId,
+      position: {
+        x: (groupIndex % 2) * 3_100,
+        y: Math.floor(groupIndex / 2) * 1_900,
+      },
+      style: { height: 1_660, width: 2_900 },
+      type: "group",
+      zIndex: 0,
+    });
+    const childIds: string[] = [];
+    for (let childIndex = 0; childIndex < 12; childIndex += 1) {
+      const type = childIndex < 7
+        ? "text"
+        : childIndex < 11
+          ? "image"
+          : "video";
+      const childId = `${groupId}-${type}-${childIndex + 1}`;
+      childIds.push(childId);
+      nodes.push({
+        data: {
+          label: type === "text" ? "Text" : type === "image" ? "Image" : "Video",
+          title: `${groupIndex + 1}-${childIndex + 1} ${type}`,
+          ...(type === "text"
+            ? { content: `复杂组合文案 ${groupIndex + 1}-${childIndex + 1}` }
+            : type === "image"
+              ? {
+                  imagePrompt: "本地复杂组合图片",
+                  imagePromptReady: true,
+                  imageSrc: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Crect width='32' height='32' fill='%23444'/%3E%3C/svg%3E",
+                }
+              : {
+                  videoPrompt: "本地复杂组合视频",
+                  videoPromptReady: true,
+                  videoSrc: "data:video/mp4;base64,AAAA",
+                }),
+        },
+        id: childId,
+        parentId: groupId,
+        position: {
+          x: 90 + (childIndex % 4) * 690,
+          y: 100 + Math.floor(childIndex / 4) * 500,
+        },
+        style: { height: 410, width: 620 },
+        type,
+        zIndex: 1,
+      });
+    }
+    for (let edgeIndex = 0; edgeIndex < 24; edgeIndex += 1) {
+      edges.push({
+        id: `${groupId}-edge-${edgeIndex + 1}`,
+        source: childIds[edgeIndex % childIds.length],
+        sourceHandle: "source",
+        target: childIds[(edgeIndex + (edgeIndex < 12 ? 1 : 5)) % childIds.length],
+        targetHandle: "target",
+        type: "cuttable",
+      });
+    }
+  }
+  edges.push({
+    id: "rich-cross-group-edge",
+    source: "rich-group-1-text-1",
+    sourceHandle: "source",
+    target: "rich-group-2-image-8",
+    targetHandle: "target",
+    type: "cuttable",
+  });
+  return {
+    edges,
+    nodes,
+    revision: 0,
+    viewport: { x: 80, y: 80, zoom: 0.156 },
+  };
+}
+
 async function saveDenseProjectCanvas(
   request: APIRequestContext,
   canvasId: string,
@@ -166,6 +251,186 @@ async function saveDenseProjectCanvas(
   };
   expect(persisted.nodes).toHaveLength(nodeCount);
   return persisted.nodes?.length ?? 0;
+}
+
+async function saveRichGroupProjectCanvas(
+  request: APIRequestContext,
+  canvasId: string,
+) {
+  const document = richGroupDocument();
+  expect(document.nodes).toHaveLength(39);
+  expect(document.edges).toHaveLength(73);
+  const baselineResponse = await request.get(`/api/canvas/${canvasId}`);
+  const baseline = (await baselineResponse.json()) as {
+    loadToken: string;
+    revision: number;
+  };
+  const saved = await request.put(`/api/canvas/${canvasId}`, {
+    data: {
+      ...document,
+      observedLoadToken: baseline.loadToken,
+      observedRevision: baseline.revision,
+      revision: baseline.revision,
+      saveAttemptId: randomUUID(),
+      saveSequence: 1,
+      saveSessionId: randomUUID(),
+    },
+  });
+  expect(saved.ok()).toBeTruthy();
+}
+
+async function runRichGroupDragScenario(
+  page: Page,
+  context: {
+    request: APIRequestContext;
+  },
+) {
+  const request = context.request;
+  let projectId: string | undefined;
+  try {
+    const created = await request.post("/api/projects", { data: {} });
+    expect(created.status()).toBe(201);
+    projectId = ((await created.json()) as { id: string }).id;
+    await saveRichGroupProjectCanvas(request, projectId);
+    await page.goto(`/canvas/${projectId}`);
+    const world = page.getByTestId("canvas-world");
+    await expect(world).toHaveAttribute("data-persistence-ready", "true");
+    await expect(world).toHaveAttribute("data-node-count", "39");
+    await expect(world).toHaveAttribute("data-edge-count", "73");
+    await expect(world).toHaveAttribute("data-group-count", "3");
+    await expect(world).toHaveAttribute("data-viewport-zoom", "0.156");
+
+    const group = page.locator('.react-flow__node[data-id="rich-group-1"]');
+    const child = page.locator(
+      '.react-flow__node[data-id="rich-group-1-text-1"]',
+    );
+    await expect(group).toBeVisible();
+    await expect(child).toBeVisible();
+    const groupBefore = (await group.boundingBox())!;
+    const childBefore = (await child.boundingBox())!;
+    const relativeBefore = {
+      x: childBefore.x - groupBefore.x,
+      y: childBefore.y - groupBefore.y,
+    };
+
+    let captureCanvasWrites = false;
+    let pointerDown = false;
+    const canvasPuts: string[] = [];
+    const mediaRequests: string[] = [];
+    const requestListener = (browserRequest: import("@playwright/test").Request) => {
+      const url = new URL(browserRequest.url());
+      if (
+        captureCanvasWrites &&
+        browserRequest.method() === "PUT" &&
+        url.pathname === `/api/canvas/${projectId}`
+      ) canvasPuts.push(`${browserRequest.method()} ${url.pathname}`);
+      if (pointerDown && /\/(assets|audio-assets|video-assets|media|oss|upload)(\/|$)/.test(
+        url.pathname,
+      )) mediaRequests.push(`${browserRequest.method()} ${url.pathname}`);
+    };
+    page.on("request", requestListener);
+    await startMeters(page);
+    await setMeterPhase(page, "drag");
+    const point = await findNodeDragPoint(page, "rich-group-1");
+    await page.mouse.move(point.x, point.y);
+    captureCanvasWrites = true;
+    pointerDown = true;
+    await page.mouse.down();
+    for (let step = 1; step <= 90; step += 1) {
+      await page.mouse.move(point.x + step * 2, point.y + step, { steps: 1 });
+      await page.waitForTimeout(8);
+    }
+    expect(canvasPuts).toEqual([]);
+    expect(mediaRequests).toEqual([]);
+    await page.mouse.up();
+    pointerDown = false;
+    await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
+    await expect.poll(async () => {
+      const response = await request.get(`/api/canvas/${projectId}`);
+      const document = (await response.json()) as {
+        nodes: Array<{ id: string; position: { x: number } }>;
+      };
+      return document.nodes.find((node) => node.id === "rich-group-1")
+        ?.position.x;
+    }).toBeGreaterThan(500);
+    await page.waitForTimeout(200);
+    captureCanvasWrites = false;
+    page.off("request", requestListener);
+    expect(canvasPuts).toHaveLength(1);
+
+    const meters = summarizeMeters(await readMeters(page));
+    expect(meters.phases.drag.frameCount).toBeGreaterThan(20);
+    expect(meters.phases.drag.p95Ms).toBeLessThanOrEqual(25);
+    expect(meters.phases.drag.maxMs).toBeLessThan(100);
+    expect(meters.phases.drag.droppedFrames).toBeLessThanOrEqual(5);
+    expect(meters.longTaskCountGe100).toBe(0);
+
+    const groupAfter = (await group.boundingBox())!;
+    const childAfter = (await child.boundingBox())!;
+    expect(groupAfter.x).toBeGreaterThan(groupBefore.x + 100);
+    expect(groupAfter.y).toBeGreaterThan(groupBefore.y + 50);
+    expect(childAfter.x - groupAfter.x).toBeCloseTo(relativeBefore.x, 0);
+    expect(childAfter.y - groupAfter.y).toBeCloseTo(relativeBefore.y, 0);
+    await expect(group).toBeVisible();
+    await expect(child).toBeVisible();
+
+    const persisted = async () => {
+      const response = await request.get(`/api/canvas/${projectId}`);
+      return (await response.json()) as {
+        edges: unknown[];
+        nodes: Array<{
+          id: string;
+          parentId?: string;
+          position: { x: number; y: number };
+        }>;
+      };
+    };
+    await expect.poll(async () => {
+      const document = await persisted();
+      return document.nodes.find((node) => node.id === "rich-group-1")?.position.x;
+    }).toBeGreaterThan(500);
+    const saved = await persisted();
+    expect(saved.nodes).toHaveLength(39);
+    expect(saved.edges).toHaveLength(73);
+    expect(saved.nodes.filter((node) => node.parentId === "rich-group-1"))
+      .toHaveLength(12);
+    const savedChild = saved.nodes.find((node) =>
+      node.id === "rich-group-1-text-1"
+    )!;
+    expect(savedChild.position).toEqual({ x: 90, y: 100 });
+
+    await page.keyboard.press("Meta+z");
+    await expect.poll(async () => (await group.boundingBox())?.x)
+      .toBeCloseTo(groupBefore.x, 0);
+    await page.keyboard.press("Meta+Shift+z");
+    await expect.poll(async () => (await group.boundingBox())?.x)
+      .toBeCloseTo(groupAfter.x, 0);
+
+    const secondPoint = await findNodeDragPoint(page, "rich-group-2");
+    await page.keyboard.down("Shift");
+    await page.mouse.click(secondPoint.x, secondPoint.y);
+    await page.keyboard.up("Shift");
+    await expect(world).toHaveAttribute("data-selected-node-count", "2");
+
+    const metrics = {
+      canvasPutsFromDragStartThroughSettlement: canvasPuts.length,
+      childCountPerGroup: 12,
+      edgeCount: 73,
+      groupCount: 3,
+      groupSize: { height: 1660, width: 2900 },
+      mediaRequestsDuringPointerDown: mediaRequests.length,
+      nodeCount: 39,
+      performance: meters.phases.drag,
+      zoom: 0.156,
+    };
+    test.info().annotations.push({
+      type: "m79-rich-group-metrics",
+      description: JSON.stringify(metrics),
+    });
+    console.info(`[m79-rich-group] ${JSON.stringify(metrics)}`);
+  } finally {
+    if (projectId) await cleanupProject(request, projectId);
+  }
 }
 
 async function cleanupProject(request: APIRequestContext, projectId: string) {
@@ -678,5 +943,6 @@ for (const nodeCount of nodeCounts) {
     page,
   }) => {
     await runTier(page, context, nodeCount);
+    if (nodeCount === 98) await runRichGroupDragScenario(page, context);
   });
 }

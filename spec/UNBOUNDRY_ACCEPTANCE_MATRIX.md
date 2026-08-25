@@ -1,5 +1,7 @@
 # Unboundry 绿地复刻验收矩阵
 
+2026-08-25 INC-GEN-013本地`v0.6.42/schema41`候选已完成：`GEN-011～012 / CANVAS-020～022 = TARGETED_AUTO_PASS / PRODUCTION_PENDING`。m22最终`37/37`、m2`5/5`、m79`3/3`及直接依赖m1/m3/m40均通过；rich fixture为3组/39节点/73边，p95 9.9ms、max 10.3ms、long task与dropped frame为0、媒体请求0、最终画布PUT1。独立终审2个P1已关闭；唯一safe full原始`1060/1061`，唯一未改动m0瞬态失败在相同源码快照定向`23/23 PASS`且未重复full；生产尚未执行，不得写`USER_PASS`。
+
 基线日期：2026-07-27  
 当前状态更新：2026-08-24
 
@@ -241,6 +243,8 @@ F14本地门日志SHA-256：targeted `b9d260babe051c1f89ef86256ade2d57fda19b5700
 | GEN-008 | P0 | `node.text.creator-open` | 选中文字节点后显示参考素材、提示词、模型、数量和提交区；失焦关闭；真实能力接入前所有动作按钮保持禁用且不得调用付费 Provider | 参考38–39、控件状态、网络检查及用户实页复验 | PASS |
 | GEN-009 | P0 | `node.image.reference-ready` | 图片节点通过连线成为目标图片生成节点的参考素材；目标输入区显示参考图缩略片，删除缩略片同时删除对应连线，撤销同时恢复连线与缩略片；提交只保存归属当前账号且状态ready的素材ID，执行时才生成短时私有OSS地址或校验后的本机PNG数据，不持久化短时地址；模型不支持或超过上限时必须拒绝且不得调用Provider | 2026-07-31 Unboundry单张图片活体补测、OpenRouter官方`input_references`规则、构建、图片节点9项及Provider/任务/上传/模型13项零付费自动检查；2026-08-01用户实页确认通过 | PASS |
 | GEN-010 | P0 | 图片生成恢复轮询 | 页面在图片任务仍运行时重载/重挂载后，节点必须自动继续轮询并在服务端成功后即时显示结果，无需再手动刷新；文字/音频/视频已有同等恢复行为 | m41 新增回归用例（运行中重载→自动出图）15/15、m2 图片节点全过、tsc/构建通过；2026-08-08 修复 ImageNode 恢复分支只置“生成中”不恢复轮询的缺陷；2026-08-09 用户实页确认通过 | PASS |
+| GEN-011 | P0 | 整组已接收任务自动对账 | 同账号、同画布、同浏览器范围内刷新后，只GET checkpoint精确绑定的原taskId并安全回填；generation POST、自动retry和pending节点自动提交必须为0；迟到结果不得覆盖新编辑 | m22覆盖accepted-only、admission-to-binding窗口、精确binding正反例、pending零POST与恢复写回；最终37/37 | TARGETED_AUTO_PASS / PRODUCTION_PENDING |
+| GEN-012 | P1 | group run checkpoint兼容与清理 | admission成功后立即持久化`acceptedTasks`完整绑定；v1仍可读；多标签同一run只有一个写入者；结果回填和画布revision确认后才清checkpoint，失败/冲突/结果不完整均保留 | m22覆盖v1兼容、畸形binding fail-closed、双标签单租约、外来租约abort、save+revision+proof后清理 | TARGETED_AUTO_PASS / PRODUCTION_PENDING |
 
 ### 7.1 节点入参与引用优化
 
@@ -277,6 +281,9 @@ F14本地门日志SHA-256：targeted `b9d260babe051c1f89ef86256ade2d57fda19b5700
 | SAFETY-003 | P1 | 「我的连接」页内区块 | 账号独立消耗上限设置与已用展示 | 2026-08-08 随金额限制功能整体移除；m81 专项删除，登录用例迁至 m11 | 已移除 |
 | SAFETY-004 | P0 | 全项目 | 不再存在任何生成金额限制/上限：无全局/账号/模型级预算、无费用未知拦截、无“额度已用完”文案；任务成本仍记录（仅审计参考）；付费模型安全校验（Base64/时长/参考素材）不因移除成本而失效 | m14 3/3（含无成本字段断言）、m11 5/5、m20 19 路径、m27 20/20、m22/m38/m44/m49/m52/m55/m56/m60/m65/m10 全过、m74 仅剩已知基线失败、v36 真实库副本迁移演练通过；2026-08-09 用户实页确认通过 | PASS |
 | CANVAS-019 | P1 | `/canvas/projects` | 工作空间固定显示“默认画布”卡片（不可删除、不可选择），点击后进入规范 `/canvas`，默认画布里的节点与素材始终有入口，不得经 `/canvas/default` 回跳工作空间 | 2026-08-09 默认卡片可见性实页 PASS 证据继续保留；2026-08-13 用户发现点击虚拟 default 卡片会经不存在的项目路由回跳。当前候选统一 default 卡片/返回入口到 `/canvas`，m11 新增绿地正向点击并等待持久化就绪，m11+m30 定向17/17通过；用户随后在当前隔离实页确认默认画布可正常进入且不再回跳 | PASS |
+| CANVAS-020 | P0 | 组合框统一拖动与持久化门 | 组合框拖动必须进入CanvasSurface统一交互路径；拖动期间不计算drag-originated fingerprint、不enqueue保存，单标签纯拖动PUT为0，停止后最多一次合并保存 | m2确认旧beginMove移除和全部end路径；m79实测pointerdown期间PUT0、稳定前最终PUT1 | TARGETED_AUTO_PASS / PRODUCTION_PENDING |
+| CANVAS-021 | P1 | 富组合框性能门 | 固定production build、3组/39节点/73边、每组12子节点/24边、约2900×1660、zoom约15.6%的本地fake fixture中，long task >=100ms为0、frame p95<=25ms、max<100ms、>24ms dropped frame<=5 | m79 exact fixture：p95 9.9ms、max10.3ms、long task0、dropped0、媒体请求0；性能数字不作跨硬件承诺 | TARGETED_AUTO_PASS / PRODUCTION_PENDING |
+| CANVAS-022 | P1 | 组合框拖动语义回归 | 组合框和子节点视觉同步，子节点相对坐标不漂移；刷新保持最终位置；pointercancel/blur/Escape/unmount/canvas switch不让拖动态卡死；group run/stop、撤销、多选和工具栏不回归 | m2/m79覆盖原生拖动、相对坐标、刷新、undo-redo、多选和end cleanup；m1/m3/m40直接依赖回归通过 | TARGETED_AUTO_PASS / PRODUCTION_PENDING |
 | AUTH-004 | P0 | 登录页 | 登录（含首次创建管理员）成功后直接进入工作空间，不再停在登录前的画布 URL | m81 登录落地用例、登录后 `window.location` 强制 `/canvas/projects`；2026-08-09 用户实页确认通过 | PASS |
 | AUTH-005 | P0 | 账号管理 | 管理员可创建第二个及更多管理员账号（角色可选），创建写审计；普通管理员之间可互相停用/删除/改角色/重置密码 | m11 7/7（多管理员创建与互管）、m78 7/7、OpenAPI 同步；2026-08-09 用户实页确认通过 | PASS |
 | AUTH-006 | P0 | 账号管理 | 第一个创建的管理员自动成为受保护最高权限账号（mymy/麦哥）；其他管理员永远不能停用/删除/降级/重置密码/改权限它；root 自己也不能在网页上改自己角色/删除自己；账号管理页显示“最高权限”徽标并禁用操作 | v37 迁移（最早管理员置 protected）、m11 受保护矩阵、真实库副本演练确认麦哥被标记；2026-08-09 用户实页确认通过 | PASS |
@@ -483,11 +490,11 @@ D4 容量实验使用 100 个矩形、1 条 1000 点画笔和中文文字，共 
 | Gate | 必须通过 |
 |---|---|
 | M0 | UI-001～UI-013、SURF-001 的静态部分 |
-| M1 | CANVAS-001～CANVAS-017 |
+| M1 | CANVAS-001～CANVAS-017；INC-GEN-013新增CANVAS-020～022为TARGETED_AUTO_PASS / PRODUCTION_PENDING，不改写历史M1冻结 |
 | M2 | NODE-001～NODE-016 |
 | M3 | DATA-001～DATA-005 |
 | M4 | MEDIA-001～MEDIA-005、IMGEDIT-001～IMGEDIT-009 |
-| M5 | GEN-001～GEN-010、DATA-003～DATA-004 |
+| M5 | GEN-001～GEN-010、DATA-003～DATA-004；INC-GEN-013新增GEN-011～012为TARGETED_AUTO_PASS / PRODUCTION_PENDING，不改写历史PASS |
 | M5.1 | INPUT-001～INPUT-007；先完成P0+P1，再逐项进入用户真实浏览器验收 |
 | M5.2 | RELAY-001～012全部PASS；现有真实结果与安全删除保护不再重复验收或触发收费请求 |
 | M6 | PLAY-001～PLAY-004，且 OPEN-002/003/005/006/014 已裁决 |

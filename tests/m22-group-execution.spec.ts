@@ -54,6 +54,7 @@ import {
   readGroupRunStarting,
   releaseGroupRunLease,
   renewGroupRunLease,
+  taskMatchesAcceptedBinding,
   writeGroupRunCheckpoint,
   verifiedCheckpointSuccessIds,
   type GroupRunCheckpoint,
@@ -184,6 +185,7 @@ test("all four headless executors preflight, run, recover and apply without moun
   const tasks = new Map<string, Record<string, unknown>>();
   const boundNodes = new Map<string, ProbeNodeType>();
   const posts: string[] = [];
+  const recoveryOrder: string[] = [];
   let flushes = 0;
   const response = (body: unknown, status = 200) => new Response(
     JSON.stringify(body),
@@ -249,12 +251,15 @@ test("all four headless executors preflight, run, recover and apply without moun
         updatedAt: "2026-08-21T00:00:01.000Z",
       };
       tasks.set(taskId, task);
-      return response(task, 202);
+      return response({ ...task, state: "running" }, 202);
     }
     const taskId = url.startsWith("/api/generation-tasks/")
       ? url.split("/").at(-1)
       : undefined;
-    if (taskId && tasks.has(taskId)) return response(tasks.get(taskId));
+    if (taskId && tasks.has(taskId)) {
+      recoveryOrder.push(`get:${taskId}`);
+      return response(tasks.get(taskId));
+    }
     throw new Error(`unexpected headless fetch: ${method} ${url}`);
   }) as typeof fetch;
   let revision = 1;
@@ -265,7 +270,7 @@ test("all four headless executors preflight, run, recover and apply without moun
     persistenceReady: () => true,
     snapshot: () => ({ edges: [], nodes, revision }),
   });
-  const context: NodeExecutorContext = {
+  const context = {
     accountId: "headless-account",
     canvasId,
     fixtureScopeId: "",
@@ -274,6 +279,14 @@ test("all four headless executors preflight, run, recover and apply without moun
     isFixture: false,
     modelCatalog: { models, status: "ready" },
     runId,
+    onTaskAccepted: async (binding: {
+      kind: (typeof kinds)[number];
+      nodeId: string;
+      ownershipKey: string;
+      taskId: string;
+    }) => {
+      recoveryOrder.push(`accepted:${binding.taskId}`);
+    },
     save: {
       flush: async () => {
         flushes += 1;
@@ -287,6 +300,19 @@ test("all four headless executors preflight, run, recover and apply without moun
       },
       waitForRevision: async () => ({ revision }),
     },
+  } as NodeExecutorContext & {
+    acceptedTask?: {
+      kind: (typeof kinds)[number];
+      nodeId: string;
+      ownershipKey: string;
+      taskId: string;
+    };
+    onTaskAccepted: (binding: {
+      kind: (typeof kinds)[number];
+      nodeId: string;
+      ownershipKey: string;
+      taskId: string;
+    }) => Promise<void>;
   };
   try {
     const registry = createNodeExecutorRegistry();
@@ -302,6 +328,13 @@ test("all four headless executors preflight, run, recover and apply without moun
       expect(boundNodes.has(kind)).toBe(true);
     }
     expect(posts.sort()).toEqual(kinds.map((kind) => `headless-${kind}`).sort());
+    for (const kind of kinds) {
+      const taskId = `headless-task-${kind}`;
+      expect(recoveryOrder.indexOf(`accepted:${taskId}`)).toBeGreaterThanOrEqual(0);
+      expect(recoveryOrder.indexOf(`accepted:${taskId}`)).toBeLessThan(
+        recoveryOrder.indexOf(`get:${taskId}`),
+      );
+    }
     expect(nodes.find((node) => node.id === "headless-text")?.data.content)
       .toBe("headless text result");
     expect(nodes.find((node) => node.id === "headless-image")?.data.imageSrc)
@@ -313,13 +346,44 @@ test("all four headless executors preflight, run, recover and apply without moun
 
     for (const kind of kinds) {
       const nodeId = `headless-${kind}`;
-      nodes = nodes.map((node) => node.id === nodeId ? boundNodes.get(kind)! : node);
+      const acceptedBeforeNodeBinding = structuredClone(boundNodes.get(kind)!);
+      delete acceptedBeforeNodeBinding.data[`${kind}GenerationOwnershipKey`];
+      delete acceptedBeforeNodeBinding.data[`${kind}GenerationTaskId`];
+      delete acceptedBeforeNodeBinding.data[`${kind}Generating`];
+      delete acceptedBeforeNodeBinding.data.workflowExecutionRunId;
+      nodes = nodes.map((node) =>
+        node.id === nodeId ? acceptedBeforeNodeBinding : node
+      );
+      context.acceptedTask = {
+        kind,
+        nodeId,
+        ownershipKey: String(
+          boundNodes.get(kind)!.data[`${kind}GenerationOwnershipKey`],
+        ),
+        taskId: `headless-task-${kind}`,
+      };
       const executor = createNodeExecutorRegistry().get(
         nodes.find((node) => node.id === nodeId),
       );
       await expect(executor!.recover(nodeId, context))
         .resolves.toMatchObject({ status: "success" });
     }
+    expect(posts).toHaveLength(4);
+    nodes = nodes.map((node) => node.id === "headless-text"
+      ? boundNodes.get("text")!
+      : node);
+    context.acceptedTask = {
+      kind: "text",
+      nodeId: "headless-text",
+      ownershipKey: "wrong-owner",
+      taskId: "headless-task-text",
+    };
+    await expect(createNodeExecutorRegistry().get(
+      nodes.find((node) => node.id === "headless-text"),
+    )!.recover("headless-text", context)).resolves.toMatchObject({
+      errorCode: "RESULT_OWNERSHIP_CONFLICT",
+      status: "failed",
+    });
     expect(posts).toHaveLength(4);
     expect(flushes).toBeGreaterThanOrEqual(12);
   } finally {
@@ -1038,7 +1102,7 @@ test("group run starting guard permits disjoint leases and rejects overlap", asy
       "node-c",
       "run-c",
     )).toBe(false);
-    const checkpoint = (runId: string, groupId: string): GroupRunCheckpoint => ({
+    const checkpoint = (runId: string, groupId: string): GroupRunCheckpoint => Object.assign({
       accountId: scope.accountId,
       canvasId: scope.canvasId,
       executableNodeIds: [`node-${groupId.at(-1)}`],
@@ -1048,10 +1112,19 @@ test("group run starting guard permits disjoint leases and rejects overlap", asy
       runId,
       snapshotFingerprint: `snapshot-${runId}`,
       startedAt: now,
-      status: "running",
+      status: "running" as const,
       successProofs: {},
       updatedAt: now,
-      version: 1,
+      version: 1 as const,
+    }, {
+      acceptedTasks: {
+        [`node-${groupId.at(-1)}`]: {
+          kind: "text" as const,
+          nodeId: `node-${groupId.at(-1)}`,
+          ownershipKey: `owner-${runId}`,
+          taskId: `task-${runId}`,
+        },
+      },
     });
     expect(writeGroupRunCheckpoint(
       checkpoint("run-a", "group-a"),
@@ -1069,6 +1142,21 @@ test("group run starting guard permits disjoint leases and rejects overlap", asy
       { ownerId: "owner-a", runId: "run-a" },
     )).toBe(false);
     expect(readGroupRunCheckpoint(scope, "run-a")?.groupId).toBe("group-a");
+    expect((readGroupRunCheckpoint(scope, "run-a") as GroupRunCheckpoint & {
+      acceptedTasks?: Record<string, { taskId: string }>;
+    })?.acceptedTasks?.["node-a"]?.taskId).toBe("task-run-a");
+    const acceptedRunA = readGroupRunCheckpoint(scope, "run-a")
+      ?.acceptedTasks?.["node-a"];
+    expect(taskMatchesAcceptedBinding(acceptedRunA, {
+      id: "task-run-a",
+      kind: "text",
+      nodeId: "node-a",
+    })).toBe(true);
+    expect(taskMatchesAcceptedBinding(acceptedRunA, {
+      id: "task-other",
+      kind: "text",
+      nodeId: "node-a",
+    })).toBe(false);
     expect(readGroupRunCheckpoint(scope, "run-c")?.groupId).toBe("group-c");
     expect(clearGroupRunCheckpoint(
       scope,
@@ -1132,10 +1220,14 @@ test("group run starting guard permits disjoint leases and rejects overlap", asy
       "owner-must-wait",
       now + 1,
       ["node-stale"],
-    )).toBe(false);
+    )).toBe(true);
     expect(readGroupRunLease(scope, staleRunId)?.ownerId)
-      .toBe("owner-still-active");
-    values.delete(staleLeaseKey);
+      .toBe("owner-must-wait");
+    expect(releaseGroupRunLease(
+      scope,
+      staleRunId,
+      "owner-must-wait",
+    )).toBe(true);
 
     const sameOwner = getGroupRunExecutionOwnerId();
     expect(await acquireGroupRunLease(
@@ -1181,6 +1273,27 @@ test("group run starting guard permits disjoint leases and rejects overlap", asy
     expect(readGroupRunCheckpoint(scope, "run-c")?.groupId).toBe("group-c");
     expect(clearGroupRunCheckpoint(scope)).toBe(true);
     expect(await hasForeignActiveGroupRunLeaseForCanvas("canvas")).toBe(false);
+    const malformedRunId = "run-malformed-binding";
+    values.set(
+      `unboundry-group-run-checkpoint:v1:${JSON.stringify([
+        scope.accountId,
+        scope.canvasId,
+        scope.fixtureScopeId,
+        malformedRunId,
+      ])}`,
+      JSON.stringify({
+        ...checkpoint(malformedRunId, "group-malformed"),
+        acceptedTasks: {
+          "node-malformed": {
+            kind: "text",
+            nodeId: "different-node",
+            ownershipKey: "owner-malformed",
+            taskId: "task-malformed",
+          },
+        },
+      }),
+    );
+    expect(readGroupRunCheckpoint(scope, malformedRunId)).toBeUndefined();
     Object.defineProperty(fakeWindow, "navigator", {
       configurable: true,
       value: {},
@@ -1212,6 +1325,7 @@ test("workflow execution has no component registration or render-retention depen
   expect(provider).not.toContain("waitForRegistrations");
   expect(provider).toContain("另一轮正在使用${conflictRole}");
   expect(provider).toContain("（节点 ${conflictingNodeId}）");
+  expect(provider).toContain('running.abortController.abort("foreign-lease")');
   expect(canvas).not.toContain("retainWorkflowNodesForRender");
   expect(executors).not.toContain("document.");
   expect(executors).not.toContain("window.");
@@ -2842,11 +2956,15 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
       await expect.poll(() => taskPostNodes.filter((nodeId) =>
         nodeId === "run-text-a"
       ).length).toBe(groupRaceAPosts + 1);
-      await expect.poll(async () => [
-        await page.locator("body").innerText(),
-        await secondPage.locator("body").innerText(),
-      ].some((text) => text.includes("当前画布已在其他标签页执行")))
-        .toBe(true);
+      await expect.poll(() => page.evaluate(() => {
+        let leases = 0;
+        for (let index = 0; index < window.localStorage.length; index += 1) {
+          if (window.localStorage.key(index)?.startsWith(
+            "unboundry-group-run-lease:v1:",
+          )) leases += 1;
+        }
+        return leases;
+      })).toBe(1);
       setLatestTaskState("run-text-a", "success");
       await expect.poll(() => taskPostNodes.filter((nodeId) =>
         nodeId === "run-text-a-next"
@@ -2940,7 +3058,8 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
 
     // A hard refresh converts the active run to an interrupted checkpoint,
     // releases its page owner, and resumes the exact accepted task without a
-    // duplicate first-layer POST.
+    // duplicate first-layer POST. Reload automatically reconciles only that
+    // accepted task; the pending downstream stays manual.
     await resetGroupPositionsForNextScenario();
     const refreshPostsBefore = taskPostNodes.filter((nodeId) =>
       nodeId === "run-text-a"
@@ -2958,12 +3077,14 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
         const key = window.localStorage.key(index);
         if (!key?.startsWith("unboundry-group-run-checkpoint:v1:")) continue;
         const value = JSON.parse(window.localStorage.getItem(key) ?? "null") as {
+          acceptedTasks?: Record<string, { taskId?: string }>;
           nodeStates?: Record<string, string>;
           status?: string;
         } | null;
         if (
           value?.status === "running" &&
-          value.nodeStates?.["run-text-a"] === "running"
+          value.nodeStates?.["run-text-a"] === "running" &&
+          value.acceptedTasks?.["run-text-a"]?.taskId
         ) return true;
       }
       return false;
@@ -2985,6 +3106,9 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
       }
       return { interrupted, leased };
     })).toEqual({ interrupted: true, leased: false });
+
+    const refreshTaskId = latestTaskByNode.get("run-text-a");
+    if (!refreshTaskId) throw new Error("missing accepted refresh task");
     setLatestTaskState("run-text-a", "success");
     await page.reload();
     await expect(page.getByTestId("canvas-world")).toHaveAttribute(
@@ -2994,10 +3118,22 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
     await page.getByTestId("tasks").click();
     await expect(page.getByTestId("tasks-group-summary")).toHaveCount(0);
     await expect(page.getByTestId("tasks-group-checkpoint")).toBeVisible();
-    await page.getByTestId("tasks-group-continue").click();
     await expect.poll(() => taskPostNodes.filter((nodeId) =>
       nodeId === "run-text-a"
     ).length).toBe(refreshPostsBefore + 1);
+    await expect.poll(() => taskPostNodes.filter((nodeId) =>
+      nodeId === "run-text-a-next"
+    ).length).toBe(refreshDownstreamBefore);
+    await expect.poll(async () => {
+      const savedCanvas = await (await request.get(
+        `/api/canvas/${project.id}`,
+      )).json() as {
+        nodes: Array<{ data: { content?: string }; id: string }>;
+      };
+      return savedCanvas.nodes.find((node) => node.id === "run-text-a")
+        ?.data.content;
+    }).toContain("已完成 run-text-a");
+    await page.getByTestId("tasks-group-continue").click();
     await expect.poll(() => taskPostNodes.filter((nodeId) =>
       nodeId === "run-text-a-next"
     ).length).toBe(refreshDownstreamBefore + 1);
@@ -3013,7 +3149,8 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
 
     // Leaving for a different real canvas uses the same page-exit checkpoint
     // path. Returning exposes one resumable run and keeps the accepted task
-    // exact instead of minting another paid submission.
+    // exact instead of minting another paid submission. Returning reconciles
+    // the accepted task automatically but leaves downstream submission manual.
     const otherProjectResponse = await request.post("/api/projects", { data: {} });
     expect(otherProjectResponse.status()).toBe(201);
     const otherProject = await otherProjectResponse.json() as { id: string };
@@ -3035,12 +3172,14 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
           const key = window.localStorage.key(index);
           if (!key?.startsWith("unboundry-group-run-checkpoint:v1:")) continue;
           const value = JSON.parse(window.localStorage.getItem(key) ?? "null") as {
+            acceptedTasks?: Record<string, { taskId?: string }>;
             nodeStates?: Record<string, string>;
             status?: string;
           } | null;
           if (
             value?.status === "running" &&
-            value.nodeStates?.["run-text-a"] === "running"
+            value.nodeStates?.["run-text-a"] === "running" &&
+            value.acceptedTasks?.["run-text-a"]?.taskId
           ) return true;
         }
         return false;
@@ -3059,10 +3198,13 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
       );
       await page.getByTestId("tasks").click();
       await expect(page.getByTestId("tasks-group-checkpoint")).toBeVisible();
-      await page.getByTestId("tasks-group-continue").click();
       await expect.poll(() => taskPostNodes.filter((nodeId) =>
         nodeId === "run-text-a"
       ).length).toBe(switchPostsBefore + 1);
+      await expect.poll(() => taskPostNodes.filter((nodeId) =>
+        nodeId === "run-text-a-next"
+      ).length).toBe(switchDownstreamBefore);
+      await page.getByTestId("tasks-group-continue").click();
       await expect.poll(() => taskPostNodes.filter((nodeId) =>
         nodeId === "run-text-a-next"
       ).length).toBe(switchDownstreamBefore + 1);

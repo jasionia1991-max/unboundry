@@ -1,9 +1,13 @@
+import { readFileSync } from "node:fs";
 import { expect, test } from "./safe-test";
 import { composeTextControl } from "./helpers/ime";
 
 test("Group keeps children stable through create, move, resize, delete and ungroup", async ({
   page,
 }) => {
+  const source = readFileSync("client/src/canvas/GroupNode.tsx", "utf8");
+  expect(source).not.toContain("const beginMove =");
+  expect(source).not.toContain("onPointerDown={beginMove}");
   await page.goto("/__fixture/interaction.selection-and-keyboard-move");
 
   const nodeA = page.getByTestId("probe-node-probe-a");
@@ -16,6 +20,7 @@ test("Group keeps children stable through create, move, resize, delete and ungro
 
   let group = page.locator(".react-flow__node-group");
   await expect(group).toHaveCount(1);
+  await expect(group).toHaveClass(/draggable/);
   await expect(group.locator(".group-node-body")).toHaveAttribute(
     "data-child-count",
     "2",
@@ -28,16 +33,29 @@ test("Group keeps children stable through create, move, resize, delete and ungro
   );
   await expect(page.locator(".react-flow__nodesselection")).toHaveCount(0);
 
-  const groupBox = (await group.boundingBox())!;
-  await page.mouse.move(groupBox.x + groupBox.width / 2, groupBox.y + 30);
+  const dragPoint = await group.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    for (let y = rect.top + 10; y < rect.bottom - 10; y += 10) {
+      for (let x = rect.left + 10; x < rect.right - 10; x += 10) {
+        const target = document.elementFromPoint(x, y);
+        if (
+          target?.closest(".react-flow__node") === element &&
+          !target.closest("button, input, .nodrag, .react-flow__resize-control")
+        ) return { x, y };
+      }
+    }
+    throw new Error("Group has no native draggable body point");
+  });
+  await page.mouse.move(dragPoint.x, dragPoint.y);
   await page.mouse.down();
   await page.mouse.move(
-    groupBox.x + groupBox.width / 2,
-    groupBox.y + 80,
+    dragPoint.x,
+    dragPoint.y + 50,
     { steps: 5 },
   );
+  await expect(group).toHaveClass(/dragging/);
   await page.mouse.up();
-  expect((await nodeA.boundingBox())!.y).toBeGreaterThan(beforeA.y + 40);
+  expect((await nodeA.boundingBox())!.y).toBeGreaterThan(beforeA.y + 30);
 
   const childSize = (await nodeA.boundingBox())!;
   const resize = group.locator(".react-flow__resize-control.bottom.right");

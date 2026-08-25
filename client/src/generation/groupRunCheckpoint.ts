@@ -108,7 +108,27 @@ export type GroupRunSuccessProof = {
   taskId: string;
 };
 
+export type AcceptedTaskBinding = {
+  kind: "audio" | "image" | "text" | "video";
+  nodeId: string;
+  ownershipKey: string;
+  taskId: string;
+};
+
+export function taskMatchesAcceptedBinding(
+  binding: AcceptedTaskBinding | undefined,
+  task: { id: string; kind: AcceptedTaskBinding["kind"]; nodeId: string },
+) {
+  return Boolean(
+    binding &&
+    binding.kind === task.kind &&
+    binding.nodeId === task.nodeId &&
+    binding.taskId === task.id,
+  );
+}
+
 export type GroupRunCheckpoint = GroupRunSummaryScope & {
+  acceptedTasks?: Record<string, AcceptedTaskBinding>;
   executableNodeIds: string[];
   groupId: string;
   nodeStates: Record<string, WorkflowGraphNodeState>;
@@ -413,11 +433,13 @@ async function clearRecoverableSameRunLease(
   locks: BrowserLockManager,
   scope: GroupRunSummaryScope,
   runId: string,
-  now: number,
 ) {
   const stale = readGroupRunLease(scope, runId);
   if (!stale) return true;
-  if (isGroupRunLeaseActive(stale, now)) return false;
+  if (
+    isGroupRunLeaseActive(stale) &&
+    hasHeldWebLock(stale.runId, stale.ownerId)
+  ) return false;
   const lockAvailable = await locks.request(
     groupRunWebLockName(scope, runId),
     { ifAvailable: true },
@@ -431,7 +453,7 @@ async function clearRecoverableSameRunLease(
     verified.runId !== stale.runId ||
     verified.heartbeatAt !== stale.heartbeatAt ||
     verified.expiresAt !== stale.expiresAt ||
-    isGroupRunLeaseActive(verified, now)
+    verified.lockedNodeIds.join("\u0000") !== stale.lockedNodeIds.join("\u0000")
   ) return !verified;
   try {
     removeExactStaleGroupRunLease(scope, verified);
@@ -531,7 +553,7 @@ export async function acquireGroupRunLease(
   if (!locks) return false;
   return runWithGroupRunCanvasAdmission(scope.canvasId, async () => {
     const admittedAt = Math.max(now, Date.now());
-    if (!await clearRecoverableSameRunLease(locks, scope, runId, admittedAt)) {
+    if (!await clearRecoverableSameRunLease(locks, scope, runId)) {
       return false;
     }
     const conflictNodeIds = lockedNodeIds.length > 0
@@ -675,6 +697,20 @@ function leaseMatches(
 function isCheckpoint(value: unknown): value is GroupRunCheckpoint {
   if (!value || typeof value !== "object") return false;
   const item = value as Partial<GroupRunCheckpoint>;
+  const acceptedTasks = item.acceptedTasks;
+  const acceptedTasksValid = acceptedTasks === undefined || (
+    acceptedTasks !== null && typeof acceptedTasks === "object" &&
+    Object.entries(acceptedTasks).every(([nodeId, candidate]) => {
+      if (!candidate || typeof candidate !== "object") return false;
+      const binding = candidate as Partial<AcceptedTaskBinding>;
+      return binding.nodeId === nodeId &&
+        ["audio", "image", "text", "video"].includes(binding.kind ?? "") &&
+        typeof binding.taskId === "string" && binding.taskId.length > 0 &&
+        typeof binding.ownershipKey === "string" &&
+        binding.ownershipKey.length > 0 &&
+        item.executableNodeIds?.includes(nodeId) === true;
+    })
+  );
   return item.version === 1 &&
     typeof item.accountId === "string" &&
     typeof item.canvasId === "string" &&
@@ -686,6 +722,7 @@ function isCheckpoint(value: unknown): value is GroupRunCheckpoint {
     item.executableNodeIds.every((id) => typeof id === "string") &&
     Boolean(item.nodeStates && typeof item.nodeStates === "object") &&
     Boolean(item.successProofs && typeof item.successProofs === "object") &&
+    acceptedTasksValid &&
     typeof item.startedAt === "number" &&
     typeof item.updatedAt === "number" &&
     (item.lease === undefined || isLease(item.lease)) &&

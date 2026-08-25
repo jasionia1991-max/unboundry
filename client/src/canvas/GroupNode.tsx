@@ -3,12 +3,7 @@ import {
   useReactFlow,
   type NodeProps,
 } from "@xyflow/react";
-import {
-  memo,
-  useEffect,
-  useState,
-  type PointerEvent as ReactPointerEvent,
-} from "react";
+import { memo, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useCanvasCheckpoint } from "./CanvasHistory";
 import { useCanvasGraphMutation } from "./CanvasGraphMutationContext";
@@ -65,8 +60,7 @@ function GroupNodeImpl({
 }: NodeProps<ProbeNodeType>) {
   const singleNodeChrome = useSingleNodeChrome(selected, dragging);
   const checkpoint = useCanvasCheckpoint();
-  const { getEdges, getNode, getNodes, getViewport } =
-    useReactFlow<ProbeNodeType>();
+  const { getEdges, getNodes } = useReactFlow<ProbeNodeType>();
   const { setNodes } = useCanvasGraphMutation();
   const { accountId, canvasId, fixtureScopeId, isFixture, notify } =
     useGenerationCanvas();
@@ -178,44 +172,6 @@ function GroupNodeImpl({
       ),
     );
   };
-  const beginMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
-    const group = getNode(id);
-    if (!group) return;
-    event.preventDefault();
-    event.stopPropagation();
-    checkpoint();
-    const startX = event.clientX;
-    const startY = event.clientY;
-    const start = group.position;
-    const startZoom = Math.max(getViewport().zoom, 0.01);
-    setNodes((nodes) =>
-      nodes.map((node) => ({ ...node, selected: node.id === id })),
-    );
-    const move = (pointerEvent: PointerEvent) => {
-      pointerEvent.preventDefault();
-      setNodes((nodes) =>
-        nodes.map((node) =>
-          node.id === id
-            ? {
-                ...node,
-                position: {
-                  x: start.x + (pointerEvent.clientX - startX) / startZoom,
-                  y: start.y + (pointerEvent.clientY - startY) / startZoom,
-                },
-              }
-            : node,
-        ),
-      );
-    };
-    const end = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", end);
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", end, { once: true });
-  };
-
   const ungroup = () => {
     if (executing) return;
     checkpoint();
@@ -672,7 +628,6 @@ function GroupNodeImpl({
         data-workflow-run-active={executing ? "true" : undefined}
         onPointerEnter={() => setTitleHovered(true)}
         onPointerLeave={() => setTitleHovered(false)}
-        onPointerDown={beginMove}
         style={{ background: data.groupColor ?? "transparent" }}
       />
       {templateDialogOpen && createPortal(

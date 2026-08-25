@@ -1,18 +1,32 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网已为v0.6.41/schema41；INC-SEEDANCE-002按B→A→C选择最高诚实层级C，本地工程、独立终审、唯一safe full、GitHub、迁移、原子发布与生产零付费浏览器均已通过，当前只待用户实页复验。
+> **状态分层**：现网仍为v0.6.41/schema41且保持USER_RECHECK；INC-GEN-013本地v0.6.42/schema41候选已完成定向验收、P0/P1终审和唯一safe full，GitHub与发布待执行。
 
 更新日期：2026-08-25
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.41**
-本地候选代码版本：**v0.6.41**
+当前代码包版本：**v0.6.42**
+本地候选代码版本：**v0.6.42**
 本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_41_USER_RECHECK`
-当前热修门：`PRODUCTION_V0_6_41_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK`
+当前热修门：`INC_GEN_013_LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / P0_P1_REVIEW_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_RECHECK / PRODUCTION_V0_6_41_USER_RECHECK`
 
 ## 一句话
 
-**生产是 v0.6.41 / schema41；C分支「角色风险预检」准确关闭并保留「角色可信素材」，自动技术链和三视口零付费浏览器已通过，当前只待用户实页复验。**
+**生产是 v0.6.41 / schema41；整组刷新恢复与组合框拖动性能的v0.6.42本地候选已完成定向验收，等待唯一safe full和发布，现网尚未改变。**
+
+## INC-GEN-013 整组刷新恢复与组合框拖动性能治理（LOCAL_ENGINEERING_COMPLETE / V0_6_42_CANDIDATE）
+
+- 权威方案：`spec/INC_GEN_013_GROUP_RECOVERY_AND_GROUP_DRAG_PERFORMANCE_PLAN_2026-08-25.md`
+- 实时断点：`spec/INC_GEN_013_GROUP_RECOVERY_AND_GROUP_DRAG_PERFORMANCE_CHECKPOINT.md`
+- 只读证据显示涉事服务端任务和Provider已成功、结果媒体仍在OSS；截图提示是防止重复付费的安全门，不是服务端生成失败。
+- 自动恢复缺口来自group run checkpoint没有可靠保存已接收任务的完整绑定；后续方案只允许`accepted-tasks-only`查询和回填原任务，generation POST必须为0，pending节点不得自动提交。
+- 拖动卡顿直接落在`GroupNode.tsx`旧自定义拖动旁路：每次pointer move直接`setNodes`并绕过统一交互/持久化门。它不是后续Git提交撤销修复，而是历史旁路和测试覆盖缺口形成的实际体验回归。
+- 方案已冻结向后兼容checkpoint、精确写回围栏、单写入租约、先保存确认再清理，以及组合框优先原生拖动/必要时共享交互端口的止损路径。
+- 本地实现已完成；schema/OpenAPI不变。定向m1`6/6`、m2`5/5`、m3`6/6`、m40`14/14`、m79`3/3`、m22最终`37/37`，build/diff-check通过。
+- rich fixture精确为3组/39节点/73边、zoom15.6%；p95`9.9ms`、max`10.3ms`、long task和dropped frame均0、媒体请求0、最终画布PUT1。
+- 独立终审原始2个P1已关闭：accepted但未绑定的精确任务可进入恢复，外来租约立即abort旧poller；当前无已知P0/P1。
+- 本Goal唯一safe full在功能候选`31f0fcbc…ee4b`原始`1060/1061`；唯一未改动m0筛选计数瞬态失败在相同源码快照定向`23/23 PASS`，未重复full；source/snapshot `3baf4f5d…97e41`、4173 unchanged。
+- 新验收`GEN-011～012 / CANVAS-020～022`为`TARGETED_AUTO_PASS / PRODUCTION_PENDING`；GitHub和生产尚未执行，真实Provider/Generation/OSS写入/费用均0，最终不得越过`USER_RECHECK`。
 
 ## INC-SEEDANCE-002 AI角色单图合规验证（BRANCH_C / PRODUCTION_V0_6_41_TECHNICAL_PASS / USER_RECHECK）
 

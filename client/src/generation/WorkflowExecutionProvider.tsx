@@ -62,6 +62,8 @@ import {
   readGroupRunLease,
   releaseGroupRunLease,
   renewGroupRunLease,
+  taskMatchesAcceptedBinding,
+  type AcceptedTaskBinding,
   type GroupRunCheckpoint,
   verifiedCheckpointSuccessIds,
   writeGroupRunCheckpoint,
@@ -256,6 +258,7 @@ export function WorkflowExecutionProvider({
   }>());
   const runningGroups = useRef(new Map<string, {
     activeNodeIds: Set<string>;
+    abortController: AbortController;
     cancelled: boolean;
     checkpoint: GroupRunCheckpoint;
     checkpointWriteFailed: boolean;
@@ -266,6 +269,7 @@ export function WorkflowExecutionProvider({
     runId: string;
   }>());
   const runLocks = useRef(new Map<string, ReadonlySet<string>>());
+  const automaticRecoveryScopes = useRef(new Set<string>());
   const [executingGroupIds, setExecutingGroupIds] = useState<
     ReadonlySet<string>
   >(new Set());
@@ -319,6 +323,7 @@ export function WorkflowExecutionProvider({
         if (running.ownerId !== ownerId) continue;
         running.cancelled = true;
         running.navigationStopped = true;
+        running.abortController.abort("page-exit");
         const interrupted = {
           ...running.checkpoint,
           status: "interrupted" as const,
@@ -397,7 +402,11 @@ export function WorkflowExecutionProvider({
   }, [flushCanvasSave, getNodes, setNodes, waitForCanvasRevision]);
 
   const executeGroup = useCallback(
-    async (groupId: string, resumeCheckpoint?: GroupRunCheckpoint) => {
+    async (
+      groupId: string,
+      resumeCheckpoint?: GroupRunCheckpoint,
+      acceptedTasksOnly = false,
+    ) => {
       if (isFixture) {
         notify("验收页面不会触发真实生成");
         return;
@@ -456,6 +465,7 @@ export function WorkflowExecutionProvider({
       publishActiveRunState();
       const runSequence = nextGroupRunSequence();
       let checkpoint: GroupRunCheckpoint | undefined;
+      const abortController = new AbortController();
       let leaseAcquired = false;
       let leaseTimer: number | undefined;
       let leaseRenewInFlight: Promise<boolean> | undefined;
@@ -585,6 +595,10 @@ export function WorkflowExecutionProvider({
                   task.state,
                 ) &&
                 candidateLockIds.has(task.nodeId) &&
+                !(acceptedTasksOnly && taskMatchesAcceptedBinding(
+                  resumeCheckpoint?.acceptedTasks?.[task.nodeId],
+                  task,
+                )) &&
                 !taskBelongsToWorkflowRun(
                   nodes.find((node) => node.id === task.nodeId),
                   task,
@@ -621,6 +635,7 @@ export function WorkflowExecutionProvider({
             if (current) {
               current.leaseLost = true;
               current.cancelled = true;
+              current.abortController.abort("lease-lost");
               current.publishStopping();
             }
             if (starting) starting.cancelled = true;
@@ -638,7 +653,12 @@ export function WorkflowExecutionProvider({
 
         const createExecutorContext = (
           isCancelled: () => boolean,
+          options: {
+            acceptedTask?: AcceptedTaskBinding;
+            onTaskAccepted?: NodeExecutorContext["onTaskAccepted"];
+          } = {},
         ): NodeExecutorContext => ({
+          acceptedTask: options.acceptedTask,
           accountId,
           canvasId,
           fixtureScopeId,
@@ -648,6 +668,8 @@ export function WorkflowExecutionProvider({
           modelCatalog: executorModelCatalog,
           runId,
           save,
+          signal: abortController.signal,
+          onTaskAccepted: options.onTaskAccepted,
         });
 
         const startedAt = resumeCheckpoint?.startedAt ?? Date.now();
@@ -655,6 +677,7 @@ export function WorkflowExecutionProvider({
           [...initialSuccessNodeIds].map((nodeId) => [nodeId, "success"]),
         );
         checkpoint = {
+          acceptedTasks: resumeCheckpoint?.acceptedTasks ?? {},
           accountId,
           canvasId,
           executableNodeIds: [...executableIds],
@@ -707,6 +730,133 @@ export function WorkflowExecutionProvider({
         });
         summaryBaseForError = summaryBase;
         publishGroupRunSummary({ ...summaryBase(), status: "preparing" });
+
+        if (acceptedTasksOnly) {
+          const accepted = Object.values(checkpoint.acceptedTasks ?? {});
+          if (accepted.length === 0) {
+            notify("上一轮没有已接收任务，保留待处理节点且未自动提交", "info");
+            return;
+          }
+          for (const nodeId of executableIds) {
+            if (!nodeStates.has(nodeId)) {
+              nodeStates.set(nodeId, resumeCheckpoint?.nodeStates[nodeId] ?? "pending");
+            }
+          }
+          checkpoint = {
+            ...checkpoint,
+            nodeStates: Object.fromEntries(nodeStates),
+            status: "running",
+            updatedAt: Date.now(),
+          };
+          if (!writeGroupRunCheckpoint(checkpoint, expectedLease())) {
+            notify("自动核对进度无法保存；本次未提交任何新任务", "error");
+            return;
+          }
+          const running = {
+            activeNodeIds: new Set<string>(),
+            abortController,
+            cancelled: false,
+            checkpoint,
+            checkpointWriteFailed: false,
+            leaseLost: false,
+            navigationStopped: false,
+            ownerId,
+            publishStopping: () => publishGroupRunSummary({
+              ...summaryBase(),
+              status: "stopping",
+            }),
+            runId,
+          };
+          runningGroups.current.set(groupId, running);
+          startingGroupIds.current.delete(groupId);
+          startingGroups.current.delete(groupId);
+          clearGroupRunStarting(scope, runId);
+          publishActiveRunState();
+          publishGroupRunSummary({ ...summaryBase(), status: "running" });
+
+          for (const binding of accepted) {
+            if (running.cancelled || abortController.signal.aborted) break;
+            if (nodeStates.get(binding.nodeId) === "success") continue;
+            const node = getNodes().find((candidate) => candidate.id === binding.nodeId);
+            const executor = registry.get(node);
+            if (!executor || executor.kind !== binding.kind) {
+              nodeStates.set(binding.nodeId, "failed");
+            } else {
+              running.activeNodeIds.add(binding.nodeId);
+              nodeStates.set(binding.nodeId, "running");
+              try {
+                const result = await executor.recover(
+                  binding.nodeId,
+                  createExecutorContext(
+                    () => running.cancelled,
+                    { acceptedTask: binding },
+                  ),
+                );
+                if (result.status === "success") {
+                  nodeStates.set(binding.nodeId, "success");
+                  if (result.successProof) {
+                    running.checkpoint.successProofs[binding.nodeId] =
+                      result.successProof;
+                  } else {
+                    nodeStates.set(binding.nodeId, "failed");
+                  }
+                } else {
+                  nodeStates.set(binding.nodeId, result.status === "skipped"
+                    ? "skipped"
+                    : "failed");
+                }
+              } catch (error) {
+                if (!abortController.signal.aborted) {
+                  nodeStates.set(binding.nodeId, "failed");
+                  notify(
+                    error instanceof Error ? error.message : "自动核对任务失败",
+                    "error",
+                  );
+                }
+              } finally {
+                running.activeNodeIds.delete(binding.nodeId);
+              }
+            }
+            running.checkpoint = {
+              ...running.checkpoint,
+              nodeStates: Object.fromEntries(nodeStates),
+              status: "running",
+              updatedAt: Date.now(),
+            };
+            checkpoint = running.checkpoint;
+            if (!writeGroupRunCheckpoint(running.checkpoint, expectedLease())) {
+              running.cancelled = true;
+              running.checkpointWriteFailed = true;
+              break;
+            }
+          }
+
+          const verification = verifiedCheckpointSuccessIds(
+            running.checkpoint,
+            getNodes(),
+          );
+          const complete = !running.cancelled &&
+            !verification.mismatchNodeId &&
+            [...executableIds].every((nodeId) =>
+              nodeStates.get(nodeId) === "success" &&
+              verification.verified.has(nodeId)
+            );
+          if (complete && clearGroupRunCheckpoint(scope, expectedLease())) {
+            publishGroupRunSummary({ ...summaryBase(), status: "success" });
+            notify("已自动核对并保存上一轮已接收任务；没有提交新任务", "success");
+          } else {
+            running.checkpoint = {
+              ...running.checkpoint,
+              nodeStates: Object.fromEntries(nodeStates),
+              status: "interrupted",
+              updatedAt: Date.now(),
+            };
+            checkpoint = running.checkpoint;
+            writeGroupRunCheckpoint(running.checkpoint, expectedLease());
+            notify("已核对上一轮已接收任务；待处理节点未自动提交，请在任务面板继续或放弃", "info");
+          }
+          return;
+        }
 
         const preflightFailures: Array<{
           errorCode?: string;
@@ -802,6 +952,7 @@ export function WorkflowExecutionProvider({
         }
         const running = {
           activeNodeIds: new Set<string>(),
+          abortController,
           cancelled: false,
           checkpoint,
           checkpointWriteFailed: false,
@@ -881,7 +1032,10 @@ export function WorkflowExecutionProvider({
               if (resumeInFlightNodeIds.has(nodeId)) {
                 return await executor.recover(
                   nodeId,
-                  createExecutorContext(() => running.cancelled),
+                  createExecutorContext(
+                    () => running.cancelled,
+                    { acceptedTask: running.checkpoint.acceptedTasks?.[nodeId] },
+                  ),
                 );
               }
               return await runGroupNodeWithPersist({
@@ -891,7 +1045,32 @@ export function WorkflowExecutionProvider({
                 }),
                 run: async () => {
                   return runRegisteredNodeWithRefreshRecovery({
-                    context: createExecutorContext(() => running.cancelled),
+                    context: createExecutorContext(
+                      () => running.cancelled,
+                      {
+                        onTaskAccepted: async (binding) => {
+                          const current = runningGroups.current.get(groupId);
+                          if (current?.runId !== runId) {
+                            throw new Error("整组运行已停止，未继续轮询已接收任务");
+                          }
+                          const nextCheckpoint = {
+                            ...current.checkpoint,
+                            acceptedTasks: {
+                              ...(current.checkpoint.acceptedTasks ?? {}),
+                              [binding.nodeId]: binding,
+                            },
+                            updatedAt: Date.now(),
+                          };
+                          current.checkpoint = nextCheckpoint;
+                          checkpoint = nextCheckpoint;
+                          if (!writeGroupRunCheckpoint(nextCheckpoint, expectedLease())) {
+                            current.checkpointWriteFailed = true;
+                            current.cancelled = true;
+                            throw new Error("已接收任务的恢复凭证无法保存，已停止轮询");
+                          }
+                        },
+                      },
+                    ),
                     executor,
                     executableIds,
                     isCancelled: () => running.cancelled,
@@ -1024,6 +1203,7 @@ export function WorkflowExecutionProvider({
         }
         notify(`${message}；可在生成任务面板核对后继续剩余节点`, "error");
       } finally {
+        abortController.abort("run-finished");
         if (leaseTimer !== undefined) window.clearInterval(leaseTimer);
         if (runningGroups.current.get(groupId)?.runId === runId) {
           runningGroups.current.delete(groupId);
@@ -1074,6 +1254,38 @@ export function WorkflowExecutionProvider({
   }, [accountId, canvasId, executeGroup, fixtureScopeId]);
 
   useEffect(() => {
+    if (isFixture) return;
+    const scope = { accountId, canvasId, fixtureScopeId };
+    const scopeKey = JSON.stringify(scope);
+    if (automaticRecoveryScopes.current.has(scopeKey)) return;
+    automaticRecoveryScopes.current.add(scopeKey);
+    let disposed = false;
+    const reconcile = async () => {
+      // Canvas hydration and model-catalog hydration are asynchronous. Wait for
+      // the exact checkpoint graph to be visible before the single auto attempt.
+      for (let attempt = 0; attempt < 40 && !disposed; attempt += 1) {
+        const checkpoint = readGroupRunCheckpoint(scope);
+        const accepted = Object.keys(checkpoint?.acceptedTasks ?? {});
+        const nodeIds = new Set(getNodes().map((node) => node.id));
+        if (
+          checkpoint &&
+          accepted.length > 0 &&
+          nodeIds.has(checkpoint.groupId) &&
+          checkpoint.executableNodeIds.every((nodeId) => nodeIds.has(nodeId))
+        ) {
+          await executeGroup(checkpoint.groupId, checkpoint, true);
+          return;
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 250));
+      }
+    };
+    void reconcile();
+    return () => {
+      disposed = true;
+    };
+  }, [accountId, canvasId, executeGroup, fixtureScopeId, getNodes, isFixture]);
+
+  useEffect(() => {
     const scope = { accountId, canvasId, fixtureScopeId };
     const stopForForeignLease = () => {
       for (const running of runningGroups.current.values()) {
@@ -1084,6 +1296,7 @@ export function WorkflowExecutionProvider({
         ) {
           running.cancelled = true;
           running.leaseLost = true;
+          running.abortController.abort("foreign-lease");
           running.publishStopping();
         }
       }
@@ -1113,6 +1326,7 @@ export function WorkflowExecutionProvider({
       }
       running.cancelled = true;
       running.navigationStopped = true;
+      running.abortController.abort("navigation");
       // confirmGroupRunNavigation already persisted interrupted; do not
       // replace that durable terminal marker with a later running state.
       running.publishStopping();

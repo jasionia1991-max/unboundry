@@ -1,9 +1,31 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产为`v0.6.41 / schema41`且技术健康；INC-SEEDANCE-002 C分支已发布并完成零付费浏览器技术验收，当前为`USER_RECHECK`。
+> **当前状态**：生产仍为`v0.6.41 / schema41`且技术健康；INC-GEN-013本地`v0.6.42/schema41`候选已完成定向验收、P0/P1终审和唯一safe full，GitHub与发布链待执行。
 
 更新时间：2026-08-25
-状态：`生产v0.6.41 / schema41 / PRODUCTION_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK；INC-SEEDANCE-002真实审核、Generation、OSS、费用0。`
+状态：`INC-GEN-013 LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / P0_P1_REVIEW_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_RECHECK / V0_6_42_CANDIDATE；生产仍为v0.6.41 / schema41 / USER_RECHECK。`
+
+### 2026-08-25 整组刷新恢复与组合框拖动性能治理（INC-GEN-013，LOCAL_ENGINEERING_COMPLETE / V0_6_42_CANDIDATE）
+
+- [x] 只读核实截图提示属于防重复付费安全门，不是Provider失败；原服务端任务已成功，结果媒体仍在OSS
+- [x] 核实刷新后节点缺少完整结果/success proof，现有checkpoint不足以严格自动接回已接收任务
+- [x] 核实组合框旧`beginMove`每次pointer move直接`setNodes`，绕过`CanvasSurface`统一拖动态和persistence quiet gate
+- [x] 完成回归定性：提示非回归；自动对账是恢复设计缺口；组合框卡顿是历史旁路/覆盖缺口形成的实际体验回归，不是Git修复被撤销
+- [x] 冻结恢复合同：向后兼容`acceptedTasks`、`accepted-tasks-only`、精确归属围栏、单写入租约、先保存确认再清checkpoint
+- [x] 冻结拖动合同：优先React Flow原生路径；不满足语义时使用唯一共享画布交互端口；拖动期间drag-originated PUT为0
+- [x] 冻结REC-01～012、DRAG-01～012、精确39节点/73边rich-group fixture、P0/P1 No-Go和防回归策略
+- [x] 同步方案、Checkpoint、CURRENT_STATE、TASKS、验收矩阵和AGENTS授权边界
+- [x] 文档治理定向m38最终`15/15 PASS`；首次只因CURRENT_STATE一句话不符合既有机器正则而`14/15`，修正文案后复验最小spec通过，未运行safe full
+- [x] 完成acceptedTasks向后兼容、admission后即时绑定、accepted-only精确GET、单租约/单poller/abort、save+revision+proof后清理；pending自动POST为0
+- [x] 移除GroupNode旧beginMove旁路，统一React Flow原生拖动与CanvasSurface结束门；拖动按下PUT0、稳定前最终PUT1
+- [x] exact rich fixture为3组/39节点/73边；p95 9.9ms、max 10.3ms、long task0、dropped0、媒体请求0，坐标/刷新/undo-redo/多选通过
+- [x] 定向m1`6/6`、m2`5/5`、m3`6/6`、m40`14/14`、m79`3/3`、m22最终`37/37`；build与diff-check通过
+- [x] 独立只读审查发现的2个P1均已关闭：已接收未绑定窗口可精确准入，外来租约会立即abort旧poller；无已知剩余P0/P1
+- [x] 版本门与发布门绑定`v0.6.42/schema41`；远端同名tag/Release不存在，生产尚未改变
+- [x] 本Goal唯一safe full原始`1060/1061`；唯一未改动m0筛选计数瞬态失败，相同源码快照只复跑该spec `23/23 PASS`，未重复full；source/snapshot `3baf4f5d…97e41`、4173 unchanged
+- [ ] GitHub PR/CI/merge、tag/Release、生产发布和零付费生产矩阵待执行
+
+权威方案：`spec/INC_GEN_013_GROUP_RECOVERY_AND_GROUP_DRAG_PERFORMANCE_PLAN_2026-08-25.md`；实时断点：`spec/INC_GEN_013_GROUP_RECOVERY_AND_GROUP_DRAG_PERFORMANCE_CHECKPOINT.md`。本Goal新授权只绑定v0.6.42；真实Provider、Generation、OSS写入和费用固定为0。
 
 ### 2026-08-25 AI角色单图合规验证（INC-SEEDANCE-002，BRANCH_C / P0_P1_REVIEW_PASS / SAFE_FULL_PASS）
 
