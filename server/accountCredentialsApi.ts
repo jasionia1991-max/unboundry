@@ -162,9 +162,15 @@ export async function accountCredentialsApi(
       });
     } catch (error) {
       if (respondAccountMutationConflict(response, error)) return;
-      json(response, 400, {
+      const rawCode = (error as { code?: unknown }).code;
+      const code = typeof rawCode === "string" && rawCode
+        ? rawCode
+        : "ACCOUNT_CREDENTIAL_VERIFY_FAILED";
+      const keyStatus = (error as { keyStatus?: unknown }).keyStatus;
+      json(response, code === "ACCOUNT_CREDENTIAL_CHANGED" ? 409 : 400, {
+        code,
         error: error instanceof Error ? error.message : "平台密钥校验失败",
-        keyStatus: "invalid",
+        keyStatus: keyStatus === "invalid" ? "invalid" : "unknown",
       });
     }
     return;

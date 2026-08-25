@@ -1,9 +1,48 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产运行`v0.6.43 / schema41`且技术健康；INC-UI-011本地已`USER_PASS`，生产技术与零付费浏览器已通过，等待用户生产实页复验。
+> **当前状态**：生产运行`v0.6.43 / schema41`且技术健康；INC-UI-011等待生产实页复验。INC-GEN-014独立终审与最终safe full均通过，v0.6.44候选进入GitHub发布门。
 
-更新时间：2026-08-25
-状态：`INC-UI-011 PRODUCTION_V0_6_43_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / LOCAL_USER_PASS / USER_RECHECK。`
+更新时间：2026-08-26
+状态：`INC-GEN-014 R0_TO_R6_LOCAL_COMPLETE / P0_P1_REVIEW_PASS / SAFE_FULL_PASS / GITHUB_PENDING；INC-UI-011 PRODUCTION_V0_6_43_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / LOCAL_USER_PASS / USER_RECHECK。`
+
+### 2026-08-25 工作流自动恢复与密钥校验解耦（INC-GEN-014，R0～R5_COMPLETE / R6_TARGETED_PASS）
+
+- [x] 核实整组回归根因：`createSaveGateRun`和`runGroupNodeWithPersist`仍会把Canvas保存失败转成节点失败，DAG因此阻断后续节点
+- [x] 核实连接校验根因：`verifyAccountCredential`记录校验状态时误调用运行任务禁止密钥变更的保护
+- [x] 复核INC-GEN-013边界：accepted-only解决刷新后精确核对原任务，但没有解除当前run对Canvas投影成功的依赖
+- [x] 审计同类产品可借鉴边界：结果历史独立、展示失败不等于生成失败、断线重连；不把公开UI当成服务端幂等证明
+- [x] 冻结最终方案：执行事实与Canvas投影双状态轴、applicationId幂等、字段白名单三方合并、同run继续、刷新零POST、校验快照CAS
+- [x] 冻结风险、耦合边界、回归策略、阶段计划和WSH/KEYV验收矩阵
+- [x] 文档一致性定向m38首轮`14/15`，修正计划状态与生产治理标记混写后`15/15 PASS`；未重复业务测试或full
+- [x] 新Goal身份硬门通过：HEAD/origin/main均为`42bc0ac…fe9295`，生产`v0.6.43/schema41`，`v0.6.44`未被tag/Release占用
+- [x] 版本确认为`v0.6.44`且本Goal完成本地门和独立终审后允许发布；schema首选保持41
+- [x] 建立实时断点`spec/INC_GEN_014_WORKFLOW_SELF_HEALING_AND_CREDENTIAL_VERIFY_DECOUPLING_CHECKPOINT.md`
+- [x] R1安全预期红完成：m22 `35/37`，唯一两项失败证明纯投影失败阻断下游、成功结果被persist失败降级
+- [x] R1安全预期红完成：m73 `14/16`，唯一两项失败证明瞬态错误丢失结构化code、运行任务错误阻断verify
+- [x] R2拆分执行事实与Canvas投影；成功结果立即供当前DAG下游消费
+- [x] R3新增窄职责结果投影：最新Canvas白名单合并、applicationId幂等、单writer、有界重试/超时/abort和语义围栏
+- [x] R4 verify与mutation guard解耦；credential/profile双版本CAS，只有AUTH invalid，瞬态与PERMISSION为unknown，API返回稳定code
+- [x] R5沿用现有校验按钮与准确反馈，只在projection自动预算耗尽/语义冲突时给任务历史入口
+- [x] 当前候选定向safe：m22 `37/37`、m73 `16/16`、m20 `1/1`；source/snapshot`ca81902e…a21b`，4173不变
+- [x] package/lock和final runtime role同步为`v0.6.44`，schema保持41；历史版本角色未移除
+- [x] v0.6.44运行时同步后safe m81 `41/41 PASS`；source/snapshot`66a14287…0158f`，4173不变
+- [x] 文档治理m38首轮产品`14/15`仅为CURRENT_STATE机器句式，修正后最小复验`15/15 PASS`；source/snapshot`6428b45b…6414`
+- [x] account/canvas/application scope与队列异常收口后最小复验m22 `37/37 PASS`；功能候选source/snapshot`2c889063…3042`
+- [x] 首轮独立只读终审发现`2 P0 + 2 P1`：服务端投影缺事务语义CAS、terminal success可能回退旧plan、无Web Locks时缺跨标签writer、人工继续分支绕过projection边界
+- [x] 四项均已关闭：projection PUT在Canvas事务内按account/run/node/task/ownership/input/result做目标CAS；当前plan/input不一致即保留历史；无Web Locks零GET/PUT fail-closed；accepted-task人工继续统一经过persist/projection边界
+- [x] 终审修复后最小受影响safe：m22 `37/37`、m85 `26/26`、m20 `1/1 PASS`；动态loopback/临时数据、4173不变、真实Provider/Generation/OSS/费用0
+- [x] 第二轮独立复核确认首轮4项关闭，但新增`1 P1`：projection exhausted队列清理后，人工继续可能跳过已成功节点并误清checkpoint
+- [x] 新P1已关闭：checkpoint持久保存pending projection节点，人工/自动继续只GET原accepted task重建projection，只有`applied/already-applied` receipt才移除pending并允许清理；m22 `37/37 PASS`
+- [x] 第三轮复核发现`1 P1`活性缺口：pending recover后direct Canvas persist成功未形成逐节点receipt，checkpoint会永久保留
+- [x] 活性P1已关闭：普通DAG和accepted-only路径均把`projectionState=applied`转换为逐节点receipt并与queue receipt统一结算；m22 `37/37 PASS`、generation POST 0
+- [x] 同一独立只读终审线程最终结论`P0=0 / P1=0 / GO`；全部审查轮次零写、零测试、零网络
+- [x] 首轮正式full在冻结候选发现唯一m20 OpenAPI枚举快照遗漏：产品`1060/1061`通过；同步新投影冲突码后定向m20 `1/1 PASS`
+- [x] 修正后clean-record safe full：`121/121 specs、1061/1061 tests PASS`，failed/skipped/retries/blocked/reportErrors均0；commit`626d209`/tree`f55860b`、source/snapshot`c5f8dc61…bd07`，4173不变
+- [x] full证据同步后治理定向m38 `15/15 PASS`，异常0，source/snapshot`7c888dbd…6eae`、4173不变；未重复业务full
+- [ ] R6本地门完成；尚待GitHub、v0.6.44不可移动tag/Release与生产技术验收
+- [x] 真实Provider、Generation、OSS和费用均未发生；probe `0/12`、真实生成`0/2`、费用`0/20 USD`
+
+权威方案：`spec/INC_GEN_014_WORKFLOW_SELF_HEALING_AND_CREDENTIAL_VERIFY_DECOUPLING_PLAN_2026-08-25.md`。
 
 ### 2026-08-25 节点排序菜单层级修复（INC-UI-011，PRODUCTION_V0_6_43 / USER_RECHECK）
 

@@ -327,6 +327,7 @@ test("the private API documents and reads canvas, project and model configuratio
       code: { enum: string[] };
     }).code.enum,
   ).toEqual([
+    "CANVAS_GENERATION_PROJECTION_CONFLICT",
     "CANVAS_LOAD_REQUIRED",
     "CANVAS_PROJECT_DELETED",
     "CANVAS_PROJECT_NOT_OWNED",

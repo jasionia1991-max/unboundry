@@ -478,12 +478,6 @@ export async function verifyAccountCredential(
           error.code = "ACCOUNT_CREDENTIAL_CHANGED";
           throw error;
         }
-        assertCredentialMutationHasNoPaidWork(
-          database,
-          accountId,
-          providerProfileId,
-          credentialVersion,
-        );
         const updated = database
           .prepare(`
             UPDATE account_provider_credentials
@@ -532,9 +526,15 @@ export async function verifyAccountCredential(
       throw error;
     }
     const keyStatus: AccountCredentialKeyStatus =
-      code === "AUTH" || code === "PERMISSION" ? "invalid" : "unknown";
+      code === "AUTH" ? "invalid" : "unknown";
     await record(keyStatus);
-    throw new Error(providerVerificationErrorMessage(error));
+    const verificationError = new Error(
+      providerVerificationErrorMessage(error),
+      { cause: error },
+    ) as Error & { code?: string; keyStatus: AccountCredentialKeyStatus };
+    if (typeof code === "string" && code) verificationError.code = code;
+    verificationError.keyStatus = keyStatus;
+    throw verificationError;
   }
 }
 

@@ -1,5 +1,9 @@
 import type { NodeRunResult } from "./workflowExecution";
 import type { CanvasSavePort } from "../canvas/canvasPorts";
+import {
+  enqueueGroupResultProjection,
+  type GroupResultProjection,
+} from "./groupResultProjection";
 
 export function workflowToastDurationMs(
   kind: "error" | "info" | "success",
@@ -103,6 +107,7 @@ export async function persistGroupCanvasAfterNode(input: {
 export async function runGroupNodeWithPersist(input: {
   isCancelled?: () => boolean;
   persist: () => Promise<string | undefined>;
+  project?: (projection: GroupResultProjection) => void;
   run: () => Promise<NodeRunResult>;
 }): Promise<NodeRunResult> {
   let result = await input.run();
@@ -116,7 +121,16 @@ export async function runGroupNodeWithPersist(input: {
   }
   const persistError = await input.persist();
   if (persistError && result.status === "success") {
-    return { message: persistError, status: "failed" };
+    if (result.projection) {
+      if (input.project) input.project(result.projection);
+      else void enqueueGroupResultProjection(result.projection);
+      return { ...result, projectionState: "pending" };
+    }
+    // Execution truth has already been established. A display projection
+    // failure must never be reclassified as a Provider or node failure.
+    return result;
   }
-  return result;
+  return result.projection && result.status === "success"
+    ? { ...result, projectionState: "applied" }
+    : result;
 }

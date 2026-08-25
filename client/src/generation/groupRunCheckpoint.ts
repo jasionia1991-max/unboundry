@@ -132,6 +132,7 @@ export type GroupRunCheckpoint = GroupRunSummaryScope & {
   executableNodeIds: string[];
   groupId: string;
   nodeStates: Record<string, WorkflowGraphNodeState>;
+  projectionPendingNodeIds?: string[];
   runId: string;
   snapshotFingerprint: string;
   startedAt: number;
@@ -711,6 +712,15 @@ function isCheckpoint(value: unknown): value is GroupRunCheckpoint {
         item.executableNodeIds?.includes(nodeId) === true;
     })
   );
+  const projectionPendingNodeIdsValid =
+    item.projectionPendingNodeIds === undefined ||
+    (Array.isArray(item.projectionPendingNodeIds) &&
+      new Set(item.projectionPendingNodeIds).size ===
+        item.projectionPendingNodeIds.length &&
+      item.projectionPendingNodeIds.every((nodeId) =>
+        typeof nodeId === "string" &&
+        item.executableNodeIds?.includes(nodeId) === true
+      ));
   return item.version === 1 &&
     typeof item.accountId === "string" &&
     typeof item.canvasId === "string" &&
@@ -723,6 +733,7 @@ function isCheckpoint(value: unknown): value is GroupRunCheckpoint {
     Boolean(item.nodeStates && typeof item.nodeStates === "object") &&
     Boolean(item.successProofs && typeof item.successProofs === "object") &&
     acceptedTasksValid &&
+    projectionPendingNodeIdsValid &&
     typeof item.startedAt === "number" &&
     typeof item.updatedAt === "number" &&
     (item.lease === undefined || isLease(item.lease)) &&

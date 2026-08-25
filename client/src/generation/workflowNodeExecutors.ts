@@ -35,6 +35,11 @@ import {
   generationMessageFallback,
 } from "./friendlyGenerationMessage";
 import { groupRunResultKey } from "./groupRunCheckpoint";
+import {
+  groupResultProjectionApplicationId,
+  groupResultSemanticRevision,
+  type GroupResultProjection,
+} from "./groupResultProjection";
 import { shouldIgnoreStaleCanvasSaveProblem } from "./groupRunPersist";
 import {
   generationFailureMessage,
@@ -767,8 +772,6 @@ async function applyTerminalTask(
         status: "failed",
       };
     }
-    await context.save.flush();
-    await context.save.waitForRevision();
     clearGenerationSubmissionIntent(
       plan.kind,
       context.canvasId,
@@ -783,14 +786,45 @@ async function applyTerminalTask(
     };
   }
   const current = createExecutionPlan(plan.kind, plan.node.id, context);
-  if (isPlan(current) && current.currentOwnershipKey !== ownershipKey) {
+  if (
+    !isPlan(current) ||
+    current.currentOwnershipKey !== ownershipKey ||
+    current.inputKey !== plan.inputKey
+  ) {
     return {
       errorCode: "RESULT_OWNERSHIP_CONFLICT",
       message: "节点已变化，旧结果已保留在生成任务中，未覆盖当前内容",
       status: "failed",
     };
   }
-  const patch = successNodePatch(isPlan(current) ? current : plan, task, ownershipKey);
+  const effectivePlan = current;
+  const patch = successNodePatch(effectivePlan, task, ownershipKey);
+  const resultKey = groupRunResultKey(plan.kind === "text"
+    ? {
+        content: task.resultText?.trim() ?? "",
+        contentHtml: htmlForPlainText(task.resultText?.trim() ?? ""),
+      }
+    : task.resultUrl);
+  const projectionBase = {
+    accountId: context.accountId,
+    canvasId: context.canvasId,
+    dataPatch: patch.data,
+    inputFingerprint: effectivePlan.inputKey,
+    kind: plan.kind,
+    nodeId: plan.node.id,
+    ownershipKey,
+    resultKey,
+    runId: context.runId,
+    taskId: task.id,
+  } satisfies Omit<
+    GroupResultProjection,
+    "applicationId" | "semanticRevision"
+  >;
+  const projection: GroupResultProjection = {
+    ...projectionBase,
+    applicationId: groupResultProjectionApplicationId(projectionBase),
+    semanticRevision: groupResultSemanticRevision(projectionBase),
+  };
   const applied = await applyFencedNodeUpdate({
     context,
     kind: plan.kind,
@@ -817,8 +851,6 @@ async function applyTerminalTask(
       status: "failed",
     };
   }
-  await context.save.flush();
-  await context.save.waitForRevision();
   clearGenerationSubmissionIntent(
     plan.kind,
     context.canvasId,
@@ -827,15 +859,11 @@ async function applyTerminalTask(
     context.accountId,
   );
   return {
+    projection,
     status: "success",
     successProof: {
       ownershipKey,
-      resultKey: groupRunResultKey(plan.kind === "text"
-        ? {
-            content: task.resultText?.trim() ?? "",
-            contentHtml: htmlForPlainText(task.resultText?.trim() ?? ""),
-          }
-        : task.resultUrl),
+      resultKey,
       taskId: task.id,
     },
   };
