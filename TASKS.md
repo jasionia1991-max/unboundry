@@ -5,7 +5,7 @@
 更新时间：2026-08-25
 状态：`INC-GEN-013 PRODUCTION_V0_6_42_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK。`
 
-### 2026-08-25 节点排序菜单层级修复（INC-UI-011，LOCAL_AUTO_PASS / USER_RECHECK）
+### 2026-08-25 节点排序菜单层级修复（INC-UI-011，LOCAL_AUTO_PASS / USER_PASS）
 
 - [x] 根据用户截图核实遮挡表现，并定位为组合框父级层叠上下文低于组内节点
 - [x] 排除只提高菜单`z-index`和提高整个组合框层级两种不可靠方案
@@ -19,9 +19,10 @@
 - [x] 最终safe m2 `5/5 PASS`；TypeScript 408/408与生产构建通过，source/snapshot`d729b635…d6d4f`，4173不变
 - [x] `1280×720`、`1440×900`、`1920×1080`三视口遮挡/翻转/收边/Escape/应用console-pageerror通过
 - [x] 打开、Escape/外部/滚轮关闭图快照不变，画布`PUT=0`；Provider/Generation/OSS/购买/费用均0
-- [ ] 用户在本地真实复杂画布亲自复验；未明确通过前不得写`USER_PASS`
+- [x] 用户在可见本地密集组合框测试页亲自复验，并于2026-08-25明确回复「通过 继续」；本地候选收口为`USER_PASS`
+- [x] `USER_PASS`文档同步后定向safe m38 `15/15 PASS`，failed/skipped/retries/blocked/reportErrors均0，4173不变
 
-权威方案：`spec/INC_UI_011_GROUP_LAYOUT_MENU_LAYERING_PLAN_2026-08-25.md`。当前唯一下一步是用户本地实页复验；版本号和发布授权保持独立闸门，尚未push、PR或上线。
+权威方案：`spec/INC_UI_011_GROUP_LAYOUT_MENU_LAYERING_PLAN_2026-08-25.md`。本地人工验收已完成；版本号和发布授权保持独立闸门，尚未push、PR或上线。下一步只有在用户另行确认版本号并明确授权发布后才能进入GitHub与生产流程。
 
 ### 2026-08-25 整组刷新恢复与组合框拖动性能治理（INC-GEN-013，PRODUCTION_V0_6_42 / USER_RECHECK）
 

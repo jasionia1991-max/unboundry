@@ -1,6 +1,6 @@
 # INC-UI-011：节点排序菜单层级最小修复方案
 
-状态：`LOCAL_AUTO_PASS / USER_RECHECK`
+状态：`LOCAL_AUTO_PASS / USER_PASS`
 日期：`2026-08-25`
 基线：`origin/main@b84c509`，现网 `v0.6.42 / schema41`
 版本门：`VERSION_UNCONFIRMED`
@@ -86,14 +86,14 @@
 - `R0 EXPECTED_RED`：核对身份和未提交改动，补密集场景最上层命中测试，冻结旧实现失败证据。
 - `R1 MINIMAL_IMPLEMENTATION`：只落Portal、屏幕定位、避让、关闭与无画布手势合同。
 - `R2 TARGETED_AUTO_PASS`：完成m2、类型/构建和零副作用验证。
-- `R3 LOCAL_USER_RECHECK`：本地三视口证据通过后交给用户复验，未确认前不得写`USER_PASS`。
+- `R3 LOCAL_USER_RECHECK`：本地三视口证据通过后交给用户复验；用户已于2026-08-25在可见本地测试页明确回复「通过 继续」，本阶段完成为`USER_PASS`。
 - `R4 RELEASE_GATE`：只有用户另行确认版本号并明确允许发布后，才能进入GitHub和生产流程。
 
 ## 当前授权边界与唯一下一步
 
-本次Goal已明确授权本地实施、定向验证和本地提交；版本号与发布仍未授权。当前完成态为`LOCAL_AUTO_PASS / USER_RECHECK`，不得提前写`USER_PASS`。
+本次Goal已明确授权本地实施、定向验证和本地提交；版本号与发布仍未授权。用户已完成本地人工复验，当前完成态为`LOCAL_AUTO_PASS / USER_PASS`；该状态不包含push、PR、发布或生产验收。
 
-唯一下一步：用户在本地真实画布亲自复验；只有另行确认版本号并明确授权发布，才能进入GitHub和生产流程。
+唯一下一步：只有用户另行确认版本号并明确授权发布，才能进入GitHub和生产流程。
 
 ## 本地实施与验证证据（2026-08-25）
 
@@ -124,4 +124,4 @@
 - `LAYOUT-MENU-005`：`AUTO_PASS`
 - `LAYOUT-MENU-006`：`AUTO_PASS`
 
-残余边界：自动证据已覆盖本地fixture与三视口，但尚未替代用户在真实复杂画布上的视觉和手感判断；因此状态严格停在`USER_RECHECK`。
+人工验收：用户于2026-08-25在可见本地密集组合框测试页完成复验并明确回复「通过 继续」，因此本地候选收口为`USER_PASS`。同步权威文档后，定向safe m38为`15/15 PASS`，failed/skipped/retries/blocked/reportErrors均0，4173监听者不变。该结论不继承或产生任何历史GitHub、版本、发布、SSH或生产授权。
