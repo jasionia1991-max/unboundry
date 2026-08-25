@@ -1,9 +1,23 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产运行`v0.6.44 / schema41`且技术健康；INC-GEN-014已完成GitHub与生产技术验收，等待用户实页复验。
+> **当前状态**：生产运行`v0.6.44 / schema41`且技术健康；INC-GEN-014已完成GitHub与生产技术验收；用户实页发现的历史孤立呼吸灯已登记为INC-GEN-015最终审计方案，尚未实施。
 
 更新时间：2026-08-26
-状态：`INC-GEN-014 PRODUCTION_V0_6_44_TECHNICAL_PASS / USER_RECHECK；INC-UI-011 HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK。`
+状态：`INC-GEN-015 FINAL_AUDITED_PLAN / DOCUMENTATION_ONLY / IMPLEMENTATION_NOT_STARTED / RELEASE_NOT_AUTHORIZED；INC-GEN-014 PRODUCTION_V0_6_44_TECHNICAL_PASS / USER_RECHECK。`
+
+### 2026-08-26 老画布孤立生成态与终态结果自动收口（INC-GEN-015，FINAL_AUDITED_PLAN）
+
+- [x] 只读核实目标Canvas有5个持久`Generating=true`节点（3 Text/2 Image、3个runId），对应原任务全部success且Canvas/全局active均为0；当前呼吸灯不是后台真实生成
+- [x] 核实直接代码原因：四类节点在存在`workflowExecutionRunId`时让路单节点恢复；group自动恢复依赖浏览器可信checkpoint/acceptedTasks；呼吸灯直接读取持久Generating布尔值
+- [x] 区分已确认根因与历史形成过程推断；没有读取用户浏览器localStorage/Cookie/Profile来伪造唯一历史原因
+- [x] 诚实审计结论：fail-closed不覆盖合理，无限假呼吸灯不合理；当前为P1状态真实性/历史兼容bug，不是已发生的重复付费或数据丢失P0
+- [x] 合并6项审计修订：原子终态收口、窄职责terminal-detach、全部checkpoint精确runId、unknown中性阻断、server-controlled灰度、字段级CAS回退
+- [x] 冻结LGR-01～12、五态UI、GET→canvas admission lock→最新重读→事务CAS顺序、四类共享逻辑和零生成账本
+- [x] 冻结风险驱动测试：m22/m85/m41为直接门，API变化才m20、治理变化m38；正式候选最多一次safe full并在冻结后独立P0/P1终审
+- [x] 冻结生产`detect → allowlist → on`和`off`止写门；目标5节点允许RESTORED/CONFLICT_PRESERVED/UNKNOWN_BLOCKED，不追求强制全部投影
+- [ ] 实施未授权：尚未创建实现checkpoint、修改代码/测试/schema/package、运行测试、commit、GitHub、SSH或发布
+
+权威方案：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_PLAN_2026-08-26.md`。当前唯一下一步是用户明确授权按该方案开始实施；版本号和发布均未确认。
 
 ### 2026-08-25 工作流自动恢复与密钥校验解耦（INC-GEN-014，R0～R5_COMPLETE / R6_TARGETED_PASS）
 

@@ -1,6 +1,6 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网为v0.6.44/schema41且技术健康；INC-GEN-014已完成GitHub与生产技术验收，等待用户实页复验。
+> **状态分层**：现网为v0.6.44/schema41且技术健康；INC-GEN-014已完成GitHub与生产技术验收；用户实页发现的历史孤立呼吸灯已登记为INC-GEN-015最终审计方案，尚未实施。
 
 更新日期：2026-08-26
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
@@ -8,12 +8,24 @@
 本地候选代码版本：**v0.6.44**
 本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_44_USER_RECHECK`
-当前计划标记：`INC_GEN_014_PRODUCTION_V0_6_44_TECHNICAL_PASS / USER_RECHECK`
+当前计划标记：`INC_GEN_015_FINAL_AUDITED_PLAN / DOCUMENTATION_ONLY / IMPLEMENTATION_NOT_STARTED / RELEASE_NOT_AUTHORIZED`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
 
 ## 一句话
 
-**生产是 v0.6.44 / schema41；INC-GEN-014已完成实现、风险驱动验证、独立终审、GitHub发布、冻结恢复演练和生产技术验收，当前等待用户实页复验。**
+**生产是 v0.6.44 / schema41且技术健康；用户实页发现的老画布假呼吸灯已核实为历史孤立生成态，INC-GEN-015最终审计方案已落地，但尚未改代码或授权发布。**
+
+## INC-GEN-015 老画布孤立生成态与终态结果自动收口（FINAL_AUDITED_PLAN / IMPLEMENTATION_NOT_STARTED）
+
+- 用户在INC-GEN-014生产复验时发现老问题Canvas仍有节点显示呼吸灯，但实际上没有生成任务在运行。
+- 2026-08-26只读证据：目标Canvas有5个持久`Generating=true`节点（3 Text/2 Image、3个runId），对应5个原任务全部success；Canvas和全局active均为0，因此呼吸灯是持久状态残留，不是后台真实生成。
+- 已确认代码原因：四类节点在存在`workflowExecutionRunId`时让路单节点恢复；group自动恢复要求浏览器可信checkpoint/acceptedTasks；当旧run绑定仍在而checkpoint缺失/不可用时，两条恢复路径都可能不接管。
+- 诚实审计结论：无法证明归属时fail-closed合理，无限显示生成中不合理；当前为P1状态真实性/历史兼容bug，未发现重复付费、Provider重提、结果删除或活动任务。
+- 最终方案要求：全部checkpoint按精确runId优先；只GET原taskId；活动任务保留呼吸灯；完整success复用既有projection；明确终态但语义冲突/结果不完整走服务端原子`terminal-detach`；unknown显示中性blocked且零写、零新提交。
+- 审计6项阻塞已全部进入合同：原子字段集合、窄职责terminal-detach、全checkpoint精确匹配、unknown保护、server-controlled detect/allowlist/on/off灰度、revision安全的字段级回退。
+- LGR-01～12、R0～R6、风险驱动m22/m85/m41验证、独立终审、唯一safe full和生产灰度/回退门已冻结；schema首选保持41。
+- 权威方案：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_PLAN_2026-08-26.md`。
+- 当前只完成文档：没有业务代码、测试、schema、package、生产、用户Canvas、Provider、Generation、OSS、费用、commit或GitHub变化；版本号和发布未授权。
 
 ## INC-GEN-014 工作流自动恢复与密钥校验解耦（R0～R5_COMPLETE / R6_TARGETED_PASS）
 
