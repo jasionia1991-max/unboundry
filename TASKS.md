@@ -1,9 +1,9 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产运行`v0.6.43 / schema41`且技术健康；INC-UI-011等待生产实页复验。INC-GEN-014第三轮独立终审问题已关闭，正在最终复核v0.6.44候选。
+> **当前状态**：生产运行`v0.6.43 / schema41`且技术健康；INC-UI-011等待生产实页复验。INC-GEN-014独立终审`P0=0/P1=0/GO`，正在冻结v0.6.44 safe full候选。
 
 更新时间：2026-08-25
-状态：`INC-GEN-014 R0_TO_R5_COMPLETE / R6_THIRD_REVIEW_FINDING_CLOSED / FINAL_REVIEW_PENDING；INC-UI-011 PRODUCTION_V0_6_43_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / LOCAL_USER_PASS / USER_RECHECK。`
+状态：`INC-GEN-014 R0_TO_R5_COMPLETE / R6_P0_P1_REVIEW_PASS / SAFE_FULL_PENDING；INC-UI-011 PRODUCTION_V0_6_43_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / LOCAL_USER_PASS / USER_RECHECK。`
 
 ### 2026-08-25 工作流自动恢复与密钥校验解耦（INC-GEN-014，R0～R5_COMPLETE / R6_TARGETED_PASS）
 
@@ -35,7 +35,8 @@
 - [x] 新P1已关闭：checkpoint持久保存pending projection节点，人工/自动继续只GET原accepted task重建projection，只有`applied/already-applied` receipt才移除pending并允许清理；m22 `37/37 PASS`
 - [x] 第三轮复核发现`1 P1`活性缺口：pending recover后direct Canvas persist成功未形成逐节点receipt，checkpoint会永久保留
 - [x] 活性P1已关闭：普通DAG和accepted-only路径均把`projectionState=applied`转换为逐节点receipt并与queue receipt统一结算；m22 `37/37 PASS`、generation POST 0
-- [ ] R6尚待同一独立审查线程最终复核、唯一safe full、GitHub与生产技术验收
+- [x] 同一独立只读终审线程最终结论`P0=0 / P1=0 / GO`；全部审查轮次零写、零测试、零网络
+- [ ] R6尚待唯一safe full、GitHub与生产技术验收
 - [ ] 真实Provider、Generation、OSS和费用均未发生
 
 权威方案：`spec/INC_GEN_014_WORKFLOW_SELF_HEALING_AND_CREDENTIAL_VERIFY_DECOUPLING_PLAN_2026-08-25.md`。

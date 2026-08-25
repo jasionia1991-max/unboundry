@@ -431,7 +431,7 @@ API catch 不得把所有错误统一返回 `keyStatus: "invalid"`。结构化�
 7. 权威方案、TASKS、CURRENT_STATE、验收矩阵和实施 checkpoint 同步；
 8. 自动证据只能写 `AUTO_PASS`，生产技术验证只能写 `PRODUCTION_*_PASS`；用户在目标账号真实页面确认后才允许写 `USER_PASS`。
 
-当前状态：`PLAN_FROZEN / R0_TO_R5_IMPLEMENTED / R6_THIRD_REVIEW_FINDING_CLOSED / FINAL_REVIEW_PENDING`。
+当前状态：`PLAN_FROZEN / R0_TO_R5_IMPLEMENTED / R6_P0_P1_REVIEW_PASS / SAFE_FULL_PENDING`。
 
 ## 13. 本次文档落地凭证
 
@@ -453,3 +453,4 @@ API catch 不得把所有错误统一返回 `keyStatus: "invalid"`。结构化�
 - 当前尚待同一独立审查线程复核、唯一safe full、GitHub与生产技术验收；不得写`USER_PASS`。
 - 第二轮复核新增的checkpoint提前清理P1已用持久pending projection节点与逐节点settled receipt关闭；继续入口只GET原accepted task重建projection，保持generation POST=0。
 - 第三轮复核新增的direct persist receipt活性P1已关闭：普通DAG与accepted-only路径都把`projectionState=applied`结算为逐节点receipt，pending可安全移除。
+- 同一独立只读终审线程最终结论：`P0=0 / P1=0 / GO`；下一门为唯一safe full。
