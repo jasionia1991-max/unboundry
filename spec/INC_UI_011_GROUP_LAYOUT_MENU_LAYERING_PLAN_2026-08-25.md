@@ -1,8 +1,8 @@
 # INC-UI-011：节点排序菜单层级最小修复方案
 
-状态：`V0_6_43_RELEASE_CANDIDATE / LOCAL_AUTO_PASS / USER_PASS`
+状态：`PRODUCTION_V0_6_43_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / LOCAL_USER_PASS / USER_RECHECK`
 日期：`2026-08-25`
-基线：`origin/main@b84c509`，现网 `v0.6.42 / schema41`
+基线：`origin/main@b84c509`，发布前现网 `v0.6.42 / schema41`
 目标版本：`v0.6.43 / schema41`
 版本门：`VERSION_CONFIRMED`
 发布门：`RELEASE_AUTHORIZED_ONCE`
@@ -92,9 +92,9 @@
 
 ## 当前授权边界与唯一下一步
 
-原Goal只授权本地实施、定向验证和本地提交；用户最新独立指令已确认`v0.6.43`，并一次性授权push、PR、合并、tag、GitHub Release、SSH和生产发布。用户已完成本地人工复验，当前为`V0_6_43_RELEASE_CANDIDATE / LOCAL_AUTO_PASS / USER_PASS`；生产发布后的用户验收仍需另行实页确认。
+原Goal只授权本地实施、定向验证和本地提交；用户最新独立指令已确认`v0.6.43`，并一次性授权push、PR、合并、tag、GitHub Release、SSH和生产发布。该链已完成且授权已消费；用户已完成本地人工复验，当前为`PRODUCTION_V0_6_43_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / LOCAL_USER_PASS / USER_RECHECK`。
 
-唯一下一步：冻结并验证精确v0.6.43候选；通过后按授权继续GitHub和生产发布链，不调用Provider、Generation或OSS。
+唯一下一步：用户刷新生产涉事页，选中密集组合框并打开布局菜单，确认「宫格 / 水平」不再被节点遮挡后回复是否通过。
 
 ## 本地实施与验证证据（2026-08-25）
 
@@ -118,12 +118,12 @@
 
 ### 验收结论
 
-- `LAYOUT-MENU-001`：`AUTO_PASS`
-- `LAYOUT-MENU-002`：`AUTO_PASS`
-- `LAYOUT-MENU-003`：`AUTO_PASS`
-- `LAYOUT-MENU-004`：`AUTO_PASS`
-- `LAYOUT-MENU-005`：`AUTO_PASS`
-- `LAYOUT-MENU-006`：`AUTO_PASS`
+- `LAYOUT-MENU-001`：`PRODUCTION_AUTO_PASS / LOCAL_USER_PASS / USER_RECHECK`
+- `LAYOUT-MENU-002`：`PRODUCTION_AUTO_PASS / LOCAL_USER_PASS / USER_RECHECK`
+- `LAYOUT-MENU-003`：`PRODUCTION_AUTO_PASS / LOCAL_USER_PASS / USER_RECHECK`
+- `LAYOUT-MENU-004`：`PRODUCTION_AUTO_PASS / LOCAL_USER_PASS / USER_RECHECK`
+- `LAYOUT-MENU-005`：`PRODUCTION_AUTO_PASS / LOCAL_USER_PASS / USER_RECHECK`
+- `LAYOUT-MENU-006`：`PRODUCTION_AUTO_PASS / LOCAL_USER_PASS / USER_RECHECK`
 
 人工验收：用户于2026-08-25在可见本地密集组合框测试页完成复验并明确回复「通过 继续」，因此本地候选收口为`USER_PASS`。同步权威文档后，定向safe m38为`15/15 PASS`，failed/skipped/retries/blocked/reportErrors均0，4173监听者不变。用户随后独立确认v0.6.43并给出本次GitHub、SSH和生产发布授权；该授权只覆盖本版本，发布完成即消费。
 
@@ -135,3 +135,12 @@
 - 唯一safe full命令：`PATH=/Users/mymy/.local/bin:$PATH node scripts/run-safe-tests.mjs full`；在精确候选commit`92e8325bbc4b102c9e9d3b655ce141beaa9b8389`/tree`89cf2beeaf55a39956a7c484dbb052a5d3e8c465`上完成`121/121 specs、1061/1061 tests PASS`，failed/skipped/retries/blocked/reportErrors均0。
 - safe full source/snapshot均为`e8f7e47bb7ddaf7ec25ff46ab70c75c8516197141ac82e588ca8fdd65e996507`，immutable release builder `1/1 PASS`，4173监听哈希不变；真实外部网络、Provider、Generation、OSS写入和费用仍为0。后续仅同步证据文档，不重复full。
 - full证据同步后只运行定向safe m38并`15/15 PASS`，failed/skipped/retries/blocked/reportErrors均0；source/snapshot`0868c6a84f3a404475fa045a9f93a12d1f2d2f6221dc2aafd1906b59d8eaac01`，4173监听哈希不变。该文档证据同步不重复业务测试或full。
+
+### v0.6.43 GitHub与生产收口
+
+- PR #100的Quality run `32826816134`与main run `32826897761`均成功；squash merge为`0f7a41d7fc644d66371a1b660c119dc9c333ee24`，merge tree与候选证据tree一致。
+- 注释tag `v0.6.43`对象`6d58e02d3b3dc6398a082e3d63c55e21e745ff0a`精确剥离到merge commit；GitHub Release非draft、非prerelease，正式源码归档sha256为`54b3c0e6…ccd6`。
+- fresh production release共5973文件，inventory`d9e0886…d0291`；权威冻结备份source/restore各366文件且清单`31dd802…caa`一致，恢复副本schema41/integrity ok/FK0。两次受控失败切换均回滚并在最终尝试前恢复pointer/runtime一致性，最终原子切换成功。
+- 公网/回环version/live/ready均200并返回v0.6.43/active/schema41；service active+enabled、NRestarts0。tasks799、attempts807、active0、media841、publications431、canvases66及合规三表0在权威切换前后不变，8项公开静态资源哈希通过。
+- 生产零付费浏览器：目标组合框菜单「宫格/水平」可见，宫格中心命中菜单按钮自身，z-index 1000；Escape关闭并返焦。canvas revision 233、graph revision 92、updated_at在打开关闭前后不变，写入0。
+- 真实Provider、Generation、OSS写入、购买/订阅和费用均0。权威回执：`spec/V0_6_43_PRODUCTION_RECEIPT_2026-08-25.json`。本地`USER_PASS`保留；生产明确保持`USER_RECHECK`。
