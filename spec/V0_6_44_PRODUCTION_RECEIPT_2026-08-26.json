@@ -1,0 +1,228 @@
+{
+  "receiptType": "UNBOUNDRY_V0_6_44_WORKFLOW_SELF_HEALING_AND_CREDENTIAL_VERIFY_DECOUPLING_PRODUCTION_RECEIPT",
+  "recordedAt": "2026-08-26",
+  "status": {
+    "production": "PRODUCTION_V0_6_44_TECHNICAL_PASS",
+    "userAcceptance": "USER_RECHECK"
+  },
+  "source": {
+    "version": "0.6.44",
+    "schemaVersion": 41,
+    "implementationCommits": [
+      "5a359df",
+      "fbef3ab",
+      "8e585f9",
+      "d3fec91"
+    ],
+    "releaseCandidateCommit": "626d209f40cd2f34406cf2576b7d13dba8ee69e3",
+    "releaseCandidateTree": "f55860b7b35665c657b393cb0ff2da2d4a920840",
+    "governanceCommit": "e8dd7f9ea280d8f9a2f5c81d127409348731e9cf",
+    "pullRequest": 103,
+    "pullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/103",
+    "pullRequestQualityRun": 32874916420,
+    "pullRequestQualityJob": 97890444377,
+    "mergeCommit": "3ff3df4be38d04e4913fc542c88463793837e339",
+    "mergeTree": "dcdf422114a339cefcb8620e517c291645a678ac",
+    "mainQualityRun": 32875008896,
+    "mainQualityJob": 97890733569,
+    "qualityConclusion": "success",
+    "tag": "v0.6.44",
+    "tagObject": "ca803cdb1d292e25023454f5d51aac1004fe23ed",
+    "tagPeeledCommit": "3ff3df4be38d04e4913fc542c88463793837e339",
+    "tagMoved": false,
+    "releaseUrl": "https://github.com/jasionia1991-max/unboundry/releases/tag/v0.6.44",
+    "releaseDraft": false,
+    "releasePrerelease": false,
+    "releasePublishedAt": "2026-08-25T16:58:21Z",
+    "sourceArchiveSha256": "16ac907e8bcb3a421b41b8db2fc8f7ebecd0ea3a55eb09ba27a7a352da6624ac",
+    "sourceArchiveBytes": 29748464
+  },
+  "verification": {
+    "expectedRed": {
+      "m22": "35/37, only execution/projection coupling cases failed",
+      "m73": "14/16, only active-task verify and transient-invalid cases failed"
+    },
+    "targetedFinal": {
+      "m22": "37/37",
+      "m73": "16/16",
+      "m20": "1/1",
+      "m38": "15/15",
+      "m81": "41/41",
+      "m85": "26/26",
+      "listener4173Unchanged": true
+    },
+    "independentReview": {
+      "final": "P0=0 / P1=0 / GO",
+      "providerRequests": 0,
+      "writes": 0
+    },
+    "firstFormalFull": {
+      "commit": "a6cf39c93dad7198395d212a2050d578bf71a649",
+      "testsPassed": 1060,
+      "testsTotal": 1061,
+      "soleFailure": "m20 OpenAPI enum snapshot omitted CANVAS_GENERATION_PROJECTION_CONFLICT",
+      "productImplementationFailure": false
+    },
+    "correctedCleanRecordFull": {
+      "commit": "626d209f40cd2f34406cf2576b7d13dba8ee69e3",
+      "tree": "f55860b7b35665c657b393cb0ff2da2d4a920840",
+      "specsExecuted": 121,
+      "specsTotal": 121,
+      "testsPassed": 1061,
+      "testsTotal": 1061,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0,
+      "node": "22.23.1",
+      "npm": "10.9.8",
+      "sourceSnapshotSha256": "c5f8dc6192c3e509a38f4bc374bee7ccaccf61d03c219eda5e526670b4f5bd07",
+      "sourceUnchanged": true,
+      "listener4173Unchanged": true,
+      "secondFullJustification": "candidate test contract changed after the sole explained full failure"
+    },
+    "documentationFocusedRecheck": {
+      "scope": "tests/m38-generation-runtime-incidents.spec.ts",
+      "passed": 15,
+      "total": 15,
+      "sourceSnapshotSha256": "7c888dbdc936894fee12e0b2bcfd5b90fb7c7c3441690876f1b79afc43da6eae",
+      "listener4173Unchanged": true
+    },
+    "productionDocumentationRecheck": {
+      "scope": "tests/m38-generation-runtime-incidents.spec.ts",
+      "initialResults": [
+        "14/15: AGENTS current production authority was stale",
+        "14/15: progressive governance current-version markers were stale"
+      ],
+      "passed": 15,
+      "total": 15,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0,
+      "sourceSnapshotSha256": "18914338ef7a71c0fe14f9fefb7d64d7088c8fd17d617b2a5dfe74037a4321a6",
+      "listener4173Unchanged": true,
+      "businessSpecsRepeated": false,
+      "fullRepeated": false
+    }
+  },
+  "production": {
+    "host": "live-cockpit",
+    "releasePath": "/opt/unboundry/releases/v0.6.44-inc-gen-014-workflow-self-healing-20260826",
+    "previousReleasePath": "/opt/unboundry/releases/v0.6.43-inc-ui-011-menu-layering-20260825",
+    "freshSource": "GITHUB_TAG_ARCHIVE_STREAM",
+    "node": "22.23.2",
+    "npm": "10.9.8",
+    "freshBuild": true,
+    "releaseFileCount": 5977,
+    "releaseInventorySha256": "75e291712af0fc76d72a99d9b0bb1dacdea1fdab531aaacb675caa3b024d0199",
+    "releaseInventoryVerifiedAfterCutover": true,
+    "authoritativeBackupPath": "/var/lib/unboundry-rollbacks/v0.6.44-cutover-final-9xMX4j",
+    "backupSourceFileCount": 366,
+    "backupRestoreFileCount": 366,
+    "backupManifestSha256": "4e0535c2cb3029a8845891c317ac7b9d129f5aa5f7a1fab433deccf02046b18e",
+    "restoreValidation": {
+      "schemaVersion": 41,
+      "integrity": "ok",
+      "foreignKeyViolations": 0,
+      "databaseBytes": 15187968,
+      "generationTasks": 814,
+      "generationAttempts": 822,
+      "activeGenerationTasks": 0,
+      "mediaAssets": 849,
+      "mediaDatabaseBytes": 1513748944,
+      "publicationAttempts": 439,
+      "canvases": 67,
+      "complianceChecks": 0,
+      "complianceAttempts": 0,
+      "complianceDisclosures": 0
+    },
+    "migration": "NOT_REQUIRED_SCHEMA41_UNCHANGED",
+    "quietGate": {
+      "startedAt": "2026-08-25T17:02:40.789Z",
+      "endedAt": "2026-08-25T17:03:40.844Z",
+      "generationTasksAtStart": 814,
+      "generationTasksAtEnd": 814,
+      "generationAttemptsAtStart": 822,
+      "generationAttemptsAtEnd": 822,
+      "activeAtStart": 0,
+      "activeAtEnd": 0,
+      "latestAttemptAt": "2026-08-25T08:52:45.641Z",
+      "historyModifiedByRelease": false
+    },
+    "cutoverAt": "2026-08-25T17:04:35Z",
+    "service": {
+      "active": true,
+      "enabled": true,
+      "nRestarts": 0,
+      "mainPid": 913010,
+      "newApplicationWarnings": 0
+    },
+    "health": {
+      "loopbackVersionHttpStatus": 200,
+      "loopbackVersion": "0.6.44",
+      "publicVersionHttpStatus": 200,
+      "publicVersion": "0.6.44",
+      "liveHttpStatus": 200,
+      "readyHttpStatus": 200,
+      "readyState": "active",
+      "schemaVersion": 41
+    },
+    "dataCountsBeforeAndAfter": {
+      "generationTasks": 814,
+      "generationAttempts": 822,
+      "activeGenerationTasks": 0,
+      "mediaAssets": 849,
+      "mediaDatabaseBytes": 1513748944,
+      "mediaFiles": 355,
+      "mediaFileBytes": 284663380,
+      "publicationAttempts": 439,
+      "canvases": 67,
+      "dataFiles": 366,
+      "complianceChecks": 0,
+      "complianceAttempts": 0,
+      "complianceDisclosures": 0,
+      "unchangedAcrossAuthoritativeCutover": true
+    },
+    "publicAssetSha256": {
+      "/": "247fbe9941d241f5980f1d9774912a30fe6b52b44e989c93d0e4b377407c0413",
+      "/assets/index-NxCVQQkB.js": "ead503742379b1e3d4418dc3a7987a2d710299458cc277c7d0acfa3bc3516c86",
+      "/assets/index-qUXutbir.css": "970c65327349d0875ca6bd9b5a09f395abf7cdc2f470b3222c6fe24c036c8ce1",
+      "/favicon.svg": "6d2795e7ca70fe26408c5f057c59224421cafe44288ac1a1c2b19bf6e4f2010b",
+      "/templates/ecommerce-image-expert-213.png": "48f64fe87da50860cc669b0835497b041f5b93f7deb14acb3116447891fab82f"
+    },
+    "rollback": {
+      "required": false,
+      "previousReleaseRetained": true,
+      "automaticRollbackTrapArmedDuringCutover": true,
+      "finalState": "NEW_RELEASE_HEALTHY"
+    }
+  },
+  "requestLedger": {
+    "providerCredentialProbesUsed": 0,
+    "providerCredentialProbesLimit": 12,
+    "realGenerationUsed": 0,
+    "realGenerationLimit": 2,
+    "paidGenerationUsd": 0,
+    "paidGenerationUsdLimit": 20,
+    "generationPostsDuringRecoveryValidation": 0,
+    "ossObjectWritesUsed": 0
+  },
+  "safety": {
+    "protectedFileReadOrChanged": false,
+    "historicalTaskOrMediaDeleted": false,
+    "historicalReleaseOrBackupDeleted": false,
+    "historicalTagOrReleaseMoved": false,
+    "productionPaidTaskUsedForAcceptance": false,
+    "accountSpecificCanvasMutatedForAcceptance": false,
+    "releaseAuthorizationConsumed": true
+  },
+  "nextGate": {
+    "status": "USER_RECHECK",
+    "action": "User refreshes the affected production canvas, confirms the original successful result is restored without resubmission and the workflow continues, then opens My Connections and performs one manual non-generation verification.",
+    "authorizationRequired": false,
+    "userPassWritten": false
+  }
+}
