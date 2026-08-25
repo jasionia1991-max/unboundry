@@ -1,6 +1,6 @@
 # INC-GEN-013：整组刷新恢复与组合框拖动性能治理方案
 
-状态：`PLAN_FROZEN / IMPLEMENTATION_NOT_STARTED / USER_REVIEW`
+状态：`PRODUCTION_V0_6_42_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK`
 
 建立日期：2026-08-25
 
@@ -8,7 +8,7 @@
 
 唯一实时断点：`spec/INC_GEN_013_GROUP_RECOVERY_AND_GROUP_DRAG_PERFORMANCE_CHECKPOINT.md`
 
-当前生产事实仍以 `spec/UNBOUNDRY_CURRENT_STATE.md` 为准：生产运行 `v0.6.41 / schema41`。本文仅冻结后续实施方案、风险门和验收合同，不代表代码已修改、测试已执行、版本已确认或发布已获授权。
+当前生产事实仍以 `spec/UNBOUNDRY_CURRENT_STATE.md` 为准：生产运行 `v0.6.42 / schema41`。本文的实施、自动验收、GitHub、冻结备份、原子发布与零付费生产技术矩阵已完成；用户在涉事账号实页确认前保持`USER_RECHECK`。
 
 ## 0. 结论
 

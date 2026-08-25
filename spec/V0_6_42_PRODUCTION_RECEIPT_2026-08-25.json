@@ -1,0 +1,219 @@
+{
+  "receiptType": "UNBOUNDRY_V0_6_42_GROUP_RECOVERY_AND_DRAG_PERFORMANCE_PRODUCTION_RECEIPT",
+  "recordedAt": "2026-08-25",
+  "status": {
+    "production": "PRODUCTION_V0_6_42_TECHNICAL_PASS",
+    "browser": "PRODUCTION_ZERO_PAID_BROWSER_PASS",
+    "userAcceptance": "USER_RECHECK"
+  },
+  "source": {
+    "version": "0.6.42",
+    "schemaVersion": 41,
+    "functionalCommit": "31f0fcbc40cd7236bdfe3fdf4657c53de9b3ee4b",
+    "governanceCommit": "3825b79ca4c9f7168c737fbfe2653d5a91d598fc",
+    "pullRequest": 98,
+    "mergeCommit": "22038897c85f1d3d518088844540bea582158308",
+    "tree": "c60353753c0c0d50fa51dbdbf1b844295bfee80a",
+    "pullRequestQualityRun": 32810722937,
+    "pullRequestQualityJob": 97689406507,
+    "mainQualityRun": 32810778109,
+    "mainQualityJob": 97689563237,
+    "qualityConclusion": "success",
+    "tag": "v0.6.42",
+    "tagObject": "4541d0f2b25f921a3fc487f3b0c6a1f8b54d80d5",
+    "tagPeeledCommit": "22038897c85f1d3d518088844540bea582158308",
+    "releaseUrl": "https://github.com/jasionia1991-max/unboundry/releases/tag/v0.6.42",
+    "sourceArchiveSha256": "e58ce0adc88cc22f0216d8ac6ec55235cbea7c440f20238d57fd18f6c3b72c75",
+    "sourceArchiveBytes": 29708690
+  },
+  "verification": {
+    "independentReview": {
+      "initialFindings": {
+        "p0": 0,
+        "p1": 2
+      },
+      "finalFindings": {
+        "p0": 0,
+        "p1": 0
+      }
+    },
+    "targeted": {
+      "scope": "m1-selection-drag+m2+m3+m22+m40+m79+m81 plus review rechecks",
+      "status": "pass"
+    },
+    "safeFull": {
+      "commit": "31f0fcbc40cd7236bdfe3fdf4657c53de9b3ee4b",
+      "specsExecuted": 121,
+      "specsTotal": 121,
+      "testsPassed": 1060,
+      "testsTotal": 1061,
+      "failed": 1,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0,
+      "node": "22.23.1",
+      "npm": "10.9.8",
+      "sourceSnapshotSha256": "3baf4f5ddb40d2fa956e746de88fb11d80463a7641e422ba3056045b00d97e41",
+      "sourceUnchanged": true,
+      "listener4173Unchanged": true,
+      "secondFullRun": false,
+      "soleFailure": "unchanged m0 AI-character filter count timing assertion"
+    },
+    "failedSpecRecheck": {
+      "scope": "tests/m0-shell.spec.ts",
+      "passed": 23,
+      "total": 23,
+      "sourceSnapshotSha256": "3baf4f5ddb40d2fa956e746de88fb11d80463a7641e422ba3056045b00d97e41",
+      "productSourceUnchanged": true,
+      "productFullRepeated": false
+    },
+    "documentationFocusedRecheck": {
+      "scope": "tests/m38-generation-runtime-incidents.spec.ts",
+      "passed": 15,
+      "total": 15,
+      "sourceSnapshotSha256": "4fc176d967a7299e806d1d0ac719ba2a8407b5ef4e280fca1f4b73e7ae2c2ba2",
+      "productFullRepeated": false
+    }
+  },
+  "production": {
+    "releasePath": "/opt/unboundry/releases/v0.6.42-group-recovery-drag-performance-20260825",
+    "previousReleasePath": "/opt/unboundry/releases/v0.6.41-seedance-character-compliance-20260825",
+    "node": "22.23.2",
+    "npm": "10.9.8",
+    "freshBuild": true,
+    "releaseFileCount": 5971,
+    "releaseInventorySha256": "a48a4ce593b2a826b856c3d8b007a25f5791f0572d0e6ef91feeda5f9119666e",
+    "backupPath": "/var/lib/unboundry-rollbacks/v0.6.42-cutover-frozen-DX69TW",
+    "backupSourceFileCount": 366,
+    "backupRestoreFileCount": 366,
+    "backupManifestSha256": "19c40c397fadd22dcaa4024b549fb82cba8d89cc56a327be5a1dca9cf4ed3e28",
+    "restoreValidation": {
+      "initialRawCopyInspection": "FAIL_CLOSED_SQLITE_SIDECAR_PRESENT",
+      "oldReleaseAutomaticallyRestored": true,
+      "standaloneRehearsalCreatedWithSqliteBackupApi": true,
+      "schemaVersion": 41,
+      "integrity": "ok",
+      "foreignKeyViolations": 0,
+      "logicalSha256": "c68c9f1825d978346491f71a345b912bf1798c1996f917eda9045bb640db9d99"
+    },
+    "migration": "NOT_REQUIRED_SCHEMA41_UNCHANGED",
+    "quietGate": {
+      "startedAt": "2026-08-25T04:58:38.570Z",
+      "endedAt": "2026-08-25T04:59:38.619Z",
+      "activeAtStart": 0,
+      "activeAtEnd": 0,
+      "providerBoundaryRowsCreatedDuringGate": 0,
+      "historicalNonDefinitiveProviderBoundaryRows": 16,
+      "latestHistoricalNonDefinitiveAt": "2026-08-19T08:52:43.787Z",
+      "historyModified": false
+    },
+    "cutoverAt": "2026-08-25T05:02:40Z",
+    "service": {
+      "active": true,
+      "enabled": true,
+      "nRestarts": 0,
+      "newApplicationWarnings": 0,
+      "newNginxErrors": 0
+    },
+    "health": {
+      "loopbackVersion": "0.6.42",
+      "publicVersion": "0.6.42",
+      "liveHttpStatus": 200,
+      "readyHttpStatus": 200,
+      "readyState": "active",
+      "schemaVersion": 41
+    },
+    "dataCountsBeforeAndAfter": {
+      "generationTasks": 798,
+      "generationAttempts": 806,
+      "activeGenerationTasks": 0,
+      "mediaAssets": 841,
+      "mediaDatabaseBytes": 1496266488,
+      "mediaFiles": 355,
+      "mediaFileBytes": 284663380,
+      "publicationAttempts": 431,
+      "canvases": 65,
+      "dataFiles": 366,
+      "complianceChecks": 0,
+      "complianceAttempts": 0,
+      "complianceDisclosures": 0,
+      "unchanged": true
+    },
+    "publicAssetSha256": {
+      "/": "835097bf1e372be05004dd0a3c69c7cba449b92a4a60b1bde413b713aeb2360a",
+      "/assets/CanvasShell-CKjkzII7.js": "81c1170995bde94175f2e921a6022135e5074a8ab30b616763446b54864b35b2",
+      "/assets/WorkspacePage-D-gRAiIM.js": "b51fc77b7141e7c8a0bc471e364ea81b3f96a9ab05a826910d1709e8751f07c9",
+      "/assets/index-B5ETM-Lx.css": "0486bc6d3ffbc2223df22c89f9f1609c5cc86169d46ee53a67253b21ac8f7370",
+      "/assets/index-D8P9yi3L.js": "191c5ccce59533a26d99b319c7a98de38878d0da5bf23f2597bb9ba1d66b6ad1",
+      "/assets/projectStorage-DU6gSN6G.js": "f897998a6366bba5904c2551ccd6f516494e6debf4fec0dfa9043ef8f8bcf220",
+      "/favicon.svg": "6d2795e7ca70fe26408c5f057c59224421cafe44288ac1a1c2b19bf6e4f2010b",
+      "/templates/ecommerce-image-expert-213.png": "48f64fe87da50860cc669b0835497b041f5b93f7deb14acb3116447891fab82f"
+    }
+  },
+  "browserAcceptance": {
+    "originalIncidentCanvas": "60a739ce-9cb4-4c46-9c77-92e9f6f22b49",
+    "originalIncidentCanvasAccess": "OWNER_ISOLATION_REDIRECTED_TO_WORKSPACE_NO_BYPASS",
+    "technicalProject": {
+      "id": "1a65570e-fd16-4b70-89f8-bfd9ff3ba9b1",
+      "nodeCount": 36,
+      "groupCount": 3,
+      "edgeCount": 60,
+      "maximumChildrenInGroup": 12
+    },
+    "viewports": [
+      "1280x720",
+      "1440x900",
+      "1920x1080"
+    ],
+    "targetGroupId": "group-c8477172-e8e3-4cad-8039-774684fcda8d",
+    "targetGroupOriginalPosition": {
+      "x": -192.34057515702943,
+      "y": 1439.3382553426354
+    },
+    "dragMoveStopUndoRefresh": "pass",
+    "finalGroupPositionRestoredExactly": true,
+    "canvasRevisionBefore": 148,
+    "canvasRevisionAfter": 156,
+    "graphRevisionBefore": 73,
+    "graphRevisionAfter": 79,
+    "graphWrites": 6,
+    "viewportOnlyWrites": 2,
+    "continuousDragSaveStorm": false,
+    "groupExecuteEntryVisible": true,
+    "manualContinueLabelInProductionBundle": true,
+    "manualAbandonLabelInProductionBundle": true,
+    "acceptedOnlyMessageInProductionBundle": true,
+    "productionApplicationConsoleErrorsOrWarnings": 0,
+    "excludedExtensionErrors": 1,
+    "excludedExtensionSource": "chrome-extension://bpoadfkcbjbfhfodiogcnhhhpibjhbnh",
+    "generationTasksDelta": 0,
+    "generationAttemptsDelta": 0,
+    "mediaAssetsDelta": 0,
+    "publicationAttemptsDelta": 0,
+    "providerRequests": 0,
+    "paidGeneration": 0,
+    "ossWrites": 0
+  },
+  "requestLedger": {
+    "providerControlPlaneUsed": 0,
+    "realGenerationUsed": 0,
+    "paidGenerationUsed": 0,
+    "ossObjectWritesUsed": 0,
+    "subscriptionsOrPurchases": 0,
+    "costCny": 0
+  },
+  "safety": {
+    "protectedFileReadOrChanged": false,
+    "historicalTaskOrMediaDeleted": false,
+    "historicalReleaseOrBackupDeleted": false,
+    "historicalTagOrReleaseMoved": false,
+    "productionPaidTaskUsedForAcceptance": false
+  },
+  "nextGate": {
+    "status": "USER_RECHECK",
+    "action": "User refreshes the affected production canvas in the owning account, confirms accepted-task recovery, drags the large group box, and replies whether both behaviors pass.",
+    "authorizationRequired": false,
+    "userPassWritten": false
+  }
+}

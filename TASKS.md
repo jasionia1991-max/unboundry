@@ -1,11 +1,11 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产仍为`v0.6.41 / schema41`且技术健康；INC-GEN-013本地`v0.6.42/schema41`候选已完成定向验收、P0/P1终审和唯一safe full，GitHub与发布链待执行。
+> **当前状态**：生产运行`v0.6.42 / schema41`且技术健康；INC-GEN-013已完成工程、GitHub、冻结备份、原子发布与三视口零付费验收，等待用户实页复验。
 
 更新时间：2026-08-25
-状态：`INC-GEN-013 LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / P0_P1_REVIEW_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_RECHECK / V0_6_42_CANDIDATE；生产仍为v0.6.41 / schema41 / USER_RECHECK。`
+状态：`INC-GEN-013 PRODUCTION_V0_6_42_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK。`
 
-### 2026-08-25 整组刷新恢复与组合框拖动性能治理（INC-GEN-013，LOCAL_ENGINEERING_COMPLETE / V0_6_42_CANDIDATE）
+### 2026-08-25 整组刷新恢复与组合框拖动性能治理（INC-GEN-013，PRODUCTION_V0_6_42 / USER_RECHECK）
 
 - [x] 只读核实截图提示属于防重复付费安全门，不是Provider失败；原服务端任务已成功，结果媒体仍在OSS
 - [x] 核实刷新后节点缺少完整结果/success proof，现有checkpoint不足以严格自动接回已接收任务
@@ -21,11 +21,14 @@
 - [x] exact rich fixture为3组/39节点/73边；p95 9.9ms、max 10.3ms、long task0、dropped0、媒体请求0，坐标/刷新/undo-redo/多选通过
 - [x] 定向m1`6/6`、m2`5/5`、m3`6/6`、m40`14/14`、m79`3/3`、m22最终`37/37`；build与diff-check通过
 - [x] 独立只读审查发现的2个P1均已关闭：已接收未绑定窗口可精确准入，外来租约会立即abort旧poller；无已知剩余P0/P1
-- [x] 版本门与发布门绑定`v0.6.42/schema41`；远端同名tag/Release不存在，生产尚未改变
+- [x] 版本门与发布门绑定`v0.6.42/schema41`；历史tag/Release未移动
 - [x] 本Goal唯一safe full原始`1060/1061`；唯一未改动m0筛选计数瞬态失败，相同源码快照只复跑该spec `23/23 PASS`，未重复full；source/snapshot `3baf4f5d…97e41`、4173 unchanged
-- [ ] GitHub PR/CI/merge、tag/Release、生产发布和零付费生产矩阵待执行
+- [x] PR #98、PR/main Quality CI、merge`2203889`、注释tag对象`4541d0f`与GitHub Release完成；tag/main tree同为`c6035375…e80a`
+- [x] 生产release`/opt/unboundry/releases/v0.6.42-group-recovery-drag-performance-20260825`；inventory`a48a4ce…9666e`，冻结source/restore各366文件且双清单`19c40c3…d3e28`一致，schema41 rehearsal integrity ok/FK0
+- [x] 公网/回环v0.6.42、service active+enabled/NRestarts0、数据和全部构建JS/CSS逐字节一致；三视口复杂组拖动/停止/撤销/刷新通过，最终位置精确还原，应用console0
+- [x] tasks798/attempts806/active0/media841/publications431/canvases65前后不变；Provider、Generation、OSS、购买和费用均0。回执`spec/V0_6_42_PRODUCTION_RECEIPT_2026-08-25.json`
 
-权威方案：`spec/INC_GEN_013_GROUP_RECOVERY_AND_GROUP_DRAG_PERFORMANCE_PLAN_2026-08-25.md`；实时断点：`spec/INC_GEN_013_GROUP_RECOVERY_AND_GROUP_DRAG_PERFORMANCE_CHECKPOINT.md`。本Goal新授权只绑定v0.6.42；真实Provider、Generation、OSS写入和费用固定为0。
+权威方案：`spec/INC_GEN_013_GROUP_RECOVERY_AND_GROUP_DRAG_PERFORMANCE_PLAN_2026-08-25.md`；实时断点：`spec/INC_GEN_013_GROUP_RECOVERY_AND_GROUP_DRAG_PERFORMANCE_CHECKPOINT.md`。v0.6.42一次性授权已消费；真实Provider、Generation、OSS写入和费用为0。当前唯一下一步是用户在涉事账号实页复验，未确认前不得写`USER_PASS`。
 
 ### 2026-08-25 AI角色单图合规验证（INC-SEEDANCE-002，BRANCH_C / P0_P1_REVIEW_PASS / SAFE_FULL_PASS）
 
