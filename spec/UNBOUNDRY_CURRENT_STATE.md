@@ -14,6 +14,14 @@
 
 **生产是 v0.6.42 / schema41；整组刷新恢复与组合框拖动性能已完成自动、GitHub、发布和零付费生产技术验收，等待用户在涉事账号实页复验。**
 
+## INC-UI-011 节点排序菜单层级修复（LOCAL_AUTO_PASS / USER_RECHECK）
+
+- 用户截图显示组合框「节点排序」菜单向下展开后被组内节点遮挡；代码核实为组合框`zIndex: 0`、子节点`zIndex: 1`形成的父级层叠上下文问题，单独提高菜单`z-index`不能脱离父级。
+- 已完成最小修复：只将「宫格 / 水平」菜单Portal到`document.body`并使用触发按钮屏幕矩形定位，补齐上下翻转、左右8px收边、`nodrag nopan nowheel`、ARIA、Escape返焦、外部/失选/画布切换/滚轮关闭；没有提高组合框或降低子节点层级，也没有修改排序算法。
+- 密集fixture旧实现预期红为m2 `4/5`，唯一失败是按钮中心非最上层；最终safe m2 `5/5 PASS`，source/snapshot`d729b635…d6d4f`，TypeScript 408/408与生产构建通过，4173不变。
+- `1280×720`、`1440×900`、`1920×1080`三视口的遮挡、翻转、左右收边、Escape、应用console/pageerror和零手势通过；打开/关闭图快照不变、画布`PUT=0`。
+- Provider、Generation、OSS写入、购买/订阅和费用均0；package仍为0.6.42、schema41。版本未确认、发布未授权，当前严格为`LOCAL_AUTO_PASS / USER_RECHECK`。权威方案：`spec/INC_UI_011_GROUP_LAYOUT_MENU_LAYERING_PLAN_2026-08-25.md`。
+
 ## INC-GEN-013 整组刷新恢复与组合框拖动性能治理（PRODUCTION_V0_6_42_TECHNICAL_PASS / USER_RECHECK）
 
 - 权威方案：`spec/INC_GEN_013_GROUP_RECOVERY_AND_GROUP_DRAG_PERFORMANCE_PLAN_2026-08-25.md`

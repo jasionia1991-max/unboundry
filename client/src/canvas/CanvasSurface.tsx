@@ -1396,7 +1396,7 @@ function createProbeNodes(fixtureId?: string): ProbeNodeType[] {
         zIndex: 0,
       },
       ...[
-        [120, 140],
+        [850, -50],
         [1450, 140],
         [2750, 140],
         [120, 1580],

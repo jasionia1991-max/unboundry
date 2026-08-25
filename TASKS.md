@@ -5,6 +5,24 @@
 更新时间：2026-08-25
 状态：`INC-GEN-013 PRODUCTION_V0_6_42_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK。`
 
+### 2026-08-25 节点排序菜单层级修复（INC-UI-011，LOCAL_AUTO_PASS / USER_RECHECK）
+
+- [x] 根据用户截图核实遮挡表现，并定位为组合框父级层叠上下文低于组内节点
+- [x] 排除只提高菜单`z-index`和提高整个组合框层级两种不可靠方案
+- [x] 冻结最小修复：仅将「宫格 / 水平」菜单Portal到`document.body`，按触发按钮屏幕矩形定位
+- [x] 补齐安全边界：视口翻转/收边、`nodrag nopan nowheel`、Escape/外部/画布移动关闭、焦点返回、打开关闭零画布`PUT`
+- [x] 冻结密集fixture的`elementFromPoint()`最上层命中验收及风险驱动定向验证顺序
+- [x] 落地权威方案文档并登记为仅文档、未实施；版本未确认、发布未授权
+- [x] 旧实现预期红：safe m2 `4/5`，唯一失败为密集fixture菜单按钮中心不是最上层
+- [x] 完成Portal、fixed屏幕定位、上下翻转、左右8px收边、ARIA、Escape返焦和外部/失选/画布切换/滚轮关闭
+- [x] Portal带`nodrag nopan nowheel`；菜单空白区pointer与wheel未触发节点/组合框拖动、画布平移或缩放
+- [x] 最终safe m2 `5/5 PASS`；TypeScript 408/408与生产构建通过，source/snapshot`d729b635…d6d4f`，4173不变
+- [x] `1280×720`、`1440×900`、`1920×1080`三视口遮挡/翻转/收边/Escape/应用console-pageerror通过
+- [x] 打开、Escape/外部/滚轮关闭图快照不变，画布`PUT=0`；Provider/Generation/OSS/购买/费用均0
+- [ ] 用户在本地真实复杂画布亲自复验；未明确通过前不得写`USER_PASS`
+
+权威方案：`spec/INC_UI_011_GROUP_LAYOUT_MENU_LAYERING_PLAN_2026-08-25.md`。当前唯一下一步是用户本地实页复验；版本号和发布授权保持独立闸门，尚未push、PR或上线。
+
 ### 2026-08-25 整组刷新恢复与组合框拖动性能治理（INC-GEN-013，PRODUCTION_V0_6_42 / USER_RECHECK）
 
 - [x] 只读核实截图提示属于防重复付费安全门，不是Provider失败；原服务端任务已成功，结果媒体仍在OSS

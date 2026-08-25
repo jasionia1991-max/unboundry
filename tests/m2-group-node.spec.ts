@@ -1,6 +1,55 @@
 import { readFileSync } from "node:fs";
-import { expect, test } from "./safe-test";
+import { expect, test, type Page } from "./safe-test";
 import { composeTextControl } from "./helpers/ime";
+
+async function canvasGraphSnapshot(page: Page) {
+  return page.evaluate(() => {
+    const world = document.querySelector<HTMLElement>("[data-testid=canvas-world]");
+    return {
+      edges: Array.from(document.querySelectorAll<SVGPathElement>(
+        ".react-flow__edge-path",
+      )).map((edge) => edge.getAttribute("d")),
+      nodes: Array.from(document.querySelectorAll<HTMLElement>(
+        ".react-flow__node",
+      )).map((node) => ({
+        height: node.style.height,
+        id: node.dataset.id,
+        transform: node.style.transform,
+        width: node.style.width,
+      })),
+      world: {
+        edgeCount: world?.dataset.edgeCount,
+        groupCount: world?.dataset.groupCount,
+        nodeCount: world?.dataset.nodeCount,
+        saveFingerprintCount: world?.dataset.saveFingerprintCount,
+        viewportX: world?.dataset.viewportX,
+        viewportY: world?.dataset.viewportY,
+        viewportZoom: world?.dataset.viewportZoom,
+      },
+    };
+  });
+}
+
+async function mockGroupLayoutTriggerRect(
+  page: Page,
+  target: { left: number; top: number },
+) {
+  await page.getByRole("button", { name: "组合框布局" }).evaluate(
+    (element, next) => {
+      const bounds = element.getBoundingClientRect();
+      Object.defineProperty(element, "getBoundingClientRect", {
+        configurable: true,
+        value: () => DOMRect.fromRect({
+          height: bounds.height,
+          width: bounds.width,
+          x: next.left,
+          y: next.top,
+        }),
+      });
+    },
+    target,
+  );
+}
 
 test("Group keeps children stable through create, move, resize, delete and ungroup", async ({
   page,
@@ -149,6 +198,26 @@ test("Group layout reflows children into grid and horizontal positions", async (
 test("Dense template Group keeps the frozen geometry and chrome", async ({
   page,
 }) => {
+  test.setTimeout(120_000);
+  let canvasPuts = 0;
+  const consoleErrors: string[] = [];
+  page.on("console", (message) => {
+    if (
+      message.type() === "error" &&
+      !message.text().startsWith("Failed to load resource:")
+    ) {
+      consoleErrors.push(message.text());
+    }
+  });
+  page.on("pageerror", (error) => consoleErrors.push(error.message));
+  page.on("request", (request) => {
+    if (
+      request.method() === "PUT" &&
+      /\/api\/canvas\//.test(request.url())
+    ) {
+      canvasPuts += 1;
+    }
+  });
   await page.goto("/__fixture/legacy.node.group-dense-selected");
 
   const group = page.locator(".react-flow__node-group");
@@ -177,6 +246,155 @@ test("Dense template Group keeps the frozen geometry and chrome", async ({
 
   const handle = group.locator(".react-flow__resize-control.top.left");
   expect(await handle.boundingBox()).toMatchObject({ height: 24, width: 24 });
+
+  canvasPuts = 0;
+  const graphBefore = await canvasGraphSnapshot(page);
+  const trigger = page.getByRole("button", { name: "组合框布局" });
+  await expect(trigger).toHaveAttribute("aria-haspopup", "menu");
+  await expect(trigger).toHaveAttribute("aria-expanded", "false");
+  await trigger.click();
+  await expect(trigger).toHaveAttribute("aria-expanded", "true");
+  const menu = page.getByTestId("group-layout-menu");
+  await expect(menu).toHaveClass(/nodrag/);
+  await expect(menu).toHaveClass(/nopan/);
+  await expect(menu).toHaveClass(/nowheel/);
+  await expect(menu).toHaveCSS("position", "fixed");
+  expect(await menu.evaluate((element) => element.parentElement === document.body))
+    .toBe(true);
+  expect(await trigger.getAttribute("aria-controls")).toBe(
+    await menu.getAttribute("id"),
+  );
+  for (const name of ["宫格", "水平"] as const) {
+    const button = page.getByRole("button", { name });
+    await expect(button).toBeVisible();
+    expect(await button.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return document.elementFromPoint(
+        bounds.left + bounds.width / 2,
+        bounds.top + bounds.height / 2,
+      ) === element;
+    })).toBe(true);
+  }
+
+  const viewportBeforeGesture = await page.getByTestId("canvas-world").evaluate(
+    (element) => ({
+      x: element.dataset.viewportX,
+      y: element.dataset.viewportY,
+      zoom: element.dataset.viewportZoom,
+    }),
+  );
+  const menuBox = (await menu.boundingBox())!;
+  await page.mouse.move(menuBox.x + 3, menuBox.y + 3);
+  await page.mouse.down();
+  await page.mouse.move(menuBox.x + 18, menuBox.y + 12);
+  await page.mouse.up();
+  await expect(menu).toBeVisible();
+  expect(await page.getByTestId("canvas-world").evaluate((element) => ({
+    x: element.dataset.viewportX,
+    y: element.dataset.viewportY,
+    zoom: element.dataset.viewportZoom,
+  }))).toEqual(viewportBeforeGesture);
+
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  expect(await canvasGraphSnapshot(page)).toEqual(graphBefore);
+  expect(canvasPuts).toBe(0);
+
+  await trigger.click();
+  await page.evaluate(() => {
+    document.body.dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true,
+    }));
+  });
+  await expect(menu).toHaveCount(0);
+  expect(await canvasGraphSnapshot(page)).toEqual(graphBefore);
+  expect(canvasPuts).toBe(0);
+
+  await trigger.click();
+  await menu.hover({ position: { x: 3, y: 3 } });
+  await page.mouse.wheel(0, 80);
+  await expect(menu).toHaveCount(0);
+  expect(await page.getByTestId("canvas-world").evaluate((element) => ({
+    x: element.dataset.viewportX,
+    y: element.dataset.viewportY,
+    zoom: element.dataset.viewportZoom,
+  }))).toEqual(viewportBeforeGesture);
+  expect(await canvasGraphSnapshot(page)).toEqual(graphBefore);
+  expect(canvasPuts).toBe(0);
+
+  for (const viewport of [
+    { height: 720, width: 1280 },
+    { height: 900, width: 1440 },
+    { height: 1080, width: 1920 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.reload();
+    const layoutTrigger = page.getByRole("button", { name: "组合框布局" });
+    const layoutMenu = page.getByTestId("group-layout-menu");
+
+    await mockGroupLayoutTriggerRect(page, { left: 64, top: 120 });
+    await layoutTrigger.evaluate((element) => (element as HTMLElement).click());
+    await expect(layoutMenu).toHaveAttribute("data-placement", "down");
+    const defaultBounds = (await layoutMenu.boundingBox())!;
+    expect(defaultBounds.x).toBeGreaterThanOrEqual(8);
+    expect(defaultBounds.x + defaultBounds.width)
+      .toBeLessThanOrEqual(viewport.width - 8);
+    expect(defaultBounds.y).toBeGreaterThanOrEqual(8);
+    expect(defaultBounds.y + defaultBounds.height)
+      .toBeLessThanOrEqual(viewport.height - 8);
+    for (const name of ["宫格", "水平"] as const) {
+      const button = page.getByRole("button", { name });
+      expect(await button.evaluate((element) => {
+        const bounds = element.getBoundingClientRect();
+        return document.elementFromPoint(
+          bounds.left + bounds.width / 2,
+          bounds.top + bounds.height / 2,
+        ) === element;
+      })).toBe(true);
+    }
+    await page.keyboard.press("Escape");
+
+    await mockGroupLayoutTriggerRect(page, {
+      left: 64,
+      top: viewport.height - 52,
+    });
+    await layoutTrigger.evaluate((element) => (element as HTMLElement).click());
+    await expect(layoutMenu).toHaveAttribute("data-placement", "up");
+    const upBounds = (await layoutMenu.boundingBox())!;
+    expect(upBounds.y + upBounds.height)
+      .toBeLessThanOrEqual(viewport.height - 60);
+    expect(upBounds.y).toBeGreaterThanOrEqual(8);
+    await page.keyboard.press("Escape");
+
+    await mockGroupLayoutTriggerRect(page, { left: 0, top: 120 });
+    await layoutTrigger.evaluate((element) => (element as HTMLElement).click());
+    expect((await layoutMenu.boundingBox())!.x).toBeGreaterThanOrEqual(8);
+    await page.keyboard.press("Escape");
+
+    await mockGroupLayoutTriggerRect(page, {
+      left: viewport.width - 40,
+      top: 120,
+    });
+    await layoutTrigger.evaluate((element) => (element as HTMLElement).click());
+    const rightBounds = (await layoutMenu.boundingBox())!;
+    expect(rightBounds.x + rightBounds.width)
+      .toBeLessThanOrEqual(viewport.width - 8);
+    await page.keyboard.press("Escape");
+  }
+
+  await page.reload();
+  await page.getByRole("button", { name: "组合框布局" }).click();
+  await page.locator(".react-flow__pane").click({ position: { x: 12, y: 12 } });
+  await expect(page.getByTestId("group-layout-menu")).toHaveCount(0);
+  await expect(page.getByTestId("group-node-toolbar")).toHaveCount(0);
+
+  await page.reload();
+  await page.getByRole("button", { name: "组合框布局" }).click();
+  await page.goto("/__fixture/node.group.selected");
+  await expect(page.getByTestId("group-layout-menu")).toHaveCount(0);
+  expect(consoleErrors).toEqual([]);
+  expect(canvasPuts).toBe(0);
 });
 
 test("Dense template Group downloads every available child asset", async ({
