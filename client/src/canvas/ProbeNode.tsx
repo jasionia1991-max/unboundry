@@ -74,6 +74,8 @@ export type ProbeNodeType = Node<
     groupRunSuccessOwnershipKey?: string;
     groupRunSuccessResultKey?: string;
     groupRunSuccessTaskId?: string;
+    /** Idempotency receipt for an exact legacy terminal-detach application. */
+    legacyTerminalDetachApplicationId?: string;
     /** Durable owner marker for a headless workflow executor. */
     workflowExecutionRunId?: string;
     audioDuration?: number;

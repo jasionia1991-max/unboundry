@@ -219,6 +219,15 @@ function canvasLoadTokenFor(
   return `v1.${hmac.digest("base64url")}`;
 }
 
+/** Canvas-domain capability for narrow server-side Canvas mutations. */
+export function canvasLoadTokenForApplication(
+  ownerId: string,
+  canvasId: string,
+  observedRevision: number,
+) {
+  return canvasLoadTokenFor(ownerId, canvasId, observedRevision);
+}
+
 function validCanvasLoadToken(
   token: string,
   ownerId: string,
@@ -748,12 +757,17 @@ function projectionResultComplete(
 
 function generationProjectionConflict(input: {
   incomingNodes: unknown[];
+  observedRevision: number | undefined;
   ownerId: string;
   projection: GenerationProjectionCommit;
   row: CanvasRow | undefined;
 }) {
   const { projection, row } = input;
-  if (!row || projection.accountId !== input.ownerId) return true;
+  if (
+    !row || projection.accountId !== input.ownerId ||
+    input.observedRevision === undefined ||
+    row.revision !== input.observedRevision
+  ) return true;
   const currentNode = (JSON.parse(row.nodes) as unknown[]).map(record).find(
     (node) => node?.id === projection.nodeId,
   );
@@ -959,6 +973,7 @@ export async function canvasPersistence(
       document.generationProjection &&
       generationProjectionConflict({
         incomingNodes: nodes,
+        observedRevision: document.observedRevision,
         ownerId,
         projection: document.generationProjection,
         row,

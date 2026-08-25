@@ -712,6 +712,396 @@ test("an aborted task poll exits without showing a transient polling pause", asy
   }
 });
 
+test("legacy nodes boundedly recheck unknown and active tasks without submission", async ({
+  page,
+  request,
+}) => {
+  let releasePolicy!: () => void;
+  const policyGate = new Promise<void>((resolve) => {
+    releasePolicy = resolve;
+  });
+  let policyReads = 0;
+  let taskReads = 0;
+  const taskReadCounts = new Map<string, number>();
+  let generationPosts = 0;
+  page.on("request", (entry) => {
+    if (
+      entry.method() === "POST" &&
+      new URL(entry.url()).pathname === "/api/generation-tasks"
+    ) generationPosts += 1;
+  });
+  await page.route(
+    "**/api/canvases/default/generation-reconciliation-policy",
+    async (route) => {
+      policyReads += 1;
+      await policyGate;
+      await route.fulfill({
+        contentType: "application/json",
+        json: { mode: "detect", writeEnabled: false },
+        status: 200,
+      });
+    },
+  );
+  await page.route("**/api/generation-tasks/*", async (route) => {
+    taskReads += 1;
+    const taskId = new URL(route.request().url()).pathname.split("/").pop() ?? "";
+    const kind = kinds.find((candidate) => taskId.endsWith(candidate)) ?? "text";
+    const readCount = (taskReadCounts.get(taskId) ?? 0) + 1;
+    taskReadCounts.set(taskId, readCount);
+    if (kind === "text" && readCount === 1) {
+      await route.fulfill({
+        contentType: "application/json",
+        json: { code: "TEMPORARY_READ_FAILURE", error: "temporary read failure" },
+        status: 500,
+      });
+      return;
+    }
+    const state = kind === "text"
+      ? (readCount === 2 ? "running" : "success")
+      : (readCount === 1 ? "running" : "success");
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        attempt: 1,
+        canvasId: "default",
+        costCurrency: "CNY",
+        createdAt: "2026-08-26T00:00:00.000Z",
+        generationInputKey: `legacy-input-${kind}`,
+        generationOwnershipKey: `legacy-owner-${kind}`,
+        id: taskId,
+        kind,
+        nodeId: nodeId(kind),
+        prompt: "legacy active fixture",
+        state,
+        updatedAt: "2026-08-26T00:01:00.000Z",
+        workflowExecutionRunId: `legacy-run-${kind}`,
+      },
+      status: 200,
+    });
+  });
+  await page.route("**/api/models", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        generationEnabled: true,
+        models: kinds.map((kind) => ({
+          capability: kind,
+          displayName: `Legacy active ${kind}`,
+          generationAvailable: true,
+          generationUnavailableReason: "",
+          generationUnavailableReasonCode: null,
+          id: modelInputs[kind].id,
+          isDefault: true,
+          parameterSchema: schemas[kind],
+        })),
+      },
+      status: 200,
+    });
+  });
+  await request.delete("/api/canvas/default");
+  const legacyNodes = canvasNodes().map((node) => {
+    const kind = node.type as Kind;
+    return {
+      ...node,
+      data: {
+        ...node.data,
+        workflowExecutionRunId: `legacy-run-${kind}`,
+        [`${kind}Generating`]: true,
+        [`${kind}GenerationInputKey`]: `legacy-input-${kind}`,
+        [`${kind}GenerationOwnershipKey`]: `legacy-owner-${kind}`,
+        [`${kind}GenerationTaskId`]: `legacy-active-${kind}`,
+      },
+    };
+  });
+  expect((await request.put("/api/canvas/default", {
+    data: {
+      edges: [],
+      nodes: legacyNodes,
+      revision: 0,
+      viewport: { x: 0, y: 0, zoom: 0.75 },
+    },
+  })).ok()).toBeTruthy();
+  await page.goto("/canvas");
+  await expect(page.getByTestId("canvas-world"))
+    .toHaveAttribute("data-persistence-ready", "true");
+  await expect.poll(() => policyReads).toBe(1);
+  await expect(page.getByTestId("legacy-terminal-generation-notice"))
+    .toHaveCount(4);
+  await expect(page.getByTestId("text-node-generating")).toHaveCount(0);
+  await expect(page.getByTestId("image-node-generating")).toHaveCount(0);
+  await expect(page.getByTestId("video-node-generating")).toHaveCount(0);
+  await expect(page.getByTestId("audio-node-generating")).toHaveCount(0);
+
+  expect(generationPosts).toBe(0);
+  releasePolicy();
+  await expect.poll(() => taskReads).toBe(4);
+  await expect(page.getByTestId("text-node-generating")).toHaveCount(0);
+  await expect(page.getByTestId("image-node-generating")).toHaveCount(1);
+  await expect(page.getByTestId("video-node-generating")).toHaveCount(1);
+  await expect(page.getByTestId("audio-node-generating")).toHaveCount(1);
+  await expect.poll(() => taskReads).toBe(8);
+  await expect(page.getByTestId("text-node-generating")).toHaveCount(1);
+  await expect(page.getByTestId("image-node-generating")).toHaveCount(0);
+  await expect(page.getByTestId("video-node-generating")).toHaveCount(0);
+  await expect(page.getByTestId("audio-node-generating")).toHaveCount(0);
+  await expect.poll(() => taskReads).toBe(12);
+  await expect(page.getByTestId("legacy-terminal-generation-notice"))
+    .toHaveCount(4);
+  await expect(page.getByTestId("text-node-generating")).toHaveCount(0);
+  await expect(page.getByTestId("image-node-generating")).toHaveCount(0);
+  await expect(page.getByTestId("video-node-generating")).toHaveCount(0);
+  await expect(page.getByTestId("audio-node-generating")).toHaveCount(0);
+  expect(Object.fromEntries(taskReadCounts)).toEqual({
+    "legacy-active-audio": 3,
+    "legacy-active-image": 3,
+    "legacy-active-text": 3,
+    "legacy-active-video": 3,
+  });
+  expect(generationPosts).toBe(0);
+  await request.delete("/api/canvas/default");
+});
+
+test("legacy classifier unknown and missing Web Locks stop after bounded original-task reads", async ({
+  page,
+  request,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(Navigator.prototype, "locks", {
+      configurable: true,
+      get: () => undefined,
+    });
+  });
+  let policyReads = 0;
+  let taskReads = 0;
+  let generationPosts = 0;
+  let reconciliationWrites = 0;
+  page.on("request", (entry) => {
+    const path = new URL(entry.url()).pathname;
+    if (entry.method() === "POST" && path === "/api/generation-tasks") {
+      generationPosts += 1;
+    }
+    if (
+      entry.method() === "POST" &&
+      (path.endsWith("/generation-terminal-detach") ||
+        path === "/api/generation-result-projections")
+    ) reconciliationWrites += 1;
+  });
+  await page.route(
+    "**/api/canvases/default/generation-reconciliation-policy",
+    async (route) => {
+      policyReads += 1;
+      await route.fulfill({
+        contentType: "application/json",
+        json: { mode: "on", writeEnabled: true },
+        status: 200,
+      });
+    },
+  );
+  await page.route("**/api/generation-tasks/legacy-bounded-text", async (route) => {
+    taskReads += 1;
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        attempt: 1,
+        canvasId: "default",
+        costCurrency: "CNY",
+        createdAt: "2026-08-26T00:00:00.000Z",
+        generationInputKey: "legacy-bounded-input",
+        generationOwnershipKey: taskReads === 1
+          ? "foreign-owner"
+          : "legacy-bounded-owner",
+        id: "legacy-bounded-text",
+        kind: "text",
+        nodeId: nodeId("text"),
+        prompt: "legacy bounded fixture",
+        state: "failed",
+        updatedAt: "2026-08-26T00:01:00.000Z",
+        workflowExecutionRunId: "legacy-bounded-run",
+      },
+      status: 200,
+    });
+  });
+  await page.route("**/api/models", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        generationEnabled: true,
+        models: kinds.map((kind) => ({
+          capability: kind,
+          displayName: `Legacy bounded ${kind}`,
+          generationAvailable: true,
+          generationUnavailableReason: "",
+          generationUnavailableReasonCode: null,
+          id: modelInputs[kind].id,
+          isDefault: true,
+          parameterSchema: schemas[kind],
+        })),
+      },
+      status: 200,
+    });
+  });
+  await request.delete("/api/canvas/default");
+  const textNode = canvasNodes().find((node) => node.type === "text");
+  if (!textNode) throw new Error("Text fixture missing");
+  expect((await request.put("/api/canvas/default", {
+    data: {
+      edges: [],
+      nodes: [{
+        ...textNode,
+        data: {
+          ...textNode.data,
+          workflowExecutionRunId: "legacy-bounded-run",
+          textGenerating: true,
+          textGenerationInputKey: "legacy-bounded-input",
+          textGenerationOwnershipKey: "legacy-bounded-owner",
+          textGenerationTaskId: "legacy-bounded-text",
+        },
+      }],
+      revision: 0,
+      viewport: { x: 0, y: 0, zoom: 0.75 },
+    },
+  })).ok()).toBeTruthy();
+
+  await page.goto("/canvas");
+  await expect(page.getByTestId("canvas-world"))
+    .toHaveAttribute("data-persistence-ready", "true");
+  await expect.poll(() => taskReads, { timeout: 12_000 }).toBe(5);
+  await expect(page.getByTestId("legacy-terminal-generation-notice"))
+    .toHaveAttribute("data-state", "UNKNOWN_BLOCKED");
+  await expect(page.getByTestId("text-node-generating")).toHaveCount(0);
+  await page.waitForTimeout(4_500);
+  expect(taskReads).toBe(5);
+  expect(policyReads).toBe(5);
+  expect(generationPosts).toBe(0);
+  expect(reconciliationWrites).toBe(0);
+  await request.delete("/api/canvas/default");
+});
+
+test("legacy reconciliation retries after a conflicting run lease appears inside canvas admission", async ({
+  page,
+  request,
+}) => {
+  let taskReads = 0;
+  let detachRequests = 0;
+  let generationPosts = 0;
+  page.on("request", (entry) => {
+    if (
+      entry.method() === "POST" &&
+      new URL(entry.url()).pathname === "/api/generation-tasks"
+    ) generationPosts += 1;
+  });
+  await page.route(
+    "**/api/canvases/default/generation-reconciliation-policy",
+    async (route) => route.fulfill({
+      contentType: "application/json",
+      json: { mode: "on", writeEnabled: true },
+      status: 200,
+    }),
+  );
+  await page.route("**/api/generation-tasks/legacy-deferred-text", async (route) => {
+    taskReads += 1;
+    if (taskReads === 1) {
+      await page.evaluate(() => {
+        const runId = "new-active-run";
+        const key = `unboundry-group-run-lease:v1:${JSON.stringify([
+          "__test__",
+          "default",
+          "",
+          runId,
+        ])}`;
+        window.localStorage.setItem(key, JSON.stringify({
+          expiresAt: Date.now() + 800,
+          heartbeatAt: Date.now(),
+          lockedNodeIds: ["retry-ui-text"],
+          ownerId: "racing-tab-owner",
+          runId,
+        }));
+      });
+    }
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        attempt: 1,
+        canvasId: "default",
+        costCurrency: "CNY",
+        createdAt: "2026-08-26T00:00:00.000Z",
+        generationInputKey: "legacy-deferred-input",
+        generationOwnershipKey: "legacy-deferred-owner",
+        id: "legacy-deferred-text",
+        kind: "text",
+        nodeId: nodeId("text"),
+        prompt: "legacy deferred fixture",
+        state: "failed",
+        updatedAt: "2026-08-26T00:01:00.000Z",
+        workflowExecutionRunId: "legacy-deferred-run",
+      },
+      status: 200,
+    });
+  });
+  await page.route(
+    "**/api/canvases/default/generation-terminal-detach",
+    async (route) => {
+      detachRequests += 1;
+      await route.fulfill({
+        contentType: "application/json",
+        json: { code: "TEST_DEFERRED_WRITE_STOP", error: "test stop" },
+        status: 409,
+      });
+    },
+  );
+  await page.route("**/api/models", async (route) => route.fulfill({
+    contentType: "application/json",
+    json: {
+      generationEnabled: true,
+      models: kinds.map((kind) => ({
+        capability: kind,
+        displayName: `Legacy deferred ${kind}`,
+        generationAvailable: true,
+        generationUnavailableReason: "",
+        generationUnavailableReasonCode: null,
+        id: modelInputs[kind].id,
+        isDefault: true,
+        parameterSchema: schemas[kind],
+      })),
+    },
+    status: 200,
+  }));
+  await request.delete("/api/canvas/default");
+  const textNode = canvasNodes().find((node) => node.type === "text");
+  if (!textNode) throw new Error("Text fixture missing");
+  expect((await request.put("/api/canvas/default", {
+    data: {
+      edges: [],
+      nodes: [{
+        ...textNode,
+        data: {
+          ...textNode.data,
+          workflowExecutionRunId: "legacy-deferred-run",
+          textGenerating: true,
+          textGenerationInputKey: "legacy-deferred-input",
+          textGenerationOwnershipKey: "legacy-deferred-owner",
+          textGenerationTaskId: "legacy-deferred-text",
+        },
+      }],
+      revision: 0,
+      viewport: { x: 0, y: 0, zoom: 0.75 },
+    },
+  })).ok()).toBeTruthy();
+
+  await page.goto("/canvas");
+  await expect(page.getByTestId("canvas-world"))
+    .toHaveAttribute("data-persistence-ready", "true");
+  await expect.poll(() => taskReads).toBe(1);
+  await page.waitForTimeout(300);
+  expect(detachRequests).toBe(0);
+  await expect(page.getByTestId("legacy-terminal-generation-notice"))
+    .toHaveAttribute("data-state", "DETECTING");
+  await expect.poll(() => detachRequests, { timeout: 4_000 }).toBe(1);
+  expect(taskReads).toBe(2);
+  expect(generationPosts).toBe(0);
+  await request.delete("/api/canvas/default");
+});
+
 test("four retry handlers save first and fail closed on LOAD_REQUIRED", async ({
   page,
   request,

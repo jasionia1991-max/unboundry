@@ -26,6 +26,12 @@ import {
   usePublishedModelSelection,
 } from "../models/ModelCatalog";
 import { useGenerationCanvas } from "../generation/GenerationCanvasContext";
+import { useWorkflowExecution } from "../generation/WorkflowExecutionProvider";
+import {
+  effectiveLegacyTerminalGenerationState,
+  LegacyTerminalGenerationNotice,
+  useLegacyTerminalGenerationState,
+} from "../generation/legacyTerminalGenerationState";
 import { useFinishedGenerationDuration } from "../generation/useFinishedGenerationDuration";
 import { GenerationDurationHint } from "./GenerationDurationHint";
 import { GenerationReconcileControls } from "./GenerationReconcileControls";
@@ -365,6 +371,23 @@ function AudioNodeImpl({
   selected,
 }: NodeProps<ProbeNodeType>) {
   const singleNodeChrome = useSingleNodeChrome(selected, dragging);
+  const { lockedNodeIds } = useWorkflowExecution();
+  const storedLegacyState = useLegacyTerminalGenerationState(id);
+  const legacyState = effectiveLegacyTerminalGenerationState({
+    bindingComplete: Boolean(
+      data.audioGenerationTaskId && data.audioGenerationOwnershipKey &&
+        data.audioGenerationInputKey,
+    ),
+    hasLegacyRun: Boolean(data.workflowExecutionRunId),
+    locallyActive: lockedNodeIds.has(id),
+    persistedGenerating: data.audioGenerating === true,
+    state: storedLegacyState,
+  });
+  const displayAudioGenerating = legacyState && legacyState !== "PASSTHROUGH"
+    ? legacyState === "ACTIVE_CONFIRMED"
+    : Boolean(data.audioGenerating);
+  const legacySubmissionBlocked = legacyState === "DETECTING" ||
+    legacyState === "ACTIVE_CONFIRMED" || legacyState === "UNKNOWN_BLOCKED";
   const mediaLoad = useMediaLoadRecovery(data.audioSrc);
   const inputRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -759,6 +782,10 @@ function AudioNodeImpl({
       stableRawGenerationInputFingerprint.current = undefined;
       return;
     }
+    if (data.workflowExecutionRunId) {
+      stableRawGenerationInputFingerprint.current = rawGenerationInputFingerprint;
+      return;
+    }
     const previous = stableRawGenerationInputFingerprint.current;
     stableRawGenerationInputFingerprint.current = rawGenerationInputFingerprint;
     const persistedMismatch = Boolean(
@@ -809,6 +836,7 @@ function AudioNodeImpl({
     data.audioGenerationInputKey,
     data.audioGenerationOwnershipKey,
     data.audioGenerationTaskId,
+    data.workflowExecutionRunId,
     id,
     persistenceReady,
     rawGenerationInputFingerprint,
@@ -2629,6 +2657,7 @@ function AudioNodeImpl({
             }
             disabled={
               submitting ||
+              legacySubmissionBlocked ||
               (generating
                 ? !cancelableTaskId || !relayCancellationAvailable
                 : !inputPreflight.canSubmit ||
@@ -2906,7 +2935,8 @@ function AudioNodeImpl({
             onReplace={() => inputRef.current?.click()}
           />
         )}
-        {(generating || uploading) && (
+        <LegacyTerminalGenerationNotice state={legacyState} />
+        {(displayAudioGenerating || uploading) && (
           <div
             aria-label={uploading ? "音频上传中" : "音频生成中"}
             className="video-node-generating audio-node-generating"

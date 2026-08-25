@@ -322,6 +322,77 @@ export const openApiDocument = {
         },
       },
     },
+    "/api/canvases/{canvasId}/generation-reconciliation-policy": {
+      get: {
+        operationId: "readLegacyTerminalGenerationReconciliationPolicy",
+        summary: "Read the server-controlled legacy terminal reconciliation rollout mode",
+        parameters: [
+          {
+            in: "path",
+            name: "canvasId",
+            required: true,
+            schema: { type: "string", pattern: "^[a-zA-Z0-9._-]+$" },
+          },
+        ],
+        responses: {
+          "200": {
+            description: "Owner-scoped rollout mode without allowlist disclosure",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/LegacyTerminalReconciliationPolicy",
+                },
+              },
+            },
+          },
+          "401": { description: "Sign-in required" },
+          "404": { description: "Owner-scoped canvas not found" },
+        },
+      },
+    },
+    "/api/canvases/{canvasId}/generation-terminal-detach": {
+      post: {
+        operationId: "detachLegacyTerminalGenerationBinding",
+        summary: "Atomically detach one exact terminal generation binding from its canvas node",
+        parameters: [
+          {
+            in: "path",
+            name: "canvasId",
+            required: true,
+            schema: { type: "string", pattern: "^[a-zA-Z0-9._-]+$" },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/LegacyTerminalDetachRequest",
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Binding detached or already detached idempotently",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/LegacyTerminalDetachResult",
+                },
+              },
+            },
+          },
+          "400": { description: "Invalid exact binding request" },
+          "401": { description: "Sign-in required" },
+          "404": { description: "Owner-scoped canvas not found" },
+          "409": {
+            description:
+              "Rollout write disabled, task non-terminal, binding changed, or success proof conflicts",
+          },
+        },
+      },
+    },
     "/api/project-title/{projectId}": {
       get: {
         operationId: "readProjectTitle",
@@ -2308,6 +2379,98 @@ export const openApiDocument = {
           runId: { type: "string", minLength: 1, maxLength: 512 },
           semanticRevision: { type: "string", minLength: 1, maxLength: 512 },
           taskId: { type: "string", minLength: 1, maxLength: 512 },
+        },
+        additionalProperties: false,
+      },
+      LegacyTerminalReconciliationPolicy: {
+        type: "object",
+        required: ["mode", "writeEnabled"],
+        properties: {
+          mode: {
+            type: "string",
+            enum: ["off", "detect", "allowlist", "on"],
+          },
+          writeEnabled: { type: "boolean" },
+        },
+        additionalProperties: false,
+      },
+      LegacyTerminalDetachRequest: {
+        type: "object",
+        required: [
+          "accountId",
+          "applicationId",
+          "canvasId",
+          "inputFingerprint",
+          "kind",
+          "nodeDataFingerprint",
+          "nodeId",
+          "observedTerminalState",
+          "ownershipKey",
+          "runId",
+          "taskId",
+        ],
+        properties: {
+          accountId: { type: "string", minLength: 1, maxLength: 200 },
+          applicationId: { type: "string", minLength: 1, maxLength: 2048 },
+          canvasId: { type: "string", minLength: 1, maxLength: 200 },
+          inputFingerprint: { type: "string", minLength: 1, maxLength: 2048 },
+          kind: { type: "string", enum: ["audio", "image", "text", "video"] },
+          nodeDataFingerprint: { type: "string", minLength: 1, maxLength: 2048 },
+          nodeId: { type: "string", minLength: 1, maxLength: 200 },
+          observedTerminalState: {
+            type: "string",
+            enum: ["cancelled", "failed", "success"],
+          },
+          ownershipKey: { type: "string", minLength: 1, maxLength: 2048 },
+          resultKey: {
+            type: "string",
+            minLength: 1,
+            maxLength: 2048,
+            description:
+              "Optional exact success-result proof. When present it must match both the durable node proof and the authoritative terminal task result.",
+          },
+          runId: { type: "string", minLength: 1, maxLength: 2048 },
+          taskId: { type: "string", minLength: 1, maxLength: 200 },
+        },
+        additionalProperties: false,
+      },
+      LegacyTerminalCanvasDocument: {
+        type: "object",
+        required: [
+          "canvasId",
+          "edges",
+          "graphRevision",
+          "loadToken",
+          "nodes",
+          "ownerId",
+          "revision",
+          "viewport",
+        ],
+        properties: {
+          canvasId: { type: "string" },
+          edges: { type: "array", items: { type: "object" } },
+          graphRevision: { type: "integer", minimum: 0 },
+          loadToken: { type: "string", minLength: 1, maxLength: 256 },
+          nodes: { type: "array", items: { type: "object" } },
+          ownerId: { type: "string" },
+          revision: { type: "integer", minimum: 0 },
+          viewport: { $ref: "#/components/schemas/Viewport" },
+        },
+        additionalProperties: false,
+      },
+      LegacyTerminalDetachResult: {
+        type: "object",
+        required: ["clearedFields", "dataPatch", "document", "status"],
+        properties: {
+          clearedFields: { type: "array", items: { type: "string" } },
+          dataPatch: { type: "object", additionalProperties: true },
+          document: {
+            $ref: "#/components/schemas/LegacyTerminalCanvasDocument",
+          },
+          status: {
+            type: "string",
+            enum: ["already-detached", "detached"],
+          },
         },
         additionalProperties: false,
       },

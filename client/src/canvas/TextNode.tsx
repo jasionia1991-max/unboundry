@@ -42,6 +42,12 @@ import {
 import { UpstreamInputCards } from "./UpstreamInputCards";
 import { GenerationAvailabilityNotice } from "./GenerationAvailabilityNotice";
 import { useGenerationCanvas } from "../generation/GenerationCanvasContext";
+import { useWorkflowExecution } from "../generation/WorkflowExecutionProvider";
+import {
+  effectiveLegacyTerminalGenerationState,
+  LegacyTerminalGenerationNotice,
+  useLegacyTerminalGenerationState,
+} from "../generation/legacyTerminalGenerationState";
 import { useFinishedGenerationDuration } from "../generation/useFinishedGenerationDuration";
 import { GenerationDurationHint } from "./GenerationDurationHint";
 import {
@@ -423,8 +429,28 @@ function TextNodeImpl({
   selected,
 }: NodeProps<ProbeNodeType>) {
   const singleNodeChrome = useSingleNodeChrome(selected, dragging);
+  const { lockedNodeIds } = useWorkflowExecution();
+  const storedLegacyState = useLegacyTerminalGenerationState(id);
+  const legacyState = effectiveLegacyTerminalGenerationState({
+    bindingComplete: Boolean(
+      data.textGenerationTaskId && data.textGenerationOwnershipKey &&
+        data.textGenerationInputKey,
+    ),
+    hasLegacyRun: Boolean(data.workflowExecutionRunId),
+    locallyActive: lockedNodeIds.has(id),
+    persistedGenerating: data.textGenerating === true,
+    state: storedLegacyState,
+  });
+  const displayTextGenerating = legacyState && legacyState !== "PASSTHROUGH"
+    ? legacyState === "ACTIVE_CONFIRMED"
+    : Boolean(data.textGenerating);
+  const legacySubmissionBlocked = legacyState === "DETECTING" ||
+    legacyState === "ACTIVE_CONFIRMED" || legacyState === "UNKNOWN_BLOCKED";
   const [background, setBackground] = useState("#1f1f1f");
   const [bodyEditing, setBodyEditing] = useState(false);
+  useEffect(() => {
+    if (legacySubmissionBlocked) setBodyEditing(false);
+  }, [legacySubmissionBlocked]);
   const [empty, setEmpty] = useState(!data.content);
   const [fullscreen, setFullscreen] = useState(false);
   const [pinned, setPinned] = useState(false);
@@ -800,6 +826,10 @@ function TextNodeImpl({
       stableRawGenerationInputFingerprint.current = undefined;
       return;
     }
+    if (data.workflowExecutionRunId) {
+      stableRawGenerationInputFingerprint.current = rawGenerationInputFingerprint;
+      return;
+    }
     const previous = stableRawGenerationInputFingerprint.current;
     stableRawGenerationInputFingerprint.current = rawGenerationInputFingerprint;
     const persistedMismatch = Boolean(
@@ -827,6 +857,7 @@ function TextNodeImpl({
     data.textGenerationInputKey,
     data.textGenerationOwnershipKey,
     data.textGenerationTaskId,
+    data.workflowExecutionRunId,
     id,
     persistenceReady,
     rawGenerationInputFingerprint,
@@ -1832,7 +1863,7 @@ function TextNodeImpl({
           </button>
         )}
         <UpstreamInputCards
-          disabled={Boolean(data.textGenerating || submitting)}
+          disabled={Boolean(data.textGenerating || submitting || legacySubmissionBlocked)}
           inputs={inputPreflight.inputs}
           onMove={(edgeId, direction) => {
             revokeTextTaskForGenerationInputChange();
@@ -2021,12 +2052,13 @@ function TextNodeImpl({
           <button
             aria-label={retryableTask ? "Retry generation" : "Generate"}
             className="text-creator-generate"
-            data-generating={data.textGenerating || submitting || undefined}
+            data-generating={displayTextGenerating || submitting || undefined}
             data-retrying={retryableTask || undefined}
             disabled={
               submitting ||
               recoveringTask ||
               data.textGenerating ||
+              legacySubmissionBlocked ||
               isFixture ||
               (retryableTask
                 ? !retryGenerationEnabled
@@ -2044,7 +2076,7 @@ function TextNodeImpl({
             title={
               recoveringTask
                 ? "正在恢复原生成任务状态"
-                : data.textGenerating
+                : displayTextGenerating
                   ? "正在生成文字"
                   : submitting
                     ? retryableTask
@@ -2065,7 +2097,7 @@ function TextNodeImpl({
             }
             type="button"
           >
-            {data.textGenerating || submitting || recoveringTask
+            {displayTextGenerating || submitting || recoveringTask
               ? "…"
               : retryableTask
                 ? "↻"
@@ -2150,6 +2182,7 @@ function TextNodeImpl({
           data-testid="canvas-node-text-content"
           onDoubleClick={(event) => {
             event.stopPropagation();
+            if (legacySubmissionBlocked) return;
             const { clientX, clientY } = event;
             setBodyEditing(true);
             requestAnimationFrame(() => {
@@ -2239,7 +2272,8 @@ function TextNodeImpl({
             suppressContentEditableWarning
           />
         </div>
-        {(data.textGenerating || submitting) && (
+        <LegacyTerminalGenerationNotice state={legacyState} />
+        {(displayTextGenerating || submitting) && (
           <div
             aria-label="文字生成中"
             className="text-node-generating"

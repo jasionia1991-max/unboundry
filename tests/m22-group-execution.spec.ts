@@ -85,6 +85,257 @@ import {
   waitForGroupResultProjections,
   type GroupResultProjection,
 } from "../client/src/generation/groupResultProjection";
+import {
+  classifyLegacyTerminalGenerationTask,
+  getLegacyTerminalGenerationPolicy,
+  isIncompleteLegacyTerminalGenerationBinding,
+  legacyTerminalCanvasWriteAllowed,
+  legacyTerminalGenerationCandidate,
+  legacyTerminalGenerationCandidateStillMatches,
+  parseLegacyTerminalGenerationPolicy,
+} from "../client/src/generation/legacyTerminalGenerationReconciler";
+import {
+  effectiveLegacyTerminalGenerationState,
+} from "../client/src/generation/legacyTerminalGenerationState";
+import type { GenerationTaskSummary } from
+  "../client/src/generation/generationTasks";
+
+test("39-node legacy fixture finds exactly five stale candidates across three runs", () => {
+  const legacy = [
+    ["text", "text-stale-1", "run-a"],
+    ["text", "text-stale-2", "run-a"],
+    ["image", "image-stale-1", "run-b"],
+    ["text", "text-stale-3", "run-c"],
+    ["image", "image-stale-2", "run-c"],
+  ] as const;
+  const nodes: ProbeNodeType[] = [
+    ...Array.from({ length: 34 }, (_, index) => ({
+      data: { label: `ordinary-${index}` },
+      id: `ordinary-${index}`,
+      position: { x: index, y: index },
+      type: index % 2 === 0 ? "text" as const : "image" as const,
+    })),
+    ...legacy.map(([kind, nodeId, runId], index) => ({
+      data: {
+        label: nodeId,
+        workflowExecutionRunId: runId,
+        [`${kind}Generating`]: true,
+        [`${kind}GenerationInputKey`]: `input-${index}`,
+        [`${kind}GenerationOwnershipKey`]: `owner-${index}`,
+        [`${kind}GenerationTaskId`]: `task-${index}`,
+      },
+      id: nodeId,
+      position: { x: index, y: 100 },
+      type: kind,
+    })),
+  ];
+  const candidates = nodes.flatMap((node) => {
+    const candidate = legacyTerminalGenerationCandidate({
+      accountId: "account-a",
+      canvasId: "canvas-a",
+      node,
+    });
+    return candidate ? [candidate] : [];
+  });
+  expect(nodes).toHaveLength(39);
+  expect(candidates).toHaveLength(5);
+  expect(candidates.filter((candidate) => candidate.kind === "text")).toHaveLength(3);
+  expect(candidates.filter((candidate) => candidate.kind === "image")).toHaveLength(2);
+  expect(new Set(candidates.map((candidate) => candidate.runId))).toEqual(
+    new Set(["run-a", "run-b", "run-c"]),
+  );
+});
+
+test("legacy terminal classifier is exact, checksum-complete and fail-closed", () => {
+  const node: ProbeNodeType = {
+    data: {
+      imageGenerating: true,
+      imageGenerationInputKey: "input-a",
+      imageGenerationOwnershipKey: "owner-a",
+      imageGenerationTaskId: "task-a",
+      label: "stale image",
+      workflowExecutionRunId: "run-a",
+    },
+    id: "image-a",
+    position: { x: 0, y: 0 },
+    type: "image",
+  };
+  const candidate = legacyTerminalGenerationCandidate({
+    accountId: "account-a",
+    canvasId: "canvas-a",
+    node,
+  });
+  expect(candidate).toBeTruthy();
+  if (!candidate) throw new Error("candidate missing");
+  const baseTask = {
+    attempt: 1,
+    canvasId: "canvas-a",
+    costCurrency: "CNY",
+    createdAt: "2026-08-26T00:00:00.000Z",
+    generationInputKey: "input-a",
+    generationOwnershipKey: "owner-a",
+    id: "task-a",
+    kind: "image",
+    nodeId: "image-a",
+    prompt: "fixture",
+    state: "running",
+    updatedAt: "2026-08-26T00:00:01.000Z",
+    workflowExecutionRunId: "run-a",
+  } satisfies GenerationTaskSummary;
+  expect(classifyLegacyTerminalGenerationTask({ candidate, task: baseTask }).state)
+    .toBe("ACTIVE_CONFIRMED");
+  expect(classifyLegacyTerminalGenerationTask({
+    candidate,
+    task: { ...baseTask, state: "success" },
+  }).state).toBe("CONFLICT_PRESERVED");
+  const incompleteSuccess = {
+    ...baseTask,
+    resultAssetId: "asset-a",
+    resultUrl: "/api/image-assets/asset-a/content",
+    state: "success" as const,
+  };
+  expect(classifyLegacyTerminalGenerationTask({
+    candidate,
+    task: incompleteSuccess,
+  }).state).toBe("CONFLICT_PRESERVED");
+  const completeSuccess = {
+    ...incompleteSuccess,
+    resultMedia: {
+      byteSize: 123,
+      checksumSha256: "a".repeat(64),
+      contentType: "image/png",
+      durationSeconds: null,
+      durationStatus: "not-applicable" as const,
+      mediaHeight: 512,
+      mediaWidth: 512,
+      storageBackend: "local" as const,
+    },
+  };
+  expect(classifyLegacyTerminalGenerationTask({
+    candidate,
+    task: completeSuccess,
+  }).state).toBe("RESTORED");
+  expect(classifyLegacyTerminalGenerationTask({
+    candidate,
+    task: { ...completeSuccess, nodeId: "other-node" },
+  }).state).toBe("UNKNOWN_BLOCKED");
+  for (const task of [
+    { ...baseTask, generationInputKey: "other-input" },
+    { ...baseTask, generationOwnershipKey: "other-owner" },
+    { ...baseTask, workflowExecutionRunId: "other-run" },
+  ]) {
+    expect(classifyLegacyTerminalGenerationTask({ candidate, task }).state)
+      .toBe("UNKNOWN_BLOCKED");
+  }
+  expect(legacyTerminalGenerationCandidateStillMatches({
+    ...node,
+    data: { ...node.data, label: "edited after detection" },
+  }, candidate)).toBe(false);
+});
+
+test("legacy display never breathes before exact classification and partial bindings block", () => {
+  expect(legacyTerminalCanvasWriteAllowed({
+    webLocksAvailable: false,
+    writeEnabled: true,
+  })).toBe(false);
+  expect(legacyTerminalCanvasWriteAllowed({
+    webLocksAvailable: true,
+    writeEnabled: false,
+  })).toBe(false);
+  expect(effectiveLegacyTerminalGenerationState({
+    bindingComplete: true,
+    hasLegacyRun: true,
+    locallyActive: false,
+    persistedGenerating: true,
+  })).toBe("DETECTING");
+  expect(effectiveLegacyTerminalGenerationState({
+    bindingComplete: true,
+    hasLegacyRun: true,
+    locallyActive: true,
+    persistedGenerating: true,
+  })).toBe("ACTIVE_CONFIRMED");
+  expect(effectiveLegacyTerminalGenerationState({
+    bindingComplete: false,
+    hasLegacyRun: true,
+    locallyActive: false,
+    persistedGenerating: true,
+  })).toBe("UNKNOWN_BLOCKED");
+  expect(effectiveLegacyTerminalGenerationState({
+    bindingComplete: false,
+    hasLegacyRun: true,
+    locallyActive: false,
+    persistedGenerating: true,
+    state: "PASSTHROUGH",
+  })).toBe("PASSTHROUGH");
+  expect(effectiveLegacyTerminalGenerationState({
+    bindingComplete: false,
+    hasLegacyRun: false,
+    locallyActive: false,
+    persistedGenerating: false,
+    state: "UNKNOWN_BLOCKED",
+  })).toBeUndefined();
+  const partial: ProbeNodeType = {
+    data: {
+      label: "partial",
+      textGenerating: true,
+      textGenerationTaskId: "task-partial",
+      workflowExecutionRunId: "run-partial",
+    },
+    id: "text-partial",
+    position: { x: 0, y: 0 },
+    type: "text",
+  };
+  expect(isIncompleteLegacyTerminalGenerationBinding(partial)).toBe(true);
+});
+
+test("legacy policy reads have a real deadline and scope cleanup owns abort", async () => {
+  expect(parseLegacyTerminalGenerationPolicy({
+    mode: "allowlist",
+    writeEnabled: false,
+  })).toEqual({ mode: "allowlist", writeEnabled: false });
+  for (const malformed of [
+    { mode: "unknown", writeEnabled: true },
+    { mode: "detect", writeEnabled: true },
+    { mode: "on", writeEnabled: false },
+    { mode: "off", writeEnabled: "false" },
+    { extra: true, mode: "on", writeEnabled: true },
+  ]) {
+    expect(() => parseLegacyTerminalGenerationPolicy(malformed))
+      .toThrow("策略响应格式异常");
+  }
+  const originalFetch = globalThis.fetch;
+  let transportAborted = false;
+  globalThis.fetch = ((_input: RequestInfo | URL, init?: RequestInit) =>
+    new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => {
+        transportAborted = true;
+        reject(new DOMException("Aborted", "AbortError"));
+      }, { once: true });
+    })) as typeof globalThis.fetch;
+  try {
+    await expect(getLegacyTerminalGenerationPolicy(
+      "deadline-canvas",
+      undefined,
+      10,
+    )).rejects.toThrow("策略查询超时");
+    expect(transportAborted).toBe(true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  const provider = readFileSync(
+    "client/src/generation/WorkflowExecutionProvider.tsx",
+    "utf8",
+  );
+  expect(provider).toContain(
+    'controller.abort("legacy-terminal-reconciliation-scope-changed")',
+  );
+  expect(provider).toContain(
+    'boundedUnknownRecheck(`classification:${candidateKey}`)',
+  );
+  expect(provider).toContain('boundedUnknownRecheck(`locks:${candidateKey}`)');
+  expect(provider).toContain('result === "deferred"');
+  expect(provider).toContain("requestRecheck(1_000)");
+});
 
 test("headless workflow registry owns all four executable node kinds", () => {
   expect(createNodeExecutorRegistry().kinds().sort()).toEqual([

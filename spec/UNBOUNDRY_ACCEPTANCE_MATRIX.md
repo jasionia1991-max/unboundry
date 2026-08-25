@@ -73,6 +73,23 @@
 
 本文件只记录验收条目的历史证据与状态，不承担当前版本播报。当前线上版本、未发布候选与下一步只以 `spec/UNBOUNDRY_CURRENT_STATE.md` 为准。以下日期段落均为对应时点快照；既有用户验收与未完成状态继续保留，不因新版本自动升级。
 
+2026-08-26 `INC-GEN-015 = INDEPENDENT_REVIEW_GO / SAFE_FULL_PASS / GITHUB_RELEASE_PENDING / RELEASE_V0_6_45_AUTHORIZED`：v0.6.45/schema41候选已实现LGR-01～12，前四轮全部阻断均已关闭；同一独立线程第五轮逐项复核最终为`P0=0/P1=0/GO`。冻结候选commit`f243e8e`/tree`2c8ae98`的本Goal唯一safe full为`121/121 specs、1069/1069 tests PASS`，failed/skipped/retries/blocked/reportErrors均0，source/snapshot`df8cdec0…3d68`，4173不变；不得重复full。真实Generation/Provider/Media/OSS/费用0。GitHub发布与生产灰度尚未完成，因此不得写PRODUCTION_PASS/USER_PASS。
+
+| ID | Priority | Acceptance | Planned evidence | Status |
+|---|---:|---|---|---|
+| LGR-01 | P1 | 精确识别完整孤立候选，缺binding不猜测 | m22 exact fixture | TARGETED_AUTO_PASS |
+| LGR-02 | P0 | 全checkpoint按节点runId匹配，活动owner/lease优先 | m22 multi-run/multi-checkpoint | TARGETED_AUTO_PASS |
+| LGR-03 | P0 | 只GET原task；Generation/Provider/Media/OSS/费用0 | m22 network ledger + production ledger | LOCAL_AUTO_PASS / PRODUCTION_PENDING |
+| LGR-04 | P1 | 只有精确活动task显示呼吸灯，Canvas写0 | m22 + m41 | TARGETED_AUTO_PASS |
+| LGR-05 | P0 | success完整结果只经既有projection安全应用 | m22 + m85 | TARGETED_AUTO_PASS |
+| LGR-06 | P1 | 重复刷新/双标签/applicationId只应用一次 | m22 + m85 | TARGETED_AUTO_PASS |
+| LGR-07 | P0 | 语义冲突/结果不完整不覆盖、不重提，历史可找回 | m22 + m85 + m41 | TARGETED_AUTO_PASS |
+| LGR-08 | P0 | unknown/权限/网络/格式异常中性blocked且不能新提交 | m22 + m41 | TARGETED_AUTO_PASS |
+| LGR-09 | P1 | run/task/ownership/input/Generating原子收口，无半状态 | m85 partial-field matrix | TARGETED_AUTO_PASS |
+| LGR-10 | P0 | terminal-detach owner/task/terminal/Canvas事务CAS及字段白名单 | m85 + m20 when API changes | TARGETED_AUTO_PASS |
+| LGR-11 | P1 | GET→canvas admission lock→最新重读→写入；无锁零写 | m22 browser-lock matrix | TARGETED_AUTO_PASS |
+| LGR-12 | P1 | Text/Image/Video/Audio共享判定，持久布尔值不冒充生成 | shared pure tests + m41 UI | TARGETED_AUTO_PASS |
+
 最新核验为service active+enabled、NRestarts0、current→`releases/v0.6.14-inc-gen-006-20260818`、公网version 0.6.14及精确JS/CSS哈希通过。schema39/quick_check ok/FK0、active generation0、294 tasks/296 attempts、47 public templates（46 published）。INC-GEN-006没有修改画布文档、节点坐标、连线、Provider配置或OSS对象；Provider/付费/OSS写入0。上一不可变release、冻结备份、v0.6.0原schema37备份、整机schema39包及既有用户验收继续保留。未实际运行的两张付费图片仍作为可选付费抽验延期，既有PARTIAL/PAUSED/BLOCK/NOT_STARTED条目保持不变。
 
 2026-08-07 三功能新增 21 条（TPL-001～007 / ZIP-001～006 / KEY-001～008）已全部经用户实页验收为 `PASS`，M11 放行门达成；其余历史统计与状态仍以各节为准，`INPUT-006`保持`PARTIAL`（Mureka真实生成暂缓）。

@@ -1,9 +1,43 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产运行`v0.6.44 / schema41`且技术健康；INC-GEN-014已完成GitHub与生产技术验收，等待用户实页复验。
+> **当前状态**：生产运行`v0.6.44 / schema41`且技术健康；INC-GEN-015同一独立线程第五轮终审已给出`P0=0 / P1=0 / GO`，冻结候选的本Goal唯一safe full已全绿，当前进入GitHub发布门，尚未写目标生产Canvas。
 
 更新时间：2026-08-26
-状态：`INC-GEN-014 PRODUCTION_V0_6_44_TECHNICAL_PASS / USER_RECHECK；INC-UI-011 HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK。`
+状态：`INC-GEN-015 INDEPENDENT_REVIEW_GO / SAFE_FULL_PASS / GITHUB_RELEASE_PENDING / RELEASE_V0_6_45_AUTHORIZED；生产仍为CURRENT_V0_6_44_USER_RECHECK。`
+
+### 2026-08-26 老画布孤立生成态与终态结果自动收口（INC-GEN-015，TARGETED_AUTO_PASS）
+
+- [x] 只读核实目标Canvas有5个持久`Generating=true`节点（3 Text/2 Image、3个runId），对应原任务全部success且Canvas/全局active均为0；当前呼吸灯不是后台真实生成
+- [x] 核实直接代码原因：四类节点在存在`workflowExecutionRunId`时让路单节点恢复；group自动恢复依赖浏览器可信checkpoint/acceptedTasks；呼吸灯直接读取持久Generating布尔值
+- [x] 区分已确认根因与历史形成过程推断；没有读取用户浏览器localStorage/Cookie/Profile来伪造唯一历史原因
+- [x] 诚实审计结论：fail-closed不覆盖合理，无限假呼吸灯不合理；当前为P1状态真实性/历史兼容bug，不是已发生的重复付费或数据丢失P0
+- [x] 合并6项审计修订：原子终态收口、窄职责terminal-detach、全部checkpoint精确runId、unknown中性阻断、server-controlled灰度、字段级CAS回退
+- [x] 冻结LGR-01～12、五态UI、GET→canvas admission lock→最新重读→事务CAS顺序、四类共享逻辑和零生成账本
+- [x] 冻结风险驱动测试：m22/m85/m41为直接门，API变化才m20、治理变化m38；正式候选最多一次safe full并在冻结后独立P0/P1终审
+- [x] 冻结生产`detect → allowlist → on`和`off`止写门；目标5节点允许RESTORED/CONFLICT_PRESERVED/UNKNOWN_BLOCKED，不追求强制全部投影
+- [x] 已建立独立实现工作树与实时checkpoint，package/lock/final runtime role同步为v0.6.45，schema保持41
+- [x] 已实现完整候选判定、全部checkpoint精确让路、只GET原task、活动态真实显示、success安全投影、终态原子detach、unknown中性阻断和全局零新单保护
+- [x] server-controlled `off/detect/allowlist/on`、owner/task/terminal/binding/节点数据指纹CAS、applicationId幂等和字段白名单完成
+- [x] TypeScript与diff门通过；安全定向m41 `52/52`、m22 `40/40`、m85 `27/27`、m20 `1/1`、m81 `41/41 PASS`
+- [x] m22/m85/m20/m81同一source/snapshot`d604f443…a8a4`；m41为后续仅测试增强前`98a391a8…b87`，产品逻辑未再改变；4173始终不变
+- [x] 首轮独立只读终审结论为`NO-GO / P0=0 / P1=4`：缺少active/unknown有界重读、旧状态可能跨新生成残留、task归属证明不足、OpenAPI required与properties矛盾；未将首轮审查冒充PASS
+- [x] 4项P1均已关闭：同scope定时重读原task且导航abort、无legacy绑定时旧状态失效、task input/ownership/run三重精确匹配、projection/detach OpenAPI必填集合一致；额外修复无result的success分类异常，保持fail-closed
+- [x] 修复后同一源码快照`e4962ca3…9ca8`：m41 `52/52`、m22 `40/40`、m5 `21/21`、m20 `1/1 PASS`，TypeScript通过；Generation POST 0、4173监听不变
+- [x] 同一审查线程第二轮复核为`NO-GO / P0=0 / P1=2`：classifier unknown/无锁/write-disabled未全部有界重读，scope cleanup未abort且policy GET无deadline；未将第二轮审查冒充PASS
+- [x] 第二轮2项P1已关闭：所有UNKNOWN/不可写分支按1/2/4秒有限重读原task并保持中性阻断；scope cleanup真实abort，policy GET具备10秒transport deadline
+- [x] 第二轮修复后同一源码快照`8b1e93e1…3896`：m41 `53/53`、m22 `41/41 PASS`，新增classifier mismatch→无Web Locks有界停止、零Generation/零reconciliation写及policy deadline/cleanup abort证据；4173不变
+- [x] 同一审查线程第三轮复核为`NO-GO / P0=0 / P1=2`：malformed rollout policy未被运行时拒绝、Canvas admission内deferred分支未安排重读；未将第三轮审查冒充PASS
+- [x] 第三轮2项P1已关闭：rollout policy由共享解析器严格校验mode/writeEnabled组合并fail-closed；admission内lease延迟到期后按同一scope重读原task，且签名变化不再误清其他scope预算
+- [x] 第三轮修复后同一源码快照`5f28ce23…11c1`：m41 `54/54`、m22 `41/41 PASS`；新增匹配lease到期后的deferred恢复、malformed policy fail-closed与零Generation证据；4173不变
+- [x] 同一审查线程第四轮复核为`NO-GO / P0=2 / P1=2`：额外policy字段可穿透、其他活动run lease未阻断旧detach、旧projection快照可覆盖并发用户编辑、terminal-detach未把success proof精确绑定权威resultKey；未将该轮冒充PASS
+- [x] 第四轮4项阻断均已关闭：policy严格键集合；锁外与Canvas admission内均检查同节点其他活动run lease；generation projection在服务端事务内要求精确observed revision并可从新GET重试且保留并发编辑；服务端从success task结果派生权威resultKey并与请求/节点proof三方精确匹配
+- [x] 第四轮修复产品源码快照`172e053d…af1f`下m41 `54/54`、m22 `41/41`、m20 `1/1 PASS`；仅增强m85测试后的当前快照`15a5564e…57b3`下m85 `27/27 PASS`，TypeScript/diff门通过，Generation POST 0、4173不变
+- [x] 同一独立只读审查线程第五轮逐项确认第四轮4项阻断均`CLOSED`，最终结论`P0=0 / P1=0 / GO`；审查全程零写、零测试、零网络、零生产操作
+- [x] 冻结候选commit`f243e8eab0d534f9c7c0518b3898f6cd67857057`/tree`2c8ae98bb1869e7454e5b96849ee9116e4ee04f0`完成本Goal唯一safe full：`121/121 specs、1069/1069 tests PASS`，failed/skipped/retries/blocked/reportErrors均0；source/snapshot`df8cdec0…3d68`，4173监听不变
+- [x] 真实Generation POST、Provider submit/probe、Media/OSS写和费用均为0；目标生产Canvas尚未写入
+- [ ] Git/PR/CI/tag/Release、生产detect→allowlist→on灰度与回执待完成
+
+权威方案：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_PLAN_2026-08-26.md`；实时断点：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_CHECKPOINT.md`。当前唯一下一步是推送冻结候选并完成PR/main CI、不可移动tag与GitHub Release；不得运行第二次full。
 
 ### 2026-08-25 工作流自动恢复与密钥校验解耦（INC-GEN-014，R0～R5_COMPLETE / R6_TARGETED_PASS）
 

@@ -9,6 +9,8 @@ import {
   hasConflictingActiveGroupRunLeaseForCanvas,
   runWithGroupRunCanvasAdmission,
 } from "./groupRunCheckpoint";
+import { legacyGenerationSubmissionIsBlocked } from
+  "./legacyTerminalGenerationState";
 
 export type GenerationTaskKind = "text" | "image" | "video" | "audio";
 
@@ -46,6 +48,7 @@ export type GenerationTaskSummary = {
   resultAssetId?: string;
   resultMedia?: {
     byteSize: number;
+    checksumSha256: string;
     contentType: string;
     durationSeconds: number | null;
     durationStatus: "failed" | "not-applicable" | "pending" | "ready";
@@ -63,6 +66,7 @@ export type GenerationTaskSummary = {
   resultUrl?: string;
   state: GenerationTaskState;
   updatedAt: string;
+  workflowExecutionRunId?: string;
 };
 
 export type GenerationCapabilityStatus = {
@@ -924,6 +928,13 @@ export async function ensureGenerationTask(
   assertCurrentInput?: () => void,
   options: GenerationOwnershipOptions = {},
 ): Promise<EnsuredGenerationTask> {
+  if (legacyGenerationSubmissionIsBlocked(accountId, input.canvasId, input.nodeId)) {
+    throw new GenerationRequestError(
+      "原任务状态仍在安全核对中，为避免重复付费暂不能新建任务",
+      409,
+      "LEGACY_GENERATION_RECONCILIATION_BLOCKED",
+    );
+  }
   await assertNoConflictingGroupRun(
     input.canvasId,
     input.nodeId,

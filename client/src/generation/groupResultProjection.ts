@@ -8,6 +8,7 @@ import {
 } from "../canvas/canvasPersistenceFacade";
 import { groupRunResultKey } from "./groupRunCheckpoint";
 import type { WorkflowExecutorKind } from "./nodeExecutorRegistry";
+import { stableValueFingerprint } from "../../../types/canvasFingerprint";
 
 export type GroupResultProjection = {
   accountId: string;
@@ -21,6 +22,8 @@ export type GroupResultProjection = {
   resultKey: string;
   runId: string;
   semanticRevision: string;
+  /** Client-only stale-target fence; never serialized into the server commit. */
+  targetDataFingerprint?: string;
   taskId: string;
 };
 
@@ -34,8 +37,21 @@ export type GroupResultProjectionStatus =
 export type GroupResultProjectionResult = {
   applicationId: string;
   attempts: number;
+  authoritativeMutation?: GroupResultProjectionAuthoritativeMutation;
   nodeId: string;
   status: GroupResultProjectionStatus;
+};
+
+export type GroupResultProjectionAuthoritativeMutation = {
+  dataPatch: Record<string, unknown>;
+  document: {
+    edges: LoadedCanvasDocument["edges"];
+    graphRevision: number;
+    loadToken: string;
+    nodes: LoadedCanvasDocument["nodes"];
+    revision: number;
+    viewport: LoadedCanvasDocument["viewport"];
+  };
 };
 
 export function unresolvedProjectionNodeIds(
@@ -211,6 +227,10 @@ function projectionTargetStillMatches(
     data[`${projection.kind}GenerationOwnershipKey`] !== projection.ownershipKey ||
     data[`${projection.kind}GenerationInputKey`] !== projection.inputFingerprint
   ) return false;
+  if (
+    projection.targetDataFingerprint &&
+    stableValueFingerprint(data) !== projection.targetDataFingerprint
+  ) return false;
   return projection.semanticRevision === groupResultSemanticRevision(projection);
 }
 
@@ -341,15 +361,34 @@ async function reconcileWithoutLock(input: {
         return {
           applicationId: input.projection.applicationId,
           attempts: attempt,
+          ...(merged.status === "already-applied"
+            ? {
+                authoritativeMutation: {
+                  dataPatch: generationOwnedPatch(input.projection),
+                  document: {
+                    edges: loaded.body.edges,
+                    graphRevision: loaded.body.graphRevision ?? loaded.body.revision,
+                    loadToken: loaded.body.loadToken,
+                    nodes: loaded.body.nodes,
+                    revision: loaded.body.revision,
+                    viewport: loaded.body.viewport,
+                  },
+                },
+              }
+            : {}),
           nodeId: input.projection.nodeId,
           status: merged.status,
         };
       }
       const saveAttemptId = randomId();
       saveSequence += 1;
+      const {
+        targetDataFingerprint: _targetDataFingerprint,
+        ...generationProjection
+      } = input.projection;
       const payload = JSON.stringify({
         edges: merged.document.edges,
-        generationProjection: input.projection,
+        generationProjection,
         nodes: merged.document.nodes,
         observedLoadToken: loaded.body.loadToken,
         observedRevision: loaded.body.revision,
@@ -377,7 +416,23 @@ async function reconcileWithoutLock(input: {
         observedLoadToken: loaded.body.loadToken,
         revision: loaded.body.revision,
       })) {
-        return { applicationId: input.projection.applicationId, attempts: attempt, nodeId: input.projection.nodeId, status: "applied" };
+        return {
+          applicationId: input.projection.applicationId,
+          attempts: attempt,
+          authoritativeMutation: {
+            dataPatch: generationOwnedPatch(input.projection),
+            document: {
+              edges: merged.document.edges,
+              graphRevision: saved.body.graphRevision,
+              loadToken: saved.body.loadToken,
+              nodes: merged.document.nodes,
+              revision: saved.body.revision,
+              viewport: merged.document.viewport,
+            },
+          },
+          nodeId: input.projection.nodeId,
+          status: "applied",
+        };
       }
       if (!retryableStatus(saved.status)) {
         return { applicationId: input.projection.applicationId, attempts: attempt, nodeId: input.projection.nodeId, status: "exhausted" };

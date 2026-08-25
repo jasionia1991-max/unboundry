@@ -102,3 +102,29 @@ export function canvasDocumentFingerprint(input: {
     }),
   );
 }
+
+function stableFingerprintValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stableFingerprintValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, item]) => item !== undefined)
+        .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
+        .map(([key, item]) => [key, stableFingerprintValue(item)]),
+    );
+  }
+  return value;
+}
+
+/** Cross-runtime deterministic identity for bounded JSON-compatible values. */
+export function stableValueFingerprint(value: unknown) {
+  const source = JSON.stringify(stableFingerprintValue(value));
+  let left = 0x811c9dc5;
+  let right = 0x9e3779b9;
+  for (let index = 0; index < source.length; index += 1) {
+    const code = source.charCodeAt(index);
+    left = Math.imul(left ^ code, 0x01000193) >>> 0;
+    right = Math.imul(right ^ code, 0x85ebca6b) >>> 0;
+  }
+  return `${source.length.toString(36)}-${left.toString(36)}-${right.toString(36)}`;
+}

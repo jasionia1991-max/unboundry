@@ -72,7 +72,12 @@ import { applicationComposition } from "./server/applicationComposition";
 
 const {
   auth: { accountContextApi, adminUsersApi, authApi, authGate },
-  canvas: { accountHistory, canvasPersistence, projectTitle },
+  canvas: {
+    accountHistory,
+    canvasLegacyGenerationReconciliation,
+    canvasPersistence,
+    projectTitle,
+  },
   generation: {
     adminGenerationSafetyApi,
     assertMediaDeletionAllowedInTransaction:
@@ -1169,6 +1174,14 @@ function canvasPersistenceApi(runtime: RuntimeInstance): Plugin {
     use: (path: string, handler: (...args: any[]) => void) => void;
   }) => {
     middlewares.use("/api/canvas", protectedCanvasHandler);
+    middlewares.use(
+      "/api/canvases",
+      apiBoundary(
+        "canvas-legacy-generation-reconciliation",
+        canvasLegacyGenerationReconciliation,
+        runtime,
+      ),
+    );
     middlewares.use(
       "/api/history",
       apiBoundary("history", accountHistory, runtime),

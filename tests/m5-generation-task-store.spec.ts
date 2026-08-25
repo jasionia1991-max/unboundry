@@ -311,6 +311,8 @@ function seedGenerationRetryBinding(
   >,
   generationInputKey: string,
   expectedCanvasRevision = 1,
+  generationOwnershipKey?: string,
+  workflowExecutionRunId?: string,
 ) {
   const database = openAppDatabase(dataDirectory);
   try {
@@ -337,7 +339,9 @@ function seedGenerationRetryBinding(
       JSON.stringify([{
         data: {
           [`${task.kind}GenerationInputKey`]: generationInputKey,
+          [`${task.kind}GenerationOwnershipKey`]: generationOwnershipKey,
           [`${task.kind}GenerationTaskId`]: task.id,
+          workflowExecutionRunId,
         },
         id: task.nodeId,
         type: task.kind,
@@ -430,6 +434,21 @@ test("generation task creation is idempotent and a running task recovers after r
 
     const running = firstStore.transition(first.task.id, "running");
     expect(running).toMatchObject({ attempt: 1, state: "running" });
+    seedGenerationRetryBinding(
+      dataDirectory,
+      running!,
+      "active-input-proof",
+      1,
+      "active-ownership-proof",
+      "active-run-proof",
+    );
+    expect(firstStore.retryBindingsForCanvas(request.canvasId).get(first.task.id))
+      .toMatchObject({
+        generationInputKey: "active-input-proof",
+        generationOwnershipKey: "active-ownership-proof",
+        taskId: first.task.id,
+        workflowExecutionRunId: "active-run-proof",
+      });
     expect(firstStore.listEvents(first.task.id).map(({ state }) => state)).toEqual([
       "queued",
       "running",

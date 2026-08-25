@@ -46,6 +46,12 @@ import {
   usePublishedModelSelection,
 } from "../models/ModelCatalog";
 import { useGenerationCanvas } from "../generation/GenerationCanvasContext";
+import { useWorkflowExecution } from "../generation/WorkflowExecutionProvider";
+import {
+  effectiveLegacyTerminalGenerationState,
+  LegacyTerminalGenerationNotice,
+  useLegacyTerminalGenerationState,
+} from "../generation/legacyTerminalGenerationState";
 import { useFinishedGenerationDuration } from "../generation/useFinishedGenerationDuration";
 import { GenerationDurationHint } from "./GenerationDurationHint";
 import { GenerationReconcileControls } from "./GenerationReconcileControls";
@@ -1629,6 +1635,23 @@ function ImageNodeImpl({
   const creativeEnhanceCapability = useImageToolCapability("enhance-creative");
   const removeBackgroundCapability = useImageToolCapability("remove-background");
   const singleNodeChrome = useSingleNodeChrome(selected, dragging);
+  const { lockedNodeIds } = useWorkflowExecution();
+  const storedLegacyState = useLegacyTerminalGenerationState(id);
+  const legacyState = effectiveLegacyTerminalGenerationState({
+    bindingComplete: Boolean(
+      data.imageGenerationTaskId && data.imageGenerationOwnershipKey &&
+        data.imageGenerationInputKey,
+    ),
+    hasLegacyRun: Boolean(data.workflowExecutionRunId),
+    locallyActive: lockedNodeIds.has(id),
+    persistedGenerating: data.imageGenerating === true,
+    state: storedLegacyState,
+  });
+  const displayImageGenerating = legacyState && legacyState !== "PASSTHROUGH"
+    ? legacyState === "ACTIVE_CONFIRMED"
+    : Boolean(data.imageGenerating);
+  const legacySubmissionBlocked = legacyState === "DETECTING" ||
+    legacyState === "ACTIVE_CONFIRMED" || legacyState === "UNKNOWN_BLOCKED";
   const mediaLoad = useMediaLoadRecovery(data.imageSrc);
   const imageShowsTransparency = data.imageHasTransparency === true ||
     data.imageToolOutputBackground === "transparent";
@@ -2230,6 +2253,10 @@ function ImageNodeImpl({
       stableRawGenerationInputFingerprint.current = undefined;
       return;
     }
+    if (data.workflowExecutionRunId) {
+      stableRawGenerationInputFingerprint.current = rawGenerationInputFingerprint;
+      return;
+    }
     const previous = stableRawGenerationInputFingerprint.current;
     stableRawGenerationInputFingerprint.current = rawGenerationInputFingerprint;
     const persistedMismatch = Boolean(
@@ -2280,6 +2307,7 @@ function ImageNodeImpl({
     data.imageGenerationInputKey,
     data.imageGenerationOwnershipKey,
     data.imageGenerationTaskId,
+    data.workflowExecutionRunId,
     id,
     persistenceReady,
     rawGenerationInputFingerprint,
@@ -5436,6 +5464,7 @@ function ImageNodeImpl({
             disabled={
               submitting ||
               savingCanvas ||
+              legacySubmissionBlocked ||
               (generating
                 ? !cancelableTaskId
                 : generatedForCurrentInput ||
@@ -5630,7 +5659,8 @@ function ImageNodeImpl({
             onReplace={() => inputRef.current?.click()}
           />
         )}
-        {(generating || uploading) && (
+        <LegacyTerminalGenerationNotice state={legacyState} />
+        {(displayImageGenerating || uploading) && (
           <div
             aria-label={uploading ? "图片上传中" : "Generating..."}
             className="image-node-generating"

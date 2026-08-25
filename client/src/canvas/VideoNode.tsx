@@ -27,6 +27,12 @@ import {
   usePublishedModelSelection,
 } from "../models/ModelCatalog";
 import { useGenerationCanvas } from "../generation/GenerationCanvasContext";
+import { useWorkflowExecution } from "../generation/WorkflowExecutionProvider";
+import {
+  effectiveLegacyTerminalGenerationState,
+  LegacyTerminalGenerationNotice,
+  useLegacyTerminalGenerationState,
+} from "../generation/legacyTerminalGenerationState";
 import { useFinishedGenerationDuration } from "../generation/useFinishedGenerationDuration";
 import { GenerationDurationHint } from "./GenerationDurationHint";
 import { GenerationReconcileControls } from "./GenerationReconcileControls";
@@ -392,6 +398,23 @@ function VideoNodeImpl({
   selected,
 }: NodeProps<ProbeNodeType>) {
   const singleNodeChrome = useSingleNodeChrome(selected, dragging);
+  const { lockedNodeIds } = useWorkflowExecution();
+  const storedLegacyState = useLegacyTerminalGenerationState(id);
+  const legacyState = effectiveLegacyTerminalGenerationState({
+    bindingComplete: Boolean(
+      data.videoGenerationTaskId && data.videoGenerationOwnershipKey &&
+        data.videoGenerationInputKey,
+    ),
+    hasLegacyRun: Boolean(data.workflowExecutionRunId),
+    locallyActive: lockedNodeIds.has(id),
+    persistedGenerating: data.videoGenerating === true,
+    state: storedLegacyState,
+  });
+  const displayVideoGenerating = legacyState && legacyState !== "PASSTHROUGH"
+    ? legacyState === "ACTIVE_CONFIRMED"
+    : Boolean(data.videoGenerating);
+  const legacySubmissionBlocked = legacyState === "DETECTING" ||
+    legacyState === "ACTIVE_CONFIRMED" || legacyState === "UNKNOWN_BLOCKED";
   const mediaLoad = useMediaLoadRecovery(data.videoSrc);
   const inputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -771,6 +794,10 @@ function VideoNodeImpl({
       stableRawGenerationInputFingerprint.current = undefined;
       return;
     }
+    if (data.workflowExecutionRunId) {
+      stableRawGenerationInputFingerprint.current = rawGenerationInputFingerprint;
+      return;
+    }
     const previous = stableRawGenerationInputFingerprint.current;
     stableRawGenerationInputFingerprint.current = rawGenerationInputFingerprint;
     const persistedMismatch = Boolean(
@@ -821,6 +848,7 @@ function VideoNodeImpl({
     data.videoGenerationInputKey,
     data.videoGenerationOwnershipKey,
     data.videoGenerationTaskId,
+    data.workflowExecutionRunId,
     id,
     persistenceReady,
     rawGenerationInputFingerprint,
@@ -2620,6 +2648,7 @@ function VideoNodeImpl({
               submitting ||
               savingCanvas ||
               uploading ||
+              legacySubmissionBlocked ||
               (generating
                 ? !cancelableTaskId
                 : generatedForCurrentInput ||
@@ -2839,7 +2868,8 @@ function VideoNodeImpl({
             onReplace={() => inputRef.current?.click()}
           />
         )}
-        {(generating || uploading) && (
+        <LegacyTerminalGenerationNotice state={legacyState} />
+        {(displayVideoGenerating || uploading) && (
           <div
             aria-label={uploading ? "视频上传中" : "视频生成中"}
             className="video-node-generating"
