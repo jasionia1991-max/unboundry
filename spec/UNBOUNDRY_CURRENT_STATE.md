@@ -1,6 +1,6 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网已为v0.6.41/schema41；INC-SEEDANCE-002按B→A→C选择最高诚实层级C，本地工程、独立终审、唯一safe full、GitHub、迁移、原子发布与生产零付费浏览器均已通过，当前只待用户实页复验。
+> **状态分层**：现网仍为v0.6.41/schema41且保持USER_RECHECK；新事件INC-GEN-013仅完成方案冻结，应用代码、测试、GitHub和发布均未开始。
 
 更新日期：2026-08-25
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
@@ -8,11 +8,22 @@
 本地候选代码版本：**v0.6.41**
 本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_41_USER_RECHECK`
-当前热修门：`PRODUCTION_V0_6_41_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK`
+当前热修门：`INC_GEN_013_IMPLEMENTATION_NOT_STARTED / PRODUCTION_V0_6_41_TECHNICAL_PASS / USER_RECHECK`
 
 ## 一句话
 
-**生产是 v0.6.41 / schema41；C分支「角色风险预检」准确关闭并保留「角色可信素材」，自动技术链和三视口零付费浏览器已通过，当前只待用户实页复验。**
+**生产是 v0.6.41 / schema41；整组刷新恢复与组合框拖动性能方案已冻结但尚未实施，现网技术状态和INC-SEEDANCE-002的USER_RECHECK不变。**
+
+## INC-GEN-013 整组刷新恢复与组合框拖动性能治理（PLAN_FROZEN / IMPLEMENTATION_NOT_STARTED / USER_REVIEW）
+
+- 权威方案：`spec/INC_GEN_013_GROUP_RECOVERY_AND_GROUP_DRAG_PERFORMANCE_PLAN_2026-08-25.md`
+- 实时断点：`spec/INC_GEN_013_GROUP_RECOVERY_AND_GROUP_DRAG_PERFORMANCE_CHECKPOINT.md`
+- 只读证据显示涉事服务端任务和Provider已成功、结果媒体仍在OSS；截图提示是防止重复付费的安全门，不是服务端生成失败。
+- 自动恢复缺口来自group run checkpoint没有可靠保存已接收任务的完整绑定；后续方案只允许`accepted-tasks-only`查询和回填原任务，generation POST必须为0，pending节点不得自动提交。
+- 拖动卡顿直接落在`GroupNode.tsx`旧自定义拖动旁路：每次pointer move直接`setNodes`并绕过统一交互/持久化门。它不是后续Git提交撤销修复，而是历史旁路和测试覆盖缺口形成的实际体验回归。
+- 方案已冻结向后兼容checkpoint、精确写回围栏、单写入租约、先保存确认再清理，以及组合框优先原生拖动/必要时共享交互端口的止损路径。
+- 当前只完成文档同步；没有改应用代码、schema或OpenAPI。文档治理定向m38最终`15/15 PASS`，未运行新功能测试或safe full；没有commit/push/PR/tag/Release，没有Provider、OSS、付费请求或生产写入。
+- 新验收`GEN-011～012 / CANVAS-020～022`保持`NOT_STARTED`；未来自动技术通过后也只能进入`USER_RECHECK`，不得替用户写`USER_PASS`。
 
 ## INC-SEEDANCE-002 AI角色单图合规验证（BRANCH_C / PRODUCTION_V0_6_41_TECHNICAL_PASS / USER_RECHECK）
 

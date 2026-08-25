@@ -1,9 +1,24 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产为`v0.6.41 / schema41`且技术健康；INC-SEEDANCE-002 C分支已发布并完成零付费浏览器技术验收，当前为`USER_RECHECK`。
+> **当前状态**：生产为`v0.6.41 / schema41`且技术健康；INC-GEN-013方案已冻结但未实施，现网仍保持INC-SEEDANCE-002的`USER_RECHECK`。
 
 更新时间：2026-08-25
-状态：`生产v0.6.41 / schema41 / PRODUCTION_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK；INC-SEEDANCE-002真实审核、Generation、OSS、费用0。`
+状态：`INC-GEN-013 PLAN_FROZEN / IMPLEMENTATION_NOT_STARTED / USER_REVIEW；生产仍为v0.6.41 / schema41 / PRODUCTION_TECHNICAL_PASS / USER_RECHECK。`
+
+### 2026-08-25 整组刷新恢复与组合框拖动性能治理（INC-GEN-013，PLAN_FROZEN / IMPLEMENTATION_NOT_STARTED）
+
+- [x] 只读核实截图提示属于防重复付费安全门，不是Provider失败；原服务端任务已成功，结果媒体仍在OSS
+- [x] 核实刷新后节点缺少完整结果/success proof，现有checkpoint不足以严格自动接回已接收任务
+- [x] 核实组合框旧`beginMove`每次pointer move直接`setNodes`，绕过`CanvasSurface`统一拖动态和persistence quiet gate
+- [x] 完成回归定性：提示非回归；自动对账是恢复设计缺口；组合框卡顿是历史旁路/覆盖缺口形成的实际体验回归，不是Git修复被撤销
+- [x] 冻结恢复合同：向后兼容`acceptedTasks`、`accepted-tasks-only`、精确归属围栏、单写入租约、先保存确认再清checkpoint
+- [x] 冻结拖动合同：优先React Flow原生路径；不满足语义时使用唯一共享画布交互端口；拖动期间drag-originated PUT为0
+- [x] 冻结REC-01～012、DRAG-01～012、精确39节点/73边rich-group fixture、P0/P1 No-Go和防回归策略
+- [x] 同步方案、Checkpoint、CURRENT_STATE、TASKS、验收矩阵和AGENTS授权边界
+- [x] 文档治理定向m38最终`15/15 PASS`；首次只因CURRENT_STATE一句话不符合既有机器正则而`14/15`，修正文案后复验最小spec通过，未运行safe full
+- [ ] 应用代码、测试、候选、Git/GitHub和生产发布均未开始；等待用户另行明确实施授权
+
+权威方案：`spec/INC_GEN_013_GROUP_RECOVERY_AND_GROUP_DRAG_PERFORMANCE_PLAN_2026-08-25.md`；实时断点：`spec/INC_GEN_013_GROUP_RECOVERY_AND_GROUP_DRAG_PERFORMANCE_CHECKPOINT.md`。当前不使用旧v0.6.41授权，不执行真实Provider、OSS、付费请求或生产写入。
 
 ### 2026-08-25 AI角色单图合规验证（INC-SEEDANCE-002，BRANCH_C / P0_P1_REVIEW_PASS / SAFE_FULL_PASS）
 
