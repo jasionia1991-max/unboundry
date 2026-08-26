@@ -1,5 +1,16 @@
 # Unboundry 绿地复刻验收矩阵
 
+## MODEL-CONTRACT-001 当前区块（2026-08-26）
+
+- 当前：`R0_COMPLETE / R1_NEXT / AUTO_ENGINEERING_IN_PROGRESS`。
+- R0已覆盖四类生成节点、图片工具、10个生产已发布模型、Provider/connector、输入、task/poll/result/error、模板和恢复路径；`MC-ARCH-006`与`MC-MIG-001`为`AUTO_PASS`。
+- 其余实现、真实Provider、生产技术与用户质量均未开始；R0请求与费用账本为0。
+- 证据：`spec/MODEL_CONTRACT_001_R0_INVENTORY_2026-08-26.md`；唯一下一动作：R1预期红与合同底座。
+
+2026-08-26 MODEL-CONTRACT-001已获用户明确Goal与发布授权并完成R0-R6实现。首轮独立终审为`P0=3 / P1=8 / NO-GO`，对应修复和受影响safe定向40/40已完成，当前等待同一审查线程复核；实现验收以`spec/MODEL_CONTRACT_001_ACCEPTANCE_MATRIX_2026-08-26.md`为唯一细目。
+
+2026-08-26用户明确回复`v0.6.47 验收通过`。当前发布聚合状态升级为`PRODUCTION_V0_6_47_USER_PASS / USER_PASS`；原`spec/V0_6_47_PRODUCTION_RECEIPT_2026-08-26.json`继续保留生成时的技术状态，不回写历史JSON。该确认不自动验收MODEL-CONTRACT-001或GK-video-3成片质量。
+
 2026-08-26 INC-GEN-015已完成：生产v0.6.46/schema41健康，目标Canvas的5个旧节点已严格复用原success task/result proof收口；最终mode=`on`，目标与全局Generation/Provider/Media/publication账本零新增。用户已在生产目标Canvas明确回复“通过”，状态`PRODUCTION_V0_6_46_USER_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON`，回执`spec/V0_6_46_PRODUCTION_RECEIPT_2026-08-26.json`。
 
 2026-08-26 INC-GEN-014已完成：`WSH-01～14 / KEYV-01～10 = PRODUCTION_AUTO_PASS / USER_RECHECK`。m22 `37/37`、m73 `16/16`、m20 `1/1`、m81 `41/41`，独立终审最终`P0=0/P1=0/GO`；修正后clean-record full在commit`626d209`/tree`f55860b`完成`121/121 specs、1061/1061 tests PASS`，异常0。PR #103、PR/main CI、merge`3ff3df4`、不可移动tag/Release v0.6.44、fresh build、冻结双副本恢复演练、原子切换、公网/回环/数据/inventory/静态资源均通过。切换前后tasks814/attempts822/active0/media849/publications439/canvases67/dataFiles366不变；真实Provider、Generation、OSS、probe与费用0。回执`spec/V0_6_44_PRODUCTION_RECEIPT_2026-08-26.json`；不是USER_PASS。
@@ -21,11 +32,11 @@
 基线日期：2026-07-27  
 当前状态更新：2026-08-26
 
-`AUTHORITATIVE_ACCEPTANCE_LEDGER`：生产为v0.6.47/schema41且服务健康；项目默认Node25/npm11已发布，生产运行时仍为Node22/npm10。GitHub、fresh build、冻结备份恢复、原子切换、数据/inventory/公网/资源/稳定门全通过，真实Provider/Generation/OSS/费用0；当前`PRODUCTION_V0_6_47_TECHNICAL_PASS / USER_RECHECK`。v0.6.46的INC-GEN-015 `USER_PASS`继续作为历史验收事实保留，不自动继承给v0.6.47。
+`AUTHORITATIVE_ACCEPTANCE_LEDGER`：生产为v0.6.47/schema41且服务健康，既有`PRODUCTION_V0_6_47_USER_PASS / USER_PASS`继续有效。MODEL-CONTRACT-001本地v0.6.48候选已完成R0-R6和首轮NO-GO修复，当前为`SAME_REVIEWER_RECHECK_NEXT / PRODUCTION_NOT_CHANGED / USER_RECHECK`。
 
 2026-08-26 `CURRENT_RELEASE = v0.6.46 / schema41 / PRODUCTION_V0_6_46_USER_PASS`。本地治理基线为`main = origin/main = 12e2fd9b…2795`，当前差异仅为本轮尚未提交的治理与工具链修改；普通项目shell默认Node `25.9.0` / npm `11.12.1`，现网仍为Node `22.23.2` / npm `10.9.8`，安全/发布复现通道为Node `22.23.1` / npm `10.9.8`。默认Node25 build/architecture通过；Node22兼容preflight、源码覆盖456/456、behavior 1/1及m38+m94 `19/19 PASS`，4173不变，未运行full。这次工具链治理不是生产运行时迁移或新版本发布。
 
-2026-08-26 `CURRENT_RELEASE = v0.6.47 / schema41 / PRODUCTION_TECHNICAL_PASS / USER_RECHECK`：冻结候选唯一safe full `121/121 specs、1069/1069 tests PASS`；PR #110、PR/main CI、merge `24541b3`、tag/Release、fresh build、备份`v0.6.47-cutover-final2-20j2R3`、恢复数据门、原子切换、5资源逐字节与60秒稳定门全通过。回执`spec/V0_6_47_PRODUCTION_RECEIPT_2026-08-26.json`；用户明确复验前不得写`USER_PASS`。
+2026-08-26 `CURRENT_RELEASE = v0.6.47 / schema41 / PRODUCTION_USER_PASS`：冻结候选唯一safe full `121/121 specs、1069/1069 tests PASS`；PR #110、PR/main CI、merge `24541b3`、tag/Release、fresh build、备份`v0.6.47-cutover-final2-20j2R3`、恢复数据门、原子切换、5资源逐字节与60秒稳定门全通过。原技术回执`spec/V0_6_47_PRODUCTION_RECEIPT_2026-08-26.json`保持不可变；用户随后明确回复`v0.6.47 验收通过`。
 
 本文件下方旧版本的 `USER_RECHECK/PENDING` 均保留各自验收时点，不再承担当前线上版本播报，也不得被直接当成下一施工计划。当前版本、当前计划和授权边界只以 `spec/UNBOUNDRY_CURRENT_STATE.md` 为准。
 
@@ -76,6 +87,8 @@
 状态夹具：`unboundry-state-fixtures.json`
 
 本文件只记录验收条目的历史证据与状态，不承担当前版本播报。当前线上版本、未发布候选与下一步只以 `spec/UNBOUNDRY_CURRENT_STATE.md` 为准。以下日期段落均为对应时点快照；既有用户验收与未完成状态继续保留，不因新版本自动升级。
+
+2026-08-26 `MODEL-CONTRACT-001 = R0-R6_IMPLEMENTED / FIRST_REVIEW_NO_GO_FIXED / TARGETED_AUTO_PASS / SAME_REVIEWER_RECHECK_NEXT / USER_RECHECK`：本地v0.6.48/schema41候选完成三层合同、不可变ModelReleaseRevision、原子发布、task快照、独立管理员工作台、GK-video-3精确声明式合同、其他专用connector保留和UNKNOWN阻断。首轮终审`P0=3 / P1=8 / NO-GO`对应修复后，受影响组合5 specs `40/40 PASS`；补齐声明式参数全消费与文档后m102+m38最小复验`22/22 PASS`，source/snapshot `2893682f…f3013`。Provider/Generation/OSS/费用0，4173不变。同一审查线程复核、唯一正式full、GitHub和生产发布尚未执行；请求合同正确不得冒充服装款式或成片视觉通过。独立矩阵：`spec/MODEL_CONTRACT_001_ACCEPTANCE_MATRIX_2026-08-26.md`；实时断点：`spec/MODEL_CONTRACT_001_CHECKPOINT.md`。
 
 2026-08-26 `INC-GEN-015 = PRODUCTION_V0_6_46_USER_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON`：v0.6.45目标灰度曾因1644字符原始JSON/中文`inputFingerprint`违反旧ASCII/512校验而15次400安全失败，零写零付费；历史回执继续保留。v0.6.46补丁统一projection与detach为opaque非空最多100000字符，其他身份/CAS围栏不放宽。PR #107、PR/main CI、不可移动tag/Release、fresh build、冻结备份恢复、原子切换通过。zzx目标5个旧节点均复用原success task/result proof，Generating=false且旧task/ownership/input/run binding清空；39节点/73边、位置、连线和viewport保持。target tasks10/attempts10及global tasks825/attempts833/active0/media855/publications445/canvases68不变，Generation/Provider/Media/OSS/publication/费用0。`on → off → on`回退门通过，最终mode=`on`。用户随后在生产目标Canvas明确回复“通过”；回执：`spec/V0_6_46_PRODUCTION_RECEIPT_2026-08-26.json`。
 

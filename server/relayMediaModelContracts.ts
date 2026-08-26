@@ -20,7 +20,7 @@ export type RelayMediaModelContract = Readonly<{
     allowedKinds: readonly RelayMediaContractCapability[];
     allowedRoles: readonly string[];
     maximumCount: number;
-    parameterName?: "images";
+    roleParameters?: Readonly<Record<string, "first_frame_url" | "images" | "last_frame_url">>;
   }>;
   resultKind: RelayMediaContractCapability;
 }>;
@@ -87,7 +87,7 @@ const nanoBananaPro: RelayMediaModelContract = Object.freeze({
     allowedKinds: ["image"] as const,
     allowedRoles: ["reference-image"] as const,
     maximumCount: 14,
-    parameterName: "images" as const,
+    roleParameters: { "reference-image": "images" as const },
   },
   resultKind: "image",
 });
@@ -123,7 +123,7 @@ const klingV3Omni: RelayMediaModelContract = Object.freeze({
     allowedKinds: ["image"] as const,
     allowedRoles: ["reference-image"] as const,
     maximumCount: 7,
-    parameterName: "images" as const,
+    roleParameters: { "reference-image": "images" as const },
   },
   resultKind: "video",
 });
@@ -186,10 +186,105 @@ const sunoV45: RelayMediaModelContract = Object.freeze({
   resultKind: "audio",
 });
 
+const doubaoTts20: RelayMediaModelContract = Object.freeze({
+  capability: "audio",
+  mapParameters(parameters) {
+    assertOnlyFields(parameters, ["emotion", "emotionScale", "format", "speaker", "speechRate"]);
+    const emotion = requiredChoice(
+      parameters.emotion,
+      ["auto", "happy", "sad", "angry", "fearful", "surprised", "calm"] as const,
+      "Doubao TTS emotion",
+    );
+    const format = requiredChoice(parameters.format, ["mp3", "wav", "ogg_opus"] as const, "Doubao TTS format");
+    const speaker = requiredChoice(parameters.speaker, ["zh_female_vv_uranus_bigtts"] as const, "Doubao TTS speaker");
+    const speechRate = requiredChoice(parameters.speechRate, ["-50", "-25", "0", "25", "50", "100"] as const, "Doubao TTS speech rate");
+    const emotionScale = parameters.emotionScale;
+    if (emotion !== "auto" && ![1, 2, 3, 4, 5].includes(Number(emotionScale))) {
+      throw new Error("Invalid Doubao TTS emotion scale");
+    }
+    return {
+      emotion,
+      ...(emotion === "auto" ? {} : { emotion_scale: Number(emotionScale) }),
+      format,
+      speaker,
+      speech_rate: speechRate,
+    };
+  },
+  modelId: "doubao-tts-2.0",
+  pollPolicy: { deadlineMs: 15 * 60_000, initialMs: 5_000, maximumMs: 10_000 },
+  referencePolicy: { allowedKinds: [], allowedRoles: [], maximumCount: 0 },
+  resultKind: "audio",
+});
+
+function explicitLegacyVideoContract(input: Readonly<{
+  allowedRoles: readonly string[];
+  maximumCount: number;
+  modelId: string;
+  roleParameters: Readonly<Record<string, "first_frame_url" | "images" | "last_frame_url">>;
+}>): RelayMediaModelContract {
+  return Object.freeze({
+    capability: "video",
+    mapParameters(parameters) {
+      assertOnlyFields(parameters, ["aspectRatio", "duration", "generateAudio", "multiShot", "resolution"]);
+      for (const required of ["aspectRatio", "duration", "resolution"] as const) {
+        if (parameters[required] === undefined) {
+          throw new Error(`Missing explicit video parameter: ${required}`);
+        }
+      }
+      const result: Record<string, RelayMediaContractParamValue> = {};
+      const names = {
+        aspectRatio: "aspect_ratio",
+        duration: "duration",
+        generateAudio: "generate_audio",
+        multiShot: "multi_shot",
+        resolution: "resolution",
+      } as const;
+      for (const [key, name] of Object.entries(names)) {
+        const value = parameters[key];
+        if (value === undefined) continue;
+        if (typeof value !== "boolean" && typeof value !== "number" && typeof value !== "string") {
+          throw new Error("Invalid explicit video parameter");
+        }
+        result[name] = value;
+      }
+      return result;
+    },
+    modelId: input.modelId,
+    pollPolicy: { deadlineMs: 75 * 60_000, initialMs: 5_000, maximumMs: 10_000 },
+    referencePolicy: {
+      allowedKinds: ["image"] as const,
+      allowedRoles: input.allowedRoles,
+      maximumCount: input.maximumCount,
+      roleParameters: input.roleParameters,
+    },
+    resultKind: "video",
+  });
+}
+
+const grokImagineVideo15 = explicitLegacyVideoContract({
+  allowedRoles: ["first-frame"],
+  maximumCount: 1,
+  modelId: "grok-imagine-video-1.5-preview",
+  roleParameters: { "first-frame": "images" },
+});
+
+const kwVideoV2 = explicitLegacyVideoContract({
+  allowedRoles: ["first-frame", "last-frame"],
+  maximumCount: 2,
+  modelId: "kwvideo-v2",
+  roleParameters: {
+    "first-frame": "first_frame_url",
+    "last-frame": "last_frame_url",
+  },
+});
+
 const contracts = new Map<string, RelayMediaModelContract>([
   [nanoBananaPro.modelId, nanoBananaPro],
   [klingV3Omni.modelId, klingV3Omni],
   [sunoV45.modelId, sunoV45],
+  [doubaoTts20.modelId, doubaoTts20],
+  [grokImagineVideo15.modelId, grokImagineVideo15],
+  [kwVideoV2.modelId, kwVideoV2],
 ]);
 
 export function relayMediaModelContract(modelId: string | undefined) {

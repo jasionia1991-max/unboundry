@@ -41,6 +41,15 @@ import {
   providerProtocolSupportsCapability,
   type ProviderProtocol,
 } from "../../types/relayProtocols";
+import type {
+  ModelContractBinding,
+  ModelContractRole,
+  ModelExecutionMode,
+} from "../../types/modelExecutionContracts";
+import type {
+  ModelContractState,
+  ModelReleaseDocument,
+} from "../../types/modelReleaseRevisions";
 import {
   ADMIN_ONLY_PERMISSIONS,
   ALL_PERMISSIONS,
@@ -145,6 +154,12 @@ type AdminModel = {
   archivedAt?: string;
   canDelete?: boolean;
   capability: ModelCapability;
+  contract?: {
+    activeRevision?: number;
+    evidence?: "EXACT" | "GENERIC_GUESS" | "SPECIALIZED" | "UNKNOWN";
+    revoked: boolean;
+    status: "draft" | "missing" | "published" | "revoked";
+  };
   deleteBlockedReason?: string;
   displayName: string;
   enabled: boolean;
@@ -4827,6 +4842,297 @@ function AdminModelParameterEditor({
   );
 }
 
+type ModelContractWorkbenchResponse = {
+  impact: {
+    incompatibleTemplateIds: string[];
+    preexistingIncompatibleTemplateIds?: string[];
+    templateIds: string[];
+  };
+  parameterConstraints: ModelParameterSchema;
+  paidProviderRequests: 0;
+  state: ModelContractState;
+  suggestedDocument: ModelReleaseDocument;
+};
+
+function AdminModelContractWorkbench({
+  currentUser,
+  modelId,
+}: {
+  currentUser: AuthUser;
+  modelId: string;
+}) {
+  const [loaded, setLoaded] = useState<ModelContractWorkbenchResponse>();
+  const [document, setDocument] = useState<ModelReleaseDocument>();
+  const [draftVersion, setDraftVersion] = useState(0);
+  const [dirty, setDirty] = useState(false);
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [conflict, setConflict] = useState(false);
+  const [conflictSnapshot, setConflictSnapshot] =
+    useState<ModelContractWorkbenchResponse>();
+  const [showConflictDiff, setShowConflictDiff] = useState(false);
+
+  const endpoint = `/api/admin/models/${encodeURIComponent(modelId)}/contract`;
+  const load = () => jsonRequest<ModelContractWorkbenchResponse>(endpoint)
+    .then((result) => {
+      setLoaded(result);
+      setDocument(result.state.draft?.document ?? result.suggestedDocument);
+      setDraftVersion(result.state.draftVersion);
+      setDirty(false);
+      setConflict(false);
+      setConflictSnapshot(undefined);
+      setShowConflictDiff(false);
+      setError("");
+    })
+    .catch((caught) => setError(
+      caught instanceof Error ? caught.message : "模型合同读取失败",
+    ));
+
+  useEffect(() => { void load(); }, [modelId]);
+  useEffect(() => {
+    const warn = (event: BeforeUnloadEvent) => {
+      if (!dirty) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+
+  const mutateDocument = (next: ModelReleaseDocument) => {
+    setDocument(next);
+    setDirty(true);
+    setNotice("");
+  };
+  const action = async (
+    name: "draft" | "publish" | "restore" | "revoke" | "rollback" | "validate",
+    body: Record<string, unknown>,
+  ) => {
+    setBusy(name);
+    setError("");
+    setNotice("");
+    try {
+      await jsonRequest(`${endpoint}/${name}`, {
+        body: JSON.stringify(body),
+        method: "POST",
+      });
+      setNotice(name === "draft"
+        ? "草稿已保存；本次没有调用 Provider。"
+        : name === "validate"
+          ? "本地验证通过；Provider 请求为 0。"
+          : name === "publish"
+            ? "新修订已发布，只影响之后新建的任务。"
+            : name === "rollback"
+              ? "已创建新的回滚修订；运行中任务仍使用原修订。"
+              : name === "revoke"
+                ? "已停止新任务；已受理任务仍按冻结修订查询。"
+                : "已恢复接受新任务。");
+      await load();
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "操作失败";
+      setError(message);
+      if (/草稿|版本|管理员/.test(message)) {
+        setConflict(true);
+        const current = await jsonRequest<ModelContractWorkbenchResponse>(endpoint)
+          .catch(() => undefined);
+        setConflictSnapshot(current);
+      }
+    } finally {
+      setBusy("");
+    }
+  };
+
+  if (!loaded || !document) {
+    return <main className="system-message" role={error ? "alert" : undefined}>
+      {error || "正在读取模型合同…"}
+    </main>;
+  }
+  const updateModes = (modes: readonly ModelExecutionMode[]) => mutateDocument({
+    ...document,
+    executionContract: { ...document.executionContract, modes },
+  });
+  const updateMode = (index: number, next: ModelExecutionMode) => updateModes(
+    document.executionContract.modes.map((mode, candidate) =>
+      candidate === index ? next : mode
+    ),
+  );
+  const nextModeId = () => {
+    let index = document.executionContract.modes.length + 1;
+    while (document.executionContract.modes.some((mode) => mode.id === `mode-${index}`)) {
+      index += 1;
+    }
+    return `mode-${index}`;
+  };
+  const nextRoleId = (mode: ModelExecutionMode) => {
+    let index = mode.roles.length + 1;
+    while (mode.roles.some((role) => role.id === `reference-${index}`)) index += 1;
+    return `reference-${index}`;
+  };
+  const sourceForKind = (
+    kind: ModelContractBinding["source"]["kind"],
+    mode: ModelExecutionMode,
+  ): ModelContractBinding["source"] => {
+    if (kind === "parameter") return { key: "duration", kind };
+    if (kind === "role") return { kind, roleId: mode.roles[0]?.id ?? "reference-1" };
+    if (kind === "constant") return { kind, value: "" };
+    return { kind };
+  };
+  const validated = Boolean(loaded.state.draft?.validation &&
+    loaded.state.draft.draftVersion === draftVersion && !dirty);
+  return (
+    <main
+      className="admin-page model-contract-page"
+      data-testid="model-contract-workbench"
+      onKeyDown={(event) => {
+        if (event.key === "Enter" && event.target instanceof HTMLInputElement) {
+          event.preventDefault();
+        }
+      }}
+    >
+      <SettingsPageHeader
+        browserTitle="模型合同工作台"
+        displayName={`管理员：${currentUser.displayName}`}
+        pageTitle="模型合同工作台"
+        userId={currentUser.id}
+      />
+      <div className="model-contract-layout">
+        <nav aria-label="合同区块" className="model-contract-nav">
+          <button onClick={() => window.location.href = settingsDestination("/admin/models", currentUser.id)} type="button">← 返回模型列表</button>
+          {[
+            "基本信息与官方文档", "输入模式", "素材角色与数量", "模型参数",
+            "请求绑定", "任务、状态、结果与错误", "验证与发布", "版本历史",
+          ].map((label, index) => <a href={`#contract-section-${index + 1}`} key={label}>{label}</a>)}
+        </nav>
+        <div className="model-contract-editor">
+          <header className="model-contract-heading">
+            <div>
+              <span>{document.capability.toUpperCase()}</span>
+              <h1>{document.providerModelId}</h1>
+              <p>草稿版本 {draftVersion} · 当前发布版本 {loaded.state.active?.revisionNumber ?? "无"}</p>
+            </div>
+            <b data-status={loaded.state.revoked ? "danger" : loaded.state.active ? "success" : "warning"}>
+              {loaded.state.revoked ? "已停止新任务" : loaded.state.active ? "已发布" : "未发布"}
+            </b>
+          </header>
+          <section id="contract-section-1">
+            <h2>基本信息与官方文档</h2>
+            <div className="model-contract-grid">
+              <label><span>Provider模型ID</span><input disabled value={document.providerModelId} /></label>
+              <label><span>证据级别</span><input disabled value={document.evidence} /></label>
+              <label className="model-contract-wide"><span>官方文档</span><input
+                aria-describedby="contract-doc-help"
+                onChange={(event) => mutateDocument({
+                  ...document,
+                  documentation: event.target.value.trim()
+                    ? [{ checkedAt: new Date().toISOString().slice(0, 10), url: event.target.value }]
+                    : [],
+                })}
+                placeholder="https://官方文档地址"
+                value={document.documentation[0]?.url ?? ""}
+              /></label>
+              <small id="contract-doc-help">这里只保存公开来源，不允许密钥、Cookie或签名地址。</small>
+            </div>
+          </section>
+          <section id="contract-section-2">
+            <div className="model-contract-section-heading"><h2>输入模式</h2><button onClick={() => {
+              const id = nextModeId();
+              updateModes([...document.executionContract.modes, {
+                bindings: [
+                  { source: { kind: "model-id" }, target: { location: "json", path: "model" } },
+                  { source: { kind: "prompt" }, target: { location: "json", path: "prompt" } },
+                ],
+                id,
+                prompt: "required",
+                roles: [],
+              }]);
+            }} type="button">新增模式</button></div>
+            <div className="model-contract-mode-list">
+              {document.executionContract.modes.map((mode, modeIndex) => (
+                <article key={`${mode.id}-${modeIndex}`}>
+                  <label><span>模式ID</span><input value={mode.id} onChange={(event) => updateMode(modeIndex, { ...mode, id: event.target.value })} /></label>
+                  <label><span>Prompt</span><select value={mode.prompt} onChange={(event) => updateMode(modeIndex, { ...mode, prompt: event.target.value as "optional" | "required" })}><option value="required">必填</option><option value="optional">可选</option></select></label>
+                  <span>素材角色：{mode.roles.length}</span>
+                  <button disabled={document.executionContract.modes.length === 1} onClick={() => updateModes(document.executionContract.modes.filter((_, candidate) => candidate !== modeIndex))} type="button">删除模式</button>
+                </article>
+              ))}
+            </div>
+          </section>
+          <section id="contract-section-3">
+            <h2>素材角色与数量</h2>
+            {document.executionContract.modes.map((mode, modeIndex) => <div className="model-contract-subsection" key={`roles-${mode.id}-${modeIndex}`}>
+              <div className="model-contract-section-heading"><h3>{mode.id}</h3><button onClick={() => {
+                const role: ModelContractRole = { id: nextRoleId(mode), kind: "image", maxItems: 1, minItems: 1, ordered: true, shape: "url" };
+                updateMode(modeIndex, { ...mode, roles: [...mode.roles, role] });
+              }} type="button">新增角色</button></div>
+              {mode.roles.length === 0 ? <p>此模式不接收素材。</p> : mode.roles.map((role, roleIndex) => <div className="model-contract-grid model-contract-repeat" key={`${role.id}-${roleIndex}`}>
+                <label><span>角色ID</span><input value={role.id} onChange={(event) => {
+                  const id = event.target.value;
+                  updateMode(modeIndex, {
+                    ...mode,
+                    bindings: mode.bindings.map((item) => item.source.kind === "role" && item.source.roleId === role.id ? { ...item, source: { ...item.source, roleId: id } } : item),
+                    roles: mode.roles.map((item, candidate) => candidate === roleIndex ? { ...item, id } : item),
+                  });
+                }} /></label>
+                <label><span>素材类型</span><select value={role.kind} onChange={(event) => updateMode(modeIndex, { ...mode, roles: mode.roles.map((item, candidate) => candidate === roleIndex ? { ...item, kind: event.target.value as ModelCapability } : item) })}>{["text", "image", "video", "audio"].map((kind) => <option key={kind} value={kind}>{kind}</option>)}</select></label>
+                <label><span>最少数量</span><input min="0" type="number" value={role.minItems} onChange={(event) => updateMode(modeIndex, { ...mode, roles: mode.roles.map((item, candidate) => candidate === roleIndex ? { ...item, minItems: Number(event.target.value) } : item) })} /></label>
+                <label><span>最多数量</span><input min="0" type="number" value={role.maxItems} onChange={(event) => updateMode(modeIndex, { ...mode, roles: mode.roles.map((item, candidate) => candidate === roleIndex ? { ...item, maxItems: Number(event.target.value) } : item) })} /></label>
+                <label><span>值形态</span><select value={role.shape} onChange={(event) => updateMode(modeIndex, { ...mode, roles: mode.roles.map((item, candidate) => candidate === roleIndex ? { ...item, shape: event.target.value as "file-id" | "url" } : item) })}><option value="url">URL</option><option value="file-id">file ID</option></select></label>
+                <label className="model-contract-check"><input checked={role.ordered} onChange={(event) => updateMode(modeIndex, { ...mode, roles: mode.roles.map((item, candidate) => candidate === roleIndex ? { ...item, ordered: event.target.checked } : item) })} type="checkbox" /><span>保留输入顺序</span></label>
+                <button onClick={() => updateMode(modeIndex, {
+                  ...mode,
+                  bindings: mode.bindings.filter((item) => item.source.kind !== "role" || item.source.roleId !== role.id),
+                  roles: mode.roles.filter((_, candidate) => candidate !== roleIndex),
+                })} type="button">删除角色</button>
+              </div>)}
+            </div>)}
+          </section>
+          <section id="contract-section-4"><h2>模型参数</h2><AdminModelParameterEditor capability={document.capability} constraints={loaded.parameterConstraints} onChange={(capabilitySchema) => mutateDocument({ ...document, capabilitySchema })} providerProtocol={document.providerProtocol} schema={document.capabilitySchema} /></section>
+          <section id="contract-section-5"><h2>请求绑定</h2>{document.executionContract.modes.map((mode, modeIndex) => <div className="model-contract-subsection" key={`bindings-${mode.id}-${modeIndex}`}><div className="model-contract-section-heading"><h3>{mode.id}</h3><button onClick={() => updateMode(modeIndex, { ...mode, bindings: [...mode.bindings, { source: { key: "duration", kind: "parameter" }, target: { location: "json", path: "params.duration" }, transform: "string" }] })} type="button">新增绑定</button></div><div className="model-contract-bindings">{mode.bindings.map((item, bindingIndex) => <div className="model-contract-binding-row" key={bindingIndex}>
+            <select aria-label="来源" value={item.source.kind} onChange={(event) => updateMode(modeIndex, { ...mode, bindings: mode.bindings.map((binding, candidate) => candidate === bindingIndex ? { ...binding, source: sourceForKind(event.target.value as ModelContractBinding["source"]["kind"], mode) } : binding) })}>{["model-id", "prompt", "parameter", "role", "constant", "task-id"].map((kind) => <option key={kind} value={kind}>{kind}</option>)}</select>
+            {item.source.kind === "parameter" && <input aria-label="参数键" value={item.source.key} onChange={(event) => updateMode(modeIndex, { ...mode, bindings: mode.bindings.map((binding, candidate) => candidate === bindingIndex ? { ...binding, source: { ...item.source, key: event.target.value } } : binding) })} />}
+            {item.source.kind === "role" && <select aria-label="角色" value={item.source.roleId} onChange={(event) => updateMode(modeIndex, { ...mode, bindings: mode.bindings.map((binding, candidate) => candidate === bindingIndex ? { ...binding, source: { ...item.source, roleId: event.target.value } } : binding) })}>{mode.roles.map((role) => <option key={role.id} value={role.id}>{role.id}</option>)}</select>}
+            {item.source.kind === "constant" && <input aria-label="常量" value={String(item.source.value)} onChange={(event) => updateMode(modeIndex, { ...mode, bindings: mode.bindings.map((binding, candidate) => candidate === bindingIndex ? { ...binding, source: { ...item.source, value: event.target.value } } : binding) })} />}
+            <span aria-hidden="true">→</span>
+            <select aria-label="转换" value={item.transform ?? ""} onChange={(event) => updateMode(modeIndex, { ...mode, bindings: mode.bindings.map((binding, candidate) => candidate === bindingIndex ? { ...binding, ...(event.target.value ? { transform: event.target.value as ModelContractBinding["transform"] } : { transform: undefined }) } : binding) })}><option value="">不转换</option>{["array", "boolean", "number", "omit-empty", "string"].map((value) => <option key={value} value={value}>{value}</option>)}</select>
+            <select aria-label="目标位置" value={item.target.location} onChange={(event) => updateMode(modeIndex, { ...mode, bindings: mode.bindings.map((binding, candidate) => candidate === bindingIndex ? { ...binding, target: { ...item.target, location: event.target.value as "form" | "json" | "query" } } : binding) })}><option value="json">JSON</option><option value="query">Query</option><option value="form">Form</option></select>
+            <input aria-label="目标字段" value={item.target.path} onChange={(event) => updateMode(modeIndex, { ...mode, bindings: mode.bindings.map((binding, candidate) => candidate === bindingIndex ? { ...binding, target: { ...item.target, path: event.target.value } } : binding) })} />
+            <button onClick={() => updateMode(modeIndex, { ...mode, bindings: mode.bindings.filter((_, candidate) => candidate !== bindingIndex) })} type="button">删除</button>
+          </div>)}</div></div>)}</section>
+          <section id="contract-section-6"><h2>任务、状态、结果与错误</h2><div className="model-contract-grid">
+            <label><span>创建方法</span><input disabled value={document.executionContract.create.method} /></label>
+            <label><span>创建相对路径</span><input value={document.executionContract.create.path} onChange={(event) => mutateDocument({ ...document, executionContract: { ...document.executionContract, create: { ...document.executionContract.create, path: event.target.value } } })} /></label>
+            <label><span>创建task ID字段</span><input value={document.executionContract.create.taskIdPath ?? ""} onChange={(event) => mutateDocument({ ...document, executionContract: { ...document.executionContract, create: { ...document.executionContract.create, ...(event.target.value ? { taskIdPath: event.target.value } : { taskIdPath: undefined }) } } })} /></label>
+            <label><span>查询相对路径</span><input disabled={!document.executionContract.poll} value={document.executionContract.poll?.path ?? "代码connector管理"} onChange={(event) => document.executionContract.poll && mutateDocument({ ...document, executionContract: { ...document.executionContract, poll: { ...document.executionContract.poll, path: event.target.value } } })} /></label>
+            <label><span>结果字段</span><input value={document.executionContract.result.resultPath} onChange={(event) => mutateDocument({ ...document, executionContract: { ...document.executionContract, result: { ...document.executionContract.result, resultPath: event.target.value } } })} /></label>
+            {document.executionContract.result.states && (["running", "succeeded", "failed"] as const).map((state) => <label key={state}><span>{state}状态（逗号分隔）</span><input value={document.executionContract.result.states![state].join(", ")} onChange={(event) => mutateDocument({ ...document, executionContract: { ...document.executionContract, result: { ...document.executionContract.result, states: { ...document.executionContract.result.states!, [state]: event.target.value.split(",").map((value) => value.trim()).filter(Boolean) } } } })} /></label>)}
+            <label><span>错误映射</span><input disabled value="代码安全分类管理；管理端不能注入错误逻辑" /></label>
+            <label><span>取消合同</span><input disabled value="未开放；需先交付正式connector" /></label>
+            <label><span>fallback合同</span><input disabled value="未开放；禁止管理端静默切换Provider" /></label>
+          </div></section>
+          <section id="contract-section-7"><h2>验证与发布</h2><p>受影响模板 {loaded.impact.templateIds.length} 个；不兼容 {loaded.impact.incompatibleTemplateIds.length} 个。保存、验证和发布本身均不调用 Provider。</p></section>
+          <section id="contract-section-8"><h2>版本历史</h2><div className="model-contract-history">{[...loaded.state.history].reverse().map((revision) => <article key={revision.revisionId}><div><strong>修订 {revision.revisionNumber}</strong><span>{new Date(revision.createdAt).toLocaleString()}</span></div><button disabled={revision.revisionId === loaded.state.active?.revisionId || busy === "rollback"} onClick={() => void action("rollback", { targetRevisionId: revision.revisionId })} type="button">回滚到此版本</button></article>)}</div></section>
+        </div>
+        <aside className="model-contract-summary" aria-label="合同实时摘要">
+          <h2>实时摘要</h2>
+          <dl><div><dt>运行方式</dt><dd>{document.runtime === "declarative" ? "声明式合同" : document.runtime === "blocked" ? "无证据，已阻断" : "代码专用connector"}</dd></div><div><dt>证据</dt><dd>{document.evidence}</dd></div><div><dt>模板影响</dt><dd>{loaded.impact.templateIds.length}</dd></div><div><dt>Provider调用</dt><dd>0</dd></div></dl>
+          <details><summary>脱敏只读预览</summary><pre>{JSON.stringify(validated ? loaded.state.draft?.validation?.preview : { status: "请先保存并完成本地验证" }, null, 2)}</pre></details>
+        </aside>
+      </div>
+      {(notice || error) && <p className="model-contract-feedback" data-status={error ? "error" : "success"} role={error ? "alert" : "status"}>{error || notice}</p>}
+      {conflict && <div className="model-contract-conflict" role="alert"><strong>草稿发生并发冲突，没有覆盖另一位管理员。</strong><button disabled={!conflictSnapshot} onClick={() => setShowConflictDiff((current) => !current)} type="button">{showConflictDiff ? "隐藏差异" : "查看差异"}</button><button onClick={() => void load()} type="button">重新加载</button><button onClick={() => void navigator.clipboard.writeText(JSON.stringify(document, null, 2))} type="button">复制未保存内容</button>{showConflictDiff && conflictSnapshot && <pre>{JSON.stringify({ serverDraftVersion: conflictSnapshot.state.draftVersion, serverDocument: conflictSnapshot.state.draft?.document ?? conflictSnapshot.suggestedDocument, unsavedDraftVersion: draftVersion, unsavedDocument: document }, null, 2)}</pre>}</div>}
+      <div className="model-contract-actions" aria-label="合同操作">
+        <button disabled={Boolean(busy) || (!dirty && Boolean(loaded.state.draft))} onClick={() => void action("draft", { document, expectedDraftVersion: draftVersion })} type="button">{busy === "draft" ? "保存中…" : "保存草稿"}</button>
+        <button disabled={dirty || !draftVersion || Boolean(busy)} onClick={() => void action("validate", { expectedDraftVersion: draftVersion })} type="button">本地验证｜不调用 Provider</button>
+        <button disabled={!validated || Boolean(busy)} onClick={() => {
+          if (window.confirm(`发布修订 ${draftVersion}？只影响新任务，运行中任务继续使用旧修订；受影响模板 ${loaded.impact.templateIds.length} 个；发布不会调用 Provider。`)) void action("publish", { expectedDraftVersion: draftVersion });
+        }} type="button">发布</button>
+        <button className="model-contract-warning" disabled={!loaded.state.history.length || Boolean(busy)} onClick={() => void action(loaded.state.revoked ? "restore" : "revoke", {})} type="button">{loaded.state.revoked ? "恢复新任务" : "停止新任务"}</button>
+      </div>
+    </main>
+  );
+}
+
 function AdminModels({ currentUser }: { currentUser: AuthUser }) {
   const [models, setModels] = useState<AdminModel[]>([]);
   const [providers, setProviders] = useState<
@@ -5424,6 +5730,15 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
                   {model.parameterSchema.fields.length
                     ? model.parameterSchema.fields.map((field) => field.label).join("、")
                     : "无"}
+                  <br />
+                  合同：{model.contract?.status === "published"
+                    ? `已发布修订 ${model.contract.activeRevision}`
+                    : model.contract?.status === "revoked"
+                      ? "已停止新任务"
+                      : model.contract?.status === "draft"
+                        ? "草稿"
+                        : "尚未建立"}
+                  {model.contract?.evidence ? ` · ${model.contract.evidence}` : ""}
                   {model.archived && model.references && (
                     <>
                       <br />
@@ -5452,6 +5767,15 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
               <div className="model-list-actions">
                 {model.archived ? (
                   <>
+                    <button
+                      onClick={() => window.location.href = settingsDestination(
+                        `/admin/models/${model.id}/contract`,
+                        currentUser.id,
+                      )}
+                      type="button"
+                    >
+                      合同工作台
+                    </button>
                     <button
                       disabled={lifecycleBusyId === model.id}
                       onClick={() =>
@@ -7755,6 +8079,25 @@ function AuthenticatedApplication({
         )}
       >
         <AdminModels currentUser={status.user} />
+      </AdminRouteGuard>
+    );
+  }
+  const modelContractRoute = pathname.match(
+    /^\/admin\/models\/([a-z0-9-]{3,80})\/contract$/i,
+  );
+  if (modelContractRoute) {
+    return (
+      <AdminRouteGuard
+        allowed={hasClientPermission(
+          status.permissions,
+          "manage_models",
+          status.user.role,
+        )}
+      >
+        <AdminModelContractWorkbench
+          currentUser={status.user}
+          modelId={modelContractRoute[1]}
+        />
       </AdminRouteGuard>
     );
   }

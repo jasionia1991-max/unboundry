@@ -47,6 +47,7 @@ export type PublicTemplateCompatibilityAudit = {
   status: PublicTemplateCompatibilityStatus;
 };
 
+
 const generationKinds = new Set<GenerationKind>([
   "audio",
   "image",
@@ -274,12 +275,13 @@ function nodeParameterInput(
 export function auditPublicTemplateCompatibility(
   store: DatabaseSync,
   graph: TemplateGraph,
+  modelContracts = publishedTemplateModelContracts(store),
 ): PublicTemplateCompatibilityAudit {
   const structural = structureIssues(graph);
   if (structural.length > 0) return { issues: structural, status: "INVALID" };
 
   const issues: PublicTemplateCompatibilityIssue[] = [];
-  const models = publishedTemplateModelContracts(store);
+  const models = modelContracts;
   const hypotheticalNodes = hypotheticalReadyNodes(graph);
   for (const node of graph.nodes) {
     const kind = generationKind(node.type);

@@ -1,9 +1,41 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产运行`v0.6.47 / schema41`且服务健康；项目默认Node25/npm11已发布，生产运行时仍为Node22/npm10。v0.6.46的INC-GEN-015 `USER_PASS`历史事实保持不变，v0.6.47待用户实页复验。
+## MODEL-CONTRACT-001 模型执行合同治理（REVIEW GO / FORMAL FULL NEXT）
+
+- [x] 从`origin/main@7b475416a77cdee8d7b04ce965600551aa16858c`建立干净隔离worktree并核对生产v0.6.47/schema41、工具链、tag/Release与4173监听身份。
+- [x] R0盘点四类节点、图片工具、11个生产已发布模型、6个Provider profile、connector、输入、task/poll/result/error、模板与恢复路径；详见`spec/MODEL_CONTRACT_001_R0_INVENTORY_2026-08-26.md`。
+- [x] R0期间Provider POST/控制面/Generation/OSS/费用均为0；受保护JSON未读取、未修改、未暂存。
+- [x] R1合同底座：有限compiler、不可变revision、原子发布、task快照、CAS、审计、回滚与停止/恢复新任务。
+- [x] R2独立管理工作台：八区块、四视口、草稿/验证/预览/影响/发布/历史/回滚/停止与冲突恢复。
+- [x] R3～R6分族迁移与fake/shadow/兼容/恢复/安全验证；GK为唯一声明式EXACT，其他有专用代码的模型为SPECIALIZED，kwvideo保持UNKNOWN并以blocked快照阻断，不伪造。
+- [x] 生产恢复副本bootstrap 11/11、第二次幂等0新增、integrity/FK/数据计数通过；Provider/Generation/OSS/费用0。
+- [x] 首轮独立只读终审为`P0=3 / P1=8 / NO-GO`；已完成声明式全输入消费、runtime/model锁定、unknown outcome禁止重提、事务重读、revoke持久、角色身份、schema/secret/UI等全部对应修复。
+- [x] 修复后默认Node25 build通过；受影响组合5 specs `40/40 PASS`；补齐声明式参数全消费和文档后最小复验m102+m38 `22/22 PASS`，source/snapshot `2893682f…f3013`，4173不变；这些不是full。
+- [ ] R7唯一下一动作：同一独立审查线程复核；P0/P1清零并GO后提交候选，执行一次正式safe full，再进入GitHub与生产发布。
+
+> **当前状态**：生产仍运行`v0.6.47 / schema41`且服务健康；MODEL-CONTRACT-001本地`v0.6.48 / schema41`候选已完成R0-R6和两轮NO-GO修复，同一审查线程第三轮`P0=0 / P1=0 / GO`。下一步冻结提交并运行唯一full；GitHub、生产发布尚未执行；成片视觉严格为`USER_RECHECK`。
 
 更新时间：2026-08-26
-状态：`PRODUCTION_V0_6_47_TECHNICAL_PASS / USER_RECHECK`。
+状态：`PRODUCTION_V0_6_47_USER_PASS / MODEL_CONTRACT_001_FIRST_REVIEW_NO_GO_FIXED / TARGETED_AUTO_PASS / SAME_REVIEWER_RECHECK_NEXT`。
+
+### 2026-08-26 模型执行合同治理（MODEL-CONTRACT-001，R0-R6 IMPLEMENTED）
+
+- [x] 用户确认最终方案：管理员可维护平台已支持范围内的参数、模式、角色/数量、绑定、任务/结果合同；新协议/鉴权/模态及安全/计费/事务边界仍由代码控制
+- [x] 冻结三层架构与原子`ModelReleaseRevision`、已受理任务冻结、只影响新任务的回滚和紧急停止合同
+- [x] 冻结单输入单角色、多角色能力、多素材数量/顺序、互斥模式和禁止静默截断/猜测规则
+- [x] 冻结GK-video-3试点：文生视频；或恰好1张`first-frame`图片→`params.images` URL数组；`POST /v1/media/generate`、`task_id`、`GET /v1/media/status`、`result_url`
+- [x] 冻结独立管理员工作台、草稿CAS、本地零Provider验证、发布影响确认、版本历史、UI/UX与可访问性门
+- [x] 冻结旧Canvas/枚举/角色/模板兼容、通用单主结果与既有专用多结果不回归边界
+- [x] 冻结R0～R7迁移、fake Provider矩阵、风险驱动测试、独立终审与发布授权分离
+- [x] 建立权威主方案、独立验收矩阵、实时checkpoint和未来可复制Goal
+- [x] 文档治理safe m38首轮`14/15`只暴露CURRENT_STATE机器句式；精确修正并同步三份渐进治理标记后最小复验`15/15 PASS`，source/snapshot`8db54a16…e9e91`、4173不变；未运行full
+- [x] schema41内完成合同compiler、不可变release revision、原子能力+执行发布、task快照、GK精确声明式运行时与专用connector保留
+- [x] 完成独立后台工作台、OpenAPI、CAS、模板影响、本地零Provider验证、脱敏预览、版本历史、回滚和停止/恢复新任务
+- [x] safe定向3 specs/18项、21 specs/286项、hash加固后2 specs/21项、版本治理3 specs/60项全部通过；默认Node25 build/architecture通过
+- [x] 首轮独立终审`P0=3 / P1=8 / NO-GO`，对应修复后的受影响组合5 specs `40/40 PASS`，最终最小复验2 specs `22/22 PASS`
+- [ ] 同一审查线程复核、唯一safe full、GitHub和生产发布尚未执行；真实Provider/Generation/OSS/费用0，用户成片质量为`USER_RECHECK`
+
+权威方案：`spec/MODEL_CONTRACT_001_MODEL_EXECUTION_CONTRACT_GOVERNANCE_PLAN_2026-08-26.md`；矩阵：`spec/MODEL_CONTRACT_001_ACCEPTANCE_MATRIX_2026-08-26.md`；断点：`spec/MODEL_CONTRACT_001_CHECKPOINT.md`；Goal：`spec/MODEL_CONTRACT_001_GOAL_PROMPT.md`。当前唯一下一动作是同一独立审查线程对修复候选复核。
 
 ### 2026-08-26 治理与默认工具链同步（v0.6.47已技术发布）
 
@@ -18,7 +50,7 @@
 - [x] PR #110、PR/main Quality CI、squash merge `24541b3`、不可移动tag/GitHub Release v0.6.47全部通过
 - [x] fresh tag archive/build、最终冻结备份`v0.6.47-cutover-final2-20j2R3`、恢复/schema/integrity/FK/数据门、原子切换、公网/回环/inventory/5资源和60秒稳定门通过；真实Provider/Generation/OSS/费用0
 - [x] 生产回执收口的safe m38先后仅暴露当前治理标记复合后缀与三份渐进式模块化文档仍停在v0.6.46；统一为`CURRENT_V0_6_47_USER_RECHECK`后`15/15 PASS`，source/snapshot`83cf1676…7afe`、4173不变，未重复业务spec或唯一full
-- [ ] 用户打开`https://canvas.mymy.ltd`复验普通项目页与关键画布入口；明确回复前不得写`USER_PASS`
+- [x] 用户明确回复`v0.6.47 验收通过`；本确认只收口v0.6.47发布验收，不代表MODEL-CONTRACT-001实现或GK-video-3成片质量通过
 
 ### 2026-08-26 老画布孤立生成态与终态结果自动收口（INC-GEN-015，TARGETED_AUTO_PASS）
 

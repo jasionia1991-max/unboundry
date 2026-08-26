@@ -43,6 +43,24 @@ import {
   generationCapabilityKinds,
   type GenerationCapabilityKind,
 } from "../types/nodeVocabulary";
+import {
+  ModelContractConflictError,
+  modelContractsRequired,
+  modelContractState,
+  publishModelContract,
+  rollbackModelContract,
+  saveModelContractDraft,
+  setModelContractRevoked,
+  validateModelContractDraft,
+} from "./modelReleaseRevisionStore";
+import { modelReleaseDocumentForId } from "./modelReleaseDefaults";
+import type {
+  ModelReleaseDocument,
+  ModelReleaseRevision,
+} from "../types/modelReleaseRevisions";
+import {
+  publishedTemplateIdsUsingModel,
+} from "./templateContractQueries";
 
 type Capability = GenerationCapabilityKind;
 type ModelStatus = "disabled" | "draft" | "published";
@@ -367,6 +385,7 @@ function adminModel(
     references: ModelReferenceCounts;
   },
 ) {
+  const contract = modelContractState(db(), row.id);
   return {
     archived: Boolean(row.archived_at),
     archivedAt: row.archived_at ?? undefined,
@@ -395,8 +414,137 @@ function adminModel(
     everPublished: Boolean(row.published_at),
     sortOrder: row.sort_order,
     status: row.status,
+    contract: {
+      activeRevision: contract.active?.revisionNumber,
+      evidence: contract.active?.document.evidence,
+      revoked: contract.revoked,
+      status: contract.revoked
+        ? "revoked"
+        : contract.active
+          ? "published"
+          : contract.draft
+            ? "draft"
+            : "missing",
+    },
     ...lifecycle,
   };
+}
+
+function modelTemplateImpact(
+  store: DatabaseSync,
+  modelId: string,
+  proposedSchema?: ModelParameterSchema,
+) {
+  const templateIds = publishedTemplateIdsUsingModel(store, modelId);
+  const currentModels = publishedTemplateModelContracts(store);
+  const currentSchema = currentModels.find((model) => model.id === modelId)
+    ?.parameterSchema;
+  const changed = Boolean(
+    proposedSchema &&
+    JSON.stringify(proposedSchema) !== JSON.stringify(currentSchema),
+  );
+  return {
+    // Model Catalog cannot silently rewrite published template graphs. Until a
+    // template-specific proposal is versioned, a capability-schema change is
+    // conservatively incompatible with every published template using it.
+    incompatibleTemplateIds: changed ? templateIds : [],
+    preexistingIncompatibleTemplateIds: [] as string[],
+    templateIds,
+  };
+}
+
+function assertReleaseDocumentMatchesModel(
+  document: ModelReleaseDocument,
+  row: ModelRow,
+) {
+  if (
+    document.modelId !== row.id ||
+    document.capability !== row.capability ||
+    document.providerModelId !== row.provider_model_id ||
+    document.providerProfileId !== row.provider_profile_id ||
+    document.providerProtocol !== row.provider_protocol
+  ) throw new Error("发布合同与模型、Provider或能力身份不一致");
+  const fallback = knownModelParameterSchema({
+    capability: row.capability,
+    providerDriver: row.provider_driver,
+    providerModelId: row.provider_model_id,
+  });
+  const exactSchema = validateParameterSchemaConstraints(
+    cleanParameterSchema(row.capability, document.capabilitySchema, fallback),
+    providerParameterSchema({
+      capability: row.capability,
+      providerDriver: row.provider_driver,
+      providerModelId: row.provider_model_id,
+    }),
+  );
+  if (JSON.stringify(exactSchema) !== JSON.stringify(document.capabilitySchema)) {
+    throw new Error("能力参数schema含未知字段或违反Provider约束");
+  }
+}
+
+function activateModelRelease(
+  store: DatabaseSync,
+  row: ModelRow,
+  revision: ModelReleaseRevision,
+) {
+  assertReleaseDocumentMatchesModel(revision.document, row);
+  const timestamp = new Date().toISOString();
+  const updated = store.prepare(`
+    UPDATE model_profiles
+    SET
+      default_parameters = ?,
+      status = 'published',
+      published_at = COALESCE(published_at, ?),
+      updated_at = ?
+    WHERE id = ? AND archived_at IS NULL
+  `).run(
+    JSON.stringify(revision.document.capabilitySchema),
+    timestamp,
+    timestamp,
+    row.id,
+  );
+  if (updated.changes !== 1) throw new Error("模型发布状态已变化，发布已阻断");
+  const binding = store.prepare(`
+    UPDATE node_model_bindings
+    SET enabled = 1, updated_at = ?
+    WHERE node_type = ? AND model_id = ?
+  `).run(timestamp, row.capability, row.id);
+  if (binding.changes !== 1) throw new Error("模型能力绑定不存在，发布已阻断");
+}
+
+export function publishedModelReleaseSeeds(store: DatabaseSync) {
+  return store.prepare(`
+    SELECT
+      models.id,
+      models.capability,
+      models.default_parameters,
+      models.provider_model_id,
+      models.provider_profile_id,
+      models.provider_protocol,
+      providers.driver AS provider_driver
+    FROM model_profiles AS models
+    JOIN provider_profiles AS providers
+      ON providers.id = models.provider_profile_id
+    WHERE models.status = 'published' AND models.archived_at IS NULL
+    ORDER BY models.id
+  `).all() as Array<{
+    capability: GenerationCapabilityKind;
+    default_parameters: string;
+    id: string;
+    provider_driver: string;
+    provider_model_id: string;
+    provider_profile_id: string;
+    provider_protocol: ProviderProtocol;
+  }>;
+}
+
+function contractError(response: ServerResponse, error: unknown) {
+  const conflict = error instanceof ModelContractConflictError;
+  json(response, conflict ? 409 : 400, {
+    code: conflict ? error.code : "MODEL_CONTRACT_INVALID",
+    error: error instanceof Error ? error.message : "模型合同操作失败",
+    paidProviderRequests: 0,
+  });
 }
 
 function modelRows(store: DatabaseSync, ownerId: string) {
@@ -569,6 +717,16 @@ async function modelRuntimeAvailability(rows: ModelRow[], ownerId: string) {
           providerState.reason === "account-credential-invalid"
         ),
       );
+      const contract = modelContractsRequired(db())
+        ? modelContractState(db(), row.id)
+        : undefined;
+      const contractUnavailable = Boolean(
+        contract && (
+          !contract.active ||
+          contract.active.document.runtime === "blocked" ||
+          contract.active.document.evidence === "UNKNOWN"
+        ),
+      );
       return [
         row.id,
         evaluateModelRuntimeAvailability({
@@ -583,7 +741,7 @@ async function modelRuntimeAvailability(rows: ModelRow[], ownerId: string) {
         capability: row.capability,
         costCurrency: row.cost_currency,
         emergencyStop: safety.emergencyStop,
-        globalEnabled: safety.globalEnabled,
+        globalEnabled: safety.globalEnabled && !contractUnavailable,
         latestCapabilitySuccessAt:
           row.latest_capability_success_at ?? undefined,
         latestProviderAttemptAt:
@@ -943,6 +1101,152 @@ export async function adminModelsApi(
     "",
   );
 
+  const contractPath = path.match(
+    /^([a-z0-9-]{3,80})\/contract(?:\/(draft|validate|publish|rollback|revoke|restore))?$/i,
+  );
+  if (contractPath) {
+    const [, modelId, action] = contractPath;
+    const row = modelRows(store, identity.userId).find((item) => item.id === modelId);
+    if (!row) {
+      json(response, 404, { error: "模型不存在", paidProviderRequests: 0 });
+      return;
+    }
+    if (request.method === "GET" && !action) {
+      const state = modelContractState(store, modelId);
+      json(response, 200, {
+        impact: await modelTemplateImpact(
+          store,
+          modelId,
+          state.draft?.document.capabilitySchema,
+        ),
+        parameterConstraints: providerParameterSchema({
+          capability: row.capability,
+          providerDriver: row.provider_driver,
+          providerModelId: row.provider_model_id,
+        }),
+        paidProviderRequests: 0,
+        state,
+        suggestedDocument: modelReleaseDocumentForId({
+          capability: row.capability,
+          capabilitySchema: parameterSchema(row),
+          modelId: row.id,
+          providerDriver: row.provider_driver,
+          providerModelId: row.provider_model_id,
+          providerProfileId: row.provider_profile_id,
+          providerProtocol: row.provider_protocol,
+        }),
+      });
+      return;
+    }
+    if (request.method !== "POST" || !action) {
+      response.setHeader("Allow", "GET, POST");
+      json(response, 405, { error: "Method not allowed" });
+      return;
+    }
+    try {
+      assertAccountMutationAllowed(store, identity.userId);
+      const body = await readJsonBody<{
+        document?: ModelReleaseDocument;
+        expectedDraftVersion?: number;
+        targetRevisionId?: string;
+      }>(request, 256_000);
+      if (action === "draft") {
+        if (!body.document || body.document.modelId !== modelId) {
+          throw new Error("草稿模型身份不一致");
+        }
+        assertReleaseDocumentMatchesModel(body.document, row);
+        const draft = saveModelContractDraft(
+          store,
+          identity.userId,
+          body.document,
+          Number(body.expectedDraftVersion ?? 0),
+        );
+        json(response, 200, { draft, paidProviderRequests: 0 });
+        return;
+      }
+      if (action === "validate") {
+        const pending = modelContractState(store, modelId).draft;
+        const draft = validateModelContractDraft(
+          store,
+          identity.userId,
+          modelId,
+          Number(body.expectedDraftVersion),
+          {
+            impact: await modelTemplateImpact(
+              store,
+              modelId,
+              pending?.document.capabilitySchema,
+            ),
+          },
+        );
+        json(response, 200, { draft, paidProviderRequests: 0 });
+        return;
+      }
+      if (action === "publish") {
+        const revision = publishModelContract(
+          store,
+          identity.userId,
+          modelId,
+          Number(body.expectedDraftVersion),
+          (candidate) => {
+            const current = modelRows(store, identity.userId)
+              .find((item) => item.id === modelId);
+            if (!current) throw new Error("模型发布状态已变化，发布已阻断");
+            assertReleaseDocumentMatchesModel(candidate.document, current);
+            const impact = modelTemplateImpact(
+              store,
+              modelId,
+              candidate.document.capabilitySchema,
+            );
+            if (impact.incompatibleTemplateIds.length) {
+              throw new Error("发布时模板影响已变化，发布已阻断");
+            }
+            activateModelRelease(store, current, candidate);
+          },
+        );
+        json(response, 200, { paidProviderRequests: 0, revision });
+        return;
+      }
+      if (action === "rollback") {
+        if (!body.targetRevisionId) throw new Error("请选择回滚版本");
+        const revision = rollbackModelContract(
+          store,
+          identity.userId,
+          modelId,
+          body.targetRevisionId,
+          (candidate) => {
+            const current = modelRows(store, identity.userId)
+              .find((item) => item.id === modelId);
+            if (!current) throw new Error("模型发布状态已变化，回滚已阻断");
+            assertReleaseDocumentMatchesModel(candidate.document, current);
+            const impact = modelTemplateImpact(
+              store,
+              modelId,
+              candidate.document.capabilitySchema,
+            );
+            if (impact.incompatibleTemplateIds.length) {
+              throw new Error("回滚时模板影响已变化，回滚已阻断");
+            }
+            activateModelRelease(store, current, candidate);
+          },
+        );
+        json(response, 200, { paidProviderRequests: 0, revision });
+        return;
+      }
+      const state = setModelContractRevoked(
+        store,
+        identity.userId,
+        modelId,
+        action === "revoke",
+      );
+      json(response, 200, { paidProviderRequests: 0, state });
+    } catch (error) {
+      if (respondAccountMutationConflict(response, error)) return;
+      contractError(response, error);
+    }
+    return;
+  }
+
   if (request.method === "GET" && !path) {
     const rows = modelRows(store, identity.userId);
     const availability = await modelRuntimeAvailability(
@@ -1235,6 +1539,9 @@ export async function adminModelsApi(
         schema,
         status: input.status,
       });
+      if (input.status === "published" && modelContractsRequired(store)) {
+        throw new Error("请先以草稿创建模型，再在合同工作台完成验证与发布");
+      }
       store.exec("BEGIN IMMEDIATE");
       try {
         assertAccountMutationAllowed(store, identity.userId);
@@ -1407,6 +1714,23 @@ export async function adminModelsApi(
         schema: validatedSchema,
         status: input.status,
       });
+      if (input.status === "published" && modelContractsRequired(store)) {
+        const active = modelContractState(store, path).active;
+        if (
+          !active ||
+          active.document.providerProfileId !== input.providerProfileId ||
+          active.document.providerModelId !== input.providerModelId ||
+          active.document.providerProtocol !== input.providerProtocol ||
+          JSON.stringify(active.document.capabilitySchema) !==
+            JSON.stringify(validatedSchema)
+        ) {
+          json(response, 409, {
+            code: "MODEL_CONTRACT_RELEASE_REQUIRED",
+            error: "模型能力或Provider合同发生变化，请在合同工作台验证并发布新修订",
+          });
+          return;
+        }
+      }
       store.exec("BEGIN IMMEDIATE");
       try {
         assertAccountMutationAllowed(store, identity.userId);

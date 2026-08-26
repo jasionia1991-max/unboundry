@@ -6,9 +6,11 @@
 
 新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是2026-08-26的权威现状、产品合同和用户验收边界。下面各节是历史增量，出现「当前」时只代表该时点。
 
-2026-08-26当前接手事实：生产为v0.6.47/schema41，状态`PRODUCTION_V0_6_47_TECHNICAL_PASS / USER_RECHECK`；`origin/main = 24541b3…d20e`，tag/Release v0.6.47不可移动。生产release`/opt/unboundry/releases/v0.6.47-governance-node25-20260826`，备份`/var/lib/unboundry-rollbacks/v0.6.47-cutover-final2-20j2R3`，回执`spec/V0_6_47_PRODUCTION_RECEIPT_2026-08-26.json`。项目普通shell默认Node `25.9.0` / npm `11.12.1`，线上运行时仍为Node `22.23.2` / npm `10.9.8`。旧`/Users/mymy/Documents/unboundry/app`仍不得施工或自动清理。
+2026-08-26当前接手事实：生产为v0.6.47/schema41，用户已明确回复`v0.6.47 验收通过`，状态`PRODUCTION_V0_6_47_USER_PASS / USER_PASS`；`origin/main = 7b475416…658c`，tree`eb0882df…dbc`，tag/Release v0.6.47不可移动。生产release`/opt/unboundry/releases/v0.6.47-governance-node25-20260826`，备份`/var/lib/unboundry-rollbacks/v0.6.47-cutover-final2-20j2R3`，原技术回执`spec/V0_6_47_PRODUCTION_RECEIPT_2026-08-26.json`保留生成时状态。项目普通shell默认Node `25.9.0` / npm `11.12.1`，线上运行时仍为Node `22.23.2` / npm `10.9.8`。旧`/Users/mymy/Documents/unboundry/app`仍不得施工或自动清理。
 
-v0.6.47一次性授权已执行并消费；候选唯一full、GitHub、备份恢复、fresh build、原子切换与生产技术门已全部通过。真实Provider/Generation/OSS/费用0，下一唯一动作是用户打开生产实页复验；未明确回复前不得写`USER_PASS`或发起新发布。
+v0.6.47一次性授权已执行并消费；候选唯一full、GitHub、备份恢复、fresh build、原子切换、生产技术门和用户验收均已收口。真实Provider/Generation/OSS/费用0；后续新代码、Provider或发布需要新授权。
+
+当前未实施任务为MODEL-CONTRACT-001。用户已确认最终方案，四份权威文档为主方案、独立验收矩阵、实时checkpoint和未来Goal。状态严格为`D0_DOCUMENTATION_COMPLETE / USER_CONFIRMED / IMPLEMENTATION_NOT_STARTED / RELEASE_NOT_AUTHORIZED`；本轮只改文档，没有修复GK-video-3。接手先读`spec/MODEL_CONTRACT_001_CHECKPOINT.md`，未来只有用户明确启动新Goal后，才从R0全量只读盘点与官方合同核验开始。
 
 ## 历史发布候选：INC-UI-011 节点排序菜单层级修复（v0.6.43 / 本地USER_PASS）
 

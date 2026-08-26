@@ -112,6 +112,11 @@ import {
   type RelayTransientMediaOutput,
 } from "./relayProviderAdapters";
 import {
+  compileModelContractRequest,
+  compileModelExecutionContract,
+} from "./modelExecutionContractCompiler";
+import { assertModelReleaseRevisionIntegrity } from "./modelReleaseRevisionStore";
+import {
   relayMediaModelContract,
   relayMediaPollingDecision,
   relayMediaSubmissionAction,
@@ -499,7 +504,8 @@ function assertRelayProfile(
 function requireTaskProviderSnapshot(
   task: Pick<
     GenerationTask,
-    "credentialRevision" | "modelConfiguration" | "providerProfileId"
+    "credentialRevision" | "modelConfiguration" | "providerModelId" |
+      "providerProfileId"
   >,
   profile: ProviderProfile,
   observedCredentialRevision?: number,
@@ -508,6 +514,28 @@ function requireTaskProviderSnapshot(
   const expectedVersion = task.modelConfiguration.providerConfigurationVersion;
   const expectedProfileId = task.providerProfileId ??
     task.modelConfiguration.providerProfileId;
+  const release = task.modelConfiguration.modelReleaseRevision;
+  if (release !== undefined) {
+    try {
+      assertModelReleaseRevisionIntegrity(release);
+    } catch {
+      throw new ProviderGenerationConfigurationError(
+        "PROVIDER_CONFIGURATION_MISMATCH",
+        "模型合同快照校验失败，已阻止请求",
+      );
+    }
+    if (
+      release.document.modelId !== task.modelConfiguration.modelId ||
+      release.document.providerProfileId !== expectedProfileId ||
+      release.document.providerModelId !== task.providerModelId ||
+      release.document.providerProtocol !== task.modelConfiguration.providerProtocol
+    ) {
+      throw new ProviderGenerationConfigurationError(
+        "PROVIDER_CONFIGURATION_MISMATCH",
+        "模型合同与任务快照不一致，已阻止请求",
+      );
+    }
+  }
   if (
     (typeof expectedProfileId === "string" && expectedProfileId !== profile.id) ||
     (typeof expectedDriver === "string" && expectedDriver !== profile.driver) ||
@@ -740,7 +768,8 @@ async function withProviderRequestLease<T>(input: {
   ) => Promise<T>;
   task?: Pick<
     GenerationTask,
-    "credentialRevision" | "modelConfiguration" | "providerProfileId"
+    "credentialRevision" | "modelConfiguration" | "providerModelId" |
+      "providerProfileId"
   >;
 }) {
   const lease = await acquireProviderGenerationRequestLease(
@@ -785,7 +814,8 @@ async function withProviderRequestLease<T>(input: {
 async function taskProviderSnapshotProfile(
   task: Pick<
     GenerationTask,
-    "credentialRevision" | "modelConfiguration" | "providerProfileId"
+    "credentialRevision" | "modelConfiguration" | "providerModelId" |
+      "providerProfileId"
   >,
   ownerId: string,
 ) {
@@ -3106,6 +3136,72 @@ export async function relayMediaParametersForTask(
     !task.ownerId ||
     (task.kind !== "audio" && task.kind !== "image" && task.kind !== "video")
   ) throw new RelayProviderError("FORMAT");
+  const release = task.modelConfiguration.modelReleaseRevision;
+  const releaseDocument = release && typeof release === "object" &&
+      !Array.isArray(release)
+    ? (release as Record<string, unknown>).document
+    : undefined;
+  if (releaseDocument && typeof releaseDocument === "object" &&
+      !Array.isArray(releaseDocument) &&
+      (releaseDocument as Record<string, unknown>).runtime === "declarative") {
+    const document = releaseDocument as Record<string, unknown>;
+    const compiled = compileModelExecutionContract(document.executionContract);
+    if (compiled.contract.connectorFamily !== "generic-async-media") {
+      throw new RelayProviderError("FORMAT");
+    }
+    const rawInputs = task.parameters.inputs ?? [];
+    if (!Array.isArray(rawInputs) || rawInputs.length > 32) {
+      throw new RelayProviderError("FORMAT");
+    }
+    const runtimeInputs = [];
+    for (const raw of rawInputs) {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        throw new RelayProviderError("FORMAT");
+      }
+      const item = raw as Partial<NodeInputSnapshot>;
+      if (
+        typeof item.role !== "string" ||
+        !Number.isSafeInteger(item.order) || Number(item.order) < 1 ||
+        (item.kind !== "audio" && item.kind !== "image" &&
+          item.kind !== "text" && item.kind !== "video")
+      ) throw new RelayProviderError("FORMAT");
+      const value = item.kind === "text"
+        ? task.prompt
+        : typeof item.assetId === "string"
+          ? await mediaUrlForOwner({
+              assetId: item.assetId,
+              kind: item.kind,
+              ownerId: task.ownerId,
+            }, {
+              rules: referenceMediaRulesForTask(task) ?? genericReferenceMediaRules,
+            })
+          : undefined;
+      if (typeof value !== "string" || !value.trim()) {
+        throw new RelayProviderError("FORMAT");
+      }
+      runtimeInputs.push({
+        kind: item.kind,
+        order: Number(item.order),
+        roleId: item.role,
+        value,
+      });
+    }
+    const request = compileModelContractRequest(compiled.contract, {
+      inputs: runtimeInputs,
+      modelId: task.providerModelId ?? "",
+      parameters: task.parameters,
+      prompt: task.prompt,
+    });
+    if (
+      Object.keys(request.body).some((key) => !["model", "params", "prompt"].includes(key)) ||
+      request.body.model !== task.providerModelId ||
+      request.body.prompt !== task.prompt ||
+      (request.body.params !== undefined &&
+        (typeof request.body.params !== "object" ||
+          Array.isArray(request.body.params)))
+    ) throw new RelayProviderError("FORMAT");
+    return (request.body.params ?? {}) as Record<string, RelayMediaParamValue>;
+  }
   const modelContract = relayMediaModelContract(task.providerModelId);
   if (modelContract) {
     if (modelContract.capability !== task.kind) {
@@ -3153,6 +3249,7 @@ export async function relayMediaParametersForTask(
         assetId: input.assetId,
         kind: input.kind,
         order: Number(input.order),
+        role: input.role,
       };
     }).filter((input): input is NonNullable<typeof input> => Boolean(input))
       .sort((left, right) => left.order - right.order);
@@ -3170,10 +3267,22 @@ export async function relayMediaParametersForTask(
           rules: referenceMediaRulesForTask(task) ?? genericReferenceMediaRules,
         }));
       }
-      if (modelContract.referencePolicy.parameterName !== "images") {
-        throw new RelayProviderError("FORMAT");
+    for (let index = 0; index < mediaInputs.length; index += 1) {
+      const input = mediaInputs[index];
+      const name = modelContract.referencePolicy.roleParameters?.[input.role];
+      if (!name) throw new RelayProviderError("FORMAT");
+      if (name === "images") {
+        const existing = parameters.images;
+        parameters.images = existing === undefined
+          ? [urls[index]]
+          : Array.isArray(existing)
+            ? [...existing, urls[index]]
+            : [existing, urls[index]];
+      } else {
+        if (parameters[name] !== undefined) throw new RelayProviderError("FORMAT");
+        parameters[name] = urls[index];
       }
-      parameters.images = urls;
+    }
     }
     return parameters;
   }
@@ -3549,6 +3658,21 @@ function mediaProviderAbsoluteDeadline(task: GenerationTask) {
   return new Date(origin + durationMs).toISOString();
 }
 
+function declarativeModelExecutionContract(task: GenerationTask) {
+  const revision = task.modelConfiguration.modelReleaseRevision;
+  if (!revision || typeof revision !== "object" || Array.isArray(revision)) {
+    return undefined;
+  }
+  const document = (revision as Record<string, unknown>).document;
+  if (!document || typeof document !== "object" || Array.isArray(document)) {
+    return undefined;
+  }
+  const releaseDocument = document as Record<string, unknown>;
+  return releaseDocument.runtime === "declarative"
+    ? releaseDocument.executionContract
+    : undefined;
+}
+
 function mediaProviderExecution(input: {
   absoluteDeadline?: string;
   beforeProviderRequest?: () => void;
@@ -3797,6 +3921,8 @@ async function autoRetryRelayTaskOnce(taskId: string) {
     ) {
       return false;
     }
+    const retryModelReleaseRevision = taskStore()
+      .activeModelContractRevision(retry.model.id);
     const snapshot: GenerationPaidRetrySnapshot = {
       credentialRevision: Number(runtime.credentialVersion),
       modelConfiguration: {
@@ -3810,6 +3936,9 @@ async function autoRetryRelayTaskOnce(taskId: string) {
         providerModelId: retry.model.provider_model_id,
         providerProtocol: retry.model.provider_protocol ?? "native",
         providerProfileId: retry.model.provider_profile_id,
+        ...(retryModelReleaseRevision
+          ? { modelReleaseRevision: retryModelReleaseRevision }
+          : {}),
       },
       providerModelId: retry.model.provider_model_id,
       providerProfileId: retry.model.provider_profile_id,
@@ -3911,6 +4040,9 @@ async function executeRelayMediaTask(
                   taskStore().recordProviderAttempt(taskId),
                 ),
                 fetcher: leasedFetch,
+                metadata: {
+                  modelExecutionContract: declarativeModelExecutionContract(running),
+                },
                 profile: currentProfile,
                 signal: controller.signal,
                 task: running,
@@ -3934,7 +4066,7 @@ async function executeRelayMediaTask(
         if (
           error instanceof RelayProviderError &&
           error.providerTaskMayStillRun &&
-          modelContract
+          (modelContract || declarativeModelExecutionContract(running))
         ) {
           taskStore().transition(taskId, "failed", {
             code: "PROVIDER_REQUEST_FAILED",
@@ -4001,6 +4133,7 @@ async function executeRelayMediaTask(
                 fetcher: leasedFetch,
                 metadata: {
                   kind,
+                  modelExecutionContract: declarativeModelExecutionContract(running),
                   requireResultType: Boolean(modelContract),
                 },
                 profile: currentProfile,

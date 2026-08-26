@@ -14,7 +14,9 @@ import {
   type MurekaAudioTaskStatus,
 } from "./murekaAudioProvider";
 import {
+  pollContractRelayMediaTask,
   pollRelayMediaTask,
+  submitContractRelayMedia,
   submitRelayMedia,
   type RelayMediaParamValue,
   type RelayMediaTaskSnapshot,
@@ -120,21 +122,34 @@ export const relayMediaGenerationProvider: MediaGenerationProvider = {
     if (kind !== "audio" && kind !== "image" && kind !== "video") {
       throw new MediaGenerationProviderError("FORMAT", "媒体任务类型无效", true);
     }
-    const result = await pollRelayMediaTask(
-      relayConnection(execution),
-      {
-        capability: kind,
-        externalTaskId: providerTaskId,
-        providerProtocol: "media-generate",
-        requireResultType: execution.metadata?.requireResultType === true,
-      },
-      {
-        beforeProviderRequest: execution.beforeProviderRequest,
-        fetcher: execution.fetcher,
-        signal: execution.signal,
-        usePinnedTransport: true,
-      },
-    );
+    const transport = {
+      beforeProviderRequest: execution.beforeProviderRequest,
+      fetcher: execution.fetcher,
+      signal: execution.signal,
+      usePinnedTransport: true,
+    } as const;
+    const contract = execution.metadata?.modelExecutionContract;
+    const result = contract
+      ? await pollContractRelayMediaTask(
+          relayConnection(execution),
+          {
+            capability: kind,
+            externalTaskId: providerTaskId,
+            providerProtocol: "media-generate",
+          },
+          contract,
+          transport,
+        )
+      : await pollRelayMediaTask(
+          relayConnection(execution),
+          {
+            capability: kind,
+            externalTaskId: providerTaskId,
+            providerProtocol: "media-generate",
+            requireResultType: execution.metadata?.requireResultType === true,
+          },
+          transport,
+        );
     return relaySnapshot(providerTaskId, result);
   },
   normalize: relayNormalized,
@@ -143,22 +158,27 @@ export const relayMediaGenerationProvider: MediaGenerationProvider = {
   },
   async submit(request, execution) {
     assertExecution(execution);
-    const created = await submitRelayMedia(
-      relayConnection(execution),
-      {
-        capability: request.kind,
-        model: request.model,
-        params: request.parameters as Record<string, RelayMediaParamValue>,
-        prompt: request.prompt,
-        providerProtocol: "media-generate",
-      },
-      {
-        beforeProviderRequest: execution.beforeProviderRequest,
-        fetcher: execution.fetcher,
-        signal: execution.signal,
-        usePinnedTransport: true,
-      },
-    );
+    const relayRequest = {
+      capability: request.kind,
+      model: request.model,
+      params: request.parameters as Record<string, RelayMediaParamValue>,
+      prompt: request.prompt,
+      providerProtocol: "media-generate" as const,
+    };
+    const transport = {
+      beforeProviderRequest: execution.beforeProviderRequest,
+      fetcher: execution.fetcher,
+      signal: execution.signal,
+      usePinnedTransport: true,
+    } as const;
+    const contract = execution.metadata?.modelExecutionContract;
+    const created = contract
+      ? await submitContractRelayMedia(
+          relayConnection(execution), relayRequest, contract, transport,
+        )
+      : await submitRelayMedia(
+          relayConnection(execution), relayRequest, transport,
+        );
     return {
       providerTaskId: created.externalTaskId,
       providerTaskMayStillRun: true,
