@@ -2,10 +2,10 @@
 
 ## MODEL-CONTRACT-001 当前区块（2026-08-26）
 
-- 当前：`R0-R7_IMPLEMENTED / V0_6_49_PRODUCTION_BACKEND_DATA_PASS_UI_P1 / V0_6_50_HOTFIX_REVIEW_GO / GITHUB_NEXT / USER_RECHECK`。
+- 当前：`R0-R7_IMPLEMENTED / V0_6_49_PRODUCTION_UI_P1 / V0_6_50_PRODUCTION_TECHNICAL_PASS / USER_RECHECK`。
 - 四类节点、图片工具、11个生产已发布模型、Provider/connector、输入、task/poll/result/error、模板和恢复路径均已纳入合同治理；细项以独立MODEL-CONTRACT-001矩阵为准。
-- 同一独立线程最终、full后UI增量与v0.6.49 hotfix复核均`P0=0 / P1=0 / GO`；唯一full没有重复。v0.6.48恢复副本门暴露审计actor FK缺陷并在生产切换前fail-closed；v0.6.49完成PR/CI/tag/Release、恢复与生产bootstrap、备份、切换、数据/inventory/资产/稳定门，但生产浏览器发现活动模型入口P1。
-- 真实Provider控制面、真实生成、OSS写入与费用仍为0；生产运行健康v0.6.49但UI入口P1未通过。v0.6.50最小入口热修m102+m81 48/48、m38 15/15通过；独立增量Review唯一文档P1已关闭并最终`P0=0 / P1=0 / GO`，唯一下一动作是GitHub与生产发布。
+- 同一独立线程最终、full后UI增量与v0.6.49 hotfix复核均`P0=0 / P1=0 / GO`；唯一full没有重复。v0.6.48恢复副本门暴露审计actor FK缺陷并在生产切换前fail-closed；v0.6.49完成后端/数据发布，但生产浏览器发现活动模型入口P1。
+- v0.6.50最小入口热修m102+m81 48/48、m38 15/15通过；独立增量Review唯一文档P1已关闭并最终`P0=0 / P1=0 / GO`。PR #114、PR/main CI、tag/Release、fresh build、备份恢复、零schema/零数据切换、数据/inventory/六资源、66秒稳定门和四视口零付费浏览器均通过；14/14模型卡入口可见。真实Provider控制面、真实生成、OSS写入与费用仍为0；唯一下一动作是用户实页与成片视觉复验。
 
 2026-08-26 MODEL-CONTRACT-001已获用户明确Goal与发布授权并完成R0-R7实现。两轮NO-GO发现均已关闭，同一独立线程最终及full后增量复核均`P0=0 / P1=0 / GO`；唯一full的两处UI治理失败已精确修复并定向4/4通过，未重复full。实现验收以`spec/MODEL_CONTRACT_001_ACCEPTANCE_MATRIX_2026-08-26.md`为唯一细目。
 
@@ -32,7 +32,7 @@
 基线日期：2026-07-27  
 当前状态更新：2026-08-26
 
-`AUTHORITATIVE_ACCEPTANCE_LEDGER`：生产为v0.6.47/schema41且服务健康，既有`PRODUCTION_V0_6_47_USER_PASS / USER_PASS`继续有效。MODEL-CONTRACT-001 v0.6.48已完成R0-R7与GitHub发布，但正式恢复副本bootstrap因审计actor外键在生产切换前fail-closed；v0.6.49 hotfix定向48/48、恢复副本首次11/11与二次0新增、独立Review GO均通过，当前为`GITHUB_NEXT / PRODUCTION_V0_6_47 / USER_RECHECK`。
+`AUTHORITATIVE_ACCEPTANCE_LEDGER`：生产为v0.6.50/schema41且服务健康，既有v0.6.47用户验收历史继续有效，但不自动验收MODEL-CONTRACT-001。v0.6.48恢复副本bootstrap因审计actor外键fail-closed；v0.6.49关闭actor缺陷并完成后端/数据发布，但活动模型入口P1；v0.6.50完成GitHub、生产技术与零付费浏览器，当前为`PRODUCTION_V0_6_50_TECHNICAL_PASS / USER_RECHECK`。
 
 2026-08-26 `CURRENT_RELEASE = v0.6.46 / schema41 / PRODUCTION_V0_6_46_USER_PASS`。本地治理基线为`main = origin/main = 12e2fd9b…2795`，当前差异仅为本轮尚未提交的治理与工具链修改；普通项目shell默认Node `25.9.0` / npm `11.12.1`，现网仍为Node `22.23.2` / npm `10.9.8`，安全/发布复现通道为Node `22.23.1` / npm `10.9.8`。默认Node25 build/architecture通过；Node22兼容preflight、源码覆盖456/456、behavior 1/1及m38+m94 `19/19 PASS`，4173不变，未运行full。这次工具链治理不是生产运行时迁移或新版本发布。
 
@@ -88,7 +88,7 @@
 
 本文件只记录验收条目的历史证据与状态，不承担当前版本播报。当前线上版本、未发布候选与下一步只以 `spec/UNBOUNDRY_CURRENT_STATE.md` 为准。以下日期段落均为对应时点快照；既有用户验收与未完成状态继续保留，不因新版本自动升级。
 
-2026-08-26 `MODEL-CONTRACT-001 = R0-R7_IMPLEMENTED / V0_6_48_FAIL_CLOSED_BEFORE_SWITCH / V0_6_49_PRODUCTION_BACKEND_DATA_PASS_UI_P1 / V0_6_50_CANDIDATE_FROZEN / REVIEW_NEXT / USER_RECHECK`：v0.6.48/schema41完成三层合同、不可变ModelReleaseRevision、原子发布、task快照、独立管理员工作台、GK-video-3精确声明式合同、其他专用connector保留、UNKNOWN阻断和GitHub发布；正式恢复副本门在首个审计写入因固定system actor外键失败并fail-closed。v0.6.49修复actor后通过PR/CI/tag/Release、恢复与生产bootstrap、备份、原子切换、数据/inventory/资产/稳定门；生产后端、数据、服务健康，但真实浏览器发现活动模型没有工作台入口P1。v0.6.50最小入口热修默认build、m102+m81 48/48和m38 15/15通过，候选已冻结并等待独立增量Review；唯一full未重复。Provider/Generation/OSS/费用0，4173不变；请求合同正确不得冒充服装款式或成片视觉通过。独立矩阵：`spec/MODEL_CONTRACT_001_ACCEPTANCE_MATRIX_2026-08-26.md`；实时断点：`spec/MODEL_CONTRACT_001_CHECKPOINT.md`。
+2026-08-26 `MODEL-CONTRACT-001 = R0-R7_IMPLEMENTED / V0_6_48_FAIL_CLOSED_BEFORE_SWITCH / V0_6_49_PRODUCTION_UI_P1 / V0_6_50_PRODUCTION_TECHNICAL_PASS / USER_RECHECK`：v0.6.48/schema41完成三层合同、不可变ModelReleaseRevision、原子发布、task快照、独立管理员工作台、GK-video-3精确声明式合同、其他专用connector保留、UNKNOWN阻断和GitHub发布；正式恢复副本门在首个审计写入因固定system actor外键失败并fail-closed。v0.6.49修复actor后通过后端/数据生产门，但真实浏览器发现活动模型没有工作台入口P1。v0.6.50最小入口热修默认build、m102+m81 48/48和m38 15/15、独立Review最终GO、PR/main CI、tag/Release、fresh build、备份恢复、零schema/零数据切换、数据/inventory/资产/66秒稳定门与四视口零付费浏览器均通过；唯一full未重复。Provider/Generation/OSS/费用0，4173不变；请求合同正确不得冒充服装款式或成片视觉通过。回执：`spec/V0_6_50_PRODUCTION_RECEIPT_2026-08-27.json`；独立矩阵：`spec/MODEL_CONTRACT_001_ACCEPTANCE_MATRIX_2026-08-26.md`；实时断点：`spec/MODEL_CONTRACT_001_CHECKPOINT.md`。
 
 2026-08-26 `INC-GEN-015 = PRODUCTION_V0_6_46_USER_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON`：v0.6.45目标灰度曾因1644字符原始JSON/中文`inputFingerprint`违反旧ASCII/512校验而15次400安全失败，零写零付费；历史回执继续保留。v0.6.46补丁统一projection与detach为opaque非空最多100000字符，其他身份/CAS围栏不放宽。PR #107、PR/main CI、不可移动tag/Release、fresh build、冻结备份恢复、原子切换通过。zzx目标5个旧节点均复用原success task/result proof，Generating=false且旧task/ownership/input/run binding清空；39节点/73边、位置、连线和viewport保持。target tasks10/attempts10及global tasks825/attempts833/active0/media855/publications445/canvases68不变，Generation/Provider/Media/OSS/publication/费用0。`on → off → on`回退门通过，最终mode=`on`。用户随后在生产目标Canvas明确回复“通过”；回执：`spec/V0_6_46_PRODUCTION_RECEIPT_2026-08-26.json`。
 

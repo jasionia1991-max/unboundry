@@ -1,0 +1,227 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "MODEL-CONTRACT-001-V0.6.50-PRODUCTION-2026-08-27",
+  "recordedAt": "2026-08-27T02:56:21+08:00",
+  "status": "PRODUCTION_V0_6_50_TECHNICAL_PASS",
+  "acceptance": {
+    "automaticEngineering": "PASS",
+    "independentReview": "P0_0_P1_0_GO",
+    "productionTechnical": "PASS",
+    "productionBrowser": "ZERO_PAID_TECHNICAL_PASS",
+    "userQuality": "USER_RECHECK",
+    "userPass": false
+  },
+  "scope": {
+    "goal": "MODEL-CONTRACT-001",
+    "implementedStages": ["R0", "R1", "R2", "R3", "R4", "R5", "R6", "R7"],
+    "releasePurpose": "Expose the existing model-contract workbench entry on active, disabled, and archived model cards without changing schema or production data.",
+    "schemaMigration": false,
+    "dataMigration": false,
+    "providerExecution": false
+  },
+  "source": {
+    "repository": "https://github.com/jasionia1991-max/unboundry",
+    "pullRequest": 114,
+    "pullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/114",
+    "candidateCommit": "1c0eddcf830d8a614dbe009775f61d6ecea757a1",
+    "mergeCommit": "d3f5490f524b2d8d212ef7607d85afbf1981ca05",
+    "candidateAndMergeTree": "5b12ebeb97ed7a0e9ed34927fca51de2d0fd38ad",
+    "prQualityRun": 33001209607,
+    "prQualityJob": 98283229540,
+    "prQualityResult": "PASS",
+    "mainQualityRun": 33001297571,
+    "mainQualityJob": 98283526841,
+    "mainQualityResult": "PASS",
+    "tag": "v0.6.50",
+    "annotatedTagObject": "4700ce73694c5d277a356fc9f0049b09e5e120d9",
+    "tagPeeledCommit": "d3f5490f524b2d8d212ef7607d85afbf1981ca05",
+    "tagTree": "5b12ebeb97ed7a0e9ed34927fca51de2d0fd38ad",
+    "releaseUrl": "https://github.com/jasionia1991-max/unboundry/releases/tag/v0.6.50",
+    "releasePublishedAt": "2026-08-26T18:44:55Z",
+    "releaseDraft": false,
+    "releasePrerelease": false
+  },
+  "verification": {
+    "defaultToolchainBuild": {
+      "node": "25.9.0",
+      "npm": "11.12.1",
+      "result": "PASS"
+    },
+    "productionCompatibilityTargeted": {
+      "node": "22.23.1",
+      "npm": "10.9.8",
+      "specs": ["m102-model-execution-contracts", "m81-bridge-runtime-mode"],
+      "tests": 48,
+      "passed": 48,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0,
+      "sourceAndSnapshotSha256": "4acb1d3c4abd425a0f767cc64f2e797905b6bf5475f8515ba7e58943312ab029",
+      "port4173Unchanged": true
+    },
+    "documentationGateBeforeRelease": {
+      "spec": "m38",
+      "tests": 15,
+      "passed": 15,
+      "sourceAndSnapshotSha256": "27d1028a730726914302cc573e2668f6d30d8b5a5782fc84635f276c08d4b5eb",
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0,
+      "port4173Unchanged": true
+    },
+    "formalFullSuite": {
+      "executedOnce": true,
+      "specs": 122,
+      "passedTests": 1074,
+      "totalTests": 1076,
+      "directUiGovernanceFailures": 2,
+      "targetedRepairTests": 4,
+      "targetedRepairPassed": 4,
+      "secondFullSuiteExecuted": false
+    },
+    "independentReview": {
+      "firstIncrementalReview": "P0_0_P1_1_NO_GO",
+      "firstFinding": "Five authority/governance documents still described v0.6.47 as the current production baseline.",
+      "fix": "Synchronized the authority documents to v0.6.49/schema41 and the frozen v0.6.50 candidate, then reran only m38.",
+      "finalReview": "P0_0_P1_0_GO",
+      "residualP2": "Add direct browser assertions for disabled and archived model-card entries in a future change; the shared render path already supplies one entry to all three states."
+    }
+  },
+  "artifact": {
+    "tagArchiveSha256": "90fa1e816b91a32c29fbe56d2b20d48a88c75ed7bcede06265e89322ea14792e",
+    "tagArchiveBytes": 29886145,
+    "releasePath": "/opt/unboundry/releases/v0.6.50-model-contract-workbench-entry-20260827",
+    "releaseFileCountIncludingInventory": 6003,
+    "distFileCount": 33,
+    "inventorySha256": "a84131d9eeab1ac17186ccc87d116b3d9f52168126ccd5ad2faac64e68878f3b",
+    "owner": "ubuntu:ubuntu",
+    "mode": "775",
+    "builder": {
+      "node": "22.23.2",
+      "npm": "10.9.8",
+      "npmCi": "npm ci --offline --ignore-scripts --cache /var/cache/unboundry/npm",
+      "build": "PASS"
+    },
+    "publicAssets": {
+      "assets/CanvasShell-ljKFsx4j.js": "08d3386ff93b73ca9ab001b89d5754d6558f5655583b318012ab7c3ac043a5a0",
+      "assets/WorkspacePage-CGZNRzi2.js": "b3cf21c6b53ac8dcc3a6757f9392107a06758e568a5638727187029db7332855",
+      "assets/index-BncpLSIq.js": "499db72f73051c8b7f91705d8ffd90f6e21f995142edb9a996315d2c53b19e0a",
+      "assets/index-DGXBj4ns.css": "4efd7990e8d5159bfc5902addf81cb5948e4d27bf918204f79e601a01154d4b2",
+      "assets/projectStorage-CrbdgUv_.js": "2938155e21529c41feb8b77dbbf6550f8c2c838d397d08c33b64423cc43009c2",
+      "index.html": "2221eec60ead67ff44f2be30cc179ba87649b67d90e1817f809c50e569802355"
+    },
+    "publicAssetsByteExact": true
+  },
+  "backupAndRestore": {
+    "backupPath": "/var/lib/unboundry-rollbacks/v0.6.50-cutover-final.6gFJQc",
+    "sourceFileCount": 366,
+    "restoredFileCount": 366,
+    "sourceAndRestoredManifestSha256": "81b1b5937ec335fb3fdf210bbbc51a9042b2b1ce0a5ad659d63d4f0a811fa1f7",
+    "databaseIntegrity": "ok",
+    "foreignKeyViolations": 0,
+    "libraryDatabaseIntegrity": "ok",
+    "libraryForeignKeyViolations": 0
+  },
+  "production": {
+    "hostAlias": "live-cockpit",
+    "previousRelease": "/opt/unboundry/releases/v0.6.49-model-contracts-hotfix-20260827",
+    "currentRelease": "/opt/unboundry/releases/v0.6.50-model-contract-workbench-entry-20260827",
+    "versionEndpoint": "0.6.50",
+    "service": "unboundry",
+    "serviceState": "active",
+    "serviceEnabled": true,
+    "serviceRestarts": 0,
+    "runtimeNode": "22.23.2",
+    "runtimeNpm": "10.9.8",
+    "schema": 41,
+    "databaseIntegrity": "ok",
+    "foreignKeyViolations": 0,
+    "publicRootStatus": 200,
+    "unauthenticatedLiveStatus": 401,
+    "unauthenticatedReadyStatus": 401,
+    "journalWarningsAfterCutover": 0,
+    "quietGate": {
+      "start": "2026-08-26T18:51:04.919Z",
+      "end": "2026-08-26T18:52:11.085Z",
+      "stableSeconds": 66,
+      "countsUnchanged": true
+    },
+    "finalReadOnlySnapshotAt": "2026-08-26T18:56:21.253Z",
+    "counts": {
+      "tasks": 898,
+      "attempts": 906,
+      "active": 0,
+      "media": 885,
+      "publications": 476,
+      "canvases": 68,
+      "models": 20,
+      "publishedModels": 11,
+      "templates": 50,
+      "publishedTemplates": 48,
+      "audits": 273,
+      "contractEvents": 34,
+      "publishEvents": 11,
+      "markerEvents": 1,
+      "latestAttemptAt": "2026-08-26T08:25:23.543Z"
+    }
+  },
+  "productionBrowser": {
+    "account": "zzx",
+    "modelCards": 14,
+    "workbenchEntryButtons": 14,
+    "activeModelEntryConfirmed": true,
+    "route": "/admin/models/624827c6-5541-4cc8-93ac-4f9d5ce79602/contract",
+    "model": "grok-video-3",
+    "heading": "模型合同工作台",
+    "sections": 8,
+    "publishedRevision": 1,
+    "publishedState": "published",
+    "classification": "EXACT",
+    "inputModes": ["text-to-video", "first-frame-to-video"],
+    "firstFrameRole": {
+      "type": "image",
+      "minimum": 1,
+      "maximum": 1,
+      "orderPreserved": true
+    },
+    "viewports": [
+      {"width": 1280, "height": 720, "headingVisible": true, "horizontalOverflow": false},
+      {"width": 1440, "height": 900, "headingVisible": true, "horizontalOverflow": false},
+      {"width": 1920, "height": 1080, "headingVisible": true, "horizontalOverflow": false},
+      {"width": 900, "height": 900, "headingVisible": true, "horizontalOverflow": false}
+    ],
+    "mutatingActionsClicked": 0,
+    "providerRequests": 0
+  },
+  "modelClassification": {
+    "EXACT": ["grok-video-3", "GPT Image 2"],
+    "SPECIALIZED": ["Doubao Seed", "Nano Banana Pro", "Seedance 2.0 Mini", "grok-video-3.5", "Kling Omni", "Mureka V9", "Doubao TTS", "Suno v4.5"],
+    "BLOCKED": ["kwvideo-v2"],
+    "blockedReason": "UNKNOWN request contract; its published blocked snapshot does not make it executable."
+  },
+  "zeroSideEffectLedger": {
+    "providerControlPlaneCalls": 0,
+    "paidProviderRequests": 0,
+    "generationSubmissions": 0,
+    "ossWrites": 0,
+    "fees": 0,
+    "productionDataChangesFromBrowserAcceptance": 0
+  },
+  "failClosedEvents": [
+    {
+      "stage": "remote artifact publication command",
+      "effect": "A post-build shell quoting error occurred after a successful build; the trap removed the temporary build and no release was published.",
+      "resolution": "Repeated the exact immutable build with corrected shell output handling; build and inventory passed."
+    },
+    {
+      "stage": "backup health probe",
+      "effect": "The first public probe ran too soon after service restart and received a transient 502; the trap restored service and retained v0.6.49 as current.",
+      "resolution": "Waited for a new 66-second quiet gate, then performed the atomic v0.6.50 cutover with rollback armed."
+    }
+  ],
+  "nextAction": "The user must complete spec/MODEL_CONTRACT_001_USER_RECHECK_2026-08-26.md on the real production page and explicitly say MODEL-CONTRACT-001 验收通过 before USER_PASS may be recorded. Request-contract correctness must remain separate from clothing-style and final-video visual quality."
+}
