@@ -1,5 +1,19 @@
 import type { TransactionScopedCommand } from "./transactionCommand";
 
+export const selectActiveAdminAuditActorCommand:
+  TransactionScopedCommand<void, string | undefined> = {
+    execute(scope) {
+      const row = scope.prepare(`
+        SELECT id
+        FROM users
+        WHERE role = 'admin' AND status = 'active'
+        ORDER BY created_at ASC, id ASC
+        LIMIT 1
+      `).get() as { id?: unknown } | undefined;
+      return typeof row?.id === "string" && row.id ? row.id : undefined;
+    },
+  };
+
 export const accountAllowsDurableMediaReferenceCommand:
   TransactionScopedCommand<string, boolean> = {
     execute(scope, ownerId) {

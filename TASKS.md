@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻当前任务
 
-## MODEL-CONTRACT-001 模型执行合同治理（R0-R7 / REVIEW GO / GITHUB NEXT）
+## MODEL-CONTRACT-001 模型执行合同治理（R0-R7 / v0.6.48 FAIL-CLOSED / v0.6.49 REVIEW GO）
 
 - [x] 从`origin/main@7b475416a77cdee8d7b04ce965600551aa16858c`建立干净隔离worktree并核对生产v0.6.47/schema41、工具链、tag/Release与4173监听身份。
 - [x] R0盘点四类节点、图片工具、11个生产已发布模型、6个Provider profile、connector、输入、task/poll/result/error、模板与恢复路径；详见`spec/MODEL_CONTRACT_001_R0_INVENTORY_2026-08-26.md`。
@@ -8,17 +8,19 @@
 - [x] R1合同底座：有限compiler、不可变revision、原子发布、task快照、CAS、审计、回滚与停止/恢复新任务。
 - [x] R2独立管理工作台：八区块、四视口、草稿/验证/预览/影响/发布/历史/回滚/停止与冲突恢复。
 - [x] R3～R6分族迁移与fake/shadow/兼容/恢复/安全验证；GK为唯一声明式EXACT，其他有专用代码的模型为SPECIALIZED，kwvideo保持UNKNOWN并以blocked快照阻断，不伪造。
-- [x] 生产恢复副本bootstrap 11/11、第二次幂等0新增、integrity/FK/数据计数通过；Provider/Generation/OSS/费用0。
+- [x] v0.6.48已完成PR #112、CI、merge、不可移动tag/Release与fresh tag build；正式恢复副本bootstrap因固定system actor不满足审计外键准确fail-closed，生产指针从未切换并恢复v0.6.47健康运行。
+- [x] v0.6.49 hotfix改为经auth-owned transaction command选择真实活跃管理员审计身份，无有效actor仍阻断；m102+m81定向48/48 PASS，未重复正式full。
+- [x] 同一独立审查线程复核v0.6.49 hotfix为`P0=0 / P1=0 / GO`；正式恢复副本真实CLI首次11/11、二次0新增且业务计数不变。
 - [x] 首轮独立只读终审为`P0=3 / P1=8 / NO-GO`；已完成声明式全输入消费、runtime/model锁定、unknown outcome禁止重提、事务重读、revoke持久、角色身份、schema/secret/UI等全部对应修复。
 - [x] 修复后默认Node25 build通过；受影响组合5 specs `40/40 PASS`；补齐声明式参数全消费和文档后最小复验m102+m38 `22/22 PASS`，source/snapshot `2893682f…f3013`，4173不变；这些不是full。
 - [x] R7关闭GK旧guessing但不伪造UNKNOWN；同一审查线程最终及full后UI增量复核均`P0=0 / P1=0 / GO`。
 - [x] 本Goal唯一safe full为122 specs、1074/1076；唯二m18/m45直接UI治理失败精确修复后定向4/4 PASS，未重复full。产品候选commit`4aef16f`/tree`01594eb`。
-- [ ] 唯一下一动作：push、PR、CI、merge、v0.6.48 tag/Release，再按生产门备份恢复、fresh build与原子发布。
+- [ ] 唯一下一动作：完成v0.6.49 commit/PR/CI/tag/Release，再从精确tag复验既有冻结恢复副本并原子发布。
 
-> **当前状态**：生产仍运行`v0.6.47 / schema41`且服务健康；MODEL-CONTRACT-001本地`v0.6.48 / schema41`已完成R0-R7、最终Review GO和唯一full后的定向闭环。下一步GitHub；生产发布尚未执行；成片视觉严格为`USER_RECHECK`。
+> **当前状态**：生产仍运行`v0.6.47 / schema41`且服务健康；v0.6.48恢复副本门准确阻断审计外键缺陷，未切换生产；v0.6.49 hotfix定向证据和独立Review GO均通过，下一步GitHub与生产闭环。成片视觉严格为`USER_RECHECK`。
 
 更新时间：2026-08-26
-状态：`PRODUCTION_V0_6_47_USER_PASS / MODEL_CONTRACT_001_REVIEW_GO / SINGLE_FULL_TARGETED_REPAIR_PASS / GITHUB_NEXT`。
+状态：`PRODUCTION_V0_6_47_USER_PASS / MODEL_CONTRACT_001_V0_6_48_FAIL_CLOSED / V0_6_49_HOTFIX_REVIEW_GO / GITHUB_NEXT`。
 
 ### 2026-08-26 模型执行合同治理（MODEL-CONTRACT-001，R0-R6 IMPLEMENTED）
 
