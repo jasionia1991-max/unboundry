@@ -2,7 +2,7 @@
 
 更新时间：2026-08-26
 
-状态：`R0_R6_PARTIAL / PRODUCTION_V0_6_45_TARGET_GRAY_FAIL_CLOSED / V0_6_46_RELEASE_AUTHORIZED / CANDIDATE_TARGETED_PASS / USER_RECHECK`
+状态：`R0_R6_COMPLETE / PRODUCTION_V0_6_46_TECHNICAL_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON / USER_RECHECK`
 
 权威方案：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_PLAN_2026-08-26.md`
 
@@ -12,15 +12,15 @@
 |---|---|
 | 真实仓库 | `/Users/mymy/Documents/unboundry/app` |
 | 实现工作树 | `/private/tmp/unboundry-inc-gen-015-legacy-terminal-reconcile-20260826` |
-| 实现分支 | `codex/inc-gen-015-long-fingerprint-hotfix-2026-08-26` |
+| 当前回执分支 | `codex/inc-gen-015-v0.6.46-production-receipt` |
 | 实施基线 | `origin/main@49197fb36924b4df11a8c39236275a4ceec8c553` |
 | 工作树文档基线 | `0813e6283b12418b19fcf8be7fc04becee424336` |
 | package / schema | `0.6.46 / 41` |
-| 生产 | `v0.6.45 / schema41`，`/opt/unboundry/current`指向不可变v0.6.45 release，service active+enabled、NRestarts0；target-only allowlist灰度失败关闭，未进入`on` |
+| 生产 | `v0.6.46 / schema41`，`/opt/unboundry/current`指向fresh tag release，service active+enabled、NRestarts0；目标allowlist与`on/off/on`通过，最终mode=`on` |
 | 固定运行时 | `Node 22.23.1 / npm 10.9.8` |
 | 4173 | 既有监听哈希`24c91e57…8244`，所有安全运行前后不变 |
 | v0.6.45 | PR #105已合并；不可移动tag与GitHub Release已发布；生产已部署 |
-| v0.6.46 | 用户已明确授权本次GitHub与生产发布；tag/Release当前未占用，尚未创建 |
+| v0.6.46 | PR #107与PR/main Quality CI通过，merge`c961cee`；不可移动tag/GitHub Release和生产发布完成 |
 
 受保护`spec/public-templates-director-split-revision.json`未读取、修改、暂存、移动或删除。真实主工作树和其他工作树的用户改动未清理或覆盖。
 
@@ -66,11 +66,21 @@
 - [x] 新独立终审首轮诚实结论`NO-GO / P0=0 / P1=1`，发现terminal-detach同样拒绝JSON指纹且16KiB body不足；修复后同线程复审`P0=0 / P1=0 / GO`，并确认大于16KiB Unicode JSON及100001超限拒绝证据。
 - [x] 文档同步后的治理m38首轮`14/15`只因CURRENT_STATE生产句式未命中既有正则；修正后最小复验`15/15 PASS`，异常0，source/snapshot`92b712e5daa4d126ad41d0ccdd3472a4dc2fc5b1362ce47fc4d9e36b7a63991e`、4173不变；未重复业务spec或full。
 - [x] 用户明确确认以v0.6.46继续发布；package/lock/final runtime role已同步，schema保持41。TypeScript、diff门和safe m81 `41/41 PASS`，source/snapshot`c5ba0228adc65fcc72c59d5c2a2dd613de2ae8f949177141634ed0e404d50aec`、4173不变；版本文档m38修正唯一候选标记后`15/15 PASS`，source/snapshot`a0251547743750ffbbc032304ae83d5bc33263728b82fc880e08639ffbabb9dc`、4173不变；未重复唯一full。
+- [x] v0.6.46候选commit`78b5f8af7b9324e7974f2319b81589c34335f29f`/tree`80378c4d1a1cfae02f606a2a2244208922c89977`经PR #107、PR/main Quality CI、merge`c961cee5eb340f731e6e330a316bc2d79e1e9f55`进入main；annotated tag对象`0ce3278…3e45`peeled到merge，GitHub Release已发布且未移动。
+- [x] fresh tag archive SHA`b2b4567c…e3f3`在生产构建为5978文件、inventory`50c8bd13…88c2`；首次构建在切换前因npm子进程继承Node18失败，固定`/opt/node22/bin`后只重跑失败构建，生产始终保持v0.6.45健康。
+- [x] 60秒静默门`03:26:26Z→03:27:26Z`期间tasks825/attempts833/active0、latestAttempt、目标revision336/graph52均不变；冻结backup`v0.6.46-cutover-final-hrYwLG`的source/restore各366文件，manifest`a15b3626…e7cf`一致，schema41/integrity ok/FK0。
+- [x] 带自动回退trap的原子切换完成；公网/回环v0.6.46、live/ready active、schema41、service active+enabled/NRestarts0，release inventory复核不变，新应用warning0。
+- [x] zzx目标allowlist实页复验将5个旧候选全部绑定原success task/result proof；Generating均false，task/ownership/input/run旧binding均清空，页面`状态待核对=0 / 生成中=0`。
+- [x] 目标Canvas由revision336/graph52收口到343/58；39节点、73边、节点ID、连线文档、viewport、位置与父子关系不变，只有5个候选的结果和收口字段变化。一个正常409 revision冲突从新GET安全重试后成功，没有400校验失败。
+- [x] target tasks10/attempts10与原5个success task不变；global tasks825/attempts833/active0/media855/publications445/canvases68不变；Generation POST、Provider submit/retry、Media/OSS、publication和费用均0。
+- [x] rollout依次完成首次`on`、`off`止写回退、最终`on`；每阶段重载已收口目标Canvas均revision343/graph58不变，Canvas PUT0、Generation/Provider/Media/publication POST0。最终生产mode=`on`。
+- [x] 最终生产回执与当前治理同步后的safe m38 `15/15 PASS`，failed/skipped/retries/blocked/reportErrors均0；source/snapshot`750654cbcdf68467fe4dd3d9d54a95d55a40ef39e70dab563c2c143ce91ece28`、4173不变；未重复业务spec或唯一full。
+- [x] 权威回执：`spec/V0_6_46_PRODUCTION_RECEIPT_2026-08-26.json`；本Goal工程、GitHub、发布、目标技术灰度和回退门全部完成，状态保持`USER_RECHECK`，不冒充USER_PASS。
 
 ## 3. 当前阶段
 
-v0.6.45仍在线且服务健康；目标灰度P1已本地修复并独立终审GO。用户已授权v0.6.46，版本同步和发布角色定向门通过；当前进入GitHub与不可变生产发布阶段，尚未重新执行目标allowlist或进入`on`。
+v0.6.46/schema41已在线且服务健康；目标5个旧节点均复用原成功结果完成收口，零新任务/Provider/Media/publication/费用。`on → off → on`回退门已验证，最终mode=`on`。当前严格为生产技术PASS与`USER_RECHECK`，不是USER_PASS。
 
 ## 4. 唯一下一动作
 
-冻结并提交v0.6.46候选，push/PR/CI/合并后创建不可移动tag与GitHub Release，再按runbook fresh部署并重做精确目标allowlist验收。不得移动v0.6.45、直接覆盖生产release、运行第二次full或提前扩大到`on`。
+用户在生产目标Canvas目视确认5个恢复结果。未收到用户明确“通过”前不得写USER_PASS；不得移动v0.6.45/v0.6.46 tag、重复本Goal唯一full、追加真实生成或复用已消费的发布授权。

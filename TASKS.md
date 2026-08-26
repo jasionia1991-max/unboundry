@@ -1,9 +1,9 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产仍运行`v0.6.45 / schema41`且服务健康；目标灰度P1已在本地修复。用户已明确授权`v0.6.46`继续发布，package/lock/final runtime role已同步，定向发布门通过；正在进入GitHub与不可变生产发布流程，尚未重新执行目标灰度或进入`on`。
+> **当前状态**：生产运行`v0.6.46 / schema41`且服务健康；目标5个旧节点已复用原成功结果收口，`on → off → on`灰度与回退通过。目标与全局Generation/Provider/Media/publication账本零新增，当前严格为技术通过、等待用户实页复验。
 
 更新时间：2026-08-26
-状态：`INC-GEN-015 PRODUCTION_V0_6_45_TARGET_GRAY_FAIL_CLOSED / V0_6_46_RELEASE_AUTHORIZED / CANDIDATE_TARGETED_PASS / USER_RECHECK。`
+状态：`INC-GEN-015 PRODUCTION_V0_6_46_TECHNICAL_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON / USER_RECHECK。`
 
 ### 2026-08-26 老画布孤立生成态与终态结果自动收口（INC-GEN-015，TARGETED_AUTO_PASS）
 
@@ -47,9 +47,16 @@
 - [x] 文档治理m38首轮`14/15`仅因一句生产标记未匹配既有机器正则；修正句式后最小复验`15/15 PASS`，source/snapshot`92b712e5…991e`、4173不变，未重复业务spec或full
 - [x] 用户明确回复“确认以 v0.6.46 继续发布”，版本号与本次GitHub/生产发布授权齐备；v0.6.45继续不可移动，不直接覆盖生产文件
 - [x] package/lock/final runtime role同步为0.6.46；TypeScript、diff门与safe m81 `41/41 PASS`，source/snapshot`c5ba0228…0aec`、4173不变；版本文档m38修正唯一候选标记后`15/15 PASS`，source/snapshot`a0251547…9dc`、4173不变；未重复唯一full
-- [ ] 完成v0.6.46 commit、push/PR/CI、合并、不可移动tag/GitHub Release、fresh部署和目标allowlist复验；通过后才允许进入`on`
+- [x] v0.6.46候选commit`78b5f8a`/tree`80378c4`、PR #107、PR/main Quality CI、merge`c961cee`、不可移动tag/GitHub Release全部通过；tag与main合并树一致
+- [x] fresh tag archive构建5978文件、inventory`50c8bd13…88c2`；首次构建仅因系统Node18 PATH在切换前失败，固定Node22后只重跑失败构建，现网未受影响
+- [x] 60秒静默门tasks825/attempts833/active0稳定；冻结source/restore各366文件、manifest`a15b3626…e7cf`一致，schema41/integrity ok/FK0；带自动回退的原子切换通过
+- [x] 目标allowlist复验完成：5个旧节点全部绑定原success task/result proof，Generating=false且task/ownership/input/run旧binding清空；页面“状态待核对/生成中”均0
+- [x] 目标Canvas从revision336/graph52收口到343/58；39节点/73边、节点ID、连线、视口、位置和父子关系保持，只有5个候选结果字段变化
+- [x] 收口前后target tasks10/attempts10，global tasks825/attempts833/active0/media855/publications445/canvases68不变；Generation POST、Provider submit/retry、Media/OSS、publication和费用均0
+- [x] 服务端`on → off → on`技术回退门通过；每阶段重载已收口目标Canvas均revision343/graph58不变、Canvas PUT0、Generation/Provider/Media/publication POST0；最终生产mode=`on`
+- [x] 最终生产回执与当前治理同步后的safe m38 `15/15 PASS`，failed/skipped/retries/blocked/reportErrors均0；source/snapshot`750654cb…ce28`、4173不变，未重复业务spec或唯一full
 
-权威方案：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_PLAN_2026-08-26.md`；实时断点：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_CHECKPOINT.md`；v0.6.45生产回执：`spec/V0_6_45_PRODUCTION_RECEIPT_2026-08-26.json`。当前唯一下一步是冻结v0.6.46候选并走GitHub发布；不得运行第二次full、移动v0.6.45、直接覆盖生产文件或提前扩大到`on`。
+权威方案：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_PLAN_2026-08-26.md`；实时断点：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_CHECKPOINT.md`；最终生产回执：`spec/V0_6_46_PRODUCTION_RECEIPT_2026-08-26.json`。当前唯一下一步是用户在生产目标Canvas目视确认5个恢复结果；不得把技术PASS自动写成USER_PASS、重复唯一full或移动历史tag。
 
 ### 2026-08-25 工作流自动恢复与密钥校验解耦（INC-GEN-014，R0～R5_COMPLETE / R6_TARGETED_PASS）
 

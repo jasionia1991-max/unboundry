@@ -1,0 +1,243 @@
+{
+  "receiptVersion": 1,
+  "incident": "INC-GEN-015",
+  "release": "v0.6.46",
+  "schemaVersion": 41,
+  "status": "PRODUCTION_V0_6_46_TECHNICAL_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON / USER_RECHECK",
+  "userPass": false,
+  "authorization": {
+    "userMessage": "确认以 v0.6.46 继续发布",
+    "versionAuthorized": "v0.6.46",
+    "githubAndProductionAuthorized": true,
+    "consumed": true
+  },
+  "github": {
+    "candidateCommit": "78b5f8af7b9324e7974f2319b81589c34335f29f",
+    "candidateTree": "80378c4d1a1cfae02f606a2a2244208922c89977",
+    "pullRequest": 107,
+    "pullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/107",
+    "pullRequestQualityRun": 32926002294,
+    "mergeCommit": "c961cee5eb340f731e6e330a316bc2d79e1e9f55",
+    "mergeTree": "80378c4d1a1cfae02f606a2a2244208922c89977",
+    "mainQualityRun": 32926053003,
+    "qualityConclusion": "SUCCESS",
+    "tag": "v0.6.46",
+    "tagObject": "0ce3278215ecec0acaba55b02e2ecea0ffad3e45",
+    "tagPeeledCommit": "c961cee5eb340f731e6e330a316bc2d79e1e9f55",
+    "tagMoved": false,
+    "releaseUrl": "https://github.com/jasionia1991-max/unboundry/releases/tag/v0.6.46",
+    "releaseDraft": false,
+    "releasePrerelease": false,
+    "releasePublishedAt": "2026-08-26T03:21:01Z"
+  },
+  "verification": {
+    "hotfixCommit": "ff3d139f1aceba1fd02b406bdd0fa5290175ea0e",
+    "hotfixTree": "c58692ddde5be0bd7b8e74e90ac8f349de3d0659",
+    "contract": {
+      "projectionInputFingerprint": "OPAQUE_NONEMPTY_MAX_100000",
+      "terminalDetachInputFingerprint": "OPAQUE_NONEMPTY_MAX_100000",
+      "terminalDetachRequestMaxBytes": 1048576,
+      "identityAndCasFencesRelaxed": false
+    },
+    "focused": [
+      {
+        "scope": "tests/m20-openapi.spec.ts",
+        "passed": 1,
+        "total": 1
+      },
+      {
+        "scope": "tests/m85-canvas-generation-transaction.spec.ts",
+        "passed": 27,
+        "total": 27
+      },
+      {
+        "scope": "tests/m81-deployment-hardening.spec.ts",
+        "passed": 41,
+        "total": 41
+      },
+      {
+        "scope": "tests/m38-generation-runtime-incidents.spec.ts",
+        "passed": 15,
+        "total": 15
+      }
+    ],
+    "typescript": "PASS",
+    "diffCheck": "PASS",
+    "independentReview": "P0=0 / P1=0 / GO",
+    "productionDocumentationRecheck": {
+      "scope": "tests/m38-generation-runtime-incidents.spec.ts",
+      "passed": 15,
+      "total": 15,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0,
+      "sourceSnapshotSha256": "750654cbcdf68467fe4dd3d9d54a95d55a40ef39e70dab563c2c143ce91ece28",
+      "listener4173Unchanged": true,
+      "businessSpecsRepeated": false,
+      "fullRepeated": false
+    },
+    "soleSafeFullReused": {
+      "commit": "f243e8eab0d534f9c7c0518b3898f6cd67857057",
+      "tree": "2c8ae98bb1869e7454e5b96849ee9116e4ee04f0",
+      "specsPassed": 121,
+      "specsTotal": 121,
+      "testsPassed": 1069,
+      "testsTotal": 1069,
+      "fullRepeated": false
+    },
+    "node": "22.23.1",
+    "npm": "10.9.8",
+    "listener4173Unchanged": true
+  },
+  "production": {
+    "host": "live-cockpit",
+    "releasePath": "/opt/unboundry/releases/v0.6.46-inc-gen-015-long-fingerprint-hotfix-20260826",
+    "previousReleasePath": "/opt/unboundry/releases/v0.6.45-inc-gen-015-legacy-terminal-reconcile-20260826",
+    "freshSource": "IMMUTABLE_LOCAL_TAG_ARCHIVE_TRANSFER",
+    "archiveSha256": "b2b4567cebb56bd6a2e954e65ca1f30f292d38926dd94131d1c1c4da387ce3f3",
+    "node": "22.23.2",
+    "npm": "10.9.8",
+    "freshBuild": true,
+    "releaseFileCount": 5978,
+    "releaseInventorySha256": "50c8bd13407a60d5169f8838d44de611dbe91f7db8a56d6fccbac889e4b688c2",
+    "releaseInventoryVerifiedAfterCutoverAndRollout": true,
+    "preSwitchBuildFailure": {
+      "cause": "npm child process inherited system Node 18 instead of /opt/node22",
+      "newReleaseActivated": false,
+      "productionRemained": "v0.6.45",
+      "remediation": "fixed PATH to /opt/node22/bin and reran only the failed build"
+    },
+    "quietGate": {
+      "startedAt": "2026-08-26T03:26:26.811Z",
+      "endedAt": "2026-08-26T03:27:26.849Z",
+      "generationTasksAtStartAndEnd": 825,
+      "generationAttemptsAtStartAndEnd": 833,
+      "activeAtStartAndEnd": 0,
+      "latestAttemptAt": "2026-08-26T02:26:21.097Z",
+      "targetRevisionAtStartAndEnd": 336,
+      "targetGraphRevisionAtStartAndEnd": 52
+    },
+    "authoritativeBackupPath": "/var/lib/unboundry-rollbacks/v0.6.46-cutover-final-hrYwLG",
+    "backupSourceFileCount": 366,
+    "backupRestoreFileCount": 366,
+    "backupManifestSha256": "a15b362626b9caf4c42fb3a156c0f0d532c9ae9cd263e5b0b6e5d927dd6ce7cf",
+    "restoreValidation": {
+      "schemaVersion": 41,
+      "integrity": "ok",
+      "foreignKeyViolations": 0,
+      "databaseBytes": 15187968,
+      "generationTasks": 825,
+      "generationAttempts": 833,
+      "activeGenerationTasks": 0,
+      "mediaAssets": 855,
+      "publicationAttempts": 445,
+      "canvases": 68
+    },
+    "migration": "NOT_REQUIRED_SCHEMA41_UNCHANGED",
+    "cutoverAt": "2026-08-26T03:29:00Z",
+    "automaticRollbackTrapArmed": true,
+    "service": {
+      "active": true,
+      "enabled": true,
+      "nRestarts": 0,
+      "newApplicationWarnings": 0
+    },
+    "health": {
+      "loopbackVersion": "0.6.46",
+      "publicVersion": "0.6.46",
+      "liveHttpStatus": 200,
+      "readyHttpStatus": 200,
+      "readyState": "active",
+      "runtimeRole": "active",
+      "schemaVersion": 41
+    }
+  },
+  "targetAcceptance": {
+    "ownerId": "d8322476-6bb3-4f51-b9ca-7042642abb84",
+    "accountLogin": "zzx",
+    "canvasId": "60a739ce-9cb4-4c46-9c77-92e9f6f22b49",
+    "candidateNodes": 5,
+    "textNodes": 3,
+    "imageNodes": 2,
+    "allOriginalTasksStillSuccess": true,
+    "originalTaskCount": 5,
+    "targetTaskCountBeforeAndAfter": 10,
+    "targetProviderAttemptCountBeforeAndAfter": 10,
+    "revisionBefore": 336,
+    "graphRevisionBefore": 52,
+    "revisionAfter": 343,
+    "graphRevisionAfter": 58,
+    "generatingFlagsAfter": false,
+    "generationTaskBindingsAfter": null,
+    "generationOwnershipBindingsAfter": null,
+    "generationInputBindingsAfter": null,
+    "workflowExecutionRunBindingsAfter": null,
+    "successProofsBoundToOriginalTasks": 5,
+    "uiPendingReviewLabelsAfter": 0,
+    "uiGeneratingLabelsAfter": 0,
+    "nodeCountBeforeAndAfter": 39,
+    "edgeCountBeforeAndAfter": 73,
+    "nodeIdsUnchanged": true,
+    "edgeDocumentUnchanged": true,
+    "viewportUnchanged": true,
+    "nodePositionsAndParentageUnchanged": true,
+    "onlyCandidateNodesChanged": true,
+    "canvasPutLedger": {
+      "success": 7,
+      "revisionConflict": 1,
+      "validationFailure": 0,
+      "conflictRetriedFromFreshCanvas": true
+    }
+  },
+  "zeroWriteLedger": {
+    "globalGenerationTasksBeforeAndAfter": 825,
+    "globalProviderAttemptsBeforeAndAfter": 833,
+    "activeGenerationTasksBeforeAndAfter": 0,
+    "mediaAssetsBeforeAndAfter": 855,
+    "publicationAttemptsBeforeAndAfter": 445,
+    "canvasesBeforeAndAfter": 68,
+    "generationPost": 0,
+    "providerSubmit": 0,
+    "providerRetry": 0,
+    "mediaOrOssWrite": 0,
+    "publicationWrite": 0,
+    "newCost": 0
+  },
+  "rollout": {
+    "targetAllowlist": "PASS",
+    "onFirstPass": {
+      "mode": "on",
+      "targetRevisionBeforeAndAfter": 343,
+      "targetGraphRevisionBeforeAndAfter": 58,
+      "canvasPut": 0,
+      "forbiddenPost": 0
+    },
+    "offRollbackPass": {
+      "mode": "off",
+      "targetRevisionBeforeAndAfter": 343,
+      "targetGraphRevisionBeforeAndAfter": 58,
+      "canvasPut": 0,
+      "forbiddenPost": 0
+    },
+    "final": {
+      "mode": "on",
+      "publicHealthy": true,
+      "serviceNRestarts": 0,
+      "targetRevision": 343,
+      "targetGraphRevision": 58,
+      "canvasPutAfterFinalRestart": 0,
+      "forbiddenPostAfterFinalRestart": 0
+    },
+    "configBackupsRetained": [
+      "/var/lib/unboundry-rollbacks/v0.6.46-rollout-config-KAK0dy.conf",
+      "/var/lib/unboundry-rollbacks/v0.6.46-rollout-config-GEbrIJ.conf",
+      "/var/lib/unboundry-rollbacks/v0.6.46-rollout-config-ixMhx1.conf"
+    ]
+  },
+  "nextGate": {
+    "status": "USER_RECHECK",
+    "action": "User visually confirms the five restored results on the production canvas. Technical release and zero-paid reconciliation evidence are complete; this receipt does not claim USER_PASS."
+  }
+}
