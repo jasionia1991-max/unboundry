@@ -2,7 +2,7 @@
 
 本文件适用于“包含本文件的 Unboundry Git 工作树”，不再用固定目录名代替仓库身份。用户最新明确指令优先；若与仓库状态或本文冲突，先停止并向用户报告，不得猜测。
 
-2026-08-26 MODEL-CONTRACT-001 GitHub基线：v0.6.48已由PR #112合并为`c9db1dd20fcddee877425ade9879a9b87aab093e`、tree `c34957940ee51763f49d74d2109a7e954e53a799`并固定tag/Release；生产恢复副本门在切换前fail-closed，现网仍为v0.6.47。当前隔离工作树`/Users/mymy/Documents/unboundry-model-contract-001-2026-08-26`与分支`codex/model-contract-bootstrap-hotfix-v0.6.49`用于审计actor外键hotfix。旧`/Users/mymy/Documents/unboundry/app`仍在已失去upstream的历史分支且有未跟踪文件，**不得当作当前main施工目录，也不得替用户清理**。
+2026-08-27 MODEL-CONTRACT-001实时基线：生产运行`v0.6.49/schema41`；该版已由PR #113合并为`3a0b58375db6cb64246d9cf2634519918629fb69`、tree `de1607724b54048474c056a5cb6326071308381c`并固定tag/Release、发布生产。后端/数据/服务通过，但真实浏览器发现活动模型缺少合同工作台入口P1。当前隔离工作树`/Users/mymy/Documents/unboundry-model-contract-001-2026-08-26`与分支`codex/model-contract-workbench-entry-hotfix-v0.6.50`用于最小入口热修；定向48/48、文档门15/15与独立增量Review最终`P0=0 / P1=0 / GO`，当前进入GitHub发布。旧`/Users/mymy/Documents/unboundry/app`仍在已失去upstream的历史分支且有未跟踪文件，**不得当作当前main施工目录，也不得替用户清理**。
 
 人和 AI 共用的上线拍板规矩见仓库根目录 `上线规矩.md`。发布前必须分别获得版本号确认和允许发布；一次授权只用一次。
 
@@ -29,13 +29,13 @@
 ### 默认工具链与生产兼容通道
 
 - 项目普通开发、类型检查、构建和新shell默认使用`.node-version`中的Node `25.9.0`与`packageManager`中的npm `11.12.1`；不得再把`/Users/mymy/.hermes/node/bin`或`/Users/mymy/.local/bin`中的Node 22预置到普通shell PATH。
-- 当前生产v0.6.47仍真实运行Node `22.23.2` / npm `10.9.8`；本版发布了项目默认与兼容合同，没有迁移生产Node运行时。
+- 当前生产v0.6.49仍真实运行Node `22.23.2` / npm `10.9.8`；本版没有迁移生产Node运行时。
 - `scripts/run-safe-tests.mjs`、源码覆盖门和不可变release builder继续使用Node `22.23.1` / npm `10.9.8`专用兼容通道，以复现当前生产代际；这是显式测试/发布例外，不是项目默认shell。`engines`同时覆盖两端，未来迁移生产前不得删除Node 22兼容边界。
 
 ## 2. 当前授权边界
 
 - **2026-08-26 v0.6.47 当前权威状态**：生产运行`v0.6.47/schema41`，服务active/enabled、NRestarts=0；PR #110、PR/main CI、merge `24541b3`、不可移动tag/Release、fresh build、冻结备份`v0.6.47-cutover-final2-20j2R3`、恢复/schema/integrity/FK/数据门、原子切换、公网/回环/inventory/5资源和60秒稳定门通过。真实Provider/Generation/OSS/费用0；用户随后明确回复`v0.6.47 验收通过`，当前聚合状态为`PRODUCTION_V0_6_47_USER_PASS / USER_PASS`。原回执`spec/V0_6_47_PRODUCTION_RECEIPT_2026-08-26.json`保留生成时技术状态。一次性v0.6.47授权已消费，后续新代码、Provider或发布需要新授权；
-- **2026-08-26 MODEL-CONTRACT-001 当前权威状态**：用户已明确启动唯一最新Goal并一次性授权R0-R7、代码/测试/文档、commit/push/PR/CI/merge/tag/Release、SSH、备份恢复、发布与回退。v0.6.48已完成R0-R7、PR #112、CI、tag/Release和fresh build；正式恢复副本bootstrap因固定system actor不满足审计外键而在生产切换前fail-closed，现网恢复并保持v0.6.47健康。v0.6.49 hotfix以auth-owned transaction command选择真实活跃管理员，无actor仍阻断，m102+m81定向48/48和恢复副本真实CLI首次11/11、二次0新增通过，同一审查线程`P0=0 / P1=0 / GO`；当前为`GITHUB_NEXT / PRODUCTION_V0_6_47 / USER_RECHECK`，真实Provider控制面/Generation/OSS/费用均0；
+- **2026-08-26 MODEL-CONTRACT-001 当前权威状态**：用户已明确启动唯一最新Goal并一次性授权R0-R7、代码/测试/文档、commit/push/PR/CI/merge/tag/Release、SSH、备份恢复、发布与回退。v0.6.48在正式恢复副本bootstrap因固定system actor不满足审计外键而fail-closed；v0.6.49修复为auth-owned活跃管理员actor后完成PR #113、CI、tag/Release、fresh build、备份恢复、生产bootstrap、原子切换、数据/inventory/静态资产/稳定门。当前生产后端、数据、服务通过，但真实浏览器发现活动模型缺少工作台入口P1；v0.6.50最小入口热修m102+m81定向48/48通过并进入文档门/独立增量Review。真实Provider控制面/Generation/OSS/费用均0，严格保持`USER_RECHECK`；
 - **2026-08-26 INC-GEN-015 当前权威状态**：生产运行`v0.6.46/schema41`且技术健康；PR #107、PR/main Quality CI、不可移动tag/GitHub Release、fresh tag build、冻结备份/恢复和原子切换完成。目标owner`zzx`+目标Canvas的5个旧节点均复用原success task/result proof收口，Generating=false且旧task/ownership/input/run binding清空；39节点/73边、位置、连线与viewport保持。target tasks10/attempts10及global tasks825/attempts833/active0/media855/publications445/canvases68不变，Generation/Provider/Media/OSS/publication/费用0。`on → off → on`回退门通过，最终mode=`on`；用户随后在生产目标Canvas明确回复“通过”，本项收口为`PRODUCTION_V0_6_46_USER_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON`；权威回执`spec/V0_6_46_PRODUCTION_RECEIPT_2026-08-26.json`。一次性v0.6.46授权已消费，用户确认不授权新代码、Provider或再次发布；
 - **2026-08-26 INC-GEN-014 当前权威状态**：生产运行`v0.6.44/schema41`且技术健康；工作流执行成功已与Canvas结果投影失败解耦，accepted-only刷新恢复、generation-owned字段白名单合并、applicationId幂等和credential verify双版本CAS已完成。PR #103、PR/main Quality CI、不可移动tag/GitHub Release、冻结备份与恢复副本、fresh build、原子切换、公网/回环/数据/inventory/静态资源门均通过；独立终审`P0=0 / P1=0`。真实Provider probe、Generation、OSS写入和费用均为0；当前为`PRODUCTION_V0_6_44_TECHNICAL_PASS / USER_RECHECK`，回执`spec/V0_6_44_PRODUCTION_RECEIPT_2026-08-26.json`；v0.6.44一次性实施与发布授权已消费，不得写生产`USER_PASS`，后续新代码、Provider或发布动作需要新授权；
 - **2026-08-25 INC-UI-011 当前权威状态**：生产运行`v0.6.43/schema41`且技术健康；节点排序菜单Portal层级修复已完成本地`USER_PASS`、唯一safe full `121/121 specs、1061/1061 tests PASS`、PR #100与PR/main Quality CI、不可移动tag/GitHub Release、冻结恢复演练、fresh build、原子切换、公网/回环/数据/inventory/静态资源和生产零付费浏览器验证。生产菜单「宫格/水平」可见且中心点命中自身，Escape返焦，画布revision/graph_revision/updated_at不变；真实Provider、Generation、OSS写入、购买/订阅和费用为0。当前为`PRODUCTION_V0_6_43_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / LOCAL_USER_PASS / USER_RECHECK`，回执`spec/V0_6_43_PRODUCTION_RECEIPT_2026-08-25.json`；v0.6.43一次性发布授权已消费，生产用户实页确认前不得写生产`USER_PASS`；
