@@ -1,21 +1,21 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网为v0.6.46/schema41且服务健康；目标5个旧节点已复用原成功结果收口，零新Generation/Provider/Media/publication/费用。`on → off → on`灰度与止写回退通过，最终mode=`on`；当前严格为生产技术PASS与`USER_RECHECK`。
+> **状态分层**：现网为v0.6.46/schema41且服务健康；目标5个旧节点已复用原成功结果收口，零新Generation/Provider/Media/publication/费用。`on → off → on`灰度与止写回退通过，最终mode=`on`；用户已在生产目标Canvas明确回复“通过”，INC-GEN-015为`USER_PASS`。
 
 更新日期：2026-08-26
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
 当前代码包版本：**v0.6.46**
 本地候选代码版本：**v0.6.46**
 本地候选schema：**41**
-当前治理标记：`CURRENT_V0_6_46_USER_RECHECK`
-当前计划标记：`INC_GEN_015_PRODUCTION_V0_6_46_TECHNICAL_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON`
+当前治理标记：`CURRENT_V0_6_46_USER_PASS`
+当前计划标记：`INC_GEN_015_PRODUCTION_V0_6_46_USER_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
 
 ## 一句话
 
-**生产是 v0.6.46 / schema41且服务健康；5个旧节点已零付费恢复原成功结果，最终灰度为`on`，唯一下一步是用户目视复验，不得把技术PASS冒充USER_PASS。**
+**生产是 v0.6.46 / schema41且服务健康；5个旧节点已零付费恢复原成功结果，最终灰度为`on`，用户已明确回复“通过”，INC-GEN-015正式收口为USER_PASS。**
 
-## INC-GEN-015 老画布孤立生成态与终态结果自动收口（PRODUCTION_V0_6_46_TECHNICAL_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON / USER_RECHECK）
+## INC-GEN-015 老画布孤立生成态与终态结果自动收口（PRODUCTION_V0_6_46_USER_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON）
 
 - 用户在INC-GEN-014生产复验时发现老问题Canvas仍有节点显示呼吸灯，但实际上没有生成任务在运行。
 - 2026-08-26只读证据：目标Canvas有5个持久`Generating=true`节点（3 Text/2 Image、3个runId），对应5个原任务全部success；Canvas和全局active均为0，因此呼吸灯是持久状态残留，不是后台真实生成。
@@ -52,7 +52,9 @@
 - global tasks825/attempts833/active0/media855/publications445/canvases68不变；Generation POST、Provider submit/retry、Media/OSS、publication和新增费用均0。
 - 服务端首次`on`、`off`止写回退、最终`on`均通过；各阶段重载目标Canvas均revision343/graph58不变、Canvas PUT0、Generation/Provider/Media/publication POST0。最终生产mode=`on`。
 - 最终生产回执与治理文档同步后的safe m38 `15/15 PASS`，source/snapshot`750654cb…ce28`、4173不变；未重复业务spec或本Goal唯一full。
-- 权威生产回执：`spec/V0_6_46_PRODUCTION_RECEIPT_2026-08-26.json`。当前严格为`PRODUCTION_V0_6_46_TECHNICAL_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON / USER_RECHECK`，不是USER_PASS。
+- 用户在生产目标Canvas目视复验后明确回复“通过”；本确认只关闭INC-GEN-015的5个恢复结果，不改写其他独立`USER_RECHECK`条目，也不构成新代码、Provider或发布授权。
+- USER_PASS治理同步仅运行safe m38，`15/15 PASS`且异常0；source/snapshot`f5c542e1…33b8`、4173不变，未重复业务spec或唯一full。
+- 权威生产回执：`spec/V0_6_46_PRODUCTION_RECEIPT_2026-08-26.json`。当前为`PRODUCTION_V0_6_46_USER_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON`，本项已完成且无活动下一动作。
 
 ## INC-GEN-014 工作流自动恢复与密钥校验解耦（R0～R5_COMPLETE / R6_TARGETED_PASS）
 

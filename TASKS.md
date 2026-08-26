@@ -1,9 +1,9 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产运行`v0.6.46 / schema41`且服务健康；目标5个旧节点已复用原成功结果收口，`on → off → on`灰度与回退通过。目标与全局Generation/Provider/Media/publication账本零新增，当前严格为技术通过、等待用户实页复验。
+> **当前状态**：生产运行`v0.6.46 / schema41`且服务健康；目标5个旧节点已复用原成功结果收口，`on → off → on`灰度与回退通过。目标与全局Generation/Provider/Media/publication账本零新增；用户已在生产目标Canvas明确回复“通过”，INC-GEN-015正式收口。
 
 更新时间：2026-08-26
-状态：`INC-GEN-015 PRODUCTION_V0_6_46_TECHNICAL_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON / USER_RECHECK。`
+状态：`INC-GEN-015 PRODUCTION_V0_6_46_USER_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON。`
 
 ### 2026-08-26 老画布孤立生成态与终态结果自动收口（INC-GEN-015，TARGETED_AUTO_PASS）
 
@@ -55,8 +55,10 @@
 - [x] 收口前后target tasks10/attempts10，global tasks825/attempts833/active0/media855/publications445/canvases68不变；Generation POST、Provider submit/retry、Media/OSS、publication和费用均0
 - [x] 服务端`on → off → on`技术回退门通过；每阶段重载已收口目标Canvas均revision343/graph58不变、Canvas PUT0、Generation/Provider/Media/publication POST0；最终生产mode=`on`
 - [x] 最终生产回执与当前治理同步后的safe m38 `15/15 PASS`，failed/skipped/retries/blocked/reportErrors均0；source/snapshot`750654cb…ce28`、4173不变，未重复业务spec或唯一full
+- [x] 用户在生产目标Canvas目视复验后明确回复“通过”；本确认只关闭INC-GEN-015的5个恢复结果，状态升级为`USER_PASS`，不改写其他独立待复验项，也不授权新代码、Provider或再次发布
+- [x] USER_PASS治理同步仅运行safe m38，`15/15 PASS`，failed/skipped/retries/blocked/reportErrors均0；source/snapshot`f5c542e1…33b8`、4173不变，未重复业务spec或唯一full
 
-权威方案：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_PLAN_2026-08-26.md`；实时断点：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_CHECKPOINT.md`；最终生产回执：`spec/V0_6_46_PRODUCTION_RECEIPT_2026-08-26.json`。当前唯一下一步是用户在生产目标Canvas目视确认5个恢复结果；不得把技术PASS自动写成USER_PASS、重复唯一full或移动历史tag。
+权威方案：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_PLAN_2026-08-26.md`；实时断点：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_CHECKPOINT.md`；最终生产回执：`spec/V0_6_46_PRODUCTION_RECEIPT_2026-08-26.json`。本Goal已完成且无活动下一动作；不得重复唯一full、移动历史tag或复用已消费授权。
 
 ### 2026-08-25 工作流自动恢复与密钥校验解耦（INC-GEN-014，R0～R5_COMPLETE / R6_TARGETED_PASS）
 

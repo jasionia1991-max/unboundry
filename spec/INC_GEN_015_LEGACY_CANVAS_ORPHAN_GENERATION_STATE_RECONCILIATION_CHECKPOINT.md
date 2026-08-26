@@ -2,7 +2,7 @@
 
 更新时间：2026-08-26
 
-状态：`R0_R6_COMPLETE / PRODUCTION_V0_6_46_TECHNICAL_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON / USER_RECHECK`
+状态：`R0_R6_COMPLETE / PRODUCTION_V0_6_46_USER_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON`
 
 权威方案：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_PLAN_2026-08-26.md`
 
@@ -75,12 +75,14 @@
 - [x] target tasks10/attempts10与原5个success task不变；global tasks825/attempts833/active0/media855/publications445/canvases68不变；Generation POST、Provider submit/retry、Media/OSS、publication和费用均0。
 - [x] rollout依次完成首次`on`、`off`止写回退、最终`on`；每阶段重载已收口目标Canvas均revision343/graph58不变，Canvas PUT0、Generation/Provider/Media/publication POST0。最终生产mode=`on`。
 - [x] 最终生产回执与当前治理同步后的safe m38 `15/15 PASS`，failed/skipped/retries/blocked/reportErrors均0；source/snapshot`750654cbcdf68467fe4dd3d9d54a95d55a40ef39e70dab563c2c143ce91ece28`、4173不变；未重复业务spec或唯一full。
-- [x] 权威回执：`spec/V0_6_46_PRODUCTION_RECEIPT_2026-08-26.json`；本Goal工程、GitHub、发布、目标技术灰度和回退门全部完成，状态保持`USER_RECHECK`，不冒充USER_PASS。
+- [x] 权威回执：`spec/V0_6_46_PRODUCTION_RECEIPT_2026-08-26.json`；本Goal工程、GitHub、发布、目标技术灰度和回退门全部完成。
+- [x] 用户在生产目标Canvas目视复验后明确回复“通过”；INC-GEN-015升级为`USER_PASS`，且本确认不改写其他独立待复验项。
+- [x] USER_PASS治理同步仅运行safe m38，`15/15 PASS`且异常0；source/snapshot`f5c542e1…33b8`、4173不变，未重复业务spec或唯一full。
 
 ## 3. 当前阶段
 
-v0.6.46/schema41已在线且服务健康；目标5个旧节点均复用原成功结果完成收口，零新任务/Provider/Media/publication/费用。`on → off → on`回退门已验证，最终mode=`on`。当前严格为生产技术PASS与`USER_RECHECK`，不是USER_PASS。
+v0.6.46/schema41已在线且服务健康；目标5个旧节点均复用原成功结果完成收口，零新任务/Provider/Media/publication/费用。`on → off → on`回退门已验证，最终mode=`on`。用户已明确确认生产实页，本项为`USER_PASS`。
 
 ## 4. 唯一下一动作
 
-用户在生产目标Canvas目视确认5个恢复结果。未收到用户明确“通过”前不得写USER_PASS；不得移动v0.6.45/v0.6.46 tag、重复本Goal唯一full、追加真实生成或复用已消费的发布授权。
+无活动下一动作；本Goal已完成。不得移动v0.6.45/v0.6.46 tag、重复本Goal唯一full、追加真实生成或复用已消费的发布授权。
