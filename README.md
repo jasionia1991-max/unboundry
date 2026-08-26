@@ -6,7 +6,15 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 
-## 当前线上：v0.6.43 节点排序菜单层级修复（2026-08-25，USER RECHECK）
+## 当前线上：v0.6.46 老画布孤立生成态收口（2026-08-26，USER PASS）
+
+生产运行`v0.6.46 / schema41`且服务健康。INC-GEN-015已把目标Canvas的5个旧节点按原success task/result proof恢复，清除虚假Generating与旧binding；`on → off → on`回退门通过，最终mode=`on`。目标与全局Generation/Provider/Media/publication账本零新增，用户已在生产目标Canvas明确回复“通过”。权威当前态见[`spec/UNBOUNDRY_CURRENT_STATE.md`](spec/UNBOUNDRY_CURRENT_STATE.md)，最终回执见[`spec/V0_6_46_PRODUCTION_RECEIPT_2026-08-26.json`](spec/V0_6_46_PRODUCTION_RECEIPT_2026-08-26.json)。
+
+本地项目默认工具链已治理为Node `25.9.0` / npm `11.12.1`；当前生产仍为Node `22.23.2` / npm `10.9.8`，安全/发布复现通道使用Node `22.23.1` / npm `10.9.8`。这次治理没有迁移或发布线上运行时。
+
+本地v0.6.47候选已获版本号与完整发布授权，正在走正式验证与发布门；生产完成切换前仍以v0.6.46为准。
+
+## 历史线上：v0.6.43 节点排序菜单层级修复（2026-08-25，USER RECHECK）
 
 INC-UI-011只把组合框「宫格 / 水平」菜单Portal到页面顶层，补齐视口避让、手势隔离、Escape返焦和零保存副作用，没有改变排序算法、schema或Provider合同。用户已在本地密集组合框页明确`USER_PASS`；唯一safe full `121/121 specs、1061/1061 tests PASS`。PR #100、PR/main CI、不可移动tag/Release、schema41恢复演练、fresh原子发布和生产零付费浏览器均通过；生产菜单中心点命中自身，打开/关闭前后画布revision不变。真实Provider、Generation、OSS写入和费用均0。当前状态`PRODUCTION_V0_6_43_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / LOCAL_USER_PASS / USER_RECHECK`，回执见[`spec/V0_6_43_PRODUCTION_RECEIPT_2026-08-25.json`](spec/V0_6_43_PRODUCTION_RECEIPT_2026-08-25.json)。
 

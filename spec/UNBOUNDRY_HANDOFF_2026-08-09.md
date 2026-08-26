@@ -4,9 +4,13 @@
 
 ## 先读当前快照
 
-新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是 2026-08-25 的权威现状、产品合同和用户验收边界。下面各节是历史增量，出现「当前」时只代表该时点。
+新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是2026-08-26的权威现状、产品合同和用户验收边界。下面各节是历史增量，出现「当前」时只代表该时点。
 
-## 当前发布候选：INC-UI-011 节点排序菜单层级修复（v0.6.43 / 本地USER_PASS）
+2026-08-26当前接手事实：生产为v0.6.46/schema41，INC-GEN-015已由用户生产实页确认`USER_PASS`；`main = origin/main = 12e2fd9b…2795`位于`/Users/mymy/Documents/unboundry-inc-imgedit-003-v0.6.34-2026-08-23`，本轮开始时干净，当前只有已获同意且尚未提交的治理/工具链差异。旧`/Users/mymy/Documents/unboundry/app`是upstream已失效且含未跟踪文件的历史工作树，不得施工或自动清理。项目普通shell默认Node `25.9.0` / npm `11.12.1`；线上仍为Node `22.23.2` / npm `10.9.8`，Node `22.23.1` / npm `10.9.8`仅作安全/发布兼容复现。默认Node25 build/architecture通过；Node22兼容m38+m94 `19/19 PASS`且4173不变。下段记录本轮随后取得的v0.6.47发布授权。
+
+后续授权更新：用户已明确commit/push/发布并确认`v0.6.47`；当前候选分支`codex/v0.6.47-governance-node25`，schema41、真实Provider/Generation/OSS预算0。commit `76eaaeb…d606f` / tree `e15fb581…34ef`上的唯一正式safe full已`121/121 specs、1069/1069 tests PASS`，异常0，source/snapshot`8d8f12b8…8f76a`且4173不变；后续不重复业务full。只有GitHub、备份恢复、fresh build、原子切换与生产技术门全部通过后，才能把线上版本改写为v0.6.47。
+
+## 历史发布候选：INC-UI-011 节点排序菜单层级修复（v0.6.43 / 本地USER_PASS）
 
 真实仓库`/Users/mymy/Documents/unboundry/app`；隔离工作树`/private/tmp/unboundry-inc-ui-011-group-layout-menu-docs-20260825`；分支`codex/inc-ui-011-group-layout-menu-plan-2026-08-25`。只把「宫格 / 水平」菜单Portal到`document.body`，使用fixed屏幕坐标并补齐翻转/收边、手势隔离、ARIA和关闭合同；没有提高组合框层级、修改排序算法、后端、schema或Provider合同。
 

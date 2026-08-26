@@ -30,6 +30,10 @@ import {
 
 const EXPECTED_NODE = "22.23.1";
 const EXPECTED_NPM = "10.9.8";
+const PROJECT_DEFAULT_NODE = "25.9.0";
+const PROJECT_DEFAULT_NPM = "11.12.1";
+const PROJECT_NODE_ENGINE = ">=22.23.1 <23 || >=25.9.0 <26";
+const PROJECT_NPM_ENGINE = "10.9.8 || 11.12.1";
 const FORBIDDEN_PORT = 4173;
 const USER_HOME = "/Users/mymy";
 const BACKUP_FINAL_CANDIDATE_SPEC = "tests/m10-backup.spec.ts";
@@ -604,7 +608,9 @@ function preflight() {
     capture: true,
   }).stdout.trim();
   const versionFile = readFileSync(join(repositoryRoot, ".node-version"), "utf8").trim();
-  if (versionFile !== EXPECTED_NODE) fail(".node-version is not pinned correctly");
+  if (versionFile !== PROJECT_DEFAULT_NODE) {
+    fail(`.node-version must pin the project default Node ${PROJECT_DEFAULT_NODE}`);
+  }
 
   const specs = workingSourceFiles()
     .filter((file) => /^tests\/[^/]+\.spec\.ts$/.test(file))
@@ -656,14 +662,22 @@ function preflight() {
   const packageJson = JSON.parse(
     readFileSync(join(repositoryRoot, "package.json"), "utf8"),
   );
-  if (packageJson.packageManager !== `npm@${EXPECTED_NPM}`) {
-    fail(`packageManager must be npm@${EXPECTED_NPM}`);
+  if (packageJson.packageManager !== `npm@${PROJECT_DEFAULT_NPM}`) {
+    fail(`packageManager must be npm@${PROJECT_DEFAULT_NPM}`);
+  }
+  if (
+    packageJson.engines?.node !== PROJECT_NODE_ENGINE ||
+    packageJson.engines?.npm !== PROJECT_NPM_ENGINE
+  ) {
+    fail("package engines must preserve the project-default and production-compatible runtimes");
   }
   console.log(
     JSON.stringify({
       branch,
       node: process.versions.node,
       npm,
+      projectDefaultNode: PROJECT_DEFAULT_NODE,
+      projectDefaultNpm: PROJECT_DEFAULT_NPM,
       modes: Object.fromEntries(
         expectedModes.map((mode) => [mode, manifest[mode].length]),
       ),
@@ -2265,9 +2279,9 @@ async function createImmutableReleaseFixture(
         "@playwright/test": "file:vendor/playwright-test-1.0.0.tgz",
         typescript: "file:vendor/typescript-1.0.0.tgz",
       },
-      engines: { node: ">=22.23.1 <23", npm: EXPECTED_NPM },
+      engines: { node: PROJECT_NODE_ENGINE, npm: PROJECT_NPM_ENGINE },
       name: "m94-immutable-fixture",
-      packageManager: `npm@${EXPECTED_NPM}`,
+      packageManager: `npm@${PROJECT_DEFAULT_NPM}`,
       private: true,
       scripts: { build: "tsc --noEmit && vite build" },
       type: "module",
