@@ -3,8 +3,13 @@
   "incident": "INC-GEN-015",
   "release": "v0.6.46",
   "schemaVersion": 41,
-  "status": "PRODUCTION_V0_6_46_TECHNICAL_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON / USER_RECHECK",
-  "userPass": false,
+  "status": "PRODUCTION_V0_6_46_USER_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON",
+  "userPass": true,
+  "userAcceptance": {
+    "message": "通过",
+    "acceptedAt": "2026-08-26",
+    "scope": "Production target canvas and its five restored results"
+  },
   "authorization": {
     "userMessage": "确认以 v0.6.46 继续发布",
     "versionAuthorized": "v0.6.46",
@@ -74,6 +79,20 @@
       "blocked": 0,
       "reportErrors": 0,
       "sourceSnapshotSha256": "750654cbcdf68467fe4dd3d9d54a95d55a40ef39e70dab563c2c143ce91ece28",
+      "listener4173Unchanged": true,
+      "businessSpecsRepeated": false,
+      "fullRepeated": false
+    },
+    "userPassDocumentationRecheck": {
+      "scope": "tests/m38-generation-runtime-incidents.spec.ts",
+      "passed": 15,
+      "total": 15,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0,
+      "sourceSnapshotSha256": "f5c542e13b3cf4416cd17483301e8bac9f92e78d437c9735dad205ba01a133b8",
       "listener4173Unchanged": true,
       "businessSpecsRepeated": false,
       "fullRepeated": false
@@ -237,7 +256,7 @@
     ]
   },
   "nextGate": {
-    "status": "USER_RECHECK",
-    "action": "User visually confirms the five restored results on the production canvas. Technical release and zero-paid reconciliation evidence are complete; this receipt does not claim USER_PASS."
+    "status": "COMPLETE",
+    "action": "The user explicitly confirmed the production target canvas with the message 通过. INC-GEN-015 is closed as USER_PASS; no further action is active."
   }
 }
