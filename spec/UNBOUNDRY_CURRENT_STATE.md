@@ -10,7 +10,7 @@
 当前治理标记：`CURRENT_V0_6_46_USER_PASS`
 当前计划标记：`INC_GEN_015_PRODUCTION_V0_6_46_USER_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前本地发布门：`V0_6_47_GOVERNANCE_NODE25_RELEASE_AUTHORIZED / CANDIDATE_TARGETED_PASS / FULL_PENDING`
+当前本地发布门：`V0_6_47_GOVERNANCE_NODE25_RELEASE_AUTHORIZED / CANDIDATE_FULL_PASS / GITHUB_PENDING`
 
 当前Git身份（2026-08-26本轮基线只读核验）：`main = origin/main = 12e2fd9b54fc8684274fd02c6ebc15625b4c2795`；工作树`/Users/mymy/Documents/unboundry-inc-imgedit-003-v0.6.34-2026-08-23`在本轮治理修改前干净，当前仅有本轮已获同意、尚未提交的治理与工具链修改。旧`/Users/mymy/Documents/unboundry/app`是upstream已失效且含未跟踪文件的历史分支，不能作为当前main施工入口，也不得自动清理。
 
@@ -18,7 +18,7 @@
 
 v0.6.47授权状态：用户已明确“commit push 发布”并确认版本`v0.6.47`，本次commit、push、PR、CI、tag、GitHub Release、SSH与生产发布授权齐备。候选只包含治理文档、默认Node/npm、CI双通道和生产兼容release合同；真实Provider/Generation/OSS预算为0，schema保持41。发布完成前生产仍是v0.6.46，不能提前写v0.6.47已上线。
 
-v0.6.47候选证据：默认Node25.9.0/npm11.12.1下build与architecture通过；生产兼容Node22.23.1/npm10.9.8定向m38+m81+m94共`60/60 PASS`，failed/skipped/retries/blocked/reportErrors均0，source/snapshot`bd161ee0…62e1f`，4173监听身份不变。下一门是冻结候选commit后的唯一safe full。
+v0.6.47候选证据：默认Node25.9.0/npm11.12.1下build与architecture通过；生产兼容Node22.23.1/npm10.9.8定向m38+m81+m94共`60/60 PASS`。冻结候选commit `76eaaebaf5271b552a425c3af5885c45a24d606f` / tree `e15fb581…34ef`上的唯一正式safe full为`121/121 specs、1069/1069 tests PASS`，failed/skipped/retries/blocked/reportErrors均0，source/snapshot`8d8f12b8…8f76a`，4173监听身份不变。其后只允许记录证据并运行文档一致性门，不重复业务full；下一门为push/PR/CI/merge/tag/Release。
 
 ## 一句话
 

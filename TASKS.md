@@ -3,7 +3,7 @@
 > **当前状态**：生产运行`v0.6.46 / schema41`且服务健康；v0.6.47治理与默认Node25发布已获版本号和完整发布授权，当前处于本地候选验证阶段。INC-GEN-015的v0.6.46 `USER_PASS`历史事实保持不变。
 
 更新时间：2026-08-26
-状态：`V0_6_47_GOVERNANCE_NODE25_RELEASE_AUTHORIZED / CANDIDATE_TARGETED_PASS / FULL_PENDING`。
+状态：`V0_6_47_GOVERNANCE_NODE25_RELEASE_AUTHORIZED / CANDIDATE_FULL_PASS / GITHUB_PENDING`。
 
 ### 2026-08-26 治理与默认工具链同步（本地未提交，未发布）
 
@@ -14,7 +14,8 @@
 - [x] 默认Node25下build与architecture通过；Node22生产兼容preflight、源码覆盖456/456、behavior 1/1、m38+m94 `19/19 PASS`，4173监听身份不变；未运行full
 - [x] 用户明确授权commit/push/发布并确认版本`v0.6.47`；package/lock/final runtime role已同步，schema保持41
 - [x] 默认Node25 build/architecture通过；生产兼容safe m38+m81+m94 `60/60 PASS`，异常0，source/snapshot`bd161ee0…62e1f`、4173不变
-- [ ] 完成v0.6.47候选提交、正式safe full、GitHub与生产发布门；完成前线上仍为v0.6.46
+- [x] 候选commit `76eaaebaf5271b552a425c3af5885c45a24d606f` / tree `e15fb581…34ef`上的唯一正式safe full：`121/121 specs、1069/1069 tests PASS`，failed/skipped/retries/blocked/reportErrors均0；source/snapshot `8d8f12b8…8f76a`，4173监听身份不变
+- [ ] 完成v0.6.47 GitHub与生产发布门；完成前线上仍为v0.6.46
 
 ### 2026-08-26 老画布孤立生成态与终态结果自动收口（INC-GEN-015，TARGETED_AUTO_PASS）
 

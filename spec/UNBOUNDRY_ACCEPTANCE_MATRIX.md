@@ -25,7 +25,7 @@
 
 2026-08-26 `CURRENT_RELEASE = v0.6.46 / schema41 / PRODUCTION_V0_6_46_USER_PASS`。本地治理基线为`main = origin/main = 12e2fd9b…2795`，当前差异仅为本轮尚未提交的治理与工具链修改；普通项目shell默认Node `25.9.0` / npm `11.12.1`，现网仍为Node `22.23.2` / npm `10.9.8`，安全/发布复现通道为Node `22.23.1` / npm `10.9.8`。默认Node25 build/architecture通过；Node22兼容preflight、源码覆盖456/456、behavior 1/1及m38+m94 `19/19 PASS`，4173不变，未运行full。这次工具链治理不是生产运行时迁移或新版本发布。
 
-2026-08-26 `LOCAL_CANDIDATE = v0.6.47 / schema41 / RELEASE_AUTHORIZED / TARGETED_PASS`：用户已明确commit/push/发布并确认v0.6.47；候选只改变治理、默认Node/npm、CI双通道与生产兼容release合同。默认Node25 build/architecture通过，生产兼容safe m38+m81+m94 `60/60 PASS`且4173不变；正式full仍待冻结候选commit。生产切换前CURRENT_RELEASE仍为v0.6.46，不提前升级验收状态。
+2026-08-26 `LOCAL_CANDIDATE = v0.6.47 / schema41 / RELEASE_AUTHORIZED / FULL_PASS`：用户已明确commit/push/发布并确认v0.6.47；候选只改变治理、默认Node/npm、CI双通道与生产兼容release合同。默认Node25 build/architecture及生产兼容定向门通过；冻结候选commit `76eaaeb…d606f` / tree `e15fb581…34ef`上的唯一正式safe full为`121/121 specs、1069/1069 tests PASS`，异常0，source/snapshot`8d8f12b8…8f76a`且4173不变。生产切换前CURRENT_RELEASE仍为v0.6.46，不提前升级验收状态。
 
 本文件下方旧版本的 `USER_RECHECK/PENDING` 均保留各自验收时点，不再承担当前线上版本播报，也不得被直接当成下一施工计划。当前版本、当前计划和授权边界只以 `spec/UNBOUNDRY_CURRENT_STATE.md` 为准。
 
