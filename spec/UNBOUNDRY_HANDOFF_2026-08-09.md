@@ -6,9 +6,9 @@
 
 新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是2026-08-26的权威现状、产品合同和用户验收边界。下面各节是历史增量，出现「当前」时只代表该时点。
 
-2026-08-26当前接手事实：生产为v0.6.46/schema41，INC-GEN-015已由用户生产实页确认`USER_PASS`；`main = origin/main = 12e2fd9b…2795`位于`/Users/mymy/Documents/unboundry-inc-imgedit-003-v0.6.34-2026-08-23`，本轮开始时干净，当前只有已获同意且尚未提交的治理/工具链差异。旧`/Users/mymy/Documents/unboundry/app`是upstream已失效且含未跟踪文件的历史工作树，不得施工或自动清理。项目普通shell默认Node `25.9.0` / npm `11.12.1`；线上仍为Node `22.23.2` / npm `10.9.8`，Node `22.23.1` / npm `10.9.8`仅作安全/发布兼容复现。默认Node25 build/architecture通过；Node22兼容m38+m94 `19/19 PASS`且4173不变。下段记录本轮随后取得的v0.6.47发布授权。
+2026-08-26当前接手事实：生产为v0.6.47/schema41，状态`PRODUCTION_V0_6_47_TECHNICAL_PASS / USER_RECHECK`；`origin/main = 24541b3…d20e`，tag/Release v0.6.47不可移动。生产release`/opt/unboundry/releases/v0.6.47-governance-node25-20260826`，备份`/var/lib/unboundry-rollbacks/v0.6.47-cutover-final2-20j2R3`，回执`spec/V0_6_47_PRODUCTION_RECEIPT_2026-08-26.json`。项目普通shell默认Node `25.9.0` / npm `11.12.1`，线上运行时仍为Node `22.23.2` / npm `10.9.8`。旧`/Users/mymy/Documents/unboundry/app`仍不得施工或自动清理。
 
-后续授权更新：用户已明确commit/push/发布并确认`v0.6.47`；当前候选分支`codex/v0.6.47-governance-node25`，schema41、真实Provider/Generation/OSS预算0。commit `76eaaeb…d606f` / tree `e15fb581…34ef`上的唯一正式safe full已`121/121 specs、1069/1069 tests PASS`，异常0，source/snapshot`8d8f12b8…8f76a`且4173不变；后续不重复业务full。只有GitHub、备份恢复、fresh build、原子切换与生产技术门全部通过后，才能把线上版本改写为v0.6.47。
+v0.6.47一次性授权已执行并消费；候选唯一full、GitHub、备份恢复、fresh build、原子切换与生产技术门已全部通过。真实Provider/Generation/OSS/费用0，下一唯一动作是用户打开生产实页复验；未明确回复前不得写`USER_PASS`或发起新发布。
 
 ## 历史发布候选：INC-UI-011 节点排序菜单层级修复（v0.6.43 / 本地USER_PASS）
 

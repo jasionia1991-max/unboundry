@@ -1,28 +1,30 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网为v0.6.46/schema41且服务健康；目标5个旧节点已复用原成功结果收口，零新Generation/Provider/Media/publication/费用。`on → off → on`灰度与止写回退通过，最终mode=`on`；用户已在生产目标Canvas明确回复“通过”，INC-GEN-015为`USER_PASS`。
+> **状态分层**：现网为v0.6.47/schema41且服务健康；项目默认Node25/npm11已发布，生产运行时保持Node22/npm10。v0.6.47技术发布门通过，真实Provider/Generation/OSS/费用0；当前等待用户生产实页复验。v0.6.46的INC-GEN-015 `USER_PASS`仅作为历史验收事实保留。
 
 更新日期：2026-08-26
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
 当前代码包版本：**v0.6.47**
 本地候选代码版本：**v0.6.47**
 本地候选schema：**41**
-当前治理标记：`CURRENT_V0_6_46_USER_PASS`
-当前计划标记：`INC_GEN_015_PRODUCTION_V0_6_46_USER_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON`
+当前治理标记：`CURRENT_V0_6_47_USER_RECHECK`
+当前计划标记：`V0_6_47_GOVERNANCE_NODE25_PRODUCTION_TECHNICAL_PASS / USER_RECHECK`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前本地发布门：`V0_6_47_GOVERNANCE_NODE25_RELEASE_AUTHORIZED / CANDIDATE_FULL_PASS / GITHUB_PENDING`
+当前发布门：`PRODUCTION_V0_6_47_TECHNICAL_PASS / USER_RECHECK`
 
-当前Git身份（2026-08-26本轮基线只读核验）：`main = origin/main = 12e2fd9b54fc8684274fd02c6ebc15625b4c2795`；工作树`/Users/mymy/Documents/unboundry-inc-imgedit-003-v0.6.34-2026-08-23`在本轮治理修改前干净，当前仅有本轮已获同意、尚未提交的治理与工具链修改。旧`/Users/mymy/Documents/unboundry/app`是upstream已失效且含未跟踪文件的历史分支，不能作为当前main施工入口，也不得自动清理。
+当前Git身份（2026-08-26发布后）：`origin/main = 24541b387120702b800325416fb91bfc87ecd20e`，tree `ec64e822…ab4f1`；PR #110已squash merge，注释tag `v0.6.47`不可移动地指向该merge。工作树`/Users/mymy/Documents/unboundry-inc-imgedit-003-v0.6.34-2026-08-23`只用于本次生产回执收口；旧`/Users/mymy/Documents/unboundry/app`仍是upstream失效且含未跟踪文件的历史分支，不得施工或自动清理。
 
-当前工具链分层：普通项目shell、开发、类型检查和构建默认Node `25.9.0` / npm `11.12.1`；现网v0.6.46仍运行Node `22.23.2` / npm `10.9.8`。安全测试、源码覆盖和不可变release builder暂以Node `22.23.1` / npm `10.9.8`作为生产兼容复现通道；本次只治理本地默认与文档/CI合同，没有迁移、重启或发布生产运行时。验证证据：默认Node25下build与architecture通过；Node22兼容preflight通过，源码覆盖456/456、behavior 1/1、m38+m94 `19/19 PASS`，4173监听身份不变；未运行full。
+当前工具链分层：普通项目shell、开发、类型检查和CI默认Node `25.9.0` / npm `11.12.1`；现网v0.6.47仍运行Node `22.23.2` / npm `10.9.8`。安全测试、源码覆盖和不可变release builder继续以Node `22.23.1` / npm `10.9.8`作为生产兼容复现通道；本版没有迁移生产Node运行时。
 
-v0.6.47授权状态：用户已明确“commit push 发布”并确认版本`v0.6.47`，本次commit、push、PR、CI、tag、GitHub Release、SSH与生产发布授权齐备。候选只包含治理文档、默认Node/npm、CI双通道和生产兼容release合同；真实Provider/Generation/OSS预算为0，schema保持41。发布完成前生产仍是v0.6.46，不能提前写v0.6.47已上线。
+v0.6.47发布状态：用户的一次性commit/push/发布与v0.6.47授权已执行并消费。PR #110、PR/main CI、tag/Release、fresh tag build、冻结备份恢复、原子切换、公网/回环/数据/inventory/5资源与60秒稳定门全通过。生产路径`/opt/unboundry/releases/v0.6.47-governance-node25-20260826`，权威备份`/var/lib/unboundry-rollbacks/v0.6.47-cutover-final2-20j2R3`，回执`spec/V0_6_47_PRODUCTION_RECEIPT_2026-08-26.json`。真实Provider/Generation/OSS/费用0，schema41；当前为`USER_RECHECK`，不得提前写`USER_PASS`。
 
-v0.6.47候选证据：默认Node25.9.0/npm11.12.1下build与architecture通过；生产兼容Node22.23.1/npm10.9.8定向m38+m81+m94共`60/60 PASS`。冻结候选commit `76eaaebaf5271b552a425c3af5885c45a24d606f` / tree `e15fb581…34ef`上的唯一正式safe full为`121/121 specs、1069/1069 tests PASS`，failed/skipped/retries/blocked/reportErrors均0，source/snapshot`8d8f12b8…8f76a`，4173监听身份不变。其后只允许记录证据并运行文档一致性门，不重复业务full；下一门为push/PR/CI/merge/tag/Release。
+v0.6.47验证证据：默认Node25.9.0/npm11.12.1下build与architecture通过；生产兼容Node22.23.1/npm10.9.8定向m38+m81+m94共`60/60 PASS`。冻结候选commit `76eaaebaf5271b552a425c3af5885c45a24d606f` / tree `e15fb581…34ef`上的唯一正式safe full为`121/121 specs、1069/1069 tests PASS`，异常0，source/snapshot`8d8f12b8…8f76a`且4173不变；证据文档门`15/15 PASS`，未重复full。
+
+生产回执收口的safe m38先后仅暴露当前治理标记复合后缀与三份渐进式模块化文档仍停在v0.6.46；统一为`CURRENT_V0_6_47_USER_RECHECK`后`15/15 PASS`，source/snapshot`83cf1676…7afe`、4173不变，未重复业务spec或唯一full。
 
 ## 一句话
 
-**生产是 v0.6.46 / schema41且服务健康；5个旧节点已零付费恢复原成功结果，最终灰度为`on`，用户已明确回复“通过”，INC-GEN-015正式收口为USER_PASS。**
+**生产是 v0.6.47 / schema41且服务健康；项目默认Node25/npm11、生产Node22/npm10。当前为技术发布通过、等待用户实页复验；v0.6.46的INC-GEN-015 USER_PASS保持为历史事实。**
 
 ## INC-GEN-015 老画布孤立生成态与终态结果自动收口（PRODUCTION_V0_6_46_USER_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON）
 
@@ -349,7 +351,7 @@ v0.6.34版本号、tag和发布授权均已执行并消费，禁止移动tag或�
 
 ## v0.6.25 发布与真实验证（2026-08-20，历史时点）
 
-- 本节以下为 v0.6.25 历史记录，不承担当前版本播报；当前生产只以本文顶部v0.6.46状态为准。v0.6.26 的 `PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK` 是该版本独立验收时点，继续作为历史证据保留。v0.6.25 的完整实施记录见 `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`，生产凭证见 `spec/V0_6_25_PRODUCTION_RECEIPT_2026-08-20.json`。
+- 本节以下为 v0.6.25 历史记录，不承担当前版本播报；当前生产只以本文顶部v0.6.47状态为准。v0.6.26 的 `PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK` 是该版本独立验收时点，继续作为历史证据保留。v0.6.25 的完整实施记录见 `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`，生产凭证见 `spec/V0_6_25_PRODUCTION_RECEIPT_2026-08-20.json`。
 - 事二「生成任务一直排队中」已在线闭环：已知任务 `c479826f-a426-4a11-854c-79ecc802bcbc` 从 `queued / attempt 1 / provider_task_id null` 在 v0.6.25 重启后自动接力，平台任务 `111092189` 完成，最终 `success / attempt 2`；没有盲目重复。
 - 事一已查清：2026-08-19 15:23–15:26Z 上游“服装主体标准化”图片成功并产出 11,596,744 字节 PNG；v0.6.23 的 10MB 文字输入预检随后拦下四个下游文字节点，五个后代未运行。不是客户端 DAG 漏发；红字把失败错归因给已经成功的上游图片节点。
 - “2:33 三张主图从未提交”的旧说法已被生产任务表与 nginx 202 提交记录否定：该轮 7 图 + 4 文全部 success。

@@ -21,11 +21,11 @@
 基线日期：2026-07-27  
 当前状态更新：2026-08-26
 
-`AUTHORITATIVE_ACCEPTANCE_LEDGER`：生产为v0.6.46/schema41且服务健康；INC-GEN-015目标Canvas的5个旧节点已严格复用原success task/result proof收口，`on → off → on`回退通过且最终mode=`on`。目标与全局Generation/Provider/Media/publication账本零新增，用户已在生产目标Canvas明确回复“通过”；状态为`PRODUCTION_V0_6_46_USER_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON`。
+`AUTHORITATIVE_ACCEPTANCE_LEDGER`：生产为v0.6.47/schema41且服务健康；项目默认Node25/npm11已发布，生产运行时仍为Node22/npm10。GitHub、fresh build、冻结备份恢复、原子切换、数据/inventory/公网/资源/稳定门全通过，真实Provider/Generation/OSS/费用0；当前`PRODUCTION_V0_6_47_TECHNICAL_PASS / USER_RECHECK`。v0.6.46的INC-GEN-015 `USER_PASS`继续作为历史验收事实保留，不自动继承给v0.6.47。
 
 2026-08-26 `CURRENT_RELEASE = v0.6.46 / schema41 / PRODUCTION_V0_6_46_USER_PASS`。本地治理基线为`main = origin/main = 12e2fd9b…2795`，当前差异仅为本轮尚未提交的治理与工具链修改；普通项目shell默认Node `25.9.0` / npm `11.12.1`，现网仍为Node `22.23.2` / npm `10.9.8`，安全/发布复现通道为Node `22.23.1` / npm `10.9.8`。默认Node25 build/architecture通过；Node22兼容preflight、源码覆盖456/456、behavior 1/1及m38+m94 `19/19 PASS`，4173不变，未运行full。这次工具链治理不是生产运行时迁移或新版本发布。
 
-2026-08-26 `LOCAL_CANDIDATE = v0.6.47 / schema41 / RELEASE_AUTHORIZED / FULL_PASS`：用户已明确commit/push/发布并确认v0.6.47；候选只改变治理、默认Node/npm、CI双通道与生产兼容release合同。默认Node25 build/architecture及生产兼容定向门通过；冻结候选commit `76eaaeb…d606f` / tree `e15fb581…34ef`上的唯一正式safe full为`121/121 specs、1069/1069 tests PASS`，异常0，source/snapshot`8d8f12b8…8f76a`且4173不变。生产切换前CURRENT_RELEASE仍为v0.6.46，不提前升级验收状态。
+2026-08-26 `CURRENT_RELEASE = v0.6.47 / schema41 / PRODUCTION_TECHNICAL_PASS / USER_RECHECK`：冻结候选唯一safe full `121/121 specs、1069/1069 tests PASS`；PR #110、PR/main CI、merge `24541b3`、tag/Release、fresh build、备份`v0.6.47-cutover-final2-20j2R3`、恢复数据门、原子切换、5资源逐字节与60秒稳定门全通过。回执`spec/V0_6_47_PRODUCTION_RECEIPT_2026-08-26.json`；用户明确复验前不得写`USER_PASS`。
 
 本文件下方旧版本的 `USER_RECHECK/PENDING` 均保留各自验收时点，不再承担当前线上版本播报，也不得被直接当成下一施工计划。当前版本、当前计划和授权边界只以 `spec/UNBOUNDRY_CURRENT_STATE.md` 为准。
 

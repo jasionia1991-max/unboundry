@@ -1,11 +1,11 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产运行`v0.6.46 / schema41`且服务健康；v0.6.47治理与默认Node25发布已获版本号和完整发布授权，当前处于本地候选验证阶段。INC-GEN-015的v0.6.46 `USER_PASS`历史事实保持不变。
+> **当前状态**：生产运行`v0.6.47 / schema41`且服务健康；项目默认Node25/npm11已发布，生产运行时仍为Node22/npm10。v0.6.46的INC-GEN-015 `USER_PASS`历史事实保持不变，v0.6.47待用户实页复验。
 
 更新时间：2026-08-26
-状态：`V0_6_47_GOVERNANCE_NODE25_RELEASE_AUTHORIZED / CANDIDATE_FULL_PASS / GITHUB_PENDING`。
+状态：`PRODUCTION_V0_6_47_TECHNICAL_PASS / USER_RECHECK`。
 
-### 2026-08-26 治理与默认工具链同步（本地未提交，未发布）
+### 2026-08-26 治理与默认工具链同步（v0.6.47已技术发布）
 
 - [x] 只读核验公网生产为v0.6.46/schema41且健康；未写生产、未发布、未发起Provider/OSS/Generation请求
 - [x] 只读核验干净`main = origin/main = 12e2fd9b…2795`；旧`/Users/mymy/Documents/unboundry/app`为upstream失效且含未跟踪文件的历史工作树，未触碰、未清理
@@ -15,7 +15,10 @@
 - [x] 用户明确授权commit/push/发布并确认版本`v0.6.47`；package/lock/final runtime role已同步，schema保持41
 - [x] 默认Node25 build/architecture通过；生产兼容safe m38+m81+m94 `60/60 PASS`，异常0，source/snapshot`bd161ee0…62e1f`、4173不变
 - [x] 候选commit `76eaaebaf5271b552a425c3af5885c45a24d606f` / tree `e15fb581…34ef`上的唯一正式safe full：`121/121 specs、1069/1069 tests PASS`，failed/skipped/retries/blocked/reportErrors均0；source/snapshot `8d8f12b8…8f76a`，4173监听身份不变
-- [ ] 完成v0.6.47 GitHub与生产发布门；完成前线上仍为v0.6.46
+- [x] PR #110、PR/main Quality CI、squash merge `24541b3`、不可移动tag/GitHub Release v0.6.47全部通过
+- [x] fresh tag archive/build、最终冻结备份`v0.6.47-cutover-final2-20j2R3`、恢复/schema/integrity/FK/数据门、原子切换、公网/回环/inventory/5资源和60秒稳定门通过；真实Provider/Generation/OSS/费用0
+- [x] 生产回执收口的safe m38先后仅暴露当前治理标记复合后缀与三份渐进式模块化文档仍停在v0.6.46；统一为`CURRENT_V0_6_47_USER_RECHECK`后`15/15 PASS`，source/snapshot`83cf1676…7afe`、4173不变，未重复业务spec或唯一full
+- [ ] 用户打开`https://canvas.mymy.ltd`复验普通项目页与关键画布入口；明确回复前不得写`USER_PASS`
 
 ### 2026-08-26 老画布孤立生成态与终态结果自动收口（INC-GEN-015，TARGETED_AUTO_PASS）
 
