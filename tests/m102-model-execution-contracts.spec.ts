@@ -558,6 +558,11 @@ test("admin contract workbench is separate, structured and responsive with zero 
   });
   expect(modelResponse.status()).toBe(201);
   const model = (await modelResponse.json()).model as { id: string };
+  await page.goto("/admin/models");
+  await expect(
+    page.locator("article").filter({ hasText: "Contract Fixture Model" })
+      .getByRole("button", { name: "合同工作台" }),
+  ).toBeVisible();
   for (const viewport of [
     { height: 720, width: 1280 },
     { height: 900, width: 1440 },

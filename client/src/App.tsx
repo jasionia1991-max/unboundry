@@ -5765,17 +5765,17 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
                 )}
               </div>
               <div className="model-list-actions">
+                <button
+                  onClick={() => window.location.href = settingsDestination(
+                    `/admin/models/${model.id}/contract`,
+                    currentUser.id,
+                  )}
+                  type="button"
+                >
+                  合同工作台
+                </button>
                 {model.archived ? (
                   <>
-                    <button
-                      onClick={() => window.location.href = settingsDestination(
-                        `/admin/models/${model.id}/contract`,
-                        currentUser.id,
-                      )}
-                      type="button"
-                    >
-                      合同工作台
-                    </button>
                     <button
                       disabled={lifecycleBusyId === model.id}
                       onClick={() =>

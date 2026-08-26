@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻当前任务
 
-## MODEL-CONTRACT-001 模型执行合同治理（R0-R7 / v0.6.48 FAIL-CLOSED / v0.6.49 REVIEW GO）
+## MODEL-CONTRACT-001 模型执行合同治理（R0-R7 / v0.6.49 PRODUCTION UI P1 / v0.6.50 HOTFIX）
 
 - [x] 从`origin/main@7b475416a77cdee8d7b04ce965600551aa16858c`建立干净隔离worktree并核对生产v0.6.47/schema41、工具链、tag/Release与4173监听身份。
 - [x] R0盘点四类节点、图片工具、11个生产已发布模型、6个Provider profile、connector、输入、task/poll/result/error、模板与恢复路径；详见`spec/MODEL_CONTRACT_001_R0_INVENTORY_2026-08-26.md`。
@@ -15,9 +15,14 @@
 - [x] 修复后默认Node25 build通过；受影响组合5 specs `40/40 PASS`；补齐声明式参数全消费和文档后最小复验m102+m38 `22/22 PASS`，source/snapshot `2893682f…f3013`，4173不变；这些不是full。
 - [x] R7关闭GK旧guessing但不伪造UNKNOWN；同一审查线程最终及full后UI增量复核均`P0=0 / P1=0 / GO`。
 - [x] 本Goal唯一safe full为122 specs、1074/1076；唯二m18/m45直接UI治理失败精确修复后定向4/4 PASS，未重复full。产品候选commit`4aef16f`/tree`01594eb`。
-- [ ] 唯一下一动作：完成v0.6.49 commit/PR/CI/tag/Release，再从精确tag复验既有冻结恢复副本并原子发布。
+- [x] v0.6.49完成PR #113、PR/main CI、不可移动tag/Release、精确tag恢复与生产bootstrap、原子切换、数据/公网/资产/65秒稳定门；真实Provider/Generation/OSS/费用0。
+- [x] 生产浏览器诚实发现P1：活动模型卡片显示合同状态但“合同工作台”入口只渲染在归档分支，v0.6.49不得记生产UI技术PASS。
+- [x] v0.6.50最小修复把同一入口提升为所有模型共享动作，并在m102增加活动模型实页入口断言；m102+m81定向48/48 PASS，未重复full。
+- [x] v0.6.50默认Node25 build PASS；Node22文档治理m38定向15/15 PASS；两次safe回执均异常0、4173不变，候选已冻结。
+- [x] v0.6.50独立增量Review首轮`P0=0 / P1=1 / NO-GO`仅发现权威文档当前版本冲突；统一生产v0.6.49/schema41与候选v0.6.50后m38 15/15 PASS，同一审查线程复核为`P0=0 / P1=0 / GO`。
+- [ ] 唯一下一动作：提交并推送v0.6.50候选，完成PR/CI/merge、不可移动tag/Release与生产零schema/零数据迁移切换，再重做真实浏览器技术验收。
 
-> **当前状态**：生产仍运行`v0.6.47 / schema41`且服务健康；v0.6.48恢复副本门准确阻断审计外键缺陷，未切换生产；v0.6.49 hotfix定向证据和独立Review GO均通过，下一步GitHub与生产闭环。成片视觉严格为`USER_RECHECK`。
+> **当前状态**：生产运行`v0.6.49 / schema41`且后端、数据、服务健康；真实浏览器发现活动模型缺少合同工作台入口P1，v0.6.50最小UI热修待独立Review与不可变发布。成片视觉严格为`USER_RECHECK`。
 
 更新时间：2026-08-26
 状态：`PRODUCTION_V0_6_47_USER_PASS / MODEL_CONTRACT_001_V0_6_48_FAIL_CLOSED / V0_6_49_HOTFIX_REVIEW_GO / GITHUB_NEXT`。
