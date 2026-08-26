@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻当前任务
 
-## MODEL-CONTRACT-001 模型执行合同治理（REVIEW GO / FORMAL FULL NEXT）
+## MODEL-CONTRACT-001 模型执行合同治理（R0-R7 / REVIEW GO / GITHUB NEXT）
 
 - [x] 从`origin/main@7b475416a77cdee8d7b04ce965600551aa16858c`建立干净隔离worktree并核对生产v0.6.47/schema41、工具链、tag/Release与4173监听身份。
 - [x] R0盘点四类节点、图片工具、11个生产已发布模型、6个Provider profile、connector、输入、task/poll/result/error、模板与恢复路径；详见`spec/MODEL_CONTRACT_001_R0_INVENTORY_2026-08-26.md`。
@@ -11,12 +11,14 @@
 - [x] 生产恢复副本bootstrap 11/11、第二次幂等0新增、integrity/FK/数据计数通过；Provider/Generation/OSS/费用0。
 - [x] 首轮独立只读终审为`P0=3 / P1=8 / NO-GO`；已完成声明式全输入消费、runtime/model锁定、unknown outcome禁止重提、事务重读、revoke持久、角色身份、schema/secret/UI等全部对应修复。
 - [x] 修复后默认Node25 build通过；受影响组合5 specs `40/40 PASS`；补齐声明式参数全消费和文档后最小复验m102+m38 `22/22 PASS`，source/snapshot `2893682f…f3013`，4173不变；这些不是full。
-- [ ] R7唯一下一动作：同一独立审查线程复核；P0/P1清零并GO后提交候选，执行一次正式safe full，再进入GitHub与生产发布。
+- [x] R7关闭GK旧guessing但不伪造UNKNOWN；同一审查线程最终及full后UI增量复核均`P0=0 / P1=0 / GO`。
+- [x] 本Goal唯一safe full为122 specs、1074/1076；唯二m18/m45直接UI治理失败精确修复后定向4/4 PASS，未重复full。产品候选commit`4aef16f`/tree`01594eb`。
+- [ ] 唯一下一动作：push、PR、CI、merge、v0.6.48 tag/Release，再按生产门备份恢复、fresh build与原子发布。
 
-> **当前状态**：生产仍运行`v0.6.47 / schema41`且服务健康；MODEL-CONTRACT-001本地`v0.6.48 / schema41`候选已完成R0-R6和两轮NO-GO修复，同一审查线程第三轮`P0=0 / P1=0 / GO`。下一步冻结提交并运行唯一full；GitHub、生产发布尚未执行；成片视觉严格为`USER_RECHECK`。
+> **当前状态**：生产仍运行`v0.6.47 / schema41`且服务健康；MODEL-CONTRACT-001本地`v0.6.48 / schema41`已完成R0-R7、最终Review GO和唯一full后的定向闭环。下一步GitHub；生产发布尚未执行；成片视觉严格为`USER_RECHECK`。
 
 更新时间：2026-08-26
-状态：`PRODUCTION_V0_6_47_USER_PASS / MODEL_CONTRACT_001_FIRST_REVIEW_NO_GO_FIXED / TARGETED_AUTO_PASS / SAME_REVIEWER_RECHECK_NEXT`。
+状态：`PRODUCTION_V0_6_47_USER_PASS / MODEL_CONTRACT_001_REVIEW_GO / SINGLE_FULL_TARGETED_REPAIR_PASS / GITHUB_NEXT`。
 
 ### 2026-08-26 模型执行合同治理（MODEL-CONTRACT-001，R0-R6 IMPLEMENTED）
 
@@ -33,9 +35,10 @@
 - [x] 完成独立后台工作台、OpenAPI、CAS、模板影响、本地零Provider验证、脱敏预览、版本历史、回滚和停止/恢复新任务
 - [x] safe定向3 specs/18项、21 specs/286项、hash加固后2 specs/21项、版本治理3 specs/60项全部通过；默认Node25 build/architecture通过
 - [x] 首轮独立终审`P0=3 / P1=8 / NO-GO`，对应修复后的受影响组合5 specs `40/40 PASS`，最终最小复验2 specs `22/22 PASS`
-- [ ] 同一审查线程复核、唯一safe full、GitHub和生产发布尚未执行；真实Provider/Generation/OSS/费用0，用户成片质量为`USER_RECHECK`
+- [x] 同一审查线程最终及full后增量复核均`P0=0 / P1=0 / GO`；唯一full 1074/1076，唯二UI治理失败精确修复后m18+m45 4/4 PASS，未重复full
+- [ ] GitHub和生产发布尚未执行；真实Provider/Generation/OSS/费用0，用户成片质量为`USER_RECHECK`
 
-权威方案：`spec/MODEL_CONTRACT_001_MODEL_EXECUTION_CONTRACT_GOVERNANCE_PLAN_2026-08-26.md`；矩阵：`spec/MODEL_CONTRACT_001_ACCEPTANCE_MATRIX_2026-08-26.md`；断点：`spec/MODEL_CONTRACT_001_CHECKPOINT.md`；Goal：`spec/MODEL_CONTRACT_001_GOAL_PROMPT.md`。当前唯一下一动作是同一独立审查线程对修复候选复核。
+权威方案：`spec/MODEL_CONTRACT_001_MODEL_EXECUTION_CONTRACT_GOVERNANCE_PLAN_2026-08-26.md`；矩阵：`spec/MODEL_CONTRACT_001_ACCEPTANCE_MATRIX_2026-08-26.md`；断点：`spec/MODEL_CONTRACT_001_CHECKPOINT.md`；Goal：`spec/MODEL_CONTRACT_001_GOAL_PROMPT.md`。当前唯一下一动作是GitHub PR/CI。
 
 ### 2026-08-26 治理与默认工具链同步（v0.6.47已技术发布）
 

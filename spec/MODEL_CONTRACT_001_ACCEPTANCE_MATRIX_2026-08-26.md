@@ -1,6 +1,6 @@
 # MODEL-CONTRACT-001 验收矩阵
 
-状态：`R0-R6_IMPLEMENTED / REVIEW_P0_0_P1_0_GO / TARGETED_AUTO_PASS / FORMAL_FULL_PENDING / USER_RECHECK`
+状态：`R0-R7_IMPLEMENTED / REVIEW_P0_0_P1_0_GO / SINGLE_FULL_EXECUTED_TARGETED_REPAIR_PASS / GITHUB_NEXT / USER_RECHECK`
 
 说明：`AUTO_PASS`表示当前候选已有自动工程证据；`USER_RECHECK`保留给生产实页和成片主观验收。定向测试不是full，生产技术和用户质量不得由本矩阵自动升级。
 
@@ -73,18 +73,18 @@
 | MC-MIG-005 | P0 | 只有全部发布模型、模板、恢复、安全、回滚和终审完成才关闭猜测式路径 | 关闭门报告 | FIXED / SAME_REVIEWER_RECHECK_PENDING |
 | MC-RELEASE-001 | P0 | 草稿必须先静态编译、模板兼容、脱敏预览和fake矩阵才可发布 | 发布门集成测试 | AUTO_PASS |
 | MC-RELEASE-002 | P0 | 发布前影响清单完整，发布动作本身Provider调用0 | audit/network记录 | AUTO_PASS |
-| MC-RELEASE-003 | P0 | 候选冻结后独立只读终审P0=0/P1=0/GO | 审查回执 | FIRST_NO_GO / FIXED / RECHECK_PENDING |
-| MC-RELEASE-004 | P1 | 风险驱动定向测试；无相关变化不重复full；正式safe full最多一次 | 测试账本 | TARGETED_AUTO_PASS / FULL_NOT_RUN |
+| MC-RELEASE-003 | P0 | 候选冻结后独立只读终审P0=0/P1=0/GO | 审查回执 | P0_0 / P1_0 / GO |
+| MC-RELEASE-004 | P1 | 风险驱动定向测试；无相关变化不重复full；正式safe full最多一次 | 测试账本 | SINGLE_FULL_EXECUTED / TARGETED_REPAIR_PASS |
 | MC-RELEASE-005 | P0 | 自动、真实Provider、生产技术、用户质量状态严格分离 | 状态/receipt审查 | AUTO_PASS / PRODUCTION_NOT_RUN / USER_RECHECK |
 | MC-RELEASE-006 | P0 | 未获新授权前无commit/push/PR/tag/Release/SSH/生产/真实Provider | Git/网络/费用账本 | AUTHORIZED / NOT_EXECUTED |
 
 ## 当前总判定
 
-- 方案与实现：`R0-R6_IMPLEMENTED / TARGETED_AUTO_PASS`
+- 方案与实现：`R0-R7_IMPLEMENTED / TARGETED_AUTO_PASS`
 - GK-video-3请求合同：`AUTO_PASS`；服装款式与成片视觉：`USER_RECHECK`
-- 定向测试：首轮终审修复后的受影响组合5 specs、40/40通过；最终参数/文档最小复验2 specs、22/22通过；正式safe full：`NOT_RUN`
-- 独立终审：首轮`P0=3 / P1=8 / NO-GO`，修复候选等待同一审查线程复核
+- 定向测试：首轮修复组合40/40、参数/文档22/22；唯一full 1074/1076，唯二UI治理失败精确修复后m18+m45定向4/4通过，未重复full
+- 独立终审：首轮`P0=3 / P1=8 / NO-GO`、第二轮`P0=1 / P1=2 / NO-GO`，最终及full后增量复核均`P0=0 / P1=0 / GO`
 - 真实Provider控制面/生成、OSS写入、费用：`0 / 0 / 0 / 0`
-- 发布：`AUTHORIZED_NOT_STARTED`
+- 发布：`AUTHORIZED / GITHUB_NEXT`
 - 生产技术：`NOT_RUN`
 - 用户成片质量：`USER_RECHECK`

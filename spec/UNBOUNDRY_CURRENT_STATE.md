@@ -1,6 +1,6 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网仍为v0.6.47/schema41且服务健康，v0.6.47用户验收继续有效。MODEL-CONTRACT-001本地候选为v0.6.48/schema41，已完成R0-R6和首轮独立终审NO-GO修复；当前唯一下一动作是同一审查线程复核。尚未执行唯一full、GitHub或生产发布，成片视觉仍为`USER_RECHECK`。
+> **状态分层**：现网仍为v0.6.47/schema41且服务健康，v0.6.47用户验收继续有效。MODEL-CONTRACT-001本地v0.6.48/schema41已完成R0-R7，同一审查线程最终`P0=0 / P1=0 / GO`；唯一full的两处直接UI治理失败已定向修复并4/4通过，未重复full。当前唯一下一动作是GitHub PR/CI；生产和成片视觉仍为`USER_RECHECK`。
 
 更新日期：2026-08-26
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
@@ -8,9 +8,9 @@
 本地候选代码版本：**v0.6.48**
 本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_48_USER_RECHECK`
-当前计划标记：`MODEL_CONTRACT_001_FIRST_REVIEW_NO_GO_FIXED / TARGETED_AUTO_PASS / SAME_REVIEWER_RECHECK_NEXT`
+当前计划标记：`MODEL_CONTRACT_001_R0_R7_IMPLEMENTED / REVIEW_GO / SINGLE_FULL_TARGETED_REPAIR_PASS / GITHUB_NEXT`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`MODEL_CONTRACT_001_V0_6_48_AUTHORIZED_NOT_STARTED / PRODUCTION_V0_6_47_USER_PASS`
+当前发布门：`MODEL_CONTRACT_001_V0_6_48_GITHUB_NEXT / PRODUCTION_V0_6_47_USER_PASS`
 
 当前Goal从`origin/main = 7b475416a77cdee8d7b04ce965600551aa16858c`、tree `eb0882df4f729f4cf4893e652168f7fd1cc46dbc`建立隔离工作树`/Users/mymy/Documents/unboundry-model-contract-001-2026-08-26`与分支`codex/model-contract-001-2026-08-26`。v0.6.47 tag继续不可移动；实时检查确认v0.6.48 tag与GitHub Release均未占用。旧`/Users/mymy/Documents/unboundry/app`不得施工或自动清理。
 
@@ -28,12 +28,12 @@ v0.6.47验证证据：默认Node25.9.0/npm11.12.1下build与architecture通过�
 - 目标是让管理员在平台安全白名单内自行维护模型参数、输入模式、角色/数量、请求字段、任务轮询与结果合同；新协议/鉴权/模态、秘密、SSRF、计费幂等、事务、媒体归属和合规仍必须改代码。
 - R0已覆盖四节点、图片工具、11个生产已发布模型和完整恢复/模板影响；R1-R6已实现合同compiler、不可变revision、原子发布、task快照、独立工作台、GK精确声明式合同和其他专用connector保留。
 - GK-video-3只开放文生视频和“恰好1张首帧图片→`params.images` URL数组”；无正式证据的尾帧、多图或其他参考能力继续阻断。
-- 生产恢复副本bootstrap 11/11并二次幂等，integrity/FK/数据计数不变。默认Node25 build/architecture通过；safe定向最新累计不去重325项全绿，但正式full和独立终审尚未执行。
-- 当前严格为`R0-R6_IMPLEMENTED / FIRST_REVIEW_NO_GO_FIXED / TARGETED_AUTO_PASS / SAME_REVIEWER_RECHECK_NEXT / PRODUCTION_NOT_CHANGED / USER_RECHECK`。修复后受影响safe组合5 specs、40/40 PASS；Provider控制面、真实生成、OSS写入和费用均为0。
+- 生产恢复副本bootstrap 11/11并二次幂等，integrity/FK/数据计数不变。默认Node25 build/architecture通过；同一审查线程两轮NO-GO发现均修复，最终及full后增量复核均`P0=0 / P1=0 / GO`。
+- 唯一full 122 specs、1074/1076；唯二直接UI治理失败精确修复后m18+m45 4/4 PASS，未重复full。当前严格为`R0-R7_IMPLEMENTED / REVIEW_GO / SINGLE_FULL_TARGETED_REPAIR_PASS / GITHUB_NEXT / PRODUCTION_NOT_CHANGED / USER_RECHECK`；Provider控制面、真实生成、OSS写入和费用均为0。
 
 ## 一句话
 
-**生产是 v0.6.47 / schema41且服务健康；MODEL-CONTRACT-001本地v0.6.48候选已完成R0-R6和首轮NO-GO修复，当前等待同一审查线程复核、唯一full及发布，成片视觉仍需用户复验。**
+**生产是 v0.6.47 / schema41且服务健康；MODEL-CONTRACT-001本地v0.6.48已完成R0-R7、最终Review GO和唯一full后的精确UI定向闭环，当前进入GitHub与生产发布，成片视觉仍需用户复验。**
 
 ## INC-GEN-015 老画布孤立生成态与终态结果自动收口（PRODUCTION_V0_6_46_USER_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON）
 

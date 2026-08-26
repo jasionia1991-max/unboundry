@@ -12,7 +12,7 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 项目普通shell、开发和CI默认工具链现为Node `25.9.0` / npm `11.12.1`；生产运行时仍为Node `22.23.2` / npm `10.9.8`，安全/发布复现通道使用Node `22.23.1` / npm `10.9.8`。本版发布了项目默认与双通道合同，没有迁移生产Node运行时。
 
-MODEL-CONTRACT-001模型执行合同治理见[`spec/MODEL_CONTRACT_001_MODEL_EXECUTION_CONTRACT_GOVERNANCE_PLAN_2026-08-26.md`](spec/MODEL_CONTRACT_001_MODEL_EXECUTION_CONTRACT_GOVERNANCE_PLAN_2026-08-26.md)。本地v0.6.48/schema41候选已完成R0-R6、GK-video-3精确请求合同和独立管理工作台；两轮NO-GO发现均已修复，同一审查线程第三轮结论`P0=0 / P1=0 / GO`。唯一full、GitHub与生产发布尚未执行，成片视觉仍为`USER_RECHECK`。
+MODEL-CONTRACT-001模型执行合同治理见[`spec/MODEL_CONTRACT_001_MODEL_EXECUTION_CONTRACT_GOVERNANCE_PLAN_2026-08-26.md`](spec/MODEL_CONTRACT_001_MODEL_EXECUTION_CONTRACT_GOVERNANCE_PLAN_2026-08-26.md)。本地v0.6.48/schema41已完成R0-R7、GK-video-3精确请求合同和独立管理工作台；两轮NO-GO发现均已修复，同一审查线程最终及full后增量复核均`P0=0 / P1=0 / GO`。唯一full的两处UI治理失败已精确修复并定向4/4通过，GitHub与生产发布尚未执行，成片视觉仍为`USER_RECHECK`。
 
 ## 历史线上：v0.6.43 节点排序菜单层级修复（2026-08-25，USER RECHECK）
 

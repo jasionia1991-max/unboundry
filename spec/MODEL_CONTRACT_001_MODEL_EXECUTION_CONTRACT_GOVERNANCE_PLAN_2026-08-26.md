@@ -1,6 +1,6 @@
 # MODEL-CONTRACT-001 模型执行合同治理最终方案
 
-状态：`IMPLEMENTED_CANDIDATE / REVIEW_P0_0_P1_0_GO / CANDIDATE_FREEZE_AND_FULL_NEXT / RELEASE_AUTHORIZED_NOT_STARTED`
+状态：`R0-R7_IMPLEMENTED / REVIEW_P0_0_P1_0_GO / SINGLE_FULL_WITH_TARGETED_REPAIR_PASS / GITHUB_NEXT`
 
 日期：2026-08-26
 
@@ -355,4 +355,4 @@
 
 R0-R6已在隔离worktree实现，候选为`v0.6.48 / schema41`。首轮独立终审`P0=3 / P1=8 / NO-GO`和同一线程第二轮`P0=1 / P1=2 / NO-GO`发现均已逐项修复；同一线程第三轮只读复核结论为`P0=0 / P1=0 / GO`。除首轮加固外，GK发布现在必须与代码核准合同精确同hash，绑定目标不能越过connector开放字段，验证预览会真实编译全部模式和最小角色输入，模式身份冻结ordered与shape。第二轮修复后m102最小复验7/7、状态文档治理m38 15/15通过，真实Provider/Generation/OSS/费用仍为0。
 
-唯一下一动作是冻结并提交当前GO候选，执行本Goal唯一safe full；通过后进入已授权的GitHub和生产发布流程。
+唯一正式safe full已执行一次：1074/1076，唯二失败为本轮UI字号与复选框共享类治理；精确修复后只复验失败spec为4/4 PASS，同线程增量审查维持`P0=0 / P1=0 / GO`，未运行第二次full。唯一下一动作是进入已授权的GitHub流程，CI通过后创建不可移动v0.6.48 tag/Release并按生产门发布。
