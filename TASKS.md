@@ -1,9 +1,9 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产仍运行`v0.6.45 / schema41`且服务健康；目标owner`zzx`实页灰度已执行，但5个安全投影均因服务端错误拒绝原始JSON输入指纹而有界失败关闭。目标任务、Provider、媒体、费用和5个旧binding均未变化；本地补丁已通过定向验证与独立终审，等待确认新的不可变补丁版本后才能继续发布。
+> **当前状态**：生产仍运行`v0.6.45 / schema41`且服务健康；目标灰度P1已在本地修复。用户已明确授权`v0.6.46`继续发布，package/lock/final runtime role已同步，定向发布门通过；正在进入GitHub与不可变生产发布流程，尚未重新执行目标灰度或进入`on`。
 
 更新时间：2026-08-26
-状态：`INC-GEN-015 PRODUCTION_V0_6_45_TARGET_GRAY_FAIL_CLOSED / HOTFIX_LOCAL_GO / NEW_PATCH_VERSION_AUTHORIZATION_REQUIRED / USER_RECHECK。`
+状态：`INC-GEN-015 PRODUCTION_V0_6_45_TARGET_GRAY_FAIL_CLOSED / V0_6_46_RELEASE_AUTHORIZED / CANDIDATE_TARGETED_PASS / USER_RECHECK。`
 
 ### 2026-08-26 老画布孤立生成态与终态结果自动收口（INC-GEN-015，TARGETED_AUTO_PASS）
 
@@ -45,9 +45,11 @@
 - [x] 补丁TypeScript、diff门、safe m20 `1/1`与m85 `27/27 PASS`；source/snapshot`3828c8e3…f1c6`，4173不变。既有唯一full未重复
 - [x] 独立终审首轮`NO-GO / P0=0 / P1=1`发现detach同类缺口；修复后复审`P0=0 / P1=0 / GO`，并覆盖大于16KiB Unicode JSON和100001拒绝
 - [x] 文档治理m38首轮`14/15`仅因一句生产标记未匹配既有机器正则；修正句式后最小复验`15/15 PASS`，source/snapshot`92b712e5…991e`、4173不变，未重复业务spec或full
-- [ ] v0.6.45不可移动且原一次性发布授权已消费；先取得新的不可变补丁版本授权，再做版本同步、push/PR/CI/tag/GitHub Release、fresh部署和目标allowlist复验。不得移动v0.6.45或直接覆盖生产文件
+- [x] 用户明确回复“确认以 v0.6.46 继续发布”，版本号与本次GitHub/生产发布授权齐备；v0.6.45继续不可移动，不直接覆盖生产文件
+- [x] package/lock/final runtime role同步为0.6.46；TypeScript、diff门与safe m81 `41/41 PASS`，source/snapshot`c5ba0228…0aec`、4173不变；版本文档m38修正唯一候选标记后`15/15 PASS`，source/snapshot`a0251547…9dc`、4173不变；未重复唯一full
+- [ ] 完成v0.6.46 commit、push/PR/CI、合并、不可移动tag/GitHub Release、fresh部署和目标allowlist复验；通过后才允许进入`on`
 
-权威方案：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_PLAN_2026-08-26.md`；实时断点：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_CHECKPOINT.md`；v0.6.45生产回执：`spec/V0_6_45_PRODUCTION_RECEIPT_2026-08-26.json`。当前唯一下一步是确认新的不可变补丁版本；不得运行第二次full、移动v0.6.45、直接覆盖生产文件或提前扩大到`on`。
+权威方案：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_PLAN_2026-08-26.md`；实时断点：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_CHECKPOINT.md`；v0.6.45生产回执：`spec/V0_6_45_PRODUCTION_RECEIPT_2026-08-26.json`。当前唯一下一步是冻结v0.6.46候选并走GitHub发布；不得运行第二次full、移动v0.6.45、直接覆盖生产文件或提前扩大到`on`。
 
 ### 2026-08-25 工作流自动恢复与密钥校验解耦（INC-GEN-014，R0～R5_COMPLETE / R6_TARGETED_PASS）
 

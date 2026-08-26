@@ -1,19 +1,19 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网仍为v0.6.45/schema41且服务健康；目标owner`zzx`实页灰度已执行，但5个投影因v0.6.45错误拒绝原始JSON输入指纹而全部有界失败关闭。目标生成、Provider、媒体、费用与旧binding均未变化；本地补丁已定向PASS和独立终审GO，等待新的不可变补丁版本授权。
+> **状态分层**：现网仍为v0.6.45/schema41且服务健康；目标灰度P1已本地修复。用户已授权v0.6.46，本地版本与final runtime role已同步，定向发布门通过；正在进入GitHub与不可变生产发布流程，尚未重新执行目标allowlist或进入`on`。
 
 更新日期：2026-08-26
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.45**
-本地候选代码版本：**v0.6.45**
+当前代码包版本：**v0.6.46**
+本地候选代码版本：**v0.6.46**
 本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_45_USER_RECHECK`
-当前计划标记：`INC_GEN_015_PRODUCTION_V0_6_45_TARGET_GRAY_FAIL_CLOSED / HOTFIX_LOCAL_GO / NEW_PATCH_VERSION_AUTHORIZATION_REQUIRED`
+当前计划标记：`INC_GEN_015_PRODUCTION_V0_6_45_TARGET_GRAY_FAIL_CLOSED / V0_6_46_RELEASE_AUTHORIZED / CANDIDATE_TARGETED_PASS`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
 
 ## 一句话
 
-**生产是 v0.6.45 / schema41且服务健康；目标灰度已安全暴露长JSON指纹校验P1，本地补丁已GO，唯一下一步是确认新的不可变补丁版本，之后才能重新发布和复验。**
+**生产是 v0.6.45 / schema41且服务健康；用户已授权v0.6.46，版本同步与定向发布门通过，唯一下一步是冻结候选并完成GitHub与不可变生产发布。**
 
 ## INC-GEN-015 老画布孤立生成态与终态结果自动收口（PRODUCTION_V0_6_45_TARGET_GRAY_FAIL_CLOSED / HOTFIX_LOCAL_GO）
 
@@ -41,9 +41,10 @@
 - 用户确认登录提交后，可控Chrome与内置浏览器均以目标owner`zzx`打开目标Canvas；5个候选最终均为静态`UNKNOWN_BLOCKED / 状态待核对`。Chrome与服务端日志确认每节点3次有界projection，共15个Canvas PUT均返回`400 CANVAS_DOCUMENT_INVALID`。
 - 根因为v0.6.45把原始`generationInputKey`误当ASCII短ID：真实指纹为1644字符JSON并含中文；projection限制512且terminal-detach仍为ASCII/2048/16KiB。所有失败都在校验阶段关闭，5个binding与原任务未变；目标Generation POST、Provider、retry、Media/OSS、publication和费用0。其他owner的全局并发变化不归因于本Goal。
 - 本地补丁commit`ff3d139f1aceba1fd02b406bdd0fa5290175ea0e`统一两条路径为opaque非空最多100000字符，其他身份/CAS不放宽，detach body有1MiB硬上限。TypeScript、safe m20 `1/1`、m85 `27/27 PASS`，source/snapshot`3828c8e3…f1c6`，4173不变；没有重复唯一full。
-- 新独立终审首轮`NO-GO / P0=0 / P1=1`发现detach同类缺口；修复后复审`P0=0 / P1=0 / GO`。v0.6.45不可移动且原一次性授权已消费，当前必须先确认新的不可变补丁版本；不得直接覆盖生产或提前进入`on`。
+- 新独立终审首轮`NO-GO / P0=0 / P1=1`发现detach同类缺口；修复后复审`P0=0 / P1=0 / GO`。v0.6.45继续不可移动且不直接覆盖生产。
 - 文档治理m38首轮`14/15`只因生产句式未命中既有正则；修正后`15/15 PASS`，source/snapshot`92b712e5…991e`、4173不变，未重复业务spec或full。
-- 权威生产回执：`spec/V0_6_45_PRODUCTION_RECEIPT_2026-08-26.json`。当前严格为`PRODUCTION_V0_6_45_TARGET_GRAY_FAIL_CLOSED / HOTFIX_LOCAL_GO / USER_RECHECK`，不是生产PASS或USER_PASS。
+- 用户已明确授权以v0.6.46继续发布；package/lock/final runtime role同步完成，TypeScript与safe m81 `41/41 PASS`，source/snapshot`c5ba0228…0aec`、4173不变；版本文档m38修正唯一候选标记后`15/15 PASS`，source/snapshot`a0251547…9dc`、4173不变。当前进入GitHub与不可变生产发布流程，不重复唯一full。
+- 权威生产回执：`spec/V0_6_45_PRODUCTION_RECEIPT_2026-08-26.json`。当前严格为`PRODUCTION_V0_6_45_TARGET_GRAY_FAIL_CLOSED / V0_6_46_RELEASE_AUTHORIZED / USER_RECHECK`，不是生产PASS或USER_PASS。
 
 ## INC-GEN-014 工作流自动恢复与密钥校验解耦（R0～R5_COMPLETE / R6_TARGETED_PASS）
 

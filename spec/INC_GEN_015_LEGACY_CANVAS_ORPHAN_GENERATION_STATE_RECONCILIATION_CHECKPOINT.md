@@ -2,7 +2,7 @@
 
 更新时间：2026-08-26
 
-状态：`R0_R6_PARTIAL / PRODUCTION_V0_6_45_TARGET_GRAY_FAIL_CLOSED / HOTFIX_LOCAL_GO / NEW_PATCH_VERSION_AUTHORIZATION_REQUIRED / USER_RECHECK`
+状态：`R0_R6_PARTIAL / PRODUCTION_V0_6_45_TARGET_GRAY_FAIL_CLOSED / V0_6_46_RELEASE_AUTHORIZED / CANDIDATE_TARGETED_PASS / USER_RECHECK`
 
 权威方案：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_PLAN_2026-08-26.md`
 
@@ -15,11 +15,12 @@
 | 实现分支 | `codex/inc-gen-015-long-fingerprint-hotfix-2026-08-26` |
 | 实施基线 | `origin/main@49197fb36924b4df11a8c39236275a4ceec8c553` |
 | 工作树文档基线 | `0813e6283b12418b19fcf8be7fc04becee424336` |
-| package / schema | `0.6.45 / 41` |
+| package / schema | `0.6.46 / 41` |
 | 生产 | `v0.6.45 / schema41`，`/opt/unboundry/current`指向不可变v0.6.45 release，service active+enabled、NRestarts0；target-only allowlist灰度失败关闭，未进入`on` |
 | 固定运行时 | `Node 22.23.1 / npm 10.9.8` |
 | 4173 | 既有监听哈希`24c91e57…8244`，所有安全运行前后不变 |
 | v0.6.45 | PR #105已合并；不可移动tag与GitHub Release已发布；生产已部署 |
+| v0.6.46 | 用户已明确授权本次GitHub与生产发布；tag/Release当前未占用，尚未创建 |
 
 受保护`spec/public-templates-director-split-revision.json`未读取、修改、暂存、移动或删除。真实主工作树和其他工作树的用户改动未清理或覆盖。
 
@@ -64,11 +65,12 @@
 - [x] 补丁定向证据：Node22.23.1/npm10.9.8，TypeScript和diff门退出0，safe m20 `1/1`、m85 `27/27 PASS`，failed/skipped/retries/blocked/reportErrors均0；source/snapshot`3828c8e32200b68d74d3783add78e462d2d79edf37f5652ec3d015fe0401f1c6`，4173不变；唯一full未重复。
 - [x] 新独立终审首轮诚实结论`NO-GO / P0=0 / P1=1`，发现terminal-detach同样拒绝JSON指纹且16KiB body不足；修复后同线程复审`P0=0 / P1=0 / GO`，并确认大于16KiB Unicode JSON及100001超限拒绝证据。
 - [x] 文档同步后的治理m38首轮`14/15`只因CURRENT_STATE生产句式未命中既有正则；修正后最小复验`15/15 PASS`，异常0，source/snapshot`92b712e5daa4d126ad41d0ccdd3472a4dc2fc5b1362ce47fc4d9e36b7a63991e`、4173不变；未重复业务spec或full。
+- [x] 用户明确确认以v0.6.46继续发布；package/lock/final runtime role已同步，schema保持41。TypeScript、diff门和safe m81 `41/41 PASS`，source/snapshot`c5ba0228adc65fcc72c59d5c2a2dd613de2ae8f949177141634ed0e404d50aec`、4173不变；版本文档m38修正唯一候选标记后`15/15 PASS`，source/snapshot`a0251547743750ffbbc032304ae83d5bc33263728b82fc880e08639ffbabb9dc`、4173不变；未重复唯一full。
 
 ## 3. 当前阶段
 
-v0.6.45已发布且服务健康，但目标owner实页灰度暴露长原始输入指纹校验P1，15次安全投影均400失败关闭；没有目标生成、Provider、媒体、费用或5个binding变化，也没有进入`on`。本地补丁已定向PASS并独立终审GO。v0.6.45 tag/Release不可移动，原一次性发布授权已消费，因此新不可变补丁版本是当前发布硬门。
+v0.6.45仍在线且服务健康；目标灰度P1已本地修复并独立终审GO。用户已授权v0.6.46，版本同步和发布角色定向门通过；当前进入GitHub与不可变生产发布阶段，尚未重新执行目标allowlist或进入`on`。
 
 ## 4. 唯一下一动作
 
-取得新的不可变补丁版本授权；随后才允许同步版本、push/PR/CI、创建新tag/GitHub Release、fresh部署并再次执行目标allowlist验收。不得移动v0.6.45、直接覆盖生产release、运行第二次full或提前扩大到`on`。
+冻结并提交v0.6.46候选，push/PR/CI/合并后创建不可移动tag与GitHub Release，再按runbook fresh部署并重做精确目标allowlist验收。不得移动v0.6.45、直接覆盖生产release、运行第二次full或提前扩大到`on`。

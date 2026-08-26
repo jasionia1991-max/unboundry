@@ -70,6 +70,20 @@
       "listener4173Unchanged": true,
       "businessSpecsRepeated": false,
       "fullRepeated": false
+    },
+    "v0_6_46VersionDocumentationRecheck": {
+      "scope": "tests/m38-generation-runtime-incidents.spec.ts",
+      "passed": 15,
+      "total": 15,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0,
+      "sourceSnapshotSha256": "a0251547743750ffbbc032304ae83d5bc33263728b82fc880e08639ffbabb9dc",
+      "listener4173Unchanged": true,
+      "businessSpecsRepeated": false,
+      "fullRepeated": false
     }
   },
   "production": {
@@ -276,7 +290,7 @@
       "testsRunByReviewer": 0,
       "networkRequests": 0
     },
-    "releaseStatus": "NEW_IMMUTABLE_PATCH_VERSION_AUTHORIZATION_REQUIRED"
+    "releaseStatus": "V0_6_46_RELEASE_AUTHORIZED_IN_PROGRESS"
   },
   "requestLedger": {
     "providerCredentialProbesUsed": 0,
@@ -301,9 +315,9 @@
     "releaseAuthorizationConsumed": true
   },
   "nextGate": {
-    "status": "NEW_IMMUTABLE_PATCH_VERSION_AUTHORIZATION_REQUIRED",
-    "action": "Authorize a new immutable patch version. Do not move v0.6.45 or overwrite its production release. After authorization, synchronize the version, run the required targeted release gate without repeating the sole full suite, publish through PR/CI/tag/GitHub Release, deploy fresh, and repeat the exact target allowlist acceptance before considering on.",
-    "authorizationRequired": true,
+    "status": "V0_6_46_GITHUB_AND_PRODUCTION_RELEASE_IN_PROGRESS",
+    "action": "Freeze and publish v0.6.46 through PR/CI/tag/GitHub Release, deploy fresh without moving v0.6.45, and repeat the exact target allowlist acceptance before considering on.",
+    "authorizationRequired": false,
     "userPassWritten": false
   }
 }
