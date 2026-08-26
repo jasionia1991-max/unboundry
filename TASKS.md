@@ -1,9 +1,9 @@
 # Unboundry 绿地复刻当前任务
 
-> **当前状态**：生产已运行`v0.6.45 / schema41`且技术健康；GitHub发布、冻结备份、原子切换、detect与技术Canvas allowlist均通过。目标Canvas已进入精确allowlist，但可控浏览器当前登录`mymy`而目标owner为`zzx`，等待目标owner登录后打开页面完成5节点收口；尚未进入`on`。
+> **当前状态**：生产仍运行`v0.6.45 / schema41`且服务健康；目标owner`zzx`实页灰度已执行，但5个安全投影均因服务端错误拒绝原始JSON输入指纹而有界失败关闭。目标任务、Provider、媒体、费用和5个旧binding均未变化；本地补丁已通过定向验证与独立终审，等待确认新的不可变补丁版本后才能继续发布。
 
 更新时间：2026-08-26
-状态：`INC-GEN-015 PRODUCTION_V0_6_45_DEPLOYED / TARGET_ALLOWLIST_WAITING_AUTHENTICATED_PAGE / USER_RECHECK。`
+状态：`INC-GEN-015 PRODUCTION_V0_6_45_TARGET_GRAY_FAIL_CLOSED / HOTFIX_LOCAL_GO / NEW_PATCH_VERSION_AUTHORIZATION_REQUIRED / USER_RECHECK。`
 
 ### 2026-08-26 老画布孤立生成态与终态结果自动收口（INC-GEN-015，TARGETED_AUTO_PASS）
 
@@ -38,11 +38,16 @@
 - [x] fresh tag构建5983文件、inventory`fe7b1c8e…7c5c`；冻结备份/恢复各366文件且manifest一致，schema41/integrity ok/FK0
 - [x] 原子切换后公网/回环v0.6.45、service active+enabled/NRestarts0；tasks814/attempts822/active0/media849/publications439/canvases67/dataFiles366不变
 - [x] detect模式目标revision327/graph52零写；技术Canvas allowlist实页加载后revision75/graph44/updated_at均不变，零Generation/Provider/Media/OSS/费用
-- [x] 目标owner`zzx`与Canvas已成为当前唯一allowlist；可控浏览器会话登录的是`mymy`，访问目标按owner隔离正确重定向，未读取Cookie/localStorage/Profile且目标仍零写
-- [x] 真实Generation POST、Provider submit/probe、Media/OSS写和费用均为0；目标生产Canvas尚未写入
-- [ ] 目标owner`zzx`登录可控浏览器并打开目标Canvas后，核对5节点安全收口与零费用账本；通过后才能进入`on`并完成最终回执
+- [x] 用户确认登录提交后，Chrome与内置浏览器均以目标owner`zzx`打开目标Canvas；未读取Cookie、localStorage或浏览器Profile
+- [x] 生产实页准确暴露新P1：5个候选各进行3次有界projection尝试，合计15个Canvas PUT均返回`400 CANVAS_DOCUMENT_INVALID`；根因是`generationProjection.inputFingerprint`保存的是1644字符原始JSON/中文输入，而v0.6.45只接受ASCII且最多512字符
+- [x] 15次失败均在服务端校验阶段关闭：目标5个binding未变化，原5个task仍success；目标Generation POST、Provider提交、自动retry、Media/OSS写、publication和新增费用均为0；不得把全局其他账号并发活动误记为本Goal写入
+- [x] 本地补丁commit`ff3d139f1aceba1fd02b406bdd0fa5290175ea0e`统一projection与terminal-detach的opaque input fingerprint合同为非空且最多100000字符；其他身份字段不放宽，detach请求体仍有1MiB硬上限
+- [x] 补丁TypeScript、diff门、safe m20 `1/1`与m85 `27/27 PASS`；source/snapshot`3828c8e3…f1c6`，4173不变。既有唯一full未重复
+- [x] 独立终审首轮`NO-GO / P0=0 / P1=1`发现detach同类缺口；修复后复审`P0=0 / P1=0 / GO`，并覆盖大于16KiB Unicode JSON和100001拒绝
+- [x] 文档治理m38首轮`14/15`仅因一句生产标记未匹配既有机器正则；修正句式后最小复验`15/15 PASS`，source/snapshot`92b712e5…991e`、4173不变，未重复业务spec或full
+- [ ] v0.6.45不可移动且原一次性发布授权已消费；先取得新的不可变补丁版本授权，再做版本同步、push/PR/CI/tag/GitHub Release、fresh部署和目标allowlist复验。不得移动v0.6.45或直接覆盖生产文件
 
-权威方案：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_PLAN_2026-08-26.md`；实时断点：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_CHECKPOINT.md`；生产回执：`spec/V0_6_45_PRODUCTION_RECEIPT_2026-08-26.json`。当前唯一下一步是让`zzx`登录可控浏览器并打开目标Canvas；allowlist已精确就绪，不得运行第二次full或提前扩大到`on`。
+权威方案：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_PLAN_2026-08-26.md`；实时断点：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_CHECKPOINT.md`；v0.6.45生产回执：`spec/V0_6_45_PRODUCTION_RECEIPT_2026-08-26.json`。当前唯一下一步是确认新的不可变补丁版本；不得运行第二次full、移动v0.6.45、直接覆盖生产文件或提前扩大到`on`。
 
 ### 2026-08-25 工作流自动恢复与密钥校验解耦（INC-GEN-014，R0～R5_COMPLETE / R6_TARGETED_PASS）
 

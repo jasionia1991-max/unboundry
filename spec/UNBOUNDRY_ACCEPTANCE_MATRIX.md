@@ -73,20 +73,20 @@
 
 本文件只记录验收条目的历史证据与状态，不承担当前版本播报。当前线上版本、未发布候选与下一步只以 `spec/UNBOUNDRY_CURRENT_STATE.md` 为准。以下日期段落均为对应时点快照；既有用户验收与未完成状态继续保留，不因新版本自动升级。
 
-2026-08-26 `INC-GEN-015 = PRODUCTION_V0_6_45_DEPLOYED / TARGET_ALLOWLIST_WAITING_AUTHENTICATED_PAGE / USER_RECHECK`：v0.6.45/schema41、PR #105、PR/main CI、tag/Release、fresh build、366文件冻结恢复和原子切换已完成；唯一safe full为`121/121 specs、1069/1069 tests PASS`且未重复。detect与技术Canvas allowlist实页均零写，tasks814/attempts822/active0/media849/publications439/canvases67不变。目标owner`zzx`未登录可控浏览器，目标精确allowlist虽已启用但revision327/graph52与5节点仍未收口；不得进入`on`或写PRODUCTION_PASS/USER_PASS。回执：`spec/V0_6_45_PRODUCTION_RECEIPT_2026-08-26.json`。
+2026-08-26 `INC-GEN-015 = PRODUCTION_V0_6_45_TARGET_GRAY_FAIL_CLOSED / HOTFIX_LOCAL_GO / USER_RECHECK`：v0.6.45/schema41及既有唯一safe full证据保持不变。目标owner`zzx`实页灰度识别5个候选，但每节点3次有界projection、共15个Canvas PUT均因1644字符原始JSON/中文`inputFingerprint`违反v0.6.45 ASCII/512校验而返回400；5个binding、原task、目标Generation/Provider/Media/OSS/publication/费用均未变化，未进入`on`。补丁commit`ff3d139`统一projection与detach为opaque非空最多100000字符，TypeScript、m20 `1/1`、m85 `27/27 PASS`，独立复审`P0=0/P1=0/GO`，唯一full未重复。v0.6.45不可移动且原发布授权已消费，等待新的不可变补丁版本授权。回执：`spec/V0_6_45_PRODUCTION_RECEIPT_2026-08-26.json`。
 
 | ID | Priority | Acceptance | Planned evidence | Status |
 |---|---:|---|---|---|
 | LGR-01 | P1 | 精确识别完整孤立候选，缺binding不猜测 | m22 exact fixture | TARGETED_AUTO_PASS |
 | LGR-02 | P0 | 全checkpoint按节点runId匹配，活动owner/lease优先 | m22 multi-run/multi-checkpoint | TARGETED_AUTO_PASS |
-| LGR-03 | P0 | 只GET原task；Generation/Provider/Media/OSS/费用0 | m22 network ledger + production ledger | LOCAL_AUTO_PASS / PRODUCTION_PENDING |
+| LGR-03 | P0 | 只GET原task；Generation/Provider/Media/OSS/费用0 | m22 network ledger + production ledger | LOCAL_AUTO_PASS / TARGET_GRAY_ZERO_PAID_PASS |
 | LGR-04 | P1 | 只有精确活动task显示呼吸灯，Canvas写0 | m22 + m41 | TARGETED_AUTO_PASS |
-| LGR-05 | P0 | success完整结果只经既有projection安全应用 | m22 + m85 | TARGETED_AUTO_PASS |
+| LGR-05 | P0 | success完整结果只经既有projection安全应用 | m22 + m85 | HOTFIX_TARGETED_PASS / PRODUCTION_RECHECK |
 | LGR-06 | P1 | 重复刷新/双标签/applicationId只应用一次 | m22 + m85 | TARGETED_AUTO_PASS |
-| LGR-07 | P0 | 语义冲突/结果不完整不覆盖、不重提，历史可找回 | m22 + m85 + m41 | TARGETED_AUTO_PASS |
+| LGR-07 | P0 | 语义冲突/结果不完整不覆盖、不重提，历史可找回 | m22 + m85 + m41 | HOTFIX_TARGETED_PASS / PRODUCTION_RECHECK |
 | LGR-08 | P0 | unknown/权限/网络/格式异常中性blocked且不能新提交 | m22 + m41 | TARGETED_AUTO_PASS |
 | LGR-09 | P1 | run/task/ownership/input/Generating原子收口，无半状态 | m85 partial-field matrix | TARGETED_AUTO_PASS |
-| LGR-10 | P0 | terminal-detach owner/task/terminal/Canvas事务CAS及字段白名单 | m85 + m20 when API changes | TARGETED_AUTO_PASS |
+| LGR-10 | P0 | terminal-detach owner/task/terminal/Canvas事务CAS及字段白名单 | m85 + m20 when API changes | HOTFIX_TARGETED_PASS / PRODUCTION_RECHECK |
 | LGR-11 | P1 | GET→canvas admission lock→最新重读→写入；无锁零写 | m22 browser-lock matrix | TARGETED_AUTO_PASS |
 | LGR-12 | P1 | Text/Image/Video/Audio共享判定，持久布尔值不冒充生成 | shared pure tests + m41 UI | TARGETED_AUTO_PASS |
 

@@ -2,7 +2,7 @@
 
 更新时间：2026-08-26
 
-状态：`R0_R6_PARTIAL / PRODUCTION_V0_6_45_DEPLOYED / TARGET_ALLOWLIST_WAITING_AUTHENTICATED_PAGE / USER_RECHECK`
+状态：`R0_R6_PARTIAL / PRODUCTION_V0_6_45_TARGET_GRAY_FAIL_CLOSED / HOTFIX_LOCAL_GO / NEW_PATCH_VERSION_AUTHORIZATION_REQUIRED / USER_RECHECK`
 
 权威方案：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_PLAN_2026-08-26.md`
 
@@ -12,11 +12,11 @@
 |---|---|
 | 真实仓库 | `/Users/mymy/Documents/unboundry/app` |
 | 实现工作树 | `/private/tmp/unboundry-inc-gen-015-legacy-terminal-reconcile-20260826` |
-| 实现分支 | `codex/inc-gen-015-legacy-terminal-reconcile-2026-08-26` |
+| 实现分支 | `codex/inc-gen-015-long-fingerprint-hotfix-2026-08-26` |
 | 实施基线 | `origin/main@49197fb36924b4df11a8c39236275a4ceec8c553` |
 | 工作树文档基线 | `0813e6283b12418b19fcf8be7fc04becee424336` |
 | package / schema | `0.6.45 / 41` |
-| 生产 | `v0.6.45 / schema41`，`/opt/unboundry/current`指向不可变v0.6.45 release，service active+enabled、NRestarts0；当前target-only allowlist |
+| 生产 | `v0.6.45 / schema41`，`/opt/unboundry/current`指向不可变v0.6.45 release，service active+enabled、NRestarts0；target-only allowlist灰度失败关闭，未进入`on` |
 | 固定运行时 | `Node 22.23.1 / npm 10.9.8` |
 | 4173 | 既有监听哈希`24c91e57…8244`，所有安全运行前后不变 |
 | v0.6.45 | PR #105已合并；不可移动tag与GitHub Release已发布；生产已部署 |
@@ -57,11 +57,18 @@
 - [x] 冻结备份/恢复各366文件且manifest`89a1fa12…380b`一致，schema41/integrity ok/FK0；原子切换后公网/回环v0.6.45、service active+enabled/NRestarts0。
 - [x] detect与技术Canvas allowlist实页零写；全部数据账本不变，零Generation/Provider/Media/OSS/费用。
 - [x] 当前灰度已限制为目标owner`zzx`+目标Canvas；可控浏览器当前登录`mymy`，owner隔离重定向正确，未读取Cookie/localStorage/Profile，目标仍revision327/graph52与5候选节点。
+- [x] 用户明确确认凭据提交后，Chrome与内置浏览器均以`zzx`打开目标Canvas；页面识别5个候选并最终显示静态`UNKNOWN_BLOCKED / 状态待核对`。
+- [x] Chrome CDP与服务端日志共同证明5个候选各3次有界projection，共15个Canvas PUT全部返回`400 CANVAS_DOCUMENT_INVALID`；请求内`inputFingerprint`为1644字符原始JSON/中文生成输入，v0.6.45投影校验错误限定为ASCII且最多512字符。
+- [x] 该生产P1严格fail-closed：15次PUT零成功、5个旧binding未变化、原5个task仍success；目标Canvas没有新Generation task/provider attempt/media/publication/费用。全局新增任务和媒体来自其他owner，不归因于本Goal。
+- [x] 补丁commit`ff3d139f1aceba1fd02b406bdd0fa5290175ea0e`/tree`c58692ddde5be0bd7b8e74e90ac8f349de3d0659`仅统一projection与terminal-detach的opaque input fingerprint合同：非空、最多100000字符；其他账号/任务/节点/ownership/application/semantic/CAS校验不放宽，detach body保留1MiB上限。
+- [x] 补丁定向证据：Node22.23.1/npm10.9.8，TypeScript和diff门退出0，safe m20 `1/1`、m85 `27/27 PASS`，failed/skipped/retries/blocked/reportErrors均0；source/snapshot`3828c8e32200b68d74d3783add78e462d2d79edf37f5652ec3d015fe0401f1c6`，4173不变；唯一full未重复。
+- [x] 新独立终审首轮诚实结论`NO-GO / P0=0 / P1=1`，发现terminal-detach同样拒绝JSON指纹且16KiB body不足；修复后同线程复审`P0=0 / P1=0 / GO`，并确认大于16KiB Unicode JSON及100001超限拒绝证据。
+- [x] 文档同步后的治理m38首轮`14/15`只因CURRENT_STATE生产句式未命中既有正则；修正后最小复验`15/15 PASS`，异常0，source/snapshot`92b712e5daa4d126ad41d0ccdd3472a4dc2fc5b1362ce47fc4d9e36b7a63991e`、4173不变；未重复业务spec或full。
 
 ## 3. 当前阶段
 
-v0.6.45已发布并部署，detect与技术allowlist已通过；目标精确allowlist已就绪。唯一未完成门是用目标owner`zzx`的已登录可控浏览器打开目标Canvas，完成5节点收口证据后再进入`on`。目标尚未写入，生产保持健康。
+v0.6.45已发布且服务健康，但目标owner实页灰度暴露长原始输入指纹校验P1，15次安全投影均400失败关闭；没有目标生成、Provider、媒体、费用或5个binding变化，也没有进入`on`。本地补丁已定向PASS并独立终审GO。v0.6.45 tag/Release不可移动，原一次性发布授权已消费，因此新不可变补丁版本是当前发布硬门。
 
 ## 4. 唯一下一动作
 
-用户在可控浏览器登录生产账号`zzx`并打开目标Canvas；完成后核对5节点、数据/费用账本，再决定是否进入`on`。不得运行第二次full或提前扩大灰度。
+取得新的不可变补丁版本授权；随后才允许同步版本、push/PR/CI、创建新tag/GitHub Release、fresh部署并再次执行目标allowlist验收。不得移动v0.6.45、直接覆盖生产release、运行第二次full或提前扩大到`on`。
