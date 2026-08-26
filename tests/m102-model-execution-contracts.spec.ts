@@ -26,6 +26,7 @@ import {
   pollContractRelayMediaTask,
   submitContractRelayMedia,
 } from "../server/relayProviderAdapters";
+import { modelReleaseBootstrapActorUserId } from "../server/modelReleaseBootstrap";
 
 const gkContract = {
   connectorFamily: "generic-async-media",
@@ -299,6 +300,27 @@ function releaseDocument(modelId = "model-gk-video-3") {
 }
 
 test("draft CAS, validation and atomic immutable publish are audit-backed", () => {
+  const actorStore = new DatabaseSync(":memory:");
+  try {
+    actorStore.exec(`
+      CREATE TABLE users (
+        id TEXT PRIMARY KEY,
+        role TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      INSERT INTO users (id, role, status, created_at) VALUES
+        ('disabled-admin', 'admin', 'disabled', '2026-01-01T00:00:00Z'),
+        ('ordinary-user', 'user', 'active', '2026-01-01T00:00:00Z'),
+        ('admin-newer', 'admin', 'active', '2026-02-01T00:00:00Z'),
+        ('admin-oldest', 'admin', 'active', '2026-01-15T00:00:00Z');
+    `);
+    expect(modelReleaseBootstrapActorUserId(actorStore)).toBe("admin-oldest");
+    actorStore.exec("UPDATE users SET status = 'disabled' WHERE role = 'admin'");
+    expect(() => modelReleaseBootstrapActorUserId(actorStore)).toThrow(/活跃管理员/);
+  } finally {
+    actorStore.close();
+  }
   const store = contractStore();
   try {
     store.exec("CREATE TABLE release_target (revision_id TEXT NOT NULL)");

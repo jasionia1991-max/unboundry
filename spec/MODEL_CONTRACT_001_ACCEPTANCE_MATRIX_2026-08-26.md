@@ -82,9 +82,10 @@
 
 - 方案与实现：`R0-R7_IMPLEMENTED / TARGETED_AUTO_PASS`
 - GK-video-3请求合同：`AUTO_PASS`；服装款式与成片视觉：`USER_RECHECK`
-- 定向测试：首轮修复组合40/40、参数/文档22/22；唯一full 1074/1076，唯二UI治理失败精确修复后m18+m45定向4/4通过，未重复full
+- 定向测试：首轮修复组合40/40、参数/文档22/22；唯一full 1074/1076，唯二UI治理失败精确修复后m18+m45定向4/4通过，未重复full；生产恢复门发现审计actor FK缺陷后，v0.6.49 hotfix m102+m81定向48/48通过，仍未重复full
+- 生产门：v0.6.48在恢复副本bootstrap首个审计写入处fail-closed，生产未切换且恢复v0.6.47健康；v0.6.49改为auth-owned活跃管理员actor选择，恢复副本真实CLI首次11/11、二次0新增，独立复核`P0=0 / P1=0 / GO`，待精确tag恢复/生产复验
 - 独立终审：首轮`P0=3 / P1=8 / NO-GO`、第二轮`P0=1 / P1=2 / NO-GO`，最终及full后增量复核均`P0=0 / P1=0 / GO`
 - 真实Provider控制面/生成、OSS写入、费用：`0 / 0 / 0 / 0`
-- 发布：`AUTHORIZED / GITHUB_NEXT`
-- 生产技术：`NOT_RUN`
+- 发布：v0.6.48 GitHub已完成；v0.6.49 `AUTHORIZED / HOTFIX_REVIEW_GO / GITHUB_NEXT`
+- 生产技术：`V0_6_48_FAIL_CLOSED_BEFORE_SWITCH / V0_6_49_NOT_RUN`
 - 用户成片质量：`USER_RECHECK`

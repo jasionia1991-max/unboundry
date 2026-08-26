@@ -1,4 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
+import { selectActiveAdminAuditActorCommand } from "./accountTransactionCommands";
+import { inImmediateTransaction } from "./audit";
 import { openAppDatabase } from "./database";
 import {
   cleanParameterSchema,
@@ -21,6 +23,7 @@ import {
   saveModelContractDraft,
   validateModelContractDraft,
 } from "./modelReleaseRevisionStore";
+import { executeTransactionScopedCommand } from "./transactionCommand";
 
 type Row = {
   capability: GenerationCapabilityKind;
@@ -166,12 +169,26 @@ export function bootstrapPublishedModelContracts(
   };
 }
 
+export function modelReleaseBootstrapActorUserId(store: DatabaseSync) {
+  const actorUserId = inImmediateTransaction(store, () =>
+    executeTransactionScopedCommand(
+      store,
+      selectActiveAdminAuditActorCommand,
+      undefined,
+    )
+  );
+  if (!actorUserId) {
+    throw new Error("模型合同引导需要一个有效的活跃管理员审计身份");
+  }
+  return actorUserId;
+}
+
 export function runModelReleaseBootstrapCli() {
   const database = openAppDatabase();
   try {
     const result = bootstrapPublishedModelContracts(
       database,
-      "system-model-contract-bootstrap",
+      modelReleaseBootstrapActorUserId(database),
     );
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return result;
