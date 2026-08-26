@@ -1,12 +1,12 @@
 # Unboundry 全项目模块化单体审计
 
-更新日期：2026-08-23
-状态：`CURRENT_GOVERNANCE_HARDENING / FIRST_AND_SECOND_BATCH_PRODUCTION_PUBLISHED / CURRENT_V0_6_46_USER_PASS / VIEW_005_AUTO_PASS`
+更新日期：2026-08-26
+状态：`CURRENT_GOVERNANCE_HARDENING / FIRST_AND_SECOND_BATCH_PRODUCTION_PUBLISHED / CURRENT_V0_6_47_USER_RECHECK / VIEW_005_AUTO_PASS`
 适用仓库：`/Users/mymy/Documents/unboundry/app`
 
 ## 1. 一句话结论
 
-Unboundry 已有可靠的模块化骨架，但还不是边界完全受约束的模块化单体；第一批同步文字 Provider port 与第二批 Generation/Media 结果提交边界、三媒体模型合同均已随 v0.6.28 发布，并继续包含在当前 v0.6.46 生产版本中。v0.6.29/30 完成商业 Provider 隔离、真实任务验证、结果兼容与用户验收，v0.6.31 将模块化成果送入普通 main-safe 生产路径；v0.6.32由真实图片裁剪功能触发MediaBlobStore可取消读取和客户端可替换编辑源resolver，v0.6.41只按真实功能触发增加角色合规Port/Application/Store和付费前复核边界，v0.6.42在INC-GEN-013触发点增加accepted-only恢复租约与复用既有Canvas拖动quiet gate，v0.6.44在INC-GEN-014触发点增加执行成功与Canvas投影解耦及credential verify双版本CAS，v0.6.45在INC-GEN-015触发点增加历史终态核对与原子detach，v0.6.46只修正两条收口路径对opaque长指纹的合同并完成生产灰度，没有启动第三至第七批全局重构。当前最强的是画布整组执行、文字 Provider 和 Generation 结果提交链；最弱的是 Canvas/节点 UI 应用层、媒体 Provider/Storage 边界和跨域数据所有权。其余边界只按新功能触发条件渐进治理，当前没有全项目大重构计划。
+Unboundry 已有可靠的模块化骨架，但还不是边界完全受约束的模块化单体；第一批同步文字 Provider port 与第二批 Generation/Media 结果提交边界、三媒体模型合同均已随 v0.6.28 发布，并继续包含在当前 v0.6.47 生产版本中。v0.6.29/30 完成商业 Provider 隔离、真实任务验证、结果兼容与用户验收，v0.6.31 将模块化成果送入普通 main-safe 生产路径；v0.6.32由真实图片裁剪功能触发MediaBlobStore可取消读取和客户端可替换编辑源resolver，v0.6.41只按真实功能触发增加角色合规Port/Application/Store和付费前复核边界，v0.6.42在INC-GEN-013触发点增加accepted-only恢复租约与复用既有Canvas拖动quiet gate，v0.6.44在INC-GEN-014触发点增加执行成功与Canvas投影解耦及credential verify双版本CAS，v0.6.45在INC-GEN-015触发点增加历史终态核对与原子detach，v0.6.46修正两条收口路径对opaque长指纹的合同并完成生产灰度；v0.6.47同步项目默认Node25/npm11、保留生产Node22/npm10并完成发布，没有启动第三至第七批全局重构。当前最强的是画布整组执行、文字 Provider 和 Generation 结果提交链；最弱的是 Canvas/节点 UI 应用层、媒体 Provider/Storage 边界和跨域数据所有权。其余边界只按新功能触发条件渐进治理，当前没有全项目大重构计划。
 
 治理门：后续批次只在真实新功能触发边界问题时立项；没有触发就不得施工。
 

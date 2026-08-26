@@ -1,0 +1,228 @@
+{
+  "receiptVersion": 1,
+  "releaseObjective": "GOVERNANCE_NODE25_DEFAULT",
+  "release": "v0.6.47",
+  "schemaVersion": 41,
+  "status": "PRODUCTION_V0_6_47_TECHNICAL_PASS / USER_RECHECK",
+  "userPass": false,
+  "authorization": {
+    "userMessages": [
+      "commit push 发布",
+      "确认 v0.6.47"
+    ],
+    "versionAuthorized": "v0.6.47",
+    "githubAndProductionAuthorized": true,
+    "realProviderGenerationOrOssAuthorized": false,
+    "consumed": true
+  },
+  "github": {
+    "candidateCommit": "76eaaebaf5271b552a425c3af5885c45a24d606f",
+    "candidateTree": "e15fb581ef55f6882110b3d31f31759178aa34ef",
+    "evidenceCommit": "a36f490e71c03666ba363bdd74c19fe92f837369",
+    "evidenceTree": "ec64e8226a1c31262e0afb0c7a958ed2adbab4f1",
+    "pullRequest": 110,
+    "pullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/110",
+    "pullRequestQualityRun": 32952255061,
+    "pullRequestQualityConclusion": "SUCCESS",
+    "mergeCommit": "24541b387120702b800325416fb91bfc87ecd20e",
+    "mergeTree": "ec64e8226a1c31262e0afb0c7a958ed2adbab4f1",
+    "mainQualityRun": 32952337306,
+    "mainQualityConclusion": "SUCCESS",
+    "tag": "v0.6.47",
+    "tagObject": "82a788512284db6ad9f7f2c60166bbf4fdbe8822",
+    "tagPeeledCommit": "24541b387120702b800325416fb91bfc87ecd20e",
+    "tagMoved": false,
+    "releaseUrl": "https://github.com/jasionia1991-max/unboundry/releases/tag/v0.6.47",
+    "releaseDraft": false,
+    "releasePrerelease": false,
+    "releasePublishedAt": "2026-08-26T09:20:07Z"
+  },
+  "verification": {
+    "projectDefault": {
+      "node": "25.9.0",
+      "npm": "11.12.1",
+      "build": "PASS",
+      "architecture": "PASS"
+    },
+    "productionCompatible": {
+      "node": "22.23.1",
+      "npm": "10.9.8",
+      "focused": {
+        "scope": "m38 + m81 + m94",
+        "passed": 60,
+        "total": 60
+      },
+      "soleSafeFull": {
+        "commit": "76eaaebaf5271b552a425c3af5885c45a24d606f",
+        "tree": "e15fb581ef55f6882110b3d31f31759178aa34ef",
+        "specsPassed": 121,
+        "specsTotal": 121,
+        "testsPassed": 1069,
+        "testsTotal": 1069,
+        "failed": 0,
+        "skipped": 0,
+        "retries": 0,
+        "blocked": 0,
+        "reportErrors": 0,
+        "sourceSnapshotSha256": "8d8f12b8120b097790cc64d38cd2bd5ea23c20d0bf668c40f044c60f2d78f76a",
+        "listener4173Unchanged": true,
+        "fullRepeated": false
+      },
+      "postEvidenceDocumentationGate": {
+        "scope": "tests/m38-generation-runtime-incidents.spec.ts",
+        "passed": 15,
+        "total": 15,
+        "failed": 0,
+        "skipped": 0,
+        "retries": 0,
+        "blocked": 0,
+        "reportErrors": 0,
+        "sourceSnapshotSha256": "0d25cdf119eccf5b82a338a49fc9ec39851a839a509b6bcf62b173869084cb47",
+        "listener4173Unchanged": true
+      },
+      "productionDocumentationGate": {
+        "scope": "tests/m38-generation-runtime-incidents.spec.ts",
+        "initialFailures": [
+          "14/15: current governance marker used an unsupported composite suffix",
+          "14/15: three current progressive-modularization documents still identified v0.6.46"
+        ],
+        "passed": 15,
+        "total": 15,
+        "failed": 0,
+        "skipped": 0,
+        "retries": 0,
+        "blocked": 0,
+        "reportErrors": 0,
+        "sourceSnapshotSha256": "83cf16766c76bc421b52a6b53138ecb99a0be55c9c48f2710011c505ef627afe",
+        "listener4173Unchanged": true,
+        "businessSpecsRepeated": false,
+        "fullRepeated": false
+      }
+    }
+  },
+  "production": {
+    "host": "live-cockpit",
+    "releasePath": "/opt/unboundry/releases/v0.6.47-governance-node25-20260826",
+    "previousReleasePath": "/opt/unboundry/releases/v0.6.46-inc-gen-015-long-fingerprint-hotfix-20260826",
+    "freshSource": "IMMUTABLE_LOCAL_TAG_ARCHIVE_TRANSFER",
+    "archiveSha256": "9c5ed0d7f29654df6c17ebf16bad5e5928896d108cbedd5dfc77c40ba99adabb",
+    "node": "22.23.2",
+    "npm": "10.9.8",
+    "freshBuild": true,
+    "releaseFileCount": 5986,
+    "releaseInventorySha256": "f4e8c92cc3347b6752db56928f3b58d99f949f4f7063a8dc30a8b5b072fadc23",
+    "releaseInventoryVerifiedBeforeAndAfterCutover": true,
+    "authoritativeBackupPath": "/var/lib/unboundry-rollbacks/v0.6.47-cutover-final2-20j2R3",
+    "backupSourceFileCount": 366,
+    "backupRestoreFileCount": 366,
+    "backupManifestSha256": "e644ba450ddbcccfeac9e74d502d64dd525cf66650341195ac69661da4ebb77b",
+    "backupSourceAndRestoreManifestsMatch": true,
+    "restoreValidation": {
+      "schemaVersion": 41,
+      "integrity": "ok",
+      "foreignKeyViolations": 0,
+      "databaseBytes": 15904768,
+      "generationTasks": 898,
+      "generationAttempts": 906,
+      "activeGenerationTasks": 0,
+      "mediaAssets": 885,
+      "publicationAttempts": 476,
+      "canvases": 68,
+      "libraryIntegrity": "ok"
+    },
+    "migration": "NOT_REQUIRED_SCHEMA41_UNCHANGED",
+    "quietGate": {
+      "startedAt": "2026-08-26T09:27:17.509Z",
+      "endedAt": "2026-08-26T09:28:17.571Z",
+      "generationTasksAtStartAndEnd": 898,
+      "generationAttemptsAtStartAndEnd": 906,
+      "activeAtStartAndEnd": 0,
+      "mediaAssetsAtStartAndEnd": 885,
+      "publicationAttemptsAtStartAndEnd": 476,
+      "canvasesAtStartAndEnd": 68,
+      "latestAttemptAt": "2026-08-26T08:25:23.543Z"
+    },
+    "failClosedPreSwitchEvents": [
+      {
+        "stage": "legacy-authoritative-backup-script",
+        "cause": "server script still hard-coded schemaVersion 39 while production is schema41",
+        "newReleaseActivated": false,
+        "productionRemained": "v0.6.46",
+        "retainedPath": "/var/lib/unboundry-rollbacks/v0.6.47-cutover-eYzJBA"
+      },
+      {
+        "stage": "post-validation-byte-stability",
+        "cause": "read-only SQLite validation changed only restore-copy unboundry.sqlite-shm bytes",
+        "newReleaseActivated": false,
+        "automaticRollback": true,
+        "retainedPath": "/var/lib/unboundry-rollbacks/v0.6.47-cutover-final-B1oCxf"
+      },
+      {
+        "stage": "release-working-directory",
+        "cause": "new release was temporarily root-owned while systemd runs as ubuntu",
+        "newReleaseBecameReady": false,
+        "automaticRollbackPointer": "v0.6.46",
+        "recovery": "restored v0.6.46 with systemctl reset-failed, then aligned v0.6.47 ownership to ubuntu:ubuntu before the successful cutover"
+      }
+    ],
+    "cutoverAt": "2026-08-26T09:31:07Z",
+    "automaticRollbackTrapArmed": true,
+    "service": {
+      "active": true,
+      "enabled": true,
+      "nRestarts": 0,
+      "newApplicationWarnings": 0
+    },
+    "health": {
+      "loopbackVersion": "0.6.47",
+      "publicVersion": "0.6.47",
+      "liveHttpStatus": 200,
+      "readyHttpStatus": 200,
+      "readyState": "active",
+      "runtimeRole": "active",
+      "mutationsAccepted": true,
+      "schemaVersion": 41
+    },
+    "postCutoverStability": {
+      "startedAt": "2026-08-26T09:32:16.516Z",
+      "endedAt": "2026-08-26T09:33:16.595Z",
+      "versionAtStartAndEnd": "0.6.47",
+      "serviceActiveAtStartAndEnd": true,
+      "nRestartsAtStartAndEnd": 0,
+      "generationTasksAtStartAndEnd": 898,
+      "generationAttemptsAtStartAndEnd": 906,
+      "activeGenerationTasksAtStartAndEnd": 0,
+      "mediaAssetsAtStartAndEnd": 885,
+      "publicationAttemptsAtStartAndEnd": 476,
+      "canvasesAtStartAndEnd": 68
+    },
+    "publicAssets": {
+      "CanvasShell-CStcszBk.js": "fc4d69e1d2ee5fac23054f4a69c83053c5a5785a17e51b17e413cdc4cc6ca1c5",
+      "WorkspacePage-BBHtmbCP.js": "29bc34b92213ea89fc90050738cb7b5aee16d5778db1697751840897c5cf9a7b",
+      "index-BxiYSvuO.css": "99f31c96f4816d9dde9fba424755eed80ab88cf94fac39d8cfe34eab2b056e14",
+      "index-CqPDrS9W.js": "3f588f864c6fd5f534bcc0c00568f93b684a432ef26315e906968f873ed80612",
+      "projectStorage-C1uVDQuk.js": "1e7f4168d6b5ad7b562d0117c32e6c46d73567ad9cb7e7a1a35d6b75adceab37",
+      "allExact": true
+    }
+  },
+  "zeroWriteLedger": {
+    "generationTasksAtFinalBaselineAndAfter": 898,
+    "generationAttemptsAtFinalBaselineAndAfter": 906,
+    "activeGenerationTasksAtFinalBaselineAndAfter": 0,
+    "mediaAssetsBeforeFirstFailClosedRestart": 886,
+    "mediaAssetsAtFinalBaselineAndAfter": 885,
+    "mediaAssetDeltaCause": "existing v0.6.46 startup recovery after the first automatic rollback; final quiet gate and v0.6.47 cutover were stable at 885",
+    "publicationAttemptsAtFinalBaselineAndAfter": 476,
+    "canvasesAtFinalBaselineAndAfter": 68,
+    "generationPost": 0,
+    "providerSubmit": 0,
+    "providerRetry": 0,
+    "mediaOrOssWriteByReleaseValidation": 0,
+    "publicationWriteByReleaseValidation": 0,
+    "newCost": 0
+  },
+  "nextGate": {
+    "status": "USER_RECHECK",
+    "action": "Open https://canvas.mymy.ltd and confirm the ordinary project shell and key canvas entry load normally. Only an explicit user reply can promote v0.6.47 to USER_PASS."
+  }
+}
