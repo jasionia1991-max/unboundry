@@ -2371,7 +2371,7 @@ export const openApiDocument = {
         properties: {
           accountId: { type: "string", minLength: 1, maxLength: 512 },
           applicationId: { type: "string", minLength: 1, maxLength: 512 },
-          inputFingerprint: { type: "string", minLength: 1, maxLength: 512 },
+          inputFingerprint: { type: "string", minLength: 1, maxLength: 100_000 },
           kind: { type: "string", enum: ["audio", "image", "text", "video"] },
           nodeId: { type: "string", minLength: 1, maxLength: 512 },
           ownershipKey: { type: "string", minLength: 1, maxLength: 512 },
@@ -2413,7 +2413,7 @@ export const openApiDocument = {
           accountId: { type: "string", minLength: 1, maxLength: 200 },
           applicationId: { type: "string", minLength: 1, maxLength: 2048 },
           canvasId: { type: "string", minLength: 1, maxLength: 200 },
-          inputFingerprint: { type: "string", minLength: 1, maxLength: 2048 },
+          inputFingerprint: { type: "string", minLength: 1, maxLength: 100_000 },
           kind: { type: "string", enum: ["audio", "image", "text", "video"] },
           nodeDataFingerprint: { type: "string", minLength: 1, maxLength: 2048 },
           nodeId: { type: "string", minLength: 1, maxLength: 200 },

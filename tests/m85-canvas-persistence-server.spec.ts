@@ -23,6 +23,10 @@ import {
   legacyTerminalNodeDataFingerprint,
 } from
   "../server/canvasLegacyGenerationReconciliation";
+import {
+  groupResultProjectionApplicationId,
+  groupResultSemanticRevision,
+} from "../client/src/generation/groupResultProjection";
 
 type ApiResult = {
   body: Record<string, unknown>;
@@ -393,7 +397,16 @@ test("legacy terminal detach is owner-scoped, atomic, idempotent and fail-closed
       const ownerId = randomUUID();
       const otherOwnerId = randomUUID();
       const canvasId = `m85-terminal-${randomUUID()}`;
+      const longInputFingerprint = JSON.stringify({
+        inputs: [],
+        modelId: "model-a",
+        parameters: {},
+        prompt: "测试长提示词".repeat(4_000),
+      });
+      expect(longInputFingerprint.length).toBeGreaterThan(16 * 1024);
+      expect(longInputFingerprint.length).toBeLessThanOrEqual(100_000);
       const node = (input: {
+        inputFingerprint?: string;
         kind: "image" | "text";
         nodeId: string;
         ownershipKey: string;
@@ -403,7 +416,8 @@ test("legacy terminal detach is owner-scoped, atomic, idempotent and fail-closed
         data: {
           [`${input.kind}Generating`]: true,
           [`${input.kind}GenerationError`]: "old terminal error",
-          [`${input.kind}GenerationInputKey`]: `input-${input.nodeId}`,
+          [`${input.kind}GenerationInputKey`]:
+            input.inputFingerprint ?? `input-${input.nodeId}`,
           [`${input.kind}GenerationOwnershipKey`]: input.ownershipKey,
           [`${input.kind}GenerationTaskId`]: input.taskId,
           label: input.nodeId,
@@ -415,6 +429,7 @@ test("legacy terminal detach is owner-scoped, atomic, idempotent and fail-closed
         type: input.kind,
       });
       const terminalNode = node({
+        inputFingerprint: longInputFingerprint,
         kind: "text",
         nodeId: "text-terminal",
         ownershipKey: "owner-terminal",
@@ -566,7 +581,7 @@ test("legacy terminal detach is owner-scoped, atomic, idempotent and fail-closed
         canvasId,
         "generation-terminal-detach",
         body({
-          inputFingerprint: "input-text-terminal",
+          inputFingerprint: longInputFingerprint,
           kind: "text",
           nodeId: "text-terminal",
           ownershipKey: "owner-terminal",
@@ -594,7 +609,7 @@ test("legacy terminal detach is owner-scoped, atomic, idempotent and fail-closed
         canvasId,
         "generation-terminal-detach",
         body({
-          inputFingerprint: "input-text-terminal",
+          inputFingerprint: longInputFingerprint,
           kind: "text",
           nodeId: "text-terminal",
           ownershipKey: "owner-terminal",
@@ -607,6 +622,24 @@ test("legacy terminal detach is owner-scoped, atomic, idempotent and fail-closed
         status: 409,
       });
       process.env.UNBOUNDRY_LEGACY_TERMINAL_RECONCILIATION_MODE = "on";
+
+      expect((await reconcile(
+        "POST",
+        canvasId,
+        "generation-terminal-detach",
+        body({
+          inputFingerprint: "x".repeat(100_001),
+          kind: "text",
+          nodeId: "text-terminal",
+          ownershipKey: "owner-terminal",
+          runId: "run-terminal",
+          taskId: "task-terminal",
+        }),
+        { cookie: ownerCookie },
+      ))).toMatchObject({
+        body: { code: "GENERATION_TERMINAL_DETACH_INVALID" },
+        status: 400,
+      });
 
       expect((await reconcile(
         "POST",
@@ -631,7 +664,7 @@ test("legacy terminal detach is owner-scoped, atomic, idempotent and fail-closed
         "generation-terminal-detach",
         {
           ...body({
-            inputFingerprint: "input-text-terminal",
+            inputFingerprint: longInputFingerprint,
             kind: "text",
             nodeId: "text-terminal",
             ownershipKey: "owner-terminal",
@@ -705,7 +738,7 @@ test("legacy terminal detach is owner-scoped, atomic, idempotent and fail-closed
         { cookie: ownerCookie },
       ))).toMatchObject({ body: { status: "detached" }, status: 200 });
       const editedNodeRequest = body({
-        inputFingerprint: "input-text-terminal",
+        inputFingerprint: longInputFingerprint,
         kind: "text",
         nodeId: "text-terminal",
         ownershipKey: "owner-terminal",
@@ -751,7 +784,7 @@ test("legacy terminal detach is owner-scoped, atomic, idempotent and fail-closed
       };
       beforeStore.close();
       const detachRequest = body({
-        inputFingerprint: "input-text-terminal",
+        inputFingerprint: longInputFingerprint,
         kind: "text",
         nodeId: "text-terminal",
         ownershipKey: "owner-terminal",
@@ -801,7 +834,7 @@ test("legacy terminal detach is owner-scoped, atomic, idempotent and fail-closed
         canvasId,
         "generation-terminal-detach",
         body({
-          inputFingerprint: "input-text-terminal",
+          inputFingerprint: longInputFingerprint,
           kind: "text",
           nodeId: "text-terminal",
           ownershipKey: "wrong-after-detach",
@@ -1641,10 +1674,18 @@ test("an older issued baseline on the same canvas still permits DATA-005 last-wr
 
   await withCanvasServer("canvas-generation-projection-cas", async ({ api, dataDirectory }) => {
     const canvasId = `m85-projection-cas-${randomUUID()}`;
+    const inputFingerprint = JSON.stringify({
+      inputs: [],
+      modelId: "model-a",
+      parameters: {},
+      prompt: "测试长提示词".repeat(180),
+    });
+    expect(inputFingerprint.length).toBeGreaterThan(512);
+    expect(inputFingerprint.length).toBeLessThanOrEqual(100_000);
     const boundNode = {
       data: {
         label: "文案",
-        textGenerationInputKey: "input-a",
+        textGenerationInputKey: inputFingerprint,
         textGenerationOwnershipKey: "owner-a",
         textGenerationTaskId: "task-a",
         textPrompt: "old prompt",
@@ -1678,18 +1719,43 @@ test("an older issued baseline on the same canvas still permits DATA-005 last-wr
     })).status).toBe(200);
 
     const resultKey = "result-a";
-    const projection = {
-      accountId: "__test__",
-      applicationId: `run-a:text-a:task-a:${resultKey}`,
-      inputFingerprint: "input-a",
-      kind: "text",
+    const projectionBase = {
+      inputFingerprint,
+      kind: "text" as const,
       nodeId: "text-a",
       ownershipKey: "owner-a",
       resultKey,
       runId: "run-a",
-      semanticRevision: "3d-tuztzn-fa9br",
       taskId: "task-a",
     };
+    const projection = {
+      accountId: "__test__",
+      applicationId: groupResultProjectionApplicationId(projectionBase),
+      ...projectionBase,
+      semanticRevision: groupResultSemanticRevision(projectionBase),
+    };
+    const oversizedProjectionBase = {
+      ...projectionBase,
+      inputFingerprint: "x".repeat(100_001),
+    };
+    expect(await api("PUT", canvasId, {
+      edges: [],
+      generationProjection: {
+        ...projection,
+        inputFingerprint: oversizedProjectionBase.inputFingerprint,
+        semanticRevision: groupResultSemanticRevision(oversizedProjectionBase),
+      },
+      nodes: [boundNode],
+      observedLoadToken: staleToken,
+      observedRevision: 1,
+      revision: 1,
+      saveSequence: 1,
+      saveSessionId: "oversized-projection-session",
+      viewport,
+    })).toMatchObject({
+      body: { code: "CANVAS_DOCUMENT_INVALID" },
+      status: 400,
+    });
     expect(await api("PUT", canvasId, {
       edges: [],
       generationProjection: projection,

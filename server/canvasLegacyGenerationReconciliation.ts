@@ -37,6 +37,8 @@ type CanvasRow = {
 
 const idPattern = /^[a-z0-9._-]{1,200}$/i;
 const bindingPattern = /^[\w.:/-]{1,2048}$/;
+const terminalDetachInputFingerprintMaxLength = 100_000;
+const terminalDetachRequestMaxBytes = 1024 * 1024;
 
 export function legacyTerminalDetachApplicationIdForBinding(input: Pick<
   TerminalDetachRequest,
@@ -147,7 +149,8 @@ function validDetachRequest(
       input.observedTerminalState === "success") &&
     typeof input.applicationId === "string" && bindingPattern.test(input.applicationId) &&
     typeof input.inputFingerprint === "string" &&
-    bindingPattern.test(input.inputFingerprint) &&
+    input.inputFingerprint.length > 0 &&
+    input.inputFingerprint.length <= terminalDetachInputFingerprintMaxLength &&
     typeof input.nodeDataFingerprint === "string" &&
     bindingPattern.test(input.nodeDataFingerprint) &&
     typeof input.ownershipKey === "string" && bindingPattern.test(input.ownershipKey) &&
@@ -363,7 +366,7 @@ export async function canvasLegacyGenerationReconciliation(
       });
       return;
     }
-    const body = await readJsonBody<unknown>(request, 16 * 1024);
+    const body = await readJsonBody<unknown>(request, terminalDetachRequestMaxBytes);
     if (!validDetachRequest(body, canvasId) || body.accountId !== ownerId) {
       json(response, 400, {
         code: "GENERATION_TERMINAL_DETACH_INVALID",
