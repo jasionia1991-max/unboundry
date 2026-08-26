@@ -23,18 +23,29 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: 22.23.1
+          node-version: 25.9.0
           cache: npm
+      - name: Project default npm
+        run: npm install --global npm@11.12.1
+      - name: Project default toolchain
+        run: |
+          test "$(node --version)" = "v25.9.0"
+          test "$(npm --version)" = "11.12.1"
       - run: npm ci --ignore-scripts
-      - name: Safe test inventory
-        run: npm run test:safe:preflight
       - name: TypeScript
         run: npx tsc --noEmit --pretty false -p tsconfig.check.json
       - name: Architecture boundaries
         run: npm run check:architecture
+      - name: Dependency vulnerabilities
+        run: npm audit --audit-level=high
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.23.1
+      - name: Production-compatible safety npm
+        run: npm install --global npm@10.9.8
+      - name: Safe test inventory (production-compatible runtime)
+        run: npm run test:safe:preflight
       - name: Source coverage inventory
         run: node scripts/check-source-coverage.mjs
       - name: Source coverage behavior
         run: node --test tests/source-coverage-behavior.test.mjs
-      - name: Dependency vulnerabilities
-        run: npm audit --audit-level=high

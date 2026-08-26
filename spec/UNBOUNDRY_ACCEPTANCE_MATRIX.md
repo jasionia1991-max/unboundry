@@ -1,5 +1,7 @@
 # Unboundry 绿地复刻验收矩阵
 
+2026-08-26 INC-GEN-015已完成：生产v0.6.46/schema41健康，目标Canvas的5个旧节点已严格复用原success task/result proof收口；最终mode=`on`，目标与全局Generation/Provider/Media/publication账本零新增。用户已在生产目标Canvas明确回复“通过”，状态`PRODUCTION_V0_6_46_USER_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON`，回执`spec/V0_6_46_PRODUCTION_RECEIPT_2026-08-26.json`。
+
 2026-08-26 INC-GEN-014已完成：`WSH-01～14 / KEYV-01～10 = PRODUCTION_AUTO_PASS / USER_RECHECK`。m22 `37/37`、m73 `16/16`、m20 `1/1`、m81 `41/41`，独立终审最终`P0=0/P1=0/GO`；修正后clean-record full在commit`626d209`/tree`f55860b`完成`121/121 specs、1061/1061 tests PASS`，异常0。PR #103、PR/main CI、merge`3ff3df4`、不可移动tag/Release v0.6.44、fresh build、冻结双副本恢复演练、原子切换、公网/回环/数据/inventory/静态资源均通过。切换前后tasks814/attempts822/active0/media849/publications439/canvases67/dataFiles366不变；真实Provider、Generation、OSS、probe与费用0。回执`spec/V0_6_44_PRODUCTION_RECEIPT_2026-08-26.json`；不是USER_PASS。
 
 同日治理复验：m38首轮产品`14/15`仅为CURRENT_STATE生产句式不匹配既有正则，修正后`15/15 PASS`，source/snapshot`6428b45b…6414`。该修正不改变业务源码；没有重复m22/m73/m20/m81。
@@ -17,11 +19,13 @@
 2026-08-25 INC-GEN-013已发布`v0.6.42/schema41`：`GEN-011～012 / CANVAS-020～022 = PRODUCTION_AUTO_PASS / USER_RECHECK`。m22最终`37/37`、m2`5/5`、m79`3/3`及直接依赖m1/m3/m40均通过；rich fixture为3组/39节点/73边，p95 9.9ms、max 10.3ms、long task与dropped frame为0、媒体请求0、最终画布PUT1。唯一safe full原始`1060/1061`，唯一未改动m0瞬态失败在相同源码快照定向`23/23 PASS`且未重复full。PR #98、CI、tag/Release、冻结备份、fresh原子发布及三视口零付费复杂组拖动/撤销/刷新均通过；任务/attempt/media无增量，最终位置精确还原，应用console0。回执`spec/V0_6_42_PRODUCTION_RECEIPT_2026-08-25.json`；用户确认前不得写`USER_PASS`。
 
 基线日期：2026-07-27  
-当前状态更新：2026-08-24
+当前状态更新：2026-08-26
 
-`AUTHORITATIVE_ACCEPTANCE_LEDGER`：生产为v0.6.40/schema40且技术健康；受限Provider诊断已上线。Project `default`已只为IAM用户`tapnow-ark-catalog-ro-20260803`补`ArkFullAccess`，但唯一H5创建返回远端`403 SubscriptionRequired`且无H5Link；新控制面账本`1/50`，认证查询、Asset、Generation与OSS均0。真实链状态为`PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / BLOCKED_EXTERNAL_CAPABILITY`。
+`AUTHORITATIVE_ACCEPTANCE_LEDGER`：生产为v0.6.46/schema41且服务健康；INC-GEN-015目标Canvas的5个旧节点已严格复用原success task/result proof收口，`on → off → on`回退通过且最终mode=`on`。目标与全局Generation/Provider/Media/publication账本零新增，用户已在生产目标Canvas明确回复“通过”；状态为`PRODUCTION_V0_6_46_USER_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON`。
 
-2026-08-24 `CURRENT_RELEASE = v0.6.36 / schema39 / PRODUCTION_V0_6_36_USER_REJECTED`：发布、备份、健康和R9零付费技术事实继续保留，但用户抽查证明快速切分、棋盘格、扩图说明、费用文案和全工具review不合格，不能再标“待确认”。INC-IMGEDIT-005本地候选已完成定向、浏览器和独立审查；用户已明确确认并允许`v0.6.37`上线，R9正在执行。Provider/OSS/费用0；v0.6.35六项真实Provider `6/6 / 60 USD`仅为历史技术证据，不得复用。
+2026-08-26 `CURRENT_RELEASE = v0.6.46 / schema41 / PRODUCTION_V0_6_46_USER_PASS`。本地治理基线为`main = origin/main = 12e2fd9b…2795`，当前差异仅为本轮尚未提交的治理与工具链修改；普通项目shell默认Node `25.9.0` / npm `11.12.1`，现网仍为Node `22.23.2` / npm `10.9.8`，安全/发布复现通道为Node `22.23.1` / npm `10.9.8`。默认Node25 build/architecture通过；Node22兼容preflight、源码覆盖456/456、behavior 1/1及m38+m94 `19/19 PASS`，4173不变，未运行full。这次工具链治理不是生产运行时迁移或新版本发布。
+
+2026-08-26 `LOCAL_CANDIDATE = v0.6.47 / schema41 / RELEASE_AUTHORIZED / TARGETED_PASS`：用户已明确commit/push/发布并确认v0.6.47；候选只改变治理、默认Node/npm、CI双通道与生产兼容release合同。默认Node25 build/architecture通过，生产兼容safe m38+m81+m94 `60/60 PASS`且4173不变；正式full仍待冻结候选commit。生产切换前CURRENT_RELEASE仍为v0.6.46，不提前升级验收状态。
 
 本文件下方旧版本的 `USER_RECHECK/PENDING` 均保留各自验收时点，不再承担当前线上版本播报，也不得被直接当成下一施工计划。当前版本、当前计划和授权边界只以 `spec/UNBOUNDRY_CURRENT_STATE.md` 为准。
 

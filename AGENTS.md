@@ -1,6 +1,8 @@
 # Unboundry 项目级 Agent 施工守则
 
-本文件适用于 `/Users/mymy/Documents/unboundry/app` 全仓库。用户最新明确指令优先；若与仓库状态或本文冲突，先停止并向用户报告，不得猜测。
+本文件适用于“包含本文件的 Unboundry Git 工作树”，不再用固定目录名代替仓库身份。用户最新明确指令优先；若与仓库状态或本文冲突，先停止并向用户报告，不得猜测。
+
+2026-08-26 本轮基线只读核验：`main = origin/main = 12e2fd9b54fc8684274fd02c6ebc15625b4c2795`，工作树`/Users/mymy/Documents/unboundry-inc-imgedit-003-v0.6.34-2026-08-23`在治理修改前干净；当前仅保留本轮已获用户同意、尚未提交的治理与工具链修改。旧`/Users/mymy/Documents/unboundry/app`仍在已失去upstream的历史分支且有未跟踪文件，**不得当作当前main施工目录，也不得替用户清理**。以后该路径或commit发生变化时，必须重新以`main = origin/main`、工作树差异归属和当前生产回执核验，不能机械沿用本段路径。
 
 人和 AI 共用的上线拍板规矩见仓库根目录 `上线规矩.md`。发布前必须分别获得版本号确认和允许发布；一次授权只用一次。
 
@@ -20,6 +22,12 @@
 10. `spec/UNBOUNDRY_ACCEPTANCE_MATRIX.md` 当前区块
 
 然后只读核对 `pwd`、Git 分支、HEAD、工作树、package 版本和 Node 版本。与施工断点不一致时停止，不得继续施工。
+
+### 默认工具链与生产兼容通道
+
+- 项目普通开发、类型检查、构建和新shell默认使用`.node-version`中的Node `25.9.0`与`packageManager`中的npm `11.12.1`；不得再把`/Users/mymy/.hermes/node/bin`或`/Users/mymy/.local/bin`中的Node 22预置到普通shell PATH。
+- 当前生产v0.6.46仍真实运行Node `22.23.2` / npm `10.9.8`，本轮没有迁移、重启或发布生产运行时。
+- `scripts/run-safe-tests.mjs`、源码覆盖门和不可变release builder继续使用Node `22.23.1` / npm `10.9.8`专用兼容通道，以复现当前生产代际；这是显式测试/发布例外，不是项目默认shell。`engines`同时覆盖两端，未来迁移生产前不得删除Node 22兼容边界。
 
 ## 2. 当前授权边界
 

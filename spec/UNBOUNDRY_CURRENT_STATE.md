@@ -4,12 +4,21 @@
 
 更新日期：2026-08-26
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.46**
-本地候选代码版本：**v0.6.46**
+当前代码包版本：**v0.6.47**
+本地候选代码版本：**v0.6.47**
 本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_46_USER_PASS`
 当前计划标记：`INC_GEN_015_PRODUCTION_V0_6_46_USER_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
+当前本地发布门：`V0_6_47_GOVERNANCE_NODE25_RELEASE_AUTHORIZED / CANDIDATE_TARGETED_PASS / FULL_PENDING`
+
+当前Git身份（2026-08-26本轮基线只读核验）：`main = origin/main = 12e2fd9b54fc8684274fd02c6ebc15625b4c2795`；工作树`/Users/mymy/Documents/unboundry-inc-imgedit-003-v0.6.34-2026-08-23`在本轮治理修改前干净，当前仅有本轮已获同意、尚未提交的治理与工具链修改。旧`/Users/mymy/Documents/unboundry/app`是upstream已失效且含未跟踪文件的历史分支，不能作为当前main施工入口，也不得自动清理。
+
+当前工具链分层：普通项目shell、开发、类型检查和构建默认Node `25.9.0` / npm `11.12.1`；现网v0.6.46仍运行Node `22.23.2` / npm `10.9.8`。安全测试、源码覆盖和不可变release builder暂以Node `22.23.1` / npm `10.9.8`作为生产兼容复现通道；本次只治理本地默认与文档/CI合同，没有迁移、重启或发布生产运行时。验证证据：默认Node25下build与architecture通过；Node22兼容preflight通过，源码覆盖456/456、behavior 1/1、m38+m94 `19/19 PASS`，4173监听身份不变；未运行full。
+
+v0.6.47授权状态：用户已明确“commit push 发布”并确认版本`v0.6.47`，本次commit、push、PR、CI、tag、GitHub Release、SSH与生产发布授权齐备。候选只包含治理文档、默认Node/npm、CI双通道和生产兼容release合同；真实Provider/Generation/OSS预算为0，schema保持41。发布完成前生产仍是v0.6.46，不能提前写v0.6.47已上线。
+
+v0.6.47候选证据：默认Node25.9.0/npm11.12.1下build与architecture通过；生产兼容Node22.23.1/npm10.9.8定向m38+m81+m94共`60/60 PASS`，failed/skipped/retries/blocked/reportErrors均0，source/snapshot`bd161ee0…62e1f`，4173监听身份不变。下一门是冻结候选commit后的唯一safe full。
 
 ## 一句话
 
@@ -340,14 +349,14 @@ v0.6.34版本号、tag和发布授权均已执行并消费，禁止移动tag或�
 
 ## v0.6.25 发布与真实验证（2026-08-20，历史时点）
 
-- 本节以下为 v0.6.25 历史记录，不承担当前版本播报；当前生产以本文顶部 v0.6.35 状态为准。v0.6.26 的 `PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK` 是该版本独立验收时点，继续作为历史证据保留。v0.6.25 的完整实施记录见 `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`，生产凭证见 `spec/V0_6_25_PRODUCTION_RECEIPT_2026-08-20.json`。
+- 本节以下为 v0.6.25 历史记录，不承担当前版本播报；当前生产只以本文顶部v0.6.46状态为准。v0.6.26 的 `PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK` 是该版本独立验收时点，继续作为历史证据保留。v0.6.25 的完整实施记录见 `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`，生产凭证见 `spec/V0_6_25_PRODUCTION_RECEIPT_2026-08-20.json`。
 - 事二「生成任务一直排队中」已在线闭环：已知任务 `c479826f-a426-4a11-854c-79ecc802bcbc` 从 `queued / attempt 1 / provider_task_id null` 在 v0.6.25 重启后自动接力，平台任务 `111092189` 完成，最终 `success / attempt 2`；没有盲目重复。
 - 事一已查清：2026-08-19 15:23–15:26Z 上游“服装主体标准化”图片成功并产出 11,596,744 字节 PNG；v0.6.23 的 10MB 文字输入预检随后拦下四个下游文字节点，五个后代未运行。不是客户端 DAG 漏发；红字把失败错归因给已经成功的上游图片节点。
 - “2:33 三张主图从未提交”的旧说法已被生产任务表与 nginx 202 提交记录否定：该轮 7 图 + 4 文全部 success。
 - Ark Files 已补齐失败/取消清理、底层 abort、单次与整体 poll deadline、读取前限流、OSS 流式 20MiB 上限、账号隔离 gate、脱敏结构化日志与安全本地读取。事故画布原节点 `text-932053d1…` 真实引用 `11,596,744` 字节 PNG；agent 在页面点一次生成，任务 `6d304853…` attempt 1 success、4289 tokens、结果 1278 字符；日志 upload/poll(1 次)/delete 全 success，页面显示用时 1:06 和“已保存到云端”，浏览器控制台 0 error/warn。
 - Provider 成片保存退避、整组“停止后续”、持久失败摘要、scope 隔离、旧轮次保护、预检双击保护与并行失败映射均已上线。正式安全全量 `119/119 specs、1018/1018 tests PASS`，异常计数 0，最终 v0.6.25 source/snapshot SHA-256 均为 `fa9fa1dbdae1e70dd1c3c308a03e01a68cd11e6280d12682174ae8ba457525b4`；独立子 agent 终审未发现新的 P1/P2。agent 的技术实页通过不等于用户主观 `USER_PASS`。
 
-## 当前线上
+## 历史线上（v0.6.35 时点，已被v0.6.46取代）
 
 - 地址：https://canvas.mymy.ltd
 - 指针：`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.35-image-toolbar-hotfix-20260824`
@@ -475,8 +484,8 @@ v0.6.34版本号、tag和发布授权均已执行并消费，禁止移动tag或�
 ## 新会话默认动作
 
 1. 先读本文 + `上线规矩.md` + `TASKS.md` 顶部。
-2. 只读核对当前隔离worktree、分支、HEAD、工作树和`package.json`；当前本地候选package应为`0.6.36`，历史计划中的旧版本号不得当成当前施工身份。
-3. 当前生产为v0.6.36/schema39，技术状态`PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；当前工程入口为INC-IMGEDIT-004主方案与Checkpoint，R9只做生产零付费实页验收和文档收口。本返工真实Provider预算为0，不得自动记录`USER_PASS`或追加Provider请求。
-4. 云腾三模型只归属云腾 Provider；不得借用优创密钥、不得新增“天空”计费 Provider、不得自动追加真实 Provider POST。
-5. `VIEW-005`已由本地隔离安全定向证据关闭为`AUTO_PASS`；其余`PAUSED/BLOCK/PARTIAL`项只有在用户重新立项后才能施工，本次证据不得被解释为新版本或生产授权。
-6. 若用户说生成或工作流再次异常，先查当前线上任务、Provider profile、attempt 和结果所有权，再给方案；不得擅自改生产库或重提付费请求。
+2. 只读核对`pwd`、所有worktree、分支、HEAD、`main = origin/main`、工作树和`package.json`；不得仅凭目录名认定`/Users/mymy/Documents/unboundry/app`是当前仓库。2026-08-26核验时，当前干净main为`12e2fd9b…2795`，旧`/app`不得施工或清理。
+3. 只读核对公网`/api/version`、`/api/health/live`、`/api/health/ready`与最新生产回执；2026-08-26已确认生产v0.6.46/schema41、INC-GEN-015为`USER_PASS`。时间敏感结论必须重新核验，不能只抄本文。
+4. 普通shell默认应为Node `25.9.0` / npm `11.12.1`；Node `22.23.1` / npm `10.9.8`只允许安全测试/源码覆盖/release builder生产兼容通道。生产当前Node `22.23.2` / npm `10.9.8`未经新版本和发布授权不得迁移。
+5. INC-GEN-015已完成且无活动下一动作；v0.6.46一次性发布授权已消费。未获新授权不得commit、push、tag、PR、SSH、发布、改生产或发起真实Provider/OSS/Generation写入。
+6. 云腾三模型只归属云腾Provider；不得借用优创密钥、不得新增计费Provider、不得自动追加真实Provider POST。若生成或工作流再次异常，先只读核对task/profile/attempt/result所有权，再提新方案。

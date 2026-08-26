@@ -33,6 +33,9 @@ import { fileURLToPath } from "node:url";
 
 const REQUIRED_NODE_VERSION = "22.23.1";
 const REQUIRED_NPM_VERSION = "10.9.8";
+const PROJECT_DEFAULT_NPM_VERSION = "11.12.1";
+const PROJECT_NODE_ENGINE = ">=22.23.1 <23 || >=25.9.0 <26";
+const PROJECT_NPM_ENGINE = "10.9.8 || 11.12.1";
 const PRIVATE_BUILD_UMASK = 0o077;
 const BUBBLEWRAP_EXECUTABLE = "/usr/bin/bwrap";
 const bubblewrapIsolationArguments = Object.freeze([
@@ -1797,9 +1800,9 @@ async function main() {
       await readFile(join(source, "package-lock.json"), "utf8"),
     );
     if (
-      packageDocument.packageManager !== `npm@${REQUIRED_NPM_VERSION}` ||
-      packageDocument.engines?.npm !== REQUIRED_NPM_VERSION ||
-      !String(packageDocument.engines?.node ?? "").includes(REQUIRED_NODE_VERSION) ||
+      packageDocument.packageManager !== `npm@${PROJECT_DEFAULT_NPM_VERSION}` ||
+      packageDocument.engines?.npm !== PROJECT_NPM_ENGINE ||
+      packageDocument.engines?.node !== PROJECT_NODE_ENGINE ||
       typeof packageDocument.version !== "string" || !packageDocument.version
     ) {
       fail("RELEASE_RUNTIME_INVALID", "Commit does not pin the required Node/npm release runtime");
