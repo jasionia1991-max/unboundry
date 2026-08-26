@@ -303,8 +303,18 @@ test("the private API documents and reads canvas, project and model configuratio
   }
   expect(specification.components.schemas.GenerationProjectionCommit.required)
     .not.toContain("nodeDataFingerprint");
+  expect(
+    (specification.components.schemas.GenerationProjectionCommit as {
+      properties: { inputFingerprint: unknown };
+    }).properties.inputFingerprint,
+  ).toMatchObject({ minLength: 1, maxLength: 100_000 });
   expect(specification.components.schemas.LegacyTerminalDetachRequest.required)
     .toContain("nodeDataFingerprint");
+  expect(
+    (specification.components.schemas.LegacyTerminalDetachRequest as {
+      properties: { inputFingerprint: unknown };
+    }).properties.inputFingerprint,
+  ).toMatchObject({ minLength: 1, maxLength: 100_000 });
   expect(Object.keys(
     specification.components.schemas.CanvasSaveRequest.properties as object,
   ).sort()).toEqual([

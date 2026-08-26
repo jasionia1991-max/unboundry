@@ -2,7 +2,7 @@
   "receiptType": "UNBOUNDRY_V0_6_45_LEGACY_TERMINAL_RECONCILIATION_PRODUCTION_RECEIPT",
   "recordedAt": "2026-08-26",
   "status": {
-    "production": "PRODUCTION_V0_6_45_DEPLOYED_TARGET_ALLOWLIST_WAITING_AUTHENTICATED_PAGE",
+    "production": "PRODUCTION_V0_6_45_TARGET_ALLOWLIST_FAILED_CLOSED_HOTFIX_REQUIRED",
     "userAcceptance": "USER_RECHECK",
     "goalComplete": false
   },
@@ -67,6 +67,20 @@
       "blocked": 0,
       "reportErrors": 0,
       "sourceSnapshotSha256": "03cfc07437408c3b8d519b37930c21580a00efda8c570ea930e50b9499f44cd0",
+      "listener4173Unchanged": true,
+      "businessSpecsRepeated": false,
+      "fullRepeated": false
+    },
+    "v0_6_46VersionDocumentationRecheck": {
+      "scope": "tests/m38-generation-runtime-incidents.spec.ts",
+      "passed": 15,
+      "total": 15,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0,
+      "sourceSnapshotSha256": "a0251547743750ffbbc032304ae83d5bc33263728b82fc880e08639ffbabb9dc",
       "listener4173Unchanged": true,
       "businessSpecsRepeated": false,
       "fullRepeated": false
@@ -209,7 +223,8 @@
       "accountLoginName": "zzx",
       "canvasId": "60a739ce-9cb4-4c46-9c77-92e9f6f22b49",
       "modeConfirmedInProcess": true,
-      "currentRevision": 327,
+      "revisionBeforeAuthenticatedPage": 327,
+      "currentRevision": 335,
       "currentGraphRevision": 52,
       "candidateNodes": 5,
       "candidateKinds": {
@@ -219,17 +234,63 @@
       "distinctRunIds": 3,
       "originalTasksSuccess": 5,
       "activeTasks": 0,
-      "authenticatedPageOpened": false,
-      "reason": "Available browser sessions are authenticated as account mymy/02c9dbba, not target owner zzx/d8322476; target navigation correctly redirected to the workspace with zero target write. Cookies, localStorage and browser profiles were not read.",
-      "result": "WAITING_TARGET_OWNER_AUTHENTICATED_PAGE"
+      "authenticatedPageOpened": true,
+      "candidateProjectionAttempts": 15,
+      "candidateProjectionHttpStatus": 400,
+      "candidateProjectionErrorCode": "CANVAS_DOCUMENT_INVALID",
+      "candidateProjectionWritesApplied": 0,
+      "candidateBindingsChanged": 0,
+      "inputFingerprintLengthObserved": 1644,
+      "inputFingerprintShape": "OPAQUE_JSON_WITH_UNICODE",
+      "reason": "After explicit action-time confirmation, controllable Chrome and the in-app browser signed in as zzx and opened the exact target canvas. Five candidates each made three bounded projection attempts. v0.6.45 rejected the opaque generation input fingerprint as an ASCII <=512 identifier, so every PUT failed validation before mutation. Cookies, localStorage and browser profiles were not read.",
+      "result": "FAIL_CLOSED_LONG_OPAQUE_INPUT_FINGERPRINT_VALIDATION_P1"
     },
     "on": {
       "attempted": false,
-      "reason": "Target allowlist acceptance is incomplete; expanding rollout would violate the frozen gate order."
+      "reason": "Target allowlist exposed a P1 validation mismatch and failed closed; expanding rollout would violate the frozen gate order."
     },
     "currentMode": "allowlist",
     "currentAllowlistScope": "TARGET_OWNER_AND_CANVAS_ONLY",
     "offRollbackAvailable": true
+  },
+  "hotfix": {
+    "branch": "codex/inc-gen-015-long-fingerprint-hotfix-2026-08-26",
+    "commit": "ff3d139f1aceba1fd02b406bdd0fa5290175ea0e",
+    "tree": "c58692ddde5be0bd7b8e74e90ac8f349de3d0659",
+    "schemaVersion": 41,
+    "packageVersionBeforeNewAuthorization": "0.6.45",
+    "contract": {
+      "projectionInputFingerprint": "OPAQUE_NON_EMPTY_MAX_100000",
+      "terminalDetachInputFingerprint": "OPAQUE_NON_EMPTY_MAX_100000",
+      "terminalDetachRequestBodyMaxBytes": 1048576,
+      "otherIdentityValidationRelaxed": false
+    },
+    "verification": {
+      "typescript": "PASS",
+      "diffCheck": "PASS",
+      "m20": "1/1 PASS",
+      "m85": "27/27 PASS",
+      "sourceSnapshotSha256": "3828c8e32200b68d74d3783add78e462d2d79edf37f5652ec3d015fe0401f1c6",
+      "listener4173Unchanged": true,
+      "soleSafeFullRepeated": false
+    },
+    "documentationGovernance": {
+      "first": "14/15; only the production sentence missed the existing machine regex",
+      "final": "15/15 PASS",
+      "sourceSnapshotSha256": "92b712e5daa4d126ad41d0ccdd3472a4dc2fc5b1362ce47fc4d9e36b7a63991e",
+      "listener4173Unchanged": true,
+      "businessSpecsRepeated": false,
+      "soleSafeFullRepeated": false
+    },
+    "independentReview": {
+      "first": "NO-GO / P0=0 / P1=1",
+      "firstFinding": "terminal-detach retained the same opaque-input and request-body mismatch",
+      "final": "P0=0 / P1=0 / GO",
+      "writes": 0,
+      "testsRunByReviewer": 0,
+      "networkRequests": 0
+    },
+    "releaseStatus": "V0_6_46_RELEASE_AUTHORIZED_IN_PROGRESS"
   },
   "requestLedger": {
     "providerCredentialProbesUsed": 0,
@@ -248,12 +309,14 @@
     "historicalTagOrReleaseMoved": false,
     "productionPaidTaskUsedForAcceptance": false,
     "targetCanvasMutatedBeforeAuthenticatedOwnerPage": false,
+    "targetCanvasProjectionWritesAppliedDuringAuthenticatedGray": 0,
+    "targetGenerationBindingsChangedDuringAuthenticatedGray": false,
     "browserCookiesLocalStorageOrProfileRead": false,
     "releaseAuthorizationConsumed": true
   },
   "nextGate": {
-    "status": "TARGET_OWNER_AUTHENTICATION_REQUIRED",
-    "action": "Sign in to production as account zzx in a controllable browser and open the target canvas. The allowlist is already restricted to that exact account and canvas. Then verify the five nodes, zero paid/provider/media writes, and only after target acceptance advance to on.",
+    "status": "V0_6_46_GITHUB_AND_PRODUCTION_RELEASE_IN_PROGRESS",
+    "action": "Freeze and publish v0.6.46 through PR/CI/tag/GitHub Release, deploy fresh without moving v0.6.45, and repeat the exact target allowlist acceptance before considering on.",
     "authorizationRequired": false,
     "userPassWritten": false
   }

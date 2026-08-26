@@ -97,6 +97,7 @@ const canvasSaveSessionOwnerHighWaterLimit = 5_000;
 const canvasSaveSessionPattern = /^[a-z0-9-]{8,80}$/i;
 const generationProjectionKinds = new Set(["audio", "image", "text", "video"]);
 const generationProjectionValuePattern = /^[\w.:/-]{1,512}$/;
+const generationProjectionInputFingerprintMaxLength = 100_000;
 let canvasSaveSessionGlobalHighWaterLimitForTests: number | undefined;
 let canvasSaveSessionOwnerHighWaterLimitForTests: number | undefined;
 let beforeCanvasSaveTransactionForTests: CanvasPersistenceBarrier | undefined;
@@ -680,7 +681,6 @@ function validGenerationProjection(value: unknown): value is GenerationProjectio
   const fields = [
     projection.accountId,
     projection.applicationId,
-    projection.inputFingerprint,
     projection.nodeId,
     projection.ownershipKey,
     projection.resultKey,
@@ -690,7 +690,10 @@ function validGenerationProjection(value: unknown): value is GenerationProjectio
   ];
   return fields.every((field) =>
     typeof field === "string" && generationProjectionValuePattern.test(field)
-  ) && projection.applicationId ===
+  ) && typeof projection.inputFingerprint === "string" &&
+    projection.inputFingerprint.length > 0 &&
+    projection.inputFingerprint.length <= generationProjectionInputFingerprintMaxLength &&
+    projection.applicationId ===
     `${projection.runId}:${projection.nodeId}:${projection.taskId}:${projection.resultKey}` &&
     projection.semanticRevision === generationProjectionSemanticRevision(
       projection as GenerationProjectionCommit,
