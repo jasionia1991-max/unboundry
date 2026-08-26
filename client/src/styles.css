@@ -15773,7 +15773,7 @@ sup {
   border-radius: 9px;
   color: #b9b9bd;
   background: transparent;
-  font-size: 13px;
+  font-size: 12px;
   text-align: left;
   text-decoration: none;
 }
@@ -15812,7 +15812,7 @@ sup {
 .model-contract-heading h1 {
   margin: 4px 0;
   overflow-wrap: anywhere;
-  font-size: 23px;
+  font-size: 22px;
 }
 
 .model-contract-heading span,
@@ -15820,7 +15820,7 @@ sup {
 .model-contract-editor p,
 .model-contract-editor small {
   color: #99999e;
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.55;
 }
 
@@ -15854,7 +15854,7 @@ sup {
 .model-contract-editor h2,
 .model-contract-summary h2 {
   color: #efeff0;
-  font-size: 16px;
+  font-size: 14px;
 }
 
 .model-contract-grid {
@@ -15869,7 +15869,7 @@ sup {
   min-width: 0;
   gap: 6px;
   color: #bdbdc1;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .model-contract-grid input,
@@ -15983,7 +15983,7 @@ sup {
   border-radius: 9px;
   color: #b8b8bd;
   background: rgba(255, 255, 255, 0.045);
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .model-contract-bindings code {
@@ -16025,12 +16025,12 @@ sup {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .model-contract-summary dt { color: #8f8f94; }
 .model-contract-summary dd { margin: 0; color: #d5d5d8; text-align: right; }
-.model-contract-summary summary { color: #bcbcc0; cursor: pointer; font-size: 13px; }
+.model-contract-summary summary { color: #bcbcc0; cursor: pointer; font-size: 12px; }
 .model-contract-summary pre {
   max-width: 100%;
   overflow: auto;
@@ -16038,7 +16038,7 @@ sup {
   border-radius: 8px;
   color: #bdbdc2;
   background: #151517;
-  font-size: 11px;
+  font-size: 12px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -16111,7 +16111,7 @@ sup {
   border-radius: 8px;
   color: #ececee;
   background: #171719;
-  font-size: 11px;
+  font-size: 12px;
   white-space: pre-wrap;
 }
 
