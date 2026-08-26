@@ -17,6 +17,14 @@
     "verify"
   ],
   "operationalScripts": {
+    "scripts/bootstrap-model-contract-revisions.mjs": {
+      "mode": "frozen",
+      "scriptSha256": "2c6752bc49f78f8a4d8e5fa20e8705a8b01a633fcb2e9c0206462307bc3e7d7d",
+      "reason": "Creates immutable model-contract audit revisions for existing published models in an explicitly selected schema-41 database; it performs no Provider or OSS request and is run only after backup and restore rehearsal.",
+      "manualNpmScripts": [
+        "model-contracts:bootstrap"
+      ]
+    },
     "scripts/apply-ecommerce-apparel-auto-launch.mjs": {
       "mode": "frozen",
       "scriptSha256": "6a23524424d1113d5ebbbdcd8e28cb28be414c90326742e67838ae7b460b296a",
@@ -90,7 +98,7 @@
       "scriptSha256": "53e92a0e6268f4a7cb1c618aa1293d27507dd207546c0f988c1e06c0cb7ce94c",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "Full snapshot bridge/final fixtures prove the release closure",
-      "targetSha256": "bf65eb34680d29aefb0f1f1e2caaf7471b9d58383049a6251b22642d37b5847e"
+      "targetSha256": "454b27ce0a2a1b75be785f6f994d4f9bdee352f8ec157c41920912b59c8cc2a3"
     },
     "scripts/check-greenfield.mjs": {
       "mode": "behavior-test",
@@ -104,14 +112,14 @@
       "scriptSha256": "9b1807c98cd6e59a288fd8b81d29299bb5b34b67e7bed9a2003c8989c95d01e7",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "scripts/check-restart-persistence.mjs",
-      "targetSha256": "bf65eb34680d29aefb0f1f1e2caaf7471b9d58383049a6251b22642d37b5847e"
+      "targetSha256": "454b27ce0a2a1b75be785f6f994d4f9bdee352f8ec157c41920912b59c8cc2a3"
     },
     "scripts/check-v051-exact-runtime.mjs": {
       "mode": "behavior-test",
       "scriptSha256": "46f2f3d355c1ece895e649e3dceb8f485aeeeeed2eb3418b98b311d9a827ac08",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "scripts/check-v051-exact-runtime.mjs",
-      "targetSha256": "bf65eb34680d29aefb0f1f1e2caaf7471b9d58383049a6251b22642d37b5847e"
+      "targetSha256": "454b27ce0a2a1b75be785f6f994d4f9bdee352f8ec157c41920912b59c8cc2a3"
     },
     "scripts/deploy.mjs": {
       "mode": "frozen",

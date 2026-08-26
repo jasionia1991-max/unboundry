@@ -5,6 +5,8 @@
 状态：`HISTORICAL_CHECKPOINT / APPEND_ONLY`
 用途：保留各次施工与发布时点证据，不再充当当前恢复入口。**当前状态、未发布工作区与下一步只看 `UNBOUNDRY_CURRENT_STATE.md`；本文件任何旧命令或旧授权都不可复用。**
 
+2026-08-26新增MODEL-CONTRACT-001未实施任务：用户已确认最终方案，当前严格为`DOCUMENTATION_ONLY / IMPLEMENTATION_NOT_STARTED / RELEASE_NOT_AUTHORIZED`。未来恢复只看`spec/MODEL_CONTRACT_001_CHECKPOINT.md`并从新Goal的R0只读盘点开始；不得从本历史checkpoint复用任何旧授权。
+
 ## 0. INC-UI-011 节点排序菜单层级修复（2026-08-25 v0.6.43发布候选 / USER_PASS）
 
 - 本地密集组合框旧实现预期红m2 `4/5`，Portal修复后m2 `5/5`、TypeScript 408/408、生产构建和三视口通过；菜单最上层命中、上下翻转/左右收边、Escape返焦、零画布PUT和零手势副作用均有证据。

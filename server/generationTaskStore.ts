@@ -2,6 +2,10 @@ import { createHash, randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { openAppDatabase } from "./database";
 import {
+  modelContractsRequired,
+  modelContractState,
+} from "./modelReleaseRevisionStore";
+import {
   generationAdmissionInTransaction,
   generationProviderBoundaryDecisionInTransaction,
   type GenerationAdmission,
@@ -18,6 +22,7 @@ import {
 } from "../types/modelParameters";
 import { generationCapabilityRegistry } from "./generationCapabilityRegistry";
 import type { GenerationCapabilityKind } from "../types/nodeVocabulary";
+import type { ModelReleaseRevision } from "../types/modelReleaseRevisions";
 
 export const generationTaskKinds: readonly GenerationCapabilityKind[] =
   generationCapabilityRegistry.kinds();
@@ -556,7 +561,7 @@ function normalizeInput(input: GenerationTaskInput): GenerationTaskInput {
     !modelConfiguration ||
     Array.isArray(modelConfiguration) ||
     typeof modelConfiguration !== "object" ||
-    modelConfigurationJson.length > 20_000 ||
+    modelConfigurationJson.length > 128_000 ||
     !requestIntent ||
     Array.isArray(requestIntent) ||
     typeof requestIntent !== "object" ||
@@ -840,6 +845,43 @@ export function createGenerationTaskStore(dataDirectory: string) {
     providerProfileId: string | null;
   }) {
     const binding = input.binding;
+    const releaseState = input.modelId
+      ? modelContractState(database, input.modelId)
+      : undefined;
+    const suppliedRelease = input.modelConfiguration.modelReleaseRevision as
+      | ModelReleaseRevision
+      | undefined;
+    if (releaseState?.history.length || modelContractsRequired(database)) {
+      const active = releaseState?.active;
+      if (!active) {
+        throw new GenerationProviderAttemptBlockedError(
+          "MODEL_UNAVAILABLE",
+          "该模型已停止接受新任务",
+        );
+      }
+      if (
+        active.document.runtime === "blocked" ||
+        active.document.evidence === "UNKNOWN"
+      ) {
+        throw new GenerationProviderAttemptBlockedError(
+          "MODEL_UNAVAILABLE",
+          "该模型缺少可验证的执行合同，已停止接受新任务",
+        );
+      }
+      if (
+        !suppliedRelease ||
+        suppliedRelease.revisionId !== active.revisionId ||
+        suppliedRelease.hash !== active.hash ||
+        suppliedRelease.document.providerProfileId !== active.document.providerProfileId ||
+        suppliedRelease.document.providerModelId !== active.document.providerModelId ||
+        suppliedRelease.document.connectorVersion !== active.document.connectorVersion
+      ) {
+        throw new GenerationProviderAttemptBlockedError(
+          "PROVIDER_CONFIGURATION_MISMATCH",
+          "模型合同已变化，未创建新的付费请求",
+        );
+      }
+    }
     const suppliedVersion = input.modelConfiguration
       .providerConfigurationVersion;
     if (
@@ -1121,6 +1163,9 @@ export function createGenerationTaskStore(dataDirectory: string) {
 
   return {
     dataDirectory,
+    activeModelContractRevision(modelId: string) {
+      return modelContractState(database, modelId).active;
+    },
     close() {
       database.close();
     },
@@ -2076,7 +2121,7 @@ export function createGenerationTaskStore(dataDirectory: string) {
             !input.snapshot.modelConfiguration ||
             Array.isArray(input.snapshot.modelConfiguration) ||
             typeof input.snapshot.modelConfiguration !== "object" ||
-            snapshotJson.length > 20_000
+            snapshotJson.length > 128_000
           ) {
             throw new Error("Invalid paid retry snapshot");
           }

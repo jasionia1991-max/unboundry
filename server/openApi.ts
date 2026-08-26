@@ -529,6 +529,134 @@ export const openApiDocument = {
         },
       },
     },
+    "/api/admin/models/{modelId}/contract": {
+      get: {
+        operationId: "readAdminModelContract",
+        summary: "Read immutable release history, draft and zero-cost suggested model contract",
+        parameters: [{
+          in: "path",
+          name: "modelId",
+          required: true,
+          schema: { type: "string", pattern: "^[a-zA-Z0-9-]{3,80}$" },
+        }],
+        responses: {
+          "200": { description: "Model contract workbench state; paidProviderRequests is always zero" },
+          "403": { description: "manage_models permission required" },
+          "404": { description: "Model not found" },
+        },
+      },
+    },
+    "/api/admin/models/{modelId}/contract/draft": {
+      post: {
+        operationId: "saveAdminModelContractDraft",
+        summary: "Save a model contract draft using compare-and-swap",
+        parameters: [{
+          in: "path", name: "modelId", required: true,
+          schema: { type: "string", pattern: "^[a-zA-Z0-9-]{3,80}$" },
+        }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: {
+            type: "object",
+            required: ["document", "expectedDraftVersion"],
+            properties: {
+              document: { type: "object" },
+              expectedDraftVersion: { type: "integer", minimum: 0 },
+            },
+          } } },
+        },
+        responses: {
+          "200": { description: "Draft saved with zero Provider requests" },
+          "409": { description: "Draft compare-and-swap conflict" },
+        },
+      },
+    },
+    "/api/admin/models/{modelId}/contract/validate": {
+      post: {
+        operationId: "validateAdminModelContractDraft",
+        summary: "Compile, preview and analyze template impact without a Provider request",
+        parameters: [{
+          in: "path", name: "modelId", required: true,
+          schema: { type: "string", pattern: "^[a-zA-Z0-9-]{3,80}$" },
+        }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: {
+            type: "object",
+            required: ["expectedDraftVersion"],
+            properties: { expectedDraftVersion: { type: "integer", minimum: 1 } },
+          } } },
+        },
+        responses: {
+          "200": { description: "Local validation result with paidProviderRequests equal to zero" },
+          "409": { description: "Draft compare-and-swap conflict" },
+        },
+      },
+    },
+    "/api/admin/models/{modelId}/contract/publish": {
+      post: {
+        operationId: "publishAdminModelContract",
+        summary: "Atomically activate an immutable capability and execution revision",
+        parameters: [{
+          in: "path", name: "modelId", required: true,
+          schema: { type: "string", pattern: "^[a-zA-Z0-9-]{3,80}$" },
+        }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: {
+            type: "object",
+            required: ["expectedDraftVersion"],
+            properties: { expectedDraftVersion: { type: "integer", minimum: 1 } },
+          } } },
+        },
+        responses: {
+          "200": { description: "Immutable revision activated with zero Provider requests" },
+          "400": { description: "Validation missing, stale or incompatible" },
+          "409": { description: "Draft compare-and-swap conflict" },
+        },
+      },
+    },
+    "/api/admin/models/{modelId}/contract/rollback": {
+      post: {
+        operationId: "rollbackAdminModelContract",
+        summary: "Activate a new revision cloned from a historical immutable revision",
+        parameters: [{
+          in: "path", name: "modelId", required: true,
+          schema: { type: "string", pattern: "^[a-zA-Z0-9-]{3,80}$" },
+        }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: {
+            type: "object",
+            required: ["targetRevisionId"],
+            properties: { targetRevisionId: { type: "string", format: "uuid" } },
+          } } },
+        },
+        responses: { "200": { description: "Rollback revision activated" } },
+      },
+    },
+    "/api/admin/models/{modelId}/contract/revoke": {
+      post: {
+        operationId: "revokeAdminModelContract",
+        summary: "Stop new submissions while preserving running task snapshots",
+        parameters: [{
+          in: "path", name: "modelId", required: true,
+          schema: { type: "string", pattern: "^[a-zA-Z0-9-]{3,80}$" },
+        }],
+        responses: { "200": { description: "New submissions revoked" } },
+      },
+    },
+    "/api/admin/models/{modelId}/contract/restore": {
+      post: {
+        operationId: "restoreAdminModelContract",
+        summary: "Restore new submissions to the latest immutable revision",
+        parameters: [{
+          in: "path", name: "modelId", required: true,
+          schema: { type: "string", pattern: "^[a-zA-Z0-9-]{3,80}$" },
+        }],
+        responses: { "200": { description: "New submissions restored" } },
+      },
+    },
     "/api/image-tools/capabilities": {
       get: {
         operationId: "readImageToolCapabilities",

@@ -446,6 +446,8 @@ export async function generationTasks(
         });
         return;
       }
+      const retryModelReleaseRevision = taskStore()
+        .activeModelContractRevision(retry.model.id);
       paidRetrySnapshot = {
         credentialRevision: Number(runtime.credentialVersion),
         modelConfiguration: {
@@ -459,6 +461,9 @@ export async function generationTasks(
           providerModelId: retry.model.provider_model_id,
           providerProtocol: retry.model.provider_protocol ?? "native",
           providerProfileId: retry.model.provider_profile_id,
+          ...(retryModelReleaseRevision
+            ? { modelReleaseRevision: retryModelReleaseRevision }
+            : {}),
         },
         providerModelId: retry.model.provider_model_id,
         providerProfileId: retry.model.provider_profile_id,
@@ -1072,6 +1077,8 @@ export async function generationTasks(
           ownerId,
         });
       }
+      const activeModelReleaseRevision = taskStore()
+        .activeModelContractRevision(model.id);
       const created = taskStore().admitOrGet({
         canvasId: String(body.canvasId ?? ""),
         credentialRevision: runtime.credentialVersion,
@@ -1094,6 +1101,9 @@ export async function generationTasks(
           providerModelId: model.provider_model_id,
           providerProtocol: model.provider_protocol ?? "native",
           providerProfileId: model.provider_profile_id,
+          ...(activeModelReleaseRevision
+            ? { modelReleaseRevision: activeModelReleaseRevision }
+            : {}),
         },
         nodeId: String(body.nodeId ?? ""),
         ownerId,

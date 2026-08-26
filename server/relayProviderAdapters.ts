@@ -34,6 +34,11 @@ import {
   OutboundDestinationError,
 } from "./outboundNetwork";
 import { providerRequestTimeoutMsByOperation } from "./providerRequestDeadline";
+import {
+  compileModelContractPoll,
+  compileModelExecutionContract,
+} from "./modelExecutionContractCompiler";
+import type { ModelExecutionContract } from "../types/modelExecutionContracts";
 
 export type RelayCapability = "audio" | "image" | "text" | "video";
 
@@ -1662,6 +1667,108 @@ export async function submitRelayMedia(
     providerProtocol: "media-generate",
     state: "queued",
   } satisfies RelayMediaSubmission;
+}
+
+export async function submitContractRelayMedia(
+  connection: RelayProviderConnection,
+  request: RelayMediaGenerateRequest,
+  contractInput: unknown,
+  execution: RelayProviderExecution,
+) {
+  const contract = compileModelExecutionContract(contractInput).contract;
+  if (
+    contract.connectorFamily !== "generic-async-media" ||
+    contract.create.path !== "/v1/media/generate" ||
+    contract.create.taskIdPath !== "task_id"
+  ) throw new RelayProviderError("FORMAT");
+  const body = await relayJsonRequest({
+    body: cleanMediaRequest(request),
+    connection,
+    execution,
+    maximumRequestBytes: mediaRequestLimitBytes,
+    maximumResponseBytes: textResponseLimitBytes,
+    method: "POST",
+    networkFailureMayStillRun: true,
+    path: contract.create.path,
+    protocol: request.providerProtocol,
+    providerTaskMayStillRun: true,
+  });
+  if (!isRecord(body) || Object.keys(body).some((key) =>
+    !["task_id", "state"].includes(key)
+  )) throw new RelayProviderError("FORMAT", true);
+  const taskId = cleanExternalTaskId(body.task_id, connection.apiKey);
+  return {
+    capability: request.capability,
+    externalTaskId: taskId,
+    externalTaskIds: [taskId],
+    providerProtocol: "media-generate" as const,
+    state: "queued" as const,
+  };
+}
+
+function exactContractState(contract: ModelExecutionContract, value: unknown) {
+  if (typeof value !== "string" || !contract.result.states) {
+    throw new RelayProviderError("FORMAT");
+  }
+  if (contract.result.states.running.includes(value)) return "running" as const;
+  if (contract.result.states.succeeded.includes(value)) return "success" as const;
+  if (contract.result.states.failed.includes(value)) return "failed" as const;
+  throw new RelayProviderError("FORMAT");
+}
+
+export async function pollContractRelayMediaTask(
+  connection: RelayProviderConnection,
+  input: Readonly<{
+    capability: Exclude<RelayCapability, "text">;
+    externalTaskId: string;
+    providerProtocol: "media-generate";
+  }>,
+  contractInput: unknown,
+  execution: RelayProviderExecution,
+) {
+  const contract = compileModelExecutionContract(contractInput).contract;
+  const taskId = cleanExternalTaskId(input.externalTaskId, connection.apiKey);
+  const poll = compileModelContractPoll(contract, taskId);
+  if (poll.method !== "GET") throw new RelayProviderError("FORMAT");
+  const body = await relayJsonRequest({
+    connection,
+    execution,
+    maximumRequestBytes: 0,
+    maximumResponseBytes: textResponseLimitBytes,
+    method: "GET",
+    path: `${poll.path}?${new URLSearchParams(poll.query).toString()}`,
+    protocol: input.providerProtocol,
+    providerTaskMayStillRun: true,
+  });
+  if (!isRecord(body)) throw new RelayProviderError("FORMAT");
+  const state = exactContractState(contract, body.state);
+  if (state === "running") return {
+    capability: input.capability,
+    providerProtocol: "media-generate" as const,
+    state,
+  };
+  if (state === "failed") return {
+    capability: input.capability,
+    code: "REMOTE" as const,
+    message: errorMessages.REMOTE,
+    providerProtocol: "media-generate" as const,
+    state,
+  };
+  if (contract.result.resultPath !== "result_url") {
+    throw new RelayProviderError("FORMAT");
+  }
+  if (typeof body.result_url !== "string") throw new RelayProviderError("FORMAT");
+  const transientUrl = cleanTransientOutputUrl(body.result_url);
+  return {
+    capability: input.capability,
+    outputs: [{
+      kind: input.capability,
+      transientUrl,
+      transport: "transient-url" as const,
+    }],
+    providerProtocol: "media-generate" as const,
+    state,
+  };
 }
 
 function progressPercent(value: unknown) {

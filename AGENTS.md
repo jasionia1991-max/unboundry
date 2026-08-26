@@ -2,7 +2,7 @@
 
 本文件适用于“包含本文件的 Unboundry Git 工作树”，不再用固定目录名代替仓库身份。用户最新明确指令优先；若与仓库状态或本文冲突，先停止并向用户报告，不得猜测。
 
-2026-08-26 v0.6.47发布后基线：`origin/main = 24541b387120702b800325416fb91bfc87ecd20e`，tree `ec64e822…ab4f1`，注释tag/Release v0.6.47已固定。生产回执收口使用工作树`/Users/mymy/Documents/unboundry-inc-imgedit-003-v0.6.34-2026-08-23`。旧`/Users/mymy/Documents/unboundry/app`仍在已失去upstream的历史分支且有未跟踪文件，**不得当作当前main施工目录，也不得替用户清理**。以后必须重新以`main = origin/main`、工作树差异归属和当前生产回执核验。
+2026-08-26 v0.6.47发布后治理基线：`origin/main = 7b475416a77cdee8d7b04ce965600551aa16858c`，tree `eb0882df4f729f4cf4893e652168f7fd1cc46dbc`；注释tag/Release v0.6.47已固定。MODEL-CONTRACT-001从该精确基线建立隔离工作树`/Users/mymy/Documents/unboundry-model-contract-001-2026-08-26`与分支`codex/model-contract-001-2026-08-26`。旧`/Users/mymy/Documents/unboundry/app`仍在已失去upstream的历史分支且有未跟踪文件，**不得当作当前main施工目录，也不得替用户清理**。
 
 人和 AI 共用的上线拍板规矩见仓库根目录 `上线规矩.md`。发布前必须分别获得版本号确认和允许发布；一次授权只用一次。
 
@@ -13,13 +13,16 @@
 1. `上线规矩.md`
 2. `spec/UNBOUNDRY_CURRENT_STATE.md`
 3. `README.md`
-4. `spec/UNBOUNDRY_REMEDIATION_PLAN_2026-08-09.md`
-5. `spec/UNBOUNDRY_REMEDIATION_CHECKPOINT.md`
-6. `spec/UNBOUNDRY_HANDOFF_2026-08-09.md`
-7. `TASKS.md` 当前区块
-8. `spec/INCIDENT_2026-08-20_TEMPLATE_GROUP_FAILURE_AND_QUEUED_TASK_HANDOFF.md`（2026-08-20 事一/事二交接，接手必读）
-9. `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`（事一/事二查证后的全局审计结论、修复设计与验收门）
-10. `spec/UNBOUNDRY_ACCEPTANCE_MATRIX.md` 当前区块
+4. `spec/MODEL_CONTRACT_001_CHECKPOINT.md`（当前活动Goal的唯一实时断点）
+5. `spec/MODEL_CONTRACT_001_MODEL_EXECUTION_CONTRACT_GOVERNANCE_PLAN_2026-08-26.md`
+6. `spec/MODEL_CONTRACT_001_ACCEPTANCE_MATRIX_2026-08-26.md`
+7. `spec/UNBOUNDRY_REMEDIATION_PLAN_2026-08-09.md`
+8. `spec/UNBOUNDRY_REMEDIATION_CHECKPOINT.md`
+9. `spec/UNBOUNDRY_HANDOFF_2026-08-09.md`
+10. `TASKS.md` 当前区块
+11. `spec/INCIDENT_2026-08-20_TEMPLATE_GROUP_FAILURE_AND_QUEUED_TASK_HANDOFF.md`（2026-08-20 事一/事二交接，接手必读）
+12. `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`（事一/事二查证后的全局审计结论、修复设计与验收门）
+13. `spec/UNBOUNDRY_ACCEPTANCE_MATRIX.md` 当前区块
 
 然后只读核对 `pwd`、Git 分支、HEAD、工作树、package 版本和 Node 版本。与施工断点不一致时停止，不得继续施工。
 
@@ -31,7 +34,8 @@
 
 ## 2. 当前授权边界
 
-- **2026-08-26 v0.6.47 当前权威状态**：生产运行`v0.6.47/schema41`，服务active/enabled、NRestarts=0；PR #110、PR/main CI、merge `24541b3`、不可移动tag/Release、fresh build、冻结备份`v0.6.47-cutover-final2-20j2R3`、恢复/schema/integrity/FK/数据门、原子切换、公网/回环/inventory/5资源和60秒稳定门通过。真实Provider/Generation/OSS/费用0；当前`PRODUCTION_V0_6_47_TECHNICAL_PASS / USER_RECHECK`，回执`spec/V0_6_47_PRODUCTION_RECEIPT_2026-08-26.json`。v0.6.47一次性授权已消费，用户明确复验前不得写`USER_PASS`或发起新发布；
+- **2026-08-26 v0.6.47 当前权威状态**：生产运行`v0.6.47/schema41`，服务active/enabled、NRestarts=0；PR #110、PR/main CI、merge `24541b3`、不可移动tag/Release、fresh build、冻结备份`v0.6.47-cutover-final2-20j2R3`、恢复/schema/integrity/FK/数据门、原子切换、公网/回环/inventory/5资源和60秒稳定门通过。真实Provider/Generation/OSS/费用0；用户随后明确回复`v0.6.47 验收通过`，当前聚合状态为`PRODUCTION_V0_6_47_USER_PASS / USER_PASS`。原回执`spec/V0_6_47_PRODUCTION_RECEIPT_2026-08-26.json`保留生成时技术状态。一次性v0.6.47授权已消费，后续新代码、Provider或发布需要新授权；
+- **2026-08-26 MODEL-CONTRACT-001 当前权威状态**：用户已明确启动唯一最新Goal并一次性授权R0-R7、代码/测试/文档、commit/push/PR/CI/merge/tag/Release、SSH、备份恢复、发布与回退。本地v0.6.48/schema41已完成R0-R7；两轮NO-GO发现均修复，同一线程最终及full后增量复核均`P0=0 / P1=0 / GO`。唯一full为1074/1076，唯二UI治理失败精确修复后m18+m45定向4/4通过，未重复full。状态`GITHUB_NEXT / PRODUCTION_NOT_CHANGED / USER_RECHECK`；真实Provider控制面/Generation/OSS/费用均0；
 - **2026-08-26 INC-GEN-015 当前权威状态**：生产运行`v0.6.46/schema41`且技术健康；PR #107、PR/main Quality CI、不可移动tag/GitHub Release、fresh tag build、冻结备份/恢复和原子切换完成。目标owner`zzx`+目标Canvas的5个旧节点均复用原success task/result proof收口，Generating=false且旧task/ownership/input/run binding清空；39节点/73边、位置、连线与viewport保持。target tasks10/attempts10及global tasks825/attempts833/active0/media855/publications445/canvases68不变，Generation/Provider/Media/OSS/publication/费用0。`on → off → on`回退门通过，最终mode=`on`；用户随后在生产目标Canvas明确回复“通过”，本项收口为`PRODUCTION_V0_6_46_USER_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON`；权威回执`spec/V0_6_46_PRODUCTION_RECEIPT_2026-08-26.json`。一次性v0.6.46授权已消费，用户确认不授权新代码、Provider或再次发布；
 - **2026-08-26 INC-GEN-014 当前权威状态**：生产运行`v0.6.44/schema41`且技术健康；工作流执行成功已与Canvas结果投影失败解耦，accepted-only刷新恢复、generation-owned字段白名单合并、applicationId幂等和credential verify双版本CAS已完成。PR #103、PR/main Quality CI、不可移动tag/GitHub Release、冻结备份与恢复副本、fresh build、原子切换、公网/回环/数据/inventory/静态资源门均通过；独立终审`P0=0 / P1=0`。真实Provider probe、Generation、OSS写入和费用均为0；当前为`PRODUCTION_V0_6_44_TECHNICAL_PASS / USER_RECHECK`，回执`spec/V0_6_44_PRODUCTION_RECEIPT_2026-08-26.json`；v0.6.44一次性实施与发布授权已消费，不得写生产`USER_PASS`，后续新代码、Provider或发布动作需要新授权；
 - **2026-08-25 INC-UI-011 当前权威状态**：生产运行`v0.6.43/schema41`且技术健康；节点排序菜单Portal层级修复已完成本地`USER_PASS`、唯一safe full `121/121 specs、1061/1061 tests PASS`、PR #100与PR/main Quality CI、不可移动tag/GitHub Release、冻结恢复演练、fresh build、原子切换、公网/回环/数据/inventory/静态资源和生产零付费浏览器验证。生产菜单「宫格/水平」可见且中心点命中自身，Escape返焦，画布revision/graph_revision/updated_at不变；真实Provider、Generation、OSS写入、购买/订阅和费用为0。当前为`PRODUCTION_V0_6_43_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / LOCAL_USER_PASS / USER_RECHECK`，回执`spec/V0_6_43_PRODUCTION_RECEIPT_2026-08-25.json`；v0.6.43一次性发布授权已消费，生产用户实页确认前不得写生产`USER_PASS`；

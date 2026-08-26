@@ -46,6 +46,13 @@ test("the private API documents and reads canvas, project and model configuratio
     "/api/account-credentials",
     "/api/account-credentials/{profileId}",
     "/api/account-credentials/{profileId}/verify",
+    "/api/admin/models/{modelId}/contract",
+    "/api/admin/models/{modelId}/contract/draft",
+    "/api/admin/models/{modelId}/contract/publish",
+    "/api/admin/models/{modelId}/contract/restore",
+    "/api/admin/models/{modelId}/contract/revoke",
+    "/api/admin/models/{modelId}/contract/rollback",
+    "/api/admin/models/{modelId}/contract/validate",
     "/api/admin/templates",
     "/api/admin/templates/{templateId}",
     "/api/admin/users/{userId}/password",
@@ -95,6 +102,13 @@ test("the private API documents and reads canvas, project and model configuratio
   expect((specification.paths["/api/image-tools/capabilities"] as {
     get: { operationId: string };
   }).get.operationId).toBe("readImageToolCapabilities");
+  expect((specification.paths["/api/admin/models/{modelId}/contract"] as {
+    get: { operationId: string };
+  }).get.operationId).toBe("readAdminModelContract");
+  expect((specification.paths[
+    "/api/admin/models/{modelId}/contract/publish"
+  ] as { post: { operationId: string } }).post.operationId)
+    .toBe("publishAdminModelContract");
   expect((specification.paths["/api/image-tools/seedance-validation"] as {
     post: { operationId: string };
   }).post.operationId).toBe("validateSeedanceImageAsset");
@@ -555,8 +569,8 @@ test("the private API documents and reads canvas, project and model configuratio
   await expect(page.getByTestId("admin-api-contract-page")).toBeVisible();
   await expect(page.getByRole("heading", { name: "项目自己的数据接口" }))
     .toBeVisible();
-  await expect(page.locator(".api-contract-grid article")).toHaveCount(49);
-  await expect(page.getByText("当前共 39 条接口路径", { exact: true }))
+  await expect(page.locator(".api-contract-grid article")).toHaveCount(56);
+  await expect(page.getByText("当前共 46 条接口路径", { exact: true }))
     .toBeVisible();
 
   const finalCanvasDelete = await request.delete(`/api/canvas/${canvasId}`);
