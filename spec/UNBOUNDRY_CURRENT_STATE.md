@@ -1,21 +1,21 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网仍为v0.6.45/schema41且服务健康；目标灰度P1已本地修复。用户已授权v0.6.46，本地版本与final runtime role已同步，定向发布门通过；正在进入GitHub与不可变生产发布流程，尚未重新执行目标allowlist或进入`on`。
+> **状态分层**：现网为v0.6.46/schema41且服务健康；目标5个旧节点已复用原成功结果收口，零新Generation/Provider/Media/publication/费用。`on → off → on`灰度与止写回退通过，最终mode=`on`；当前严格为生产技术PASS与`USER_RECHECK`。
 
 更新日期：2026-08-26
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
 当前代码包版本：**v0.6.46**
 本地候选代码版本：**v0.6.46**
 本地候选schema：**41**
-当前治理标记：`CURRENT_V0_6_45_USER_RECHECK`
-当前计划标记：`INC_GEN_015_PRODUCTION_V0_6_45_TARGET_GRAY_FAIL_CLOSED / V0_6_46_RELEASE_AUTHORIZED / CANDIDATE_TARGETED_PASS`
+当前治理标记：`CURRENT_V0_6_46_USER_RECHECK`
+当前计划标记：`INC_GEN_015_PRODUCTION_V0_6_46_TECHNICAL_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
 
 ## 一句话
 
-**生产是 v0.6.45 / schema41且服务健康；用户已授权v0.6.46，版本同步与定向发布门通过，唯一下一步是冻结候选并完成GitHub与不可变生产发布。**
+**生产是 v0.6.46 / schema41且服务健康；5个旧节点已零付费恢复原成功结果，最终灰度为`on`，唯一下一步是用户目视复验，不得把技术PASS冒充USER_PASS。**
 
-## INC-GEN-015 老画布孤立生成态与终态结果自动收口（PRODUCTION_V0_6_45_TARGET_GRAY_FAIL_CLOSED / HOTFIX_LOCAL_GO）
+## INC-GEN-015 老画布孤立生成态与终态结果自动收口（PRODUCTION_V0_6_46_TECHNICAL_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON / USER_RECHECK）
 
 - 用户在INC-GEN-014生产复验时发现老问题Canvas仍有节点显示呼吸灯，但实际上没有生成任务在运行。
 - 2026-08-26只读证据：目标Canvas有5个持久`Generating=true`节点（3 Text/2 Image、3个runId），对应5个原任务全部success；Canvas和全局active均为0，因此呼吸灯是持久状态残留，不是后台真实生成。
@@ -44,7 +44,15 @@
 - 新独立终审首轮`NO-GO / P0=0 / P1=1`发现detach同类缺口；修复后复审`P0=0 / P1=0 / GO`。v0.6.45继续不可移动且不直接覆盖生产。
 - 文档治理m38首轮`14/15`只因生产句式未命中既有正则；修正后`15/15 PASS`，source/snapshot`92b712e5…991e`、4173不变，未重复业务spec或full。
 - 用户已明确授权以v0.6.46继续发布；package/lock/final runtime role同步完成，TypeScript与safe m81 `41/41 PASS`，source/snapshot`c5ba0228…0aec`、4173不变；版本文档m38修正唯一候选标记后`15/15 PASS`，source/snapshot`a0251547…9dc`、4173不变。当前进入GitHub与不可变生产发布流程，不重复唯一full。
-- 权威生产回执：`spec/V0_6_45_PRODUCTION_RECEIPT_2026-08-26.json`。当前严格为`PRODUCTION_V0_6_45_TARGET_GRAY_FAIL_CLOSED / V0_6_46_RELEASE_AUTHORIZED / USER_RECHECK`，不是生产PASS或USER_PASS。
+- v0.6.46候选commit`78b5f8a`/tree`80378c4`经PR #107、PR/main Quality CI、merge`c961cee`进入main；annotated tag对象`0ce3278…3e45`与GitHub Release已发布，tag peeled commit与main树精确一致。
+- fresh tag archive在生产固定Node22.23.2/npm10.9.8构建为5978文件、inventory`50c8bd13…88c2`；首次构建只因PATH继承Node18在切换前失败，固定Node22后重跑失败构建，未影响现网。
+- 60秒静默门tasks825/attempts833/active0稳定；冻结source/restore各366文件，manifest`a15b3626…e7cf`一致，schema41/integrity ok/FK0；带自动回退trap的原子切换通过。
+- zzx目标allowlist复验使5个旧候选全部复用原success task/result proof；Generating=false且task/ownership/input/run旧binding清空，页面`状态待核对=0 / 生成中=0`。
+- 目标Canvas revision336/graph52→343/58；39节点/73边、节点ID、连线、viewport、位置和父子关系不变，只有5个候选结果/收口字段变化。target tasks10/attempts10与原5个success task不变。
+- global tasks825/attempts833/active0/media855/publications445/canvases68不变；Generation POST、Provider submit/retry、Media/OSS、publication和新增费用均0。
+- 服务端首次`on`、`off`止写回退、最终`on`均通过；各阶段重载目标Canvas均revision343/graph58不变、Canvas PUT0、Generation/Provider/Media/publication POST0。最终生产mode=`on`。
+- 最终生产回执与治理文档同步后的safe m38 `15/15 PASS`，source/snapshot`750654cb…ce28`、4173不变；未重复业务spec或本Goal唯一full。
+- 权威生产回执：`spec/V0_6_46_PRODUCTION_RECEIPT_2026-08-26.json`。当前严格为`PRODUCTION_V0_6_46_TECHNICAL_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON / USER_RECHECK`，不是USER_PASS。
 
 ## INC-GEN-014 工作流自动恢复与密钥校验解耦（R0～R5_COMPLETE / R6_TARGETED_PASS）
 
