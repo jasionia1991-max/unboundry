@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻当前任务
 
-## MODEL-CONTRACT-001 模型执行合同治理（R0-R7 / v0.6.49 PRODUCTION UI P1 / v0.6.50 HOTFIX）
+## MODEL-CONTRACT-001 模型执行合同治理（R0-R7 / v0.6.50 PRODUCTION TECHNICAL PASS / USER_RECHECK）
 
 - [x] 从`origin/main@7b475416a77cdee8d7b04ce965600551aa16858c`建立干净隔离worktree并核对生产v0.6.47/schema41、工具链、tag/Release与4173监听身份。
 - [x] R0盘点四类节点、图片工具、11个生产已发布模型、6个Provider profile、connector、输入、task/poll/result/error、模板与恢复路径；详见`spec/MODEL_CONTRACT_001_R0_INVENTORY_2026-08-26.md`。
@@ -20,12 +20,14 @@
 - [x] v0.6.50最小修复把同一入口提升为所有模型共享动作，并在m102增加活动模型实页入口断言；m102+m81定向48/48 PASS，未重复full。
 - [x] v0.6.50默认Node25 build PASS；Node22文档治理m38定向15/15 PASS；两次safe回执均异常0、4173不变，候选已冻结。
 - [x] v0.6.50独立增量Review首轮`P0=0 / P1=1 / NO-GO`仅发现权威文档当前版本冲突；统一生产v0.6.49/schema41与候选v0.6.50后m38 15/15 PASS，同一审查线程复核为`P0=0 / P1=0 / GO`。
-- [ ] 唯一下一动作：提交并推送v0.6.50候选，完成PR/CI/merge、不可移动tag/Release与生产零schema/零数据迁移切换，再重做真实浏览器技术验收。
+- [x] v0.6.50完成PR #114、PR/main CI、merge `d3f5490f…1ca05`、不可移动tag/Release、精确tag fresh build、冻结备份恢复、零schema/零数据迁移原子切换、数据/inventory/静态资产与66秒稳定门。
+- [x] 生产零付费浏览器确认14张模型卡有14个“合同工作台”入口；grok-video-3活动模型可进入八区块工作台，1280×720、1440×900、1920×1080、900×900均无横向溢出，未点击任何写动作。
+- [ ] 唯一下一动作：用户按`spec/MODEL_CONTRACT_001_USER_RECHECK_2026-08-26.md`复验生产实页与成片视觉；明确回复“MODEL-CONTRACT-001 验收通过”前不得写`USER_PASS`。
 
-> **当前状态**：生产运行`v0.6.49 / schema41`且后端、数据、服务健康；真实浏览器发现活动模型缺少合同工作台入口P1，v0.6.50最小UI热修待独立Review与不可变发布。成片视觉严格为`USER_RECHECK`。
+> **当前状态**：生产运行`v0.6.50 / schema41`，工程、独立Review、GitHub、生产数据/服务/资产与零付费浏览器技术门均通过；真实Provider/Generation/OSS/费用0。成片视觉严格为`USER_RECHECK`。
 
 更新时间：2026-08-26
-状态：`PRODUCTION_V0_6_47_USER_PASS / MODEL_CONTRACT_001_V0_6_48_FAIL_CLOSED / V0_6_49_HOTFIX_REVIEW_GO / GITHUB_NEXT`。
+状态：`PRODUCTION_V0_6_47_USER_PASS / MODEL_CONTRACT_001_V0_6_48_FAIL_CLOSED / V0_6_49_PRODUCTION_UI_P1 / V0_6_50_PRODUCTION_TECHNICAL_PASS / USER_RECHECK`。
 
 ### 2026-08-26 模型执行合同治理（MODEL-CONTRACT-001，R0-R6 IMPLEMENTED）
 

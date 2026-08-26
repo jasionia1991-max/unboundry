@@ -2,15 +2,16 @@
 
 更新时间：2026-08-26
 
-当前状态：`R0-R7_IMPLEMENTED / V0_6_49_PRODUCTION_BACKEND_DATA_PASS_UI_P1 / V0_6_50_HOTFIX_REVIEW_GO / GITHUB_NEXT / USER_RECHECK_PENDING`
+当前状态：`R0-R7_IMPLEMENTED / V0_6_49_PRODUCTION_UI_P1 / V0_6_50_PRODUCTION_TECHNICAL_PASS / USER_RECHECK_PENDING`
 
 ## 1. 当前身份与版本
 
-- 隔离工作树：`/Users/mymy/Documents/unboundry-model-contract-001-2026-08-26`；当前分支：`codex/model-contract-workbench-entry-hotfix-v0.6.50`。
+- 隔离工作树：`/Users/mymy/Documents/unboundry-model-contract-001-2026-08-26`；v0.6.50产品merge已落`main`，当前仅用生产回执分支收口文档。
 - v0.6.48产品已由PR #112合并，merge `c9db1dd20fcddee877425ade9879a9b87aab093e` / tree `c34957940ee51763f49d74d2109a7e954e53a799`，tag与GitHub Release已发布；生产切换前恢复演练准确暴露bootstrap审计actor不满足`users`外键，因此v0.6.48没有激活到生产。
 - v0.6.49已由PR #113合并为`3a0b58375db6cb64246d9cf2634519918629fb69` / tree `de1607724b54048474c056a5cb6326071308381c`，tag/GitHub Release和生产发布完成。生产实页随后发现活动模型没有“合同工作台”入口P1；按同一版本线最小未占用patch自动选择`v0.6.50`。当前hotfix基线为`origin/main@3a0b58375db6cb64246d9cf2634519918629fb69` / tree `de1607724b54048474c056a5cb6326071308381c`，schema继续保持`41`。
+- v0.6.50已由PR #114合并为`d3f5490f524b2d8d212ef7607d85afbf1981ca05` / tree `5b12ebeb97ed7a0e9ed34927fca51de2d0fd38ad`；PR/main CI、不可移动tag/GitHub Release均通过。
 - 普通开发：Node `25.9.0` / npm `11.12.1`；safe/release兼容通道：Node `22.23.1` / npm `10.9.8`。
-- 生产当前为v0.6.49：`/opt/unboundry/releases/v0.6.49-model-contracts-hotfix-20260827`，Node `22.23.2` / npm `10.9.8`，service active/enabled，`NRestarts=0`；schema41、integrity ok、FK0。v0.6.49后端、数据、服务、inventory与静态资源技术门通过，只有活动模型入口这一项生产UI P1待v0.6.50修复。
+- 生产当前为v0.6.50：`/opt/unboundry/releases/v0.6.50-model-contract-workbench-entry-20260827`，Node `22.23.2` / npm `10.9.8`，service active/enabled，`NRestarts=0`；schema41、integrity ok、FK0。活动模型入口P1已由生产浏览器关闭，技术状态为`PRODUCTION_V0_6_50_TECHNICAL_PASS / USER_RECHECK`。
 - 4173既有监听属于旧工作树，全部safe回执均为`listener4173=unchanged`。受保护JSON未读取、未修改、未暂存。
 
 ## 2. R0-R6实现事实
@@ -50,6 +51,10 @@
 - v0.6.49 GitHub与生产已完成：PR #113、替换PR Quality run `32997764316`、merge `3a0b58375db6cb64246d9cf2634519918629fb69`、main Quality run `32997854877`、不可移动tag/Release均通过；精确tag恢复首次11/11、二次0新增，生产bootstrap同样首次11/11、二次0新增。权威备份`/var/lib/unboundry-rollbacks/v0.6.49-cutover-final.WZ1GPK`源/恢复各366文件、manifest `2c33c4b278e1d7b0497d5b75fa99da7f0d1e6e0dceb56d2d3a3ca4f71b6ff4f3`；切换后65秒计数稳定且五个静态资产逐字节一致。
 - v0.6.50入口热修：把既有“合同工作台”动作从仅归档分支提升到活动、停用、归档模型共享动作；m102增加活动模型实页入口断言。默认Node25 build PASS；Node22.23.1/npm10.9.8下m102+m81为2 specs、48/48 PASS，source/snapshot `4acb1d3c4abd425a0f767cc64f2e797905b6bf5475f8515ba7e58943312ab029`。文档同步后m38首轮14/15只发现AGENTS缺机器要求的精确生产版本句式；修正后最小复验1 spec、15/15 PASS，source/snapshot `1cadc543b0540f4ed00f647b795d46f97b10df0beea854db6d331eb8db7cda5a`，failed/skipped/retries/blocked/reportErrors=0、4173不变；未重复业务spec或正式full。
 - v0.6.50独立增量Review首轮为`P0=0 / P1=1 / NO-GO`，唯一P1是总矩阵、上线规矩与三份渐进治理文档仍把v0.6.47当当前生产。精确统一为v0.6.49/schema41与v0.6.50候选后，m38最小复验15/15 PASS，source/snapshot `12677da36c57b59f442816aff14b71e9487c0592d3686bf6d0cddee1da0bb1e4`；同一审查线程最终为`P0=0 / P1=0 / GO`。P2仅为未来补停用/归档模型入口实页断言；共享渲染逻辑已证明三类模型共用单一入口，不阻断发布。
+- v0.6.50 GitHub完成：PR #114、PR Quality run `33001209607`、merge `d3f5490f524b2d8d212ef7607d85afbf1981ca05`、main Quality run `33001297571`、annotated tag object `4700ce73694c5d277a356fc9f0049b09e5e120d9`与GitHub Release均成功；tag和merge tree均为`5b12ebeb97ed7a0e9ed34927fca51de2d0fd38ad`。
+- v0.6.50生产完成：精确tag archive SHA-256 `90fa1e816b91a32c29fbe56d2b20d48a88c75ed7bcede06265e89322ea14792e`，fresh build/inventory通过；权威备份`/var/lib/unboundry-rollbacks/v0.6.50-cutover-final.6gFJQc`源/恢复各366文件、manifest `81b1b5937ec335fb3fdf210bbbc51a9042b2b1ce0a5ad659d63d4f0a811fa1f7`。66秒静默门、原子切换、六资源逐字节、最终数据快照和journal门通过。
+- 生产浏览器确认14张模型卡有14个“合同工作台”入口；grok-video-3活动模型进入八区块工作台，文生视频与恰好1张首帧模式、published revision 1和EXACT证据可见。1280×720、1440×900、1920×1080、900×900均无横向溢出；保存/校验/发布/撤销/回滚均未点击。
+- 最终只读快照保持tasks898、attempts906、active0、media885、publications476、canvases68、models20/已发布11、templates50/已发布48、audit273、contract34、publish11、marker1；schema41/integrity ok/FK0，service active/enabled、NRestarts0。Provider控制面/Generation/OSS/费用仍为0。
 - 这些是风险驱动定向验证，不称为full。当前修复候选回执failed/skipped/retries/blocked/reportErrors均0，Provider/Generation/OSS/费用0，4173不变。
 - 早期隔离恢复fixture的11/11 bootstrap只能证明纯逻辑路径；v0.6.48正式生产冻结恢复副本随后暴露真实`users`外键差异并fail-closed。因此正式生产门以v0.6.48失败与v0.6.49重新演练为准，不把fixture结果冒充生产恢复通过。
 
@@ -58,14 +63,14 @@
 - 自动工程证据：`TARGETED_AUTO_PASS`。
 - 正式safe full：`EXECUTED_ONCE / 1074_OF_1076 / TWO_DIRECT_UI_GATES_FIXED / TARGETED_4_OF_4_PASS / NO_SECOND_FULL`。
 - 独立Review：主实现同一线程首轮`P0=3 / P1=8 / NO-GO`、第二轮`P0=1 / P1=2 / NO-GO`、第三轮`P0=0 / P1=0 / GO`；full后两处UI治理修复同线程增量复核仍为GO。v0.6.50入口热修增量Review首轮`P0=0 / P1=1 / NO-GO`，文档语义冲突修复后同一线程最终`P0=0 / P1=0 / GO`。审查均只读且未运行测试。
-- GitHub/merge/tag/Release：v0.6.48与v0.6.49均已完成；v0.6.50独立Review GO，待commit/push/PR/CI/tag/Release。
-- 生产发布/技术验收：v0.6.49后端、数据、服务通过但活动模型入口P1；v0.6.50待零schema/零数据迁移发布与生产实页复验。
+- GitHub/merge/tag/Release：v0.6.48、v0.6.49与v0.6.50均已完成；v0.6.50为PR #114 / merge `d3f5490f…1ca05` / immutable tag+Release。
+- 生产发布/技术验收：v0.6.50零schema/零数据迁移发布、生产实页与四视口技术复验通过，状态`PRODUCTION_V0_6_50_TECHNICAL_PASS`。
 - 真实Provider控制面、真实生成、OSS测试写入、费用：`0 / 0 / 0 / 0`。
 - 成片视觉质量与服装款式保持：`USER_RECHECK`，不得由请求快照冒充通过。
 - `USER_PASS`：未取得，只有用户按最终手工清单明确确认后才能写入。
 
 ## 5. 唯一下一动作
 
-提交并推送v0.6.50冻结候选，完成PR/CI/merge与不可移动tag/GitHub Release；随后按零schema/零数据迁移路径完成生产切换与真实浏览器复验。
+用户按`spec/MODEL_CONTRACT_001_USER_RECHECK_2026-08-26.md`完成生产实页与成片视觉复验；只有用户明确回复“MODEL-CONTRACT-001 验收通过”才可升级`USER_PASS`。
 
 恢复顺序仍为：`AGENTS.md → 上线规矩.md → CURRENT_STATE → 本checkpoint → 主方案 → 独立矩阵 → Goal prompt → TASKS顶部 → 总验收矩阵顶部`。受保护文件`spec/public-templates-director-split-revision.json`永远不得读取、修改、暂存、提交、移动或删除。

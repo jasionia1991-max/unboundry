@@ -1,6 +1,6 @@
 # MODEL-CONTRACT-001 验收矩阵
 
-状态：`R0-R7_IMPLEMENTED / V0_6_49_PRODUCTION_UI_P1 / V0_6_50_TARGETED_48_48_AND_DOC_15_15 / REVIEW_P0_0_P1_0_GO / GITHUB_NEXT / USER_RECHECK`
+状态：`R0-R7_IMPLEMENTED / V0_6_49_PRODUCTION_UI_P1 / V0_6_50_PRODUCTION_TECHNICAL_PASS / REVIEW_P0_0_P1_0_GO / USER_RECHECK`
 
 说明：`AUTO_PASS`表示当前候选已有自动工程证据；`USER_RECHECK`保留给生产实页和成片主观验收。定向测试不是full，生产技术和用户质量不得由本矩阵自动升级。
 
@@ -44,7 +44,7 @@
 | MC-SAFE-005 | P0 | cost/refund只作审计，不改余额、不单独触发重试 | 账本与重试测试 | AUTO_PASS |
 | MC-SAFE-006 | P0 | Provider profile与账号凭据不跨商业身份回退 | 多profile隔离测试 | AUTO_PASS |
 | MC-SAFE-007 | P0 | 所有测试使用临时目录、动态loopback、fake Provider/OSS，4173与生产零触碰 | safe runner回执 | AUTO_PASS |
-| MC-UI-001 | P1 | 使用独立模型合同工作台，不继续堆进长卡片/弹窗，活动模型列表必须有可见入口 | 路由、实页入口与组件审查 | V0_6_49_PRODUCTION_FAIL / V0_6_50_TARGETED_PASS |
+| MC-UI-001 | P1 | 使用独立模型合同工作台，不继续堆进长卡片/弹窗，活动模型列表必须有可见入口 | 路由、实页入口与组件审查 | V0_6_49_PRODUCTION_FAIL / V0_6_50_PRODUCTION_PASS |
 | MC-UI-002 | P1 | 列表展示Provider/能力/状态/revision/健康/模板影响/新任务可用性 | 三视口验收 | AUTO_PASS |
 | MC-UI-003 | P1 | 详情八区块渐进披露，桌面三栏、≤928px单列 | 1280/1440/1920/窄屏 | AUTO_PASS |
 | MC-UI-004 | P0 | 保存草稿、本地验证、发布、回滚、停止新任务严格分离 | UI/API副作用测试 | AUTO_PASS |
@@ -75,17 +75,17 @@
 | MC-RELEASE-002 | P0 | 发布前影响清单完整，发布动作本身Provider调用0 | audit/network记录 | AUTO_PASS |
 | MC-RELEASE-003 | P0 | 候选冻结后独立只读终审P0=0/P1=0/GO | 审查回执 | P0_0 / P1_0 / GO |
 | MC-RELEASE-004 | P1 | 风险驱动定向测试；无相关变化不重复full；正式safe full最多一次 | 测试账本 | SINGLE_FULL_EXECUTED / TARGETED_REPAIR_PASS |
-| MC-RELEASE-005 | P0 | 自动、真实Provider、生产技术、用户质量状态严格分离 | 状态/receipt审查 | AUTO_PASS / V0_6_49_BACKEND_DATA_PASS_UI_P1 / USER_RECHECK |
-| MC-RELEASE-006 | P0 | 未获新授权前无commit/push/PR/tag/Release/SSH/生产/真实Provider | Git/网络/费用账本 | AUTHORIZED / V0_6_50_NOT_EXECUTED |
+| MC-RELEASE-005 | P0 | 自动、真实Provider、生产技术、用户质量状态严格分离 | 状态/receipt审查 | AUTO_PASS / V0_6_50_PRODUCTION_TECHNICAL_PASS / USER_RECHECK |
+| MC-RELEASE-006 | P0 | 未获新授权前无commit/push/PR/tag/Release/SSH/生产/真实Provider | Git/网络/费用账本 | AUTHORIZED_AND_CONSUMED / V0_6_50_RELEASED |
 
 ## 当前总判定
 
 - 方案与实现：`R0-R7_IMPLEMENTED / TARGETED_AUTO_PASS`
 - GK-video-3请求合同：`AUTO_PASS`；服装款式与成片视觉：`USER_RECHECK`
 - 定向测试：首轮修复组合40/40、参数/文档22/22；唯一full 1074/1076，唯二UI治理失败精确修复后m18+m45定向4/4通过，未重复full；v0.6.49 hotfix m102+m81定向48/48；v0.6.50入口热修m102+m81定向48/48、m38文档门15/15，仍未重复full
-- 生产门：v0.6.48在恢复副本bootstrap首个审计写入处fail-closed且未切换；v0.6.49恢复/生产bootstrap首次11/11、二次0新增，PR/CI/tag/Release、备份恢复、切换、数据/inventory/资产/稳定门通过，但生产浏览器发现活动模型入口P1；v0.6.50待独立增量Review与发布
+- 生产门：v0.6.48在恢复副本bootstrap首个审计写入处fail-closed且未切换；v0.6.49恢复/生产bootstrap首次11/11、二次0新增并通过后端/数据发布，但生产浏览器发现活动模型入口P1；v0.6.50已完成PR/CI/tag/Release、fresh build、备份恢复、零schema/零数据切换、数据/inventory/六资源、66秒稳定门与四视口生产浏览器，14/14模型卡入口可见
 - 独立终审：主实现首轮`P0=3 / P1=8 / NO-GO`、第二轮`P0=1 / P1=2 / NO-GO`，最终及full后增量复核均GO；v0.6.50入口热修增量Review首轮`P0=0 / P1=1 / NO-GO`，唯一文档冲突修复后同一线程最终`P0=0 / P1=0 / GO`
 - 真实Provider控制面/生成、OSS写入、费用：`0 / 0 / 0 / 0`
-- 发布：v0.6.48、v0.6.49 GitHub与v0.6.49生产已完成；v0.6.50 `AUTHORIZED / REVIEW_GO / GITHUB_NEXT`
-- 生产技术：`V0_6_48_FAIL_CLOSED_BEFORE_SWITCH / V0_6_49_NOT_RUN`
+- 发布：v0.6.48、v0.6.49、v0.6.50 GitHub完成；生产当前为v0.6.50，状态`PRODUCTION_V0_6_50_TECHNICAL_PASS`
+- 生产技术：`V0_6_48_FAIL_CLOSED_BEFORE_SWITCH / V0_6_49_BACKEND_DATA_PASS_UI_P1 / V0_6_50_TECHNICAL_PASS`
 - 用户成片质量：`USER_RECHECK`
