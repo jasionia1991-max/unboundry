@@ -1,10 +1,17 @@
 # INC-GEN-016 实时断点
 
-状态：`V0_6_56_TARGETED_PASS / CANDIDATE_FREEZE_PENDING / REVIEW_PENDING / RELEASE_GATE_CLOSED / USER_RECHECK`
+状态：`V0_6_56_REVIEW_P1_2_REMEDIATED / INCREMENTAL_REVIEW_PENDING / RELEASE_GATE_CLOSED / USER_RECHECK`
 
 更新时间：2026-08-28
 
 ## 当前事实
+
+### 2026-08-28 v0.6.56 独立Review首轮
+
+- 冻结候选`c29295ce23727f50806a2cf422e128c52386f8d3`、tree`03972428fe234586fcddf823209e105af223e742`的独立只读Review为`P0=0/P1=2/NO-GO`；没有push、发布、生产写或真实Provider请求。
+- P1-1：有限声明式解析仍接受数字`0`或字符串`"0"`；需明确拒绝零值并补双负向fixture。P1-2：唯一实施方案残留“当前生产v0.6.54”历史句，与v0.6.56的R0生产v0.6.55身份冲突。
+- 两项正在最小修复：只在声明式有限候选中拒绝全零ID，不扩大通用connector；实施方案明确当前生产v0.6.55并把v0.6.54/事故起点改为历史证据。修复后只复验m102和文档门m38，再冻结新commit交回同一Review线程。
+- 两项已最小修复：m102+m38 `29/29 PASS`，failed/skipped/retries/reportErrors/blocked均0，source/snapshot `6cb0ce4461e2010232a6729d565aebaf8de40337db15dca28e49075647be6e12`，4173监听不变；没有重复m53/m81/m88或运行full，真实Provider/OSS/生产写/费用0。下一步只冻结增量commit并交回同一Review线程复核。
 
 ### 2026-08-28 v0.6.56 预期红、实现与定向绿
 

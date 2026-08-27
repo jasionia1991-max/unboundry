@@ -1,6 +1,6 @@
 # INC-GEN-016：Provider 结果自动回收与全模型不回归最终方案
 
-状态：`V0_6_56_TARGETED_PASS / CANDIDATE_FREEZE_PENDING / REVIEW_PENDING / RELEASE_GATE_CLOSED`
+状态：`V0_6_56_REVIEW_P1_2_REMEDIATED / INCREMENTAL_REVIEW_PENDING / RELEASE_GATE_CLOSED`
 
 建立日期：2026-08-27
 
@@ -12,7 +12,7 @@
 
 2026-08-28续作Goal另行明确指定`v0.6.56`、新增真实生成总预算USD20，并授权修复、Review、GitHub/CI、不可移动tag/Release、生产发布和同一目标Canvas真实验收。续作只修已证实的数字`data.task_ids[]`/`data.任务ids[]`有限响应外壳，不重开v0.6.55、不复用旧预算、不扩张其他Provider协议；具体实时状态以Checkpoint新增的v0.6.56区块为准。
 
-当前生产仍为 `v0.6.54 / schema41`。2026-08-27 对生产画布 `67bfb2ee-f895-4308-9111-9de188306514` 的视频节点 `video-019c3604-bae5-4880-b7ac-8410231df6a0` 只提交了一次新付费 attempt：任务 `da761fff-6a65-46fd-84cf-4dc5bddbc985` 从 attempt 1 增至 attempt 2，请求越过 Provider boundary，但没有持久 `provider_task_id`，最终为 `OUTCOME_UNKNOWN_BILLING_RISK`；`result_asset_id` 和实际费用均无，预估费用为 USD 10。系统两次只读账本核对均没有唯一匹配，未再次提交。
+当前生产为 `v0.6.55 / schema41`。以下仅是2026-08-27事故起点的历史证据，不代表当前任务终态：当时生产画布 `67bfb2ee-f895-4308-9111-9de188306514` 的视频节点 `video-019c3604-bae5-4880-b7ac-8410231df6a0` 只提交了一次新付费 attempt，任务 `da761fff-6a65-46fd-84cf-4dc5bddbc985` 从 attempt 1 增至 attempt 2，请求越过 Provider boundary，但没有持久 `provider_task_id`，当时收口为 `OUTCOME_UNKNOWN_BILLING_RISK`。其后v0.6.55已用Provider完整账本证明attempt2未受理且未扣费，唯一替代attempt3被明确退款；当前任务为`PROVIDER_REFUNDED`、实际费用0、无结果资产。
 
 ## 1. 最终产品合同
 

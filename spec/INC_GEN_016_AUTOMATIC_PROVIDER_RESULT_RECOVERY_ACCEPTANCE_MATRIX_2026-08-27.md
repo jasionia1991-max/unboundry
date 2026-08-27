@@ -1,6 +1,6 @@
 # INC-GEN-016 验收矩阵
 
-状态：`V0_6_56_TARGETED_PASS / REVIEW_PENDING / RELEASE_GATE_CLOSED / USER_RECHECK`
+状态：`V0_6_56_REVIEW_P1_2_REMEDIATED / INCREMENTAL_REVIEW_PENDING / RELEASE_GATE_CLOSED / USER_RECHECK`
 
 | ID | Priority | 验收项 | 必须证据 | 当前状态 |
 |---|---:|---|---|---|
@@ -27,7 +27,7 @@
 | APR-021 | P0 | GK原始首帧场景真实结果自动回画布 | 单次付费生产证据 | V0_6_56_AUTHORIZED_NOT_CONSUMED |
 | APR-022 | P0 | 真实结果刷新后仍可播放且任务中心/素材库可找 | Browser + DB/asset evidence | V0_6_56_NOT_RUN |
 | APR-023 | P0 | 实际修改的每个connector family有真实端到端证据 | connector release ledger | V0_6_56_AUTHORIZED_NOT_CONSUMED |
-| APR-024 | P0 | 独立终审P0=0/P1=0 | frozen candidate review | V0_6_56_REVIEW_PENDING |
+| APR-024 | P0 | 独立终审P0=0/P1=0 | frozen candidate review | P0_0_P1_2_REMEDIATED / INCREMENTAL_REVIEW_PENDING |
 | APR-025 | P0 | 风险驱动验证完成且正式full最多一次 | test receipts | V0_6_56_TARGETED_PASS_132 / FULL_NOT_REQUIRED_YET |
 | APR-026 | P0 | 版本、发布、费用授权分别有效且未复用 | authority ledger | V0_6_56_AUTHORIZED_NOT_CONSUMED |
 | APR-027 | P0 | 用户明确确认生产项目内结果 | ordinary-user checklist | USER_RECHECK |

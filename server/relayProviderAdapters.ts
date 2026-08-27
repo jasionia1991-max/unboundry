@@ -1734,9 +1734,13 @@ function declarativeTaskIdCandidates(
     }
   }
 
-  const taskIds = [...new Set(candidates.map((value) =>
+  const normalizedTaskIds = candidates.map((value) =>
     cleanExternalTaskId(value, apiKey)
-  ))];
+  );
+  if (normalizedTaskIds.some((taskId) => /^0+$/.test(taskId))) {
+    throw new RelayProviderError("FORMAT");
+  }
+  const taskIds = [...new Set(normalizedTaskIds)];
   if (taskIds.length !== 1) throw new RelayProviderError("FORMAT");
   return taskIds;
 }

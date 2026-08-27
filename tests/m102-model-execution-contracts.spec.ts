@@ -1478,6 +1478,8 @@ test("GK transport accepts the declared task id with harmless response envelope 
     ["canonical conflicts", { task_id: "1", data: { task_ids: [2] } }],
     ["empty alias", { data: { task_ids: [] } }],
     ["multiple ids", { data: { task_ids: [1, 2] } }],
+    ["numeric zero id", { data: { task_ids: [0] } }],
+    ["string zero id", { data: { task_ids: ["0"] } }],
     ["unsafe numeric id", { data: { task_ids: [1.5] } }],
     ["unsafe string id", { data: { task_ids: ["unsafe/task/id"] } }],
     ["arbitrary data.task_id", { data: { task_id: "not-declared" } }],
