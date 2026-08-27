@@ -148,13 +148,13 @@ LOCAL_ADMITTED
 
 ### R7：受控真实 GK 验收
 
-- 只有未来用户明确授权费用后，使用原始故障模式运行一次首帧视频；预算上限和零自动重提在执行前冻结。
+- 本次Goal已明确授权一次受控首帧视频；真实费用总上限USD 20，第一次提交预估不超过USD 10，任何unknown都禁止第二次Provider POST。
 - 同一次任务覆盖创建、任务号、后台轮询、结果资产、Canvas回填和刷新保持；如需验证重启恢复，只能恢复同一已受理任务，不能新增付费提交。
 - 真实视频没有出现在项目内则门失败，不得发布。
 
 ### R8：发布与用户验收
 
-- 版本号、GitHub和生产发布必须另获明确授权；当前建议版本仅可在实施时重新核对，不在本方案预授权。
+- 本次Goal已明确授权v0.6.55、GitHub和生产发布；仍须依次通过Review、唯一full、PR/main CI、不可变tag/Release、冻结备份、恢复演练、原子切换和回滚门。
 - 灰度只从受影响 connector 开始；监控 accepted-without-task-id、reconciling-age、success-without-asset、projection-pending 和 duplicate-attempt。
 - 用户在生产项目内看到并播放结果后才可记 `USER_PASS`。
 
@@ -192,7 +192,7 @@ LOCAL_ADMITTED
 
 失败条件：要求用户外部核对、重复点击、结果只存在 Provider、刷新丢失、出现第二次付费 attempt、其他既有模型或旧画布不可用。
 
-费用说明：真实验收只有未来明确授权的一次预算，禁止自动重提；本次文档冻结费用为 0。
+费用说明：本次Goal已授权上述受控预算，禁止自动重提；在真实验收开始前Provider请求、OSS写和费用仍为0。
 
 ## 11. 完成定义
 

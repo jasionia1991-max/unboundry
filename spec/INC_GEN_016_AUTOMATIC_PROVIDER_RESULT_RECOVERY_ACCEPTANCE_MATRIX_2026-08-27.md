@@ -1,6 +1,6 @@
 # INC-GEN-016 验收矩阵
 
-状态：`SECOND_REVIEW_FINDINGS_REMEDIATED / INCREMENTAL_REVIEW_PENDING / RELEASE_GATE_CLOSED`
+状态：`INDEPENDENT_REVIEW_GO / FORMAL_FULL_EXECUTED / STALE_ASSERTION_TARGETED_PASS / GITHUB_GATE_ACTIVE`
 
 | ID | Priority | 验收项 | 必须证据 | 当前状态 |
 |---|---:|---|---|---|
@@ -27,8 +27,8 @@
 | APR-021 | P0 | GK原始首帧场景真实结果自动回画布 | 单次付费生产证据 | AUTHORIZED_NOT_CONSUMED |
 | APR-022 | P0 | 真实结果刷新后仍可播放且任务中心/素材库可找 | Browser + DB/asset evidence | NOT_RUN |
 | APR-023 | P0 | 实际修改的每个connector family有真实端到端证据 | connector release ledger | AUTHORIZED_NOT_CONSUMED |
-| APR-024 | P0 | 独立终审P0=0/P1=0 | frozen candidate review | SECOND_REVIEW_NO_GO_REMEDIATED_PENDING_REREVIEW |
-| APR-025 | P0 | 风险驱动验证完成且正式full最多一次 | test receipts | TARGETED_AUTO_PASS_FULL_NOT_RUN |
+| APR-024 | P0 | 独立终审P0=0/P1=0 | frozen candidate review | AUTO_PASS_P0_0_P1_0_GO |
+| APR-025 | P0 | 风险驱动验证完成且正式full最多一次 | test receipts | AUTO_PASS_FULL_1089_1090_ONE_STALE_ASSERTION_M22_41_41 |
 | APR-026 | P0 | 版本、发布、费用授权分别有效且未复用 | authority ledger | AUTHORIZED_IN_PROGRESS |
 | APR-027 | P0 | 用户明确确认生产项目内结果 | ordinary-user checklist | USER_RECHECK |
 

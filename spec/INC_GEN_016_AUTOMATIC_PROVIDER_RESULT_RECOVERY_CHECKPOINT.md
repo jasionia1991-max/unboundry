@@ -1,6 +1,6 @@
 # INC-GEN-016 实时断点
 
-状态：`SECOND_REVIEW_FINDINGS_REMEDIATED / INCREMENTAL_REVIEW_PENDING / INCIDENT_OPEN / RELEASE_GATE_CLOSED`
+状态：`INDEPENDENT_REVIEW_GO / FORMAL_FULL_EXECUTED / STALE_ASSERTION_TARGETED_PASS / GITHUB_GATE_ACTIVE / INCIDENT_OPEN`
 
 更新时间：2026-08-28
 
@@ -42,9 +42,13 @@
 - 同一Review线程第二轮复核为`P0=2/P1=4/NO-GO`：人工恢复仍会增加execution attempt；重启及relay/Ark/Mureka畸形响应仍存在退出自动恢复的路径；恢复窗口可能读到旧attempt事件；管理员事故仍可经兼容API恢复；权威文档未记录第二轮；Ark/Mureka HTTP失败证据缺少实际响应大小。
 - 第二轮六项已修复：人工恢复原子保持同一attempt并可完成原Provider账本；所有unsafe no-ID协议重启后保持recovering；relay创建/轮询和Ark/Mureka畸形响应统一进入零新POST恢复；恢复窗口绑定当前Provider attempt；`OPERATOR_INCIDENT`同时阻断普通retry与兼容reconcile；HTTP失败正文只做有界丢弃并记录字节数，不持久原文。
 - 最终受影响定向为m102+m16+m26+m38+m5+m53共`102/102 PASS`；同树m5+m88 `61/61 PASS`证明原attempt publication。随后m57首轮`15/16`只暴露一项已被脱敏日志合同取代的旧测试文案，修正该断言后最小复验`16/16 PASS`。Node22.23.1、临时目录、动态loopback、Fake Provider/OSS，末次source/snapshot `aa6ee9f20fdb69acf6ee8be8684aac5edf5287b7b5f2cb50fc64a08e7165342b`，4173 unchanged；真实Provider/OSS/生产写/费用0。唯一safe full仍未运行。
+- 同一Review线程第三轮对冻结commit `5860c51be9602a0292ba343f80d63b2104d6c98f`、tree `128d642be2239e0c751a3cb7ced719d2b39307eb`给出`P0=0/P1=0/GO`；这是本Goal唯一独立最终Review。
+- 唯一正式safe full随后执行一次：发现122 specs/1090 tests，`1089/1090 PASS`，唯一失败是m22仍断言旧文案“不会自动重提”，而产品已按已审合同显示更准确的“系统会自动找回结果且不会重复付费提交”；其余failed/retries/skipped/reportErrors/blocked均为0，immutable builder `attempts=1/builderInvocations=5/passed=1/failed=0`，source/snapshot `1400178cd9706483cf686d149278b32a14c3f18544eb69bc5e0bf52b243effe6`，4173 listener不变。
+- 只同步该测试断言后，按失败最小集复验m22 `41/41 PASS`；source/snapshot `db8a7c8c3f60a7f791f47b427c42e4027f2abe674b572471687e7fc3c2f442b5`，4173 listener不变。没有第二次full，产品实现、Review结论和1090项发现清单未改变；真实Provider/OSS/生产写/费用仍为0。
+- Review/full治理文档同步后，m38最小复验`16/16 PASS`，source/snapshot `90dbd6f1838caf85b694dd2eaf9fbe4d1c4a2d8e6c43159dbe612696535fd958`，4173 listener不变；没有重复业务full。
 
 - 工作树：`/Users/mymy/Documents/unboundry-model-contract-002-2026-08-27`
-- 当前 Git：`main@384c27f`，开始落档前与 `origin/main` 一致且工作树干净。
+- 当前 Git：`codex/inc-gen-016-v0.6.55`；冻结实现commit `5860c51be9602a0292ba343f80d63b2104d6c98f`，Review/full后的测试与治理收口待提交。
 - 当前生产：`v0.6.54 / schema41 / service healthy / USER_RECHECK`。
 - 目标画布：`67bfb2ee-f895-4308-9111-9de188306514`，名称“MODEL-CONTRACT-001 真实生成验收 2026-08-27”。
 - 目标节点：`video-019c3604-bae5-4880-b7ac-8410231df6a0`，`grok-video-3`，Prompt + 恰好一张首帧，9:16、720p、10秒、音频开启、输出1。
@@ -88,4 +92,4 @@
 
 ## 唯一下一步
 
-将第二轮六项修复交回同一独立Review线程增量复核；只有P0=0/P1=0/GO后才运行唯一正式safe full。
+完成GitHub PR/CI/merge与不可变v0.6.55 Release门；通过后按冻结备份、恢复演练、原子发布、回滚门和目标Canvas allowlist进入生产技术验收。
