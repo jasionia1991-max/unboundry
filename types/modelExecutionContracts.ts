@@ -71,7 +71,7 @@ export type ModelExecutionContract = Readonly<{
       succeeded: readonly string[];
     }>;
   }>;
-  version: 1;
+  version: 1 | 2;
 }>;
 
 export type ModelContractRuntimeInput = Readonly<{

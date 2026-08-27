@@ -1,0 +1,54 @@
+{
+  "evidence": {
+    "captureDate": "2026-08-27",
+    "captureMode": "production-read-only-sanitized",
+    "modelId": "624827c6-5541-4cc8-93ac-4f9d5ce79602",
+    "paidProviderRequests": 0,
+    "productionRelease": "v0.6.51",
+    "schemaVersion": 41,
+    "source": "public_templates.graph plus active GK release revision",
+    "sourceRevisionId": "77010660-f111-4d80-a45b-6a137be3ca6d",
+    "sanitization": "Only template/node identifiers and execution-relevant normalized fields are retained; prompts, media identifiers, URLs, owners and unrelated graph data are omitted."
+  },
+  "normalizedNodeContract": {
+    "firstFrame": {
+      "inputOrder": 2,
+      "inputRole": "first-frame",
+      "inputState": "ready",
+      "kind": "image"
+    },
+    "instruction": {
+      "inputOrder": 1,
+      "inputRole": "instruction",
+      "kind": "text",
+      "nonEmpty": true
+    },
+    "nodeInputMode": "reference",
+    "parameters": {},
+    "promptReady": true
+  },
+  "templates": {
+    "00000000-0000-4000-8000-000000000111": ["template-node-4"],
+    "00000000-0000-4000-8000-000000000112": ["template-node-4"],
+    "00000000-0000-4000-8000-000000000113": ["template-node-4"],
+    "00000000-0000-4000-8000-000000000114": ["template-node-4"],
+    "00000000-0000-4000-8000-000000000115": ["template-node-4", "template-node-5"],
+    "00000000-0000-4000-8000-000000000116": ["template-node-4"],
+    "00000000-0000-4000-8000-000000000201": ["template-node-7"],
+    "00000000-0000-4000-8000-000000000203": ["template-node-4", "template-node-5", "template-node-6"],
+    "00000000-0000-4000-8000-000000000204": ["template-node-4", "template-node-5", "template-node-6"],
+    "00000000-0000-4000-8000-000000000206": ["template-node-4"],
+    "00000000-0000-4000-8000-000000000207": ["template-node-4"],
+    "00000000-0000-4000-8000-000000000209": ["template-node-4"],
+    "00000000-0000-4000-8000-000000000210": ["template-node-4", "template-node-5", "template-node-6"],
+    "00000000-0000-4000-8000-000000000211": ["template-node-7", "template-node-8", "template-node-9", "template-node-10"],
+    "00000000-0000-4000-8000-000000000304": ["template-node-4"],
+    "00000000-0000-4000-8000-000000000305": ["template-node-4", "template-node-5", "template-node-6"],
+    "00000000-0000-4000-8000-000000000306": ["template-node-7"],
+    "00000000-0000-4000-8000-000000000307": ["template-node-6"],
+    "00000000-0000-4000-8000-000000000309": ["template-node-5"],
+    "00000000-0000-4000-8000-000000000310": ["template-node-5"],
+    "00000000-0000-4000-8000-000000000902": ["template-node-7"],
+    "00000000-0000-4000-8000-000000000903": ["template-node-12"]
+  }
+}

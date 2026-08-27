@@ -4,6 +4,8 @@
 
 2026-08-27 MODEL-CONTRACT-001实时基线：生产运行`v0.6.51/schema41`；PR #116已合并为`0c63938536a3056b1b1f652486d2ea5c72ad283f`，候选、merge与tag tree均为`90861ecd464c4413a1bdfe57abad6672227f679e`，注释tag/GitHub Release、PR/main CI、fresh tag build、冻结双副本恢复门、原子切换与回滚门均已完成。生产数据完整性、33个静态文件逐字节、66秒稳定门和四视口零付费浏览器通过；当前13张可见模型卡均有合同工作台入口。真实Provider/Generation/OSS/新费用均为0，一次性v0.6.51发布授权已消费；技术状态严格为`PRODUCTION_V0_6_51_TECHNICAL_PASS / USER_RECHECK`。原隔离工作树`/Users/mymy/Documents/unboundry-model-contract-001-2026-08-26`仍含进入Goal前的用户历史改动，**不得替用户清理、覆盖或把它当成干净main**。
 
+2026-08-27 MODEL-CONTRACT-002 当前施工断点：本地隔离候选从`origin/main@41bef082b7349667b3161b705e8b705eabe84e83`修复“历史revision被当前GK政策误判”；独立Review最终`P0=0/P1=0/GO`，唯一safe full `122/122 specs、1085/1085 tests PASS`。生产仍是v0.6.51/schema41且未改写。权威入口为`spec/MODEL_CONTRACT_002_CHECKPOINT.md`、对应方案与验收矩阵。真实Provider/Generation/OSS/新费用均0；push/PR/merge/tag/Release/SSH/备份/生产写均未授权。不得自动重跑失败任务，不得把fake合同通过写成真实成片质量或`USER_PASS`。
+
 人和 AI 共用的上线拍板规矩见仓库根目录 `上线规矩.md`。发布前必须分别获得版本号确认和允许发布；一次授权只用一次。
 
 ## 1. 每次开始或上下文恢复必读
@@ -13,9 +15,9 @@
 1. `上线规矩.md`
 2. `spec/UNBOUNDRY_CURRENT_STATE.md`
 3. `README.md`
-4. `spec/MODEL_CONTRACT_001_CHECKPOINT.md`（当前活动Goal的唯一实时断点）
-5. `spec/MODEL_CONTRACT_001_MODEL_EXECUTION_CONTRACT_GOVERNANCE_PLAN_2026-08-26.md`
-6. `spec/MODEL_CONTRACT_001_ACCEPTANCE_MATRIX_2026-08-26.md`
+4. `spec/MODEL_CONTRACT_002_CHECKPOINT.md`（当前活动Goal的唯一实时断点）
+5. `spec/MODEL_CONTRACT_002_IMMUTABLE_REVISION_REMEDIATION_PLAN_2026-08-27.md`
+6. `spec/MODEL_CONTRACT_002_ACCEPTANCE_MATRIX_2026-08-27.md`
 7. `spec/UNBOUNDRY_REMEDIATION_PLAN_2026-08-09.md`
 8. `spec/UNBOUNDRY_REMEDIATION_CHECKPOINT.md`
 9. `spec/UNBOUNDRY_HANDOFF_2026-08-09.md`

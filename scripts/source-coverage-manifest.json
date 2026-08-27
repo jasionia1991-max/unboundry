@@ -17,6 +17,14 @@
     "verify"
   ],
   "operationalScripts": {
+    "scripts/upgrade-model-contract-revisions.mjs": {
+      "mode": "frozen",
+      "scriptSha256": "3c897a4c3bcaf53c4e83c359ee3b46a024ad4764ae71334ef0c158429a8c1cad",
+      "reason": "Dry-runs by default and can explicitly publish a new immutable GK contract revision plus archive the evidence-less kwvideo model in an isolated schema-41 database; it never calls Provider or OSS.",
+      "manualNpmScripts": [
+        "model-contracts:upgrade"
+      ]
+    },
     "scripts/bootstrap-model-contract-revisions.mjs": {
       "mode": "frozen",
       "scriptSha256": "2c6752bc49f78f8a4d8e5fa20e8705a8b01a633fcb2e9c0206462307bc3e7d7d",
@@ -98,7 +106,7 @@
       "scriptSha256": "53e92a0e6268f4a7cb1c618aa1293d27507dd207546c0f988c1e06c0cb7ce94c",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "Full snapshot bridge/final fixtures prove the release closure",
-      "targetSha256": "8c770a636e57a1de357035b3ecbb11751848da965bac7d7a6866b2b660e2b3d5"
+      "targetSha256": "0885024b39134d3b0d66d99d0ed5c73d453b51bcbaf836ddaf2f462f722c6384"
     },
     "scripts/check-greenfield.mjs": {
       "mode": "behavior-test",
@@ -112,14 +120,14 @@
       "scriptSha256": "9b1807c98cd6e59a288fd8b81d29299bb5b34b67e7bed9a2003c8989c95d01e7",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "scripts/check-restart-persistence.mjs",
-      "targetSha256": "8c770a636e57a1de357035b3ecbb11751848da965bac7d7a6866b2b660e2b3d5"
+      "targetSha256": "0885024b39134d3b0d66d99d0ed5c73d453b51bcbaf836ddaf2f462f722c6384"
     },
     "scripts/check-v051-exact-runtime.mjs": {
       "mode": "behavior-test",
       "scriptSha256": "46f2f3d355c1ece895e649e3dceb8f485aeeeeed2eb3418b98b311d9a827ac08",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "scripts/check-v051-exact-runtime.mjs",
-      "targetSha256": "8c770a636e57a1de357035b3ecbb11751848da965bac7d7a6866b2b660e2b3d5"
+      "targetSha256": "0885024b39134d3b0d66d99d0ed5c73d453b51bcbaf836ddaf2f462f722c6384"
     },
     "scripts/deploy.mjs": {
       "mode": "frozen",

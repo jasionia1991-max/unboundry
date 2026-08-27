@@ -396,8 +396,10 @@ export class ProviderGenerationConfigurationError extends Error {
       | "PROVIDER_PROFILE_MISSING"
       | "PROVIDER_REVERIFY_REQUIRED",
     message: string,
+    readonly causeCode?: string,
   ) {
     super(message);
+    this.name = "ProviderGenerationConfigurationError";
   }
 }
 

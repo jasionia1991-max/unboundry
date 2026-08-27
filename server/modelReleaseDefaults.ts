@@ -65,11 +65,11 @@ export function gkVideoExecutionContract(
         { source: { kind: "prompt" }, target: { location: "json", path: "prompt" } },
         ...parameterBindings,
       ],
-      evidence: "UNKNOWN",
+      evidence: "EXACT",
       id: "text-to-video",
       prompt: "required",
       roles: [],
-      runtime: "blocked",
+      runtime: "declarative",
     },
     {
       bindings: [
@@ -109,7 +109,7 @@ export function gkVideoExecutionContract(
       succeeded: ["success"],
     },
   },
-  version: 1,
+  version: 2,
   } satisfies ModelExecutionContract);
 }
 

@@ -5,7 +5,15 @@ import {
   compileModelContractRequest,
   compileModelExecutionContract,
 } from "./modelExecutionContractCompiler";
-import { gkVideoExecutionContract } from "./modelReleaseDefaults";
+import {
+  assertCurrentModelReleasePolicy,
+  assertExecutionVersionTransition,
+  currentModelReleasePolicyDrift,
+} from "./currentModelReleasePolicy";
+export {
+  currentModelReleasePolicyDrift,
+  ModelContractPolicyError,
+} from "./currentModelReleasePolicy";
 import type { ModelExecutionContract } from "../types/modelExecutionContracts";
 import type {
   ModelContractDraft,
@@ -29,6 +37,21 @@ export class ModelContractConflictError extends Error {
   readonly code = "MODEL_CONTRACT_DRAFT_CONFLICT";
 }
 
+export class ModelContractIntegrityError extends Error {
+  constructor(
+    readonly code:
+      | "FROZEN_REVISION_COMPILER_HASH_MISMATCH"
+      | "FROZEN_REVISION_DOCUMENT_HASH_MISMATCH"
+      | "FROZEN_REVISION_DOCUMENT_INVALID"
+      | "FROZEN_REVISION_IDENTITY_INVALID"
+      | "FROZEN_REVISION_RUNTIME_VERSION_UNSUPPORTED",
+    message: string,
+  ) {
+    super(message);
+    this.name = "ModelContractIntegrityError";
+  }
+}
+
 function record(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -47,6 +70,14 @@ function documentHash(document: ModelReleaseDocument) {
     .digest("hex");
 }
 
+export function inspectModelReleaseDocument(document: ModelReleaseDocument) {
+  const compiled = validateFrozenDocument(document);
+  return Object.freeze({
+    compilerHash: compiled.hash,
+    documentHash: documentHash(document),
+  });
+}
+
 /**
  * Revalidates the immutable release snapshot carried by a task before a
  * Provider boundary. Running tasks intentionally do not have to match the
@@ -57,7 +88,10 @@ export function assertModelReleaseRevisionIntegrity(
   input: unknown,
 ): asserts input is ModelReleaseRevision {
   if (!record(input) || !record(input.document) || !record(input.validation)) {
-    throw new Error("模型合同快照无效");
+    throw new ModelContractIntegrityError(
+      "FROZEN_REVISION_IDENTITY_INVALID",
+      "模型合同快照无效",
+    );
   }
   const revision = input as unknown as ModelReleaseRevision;
   if (
@@ -66,12 +100,32 @@ export function assertModelReleaseRevisionIntegrity(
     revision.revisionNumber < 1 ||
     revision.modelId !== revision.document.modelId ||
     revision.validation.paidProviderRequests !== 0
-  ) throw new Error("模型合同快照身份无效");
-  const compiled = validateDocument(revision.document);
-  if (
-    revision.hash !== documentHash(revision.document) ||
-    revision.validation.compilerHash !== compiled.hash
-  ) throw new Error("模型合同快照哈希不一致");
+  ) throw new ModelContractIntegrityError(
+    "FROZEN_REVISION_IDENTITY_INVALID",
+    "模型合同快照身份无效",
+  );
+  let compiled: ReturnType<typeof validateFrozenDocument>;
+  try {
+    compiled = validateFrozenDocument(revision.document);
+  } catch (error) {
+    if (error instanceof ModelContractIntegrityError) throw error;
+    throw new ModelContractIntegrityError(
+      "FROZEN_REVISION_DOCUMENT_INVALID",
+      "模型合同快照未通过有限安全规则",
+    );
+  }
+  if (revision.hash !== documentHash(revision.document)) {
+    throw new ModelContractIntegrityError(
+      "FROZEN_REVISION_DOCUMENT_HASH_MISMATCH",
+      "模型合同快照文档哈希不一致",
+    );
+  }
+  if (revision.validation.compilerHash !== compiled.hash) {
+    throw new ModelContractIntegrityError(
+      "FROZEN_REVISION_COMPILER_HASH_MISMATCH",
+      "模型合同快照编译哈希不一致",
+    );
+  }
 }
 
 function validModelId(modelId: string) {
@@ -79,7 +133,32 @@ function validModelId(modelId: string) {
   return modelId;
 }
 
-function validateDocument(document: ModelReleaseDocument) {
+const supportedRuntimeVersions = Object.freeze({
+  "generic-async-media": Object.freeze({ 1: [1, 2] }),
+  "specialized-code": Object.freeze({ 1: [1] }),
+  "openai-chat": Object.freeze({ 1: [1] }),
+  "openai-responses": Object.freeze({ 1: [1] }),
+  "claude-messages": Object.freeze({ 1: [1] }),
+  "gemini-generate-content": Object.freeze({ 1: [1] }),
+  "gpt-image": Object.freeze({ 1: [1] }),
+  "ark-native": Object.freeze({ 1: [1] }),
+  "mureka-native": Object.freeze({ 1: [1] }),
+} as const);
+
+function assertRuntimeVersionSupported(document: ModelReleaseDocument) {
+  const connector = supportedRuntimeVersions[document.connectorFamily];
+  const versions = connector?.[
+    document.connectorVersion as keyof typeof connector
+  ] as readonly number[] | undefined;
+  if (!versions?.includes(document.executionContract.version)) {
+    throw new ModelContractIntegrityError(
+      "FROZEN_REVISION_RUNTIME_VERSION_UNSUPPORTED",
+      `运行时不支持 ${document.connectorFamily}/${document.connectorVersion}/contract-${document.executionContract.version}`,
+    );
+  }
+}
+
+function validateFrozenDocument(document: ModelReleaseDocument) {
   validModelId(document.modelId);
   if (
     !["blocked", "declarative", "specialized-code"].includes(document.runtime) ||
@@ -103,6 +182,7 @@ function validateDocument(document: ModelReleaseDocument) {
       }
     })
   ) throw new Error("模型发布文档身份或官方来源无效");
+  assertRuntimeVersionSupported(document);
   const compiled = compileModelExecutionContract(document.executionContract);
   if (
     compiled.contract.connectorFamily !== document.connectorFamily ||
@@ -111,22 +191,16 @@ function validateDocument(document: ModelReleaseDocument) {
   const exactDeclarative = document.providerModelId === "grok-video-3";
   if (
     (document.runtime === "declarative" && (
-      !exactDeclarative ||
       document.evidence !== "EXACT" ||
-      document.providerProtocol !== "media-generate" ||
-      document.connectorFamily !== "generic-async-media"
+      (exactDeclarative && (
+        document.providerProtocol !== "media-generate" ||
+        document.connectorFamily !== "generic-async-media"
+      ))
     )) ||
-    (exactDeclarative && document.runtime !== "declarative") ||
     (document.runtime === "blocked" && document.evidence !== "UNKNOWN") ||
     (document.evidence === "UNKNOWN" && document.runtime !== "blocked") ||
     (document.runtime === "specialized-code" && exactDeclarative)
   ) throw new Error("runtime必须与代码拥有的connector和证据等级一致");
-  if (
-    exactDeclarative &&
-    compiled.hash !== compileModelExecutionContract(
-      gkVideoExecutionContract(document.capabilitySchema),
-    ).hash
-  ) throw new Error("GK执行合同必须与代码核准的精确模式、角色和Provider字段一致");
   const parameterKeys = new Set(document.capabilitySchema.fields.map((field) => field.key));
   const providerParameterKeys = new Set(
     document.capabilitySchema.fields
@@ -150,6 +224,12 @@ function validateDocument(document: ModelReleaseDocument) {
       }
     }
   }
+  return compiled;
+}
+
+function validateCurrentReleaseDocument(document: ModelReleaseDocument) {
+  const compiled = validateFrozenDocument(document);
+  assertCurrentModelReleasePolicy(document, compiled.hash);
   return compiled;
 }
 
@@ -207,7 +287,7 @@ export function validateModelContractDocument(
   document: ModelReleaseDocument,
   validationInput?: Partial<Pick<ModelContractValidation, "impact" | "preview">>,
 ) {
-  const compiled = validateDocument(document);
+  const compiled = validateCurrentReleaseDocument(document);
   return Object.freeze({
     compilerHash: compiled.hash,
     impact: validationInput?.impact ?? {
@@ -395,13 +475,14 @@ export function publishModelContract(
       throw new ModelContractConflictError("草稿版本已变化，发布已阻断");
     }
     if (!validatedDraft.validation) throw new Error("请先完成本地验证");
-    const compiled = validateDocument(validatedDraft.document);
+    const compiled = validateCurrentReleaseDocument(validatedDraft.document);
     assertPublishedRoleIdentities(state.history, validatedDraft.document);
     if (compiled.hash !== validatedDraft.validation.compilerHash ||
       validatedDraft.validation.impact.incompatibleTemplateIds.length) {
       throw new Error("验证已失效或存在不兼容模板，发布已阻断");
     }
     const predecessor = state.history.at(-1);
+    assertExecutionVersionTransition(predecessor, validatedDraft.document);
     const revision: ModelReleaseRevision = Object.freeze({
       createdAt: new Date().toISOString(),
       document: structuredClone(validatedDraft.document),
@@ -421,6 +502,71 @@ export function publishModelContract(
   });
 }
 
+/**
+ * Explicit, CAS-bound upgrade path for code-owned release policies. Unlike
+ * bootstrap, this never skips a detected drift and never rewrites history.
+ * Validation, activation and the immutable publish event share one SQLite
+ * transaction; a failure leaves draft, history, active bindings and templates
+ * unchanged.
+ */
+export function upgradeModelContractRevision(
+  store: DatabaseSync,
+  actorUserId: string,
+  input: Readonly<{
+    document: ModelReleaseDocument;
+    expectedActiveRevisionId: string;
+    impact: ModelContractValidation["impact"];
+  }>,
+  onActivate?: (revision: ModelReleaseRevision) => void,
+) {
+  const operation = () => {
+    const state = stateFromEvents(store, validModelId(input.document.modelId));
+    const predecessor = state.history.at(-1);
+    if (
+      state.revoked ||
+      !predecessor ||
+      predecessor.revisionId !== input.expectedActiveRevisionId
+    ) {
+      throw new ModelContractConflictError(
+        "活动模型合同已变化，升级已阻断",
+      );
+    }
+    assertModelReleaseRevisionIntegrity(predecessor);
+    const nextHash = documentHash(input.document);
+    if (predecessor.hash === nextHash) {
+      return Object.freeze({ changed: false as const, revision: predecessor });
+    }
+    const validation = validateModelContractDocument(input.document, {
+      impact: input.impact,
+    });
+    if (validation.impact.incompatibleTemplateIds.length) {
+      throw new Error("存在不兼容模板，合同升级已阻断");
+    }
+    assertPublishedRoleIdentities(state.history, input.document);
+    assertExecutionVersionTransition(predecessor, input.document);
+    const revision: ModelReleaseRevision = Object.freeze({
+      createdAt: new Date().toISOString(),
+      document: structuredClone(input.document),
+      hash: nextHash,
+      modelId: input.document.modelId,
+      predecessorRevisionId: predecessor.revisionId,
+      revisionId: randomUUID(),
+      revisionNumber: predecessor.revisionNumber + 1,
+      validation: structuredClone(validation),
+    });
+    onActivate?.(revision);
+    recordAudit(store, actorUserId, "model_contract.publish", null, {
+      modelId: revision.modelId,
+      releasePolicyUpgrade: true,
+      revision,
+    });
+    return Object.freeze({ changed: true as const, revision });
+  };
+  return store.isTransaction
+    ? operation()
+    : inImmediateTransaction(store, operation);
+}
+
 export function rollbackModelContract(
   store: DatabaseSync,
   actorUserId: string,
@@ -433,6 +579,8 @@ export function rollbackModelContract(
     const target = state.history.find((item) => item.revisionId === targetRevisionId);
     const predecessor = state.history.at(-1);
     if (!target || !predecessor) throw new Error("回滚目标不存在");
+    assertModelReleaseRevisionIntegrity(target);
+    assertCurrentModelReleasePolicy(target.document);
     const revision: ModelReleaseRevision = Object.freeze({
       ...structuredClone(target),
       createdAt: new Date().toISOString(),

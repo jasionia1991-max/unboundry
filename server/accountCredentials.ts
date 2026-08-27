@@ -26,6 +26,25 @@ export type AccountCredentialKeyStatus =
   | "unknown"
   | "valid";
 
+export function modelContractUpgradeCredentialSeeds(store: DatabaseSync) {
+  return store.prepare(`
+    SELECT
+      account_id,
+      credential_version,
+      key_status,
+      provider_profile_id,
+      updated_at
+    FROM account_provider_credentials
+    ORDER BY provider_profile_id, account_id
+  `).all() as Array<{
+    account_id: string;
+    credential_version: number;
+    key_status: string;
+    provider_profile_id: string;
+    updated_at: string;
+  }>;
+}
+
 export type AccountCredentialRow = {
   account_id: string;
   credential_version: number;

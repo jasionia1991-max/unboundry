@@ -10,6 +10,7 @@
   },
   "scripts": {
     "model-contracts:bootstrap": "node scripts/bootstrap-model-contract-revisions.mjs",
+    "model-contracts:upgrade": "node scripts/upgrade-model-contract-revisions.mjs",
     "check:architecture": "node scripts/check-architecture.mjs",
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
