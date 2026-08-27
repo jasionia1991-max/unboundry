@@ -2,14 +2,25 @@
 
 更新时间：2026-08-27
 
-当前状态：`V0_6_50_PRODUCTION_TECHNICAL_PASS / RELEASE_AUTHORIZED / V0_6_51_VERSION_FROZEN / PR_116_CI_PENDING / REVIEW_P0_0_P1_0_GO / FORMAL_FULL_EXECUTED_ONCE_1077_OF_1079 / USER_RECHECK`
+当前状态：`PRODUCTION_V0_6_51_TECHNICAL_PASS / REVIEW_P0_0_P1_0_GO / FORMAL_FULL_EXECUTED_ONCE_1077_OF_1079 / USER_RECHECK`
+
+## 0.000000 生产v0.6.51发布与回执（2026-08-27）
+
+- PR #116最终Quality run `33047796300`通过并合并为`0c63938536a3056b1b1f652486d2ea5c72ad283f`；main Quality run `33047853632`通过。候选、merge、注释tag `v0.6.51`与GitHub Release的tree均为`90861ecd464c4413a1bdfe57abad6672227f679e`。
+- 精确tag archive SHA-256为`e694c43a4feebdf0c94cbed40c4f2ff92c4f66c94cdd1f0f2fcff7c42db09d10`。Node `22.23.2` / npm `10.9.8`下fresh TypeScript/Vite build通过；生产release为`/opt/unboundry/releases/v0.6.51-model-contract-remediation-20260827`，33个dist文件与公网逐字节一致。
+- 旧备份助手因硬编码schema39对schema41准确fail-closed，生产未切换；残留证据`/var/lib/unboundry-rollbacks/v0.6.51-cutover-final.JAMVYH`保留。随后在66秒静默门后停止服务，完整复制生产数据为双副本并验证清单一致，权威备份为`/var/lib/unboundry-rollbacks/v0.6.51-cutover-frozen.SYCQq1`，source/restore各366文件，清单SHA-256同为`f9155930cee7c66373865e58a28ef41b740868c75bc4e6e88cbc5cabf5c2c2a5`。
+- 原子切换和回滚门完成；service active/enabled、NRestarts=0，公网/回环root/live/ready均200。schema41、integrity ok、FK0；tasks933、attempts942、active0、media901、publications492、canvases72、models20、publishedModels11、templates50、publishedTemplates48、audits297、contractEvents56、publishEvents14在发布和浏览器复验中不变。
+- 零付费生产浏览器确认当前13张可见模型卡均有工作台入口；grok-video-3八区合同、published revision1、EXACT、文生视频+首帧模式可见，1280×720、1440×900、1920×1080、900×900均无横向溢出，console error/warn为0且未点击写动作。
+- 本轮真实Provider请求、Generation提交、OSS写和新费用均为0。用户发布授权已消费；状态上限为`PRODUCTION_V0_6_51_TECHNICAL_PASS / USER_RECHECK`。权威回执为`spec/V0_6_51_PRODUCTION_RECEIPT_2026-08-27.json`。
+- 生产回执文档收口只运行治理定向m38：`15/15 PASS`，failed/skipped/retries/blocked/reportErrors均0，source/snapshot `c0a71e2f479a21093af4a02e822534d0ade9890be1a8cc9c219ec14edbe54fa8`，4173不变；未重复业务spec或full。
+- 唯一下一动作：用户复验剩余27项边界和最终生成媒体质量；用户明确确认前不得写`USER_PASS`。
 
 ## 0.00000 发布授权与v0.6.51冻结（2026-08-27）
 
 - 用户已明确回复：知悉本轮未做真实付费生成且仍有`USER_RECHECK`，仍允许合并PR #116，并按候选v0.6.51执行tag/Release、生产备份恢复门、原子发布与回滚门。该授权只升级发布操作权限，不把候选或生产技术证据升级为`USER_PASS`。
 - 远端再次确认v0.6.51 tag未占用后，package.json、package-lock与final runtime admission冻结为`0.6.51`；m81增加0.6.51 final-role负向边界旁的精确正向断言。
 - Node `22.23.1` / npm `10.9.8` safe m38+m81为2 specs、`56/56 PASS`，failed/skipped/retries/blocked/reportErrors均0，source/snapshot `acc01f54ab42723d9655b6ea01833f80fe3b2e3d01b6a01593ba6f4e62c9cdf6`，4173监听不变。版本冻结后没有重复本Goal唯一正式full。
-- 当前生产仍是v0.6.50/schema41，尚未merge/tag/Release/生产写。唯一下一动作：提交并推送版本冻结，等待PR CI后合并与main CI，再进入不可移动tag/Release和生产门。
+- 本节发布授权已执行并消费；当前唯一下一动作以上方0.000000节为准。
 
 ## 0.0000 PR/CI候选冻结（2026-08-27）
 

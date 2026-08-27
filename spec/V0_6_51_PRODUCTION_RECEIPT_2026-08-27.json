@@ -1,0 +1,236 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "MODEL-CONTRACT-001-REMEDIATION-V0.6.51-PRODUCTION-2026-08-27",
+  "recordedAt": "2026-08-27T15:14:27+08:00",
+  "status": "PRODUCTION_V0_6_51_TECHNICAL_PASS",
+  "acceptance": {
+    "automaticEngineering": "PASS_WITH_ONE_FULL_AND_TARGETED_STALE_ASSERTION_REPAIRS",
+    "independentReview": "P0_0_P1_0_GO",
+    "productionTechnical": "PASS",
+    "productionBrowser": "ZERO_PAID_TECHNICAL_PASS",
+    "userQuality": "USER_RECHECK",
+    "userPass": false
+  },
+  "scope": {
+    "goal": "MODEL-CONTRACT-001_USER_RECHECK_REMEDIATION",
+    "implementedStages": ["VERSION_A", "VERSION_B", "COMPUTER_USE_CANDIDATE", "FINAL_REVIEW", "RELEASE"],
+    "releasePurpose": "Close repeat-billing outcome ambiguity and remediate the model-contract workbench state, CAS, preview, documentation, mode-role, template-impact and verified-provider-task boundaries.",
+    "schemaMigration": false,
+    "dataMigration": false,
+    "realProviderGeneration": false,
+    "knownUserBoundary": "The user explicitly authorized release while acknowledging that this Goal performed no new paid Provider generation and retained USER_RECHECK items."
+  },
+  "source": {
+    "repository": "https://github.com/jasionia1991-max/unboundry",
+    "pullRequest": 116,
+    "pullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/116",
+    "candidateCommit": "9c05c0c9597ce00ef68711c997356200528f2ebf",
+    "mergeCommit": "0c63938536a3056b1b1f652486d2ea5c72ad283f",
+    "candidateAndMergeTree": "90861ecd464c4413a1bdfe57abad6672227f679e",
+    "prQualityRun": 33047796300,
+    "prQualityJob": 98435795164,
+    "prQualityResult": "PASS",
+    "mainQualityRun": 33047853632,
+    "mainQualityJob": 98435983434,
+    "mainQualityResult": "PASS",
+    "tag": "v0.6.51",
+    "annotatedTagObject": "7a096449c15ed5b12e34fd34e5cb54a14bad3dcb",
+    "tagPeeledCommit": "0c63938536a3056b1b1f652486d2ea5c72ad283f",
+    "tagTree": "90861ecd464c4413a1bdfe57abad6672227f679e",
+    "releaseUrl": "https://github.com/jasionia1991-max/unboundry/releases/tag/v0.6.51",
+    "releasePublishedAt": "2026-08-27T07:00:02Z",
+    "releaseDraft": false,
+    "releasePrerelease": false
+  },
+  "verification": {
+    "formalFullSuite": {
+      "executedOnce": true,
+      "commit": "e56df4efcf607ab7e9c79a94cc8c205b96bbe798",
+      "specs": 122,
+      "passedTests": 1077,
+      "totalTests": 1079,
+      "failedTests": 2,
+      "failureClassification": "Two stale assertions still expected the pre-remediation paid-outcome policy; no product-source defect was found.",
+      "targetedRepairCommit": "2821f0579d4f455109349232e053502670686c03",
+      "targetedRepairEvidence": ["m81 41/41 PASS", "m100 13/13 PASS"],
+      "secondFullSuiteExecuted": false,
+      "sourceAndSnapshotSha256": "459770bee1b30e933bed13e243cf82bb12f354d4dba76bf2350e4f90af5c76b9",
+      "immutableReleaseBuilder": "1 attempt / 5 invocations PASS",
+      "port4173Unchanged": true
+    },
+    "versionFreezeTargeted": {
+      "node": "22.23.1",
+      "npm": "10.9.8",
+      "specs": ["m38-generation-runtime-incidents", "m81-deployment-hardening"],
+      "tests": 56,
+      "passed": 56,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0,
+      "sourceAndSnapshotSha256": "acc01f54ab42723d9655b6ea01833f80fe3b2e3d01b6a01593ba6f4e62c9cdf6",
+      "port4173Unchanged": true
+    },
+    "productionReceiptDocumentation": {
+      "spec": "m38-generation-runtime-incidents",
+      "tests": 15,
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0,
+      "node": "22.23.1",
+      "npm": "10.9.8",
+      "sourceAndSnapshotSha256": "c0a71e2f479a21093af4a02e822534d0ade9890be1a8cc9c219ec14edbe54fa8",
+      "port4173Unchanged": true,
+      "businessOrFullSuiteRepeated": false
+    },
+    "independentReview": {
+      "firstReview": "P0_0_P1_2_NO_GO",
+      "closedFindings": [
+        "Template impact compared only capability schema instead of the complete execution-affecting contract.",
+        "A manual Provider task ID could bind and promote an unknown attempt without read-only Provider-ledger verification."
+      ],
+      "fixCommit": "979d448256fb5f58970eafae41f6ea17c0282c1b",
+      "finalReview": "P0_0_P1_0_GO"
+    }
+  },
+  "artifact": {
+    "tagArchiveSha256": "e694c43a4feebdf0c94cbed40c4f2ff92c4f66c94cdd1f0f2fcff7c42db09d10",
+    "tagArchiveBytes": 29922578,
+    "releasePath": "/opt/unboundry/releases/v0.6.51-model-contract-remediation-20260827",
+    "releaseFileCountIncludingInventory": 6007,
+    "distFileCount": 33,
+    "inventorySha256": "dc2992241bf6e1f87e1f21b57b82a715d04484fe51c27c7c0cb8c499513dc65e",
+    "builder": {
+      "node": "22.23.2",
+      "npm": "10.9.8",
+      "npmCi": "npm ci --offline --ignore-scripts --cache /var/cache/unboundry/npm",
+      "typeScript": "PASS",
+      "viteBuild": "PASS"
+    },
+    "publicAssets": {
+      "assets/CanvasShell-BFTqEb9e.js": "16a38cda62a53720e1dba06192afff92c029e36f54ee257cc0c677340248d13a",
+      "assets/WorkspacePage-vvhsLph8.js": "5fc48d07d94e6fa3e35fe58c6ee122319fc8f90c31613af5463d6920d767044a",
+      "assets/index-D5UQgesX.js": "7468610a51dffe82ab73619b0f5870a1a2d04c7a2d8e386f9b50c1fbea161166",
+      "assets/index-CSHKZGHz.css": "0df4faeaaf3894fd986f544c9eb801d5ffb6c13d42cfae8e9cc47c0c3b46b693",
+      "assets/projectStorage-BzwaEcV1.js": "86307415d9896a9e7f29f68c4f85647c4a0fb93f79eab961f689d296d63c8464",
+      "index.html": "ed31df0da5fbd4ff6619683dcddff375c564220fe8ccf6c50a363de1f24fef30"
+    },
+    "publicFilesChecked": 33,
+    "publicAssetsByteExact": true
+  },
+  "backupAndRestore": {
+    "backupPath": "/var/lib/unboundry-rollbacks/v0.6.51-cutover-frozen.SYCQq1",
+    "sourceFileCount": 366,
+    "restoredFileCount": 366,
+    "sourceAndRestoredManifestSha256": "f9155930cee7c66373865e58a28ef41b740868c75bc4e6e88cbc5cabf5c2c2a5",
+    "databaseSchema": 41,
+    "databaseIntegrity": "ok",
+    "foreignKeyViolations": 0,
+    "librarySchema": 1,
+    "libraryDatabaseIntegrity": "ok",
+    "libraryForeignKeyViolations": 0,
+    "failedLegacyBackupAttempt": {
+      "path": "/var/lib/unboundry-rollbacks/v0.6.51-cutover-final.JAMVYH",
+      "reason": "The installed legacy backup helper still hard-coded schema 39 and failed closed on production schema 41 before any cutover.",
+      "files": 364,
+      "deleted": false
+    }
+  },
+  "production": {
+    "hostAlias": "live-cockpit",
+    "previousRelease": "/opt/unboundry/releases/v0.6.50-model-contract-workbench-entry-20260827",
+    "currentRelease": "/opt/unboundry/releases/v0.6.51-model-contract-remediation-20260827",
+    "versionEndpoint": "0.6.51",
+    "service": "unboundry",
+    "serviceState": "active",
+    "serviceEnabled": true,
+    "serviceRestarts": 0,
+    "runtimeNode": "22.23.2",
+    "runtimeNpm": "10.9.8",
+    "schema": 41,
+    "databaseIntegrity": "ok",
+    "foreignKeyViolations": 0,
+    "publicRootStatus": 200,
+    "publicLiveStatus": 200,
+    "publicReadyStatus": 200,
+    "journalWarningsAfterCutover": 0,
+    "quietGate": {
+      "start": "2026-08-27T15:06:29.496985551+08:00",
+      "end": "2026-08-27T15:07:35.553563603+08:00",
+      "stableSeconds": 66,
+      "countsUnchanged": true
+    },
+    "postCutoverStabilityGate": {
+      "start": "2026-08-27T15:10:19.813000996+08:00",
+      "end": "2026-08-27T15:11:25.871579060+08:00",
+      "stableSeconds": 66,
+      "countsUnchanged": true
+    },
+    "finalReadOnlySnapshotAt": "2026-08-27T15:13:14.756531883+08:00",
+    "counts": {
+      "tasks": 933,
+      "attempts": 942,
+      "active": 0,
+      "media": 901,
+      "publications": 492,
+      "canvases": 72,
+      "models": 20,
+      "publishedModels": 11,
+      "templates": 50,
+      "publishedTemplates": 48,
+      "audits": 297,
+      "contractEvents": 56,
+      "publishEvents": 14
+    }
+  },
+  "productionBrowser": {
+    "account": "麦哥",
+    "modelCardsCurrentlyVisible": 13,
+    "workbenchEntryButtons": 13,
+    "allCurrentModelCardsHaveWorkbenchEntry": true,
+    "route": "/admin/models/624827c6-5541-4cc8-93ac-4f9d5ce79602/contract",
+    "model": "grok-video-3",
+    "heading": "模型合同工作台",
+    "contractSections": 8,
+    "publishedRevision": 1,
+    "publishedState": "published",
+    "classification": "EXACT",
+    "inputModes": ["text-to-video", "first-frame-to-video"],
+    "providerCallSummary": 0,
+    "viewports": [
+      {"width": 1280, "height": 720, "headingVisible": true, "horizontalOverflow": false},
+      {"width": 1440, "height": 900, "headingVisible": true, "horizontalOverflow": false},
+      {"width": 1920, "height": 1080, "headingVisible": true, "horizontalOverflow": false},
+      {"width": 900, "height": 900, "headingVisible": true, "horizontalOverflow": false}
+    ],
+    "consoleErrors": 0,
+    "consoleWarnings": 0,
+    "mutatingActionsClicked": 0,
+    "productionDataCountsChanged": false
+  },
+  "zeroSideEffectLedger": {
+    "paidProviderRequests": 0,
+    "generationSubmissions": 0,
+    "ossWrites": 0,
+    "newFees": 0,
+    "productionBusinessDataChangesFromReleaseAndBrowserAcceptance": 0,
+    "historicalPlatformLedger": "⚡2.182; no reliable RMB conversion was available and it was not rewritten as a currency amount."
+  },
+  "failClosedEvents": [
+    {
+      "stage": "legacy production backup helper",
+      "effect": "The installed secret-free helper expected schema 39 and rejected schema 41 before cutover. Production remained on v0.6.50 and the partial root was retained.",
+      "resolution": "After a 66-second quiet gate, stopped the service, copied the complete production data directory into source and restore twins, validated both databases and byte-exact manifests, restarted v0.6.50, then performed the separately armed atomic cutover."
+    },
+    {
+      "stage": "first fresh dependency install",
+      "effect": "The npm executable inherited system Node 18 and printed engine warnings; no release was published from that install.",
+      "resolution": "Re-ran npm ci with PATH pinned to /opt/node22/bin, then rebuilt TypeScript/Vite and regenerated the release inventory under Node 22.23.2/npm 10.9.8 before cutover."
+    }
+  ],
+  "nextAction": "Keep USER_RECHECK. The user must explicitly confirm the remaining 27-item production behavior and final generated-media quality before USER_PASS may be recorded."
+}
