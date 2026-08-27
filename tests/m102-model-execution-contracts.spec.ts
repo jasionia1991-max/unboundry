@@ -1066,13 +1066,12 @@ test("schema41 upgrade audits 11 models, publishes GK revision 2, archives kwvid
         ('owner-invalid', 'provider-relay', 1, 'invalid', '2026-08-27T00:00:00.000Z')
     `).run();
     const invalidCredentialPlan = planModelContractUpgrade(store);
-    expect(() => applyModelContractUpgrade(store, "admin-a", {
-      expectedBaselineSnapshotHash: invalidCredentialPlan.baselineSnapshotHash,
-    })).toThrow(/Provider状态或配置版本/);
-    store.prepare("DELETE FROM account_provider_credentials").run();
+    expect(invalidCredentialPlan.models.find((model) =>
+      model.providerModelId === "grok-video-3"
+    )?.providerSnapshot.invalidAccountCredentialCount).toBe(1);
     store.prepare("DELETE FROM node_model_bindings WHERE model_id = 'model-gk-video-3'").run();
     expect(() => applyModelContractUpgrade(store, "admin-a", {
-      expectedBaselineSnapshotHash: plan.baselineSnapshotHash,
+      expectedBaselineSnapshotHash: invalidCredentialPlan.baselineSnapshotHash,
     }))
       .toThrow(/模型能力绑定不存在/);
     expect(modelContractState(store, "model-gk-video-3").history).toHaveLength(1);
@@ -1081,7 +1080,7 @@ test("schema41 upgrade audits 11 models, publishes GK revision 2, archives kwvid
     store.prepare("INSERT INTO node_model_bindings VALUES ('video', 'model-gk-video-3', 1, 0, ?)")
       .run("2026-08-27T00:00:00.000Z");
     const applied = applyModelContractUpgrade(store, "admin-a", {
-      expectedBaselineSnapshotHash: plan.baselineSnapshotHash,
+      expectedBaselineSnapshotHash: invalidCredentialPlan.baselineSnapshotHash,
     });
     expect(applied).toMatchObject({
       archivedKwvideo: true,

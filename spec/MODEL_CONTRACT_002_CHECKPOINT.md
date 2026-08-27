@@ -1,6 +1,6 @@
 # MODEL-CONTRACT-002 实时断点
 
-状态：`V0_6_52_PRODUCTION_DRY_RUN_FAIL_CLOSED / V0_6_53_RELEASE_AUTHORIZED / PR_PENDING / USER_RECHECK`
+状态：`V0_6_52_NOT_DEPLOYED / V0_6_53_REHEARSAL_FAIL_CLOSED_NOT_DEPLOYED / V0_6_54_RELEASE_AUTHORIZED / PR_PENDING / USER_RECHECK`
 
 更新时间：2026-08-27
 
@@ -8,7 +8,7 @@
 
 历史 revision 完整性与当前发布政策已经拆开：合法 GK revision 1 可继续执行，当前 GK 新发布政策恢复文字与单首帧并提升为合同 version 2。显式升级会新建 revision 2，不修改 revision 1；模板影响改为语义矩阵。`kwvideo-v2` 因没有可核验的文字基础证据，候选决定为停用归档而不是伪造 `EXACT`。
 
-v0.6.52已完成PR/CI、merge、tag/Release与fresh build，但真实生产只读dry-run发现兼容分析器没有复用产品对缺省instruction角色和legacy输入顺序的运行时默认规则，22模板因此全部fail-closed；生产未切换、数据未写。v0.6.52 tag保持不可变，Release已标记未部署。修复后真实生产只读dry-run为22/22模板、34/34节点兼容，用户已明确允许改用`v0.6.53`并要求立即发布；最终状态上限仍是`USER_RECHECK`。
+v0.6.52已完成PR/CI、merge、tag/Release与fresh build，但真实生产只读dry-run发现兼容分析器没有复用产品对缺省instruction角色和legacy输入顺序的运行时默认规则，22模板因此全部fail-closed。v0.6.53完成PR #119、main CI、merge、tag/Release与fresh build，冻结生产副本演练又发现模型级升级把一个无关普通账户的无效Ark凭证当成共享Provider全局失败。两次均在生产切换和数据替换前fail-closed，生产保持v0.6.51/schema41；两个tag保持不可变，Release均标记未部署。用户要求继续发布，修正版自动递增为`v0.6.54`；最终状态上限仍是`USER_RECHECK`。
 
 ## R0 只读基线
 
@@ -16,7 +16,7 @@ v0.6.52已完成PR/CI、merge、tag/Release与fresh build，但真实生产只�
 - 分支：`codex/model-contract-002-2026-08-27`
 - 基线：`origin/main@41bef082b7349667b3161b705e8b705eabe84e83`
 - origin：`https://github.com/jasionia1991-max/unboundry.git`
-- 基线package：v0.6.51；发布候选package：v0.6.53；schema：41
+- 基线package：v0.6.51；发布候选package：v0.6.54；schema：41
 - 普通工具链：Node 25.9.0/npm 11.12.1；safe runner：Node 22.23.1/npm 10.9.8；生产运行时只读核对为 Node 22.23.2/npm 10.9.8
 - 4173 为历史工作树监听，本轮未占用、未终止；safe runner 每次验证 listener hash 不变
 - 历史 `/Users/mymy/Documents/unboundry/app` 和 MODEL-CONTRACT-001 worktree 均不是施工基线，未清理、未覆盖
@@ -31,7 +31,7 @@ v0.6.52已完成PR/CI、merge、tag/Release与fresh build，但真实生产只�
 - `server/modelReleaseDefaults.ts` / compiler/types：GK version 2，文字与单首帧 EXACT；版本 1/2 有界支持。
 - `server/modelContractTemplateCompatibility.ts`：逐模板、逐节点检查真实参数、来源、ready 状态、显式角色和唯一正整数顺序，再做旧/新合同唯一匹配。
 - `spec/MODEL_CONTRACT_002_PRODUCTION_TEMPLATE_MATRIX_2026-08-27.json`：R0生产只读结果的脱敏冻结矩阵，保留22个真实模板ID、34个真实GK节点ID、revision身份及执行相关归一字段，不含Prompt、媒体、URL、owner或无关graph内容；m102直接消费该证据，不再把内嵌合成ID表冒充生产矩阵。
-- `server/modelContractUpgrade.ts` 与 CLI：schema41/精确11模型身份集合 dry-run、apply、repeat，输出 from/to hash、模式、漂移、Provider/profile/config/credential 脱敏快照、模板影响和零 Provider 账本；apply在`BEGIN IMMEDIATE`内以dry-run完整基线hash做CAS，并对Provider/credential无效状态fail-closed；CLI只允许固定恢复根或系统临时根内的私有隔离目录，拒绝root symlink、应用/生产数据，核对只读manifest摘要与数据库流式SHA-256。
+- `server/modelContractUpgrade.ts` 与 CLI：schema41/精确11模型身份集合 dry-run、apply、repeat，输出 from/to hash、模式、漂移、Provider/profile/config/credential 脱敏快照、模板影响和零 Provider 账本；apply在`BEGIN IMMEDIATE`内以dry-run完整基线hash做CAS。共享Provider自身状态、key状态与配置版本继续全局fail-closed；账户凭证完整进入快照和CAS，但单个无关账户的无效凭证只在该账户任务边界阻断，不再阻断模型合同治理。CLI只允许固定恢复根或系统临时根内的私有隔离目录，拒绝root symlink、应用/生产数据，核对只读manifest摘要与数据库流式SHA-256。
 - `server/generationTasks.ts`：已合成 Prompt 的 instruction/context-text 不再作为未声明媒体角色；其他未知角色继续 fail-closed；对外保持安全错误码，对内诊断保留冻结完整性 `causeCode`。
 - `server/modelCatalog.ts`：合同影响使用语义兼容；`kwvideo-v2` 归档前检查 default、模板和 active task，并保留历史任务/Canvas。
 
@@ -50,7 +50,9 @@ v0.6.52已完成PR/CI、merge、tag/Release与fresh build，但真实生产只�
 - 本地产品候选 commit `5c7419f7dec0114ac86e8595fa964e57c840ce3b`、tree `23197c6ec3c37c98770a9121e01730f19709f5d6`；候选回执为`spec/MODEL_CONTRACT_002_LOCAL_CANDIDATE_RECEIPT_2026-08-27.json`。现场核验`v0.6.52` tag未占用，因此只建议v0.6.52，未修改package版本、未创建tag。
 - 用户确认并授权后，package/lock/final runtime已冻结为v0.6.52；默认Node25/npm11 `npm run build` PASS。Node22 safe m38+m81 `56/56 PASS`，失败/重试/跳过0，source/snapshot `78b96eacab4a7c4b5de76009cc96878eae51f428865ea4a80c3705977220e177`，4173 unchanged；没有重复正式full。
 - v0.6.52生产只读dry-run在实际写入前以22个模板不兼容fail-closed；根因修复commit为`26cdc6d1dcd6a612dc616677fbe67519042f6254`。修复后m102 `13/13 PASS`，source/snapshot `e058810e…067c`，真实生产只读dry-run为22模板/34节点全部兼容，仍为零Provider/Generation/OSS/费用。用户随后明确授权v0.6.53。
+- v0.6.53候选head `71d3b926…4517`、merge `a9d360b7…a859`、main CI run `33077030627`与fresh build通过；冻结副本演练因一个无关账户的无效Ark凭证被误作全局Provider失败而阻断，生产自动恢复且从未切换。保留冻结证据`/var/lib/unboundry-rollbacks/v0.6.53-cutover-frozen.mUOSYM`；v0.6.53 Release已标记未部署。修复后m102 `13/13 PASS`，无效账户凭证计数仍被快照/CAS绑定，用户任务安全边界未放宽；目标改为v0.6.54。
+- v0.6.54版本门已冻结；默认Node25 `npm run build` PASS。最终源码Node22 safe m38+m81 `56/56 PASS`，失败/重试/跳过0，source/snapshot `66fafbe6b08e53e21571870aa865e6eb7d4b36dfbbdc81584ce30c94293fa97d`，4173 unchanged；没有重复正式full。
 
 ## 下一步与授权门
 
-1. 完成PR/CI、merge、不可移动tag/GitHub Release、fresh tag build、冻结恢复、原子切换、回滚与生产零付费技术门。
+1. 完成v0.6.54 PR/CI与merge；先用合并候选完成冻结副本首次升级和重复执行幂等演练，通过后才创建不可移动tag/GitHub Release与fresh tag build，再完成生产原子切换、回滚和零付费技术门。

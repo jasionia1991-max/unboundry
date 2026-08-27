@@ -376,7 +376,6 @@ export function applyModelContractUpgrade(
     if (before.models.some((model) =>
       model.providerSnapshot.status !== "enabled" ||
       model.providerSnapshot.keyStatus !== "valid" ||
-      model.providerSnapshot.invalidAccountCredentialCount !== 0 ||
       !Number.isSafeInteger(model.providerSnapshot.configurationVersion) ||
       model.providerSnapshot.configurationVersion < 1
     )) throw new Error("Provider状态或配置版本不满足升级基线");

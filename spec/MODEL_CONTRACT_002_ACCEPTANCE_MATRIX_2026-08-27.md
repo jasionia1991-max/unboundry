@@ -1,6 +1,6 @@
 # MODEL-CONTRACT-002 验收矩阵
 
-状态：`V0_6_52_DRY_RUN_FAIL_CLOSED / V0_6_53_RELEASE_AUTHORIZED / FINAL_REVIEW_GO / SAFE_FULL_PASS / USER_RECHECK`
+状态：`V0_6_52_NOT_DEPLOYED / V0_6_53_REHEARSAL_FAIL_CLOSED_NOT_DEPLOYED / V0_6_54_RELEASE_AUTHORIZED / FINAL_REVIEW_GO / SAFE_FULL_PASS / USER_RECHECK`
 
 | ID | 验收项 | 自动证据 | 当前状态 |
 |---|---|---|---|
@@ -20,5 +20,6 @@
 | MC2-014 | 独立终审无 P0/P1 | 同一审查线程第四轮复核 `P0=0 / P1=0 / GO` | AUTO_PASS |
 | MC2-015 | 真实 Provider/Generation/OSS/新费用 | 本 Goal 全程账本必须为0 | AUTO_PASS |
 | MC2-016 | 用户真实成片质量 | 仅未来单独授权后由用户确认 | USER_RECHECK |
+| MC2-017 | 共享Provider下无关账户无效凭证不全局阻断 | 凭证计数进入plan快照与CAS；模型级升级可完成，但账户真实任务仍按自身凭证fail-closed | TARGETED_AUTO_PASS |
 
 说明：自动通过只证明代码和 fake 合同，不代表真实 Provider 成片质量，也不等于 `USER_PASS`。正式 safe full 已在候选冻结、独立 Review 放行后执行且仅执行一次。

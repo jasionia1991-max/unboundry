@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻当前任务
 
-## MODEL-CONTRACT-002 历史 revision 与当前发布政策解耦（本地候选 / USER_RECHECK）
+## MODEL-CONTRACT-002 历史 revision 与当前发布政策解耦（v0.6.54 发布中 / USER_RECHECK）
 
 - [x] 从最新`origin/main@41bef082b7349667b3161b705e8b705eabe84e83`建立干净隔离worktree，完成生产、目标任务、11模型、22模板/34节点和4173只读基线。
 - [x] 历史revision完整性与当前发布政策解耦；document/compiler hash、身份、安全编译和支持版本继续fail-closed。
@@ -14,9 +14,11 @@
 - [x] 第三轮`P0=0/P1=2/NO-GO`指出矩阵测试残余硬编码和`TMPDIR`可扩张allowlist；两项修复后m102 `13/13 PASS`，同一线程第四轮最终`P0=0 / P1=0 / GO`。
 - [x] 独立Review放行后唯一正式safe full执行一次：`122/122 specs、1085/1085 tests PASS`，失败/重试/跳过均0，4173不变。
 - [x] 本地产品候选commit `5c7419f7dec0114ac86e8595fa964e57c840ce3b`、tree `23197c6ec3c37c98770a9121e01730f19709f5d6`；现场核验建议v0.6.52，候选回执已冻结。PR/CI因未授权保持NOT_RUN。
-- [x] v0.6.52生产只读dry-run在写入前fail-closed，tag保留且Release标记未部署；修复后真实矩阵22/22模板、34/34节点兼容。用户已明确允许改用v0.6.53并要求立即发布，仍不授权真实Provider生成、OSS写入或失败任务重跑。
+- [x] v0.6.52生产只读dry-run在写入前fail-closed；修复后真实矩阵22/22模板、34/34节点兼容。v0.6.53冻结副本演练又因无关账户无效Ark凭证被误作全局阻断而fail-closed；两个tag/Release均保留并标记未部署，生产没有切换或写入。
 - [x] v0.6.52 package/lock/final runtime冻结；默认Node25 build PASS，Node22 safe m38+m81 `56/56 PASS`，source/snapshot `78b96eacab4a7c4b5de76009cc96878eae51f428865ea4a80c3705977220e177`，未重复full。
-- [ ] 冻结v0.6.53版本门，完成PR/CI、merge、不可移动tag/GitHub Release、fresh tag build、冻结恢复、原子切换与回滚门。
+- [x] v0.6.53 PR #119、CI、merge、tag/Release与fresh build完成，但冻结副本演练阻断，未部署；不移动tag。
+- [ ] 修复过宽账户凭证闸门并冻结v0.6.54版本门；完成PR/CI、merge、候选冻结副本幂等演练后再创建不可移动tag/GitHub Release、fresh tag build、生产原子切换与回滚门。
+- [x] v0.6.54过宽闸门修复m102 `13/13 PASS`；版本冻结后默认build PASS，safe m38+m81 `56/56 PASS`，source/snapshot `66fafbe6…fa97d`，4173 unchanged；未重复full。
 
 权威方案：`spec/MODEL_CONTRACT_002_IMMUTABLE_REVISION_REMEDIATION_PLAN_2026-08-27.md`；矩阵：`spec/MODEL_CONTRACT_002_ACCEPTANCE_MATRIX_2026-08-27.md`；断点：`spec/MODEL_CONTRACT_002_CHECKPOINT.md`。
 
