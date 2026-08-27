@@ -1,6 +1,6 @@
 # MODEL-CONTRACT-002 实时断点
 
-状态：`CANDIDATE_AUTO_PASS / FINAL_REVIEW_GO / SAFE_FULL_PASS / USER_RECHECK`
+状态：`LOCAL_CANDIDATE_AUTO_PASS / FINAL_REVIEW_GO / SAFE_FULL_PASS / USER_RECHECK`
 
 更新时间：2026-08-27
 
@@ -47,8 +47,8 @@
 - 同一线程第三轮复核为`P0=0 / P1=2 / NO-GO`：生产矩阵测试仍把输入种类/状态/角色/顺序/Canvas inputMode写死，且临时根allowlist仍信任调用者可改写的`TMPDIR`。现已让m102直接由冻结矩阵构造22模板/34节点并绑定生产model/schema/revision身份；apply改用不受调用者环境影响的固定OS临时根。新增`TMPDIR=/`负向门后m102 `13/13 PASS`，source/snapshot `d95ea0c59cf78e6703e66bb1f2d37693ff59c6a3fd45d57676102f00eb2f6a9f`，4173 unchanged。等待同一线程第四轮复核，不提前写GO。
 - 同一线程第四轮只读终审确认上述两项均关闭，最终为`P0=0 / P1=0 / GO`；没有读取受保护文件、没有运行重复测试或访问网络/生产。
 - 独立Review放行后唯一正式 safe full 执行一次：`122/122 specs、1085/1085 tests PASS`，失败0、重试0、跳过0；Node 22.23.1/npm 10.9.8，source/snapshot `b56efbd8f3cf8681d46fb612f870f94f3a76ce2e9b41aa64d0caa21f54831698`，4173 unchanged。没有第二次full。
+- 本地产品候选 commit `5c7419f7dec0114ac86e8595fa964e57c840ce3b`、tree `23197c6ec3c37c98770a9121e01730f19709f5d6`；候选回执为`spec/MODEL_CONTRACT_002_LOCAL_CANDIDATE_RECEIPT_2026-08-27.json`。现场核验`v0.6.52` tag未占用，因此只建议v0.6.52，未修改package版本、未创建tag。
 
 ## 下一步与授权门
 
-1. 形成本地 candidate commit/tree、版本建议和候选回执。
-2. 在 push/PR/merge/tag/Release/SSH/备份/生产写之前停止，等待用户分别确认版本号和允许发布。
+1. 在 push/PR/merge/tag/Release/SSH/备份/生产写之前停止，等待用户分别确认版本号和允许发布。

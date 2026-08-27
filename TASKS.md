@@ -13,7 +13,7 @@
 - [x] 同一线程第二轮为`P0=0 / P1=3 / NO-GO`；已补生产22/34脱敏冻结矩阵、完整Provider/credential基线hash事务CAS和无效凭据门、固定staging allowlist/root symlink/app-data拒绝/私有只读manifest摘要/数据库SHA负向门；修正一次矩阵字段分类后m102 `13/13 PASS`，等待第三轮复核。
 - [x] 第三轮`P0=0/P1=2/NO-GO`指出矩阵测试残余硬编码和`TMPDIR`可扩张allowlist；两项修复后m102 `13/13 PASS`，同一线程第四轮最终`P0=0 / P1=0 / GO`。
 - [x] 独立Review放行后唯一正式safe full执行一次：`122/122 specs、1085/1085 tests PASS`，失败/重试/跳过均0，4173不变。
-- [ ] 最多执行一次正式safe full并形成本地candidate commit/tree、版本建议和候选回执。
+- [x] 本地产品候选commit `5c7419f7dec0114ac86e8595fa964e57c840ce3b`、tree `23197c6ec3c37c98770a9121e01730f19709f5d6`；现场核验建议v0.6.52，候选回执已冻结。PR/CI因未授权保持NOT_RUN。
 - [ ] 在push/PR/merge/tag/Release/SSH/备份/生产写之前停在用户授权门；失败任务不得自动重跑。
 
 权威方案：`spec/MODEL_CONTRACT_002_IMMUTABLE_REVISION_REMEDIATION_PLAN_2026-08-27.md`；矩阵：`spec/MODEL_CONTRACT_002_ACCEPTANCE_MATRIX_2026-08-27.md`；断点：`spec/MODEL_CONTRACT_002_CHECKPOINT.md`。

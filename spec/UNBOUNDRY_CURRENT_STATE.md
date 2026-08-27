@@ -8,7 +8,7 @@
 本地候选代码版本：**v0.6.51**
 本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_51_USER_RECHECK`
-当前计划标记：`MODEL_CONTRACT_002_CANDIDATE_AUTO_PASS / FINAL_REVIEW_GO / SAFE_FULL_PASS / USER_RECHECK`
+当前计划标记：`MODEL_CONTRACT_002_LOCAL_CANDIDATE_AUTO_PASS / FINAL_REVIEW_GO / SAFE_FULL_PASS / USER_RECHECK`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
 当前发布门：`MODEL_CONTRACT_001_REMEDIATION_AUTHORIZATION_CONSUMED / V0_6_51_PRODUCTION_TECHNICAL_PASS / USER_RECHECK`
 
@@ -17,7 +17,7 @@
 - 根因已确认：v0.6.51 用当前 GK 默认合同校验历史 revision 1，使保存时合法的文生视频/单首帧快照在 Provider POST 前被误判为完整性失败。
 - 候选已拆分 `ContractCompiler / CurrentReleasePolicy / RevisionStore / TaskAdmission / TaskExecution` 边界；GK 新合同提升到 version 2 并恢复文字与单首帧，revision 1 保持不可变且可执行，篡改和不支持版本继续 fail-closed。
 - 显式升级路径默认 dry-run，schema41、精确11模型身份、Provider/profile/config/credential脱敏快照及22模板/34节点语义门不满足就阻断；apply 还要求隔离 staging 与恢复证明，使用 active revision CAS 和原子审计。`kwvideo-v2` 不伪造文字基础证据，候选决定为停用归档并保留历史 Canvas。
-- 独立 Review 经四轮关闭全部问题，最终为`P0=0/P1=0/GO`。R0生产22/34脱敏冻结证据、完整Provider/credential基线事务CAS、固定staging allowlist、只读manifest摘要与数据库SHA门均已落地；末次m102 `13/13 PASS`。唯一正式safe full为`122/122 specs、1085/1085 tests PASS`，没有第二次full。实时证据和剩余门只以`spec/MODEL_CONTRACT_002_CHECKPOINT.md`为准。候选 commit/tree/回执正在本地收口；PR/CI未授权且未执行，生产和用户状态均未升级。
+- 独立 Review 经四轮关闭全部问题，最终为`P0=0/P1=0/GO`。R0生产22/34脱敏冻结证据、完整Provider/credential基线事务CAS、固定staging allowlist、只读manifest摘要与数据库SHA门均已落地；末次m102 `13/13 PASS`。唯一正式safe full为`122/122 specs、1085/1085 tests PASS`，没有第二次full。本地产品候选为commit `5c7419f7dec0114ac86e8595fa964e57c840ce3b`、tree `23197c6ec3c37c98770a9121e01730f19709f5d6`，现场核验后建议v0.6.52；PR/CI未授权且未执行，生产和用户状态均未升级。
 
 ### 2026-08-27 v0.6.51生产发布收口
 
