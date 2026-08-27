@@ -1,5 +1,14 @@
 # Unboundry 绿地复刻验收矩阵
 
+## INC-GEN-016 v0.6.56 当前区块（2026-08-28）
+
+- 当前：`PRODUCTION_V0_6_56_TECHNICAL_PASS / REVIEW_P0_0_P1_0_GO / REAL_PROVIDER_PASS / USER_RECHECK`。
+- PR #124与main Quality、不可移动v0.6.56 tag/GitHub Release、fresh build、冻结备份恢复演练、原子切换、回滚和生产健康门均通过；生产运行v0.6.56/schema41，service active/enabled、NRestarts0。
+- 唯一真实Provider POST复用目标task并建立attempt4，数字task ID `118533110`已持久化；任务completed，结果MP4自动进入OSS并投影回原Canvas节点，刷新后仍可播放且没有重试入口。
+- 实际费用USD10，低于USD20总预算；unknown-billing 0。结果后60秒tasks954/attempts965/active0/media911/publications502/canvases72和schema/integrity/FK均不变。
+- APR-021～023已升级为真实Provider、真实结果刷新保持与GK声明式connector端到端通过；APR-027仍为`USER_RECHECK`。唯一下一动作是用户观看成片并明确确认或拒绝。
+- 细目以`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_ACCEPTANCE_MATRIX_2026-08-27.md`为准；回执`spec/V0_6_56_PRODUCTION_RECEIPT_2026-08-28.json`。版本、发布和真实提交授权已消费，禁止再次POST或移动tag。
+
 ## MODEL-CONTRACT-002 当前区块（2026-08-27）
 
 - 当前：`PRODUCTION_V0_6_54_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK`；生产运行`v0.6.54/schema41`，v0.6.52/v0.6.53继续保留为未部署不可变证据。
@@ -50,7 +59,7 @@
 基线日期：2026-07-27  
 当前状态更新：2026-08-27
 
-`AUTHORITATIVE_ACCEPTANCE_LEDGER`：生产为v0.6.51/schema41且服务健康；PR #116、CI、tag/Release、fresh build、冻结恢复、原子发布与回滚门、数据/静态资产/稳定性和零付费浏览器均通过。真实Provider/Generation/OSS/新费用0，当前严格为`PRODUCTION_V0_6_51_TECHNICAL_PASS / USER_RECHECK`；历史用户验收不自动验收本次剩余27项与成片质量。
+`AUTHORITATIVE_ACCEPTANCE_LEDGER`：生产为v0.6.56/schema41且服务健康；PR #124、PR/main CI、tag/Release、fresh build、冻结恢复、原子发布与回滚门、数据/静态资产/稳定性均通过。唯一真实GK提交成功，结果自动回填并刷新保持，实际费用USD10、unknown-billing 0；当前严格为`PRODUCTION_V0_6_56_TECHNICAL_PASS / REAL_PROVIDER_PASS / USER_RECHECK`，只有用户观看成片后明确确认才可升级`USER_PASS`。
 
 2026-08-26 `CURRENT_RELEASE = v0.6.46 / schema41 / PRODUCTION_V0_6_46_USER_PASS`。本地治理基线为`main = origin/main = 12e2fd9b…2795`，当前差异仅为本轮尚未提交的治理与工具链修改；普通项目shell默认Node `25.9.0` / npm `11.12.1`，现网仍为Node `22.23.2` / npm `10.9.8`，安全/发布复现通道为Node `22.23.1` / npm `10.9.8`。默认Node25 build/architecture通过；Node22兼容preflight、源码覆盖456/456、behavior 1/1及m38+m94 `19/19 PASS`，4173不变，未运行full。这次工具链治理不是生产运行时迁移或新版本发布。
 

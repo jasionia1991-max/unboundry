@@ -1,23 +1,28 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网运行v0.6.55/schema41且服务健康，既有退款结果与不可移动发布身份不变。用户已启动v0.6.56续作Goal，新增USD20预算并授权修复、Review、GitHub/CI、不可移动发布、生产和同一目标Canvas真实验收；首轮独立Review的`P0=0/P1=2`已最小修复，同一线程最终`P0=0/P1=0/GO`，严格为`GITHUB_CI_PENDING / RELEASE_GATE_CLOSED / USER_RECHECK`，新增预算尚未消费。
+> **状态分层**：现网运行v0.6.56/schema41且服务健康。数字Provider task ID有限规范化已发布；同一目标Canvas唯一真实GK提交已成功完成、自动回填并经刷新保持，实际费用USD10、unknown-billing 0。工程、独立Review、GitHub/CI、不可移动发布、恢复/回滚、生产与真实Provider技术门均通过；用户观看成片并明确确认前严格为`PRODUCTION_TECHNICAL_PASS / REAL_PROVIDER_PASS / USER_RECHECK`。
 
 更新日期：2026-08-28
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
 当前代码包版本：**v0.6.56**
 本地候选代码版本：**v0.6.56**
-当前生产部署版本：**v0.6.55**
+当前生产部署版本：**v0.6.56**
 本地候选schema：**41**
-当前治理标记：`CURRENT_V0_6_55_USER_RECHECK`
-当前计划标记：`INC_GEN_016_V0_6_56_REVIEW_GO / GITHUB_CI_PENDING`
+当前治理标记：`CURRENT_V0_6_56_USER_RECHECK`
+当前计划标记：`INC_GEN_016_V0_6_56_PRODUCTION_TECHNICAL_PASS / REAL_PROVIDER_PASS`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`INC_GEN_016_V0_6_56_AUTHORIZED / RELEASE_GATE_CLOSED / USER_RECHECK`
+当前发布门：`INC_GEN_016_V0_6_56_AUTHORIZATION_CONSUMED / USER_RECHECK`
 
 ## INC-GEN-016 当前区块（2026-08-28）
 
-- v0.6.56续作Goal已授权：新版本、修复、Review、GitHub/CI、tag/Release、生产备份恢复发布回滚、目标Canvas真实GK验收及新增USD20总预算。首单预估上限USD10；只有明确未受理/未扣费或退款时最多替代一次，任何unknown禁止第二次POST。
+- v0.6.56已完成PR #124、PR/main Quality、不可移动tag/GitHub Release、精确tag fresh build、冻结备份恢复演练、原子切换、回滚与生产健康门。merge `7c751d59d9241387dc0cb368f4825b8b09a20af7`，tag tree `7a8721a1fd8a1aa74a2ba859fc5220d0f9bea853`。
 - 新工作树`/Users/mymy/Documents/unboundry-inc-gen-016-v0.6.56-2026-08-28`基于最新`origin/main@86e17db78559a83e781e75ba8c1b1eaa0079ac0e`；v0.6.56未占用。R0生产计数tasks954/attempts964/active0/current unknown billing0/media910/publications501/canvases72/models20/published10/templates50/published48。
-- 新修复范围只覆盖真实响应中的数字`data.task_ids[]`与`data.任务ids[]`，要求所有出现路径唯一一致并规范化为canonical task ID；空数组、多值、冲突、非整数、危险值和任意嵌套继续fail-closed。预期红唯一命中，修复后m102 `13/13`，共享adapter/媒体publication/版本准入定向`103/103`通过；独立Review和发布门尚未完成，真实Provider预算0。
+- 新修复范围只覆盖真实响应中的数字`data.task_ids[]`与`data.任务ids[]`，要求所有出现路径唯一一致并规范化为canonical task ID；空数组、多值、冲突、非整数、零值、危险值和任意嵌套继续fail-closed。预期红唯一命中，修复后m102 `13/13`，共享adapter/媒体publication/版本准入定向`103/103`通过；独立Review最终`P0=0/P1=0/GO`。
+- 唯一正式safe full在精确merge/tag tree执行一次：发现122 specs/1090 tests，1084通过、3失败、3跳过；失败仅为m1瞬态性能样本、m2陈旧可见前缀和m94隔离npm fixture。未改源码的同源最小失败集m1+m2+m94 `13/13 PASS`，没有第二次full。
+- 生产release为`/opt/unboundry/releases/v0.6.56-inc-gen-016-20260828`；service active/enabled、NRestarts0，schema41/integrity ok/FK0，公网/回环version/live/ready及入口CSS/JS逐字节通过。
+- 目标task严格复用原task并只新增attempt4；唯一Provider POST获数字task ID `118533110`，随后完成并自动投影到原节点。结果MP4为720×1280、10.042秒、4,825,780 bytes、SHA-256 `57119de6ca64b8d6a0e0d0ee85febd6ddb8976d37d8882dfd4cbe547c043e588`，OSS ready/published；浏览器刷新后仍为readyState4且无重试入口。
+- 实际费用USD10，低于新增USD20总预算；tasks954/attempts965/active0/unknown0/media911/publications502/canvases72在结果后60秒不变。v0.6.56版本、发布和本轮唯一Provider提交授权均已消费，禁止再次POST或移动tag。
+- 当前为`PRODUCTION_V0_6_56_TECHNICAL_PASS / REAL_PROVIDER_PASS / USER_RECHECK`。唯一下一动作是用户观看已留在目标生产Canvas中的成片并明确确认或拒绝；只有用户回复可升级`USER_PASS`。回执：`spec/V0_6_56_PRODUCTION_RECEIPT_2026-08-28.json`。
 
 - 用户核心合同：只点击一次生成；系统自动提交、追踪、恢复、保存结果并回到项目。普通用户不登录中转站、不填写任务号、不点击“核对结果”。
 - 生产发布：PR #122和main Quality通过；merge `7bdc40f67697e1e3be735db947d3b26ba5b6c0bd`、注释tag `v0.6.55`及GitHub Release不可移动发布完成。生产release为`/opt/unboundry/releases/v0.6.55-inc-gen-016-20260828`；schema41、integrity ok、FK0、service active/enabled、NRestarts0，rollout为目标allowlist。
@@ -92,7 +97,7 @@ v0.6.47验证证据：默认Node25.9.0/npm11.12.1下build与architecture通过�
 
 ## 一句话
 
-**生产是 v0.6.51 / schema41；工程、GitHub、生产技术与零付费浏览器通过，真实Provider/Generation/OSS/新费用0；唯一下一步是用户按返工矩阵复验剩余项目与成片视觉。**
+**生产是 v0.6.56 / schema41；工程、GitHub、生产技术与真实Provider闭环通过，唯一GK提交实际费用USD10、unknown-billing 0；唯一下一步是用户观看目标Canvas成片并明确确认或拒绝。**
 
 ## INC-GEN-015 老画布孤立生成态与终态结果自动收口（PRODUCTION_V0_6_46_USER_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON）
 

@@ -1,6 +1,6 @@
 # INC-GEN-016 验收矩阵
 
-状态：`V0_6_56_REVIEW_GO / P0_0_P1_0 / GITHUB_CI_PENDING / RELEASE_GATE_CLOSED / USER_RECHECK`
+状态：`PRODUCTION_V0_6_56_TECHNICAL_PASS / REAL_PROVIDER_PASS / USER_RECHECK`
 
 | ID | Priority | 验收项 | 必须证据 | 当前状态 |
 |---|---:|---|---|---|
@@ -24,12 +24,12 @@
 | APR-018 | P0 | 旧Canvas和模板无需手工迁移 | 真实冻结引用矩阵 | AUTO_PASS |
 | APR-019 | P0 | schema/Worker/rollback不丢在途任务 | expand-contract rehearsal | AUTO_PASS |
 | APR-020 | P1 | 明确失败/拒绝/退款只在项目内表达 | response/UI matrix | REAL_PROVIDER_REFUND_UI_PASS |
-| APR-021 | P0 | GK原始首帧场景真实结果自动回画布 | 单次付费生产证据 | V0_6_56_AUTHORIZED_NOT_CONSUMED |
-| APR-022 | P0 | 真实结果刷新后仍可播放且任务中心/素材库可找 | Browser + DB/asset evidence | V0_6_56_NOT_RUN |
-| APR-023 | P0 | 实际修改的每个connector family有真实端到端证据 | connector release ledger | V0_6_56_AUTHORIZED_NOT_CONSUMED |
+| APR-021 | P0 | GK原始首帧场景真实结果自动回画布 | 单次付费生产证据 | REAL_PROVIDER_PASS |
+| APR-022 | P0 | 真实结果刷新后仍可播放且任务中心/素材库可找 | Browser + DB/asset evidence | REAL_RESULT_REFRESH_PERSISTENCE_PASS |
+| APR-023 | P0 | 实际修改的每个connector family有真实端到端证据 | connector release ledger | GK_DECLARATIVE_CONNECTOR_REAL_E2E_PASS |
 | APR-024 | P0 | 独立终审P0=0/P1=0 | frozen candidate review | AUTO_PASS_P0_0_P1_0_GO |
-| APR-025 | P0 | 风险驱动验证完成且正式full最多一次 | test receipts | V0_6_56_TARGETED_PASS_132 / REMEDIATION_29_PASS / FULL_NOT_REQUIRED |
-| APR-026 | P0 | 版本、发布、费用授权分别有效且未复用 | authority ledger | V0_6_56_AUTHORIZED_NOT_CONSUMED |
+| APR-025 | P0 | 风险驱动验证完成且正式full最多一次 | test receipts | TARGETED_PASS / FORMAL_FULL_EXECUTED_ONCE_1084_OF_1090 / FAILED_SUBSET_13_OF_13_PASS |
+| APR-026 | P0 | 版本、发布、费用授权分别有效且未复用 | authority ledger | AUTHORIZATION_CONSUMED_CLOSED |
 | APR-027 | P0 | 用户明确确认生产项目内结果 | ordinary-user checklist | USER_RECHECK |
 
 ## 放行规则
@@ -52,3 +52,12 @@
 - 新Goal新增USD20总预算；首单预估上限USD10，只有明确未受理/未扣费或退款时最多替代一次，任何unknown禁止第二次POST。
 - APR-004必须用真实脱敏形状fixture证明数字双路径唯一一致，并用零/多/冲突/危险值负向证明fail-closed。
 - v0.6.56候选、独立Review、CI、冻结备份/恢复/回滚和生产技术门全部通过前，APR-021～023预算不得消费。
+
+## 2026-08-28 v0.6.56 最终结果
+
+- PR #124与main Quality均通过；merge `7c751d59d9241387dc0cb368f4825b8b09a20af7`、不可移动tag/GitHub Release `v0.6.56`、fresh Node22 build、冻结备份、恢复副本standby演练、原子切换、回滚/前滚和公网静态资源门全部通过。
+- 正式safe full只执行一次：`1084/1090 PASS`、3失败、3跳过；三项均在源码不变时按最小失败集复验`13/13 PASS`，没有第二次full。独立Review最终保持`P0=0/P1=0/GO`。
+- 用户在浏览器点击时确认后，普通生产页只执行一次真实重试，原task进入attempt4；Provider返回数字task ID `118533110`并被v0.6.56有限合同安全持久化。没有第二次Provider POST，也没有unknown计费状态。
+- attempt4最终`completed`，实际费用USD10；正式OSS视频资产`04bd1281-fde3-4784-8c46-9646e7619c22.mp4`已发布，4825780字节、SHA-256 `57119de6ca64b8d6a0e0d0ee85febd6ddb8976d37d8882dfd4cbe547c043e588`、720×1280、10.042秒。
+- 原节点自动投影该资产，Canvas revision299/graphRevision141；浏览器刷新后仍为一个readyState4可播放视频，时长10.041667秒、720×1280，错误和重试入口均消失。APR-021～023通过，当前严格为`PRODUCTION_TECHNICAL_PASS / REAL_PROVIDER_PASS / USER_RECHECK`。
+- APR-027只等用户观看生产成片后明确确认；该主观确认前不得写`USER_PASS`。权威回执：`spec/V0_6_56_PRODUCTION_RECEIPT_2026-08-28.json`。

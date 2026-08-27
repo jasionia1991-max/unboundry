@@ -1,6 +1,6 @@
 # INC-GEN-016：Provider 结果自动回收与全模型不回归最终方案
 
-状态：`V0_6_56_REVIEW_GO / P0_0_P1_0 / GITHUB_CI_PENDING / RELEASE_GATE_CLOSED`
+状态：`PRODUCTION_V0_6_56_TECHNICAL_PASS / REAL_PROVIDER_PASS / USER_RECHECK`
 
 建立日期：2026-08-27
 
@@ -12,7 +12,7 @@
 
 2026-08-28续作Goal另行明确指定`v0.6.56`、新增真实生成总预算USD20，并授权修复、Review、GitHub/CI、不可移动tag/Release、生产发布和同一目标Canvas真实验收。续作只修已证实的数字`data.task_ids[]`/`data.任务ids[]`有限响应外壳，不重开v0.6.55、不复用旧预算、不扩张其他Provider协议；具体实时状态以Checkpoint新增的v0.6.56区块为准。
 
-当前生产为 `v0.6.55 / schema41`。以下仅是2026-08-27事故起点的历史证据，不代表当前任务终态：当时生产画布 `67bfb2ee-f895-4308-9111-9de188306514` 的视频节点 `video-019c3604-bae5-4880-b7ac-8410231df6a0` 只提交了一次新付费 attempt，任务 `da761fff-6a65-46fd-84cf-4dc5bddbc985` 从 attempt 1 增至 attempt 2，请求越过 Provider boundary，但没有持久 `provider_task_id`，当时收口为 `OUTCOME_UNKNOWN_BILLING_RISK`。其后v0.6.55已用Provider完整账本证明attempt2未受理且未扣费，唯一替代attempt3被明确退款；当前任务为`PROVIDER_REFUNDED`、实际费用0、无结果资产。
+当前生产为 `v0.6.56 / schema41`，真实GK结果门已通过并保持`USER_RECHECK`。以下仅是2026-08-27事故起点的历史证据，不代表当前任务终态：当时生产画布 `67bfb2ee-f895-4308-9111-9de188306514` 的视频节点 `video-019c3604-bae5-4880-b7ac-8410231df6a0` 只提交了一次新付费 attempt，任务 `da761fff-6a65-46fd-84cf-4dc5bddbc985` 从 attempt 1 增至 attempt 2，请求越过 Provider boundary，但没有持久 `provider_task_id`，当时收口为 `OUTCOME_UNKNOWN_BILLING_RISK`。其后v0.6.55已用Provider完整账本证明attempt2未受理且未扣费，唯一替代attempt3被明确退款；v0.6.56新增授权下的attempt4已成功完成并形成正式结果资产。
 
 ## 1. 最终产品合同
 
@@ -213,3 +213,11 @@ LOCAL_ADMITTED
 - 运行时只为声明式GK创建响应增加两个已证实的有限候选路径：`data.task_ids[]`与`data.任务ids[]`。数值安全转字符串；两个路径同时出现时必须各自恰好一个值且完全一致；零值、多值、冲突值、非安全整数和危险字符串继续进入可恢复FORMAT且禁止重提。
 - canonical顶层`task_id`、轮询、结果资产、Canvas投影、unknown费用围栏及所有未修改connector行为保持不变。
 - 候选必须先定向绿、独立Review P0=0/P1=0、GitHub/CI、不可移动v0.6.56、冻结备份/恢复/回滚和生产技术门，再允许消费新增USD20。真实结果必须自动形成正式资产并回到原节点，刷新后仍在；否则不得写`REAL_PROVIDER_PASS`。
+
+## 14. v0.6.56 最终收口
+
+- Review最终`P0=0/P1=0/GO`；PR #124、PR/main CI、不可移动tag/Release、fresh build、冻结备份、restore-copy standby、原子切换、回滚/前滚、公网/静态资源和稳定门均通过。
+- 唯一正式safe full为`1084/1090`、3失败、3跳过；源码不变的失败最小集`13/13 PASS`，没有第二次full。该证据按原始结果如实记录，不冒充1090/1090 clean full。
+- 真实attempt4只有一个Provider POST，数字task ID `118533110`成功持久化；任务自动轮询完成，正式OSS资产发布并幂等投影回原节点。浏览器刷新后视频仍可播放，没有中转站、任务号输入或人工核对步骤。
+- 实际费用USD10，不超过新增USD20总上限；当前无活动或unknown付费任务，禁止再提交本Goal的Provider POST。
+- 技术和真实链状态为`PRODUCTION_TECHNICAL_PASS / REAL_PROVIDER_PASS`；成片主观质量保持`USER_RECHECK`，只有用户观看生产画布并明确确认后才能写`USER_PASS`。
