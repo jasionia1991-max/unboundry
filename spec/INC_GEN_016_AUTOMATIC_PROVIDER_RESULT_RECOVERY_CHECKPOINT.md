@@ -1,10 +1,23 @@
 # INC-GEN-016 实时断点
 
-状态：`INDEPENDENT_REVIEW_GO / FORMAL_FULL_EXECUTED / STALE_ASSERTION_TARGETED_PASS / GITHUB_GATE_ACTIVE / INCIDENT_OPEN`
+状态：`PRODUCTION_V0_6_55_TECHNICAL_PASS / REAL_PROVIDER_REFUNDED / NO_RESULT / USER_RECHECK`
 
 更新时间：2026-08-28
 
 ## 当前事实
+
+### 2026-08-28 生产发布与真实Provider最终结果
+
+- 冻结实现commit `5860c51be9602a0292ba343f80d63b2104d6c98f`；发布候选commit `8ffcdeb4be9b48acc3e9e5c58b054238eafbc420`、tree `5be35b37ada49576e43c80fefb01b102cbe4e086`。PR #122 Quality run `33100464212`、main Quality run `33100549022`通过；merge `7bdc40f67697e1e3be735db947d3b26ba5b6c0bd`。
+- 注释tag `v0.6.55`对象`77b705f6fa20a0f8d4ac2285fc8122933514122c`精确指向merge，GitHub Release已发布。tag archive SHA-256 `4017968c1c50196c55eb1de036aa76579eaefb93e4120976f6754ccbd1255745`，生产release `/opt/unboundry/releases/v0.6.55-inc-gen-016-20260828`，inventory SHA-256 `0912e077fa48762baef7f4ee78b68e3e5cac6d25e75d36820a1bdeaf94713103`。
+- 生产冻结备份`/var/lib/unboundry-rollbacks/v0.6.55-cutover-frozen.wcaUii`，source manifest `72d57c9fdd079d9b6441b1b49b3d56004bf20a4ad156c1ce97fd137dc341afcc`；恢复副本演练、原子切换和回滚门通过。回滚测试曾触发systemd `StartLimitBurst`，已`reset-failed`后先恢复v0.6.54健康，再完成v0.6.55前向切换；这是已安全处置的运维节流，不是应用或数据失败。
+- 最终生产v0.6.55/schema41，service active/enabled、NRestarts0，公网/回环live/ready通过，journal error 0；rollout为目标account+Canvas allowlist。最终计数tasks954、attempts964、active0、unknown-billing tasks0、media910、publications501、canvases72；02:19:48～02:20:54的66秒稳定门计数不变。
+- 历史attempt2的Provider完整当日消费账本和作品列表均无目标记录，明确证明未受理、未扣费且不可能返回结果；冻结备份`/var/lib/unboundry-rollbacks/v0.6.55-inc-gen-016-nocharge.T0evyW`，DB SHA-256 `99eed262d0e624855794e561b54f296f496d8b6e6b8472bfc93ebcdc458af1ff`。attempt2收口为`definitive-rejected / PROVIDER_NOT_ACCEPTED_NO_CHARGE`、实际费用0。
+- 只在上述无扣费证据成立后，普通页面只点击一次重试，产生本Goal允许的唯一替代attempt3。Provider于2026-08-28 02:14:27返回HTTP 200，响应为192字节，含数字`data.task_ids[]`与数字`data.任务ids[]`，当前解析器未提取到字符串task ID；没有再次POST。
+- Provider权威账本随后显示该GK-video-3为`已退款`、金额0.924、当日成功0、退款1；没有结果作品。冻结备份`/var/lib/unboundry-rollbacks/v0.6.55-inc-gen-016-refund.lL33YP`，DB SHA-256 `5f64577b630a3ddfe717c38bdf15351d603109805eb20768f4d05abf7ba27a21`。attempt3收口为`provider-failed / PROVIDER_REFUNDED`；task最终failed，`provider_task_id/result_asset_id=null`、实际费用0。
+- 生产Canvas刷新后显示“平台未完成本次生成，费用已全额退回；未再次提交”，APR-020真实退款UI通过。没有视频结果、结果资产或刷新播放证据，因此APR-021～023成功条件失败；版本、发布和真实提交授权全部消费完毕，禁止再次Provider POST。
+- 权威回执：`spec/V0_6_55_PRODUCTION_RECEIPT_2026-08-28.json`。最终结论严格为`PRODUCTION_TECHNICAL_PASS / REAL_PROVIDER_REFUNDED / NO_RESULT / USER_RECHECK`，不得写`REAL_PROVIDER_PASS`或`USER_PASS`。
+- 生产回执与权威状态同步后只运行文档治理最小集m38：`16/16 PASS`，failed/skipped/retries/reportErrors/blocked均0；Node22.23.1/npm10.9.8，source/snapshot SHA-256均为`28e85a90c6735578f10e024a0338a5952607550352f2d923649a072671aa663d`，4173 listener unchanged。没有重复业务spec或唯一full。
 
 ### 2026-08-27 新 Goal R0 实时基线
 
@@ -48,13 +61,12 @@
 - Review/full治理文档同步后，m38最小复验`16/16 PASS`，source/snapshot `90dbd6f1838caf85b694dd2eaf9fbe4d1c4a2d8e6c43159dbe612696535fd958`，4173 listener不变；没有重复业务full。
 
 - 工作树：`/Users/mymy/Documents/unboundry-model-contract-002-2026-08-27`
-- 当前 Git：`codex/inc-gen-016-v0.6.55`；冻结实现commit `5860c51be9602a0292ba343f80d63b2104d6c98f`，Review/full后的测试与治理收口待提交。
-- 当前生产：`v0.6.54 / schema41 / service healthy / USER_RECHECK`。
+- 当前 Git：`codex/inc-gen-016-v0.6.55`；冻结实现commit `5860c51be9602a0292ba343f80d63b2104d6c98f`，发布候选commit `8ffcdeb4be9b48acc3e9e5c58b054238eafbc420`，PR #122已合并。
+- 当前生产：`v0.6.55 / schema41 / service healthy / PRODUCTION_TECHNICAL_PASS / USER_RECHECK`。
 - 目标画布：`67bfb2ee-f895-4308-9111-9de188306514`，名称“MODEL-CONTRACT-001 真实生成验收 2026-08-27”。
 - 目标节点：`video-019c3604-bae5-4880-b7ac-8410231df6a0`，`grok-video-3`，Prompt + 恰好一张首帧，9:16、720p、10秒、音频开启、输出1。
-- 原任务：`da761fff-6a65-46fd-84cf-4dc5bddbc985`；2026-08-27 22:33 左右只增加一次 `new-paid-retry`，execution attempt 2 越过 `provider-boundary`。
-- 最终状态：`failed / OUTCOME_UNKNOWN_BILLING_RISK`；`provider_task_id=null`、`result_asset_id=null`、`actual_cost_microunits=null`，预估 USD 10；两次原任务核对没有唯一账本匹配，未再次提交。
-- 用户截图确认普通页面只显示“核对太频繁，请稍后再试/核对结果”，没有图片或视频结果；这违反产品“工作流自动跑完”的核心合同。
+- 原任务：`da761fff-6a65-46fd-84cf-4dc5bddbc985`。attempt2已由完整Provider账本证明未受理且未扣费；唯一替代attempt3被Provider明确退款。
+- 最终状态：`failed / PROVIDER_REFUNDED`；`provider_task_id=null`、`result_asset_id=null`、`actual_cost_microunits=0`。页面准确显示全额退款且未再次提交，但没有图片或视频结果。
 
 ## 最终审计结论
 
@@ -69,7 +81,7 @@
 - 下列“只授权文档”是上一Session历史时点，已被本次新Goal的明确实施授权取代；不得反向把历史边界当成当前阻断。
 - 用户随后要求生成新Session一次性Goal并提前写明实施所需权限；Goal模板冻结了v0.6.55、GitHub/生产、目标画布、真实费用USD 20上限和一次最终全量Review。用户已在本次Session完整发送并激活该Goal。
 - “只能修改Markdown”“预算为0”“未来另行授权”均只描述上一Session，不是当前执行边界。
-- 当前仍未消费真实Provider/OSS/生产写或费用；GitHub/生产/真实验收只有在前置门通过后才可执行。
+- 当前版本、发布和真实提交授权均已执行并消费；实际费用0。没有新授权不得再发Provider POST或再次发布。
 
 ## 历史文档落地验证
 
@@ -92,4 +104,4 @@
 
 ## 唯一下一步
 
-完成GitHub PR/CI/merge与不可变v0.6.55 Release门；通过后按冻结备份、恢复演练、原子发布、回滚门和目标Canvas allowlist进入生产技术验收。
+当前Goal在“Provider全额退款、无结果、唯一替代提交已消费”的明确停止条件下停止。不要点击页面“重试生成”；若未来继续，只能由用户另行明确授权新预算，并先修复数字task ID解析后建立新的真实验收Goal。

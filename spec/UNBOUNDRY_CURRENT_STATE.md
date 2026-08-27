@@ -1,6 +1,6 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网仍运行v0.6.54/schema41且服务健康；INC-GEN-016本地v0.6.55候选已获唯一独立Review `P0=0/P1=0/GO`。唯一正式safe full执行一次为`1089/1090 PASS`，唯一陈旧文案断言按最小集同步后m22 `41/41 PASS`，未重复full；尚未发布或真实生成。当前严格为`INDEPENDENT_REVIEW_GO / FORMAL_FULL_EXECUTED / STALE_ASSERTION_TARGETED_PASS / GITHUB_GATE_ACTIVE / USER_RECHECK`。
+> **状态分层**：现网运行v0.6.55/schema41且服务健康；PR/main CI、不可移动tag/Release、冻结备份、恢复演练、原子发布、回滚和66秒稳定门通过。受控真实GK替代提交被Provider明确全额退款且没有结果，实际费用0；当前严格为`PRODUCTION_V0_6_55_TECHNICAL_PASS / REAL_PROVIDER_REFUNDED / NO_RESULT / USER_RECHECK`，不得再次POST或写`REAL_PROVIDER_PASS/USER_PASS`。
 
 更新日期：2026-08-28
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
@@ -8,17 +8,20 @@
 本地候选代码版本：**v0.6.55**
 本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_55_USER_RECHECK`
-当前计划标记：`INC_GEN_016_GITHUB_GATE_ACTIVE / REAL_PROVIDER_NOT_RUN`
+当前计划标记：`INC_GEN_016_PRODUCTION_TECHNICAL_PASS / REAL_PROVIDER_REFUNDED_NO_RESULT`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`INC_GEN_016_GITHUB_GATE_ACTIVE / AUTHORIZED_IN_PROGRESS / USER_RECHECK`
+当前发布门：`INC_GEN_016_AUTHORIZATION_CONSUMED_CLOSED / USER_RECHECK`
 
 ## INC-GEN-016 当前区块（2026-08-28）
 
 - 用户核心合同：只点击一次生成；系统自动提交、追踪、恢复、保存结果并回到项目。普通用户不登录中转站、不填写任务号、不点击“核对结果”。
-- 真实事件：画布`67bfb2ee-f895-4308-9111-9de188306514`的视频节点只提交一次新付费attempt；task`da761fff-6a65-46fd-84cf-4dc5bddbc985`为attempt2，越过Provider boundary但`provider_task_id/result_asset_id/actual_cost`均无，最终`OUTCOME_UNKNOWN_BILLING_RISK`。未再次提交。
+- 生产发布：PR #122和main Quality通过；merge `7bdc40f67697e1e3be735db947d3b26ba5b6c0bd`、注释tag `v0.6.55`及GitHub Release不可移动发布完成。生产release为`/opt/unboundry/releases/v0.6.55-inc-gen-016-20260828`；schema41、integrity ok、FK0、service active/enabled、NRestarts0，rollout为目标allowlist。
+- 真实事件：画布`67bfb2ee-f895-4308-9111-9de188306514`、节点`video-019c3604-bae5-4880-b7ac-8410231df6a0`、task`da761fff-6a65-46fd-84cf-4dc5bddbc985`。历史attempt2经Provider完整当日账本证明未受理且未扣费，收口为`PROVIDER_NOT_ACCEPTED_NO_CHARGE`；只在此后消费唯一替代attempt3。
+- attempt3虽获HTTP 200，但响应只含数字task IDs，当前合同没有提取到字符串task ID；Provider账本随后明确为`已退款`、金额0.924、成功0、退款1且无作品。任务收口为`PROVIDER_REFUNDED`、实际费用0、`provider_task_id/result_asset_id=null`，项目内准确显示“平台未完成本次生成，费用已全额退回；未再次提交”。
 - 本地v0.6.55候选已修复有限响应、脱敏证据、持久自动恢复/CAS/退避/事故队列和普通用户人工核对入口；Provider成功后的正式资产与Canvas投影继续复用既有事务/CAS合同。
 - 当前已发布模型、专用connector、旧任务、旧Canvas、模板和不可变Revision的定向非回归已通过；不批量迁移或猜协议。
-- 新Goal已授权实现、GitHub/生产和一次受控真实GK验收；首轮`P0=3/P1=4`与第二轮`P0=2/P1=4`发现均已修复，同一线程第三轮最终`P0=0/P1=0/GO`。最终受影响定向`102/102 PASS`；唯一正式full执行一次为`1089/1090 PASS`，唯一旧文案断言同步后m22 `41/41 PASS`，没有第二次full。真实Provider/OSS/生产写/费用尚为0，当前进入GitHub/CI门。
+- 独立Review最终`P0=0/P1=0/GO`；唯一正式full执行一次为`1089/1090 PASS`，唯一旧文案断言同步后m22 `41/41 PASS`，没有第二次full。最终生产计数tasks954、attempts964、active0、unknown-billing tasks0、media910、publications501、canvases72，66秒内不变。
+- 版本、发布和真实提交授权均已消费。APR-020退款UI通过，但APR-021～023的真实成功/结果/刷新条件失败；禁止再次Provider POST，不能升级为`REAL_PROVIDER_PASS`或`USER_PASS`。生产回执：`spec/V0_6_55_PRODUCTION_RECEIPT_2026-08-28.json`。
 
 权威方案：`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_PLAN_2026-08-27.md`；矩阵：`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_ACCEPTANCE_MATRIX_2026-08-27.md`；断点：`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_CHECKPOINT.md`；本次Goal授权冻结副本：`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_GOAL_PROMPT_2026-08-27.md`。
 
@@ -61,7 +64,7 @@
 
 v0.6.50由PR #114合并为`d3f5490f524b2d8d212ef7607d85afbf1981ca05` / tree `5b12ebeb97ed7a0e9ed34927fca51de2d0fd38ad`并发布不可移动tag/Release，现网release为`/opt/unboundry/releases/v0.6.50-model-contract-workbench-entry-20260827`。当前隔离工作树为`/Users/mymy/Documents/unboundry-model-contract-001-2026-08-26`，已切到用户复验返工分支并含4个待审相关改动；旧`/Users/mymy/Documents/unboundry/app`不得施工或自动清理。
 
-当前工具链分层：普通项目shell、开发、类型检查和CI默认Node `25.9.0` / npm `11.12.1`；现网v0.6.51运行Node `22.23.2` / npm `10.9.8`。安全测试、源码覆盖和不可变release builder继续以Node `22.23.1` / npm `10.9.8`作为生产兼容复现通道；本版没有迁移生产Node运行时。
+当前工具链分层：普通项目shell、开发、类型检查和CI默认Node `25.9.0` / npm `11.12.1`；现网v0.6.55运行Node `22.23.2` / npm `10.9.8`。安全测试、源码覆盖和不可变release builder继续以Node `22.23.1` / npm `10.9.8`作为生产兼容复现通道；本版没有迁移生产Node运行时。
 
 v0.6.47发布状态：用户的一次性commit/push/发布与v0.6.47授权已执行并消费。PR #110、PR/main CI、tag/Release、fresh tag build、冻结备份恢复、原子切换、公网/回环/数据/inventory/5资源与60秒稳定门全通过。生产路径`/opt/unboundry/releases/v0.6.47-governance-node25-20260826`，权威备份`/var/lib/unboundry-rollbacks/v0.6.47-cutover-final2-20j2R3`，回执`spec/V0_6_47_PRODUCTION_RECEIPT_2026-08-26.json`。真实Provider/Generation/OSS/费用0，schema41。用户随后明确回复`v0.6.47 验收通过`，当前为`PRODUCTION_V0_6_47_USER_PASS / USER_PASS`；原receipt保留生成时的技术状态，不回写历史JSON。
 

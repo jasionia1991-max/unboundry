@@ -197,3 +197,10 @@ LOCAL_ADMITTED
 ## 11. 完成定义
 
 代码完成、自动测试、独立 Review、真实 Provider、生产技术通过和用户验收必须分开记录。只有同时满足“全模型非回归 + 一次真实 GK 首帧结果自动回到生产项目 + 用户明确确认”，INC-GEN-016 才能关闭为 `USER_PASS`。
+
+## 12. 2026-08-28 生产最终结果
+
+- v0.6.55已完成GitHub、不可移动Release、生产备份/恢复/回滚和技术稳定门，代码与生产技术部分通过。
+- 真实GK验收中，历史attempt2经Provider完整账本证明未受理且未扣费；唯一替代attempt3随后被Provider明确全额退款，成功数0、退款数1，没有结果作品、`result_asset_id`或Canvas视频。
+- 产品已在项目内准确显示退款且未再次提交，APR-020通过；但发布硬门9及APR-021～023的成功条件失败。费用实际为0，版本、发布和真实提交授权全部消费完毕。
+- 本Goal停在`PRODUCTION_TECHNICAL_PASS / REAL_PROVIDER_REFUNDED / NO_RESULT / USER_RECHECK`。禁止再次Provider POST；不得把终态退款证据写成`REAL_PROVIDER_PASS`，也不得关闭为`USER_PASS`。
