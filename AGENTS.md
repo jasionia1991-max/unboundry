@@ -4,7 +4,7 @@
 
 2026-08-27 MODEL-CONTRACT-001实时基线：生产运行`v0.6.51/schema41`；PR #116已合并为`0c63938536a3056b1b1f652486d2ea5c72ad283f`，候选、merge与tag tree均为`90861ecd464c4413a1bdfe57abad6672227f679e`，注释tag/GitHub Release、PR/main CI、fresh tag build、冻结双副本恢复门、原子切换与回滚门均已完成。生产数据完整性、33个静态文件逐字节、66秒稳定门和四视口零付费浏览器通过；当前13张可见模型卡均有合同工作台入口。真实Provider/Generation/OSS/新费用均为0，一次性v0.6.51发布授权已消费；技术状态严格为`PRODUCTION_V0_6_51_TECHNICAL_PASS / USER_RECHECK`。原隔离工作树`/Users/mymy/Documents/unboundry-model-contract-001-2026-08-26`仍含进入Goal前的用户历史改动，**不得替用户清理、覆盖或把它当成干净main**。
 
-2026-08-27 MODEL-CONTRACT-002 当前施工断点：v0.6.52生产只读dry-run因模板运行时默认值未被兼容分析器识别而fail-closed；v0.6.53冻结副本演练又因把无关账户的无效Ark凭证误当成共享Provider全局失败而fail-closed。两个tag均保留且Release明确标记未部署，生产始终保持v0.6.51/schema41。用户要求继续发布，修正版自动递增为`v0.6.54`；无效账户凭证仍进入脱敏快照与CAS，但只在该账户真实任务边界fail-closed，不再阻断模型级合同治理。独立Review最终`P0=0/P1=0/GO`，唯一safe full `122/122 specs、1085/1085 tests PASS`，不得重复full。权威入口为`spec/MODEL_CONTRACT_002_CHECKPOINT.md`、对应方案与验收矩阵。真实Provider/Generation/OSS/新费用均0；不得自动重跑失败任务，不得把fake合同通过写成真实成片质量或`USER_PASS`。
+2026-08-27 MODEL-CONTRACT-002 当前权威状态：v0.6.52生产只读dry-run与v0.6.53冻结副本演练均fail-closed并保留为未部署不可变证据；修正版`v0.6.54`已完成PR #120/main CI、merge、tag/Release、fresh tag build、候选与生产冻结副本双幂等演练、备份、原子数据/版本切换、回滚门、33静态文件逐字节、66秒稳定门和零付费生产浏览器验收。生产运行v0.6.54/schema41，service active/enabled、NRestarts0；GK为已发布revision 2/EXACT并显示文字与单首帧，`kwvideo-v2`已归档。真实Provider/Generation/OSS/新费用均0，失败任务未重跑；当前严格为`PRODUCTION_V0_6_54_TECHNICAL_PASS / USER_RECHECK`，不得冒充成片质量或`USER_PASS`。权威回执为`spec/V0_6_54_PRODUCTION_RECEIPT_2026-08-27.json`。
 
 人和 AI 共用的上线拍板规矩见仓库根目录 `上线规矩.md`。发布前必须分别获得版本号确认和允许发布；一次授权只用一次。
 

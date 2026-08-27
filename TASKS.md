@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻当前任务
 
-## MODEL-CONTRACT-002 历史 revision 与当前发布政策解耦（v0.6.54 发布中 / USER_RECHECK）
+## MODEL-CONTRACT-002 历史 revision 与当前发布政策解耦（PRODUCTION v0.6.54 TECHNICAL PASS / USER_RECHECK）
 
 - [x] 从最新`origin/main@41bef082b7349667b3161b705e8b705eabe84e83`建立干净隔离worktree，完成生产、目标任务、11模型、22模板/34节点和4173只读基线。
 - [x] 历史revision完整性与当前发布政策解耦；document/compiler hash、身份、安全编译和支持版本继续fail-closed。
@@ -17,8 +17,9 @@
 - [x] v0.6.52生产只读dry-run在写入前fail-closed；修复后真实矩阵22/22模板、34/34节点兼容。v0.6.53冻结副本演练又因无关账户无效Ark凭证被误作全局阻断而fail-closed；两个tag/Release均保留并标记未部署，生产没有切换或写入。
 - [x] v0.6.52 package/lock/final runtime冻结；默认Node25 build PASS，Node22 safe m38+m81 `56/56 PASS`，source/snapshot `78b96eacab4a7c4b5de76009cc96878eae51f428865ea4a80c3705977220e177`，未重复full。
 - [x] v0.6.53 PR #119、CI、merge、tag/Release与fresh build完成，但冻结副本演练阻断，未部署；不移动tag。
-- [ ] 修复过宽账户凭证闸门并冻结v0.6.54版本门；完成PR/CI、merge、候选冻结副本幂等演练后再创建不可移动tag/GitHub Release、fresh tag build、生产原子切换与回滚门。
+- [x] 修复过宽账户凭证闸门并冻结v0.6.54版本门；PR #120/main CI、merge、候选冻结副本幂等演练、不可移动tag/GitHub Release、fresh tag build、生产备份、原子切换与回滚门均通过。
 - [x] v0.6.54过宽闸门修复m102 `13/13 PASS`；版本冻结后默认build PASS，safe m38+m81 `56/56 PASS`，source/snapshot `66fafbe6…fa97d`，4173 unchanged；未重复full。
+- [x] 生产v0.6.54/schema41 active/enabled、NRestarts0；33静态文件逐字节、66秒稳定门、GK revision2/文字+单首帧、kwvideo-v2普通列表下架及浏览器console 0 error/warn通过。真实Provider/Generation/OSS/费用0，失败任务未重跑；回执`spec/V0_6_54_PRODUCTION_RECEIPT_2026-08-27.json`，状态保持`USER_RECHECK`。
 
 权威方案：`spec/MODEL_CONTRACT_002_IMMUTABLE_REVISION_REMEDIATION_PLAN_2026-08-27.md`；矩阵：`spec/MODEL_CONTRACT_002_ACCEPTANCE_MATRIX_2026-08-27.md`；断点：`spec/MODEL_CONTRACT_002_CHECKPOINT.md`。
 
