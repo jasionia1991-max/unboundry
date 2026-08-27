@@ -63,6 +63,7 @@ async function expectRequestTimeout(
     fetcher: typeof fetch,
     deadlineOptions: ProviderRequestDeadlineOverrides,
   ) => Promise<unknown>,
+  providerTaskMayStillRun = false,
 ) {
   const timer = manualDeadline();
   const requestStarted = deferred<AbortSignal | null>();
@@ -73,7 +74,10 @@ async function expectRequestTimeout(
   const pending = operation(fetcher, timer.options);
   const requestSignal = await requestStarted.promise;
   timer.expire();
-  await expect(pending).rejects.toMatchObject({ code: "TIMEOUT" });
+  await expect(pending).rejects.toMatchObject({
+    code: "TIMEOUT",
+    providerTaskMayStillRun,
+  });
   expect(requestSignal?.aborted).toBe(true);
 }
 
@@ -436,7 +440,8 @@ test("Seedance submit, poll and cancel each enforce an injectable hard deadline"
       undefined,
       undefined,
       deadlineOptions,
-    )
+    ),
+    true,
   );
   await expectRequestTimeout((fetcher, deadlineOptions) =>
     getVolcengineArkVideoTask(
@@ -479,13 +484,21 @@ test("provider polling delay removes its abort listener after normal resolve", a
 
 test("Provider errors are safe and do not expose the key or remote response", async () => {
   const remoteBody = "remote-sensitive-details";
+  const evidence: Array<Record<string, unknown>> = [];
   const request = createVolcengineArkVideoTask(
     profile,
     {
       model: "doubao-seedance-2-0-mini-260615",
       prompt: "safe prompt",
     },
-    async () => new Response(remoteBody, { status: 500 }),
+    async () => new Response(remoteBody, {
+      headers: { "x-request-id": "ark-safe-500" },
+      status: 500,
+    }),
+    undefined,
+    undefined,
+    undefined,
+    (item) => evidence.push(item),
   );
   await expect(request).rejects.toThrow("火山方舟暂时无法处理视频任务");
   try {
@@ -495,6 +508,54 @@ test("Provider errors are safe and do not expose the key or remote response", as
     expect(message).not.toContain(profile.apiKey);
     expect(message).not.toContain(remoteBody);
   }
+  expect(evidence).toContainEqual(expect.objectContaining({
+    failureStage: "http-status",
+    fieldPaths: [],
+    httpStatus: 500,
+    providerRequestId: "ark-safe-500",
+    responseBytes: Buffer.byteLength(remoteBody),
+  }));
+
+  const missingTaskId = await createVolcengineArkVideoTask(
+    profile,
+    {
+      model: "doubao-seedance-2-0-mini-260615",
+      prompt: "missing task id",
+    },
+    async () => new Response(JSON.stringify({ status: "queued" }), {
+      headers: { "Content-Type": "application/json" },
+      status: 200,
+    }),
+    undefined,
+    undefined,
+    undefined,
+    (item) => evidence.push(item),
+  ).catch((error: unknown) => error);
+  expect(missingTaskId).toMatchObject({
+    code: "FORMAT",
+    providerTaskMayStillRun: true,
+  });
+  const nullBody = await createVolcengineArkVideoTask(
+    profile,
+    {
+      model: "doubao-seedance-2-0-mini-260615",
+      prompt: "null response body",
+    },
+    async () => new Response("null", {
+      headers: { "Content-Type": "application/json" },
+      status: 200,
+    }),
+  ).catch((error: unknown) => error);
+  expect(nullBody).toMatchObject({
+    code: "FORMAT",
+    providerTaskMayStillRun: true,
+  });
+  expect(evidence).toContainEqual(expect.objectContaining({
+    fieldPaths: expect.arrayContaining(["status", "status:string"]),
+    httpStatus: 200,
+    responseBytes: expect.any(Number),
+    structureHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+  }));
 });
 
 test("service restart keeps the original Ark task id and does not create a duplicate", async () => {

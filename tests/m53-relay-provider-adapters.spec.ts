@@ -908,13 +908,13 @@ test("unknown task states and mismatched media results fail closed", async () =>
     },
   });
   await expect(inspect({ is_final: false, state: "mystery" }))
-    .rejects.toMatchObject({ code: "FORMAT" });
+    .rejects.toMatchObject({ code: "FORMAT", providerTaskMayStillRun: true });
   await expect(inspect({
     is_final: true,
     result_type: "video",
     result_url: "https://example.test/result.mp4",
     state: "success",
-  })).rejects.toMatchObject({ code: "FORMAT" });
+  })).rejects.toMatchObject({ code: "FORMAT", providerTaskMayStillRun: true });
   expect(calls).toBe(2);
 });
 

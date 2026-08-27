@@ -196,7 +196,7 @@ test("the shared save gate retries unknown errors with a bounded budget and reco
     };
     expect(parsed).toMatchObject({
       event: "generation-diagnostic",
-      message: "unknown local publication failure",
+      message: "Generation operation failed",
       stage: "save",
       taskId: "save-gate-unknown",
     });

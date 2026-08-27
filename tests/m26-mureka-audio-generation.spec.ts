@@ -150,6 +150,7 @@ async function expectRequestTimeout(
     fetcher: typeof fetch,
     deadlineOptions: ProviderRequestDeadlineOverrides,
   ) => Promise<unknown>,
+  providerTaskMayStillRun = false,
 ) {
   const timer = manualDeadline();
   const requestStarted = deferred<AbortSignal | null>();
@@ -160,7 +161,10 @@ async function expectRequestTimeout(
   const pending = operation(fetcher, timer.options);
   const requestSignal = await requestStarted.promise;
   timer.expire();
-  await expect(pending).rejects.toMatchObject({ code: "TIMEOUT" });
+  await expect(pending).rejects.toMatchObject({
+    code: "TIMEOUT",
+    providerTaskMayStillRun,
+  });
   expect(requestSignal?.aborted).toBe(true);
 }
 
@@ -303,7 +307,8 @@ test("Mureka submit and poll each enforce an injectable hard deadline", async ()
       undefined,
       undefined,
       deadlineOptions,
-    )
+    ),
+    true,
   );
   await expectRequestTimeout((fetcher, deadlineOptions) =>
     getMurekaAudioTask(
@@ -448,6 +453,7 @@ test("Mureka result URLs use the shared port, DNS, redirect and credential guard
 });
 
 test("Mureka remote errors and nested echoes never expose or persist the API key", async () => {
+  const evidence: Array<Record<string, unknown>> = [];
   const remoteEcho = {
     detail: {
       authorization: `Bearer ${profile.apiKey}`,
@@ -497,11 +503,21 @@ test("Mureka remote errors and nested echoes never expose or persist the API key
     outputCount: 1,
     prompt: "安静的钢琴配乐",
     streamPlayback: false,
-  }, async () => new Response(JSON.stringify(remoteEcho), { status: 500 })));
+  }, async () => new Response(JSON.stringify(remoteEcho), {
+    headers: { "x-request-id": "mureka-safe-500" },
+    status: 500,
+  }), undefined, undefined, undefined, (item) => evidence.push(item)));
   expect(createError).toMatchObject({
     code: "REMOTE",
     message: "Mureka 暂未接受本次请求",
   });
+  expect(evidence).toContainEqual(expect.objectContaining({
+    failureStage: "http-status",
+    fieldPaths: [],
+    httpStatus: 500,
+    providerRequestId: "mureka-safe-500",
+    responseBytes: Buffer.byteLength(JSON.stringify(remoteEcho)),
+  }));
 
   const echoedTaskId = await captureError(createMurekaAudioTask(profile, {
     model: "mureka-9",
@@ -512,8 +528,32 @@ test("Mureka remote errors and nested echoes never expose or persist the API key
   }, async () => new Response(JSON.stringify({
     ...remoteEcho,
     id: profile.apiKey,
-  }), { status: 200 })));
-  expect(echoedTaskId).toMatchObject({ code: "FORMAT" });
+  }), { status: 200 }), undefined, undefined, undefined,
+  (item) => evidence.push(item)));
+  expect(echoedTaskId).toMatchObject({
+    code: "FORMAT",
+    providerTaskMayStillRun: true,
+  });
+  const nullBody = await captureError(createMurekaAudioTask(profile, {
+    model: "mureka-9",
+    musicGenerationMode: "instrumental",
+    outputCount: 1,
+    prompt: "null response body",
+    streamPlayback: false,
+  }, async () => new Response("null", {
+    headers: { "Content-Type": "application/json" },
+    status: 200,
+  })));
+  expect(nullBody).toMatchObject({
+    code: "FORMAT",
+    providerTaskMayStillRun: true,
+  });
+  expect(evidence).toContainEqual(expect.objectContaining({
+    fieldPaths: expect.arrayContaining(["id", "id:string"]),
+    httpStatus: 200,
+    responseBytes: expect.any(Number),
+    structureHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+  }));
 
   const failed = await getMurekaAudioTask(
     profile,
@@ -576,8 +616,8 @@ test("Mureka remote errors and nested echoes never expose or persist the API key
     }) as unknown as Response,
   ));
   expect(readError).toMatchObject({
-    code: "NETWORK",
-    message: "暂时无法连接 Mureka",
+    code: "REMOTE",
+    message: "Mureka 暂未接受本次请求",
   });
 
   const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-mureka-safe-error-"));

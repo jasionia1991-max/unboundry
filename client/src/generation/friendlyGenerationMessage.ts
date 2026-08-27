@@ -133,7 +133,9 @@ const generationErrorCodeMessages: Record<
   PROVIDER_LOCK_BUSY: "系统正在处理，请稍后自动重试",
   PROVIDER_PROFILE_MISSING: "平台安全配置缺失，请联系管理员",
   PROVIDER_REQUEST_FAILED:
-    "已向模型提交，但请求未完成；为避免重复扣费，本次不会自动重提",
+    "已向模型提交，系统会自动找回结果且不会重复付费提交",
+  AUTOMATIC_RESULT_RECOVERY:
+    "系统正在自动找回平台结果；不会重复付费提交",
   PROVIDER_RECOVERY_ATTEMPT_USED: "模型配置更新后的恢复尝试已使用，请等待结果或联系管理员",
   PROVIDER_REVERIFY_REQUIRED: "平台连接资料已更新，请管理员完成只读连接检查",
   PROVIDER_RESULT_FORMAT: "模型已响应，但结果无法安全识别；本次不会自动重提",
@@ -142,13 +144,13 @@ const generationErrorCodeMessages: Record<
   REFERENCE_STORAGE_BUSY: "参考图临时存储繁忙，本次没有向模型提交",
   REFERENCE_UPLOAD_FAILED: "参考图临时上传失败，本次没有向模型提交",
   PROVIDER_RESULT_MISSING:
-    "旧任务的平台结果仍无法确认；为避免重复扣费，请只核对原任务，不要重新生成",
+    "旧任务的平台结果仍无法确认；系统会继续自动找回且不会重新提交",
   OUTCOME_UNKNOWN_BILLING_RISK:
-    "模型平台可能已经受理或扣费；为避免重复扣费，系统已禁止重新提交，只能继续核对原任务",
+    "模型平台可能已经受理或扣费；系统会自动找回结果并禁止重复提交",
   PROVIDER_REFUNDED: "模型平台已确认退款，可以安全重新生成",
-  RECONCILE_RATE_LIMIT: "核对太频繁，请稍后再试",
+  RECONCILE_RATE_LIMIT: "系统正在自动找回结果，请稍后查看",
   RETRY_OUTCOME_UNKNOWN:
-    "上次结果还没对上，为避免重复扣费，请先点「核对结果」，不要重新生成",
+    "上次结果仍在自动找回中；为避免重复扣费，当前不能重新生成",
   RETRY_SNAPSHOT_CHANGED: "任务快照已变化，不能继续旧任务，请重新提交",
   RETRY_SNAPSHOT_INCOMPATIBLE: "任务快照与当前节点不兼容，请重新提交",
   SERVICE_RESTARTED: "服务刚刚重启，任务状态已恢复，请重新检查",

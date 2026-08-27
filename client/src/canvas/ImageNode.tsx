@@ -76,7 +76,6 @@ import {
   generationFailureMessage,
   generationFailureIsDefinitive,
   generationInputKey as createGenerationInputKey,
-  generationNeedsReconcile,
   generationRetryVisible,
   safelyRetryableGenerationTask,
 } from "../generation/generationRetry";
@@ -2495,16 +2494,7 @@ function ImageNodeImpl({
     errorCode: data.imageGenerationErrorCode,
     retryAvailable,
   });
-  const canReconcileImage = Boolean(
-    data.imageGenerationTaskId &&
-    data.imageGenerationError &&
-    !generating &&
-    !isFixture &&
-    generationNeedsReconcile(
-      data.imageGenerationErrorCode,
-      data.imageGenerationRetryBlockCode,
-    ),
-  );
+  const canReconcileImage = false;
 
   const clearImageIntentAfterDurableTerminalPatch = (taskId: string) => {
     void (async () => {

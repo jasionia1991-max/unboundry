@@ -125,6 +125,7 @@ export const relayMediaGenerationProvider: MediaGenerationProvider = {
     const transport = {
       beforeProviderRequest: execution.beforeProviderRequest,
       fetcher: execution.fetcher,
+      onProviderResponseEvidence: execution.onProviderResponseEvidence,
       signal: execution.signal,
       usePinnedTransport: true,
     } as const;
@@ -168,6 +169,7 @@ export const relayMediaGenerationProvider: MediaGenerationProvider = {
     const transport = {
       beforeProviderRequest: execution.beforeProviderRequest,
       fetcher: execution.fetcher,
+      onProviderResponseEvidence: execution.onProviderResponseEvidence,
       signal: execution.signal,
       usePinnedTransport: true,
     } as const;
@@ -229,6 +231,8 @@ export const arkVideoGenerationProvider: MediaGenerationProvider = {
       providerTaskId,
       execution.fetcher,
       execution.signal,
+      undefined,
+      execution.onProviderResponseEvidence,
     );
     return { providerTaskId, state: "cancelled" };
   },
@@ -239,6 +243,8 @@ export const arkVideoGenerationProvider: MediaGenerationProvider = {
       providerTaskId,
       execution.fetcher,
       execution.signal,
+      undefined,
+      execution.onProviderResponseEvidence,
     ));
   },
   normalize: arkNormalized,
@@ -263,6 +269,8 @@ export const arkVideoGenerationProvider: MediaGenerationProvider = {
       execution.fetcher,
       execution.signal,
       execution.beforeProviderRequest,
+      undefined,
+      execution.onProviderResponseEvidence,
     );
     return {
       providerTaskId: created.id,
@@ -327,6 +335,8 @@ export const murekaMediaGenerationProvider: MediaGenerationProvider = {
       queryKind as MurekaAudioQueryKind,
       execution.fetcher,
       execution.signal,
+      undefined,
+      execution.onProviderResponseEvidence,
     ));
   },
   normalize: murekaNormalized,
@@ -349,6 +359,8 @@ export const murekaMediaGenerationProvider: MediaGenerationProvider = {
       execution.fetcher,
       execution.signal,
       execution.beforeProviderRequest,
+      undefined,
+      execution.onProviderResponseEvidence,
     );
     return {
       providerTaskId: created.id,

@@ -247,6 +247,7 @@ export type RelayProviderExecution = Readonly<{
   beforeProviderRequest?: () => void;
   fetcher?: typeof fetch;
   mediaLifecycle?: Readonly<{ ownerId: string }>;
+  onProviderResponseEvidence?: (evidence: RelayProviderResponseEvidence) => void;
   /**
    * TTL for reference URLs materialized during preparation. Asynchronous
    * submissions keep references alive until polling finishes, so callers that
@@ -258,6 +259,16 @@ export type RelayProviderExecution = Readonly<{
   temporaryImageObjectStore?: RelayTemporaryImageObjectStore;
   timeoutMs?: number;
   usePinnedTransport?: boolean;
+}>;
+
+export type RelayProviderResponseEvidence = Readonly<{
+  contentType?: string;
+  failureStage?: string;
+  fieldPaths: readonly string[];
+  httpStatus?: number;
+  providerRequestId?: string;
+  responseBytes?: number;
+  structureHash?: string;
 }>;
 
 export type RelayTemporaryImageObjectStore = Readonly<{
@@ -516,46 +527,20 @@ function remoteError(status: number) {
   return new RelayProviderError("REMOTE", false, undefined, status);
 }
 
-async function providerErrorText(response: Response) {
-  if (!response.body) return "";
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    size += value.byteLength;
-    if (size > 4_096) {
-      await reader.cancel();
-      break;
-    }
-    chunks.push(value);
-  }
-  const text = Buffer.concat(
-    chunks.map((chunk) => Buffer.from(chunk)),
-  ).toString("utf8");
-  try {
-    const body = JSON.parse(text) as {
-      error?: { message?: unknown };
-      message?: unknown;
-    };
-    const message = typeof body.error?.message === "string"
-      ? body.error.message
-      : typeof body.message === "string"
-        ? body.message
-        : "";
-    return message.replace(/\s+/g, " ").trim().slice(0, 400);
-  } catch {
-    return text.replace(/\s+/g, " ").trim().slice(0, 400);
-  }
-}
-
-async function readLimitedJson(response: Response, maximumBytes: number) {
+async function readLimitedJson(
+  response: Response,
+  maximumBytes: number,
+  onFailure?: (responseBytes: number | undefined, stage: string) => void,
+) {
   const declared = Number(response.headers.get("Content-Length"));
   if (Number.isFinite(declared) && declared > maximumBytes) {
+    onFailure?.(declared, "response-size");
     throw new RelayProviderError("FORMAT");
   }
-  if (!response.body) throw new RelayProviderError("FORMAT");
+  if (!response.body) {
+    onFailure?.(0, "response-body");
+    throw new RelayProviderError("FORMAT");
+  }
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
@@ -565,17 +550,49 @@ async function readLimitedJson(response: Response, maximumBytes: number) {
     size += value.byteLength;
     if (size > maximumBytes) {
       await reader.cancel();
+      onFailure?.(size, "response-size");
       throw new RelayProviderError("FORMAT");
     }
     chunks.push(value);
   }
   try {
-    return JSON.parse(
-      Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString("utf8"),
-    ) as unknown;
+    const bytes = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
+    return {
+      body: JSON.parse(bytes.toString("utf8")) as unknown,
+      responseBytes: bytes.byteLength,
+    };
   } catch {
+    onFailure?.(size, "response-format");
     throw new RelayProviderError("FORMAT");
   }
+}
+
+function responseStructure(value: unknown) {
+  const paths: string[] = [];
+  const visit = (item: unknown, path: string, depth: number) => {
+    if (paths.length >= 128 || depth > 6) return;
+    if (Array.isArray(item)) {
+      paths.push(`${path || "$"}[]`);
+      if (item.length) visit(item[0], `${path || "$"}[]`, depth + 1);
+      return;
+    }
+    if (isRecord(item)) {
+      for (const key of Object.keys(item).sort().slice(0, 64)) {
+        const next = path ? `${path}.${key}` : key;
+        paths.push(next);
+        visit(item[key], next, depth + 1);
+      }
+      return;
+    }
+    paths.push(`${path || "$"}:${item === null ? "null" : typeof item}`);
+  };
+  visit(value, "", 0);
+  return [...new Set(paths)].sort();
+}
+
+function cleanResponseHeader(value: string | null) {
+  const normalized = value?.replace(/[^A-Za-z0-9._:/+;= -]/g, "").trim();
+  return normalized ? normalized.slice(0, 160) : undefined;
 }
 
 async function relayJsonRequest(input: {
@@ -639,19 +656,58 @@ async function relayJsonRequest(input: {
         : input.execution.fetcher,
       resolver: input.execution.resolver,
     });
+    const baseEvidence = {
+      contentType: cleanResponseHeader(response.headers.get("content-type")),
+      fieldPaths: [] as readonly string[],
+      httpStatus: response.status,
+      providerRequestId: cleanResponseHeader(
+        response.headers.get("x-request-id") ??
+          response.headers.get("x-trace-id") ??
+          response.headers.get("request-id"),
+      ),
+    };
     if (!response.ok) {
-      const providerText = await providerErrorText(response);
-      const error = remoteError(response.status);
-      throw providerText
-        ? new RelayProviderError(
-            error.code,
-            error.providerTaskMayStillRun,
-            providerText,
-            error.statusCode,
-          )
-        : error;
+      input.execution.onProviderResponseEvidence?.({
+        ...baseEvidence,
+        failureStage: "http-status",
+        responseBytes: Number(response.headers.get("content-length")) || undefined,
+      });
+      if (response.body) await response.body.cancel().catch(() => undefined);
+      throw remoteError(response.status);
     }
-    return await readLimitedJson(response, input.maximumResponseBytes);
+    let parsed: Awaited<ReturnType<typeof readLimitedJson>>;
+    try {
+      parsed = await readLimitedJson(
+        response,
+        input.maximumResponseBytes,
+        (responseBytes, failureStage) =>
+          input.execution.onProviderResponseEvidence?.({
+            ...baseEvidence,
+            failureStage,
+            responseBytes,
+          }),
+      );
+    } catch (error) {
+      if (error instanceof RelayProviderError) {
+        throw new RelayProviderError(
+          error.code,
+          Boolean(input.providerTaskMayStillRun),
+          undefined,
+          response.status,
+        );
+      }
+      throw error;
+    }
+    const fieldPaths = responseStructure(parsed.body);
+    input.execution.onProviderResponseEvidence?.({
+      ...baseEvidence,
+      fieldPaths,
+      responseBytes: parsed.responseBytes,
+      structureHash: createHash("sha256")
+        .update(JSON.stringify(fieldPaths))
+        .digest("hex"),
+    });
+    return parsed.body;
   } catch (error) {
     if (error instanceof RelayProviderError) throw error;
     if (error instanceof OutboundDestinationError) {
@@ -1678,10 +1734,18 @@ export async function submitRelayMedia(
     protocol: request.providerProtocol,
     providerTaskMayStillRun: true,
   });
-  if (!isRecord(body)) throw new RelayProviderError("FORMAT");
-  const taskIds = [...new Set(taskIdCandidates(body).map((value) =>
-    cleanExternalTaskId(value, connection.apiKey)
-  ))];
+  if (!isRecord(body)) throw new RelayProviderError("FORMAT", true);
+  let taskIds: string[];
+  try {
+    taskIds = [...new Set(taskIdCandidates(body).map((value) =>
+      cleanExternalTaskId(value, connection.apiKey)
+    ))];
+  } catch (error) {
+    if (error instanceof RelayProviderError && error.code === "FORMAT") {
+      throw new RelayProviderError("FORMAT", true);
+    }
+    throw error;
+  }
   if (taskIds.length !== 1) {
     throw new RelayProviderError("FORMAT", true);
   }
@@ -1718,10 +1782,20 @@ export async function submitContractRelayMedia(
     protocol: request.providerProtocol,
     providerTaskMayStillRun: true,
   });
-  if (!isRecord(body) || Object.keys(body).some((key) =>
-    !["task_id", "state"].includes(key)
-  )) throw new RelayProviderError("FORMAT", true);
-  const taskId = cleanExternalTaskId(body.task_id, connection.apiKey);
+  // The declarative contract owns the finite task-id path. Provider response
+  // envelopes may add harmless metadata (for example request_id) without
+  // changing that contract; response bytes are already bounded by
+  // relayJsonRequest and cleanExternalTaskId still rejects unsafe IDs.
+  if (!isRecord(body)) throw new RelayProviderError("FORMAT", true);
+  let taskId: string;
+  try {
+    taskId = cleanExternalTaskId(body.task_id, connection.apiKey);
+  } catch (error) {
+    if (error instanceof RelayProviderError && error.code === "FORMAT") {
+      throw new RelayProviderError("FORMAT", true);
+    }
+    throw error;
+  }
   return {
     capability: request.capability,
     externalTaskId: taskId,
@@ -1765,8 +1839,16 @@ export async function pollContractRelayMediaTask(
     protocol: input.providerProtocol,
     providerTaskMayStillRun: true,
   });
-  if (!isRecord(body)) throw new RelayProviderError("FORMAT");
-  const state = exactContractState(contract, body.state);
+  if (!isRecord(body)) throw new RelayProviderError("FORMAT", true);
+  let state: ReturnType<typeof exactContractState>;
+  try {
+    state = exactContractState(contract, body.state);
+  } catch (error) {
+    if (error instanceof RelayProviderError && error.code === "FORMAT") {
+      throw new RelayProviderError("FORMAT", true);
+    }
+    throw error;
+  }
   if (state === "running") return {
     capability: input.capability,
     providerProtocol: "media-generate" as const,
@@ -1780,10 +1862,20 @@ export async function pollContractRelayMediaTask(
     state,
   };
   if (contract.result.resultPath !== "result_url") {
-    throw new RelayProviderError("FORMAT");
+    throw new RelayProviderError("FORMAT", true);
   }
-  if (typeof body.result_url !== "string") throw new RelayProviderError("FORMAT");
-  const transientUrl = cleanTransientOutputUrl(body.result_url);
+  if (typeof body.result_url !== "string") {
+    throw new RelayProviderError("FORMAT", true);
+  }
+  let transientUrl: string;
+  try {
+    transientUrl = cleanTransientOutputUrl(body.result_url);
+  } catch (error) {
+    if (error instanceof RelayProviderError && error.code === "FORMAT") {
+      throw new RelayProviderError("FORMAT", true);
+    }
+    throw error;
+  }
   return {
     capability: input.capability,
     outputs: [{
@@ -1936,11 +2028,18 @@ export async function pollRelayMediaTask(
       `/v1/media/status?task_id=${encodeURIComponent(taskId)}`,
     );
   }
-  return parseMediaTaskSnapshot(
-    input.capability,
-    body,
-    input.requireResultType === true,
-  );
+  try {
+    return parseMediaTaskSnapshot(
+      input.capability,
+      body,
+      input.requireResultType === true,
+    );
+  } catch (error) {
+    if (error instanceof RelayProviderError && error.code === "FORMAT") {
+      throw new RelayProviderError("FORMAT", true);
+    }
+    throw error;
+  }
 }
 
 export async function routeRelayProviderRequest(

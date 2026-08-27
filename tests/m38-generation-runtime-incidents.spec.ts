@@ -1260,6 +1260,21 @@ test("preserved asynchronous Provider IDs stay resumable and cannot be discarded
     .toBe("provider-cancel-unavailable");
   expect(generationTaskCancellationMode(task("audio", "retrying")))
     .toBe("provider-cancel-unavailable");
+
+  const incident = task("video", "failed");
+  incident.errorCode = "OPERATOR_INCIDENT";
+  expect(retrySafetyDecision(incident, {
+    credentialRevision: 1,
+    executionAttempt: 1,
+    outcome: "accepted",
+    providerModelId: incident.providerModelId!,
+    providerProfileId: incident.providerProfileId!,
+    providerTaskId: incident.providerTaskId,
+  }, false)).toEqual({
+    allowed: false,
+    code: "OPERATOR_INCIDENT",
+    reason: "该任务已进入管理员事故队列，不能人工重试或重新提交",
+  });
 });
 
 test("only capability success or an explicit Provider/model update clears an auth incident", async () => {
@@ -2326,6 +2341,16 @@ test("server recovery sweep auto-resumes a failed task that still holds a Provid
     const taskId = created.task.id;
     const running = store.transition(taskId, "running");
     expect(running).toMatchObject({ attempt: 1, state: "running" });
+    // A historical task may already be on attempt 2. Recovery of its accepted
+    // Provider task is not a third paid attempt and must preserve this number.
+    database.prepare(`
+      UPDATE generation_tasks SET attempt = 2 WHERE id = ?
+    `).run(taskId);
+    database.prepare(`
+      INSERT INTO generation_admission_events (
+        task_id, execution_attempt, owner_id, kind, admission_type, created_at
+      ) VALUES (?, 2, ?, 'image', 'new-paid-retry', ?)
+    `).run(taskId, ownerId, baseline);
     store.recordProviderAttempt(taskId);
     store.setProviderTaskId(taskId, "sweep-provider-task-123");
     store.transition(taskId, "failed", {
@@ -2356,15 +2381,84 @@ test("server recovery sweep auto-resumes a failed task that still holds a Provid
 
     const launched: string[] = [];
     await runGenerationRecoverySweep({
-      launch: (id) => launched.push(id),
+      launch: (id) => {
+        launched.push(id);
+        expect(store.get(id)).toMatchObject({ attempt: 2, state: "running" });
+        store.complete(id, {
+          actualCostMicrounits: 5_000_000,
+          resultAssetId: "sweep-recovered-asset-001",
+        });
+      },
       store,
     });
     const recovered = store.get(taskId);
-    expect(recovered?.state).toBe("queued");
-    expect(recovered?.attempt).toBe(1);
+    expect(recovered?.state).toBe("success");
+    expect(recovered?.attempt).toBe(2);
     expect(launched).toEqual([taskId]);
+    expect(store.getProviderAttemptForTask(taskId)).toMatchObject({
+      executionAttempt: 2,
+      outcome: "completed",
+      providerTaskId: "sweep-provider-task-123",
+    });
   } finally {
     database.close();
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("server recovery sweep binds one ledger match and launches without a second paid attempt", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-no-id-sweep-"));
+  const store = createGenerationTaskStore(dataDirectory);
+  try {
+    const created = store.create({
+      canvasId: "no-id-sweep-canvas",
+      idempotencyKey: "no-id-sweep-0001",
+      kind: "video",
+      modelConfiguration: { providerProtocol: "media-generate" },
+      nodeId: "no-id-sweep-node",
+      ownerId: "__test__",
+      prompt: "recover one ledger result",
+      providerModelId: "grok-video-3",
+      providerProfileId: "relay-profile",
+    });
+    const running = store.transition(created.task.id, "running")!;
+    store.recordProviderAttempt(running.id);
+    store.transition(running.id, "recovering", {
+      code: "AUTOMATIC_RESULT_RECOVERY",
+      message: "automatic recovery",
+    });
+    const launched: string[] = [];
+    let matches = 0;
+    await runGenerationRecoverySweep({
+      launch: (id) => launched.push(id),
+      match: async () => {
+        matches += 1;
+        return {
+          status: "one" as const,
+          record: {
+            createdAt: running.createdAt,
+            model: "grok-video-3",
+            state: "success" as const,
+            taskId: "provider-ledger-match-001",
+          },
+        };
+      },
+      store,
+    });
+    expect(matches).toBe(1);
+    expect(launched).toEqual([running.id]);
+    expect(store.get(running.id)).toMatchObject({
+      attempt: 1,
+      providerTaskId: "provider-ledger-match-001",
+      state: "running",
+    });
+    expect(store.getProviderAttemptForTask(running.id)).toMatchObject({
+      executionAttempt: 1,
+      outcome: "accepted",
+      providerTaskId: "provider-ledger-match-001",
+    });
+  } finally {
+    store.close();
     await rm(dataDirectory, { force: true, recursive: true });
   }
 });

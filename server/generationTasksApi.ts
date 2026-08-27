@@ -521,7 +521,7 @@ export async function generationTasks(
       } else {
         json(response, 500, {
           code: "GENERATION_RETRY_FAILED",
-          error: "生成任务重试暂时无法处理，请核对任务状态后再试",
+          error: "生成任务重试暂时无法处理，系统会继续自动跟进",
         });
       }
       return;
@@ -538,7 +538,7 @@ export async function generationTasks(
       // task without issuing a second retry mutation.
       json(response, 500, {
         code: "GENERATION_RETRY_ACCEPTED_RESPONSE_FAILED",
-        error: "重试已提交，任务响应暂不可用，请等待状态核对",
+        error: "重试已提交，任务响应暂不可用；系统会自动跟进",
       });
       return;
     }
@@ -640,12 +640,19 @@ export async function generationTasks(
       });
       return;
     }
+    if (task.errorCode === "OPERATOR_INCIDENT") {
+      json(response, 409, {
+        code: "OPERATOR_INCIDENT",
+        error: "该任务已进入管理员事故队列，不能人工核对或重新提交",
+      });
+      return;
+    }
     const now = Date.now();
     const previous = lastReconcileAt.get(task.id) ?? 0;
     if (now - previous < reconcileCooldownMs) {
       json(response, 429, {
         code: "RECONCILE_RATE_LIMIT",
-        error: "核对太频繁，请稍后再试",
+        error: "系统正在自动找回结果，请稍后查看",
       });
       return;
     }
@@ -811,7 +818,7 @@ export async function generationTasks(
     } catch {
       json(response, 500, {
         code: "GENERATION_RETRY_ACCEPTED_RESPONSE_FAILED",
-        error: "结果收回已开始，请等待状态核对",
+        error: "结果收回已开始，系统会自动跟进",
       });
       return;
     }
@@ -1152,7 +1159,7 @@ export async function generationTasks(
         try {
           json(response, 500, {
             code: "GENERATION_TASK_ACCEPTED_RESPONSE_FAILED",
-            error: "生成任务已提交，响应暂不可用，请等待状态核对",
+            error: "生成任务已提交，响应暂不可用；系统会自动跟进",
           });
         } catch {}
       }

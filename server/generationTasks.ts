@@ -599,6 +599,22 @@ function taskStore(launchOptions?: GenerationLaunchOptions) {
   if (store) return store;
   store = createGenerationTaskStore(dataDirectory);
   storeDataDirectory = dataDirectory;
+  // v0.6.54 and earlier could terminalize a paid-boundary response loss as an
+  // outcome-unknown failure. Promote only that exact, still-unbound relay
+  // evidence into the same durable automatic recovery lane; no attempt is
+  // incremented and no Provider submission is made.
+  for (const task of store.listFailedOutcomeUnknown()) {
+    const attempt = store.getProviderAttemptForTask(task.id);
+    if (
+      attempt?.executionAttempt === task.attempt &&
+      attempt.outcome === "outcome-unknown"
+    ) {
+      store.transition(task.id, "recovering", {
+        code: "AUTOMATIC_RESULT_RECOVERY",
+        message: "系统正在自动找回平台结果；不会重新提交付费请求",
+      });
+    }
+  }
   const pendingPublicationTasks = pendingGeneratedPublicationTaskIds();
   failRecoveredGenerationTasks(store, pendingPublicationTasks);
   for (const task of store.listRecovering()) {
@@ -617,6 +633,13 @@ function taskStore(launchOptions?: GenerationLaunchOptions) {
     ) {
       store.resume(task.id);
       launchGenerationTask(task.id, task.kind, launchOptions);
+    } else if (
+      !task.providerTaskId &&
+      store.hasUnsafeProviderAttemptForNewPaidRetry(task.id)
+    ) {
+      // The periodic recovery worker owns this durable no-ID checkpoint.
+      // Leaving it in recovering is intentional and never launches submit.
+      continue;
     } else {
       store.transition(task.id, "failed", {
         code: "SERVICE_RESTARTED",
@@ -688,15 +711,45 @@ function ensureGenerationRecoverySweep() {
  */
 export async function runGenerationRecoverySweep(options?: {
   launch?: (taskId: string, kind: GenerationTask["kind"]) => void;
+  match?: typeof autoMatchRelayProviderTask;
   store?: ReturnType<typeof createGenerationTaskStore>;
 }) {
   const launch = options?.launch ?? launchGenerationTask;
+  const matchProviderTask = options?.match ?? autoMatchRelayProviderTask;
   const store = options?.store ?? taskStore();
+  for (const task of store.listRecovering()) {
+    const claimed = store.claimRecovering(task.id, task.updatedAt);
+    if (!claimed) continue;
+    if (claimed.providerTaskId) {
+      try {
+        const running = store.resume(claimed.id);
+        if (running) launch(running.id, running.kind);
+      } catch {
+        // A concurrent owner or an invalid frozen snapshot keeps the task in
+        // its last durable state; the worker never falls back to submit.
+      }
+      continue;
+    }
+    if (
+      taskProviderProtocol(claimed) !== "media-generate" ||
+      claimed.kind === "text"
+    ) continue;
+    try {
+      const match = await matchProviderTask(claimed);
+      if (match.status !== "one") continue;
+      store.setProviderTaskId(claimed.id, match.record.taskId);
+      const running = store.resume(claimed.id);
+      if (running) launch(running.id, running.kind);
+    } catch {
+      // Search/network/ambiguity is a retryable recovery checkpoint. The
+      // next sweep queries the same paid attempt and performs zero new POSTs.
+    }
+  }
   // 失败不足两分钟的任务先交给正在运行的轮询/自动重试通道，
   // 避免前后端在同一窗口内重复抢同一个任务。
   const olderThan = new Date(Date.now() - 2 * 60_000);
   for (const task of store.listFailedAutoRecoverable(olderThan)) {
-    if (task.attempt >= 2 || task.state !== "failed") continue;
+    if (task.state !== "failed") continue;
     const retry = retrySafetyDecision(
       task,
       store.getProviderAttemptForTask(task.id),
@@ -704,23 +757,16 @@ export async function runGenerationRecoverySweep(options?: {
     );
     if (!retry.allowed || retry.mode !== "resume-provider-task") continue;
     if (resumeProviderTaskSnapshotProblem(task)) continue;
-    const binding = store
-      .retryBindingsForCanvas(task.canvasId, task.ownerId ?? undefined)
-      .get(task.id);
-    if (!binding) continue;
     try {
-      const queued = store.admitRetry({
-        canvasId: task.canvasId,
-        expectedAttempt: task.attempt,
-        expectedCanvasRevision: binding.canvasRevision,
-        expectedGenerationInputKey: binding.generationInputKey,
-        expectedUpdatedAt: task.updatedAt,
-        kind: task.kind,
-        mode: "resume-provider-task",
-        nodeId: task.nodeId,
-        taskId: task.id,
+      // Resuming an already accepted Provider task is the same paid attempt.
+      // failed -> recovering -> running deliberately preserves task.attempt;
+      // admitRetry/queued would increment it and break publication evidence.
+      const recovering = store.transition(task.id, "recovering", {
+        code: "AUTOMATIC_RESULT_RECOVERY",
+        message: "系统正在自动找回平台结果；不会重新提交付费请求",
       });
-      if (queued) launch(task.id, task.kind);
+      const running = recovering ? store.resume(recovering.id) : undefined;
+      if (running) launch(running.id, running.kind);
     } catch {
       // A concurrent terminal/fence transition wins; never force a paid retry.
     }
@@ -948,7 +994,7 @@ function taskSummary(
     nodeId: task.nodeId,
     prompt: task.prompt,
     providerTaskBound: Boolean(task.providerTaskId),
-    reconcileAllowed: task.state === "failed",
+    reconcileAllowed: false,
     retryAllowed: retry.allowed,
     retryBlockCode: retry.allowed ? undefined : retry.code,
     retryBlockReason: retry.allowed ? undefined : retry.reason,
@@ -2165,33 +2211,33 @@ function safeFailure(error: unknown, kind: "text" | "audio" | "image" | "video")
     return { code: error.code, message: error.message };
   }
   if (error instanceof ProviderMediaError) {
-    return { code: error.code, message: error.message };
+    return { code: error.code, message: "平台媒体处理失败，请稍后查看任务状态" };
   }
   if (error instanceof OpenRouterImageError) {
-    return { code: error.code, message: error.message };
+    return { code: error.code, message: "图片平台请求未完成，请稍后查看任务状态" };
   }
   if (error instanceof VolcengineArkVideoError) {
-    return { code: error.code, message: error.message };
+    return { code: error.code, message: "火山方舟视频请求未完成，请稍后查看任务状态" };
   }
   if (error instanceof MurekaAudioError) {
     return {
       code: error.code,
       message: error.code === "RATE_LIMIT" && error.retryAfterSeconds
-        ? `Mureka 正在限流，可在约${error.retryAfterSeconds}秒后继续核对原任务；系统不会自动重新提交`
-        : error.message,
+        ? `Mureka 正在限流，系统会在约${error.retryAfterSeconds}秒后继续跟进原任务；不会重新提交`
+        : "Mureka 音频请求未完成，请稍后查看任务状态",
     };
   }
   if (error instanceof TextGenerationProviderError) {
-    return { code: error.code, message: error.message };
+    return { code: error.code, message: "文本平台请求未完成，请稍后查看任务状态" };
   }
   if (error instanceof ArkFilesError) {
-    return { code: error.code, message: error.message };
+    return { code: error.code, message: "平台文件处理失败，请稍后查看任务状态" };
   }
   if (error instanceof RelayProviderError) {
-    return { code: error.code, message: error.message };
+    return { code: error.code, message: "生成平台请求未完成，请稍后查看任务状态" };
   }
   if (error instanceof ProviderResultMediaError) {
-    return { code: error.code, message: error.message };
+    return { code: error.code, message: "平台结果保存未完成，系统会继续安全处理" };
   }
   if (error instanceof ResourceBudgetError) {
     return {
@@ -2324,7 +2370,8 @@ function logGenerationDiagnostic(
       errorCode: failureCode ?? detectedCode ??
         (typeof rawCode === "string" ? rawCode : undefined) ?? null,
       causeCode: typeof rawCauseCode === "string" ? rawCauseCode : null,
-      message: error instanceof Error ? error.message : String(error),
+      // Never copy Provider bodies, prompts, or signed URLs into logs.
+      message: "Generation operation failed",
     }));
   } catch {
     // Diagnostics must never affect generation.
@@ -3726,6 +3773,13 @@ function mediaProviderExecution(input: {
     beforeProviderRequest: input.beforeProviderRequest ?? (() => undefined),
     fetcher: input.fetcher,
     metadata: input.metadata,
+    onProviderResponseEvidence: (evidence) => {
+      try {
+        taskStore().recordProviderResponseEvidence(input.task.id, evidence);
+      } catch (error) {
+        logGenerationDiagnostic(input.task.id, "response-evidence", error);
+      }
+    },
     profile: input.profile,
     signal: input.signal,
   };
@@ -3760,7 +3814,8 @@ function relayOutputsFromNormalized(
 
 function isTransientRelayPollError(error: unknown) {
   if (!(error instanceof RelayProviderError)) return false;
-  return error.code === "NETWORK" ||
+  return error.code === "FORMAT" ||
+    error.code === "NETWORK" ||
     error.code === "TIMEOUT" ||
     error.code === "REMOTE" ||
     error.code === "PROVIDER_REQUEST_FAILED" ||
@@ -3777,7 +3832,7 @@ async function settleRelayMediaFailed(
     code: refunded ? "PROVIDER_REFUNDED" : "OUTCOME_UNKNOWN_BILLING_RISK",
     message: refunded
       ? "平台未完成本次生成（已退款），系统正在自动重试"
-      : "平台未完成本次生成且未确认退款；为避免重复扣费，系统已禁止重新提交，只能继续核对原任务",
+      : "平台未完成本次生成且未确认退款；系统会继续自动找回结果并禁止重复提交",
   });
   if (!refunded) return;
   try {
@@ -3896,15 +3951,15 @@ async function recoverRelayMediaAfterPoll(
     if (!currentTaskId) {
       // An empty usage/search result is not proof that the paid boundary was
       // never crossed. Preserve the original attempt and forbid a new POST.
-      taskStore().transition(taskId, "failed", {
-        code: "OUTCOME_UNKNOWN_BILLING_RISK",
-        message: "模型平台可能已经受理或扣费；为避免重复扣费，系统已禁止重新提交，只能继续核对原任务",
+      taskStore().transition(taskId, "recovering", {
+        code: "AUTOMATIC_RESULT_RECOVERY",
+        message: "系统正在自动找回平台结果；不会重新提交付费请求",
       });
       return;
     }
-    taskStore().transition(taskId, "failed", {
-      code: "RESULT_DELAYED",
-      message: "平台还在处理，结果出来后系统会自动核对",
+    taskStore().transition(taskId, "recovering", {
+      code: "AUTOMATIC_RESULT_RECOVERY",
+      message: "平台还在处理；系统会继续自动找回结果且不会重新提交",
     });
   } finally {
     if (releaseReferences) await releaseReferences().catch(() => undefined);
@@ -4026,8 +4081,10 @@ async function executeRelayMediaTask(
   const profile = await taskProviderSnapshotProfile(running, running.ownerId!);
   assertRelayProfile(profile, "media-generate");
   let providerTaskId = running.providerTaskId;
+  const recoveryContinuation = Boolean(
+    providerTaskId && running.errorCode === "AUTOMATIC_RESULT_RECOVERY",
+  );
   let cleanup: (() => Promise<void>) | undefined;
-  let cleanupDeferred = false;
   try {
     if (relayMediaSubmissionAction(providerTaskId) === "submit-once") {
       const built = options?.paramsBuilder
@@ -4085,29 +4142,15 @@ async function executeRelayMediaTask(
         // instead of failing red; references stay alive during that search.
         if (
           error instanceof RelayProviderError &&
-          error.providerTaskMayStillRun &&
-          (modelContract || declarativeModelExecutionContract(running))
+          error.providerTaskMayStillRun
         ) {
-          taskStore().transition(taskId, "failed", {
-            code: "PROVIDER_REQUEST_FAILED",
-            message: "已向模型提交但未收到任务号；为避免重复扣费，请人工核对",
+          // All post-boundary response loss is durable recovery work,
+          // including generic relay audio. The worker may inspect/match the
+          // original task, but this path never submits a second request.
+          taskStore().transition(taskId, "recovering", {
+            code: "AUTOMATIC_RESULT_RECOVERY",
+            message: "系统正在自动找回平台结果；不会重新提交付费请求",
           });
-          return;
-        }
-        if (
-          error instanceof RelayProviderError &&
-          error.providerTaskMayStillRun &&
-          (kind === "image" || kind === "video")
-        ) {
-          cleanupDeferred = true;
-          await recoverRelayMediaAfterPoll(
-            taskId,
-            kind,
-            profile,
-            controller,
-            undefined,
-            cleanup,
-          );
           return;
         }
         throw error;
@@ -4121,7 +4164,9 @@ async function executeRelayMediaTask(
     }
     let poll = 0;
     while (true) {
-      const polling = modelContract
+      const polling = modelContract && recoveryContinuation
+        ? { delayMs: 0, expired: poll >= 1 }
+        : modelContract
         ? relayMediaPollingDecision({
             attemptCreatedAt: attemptCreatedAt!,
             nowMs: Date.now(),
@@ -4149,6 +4194,9 @@ async function executeRelayMediaTask(
               kind,
               providerTaskId!,
               mediaProviderExecution({
+                absoluteDeadline: recoveryContinuation
+                  ? new Date(Date.now() + 30_000).toISOString()
+                  : undefined,
                 beforeProviderRequest: providerBoundary(),
                 fetcher: leasedFetch,
                 metadata: {
@@ -4200,9 +4248,9 @@ async function executeRelayMediaTask(
     if (modelContract) {
       const currentTask = taskStore().get(taskId);
       if (currentTask?.state === "running") {
-        taskStore().transition(taskId, "failed", {
-          code: "RESULT_DELAYED",
-          message: "平台仍在处理，任务号已保留；系统不会重新提交付费请求",
+        taskStore().transition(taskId, "recovering", {
+          code: "AUTOMATIC_RESULT_RECOVERY",
+          message: "平台仍在处理；系统会继续自动找回结果且不会重新提交",
         });
       }
       return;
@@ -4219,7 +4267,7 @@ async function executeRelayMediaTask(
     }
     throw new RelayProviderError("TIMEOUT", true);
   } finally {
-    if (cleanup && !cleanupDeferred) await cleanup().catch(() => undefined);
+    if (cleanup) await cleanup().catch(() => undefined);
   }
 }
 
@@ -4319,10 +4367,11 @@ async function autoMatchRelayProviderTask(task: GenerationTask) {
     .filter((item) => item.state === "success")
     .map((item) => ({ createdAt: item.createdAt, updatedAt: item.updatedAt }));
   const records = await listRelayUsageRecords(profile);
+  const recoveryWindow = taskStore().providerRecoveryWindow(task.id);
   return matchRelayUsageRecord({
     competingLocals: context.competitors,
-    localCreatedAt: task.createdAt,
-    localUpdatedAt: task.updatedAt,
+    localCreatedAt: recoveryWindow?.createdAt ?? task.createdAt,
+    localUpdatedAt: recoveryWindow?.updatedAt ?? task.updatedAt,
     occupiedTaskIds: context.occupiedTaskIds,
     providerModelId: task.providerModelId,
     records,
@@ -4542,7 +4591,7 @@ async function wait(milliseconds: number, signal: AbortSignal) {
 
 function transientArkVideoPollError(error: unknown) {
   return error instanceof VolcengineArkVideoError &&
-    ["NETWORK", "TIMEOUT", "REMOTE"].includes(error.code);
+    ["FORMAT", "NETWORK", "TIMEOUT", "REMOTE"].includes(error.code);
 }
 
 async function saveVolcengineVideoResult(
@@ -4637,7 +4686,7 @@ async function recoverNativeVideoAfterPoll(
     if (status.state === "failed") {
       taskStore().transition(taskId, "failed", {
         code: "PROVIDER_FAILED",
-        message: "火山方舟未完成本次视频生成，未确认是否退款；请核对后再试",
+        message: "火山方舟未完成本次视频生成且退款状态未确认；系统已阻止重复提交",
       });
       return;
     }
@@ -4989,14 +5038,22 @@ async function executeVideoTask(
             }),
           );
           if (created.state !== "accepted") {
-            throw new VolcengineArkVideoError("FORMAT", "方舟没有返回视频任务编号");
+            throw new VolcengineArkVideoError(
+              "FORMAT",
+              "方舟没有返回视频任务编号",
+              true,
+            );
           }
           taskStore().setProviderTaskId(taskId, created.providerTaskId);
           return created;
         },
       });
       if (created.state !== "accepted") {
-        throw new VolcengineArkVideoError("FORMAT", "方舟没有返回视频任务编号");
+        throw new VolcengineArkVideoError(
+          "FORMAT",
+          "方舟没有返回视频任务编号",
+          true,
+        );
       }
       providerTaskId = created.providerTaskId;
     }
@@ -5044,7 +5101,7 @@ async function executeVideoTask(
           // Native Ark has no refund marker. Conservative: neutral failed,
           // one-tap confirm before any new paid attempt.
           code: "PROVIDER_FAILED",
-          message: "火山方舟未完成本次视频生成，未确认是否退款；请核对后再试",
+          message: "火山方舟未完成本次视频生成且退款状态未确认；系统已阻止重复提交",
         });
         return;
       }
@@ -5079,6 +5136,17 @@ async function executeVideoTask(
     return;
   } catch (error) {
     if (taskStore().get(taskId)?.state === "cancelled") return;
+    if (
+      error instanceof VolcengineArkVideoError &&
+      error.providerTaskMayStillRun &&
+      taskStore().get(taskId)?.state === "running"
+    ) {
+      taskStore().transition(taskId, "recovering", {
+        code: "AUTOMATIC_RESULT_RECOVERY",
+        message: "系统正在安全核对方舟任务；不会重新提交付费请求",
+      });
+      return;
+    }
     const failure = safeFailure(error, "video");
     logGenerationDiagnostic(taskId, "video-execution", error, failure.code);
     try {
@@ -5117,6 +5185,17 @@ async function executeAudioTask(taskId: string) {
       await executeRelayMediaTask(taskId, "audio", controller);
     } catch (error) {
       if (taskStore().get(taskId)?.state === "cancelled") return;
+      if (
+        error instanceof RelayProviderError &&
+        error.providerTaskMayStillRun &&
+        taskStore().get(taskId)?.state === "running"
+      ) {
+        taskStore().transition(taskId, "recovering", {
+          code: "AUTOMATIC_RESULT_RECOVERY",
+          message: "系统正在安全核对音频任务；不会重新提交付费请求",
+        });
+        return;
+      }
       const failure = safeFailure(error, "audio");
       logGenerationDiagnostic(taskId, "audio-execution", error, failure.code);
       try {
@@ -5182,13 +5261,15 @@ async function executeAudioTask(taskId: string) {
             }),
           );
           if (created.state !== "accepted") {
-            throw new MurekaAudioError("FORMAT");
+            throw new MurekaAudioError("FORMAT", undefined, undefined, true);
           }
           taskStore().setProviderTaskId(taskId, created.providerTaskId);
           return created;
         },
       });
-      if (created.state !== "accepted") throw new MurekaAudioError("FORMAT");
+      if (created.state !== "accepted") {
+        throw new MurekaAudioError("FORMAT", undefined, undefined, true);
+      }
       providerTaskId = created.providerTaskId;
     }
 
@@ -5270,6 +5351,17 @@ async function executeAudioTask(taskId: string) {
     throw new MurekaAudioError("TIMEOUT");
   } catch (error) {
     if (taskStore().get(taskId)?.state === "cancelled") return;
+    if (
+      error instanceof MurekaAudioError &&
+      error.providerTaskMayStillRun &&
+      taskStore().get(taskId)?.state === "running"
+    ) {
+      taskStore().transition(taskId, "recovering", {
+        code: "AUTOMATIC_RESULT_RECOVERY",
+        message: "系统正在安全核对 Mureka 任务；不会重新提交付费请求",
+      });
+      return;
+    }
     const failure = safeFailure(error, "audio");
     logGenerationDiagnostic(taskId, "audio-execution", error, failure.code);
     try {
@@ -5552,6 +5644,13 @@ export function retrySafetyDecision(
       reason: "只有失败任务可以重试",
     };
   }
+  if (task.errorCode === "OPERATOR_INCIDENT") {
+    return {
+      allowed: false,
+      code: "OPERATOR_INCIDENT",
+      reason: "该任务已进入管理员事故队列，不能人工重试或重新提交",
+    };
+  }
   const protocol = taskProviderProtocol(task);
   if (
     task.providerTaskId &&
@@ -5573,8 +5672,8 @@ export function retrySafetyDecision(
       allowed: false,
       code: "RETRY_OUTCOME_UNKNOWN",
       reason: task.kind === "text" || task.kind === "image"
-        ? "上次结果还没对上，为避免重复扣费，请先点「核对结果」，不要重新生成"
-        : "上次视频或音频请求可能已经创建，但没有保存平台任务编号；请先点「核对结果」，不要重新生成",
+        ? "上次结果仍在系统自动找回中；为避免重复扣费，当前不能重新生成"
+        : "上次视频或音频请求可能已经创建；系统会自动找回结果，当前不能重复生成",
     };
   }
   if (taskStore().hasConfirmedProviderOutcomeForSibling(task.id)) {
@@ -5582,7 +5681,7 @@ export function retrySafetyDecision(
       allowed: false,
       code: "RETRY_OUTCOME_UNKNOWN",
       reason:
-        "同一输入已有平台任务已受理或已出片，为避免重复扣费，请先「核对结果」，不要重新提交",
+        "同一输入已有平台任务已受理或已出片；系统会自动处理，并已阻止重复提交",
     };
   }
   const model = resolveModel(task.kind, task.model, task.ownerId ?? "");

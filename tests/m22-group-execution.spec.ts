@@ -1869,7 +1869,7 @@ test("friendly generation messages avoid long English and jargon", () => {
     .toBe("操作太频繁，请稍后再试");
   expect(friendlyGenerationMessage("短中文提示", "text")).toBe("短中文提示");
   expect(friendlyGenerationMessage(undefined, "image", "PROVIDER_REQUEST_FAILED"))
-    .toContain("不会自动重提");
+    .toContain("不会重复付费提交");
   expect(friendlyGenerationMessage(undefined, "image", "PROVIDER_RESULT_FORMAT"))
     .toContain("模型已响应");
   expect(generationFailureIsDefinitive("PROVIDER_RESULT_FORMAT")).toBe(false);

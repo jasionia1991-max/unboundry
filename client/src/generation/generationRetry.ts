@@ -7,7 +7,7 @@ import {
 } from "./friendlyGenerationMessage";
 
 export const RETRY_OUTCOME_UNKNOWN_MESSAGE =
-  "上次结果还没对上，为避免重复扣费，请先点「核对结果」，不要重新生成";
+  "上次结果仍在自动找回中；为避免重复扣费，当前不能重新生成";
 
 function stableValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stableValue);

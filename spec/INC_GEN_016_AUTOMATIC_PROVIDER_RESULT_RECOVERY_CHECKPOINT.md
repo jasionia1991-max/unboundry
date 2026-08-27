@@ -1,0 +1,95 @@
+# INC-GEN-016 实时断点
+
+状态：`INDEPENDENT_REVIEW_GO / FORMAL_FULL_EXECUTED / STALE_ASSERTION_TARGETED_PASS / GITHUB_GATE_ACTIVE / INCIDENT_OPEN`
+
+更新时间：2026-08-28
+
+## 当前事实
+
+### 2026-08-27 新 Goal R0 实时基线
+
+- 用户已在新Session用完整Goal明确启动实施；本次授权覆盖INC-GEN-016代码、测试、本地commit、GitHub PR/CI/merge、不可变`v0.6.55` Release、可恢复生产发布和一次受控GK首帧真实验收。费用总上限USD 20；第一次提交估算上限USD 10；任何未知结果都禁止第二次Provider POST。
+- 实施工作树：`/Users/mymy/Documents/unboundry-model-contract-002-2026-08-27`；分支`codex/inc-gen-016-v0.6.55`；基线`origin/main@384c27f152b`。规划文档先冻结为commit`f74529f86aa57050f238b0bc3d4ef4cfc0d8fe8e`，tree`4a8e5382d9076e0c5b86598abe2404ddb4a5a485`。
+- `v0.6.55`本地tag、远端tag和GitHub Release均未占用。候选package/lock已同步为`0.6.55`；schema仍为41。默认工具链Node`25.9.0`/npm`11.12.1`；safe复现通道Node`22.23.1`/npm`10.9.8`；生产只读核对Node`22.23.2`/npm`10.9.8`。
+- 生产只读身份：公网`/api/version=0.6.54`、live/ready通过；`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.54-model-contract-revision-20260827`；service active/enabled、NRestarts0；schema41、quick_check ok、FK0。
+- R0生产计数：tasks954、provider attempts963、active0、unknown-billing tasks1、media910、publications501、canvases72、models20、published models10、templates50、published templates48。
+- 目标Canvas保持revision291/graphRevision134、42节点/72边；目标GK节点仍为9:16、720p、10秒、音频开启、输出1。事故task`da761fff-6a65-46fd-84cf-4dc5bddbc985`仍为attempt2/failed/`OUTCOME_UNKNOWN_BILLING_RISK`，providerTaskId/resultAssetId/actualCost均空，估算USD10；没有发起第二次Provider POST。
+- 已冻结10个当前已发布模型的真实身份与默认能力；模型、binding、Provider、模板、Canvas、task和attempt脱敏摘要均已记录在本Goal现场证据中，后续发布前必须与R0逐项对比。
+- 受保护`spec/public-templates-director-split-revision.json`未读取、未修改、未暂存；历史脏工作树未清理、未覆盖；4173监听未占用、未终止。
+
+### R0 预期红
+
+- 命令：`PATH=/Users/mymy/.local/bin:$PATH npm run test:safe -- --spec m102-model-execution-contracts.spec.ts --spec m5-generation-task-store.spec.ts`。
+- 发现122 specs/1086 tests；只执行2 specs/36 tests，34通过、2个预期失败：GK成功响应含`request_id/metadata`时被`relayProviderAdapters.ts`顶层精确白名单拒绝；paid boundary后从`running -> recovering`被旧状态机拒绝。
+- source/snapshot均为`41fd15b19cff6e6dcf0814aeecf6105fc4ef140234efb2e6c02bda8111d55c36`；suite已清理；4173 listener hash`24c91e579e5f03e4327568db06303d4f094c0250c63228866946f7b8a47b8244`前后不变。
+- 全程使用新临时目录、动态loopback和fake数据；真实Provider/Generation/OSS/生产写/费用均为0。R0至此完成，R1～R5进入实现；这不是候选冻结、Review或发布放行。
+
+### R1～R5 候选与定向证据
+
+- 声明式GK创建响应继续只从合同声明的`task_id`取值，但允许`request_id/state/metadata`等无害外壳字段；HTTP状态、Content-Type、响应大小、request ID、脱敏字段路径和结构哈希写入任务事件，不保存secret、prompt、签名URL或原始媒体。
+- paid boundary后响应丢失进入持久`recovering`；后台Worker以SQLite CAS租约接管，按30秒到15分钟指数退避。唯一账本匹配只绑定原attempt/providerTaskId并继续poll，零/多候选保持恢复；超出Provider窗口加24小时保留期进入`OPERATOR_INCIDENT`管理员队列。任何unknown均阻止新paid attempt。
+- Provider结果仍先经既有原子媒体publication形成正式`result_asset_id`，任务成功与Canvas generation-owned CAS投影解耦；重启恢复、重复交付和Canvas冲突继续复用现有持久任务/资产/投影合同。
+- 普通任务面板及Image/Video/Audio节点不再展示人工“核对结果”；服务端摘要固定`reconcileAllowed=false`，兼容API保留但不进入普通用户流程。
+- 定向绿证据：m102+m5 `38/38`，m38 `16/16`，m53-server+m57+m68+m88 `70/70`，三类媒体节点+m68 `22/22`，全模型/connector矩阵 `82/82`；所有失败/重试/跳过均0。source/snapshot末次为`74c7db3d697f5d102301b759adb840387e19100e329e0341c309bbd037cbea64`，4173 listener始终不变。
+- 所有定向验证只使用本轮新临时目录、动态loopback、Fake Provider/OSS；真实Provider/OSS/生产写/费用仍为0。正式safe full尚未运行，必须等候选冻结后的独立Review最终GO。
+
+### 独立Review首轮、第二轮与修复
+
+- 冻结候选commit `4fe7ad6a686663857faaf36ccf48269e036cd675`的唯一独立Review首轮为`P0=3/P1=4/NO-GO`；没有运行safe full、发布或生产写。
+- 已修复：同一Provider task恢复保持原execution attempt并可完成原账本；Ark/Mureka及所有unsafe no-ID attempt重启后保持recovering且零重提；远端错误正文不再进入任务/UI/日志；账本匹配使用不受CAS checkpoint改写的Provider attempt→首次recovery窗口；`OPERATOR_INCIDENT`不再被自动恢复；权威文档不再把当前Goal写成文档-only；relay/Ark/Mureka完整记录成功、HTTP失败、超限和畸形响应的脱敏结构证据，事件按任务去重并上限64条。
+- 受影响定向验证：首轮5 specs/75 tests中72通过，3项失败均为旧测试预期；按最小范围修正后m26+m5 `35/35 PASS`。其余同轮m102 `13/13`、m16 `11/11`、m38 `16/16`已通过。全部使用safe runner、Node22.23.1、新临时目录、动态loopback和Fake Provider，4173监听不变，真实Provider/OSS/生产写/费用0。
+- 当前候选尚未获得Review GO；下一步只能把本次修复交回同一Review线程增量复核。唯一safe full仍未运行。
+- 同一Review线程第二轮复核为`P0=2/P1=4/NO-GO`：人工恢复仍会增加execution attempt；重启及relay/Ark/Mureka畸形响应仍存在退出自动恢复的路径；恢复窗口可能读到旧attempt事件；管理员事故仍可经兼容API恢复；权威文档未记录第二轮；Ark/Mureka HTTP失败证据缺少实际响应大小。
+- 第二轮六项已修复：人工恢复原子保持同一attempt并可完成原Provider账本；所有unsafe no-ID协议重启后保持recovering；relay创建/轮询和Ark/Mureka畸形响应统一进入零新POST恢复；恢复窗口绑定当前Provider attempt；`OPERATOR_INCIDENT`同时阻断普通retry与兼容reconcile；HTTP失败正文只做有界丢弃并记录字节数，不持久原文。
+- 最终受影响定向为m102+m16+m26+m38+m5+m53共`102/102 PASS`；同树m5+m88 `61/61 PASS`证明原attempt publication。随后m57首轮`15/16`只暴露一项已被脱敏日志合同取代的旧测试文案，修正该断言后最小复验`16/16 PASS`。Node22.23.1、临时目录、动态loopback、Fake Provider/OSS，末次source/snapshot `aa6ee9f20fdb69acf6ee8be8684aac5edf5287b7b5f2cb50fc64a08e7165342b`，4173 unchanged；真实Provider/OSS/生产写/费用0。唯一safe full仍未运行。
+- 同一Review线程第三轮对冻结commit `5860c51be9602a0292ba343f80d63b2104d6c98f`、tree `128d642be2239e0c751a3cb7ced719d2b39307eb`给出`P0=0/P1=0/GO`；这是本Goal唯一独立最终Review。
+- 唯一正式safe full随后执行一次：发现122 specs/1090 tests，`1089/1090 PASS`，唯一失败是m22仍断言旧文案“不会自动重提”，而产品已按已审合同显示更准确的“系统会自动找回结果且不会重复付费提交”；其余failed/retries/skipped/reportErrors/blocked均为0，immutable builder `attempts=1/builderInvocations=5/passed=1/failed=0`，source/snapshot `1400178cd9706483cf686d149278b32a14c3f18544eb69bc5e0bf52b243effe6`，4173 listener不变。
+- 只同步该测试断言后，按失败最小集复验m22 `41/41 PASS`；source/snapshot `db8a7c8c3f60a7f791f47b427c42e4027f2abe674b572471687e7fc3c2f442b5`，4173 listener不变。没有第二次full，产品实现、Review结论和1090项发现清单未改变；真实Provider/OSS/生产写/费用仍为0。
+- Review/full治理文档同步后，m38最小复验`16/16 PASS`，source/snapshot `90dbd6f1838caf85b694dd2eaf9fbe4d1c4a2d8e6c43159dbe612696535fd958`，4173 listener不变；没有重复业务full。
+
+- 工作树：`/Users/mymy/Documents/unboundry-model-contract-002-2026-08-27`
+- 当前 Git：`codex/inc-gen-016-v0.6.55`；冻结实现commit `5860c51be9602a0292ba343f80d63b2104d6c98f`，Review/full后的测试与治理收口待提交。
+- 当前生产：`v0.6.54 / schema41 / service healthy / USER_RECHECK`。
+- 目标画布：`67bfb2ee-f895-4308-9111-9de188306514`，名称“MODEL-CONTRACT-001 真实生成验收 2026-08-27”。
+- 目标节点：`video-019c3604-bae5-4880-b7ac-8410231df6a0`，`grok-video-3`，Prompt + 恰好一张首帧，9:16、720p、10秒、音频开启、输出1。
+- 原任务：`da761fff-6a65-46fd-84cf-4dc5bddbc985`；2026-08-27 22:33 左右只增加一次 `new-paid-retry`，execution attempt 2 越过 `provider-boundary`。
+- 最终状态：`failed / OUTCOME_UNKNOWN_BILLING_RISK`；`provider_task_id=null`、`result_asset_id=null`、`actual_cost_microunits=null`，预估 USD 10；两次原任务核对没有唯一账本匹配，未再次提交。
+- 用户截图确认普通页面只显示“核对太频繁，请稍后再试/核对结果”，没有图片或视频结果；这违反产品“工作流自动跑完”的核心合同。
+
+## 最终审计结论
+
+- 直接原因不是单一 UI 文案，而是声明式成功响应白名单、合同路径恢复旁路、用户触发 reconcile 和有界内存 recovery 共同形成的架构缺口。
+- 修复必须同时覆盖有限响应合同、持久任务号、后台自动恢复、结果资产、Canvas投影和普通用户体验。
+- 修复共享任务生命周期时，全部当前已发布模型、专用 connector、历史任务、旧 Canvas/模板和不可变 Revision 必须通过非回归门。
+- 没有正式恢复能力的异步 connector 不得切换为可用新路径；旧路径在新路径验收成功前保持不动。
+- 真实结果没有自动回到生产项目，就不能发布或关闭事故。
+
+## 历史授权记录（已被当前Goal取代）
+
+- 下列“只授权文档”是上一Session历史时点，已被本次新Goal的明确实施授权取代；不得反向把历史边界当成当前阻断。
+- 用户随后要求生成新Session一次性Goal并提前写明实施所需权限；Goal模板冻结了v0.6.55、GitHub/生产、目标画布、真实费用USD 20上限和一次最终全量Review。用户已在本次Session完整发送并激活该Goal。
+- “只能修改Markdown”“预算为0”“未来另行授权”均只描述上一Session，不是当前执行边界。
+- 当前仍未消费真实Provider/OSS/生产写或费用；GitHub/生产/真实验收只有在前置门通过后才可执行。
+
+## 历史文档落地验证
+
+- `git diff --check` 通过；变更范围只有 Markdown 权威文档，没有产品代码、测试、schema、package 或锁文件变化。
+- 受保护 `spec/public-templates-director-split-revision.json` 未读取、未修改、未暂存。
+- 文档治理与生成事故定向 safe m38：`15/15 PASS`，failed/skipped/retries/blocked/reportErrors 均为 0；Node `22.23.1`、npm `10.9.8`，动态 loopback 与新临时目录，4173 listener unchanged。
+- m38 source/snapshot SHA-256 均为 `8c72526267b8a8a1742a37a1823b1447a745bed390c7d01cc81be2c987c8a0fe`；它是文档落档时的定向证据，不是 INC-GEN-016 产品实现或完整回归。
+
+## 恢复顺序
+
+1. `AGENTS.md`
+2. `上线规矩.md`
+3. `spec/UNBOUNDRY_CURRENT_STATE.md`
+4. 本文件
+5. `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_PLAN_2026-08-27.md`
+6. `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_ACCEPTANCE_MATRIX_2026-08-27.md`
+7. `TASKS.md` 的 INC-GEN-016 区块
+
+本次用户已用新的`/goal`明确启动并授权实现、v0.6.55发布、生产和受控真实GK验收；历史“仅文档”边界不再是当前授权。
+
+## 唯一下一步
+
+完成GitHub PR/CI/merge与不可变v0.6.55 Release门；通过后按冻结备份、恢复演练、原子发布、回滚门和目标Canvas allowlist进入生产技术验收。
