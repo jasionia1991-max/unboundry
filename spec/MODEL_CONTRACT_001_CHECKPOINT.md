@@ -2,7 +2,19 @@
 
 更新时间：2026-08-27
 
-当前状态：`V0_6_50_PRODUCTION_TECHNICAL_PASS / USER_RECHECK_FAILED_15_OF_27_PASS / 12_FAIL_OR_INSUFFICIENT / VERSION_A_COMPLETE / VERSION_B_IN_PROGRESS / RELEASE_GATE_CLOSED`
+当前状态：`V0_6_50_PRODUCTION_TECHNICAL_PASS / VERSION_A_COMPLETE / VERSION_B_COMPLETE / COMPUTER_USE_EXECUTED_WITH_BLOCKERS / REVIEW_PENDING / RELEASE_GATE_CLOSED / USER_RECHECK`
+
+## 0.0 版本 B 与候选浏览器执行（2026-08-27）
+
+- 版本B已冻结为commit `31b3d28489742b69846eac6f3826a5c0289a1f69` / tree `956c1e78d01e216fe2d62f2a33420ed8fd5cd79d`。工作台现明确区分当前页面、已保存草稿与当前发布版本；当前页本地校验是纯校验，零保存、零发布、零CAS、零Provider；草稿保存继续使用CAS，发布只接受已保存且验证通过的非脏草稿。
+- 当前页面、已保存草稿和当前发布版本均有始终可发现的脱敏预览；只展示假Prompt/假URL/相对路径/模式角色，不含API Key、Authorization、Cookie、签名URL或真实素材。模式/角色内部ID由系统生成，普通管理员只操作中文语义；只读值改为静态`output`，checkbox/select统一灰阶并保留键盘语义。
+- 官方文档建议已去除不能支撑EXACT的平台首页/营销页；保留OpenAI、Google、xAI、Kling、火山模型精确文档和Mureka精确changelog。GK首帧的冻结内部精确证据不被营销首页替代，文生视频仍为`UNKNOWN/BLOCKED`。
+- 当前源码最小受影响safe证据：m102首轮仅因测试locator同时匹配“保存草稿/已保存草稿”而`6/7`，精确修正测试后`7/7 PASS`；m20 `1/1 PASS`。Node `22.23.1` / npm `10.9.8`，safe preflight、生产构建、架构/源码/secret和动态loopback门通过，4173不变；没有运行full。
+- 候选Computer Use在动态`127.0.0.1:49312`、新临时数据目录、fake本地Provider上执行；种入11个四模态模型和11份发布合同，Provider生成POST为0。已证明11张卡合同状态、三列八区工作台、三态、本地校验零写/零Provider、预览脱敏、编辑后校验失效、草稿持久、内部ID不可编辑、模式/角色语义和发布API不可变revision。
+- 浏览器工具在处理原生确认对话框时两次重置，Computer Use只返回窗口标题而无截图/可访问性树。因此27项均已执行到安全候选或前置条件边界，但不能把工具未覆盖项冒充通过：候选通过为1、2、3、4、6、7、8、9、25；5、10、11、12、13、14、15、19、20、21、22、23、24、26、27保留`USER_RECHECK/INSUFFICIENT_BROWSER_EVIDENCE`；16因GK文生视频证据UNKNOWN正确阻断，17因真实Provider费用门阻断，18没有发起新视频。发布/回滚API和m102有自动证据，但不替代缺失的浏览器确认。
+- 临时候选发布只发生在隔离数据：草稿v4从活动revision1发布为不可变revision2，Provider生成POST 0；没有生产写、真实Provider、OSS或费用。当前Goal累计账本仍为真实Provider POST 0、Generation 0、OSS写0、生产写0、新费用0；既有`⚡2.182`不可换算人民币，真实付费分支继续阻断。
+- 保护路径偏差继续保留：版本A曾误发起一次`shasum`，没有摘要输出或变更；之后未再读取或执行Git操作。
+- 唯一下一动作：冻结当前候选文档提交，启动一次独立只读全量Review；只有同一审查线程最终`P0=0 / P1=0 / GO`后才执行本Goal唯一正式safe full。
 
 ## 0.1 版本 A 付费安全候选（2026-08-27）
 
@@ -108,6 +120,6 @@
 
 ## 5. 唯一下一动作
 
-完成版本B工作台、文档与UI修复，并跑最小受影响safe定向。之后依次完成27项候选Computer Use、全量Review、唯一safe full和PR/CI候选；只在merge/tag/GitHub Release/生产写入之前停在最终发布授权门。
+冻结当前文档提交，启动本Goal候选的一次独立只读全量Review。只有同一审查线程最终给出`P0=0 / P1=0 / GO`，才执行本Goal唯一正式safe full；之后形成PR/CI候选，并在merge/tag/GitHub Release/生产写入之前停在最终发布授权门。
 
 恢复顺序改为：`AGENTS.md → 上线规矩.md → CURRENT_STATE → 本checkpoint → 新返工方案 → 新返工矩阵 → 原主方案 → 原独立矩阵 → 原用户清单 → TASKS顶部 → 总验收矩阵顶部`。受保护文件`spec/public-templates-director-split-revision.json`永远不得读取、修改、暂存、提交、移动或删除。

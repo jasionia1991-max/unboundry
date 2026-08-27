@@ -1,9 +1,9 @@
 # MODEL-CONTRACT-001 用户复验失败修复方案
 
 更新时间：2026-08-27
-状态：`PLAN_FROZEN / VERSION_A_COMPLETE / VERSION_B_IN_PROGRESS / RELEASE_GATE_CLOSED / USER_RECHECK`
+状态：`PLAN_FROZEN / VERSION_A_COMPLETE / VERSION_B_COMPLETE / COMPUTER_USE_EXECUTED_WITH_BLOCKERS / REVIEW_PENDING / RELEASE_GATE_CLOSED / USER_RECHECK`
 
-> 2026-08-27执行断点：R0和版本A均已完成。版本A独立commit为`584e4071c87ae06b980e091df47ce0aaa3e03b4f`/tree`c85bd81a8775ef786bf3146583ae57c2ee00ec53`，schema41、真实Provider/OSS/生产写和新费用均为0。当前进入版本B；真实付费生成因`⚡2.182`无法核验人民币换算而继续阻断。完整证据见实时checkpoint。
+> 2026-08-27执行断点：版本A和版本B均已完成。版本B独立commit为`31b3d28489742b69846eac6f3826a5c0289a1f69`/tree`956c1e78d01e216fe2d62f2a33420ed8fd5cd79d`；m102 `7/7`、m20 `1/1 PASS`。27项已由候选浏览器执行到安全或前置条件边界，浏览器确认对话框/截图能力重置及真实费用门造成的不足均诚实保留。当前唯一下一动作是独立只读全量Review；schema41、真实Provider/OSS/生产写和新费用均为0，既有`⚡2.182`无法核验人民币换算，真实付费生成继续阻断。完整证据见实时checkpoint。
 
 ## 1. 目标与结论
 

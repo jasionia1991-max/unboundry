@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻当前任务
 
-## MODEL-CONTRACT-001 用户复验失败返工（VERSION A COMPLETE / VERSION B IN PROGRESS / RELEASE GATE CLOSED）
+## MODEL-CONTRACT-001 用户复验失败返工（VERSION A+B COMPLETE / COMPUTER USE EXECUTED WITH BLOCKERS / REVIEW PENDING / RELEASE GATE CLOSED）
 
 - [x] 记录真实Computer Use基线：原27项清单15项通过、12项失败或证据不足；v0.6.50历史生产技术证据保留，但不得升级`USER_PASS`。
 - [x] 记录P0：GK/grok-video-3可能计费但无task ID/结果，现有“查询空→确认缺失→允许新付费尝试”路径不安全；GPT Image已计费但结果解析失败；Mureka 429不得自动重提。
@@ -11,11 +11,11 @@
 - [x] 费用停止线确认：既有平台账本`⚡2.182`无法核验人民币换算，因此本Goal真实付费生成保持阻断，只用fake/临时数据/既有任务证据。
 - [x] 版本A实现与最小受影响safe定向：付费边界后的不确定结果禁止自动/人工重提；GPT Image白名单结果、Mureka 429和GK模式级证据已修复。m5 `22/22`、m38 `15/15`、m22 `41/41`及对应m102/m26/m53均通过；真实Provider/OSS/生产写/新费用0。
 - [x] 版本A独立commit/checkpoint：`584e4071c87ae06b980e091df47ce0aaa3e03b4f` / tree `c85bd81a8775ef786bf3146583ae57c2ee00ec53`。
-- [ ] 版本B：修复工作台三态、CAS/本地校验/预览、官方文档、模式/角色人话界面、UI与可访问性。
-- [ ] 候选网站Computer Use完整重跑27项并记录Provider POST/费用/截图。
+- [x] 版本B：工作台三态、纯本地校验、草稿CAS、三来源脱敏预览、精确官方文档、模式/角色人话界面和灰阶可访问控件已冻结为`31b3d28489742b69846eac6f3826a5c0289a1f69`/tree`956c1e78d01e216fe2d62f2a33420ed8fd5cd79d`；m102 `7/7`、m20 `1/1 PASS`。
+- [x] 候选网站27项已执行到安全或前置条件边界；Provider生成POST/真实费用/OSS/生产写均0。浏览器确认对话框/截图工具重置、真实费用门和缺少真实Provider前置条件的项目保留`USER_RECHECK/BLOCKED`，不冒充27/27通过。
 - [ ] 候选冻结后独立只读全量Review；修复全部P0/P1并由同一线程复核到GO。
 - [ ] 本Goal唯一正式safe full、commit/push/PR/CI和候选冻结。
-- [ ] 唯一下一动作：完成版本B工作台三态、CAS/本地校验/预览、官方文档、模式/角色人话界面、UI与可访问性，并跑最小受影响safe定向。
+- [ ] 唯一下一动作：冻结当前文档提交并启动独立只读全量Review；只有同一线程`P0=0/P1=0/GO`后才运行本Goal唯一正式safe full。
 
 权威方案：`spec/MODEL_CONTRACT_001_USER_RECHECK_REMEDIATION_PLAN_2026-08-27.md`；矩阵：`spec/MODEL_CONTRACT_001_USER_RECHECK_REMEDIATION_ACCEPTANCE_MATRIX_2026-08-27.md`；断点：`spec/MODEL_CONTRACT_001_CHECKPOINT.md`；新Goal：`spec/MODEL_CONTRACT_001_USER_RECHECK_REMEDIATION_GOAL_PROMPT_2026-08-27.md`。
 
