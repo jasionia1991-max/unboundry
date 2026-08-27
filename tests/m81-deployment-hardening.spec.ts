@@ -4308,7 +4308,7 @@ test("listening starts one committed queued task while startup gates keep blocke
         FROM generation_provider_attempts WHERE task_id = ?
       `).all(active.acceptedTaskId)).toEqual([{
         execution_attempt: 1,
-        outcome: "provider-failed",
+        outcome: "accepted",
       }]);
       expect(completed.prepare(`
         SELECT error_code, state FROM generation_tasks WHERE id = ?

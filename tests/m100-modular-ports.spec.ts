@@ -2841,17 +2841,17 @@ test("single-node lifecycle replaces React with fenced graph save and task ports
     reconcileOutcome: "outcome-unknown",
     status: "failed",
     task: {
-      errorCode: "PROVIDER_RESULT_MISSING",
+      errorCode: "OUTCOME_UNKNOWN_BILLING_RISK",
       id: "task-1",
-      retryAllowed: true,
+      retryAllowed: false,
     },
   });
   expect(snapshot.nodes[0]?.data).toMatchObject({
     content: "moon result",
     textGenerating: false,
-    textGenerationErrorCode: "PROVIDER_RESULT_MISSING",
+    textGenerationErrorCode: undefined,
   });
-  expect({ flushes, revisionWaits }).toEqual({ flushes: 5, revisionWaits: 10 });
+  expect({ flushes, revisionWaits }).toEqual({ flushes: 4, revisionWaits: 9 });
 
   const imageToolGeneration = createGenerationImageToolUseCase({
     lifecycle: {
