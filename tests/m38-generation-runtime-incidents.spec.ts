@@ -1260,6 +1260,21 @@ test("preserved asynchronous Provider IDs stay resumable and cannot be discarded
     .toBe("provider-cancel-unavailable");
   expect(generationTaskCancellationMode(task("audio", "retrying")))
     .toBe("provider-cancel-unavailable");
+
+  const incident = task("video", "failed");
+  incident.errorCode = "OPERATOR_INCIDENT";
+  expect(retrySafetyDecision(incident, {
+    credentialRevision: 1,
+    executionAttempt: 1,
+    outcome: "accepted",
+    providerModelId: incident.providerModelId!,
+    providerProfileId: incident.providerProfileId!,
+    providerTaskId: incident.providerTaskId,
+  }, false)).toEqual({
+    allowed: false,
+    code: "OPERATOR_INCIDENT",
+    reason: "该任务已进入管理员事故队列，不能人工重试或重新提交",
+  });
 });
 
 test("only capability success or an explicit Provider/model update clears an auth incident", async () => {

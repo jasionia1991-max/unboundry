@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻当前任务
 
-## INC-GEN-016 Provider结果自动回收与全模型不回归（R1-R5 AUTO PASS / CANDIDATE FREEZE PENDING）
+## INC-GEN-016 Provider结果自动回收与全模型不回归（SECOND REVIEW FINDINGS REMEDIATED / REREVIEW PENDING）
 
 - [x] 记录真实生产事件：目标GK首帧任务唯一新付费attempt越过Provider boundary但无task ID/result asset，最终`OUTCOME_UNKNOWN_BILLING_RISK`；未重提。
 - [x] 完成最终审计：确认响应合同、持久任务号、后台恢复、结果资产/Canvas投影和用户流程必须一起修复。
@@ -10,11 +10,11 @@
 - [x] 文档落地后`git diff --check`通过，safe m38定向`15/15 PASS`、异常0、4173 unchanged；没有运行产品full。
 - [x] R0只读冻结最新Git/生产/package/schema/全模型基线并补预期红：2 specs/36 tests中34通过、2项精准预期失败；真实Provider/OSS/生产写/费用0，4173不变。
 - [x] R1～R5实现有限响应合同、脱敏响应证据、持久恢复Worker/CAS/退避/管理员事故队列、结果资产/投影解耦、普通用户UI收口和全模型回归；定向绿228项，真实费用0。
-- [ ] R6冻结候选、风险驱动测试和独立终审P0=0/P1=0。
-- [ ] R7未来单独授权后执行一次真实GK首帧验收；结果必须自动回到项目，禁止自动重提。
-- [ ] R8未来分别确认版本号和发布授权后才可GitHub/生产发布；用户明确确认前保持`USER_RECHECK`。
+- [ ] R6同一独立Review线程再次复核并取得P0=0/P1=0/GO；之后只运行一次正式safe full。
+- [ ] R7按本次Goal已授权预算执行一次真实GK首帧验收；结果必须自动回到项目，禁止自动重提。
+- [ ] R8按本次Goal已授权边界完成v0.6.55 GitHub/生产发布；用户明确确认前保持`USER_RECHECK`。
 
-本次新Goal已明确授权实现、v0.6.55、GitHub/生产和受控真实GK验收；冻结候选独立Review首轮`P0=3/P1=4/NO-GO`的七项发现已修复，正等待同一线程增量复核。Review GO、唯一full、发布和真实Provider门仍按矩阵逐项执行。权威方案：`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_PLAN_2026-08-27.md`；矩阵：`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_ACCEPTANCE_MATRIX_2026-08-27.md`；断点：`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_CHECKPOINT.md`。
+本次新Goal已明确授权实现、v0.6.55、GitHub/生产和受控真实GK验收；独立Review首轮`P0=3/P1=4/NO-GO`的七项与同线程第二轮`P0=2/P1=4/NO-GO`的六项均已修复，最终受影响定向`102/102 PASS`，正等待同一线程再次增量复核。Review GO、唯一full、发布和真实Provider门仍按矩阵逐项执行。权威方案：`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_PLAN_2026-08-27.md`；矩阵：`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_ACCEPTANCE_MATRIX_2026-08-27.md`；断点：`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_CHECKPOINT.md`。
 
 ## MODEL-CONTRACT-002 历史 revision 与当前发布政策解耦（PRODUCTION v0.6.54 TECHNICAL PASS / USER_RECHECK）
 

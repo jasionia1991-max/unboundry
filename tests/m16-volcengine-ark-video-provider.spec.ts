@@ -513,6 +513,7 @@ test("Provider errors are safe and do not expose the key or remote response", as
     fieldPaths: [],
     httpStatus: 500,
     providerRequestId: "ark-safe-500",
+    responseBytes: Buffer.byteLength(remoteBody),
   }));
 
   const missingTaskId = await createVolcengineArkVideoTask(
@@ -531,6 +532,21 @@ test("Provider errors are safe and do not expose the key or remote response", as
     (item) => evidence.push(item),
   ).catch((error: unknown) => error);
   expect(missingTaskId).toMatchObject({
+    code: "FORMAT",
+    providerTaskMayStillRun: true,
+  });
+  const nullBody = await createVolcengineArkVideoTask(
+    profile,
+    {
+      model: "doubao-seedance-2-0-mini-260615",
+      prompt: "null response body",
+    },
+    async () => new Response("null", {
+      headers: { "Content-Type": "application/json" },
+      status: 200,
+    }),
+  ).catch((error: unknown) => error);
+  expect(nullBody).toMatchObject({
     code: "FORMAT",
     providerTaskMayStillRun: true,
   });

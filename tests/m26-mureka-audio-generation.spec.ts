@@ -516,6 +516,7 @@ test("Mureka remote errors and nested echoes never expose or persist the API key
     fieldPaths: [],
     httpStatus: 500,
     providerRequestId: "mureka-safe-500",
+    responseBytes: Buffer.byteLength(JSON.stringify(remoteEcho)),
   }));
 
   const echoedTaskId = await captureError(createMurekaAudioTask(profile, {
@@ -530,6 +531,20 @@ test("Mureka remote errors and nested echoes never expose or persist the API key
   }), { status: 200 }), undefined, undefined, undefined,
   (item) => evidence.push(item)));
   expect(echoedTaskId).toMatchObject({
+    code: "FORMAT",
+    providerTaskMayStillRun: true,
+  });
+  const nullBody = await captureError(createMurekaAudioTask(profile, {
+    model: "mureka-9",
+    musicGenerationMode: "instrumental",
+    outputCount: 1,
+    prompt: "null response body",
+    streamPlayback: false,
+  }, async () => new Response("null", {
+    headers: { "Content-Type": "application/json" },
+    status: 200,
+  })));
+  expect(nullBody).toMatchObject({
     code: "FORMAT",
     providerTaskMayStillRun: true,
   });

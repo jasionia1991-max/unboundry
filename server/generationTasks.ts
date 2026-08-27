@@ -635,7 +635,6 @@ function taskStore(launchOptions?: GenerationLaunchOptions) {
       launchGenerationTask(task.id, task.kind, launchOptions);
     } else if (
       !task.providerTaskId &&
-      taskProviderProtocol(task) === "media-generate" &&
       store.hasUnsafeProviderAttemptForNewPaidRetry(task.id)
     ) {
       // The periodic recovery worker owns this durable no-ID checkpoint.
@@ -3815,7 +3814,8 @@ function relayOutputsFromNormalized(
 
 function isTransientRelayPollError(error: unknown) {
   if (!(error instanceof RelayProviderError)) return false;
-  return error.code === "NETWORK" ||
+  return error.code === "FORMAT" ||
+    error.code === "NETWORK" ||
     error.code === "TIMEOUT" ||
     error.code === "REMOTE" ||
     error.code === "PROVIDER_REQUEST_FAILED" ||
@@ -4085,7 +4085,6 @@ async function executeRelayMediaTask(
     providerTaskId && running.errorCode === "AUTOMATIC_RESULT_RECOVERY",
   );
   let cleanup: (() => Promise<void>) | undefined;
-  let cleanupDeferred = false;
   try {
     if (relayMediaSubmissionAction(providerTaskId) === "submit-once") {
       const built = options?.paramsBuilder
@@ -4143,29 +4142,15 @@ async function executeRelayMediaTask(
         // instead of failing red; references stay alive during that search.
         if (
           error instanceof RelayProviderError &&
-          error.providerTaskMayStillRun &&
-          (modelContract || declarativeModelExecutionContract(running))
+          error.providerTaskMayStillRun
         ) {
+          // All post-boundary response loss is durable recovery work,
+          // including generic relay audio. The worker may inspect/match the
+          // original task, but this path never submits a second request.
           taskStore().transition(taskId, "recovering", {
             code: "AUTOMATIC_RESULT_RECOVERY",
             message: "系统正在自动找回平台结果；不会重新提交付费请求",
           });
-          return;
-        }
-        if (
-          error instanceof RelayProviderError &&
-          error.providerTaskMayStillRun &&
-          (kind === "image" || kind === "video")
-        ) {
-          cleanupDeferred = true;
-          await recoverRelayMediaAfterPoll(
-            taskId,
-            kind,
-            profile,
-            controller,
-            undefined,
-            cleanup,
-          );
           return;
         }
         throw error;
@@ -4282,7 +4267,7 @@ async function executeRelayMediaTask(
     }
     throw new RelayProviderError("TIMEOUT", true);
   } finally {
-    if (cleanup && !cleanupDeferred) await cleanup().catch(() => undefined);
+    if (cleanup) await cleanup().catch(() => undefined);
   }
 }
 
@@ -4606,7 +4591,7 @@ async function wait(milliseconds: number, signal: AbortSignal) {
 
 function transientArkVideoPollError(error: unknown) {
   return error instanceof VolcengineArkVideoError &&
-    ["NETWORK", "TIMEOUT", "REMOTE"].includes(error.code);
+    ["FORMAT", "NETWORK", "TIMEOUT", "REMOTE"].includes(error.code);
 }
 
 async function saveVolcengineVideoResult(
@@ -5200,6 +5185,17 @@ async function executeAudioTask(taskId: string) {
       await executeRelayMediaTask(taskId, "audio", controller);
     } catch (error) {
       if (taskStore().get(taskId)?.state === "cancelled") return;
+      if (
+        error instanceof RelayProviderError &&
+        error.providerTaskMayStillRun &&
+        taskStore().get(taskId)?.state === "running"
+      ) {
+        taskStore().transition(taskId, "recovering", {
+          code: "AUTOMATIC_RESULT_RECOVERY",
+          message: "系统正在安全核对音频任务；不会重新提交付费请求",
+        });
+        return;
+      }
       const failure = safeFailure(error, "audio");
       logGenerationDiagnostic(taskId, "audio-execution", error, failure.code);
       try {
@@ -5646,6 +5642,13 @@ export function retrySafetyDecision(
       allowed: false,
       code: "TASK_NOT_FAILED",
       reason: "只有失败任务可以重试",
+    };
+  }
+  if (task.errorCode === "OPERATOR_INCIDENT") {
+    return {
+      allowed: false,
+      code: "OPERATOR_INCIDENT",
+      reason: "该任务已进入管理员事故队列，不能人工重试或重新提交",
     };
   }
   const protocol = taskProviderProtocol(task);

@@ -1734,10 +1734,18 @@ export async function submitRelayMedia(
     protocol: request.providerProtocol,
     providerTaskMayStillRun: true,
   });
-  if (!isRecord(body)) throw new RelayProviderError("FORMAT");
-  const taskIds = [...new Set(taskIdCandidates(body).map((value) =>
-    cleanExternalTaskId(value, connection.apiKey)
-  ))];
+  if (!isRecord(body)) throw new RelayProviderError("FORMAT", true);
+  let taskIds: string[];
+  try {
+    taskIds = [...new Set(taskIdCandidates(body).map((value) =>
+      cleanExternalTaskId(value, connection.apiKey)
+    ))];
+  } catch (error) {
+    if (error instanceof RelayProviderError && error.code === "FORMAT") {
+      throw new RelayProviderError("FORMAT", true);
+    }
+    throw error;
+  }
   if (taskIds.length !== 1) {
     throw new RelayProviderError("FORMAT", true);
   }
@@ -1779,7 +1787,15 @@ export async function submitContractRelayMedia(
   // changing that contract; response bytes are already bounded by
   // relayJsonRequest and cleanExternalTaskId still rejects unsafe IDs.
   if (!isRecord(body)) throw new RelayProviderError("FORMAT", true);
-  const taskId = cleanExternalTaskId(body.task_id, connection.apiKey);
+  let taskId: string;
+  try {
+    taskId = cleanExternalTaskId(body.task_id, connection.apiKey);
+  } catch (error) {
+    if (error instanceof RelayProviderError && error.code === "FORMAT") {
+      throw new RelayProviderError("FORMAT", true);
+    }
+    throw error;
+  }
   return {
     capability: request.capability,
     externalTaskId: taskId,
@@ -1823,8 +1839,16 @@ export async function pollContractRelayMediaTask(
     protocol: input.providerProtocol,
     providerTaskMayStillRun: true,
   });
-  if (!isRecord(body)) throw new RelayProviderError("FORMAT");
-  const state = exactContractState(contract, body.state);
+  if (!isRecord(body)) throw new RelayProviderError("FORMAT", true);
+  let state: ReturnType<typeof exactContractState>;
+  try {
+    state = exactContractState(contract, body.state);
+  } catch (error) {
+    if (error instanceof RelayProviderError && error.code === "FORMAT") {
+      throw new RelayProviderError("FORMAT", true);
+    }
+    throw error;
+  }
   if (state === "running") return {
     capability: input.capability,
     providerProtocol: "media-generate" as const,
@@ -1838,10 +1862,20 @@ export async function pollContractRelayMediaTask(
     state,
   };
   if (contract.result.resultPath !== "result_url") {
-    throw new RelayProviderError("FORMAT");
+    throw new RelayProviderError("FORMAT", true);
   }
-  if (typeof body.result_url !== "string") throw new RelayProviderError("FORMAT");
-  const transientUrl = cleanTransientOutputUrl(body.result_url);
+  if (typeof body.result_url !== "string") {
+    throw new RelayProviderError("FORMAT", true);
+  }
+  let transientUrl: string;
+  try {
+    transientUrl = cleanTransientOutputUrl(body.result_url);
+  } catch (error) {
+    if (error instanceof RelayProviderError && error.code === "FORMAT") {
+      throw new RelayProviderError("FORMAT", true);
+    }
+    throw error;
+  }
   return {
     capability: input.capability,
     outputs: [{
@@ -1994,11 +2028,18 @@ export async function pollRelayMediaTask(
       `/v1/media/status?task_id=${encodeURIComponent(taskId)}`,
     );
   }
-  return parseMediaTaskSnapshot(
-    input.capability,
-    body,
-    input.requireResultType === true,
-  );
+  try {
+    return parseMediaTaskSnapshot(
+      input.capability,
+      body,
+      input.requireResultType === true,
+    );
+  } catch (error) {
+    if (error instanceof RelayProviderError && error.code === "FORMAT") {
+      throw new RelayProviderError("FORMAT", true);
+    }
+    throw error;
+  }
 }
 
 export async function routeRelayProviderRequest(

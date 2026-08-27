@@ -2382,11 +2382,6 @@ test("restart finalizes resumed OSS evidence against the original paid Provider 
     })).toMatchObject({
       attempt: 1,
       providerTaskId: "m88-oss-provider-task",
-      state: "queued",
-    });
-    expect(initialStore.transition(task.id, "running")).toMatchObject({
-      attempt: 2,
-      providerTaskId: "m88-oss-provider-task",
       state: "running",
     });
     const assetId = "m88-oss-recovery-asset";
@@ -2402,7 +2397,7 @@ test("restart finalizes resumed OSS evidence against the original paid Provider 
       storageProfileId: "m88-oss-profile",
       task: {
         actualCostMicrounits: 321,
-        executionAttempt: 2,
+        executionAttempt: 1,
         providerUsageTokens: 9,
         taskId: task.id,
       },

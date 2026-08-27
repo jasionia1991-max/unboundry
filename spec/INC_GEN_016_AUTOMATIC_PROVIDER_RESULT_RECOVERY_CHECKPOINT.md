@@ -1,6 +1,6 @@
 # INC-GEN-016 实时断点
 
-状态：`REVIEW_FINDINGS_REMEDIATED / INCREMENTAL_REVIEW_PENDING / INCIDENT_OPEN / RELEASE_GATE_CLOSED`
+状态：`SECOND_REVIEW_FINDINGS_REMEDIATED / INCREMENTAL_REVIEW_PENDING / INCIDENT_OPEN / RELEASE_GATE_CLOSED`
 
 更新时间：2026-08-28
 
@@ -33,12 +33,15 @@
 - 定向绿证据：m102+m5 `38/38`，m38 `16/16`，m53-server+m57+m68+m88 `70/70`，三类媒体节点+m68 `22/22`，全模型/connector矩阵 `82/82`；所有失败/重试/跳过均0。source/snapshot末次为`74c7db3d697f5d102301b759adb840387e19100e329e0341c309bbd037cbea64`，4173 listener始终不变。
 - 所有定向验证只使用本轮新临时目录、动态loopback、Fake Provider/OSS；真实Provider/OSS/生产写/费用仍为0。正式safe full尚未运行，必须等候选冻结后的独立Review最终GO。
 
-### 独立Review首轮与修复
+### 独立Review首轮、第二轮与修复
 
 - 冻结候选commit `4fe7ad6a686663857faaf36ccf48269e036cd675`的唯一独立Review首轮为`P0=3/P1=4/NO-GO`；没有运行safe full、发布或生产写。
 - 已修复：同一Provider task恢复保持原execution attempt并可完成原账本；Ark/Mureka及所有unsafe no-ID attempt重启后保持recovering且零重提；远端错误正文不再进入任务/UI/日志；账本匹配使用不受CAS checkpoint改写的Provider attempt→首次recovery窗口；`OPERATOR_INCIDENT`不再被自动恢复；权威文档不再把当前Goal写成文档-only；relay/Ark/Mureka完整记录成功、HTTP失败、超限和畸形响应的脱敏结构证据，事件按任务去重并上限64条。
 - 受影响定向验证：首轮5 specs/75 tests中72通过，3项失败均为旧测试预期；按最小范围修正后m26+m5 `35/35 PASS`。其余同轮m102 `13/13`、m16 `11/11`、m38 `16/16`已通过。全部使用safe runner、Node22.23.1、新临时目录、动态loopback和Fake Provider，4173监听不变，真实Provider/OSS/生产写/费用0。
 - 当前候选尚未获得Review GO；下一步只能把本次修复交回同一Review线程增量复核。唯一safe full仍未运行。
+- 同一Review线程第二轮复核为`P0=2/P1=4/NO-GO`：人工恢复仍会增加execution attempt；重启及relay/Ark/Mureka畸形响应仍存在退出自动恢复的路径；恢复窗口可能读到旧attempt事件；管理员事故仍可经兼容API恢复；权威文档未记录第二轮；Ark/Mureka HTTP失败证据缺少实际响应大小。
+- 第二轮六项已修复：人工恢复原子保持同一attempt并可完成原Provider账本；所有unsafe no-ID协议重启后保持recovering；relay创建/轮询和Ark/Mureka畸形响应统一进入零新POST恢复；恢复窗口绑定当前Provider attempt；`OPERATOR_INCIDENT`同时阻断普通retry与兼容reconcile；HTTP失败正文只做有界丢弃并记录字节数，不持久原文。
+- 最终受影响定向为m102+m16+m26+m38+m5+m53共`102/102 PASS`；同树m5+m88 `61/61 PASS`证明原attempt publication。随后m57首轮`15/16`只暴露一项已被脱敏日志合同取代的旧测试文案，修正该断言后最小复验`16/16 PASS`。Node22.23.1、临时目录、动态loopback、Fake Provider/OSS，末次source/snapshot `aa6ee9f20fdb69acf6ee8be8684aac5edf5287b7b5f2cb50fc64a08e7165342b`，4173 unchanged；真实Provider/OSS/生产写/费用0。唯一safe full仍未运行。
 
 - 工作树：`/Users/mymy/Documents/unboundry-model-contract-002-2026-08-27`
 - 当前 Git：`main@384c27f`，开始落档前与 `origin/main` 一致且工作树干净。
@@ -85,4 +88,4 @@
 
 ## 唯一下一步
 
-将七项修复交回同一独立Review线程增量复核；只有P0=0/P1=0/GO后才运行唯一正式safe full。
+将第二轮六项修复交回同一独立Review线程增量复核；只有P0=0/P1=0/GO后才运行唯一正式safe full。

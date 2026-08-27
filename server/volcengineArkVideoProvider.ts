@@ -289,7 +289,10 @@ async function limitedJson(
   try {
     const body = JSON.parse(
       Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString("utf8"),
-    ) as Record<string, unknown>;
+    ) as unknown;
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      throw new VolcengineArkVideoError("FORMAT", "方舟返回格式无法识别");
+    }
     const fieldPaths = responseStructure(body);
     onProviderResponseEvidence?.({
       ...baseEvidence,
@@ -299,7 +302,7 @@ async function limitedJson(
         .update(JSON.stringify(fieldPaths))
         .digest("hex"),
     });
-    return body;
+    return body as Record<string, unknown>;
   } catch {
     onProviderResponseEvidence?.({
       ...baseEvidence,
@@ -307,6 +310,28 @@ async function limitedJson(
       responseBytes: size,
     });
     throw new VolcengineArkVideoError("FORMAT", "方舟返回格式无法识别");
+  }
+}
+
+async function discardResponseBodySize(
+  response: Response,
+  deadline: ProviderRequestDeadline,
+) {
+  if (!response.body) return 0;
+  try {
+    const reader = deadline.wrapStream(response.body).getReader();
+    let size = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) return size;
+      size += value.byteLength;
+      if (size > 2 * 1_024 * 1_024) {
+        void reader.cancel().catch(() => undefined);
+        return size;
+      }
+    }
+  } catch {
+    return undefined;
   }
 }
 
@@ -387,18 +412,30 @@ async function requestJson(
       }));
       const baseEvidence = arkResponseEvidenceBase(response);
       if (response.status === 401 || response.status === 403) {
-        onProviderResponseEvidence?.({ ...baseEvidence, failureStage: "http-status" });
-        if (response.body) void response.body.cancel().catch(() => undefined);
+        const responseBytes = await discardResponseBodySize(response, deadline);
+        onProviderResponseEvidence?.({
+          ...baseEvidence,
+          failureStage: "http-status",
+          ...(responseBytes === undefined ? {} : { responseBytes }),
+        });
         throw new VolcengineArkVideoError("AUTH", "火山方舟授权失败");
       }
       if (response.status === 429) {
-        onProviderResponseEvidence?.({ ...baseEvidence, failureStage: "http-status" });
-        if (response.body) void response.body.cancel().catch(() => undefined);
+        const responseBytes = await discardResponseBodySize(response, deadline);
+        onProviderResponseEvidence?.({
+          ...baseEvidence,
+          failureStage: "http-status",
+          ...(responseBytes === undefined ? {} : { responseBytes }),
+        });
         throw new VolcengineArkVideoError("RATE_LIMIT", "火山方舟正在限流，请稍后再试");
       }
       if (!response.ok) {
-        onProviderResponseEvidence?.({ ...baseEvidence, failureStage: "http-status" });
-        if (response.body) void response.body.cancel().catch(() => undefined);
+        const responseBytes = await discardResponseBodySize(response, deadline);
+        onProviderResponseEvidence?.({
+          ...baseEvidence,
+          failureStage: "http-status",
+          ...(responseBytes === undefined ? {} : { responseBytes }),
+        });
         throw new VolcengineArkVideoError("REMOTE", "火山方舟暂时无法处理视频任务");
       }
       if (response.status === 204) {
@@ -409,7 +446,10 @@ async function requestJson(
     });
   } catch (error) {
     if (error instanceof VolcengineArkVideoError) {
-      if (operation === "submit" && error.code === "FORMAT") {
+      if (
+        (operation === "submit" || operation === "poll") &&
+        error.code === "FORMAT"
+      ) {
         throw new VolcengineArkVideoError(error.code, error.message, true);
       }
       throw error;

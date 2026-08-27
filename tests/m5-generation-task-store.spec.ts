@@ -1655,14 +1655,14 @@ test("resume settles the original paid execution and complete rolls back with it
       },
       taskId: resumed.id,
     })).toThrow(GenerationProviderAttemptBlockedError);
-    store.admitRetry({
+    expect(store.admitRetry({
       ...retryFence,
       mode: "resume-provider-task",
       taskId: resumed.id,
-    });
-    expect(store.transition(resumed.id, "running")).toMatchObject({
-      attempt: 2,
+    })).toMatchObject({
+      attempt: 1,
       providerTaskId: "resume-original-provider-task",
+      state: "running",
     });
     expect(() => store.recordProviderAttempt(resumed.id)).toThrow(
       GenerationProviderAttemptBlockedError,
@@ -2001,6 +2001,9 @@ test("empty Provider search preserves billing risk while authoritative refund un
       outcome: "outcome-unknown",
     });
     expect(store.hasUnsafeProviderAttemptForNewPaidRetry(unknown.id)).toBe(true);
+    expect(store.listFailedOutcomeUnknown().map(({ id }) => id)).toContain(
+      unknown.id,
+    );
 
     const refunded = store.create({
       canvasId: "provider-certainty",
@@ -2146,6 +2149,68 @@ test("automatic recovery uses a durable CAS lease and binds one provider task wi
   }
 });
 
+test("recovery windows are scoped to the current paid execution attempt", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-recovery-window-attempt-"));
+  const store = createGenerationTaskStore(dataDirectory);
+  try {
+    const task = store.create({
+      canvasId: "recovery-window-attempt",
+      idempotencyKey: "recovery-window-attempt-0001",
+      kind: "video",
+      modelConfiguration: { providerProtocol: "media-generate" },
+      nodeId: "recovery-window-attempt-video",
+      ownerId: "__test__",
+      prompt: "bind recovery expiry to the current paid attempt",
+      providerModelId: "grok-video-3",
+      providerProfileId: "provider-profile",
+    }).task;
+    store.transition(task.id, "running");
+    store.recordProviderAttempt(task.id);
+    store.transition(task.id, "recovering", {
+      code: "AUTOMATIC_RESULT_RECOVERY",
+      message: "attempt one recovery",
+    });
+    store.resume(task.id);
+    store.transition(task.id, "failed", {
+      code: "PROVIDER_REFUNDED",
+      message: "attempt one authoritatively refunded",
+    });
+    store.transition(task.id, "retrying");
+    store.transition(task.id, "queued");
+    store.transition(task.id, "running");
+    store.recordProviderAttempt(task.id);
+    store.transition(task.id, "recovering", {
+      code: "AUTOMATIC_RESULT_RECOVERY",
+      message: "attempt two recovery",
+    });
+
+    const database = openAppDatabase(dataDirectory);
+    try {
+      database.prepare(`
+        UPDATE generation_task_events
+        SET created_at = '2020-01-01T00:00:00.000Z'
+        WHERE id = (
+          SELECT id FROM generation_task_events
+          WHERE task_id = ? AND state = 'recovering'
+          ORDER BY id ASC LIMIT 1
+        )
+      `).run(task.id);
+    } finally {
+      database.close();
+    }
+    const window = store.providerRecoveryWindow(task.id);
+    expect(window).toBeDefined();
+    expect(window!.updatedAt).not.toBe("2020-01-01T00:00:00.000Z");
+    expect(Date.parse(window!.updatedAt)).toBeGreaterThanOrEqual(
+      Date.parse(window!.createdAt),
+    );
+    expect(store.get(task.id)).toMatchObject({ attempt: 2, state: "recovering" });
+  } finally {
+    store.close();
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
 test("automatic recovery expires into the administrator incident queue", async () => {
   const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-recovery-incident-"));
   const store = createGenerationTaskStore(dataDirectory);
@@ -2181,6 +2246,10 @@ test("automatic recovery expires into the administrator incident queue", async (
     expect(store.listFailedAutoRecoverable(
       new Date(Date.parse(task.createdAt) + 27 * 60 * 60_000),
     ).map(({ id }) => id)).not.toContain(task.id);
+    expect(store.listEvents(task.id).at(-1)).toMatchObject({
+      errorCode: "OPERATOR_INCIDENT",
+      state: "failed",
+    });
   } finally {
     store.close();
     await rm(dataDirectory, { force: true, recursive: true });

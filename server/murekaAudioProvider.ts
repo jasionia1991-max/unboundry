@@ -302,6 +302,28 @@ async function limitedJson(
   }
 }
 
+async function discardResponseBodySize(
+  response: Response,
+  deadline: ProviderRequestDeadline,
+) {
+  if (!response.body) return 0;
+  try {
+    const reader = deadline.wrapStream(response.body).getReader();
+    let size = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) return size;
+      size += value.byteLength;
+      if (size > 2 * 1024 * 1024) {
+        void reader.cancel().catch(() => undefined);
+        return size;
+      }
+    }
+  } catch {
+    return undefined;
+  }
+}
+
 function containsProviderKey(value: string, apiKey: string) {
   if (!apiKey) return false;
   if (value.includes(apiKey) || value.includes(encodeURIComponent(apiKey))) {
@@ -359,19 +381,20 @@ async function murekaRequest(
         throw new MurekaAudioError("REMOTE");
       }
       if (!ok) {
+        const retryAfter = status === 429
+          ? retryAfterSeconds(response)
+          : undefined;
+        const responseBytes = await discardResponseBodySize(response, deadline);
         onProviderResponseEvidence?.({
           ...murekaResponseEvidenceBase(response),
           failureStage: "http-status",
+          ...(responseBytes === undefined ? {} : { responseBytes }),
         });
-        if (response.body) void response.body.cancel().catch(() => undefined);
         const code = status === 401 || status === 403
           ? "AUTH"
           : status === 429
             ? "RATE_LIMIT"
             : "REMOTE";
-        const retryAfter = code === "RATE_LIMIT"
-          ? retryAfterSeconds(response)
-          : undefined;
         throw new MurekaAudioError(
           code,
           code === "RATE_LIMIT" && retryAfter
@@ -384,7 +407,10 @@ async function murekaRequest(
     });
   } catch (error) {
     if (error instanceof MurekaAudioError) {
-      if (operation === "submit" && error.code === "FORMAT") {
+      if (
+        (operation === "submit" || operation === "poll") &&
+        error.code === "FORMAT"
+      ) {
         throw new MurekaAudioError(
           error.code,
           error.message,

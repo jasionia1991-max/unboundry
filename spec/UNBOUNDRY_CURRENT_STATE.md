@@ -1,8 +1,8 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网仍运行v0.6.54/schema41且服务健康；INC-GEN-016本地v0.6.55冻结候选独立Review首轮为`P0=3/P1=4/NO-GO`，七项发现已修复并通过受影响定向验证，正等待同一线程增量复核，尚未发布或真实生成。当前严格为`REVIEW_FINDINGS_REMEDIATED / INCREMENTAL_REVIEW_PENDING / RELEASE_GATE_CLOSED / USER_RECHECK`。
+> **状态分层**：现网仍运行v0.6.54/schema41且服务健康；INC-GEN-016本地v0.6.55候选已关闭独立Review首轮七项和同线程第二轮六项发现，最终受影响定向`102/102 PASS`，正等待同一线程再次增量复核，尚未运行唯一full、发布或真实生成。当前严格为`SECOND_REVIEW_FINDINGS_REMEDIATED / INCREMENTAL_REVIEW_PENDING / RELEASE_GATE_CLOSED / USER_RECHECK`。
 
-更新日期：2026-08-27
+更新日期：2026-08-28
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
 当前代码包版本：**v0.6.55**
 本地候选代码版本：**v0.6.55**
@@ -12,13 +12,13 @@
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
 当前发布门：`INC_GEN_016_RELEASE_GATE_CLOSED / AUTHORIZED_IN_PROGRESS / USER_RECHECK`
 
-## INC-GEN-016 当前区块（2026-08-27）
+## INC-GEN-016 当前区块（2026-08-28）
 
 - 用户核心合同：只点击一次生成；系统自动提交、追踪、恢复、保存结果并回到项目。普通用户不登录中转站、不填写任务号、不点击“核对结果”。
 - 真实事件：画布`67bfb2ee-f895-4308-9111-9de188306514`的视频节点只提交一次新付费attempt；task`da761fff-6a65-46fd-84cf-4dc5bddbc985`为attempt2，越过Provider boundary但`provider_task_id/result_asset_id/actual_cost`均无，最终`OUTCOME_UNKNOWN_BILLING_RISK`。未再次提交。
 - 本地v0.6.55候选已修复有限响应、脱敏证据、持久自动恢复/CAS/退避/事故队列和普通用户人工核对入口；Provider成功后的正式资产与Canvas投影继续复用既有事务/CAS合同。
 - 当前已发布模型、专用connector、旧任务、旧Canvas、模板和不可变Revision的定向非回归已通过；不批量迁移或猜协议。
-- 新Goal已授权实现、GitHub/生产和一次受控真实GK验收；真实Provider/OSS/生产写/费用尚为0，必须先由同一独立Review线程关闭首轮七项发现并取得GO，再运行唯一safe full。
+- 新Goal已授权实现、GitHub/生产和一次受控真实GK验收；首轮`P0=3/P1=4`与第二轮`P0=2/P1=4`发现均已修复，最终受影响定向`102/102 PASS`。真实Provider/OSS/生产写/费用尚为0，必须先由同一独立Review线程取得GO，再运行唯一safe full。
 
 权威方案：`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_PLAN_2026-08-27.md`；矩阵：`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_ACCEPTANCE_MATRIX_2026-08-27.md`；断点：`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_CHECKPOINT.md`；本次Goal授权冻结副本：`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_GOAL_PROMPT_2026-08-27.md`。
 

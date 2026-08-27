@@ -640,6 +640,13 @@ export async function generationTasks(
       });
       return;
     }
+    if (task.errorCode === "OPERATOR_INCIDENT") {
+      json(response, 409, {
+        code: "OPERATOR_INCIDENT",
+        error: "该任务已进入管理员事故队列，不能人工核对或重新提交",
+      });
+      return;
+    }
     const now = Date.now();
     const previous = lastReconcileAt.get(task.id) ?? 0;
     if (now - previous < reconcileCooldownMs) {

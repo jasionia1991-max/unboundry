@@ -1914,9 +1914,7 @@ export function createGenerationTaskStore(dataDirectory: string) {
             LIMIT 200
           `)
           .all() as GenerationTaskRow[]
-      ).map(toTask).filter((task) =>
-        task.modelConfiguration.providerProtocol === "media-generate"
-      );
+      ).map(toTask);
     },
 
     /**
@@ -2373,7 +2371,8 @@ export function createGenerationTaskStore(dataDirectory: string) {
         const updated = database.prepare(`
           UPDATE generation_tasks
           SET
-            state = 'queued',
+            state = CASE WHEN ? = 'resume-provider-task'
+              THEN 'running' ELSE 'queued' END,
             provider_task_id = CASE WHEN ? = 'new-paid-attempt'
               THEN NULL ELSE provider_task_id END,
             provider_usage_tokens = CASE WHEN ? = 'new-paid-attempt'
@@ -2402,6 +2401,7 @@ export function createGenerationTaskStore(dataDirectory: string) {
           input.mode,
           input.mode,
           input.mode,
+          input.mode,
           credentialRevision,
           modelConfiguration,
           providerProfileId,
@@ -2414,9 +2414,9 @@ export function createGenerationTaskStore(dataDirectory: string) {
         if (updated.changes !== 1) {
           throw new Error("Generation task changed concurrently");
         }
-        recordEvent.run(current.id, "retrying", null, null, timestamp);
-        recordEvent.run(current.id, "queued", null, null, timestamp);
         if (input.mode === "new-paid-attempt") {
+          recordEvent.run(current.id, "retrying", null, null, timestamp);
+          recordEvent.run(current.id, "queued", null, null, timestamp);
           recordAdmission.run(
             current.id,
             executionAttempt,
@@ -2425,6 +2425,12 @@ export function createGenerationTaskStore(dataDirectory: string) {
             "new-paid-retry",
             timestamp,
           );
+        } else {
+          // Resuming an already accepted Provider task is the same paid
+          // execution. It must not pass through queued -> running because that
+          // transition increments the execution attempt.
+          recordEvent.run(current.id, "recovering", null, null, timestamp);
+          recordEvent.run(current.id, "running", null, null, timestamp);
         }
         database.exec("COMMIT");
       } catch (error) {
@@ -2779,10 +2785,12 @@ export function createGenerationTaskStore(dataDirectory: string) {
       const recovery = database.prepare(`
         SELECT created_at
         FROM generation_task_events
-        WHERE task_id = ? AND state = 'recovering'
+        WHERE task_id = ? AND state = 'recovering' AND created_at >= ?
         ORDER BY created_at ASC, id ASC
         LIMIT 1
-      `).get(taskId) as { created_at: string } | undefined;
+      `).get(taskId, attemptCreatedAt ?? "") as
+        | { created_at: string }
+        | undefined;
       return attemptCreatedAt && recovery?.created_at
         ? { createdAt: attemptCreatedAt, updatedAt: recovery.created_at }
         : undefined;
