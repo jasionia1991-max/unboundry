@@ -1,6 +1,6 @@
 # MODEL-CONTRACT-001 用户复验失败修复验收矩阵
 
-状态：`BASELINE_15_OF_27_PASS / RELEASE_CANDIDATE_READY / PR_116_OPEN / REVIEW_P0_0_P1_0_GO / FORMAL_FULL_EXECUTED_ONCE_1077_OF_1079 / TARGETED_STALE_ASSERTIONS_PASS / RELEASE_GATE_CLOSED / USER_RECHECK`
+状态：`BASELINE_15_OF_27_PASS / RELEASE_AUTHORIZED / V0_6_51_VERSION_FROZEN / PR_116_CI_PENDING / REVIEW_P0_0_P1_0_GO / FORMAL_FULL_EXECUTED_ONCE_1077_OF_1079 / USER_RECHECK`
 
 R0与版本A证据保持不变。版本B已由commit `31b3d28489742b69846eac6f3826a5c0289a1f69` / tree `956c1e78d01e216fe2d62f2a33420ed8fd5cd79d`冻结；m102 `7/7`、m20 `1/1 PASS`。候选Computer Use使用动态loopback、新临时数据、11个fake四模态模型执行，Provider生成POST 0。27项已执行到安全或前置条件边界；工具重置、真实费用门和缺少真实Provider前置条件的项目不冒充通过。独立Review首轮两个P1由commit `979d448256fb5f58970eafae41f6ea17c0282c1b`关闭，同一线程最终`P0=0/P1=0/GO`。唯一正式full在`e56df4e`执行一次，1077/1079通过；唯二陈旧断言由`2821f0579d4f455109349232e053502670686c03`同步，m81 `41/41`、m100 `13/13 PASS`，没有第二次full。PR #116已打开，初始候选CI通过；本节文档同步后的精确head以PR最新Quality gate为准。当前真实Provider POST 0、OSS写0、生产写0、新费用0。
 
@@ -84,7 +84,7 @@ R0与版本A证据保持不变。版本B已由commit `31b3d28489742b69846eac6f38
 | MCR-E-006 | P0 | 全量 Review 为 `P0=0 / P1=0 / GO` | 冻结候选独立只读review | PASS / P0_0_P1_0_GO |
 | MCR-E-007 | P0 | 本 Goal 唯一正式 safe full 完成，失败后不重复刷 full | safe receipt | EXECUTED_ONCE_1077_OF_1079 / TWO_STALE_ASSERTIONS_TARGETED_PASS / NO_SECOND_FULL |
 | MCR-E-008 | P0 | 27 项旧用户清单由 Computer Use 全部重跑并记录请求/费用 | 逐项浏览器证据 | EXECUTED_WITH_BLOCKERS / USER_RECHECK |
-| MCR-E-009 | P0 | 发布前停在授权门，未取得授权不 merge/tag/Release/生产写入 | Git/生产零写账本 | PASS / RELEASE_GATE_CLOSED |
+| MCR-E-009 | P0 | 发布前停在授权门，未取得授权不 merge/tag/Release/生产写入 | Git/生产零写账本 | PASS / EXPLICIT_RELEASE_AUTHORIZATION_RECEIVED |
 | MCR-E-010 | P0 | 最终状态不超过 `RELEASE_CANDIDATE_READY / USER_RECHECK` | 文档一致性 | PASS / RELEASE_CANDIDATE_READY / USER_RECHECK |
 
 ## F. 费用与停止条件

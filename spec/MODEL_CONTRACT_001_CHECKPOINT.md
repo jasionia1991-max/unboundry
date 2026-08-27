@@ -2,7 +2,14 @@
 
 更新时间：2026-08-27
 
-当前状态：`V0_6_50_PRODUCTION_TECHNICAL_PASS / RELEASE_CANDIDATE_READY / PR_116_OPEN / REVIEW_P0_0_P1_0_GO / FORMAL_FULL_EXECUTED_ONCE_1077_OF_1079 / TARGETED_STALE_ASSERTIONS_PASS / RELEASE_GATE_CLOSED / USER_RECHECK`
+当前状态：`V0_6_50_PRODUCTION_TECHNICAL_PASS / RELEASE_AUTHORIZED / V0_6_51_VERSION_FROZEN / PR_116_CI_PENDING / REVIEW_P0_0_P1_0_GO / FORMAL_FULL_EXECUTED_ONCE_1077_OF_1079 / USER_RECHECK`
+
+## 0.00000 发布授权与v0.6.51冻结（2026-08-27）
+
+- 用户已明确回复：知悉本轮未做真实付费生成且仍有`USER_RECHECK`，仍允许合并PR #116，并按候选v0.6.51执行tag/Release、生产备份恢复门、原子发布与回滚门。该授权只升级发布操作权限，不把候选或生产技术证据升级为`USER_PASS`。
+- 远端再次确认v0.6.51 tag未占用后，package.json、package-lock与final runtime admission冻结为`0.6.51`；m81增加0.6.51 final-role负向边界旁的精确正向断言。
+- Node `22.23.1` / npm `10.9.8` safe m38+m81为2 specs、`56/56 PASS`，failed/skipped/retries/blocked/reportErrors均0，source/snapshot `acc01f54ab42723d9655b6ea01833f80fe3b2e3d01b6a01593ba6f4e62c9cdf6`，4173监听不变。版本冻结后没有重复本Goal唯一正式full。
+- 当前生产仍是v0.6.50/schema41，尚未merge/tag/Release/生产写。唯一下一动作：提交并推送版本冻结，等待PR CI后合并与main CI，再进入不可移动tag/Release和生产门。
 
 ## 0.0000 PR/CI候选冻结（2026-08-27）
 
@@ -10,7 +17,7 @@
 - 分支`codex/model-contract-user-recheck-fixes`已推送，PR #116为`https://github.com/jasionia1991-max/unboundry/pull/116`。代码/证据候选head `7e0fb553d2d14771298c60523eef8f78ffc02c9d`可合并，Quality gates run `33045709604`的`lightweight` job为PASS。
 - 本节文档同步会形成PR的新head；最终候选只在PR精确head最新Quality gate通过后成立，最终commit/tree与run由PR外部不可变记录和本Session交付回执给出，不用自引用哈希伪造进同一commit。
 - 当前仍未merge、未创建tag/GitHub Release、未SSH生产写、未备份/迁移/切换/回滚。状态上限为`RELEASE_CANDIDATE_READY / USER_RECHECK`，不是生产发布也不是`USER_PASS`。
-- 唯一下一动作：停在最终生产发布授权门，等待用户明确允许merge并按候选v0.6.51执行发布与回滚门。
+- 该阶段下一动作已完成；当前唯一下一动作以上方0.00000节为准。
 
 ## 0.000 唯一正式full与陈旧断言收口（2026-08-27）
 

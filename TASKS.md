@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻当前任务
 
-## MODEL-CONTRACT-001 用户复验失败返工（RELEASE CANDIDATE READY / USER_RECHECK / RELEASE GATE CLOSED）
+## MODEL-CONTRACT-001 用户复验失败返工（RELEASE AUTHORIZED / V0.6.51 VERSION FROZEN / PR-CI PENDING / USER_RECHECK）
 
 - [x] 记录真实Computer Use基线：原27项清单15项通过、12项失败或证据不足；v0.6.50历史生产技术证据保留，但不得升级`USER_PASS`。
 - [x] 记录P0：GK/grok-video-3可能计费但无task ID/结果，现有“查询空→确认缺失→允许新付费尝试”路径不安全；GPT Image已计费但结果解析失败；Mureka 429不得自动重提。
@@ -18,7 +18,9 @@
 - [x] 陈旧断言由`2821f0579d4f455109349232e053502670686c03`精确同步：m81在组合定向中`41/41 PASS`，m100按失败最小集修正后`13/13 PASS`；未运行第二次full。
 - [x] 分支已推送并创建PR #116；代码/证据候选head `7e0fb553d2d14771298c60523eef8f78ffc02c9d`的Quality gates run `33045709604`通过。本段最终文档同步后仍以PR精确head的最新Quality gate为放行依据。
 - [x] 候选版本再次核验：最新正式Release为v0.6.50、无v0.6.51 tag占用，建议最小patch为`v0.6.51`；package仍保持v0.6.50，未提前tag/Release。
-- [ ] 唯一下一动作：停在最终生产发布授权门，等待用户明确允许merge并按v0.6.51执行发布/回滚门。
+- [x] 用户已明确知悉本轮未做真实付费生成且仍有`USER_RECHECK`，并授权合并PR #116、v0.6.51 tag/Release、生产备份恢复门、原子发布与回滚门。
+- [x] v0.6.51 package/lock/final-runtime admission已冻结；Node22 safe m38+m81 `56/56 PASS`，source/snapshot `acc01f54ab42723d9655b6ea01833f80fe3b2e3d01b6a01593ba6f4e62c9cdf6`，4173不变，未重复full。
+- [ ] 唯一下一动作：提交并推送版本冻结，等待PR CI后合并与main CI，再执行不可移动tag/Release和生产门。
 
 权威方案：`spec/MODEL_CONTRACT_001_USER_RECHECK_REMEDIATION_PLAN_2026-08-27.md`；矩阵：`spec/MODEL_CONTRACT_001_USER_RECHECK_REMEDIATION_ACCEPTANCE_MATRIX_2026-08-27.md`；断点：`spec/MODEL_CONTRACT_001_CHECKPOINT.md`；新Goal：`spec/MODEL_CONTRACT_001_USER_RECHECK_REMEDIATION_GOAL_PROMPT_2026-08-27.md`。
 
