@@ -1,6 +1,6 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网运行v0.6.55/schema41且服务健康，既有退款结果与不可移动发布身份不变。用户已启动v0.6.56续作Goal，新增USD20预算并授权修复、Review、GitHub/CI、不可移动发布、生产和同一目标Canvas真实验收；首轮独立Review的`P0=0/P1=2`已最小修复并通过m102+m38 29/29，严格为`INCREMENTAL_REVIEW_PENDING / RELEASE_GATE_CLOSED / USER_RECHECK`，新增预算尚未消费。
+> **状态分层**：现网运行v0.6.55/schema41且服务健康，既有退款结果与不可移动发布身份不变。用户已启动v0.6.56续作Goal，新增USD20预算并授权修复、Review、GitHub/CI、不可移动发布、生产和同一目标Canvas真实验收；首轮独立Review的`P0=0/P1=2`已最小修复，同一线程最终`P0=0/P1=0/GO`，严格为`GITHUB_CI_PENDING / RELEASE_GATE_CLOSED / USER_RECHECK`，新增预算尚未消费。
 
 更新日期：2026-08-28
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
@@ -9,7 +9,7 @@
 当前生产部署版本：**v0.6.55**
 本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_55_USER_RECHECK`
-当前计划标记：`INC_GEN_016_V0_6_56_REVIEW_P1_2_REMEDIATED / INCREMENTAL_REVIEW_PENDING`
+当前计划标记：`INC_GEN_016_V0_6_56_REVIEW_GO / GITHUB_CI_PENDING`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
 当前发布门：`INC_GEN_016_V0_6_56_AUTHORIZED / RELEASE_GATE_CLOSED / USER_RECHECK`
 

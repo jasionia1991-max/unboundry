@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻当前任务
 
-## INC-GEN-016 v0.6.56 数字task ID响应续作（P1=2 REMEDIATED / INCREMENTAL REVIEW PENDING）
+## INC-GEN-016 v0.6.56 数字task ID响应续作（REVIEW GO / GITHUB CI PENDING）
 
 - [x] 从最新`origin/main@86e17db`建立干净隔离工作树，确认v0.6.56未占用。
 - [x] 只读冻结生产v0.6.55/schema41、10个已发布模型、目标Canvas和退款task；真实Provider/OSS写/新费用0。
@@ -10,7 +10,8 @@
 - [x] 文档治理m38按旧版本标签最小修正后16/16通过；风险定向合计132项通过，未运行full。
 - [x] 首个冻结候选`c29295c`独立Review为P0=0/P1=2/NO-GO：零值ID未拒绝、唯一方案残留生产v0.6.54旧身份。
 - [x] 最小修复零值ID与方案生产身份冲突，m102+m38 29/29通过；没有重复共享回归或运行full。
-- [ ] 由同一Review线程增量复核；GO后再进入GitHub/CI、不可移动v0.6.56与生产发布门。
+- [x] 同一Review线程增量复核最终P0=0/P1=0/GO；窄改动风险定向充分，不另跑full。
+- [ ] 完成GitHub/CI、不可移动v0.6.56与生产发布门。
 - [ ] 在新增USD20上限内完成同一目标Canvas真实GK结果自动回填和刷新保持；用户确认前保持`USER_RECHECK`。
 
 ## INC-GEN-016 Provider结果自动回收与全模型不回归（PRODUCTION v0.6.55 TECHNICAL PASS / REAL PROVIDER REFUNDED / USER_RECHECK）

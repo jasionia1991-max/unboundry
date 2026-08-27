@@ -8,7 +8,7 @@
 
 2026-08-28 INC-GEN-016 当前权威状态：v0.6.55已完成PR #122/main CI、不可移动tag/Release、冻结备份/恢复演练、原子发布、回滚和稳定门；生产v0.6.55/schema41健康，unknown-billing tasks为0。历史attempt2获Provider无受理/无扣费证据后只替代提交一次，attempt3被Provider明确全额退款且无结果；项目内退款提示正确、实际费用0。当前严格为`PRODUCTION_V0_6_55_TECHNICAL_PASS / REAL_PROVIDER_REFUNDED / NO_RESULT / USER_RECHECK`。版本、发布和真实提交授权均已消费，禁止再次Provider POST，不得写`REAL_PROVIDER_PASS/USER_PASS`。回执`spec/V0_6_55_PRODUCTION_RECEIPT_2026-08-28.json`。
 
-2026-08-28 INC-GEN-016 v0.6.56续作权威状态：用户已用新Goal明确指定`v0.6.56`，新增真实生成总预算上限USD 20，并授权修复、Review、GitHub/CI、不可移动tag/Release、可恢复生产发布及同一目标Canvas真实GK验收。新隔离工作树`/Users/mymy/Documents/unboundry-inc-gen-016-v0.6.56-2026-08-28`基于`origin/main@86e17db78559a83e781e75ba8c1b1eaa0079ac0e`；v0.6.56未占用。R0只读基线确认生产v0.6.55/schema41健康、目标退款task无结果、活动任务0、当前`OUTCOME_UNKNOWN_BILLING_RISK`任务0。真实Provider预算在Review、CI、备份恢复和生产发布门前不得消费；首单预估上限USD10，只有明确未受理/未扣费或退款时才允许最多一次替代提交，任何unknown都禁止第二次POST。受保护JSON继续禁止读取、修改、暂存、移动或删除。
+2026-08-28 INC-GEN-016 v0.6.56续作权威状态：用户已用新Goal明确指定`v0.6.56`，新增真实生成总预算上限USD 20，并授权修复、Review、GitHub/CI、不可移动tag/Release、可恢复生产发布及同一目标Canvas真实GK验收。新隔离工作树`/Users/mymy/Documents/unboundry-inc-gen-016-v0.6.56-2026-08-28`基于`origin/main@86e17db78559a83e781e75ba8c1b1eaa0079ac0e`；v0.6.56未占用。R0只读基线确认生产v0.6.55/schema41健康、目标退款task无结果、活动任务0、当前`OUTCOME_UNKNOWN_BILLING_RISK`任务0。有限数字task ID修复的独立Review首轮P0=0/P1=2，两项最小修复后同一线程增量复核最终`P0=0/P1=0/GO`；GitHub/CI与发布仍未执行。真实Provider预算在CI、备份恢复和生产发布门前不得消费；首单预估上限USD10，只有明确未受理/未扣费或退款时才允许最多一次替代提交，任何unknown都禁止第二次POST。受保护JSON继续禁止读取、修改、暂存、移动或删除。
 
 人和 AI 共用的上线拍板规矩见仓库根目录 `上线规矩.md`。发布前必须分别获得版本号确认和允许发布；一次授权只用一次。
 
