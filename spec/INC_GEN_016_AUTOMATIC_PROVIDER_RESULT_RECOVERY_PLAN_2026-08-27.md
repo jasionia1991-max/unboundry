@@ -1,6 +1,6 @@
 # INC-GEN-016：Provider 结果自动回收与全模型不回归最终方案
 
-状态：`ACTIVE_IMPLEMENTATION / SECOND_REVIEW_FINDINGS_REMEDIATED / INCREMENTAL_REVIEW_PENDING / INCIDENT_OPEN / RELEASE_GATE_CLOSED`
+状态：`V0_6_56_TARGETED_PASS / CANDIDATE_FREEZE_PENDING / REVIEW_PENDING / RELEASE_GATE_CLOSED`
 
 建立日期：2026-08-27
 
@@ -9,6 +9,8 @@
 本文件是 INC-GEN-016 的唯一实施合同。验收细目以 `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_ACCEPTANCE_MATRIX_2026-08-27.md` 为准，实时状态以 `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_CHECKPOINT.md` 为准。用户已在本次Session用完整`/goal`启动实施；`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_GOAL_PROMPT_2026-08-27.md` 保留为本次授权来源的冻结副本，不替代实时Checkpoint。
 
 本轮已授权产品代码、测试、v0.6.55、本地commit、GitHub/CI/merge/tag/Release、可恢复生产发布和一次受控真实Provider验收；执行仍受Review GO、唯一safe full、备份/恢复/回滚门、USD 20总预算和unknown禁止第二次POST约束。
+
+2026-08-28续作Goal另行明确指定`v0.6.56`、新增真实生成总预算USD20，并授权修复、Review、GitHub/CI、不可移动tag/Release、生产发布和同一目标Canvas真实验收。续作只修已证实的数字`data.task_ids[]`/`data.任务ids[]`有限响应外壳，不重开v0.6.55、不复用旧预算、不扩张其他Provider协议；具体实时状态以Checkpoint新增的v0.6.56区块为准。
 
 当前生产仍为 `v0.6.54 / schema41`。2026-08-27 对生产画布 `67bfb2ee-f895-4308-9111-9de188306514` 的视频节点 `video-019c3604-bae5-4880-b7ac-8410231df6a0` 只提交了一次新付费 attempt：任务 `da761fff-6a65-46fd-84cf-4dc5bddbc985` 从 attempt 1 增至 attempt 2，请求越过 Provider boundary，但没有持久 `provider_task_id`，最终为 `OUTCOME_UNKNOWN_BILLING_RISK`；`result_asset_id` 和实际费用均无，预估费用为 USD 10。系统两次只读账本核对均没有唯一匹配，未再次提交。
 
@@ -204,3 +206,10 @@ LOCAL_ADMITTED
 - 真实GK验收中，历史attempt2经Provider完整账本证明未受理且未扣费；唯一替代attempt3随后被Provider明确全额退款，成功数0、退款数1，没有结果作品、`result_asset_id`或Canvas视频。
 - 产品已在项目内准确显示退款且未再次提交，APR-020通过；但发布硬门9及APR-021～023的成功条件失败。费用实际为0，版本、发布和真实提交授权全部消费完毕。
 - 本Goal停在`PRODUCTION_TECHNICAL_PASS / REAL_PROVIDER_REFUNDED / NO_RESULT / USER_RECHECK`。禁止再次Provider POST；不得把终态退款证据写成`REAL_PROVIDER_PASS`，也不得关闭为`USER_PASS`。
+
+## 13. v0.6.56 续作范围
+
+- R0重新冻结最新main、生产v0.6.55、全模型和目标退款task；新增预算尚未消费。
+- 运行时只为声明式GK创建响应增加两个已证实的有限候选路径：`data.task_ids[]`与`data.任务ids[]`。数值安全转字符串；两个路径同时出现时必须各自恰好一个值且完全一致；零值、多值、冲突值、非安全整数和危险字符串继续进入可恢复FORMAT且禁止重提。
+- canonical顶层`task_id`、轮询、结果资产、Canvas投影、unknown费用围栏及所有未修改connector行为保持不变。
+- 候选必须先定向绿、独立Review P0=0/P1=0、GitHub/CI、不可移动v0.6.56、冻结备份/恢复/回滚和生产技术门，再允许消费新增USD20。真实结果必须自动形成正式资产并回到原节点，刷新后仍在；否则不得写`REAL_PROVIDER_PASS`。
