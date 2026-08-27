@@ -1,6 +1,6 @@
 # MODEL-CONTRACT-002 实时断点
 
-状态：`LOCAL_CANDIDATE_AUTO_PASS / FINAL_REVIEW_GO / SAFE_FULL_PASS / USER_RECHECK`
+状态：`V0_6_52_VERSION_GATE_PASS / RELEASE_AUTHORIZED / PR_PENDING / USER_RECHECK`
 
 更新时间：2026-08-27
 
@@ -8,7 +8,7 @@
 
 历史 revision 完整性与当前发布政策已经拆开：合法 GK revision 1 可继续执行，当前 GK 新发布政策恢复文字与单首帧并提升为合同 version 2。显式升级会新建 revision 2，不修改 revision 1；模板影响改为语义矩阵。`kwvideo-v2` 因没有可核验的文字基础证据，候选决定为停用归档而不是伪造 `EXACT`。
 
-当前仅是本地候选。未 merge、push、建 PR、tag、Release、备份或写生产；没有真实 Provider/Generation/OSS 请求和新费用。失败任务没有重跑。生产仍是 v0.6.51/schema41，状态严格保持 `PRODUCTION_V0_6_51_TECHNICAL_PASS / USER_RECHECK`。
+本地候选已完成。用户先确认采用`v0.6.52`，随后明确要求直接完成，因此本次GitHub与生产发布授权已取得。版本门、PR/CI、merge、tag/Release、fresh build、冻结恢复和原子切换按顺序执行；在实际切换前生产仍是v0.6.51/schema41。没有真实Provider/Generation/OSS请求和新费用，失败任务不重跑，最终状态上限仍是`USER_RECHECK`。
 
 ## R0 只读基线
 
@@ -16,7 +16,7 @@
 - 分支：`codex/model-contract-002-2026-08-27`
 - 基线：`origin/main@41bef082b7349667b3161b705e8b705eabe84e83`
 - origin：`https://github.com/jasionia1991-max/unboundry.git`
-- package：v0.6.51；schema：41
+- 基线package：v0.6.51；发布候选package：v0.6.52；schema：41
 - 普通工具链：Node 25.9.0/npm 11.12.1；safe runner：Node 22.23.1/npm 10.9.8；生产运行时只读核对为 Node 22.23.2/npm 10.9.8
 - 4173 为历史工作树监听，本轮未占用、未终止；safe runner 每次验证 listener hash 不变
 - 历史 `/Users/mymy/Documents/unboundry/app` 和 MODEL-CONTRACT-001 worktree 均不是施工基线，未清理、未覆盖
@@ -48,7 +48,8 @@
 - 同一线程第四轮只读终审确认上述两项均关闭，最终为`P0=0 / P1=0 / GO`；没有读取受保护文件、没有运行重复测试或访问网络/生产。
 - 独立Review放行后唯一正式 safe full 执行一次：`122/122 specs、1085/1085 tests PASS`，失败0、重试0、跳过0；Node 22.23.1/npm 10.9.8，source/snapshot `b56efbd8f3cf8681d46fb612f870f94f3a76ce2e9b41aa64d0caa21f54831698`，4173 unchanged。没有第二次full。
 - 本地产品候选 commit `5c7419f7dec0114ac86e8595fa964e57c840ce3b`、tree `23197c6ec3c37c98770a9121e01730f19709f5d6`；候选回执为`spec/MODEL_CONTRACT_002_LOCAL_CANDIDATE_RECEIPT_2026-08-27.json`。现场核验`v0.6.52` tag未占用，因此只建议v0.6.52，未修改package版本、未创建tag。
+- 用户确认并授权后，package/lock/final runtime已冻结为v0.6.52；默认Node25/npm11 `npm run build` PASS。Node22 safe m38+m81 `56/56 PASS`，失败/重试/跳过0，source/snapshot `78b96eacab4a7c4b5de76009cc96878eae51f428865ea4a80c3705977220e177`，4173 unchanged；没有重复正式full。
 
 ## 下一步与授权门
 
-1. 在 push/PR/merge/tag/Release/SSH/备份/生产写之前停止，等待用户分别确认版本号和允许发布。
+1. 完成PR/CI、merge、不可移动tag/GitHub Release、fresh tag build、冻结恢复、原子切换、回滚与生产零付费技术门。

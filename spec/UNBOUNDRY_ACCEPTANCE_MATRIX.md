@@ -2,7 +2,7 @@
 
 ## MODEL-CONTRACT-002 当前区块（2026-08-27）
 
-- 当前：`LOCAL_CANDIDATE_AUTO_PASS / FINAL_REVIEW_GO / SAFE_FULL_PASS / USER_RECHECK`；生产仍为`v0.6.51/schema41`。
+- 当前：`V0_6_52_VERSION_GATE_PASS / RELEASE_AUTHORIZED / PR_PENDING / USER_RECHECK`；生产在切换前仍为`v0.6.51/schema41`。
 - 历史 revision 自身完整性与当前 GK 发布政策已拆分；GK version 2 支持文生视频与恰好一张首帧，revision 1 不改写且合法旧任务可继续执行。
 - 生产脱敏语义矩阵为22模板/34 GK节点，均保持首帧模式唯一匹配；11模型治理会对GK发布revision 2，并因无文字基础证据归档`kwvideo-v2`而保留历史Canvas。
 - 最终m102 `13/13`，m12+m22+m57为23/23、m38为15/15 PASS；独立Review经四轮最终`P0=0/P1=0/GO`，唯一正式full `122/122 specs、1085/1085 tests PASS`。真实Provider/Generation/OSS/生产写/新费用0，失败任务未重跑。
