@@ -2,12 +2,12 @@
 
 ## MODEL-CONTRACT-001 用户复验返工当前区块（2026-08-27）
 
-- 当前：`V0_6_50_PRODUCTION_TECHNICAL_PASS / VERSION_A_COMPLETE / VERSION_B_COMPLETE / COMPUTER_USE_EXECUTED_WITH_BLOCKERS / REVIEW_P0_0_P1_0_GO / FORMAL_FULL_PENDING / USER_RECHECK`。
+- 当前：`V0_6_50_PRODUCTION_TECHNICAL_PASS / VERSION_A_COMPLETE / VERSION_B_COMPLETE / COMPUTER_USE_EXECUTED_WITH_BLOCKERS / REVIEW_P0_0_P1_0_GO / FORMAL_FULL_EXECUTED_ONCE_1077_OF_1079 / TARGETED_STALE_ASSERTIONS_PASS / PR_CI_PENDING / USER_RECHECK`。
 - 真实Provider暴露P0：GK/grok-video-3可能已计费但无task ID/结果，现有查询空后开放重提不安全；GPT Image已计费但结果解析失败；Mureka 429不得自动重试。
 - 工作台暴露P1：版本三态、CAS、本地校验、只读预览、官方文档、模式/角色内部ID、禁用原因和UI控件不符合验收。
 - 详细新矩阵以`spec/MODEL_CONTRACT_001_USER_RECHECK_REMEDIATION_ACCEPTANCE_MATRIX_2026-08-27.md`为准；原v0.6.50回执保留历史技术事实，不自动关闭新缺陷。
 - R0已冻结真实checkout、14 tracked + 3 untracked进入时差异、4173历史归属、生产v0.6.50/schema41健康与费用不可换算边界。版本A已关闭查询空/无task ID/响应丢失/格式未知/429等重复付费路径；m5 `22/22`、m38 `15/15`、m22 `41/41`及对应m102/m26/m53通过，当前真实Provider POST/OSS写/生产写/新费用均0。
-- 版本A独立commit为`584e4071c87ae06b980e091df47ce0aaa3e03b4f`；版本B独立commit为`31b3d28489742b69846eac6f3826a5c0289a1f69`。27项已执行到安全或前置条件边界，阻塞/证据不足不冒充通过。独立Review首轮两个P1由`979d448256fb5f58970eafae41f6ea17c0282c1b`关闭，m102+m38 `22/22`、末次m102 `7/7 PASS`，同一线程最终`P0=0/P1=0/GO`；固定下一路线：唯一safe full→PR/CI候选→生产发布授权门。
+- 版本A独立commit为`584e4071c87ae06b980e091df47ce0aaa3e03b4f`；版本B独立commit为`31b3d28489742b69846eac6f3826a5c0289a1f69`。27项已执行到安全或前置条件边界，阻塞/证据不足不冒充通过。独立Review首轮两个P1由`979d448256fb5f58970eafae41f6ea17c0282c1b`关闭，同一线程最终`P0=0/P1=0/GO`。唯一full在`e56df4e`执行一次为1077/1079；两项陈旧断言由`2821f05`同步，m81 `41/41`、m100 `13/13 PASS`，没有第二次full；固定下一路线：PR/CI候选→生产发布授权门。
 
 ## MODEL-CONTRACT-001 当前区块（2026-08-26）
 

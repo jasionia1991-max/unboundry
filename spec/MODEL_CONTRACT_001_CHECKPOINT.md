@@ -2,7 +2,15 @@
 
 更新时间：2026-08-27
 
-当前状态：`V0_6_50_PRODUCTION_TECHNICAL_PASS / VERSION_A_COMPLETE / VERSION_B_COMPLETE / COMPUTER_USE_EXECUTED_WITH_BLOCKERS / REVIEW_P0_0_P1_0_GO / FORMAL_FULL_PENDING / RELEASE_GATE_CLOSED / USER_RECHECK`
+当前状态：`V0_6_50_PRODUCTION_TECHNICAL_PASS / VERSION_A_COMPLETE / VERSION_B_COMPLETE / COMPUTER_USE_EXECUTED_WITH_BLOCKERS / REVIEW_P0_0_P1_0_GO / FORMAL_FULL_EXECUTED_ONCE_1077_OF_1079 / TARGETED_STALE_ASSERTIONS_PASS / PR_CI_PENDING / RELEASE_GATE_CLOSED / USER_RECHECK`
+
+## 0.000 唯一正式full与陈旧断言收口（2026-08-27）
+
+- 本Goal唯一正式safe full已严格只执行一次，执行源码为commit `e56df4efcf607ab7e9c79a94cc8c205b96bbe798`：122 specs、1079 tests，`1077 PASS / 2 FAIL`，skipped/retries/blocked/reportErrors均0；immutable release builder `1 attempt / 5 invocations PASS`，source/snapshot `459770bee1b30e933bed13e243cf82bb12f354d4dba76bf2350e4f90af5c76b9`，4173监听哈希保持`24c91e579e5f03e4327568db06303d4f094c0250c63228866946f7b8a47b8244`。
+- 两项失败都来自测试仍期待版本A修复前的语义：m100把unknown outcome当成`PROVIDER_RESULT_MISSING`并允许retry/写Canvas错误；m81把已越过付费边界的attempt降级为`provider-failed`。产品当前的`OUTCOME_UNKNOWN_BILLING_RISK`、禁止retry、Canvas零写和attempt保持`accepted`均符合冻结政策，因此只同步陈旧断言。
+- 断言收口commit为`2821f0579d4f455109349232e053502670686c03`/tree`4ea5af76002f149b16d21ac8b637672d0fc3da18`。首次m100+m81定向准确暴露m100仍有两处派生陈旧断言，m81同时`41/41 PASS`；随后只重跑失败最小集m100并`13/13 PASS`，source/snapshot `9dde121af3e7f2b4b8bba92de171fe9aa27a754782a5704cdd87b0aab04471e9`，4173不变。没有第二次full。
+- 当前累计仍为真实Provider POST 0、Generation 0、OSS写0、生产写0、新费用0；schema继续为41。Browser阻塞与27项`USER_RECHECK`账本不变，不升级`USER_PASS`。
+- 唯一下一动作：推送当前候选、创建PR并等待最终CI；CI通过后停在生产发布授权门，不merge/tag/Release/生产写。
 
 ## 0.00 独立全量Review与P1关闭（2026-08-27）
 
@@ -11,7 +19,7 @@
 - 受影响safe证据：第一次因新增独立test使冻结inventory从1079变1080而在发现门准确失败，未执行目标spec；把断言并入既有m102测试后，m102+m38为`22/22 PASS`，source/snapshot `cfcd2210a5db3d5edb4f2683e8c3c3c4df2a7106eea1912e60f24f69e014720a`。随后只增加稳定键序规范，精确复验m102 `7/7 PASS`，source/snapshot `6c4f0876b143569d03d3bcb053a53b64f69d1aaf9aa3938bacb86da57041f562`；Node`22.23.1`/npm`10.9.8`，4173不变。
 - 同一审查线程在冻结修复候选上增量复核为`P0=0 / P1=0 / GO`，未发现新P0/P1；Browser的`USER_RECHECK`阻塞仍不等于`USER_PASS`。
 - 候选临时数据目录已移动到用户Trash，可恢复；没有触碰生产或用户项目数据。当前Goal真实Provider POST 0、Generation 0、OSS写0、生产写0、新费用0。
-- 唯一下一动作：在当前冻结源码与同步治理文档上执行本Goal唯一一次正式safe full；无论结果如何不得为刷绿重复full。
+- 该阶段下一动作已完成；当前唯一下一动作以上方0.000节为准。
 
 ## 0.0 版本 B 与候选浏览器执行（2026-08-27）
 
