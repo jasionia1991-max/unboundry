@@ -1,6 +1,6 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网仍为v0.6.50/schema41，历史生产技术证据保留。版本A、B均已完成并形成独立commit；27项已由候选Computer Use执行到安全或前置条件边界，工具重置、费用门和真实Provider前置不足均保留`USER_RECHECK/BLOCKED`。当前严格为`PRODUCTION_V0_6_50_TECHNICAL_PASS / VERSION_A_COMPLETE / VERSION_B_COMPLETE / COMPUTER_USE_EXECUTED_WITH_BLOCKERS / REVIEW_PENDING / USER_RECHECK`。
+> **状态分层**：现网仍为v0.6.50/schema41，历史生产技术证据保留。版本A、B和27项候选执行均完成；独立Review首轮两个P1已关闭，同一线程最终`P0=0/P1=0/GO`。工具重置、费用门和真实Provider前置不足仍保留`USER_RECHECK/BLOCKED`。当前严格为`PRODUCTION_V0_6_50_TECHNICAL_PASS / VERSION_A_COMPLETE / VERSION_B_COMPLETE / COMPUTER_USE_EXECUTED_WITH_BLOCKERS / REVIEW_P0_0_P1_0_GO / FORMAL_FULL_PENDING / USER_RECHECK`。
 
 更新日期：2026-08-27
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
@@ -8,7 +8,7 @@
 本地候选代码版本：**v0.6.50**
 本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_50_USER_RECHECK`
-当前计划标记：`MODEL_CONTRACT_001_REMEDIATION_PLAN_FROZEN / VERSION_A_COMPLETE / VERSION_B_COMPLETE / COMPUTER_USE_EXECUTED_WITH_BLOCKERS / REVIEW_PENDING`
+当前计划标记：`MODEL_CONTRACT_001_REMEDIATION_PLAN_FROZEN / VERSION_A_COMPLETE / VERSION_B_COMPLETE / COMPUTER_USE_EXECUTED_WITH_BLOCKERS / REVIEW_P0_0_P1_0_GO / FORMAL_FULL_PENDING`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
 当前发布门：`MODEL_CONTRACT_001_REMEDIATION_RELEASE_GATE_CLOSED / V0_6_50_REMAINS_PRODUCTION / USER_RECHECK`
 
@@ -23,7 +23,8 @@
 - 版本A当前源码safe证据为m5 `22/22`、m38 `15/15`、m22 `41/41`，对应m102/m26/m53回执继续有效；schema41、真实Provider/OSS/生产写与新费用均为0。
 - 版本A独立commit为`584e4071c87ae06b980e091df47ce0aaa3e03b4f`/tree`c85bd81a8775ef786bf3146583ae57c2ee00ec53`。
 - 版本B独立commit为`31b3d28489742b69846eac6f3826a5c0289a1f69`/tree`956c1e78d01e216fe2d62f2a33420ed8fd5cd79d`；m102 `7/7`、m20 `1/1 PASS`。候选Computer Use执行账本和阻塞项见返工矩阵；真实Provider/OSS/生产写/新费用均0。
-- 唯一下一动作：冻结当前文档提交并启动独立只读全量Review；只有结论`P0=0/P1=0/GO`后才运行本Goal唯一正式safe full。
+- 独立Review首轮`P0=0/P1=2/NO-GO`；修复commit `979d448256fb5f58970eafae41f6ea17c0282c1b`关闭模板完整合同影响与未验证Provider task ID认领，m102+m38 `22/22`、末次m102 `7/7 PASS`；同一线程最终`P0=0/P1=0/GO`。
+- 唯一下一动作：执行本Goal唯一一次正式safe full；无论结果如何不得为刷绿重复full。
 
 v0.6.50由PR #114合并为`d3f5490f524b2d8d212ef7607d85afbf1981ca05` / tree `5b12ebeb97ed7a0e9ed34927fca51de2d0fd38ad`并发布不可移动tag/Release，现网release为`/opt/unboundry/releases/v0.6.50-model-contract-workbench-entry-20260827`。当前隔离工作树为`/Users/mymy/Documents/unboundry-model-contract-001-2026-08-26`，已切到用户复验返工分支并含4个待审相关改动；旧`/Users/mymy/Documents/unboundry/app`不得施工或自动清理。
 

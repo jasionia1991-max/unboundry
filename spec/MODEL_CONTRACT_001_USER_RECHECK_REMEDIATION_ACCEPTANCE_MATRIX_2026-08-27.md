@@ -1,8 +1,8 @@
 # MODEL-CONTRACT-001 用户复验失败修复验收矩阵
 
-状态：`BASELINE_15_OF_27_PASS / VERSION_A_COMPLETE / VERSION_B_COMPLETE / COMPUTER_USE_EXECUTED_WITH_BLOCKERS / REVIEW_PENDING / USER_RECHECK`
+状态：`BASELINE_15_OF_27_PASS / VERSION_A_COMPLETE / VERSION_B_COMPLETE / COMPUTER_USE_EXECUTED_WITH_BLOCKERS / REVIEW_P0_0_P1_0_GO / FORMAL_FULL_PENDING / USER_RECHECK`
 
-R0与版本A证据保持不变。版本B已由commit `31b3d28489742b69846eac6f3826a5c0289a1f69` / tree `956c1e78d01e216fe2d62f2a33420ed8fd5cd79d`冻结；m102 `7/7`、m20 `1/1 PASS`。候选Computer Use使用动态loopback、新临时数据、11个fake四模态模型执行，Provider生成POST 0。27项已执行到安全或前置条件边界；工具重置、真实费用门和缺少真实Provider前置条件的项目不冒充通过。当前真实Provider POST 0、OSS写0、生产写0、新费用0；Review与正式full尚未完成。
+R0与版本A证据保持不变。版本B已由commit `31b3d28489742b69846eac6f3826a5c0289a1f69` / tree `956c1e78d01e216fe2d62f2a33420ed8fd5cd79d`冻结；m102 `7/7`、m20 `1/1 PASS`。候选Computer Use使用动态loopback、新临时数据、11个fake四模态模型执行，Provider生成POST 0。27项已执行到安全或前置条件边界；工具重置、真实费用门和缺少真实Provider前置条件的项目不冒充通过。独立Review首轮两个P1由commit `979d448256fb5f58970eafae41f6ea17c0282c1b`关闭，受影响safe为m102+m38 `22/22`及末次m102 `7/7 PASS`；同一线程最终`P0=0/P1=0/GO`。当前真实Provider POST 0、OSS写0、生产写0、新费用0；正式full尚未执行。
 
 ### 27项候选执行账本
 
@@ -81,7 +81,7 @@ R0与版本A证据保持不变。版本B已由commit `31b3d28489742b69846eac6f38
 | MCR-E-003 | P0 | 旧 Canvas、旧模板、历史 success 和带 task ID 旧任务不被改写/重提 | 恢复兼容测试 | VERSION_A_TARGETED_AUTO_PASS / FINAL_RECHECK_PENDING |
 | MCR-E-004 | P0 | 合同草稿 CAS 不改变 Canvas DATA-005 跨标签语义 | m20/Canvas回归 | NOT_PROVEN |
 | MCR-E-005 | P0 | schema 不变或完成真实恢复副本、旧 runtime 拒绝与回滚演练 | DB/release gate | SCHEMA41_UNCHANGED / RELEASE_GATE_PENDING |
-| MCR-E-006 | P0 | 全量 Review 为 `P0=0 / P1=0 / GO` | 冻结候选独立只读review | NOT_STARTED |
+| MCR-E-006 | P0 | 全量 Review 为 `P0=0 / P1=0 / GO` | 冻结候选独立只读review | PASS / P0_0_P1_0_GO |
 | MCR-E-007 | P0 | 本 Goal 唯一正式 safe full 完成，失败后不重复刷 full | safe receipt | NOT_STARTED |
 | MCR-E-008 | P0 | 27 项旧用户清单由 Computer Use 全部重跑并记录请求/费用 | 逐项浏览器证据 | EXECUTED_WITH_BLOCKERS / USER_RECHECK |
 | MCR-E-009 | P0 | 发布前停在授权门，未取得授权不 merge/tag/Release/生产写入 | Git/生产零写账本 | ACTIVE_GATE |

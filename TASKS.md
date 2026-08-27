@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻当前任务
 
-## MODEL-CONTRACT-001 用户复验失败返工（VERSION A+B COMPLETE / COMPUTER USE EXECUTED WITH BLOCKERS / REVIEW PENDING / RELEASE GATE CLOSED）
+## MODEL-CONTRACT-001 用户复验失败返工（VERSION A+B COMPLETE / COMPUTER USE EXECUTED WITH BLOCKERS / REVIEW GO / FORMAL FULL PENDING / RELEASE GATE CLOSED）
 
 - [x] 记录真实Computer Use基线：原27项清单15项通过、12项失败或证据不足；v0.6.50历史生产技术证据保留，但不得升级`USER_PASS`。
 - [x] 记录P0：GK/grok-video-3可能计费但无task ID/结果，现有“查询空→确认缺失→允许新付费尝试”路径不安全；GPT Image已计费但结果解析失败；Mureka 429不得自动重提。
@@ -13,9 +13,9 @@
 - [x] 版本A独立commit/checkpoint：`584e4071c87ae06b980e091df47ce0aaa3e03b4f` / tree `c85bd81a8775ef786bf3146583ae57c2ee00ec53`。
 - [x] 版本B：工作台三态、纯本地校验、草稿CAS、三来源脱敏预览、精确官方文档、模式/角色人话界面和灰阶可访问控件已冻结为`31b3d28489742b69846eac6f3826a5c0289a1f69`/tree`956c1e78d01e216fe2d62f2a33420ed8fd5cd79d`；m102 `7/7`、m20 `1/1 PASS`。
 - [x] 候选网站27项已执行到安全或前置条件边界；Provider生成POST/真实费用/OSS/生产写均0。浏览器确认对话框/截图工具重置、真实费用门和缺少真实Provider前置条件的项目保留`USER_RECHECK/BLOCKED`，不冒充27/27通过。
-- [ ] 候选冻结后独立只读全量Review；修复全部P0/P1并由同一线程复核到GO。
+- [x] 候选冻结后独立只读全量Review：首轮`P0=0/P1=2/NO-GO`；模板完整合同影响与未验证Provider task ID认领已由`979d448256fb5f58970eafae41f6ea17c0282c1b`关闭，m102+m38 `22/22`、末次m102 `7/7 PASS`；同一线程最终`P0=0/P1=0/GO`。
 - [ ] 本Goal唯一正式safe full、commit/push/PR/CI和候选冻结。
-- [ ] 唯一下一动作：冻结当前文档提交并启动独立只读全量Review；只有同一线程`P0=0/P1=0/GO`后才运行本Goal唯一正式safe full。
+- [ ] 唯一下一动作：执行本Goal唯一一次正式safe full；无论结果如何不得为刷绿重复full。
 
 权威方案：`spec/MODEL_CONTRACT_001_USER_RECHECK_REMEDIATION_PLAN_2026-08-27.md`；矩阵：`spec/MODEL_CONTRACT_001_USER_RECHECK_REMEDIATION_ACCEPTANCE_MATRIX_2026-08-27.md`；断点：`spec/MODEL_CONTRACT_001_CHECKPOINT.md`；新Goal：`spec/MODEL_CONTRACT_001_USER_RECHECK_REMEDIATION_GOAL_PROMPT_2026-08-27.md`。
 

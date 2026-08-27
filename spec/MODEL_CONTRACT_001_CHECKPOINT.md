@@ -2,7 +2,16 @@
 
 更新时间：2026-08-27
 
-当前状态：`V0_6_50_PRODUCTION_TECHNICAL_PASS / VERSION_A_COMPLETE / VERSION_B_COMPLETE / COMPUTER_USE_EXECUTED_WITH_BLOCKERS / REVIEW_PENDING / RELEASE_GATE_CLOSED / USER_RECHECK`
+当前状态：`V0_6_50_PRODUCTION_TECHNICAL_PASS / VERSION_A_COMPLETE / VERSION_B_COMPLETE / COMPUTER_USE_EXECUTED_WITH_BLOCKERS / REVIEW_P0_0_P1_0_GO / FORMAL_FULL_PENDING / RELEASE_GATE_CLOSED / USER_RECHECK`
+
+## 0.00 独立全量Review与P1关闭（2026-08-27）
+
+- 冻结候选`54b08282a9a91f5d476ae00e561e6faaba4af19f`/tree`8134df0dd6c61cc50c3847b48c4ee853946eae90`的独立只读终审首轮为`P0=0 / P1=2 / NO-GO`：一是模板影响只比较capability schema，未覆盖execution contract/runtime/connector/binding；二是reconcile API可凭手工字符串把unknown attempt提升为accepted并绑定Provider task ID。
+- 修复commit为`979d448256fb5f58970eafae41f6ea17c0282c1b`/tree`5701870b2f69f285ac356b0824cef315f4126f0a`：模板影响现使用稳定、执行相关的完整合同签名，draft/validate/publish/rollback统一保守阻断引用模板；手工Provider task ID一律以`PROVIDER_TASK_ID_UNVERIFIED`拒绝，只有Provider只读账本的唯一匹配可进入明确命名的verified绑定入口。
+- 受影响safe证据：第一次因新增独立test使冻结inventory从1079变1080而在发现门准确失败，未执行目标spec；把断言并入既有m102测试后，m102+m38为`22/22 PASS`，source/snapshot `cfcd2210a5db3d5edb4f2683e8c3c3c4df2a7106eea1912e60f24f69e014720a`。随后只增加稳定键序规范，精确复验m102 `7/7 PASS`，source/snapshot `6c4f0876b143569d03d3bcb053a53b64f69d1aaf9aa3938bacb86da57041f562`；Node`22.23.1`/npm`10.9.8`，4173不变。
+- 同一审查线程在冻结修复候选上增量复核为`P0=0 / P1=0 / GO`，未发现新P0/P1；Browser的`USER_RECHECK`阻塞仍不等于`USER_PASS`。
+- 候选临时数据目录已移动到用户Trash，可恢复；没有触碰生产或用户项目数据。当前Goal真实Provider POST 0、Generation 0、OSS写0、生产写0、新费用0。
+- 唯一下一动作：在当前冻结源码与同步治理文档上执行本Goal唯一一次正式safe full；无论结果如何不得为刷绿重复full。
 
 ## 0.0 版本 B 与候选浏览器执行（2026-08-27）
 
@@ -14,7 +23,7 @@
 - 浏览器工具在处理原生确认对话框时两次重置，Computer Use只返回窗口标题而无截图/可访问性树。因此27项均已执行到安全候选或前置条件边界，但不能把工具未覆盖项冒充通过：候选通过为1、2、3、4、6、7、8、9、25；5、10、11、12、13、14、15、19、20、21、22、23、24、26、27保留`USER_RECHECK/INSUFFICIENT_BROWSER_EVIDENCE`；16因GK文生视频证据UNKNOWN正确阻断，17因真实Provider费用门阻断，18没有发起新视频。发布/回滚API和m102有自动证据，但不替代缺失的浏览器确认。
 - 临时候选发布只发生在隔离数据：草稿v4从活动revision1发布为不可变revision2，Provider生成POST 0；没有生产写、真实Provider、OSS或费用。当前Goal累计账本仍为真实Provider POST 0、Generation 0、OSS写0、生产写0、新费用0；既有`⚡2.182`不可换算人民币，真实付费分支继续阻断。
 - 保护路径偏差继续保留：版本A曾误发起一次`shasum`，没有摘要输出或变更；之后未再读取或执行Git操作。
-- 唯一下一动作：冻结当前候选文档提交，启动一次独立只读全量Review；只有同一审查线程最终`P0=0 / P1=0 / GO`后才执行本Goal唯一正式safe full。
+- 该阶段下一动作已完成；当前唯一下一动作以上方0.00节为准。
 
 ## 0.1 版本 A 付费安全候选（2026-08-27）
 
@@ -120,6 +129,6 @@
 
 ## 5. 唯一下一动作
 
-冻结当前文档提交，启动本Goal候选的一次独立只读全量Review。只有同一审查线程最终给出`P0=0 / P1=0 / GO`，才执行本Goal唯一正式safe full；之后形成PR/CI候选，并在merge/tag/GitHub Release/生产写入之前停在最终发布授权门。
+在当前冻结源码与同步治理文档上执行本Goal唯一一次正式safe full。之后形成PR/CI候选，并在merge/tag/GitHub Release/生产写入之前停在最终发布授权门；无论full结果如何不得为刷绿重复执行。
 
 恢复顺序改为：`AGENTS.md → 上线规矩.md → CURRENT_STATE → 本checkpoint → 新返工方案 → 新返工矩阵 → 原主方案 → 原独立矩阵 → 原用户清单 → TASKS顶部 → 总验收矩阵顶部`。受保护文件`spec/public-templates-director-split-revision.json`永远不得读取、修改、暂存、提交、移动或删除。
