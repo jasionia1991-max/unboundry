@@ -28,6 +28,7 @@ import {
   submitContractRelayMedia,
 } from "../server/relayProviderAdapters";
 import { modelReleaseBootstrapActorUserId } from "../server/modelReleaseBootstrap";
+import { modelContractTemplateCompatibilitySignature } from "../server/modelCatalog";
 
 const gkContract = {
   connectorFamily: "generic-async-media",
@@ -173,6 +174,25 @@ test("GK contract compiles deterministically and selects exactly one explicit mo
     expect.objectContaining({ evidence: "UNKNOWN", id: "text-to-video", runtime: "blocked" }),
     expect.objectContaining({ evidence: "EXACT", id: "first-frame-to-video", runtime: "declarative" }),
   ]));
+  const document = releaseDocument();
+  const documentationOnly = {
+    ...document,
+    documentation: [{
+      checkedAt: "2026-08-27",
+      url: "https://provider.invalid/docs/v2",
+    }],
+  };
+  const executionChanged = {
+    ...document,
+    executionContract: {
+      ...document.executionContract,
+      create: { ...document.executionContract.create, path: "/v1/media/generate-v2" },
+    },
+  };
+  expect(modelContractTemplateCompatibilitySignature(document))
+    .toBe(modelContractTemplateCompatibilitySignature(documentationOnly));
+  expect(modelContractTemplateCompatibilitySignature(document))
+    .not.toBe(modelContractTemplateCompatibilitySignature(executionChanged));
 });
 
 test("compiler rejects executable, secret, arbitrary network and ambiguous contracts", () => {

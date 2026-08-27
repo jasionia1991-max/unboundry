@@ -2974,7 +2974,7 @@ export function createGenerationTaskStore(dataDirectory: string) {
       });
     },
 
-    bindProviderTaskIdOnFailedTask(input: {
+    bindVerifiedProviderTaskIdOnFailedTask(input: {
       providerTaskId: string;
       taskId: string;
     }) {

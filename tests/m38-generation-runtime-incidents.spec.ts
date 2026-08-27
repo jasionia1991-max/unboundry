@@ -1922,6 +1922,33 @@ test("only capability success or an explicit Provider/model update clears an aut
       const tasksBeforeReconcile = Number((database.prepare(`
         SELECT COUNT(*) AS count FROM generation_tasks
       `).get() as { count: number }).count);
+      const unverifiedManualTaskId = await incidentRequest(
+        "/api/generation-tasks/retry-network-unknown/reconcile",
+        {
+          body: JSON.stringify({
+            ...retryFence("retry-network-unknown"),
+            providerTaskId: "unverified-provider-task",
+          }),
+          method: "POST",
+        },
+      );
+      expect(unverifiedManualTaskId.status).toBe(400);
+      expect(await unverifiedManualTaskId.json()).toMatchObject({
+        code: "PROVIDER_TASK_ID_UNVERIFIED",
+      });
+      expect(generationProviderAttemptCounts(database))
+        .toEqual(attemptsBeforeReconcile);
+      expect(database.prepare(`
+        SELECT provider_task_id FROM generation_tasks WHERE id = ?
+      `).get("retry-network-unknown")).toEqual({ provider_task_id: null });
+      expect(database.prepare(`
+        SELECT outcome, provider_task_id
+        FROM generation_provider_attempts
+        WHERE task_id = ? AND execution_attempt = 1
+      `).get("retry-network-unknown")).toEqual({
+        outcome: "outcome-unknown",
+        provider_task_id: null,
+      });
       const reconcile = await incidentRequest(
         "/api/generation-tasks/retry-network-unknown/reconcile",
         {

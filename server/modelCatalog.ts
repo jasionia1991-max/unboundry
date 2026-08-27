@@ -430,23 +430,51 @@ function adminModel(
   };
 }
 
+export function modelContractTemplateCompatibilitySignature(
+  document: ModelReleaseDocument,
+) {
+  const stable = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(stable);
+    if (value && typeof value === "object") {
+      return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>)
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([key, item]) => [key, stable(item)]),
+      );
+    }
+    return value;
+  };
+  return createHash("sha256").update(JSON.stringify(stable({
+    capability: document.capability,
+    capabilitySchema: document.capabilitySchema,
+    connectorFamily: document.connectorFamily,
+    connectorVersion: document.connectorVersion,
+    evidence: document.evidence,
+    executionContract: document.executionContract,
+    providerModelId: document.providerModelId,
+    providerProfileId: document.providerProfileId,
+    providerProtocol: document.providerProtocol,
+    runtime: document.runtime,
+  }))).digest("hex");
+}
+
 function modelTemplateImpact(
   store: DatabaseSync,
   modelId: string,
-  proposedSchema?: ModelParameterSchema,
+  proposedDocument?: ModelReleaseDocument,
 ) {
   const templateIds = publishedTemplateIdsUsingModel(store, modelId);
-  const currentModels = publishedTemplateModelContracts(store);
-  const currentSchema = currentModels.find((model) => model.id === modelId)
-    ?.parameterSchema;
+  const activeDocument = modelContractState(store, modelId).active?.document;
   const changed = Boolean(
-    proposedSchema &&
-    JSON.stringify(proposedSchema) !== JSON.stringify(currentSchema),
+    proposedDocument &&
+    (!activeDocument ||
+      modelContractTemplateCompatibilitySignature(proposedDocument) !==
+        modelContractTemplateCompatibilitySignature(activeDocument)),
   );
   return {
     // Model Catalog cannot silently rewrite published template graphs. Until a
-    // template-specific proposal is versioned, a capability-schema change is
-    // conservatively incompatible with every published template using it.
+    // template-specific proposal is versioned, any execution-affecting change
+    // is conservatively incompatible with every published template using it.
     incompatibleTemplateIds: changed ? templateIds : [],
     preexistingIncompatibleTemplateIds: [] as string[],
     templateIds,
@@ -1117,7 +1145,7 @@ export async function adminModelsApi(
         impact: await modelTemplateImpact(
           store,
           modelId,
-          state.draft?.document.capabilitySchema,
+          state.draft?.document,
         ),
         parameterConstraints: providerParameterSchema({
           capability: row.capability,
@@ -1168,7 +1196,7 @@ export async function adminModelsApi(
             impact: await modelTemplateImpact(
               store,
               modelId,
-              body.document.capabilitySchema,
+              body.document,
             ),
           },
         );
@@ -1186,7 +1214,7 @@ export async function adminModelsApi(
             impact: await modelTemplateImpact(
               store,
               modelId,
-              body.document.capabilitySchema,
+              body.document,
             ),
           },
         );
@@ -1207,7 +1235,7 @@ export async function adminModelsApi(
             const impact = modelTemplateImpact(
               store,
               modelId,
-              candidate.document.capabilitySchema,
+              candidate.document,
             );
             if (impact.incompatibleTemplateIds.length) {
               throw new Error("发布时模板影响已变化，发布已阻断");
@@ -1233,7 +1261,7 @@ export async function adminModelsApi(
             const impact = modelTemplateImpact(
               store,
               modelId,
-              candidate.document.capabilitySchema,
+              candidate.document,
             );
             if (impact.incompatibleTemplateIds.length) {
               throw new Error("回滚时模板影响已变化，回滚已阻断");
