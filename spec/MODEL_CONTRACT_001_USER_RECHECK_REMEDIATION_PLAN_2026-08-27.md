@@ -1,9 +1,9 @@
 # MODEL-CONTRACT-001 用户复验失败修复方案
 
 更新时间：2026-08-27
-状态：`PLAN_FROZEN / RELEASE_AUTHORIZED / V0_6_51_VERSION_FROZEN / PR_116_CI_PENDING / REVIEW_P0_0_P1_0_GO / FORMAL_FULL_EXECUTED_ONCE_1077_OF_1079 / USER_RECHECK`
+状态：`PLAN_FROZEN / PRODUCTION_V0_6_51_TECHNICAL_PASS / REVIEW_P0_0_P1_0_GO / FORMAL_FULL_EXECUTED_ONCE_1077_OF_1079 / USER_RECHECK`
 
-> 2026-08-27执行断点：版本A、版本B和27项候选执行均完成。独立只读Review最终`P0=0/P1=0/GO`；本Goal唯一正式safe full已在`e56df4e`执行一次，1077/1079通过，唯二陈旧断言已定向收口且没有第二次full。用户已明确知悉未做真实付费生成及`USER_RECHECK`边界并授权发布；v0.6.51 package/lock/runtime admission冻结后m38+m81 `56/56 PASS`。当前唯一下一动作是PR/main CI、tag/Release和生产门；schema41、真实Provider/OSS/生产写和新费用仍为0。完整证据见实时checkpoint。
+> 2026-08-27最终断点：版本A/B、27项候选、独立Review与唯一正式safe full均已完成；PR #116/main CI、v0.6.51注释tag/GitHub Release、fresh build、生产冻结恢复、原子发布与回滚门、数据/静态资产/稳定性和四视口零付费浏览器均通过。生产为v0.6.51/schema41，真实Provider/Generation/OSS/新费用0，一次性发布授权已消费。当前唯一下一动作是用户复验剩余27项边界与最终成片质量；此前严格保持`PRODUCTION_V0_6_51_TECHNICAL_PASS / USER_RECHECK`。完整证据见实时checkpoint和`spec/V0_6_51_PRODUCTION_RECEIPT_2026-08-27.json`。
 
 ## 1. 目标与结论
 

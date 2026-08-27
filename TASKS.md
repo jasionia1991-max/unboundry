@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻当前任务
 
-## MODEL-CONTRACT-001 用户复验失败返工（RELEASE AUTHORIZED / V0.6.51 VERSION FROZEN / PR-CI PENDING / USER_RECHECK）
+## MODEL-CONTRACT-001 用户复验失败返工（PRODUCTION V0.6.51 TECHNICAL PASS / USER_RECHECK）
 
 - [x] 记录真实Computer Use基线：原27项清单15项通过、12项失败或证据不足；v0.6.50历史生产技术证据保留，但不得升级`USER_PASS`。
 - [x] 记录P0：GK/grok-video-3可能计费但无task ID/结果，现有“查询空→确认缺失→允许新付费尝试”路径不安全；GPT Image已计费但结果解析失败；Mureka 429不得自动重提。
@@ -20,7 +20,10 @@
 - [x] 候选版本再次核验：最新正式Release为v0.6.50、无v0.6.51 tag占用，建议最小patch为`v0.6.51`；package仍保持v0.6.50，未提前tag/Release。
 - [x] 用户已明确知悉本轮未做真实付费生成且仍有`USER_RECHECK`，并授权合并PR #116、v0.6.51 tag/Release、生产备份恢复门、原子发布与回滚门。
 - [x] v0.6.51 package/lock/final-runtime admission已冻结；Node22 safe m38+m81 `56/56 PASS`，source/snapshot `acc01f54ab42723d9655b6ea01833f80fe3b2e3d01b6a01593ba6f4e62c9cdf6`，4173不变，未重复full。
-- [ ] 唯一下一动作：提交并推送版本冻结，等待PR CI后合并与main CI，再执行不可移动tag/Release和生产门。
+- [x] PR #116最终Quality run `33047796300`通过并合并为`0c63938536a3056b1b1f652486d2ea5c72ad283f`；main Quality run `33047853632`通过，注释tag/GitHub Release `v0.6.51`与tree `90861ecd464c4413a1bdfe57abad6672227f679e`一致。
+- [x] 精确tag fresh build在Node `22.23.2` / npm `10.9.8`通过；冻结备份恢复、schema41/integrity/FK、原子切换、回滚门、33个静态文件逐字节、66秒稳定门和四视口零付费生产浏览器均通过。生产数据计数不变，Provider/Generation/OSS/新费用0。
+- [x] 一次性v0.6.51发布授权已由merge/tag/Release/生产切换消费；权威回执为`spec/V0_6_51_PRODUCTION_RECEIPT_2026-08-27.json`。
+- [ ] 唯一下一动作：用户按返工矩阵复验剩余27项边界与最终成片质量；明确回复通过前保持`USER_RECHECK`，不得写`USER_PASS`。
 
 权威方案：`spec/MODEL_CONTRACT_001_USER_RECHECK_REMEDIATION_PLAN_2026-08-27.md`；矩阵：`spec/MODEL_CONTRACT_001_USER_RECHECK_REMEDIATION_ACCEPTANCE_MATRIX_2026-08-27.md`；断点：`spec/MODEL_CONTRACT_001_CHECKPOINT.md`；新Goal：`spec/MODEL_CONTRACT_001_USER_RECHECK_REMEDIATION_GOAL_PROMPT_2026-08-27.md`。
 

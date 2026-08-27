@@ -2,12 +2,12 @@
 
 ## MODEL-CONTRACT-001 用户复验返工当前区块（2026-08-27）
 
-- 当前：`V0_6_50_PRODUCTION_TECHNICAL_PASS / RELEASE_AUTHORIZED / V0_6_51_VERSION_FROZEN / PR_116_CI_PENDING / REVIEW_P0_0_P1_0_GO / FORMAL_FULL_EXECUTED_ONCE_1077_OF_1079 / USER_RECHECK`。
+- 当前：`PRODUCTION_V0_6_51_TECHNICAL_PASS / REVIEW_P0_0_P1_0_GO / FORMAL_FULL_EXECUTED_ONCE_1077_OF_1079 / USER_RECHECK`。
 - 真实Provider暴露P0：GK/grok-video-3可能已计费但无task ID/结果，现有查询空后开放重提不安全；GPT Image已计费但结果解析失败；Mureka 429不得自动重试。
 - 工作台暴露P1：版本三态、CAS、本地校验、只读预览、官方文档、模式/角色内部ID、禁用原因和UI控件不符合验收。
 - 详细新矩阵以`spec/MODEL_CONTRACT_001_USER_RECHECK_REMEDIATION_ACCEPTANCE_MATRIX_2026-08-27.md`为准；原v0.6.50回执保留历史技术事实，不自动关闭新缺陷。
 - R0已冻结真实checkout、14 tracked + 3 untracked进入时差异、4173历史归属、生产v0.6.50/schema41健康与费用不可换算边界。版本A已关闭查询空/无task ID/响应丢失/格式未知/429等重复付费路径；m5 `22/22`、m38 `15/15`、m22 `41/41`及对应m102/m26/m53通过，当前真实Provider POST/OSS写/生产写/新费用均0。
-- 版本A独立commit为`584e4071c87ae06b980e091df47ce0aaa3e03b4f`；版本B独立commit为`31b3d28489742b69846eac6f3826a5c0289a1f69`。27项已执行到安全或前置条件边界，阻塞/证据不足不冒充通过。独立Review首轮两个P1由`979d448256fb5f58970eafae41f6ea17c0282c1b`关闭，同一线程最终`P0=0/P1=0/GO`。唯一full在`e56df4e`执行一次为1077/1079；两项陈旧断言由`2821f05`同步，m81 `41/41`、m100 `13/13 PASS`，没有第二次full。PR #116已打开且初始候选CI通过；固定下一路线：最终生产发布授权门。
+- 版本A/B和27项候选已冻结，阻塞/证据不足不冒充通过。独立Review最终`P0=0/P1=0/GO`；唯一full一次1077/1079，唯二陈旧断言定向通过且没有第二次full。PR #116/main CI、merge `0c639385…ea5c`、v0.6.51 tag/Release、fresh build、冻结恢复、原子切换、回滚、数据/33静态文件/66秒稳定门和四视口零付费生产浏览器均通过；生产v0.6.51/schema41，真实Provider/Generation/OSS/新费用0。发布授权已消费，唯一下一动作是用户复验剩余项目与最终成片质量；回执`spec/V0_6_51_PRODUCTION_RECEIPT_2026-08-27.json`。
 
 ## MODEL-CONTRACT-001 当前区块（2026-08-26）
 
@@ -39,9 +39,9 @@
 2026-08-25 INC-GEN-013已发布`v0.6.42/schema41`：`GEN-011～012 / CANVAS-020～022 = PRODUCTION_AUTO_PASS / USER_RECHECK`。m22最终`37/37`、m2`5/5`、m79`3/3`及直接依赖m1/m3/m40均通过；rich fixture为3组/39节点/73边，p95 9.9ms、max 10.3ms、long task与dropped frame为0、媒体请求0、最终画布PUT1。唯一safe full原始`1060/1061`，唯一未改动m0瞬态失败在相同源码快照定向`23/23 PASS`且未重复full。PR #98、CI、tag/Release、冻结备份、fresh原子发布及三视口零付费复杂组拖动/撤销/刷新均通过；任务/attempt/media无增量，最终位置精确还原，应用console0。回执`spec/V0_6_42_PRODUCTION_RECEIPT_2026-08-25.json`；用户确认前不得写`USER_PASS`。
 
 基线日期：2026-07-27  
-当前状态更新：2026-08-26
+当前状态更新：2026-08-27
 
-`AUTHORITATIVE_ACCEPTANCE_LEDGER`：生产为v0.6.50/schema41且服务健康，既有v0.6.47用户验收历史继续有效，但不自动验收MODEL-CONTRACT-001。v0.6.48恢复副本bootstrap因审计actor外键fail-closed；v0.6.49关闭actor缺陷并完成后端/数据发布，但活动模型入口P1；v0.6.50完成GitHub、生产技术与零付费浏览器，当前为`PRODUCTION_V0_6_50_TECHNICAL_PASS / USER_RECHECK`。
+`AUTHORITATIVE_ACCEPTANCE_LEDGER`：生产为v0.6.51/schema41且服务健康；PR #116、CI、tag/Release、fresh build、冻结恢复、原子发布与回滚门、数据/静态资产/稳定性和零付费浏览器均通过。真实Provider/Generation/OSS/新费用0，当前严格为`PRODUCTION_V0_6_51_TECHNICAL_PASS / USER_RECHECK`；历史用户验收不自动验收本次剩余27项与成片质量。
 
 2026-08-26 `CURRENT_RELEASE = v0.6.46 / schema41 / PRODUCTION_V0_6_46_USER_PASS`。本地治理基线为`main = origin/main = 12e2fd9b…2795`，当前差异仅为本轮尚未提交的治理与工具链修改；普通项目shell默认Node `25.9.0` / npm `11.12.1`，现网仍为Node `22.23.2` / npm `10.9.8`，安全/发布复现通道为Node `22.23.1` / npm `10.9.8`。默认Node25 build/architecture通过；Node22兼容preflight、源码覆盖456/456、behavior 1/1及m38+m94 `19/19 PASS`，4173不变，未运行full。这次工具链治理不是生产运行时迁移或新版本发布。
 
