@@ -1,0 +1,259 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "INC-GEN-016-V0.6.56-PRODUCTION-2026-08-28",
+  "recordedAt": "2026-08-28T04:02:00+08:00",
+  "status": "PRODUCTION_V0_6_56_TECHNICAL_PASS_REAL_PROVIDER_PASS_USER_RECHECK",
+  "acceptance": {
+    "automaticEngineering": "PASS_WITH_TARGETED_VERIFICATION_AND_SINGLE_FORMAL_FULL",
+    "independentReview": "P0_0_P1_0_GO",
+    "productionTechnical": "PASS",
+    "realProvider": "PASS",
+    "realResultReturnedToCanvas": true,
+    "refreshPersistence": "PASS",
+    "userQuality": "USER_RECHECK",
+    "userPass": false
+  },
+  "scope": {
+    "goal": "INC-GEN-016-V0.6.56",
+    "releasePurpose": "Accept the two observed finite numeric GK task ID envelopes without weakening the declarative response contract, then prove automatic result recovery on the original production Canvas.",
+    "schemaMigration": false,
+    "realProviderGenerationAttempted": true,
+    "targetCanvasId": "67bfb2ee-f895-4308-9111-9de188306514",
+    "targetNodeId": "video-019c3604-bae5-4880-b7ac-8410231df6a0",
+    "targetTaskId": "da761fff-6a65-46fd-84cf-4dc5bddbc985",
+    "ossResultWrite": true,
+    "unrelatedCanvasWrite": false
+  },
+  "source": {
+    "repository": "https://github.com/jasionia1991-max/unboundry",
+    "baselineCommit": "86e17db78559a83e781e75ba8c1b1eaa0079ac0e",
+    "firstFrozenCandidateCommit": "c29295ce23727f50806a2cf422e128c52386f8d3",
+    "reviewedRemediationCommit": "333866c7b6462b86215a840d317d5dfa449a623b",
+    "releaseCandidateCommit": "05b00279d67f4fda010e79e858123e8af57c1375",
+    "candidateTree": "7a8721a1fd8a1aa74a2ba859fc5220d0f9bea853",
+    "pullRequest": 124,
+    "pullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/124",
+    "mergeCommit": "7c751d59d9241387dc0cb368f4825b8b09a20af7",
+    "mergeTree": "7a8721a1fd8a1aa74a2ba859fc5220d0f9bea853",
+    "prQualityRun": 33107014877,
+    "prQualityJob": 98639441825,
+    "prQualityResult": "PASS",
+    "mainQualityRun": 33107106880,
+    "mainQualityJob": 98639777930,
+    "mainQualityResult": "PASS",
+    "tag": "v0.6.56",
+    "annotatedTagObject": "faac17b8cb442b45ce1ab3e3392bb4fc116fc58e",
+    "tagPeeledCommit": "7c751d59d9241387dc0cb368f4825b8b09a20af7",
+    "tagTree": "7a8721a1fd8a1aa74a2ba859fc5220d0f9bea853",
+    "releaseUrl": "https://github.com/jasionia1991-max/unboundry/releases/tag/v0.6.56",
+    "releasePublishedAt": "2026-08-27T19:10:50Z",
+    "releaseDraft": false,
+    "releasePrerelease": false
+  },
+  "verification": {
+    "expectedRed": {
+      "spec": "m102-model-execution-contracts",
+      "passed": 12,
+      "failed": 1,
+      "onlyFailure": "Observed numeric data.task_ids and data.任务ids envelopes were not normalized"
+    },
+    "targetedClosure": {
+      "m102": "13/13 PASS",
+      "m53_m81_m88": "103/103 PASS",
+      "reviewRemediation_m102_m38": "29/29 PASS",
+      "governanceAfterReview": "16/16 PASS"
+    },
+    "finalIndependentReview": {
+      "firstCandidateCommit": "c29295ce23727f50806a2cf422e128c52386f8d3",
+      "firstDecision": "P0_0_P1_2_NO_GO",
+      "finalCandidateCommit": "333866c7b6462b86215a840d317d5dfa449a623b",
+      "p0": 0,
+      "p1": 0,
+      "decision": "GO"
+    },
+    "formalFullSuite": {
+      "executedOnce": true,
+      "exactMergeAndTagTree": true,
+      "discoveredSpecs": 122,
+      "discoveredTests": 1090,
+      "passed": 1084,
+      "failed": 3,
+      "skipped": 3,
+      "failures": [
+        "m1 dense Canvas performance sample p95 34.3ms exceeded 25ms with no long tasks or requests",
+        "m2 text fixture retained the visible prefix 格式测试",
+        "m94 isolated npm runtime could not resolve ../lib/cli.js"
+      ],
+      "sourceAndSnapshotSha256": "600a47be9f03be5f4a6c6c303942742af9a9e293833aba0e58fe87f2fb5977e0",
+      "immutableBuilder": "PASS_1_ATTEMPT_5_INVOCATIONS",
+      "secondFullSuiteExecuted": false
+    },
+    "failedSubsetClosure": {
+      "specs": [
+        "m1-dense-canvas-performance",
+        "m2-text-node",
+        "m94-node-toolchain"
+      ],
+      "tests": 13,
+      "passed": 13,
+      "failed": 0,
+      "sourceModifiedBeforeClosure": false
+    },
+    "postProductionDocumentationClosure": {
+      "spec": "m38-generation-runtime-incidents",
+      "executedSpecs": 1,
+      "discoveredSpecs": 122,
+      "discoveredTests": 1090,
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "reportErrors": 0,
+      "sourceAndSnapshotSha256": "c946099df5b31efe6ba91c219e065a89b6b194ae152abd41b3aded0f3961afbd",
+      "listener4173": "unchanged",
+      "fullSuiteRepeated": false
+    }
+  },
+  "artifact": {
+    "tagArchiveSha256": "45f1ad1641efae38e4c4968f3eab605ec7a9c85e27ff564bc873382842ffb6f1",
+    "releasePath": "/opt/unboundry/releases/v0.6.56-inc-gen-016-20260828",
+    "releaseFileCountExcludingInventory": 6022,
+    "distFileCount": 33,
+    "inventorySha256": "16c572ee5e8e3d2b135503998eaaf0109f4e4563ca315d858fd9d73af287fdb7",
+    "builder": {
+      "node": "22.23.2",
+      "npm": "10.9.8",
+      "freshBuild": "PASS"
+    }
+  },
+  "rehearsal": {
+    "restoreCopy": "PASS",
+    "standbyLive": "PASS",
+    "standbyReadyContract": "EXPECTED_503_SERVICE_RUNTIME_ROLE_NOT_ACTIVE",
+    "restoreManifestUnchanged": true,
+    "productionUnaffectedDuringRehearsal": true,
+    "paidProviderRequests": 0
+  },
+  "backupAndCutover": {
+    "cutoverBackupPath": "/var/lib/unboundry-rollbacks/v0.6.56-cutover-frozen.4OibNF",
+    "sourceManifestSha256": "806292bccdf3523a7571b83cd9becc65c307e37ee872d6f92daec7b120808c95",
+    "databaseSchema": 41,
+    "databaseIntegrity": "ok",
+    "foreignKeyViolations": 0,
+    "atomicReleaseSwitch": "PASS",
+    "rollback": "PASS",
+    "forwardSwitchAfterRollback": "PASS",
+    "rollbackOperationalNote": "The first 30-second observation window expired immediately before the old runtime became ready. Read-only inspection proved v0.6.55 active and ready; the forward switch to v0.6.56 then passed with a widened observation window."
+  },
+  "production": {
+    "hostAlias": "live-cockpit",
+    "currentRelease": "/opt/unboundry/releases/v0.6.56-inc-gen-016-20260828",
+    "versionEndpoint": "0.6.56",
+    "service": "unboundry",
+    "serviceState": "active",
+    "serviceEnabled": true,
+    "serviceRestarts": 0,
+    "runtimeNode": "22.23.2",
+    "runtimeNpm": "10.9.8",
+    "schema": 41,
+    "databaseIntegrity": "ok",
+    "foreignKeyViolations": 0,
+    "publicVersion": "0.6.56",
+    "publicLive": "live",
+    "publicReady": "active",
+    "publicEntryAssetByteMatches": 2,
+    "beforeRealAcceptanceCounts": {
+      "tasks": 954,
+      "attempts": 964,
+      "active": 0,
+      "unknownBillingTasks": 0,
+      "media": 910,
+      "publications": 501,
+      "canvases": 72,
+      "models": 20,
+      "templates": 50
+    },
+    "afterRealAcceptanceCounts": {
+      "tasks": 954,
+      "attempts": 965,
+      "active": 0,
+      "unknownBillingTasks": 0,
+      "media": 911,
+      "publications": 502,
+      "canvases": 72
+    },
+    "preAcceptanceStabilityGate": {
+      "stableSeconds": 60,
+      "countsUnchanged": true,
+      "serviceStable": true
+    },
+    "postResultStabilityGate": {
+      "stableSeconds": 60,
+      "startedAt": "2026-08-28T04:03:40+08:00",
+      "endedAt": "2026-08-28T04:04:40+08:00",
+      "countsUnchanged": true,
+      "serviceStable": true
+    }
+  },
+  "realProviderAcceptance": {
+    "providerFamily": "gk-video-3",
+    "authorizedEstimatedBudgetUsd": 20,
+    "perSubmissionEstimatedLimitUsd": 10,
+    "providerPostsMade": 1,
+    "actualChargedUsd": 10,
+    "taskId": "da761fff-6a65-46fd-84cf-4dc5bddbc985",
+    "executionAttempt": 4,
+    "providerTaskId": "118533110",
+    "acceptedAt": "2026-08-27T19:57:49.427Z",
+    "completedAt": "2026-08-27T20:00:40.735Z",
+    "finalOutcome": "completed",
+    "failureCode": null,
+    "unknownBillingRisk": false,
+    "resultAsset": {
+      "id": "04bd1281-fde3-4784-8c46-9646e7619c22.mp4",
+      "storageBackend": "oss",
+      "storageStatus": "ready",
+      "contentType": "video/mp4",
+      "byteSize": 4825780,
+      "checksumSha256": "57119de6ca64b8d6a0e0d0ee85febd6ddb8976d37d8882dfd4cbe547c043e588",
+      "durationSeconds": 10.042,
+      "width": 720,
+      "height": 1280,
+      "publicationState": "published",
+      "publicationRetryCount": 0
+    },
+    "canvasProjection": {
+      "revision": 299,
+      "graphRevision": 141,
+      "videoGenerating": false,
+      "assetId": "04bd1281-fde3-4784-8c46-9646e7619c22.mp4",
+      "error": null
+    },
+    "browserRefreshPersistence": {
+      "videoElements": 1,
+      "readyState": 4,
+      "durationSeconds": 10.041667,
+      "width": 720,
+      "height": 1280,
+      "retryControlPresent": false
+    },
+    "additionalProviderPostsAllowed": false,
+    "additionalProviderPostsMade": false,
+    "result": "REAL_PROVIDER_PASS"
+  },
+  "acceptanceMatrixOutcome": {
+    "APR-020": "REAL_PROVIDER_REFUND_UI_PASS_HISTORICAL_V0_6_55",
+    "APR-021": "REAL_PROVIDER_PASS",
+    "APR-022": "REAL_RESULT_REFRESH_PERSISTENCE_PASS",
+    "APR-023": "GK_DECLARATIVE_CONNECTOR_REAL_E2E_PASS",
+    "APR-026": "AUTHORIZATION_CONSUMED_CLOSED",
+    "APR-027": "USER_RECHECK"
+  },
+  "stoppingCondition": {
+    "met": false,
+    "goalTechnicalCompletionAchieved": true,
+    "realProviderPass": true,
+    "userPass": false
+  },
+  "nextAction": "The target production Canvas is left open on the generated video. The user should watch it and explicitly confirm or reject visual quality; only that reply may promote USER_RECHECK to USER_PASS."
+}

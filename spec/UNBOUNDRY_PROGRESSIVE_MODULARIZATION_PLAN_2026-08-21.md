@@ -1,10 +1,10 @@
 # Unboundry 渐进式模块化施工路线图
 
 更新日期：2026-08-26
-状态：`PLAN_FROZEN / FIRST_AND_SECOND_BATCH_PRODUCTION_PUBLISHED / CURRENT_V0_6_55_USER_RECHECK / VIEW_005_AUTO_PASS / CURRENT_GOVERNANCE_HARDENING`
+状态：`PLAN_FROZEN / FIRST_AND_SECOND_BATCH_PRODUCTION_PUBLISHED / CURRENT_V0_6_56_USER_RECHECK / VIEW_005_AUTO_PASS / CURRENT_GOVERNANCE_HARDENING`
 关联审计：`spec/UNBOUNDRY_MODULAR_MONOLITH_AUDIT_2026-08-21.md`
 
-当前收口：第一批同步文字 Provider port 与第二批 Generation/Media 结果提交边界、三媒体模型合同均已发布并持续包含在 v0.6.54；云腾商业 Provider 隔离和真实结果兼容已在 v0.6.29/30 完成，模块化成果随 v0.6.31 进入普通 main-safe 生产路径。v0.6.32的真实图片裁剪功能只在触发点增加可取消存储读取port和可替换客户端resolver；INC-IMGEDIT-003～006按第四批触发原则完成图片工具需要的轻量Dispatcher、Canvas命令端口、UI Host和产品质量边界；v0.6.41按同一原则增加角色合规Port/Application/Store及付费前门，v0.6.42只增加accepted-only恢复租约并复用既有Canvas拖动quiet gate，没有重做整个Canvas。v0.6.47完成项目默认Node25/npm11与生产Node22/npm10分工治理并已发布；v0.6.49/50完成MODEL-CONTRACT-001后端、数据和入口，v0.6.51完成用户复验返工，v0.6.54完成MODEL-CONTRACT-002历史revision解耦、GitHub、生产技术与零付费浏览器验收。`VIEW-005` 已由精确 98/171/200 节点安全定向证据收口为 `AUTO_PASS`。当前没有自动启动的后续批次，路线图只在真实新功能触发边界问题时重新立项。
+当前收口：第一批同步文字 Provider port 与第二批 Generation/Media 结果提交边界、三媒体模型合同均已发布并持续包含在 v0.6.56；云腾商业 Provider 隔离和真实结果兼容已在 v0.6.29/30 完成，模块化成果随 v0.6.31 进入普通 main-safe 生产路径。v0.6.32的真实图片裁剪功能只在触发点增加可取消存储读取port和可替换客户端resolver；INC-IMGEDIT-003～006按第四批触发原则完成图片工具需要的轻量Dispatcher、Canvas命令端口、UI Host和产品质量边界；v0.6.41按同一原则增加角色合规Port/Application/Store及付费前门，v0.6.42只增加accepted-only恢复租约并复用既有Canvas拖动quiet gate，没有重做整个Canvas。v0.6.47完成项目默认Node25/npm11与生产Node22/npm10分工治理并已发布；v0.6.49/50完成MODEL-CONTRACT-001后端、数据和入口，v0.6.51完成用户复验返工，v0.6.54完成MODEL-CONTRACT-002历史revision解耦，v0.6.55/56完成INC-GEN-016结果恢复与数字task ID真实闭环。`VIEW-005` 已由精确 98/171/200 节点安全定向证据收口为 `AUTO_PASS`。当前没有自动启动的后续批次，路线图只在真实新功能触发边界问题时重新立项。
 
 ## 1. 目标与非目标
 

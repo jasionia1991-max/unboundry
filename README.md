@@ -6,7 +6,11 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 
-## 当前线上：v0.6.47 治理与默认 Node 25（2026-08-26，USER PASS）
+## 当前线上：v0.6.56 数字task ID真实闭环（2026-08-28，USER RECHECK）
+
+v0.6.56已完成PR #124/main CI、不可移动tag/GitHub Release、fresh build、冻结备份恢复、原子发布、回滚和生产健康门。目标Canvas唯一真实GK提交成功：数字task ID `118533110`已持久化，MP4自动回填并经刷新保持；实际费用USD10、unknown-billing 0。当前严格为`PRODUCTION_V0_6_56_TECHNICAL_PASS / REAL_PROVIDER_PASS / USER_RECHECK`，只有用户看完成片明确确认后才可升级`USER_PASS`。回执见[`spec/V0_6_56_PRODUCTION_RECEIPT_2026-08-28.json`](spec/V0_6_56_PRODUCTION_RECEIPT_2026-08-28.json)。
+
+## 历史线上：v0.6.47 治理与默认 Node 25（2026-08-26，USER PASS）
 
 生产已运行`v0.6.47 / schema41`，服务active/enabled、NRestarts=0，回环与公网version/live/ready、冻结备份恢复、release inventory和5个静态资源逐字节校验全部通过。PR #110、PR/main Quality CI、不可移动tag与GitHub Release已完成；真实Provider、Generation、OSS写入与费用为0。用户随后明确回复`v0.6.47 验收通过`，当前为`PRODUCTION_V0_6_47_USER_PASS / USER_PASS`。原技术回执见[`spec/V0_6_47_PRODUCTION_RECEIPT_2026-08-26.json`](spec/V0_6_47_PRODUCTION_RECEIPT_2026-08-26.json)，保留其生成时状态。
 

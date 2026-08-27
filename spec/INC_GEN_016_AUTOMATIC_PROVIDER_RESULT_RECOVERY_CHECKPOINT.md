@@ -1,10 +1,22 @@
 # INC-GEN-016 实时断点
 
-状态：`V0_6_56_REVIEW_GO / P0_0_P1_0 / GITHUB_CI_PENDING / RELEASE_GATE_CLOSED / USER_RECHECK`
+状态：`PRODUCTION_V0_6_56_TECHNICAL_PASS / REAL_PROVIDER_PASS / USER_RECHECK`
 
 更新时间：2026-08-28
 
 ## 当前事实
+
+### 2026-08-28 v0.6.56 GitHub、生产与真实结果收口
+
+- PR #124候选`05b00279d67f4fda010e79e858123e8af57c1375`的Quality run `33107014877`通过并合并为`7c751d59d9241387dc0cb368f4825b8b09a20af7`；main Quality run `33107106880`通过。注释tag对象`faac17b8cb442b45ce1ab3e3392bb4fc116fc58e`精确指向该merge/tree `7a8721a1fd8a1aa74a2ba859fc5220d0f9bea853`，GitHub Release `v0.6.56`已发布且不可移动。
+- 唯一正式safe full在精确merge/tag tree执行：发现122 specs/1090 tests，`1084 PASS / 3 failed / 3 skipped`；m1性能采样、m2夹具前缀、m94隔离npm runtime三项在源码不变时按失败最小集复验`13/13 PASS`，未执行第二次full。source/snapshot均为`600a47be9f03be5f4a6c6c303942742af9a9e293833aba0e58fe87f2fb5977e0`，immutable builder 1 attempt/5 invocations通过。
+- tag精确源码在生产Node22.23.2/npm10.9.8 fresh build通过；release `/opt/unboundry/releases/v0.6.56-inc-gen-016-20260828`有6022个inventory外文件、33个dist文件，inventory SHA-256 `16c572ee5e8e3d2b135503998eaaf0109f4e4563ca315d858fd9d73af287fdb7`。
+- 冻结备份`/var/lib/unboundry-rollbacks/v0.6.56-cutover-frozen.4OibNF`，source manifest `806292bccdf3523a7571b83cd9becc65c307e37ee872d6f92daec7b120808c95`；隔离restore copy以standby启动v0.6.56，正确返回`SERVICE_RUNTIME_ROLE_NOT_ACTIVE`并保持数据manifest不变。原子切换、回退v0.6.55和再次前滚v0.6.56均通过。
+- 最终生产v0.6.56/schema41，service active/enabled、NRestarts0，integrity ok、FK0；公网version/live/ready和首页两个入口JS/CSS逐字节通过。真实验收前60秒内tasks954/attempts964/active0/unknown0/media910/publications501/canvases72不变。
+- 用户在浏览器点击时明确确认后，旧失败卡片的唯一「重试生成」入口产生原task的attempt4和唯一一次Provider POST；Provider task ID `118533110`被安全持久化，证明数字task ID有限外壳在生产真实链通过。任务无unknown、没有第二次POST。
+- attempt4于`2026-08-27T20:00:40.735Z`完成，实际费用USD10；正式OSS视频资产`04bd1281-fde3-4784-8c46-9646e7619c22.mp4`为ready/published、4825780字节、SHA-256 `57119de6ca64b8d6a0e0d0ee85febd6ddb8976d37d8882dfd4cbe547c043e588`、720×1280、10.042秒，publication retry0。
+- 原节点自动投影该资产，Canvas revision299/graphRevision141、Generating=false、错误清空。生产浏览器刷新后仍有唯一视频，readyState4、10.041667秒、720×1280，重试入口消失。最终账本tasks954/attempts965/active0/unknown0/media911/publications502/canvases72，发布后与结果后稳定门均通过。
+- 当前严格为`PRODUCTION_TECHNICAL_PASS / REAL_PROVIDER_PASS / USER_RECHECK`；APR-021～023通过，APR-027仍需用户观看成片后明确确认，不能自动写`USER_PASS`。权威回执：`spec/V0_6_56_PRODUCTION_RECEIPT_2026-08-28.json`。
 
 ### 2026-08-28 v0.6.56 独立Review首轮
 

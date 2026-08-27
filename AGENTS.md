@@ -8,7 +8,7 @@
 
 2026-08-28 INC-GEN-016 当前权威状态：v0.6.55已完成PR #122/main CI、不可移动tag/Release、冻结备份/恢复演练、原子发布、回滚和稳定门；生产v0.6.55/schema41健康，unknown-billing tasks为0。历史attempt2获Provider无受理/无扣费证据后只替代提交一次，attempt3被Provider明确全额退款且无结果；项目内退款提示正确、实际费用0。当前严格为`PRODUCTION_V0_6_55_TECHNICAL_PASS / REAL_PROVIDER_REFUNDED / NO_RESULT / USER_RECHECK`。版本、发布和真实提交授权均已消费，禁止再次Provider POST，不得写`REAL_PROVIDER_PASS/USER_PASS`。回执`spec/V0_6_55_PRODUCTION_RECEIPT_2026-08-28.json`。
 
-2026-08-28 INC-GEN-016 v0.6.56续作权威状态：用户已用新Goal明确指定`v0.6.56`，新增真实生成总预算上限USD 20，并授权修复、Review、GitHub/CI、不可移动tag/Release、可恢复生产发布及同一目标Canvas真实GK验收。新隔离工作树`/Users/mymy/Documents/unboundry-inc-gen-016-v0.6.56-2026-08-28`基于`origin/main@86e17db78559a83e781e75ba8c1b1eaa0079ac0e`；v0.6.56未占用。R0只读基线确认生产v0.6.55/schema41健康、目标退款task无结果、活动任务0、当前`OUTCOME_UNKNOWN_BILLING_RISK`任务0。有限数字task ID修复的独立Review首轮P0=0/P1=2，两项最小修复后同一线程增量复核最终`P0=0/P1=0/GO`；GitHub/CI与发布仍未执行。真实Provider预算在CI、备份恢复和生产发布门前不得消费；首单预估上限USD10，只有明确未受理/未扣费或退款时才允许最多一次替代提交，任何unknown都禁止第二次POST。受保护JSON继续禁止读取、修改、暂存、移动或删除。
+2026-08-28 INC-GEN-016 v0.6.56续作权威状态：生产运行`v0.6.56/schema41`，PR #124、PR/main Quality、不可移动tag/Release、fresh build、冻结备份恢复演练、原子切换、回滚与健康门均通过；有限数字task ID修复独立Review最终`P0=0/P1=0/GO`。同一目标Canvas只新增attempt4并只发出一次Provider POST，数字task ID `118533110`已持久化，真实MP4自动回填且刷新后继续可播放；实际费用USD10，unknown-billing 0，结果后60秒数据和服务稳定。当前严格为`PRODUCTION_V0_6_56_TECHNICAL_PASS / REAL_PROVIDER_PASS / USER_RECHECK`；版本、发布和真实提交授权已消费，禁止再次Provider POST或移动tag。只有用户观看成片后明确确认才可写`USER_PASS`。回执`spec/V0_6_56_PRODUCTION_RECEIPT_2026-08-28.json`；受保护JSON继续禁止读取、修改、暂存、移动或删除。
 
 人和 AI 共用的上线拍板规矩见仓库根目录 `上线规矩.md`。发布前必须分别获得版本号确认和允许发布；一次授权只用一次。
 
@@ -38,13 +38,13 @@
 ### 默认工具链与生产兼容通道
 
 - 项目普通开发、类型检查、构建和新shell默认使用`.node-version`中的Node `25.9.0`与`packageManager`中的npm `11.12.1`；不得再把`/Users/mymy/.hermes/node/bin`或`/Users/mymy/.local/bin`中的Node 22预置到普通shell PATH。
-- 当前生产v0.6.55真实运行Node `22.23.2` / npm `10.9.8`；本版没有迁移生产Node运行时。
+- 当前生产v0.6.56真实运行Node `22.23.2` / npm `10.9.8`；本版没有迁移生产Node运行时。
 - `scripts/run-safe-tests.mjs`、源码覆盖门和不可变release builder继续使用Node `22.23.1` / npm `10.9.8`专用兼容通道，以复现当前生产代际；这是显式测试/发布例外，不是项目默认shell。`engines`同时覆盖两端，未来迁移生产前不得删除Node 22兼容边界。
 
 ## 2. 当前授权边界
 
 - **2026-08-28 INC-GEN-016 当前权威状态**：本次`/goal`授权的代码、Review、唯一safe full、GitHub/CI、v0.6.55 tag/Release、生产备份/恢复/发布/回滚和真实GK验收均已执行。生产技术通过；唯一替代attempt被Provider全额退款且没有结果，实际费用0。授权已全部消费，禁止再次Provider POST；没有真实结果，故不得写`REAL_PROVIDER_PASS/USER_PASS`；
-- **2026-08-28 INC-GEN-016 v0.6.56续作授权**：新Goal授权修复已证实的数字`data.task_ids[]`有限响应合同、风险驱动测试、独立Review、v0.6.56 GitHub/CI/tag/Release、生产备份恢复发布回滚和目标Canvas真实GK验收；新增总预算USD20，unknown禁止二次POST。新授权不复用或移动v0.6.55，不触碰受保护JSON，不扩张到无关协议、模型、Canvas或用户数据；
+- **2026-08-28 INC-GEN-016 v0.6.56续作授权**：修复、Review、GitHub/CI/tag/Release、生产备份恢复发布回滚和目标Canvas唯一真实GK提交均已执行；实际费用USD10，结果已回填并刷新保持。版本、发布和Provider提交授权全部消费；禁止再次POST、移动v0.6.56或把`USER_RECHECK`自升为`USER_PASS`；
 
 - **2026-08-26 v0.6.47 当前权威状态**：生产运行`v0.6.47/schema41`，服务active/enabled、NRestarts=0；PR #110、PR/main CI、merge `24541b3`、不可移动tag/Release、fresh build、冻结备份`v0.6.47-cutover-final2-20j2R3`、恢复/schema/integrity/FK/数据门、原子切换、公网/回环/inventory/5资源和60秒稳定门通过。真实Provider/Generation/OSS/费用0；用户随后明确回复`v0.6.47 验收通过`，当前聚合状态为`PRODUCTION_V0_6_47_USER_PASS / USER_PASS`。原回执`spec/V0_6_47_PRODUCTION_RECEIPT_2026-08-26.json`保留生成时技术状态。一次性v0.6.47授权已消费，后续新代码、Provider或发布需要新授权；
 - **2026-08-27 MODEL-CONTRACT-001 当前权威状态**：用户知悉本轮没有新真实付费生成且仍有`USER_RECHECK`后，明确授权PR #116与候选v0.6.51发布。PR/main CI、merge `0c639385…ea5c`、tag/Release、fresh build、冻结恢复、原子切换和回滚门均通过；生产release为`/opt/unboundry/releases/v0.6.51-model-contract-remediation-20260827`，service active/enabled、NRestarts=0，schema41/integrity/FK通过，tasks933/attempts942/active0等基线在发布与浏览器复验中不变，33个静态文件逐字节一致，四视口工作台无溢出。真实Provider/Generation/OSS/新费用均0；一次性发布授权已消费，当前严格为`PRODUCTION_V0_6_51_TECHNICAL_PASS / USER_RECHECK`，不得升级`USER_PASS`；
