@@ -1,6 +1,6 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网仍为v0.6.50/schema41，历史生产技术证据保留；2026-08-27真实Computer Use用户清单为15/27通过、12项失败或证据不足。版本A已关闭已知重复付费路径并通过最小受影响safe定向，等待独立commit；版本B、27项候选复验、Review、唯一full和发布门尚未完成。当前严格为`PRODUCTION_V0_6_50_TECHNICAL_PASS / USER_RECHECK_FAILED / VERSION_A_TARGETED_AUTO_PASS / VERSION_A_COMMIT_PENDING`。
+> **状态分层**：现网仍为v0.6.50/schema41，历史生产技术证据保留；2026-08-27真实Computer Use用户清单为15/27通过、12项失败或证据不足。版本A已关闭已知重复付费路径、通过最小受影响safe定向并形成独立commit；版本B实施中，27项候选复验、Review、唯一full和发布门尚未完成。当前严格为`PRODUCTION_V0_6_50_TECHNICAL_PASS / USER_RECHECK_FAILED / VERSION_A_COMPLETE / VERSION_B_IN_PROGRESS`。
 
 更新日期：2026-08-27
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
@@ -8,7 +8,7 @@
 本地候选代码版本：**v0.6.50**
 本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_50_USER_RECHECK`
-当前计划标记：`MODEL_CONTRACT_001_USER_RECHECK_15_PASS_12_FAIL_OR_INSUFFICIENT / REMEDIATION_PLAN_FROZEN / VERSION_A_TARGETED_AUTO_PASS / VERSION_A_COMMIT_PENDING`
+当前计划标记：`MODEL_CONTRACT_001_USER_RECHECK_15_PASS_12_FAIL_OR_INSUFFICIENT / REMEDIATION_PLAN_FROZEN / VERSION_A_COMPLETE / VERSION_B_IN_PROGRESS`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
 当前发布门：`MODEL_CONTRACT_001_REMEDIATION_RELEASE_GATE_CLOSED / V0_6_50_REMAINS_PRODUCTION / USER_RECHECK`
 
@@ -21,7 +21,8 @@
 - 权威入口：`spec/MODEL_CONTRACT_001_USER_RECHECK_REMEDIATION_PLAN_2026-08-27.md`、对应返工矩阵和`spec/MODEL_CONTRACT_001_CHECKPOINT.md`。
 - R0只读复核确认生产v0.6.50/schema41健康、旧4173属于历史工作树、本Goal生产/Provider/OSS写和费用均0；既有`⚡2.182`无法核验人民币换算，真实付费分支保持阻断。
 - 版本A当前源码safe证据为m5 `22/22`、m38 `15/15`、m22 `41/41`，对应m102/m26/m53回执继续有效；schema41、真实Provider/OSS/生产写与新费用均为0。
-- 唯一下一动作：完成版本A独立暂存/commit并回写精确commit/tree；版本A收口前不进入版本B。
+- 版本A独立commit为`584e4071c87ae06b980e091df47ce0aaa3e03b4f`/tree`c85bd81a8775ef786bf3146583ae57c2ee00ec53`。
+- 唯一下一动作：完成版本B工作台三态、CAS/本地校验/预览、精确官方文档、模式/角色人话界面、UI与可访问性，并跑最小受影响safe定向。
 
 v0.6.50由PR #114合并为`d3f5490f524b2d8d212ef7607d85afbf1981ca05` / tree `5b12ebeb97ed7a0e9ed34927fca51de2d0fd38ad`并发布不可移动tag/Release，现网release为`/opt/unboundry/releases/v0.6.50-model-contract-workbench-entry-20260827`。当前隔离工作树为`/Users/mymy/Documents/unboundry-model-contract-001-2026-08-26`，已切到用户复验返工分支并含4个待审相关改动；旧`/Users/mymy/Documents/unboundry/app`不得施工或自动清理。
 

@@ -1,8 +1,8 @@
 # MODEL-CONTRACT-001 用户复验失败修复验收矩阵
 
-状态：`BASELINE_15_OF_27_PASS / 12_FAIL_OR_INSUFFICIENT / VERSION_A_TARGETED_AUTO_PASS / VERSION_A_COMMIT_PENDING / USER_RECHECK`
+状态：`BASELINE_15_OF_27_PASS / 12_FAIL_OR_INSUFFICIENT / VERSION_A_COMPLETE / VERSION_B_IN_PROGRESS / USER_RECHECK`
 
-R0证据：真实checkout/HEAD/tree、14 tracked + 3 untracked进入时差异、4173历史工作树归属、生产v0.6.50/schema41健康、GitHub版本占用和费用不可换算边界均已只读冻结。版本A当前源码已通过最小受影响safe定向：m5 `22/22`、m38 `15/15`、m22 `41/41`，以及未受后续改动影响的m102 `7/7`、m26 `10/10`、m53 `26/26`；本Goal到当前为真实Provider POST 0、OSS写0、生产写0、新费用0。Computer Use和正式full尚未执行。
+R0证据：真实checkout/HEAD/tree、14 tracked + 3 untracked进入时差异、4173历史工作树归属、生产v0.6.50/schema41健康、GitHub版本占用和费用不可换算边界均已只读冻结。版本A当前源码已通过最小受影响safe定向：m5 `22/22`、m38 `15/15`、m22 `41/41`，以及未受后续改动影响的m102 `7/7`、m26 `10/10`、m53 `26/26`；独立commit `584e4071c87ae06b980e091df47ce0aaa3e03b4f` / tree `c85bd81a8775ef786bf3146583ae57c2ee00ec53`。本Goal到当前为真实Provider POST 0、OSS写0、生产写0、新费用0。版本B、Computer Use和正式full尚未完成。
 
 本矩阵只管理 2026-08-27 用户真实验收暴露的返工，不改写 v0.6.50 的历史生产技术回执。`AUTO_PASS`、真实 Provider、生产技术、Computer Use 和 `USER_PASS` 分层记录；任何一层不能替代另一层。
 

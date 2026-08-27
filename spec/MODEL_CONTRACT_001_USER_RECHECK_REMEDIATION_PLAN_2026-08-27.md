@@ -1,9 +1,9 @@
 # MODEL-CONTRACT-001 用户复验失败修复方案
 
 更新时间：2026-08-27
-状态：`PLAN_FROZEN / VERSION_A_TARGETED_AUTO_PASS / VERSION_A_COMMIT_PENDING / RELEASE_GATE_CLOSED / USER_RECHECK`
+状态：`PLAN_FROZEN / VERSION_A_COMPLETE / VERSION_B_IN_PROGRESS / RELEASE_GATE_CLOSED / USER_RECHECK`
 
-> 2026-08-27执行断点：R0已完成；版本A已用schema41的`outcome-unknown`和稳定错误码关闭“查询空/无task ID→允许新付费attempt”，GPT Image/Mureka/GK模式级证据与最小受影响safe定向均通过。当前只差版本A独立commit/checkpoint；完成前不进入版本B。真实付费生成因`⚡2.182`无法核验人民币换算而继续阻断。完整证据见实时checkpoint。
+> 2026-08-27执行断点：R0和版本A均已完成。版本A独立commit为`584e4071c87ae06b980e091df47ce0aaa3e03b4f`/tree`c85bd81a8775ef786bf3146583ae57c2ee00ec53`，schema41、真实Provider/OSS/生产写和新费用均为0。当前进入版本B；真实付费生成因`⚡2.182`无法核验人民币换算而继续阻断。完整证据见实时checkpoint。
 
 ## 1. 目标与结论
 
@@ -129,7 +129,7 @@ Provider adapter、结果解析、任务恢复、重试策略和 UI 提示之间
 - 数据库兼容与旧任务恢复通过。
 - 完成版本 A 独立 commit/checkpoint；在此之前不得开始版本 B。
 
-2026-08-27执行结果：前五项已由fake Provider、临时数据库和Node22 safe定向证明；schema保持41，真实Provider/OSS/生产写与新费用均为0。m5 `22/22`、m38 `15/15`、m22 `41/41`为当前源码回执；对应实现未再变化的m102 `7/7`、m26 `10/10`、m53 `26/26`回执继续有效。当前仅剩独立commit/checkpoint门。
+2026-08-27执行结果：全部完成门已由fake Provider、临时数据库和Node22 safe定向证明；schema保持41，真实Provider/OSS/生产写与新费用均为0。m5 `22/22`、m38 `15/15`、m22 `41/41`为当前源码回执；对应实现未再变化的m102 `7/7`、m26 `10/10`、m53 `26/26`回执继续有效。独立commit为`584e4071c87ae06b980e091df47ce0aaa3e03b4f`/tree`c85bd81a8775ef786bf3146583ae57c2ee00ec53`，版本A正式关闭。
 
 ## 5. 版本 B：合同工作台、文档与 UI
 

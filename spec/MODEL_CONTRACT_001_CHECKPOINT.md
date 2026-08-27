@@ -2,7 +2,7 @@
 
 更新时间：2026-08-27
 
-当前状态：`V0_6_50_PRODUCTION_TECHNICAL_PASS / USER_RECHECK_FAILED_15_OF_27_PASS / 12_FAIL_OR_INSUFFICIENT / VERSION_A_TARGETED_AUTO_PASS / VERSION_A_COMMIT_PENDING / RELEASE_GATE_CLOSED`
+当前状态：`V0_6_50_PRODUCTION_TECHNICAL_PASS / USER_RECHECK_FAILED_15_OF_27_PASS / 12_FAIL_OR_INSUFFICIENT / VERSION_A_COMPLETE / VERSION_B_IN_PROGRESS / RELEASE_GATE_CLOSED`
 
 ## 0.1 版本 A 付费安全候选（2026-08-27）
 
@@ -14,7 +14,8 @@
 - safe runner预检、生产构建、架构/源码/secret与动态loopback门均通过；测试只用新临时目录、fake Provider/OSS和假数据。当前Goal累计真实Provider POST 0、Generation 0、OSS写0、生产写0、新费用0；既有`⚡2.182`仍不可换算，真实付费分支继续阻断。
 - 首轮m38曾暴露两个当前源码不一致断言：AUTH/PERMISSION新语义应为unknown，以及CURRENT_STATE治理标记后缀不满足既有正则；精确修正后只重跑m38并`15/15 PASS`。没有运行full。
 - 保护路径事件：版本A收口自检时误发起一次针对`spec/public-templates-director-split-revision.json`的`shasum`命令；命令没有产生摘要输出，未修改、未暂存、未提交该路径。此后不再对该路径执行任何读取或Git操作。该偏差必须保留在最终回执中，不冒充“从未尝试读取”。
-- 唯一下一动作：完成版本A独立暂存/commit并把精确commit/tree写回checkpoint；随后才进入版本B。
+- 版本A独立提交已形成：commit `584e4071c87ae06b980e091df47ce0aaa3e03b4f` / tree `c85bd81a8775ef786bf3146583ae57c2ee00ec53`。提交后剩余dirty仅为进入本Goal前冻结的版本B/历史治理差异：`AGENTS.md`、`client/src/App.tsx`、`client/src/styles.css`、`server/modelReleaseDefaults.ts`、四份历史MODEL-CONTRACT文档、`tests/m102-model-execution-contracts.spec.ts`和`上线规矩.md`；没有丢弃或覆盖。
+- 唯一下一动作：进入版本B，逐块审查并完成工作台三态、CAS/本地校验/预览、精确官方文档、模式/角色人话界面、UI和可访问性；仍不得开始27项浏览器复验或正式full。
 
 ## 0. 本 Session 返工 R0 现场冻结（2026-08-27）
 
@@ -27,7 +28,7 @@
 - 只读账本显示生产数据自历史回执后有用户活动，但本Goal没有生产写、Provider请求、OSS写或费用。既有平台账本`⚡2.182`无法核验人民币换算，因此本Goal后续真实付费生成保持阻断；只用fake Provider、临时数据和既有任务证据。
 - GitHub只读复核：最新不可移动版本为`v0.6.50`、无开放PR；当前最小未占用patch建议为`v0.6.51`，候选冻结前必须再次核验。
 - 版本A根因已关闭：平台查询空/无task ID不再调用“确认缺失”或补提交，而是复用schema41的`outcome-unknown`并写稳定码`OUTCOME_UNKNOWN_BILLING_RISK`；只有权威未受理/未计费或已退款证据才允许新付费attempt。
-- R0本身没有测试或提交；版本A现已完成最小受影响safe定向验证，等待独立暂存/commit。commit/checkpoint完成前不得进入版本B。
+- R0本身没有测试或提交；版本A已完成最小受影响safe定向验证和独立commit/checkpoint，现进入版本B。
 
 ## 1. 当前身份与版本
 
@@ -107,6 +108,6 @@
 
 ## 5. 唯一下一动作
 
-完成版本A独立暂存/commit并回写精确commit/tree；随后按同一已激活Goal进入版本B。之后依次完成27项候选Computer Use、全量Review、唯一safe full和PR/CI候选；只在merge/tag/GitHub Release/生产写入之前停在最终发布授权门。
+完成版本B工作台、文档与UI修复，并跑最小受影响safe定向。之后依次完成27项候选Computer Use、全量Review、唯一safe full和PR/CI候选；只在merge/tag/GitHub Release/生产写入之前停在最终发布授权门。
 
 恢复顺序改为：`AGENTS.md → 上线规矩.md → CURRENT_STATE → 本checkpoint → 新返工方案 → 新返工矩阵 → 原主方案 → 原独立矩阵 → 原用户清单 → TASKS顶部 → 总验收矩阵顶部`。受保护文件`spec/public-templates-director-split-revision.json`永远不得读取、修改、暂存、提交、移动或删除。
