@@ -1,12 +1,12 @@
 # MODEL-CONTRACT-002 历史 revision 与当前发布政策解耦方案
 
-状态：`V0_6_52_DRY_RUN_FAIL_CLOSED / V0_6_53_RELEASE_AUTHORIZED / FINAL_REVIEW_GO / SAFE_FULL_PASS / USER_RECHECK`
+状态：`V0_6_52_NOT_DEPLOYED / V0_6_53_REHEARSAL_FAIL_CLOSED_NOT_DEPLOYED / V0_6_54_RELEASE_AUTHORIZED / FINAL_REVIEW_GO / SAFE_FULL_PASS / USER_RECHECK`
 
 ## 问题与边界
 
 生产 v0.6.51/schema41 的失败任务 `da761fff-6a65-46fd-84cf-4dc5bddbc985` 使用冻结的 GK revision 1。该快照在创建时允许“文生视频”和“恰好一张首帧”两种模式，但 v0.6.51 代码把当前 GK 默认合同改成了只允许首帧，并错误地用当前默认合同校验历史快照，导致在 Provider POST 前以完整性失败阻断。目标不是删除完整性校验，而是把“冻结快照有没有被篡改”与“今天允许发布什么新合同”分开。
 
-本轮只形成本地候选。真实 Provider、Generation、OSS、生产写、merge、tag、Release、SSH 写和发布均不在当前授权内；失败任务不得自动重跑。生产技术状态继续是 `PRODUCTION_V0_6_51_TECHNICAL_PASS / USER_RECHECK`。
+用户已明确要求完成GitHub与生产发布，当前修正版为v0.6.54；授权覆盖必要的PR/merge/tag/Release、冻结副本演练、备份与可回滚生产切换。仍不授权真实 Provider生成、Generation重跑、OSS写或将技术通过升级为`USER_PASS`。生产切换前继续是 `PRODUCTION_V0_6_51_TECHNICAL_PASS / USER_RECHECK`。
 
 ## 决策
 
