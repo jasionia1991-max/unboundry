@@ -1,23 +1,23 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网在切换前仍为v0.6.51/schema41，严格为`PRODUCTION_V0_6_51_TECHNICAL_PASS / USER_RECHECK`。MODEL-CONTRACT-002的v0.6.52版本与发布授权已取得，正在执行版本门与GitHub/生产发布；历史revision完整性与当前GK发布政策已解耦，目标失败任务不重跑，真实Provider/Generation/OSS/新费用保持0。
+> **状态分层**：现网在切换前仍为v0.6.51/schema41，严格为`PRODUCTION_V0_6_51_TECHNICAL_PASS / USER_RECHECK`。v0.6.52生产只读dry-run已fail-closed且未部署；兼容修复后用户明确授权v0.6.53发布。目标失败任务不重跑，真实Provider/Generation/OSS/新费用保持0。
 
 更新日期：2026-08-27
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.52**
-本地候选代码版本：**v0.6.52**
+当前代码包版本：**v0.6.53**
+本地候选代码版本：**v0.6.53**
 本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_51_USER_RECHECK`
-当前计划标记：`MODEL_CONTRACT_002_V0_6_52_VERSION_GATE_PASS / RELEASE_AUTHORIZED / PR_PENDING / USER_RECHECK`
+当前计划标记：`MODEL_CONTRACT_002_V0_6_53_RELEASE_AUTHORIZED / PR_PENDING / USER_RECHECK`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`MODEL_CONTRACT_002_V0_6_52_RELEASE_AUTHORIZED / PRODUCTION_V0_6_51_UNTIL_CUTOVER / USER_RECHECK`
+当前发布门：`MODEL_CONTRACT_002_V0_6_53_RELEASE_AUTHORIZED / PRODUCTION_V0_6_51_UNTIL_CUTOVER / USER_RECHECK`
 
 ### 2026-08-27 MODEL-CONTRACT-002 本地候选
 
 - 根因已确认：v0.6.51 用当前 GK 默认合同校验历史 revision 1，使保存时合法的文生视频/单首帧快照在 Provider POST 前被误判为完整性失败。
 - 候选已拆分 `ContractCompiler / CurrentReleasePolicy / RevisionStore / TaskAdmission / TaskExecution` 边界；GK 新合同提升到 version 2 并恢复文字与单首帧，revision 1 保持不可变且可执行，篡改和不支持版本继续 fail-closed。
 - 显式升级路径默认 dry-run，schema41、精确11模型身份、Provider/profile/config/credential脱敏快照及22模板/34节点语义门不满足就阻断；apply 还要求隔离 staging 与恢复证明，使用 active revision CAS 和原子审计。`kwvideo-v2` 不伪造文字基础证据，候选决定为停用归档并保留历史 Canvas。
-- 独立 Review 经四轮关闭全部问题，最终为`P0=0/P1=0/GO`。R0生产22/34脱敏冻结证据、完整Provider/credential基线事务CAS、固定staging allowlist、只读manifest摘要与数据库SHA门均已落地；末次m102 `13/13 PASS`。唯一正式safe full为`122/122 specs、1085/1085 tests PASS`，没有第二次full。本地产品候选为commit `5c7419f7dec0114ac86e8595fa964e57c840ce3b`、tree `23197c6ec3c37c98770a9121e01730f19709f5d6`。用户已确认并授权v0.6.52发布；package/lock/final runtime冻结、默认build及Node22 m38+m81 `56/56 PASS`，正在进入PR/CI，生产和用户状态尚未升级。
+- 独立 Review 经四轮关闭全部问题，最终为`P0=0/P1=0/GO`；唯一正式safe full为`122/122 specs、1085/1085 tests PASS`，没有第二次full。v0.6.52真实生产只读dry-run因运行时默认值未被兼容分析器复用而阻断，生产未写；修复commit `26cdc6d1dcd6a612dc616677fbe67519042f6254`后m102 `13/13 PASS`，真实只读矩阵22/22模板、34/34节点兼容。用户已授权v0.6.53，生产和用户状态尚未升级。
 
 ### 2026-08-27 v0.6.51生产发布收口
 

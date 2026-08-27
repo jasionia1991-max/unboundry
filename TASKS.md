@@ -14,9 +14,9 @@
 - [x] 第三轮`P0=0/P1=2/NO-GO`指出矩阵测试残余硬编码和`TMPDIR`可扩张allowlist；两项修复后m102 `13/13 PASS`，同一线程第四轮最终`P0=0 / P1=0 / GO`。
 - [x] 独立Review放行后唯一正式safe full执行一次：`122/122 specs、1085/1085 tests PASS`，失败/重试/跳过均0，4173不变。
 - [x] 本地产品候选commit `5c7419f7dec0114ac86e8595fa964e57c840ce3b`、tree `23197c6ec3c37c98770a9121e01730f19709f5d6`；现场核验建议v0.6.52，候选回执已冻结。PR/CI因未授权保持NOT_RUN。
-- [x] 用户先确认采用`v0.6.52`，随后明确要求直接完成；本次GitHub与生产发布授权已取得，仍不授权真实Provider生成、OSS写入或失败任务重跑。
+- [x] v0.6.52生产只读dry-run在写入前fail-closed，tag保留且Release标记未部署；修复后真实矩阵22/22模板、34/34节点兼容。用户已明确允许改用v0.6.53并要求立即发布，仍不授权真实Provider生成、OSS写入或失败任务重跑。
 - [x] v0.6.52 package/lock/final runtime冻结；默认Node25 build PASS，Node22 safe m38+m81 `56/56 PASS`，source/snapshot `78b96eacab4a7c4b5de76009cc96878eae51f428865ea4a80c3705977220e177`，未重复full。
-- [ ] 冻结v0.6.52版本门，完成PR/CI、merge、不可移动tag/GitHub Release、fresh tag build、冻结恢复、原子切换与回滚门。
+- [ ] 冻结v0.6.53版本门，完成PR/CI、merge、不可移动tag/GitHub Release、fresh tag build、冻结恢复、原子切换与回滚门。
 
 权威方案：`spec/MODEL_CONTRACT_002_IMMUTABLE_REVISION_REMEDIATION_PLAN_2026-08-27.md`；矩阵：`spec/MODEL_CONTRACT_002_ACCEPTANCE_MATRIX_2026-08-27.md`；断点：`spec/MODEL_CONTRACT_002_CHECKPOINT.md`。
 
