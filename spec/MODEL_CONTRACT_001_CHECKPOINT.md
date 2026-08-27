@@ -2,7 +2,15 @@
 
 更新时间：2026-08-27
 
-当前状态：`V0_6_50_PRODUCTION_TECHNICAL_PASS / VERSION_A_COMPLETE / VERSION_B_COMPLETE / COMPUTER_USE_EXECUTED_WITH_BLOCKERS / REVIEW_P0_0_P1_0_GO / FORMAL_FULL_EXECUTED_ONCE_1077_OF_1079 / TARGETED_STALE_ASSERTIONS_PASS / PR_CI_PENDING / RELEASE_GATE_CLOSED / USER_RECHECK`
+当前状态：`V0_6_50_PRODUCTION_TECHNICAL_PASS / RELEASE_CANDIDATE_READY / PR_116_OPEN / REVIEW_P0_0_P1_0_GO / FORMAL_FULL_EXECUTED_ONCE_1077_OF_1079 / TARGETED_STALE_ASSERTIONS_PASS / RELEASE_GATE_CLOSED / USER_RECHECK`
+
+## 0.0000 PR/CI候选冻结（2026-08-27）
+
+- GitHub再次只读核验：最新正式Release为`v0.6.50`，无开放PR且远端`v0.6.51` tag未占用；建议同一版本线最小patch为`v0.6.51`。package当前仍为v0.6.50，本Goal未提前改写版本、tag或Release。
+- 分支`codex/model-contract-user-recheck-fixes`已推送，PR #116为`https://github.com/jasionia1991-max/unboundry/pull/116`。代码/证据候选head `7e0fb553d2d14771298c60523eef8f78ffc02c9d`可合并，Quality gates run `33045709604`的`lightweight` job为PASS。
+- 本节文档同步会形成PR的新head；最终候选只在PR精确head最新Quality gate通过后成立，最终commit/tree与run由PR外部不可变记录和本Session交付回执给出，不用自引用哈希伪造进同一commit。
+- 当前仍未merge、未创建tag/GitHub Release、未SSH生产写、未备份/迁移/切换/回滚。状态上限为`RELEASE_CANDIDATE_READY / USER_RECHECK`，不是生产发布也不是`USER_PASS`。
+- 唯一下一动作：停在最终生产发布授权门，等待用户明确允许merge并按候选v0.6.51执行发布与回滚门。
 
 ## 0.000 唯一正式full与陈旧断言收口（2026-08-27）
 
@@ -10,7 +18,7 @@
 - 两项失败都来自测试仍期待版本A修复前的语义：m100把unknown outcome当成`PROVIDER_RESULT_MISSING`并允许retry/写Canvas错误；m81把已越过付费边界的attempt降级为`provider-failed`。产品当前的`OUTCOME_UNKNOWN_BILLING_RISK`、禁止retry、Canvas零写和attempt保持`accepted`均符合冻结政策，因此只同步陈旧断言。
 - 断言收口commit为`2821f0579d4f455109349232e053502670686c03`/tree`4ea5af76002f149b16d21ac8b637672d0fc3da18`。首次m100+m81定向准确暴露m100仍有两处派生陈旧断言，m81同时`41/41 PASS`；随后只重跑失败最小集m100并`13/13 PASS`，source/snapshot `9dde121af3e7f2b4b8bba92de171fe9aa27a754782a5704cdd87b0aab04471e9`，4173不变。没有第二次full。
 - 当前累计仍为真实Provider POST 0、Generation 0、OSS写0、生产写0、新费用0；schema继续为41。Browser阻塞与27项`USER_RECHECK`账本不变，不升级`USER_PASS`。
-- 唯一下一动作：推送当前候选、创建PR并等待最终CI；CI通过后停在生产发布授权门，不merge/tag/Release/生产写。
+- 该阶段下一动作已完成；当前唯一下一动作以上方0.0000节为准。
 
 ## 0.00 独立全量Review与P1关闭（2026-08-27）
 

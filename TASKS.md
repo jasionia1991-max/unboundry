@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻当前任务
 
-## MODEL-CONTRACT-001 用户复验失败返工（VERSION A+B COMPLETE / COMPUTER USE EXECUTED WITH BLOCKERS / REVIEW GO / FORMAL FULL EXECUTED ONCE / PR-CI PENDING / RELEASE GATE CLOSED）
+## MODEL-CONTRACT-001 用户复验失败返工（RELEASE CANDIDATE READY / USER_RECHECK / RELEASE GATE CLOSED）
 
 - [x] 记录真实Computer Use基线：原27项清单15项通过、12项失败或证据不足；v0.6.50历史生产技术证据保留，但不得升级`USER_PASS`。
 - [x] 记录P0：GK/grok-video-3可能计费但无task ID/结果，现有“查询空→确认缺失→允许新付费尝试”路径不安全；GPT Image已计费但结果解析失败；Mureka 429不得自动重提。
@@ -16,8 +16,9 @@
 - [x] 候选冻结后独立只读全量Review：首轮`P0=0/P1=2/NO-GO`；模板完整合同影响与未验证Provider task ID认领已由`979d448256fb5f58970eafae41f6ea17c0282c1b`关闭，m102+m38 `22/22`、末次m102 `7/7 PASS`；同一线程最终`P0=0/P1=0/GO`。
 - [x] 本Goal唯一正式safe full已在`e56df4efcf607ab7e9c79a94cc8c205b96bbe798`执行：122 specs、1077/1079 PASS、2项失败，其余异常0；immutable release builder 1 attempt/5 invocations PASS，source/snapshot `459770bee1b30e933bed13e243cf82bb12f354d4dba76bf2350e4f90af5c76b9`，4173不变。两项均为版本A新付费语义对应的陈旧测试断言，不是新产品缺陷。
 - [x] 陈旧断言由`2821f0579d4f455109349232e053502670686c03`精确同步：m81在组合定向中`41/41 PASS`，m100按失败最小集修正后`13/13 PASS`；未运行第二次full。
-- [ ] commit/push/PR/CI和候选冻结。
-- [ ] 唯一下一动作：推送当前候选并完成PR/CI；通过后停在生产发布授权门。
+- [x] 分支已推送并创建PR #116；代码/证据候选head `7e0fb553d2d14771298c60523eef8f78ffc02c9d`的Quality gates run `33045709604`通过。本段最终文档同步后仍以PR精确head的最新Quality gate为放行依据。
+- [x] 候选版本再次核验：最新正式Release为v0.6.50、无v0.6.51 tag占用，建议最小patch为`v0.6.51`；package仍保持v0.6.50，未提前tag/Release。
+- [ ] 唯一下一动作：停在最终生产发布授权门，等待用户明确允许merge并按v0.6.51执行发布/回滚门。
 
 权威方案：`spec/MODEL_CONTRACT_001_USER_RECHECK_REMEDIATION_PLAN_2026-08-27.md`；矩阵：`spec/MODEL_CONTRACT_001_USER_RECHECK_REMEDIATION_ACCEPTANCE_MATRIX_2026-08-27.md`；断点：`spec/MODEL_CONTRACT_001_CHECKPOINT.md`；新Goal：`spec/MODEL_CONTRACT_001_USER_RECHECK_REMEDIATION_GOAL_PROMPT_2026-08-27.md`。
 

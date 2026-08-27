@@ -1,9 +1,9 @@
 # MODEL-CONTRACT-001 用户复验失败修复方案
 
 更新时间：2026-08-27
-状态：`PLAN_FROZEN / VERSION_A_COMPLETE / VERSION_B_COMPLETE / COMPUTER_USE_EXECUTED_WITH_BLOCKERS / REVIEW_P0_0_P1_0_GO / FORMAL_FULL_EXECUTED_ONCE_1077_OF_1079 / TARGETED_STALE_ASSERTIONS_PASS / PR_CI_PENDING / RELEASE_GATE_CLOSED / USER_RECHECK`
+状态：`PLAN_FROZEN / RELEASE_CANDIDATE_READY / PR_116_OPEN / REVIEW_P0_0_P1_0_GO / FORMAL_FULL_EXECUTED_ONCE_1077_OF_1079 / TARGETED_STALE_ASSERTIONS_PASS / RELEASE_GATE_CLOSED / USER_RECHECK`
 
-> 2026-08-27执行断点：版本A、版本B和27项候选执行均完成。独立只读Review首轮`P0=0/P1=2/NO-GO`后，模板完整合同影响与手工Provider task ID认领漏洞已由`979d448256fb5f58970eafae41f6ea17c0282c1b`关闭；同一线程最终`P0=0/P1=0/GO`。本Goal唯一正式safe full已在`e56df4e`执行一次，1077/1079通过；唯二陈旧断言由`2821f0579d4f455109349232e053502670686c03`同步并经m81 `41/41`、m100 `13/13 PASS`收口，没有第二次full。当前唯一下一动作是push/PR/CI；schema41、真实Provider/OSS/生产写和新费用均为0，既有`⚡2.182`无法核验人民币换算，真实付费生成继续阻断。完整证据见实时checkpoint。
+> 2026-08-27执行断点：版本A、版本B和27项候选执行均完成。独立只读Review首轮`P0=0/P1=2/NO-GO`后，模板完整合同影响与手工Provider task ID认领漏洞已由`979d448256fb5f58970eafae41f6ea17c0282c1b`关闭；同一线程最终`P0=0/P1=0/GO`。本Goal唯一正式safe full已在`e56df4e`执行一次，1077/1079通过；唯二陈旧断言由`2821f0579d4f455109349232e053502670686c03`同步并经m81 `41/41`、m100 `13/13 PASS`收口，没有第二次full。PR #116已打开，初始候选CI通过；最终精确head以PR最新Quality gate为准。当前唯一下一动作是最终生产发布授权门；schema41、真实Provider/OSS/生产写和新费用均为0，既有`⚡2.182`无法核验人民币换算，真实付费生成继续阻断。完整证据见实时checkpoint。
 
 ## 1. 目标与结论
 

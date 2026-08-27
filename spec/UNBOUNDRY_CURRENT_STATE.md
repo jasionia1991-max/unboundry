@@ -1,6 +1,6 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网仍为v0.6.50/schema41，历史生产技术证据保留。版本A、B和27项候选执行均完成；独立Review首轮两个P1已关闭，同一线程最终`P0=0/P1=0/GO`。唯一full已执行一次为1077/1079，唯二陈旧断言已定向通过且没有第二次full。工具重置、费用门和真实Provider前置不足仍保留`USER_RECHECK/BLOCKED`。当前严格为`PRODUCTION_V0_6_50_TECHNICAL_PASS / VERSION_A_COMPLETE / VERSION_B_COMPLETE / COMPUTER_USE_EXECUTED_WITH_BLOCKERS / REVIEW_P0_0_P1_0_GO / FORMAL_FULL_EXECUTED_ONCE_1077_OF_1079 / TARGETED_STALE_ASSERTIONS_PASS / PR_CI_PENDING / USER_RECHECK`。
+> **状态分层**：现网仍为v0.6.50/schema41，历史生产技术证据保留。版本A、B和27项候选执行均完成；独立Review首轮两个P1已关闭，同一线程最终`P0=0/P1=0/GO`。唯一full已执行一次为1077/1079，唯二陈旧断言已定向通过且没有第二次full。工具重置、费用门和真实Provider前置不足仍保留`USER_RECHECK/BLOCKED`。当前严格为`PRODUCTION_V0_6_50_TECHNICAL_PASS / RELEASE_CANDIDATE_READY / PR_116_OPEN / REVIEW_P0_0_P1_0_GO / FORMAL_FULL_EXECUTED_ONCE_1077_OF_1079 / TARGETED_STALE_ASSERTIONS_PASS / RELEASE_GATE_CLOSED / USER_RECHECK`。
 
 更新日期：2026-08-27
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
@@ -8,7 +8,7 @@
 本地候选代码版本：**v0.6.50**
 本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_50_USER_RECHECK`
-当前计划标记：`MODEL_CONTRACT_001_REMEDIATION_PLAN_FROZEN / VERSION_A_COMPLETE / VERSION_B_COMPLETE / COMPUTER_USE_EXECUTED_WITH_BLOCKERS / REVIEW_P0_0_P1_0_GO / FORMAL_FULL_EXECUTED_ONCE_1077_OF_1079 / TARGETED_STALE_ASSERTIONS_PASS / PR_CI_PENDING`
+当前计划标记：`MODEL_CONTRACT_001_REMEDIATION_PLAN_FROZEN / RELEASE_CANDIDATE_READY / PR_116_OPEN / REVIEW_P0_0_P1_0_GO / FORMAL_FULL_EXECUTED_ONCE_1077_OF_1079 / TARGETED_STALE_ASSERTIONS_PASS / RELEASE_GATE_CLOSED`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
 当前发布门：`MODEL_CONTRACT_001_REMEDIATION_RELEASE_GATE_CLOSED / V0_6_50_REMAINS_PRODUCTION / USER_RECHECK`
 
@@ -26,7 +26,9 @@
 - 独立Review首轮`P0=0/P1=2/NO-GO`；修复commit `979d448256fb5f58970eafae41f6ea17c0282c1b`关闭模板完整合同影响与未验证Provider task ID认领，m102+m38 `22/22`、末次m102 `7/7 PASS`；同一线程最终`P0=0/P1=0/GO`。
 - 唯一正式full在commit `e56df4efcf607ab7e9c79a94cc8c205b96bbe798`执行一次：122 specs、1077/1079 PASS、其余异常0、immutable release builder 1/5 PASS，source/snapshot `459770bee1b30e933bed13e243cf82bb12f354d4dba76bf2350e4f90af5c76b9`，4173不变。唯二失败为新付费安全语义对应的陈旧断言。
 - 陈旧断言commit `2821f0579d4f455109349232e053502670686c03`已定向收口：m81 `41/41 PASS`，m100 `13/13 PASS`；未运行第二次full。
-- 唯一下一动作：推送当前候选、创建PR并等待CI；CI通过后停在生产发布授权门。
+- 分支已推送并创建PR #116；代码/证据候选head `7e0fb553d2d14771298c60523eef8f78ffc02c9d`的Quality gates run `33045709604`通过。本节最终文档同步后的精确head仍以PR最新Quality gate为放行依据。
+- 建议候选版本为`v0.6.51`：再次核验最新正式Release为v0.6.50且远端v0.6.51 tag未占用；package暂保持v0.6.50，未提前发布。
+- 唯一下一动作：停在最终生产发布授权门，等待用户明确允许merge并按v0.6.51执行发布/回滚门。
 
 v0.6.50由PR #114合并为`d3f5490f524b2d8d212ef7607d85afbf1981ca05` / tree `5b12ebeb97ed7a0e9ed34927fca51de2d0fd38ad`并发布不可移动tag/Release，现网release为`/opt/unboundry/releases/v0.6.50-model-contract-workbench-entry-20260827`。当前隔离工作树为`/Users/mymy/Documents/unboundry-model-contract-001-2026-08-26`，已切到用户复验返工分支并含4个待审相关改动；旧`/Users/mymy/Documents/unboundry/app`不得施工或自动清理。
 
