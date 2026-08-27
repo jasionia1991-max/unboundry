@@ -247,6 +247,7 @@ export type RelayProviderExecution = Readonly<{
   beforeProviderRequest?: () => void;
   fetcher?: typeof fetch;
   mediaLifecycle?: Readonly<{ ownerId: string }>;
+  onProviderResponseEvidence?: (evidence: RelayProviderResponseEvidence) => void;
   /**
    * TTL for reference URLs materialized during preparation. Asynchronous
    * submissions keep references alive until polling finishes, so callers that
@@ -258,6 +259,16 @@ export type RelayProviderExecution = Readonly<{
   temporaryImageObjectStore?: RelayTemporaryImageObjectStore;
   timeoutMs?: number;
   usePinnedTransport?: boolean;
+}>;
+
+export type RelayProviderResponseEvidence = Readonly<{
+  contentType?: string;
+  failureStage?: string;
+  fieldPaths: readonly string[];
+  httpStatus?: number;
+  providerRequestId?: string;
+  responseBytes?: number;
+  structureHash?: string;
 }>;
 
 export type RelayTemporaryImageObjectStore = Readonly<{
@@ -570,12 +581,42 @@ async function readLimitedJson(response: Response, maximumBytes: number) {
     chunks.push(value);
   }
   try {
-    return JSON.parse(
-      Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString("utf8"),
-    ) as unknown;
+    const bytes = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
+    return {
+      body: JSON.parse(bytes.toString("utf8")) as unknown,
+      responseBytes: bytes.byteLength,
+    };
   } catch {
     throw new RelayProviderError("FORMAT");
   }
+}
+
+function responseStructure(value: unknown) {
+  const paths: string[] = [];
+  const visit = (item: unknown, path: string, depth: number) => {
+    if (paths.length >= 128 || depth > 6) return;
+    if (Array.isArray(item)) {
+      paths.push(`${path || "$"}[]`);
+      if (item.length) visit(item[0], `${path || "$"}[]`, depth + 1);
+      return;
+    }
+    if (isRecord(item)) {
+      for (const key of Object.keys(item).sort().slice(0, 64)) {
+        const next = path ? `${path}.${key}` : key;
+        paths.push(next);
+        visit(item[key], next, depth + 1);
+      }
+      return;
+    }
+    paths.push(`${path || "$"}:${item === null ? "null" : typeof item}`);
+  };
+  visit(value, "", 0);
+  return [...new Set(paths)].sort();
+}
+
+function cleanResponseHeader(value: string | null) {
+  const normalized = value?.replace(/[^A-Za-z0-9._:/+;= -]/g, "").trim();
+  return normalized ? normalized.slice(0, 160) : undefined;
 }
 
 async function relayJsonRequest(input: {
@@ -639,7 +680,22 @@ async function relayJsonRequest(input: {
         : input.execution.fetcher,
       resolver: input.execution.resolver,
     });
+    const baseEvidence = {
+      contentType: cleanResponseHeader(response.headers.get("content-type")),
+      fieldPaths: [] as readonly string[],
+      httpStatus: response.status,
+      providerRequestId: cleanResponseHeader(
+        response.headers.get("x-request-id") ??
+          response.headers.get("x-trace-id") ??
+          response.headers.get("request-id"),
+      ),
+    };
     if (!response.ok) {
+      input.execution.onProviderResponseEvidence?.({
+        ...baseEvidence,
+        failureStage: "http-status",
+        responseBytes: Number(response.headers.get("content-length")) || undefined,
+      });
       const providerText = await providerErrorText(response);
       const error = remoteError(response.status);
       throw providerText
@@ -651,7 +707,17 @@ async function relayJsonRequest(input: {
           )
         : error;
     }
-    return await readLimitedJson(response, input.maximumResponseBytes);
+    const parsed = await readLimitedJson(response, input.maximumResponseBytes);
+    const fieldPaths = responseStructure(parsed.body);
+    input.execution.onProviderResponseEvidence?.({
+      ...baseEvidence,
+      fieldPaths,
+      responseBytes: parsed.responseBytes,
+      structureHash: createHash("sha256")
+        .update(JSON.stringify(fieldPaths))
+        .digest("hex"),
+    });
+    return parsed.body;
   } catch (error) {
     if (error instanceof RelayProviderError) throw error;
     if (error instanceof OutboundDestinationError) {
@@ -1718,9 +1784,11 @@ export async function submitContractRelayMedia(
     protocol: request.providerProtocol,
     providerTaskMayStillRun: true,
   });
-  if (!isRecord(body) || Object.keys(body).some((key) =>
-    !["task_id", "state"].includes(key)
-  )) throw new RelayProviderError("FORMAT", true);
+  // The declarative contract owns the finite task-id path. Provider response
+  // envelopes may add harmless metadata (for example request_id) without
+  // changing that contract; response bytes are already bounded by
+  // relayJsonRequest and cleanExternalTaskId still rejects unsafe IDs.
+  if (!isRecord(body)) throw new RelayProviderError("FORMAT", true);
   const taskId = cleanExternalTaskId(body.task_id, connection.apiKey);
   return {
     capability: request.capability,

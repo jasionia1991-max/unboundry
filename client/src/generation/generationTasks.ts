@@ -315,16 +315,16 @@ export type GenerationReconcileResult = {
 
 export function reconcileOutcomeMessage(outcome: GenerationReconcileOutcome) {
   if (outcome === "needs-task-id" || outcome === "check-failed") {
-    return "暂时查不到平台结果，请稍后再核对";
+    return "暂时查不到平台结果，系统会继续自动找回";
   }
   if (outcome === "ambiguous") {
-    return "平台上有多条相近记录，不能自动认领，请稍后再核对";
+    return "平台上有多条相近记录，系统会继续安全匹配";
   }
   if (outcome === "still-running") {
-    return "平台还在做，请稍后再核对";
+    return "平台还在处理，系统会继续自动跟进";
   }
   if (outcome === "outcome-unknown") {
-    return "模型平台可能已经受理或扣费；为避免重复扣费，系统已禁止重新提交，只能继续核对原任务";
+    return "模型平台可能已经受理或扣费；系统会自动找回结果并禁止重复提交";
   }
   return "";
 }

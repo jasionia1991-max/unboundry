@@ -2369,6 +2369,63 @@ test("server recovery sweep auto-resumes a failed task that still holds a Provid
   }
 });
 
+test("server recovery sweep binds one ledger match and launches without a second paid attempt", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-no-id-sweep-"));
+  const store = createGenerationTaskStore(dataDirectory);
+  try {
+    const created = store.create({
+      canvasId: "no-id-sweep-canvas",
+      idempotencyKey: "no-id-sweep-0001",
+      kind: "video",
+      modelConfiguration: { providerProtocol: "media-generate" },
+      nodeId: "no-id-sweep-node",
+      ownerId: "__test__",
+      prompt: "recover one ledger result",
+      providerModelId: "grok-video-3",
+      providerProfileId: "relay-profile",
+    });
+    const running = store.transition(created.task.id, "running")!;
+    store.recordProviderAttempt(running.id);
+    store.transition(running.id, "recovering", {
+      code: "AUTOMATIC_RESULT_RECOVERY",
+      message: "automatic recovery",
+    });
+    const launched: string[] = [];
+    let matches = 0;
+    await runGenerationRecoverySweep({
+      launch: (id) => launched.push(id),
+      match: async () => {
+        matches += 1;
+        return {
+          status: "one" as const,
+          record: {
+            createdAt: running.createdAt,
+            model: "grok-video-3",
+            state: "success" as const,
+            taskId: "provider-ledger-match-001",
+          },
+        };
+      },
+      store,
+    });
+    expect(matches).toBe(1);
+    expect(launched).toEqual([running.id]);
+    expect(store.get(running.id)).toMatchObject({
+      attempt: 1,
+      providerTaskId: "provider-ledger-match-001",
+      state: "running",
+    });
+    expect(store.getProviderAttemptForTask(running.id)).toMatchObject({
+      executionAttempt: 1,
+      outcome: "accepted",
+      providerTaskId: "provider-ledger-match-001",
+    });
+  } finally {
+    store.close();
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
 test("server recovery sweep relaunches stale queued tasks and leaves fresh ones alone", async () => {
   const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-queued-sweep-"));
   const store = createGenerationTaskStore(dataDirectory);

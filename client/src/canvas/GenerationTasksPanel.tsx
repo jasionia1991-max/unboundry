@@ -110,7 +110,8 @@ function TaskRow({
   const active = activeStates.has(task.state);
   const abandonable = task.state === "failed" && task.abandonAllowed === true;
   const retryable = task.state === "failed" && task.retryAllowed === true;
-  const reconcilable = task.state === "failed";
+  const reconcilable =
+    task.state === "failed" && task.reconcileAllowed === true;
   const rowIsCurrent =
     task.canvasId === canvasId && isCurrentScope(canvasScopeId, canvasId);
   return (

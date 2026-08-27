@@ -57,7 +57,6 @@ import {
   generationFailureMessage,
   generationFailureIsDefinitive,
   generationInputKey as createGenerationInputKey,
-  generationNeedsReconcile,
   generationRetryVisible,
   safelyRetryableGenerationTask,
 } from "../generation/generationRetry";
@@ -728,16 +727,7 @@ function VideoNodeImpl({
     errorCode: data.videoGenerationErrorCode,
     retryAvailable,
   });
-  const canReconcileVideo = Boolean(
-    data.videoGenerationTaskId &&
-    data.videoGenerationError &&
-    !generating &&
-    !isFixture &&
-    generationNeedsReconcile(
-      data.videoGenerationErrorCode,
-      data.videoGenerationRetryBlockCode,
-    ),
-  );
+  const canReconcileVideo = false;
 
   const clearVideoIntentAfterDurableTerminalPatch = (taskId: string) => {
     void (async () => {

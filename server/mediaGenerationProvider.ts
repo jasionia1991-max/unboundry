@@ -24,6 +24,15 @@ export type MediaGenerationExecution = Readonly<{
   beforeProviderRequest: () => void;
   fetcher: typeof fetch;
   metadata?: Readonly<Record<string, unknown>>;
+  onProviderResponseEvidence?: (evidence: Readonly<{
+    contentType?: string;
+    failureStage?: string;
+    fieldPaths: readonly string[];
+    httpStatus?: number;
+    providerRequestId?: string;
+    responseBytes?: number;
+    structureHash?: string;
+  }>) => void;
   profile: Readonly<{
     apiKey?: string;
     baseUrl: string;

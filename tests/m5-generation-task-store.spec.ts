@@ -2029,6 +2029,139 @@ test("empty Provider search preserves billing risk while authoritative refund un
   }
 });
 
+test("a lost accepted response persists automatic recovery across store restart", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-persistent-reconcile-"));
+  let store = createGenerationTaskStore(dataDirectory);
+  try {
+    const task = store.create({
+      canvasId: "persistent-reconcile",
+      idempotencyKey: "persistent-reconcile-0001",
+      kind: "video",
+      nodeId: "persistent-reconcile-video",
+      ownerId: "__test__",
+      prompt: "lost accepted response",
+      providerModelId: "grok-video-3",
+      providerProfileId: "provider-profile",
+    }).task;
+    store.transition(task.id, "running");
+    store.recordProviderAttempt(task.id);
+
+    expect(store.transition(task.id, "recovering")).toMatchObject({
+      attempt: 1,
+      providerTaskId: undefined,
+      state: "recovering",
+    });
+    store.close();
+
+    store = createGenerationTaskStore(dataDirectory);
+    expect(store.get(task.id)).toMatchObject({
+      attempt: 1,
+      providerTaskId: undefined,
+      state: "recovering",
+    });
+    expect(store.listRecovering().map(({ id }) => id)).toContain(task.id);
+    expect(store.hasUnsafeProviderAttemptForNewPaidRetry(task.id)).toBe(true);
+  } finally {
+    store.close();
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("automatic recovery uses a durable CAS lease and binds one provider task without a new attempt", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-recovery-lease-"));
+  let store = createGenerationTaskStore(dataDirectory);
+  try {
+    const task = store.create({
+      canvasId: "recovery-lease",
+      idempotencyKey: "recovery-lease-0001",
+      kind: "video",
+      modelConfiguration: { providerProtocol: "media-generate" },
+      nodeId: "recovery-lease-video",
+      ownerId: "__test__",
+      prompt: "recover without resubmission",
+      providerModelId: "grok-video-3",
+      providerProfileId: "provider-profile",
+    }).task;
+    store.transition(task.id, "running");
+    store.recordProviderAttempt(task.id);
+    const recovering = store.transition(task.id, "recovering", {
+      code: "AUTOMATIC_RESULT_RECOVERY",
+      message: "automatic recovery",
+    })!;
+
+    const claimed = store.claimRecovering(task.id, recovering.updatedAt);
+    expect(claimed).toMatchObject({
+      attempt: 1,
+      errorCode: "AUTOMATIC_RESULT_RECOVERY",
+      state: "recovering",
+    });
+    expect(store.claimRecovering(task.id, recovering.updatedAt)).toBeUndefined();
+    const checkpoint = store.get(task.id)!;
+    expect(store.claimRecovering(
+      task.id,
+      checkpoint.updatedAt,
+      new Date(Date.parse(checkpoint.updatedAt) + 29_999),
+    )).toBeUndefined();
+    expect(store.claimRecovering(
+      task.id,
+      checkpoint.updatedAt,
+      new Date(Date.parse(checkpoint.updatedAt) + 30_000),
+    )).toMatchObject({ state: "recovering" });
+
+    store.setProviderTaskId(task.id, "provider-task-recovered-1");
+    expect(store.getProviderAttemptForTask(task.id)).toMatchObject({
+      executionAttempt: 1,
+      outcome: "accepted",
+      providerTaskId: "provider-task-recovered-1",
+    });
+    expect(store.resume(task.id)).toMatchObject({
+      attempt: 1,
+      providerTaskId: "provider-task-recovered-1",
+      state: "running",
+    });
+  } finally {
+    store.close();
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("automatic recovery expires into the administrator incident queue", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-recovery-incident-"));
+  const store = createGenerationTaskStore(dataDirectory);
+  try {
+    const task = store.create({
+      canvasId: "recovery-incident",
+      idempotencyKey: "recovery-incident-0001",
+      kind: "video",
+      modelConfiguration: { providerProtocol: "media-generate" },
+      nodeId: "recovery-incident-video",
+      ownerId: "__test__",
+      prompt: "operator incident fixture",
+      providerModelId: "grok-video-3",
+      providerProfileId: "provider-profile",
+    }).task;
+    store.transition(task.id, "running");
+    store.recordProviderAttempt(task.id);
+    const recovering = store.transition(task.id, "recovering", {
+      code: "AUTOMATIC_RESULT_RECOVERY",
+      message: "automatic recovery",
+    })!;
+    expect(store.claimRecovering(
+      task.id,
+      recovering.updatedAt,
+      new Date(Date.parse(task.createdAt) + 26 * 60 * 60_000),
+    )).toBeUndefined();
+    expect(store.get(task.id)).toMatchObject({
+      errorCode: "OPERATOR_INCIDENT",
+      state: "failed",
+    });
+    expect(store.listOperatorIncidents().map(({ id }) => id)).toContain(task.id);
+  } finally {
+    store.close();
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
 test("the same input cannot open a second paid task while the last outcome is unknown", async () => {
   const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-unknown-same-input-"));
   const seed = openAppDatabase(dataDirectory);

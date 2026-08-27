@@ -55,7 +55,6 @@ import { visibleGenerationError } from "../generation/generationErrors";
 import {
   generationFailureMessage,
   generationInputKey as createGenerationInputKey,
-  generationNeedsReconcile,
   generationRetryVisible,
   safelyRetryableGenerationTask,
 } from "../generation/generationRetry";
@@ -705,16 +704,7 @@ function AudioNodeImpl({
     errorCode: data.audioGenerationErrorCode,
     retryAvailable,
   });
-  const canReconcileAudio = Boolean(
-    data.audioGenerationTaskId &&
-    data.audioGenerationError &&
-    !generating &&
-    !isFixture &&
-    generationNeedsReconcile(
-      data.audioGenerationErrorCode,
-      data.audioGenerationRetryBlockCode,
-    ),
-  );
+  const canReconcileAudio = false;
 
   const clearAudioIntentAfterDurableTerminalPatch = (taskId: string) => {
     void (async () => {

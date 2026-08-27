@@ -216,11 +216,11 @@ const allowedTransitions: Record<
   readonly GenerationTaskState[]
 > = {
   cancelled: [],
-  failed: ["retrying"],
+  failed: ["retrying", "recovering"],
   queued: ["running", "cancelled"],
-  recovering: ["queued", "failed", "cancelled"],
+  recovering: ["queued", "running", "failed", "cancelled"],
   retrying: ["queued", "cancelled"],
-  running: ["success", "failed", "cancelled"],
+  running: ["success", "failed", "cancelled", "recovering"],
   success: [],
 };
 
@@ -1006,7 +1006,7 @@ export function createGenerationTaskStore(dataDirectory: string) {
       const task = readById.get(input.taskId) as GenerationTaskRow | undefined;
       if (
         !task ||
-        task.state !== "running" ||
+        !["running", "recovering"].includes(task.state) ||
         task.attempt !== input.executionAttempt ||
         (input.credentialRevision !== undefined &&
           task.credential_revision !== input.credentialRevision)
@@ -1027,7 +1027,7 @@ export function createGenerationTaskStore(dataDirectory: string) {
       if (
         !attempt ||
         attempt.credential_revision !== task.credential_revision ||
-        !["boundary-claimed", "accepted"].includes(
+        !["boundary-claimed", "accepted", "outcome-unknown"].includes(
           attempt.outcome,
         ) ||
         (attempt.provider_task_id &&
@@ -1041,7 +1041,7 @@ export function createGenerationTaskStore(dataDirectory: string) {
         SET provider_task_id = ?, updated_at = ?
         WHERE
           id = ?
-          AND state = 'running'
+          AND state IN ('running', 'recovering')
           AND attempt = ?
           AND (provider_task_id IS NULL OR provider_task_id = ?)
       `).run(
@@ -1061,7 +1061,7 @@ export function createGenerationTaskStore(dataDirectory: string) {
           task_id = ?
           AND execution_attempt = ?
           AND credential_revision = ?
-          AND outcome IN ('boundary-claimed', 'accepted')
+          AND outcome IN ('boundary-claimed', 'accepted', 'outcome-unknown')
       `).run(
         input.providerTaskId,
         input.taskId,
@@ -1360,7 +1360,7 @@ export function createGenerationTaskStore(dataDirectory: string) {
         if (unresolvedSameInput) {
           throw new GenerationProviderAttemptBlockedError(
             "RETRY_OUTCOME_UNKNOWN",
-            "上次结果还没对上，为避免重复扣费，请先点「核对结果」，不要重新生成",
+            "上次结果仍在系统自动找回中；为避免重复扣费，当前不能重新生成",
           );
         }
 
@@ -1388,7 +1388,7 @@ export function createGenerationTaskStore(dataDirectory: string) {
         if (confirmedSameInput) {
           throw new GenerationProviderAttemptBlockedError(
             "RETRY_OUTCOME_UNKNOWN",
-            "同一输入已有平台任务已受理或已出片，为避免重复扣费，请先「核对结果」，不要重新提交",
+            "同一输入已有平台任务已受理或已出片；系统会自动处理，当前不能重复提交",
           );
         }
 
@@ -1898,6 +1898,153 @@ export function createGenerationTaskStore(dataDirectory: string) {
           `)
           .all() as GenerationTaskRow[]
       ).map(toTask);
+    },
+
+    listFailedOutcomeUnknown() {
+      return (
+        database
+          .prepare(`
+            SELECT *
+            FROM generation_tasks
+            WHERE
+              state = 'failed'
+              AND error_code = 'OUTCOME_UNKNOWN_BILLING_RISK'
+              AND provider_task_id IS NULL
+            ORDER BY updated_at ASC, rowid ASC
+            LIMIT 200
+          `)
+          .all() as GenerationTaskRow[]
+      ).map(toTask).filter((task) =>
+        task.modelConfiguration.providerProtocol === "media-generate"
+      );
+    },
+
+    /**
+     * Claims one durable recovery checkpoint with a compare-and-swap on the
+     * last persisted timestamp. This is the database lease used by the
+     * periodic worker; another process cannot claim the same checkpoint.
+     */
+    claimRecovering(taskId: string, expectedUpdatedAt: string, now = new Date()) {
+      if (!identifierPattern.test(taskId) || taskId.length > 120) {
+        throw new Error("Invalid generation task ID");
+      }
+      const expectedTimestamp = Date.parse(expectedUpdatedAt);
+      const nowMs = now.getTime();
+      const timestamp = new Date(Math.max(
+        nowMs,
+        Number.isFinite(expectedTimestamp) ? expectedTimestamp + 1 : nowMs,
+      )).toISOString();
+      database.exec("BEGIN IMMEDIATE");
+      try {
+        const current = readById.get(taskId) as GenerationTaskRow | undefined;
+        if (!current || current.state !== "recovering" || current.updated_at !== expectedUpdatedAt) {
+          database.exec("COMMIT");
+          return undefined;
+        }
+        const checkpoint = database.prepare(`
+          SELECT COUNT(*) AS count
+          FROM generation_task_events
+          WHERE task_id = ? AND error_code = 'AUTOMATIC_RESULT_RECOVERY_CHECKPOINT'
+        `).get(taskId) as { count: number };
+        const checkpointCount = Number(checkpoint.count);
+        const delayMs = checkpointCount === 0
+          ? 0
+          : Math.min(30_000 * 2 ** Math.min(checkpointCount - 1, 10), 15 * 60_000);
+        if (!Number.isFinite(nowMs) || nowMs - expectedTimestamp < delayMs) {
+          database.exec("COMMIT");
+          return undefined;
+        }
+        const contract = JSON.parse(current.model_configuration) as Record<string, unknown>;
+        const revision = contract.modelReleaseRevision as Record<string, unknown> | undefined;
+        const document = revision?.document as Record<string, unknown> | undefined;
+        const execution = document?.executionContract as Record<string, unknown> | undefined;
+        const pollPolicy = execution?.pollPolicy as Record<string, unknown> | undefined;
+        const declaredDeadline = Number(pollPolicy?.deadlineMs);
+        const providerWindowMs = Number.isFinite(declaredDeadline) && declaredDeadline > 0
+          ? Math.min(declaredDeadline, 24 * 60 * 60_000)
+          : current.kind === "video" ? 75 * 60_000 : 15 * 60_000;
+        const createdMs = Date.parse(current.created_at);
+        if (Number.isFinite(createdMs) && nowMs > createdMs + providerWindowMs + 24 * 60 * 60_000) {
+          const incident = database.prepare(`
+            UPDATE generation_tasks
+            SET state = 'failed', error_code = 'OPERATOR_INCIDENT',
+              error_message = '系统未能在安全窗口内自动找回结果，已进入管理员处理队列',
+              updated_at = ?
+            WHERE id = ? AND state = 'recovering' AND updated_at = ?
+          `).run(timestamp, taskId, expectedUpdatedAt);
+          if (incident.changes === 1) {
+            recordEvent.run(
+              taskId, "failed", "OPERATOR_INCIDENT",
+              "系统未能在安全窗口内自动找回结果，已进入管理员处理队列",
+              timestamp,
+            );
+          }
+          database.exec("COMMIT");
+          return undefined;
+        }
+        const claimed = database.prepare(`
+          UPDATE generation_tasks
+          SET
+            error_code = 'AUTOMATIC_RESULT_RECOVERY',
+            error_message = '系统正在自动找回平台结果；不会重新提交付费请求',
+            updated_at = ?
+          WHERE id = ? AND state = 'recovering' AND updated_at = ?
+        `).run(timestamp, taskId, expectedUpdatedAt);
+        if (claimed.changes === 1) {
+          recordEvent.run(
+            taskId, "recovering", "AUTOMATIC_RESULT_RECOVERY_CHECKPOINT",
+            `checkpoint=${checkpointCount + 1};next_delay_ms=${Math.min(30_000 * 2 ** Math.min(checkpointCount, 10), 15 * 60_000)}`,
+            timestamp,
+          );
+        }
+        database.exec("COMMIT");
+        return claimed.changes === 1
+          ? toTask(readById.get(taskId) as GenerationTaskRow)
+          : undefined;
+      } catch (error) {
+        database.exec("ROLLBACK");
+        throw error;
+      }
+    },
+
+    listOperatorIncidents() {
+      return (database.prepare(`
+        SELECT * FROM generation_tasks
+        WHERE state = 'failed' AND error_code = 'OPERATOR_INCIDENT'
+        ORDER BY updated_at ASC, rowid ASC LIMIT 200
+      `).all() as GenerationTaskRow[]).map(toTask);
+    },
+
+    recordProviderResponseEvidence(
+      taskId: string,
+      evidence: Readonly<{
+        contentType?: string;
+        failureStage?: string;
+        fieldPaths: readonly string[];
+        httpStatus?: number;
+        providerRequestId?: string;
+        responseBytes?: number;
+        structureHash?: string;
+      }>,
+    ) {
+      if (!identifierPattern.test(taskId) || taskId.length > 120) {
+        throw new Error("Invalid generation task ID");
+      }
+      const task = readById.get(taskId) as GenerationTaskRow | undefined;
+      if (!task) throw new Error("Generation task not found");
+      const safe = {
+        contentType: evidence.contentType?.slice(0, 160),
+        failureStage: evidence.failureStage?.slice(0, 80),
+        fieldPaths: evidence.fieldPaths.slice(0, 128).map((path) => path.slice(0, 160)),
+        httpStatus: evidence.httpStatus,
+        providerRequestId: evidence.providerRequestId?.slice(0, 160),
+        responseBytes: evidence.responseBytes,
+        structureHash: evidence.structureHash?.slice(0, 64),
+      };
+      recordEvent.run(
+        taskId, task.state, "PROVIDER_RESPONSE_EVIDENCE",
+        JSON.stringify(safe), new Date().toISOString(),
+      );
     },
 
     listActive() {
@@ -3071,7 +3218,7 @@ export function createGenerationTaskStore(dataDirectory: string) {
           UPDATE generation_tasks
           SET
             error_code = 'OUTCOME_UNKNOWN_BILLING_RISK',
-            error_message = '模型平台可能已经受理或扣费；为避免重复扣费，系统已禁止重新提交，只能继续核对原任务',
+            error_message = '模型平台可能已经受理或扣费；系统会自动找回结果并禁止重复提交',
             updated_at = ?
           WHERE id = ? AND state = 'failed' AND updated_at = ?
         `).run(timestamp, input.taskId, input.expectedUpdatedAt);
@@ -3204,9 +3351,23 @@ export function failRecoveredGenerationTasks(
   store: ReturnType<typeof createGenerationTaskStore>,
   preservedTaskIds: ReadonlySet<string> = new Set(),
 ) {
-  return store.listRecovering().filter(
-    (task) => !task.providerTaskId && !preservedTaskIds.has(task.id),
-  ).map((task) =>
+  return store.listRecovering().filter((task) => {
+    if (task.providerTaskId || preservedTaskIds.has(task.id)) return false;
+    const attempt = store.getProviderAttemptForTask(task.id);
+    const providerProtocol = task.modelConfiguration.providerProtocol;
+    // A lost response after the paid boundary is durable recovery work, not a
+    // restart failure. Keeping it in recovering is what preserves the strict
+    // zero-new-POST contract across process restarts.
+    if (
+      providerProtocol === "media-generate" &&
+      attempt &&
+      attempt.executionAttempt === task.attempt &&
+      ["boundary-claimed", "outcome-unknown", "response-received"].includes(
+        attempt.outcome,
+      )
+    ) return false;
+    return true;
+  }).map((task) =>
     store.transition(task.id, "failed", {
       code: "SERVICE_RESTARTED",
       message: "服务重启中断了本次生成，结果无法确认，为避免重复扣费不能直接重试",

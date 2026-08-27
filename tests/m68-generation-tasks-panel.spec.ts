@@ -181,7 +181,7 @@ test("generation task panel explicitly abandons a received synchronous result wi
   }
 });
 
-test("generation task panel reconciles one accepted retry after its response is lost", async ({
+test("generation task panel hides manual reconcile and preserves one accepted retry after response loss", async ({
   page,
   request,
 }) => {
@@ -299,6 +299,7 @@ test("generation task panel reconciles one accepted retry after its response is 
     await page.getByTestId("tasks").click();
     const row = page.getByTestId(`tasks-row-${taskId}`);
     await expect(row).toHaveAttribute("data-state", "failed");
+    await expect(page.getByTestId(`tasks-reconcile-${taskId}`)).toHaveCount(0);
     const durableBeforeRetry = await (
       await request.get(`/api/canvas/${targetCanvasId}`)
     ).json() as {

@@ -125,6 +125,7 @@ export const relayMediaGenerationProvider: MediaGenerationProvider = {
     const transport = {
       beforeProviderRequest: execution.beforeProviderRequest,
       fetcher: execution.fetcher,
+      onProviderResponseEvidence: execution.onProviderResponseEvidence,
       signal: execution.signal,
       usePinnedTransport: true,
     } as const;
@@ -168,6 +169,7 @@ export const relayMediaGenerationProvider: MediaGenerationProvider = {
     const transport = {
       beforeProviderRequest: execution.beforeProviderRequest,
       fetcher: execution.fetcher,
+      onProviderResponseEvidence: execution.onProviderResponseEvidence,
       signal: execution.signal,
       usePinnedTransport: true,
     } as const;

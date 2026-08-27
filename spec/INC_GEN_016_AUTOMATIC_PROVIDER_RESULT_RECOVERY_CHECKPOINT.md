@@ -1,10 +1,37 @@
 # INC-GEN-016 实时断点
 
-状态：`FINAL_AUDITED_PLAN / DOCUMENTATION_ONLY / IMPLEMENTATION_NOT_STARTED / INCIDENT_OPEN / RELEASE_GATE_CLOSED`
+状态：`R1-R5_AUTO_PASS / CANDIDATE_FREEZE_PENDING / INCIDENT_OPEN / RELEASE_GATE_CLOSED`
 
 更新时间：2026-08-27
 
 ## 当前事实
+
+### 2026-08-27 新 Goal R0 实时基线
+
+- 用户已在新Session用完整Goal明确启动实施；本次授权覆盖INC-GEN-016代码、测试、本地commit、GitHub PR/CI/merge、不可变`v0.6.55` Release、可恢复生产发布和一次受控GK首帧真实验收。费用总上限USD 20；第一次提交估算上限USD 10；任何未知结果都禁止第二次Provider POST。
+- 实施工作树：`/Users/mymy/Documents/unboundry-model-contract-002-2026-08-27`；分支`codex/inc-gen-016-v0.6.55`；基线`origin/main@384c27f152b`。规划文档先冻结为commit`f74529f86aa57050f238b0bc3d4ef4cfc0d8fe8e`，tree`4a8e5382d9076e0c5b86598abe2404ddb4a5a485`。
+- `v0.6.55`本地tag、远端tag和GitHub Release均未占用。候选package/lock已同步为`0.6.55`；schema仍为41。默认工具链Node`25.9.0`/npm`11.12.1`；safe复现通道Node`22.23.1`/npm`10.9.8`；生产只读核对Node`22.23.2`/npm`10.9.8`。
+- 生产只读身份：公网`/api/version=0.6.54`、live/ready通过；`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.54-model-contract-revision-20260827`；service active/enabled、NRestarts0；schema41、quick_check ok、FK0。
+- R0生产计数：tasks954、provider attempts963、active0、unknown-billing tasks1、media910、publications501、canvases72、models20、published models10、templates50、published templates48。
+- 目标Canvas保持revision291/graphRevision134、42节点/72边；目标GK节点仍为9:16、720p、10秒、音频开启、输出1。事故task`da761fff-6a65-46fd-84cf-4dc5bddbc985`仍为attempt2/failed/`OUTCOME_UNKNOWN_BILLING_RISK`，providerTaskId/resultAssetId/actualCost均空，估算USD10；没有发起第二次Provider POST。
+- 已冻结10个当前已发布模型的真实身份与默认能力；模型、binding、Provider、模板、Canvas、task和attempt脱敏摘要均已记录在本Goal现场证据中，后续发布前必须与R0逐项对比。
+- 受保护`spec/public-templates-director-split-revision.json`未读取、未修改、未暂存；历史脏工作树未清理、未覆盖；4173监听未占用、未终止。
+
+### R0 预期红
+
+- 命令：`PATH=/Users/mymy/.local/bin:$PATH npm run test:safe -- --spec m102-model-execution-contracts.spec.ts --spec m5-generation-task-store.spec.ts`。
+- 发现122 specs/1086 tests；只执行2 specs/36 tests，34通过、2个预期失败：GK成功响应含`request_id/metadata`时被`relayProviderAdapters.ts`顶层精确白名单拒绝；paid boundary后从`running -> recovering`被旧状态机拒绝。
+- source/snapshot均为`41fd15b19cff6e6dcf0814aeecf6105fc4ef140234efb2e6c02bda8111d55c36`；suite已清理；4173 listener hash`24c91e579e5f03e4327568db06303d4f094c0250c63228866946f7b8a47b8244`前后不变。
+- 全程使用新临时目录、动态loopback和fake数据；真实Provider/Generation/OSS/生产写/费用均为0。R0至此完成，R1～R5进入实现；这不是候选冻结、Review或发布放行。
+
+### R1～R5 候选与定向证据
+
+- 声明式GK创建响应继续只从合同声明的`task_id`取值，但允许`request_id/state/metadata`等无害外壳字段；HTTP状态、Content-Type、响应大小、request ID、脱敏字段路径和结构哈希写入任务事件，不保存secret、prompt、签名URL或原始媒体。
+- paid boundary后响应丢失进入持久`recovering`；后台Worker以SQLite CAS租约接管，按30秒到15分钟指数退避。唯一账本匹配只绑定原attempt/providerTaskId并继续poll，零/多候选保持恢复；超出Provider窗口加24小时保留期进入`OPERATOR_INCIDENT`管理员队列。任何unknown均阻止新paid attempt。
+- Provider结果仍先经既有原子媒体publication形成正式`result_asset_id`，任务成功与Canvas generation-owned CAS投影解耦；重启恢复、重复交付和Canvas冲突继续复用现有持久任务/资产/投影合同。
+- 普通任务面板及Image/Video/Audio节点不再展示人工“核对结果”；服务端摘要固定`reconcileAllowed=false`，兼容API保留但不进入普通用户流程。
+- 定向绿证据：m102+m5 `38/38`，m38 `16/16`，m53-server+m57+m68+m88 `70/70`，三类媒体节点+m68 `22/22`，全模型/connector矩阵 `82/82`；所有失败/重试/跳过均0。source/snapshot末次为`74c7db3d697f5d102301b759adb840387e19100e329e0341c309bbd037cbea64`，4173 listener始终不变。
+- 所有定向验证只使用本轮新临时目录、动态loopback、Fake Provider/OSS；真实Provider/OSS/生产写/费用仍为0。正式safe full尚未运行，必须等候选冻结后的独立Review最终GO。
 
 - 工作树：`/Users/mymy/Documents/unboundry-model-contract-002-2026-08-27`
 - 当前 Git：`main@384c27f`，开始落档前与 `origin/main` 一致且工作树干净。
@@ -23,9 +50,9 @@
 - 没有正式恢复能力的异步 connector 不得切换为可用新路径；旧路径在新路径验收成功前保持不动。
 - 真实结果没有自动回到生产项目，就不能发布或关闭事故。
 
-## 当前授权与账本
+## 历史授权与当前账本
 
-- 本轮用户只授权最终审计结果落地成文档，并明确“先别改代码”。
+- 下列“只授权文档”是上一Session历史时点，已被本次新Goal的明确实施授权取代；不得反向把历史边界当成当前阻断。
 - 用户随后要求生成新Session一次性Goal并提前写明实施所需权限；Goal模板现已冻结v0.6.55、GitHub/生产、目标画布、真实费用USD 20上限和一次最终全量Review。只有用户在新Session完整发送该Goal时才生效，本Session仍不启动开发。
 - 已修改范围只能是 Markdown 权威文档；产品代码、测试、schema、package/lock 均不得修改。
 - 本轮 Provider/Generation/OSS/生产/GitHub/费用预算均为 0。
@@ -48,8 +75,8 @@
 6. `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_ACCEPTANCE_MATRIX_2026-08-27.md`
 7. `TASKS.md` 的 INC-GEN-016 区块
 
-只有用户未来明确发起新的 `/goal` 或明确要求开始开发，才可使用 Goal 模板进入 R0；不得从本 Checkpoint、历史 Goal、聊天摘要或旧授权自动开始代码。
+本次用户已用新的`/goal`明确启动并授权实现、v0.6.55发布、生产和受控真实GK验收；历史“仅文档”边界不再是当前授权。
 
 ## 唯一下一步
 
-等待用户未来明确启动实施。启动后第一步仍是只读核对真实 Git/生产/package/schema/模型清单和费用授权，先写 R0 证据与预期红，再修改产品代码。
+冻结候选并执行一次独立只读全量Review；只有P0=0/P1=0/GO后才运行唯一正式safe full。

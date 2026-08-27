@@ -6,7 +6,7 @@
 
 2026-08-27 MODEL-CONTRACT-002 当前权威状态：v0.6.52生产只读dry-run与v0.6.53冻结副本演练均fail-closed并保留为未部署不可变证据；修正版`v0.6.54`已完成PR #120/main CI、merge、tag/Release、fresh tag build、候选与生产冻结副本双幂等演练、备份、原子数据/版本切换、回滚门、33静态文件逐字节、66秒稳定门和零付费生产浏览器验收。生产运行v0.6.54/schema41，service active/enabled、NRestarts0；GK为已发布revision 2/EXACT并显示文字与单首帧，`kwvideo-v2`已归档。真实Provider/Generation/OSS/新费用均0，失败任务未重跑；当前严格为`PRODUCTION_V0_6_54_TECHNICAL_PASS / USER_RECHECK`，不得冒充成片质量或`USER_PASS`。权威回执为`spec/V0_6_54_PRODUCTION_RECEIPT_2026-08-27.json`。
 
-2026-08-27 INC-GEN-016 当前权威状态：用户随后授权对目标GK首帧任务执行一次真实生成；task `da761fff-6a65-46fd-84cf-4dc5bddbc985` 的唯一新付费attempt越过Provider boundary但没有持久task ID，最终为`OUTCOME_UNKNOWN_BILLING_RISK`，没有result asset且实际费用未知；系统未重提。普通页面仍要求点击“核对结果”，因此v0.6.54真实自动结果闭环失败，当前为`INCIDENT_OPEN / FINAL_AUDITED_PLAN / IMPLEMENTATION_NOT_STARTED / RELEASE_GATE_CLOSED`。本轮用户只授权文档落地并明确“先别改代码”；权威Plan、Matrix、Checkpoint见`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_*`。后续不得从历史授权自动实施。
+2026-08-27 INC-GEN-016 当前权威状态：新`/goal`已明确授权实现、v0.6.55、GitHub/生产和一次受控真实GK验收。R0完成；本地v0.6.55候选R1-R5与风险驱动定向验证已通过，真实Provider/OSS/生产写/费用仍为0，正等待候选冻结后的独立Review；当前`R1_R5_AUTO_PASS / CANDIDATE_FREEZE_PENDING / RELEASE_GATE_CLOSED / USER_RECHECK`。事故task `da761fff-6a65-46fd-84cf-4dc5bddbc985`仍为unknown，禁止第二次POST。权威Plan、Matrix、Checkpoint见`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_*`。
 
 人和 AI 共用的上线拍板规矩见仓库根目录 `上线规矩.md`。发布前必须分别获得版本号确认和允许发布；一次授权只用一次。
 

@@ -1279,10 +1279,16 @@ test("rollback creates a new revision and revoke affects only new submissions", 
   }
 });
 
-test("GK transport accepts only exact task, status and single-result fields", async () => {
+test("GK transport accepts the declared task id with harmless response envelope fields", async () => {
   const calls: Array<{ body?: unknown; url: string }> = [];
+  const evidence: Array<Record<string, unknown>> = [];
   const responses = [
-    { task_id: "task-gk-001" },
+    {
+      task_id: "task-gk-001",
+      state: "queued",
+      request_id: "request-gk-001",
+      metadata: { region: "fixture" },
+    },
     { result_url: "https://cdn.example.test/result.mp4", state: "success" },
   ];
   const fetcher: typeof fetch = async (input, init) => {
@@ -1291,7 +1297,10 @@ test("GK transport accepts only exact task, status and single-result fields", as
       url: String(input),
     });
     return new Response(JSON.stringify(responses.shift()), {
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Request-Id": "provider-request-safe-001",
+      },
       status: 200,
     });
   };
@@ -1302,17 +1311,40 @@ test("GK transport accepts only exact task, status and single-result fields", as
     params: { images: ["https://cdn.example.test/first.png"] },
     prompt: "转身展示服装",
     providerProtocol: "media-generate",
-  }, gkContract, { fetcher });
+  }, gkContract, {
+    fetcher,
+    onProviderResponseEvidence: (item) => evidence.push(item),
+  });
   expect(submission.externalTaskId).toBe("task-gk-001");
   const result = await pollContractRelayMediaTask(connection, {
     capability: "video",
     externalTaskId: submission.externalTaskId,
     providerProtocol: "media-generate",
-  }, gkContract, { fetcher });
+  }, gkContract, {
+    fetcher,
+    onProviderResponseEvidence: (item) => evidence.push(item),
+  });
   expect(result).toMatchObject({
     outputs: [{ transientUrl: "https://cdn.example.test/result.mp4" }],
     state: "success",
   });
+  expect(evidence).toHaveLength(2);
+  expect(evidence[0]).toMatchObject({
+    contentType: "application/json",
+    fieldPaths: expect.arrayContaining([
+      "metadata.region",
+      "request_id",
+      "state",
+      "task_id",
+    ]),
+    httpStatus: 200,
+    providerRequestId: "provider-request-safe-001",
+    responseBytes: expect.any(Number),
+    structureHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+  });
+  expect(JSON.stringify(evidence)).not.toContain("fixture-secret");
+  expect(JSON.stringify(evidence)).not.toContain("转身展示服装");
+  expect(JSON.stringify(evidence)).not.toContain("result.mp4");
   expect(calls).toEqual([
     {
       body: {
