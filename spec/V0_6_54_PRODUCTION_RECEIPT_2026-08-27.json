@@ -1,0 +1,205 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "MODEL-CONTRACT-002-V0.6.54-PRODUCTION-2026-08-27",
+  "recordedAt": "2026-08-27T22:03:41+08:00",
+  "status": "PRODUCTION_V0_6_54_TECHNICAL_PASS",
+  "acceptance": {
+    "automaticEngineering": "PASS_WITH_TARGETED_VERIFICATION_AND_PRIOR_SINGLE_FULL",
+    "independentReview": "P0_0_P1_0_GO",
+    "preTagFrozenCopyRehearsal": "PASS",
+    "productionTechnical": "PASS",
+    "productionBrowser": "ZERO_PAID_TECHNICAL_PASS",
+    "userQuality": "USER_RECHECK",
+    "userPass": false
+  },
+  "scope": {
+    "goal": "MODEL-CONTRACT-002",
+    "releasePurpose": "Decouple immutable historical model revisions from current release policy, publish GK contract revision 2, archive unsupported kwvideo-v2 policy, and remove an unrelated account credential from the model-level global upgrade gate without weakening account task admission.",
+    "schemaMigration": false,
+    "modelContractDataUpgrade": true,
+    "realProviderGeneration": false,
+    "failedTaskRerun": false,
+    "ossWrite": false
+  },
+  "source": {
+    "repository": "https://github.com/jasionia1991-max/unboundry",
+    "pullRequest": 120,
+    "pullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/120",
+    "candidateCommit": "35be500",
+    "mergeCommit": "5a6347f596396e1f4e9cef0fc8069ccaaecb1e0f",
+    "candidateAndMergeTree": "4d7febc91d430b5deaf613efe34e6f45ef6f3c81",
+    "prQualityRun": 33078776039,
+    "prQualityJob": 98539939881,
+    "prQualityResult": "PASS",
+    "mainQualityRun": 33078860952,
+    "mainQualityJob": 98540245110,
+    "mainQualityResult": "PASS",
+    "tag": "v0.6.54",
+    "annotatedTagObject": "5b01446db6ba02c969000f1f467fff3d354968ab",
+    "tagPeeledCommit": "5a6347f596396e1f4e9cef0fc8069ccaaecb1e0f",
+    "tagTree": "4d7febc91d430b5deaf613efe34e6f45ef6f3c81",
+    "releaseUrl": "https://github.com/jasionia1991-max/unboundry/releases/tag/v0.6.54",
+    "releasePublishedAt": "2026-08-27T13:55:03Z",
+    "releaseDraft": false,
+    "releasePrerelease": false
+  },
+  "verification": {
+    "formalFullSuite": {
+      "executedOnce": true,
+      "specs": 122,
+      "passed": 1085,
+      "failed": 0,
+      "secondFullSuiteExecuted": false
+    },
+    "upgradeGateCorrection": {
+      "spec": "m102-model-execution-contracts",
+      "tests": 13,
+      "passed": 13,
+      "failed": 0,
+      "accountCredentialSnapshotAndCasRetained": true,
+      "unrelatedInvalidAccountCredentialNoLongerGlobalBlock": true,
+      "accountTaskCredentialBoundaryStillFailClosed": true
+    },
+    "versionFreeze": {
+      "defaultBuild": "PASS",
+      "node": "22.23.1",
+      "npm": "10.9.8",
+      "specs": ["m38-generation-runtime-incidents", "m81-deployment-hardening"],
+      "tests": 56,
+      "passed": 56,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "sourceAndSnapshotSha256": "66fafbe6b08e53e21571870aa865e6eb7d4b36dfbbdc81584ce30c94293fa97d",
+      "port4173Unchanged": true
+    },
+    "productionReceiptDocumentation": {
+      "spec": "m38-generation-runtime-incidents",
+      "firstRun": "14/15; the sole failure was three progressive-governance documents retaining CURRENT_V0_6_51",
+      "targetedRepair": "synchronized the three current governance markers and release summary to CURRENT_V0_6_54",
+      "finalRun": "15/15 PASS",
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "sourceAndSnapshotSha256": "50fabe6945511d47395281c8d824469bcb6f18a6fff688815d1733bb719d7678",
+      "port4173Unchanged": true,
+      "businessOrFullSuiteRepeated": false
+    }
+  },
+  "artifact": {
+    "tagArchiveSha256": "b88492550c31deb8ca79d119c8336681c482326f9e21482e6ad1afad48414a6d",
+    "tagArchiveBytes": 29956807,
+    "releasePath": "/opt/unboundry/releases/v0.6.54-model-contract-revision-20260827",
+    "releaseFileCountExcludingInventory": 6016,
+    "distFileCount": 33,
+    "inventorySha256": "8242d29d022109fe50e99e37065fbe68e1424b5c0e2b4115a8bea9f1840b4583",
+    "builder": {
+      "node": "22.23.2",
+      "npm": "10.9.8",
+      "npmCiOfflineIgnoreScripts": "PASS",
+      "typeScript": "PASS",
+      "viteBuild": "PASS"
+    },
+    "publicFilesChecked": 33,
+    "publicAssetsByteExact": true
+  },
+  "rehearsal": {
+    "candidateReleasePath": "/opt/unboundry/releases/v0.6.54-candidate-model-contract-revision-20260827",
+    "frozenCopyPath": "/var/lib/unboundry-rollbacks/v0.6.54-pretag-rehearsal.miVrCL",
+    "firstPlanHash": "98b2b05c7f4eb30e39b5107f1ccd925438c8b16e76c126f0abcdfa83d1c18b53",
+    "repeatPlanHash": "dc9084711787c74765ad9a67130b356ba2586d205c3d45f140153381dfa78756",
+    "modelCount": 11,
+    "gkTemplateCount": 22,
+    "gkNodeCount": 34,
+    "incompatibleTemplateCount": 0,
+    "firstApply": {"gkRevisionChanged": true, "gkRevisionNumber": 2, "archivedKwvideo": true},
+    "repeatApply": {"gkRevisionChanged": false, "archivedKwvideo": false},
+    "paidProviderRequests": 0
+  },
+  "backupAndCutover": {
+    "backupPath": "/var/lib/unboundry-rollbacks/v0.6.54-cutover-frozen.wF6woT",
+    "sourceFileCount": 366,
+    "sourceManifestSha256": "b008971b8a9d8ad46883efca35abbd728bbc78dd5afcc8665805d4c4ed233f2c",
+    "rehearsalFirstPlanHash": "98b2b05c7f4eb30e39b5107f1ccd925438c8b16e76c126f0abcdfa83d1c18b53",
+    "rehearsalRepeatPlanHash": "51ec14bc65b9dc241383d28f1ddefcf857cc8949c2ebf7aaacbe298eccc38e05",
+    "databaseSchema": 41,
+    "databaseIntegrity": "ok",
+    "foreignKeyViolations": 0,
+    "atomicDataReplacement": "PASS",
+    "atomicReleaseSwitch": "PASS",
+    "rollbackTrap": "ARMED_AND_NOT_NEEDED"
+  },
+  "production": {
+    "hostAlias": "live-cockpit",
+    "previousRelease": "/opt/unboundry/releases/v0.6.51-model-contract-remediation-20260827",
+    "currentRelease": "/opt/unboundry/releases/v0.6.54-model-contract-revision-20260827",
+    "versionEndpoint": "0.6.54",
+    "service": "unboundry",
+    "serviceState": "active",
+    "serviceEnabled": true,
+    "serviceRestarts": 0,
+    "runtimeNode": "22.23.2",
+    "runtimeNpm": "10.9.8",
+    "schema": 41,
+    "databaseIntegrity": "ok",
+    "foreignKeyViolations": 0,
+    "publicRootStatus": 200,
+    "loopbackLive": "live",
+    "loopbackReady": "ready",
+    "journalWarningsAfterCutover": 0,
+    "quietGate": {
+      "start": "2026-08-27T21:55:58+08:00",
+      "end": "2026-08-27T21:57:04+08:00",
+      "stableSeconds": 66,
+      "countsUnchanged": true
+    },
+    "postCutoverStabilityGate": {
+      "start": "2026-08-27T22:01:55+08:00",
+      "end": "2026-08-27T22:03:01+08:00",
+      "stableSeconds": 66,
+      "countsUnchanged": true
+    },
+    "beforeCounts": {
+      "tasks": 954, "attempts": 962, "active": 0, "media": 910, "publications": 501, "canvases": 72,
+      "models": 20, "publishedModels": 11, "templates": 50, "publishedTemplates": 48,
+      "audits": 297, "contractEvents": 56, "publishEvents": 14
+    },
+    "afterCounts": {
+      "tasks": 954, "attempts": 962, "active": 0, "media": 910, "publications": 501, "canvases": 72,
+      "models": 20, "publishedModels": 10, "templates": 50, "publishedTemplates": 48,
+      "audits": 299, "contractEvents": 58, "publishEvents": 15, "kwArchived": 1
+    },
+    "expectedGovernanceDeltaOnly": true
+  },
+  "productionBrowser": {
+    "browser": "Chrome",
+    "account": "麦哥",
+    "modelCenterRoute": "/admin/models",
+    "kwvideoV2AbsentFromOrdinaryPublishedList": true,
+    "gkWorkbenchRoute": "/admin/models/624827c6-5541-4cc8-93ac-4f9d5ce79602/contract",
+    "model": "grok-video-3",
+    "publishedRevision": 2,
+    "publishedState": "published",
+    "classification": "EXACT",
+    "inputModes": ["纯文字生成视频", "首帧生成视频"],
+    "firstFrameRole": {"mediaType": "image", "minimum": 1, "maximum": 1, "ordered": true},
+    "consoleErrors": 0,
+    "consoleWarnings": 0,
+    "mutatingActionsClicked": 0,
+    "productionDataCountsChangedByBrowser": false
+  },
+  "zeroSideEffectLedger": {
+    "paidProviderRequests": 0,
+    "generationSubmissions": 0,
+    "failedTaskReruns": 0,
+    "ossWrites": 0,
+    "newFees": 0,
+    "unrelatedBusinessRowsChanged": 0,
+    "intendedModelGovernanceWritesOnly": true
+  },
+  "immutableNotDeployedPredecessors": [
+    {"tag": "v0.6.52", "reason": "production read-only template compatibility dry-run fail-closed"},
+    {"tag": "v0.6.53", "reason": "frozen-copy rehearsal fail-closed on an overbroad unrelated account credential gate"}
+  ],
+  "nextAction": "Keep USER_RECHECK. The user must verify the target real workflow and final generated-media quality before USER_PASS may be recorded; this receipt does not authorize or perform a paid retry."
+}

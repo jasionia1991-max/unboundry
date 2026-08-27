@@ -1,6 +1,6 @@
 # MODEL-CONTRACT-002 实时断点
 
-状态：`V0_6_52_NOT_DEPLOYED / V0_6_53_REHEARSAL_FAIL_CLOSED_NOT_DEPLOYED / V0_6_54_RELEASE_AUTHORIZED / PR_PENDING / USER_RECHECK`
+状态：`PRODUCTION_V0_6_54_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / USER_RECHECK`
 
 更新时间：2026-08-27
 
@@ -52,7 +52,12 @@ v0.6.52已完成PR/CI、merge、tag/Release与fresh build，但真实生产只�
 - v0.6.52生产只读dry-run在实际写入前以22个模板不兼容fail-closed；根因修复commit为`26cdc6d1dcd6a612dc616677fbe67519042f6254`。修复后m102 `13/13 PASS`，source/snapshot `e058810e…067c`，真实生产只读dry-run为22模板/34节点全部兼容，仍为零Provider/Generation/OSS/费用。用户随后明确授权v0.6.53。
 - v0.6.53候选head `71d3b926…4517`、merge `a9d360b7…a859`、main CI run `33077030627`与fresh build通过；冻结副本演练因一个无关账户的无效Ark凭证被误作全局Provider失败而阻断，生产自动恢复且从未切换。保留冻结证据`/var/lib/unboundry-rollbacks/v0.6.53-cutover-frozen.mUOSYM`；v0.6.53 Release已标记未部署。修复后m102 `13/13 PASS`，无效账户凭证计数仍被快照/CAS绑定，用户任务安全边界未放宽；目标改为v0.6.54。
 - v0.6.54版本门已冻结；默认Node25 `npm run build` PASS。最终源码Node22 safe m38+m81 `56/56 PASS`，失败/重试/跳过0，source/snapshot `66fafbe6b08e53e21571870aa865e6eb7d4b36dfbbdc81584ce30c94293fa97d`，4173 unchanged；没有重复正式full。
+- PR #120与main Quality CI通过，merge `5a6347f596396e1f4e9cef0fc8069ccaaecb1e0f`；注释tag `v0.6.54`对象`5b01446d…68ab`精确指向该merge/tree `4d7febc9…3c81`，GitHub Release与fresh tag build通过，正式inventory `8242d29d…4583`。
+- 候选冻结副本`/var/lib/unboundry-rollbacks/v0.6.54-pretag-rehearsal.miVrCL`首次升级与重复apply幂等通过。生产66秒静默门后创建冻结备份`/var/lib/unboundry-rollbacks/v0.6.54-cutover-frozen.wF6woT`，source 366文件、manifest `b008971b…3f2c`；生产副本再次完成dry-run/apply/repeat后原子替换数据与current symlink，回滚门未触发。
+- 生产现为v0.6.54/schema41，service active/enabled、NRestarts0、integrity ok/FK0；tasks954/attempts962/active0/media910/publications501/canvases72/templates50保持，publishedModels 11→10、audits 297→299、contractEvents 56→58、publishEvents 14→15是唯一预期治理变化。33个公网静态文件逐字节一致，发布后66秒稳定门通过。
+- Chrome零付费只读验收确认模型中心普通已发布列表不含`kwvideo-v2`，GK工作台显示已发布revision 2/EXACT，存在“纯文字生成视频”和“首帧生成视频”，首帧image数量精确1且保序；console error/warn 0、页面写按钮点击0，真实Provider/Generation/OSS/新费用0。回执：`spec/V0_6_54_PRODUCTION_RECEIPT_2026-08-27.json`。
+- 回执文档m38首轮`14/15`仅暴露三份渐进治理文档仍保留`CURRENT_V0_6_51`；精确同步为`CURRENT_V0_6_54`后最小复验`15/15 PASS`，source/snapshot `50fabe69…d7678`、4173 unchanged；未重复业务spec或full。
 
 ## 下一步与授权门
 
-1. 完成v0.6.54 PR/CI与merge；先用合并候选完成冻结副本首次升级和重复执行幂等演练，通过后才创建不可移动tag/GitHub Release与fresh tag build，再完成生产原子切换、回滚和零付费技术门。
+1. 用户在生产实页复验目标工作流与最终成片质量；用户明确确认前保持`USER_RECHECK`，不得自动重跑失败任务或发起付费生成。
