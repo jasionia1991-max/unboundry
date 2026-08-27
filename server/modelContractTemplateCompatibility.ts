@@ -12,6 +12,7 @@ import {
   parseTemplateGraph,
   type TemplateGraph,
 } from "./templateCatalog";
+import { defaultNodeInputRole } from "../types/nodeInputs";
 
 export type ModelContractTemplateNodeCompatibility = Readonly<{
   afterModeId?: string;
@@ -103,31 +104,30 @@ function modeForNode(
   const seenOrders = new Set<number>();
   const inputs = graph.edges
     .filter((edge) => edge.target === node.id)
-    .map((edge) => {
+    .map((edge, index) => {
       const source = nodes.get(edge.source);
       const kind = source?.type as NodeInputKind;
       if (!source || !["audio", "image", "text", "video"].includes(kind)) {
         throw new Error("模板输入来源无效");
       }
-      const role = typeof edge.data?.inputRole === "string" &&
-          edge.data.inputRole.trim()
-        ? edge.data.inputRole.trim()
-        : undefined;
-      if (!role) throw new Error("模板输入角色缺失");
-      const order = Number(edge.data?.inputOrder);
+      const rawRole = edge.data?.inputRole;
+      const role = typeof rawRole === "string"
+        ? rawRole
+        : defaultNodeInputRole(kind, document.capability as NodeInputKind);
+      if (!/^[a-z][a-z-]{0,39}$/.test(role)) {
+        throw new Error("模板输入角色无效");
+      }
+      const rawOrder = edge.data?.inputOrder;
+      const order = rawOrder === undefined ? index + 1 : Number(rawOrder);
       if (!Number.isSafeInteger(order) || order < 1 || seenOrders.has(order)) {
         throw new Error("模板输入顺序缺失、重复或无效");
       }
       seenOrders.add(order);
-      if (kind === "text") {
-        if (!text(source.data.content)) throw new Error("模板文字输入为空");
-      } else if (
-        !text(source.data.assetId) ||
-        !text(source.data[`${kind}Src`]) ||
-        source.data.inputState !== "ready"
-      ) {
-        throw new Error("模板媒体输入未处于可执行状态");
-      }
+      // Public templates intentionally persist unmaterialized source cards.
+      // Their ordinary publish/import preflight validates how those cards
+      // become ready; revision compatibility must compare the saved kinds,
+      // roles, order and parameters against both contracts without requiring
+      // a generated asset to exist at release time.
       return { kind, order, role };
     })
     .sort((left, right) => left.order - right.order);

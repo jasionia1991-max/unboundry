@@ -27,6 +27,26 @@
     "parameters": {},
     "promptReady": true
   },
+  "observedEdgeMetadata": {
+    "firstFrameRoleExplicitNodes": 34,
+    "instructionRoleRuntimeDefaultNodes": 34,
+    "orderExplicitNodes": 27,
+    "orderRuntimeFallbackNodes": [
+      "00000000-0000-4000-8000-000000000111/template-node-4",
+      "00000000-0000-4000-8000-000000000112/template-node-4",
+      "00000000-0000-4000-8000-000000000113/template-node-4",
+      "00000000-0000-4000-8000-000000000114/template-node-4",
+      "00000000-0000-4000-8000-000000000115/template-node-4",
+      "00000000-0000-4000-8000-000000000115/template-node-5",
+      "00000000-0000-4000-8000-000000000116/template-node-4"
+    ]
+  },
+  "observedSourceMetadata": {
+    "firstFrameAssetMaterializedNodes": 0,
+    "firstFramePlaceholderNodes": 34,
+    "instructionContentMaterializedNodes": 0,
+    "instructionPromptReadyNodes": 34
+  },
   "templates": {
     "00000000-0000-4000-8000-000000000111": ["template-node-4"],
     "00000000-0000-4000-8000-000000000112": ["template-node-4"],
