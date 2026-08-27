@@ -25,6 +25,21 @@ const gkVideoParameterTargets: Readonly<Record<string, string>> = Object.freeze(
   resolution: "resolution",
 });
 
+const verifiedModelDocumentation: Readonly<Record<string, string>> = Object.freeze({
+  "doubao-seed-2-0-lite-260428": "https://www.volcengine.com/docs/82379/1330310",
+  "doubao-seedance-2-0-mini-260615": "https://www.volcengine.com/docs/82379/2222480",
+  "gemini-3-pro-image-preview": "https://ai.google.dev/gemini-api/docs/image-generation",
+  "gpt-image-2": "https://platform.openai.com/docs/guides/image-generation",
+  "grok-imagine-video-1.5-preview": "https://docs.x.ai/developers/models/grok-imagine-video",
+  "kling-v3-omni-cankao": "https://app.klingai.com/cn/quickstart/klingai-video-3-model-user-guide",
+  "mureka-9": "https://platform.mureka.ai/docs/en/changelog.html",
+});
+
+function documentation(providerModelId: string) {
+  const url = verifiedModelDocumentation[providerModelId];
+  return url ? [{ checkedAt: "2026-08-27", url }] : [];
+}
+
 export function gkVideoExecutionContract(
   capabilitySchema: ModelParameterSchema,
 ): ModelExecutionContract {
@@ -169,17 +184,7 @@ export function defaultModelReleaseDocument(
     capabilitySchema: structuredClone(seed.capabilitySchema),
     connectorFamily: family,
     connectorVersion: 1,
-    documentation: exactGk
-      ? [{
-          checkedAt: "2026-08-26",
-          url: "https://api.youchuang.vip",
-        }]
-      : seed.providerModelId === "gpt-image-2"
-        ? [{
-            checkedAt: "2026-08-26",
-            url: "https://platform.openai.com/docs/guides/image-generation",
-          }]
-      : [],
+    documentation: documentation(seed.providerModelId),
     evidence: evidence(seed.providerModelId),
     executionContract: exactGk
       ? gkVideoExecutionContract(seed.capabilitySchema)

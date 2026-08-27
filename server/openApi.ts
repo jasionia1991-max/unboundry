@@ -573,8 +573,8 @@ export const openApiDocument = {
     },
     "/api/admin/models/{modelId}/contract/validate": {
       post: {
-        operationId: "validateAdminModelContractDraft",
-        summary: "Compile, preview and analyze template impact without a Provider request",
+        operationId: "validateAdminModelContractDocument",
+        summary: "Validate the current page without saving, publishing or calling a Provider",
         parameters: [{
           in: "path", name: "modelId", required: true,
           schema: { type: "string", pattern: "^[a-zA-Z0-9-]{3,80}$" },
@@ -583,13 +583,12 @@ export const openApiDocument = {
           required: true,
           content: { "application/json": { schema: {
             type: "object",
-            required: ["expectedDraftVersion"],
-            properties: { expectedDraftVersion: { type: "integer", minimum: 1 } },
+            required: ["document"],
+            properties: { document: { type: "object" } },
           } } },
         },
         responses: {
-          "200": { description: "Local validation result with paidProviderRequests equal to zero" },
-          "409": { description: "Draft compare-and-swap conflict" },
+          "200": { description: "Zero-write local validation result with paidProviderRequests equal to zero" },
         },
       },
     },

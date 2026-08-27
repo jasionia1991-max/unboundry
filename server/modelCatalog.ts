@@ -51,7 +51,7 @@ import {
   rollbackModelContract,
   saveModelContractDraft,
   setModelContractRevoked,
-  validateModelContractDraft,
+  validateModelContractDocument,
 } from "./modelReleaseRevisionStore";
 import { modelReleaseDocumentForId } from "./modelReleaseDefaults";
 import type {
@@ -1125,6 +1125,10 @@ export async function adminModelsApi(
           providerModelId: row.provider_model_id,
         }),
         paidProviderRequests: 0,
+        previews: {
+          active: state.active?.validation.preview,
+          savedDraft: state.draft?.validation?.preview,
+        },
         state,
         suggestedDocument: modelReleaseDocumentForId({
           capability: row.capability,
@@ -1160,26 +1164,33 @@ export async function adminModelsApi(
           identity.userId,
           body.document,
           Number(body.expectedDraftVersion ?? 0),
+          {
+            impact: await modelTemplateImpact(
+              store,
+              modelId,
+              body.document.capabilitySchema,
+            ),
+          },
         );
         json(response, 200, { draft, paidProviderRequests: 0 });
         return;
       }
       if (action === "validate") {
-        const pending = modelContractState(store, modelId).draft;
-        const draft = validateModelContractDraft(
-          store,
-          identity.userId,
-          modelId,
-          Number(body.expectedDraftVersion),
+        if (!body.document || body.document.modelId !== modelId) {
+          throw new Error("当前页面模型身份不一致");
+        }
+        assertReleaseDocumentMatchesModel(body.document, row);
+        const validation = validateModelContractDocument(
+          body.document,
           {
             impact: await modelTemplateImpact(
               store,
               modelId,
-              pending?.document.capabilitySchema,
+              body.document.capabilitySchema,
             ),
           },
         );
-        json(response, 200, { draft, paidProviderRequests: 0 });
+        json(response, 200, { paidProviderRequests: 0, validation });
         return;
       }
       if (action === "publish") {

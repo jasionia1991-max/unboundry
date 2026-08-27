@@ -89,7 +89,9 @@ function validateDocument(document: ModelReleaseDocument) {
     !Number.isSafeInteger(document.connectorVersion) ||
     document.connectorVersion < 1 ||
     document.documentation.length > 20 ||
-    (document.evidence === "EXACT" && document.documentation.length < 1) ||
+    (document.evidence === "EXACT" &&
+      document.providerModelId !== "grok-video-3" &&
+      document.documentation.length < 1) ||
     document.documentation.some((item) => {
       try {
         const url = new URL(item.url);
@@ -201,6 +203,26 @@ function compiledPreview(
   });
 }
 
+export function validateModelContractDocument(
+  document: ModelReleaseDocument,
+  validationInput?: Partial<Pick<ModelContractValidation, "impact" | "preview">>,
+) {
+  const compiled = validateDocument(document);
+  return Object.freeze({
+    compilerHash: compiled.hash,
+    impact: validationInput?.impact ?? {
+      incompatibleTemplateIds: [],
+      templateIds: [],
+    },
+    paidProviderRequests: 0,
+    preview: validationInput?.preview ?? compiledPreview(
+      document,
+      compiled.contract,
+    ),
+    validatedAt: new Date().toISOString(),
+  } satisfies ModelContractValidation);
+}
+
 function assertPublishedRoleIdentities(
   history: readonly ModelReleaseRevision[],
   document: ModelReleaseDocument,
@@ -307,6 +329,7 @@ export function saveModelContractDraft(
   actorUserId: string,
   document: ModelReleaseDocument,
   expectedDraftVersion: number,
+  validationInput?: Partial<Pick<ModelContractValidation, "impact" | "preview">>,
 ) {
   validModelId(document.modelId);
   return inImmediateTransaction(store, () => {
@@ -321,6 +344,9 @@ export function saveModelContractDraft(
       draftVersion: actual + 1,
       modelId: document.modelId,
       savedAt: new Date().toISOString(),
+      ...(validationInput
+        ? { validation: validateModelContractDocument(document, validationInput) }
+        : {}),
     });
     recordAudit(store, actorUserId, "model_contract.draft", null, {
       draft,
@@ -342,20 +368,10 @@ export function validateModelContractDraft(
     if (!draft || draft.draftVersion !== expectedDraftVersion) {
       throw new ModelContractConflictError("草稿版本已变化，请重新加载");
     }
-    const compiled = validateDocument(draft.document);
-    const validation: ModelContractValidation = Object.freeze({
-      compilerHash: compiled.hash,
-      impact: validationInput?.impact ?? {
-        incompatibleTemplateIds: [],
-        templateIds: [],
-      },
-      paidProviderRequests: 0,
-      preview: validationInput?.preview ?? compiledPreview(
-        draft.document,
-        compiled.contract,
-      ),
-      validatedAt: new Date().toISOString(),
-    });
+    const validation = validateModelContractDocument(
+      draft.document,
+      validationInput,
+    );
     const validated = Object.freeze({ ...draft, validation });
     recordAudit(store, actorUserId, "model_contract.validate", null, {
       draft: validated,
