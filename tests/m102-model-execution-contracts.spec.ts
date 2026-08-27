@@ -637,6 +637,18 @@ const productionGkAudit = JSON.parse(readFileSync(join(
     parameters: Record<string, never>;
     promptReady: boolean;
   };
+  observedEdgeMetadata: {
+    firstFrameRoleExplicitNodes: number;
+    instructionRoleRuntimeDefaultNodes: number;
+    orderExplicitNodes: number;
+    orderRuntimeFallbackNodes: string[];
+  };
+  observedSourceMetadata: {
+    firstFrameAssetMaterializedNodes: number;
+    firstFramePlaceholderNodes: number;
+    instructionContentMaterializedNodes: number;
+    instructionPromptReadyNodes: number;
+  };
   templates: Record<string, string[]>;
 };
 const productionGkTemplateNodes = productionGkAudit.templates;
@@ -645,8 +657,8 @@ function productionGkTemplateRows(modelId = "model-gk-video-3") {
   return Object.entries(productionGkTemplateNodes).map(([id, nodeIds]) => {
     const normalized = productionGkAudit.normalizedNodeContract;
     const sourceNodes = [
-      { data: { content: normalized.instruction.nonEmpty ? "脱敏生产文字" : "", label: "文字" }, id: `${id}-text`, position: { x: 0, y: 0 }, type: normalized.instruction.kind, zIndex: 1 },
-      { data: { assetId: "sanitized-production-ready", imageSrc: "/api/assets/sanitized-production-ready", inputState: normalized.firstFrame.inputState, label: "首帧" }, id: `${id}-image`, position: { x: 0, y: 300 }, type: normalized.firstFrame.kind, zIndex: 1 },
+      { data: { content: "", label: "文字", textPrompt: normalized.instruction.nonEmpty ? "脱敏生产文字指令" : "", textPromptReady: true }, id: `${id}-text`, position: { x: 0, y: 0 }, type: normalized.instruction.kind, zIndex: 1 },
+      { data: { label: "首帧" }, id: `${id}-image`, position: { x: 0, y: 300 }, type: normalized.firstFrame.kind, zIndex: 1 },
     ];
     const videoNodes = nodeIds.map((nodeId, index) => ({
       data: {
@@ -662,10 +674,33 @@ function productionGkTemplateRows(modelId = "model-gk-video-3") {
       type: "video",
       zIndex: 1,
     }));
-    const edges = nodeIds.flatMap((nodeId, index) => [
-      { data: { inputOrder: normalized.instruction.inputOrder, inputRole: normalized.instruction.inputRole }, id: `${id}-text-${index}`, source: `${id}-text`, target: nodeId, type: "cuttable" },
-      { data: { inputOrder: normalized.firstFrame.inputOrder, inputRole: normalized.firstFrame.inputRole }, id: `${id}-image-${index}`, source: `${id}-image`, target: nodeId, type: "cuttable" },
-    ]);
+    const edges = nodeIds.flatMap((nodeId, index) => {
+      const usesOrderFallback = productionGkAudit.observedEdgeMetadata
+        .orderRuntimeFallbackNodes.includes(`${id}/${nodeId}`);
+      return [
+        {
+          data: usesOrderFallback
+            ? {}
+            : { inputOrder: normalized.instruction.inputOrder },
+          id: `${id}-text-${index}`,
+          source: `${id}-text`,
+          target: nodeId,
+          type: "cuttable",
+        },
+        {
+          data: usesOrderFallback
+            ? { inputRole: normalized.firstFrame.inputRole }
+            : {
+                inputOrder: normalized.firstFrame.inputOrder,
+                inputRole: normalized.firstFrame.inputRole,
+              },
+          id: `${id}-image-${index}`,
+          source: `${id}-image`,
+          target: nodeId,
+          type: "cuttable",
+        },
+      ];
+    });
     return { graph: JSON.stringify({ edges, nodes: [...sourceNodes, ...videoNodes], version: 1 }), id };
   });
 }
@@ -696,6 +731,21 @@ test("sanitized production matrix keeps all 22 templates and 34 GK nodes compati
     nodeInputMode: "reference",
     parameters: {},
     promptReady: true,
+  });
+  expect(productionGkAudit.observedEdgeMetadata).toEqual({
+    firstFrameRoleExplicitNodes: 34,
+    instructionRoleRuntimeDefaultNodes: 34,
+    orderExplicitNodes: 27,
+    orderRuntimeFallbackNodes: expect.arrayContaining([
+      "00000000-0000-4000-8000-000000000111/template-node-4",
+      "00000000-0000-4000-8000-000000000116/template-node-4",
+    ]),
+  });
+  expect(productionGkAudit.observedSourceMetadata).toEqual({
+    firstFrameAssetMaterializedNodes: 0,
+    firstFramePlaceholderNodes: 34,
+    instructionContentMaterializedNodes: 0,
+    instructionPromptReadyNodes: 34,
   });
   const result = analyzeModelContractTemplateCompatibility({
     active: historicalGkRevision().document,
