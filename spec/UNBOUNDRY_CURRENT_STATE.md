@@ -1,18 +1,38 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网为v0.6.50/schema41；定向48/48、文档门15/15、独立增量Review `P0=0 / P1=0 / GO`、PR/main CI、不可移动tag/Release、fresh build、冻结备份恢复、原子切换、数据/inventory/静态资产、66秒稳定门与四视口零付费浏览器均通过。14张模型卡均有合同工作台入口；成片视觉仍为`USER_RECHECK`。
+> **状态分层**：现网仍为v0.6.50/schema41，历史生产技术证据保留。版本A、B和27项候选执行均完成；独立Review最终`P0=0/P1=0/GO`。唯一full已执行一次为1077/1079，唯二陈旧断言已定向通过且没有第二次full。用户已明确知悉未做真实付费生成和`USER_RECHECK`边界并授权发布；当前严格为`PRODUCTION_V0_6_50_TECHNICAL_PASS / RELEASE_AUTHORIZED / V0_6_51_VERSION_FROZEN / PR_116_CI_PENDING / USER_RECHECK`。
 
-更新日期：2026-08-26
+更新日期：2026-08-27
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.50**
-本地候选代码版本：**v0.6.50**
+当前代码包版本：**v0.6.51**
+本地候选代码版本：**v0.6.51**
 本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_50_USER_RECHECK`
-当前计划标记：`MODEL_CONTRACT_001_R0_R7_IMPLEMENTED / V0_6_49_PRODUCTION_UI_P1 / V0_6_50_PRODUCTION_TECHNICAL_PASS / USER_RECHECK`
+当前计划标记：`MODEL_CONTRACT_001_REMEDIATION_PLAN_FROZEN / RELEASE_AUTHORIZED / V0_6_51_VERSION_FROZEN / PR_116_CI_PENDING / REVIEW_P0_0_P1_0_GO / FORMAL_FULL_EXECUTED_ONCE_1077_OF_1079`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`MODEL_CONTRACT_001_V0_6_50_RELEASED / PRODUCTION_V0_6_50_TECHNICAL_PASS / USER_RECHECK`
+当前发布门：`MODEL_CONTRACT_001_REMEDIATION_RELEASE_GATE_CLOSED / V0_6_50_REMAINS_PRODUCTION / USER_RECHECK`
 
-v0.6.50由PR #114合并为`d3f5490f524b2d8d212ef7607d85afbf1981ca05` / tree `5b12ebeb97ed7a0e9ed34927fca51de2d0fd38ad`并发布不可移动tag/Release，现网release为`/opt/unboundry/releases/v0.6.50-model-contract-workbench-entry-20260827`。当前隔离工作树为`/Users/mymy/Documents/unboundry-model-contract-001-2026-08-26`，仅用于生产回执收口；旧`/Users/mymy/Documents/unboundry/app`不得施工或自动清理。
+## 当前活动项：MODEL-CONTRACT-001 用户复验失败返工
+
+- 真实验收不是通过：27项中15项通过，12项失败或证据不足；历史v0.6.50技术发布不被改写，但不能继续作为当前产品验收结论。
+- P0根因是任务恢复把“没有匹配到远端记录”错误推断为“没有提交”，在Provider可能已经受理/计费时仍开放新付费请求。本地幂等不能替代Provider端幂等。
+- 版本A已修付费确定性、unknown outcome、GPT Image结果解析、Mureka 429和GK模式级证据；版本B已修工作台三态、纯本地校验、草稿CAS、三来源预览、精确官方文档、模式/角色和UI可访问性。
+- 当前工作树`codex/model-contract-user-recheck-fixes`基于`origin/main@cc9df2a`；R0已确认进入时实际为14 tracked + 3 untracked，4个产品候选文件已冻结审查且不会覆盖。
+- 权威入口：`spec/MODEL_CONTRACT_001_USER_RECHECK_REMEDIATION_PLAN_2026-08-27.md`、对应返工矩阵和`spec/MODEL_CONTRACT_001_CHECKPOINT.md`。
+- R0只读复核确认生产v0.6.50/schema41健康、旧4173属于历史工作树、本Goal生产/Provider/OSS写和费用均0；既有`⚡2.182`无法核验人民币换算，真实付费分支保持阻断。
+- 版本A当前源码safe证据为m5 `22/22`、m38 `15/15`、m22 `41/41`，对应m102/m26/m53回执继续有效；schema41、真实Provider/OSS/生产写与新费用均为0。
+- 版本A独立commit为`584e4071c87ae06b980e091df47ce0aaa3e03b4f`/tree`c85bd81a8775ef786bf3146583ae57c2ee00ec53`。
+- 版本B独立commit为`31b3d28489742b69846eac6f3826a5c0289a1f69`/tree`956c1e78d01e216fe2d62f2a33420ed8fd5cd79d`；m102 `7/7`、m20 `1/1 PASS`。候选Computer Use执行账本和阻塞项见返工矩阵；真实Provider/OSS/生产写/新费用均0。
+- 独立Review首轮`P0=0/P1=2/NO-GO`；修复commit `979d448256fb5f58970eafae41f6ea17c0282c1b`关闭模板完整合同影响与未验证Provider task ID认领，m102+m38 `22/22`、末次m102 `7/7 PASS`；同一线程最终`P0=0/P1=0/GO`。
+- 唯一正式full在commit `e56df4efcf607ab7e9c79a94cc8c205b96bbe798`执行一次：122 specs、1077/1079 PASS、其余异常0、immutable release builder 1/5 PASS，source/snapshot `459770bee1b30e933bed13e243cf82bb12f354d4dba76bf2350e4f90af5c76b9`，4173不变。唯二失败为新付费安全语义对应的陈旧断言。
+- 陈旧断言commit `2821f0579d4f455109349232e053502670686c03`已定向收口：m81 `41/41 PASS`，m100 `13/13 PASS`；未运行第二次full。
+- 分支已推送并创建PR #116；代码/证据候选head `7e0fb553d2d14771298c60523eef8f78ffc02c9d`的Quality gates run `33045709604`通过。本节最终文档同步后的精确head仍以PR最新Quality gate为放行依据。
+- 候选版本为`v0.6.51`：再次核验最新正式Release为v0.6.50且远端v0.6.51 tag未占用；package/lock/runtime admission已冻结为0.6.51，尚未merge、tag或发布。
+- 用户已明确知悉本轮未做真实付费生成且仍有`USER_RECHECK`，并授权合并PR #116、v0.6.51 tag/Release、生产备份恢复门、原子发布与回滚门。
+- v0.6.51 package/lock/final runtime admission已冻结；Node22 safe m38+m81 `56/56 PASS`，source/snapshot `acc01f54ab42723d9655b6ea01833f80fe3b2e3d01b6a01593ba6f4e62c9cdf6`，4173不变，未重复full。
+- 唯一下一动作：提交并推送版本冻结，等待PR CI后合并与main CI，再执行tag/Release和生产门。
+
+v0.6.50由PR #114合并为`d3f5490f524b2d8d212ef7607d85afbf1981ca05` / tree `5b12ebeb97ed7a0e9ed34927fca51de2d0fd38ad`并发布不可移动tag/Release，现网release为`/opt/unboundry/releases/v0.6.50-model-contract-workbench-entry-20260827`。当前隔离工作树为`/Users/mymy/Documents/unboundry-model-contract-001-2026-08-26`，已切到用户复验返工分支并含4个待审相关改动；旧`/Users/mymy/Documents/unboundry/app`不得施工或自动清理。
 
 当前工具链分层：普通项目shell、开发、类型检查和CI默认Node `25.9.0` / npm `11.12.1`；现网v0.6.50运行Node `22.23.2` / npm `10.9.8`。安全测试、源码覆盖和不可变release builder继续以Node `22.23.1` / npm `10.9.8`作为生产兼容复现通道；本版没有迁移生产Node运行时。
 

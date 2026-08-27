@@ -1521,7 +1521,7 @@ test("the final boundary preserves stop evidence, auth outcomes, and Provider ID
     });
     expect(store.getProviderAttemptForTask(rejected.id)).toMatchObject({
       failureCode: "AUTH",
-      outcome: "definitive-rejected",
+      outcome: "outcome-unknown",
     });
   } finally {
     control.close();
@@ -1764,8 +1764,8 @@ test("a new paid retry and a new task consume one concurrency slot atomically", 
   setup.transition(failed.id, "running");
   setup.recordProviderAttempt(failed.id);
   setup.transition(failed.id, "failed", {
-    code: "PROVIDER_FAILED",
-    message: "Provider reported a terminal failure",
+    code: "PROVIDER_REFUNDED",
+    message: "Provider reported a terminal failure and confirmed refund",
   });
   const retryFence = seedGenerationRetryBinding(
     dataDirectory,
@@ -1903,7 +1903,7 @@ test("retry admission rejects a task detached from its durable canvas binding", 
   }
 });
 
-test("GPT Image network and 4xx failures after the send boundary stay retryable", async () => {
+test("GPT Image uncertain failures after the send boundary block paid retry", async () => {
   const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-gpt-image-not-submitted-"));
   const store = createGenerationTaskStore(dataDirectory);
   try {
@@ -1926,32 +1926,103 @@ test("GPT Image network and 4xx failures after the send boundary stay retryable"
     });
     expect(store.getProviderAttemptForTask(created.id)).toMatchObject({
       failureCode: "NETWORK",
-      outcome: "provider-failed",
+      outcome: "outcome-unknown",
     });
-    expect(store.hasUnsafeProviderAttemptForNewPaidRetry(created.id)).toBe(false);
+    expect(store.hasUnsafeProviderAttemptForNewPaidRetry(created.id)).toBe(true);
 
-    const rejected = store.create({
-      canvasId: "gpt-image-not-submitted",
-      idempotencyKey: "gpt-image-not-submitted-0002",
-      kind: "image",
-      modelConfiguration: { providerProtocol: "gpt-image" },
-      nodeId: "gpt-image-not-submitted-reject",
+    for (const [index, code] of [
+      "AUTH",
+      "PERMISSION",
+      "RATE_LIMIT",
+      "TIMEOUT",
+      "REMOTE",
+      "PROVIDER_RESULT_FORMAT",
+    ].entries()) {
+      const uncertain = store.create({
+        canvasId: "gpt-image-not-submitted",
+        idempotencyKey: `gpt-image-not-submitted-${index + 2}`,
+        kind: "image",
+        modelConfiguration: { providerProtocol: "gpt-image" },
+        nodeId: `gpt-image-not-submitted-${code.toLowerCase()}`,
+        ownerId: "__test__",
+        prompt: `${code} after the paid boundary must remain uncertain`,
+        providerModelId: "gpt-image-2",
+        providerProfileId: "gpt-image-profile",
+      }).task;
+      store.transition(uncertain.id, "running");
+      store.recordProviderAttempt(uncertain.id);
+      store.transition(uncertain.id, "failed", {
+        code,
+        message: `${code} after the paid boundary`,
+      });
+      expect(store.getProviderAttemptForTask(uncertain.id)).toMatchObject({
+        failureCode: code,
+        outcome: "outcome-unknown",
+      });
+      expect(store.hasUnsafeProviderAttemptForNewPaidRetry(uncertain.id))
+        .toBe(true);
+    }
+  } finally {
+    store.close();
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("empty Provider search preserves billing risk while authoritative refund unlocks one retry", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-provider-certainty-"));
+  const store = createGenerationTaskStore(dataDirectory);
+  try {
+    const unknown = store.create({
+      canvasId: "provider-certainty",
+      idempotencyKey: "provider-certainty-unknown-0001",
+      kind: "video",
+      nodeId: "provider-certainty-unknown",
       ownerId: "__test__",
-      prompt: "4xx reject must not look submitted",
-      providerModelId: "gpt-image-2",
-      providerProfileId: "gpt-image-profile",
+      prompt: "lost response",
+      providerModelId: "provider-video",
+      providerProfileId: "provider-profile",
     }).task;
-    store.transition(rejected.id, "running");
-    store.recordProviderAttempt(rejected.id);
-    store.transition(rejected.id, "failed", {
-      code: "REMOTE",
-      message: "中转站暂时无法完成请求",
+    store.transition(unknown.id, "running");
+    store.recordProviderAttempt(unknown.id);
+    const failed = store.transition(unknown.id, "failed", {
+      code: "PROVIDER_REQUEST_FAILED",
+      message: "response lost",
+    })!;
+    const marked = store.markOutcomeUnknownBillingRisk({
+      expectedUpdatedAt: failed.updatedAt,
+      taskId: failed.id,
     });
-    expect(store.getProviderAttemptForTask(rejected.id)).toMatchObject({
-      failureCode: "REMOTE",
+    expect(marked).toMatchObject({
+      errorCode: "OUTCOME_UNKNOWN_BILLING_RISK",
+      state: "failed",
+    });
+    expect(store.getProviderAttemptForTask(unknown.id)).toMatchObject({
+      failureCode: "OUTCOME_UNKNOWN_BILLING_RISK",
+      outcome: "outcome-unknown",
+    });
+    expect(store.hasUnsafeProviderAttemptForNewPaidRetry(unknown.id)).toBe(true);
+
+    const refunded = store.create({
+      canvasId: "provider-certainty",
+      idempotencyKey: "provider-certainty-refunded-0002",
+      kind: "video",
+      nodeId: "provider-certainty-refunded",
+      ownerId: "__test__",
+      prompt: "authoritative refund",
+      providerModelId: "provider-video",
+      providerProfileId: "provider-profile",
+    }).task;
+    store.transition(refunded.id, "running");
+    store.recordProviderAttempt(refunded.id);
+    store.transition(refunded.id, "failed", {
+      code: "PROVIDER_REFUNDED",
+      message: "Provider confirmed refund",
+    });
+    expect(store.getProviderAttemptForTask(refunded.id)).toMatchObject({
+      failureCode: "PROVIDER_REFUNDED",
       outcome: "provider-failed",
     });
-    expect(store.hasUnsafeProviderAttemptForNewPaidRetry(rejected.id)).toBe(false);
+    expect(store.hasUnsafeProviderAttemptForNewPaidRetry(refunded.id)).toBe(false);
   } finally {
     store.close();
     await rm(dataDirectory, { force: true, recursive: true });

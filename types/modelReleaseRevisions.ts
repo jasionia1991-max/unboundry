@@ -37,11 +37,14 @@ export type ModelContractValidation = Readonly<{
   paidProviderRequests: 0;
   preview: Readonly<{
     modes: readonly Readonly<{
+      blockedReason?: string;
       body: unknown;
+      evidence?: ModelContractEvidence;
       method: string;
       modeId: string;
       path: string;
       query: unknown;
+      runtime?: "blocked" | "declarative";
     }>[];
   }>;
   validatedAt: string;

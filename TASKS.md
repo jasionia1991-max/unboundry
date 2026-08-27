@@ -1,5 +1,29 @@
 # Unboundry 绿地复刻当前任务
 
+## MODEL-CONTRACT-001 用户复验失败返工（RELEASE AUTHORIZED / V0.6.51 VERSION FROZEN / PR-CI PENDING / USER_RECHECK）
+
+- [x] 记录真实Computer Use基线：原27项清单15项通过、12项失败或证据不足；v0.6.50历史生产技术证据保留，但不得升级`USER_PASS`。
+- [x] 记录P0：GK/grok-video-3可能计费但无task ID/结果，现有“查询空→确认缺失→允许新付费尝试”路径不安全；GPT Image已计费但结果解析失败；Mureka 429不得自动重提。
+- [x] 记录P1：草稿/发布/未保存状态、错误CAS冲突、预览不可发现、官方文档不足、模式/角色内部ID、校验禁用原因、原生蓝色checkbox和只读输入光标。
+- [x] 冻结版本A→版本B→27项Computer Use→全量Review→唯一safe full→PR/CI→生产发布授权门的方案。
+- [x] 建立新方案、独立返工矩阵和新Session可复制Goal；原Goal模板标记为历史，不得恢复。
+- [x] R0只读冻结完成：`HEAD=origin/main=cc9df2a`/tree`f91bfb2`；实际进入时为14 tracked + 3 untracked，4个产品候选差异已逐块审查并保留；4173归属旧工作树，生产v0.6.50/schema41健康，Provider/OSS/生产写/费用均0。
+- [x] 费用停止线确认：既有平台账本`⚡2.182`无法核验人民币换算，因此本Goal真实付费生成保持阻断，只用fake/临时数据/既有任务证据。
+- [x] 版本A实现与最小受影响safe定向：付费边界后的不确定结果禁止自动/人工重提；GPT Image白名单结果、Mureka 429和GK模式级证据已修复。m5 `22/22`、m38 `15/15`、m22 `41/41`及对应m102/m26/m53均通过；真实Provider/OSS/生产写/新费用0。
+- [x] 版本A独立commit/checkpoint：`584e4071c87ae06b980e091df47ce0aaa3e03b4f` / tree `c85bd81a8775ef786bf3146583ae57c2ee00ec53`。
+- [x] 版本B：工作台三态、纯本地校验、草稿CAS、三来源脱敏预览、精确官方文档、模式/角色人话界面和灰阶可访问控件已冻结为`31b3d28489742b69846eac6f3826a5c0289a1f69`/tree`956c1e78d01e216fe2d62f2a33420ed8fd5cd79d`；m102 `7/7`、m20 `1/1 PASS`。
+- [x] 候选网站27项已执行到安全或前置条件边界；Provider生成POST/真实费用/OSS/生产写均0。浏览器确认对话框/截图工具重置、真实费用门和缺少真实Provider前置条件的项目保留`USER_RECHECK/BLOCKED`，不冒充27/27通过。
+- [x] 候选冻结后独立只读全量Review：首轮`P0=0/P1=2/NO-GO`；模板完整合同影响与未验证Provider task ID认领已由`979d448256fb5f58970eafae41f6ea17c0282c1b`关闭，m102+m38 `22/22`、末次m102 `7/7 PASS`；同一线程最终`P0=0/P1=0/GO`。
+- [x] 本Goal唯一正式safe full已在`e56df4efcf607ab7e9c79a94cc8c205b96bbe798`执行：122 specs、1077/1079 PASS、2项失败，其余异常0；immutable release builder 1 attempt/5 invocations PASS，source/snapshot `459770bee1b30e933bed13e243cf82bb12f354d4dba76bf2350e4f90af5c76b9`，4173不变。两项均为版本A新付费语义对应的陈旧测试断言，不是新产品缺陷。
+- [x] 陈旧断言由`2821f0579d4f455109349232e053502670686c03`精确同步：m81在组合定向中`41/41 PASS`，m100按失败最小集修正后`13/13 PASS`；未运行第二次full。
+- [x] 分支已推送并创建PR #116；代码/证据候选head `7e0fb553d2d14771298c60523eef8f78ffc02c9d`的Quality gates run `33045709604`通过。本段最终文档同步后仍以PR精确head的最新Quality gate为放行依据。
+- [x] 候选版本再次核验：最新正式Release为v0.6.50、无v0.6.51 tag占用，建议最小patch为`v0.6.51`；package仍保持v0.6.50，未提前tag/Release。
+- [x] 用户已明确知悉本轮未做真实付费生成且仍有`USER_RECHECK`，并授权合并PR #116、v0.6.51 tag/Release、生产备份恢复门、原子发布与回滚门。
+- [x] v0.6.51 package/lock/final-runtime admission已冻结；Node22 safe m38+m81 `56/56 PASS`，source/snapshot `acc01f54ab42723d9655b6ea01833f80fe3b2e3d01b6a01593ba6f4e62c9cdf6`，4173不变，未重复full。
+- [ ] 唯一下一动作：提交并推送版本冻结，等待PR CI后合并与main CI，再执行不可移动tag/Release和生产门。
+
+权威方案：`spec/MODEL_CONTRACT_001_USER_RECHECK_REMEDIATION_PLAN_2026-08-27.md`；矩阵：`spec/MODEL_CONTRACT_001_USER_RECHECK_REMEDIATION_ACCEPTANCE_MATRIX_2026-08-27.md`；断点：`spec/MODEL_CONTRACT_001_CHECKPOINT.md`；新Goal：`spec/MODEL_CONTRACT_001_USER_RECHECK_REMEDIATION_GOAL_PROMPT_2026-08-27.md`。
+
 ## MODEL-CONTRACT-001 模型执行合同治理（R0-R7 / v0.6.50 PRODUCTION TECHNICAL PASS / USER_RECHECK）
 
 - [x] 从`origin/main@7b475416a77cdee8d7b04ce965600551aa16858c`建立干净隔离worktree并核对生产v0.6.47/schema41、工具链、tag/Release与4173监听身份。

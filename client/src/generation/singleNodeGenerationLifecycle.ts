@@ -388,7 +388,6 @@ export function createSingleNodeGenerationLifecycle(input: {
     }
     if (
       reconcileResult &&
-      reconcileResult.outcome !== "missing" &&
       reconcileResult.outcome !== "recovered"
     ) {
       return {

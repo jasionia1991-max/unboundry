@@ -98,7 +98,7 @@
       "scriptSha256": "53e92a0e6268f4a7cb1c618aa1293d27507dd207546c0f988c1e06c0cb7ce94c",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "Full snapshot bridge/final fixtures prove the release closure",
-      "targetSha256": "454b27ce0a2a1b75be785f6f994d4f9bdee352f8ec157c41920912b59c8cc2a3"
+      "targetSha256": "8c770a636e57a1de357035b3ecbb11751848da965bac7d7a6866b2b660e2b3d5"
     },
     "scripts/check-greenfield.mjs": {
       "mode": "behavior-test",
@@ -112,14 +112,14 @@
       "scriptSha256": "9b1807c98cd6e59a288fd8b81d29299bb5b34b67e7bed9a2003c8989c95d01e7",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "scripts/check-restart-persistence.mjs",
-      "targetSha256": "454b27ce0a2a1b75be785f6f994d4f9bdee352f8ec157c41920912b59c8cc2a3"
+      "targetSha256": "8c770a636e57a1de357035b3ecbb11751848da965bac7d7a6866b2b660e2b3d5"
     },
     "scripts/check-v051-exact-runtime.mjs": {
       "mode": "behavior-test",
       "scriptSha256": "46f2f3d355c1ece895e649e3dceb8f485aeeeeed2eb3418b98b311d9a827ac08",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "scripts/check-v051-exact-runtime.mjs",
-      "targetSha256": "454b27ce0a2a1b75be785f6f994d4f9bdee352f8ec157c41920912b59c8cc2a3"
+      "targetSha256": "8c770a636e57a1de357035b3ecbb11751848da965bac7d7a6866b2b660e2b3d5"
     },
     "scripts/deploy.mjs": {
       "mode": "frozen",

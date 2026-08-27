@@ -261,6 +261,33 @@ test("Mureka polling normalizes pending, failure and safe errors", async () => {
   )).rejects.toBeInstanceOf(MurekaAudioError);
 });
 
+test("Mureka 429 preserves bounded Retry-After evidence without retrying", async () => {
+  let requests = 0;
+  const error = await createMurekaAudioTask(profile, {
+    model: "mureka-9",
+    musicGenerationMode: "prompt-song",
+    outputCount: 1,
+    prompt: "rate limited",
+    streamPlayback: false,
+  }, async () => {
+    requests += 1;
+    return new Response(JSON.stringify({ message: "slow down" }), {
+      headers: {
+        "Content-Type": "application/json",
+        "Retry-After": "37",
+      },
+      status: 429,
+    });
+  }).catch((caught: unknown) => caught);
+  expect(requests).toBe(1);
+  expect(error).toMatchObject({
+    code: "RATE_LIMIT",
+    retryAfterSeconds: 37,
+  });
+  expect(String((error as Error).message)).toContain("37秒后继续核对原任务");
+  expect(String((error as Error).message)).toContain("不会自动重新提交");
+});
+
 test("Mureka submit and poll each enforce an injectable hard deadline", async () => {
   await expectRequestTimeout((fetcher, deadlineOptions) =>
     createMurekaAudioTask(

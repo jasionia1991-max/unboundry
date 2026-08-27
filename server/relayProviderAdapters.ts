@@ -1280,11 +1280,36 @@ function cleanTransientOutputUrl(value: string) {
 }
 
 function parseGptImageResult(body: unknown): RelayImageResult {
-  if (!isRecord(body) || !Array.isArray(body.data) || body.data.length < 1 || body.data.length > 10) {
+  if (!isRecord(body)) {
     throw new RelayProviderError("FORMAT");
   }
-  const outputs = body.data.map((item): RelayTransientMediaOutput => {
+  const responseItems = Array.isArray(body.data)
+    ? body.data
+    : Array.isArray(body.output)
+      ? body.output
+      : undefined;
+  if (!responseItems || responseItems.length < 1 || responseItems.length > 10) {
+    throw new RelayProviderError("FORMAT");
+  }
+  const outputs = responseItems.map((item): RelayTransientMediaOutput => {
     if (!isRecord(item)) throw new RelayProviderError("FORMAT");
+    if (
+      item.type === "image_generation_call" &&
+      typeof item.result === "string" &&
+      Object.keys(item).every((key) => ["id", "result", "status", "type"].includes(key))
+    ) {
+      if (
+        item.status !== undefined &&
+        item.status !== "completed" &&
+        item.status !== "succeeded"
+      ) throw new RelayProviderError("FORMAT");
+      return {
+        bytes: decodePngBase64(item.result),
+        kind: "image",
+        mimeType: "image/png",
+        transport: "bytes",
+      };
+    }
     if (typeof item.b64_json === "string") {
       if (
         item.media_type !== undefined &&

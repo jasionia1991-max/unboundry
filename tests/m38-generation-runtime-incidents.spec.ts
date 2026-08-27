@@ -566,10 +566,10 @@ test("an auth incident grants one atomic recovery attempt per credential revisio
     expect(attempts.map(({ credential_revision }) => credential_revision))
       .toEqual([1, 2, 1, 2, 3, 3]);
     expect(attempts.map(({ outcome }) => outcome)).toEqual([
-      "definitive-rejected",
-      "definitive-rejected",
-      "definitive-rejected",
-      "definitive-rejected",
+      "outcome-unknown",
+      "outcome-unknown",
+      "outcome-unknown",
+      "outcome-unknown",
       "completed",
       "boundary-claimed",
     ]);
@@ -1918,6 +1918,76 @@ test("only capability success or an explicit Provider/model update clears an aut
           code: "RETRY_OUTCOME_UNKNOWN",
         });
       }
+      const attemptsBeforeReconcile = generationProviderAttemptCounts(database);
+      const tasksBeforeReconcile = Number((database.prepare(`
+        SELECT COUNT(*) AS count FROM generation_tasks
+      `).get() as { count: number }).count);
+      const unverifiedManualTaskId = await incidentRequest(
+        "/api/generation-tasks/retry-network-unknown/reconcile",
+        {
+          body: JSON.stringify({
+            ...retryFence("retry-network-unknown"),
+            providerTaskId: "unverified-provider-task",
+          }),
+          method: "POST",
+        },
+      );
+      expect(unverifiedManualTaskId.status).toBe(400);
+      expect(await unverifiedManualTaskId.json()).toMatchObject({
+        code: "PROVIDER_TASK_ID_UNVERIFIED",
+      });
+      expect(generationProviderAttemptCounts(database))
+        .toEqual(attemptsBeforeReconcile);
+      expect(database.prepare(`
+        SELECT provider_task_id FROM generation_tasks WHERE id = ?
+      `).get("retry-network-unknown")).toEqual({ provider_task_id: null });
+      expect(database.prepare(`
+        SELECT outcome, provider_task_id
+        FROM generation_provider_attempts
+        WHERE task_id = ? AND execution_attempt = 1
+      `).get("retry-network-unknown")).toEqual({
+        outcome: "outcome-unknown",
+        provider_task_id: null,
+      });
+      const reconcile = await incidentRequest(
+        "/api/generation-tasks/retry-network-unknown/reconcile",
+        {
+          body: JSON.stringify(retryFence("retry-network-unknown")),
+          method: "POST",
+        },
+      );
+      expect(reconcile.status).toBe(200);
+      const reconciled = await reconcile.json() as {
+        outcome: string;
+        task: { errorCode?: string; updatedAt: string };
+      };
+      expect(reconciled).toMatchObject({
+        outcome: "outcome-unknown",
+        task: {
+          errorCode: "OUTCOME_UNKNOWN_BILLING_RISK",
+        },
+      });
+      expect(generationProviderAttemptCounts(database))
+        .toEqual(attemptsBeforeReconcile);
+      expect(Number((database.prepare(`
+        SELECT COUNT(*) AS count FROM generation_tasks
+      `).get() as { count: number }).count)).toBe(tasksBeforeReconcile);
+      const retryAfterReconcile = await incidentRequest(
+        "/api/generation-tasks/retry-network-unknown/retry",
+        {
+          body: JSON.stringify({
+            ...retryFence("retry-network-unknown"),
+            expectedUpdatedAt: reconciled.task.updatedAt,
+          }),
+          method: "POST",
+        },
+      );
+      expect(retryAfterReconcile.status).toBe(409);
+      expect(await retryAfterReconcile.json()).toMatchObject({
+        code: "RETRY_OUTCOME_UNKNOWN",
+      });
+      expect(generationProviderAttemptCounts(database))
+        .toEqual(attemptsBeforeReconcile);
       const preBoundaryAudioRestart = await incidentRequest(
         "/api/generation-tasks/retry-audio-restart-no-id",
       );

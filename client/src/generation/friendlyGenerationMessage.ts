@@ -141,7 +141,11 @@ const generationErrorCodeMessages: Record<
   REFERENCE_SIGN_FAILED: "参考图临时链接创建失败，本次没有向模型提交",
   REFERENCE_STORAGE_BUSY: "参考图临时存储繁忙，本次没有向模型提交",
   REFERENCE_UPLOAD_FAILED: "参考图临时上传失败，本次没有向模型提交",
-  PROVIDER_RESULT_MISSING: "平台没有成片，可以重试",
+  PROVIDER_RESULT_MISSING:
+    "旧任务的平台结果仍无法确认；为避免重复扣费，请只核对原任务，不要重新生成",
+  OUTCOME_UNKNOWN_BILLING_RISK:
+    "模型平台可能已经受理或扣费；为避免重复扣费，系统已禁止重新提交，只能继续核对原任务",
+  PROVIDER_REFUNDED: "模型平台已确认退款，可以安全重新生成",
   RECONCILE_RATE_LIMIT: "核对太频繁，请稍后再试",
   RETRY_OUTCOME_UNKNOWN:
     "上次结果还没对上，为避免重复扣费，请先点「核对结果」，不要重新生成",

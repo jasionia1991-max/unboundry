@@ -145,6 +145,7 @@ test("release role and bridge-mode selection are exact and fail closed", () => {
   expect(releaseRoleFromEnvironment("0.6.48", {})).toBe("final");
   expect(releaseRoleFromEnvironment("0.6.49", {})).toBe("final");
   expect(releaseRoleFromEnvironment("0.6.50", {})).toBe("final");
+  expect(releaseRoleFromEnvironment("0.6.51", {})).toBe("final");
   expect(releaseRoleFromEnvironment("0.5.2", {})).toBe("bridge");
   expect(releaseRoleFromEnvironment("0.5.2", {
     UNBOUNDRY_RELEASE_ROLE: "bridge",
@@ -4308,7 +4309,7 @@ test("listening starts one committed queued task while startup gates keep blocke
         FROM generation_provider_attempts WHERE task_id = ?
       `).all(active.acceptedTaskId)).toEqual([{
         execution_attempt: 1,
-        outcome: "provider-failed",
+        outcome: "accepted",
       }]);
       expect(completed.prepare(`
         SELECT error_code, state FROM generation_tasks WHERE id = ?

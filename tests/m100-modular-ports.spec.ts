@@ -2653,7 +2653,7 @@ test("single-node lifecycle replaces React with fenced graph save and task ports
   let preparedBeforeEnsure = false;
   let retryCalls = 0;
   let retryRevisionWaits = 0;
-  let reconcileOutcome: "ambiguous" | "missing" | "recovered" = "recovered";
+  let reconcileOutcome: "ambiguous" | "outcome-unknown" | "recovered" = "recovered";
   let watchCalls = 0;
   const tasks: SingleNodeGenerationTaskPort = {
     async cancel() {
@@ -2678,12 +2678,12 @@ test("single-node lifecycle replaces React with fenced graph save and task ports
       );
       return {
         outcome: reconcileOutcome,
-        task: reconcileOutcome === "missing"
+        task: reconcileOutcome === "outcome-unknown"
           ? {
               ...reconciledTask,
-              errorCode: "PROVIDER_RESULT_MISSING",
-              errorMessage: "平台没有成片，可以重试",
-              retryAllowed: true,
+              errorCode: "OUTCOME_UNKNOWN_BILLING_RISK",
+              errorMessage: "模型平台可能已经受理或扣费",
+              retryAllowed: false,
             }
           : reconciledTask,
       };
@@ -2836,22 +2836,22 @@ test("single-node lifecycle replaces React with fenced graph save and task ports
   expect(snapshot.nodes[0]?.data.content).toBe("moon result");
   expect({ flushes, revisionWaits }).toEqual({ flushes: 4, revisionWaits: 8 });
 
-  reconcileOutcome = "missing";
+  reconcileOutcome = "outcome-unknown";
   await expect(lifecycle.reconcile({ id: "task-1" })).resolves.toMatchObject({
-    reconcileOutcome: "missing",
+    reconcileOutcome: "outcome-unknown",
     status: "failed",
     task: {
-      errorCode: "PROVIDER_RESULT_MISSING",
+      errorCode: "OUTCOME_UNKNOWN_BILLING_RISK",
       id: "task-1",
-      retryAllowed: true,
+      retryAllowed: false,
     },
   });
   expect(snapshot.nodes[0]?.data).toMatchObject({
     content: "moon result",
     textGenerating: false,
-    textGenerationErrorCode: "PROVIDER_RESULT_MISSING",
+    textGenerationErrorCode: undefined,
   });
-  expect({ flushes, revisionWaits }).toEqual({ flushes: 5, revisionWaits: 10 });
+  expect({ flushes, revisionWaits }).toEqual({ flushes: 4, revisionWaits: 9 });
 
   const imageToolGeneration = createGenerationImageToolUseCase({
     lifecycle: {

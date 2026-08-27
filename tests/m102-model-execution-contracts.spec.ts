@@ -18,6 +18,7 @@ import {
   rollbackModelContract,
   saveModelContractDraft,
   setModelContractRevoked,
+  validateModelContractDocument,
   validateModelContractDraft,
 } from "../server/modelReleaseRevisionStore";
 import { defaultModelReleaseDocument } from "../server/modelReleaseDefaults";
@@ -27,6 +28,7 @@ import {
   submitContractRelayMedia,
 } from "../server/relayProviderAdapters";
 import { modelReleaseBootstrapActorUserId } from "../server/modelReleaseBootstrap";
+import { modelContractTemplateCompatibilitySignature } from "../server/modelCatalog";
 
 const gkContract = {
   connectorFamily: "generic-async-media",
@@ -34,6 +36,7 @@ const gkContract = {
   create: { method: "POST", path: "/v1/media/generate", taskIdPath: "task_id" },
   modes: [
     {
+      evidence: "UNKNOWN",
       id: "text-to-video",
       prompt: "required",
       roles: [],
@@ -41,8 +44,10 @@ const gkContract = {
         { source: { kind: "model-id" }, target: { location: "json", path: "model" } },
         { source: { kind: "prompt" }, target: { location: "json", path: "prompt" } },
       ],
+      runtime: "blocked",
     },
     {
+      evidence: "EXACT",
       id: "first-frame-to-video",
       prompt: "required",
       roles: [{ id: "first-frame", kind: "image", minItems: 1, maxItems: 1, ordered: true, shape: "url" }],
@@ -51,6 +56,7 @@ const gkContract = {
         { source: { kind: "prompt" }, target: { location: "json", path: "prompt" } },
         { source: { kind: "role", roleId: "first-frame" }, transform: "array", target: { location: "json", path: "params.images" } },
       ],
+      runtime: "declarative",
     },
   ],
   poll: { method: "GET", path: "/v1/media/status", taskIdTarget: { location: "query", path: "task_id" } },
@@ -59,6 +65,51 @@ const gkContract = {
 } as const;
 
 test("GK contract compiles deterministically and selects exactly one explicit mode", () => {
+  const fixtures = [
+    ["doubao-seed-2-0-lite-260428", "text", "www.volcengine.com"],
+    ["doubao-seedance-2-0-mini-260615", "video", "www.volcengine.com"],
+    ["gemini-3-pro-image-preview", "image", "ai.google.dev"],
+    ["gpt-image-2", "image", "platform.openai.com"],
+    ["grok-imagine-video-1.5-preview", "video", "docs.x.ai"],
+    ["kling-v3-omni-cankao", "video", "app.klingai.com"],
+    ["mureka-9", "audio", "platform.mureka.ai"],
+  ] as const;
+  for (const [providerModelId, capability, hostname] of fixtures) {
+    const document = defaultModelReleaseDocument({
+      capability,
+      capabilitySchema: defaultParameterSchema(capability),
+      modelId: `model-${providerModelId}`,
+      providerDriver: providerModelId.startsWith("doubao-") ? "volcengine-ark" : "multi-protocol-relay",
+      providerModelId,
+      providerProfileId: "provider-fixture",
+      providerProtocol: providerModelId === "gpt-image-2" ? "gpt-image" : "media-generate",
+    });
+    expect(new URL(document.documentation[0]!.url).hostname).toBe(hostname);
+  }
+  expect(defaultModelReleaseDocument({
+    capability: "video",
+    capabilitySchema: defaultParameterSchema("video"),
+    modelId: "model-unknown",
+    providerDriver: "multi-protocol-relay",
+    providerModelId: "kwvideo-v2",
+    providerProfileId: "provider-fixture",
+    providerProtocol: "media-generate",
+  }).documentation).toEqual([]);
+  for (const [providerModelId, capability] of [
+    ["doubao-tts-2.0", "audio"],
+    ["grok-video-3", "video"],
+    ["suno-v4.5", "audio"],
+  ] as const) {
+    expect(defaultModelReleaseDocument({
+      capability,
+      capabilitySchema: defaultParameterSchema(capability),
+      modelId: `model-no-exact-doc-${providerModelId}`,
+      providerDriver: "multi-protocol-relay",
+      providerModelId,
+      providerProfileId: "provider-fixture",
+      providerProtocol: "media-generate",
+    }).documentation).toEqual([]);
+  }
   const first = compileModelExecutionContract(gkContract);
   const second = compileModelExecutionContract(structuredClone(gkContract));
   expect(first.hash).toBe(second.hash);
@@ -66,8 +117,8 @@ test("GK contract compiles deterministically and selects exactly one explicit mo
     method: "POST",
     path: "/v1/media/generate",
   });
-  expect(selectExecutionMode(first.contract, { prompt: "衣服转身", inputs: [] }).id)
-    .toBe("text-to-video");
+  expect(() => selectExecutionMode(first.contract, { prompt: "衣服转身", inputs: [] }))
+    .toThrow(/缺少精确Provider证据/);
   expect(selectExecutionMode(first.contract, {
     prompt: "衣服转身",
     inputs: [{ kind: "image", order: 1, roleId: "first-frame", value: "https://example.invalid/source.png" }],
@@ -108,7 +159,7 @@ test("GK contract compiles deterministically and selects exactly one explicit mo
     providerProtocol: "media-generate",
   });
   const compiledRelease = compileModelExecutionContract(release.executionContract);
-  expect(compileModelContractRequest(compiledRelease.contract, {
+  expect(() => compileModelContractRequest(compiledRelease.contract, {
     inputs: [],
     modelId: "grok-video-3",
     parameters: {
@@ -118,16 +169,30 @@ test("GK contract compiles deterministically and selects exactly one explicit mo
       resolution: "480p",
     },
     prompt: "衣服转身",
-  }).body).toEqual({
-    model: "grok-video-3",
-    params: {
-      aspect_ratio: "16:9",
-      duration: 5,
-      generate_audio: true,
-      resolution: "480p",
+  })).toThrow(/缺少精确Provider证据/);
+  expect(compiledRelease.contract.modes).toEqual(expect.arrayContaining([
+    expect.objectContaining({ evidence: "UNKNOWN", id: "text-to-video", runtime: "blocked" }),
+    expect.objectContaining({ evidence: "EXACT", id: "first-frame-to-video", runtime: "declarative" }),
+  ]));
+  const document = releaseDocument();
+  const documentationOnly = {
+    ...document,
+    documentation: [{
+      checkedAt: "2026-08-27",
+      url: "https://provider.invalid/docs/v2",
+    }],
+  };
+  const executionChanged = {
+    ...document,
+    executionContract: {
+      ...document.executionContract,
+      create: { ...document.executionContract.create, path: "/v1/media/generate-v2" },
     },
-    prompt: "衣服转身",
-  });
+  };
+  expect(modelContractTemplateCompatibilitySignature(document))
+    .toBe(modelContractTemplateCompatibilitySignature(documentationOnly));
+  expect(modelContractTemplateCompatibilitySignature(document))
+    .not.toBe(modelContractTemplateCompatibilitySignature(executionChanged));
 });
 
 test("compiler rejects executable, secret, arbitrary network and ambiguous contracts", () => {
@@ -324,6 +389,10 @@ test("draft CAS, validation and atomic immutable publish are audit-backed", () =
   const store = contractStore();
   try {
     store.exec("CREATE TABLE release_target (revision_id TEXT NOT NULL)");
+    const directValidation = validateModelContractDocument(releaseDocument());
+    expect(directValidation.paidProviderRequests).toBe(0);
+    expect(store.prepare("SELECT COUNT(*) AS count FROM admin_audit_events").get())
+      .toEqual({ count: 0 });
     const draft = saveModelContractDraft(store, "admin-a", releaseDocument(), 0);
     expect(draft.draftVersion).toBe(1);
     expect(() => saveModelContractDraft(
@@ -519,11 +588,16 @@ test("admin contract workbench is separate, structured and responsive with zero 
   const app = readFileSync(join(process.cwd(), "client/src/App.tsx"), "utf8");
   const styles = readFileSync(join(process.cwd(), "client/src/styles.css"), "utf8");
   expect(app).toContain("model-contract-workbench");
-  expect(app).toContain("本地验证｜不调用 Provider");
+  expect(app).toContain("本地验证当前页面｜零写入");
   expect(app).toContain("草稿发生并发冲突，没有覆盖另一位管理员");
+  expect(app).toContain("已保存草稿：{hasSavedDraft ? `版本 ${draftVersion}` : \"无\"}");
+  expect(app).toContain('code === "MODEL_CONTRACT_DRAFT_CONFLICT"');
+  expect(app).toContain("无需先保存，不会发布，也不会调用 Provider");
   expect(app).toContain("发布不会调用 Provider");
   expect(app).toContain("脱敏只读预览");
-  expect(app).toContain("loaded.state.draft?.validation?.preview");
+  expect(app).toContain("三份脱敏只读预览");
+  expect(app).not.toContain("模式标识（系统使用）");
+  expect(app).not.toContain("角色标识（系统使用）");
   expect(app).toContain("查看差异");
   expect(app).toContain("错误映射");
   expect(app).toContain("fallback合同");
@@ -535,6 +609,8 @@ test("admin contract workbench is separate, structured and responsive with zero 
   );
   expect(contractStyles).not.toContain("#1fa2dc");
   expect(contractStyles).toContain("appearance: none");
+  expect(contractStyles).toContain(".model-contract-page input.admin-compact-checkbox");
+  expect(contractStyles).toContain("caret-color: transparent");
 
   const providerResponse = await page.request.post("/api/admin/providers", {
     data: {
@@ -585,8 +661,35 @@ test("admin contract workbench is separate, structured and responsive with zero 
     expect(editor).not.toBeNull();
     expect(actions!.y).toBeGreaterThan(0);
   }
-  await page.getByRole("button", { name: "保存草稿" }).click();
-  await expect(page.getByText("草稿已保存；本次没有调用 Provider。")).toBeVisible();
-  await page.getByRole("button", { name: "本地验证｜不调用 Provider" }).click();
+  const validateButton = page.getByRole("button", { name: "本地验证当前页面｜零写入" });
+  await expect(page.getByText("当前页面：无未保存修改 · 已保存草稿：无 · 当前发布版本：无")).toBeVisible();
+  await expect(validateButton).toBeEnabled();
+  await expect(page.getByText(/当前页面可直接本地验证/).first()).toBeVisible();
+  const checkbox = page.locator(".model-contract-page input.admin-compact-checkbox").first();
+  await expect(checkbox).toBeVisible();
+  expect(await checkbox.evaluate((element) => ({
+    appearance: getComputedStyle(element).appearance,
+    background: getComputedStyle(element).backgroundColor,
+  }))).toEqual({ appearance: "none", background: "rgb(236, 236, 238)" });
+  const parameterTrigger = page.locator(".model-contract-page .admin-parameter-select-trigger").first();
+  await expect(parameterTrigger).toBeVisible();
+  expect(await parameterTrigger.evaluate((element) => ({
+    caret: getComputedStyle(element).caretColor,
+    height: getComputedStyle(element).height,
+  }))).toEqual({ caret: "rgba(0, 0, 0, 0)", height: "34px" });
+  await validateButton.click();
   await expect(page.getByText("本地验证通过；Provider 请求为 0。")).toBeVisible();
+  await expect(page.getByText("当前页面：无未保存修改 · 已保存草稿：无 · 当前发布版本：无")).toBeVisible();
+  await expect(page.locator("#model-contract-preview")).toContainText("fixture-image-model");
+  await page.getByRole("button", { name: "已保存草稿", exact: true }).click();
+  await expect(page.locator("#model-contract-preview")).toContainText("已保存草稿：无");
+  await page.getByRole("button", { name: "保存草稿", exact: true }).click();
+  await expect(page.getByText("草稿已保存；本次没有调用 Provider。")).toBeVisible();
+  await page.getByRole("button", { name: "已保存草稿", exact: true }).click();
+  await expect(page.locator("#model-contract-preview")).toContainText("fixture-image-model");
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "发布", exact: true }).click();
+  await expect(page.getByText("当前页面：无未保存修改 · 已保存草稿：无 · 当前发布版本：1")).toBeVisible();
+  await expect(validateButton).toBeEnabled();
+  await expect(page.getByText("草稿发生并发冲突，没有覆盖另一位管理员。")).toHaveCount(0);
 });

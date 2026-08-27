@@ -303,8 +303,8 @@ export async function cancelGenerationTask(
 export type GenerationReconcileOutcome =
   | "ambiguous"
   | "check-failed"
-  | "missing"
   | "needs-task-id"
+  | "outcome-unknown"
   | "recovered"
   | "still-running";
 
@@ -323,8 +323,8 @@ export function reconcileOutcomeMessage(outcome: GenerationReconcileOutcome) {
   if (outcome === "still-running") {
     return "平台还在做，请稍后再核对";
   }
-  if (outcome === "missing") {
-    return "平台没有成片，可以重试";
+  if (outcome === "outcome-unknown") {
+    return "模型平台可能已经受理或扣费；为避免重复扣费，系统已禁止重新提交，只能继续核对原任务";
   }
   return "";
 }

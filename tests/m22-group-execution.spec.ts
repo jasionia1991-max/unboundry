@@ -12,7 +12,10 @@ import {
   type WorkflowNodeShape,
 } from "../client/src/generation/workflowExecution";
 import { friendlyGenerationMessage } from "../client/src/generation/friendlyGenerationMessage";
-import { generationNeedsReconcile } from "../client/src/generation/generationRetry";
+import {
+  generationFailureIsDefinitive,
+  generationNeedsReconcile,
+} from "../client/src/generation/generationRetry";
 import { workflowRecoveryPlan } from "../client/src/generation/workflowGenerationRecovery";
 import {
   createSaveGateRun,
@@ -1869,6 +1872,7 @@ test("friendly generation messages avoid long English and jargon", () => {
     .toContain("不会自动重提");
   expect(friendlyGenerationMessage(undefined, "image", "PROVIDER_RESULT_FORMAT"))
     .toContain("模型已响应");
+  expect(generationFailureIsDefinitive("PROVIDER_RESULT_FORMAT")).toBe(false);
 });
 
 test("save gate waits for a durable canvas revision before running the node", async () => {

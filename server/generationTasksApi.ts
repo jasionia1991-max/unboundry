@@ -598,6 +598,13 @@ export async function generationTasks(
       });
       return;
     }
+    if (providedTaskId) {
+      json(response, 400, {
+        code: "PROVIDER_TASK_ID_UNVERIFIED",
+        error: "不能仅凭手工平台任务号认领结果；系统只接受Provider只读账本的唯一匹配",
+      });
+      return;
+    }
     const task = identity.bypass
       ? taskStore().get(taskId)
       : taskStore().getForOwner(taskId, identity.userId);
@@ -644,20 +651,6 @@ export async function generationTasks(
     }
     lastReconcileAt.set(task.id, now);
     let current = task;
-    if (providedTaskId && !current.providerTaskId) {
-      try {
-        current = taskStore().bindProviderTaskIdOnFailedTask({
-          providerTaskId: providedTaskId,
-          taskId: current.id,
-        });
-      } catch {
-        json(response, 409, {
-          code: "PROVIDER_TASK_ID_CONFLICT",
-          error: "无法绑定这个平台任务号",
-        });
-        return;
-      }
-    }
     if (!current.providerTaskId) {
       let match: Awaited<ReturnType<typeof autoMatchRelayProviderTask>>;
       try {
@@ -684,7 +677,7 @@ export async function generationTasks(
       }
       if (match.status === "one") {
         try {
-          current = taskStore().bindProviderTaskIdOnFailedTask({
+          current = taskStore().bindVerifiedProviderTaskIdOnFailedTask({
             providerTaskId: match.record.taskId,
             taskId: current.id,
           });
@@ -702,7 +695,7 @@ export async function generationTasks(
     }
     if (!current.providerTaskId) {
       try {
-        current = taskStore().confirmRemoteResultMissing({
+        current = taskStore().markOutcomeUnknownBillingRisk({
           expectedUpdatedAt: current.updatedAt,
           taskId: current.id,
         });
@@ -714,7 +707,7 @@ export async function generationTasks(
         return;
       }
       json(response, 200, {
-        outcome: "missing",
+        outcome: "outcome-unknown",
         task: taskSummaryForOwner(
           current,
           identity.bypass ? undefined : identity.userId,
@@ -765,7 +758,7 @@ export async function generationTasks(
     }
     if (pollState === "failed") {
       try {
-        current = taskStore().confirmRemoteResultMissing({
+        current = taskStore().markOutcomeUnknownBillingRisk({
           expectedUpdatedAt: current.updatedAt,
           taskId: current.id,
         });
@@ -777,7 +770,7 @@ export async function generationTasks(
         return;
       }
       json(response, 200, {
-        outcome: "missing",
+        outcome: "outcome-unknown",
         task: taskSummaryForOwner(
           current,
           identity.bypass ? undefined : identity.userId,

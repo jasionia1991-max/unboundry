@@ -82,7 +82,8 @@ export function safelyRetryableGenerationTask(
 }
 
 export function generationOutcomeUnknown(errorCode?: string | null) {
-  return errorCode === "RETRY_OUTCOME_UNKNOWN";
+  return errorCode === "RETRY_OUTCOME_UNKNOWN" ||
+    errorCode === "OUTCOME_UNKNOWN_BILLING_RISK";
 }
 
 export function generationNeedsReconcile(
@@ -90,6 +91,7 @@ export function generationNeedsReconcile(
   retryBlockCode?: string | null,
 ) {
   return errorCode === "RETRY_OUTCOME_UNKNOWN" ||
+    errorCode === "OUTCOME_UNKNOWN_BILLING_RISK" ||
     errorCode === "PROVIDER_RESULT_MISSING" ||
     errorCode === "PROVIDER_FAILED" ||
     errorCode === "PROVIDER_REQUEST_FAILED" ||
@@ -119,7 +121,6 @@ export function generationFailureIsDefinitive(errorCode?: string | null) {
     "PERMISSION",
     "PROVIDER_COOLDOWN",
     "PROVIDER_CONFIGURATION_MISMATCH",
-    "PROVIDER_RESULT_FORMAT",
     "RATE_LIMIT",
     "RETRY_SNAPSHOT_CHANGED",
     "RETRY_SNAPSHOT_INCOMPATIBLE",
@@ -128,12 +129,8 @@ export function generationFailureIsDefinitive(errorCode?: string | null) {
 }
 
 export function generationRetryVisible(input: {
-  confirmedMissing?: boolean;
   errorCode?: string | null;
   retryAvailable: boolean;
 }) {
-  return input.retryAvailable && (
-    !generationOutcomeUnknown(input.errorCode) ||
-    input.confirmedMissing === true
-  );
+  return input.retryAvailable && !generationOutcomeUnknown(input.errorCode);
 }

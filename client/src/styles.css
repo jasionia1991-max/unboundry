@@ -15864,12 +15864,25 @@ sup {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.model-contract-grid label {
+.model-contract-grid label,
+.model-contract-readonly {
   display: grid;
   min-width: 0;
   gap: 6px;
   color: #bdbdc1;
   font-size: 12px;
+}
+
+.model-contract-readonly output {
+  display: flex;
+  min-height: 38px;
+  padding: 8px 11px;
+  align-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 9px;
+  color: #a9a9ae;
+  background: rgba(255, 255, 255, 0.025);
+  overflow-wrap: anywhere;
 }
 
 .model-contract-grid input,
@@ -15886,6 +15899,22 @@ sup {
   border-radius: 9px;
   color: #ececee;
   background: #171719;
+  color-scheme: dark;
+}
+
+.model-contract-grid select,
+.model-contract-mode-list select,
+.model-contract-binding-row select {
+  appearance: none;
+  padding-right: 30px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #9d9da2 50%),
+    linear-gradient(135deg, #9d9da2 50%, transparent 50%);
+  background-position:
+    calc(100% - 15px) 16px,
+    calc(100% - 10px) 16px;
+  background-repeat: no-repeat;
+  background-size: 5px 5px, 5px 5px;
 }
 
 .model-contract-grid input:focus-visible,
@@ -15904,6 +15933,106 @@ sup {
   opacity: 1;
 }
 
+.model-contract-page input.admin-compact-checkbox {
+  display: grid;
+  width: 16px;
+  height: 16px;
+  min-height: 16px;
+  flex: 0 0 16px;
+  margin: 0;
+  padding: 0;
+  appearance: none;
+  place-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  border-radius: 4px;
+  background: #141415;
+  cursor: pointer;
+}
+
+.model-contract-page input.admin-compact-checkbox::before {
+  width: 4px;
+  height: 8px;
+  border: solid #171718;
+  border-width: 0 2px 2px 0;
+  content: "";
+  transform: rotate(45deg) scale(0);
+  transform-origin: center;
+  transition: transform 120ms ease;
+}
+
+.model-contract-page input.admin-compact-checkbox:checked {
+  border-color: #ececee;
+  background: #ececee;
+}
+
+.model-contract-page input.admin-compact-checkbox:checked::before {
+  transform: rotate(45deg) scale(1);
+}
+
+.model-contract-page input.admin-compact-checkbox:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.16);
+}
+
+.model-contract-page input.admin-compact-checkbox:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.model-contract-page .admin-parameter-select-trigger {
+  display: flex;
+  width: 100%;
+  height: 34px;
+  min-height: 34px;
+  padding: 0 11px;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 11px;
+  outline: none;
+  color: #d8d8da;
+  background: #2a2a2c;
+  font: inherit;
+  cursor: pointer;
+  caret-color: transparent;
+}
+
+.model-contract-page .admin-parameter-select-trigger:hover,
+.model-contract-page .admin-parameter-select[data-open="true"] .admin-parameter-select-trigger {
+  border-color: rgba(255, 255, 255, 0.24);
+  color: #f0f0f2;
+  background: #323235;
+}
+
+.model-contract-page .admin-parameter-select-option {
+  display: flex;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 9px;
+  align-items: center;
+  justify-content: space-between;
+  border: 0;
+  border-radius: 8px;
+  outline: none;
+  color: #c4c4c8;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  caret-color: transparent;
+}
+
+.model-contract-page .admin-parameter-select-option:hover,
+.model-contract-page .admin-parameter-select-option:focus-visible {
+  color: #f0f0f2;
+  background: #38383b;
+}
+
+.model-contract-page .admin-parameter-select-option[data-selected="true"] {
+  color: #f1f1f3;
+  background: #414145;
+}
+
 .model-contract-section-heading {
   display: flex;
   min-width: 0;
@@ -15916,6 +16045,42 @@ sup {
   margin: 0;
   color: #d9d9dc;
   font-size: 14px;
+}
+
+.model-contract-section-heading > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.model-contract-section-heading code {
+  margin-left: 5px;
+  color: #8f8f94;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.model-contract-doc-suggestion {
+  display: flex;
+  padding: 9px 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  grid-column: 1 / -1;
+  border-radius: 9px;
+  color: #bfe6d0;
+  background: rgba(74, 169, 116, 0.12);
+  font-size: 12px;
+}
+
+.model-contract-doc-suggestion[data-status="warning"] {
+  color: #d8bd99;
+  background: rgba(145, 91, 34, 0.16);
+}
+
+.model-contract-doc-suggestion a {
+  color: #ececee;
 }
 
 .model-contract-subsection {
@@ -15986,6 +16151,17 @@ sup {
   font-size: 12px;
 }
 
+.model-contract-mode-name {
+  display: grid;
+  min-width: 180px;
+  gap: 3px;
+}
+
+.model-contract-mode-name strong {
+  color: #e1e1e3;
+  font-weight: 600;
+}
+
 .model-contract-bindings code {
   overflow: hidden;
   color: #d4d4d7;
@@ -16030,9 +16206,61 @@ sup {
 
 .model-contract-summary dt { color: #8f8f94; }
 .model-contract-summary dd { margin: 0; color: #d5d5d8; text-align: right; }
-.model-contract-summary summary { color: #bcbcc0; cursor: pointer; font-size: 12px; }
-.model-contract-summary pre {
+.model-contract-summary-preview {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: #8f8f94;
+  font-size: 12px;
+}
+
+.model-contract-summary-preview b {
+  color: #d5d5d8;
+  font-weight: 500;
+}
+
+.model-contract-preview-panel {
+  display: grid;
+  padding: 11px;
+  gap: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.model-contract-preview-panel > div {
+  display: grid;
+  gap: 3px;
+}
+
+.model-contract-preview-panel span,
+.model-contract-validation-guide,
+.model-contract-action-guide {
+  color: #99999e;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.model-contract-preview-panel button {
+  justify-self: start;
+}
+
+.model-contract-preview-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.model-contract-preview-tabs button[aria-pressed="true"] {
+  border-color: #c4c4c8;
+  color: #171719;
+  background: #dedee1;
+}
+
+.model-contract-preview-panel pre {
   max-width: 100%;
+  max-height: 360px;
+  margin: 0;
   overflow: auto;
   padding: 9px;
   border-radius: 8px;
@@ -16058,6 +16286,11 @@ sup {
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(24, 24, 27, 0.96);
   backdrop-filter: blur(14px);
+}
+
+.model-contract-action-guide {
+  max-width: 560px;
+  margin-right: auto;
 }
 
 .model-contract-actions button,
@@ -16137,6 +16370,7 @@ sup {
     overflow-x: auto;
     justify-content: flex-start;
   }
+  .model-contract-action-guide { min-width: min(360px, 75vw); }
   .model-contract-actions button { flex: 0 0 auto; }
 }
 
