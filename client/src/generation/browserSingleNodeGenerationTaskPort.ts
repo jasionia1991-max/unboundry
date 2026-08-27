@@ -85,20 +85,7 @@ export function createBrowserSingleNodeGenerationTaskPort(input: {
         context.signal,
       );
       input.onTaskObserved?.(result.task);
-      return result.outcome === "missing"
-        ? {
-            ...result,
-            task: {
-              ...result.task,
-              errorCode: "PROVIDER_RESULT_MISSING",
-              errorMessage: reconcileOutcomeMessage(result.outcome),
-              retryAllowed: true,
-              retryBlockCode: undefined,
-              retryBlockReason: undefined,
-              state: "failed",
-            },
-          }
-        : result;
+      return result;
     },
     async recover(plan, context) {
       const payload = recoverableInput(plan);

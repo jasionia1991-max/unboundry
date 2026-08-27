@@ -2160,7 +2160,12 @@ function safeFailure(error: unknown, kind: "text" | "audio" | "image" | "video")
     return { code: error.code, message: error.message };
   }
   if (error instanceof MurekaAudioError) {
-    return { code: error.code, message: error.message };
+    return {
+      code: error.code,
+      message: error.code === "RATE_LIMIT" && error.retryAfterSeconds
+        ? `Mureka 正在限流，可在约${error.retryAfterSeconds}秒后继续核对原任务；系统不会自动重新提交`
+        : error.message,
+    };
   }
   if (error instanceof TextGenerationProviderError) {
     return { code: error.code, message: error.message };
@@ -3737,19 +3742,15 @@ async function settleRelayMediaFailed(
   const current = taskStore().get(taskId);
   if (!current || current.state !== "running") return;
   taskStore().transition(taskId, "failed", {
-    code: "PROVIDER_FAILED",
+    code: refunded ? "PROVIDER_REFUNDED" : "OUTCOME_UNKNOWN_BILLING_RISK",
     message: refunded
       ? "平台未完成本次生成（已退款），系统正在自动重试"
-      : "平台未完成本次生成，未确认是否退款；请核对后再试",
+      : "平台未完成本次生成且未确认退款；为避免重复扣费，系统已禁止重新提交，只能继续核对原任务",
   });
   if (!refunded) return;
   try {
     const failed = taskStore().get(taskId);
     if (!failed || failed.state !== "failed") return;
-    taskStore().confirmRemoteResultMissing({
-      expectedUpdatedAt: failed.updatedAt,
-      taskId,
-    });
     await autoRetryRelayTaskOnce(taskId);
   } catch {
     // The task is already failed with a neutral message; a racing transition
@@ -3861,25 +3862,12 @@ async function recoverRelayMediaAfterPoll(
     const final = taskStore().get(taskId);
     if (!final || final.state !== "running") return;
     if (!currentTaskId) {
-      // The full search window found no platform record: treat the lost
-      // submission as not-submitted and let the automatic retry open one new
-      // paid attempt (only once in the task lifetime).
+      // An empty usage/search result is not proof that the paid boundary was
+      // never crossed. Preserve the original attempt and forbid a new POST.
       taskStore().transition(taskId, "failed", {
-        code: "PROVIDER_RESULT_MISSING",
-        message: "平台没有成片，系统正在自动重试",
+        code: "OUTCOME_UNKNOWN_BILLING_RISK",
+        message: "模型平台可能已经受理或扣费；为避免重复扣费，系统已禁止重新提交，只能继续核对原任务",
       });
-      try {
-        const failed = taskStore().get(taskId);
-        if (failed?.state === "failed") {
-          taskStore().confirmRemoteResultMissing({
-            expectedUpdatedAt: failed.updatedAt,
-            taskId,
-          });
-        }
-        await autoRetryRelayTaskOnce(taskId);
-      } catch {
-        // Leave the neutral failed task behind; the user can tap 核对/重试 once.
-      }
       return;
     }
     taskStore().transition(taskId, "failed", {

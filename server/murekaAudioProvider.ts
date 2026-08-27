@@ -64,12 +64,25 @@ export class MurekaAudioError extends Error {
   constructor(
     public readonly code: MurekaAudioErrorCode,
     providerMessage?: string,
+    public readonly retryAfterSeconds?: number,
   ) {
     // Provider text is sanitized and length-capped before it may reach the UI;
     // the local default remains the fallback whenever no safe message exists.
     super(providerMessage || murekaAudioErrorMessages[code]);
     this.name = "MurekaAudioError";
   }
+}
+
+function retryAfterSeconds(response: Response) {
+  const raw = response.headers.get("retry-after")?.trim();
+  if (!raw) return undefined;
+  const numeric = Number(raw);
+  if (Number.isFinite(numeric) && numeric >= 0) {
+    return Math.min(86_400, Math.max(1, Math.ceil(numeric)));
+  }
+  const timestamp = Date.parse(raw);
+  if (!Number.isFinite(timestamp)) return undefined;
+  return Math.min(86_400, Math.max(1, Math.ceil((timestamp - Date.now()) / 1_000)));
 }
 
 const supportedModels = new Set([
@@ -274,7 +287,16 @@ async function murekaRequest(
           code === "AUTH" || containsProviderKey(message, profile.apiKey ?? "")
             ? ""
             : message;
-        throw new MurekaAudioError(code, safeMessage || undefined);
+        const retryAfter = code === "RATE_LIMIT"
+          ? retryAfterSeconds(response)
+          : undefined;
+        throw new MurekaAudioError(
+          code,
+          code === "RATE_LIMIT" && retryAfter
+            ? `Mureka 正在限流，可在约${retryAfter}秒后继续核对原任务；系统不会自动重新提交`
+            : safeMessage || undefined,
+          retryAfter,
+        );
       }
       return body;
     });

@@ -1,18 +1,29 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网为v0.6.50/schema41；定向48/48、文档门15/15、独立增量Review `P0=0 / P1=0 / GO`、PR/main CI、不可移动tag/Release、fresh build、冻结备份恢复、原子切换、数据/inventory/静态资产、66秒稳定门与四视口零付费浏览器均通过。14张模型卡均有合同工作台入口；成片视觉仍为`USER_RECHECK`。
+> **状态分层**：现网仍为v0.6.50/schema41，历史生产技术证据保留；2026-08-27真实Computer Use用户清单为15/27通过、12项失败或证据不足。版本A已关闭已知重复付费路径并通过最小受影响safe定向，等待独立commit；版本B、27项候选复验、Review、唯一full和发布门尚未完成。当前严格为`PRODUCTION_V0_6_50_TECHNICAL_PASS / USER_RECHECK_FAILED / VERSION_A_TARGETED_AUTO_PASS / VERSION_A_COMMIT_PENDING`。
 
-更新日期：2026-08-26
+更新日期：2026-08-27
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
 当前代码包版本：**v0.6.50**
 本地候选代码版本：**v0.6.50**
 本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_50_USER_RECHECK`
-当前计划标记：`MODEL_CONTRACT_001_R0_R7_IMPLEMENTED / V0_6_49_PRODUCTION_UI_P1 / V0_6_50_PRODUCTION_TECHNICAL_PASS / USER_RECHECK`
+当前计划标记：`MODEL_CONTRACT_001_USER_RECHECK_15_PASS_12_FAIL_OR_INSUFFICIENT / REMEDIATION_PLAN_FROZEN / VERSION_A_TARGETED_AUTO_PASS / VERSION_A_COMMIT_PENDING`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`MODEL_CONTRACT_001_V0_6_50_RELEASED / PRODUCTION_V0_6_50_TECHNICAL_PASS / USER_RECHECK`
+当前发布门：`MODEL_CONTRACT_001_REMEDIATION_RELEASE_GATE_CLOSED / V0_6_50_REMAINS_PRODUCTION / USER_RECHECK`
 
-v0.6.50由PR #114合并为`d3f5490f524b2d8d212ef7607d85afbf1981ca05` / tree `5b12ebeb97ed7a0e9ed34927fca51de2d0fd38ad`并发布不可移动tag/Release，现网release为`/opt/unboundry/releases/v0.6.50-model-contract-workbench-entry-20260827`。当前隔离工作树为`/Users/mymy/Documents/unboundry-model-contract-001-2026-08-26`，仅用于生产回执收口；旧`/Users/mymy/Documents/unboundry/app`不得施工或自动清理。
+## 当前活动项：MODEL-CONTRACT-001 用户复验失败返工
+
+- 真实验收不是通过：27项中15项通过，12项失败或证据不足；历史v0.6.50技术发布不被改写，但不能继续作为当前产品验收结论。
+- P0根因是任务恢复把“没有匹配到远端记录”错误推断为“没有提交”，在Provider可能已经受理/计费时仍开放新付费请求。本地幂等不能替代Provider端幂等。
+- 版本A已修付费确定性、unknown outcome、GPT Image结果解析、Mureka 429和GK模式级证据；版本B仍待修工作台三态、CAS/本地校验/预览、官方文档、模式/角色和UI可访问性。
+- 当前工作树`codex/model-contract-user-recheck-fixes`基于`origin/main@cc9df2a`；R0已确认进入时实际为14 tracked + 3 untracked，4个产品候选文件已冻结审查且不会覆盖。
+- 权威入口：`spec/MODEL_CONTRACT_001_USER_RECHECK_REMEDIATION_PLAN_2026-08-27.md`、对应返工矩阵和`spec/MODEL_CONTRACT_001_CHECKPOINT.md`。
+- R0只读复核确认生产v0.6.50/schema41健康、旧4173属于历史工作树、本Goal生产/Provider/OSS写和费用均0；既有`⚡2.182`无法核验人民币换算，真实付费分支保持阻断。
+- 版本A当前源码safe证据为m5 `22/22`、m38 `15/15`、m22 `41/41`，对应m102/m26/m53回执继续有效；schema41、真实Provider/OSS/生产写与新费用均为0。
+- 唯一下一动作：完成版本A独立暂存/commit并回写精确commit/tree；版本A收口前不进入版本B。
+
+v0.6.50由PR #114合并为`d3f5490f524b2d8d212ef7607d85afbf1981ca05` / tree `5b12ebeb97ed7a0e9ed34927fca51de2d0fd38ad`并发布不可移动tag/Release，现网release为`/opt/unboundry/releases/v0.6.50-model-contract-workbench-entry-20260827`。当前隔离工作树为`/Users/mymy/Documents/unboundry-model-contract-001-2026-08-26`，已切到用户复验返工分支并含4个待审相关改动；旧`/Users/mymy/Documents/unboundry/app`不得施工或自动清理。
 
 当前工具链分层：普通项目shell、开发、类型检查和CI默认Node `25.9.0` / npm `11.12.1`；现网v0.6.50运行Node `22.23.2` / npm `10.9.8`。安全测试、源码覆盖和不可变release builder继续以Node `22.23.1` / npm `10.9.8`作为生产兼容复现通道；本版没有迁移生产Node运行时。
 

@@ -120,11 +120,28 @@ function mode(value: unknown): ModelExecutionMode {
   if (!record(value) || !Array.isArray(value.roles) || !Array.isArray(value.bindings)) {
     throw new Error("输入模式无效");
   }
-  exactKeys(value, ["id", "prompt", "roles", "bindings"], "输入模式");
+  exactKeys(value, ["id", "prompt", "roles", "bindings", "evidence", "runtime"], "输入模式");
   const id = contractPath(value.id, "模式ID");
   if (value.prompt !== "required" && value.prompt !== "optional") {
     throw new Error("Prompt规则无效");
   }
+  const evidence = value.evidence as ModelExecutionMode["evidence"];
+  const runtime = value.runtime as ModelExecutionMode["runtime"];
+  if ((evidence === undefined) !== (runtime === undefined)) {
+    throw new Error("模式证据与运行状态必须同时声明");
+  }
+  if (
+    evidence !== undefined &&
+    !["EXACT", "GENERIC_GUESS", "SPECIALIZED", "UNKNOWN"].includes(String(evidence))
+  ) throw new Error("模式证据等级无效");
+  if (runtime !== undefined && runtime !== "blocked" && runtime !== "declarative") {
+    throw new Error("模式运行状态无效");
+  }
+  if (
+    (evidence === "UNKNOWN" && runtime !== "blocked") ||
+    (runtime === "blocked" && evidence !== "UNKNOWN") ||
+    (runtime === "declarative" && evidence !== "EXACT")
+  ) throw new Error("模式证据与运行状态不一致");
   const roleIds = new Set<string>();
   const roles = value.roles.map((item) => {
     if (!record(item)) throw new Error("素材角色无效");
@@ -161,7 +178,14 @@ function mode(value: unknown): ModelExecutionMode {
     );
     if (roleBindings.length !== 1) throw new Error(`角色 ${role.id} 必须且只能绑定一次`);
   }
-  return { bindings, id, prompt: value.prompt, roles };
+  return {
+    bindings,
+    ...(evidence !== undefined ? { evidence } : {}),
+    id,
+    prompt: value.prompt,
+    roles,
+    ...(runtime !== undefined ? { runtime } : {}),
+  };
 }
 
 function modeSignature(value: ModelExecutionMode) {
@@ -327,6 +351,9 @@ export function selectExecutionMode(contract: ModelExecutionContract, input: {
 }) {
   const matches = contract.modes.filter((candidate) => matchesMode(candidate, input));
   if (matches.length !== 1) throw new Error("无法确定唯一输入模式，已在Provider前阻断");
+  if (matches[0].runtime === "blocked" || matches[0].evidence === "UNKNOWN") {
+    throw new Error("该输入模式缺少精确Provider证据，已在Provider前阻断");
+  }
   return matches[0];
 }
 

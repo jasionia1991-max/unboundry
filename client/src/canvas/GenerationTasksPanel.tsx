@@ -107,7 +107,6 @@ function TaskRow({
   waitForCanvasRevision?: () => Promise<number>;
 }) {
   const [busy, setBusy] = useState(false);
-  const [confirmedMissing, setConfirmedMissing] = useState(false);
   const active = activeStates.has(task.state);
   const abandonable = task.state === "failed" && task.abandonAllowed === true;
   const retryable = task.state === "failed" && task.retryAllowed === true;
@@ -191,9 +190,6 @@ function TaskRow({
               }, waitForCanvasRevision, undefined, signal)
                 .then((result) => {
                   if (!isCurrentScope(canvasScopeId, canvasId)) return;
-                  if (result.outcome === "missing") {
-                    setConfirmedMissing(true);
-                  }
                   onActionError(reconcileOutcomeMessage(result.outcome));
                   if (result.outcome === "recovered") {
                     window.dispatchEvent(new CustomEvent(

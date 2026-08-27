@@ -1,5 +1,14 @@
 # Unboundry 绿地复刻验收矩阵
 
+## MODEL-CONTRACT-001 用户复验返工当前区块（2026-08-27）
+
+- 当前：`V0_6_50_PRODUCTION_TECHNICAL_PASS / 15_OF_27_USER_ITEMS_PASS / 12_FAIL_OR_INSUFFICIENT / VERSION_A_TARGETED_AUTO_PASS / VERSION_A_COMMIT_PENDING / USER_RECHECK`。
+- 真实Provider暴露P0：GK/grok-video-3可能已计费但无task ID/结果，现有查询空后开放重提不安全；GPT Image已计费但结果解析失败；Mureka 429不得自动重试。
+- 工作台暴露P1：版本三态、CAS、本地校验、只读预览、官方文档、模式/角色内部ID、禁用原因和UI控件不符合验收。
+- 详细新矩阵以`spec/MODEL_CONTRACT_001_USER_RECHECK_REMEDIATION_ACCEPTANCE_MATRIX_2026-08-27.md`为准；原v0.6.50回执保留历史技术事实，不自动关闭新缺陷。
+- R0已冻结真实checkout、14 tracked + 3 untracked进入时差异、4173历史归属、生产v0.6.50/schema41健康与费用不可换算边界。版本A已关闭查询空/无task ID/响应丢失/格式未知/429等重复付费路径；m5 `22/22`、m38 `15/15`、m22 `41/41`及对应m102/m26/m53通过，当前真实Provider POST/OSS写/生产写/新费用均0。
+- 固定下一路线：完成版本A独立commit/checkpoint→版本B→27项Computer Use→独立只读全量Review→修复P0/P1→唯一safe full→PR/CI候选→生产发布授权门。
+
 ## MODEL-CONTRACT-001 当前区块（2026-08-26）
 
 - 当前：`R0-R7_IMPLEMENTED / V0_6_49_PRODUCTION_UI_P1 / V0_6_50_PRODUCTION_TECHNICAL_PASS / USER_RECHECK`。

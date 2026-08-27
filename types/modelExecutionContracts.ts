@@ -41,9 +41,12 @@ export type ModelContractRole = Readonly<{
 
 export type ModelExecutionMode = Readonly<{
   bindings: readonly ModelContractBinding[];
+  /** Mode-level evidence wins over a model-level summary for admission. */
+  evidence?: "EXACT" | "GENERIC_GUESS" | "SPECIALIZED" | "UNKNOWN";
   id: string;
   prompt: "optional" | "required";
   roles: readonly ModelContractRole[];
+  runtime?: "blocked" | "declarative";
 }>;
 
 export type ModelExecutionContract = Readonly<{

@@ -34,6 +34,7 @@ const gkContract = {
   create: { method: "POST", path: "/v1/media/generate", taskIdPath: "task_id" },
   modes: [
     {
+      evidence: "UNKNOWN",
       id: "text-to-video",
       prompt: "required",
       roles: [],
@@ -41,8 +42,10 @@ const gkContract = {
         { source: { kind: "model-id" }, target: { location: "json", path: "model" } },
         { source: { kind: "prompt" }, target: { location: "json", path: "prompt" } },
       ],
+      runtime: "blocked",
     },
     {
+      evidence: "EXACT",
       id: "first-frame-to-video",
       prompt: "required",
       roles: [{ id: "first-frame", kind: "image", minItems: 1, maxItems: 1, ordered: true, shape: "url" }],
@@ -51,6 +54,7 @@ const gkContract = {
         { source: { kind: "prompt" }, target: { location: "json", path: "prompt" } },
         { source: { kind: "role", roleId: "first-frame" }, transform: "array", target: { location: "json", path: "params.images" } },
       ],
+      runtime: "declarative",
     },
   ],
   poll: { method: "GET", path: "/v1/media/status", taskIdTarget: { location: "query", path: "task_id" } },
@@ -66,8 +70,8 @@ test("GK contract compiles deterministically and selects exactly one explicit mo
     method: "POST",
     path: "/v1/media/generate",
   });
-  expect(selectExecutionMode(first.contract, { prompt: "衣服转身", inputs: [] }).id)
-    .toBe("text-to-video");
+  expect(() => selectExecutionMode(first.contract, { prompt: "衣服转身", inputs: [] }))
+    .toThrow(/缺少精确Provider证据/);
   expect(selectExecutionMode(first.contract, {
     prompt: "衣服转身",
     inputs: [{ kind: "image", order: 1, roleId: "first-frame", value: "https://example.invalid/source.png" }],
@@ -108,7 +112,7 @@ test("GK contract compiles deterministically and selects exactly one explicit mo
     providerProtocol: "media-generate",
   });
   const compiledRelease = compileModelExecutionContract(release.executionContract);
-  expect(compileModelContractRequest(compiledRelease.contract, {
+  expect(() => compileModelContractRequest(compiledRelease.contract, {
     inputs: [],
     modelId: "grok-video-3",
     parameters: {
@@ -118,16 +122,11 @@ test("GK contract compiles deterministically and selects exactly one explicit mo
       resolution: "480p",
     },
     prompt: "衣服转身",
-  }).body).toEqual({
-    model: "grok-video-3",
-    params: {
-      aspect_ratio: "16:9",
-      duration: 5,
-      generate_audio: true,
-      resolution: "480p",
-    },
-    prompt: "衣服转身",
-  });
+  })).toThrow(/缺少精确Provider证据/);
+  expect(compiledRelease.contract.modes).toEqual(expect.arrayContaining([
+    expect.objectContaining({ evidence: "UNKNOWN", id: "text-to-video", runtime: "blocked" }),
+    expect.objectContaining({ evidence: "EXACT", id: "first-frame-to-video", runtime: "declarative" }),
+  ]));
 });
 
 test("compiler rejects executable, secret, arbitrary network and ambiguous contracts", () => {

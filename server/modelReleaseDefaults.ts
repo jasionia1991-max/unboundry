@@ -50,9 +50,11 @@ export function gkVideoExecutionContract(
         { source: { kind: "prompt" }, target: { location: "json", path: "prompt" } },
         ...parameterBindings,
       ],
+      evidence: "UNKNOWN",
       id: "text-to-video",
       prompt: "required",
       roles: [],
+      runtime: "blocked",
     },
     {
       bindings: [
@@ -65,6 +67,7 @@ export function gkVideoExecutionContract(
           transform: "array",
         },
       ],
+      evidence: "EXACT",
       id: "first-frame-to-video",
       prompt: "required",
       roles: [{
@@ -75,6 +78,7 @@ export function gkVideoExecutionContract(
         ordered: true,
         shape: "url",
       }],
+      runtime: "declarative",
     },
   ],
   poll: {

@@ -702,7 +702,7 @@ export async function generationTasks(
     }
     if (!current.providerTaskId) {
       try {
-        current = taskStore().confirmRemoteResultMissing({
+        current = taskStore().markOutcomeUnknownBillingRisk({
           expectedUpdatedAt: current.updatedAt,
           taskId: current.id,
         });
@@ -714,7 +714,7 @@ export async function generationTasks(
         return;
       }
       json(response, 200, {
-        outcome: "missing",
+        outcome: "outcome-unknown",
         task: taskSummaryForOwner(
           current,
           identity.bypass ? undefined : identity.userId,
@@ -765,7 +765,7 @@ export async function generationTasks(
     }
     if (pollState === "failed") {
       try {
-        current = taskStore().confirmRemoteResultMissing({
+        current = taskStore().markOutcomeUnknownBillingRisk({
           expectedUpdatedAt: current.updatedAt,
           taskId: current.id,
         });
@@ -777,7 +777,7 @@ export async function generationTasks(
         return;
       }
       json(response, 200, {
-        outcome: "missing",
+        outcome: "outcome-unknown",
         task: taskSummaryForOwner(
           current,
           identity.bypass ? undefined : identity.userId,

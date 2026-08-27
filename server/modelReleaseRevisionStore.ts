@@ -171,18 +171,31 @@ function compiledPreview(
             : `file-example-${role.id}-${index + 1}`,
         })),
       );
-      const request = compileModelContractRequest(contract, {
-        inputs,
-        modelId: document.providerModelId,
-        parameters,
-        prompt: "示例提示词",
-      });
+      const blocked = mode.runtime === "blocked" || mode.evidence === "UNKNOWN";
+      const request = blocked
+        ? {
+            body: Object.freeze({}),
+            method: contract.create.method,
+            path: contract.create.path,
+            query: Object.freeze({}),
+          }
+        : compileModelContractRequest(contract, {
+            inputs,
+            modelId: document.providerModelId,
+            parameters,
+            prompt: "示例提示词",
+          });
       return Object.freeze({
+        ...(blocked
+          ? { blockedReason: "该模式缺少精确Provider证据，新任务已阻断" }
+          : {}),
         body: request.body,
+        ...(mode.evidence ? { evidence: mode.evidence } : {}),
         method: request.method,
         modeId: mode.id,
         path: request.path,
         query: request.query,
+        ...(mode.runtime ? { runtime: mode.runtime } : {}),
       });
     })),
   });

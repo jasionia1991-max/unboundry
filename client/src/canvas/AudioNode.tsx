@@ -484,7 +484,6 @@ function AudioNodeImpl({
   const [transientUploadError, setTransientUploadError] = useState("");
   const [retryTaskId, setRetryTaskId] = useState<string>();
   const [reconcileBusy, setReconcileBusy] = useState(false);
-  const [reconcileConfirmedMissing, setReconcileConfirmedMissing] = useState(false);
   const [pollingPausedTaskId, setPollingPausedTaskId] = useState<string>();
   const pollingPausedTaskIdRef = useRef<string | undefined>(undefined);
   const [unverifiedRecoveryTaskId, setUnverifiedRecoveryTaskId] =
@@ -703,7 +702,6 @@ function AudioNodeImpl({
     selectedAudioModel.generationAvailable !== false,
   );
   const showAudioRetry = generationRetryVisible({
-    confirmedMissing: reconcileConfirmedMissing,
     errorCode: data.audioGenerationErrorCode,
     retryAvailable,
   });
@@ -1511,12 +1509,6 @@ function AudioNodeImpl({
       const message = result.reconcileOutcome
         ? reconcileOutcomeMessage(result.reconcileOutcome)
         : "";
-      if (result.reconcileOutcome === "missing") {
-        setReconcileConfirmedMissing(true);
-        setRetryTaskId(result.task?.id);
-        setUploadError(message);
-        return;
-      }
       if (result.reconcileOutcome !== "recovered") {
         setUploadError(message);
         return;

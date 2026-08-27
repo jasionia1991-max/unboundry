@@ -97,14 +97,11 @@ export async function recoverWorkflowGenerationOnce(input: {
             task: finished,
           };
     }
-    if (result.outcome !== "missing") {
-      return {
-        message: reconcileOutcomeMessage(result.outcome) || result.task.errorMessage,
-        status: "failed",
-        task: result.task,
-      };
-    }
-    task = result.task;
+    return {
+      message: reconcileOutcomeMessage(result.outcome) || result.task.errorMessage,
+      status: "failed",
+      task: result.task,
+    };
   }
 
   if (!safelyRetryableGenerationTask(task) || task.attempt >= 2) {

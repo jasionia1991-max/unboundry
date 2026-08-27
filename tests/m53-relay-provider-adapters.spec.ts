@@ -531,6 +531,47 @@ test("GPT Image requests PNG and rejects JPEG or WebP output bytes", async () =>
   expect(calls).toBe(3);
 });
 
+test("GPT Image accepts the frozen image_generation_call output shape and rejects lookalikes", async () => {
+  const request: RelayGptImageRequest = {
+    capability: "image",
+    model: "gpt-image-2",
+    operation: "generation",
+    prompt: "frozen output shape",
+    providerProtocol: "gpt-image",
+    responseFormat: "b64_json",
+  };
+  const accepted = await requestRelayGptImage(connection, request, {
+    fetcher: async () => jsonResponse({
+      id: "response-safe-1",
+      output: [{
+        id: "image-call-safe-1",
+        result: pngFixture.toString("base64"),
+        status: "completed",
+        type: "image_generation_call",
+      }],
+    }),
+  });
+  expect(accepted.outputs).toHaveLength(1);
+  expect(accepted.outputs[0]).toMatchObject({
+    kind: "image",
+    mimeType: "image/png",
+    transport: "bytes",
+  });
+
+  for (const output of [
+    [{ result: pngFixture.toString("base64"), type: "unknown" }],
+    [{ result: pngFixture.toString("base64"), secret: "must-reject", type: "image_generation_call" }],
+    [{ result: Buffer.from("not-png").toString("base64"), type: "image_generation_call" }],
+  ]) {
+    await expect(requestRelayGptImage(connection, request, {
+      fetcher: async () => jsonResponse({ output }),
+    })).rejects.toMatchObject({
+      code: "PROVIDER_RESULT_FORMAT",
+      providerTaskMayStillRun: true,
+    });
+  }
+});
+
 test("GPT Image distinguishes preflight, Provider request and result failures", async () => {
   const validRequest: RelayGptImageRequest = {
     capability: "image",

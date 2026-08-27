@@ -431,19 +431,6 @@ function whitelistedRequestIntent(value: Record<string, unknown>) {
   );
 }
 
-function rowProviderProtocol(row: Pick<GenerationTaskRow, "model_configuration">) {
-  try {
-    const parsed = JSON.parse(row.model_configuration) as {
-      providerProtocol?: unknown;
-    };
-    return typeof parsed.providerProtocol === "string"
-      ? parsed.providerProtocol
-      : "native";
-  } catch {
-    return "native";
-  }
-}
-
 function hashRequestIntent(value: Record<string, unknown>) {
   return requestIntentFingerprintVersion + createHash("sha256")
     .update(JSON.stringify(stableValue(value)))
@@ -774,7 +761,12 @@ export function createGenerationTaskStore(dataDirectory: string) {
       FROM generation_provider_attempts
       WHERE
         task_id = ?
-        AND outcome NOT IN ('definitive-rejected', 'provider-failed')
+        AND NOT (
+          (outcome = 'provider-failed' AND failure_code = 'PROVIDER_REFUNDED')
+          OR
+          (outcome = 'definitive-rejected'
+            AND failure_code = 'PROVIDER_NOT_ACCEPTED_NO_CHARGE')
+        )
       LIMIT 1
     `).get(taskId));
   }
@@ -1128,7 +1120,9 @@ export function createGenerationTaskStore(dataDirectory: string) {
         "definitive-rejected": [
           "boundary-claimed", "definitive-rejected",
         ],
-        "outcome-unknown": ["boundary-claimed", "outcome-unknown"],
+        "outcome-unknown": [
+          "boundary-claimed", "accepted", "response-received", "outcome-unknown",
+        ],
         "provider-failed": [
           "boundary-claimed", "accepted", "response-received",
           "provider-failed",
@@ -2441,7 +2435,8 @@ export function createGenerationTaskStore(dataDirectory: string) {
                 OR (
                   outcome IN (
                     'accepted', 'response-received',
-                    'provider-failed', 'definitive-rejected'
+                    'provider-failed', 'definitive-rejected',
+                    'outcome-unknown'
                   )
                   AND failure_code IN ('AUTH', 'PERMISSION')
                 )
@@ -2465,6 +2460,7 @@ export function createGenerationTaskStore(dataDirectory: string) {
                   | "completed"
                   | "definitive-rejected"
                   | "provider-failed"
+                  | "outcome-unknown"
                   | "accepted"
                   | "response-received";
                 outcome_at: string;
@@ -2720,27 +2716,13 @@ export function createGenerationTaskStore(dataDirectory: string) {
               "response-received",
             ].includes(attempt.outcome)
           ) {
-            const definitiveRejected = [
-              "AUTH",
-              "PERMISSION",
-              "RATE_LIMIT",
-            ].includes(error?.code ?? "");
-            const gptImageNotSubmitted = rowProviderProtocol(current) === "gpt-image" &&
-              [
-                "NETWORK",
-                "REMOTE",
-                "PROXY_CONFIGURATION",
-              ].includes(error?.code ?? "");
-            const providerFailed = error?.code === "PROVIDER_FAILED" ||
-              gptImageNotSubmitted;
+            const providerRefunded = error?.code === "PROVIDER_REFUNDED";
             const nextOutcome: GenerationProviderAttemptOutcome =
-              definitiveRejected && attempt.outcome === "boundary-claimed"
-                ? "definitive-rejected"
-                : providerFailed
-                  ? "provider-failed"
-                  : attempt.outcome === "boundary-claimed"
-                    ? "outcome-unknown"
-                    : attempt.outcome;
+              providerRefunded
+                ? "provider-failed"
+                : attempt.outcome === "boundary-claimed"
+                  ? "outcome-unknown"
+                  : attempt.outcome;
             const terminal = [
               "definitive-rejected",
               "outcome-unknown",
@@ -3070,7 +3052,7 @@ export function createGenerationTaskStore(dataDirectory: string) {
       return toTask(readById.get(input.taskId) as GenerationTaskRow);
     },
 
-    confirmRemoteResultMissing(input: {
+    markOutcomeUnknownBillingRisk(input: {
       expectedUpdatedAt: string;
       taskId: string;
     }) {
@@ -3088,8 +3070,8 @@ export function createGenerationTaskStore(dataDirectory: string) {
         const updatedTask = database.prepare(`
           UPDATE generation_tasks
           SET
-            error_code = 'PROVIDER_RESULT_MISSING',
-            error_message = '平台没有成片，可以重试',
+            error_code = 'OUTCOME_UNKNOWN_BILLING_RISK',
+            error_message = '模型平台可能已经受理或扣费；为避免重复扣费，系统已禁止重新提交，只能继续核对原任务',
             updated_at = ?
           WHERE id = ? AND state = 'failed' AND updated_at = ?
         `).run(timestamp, input.taskId, input.expectedUpdatedAt);
@@ -3109,8 +3091,8 @@ export function createGenerationTaskStore(dataDirectory: string) {
           const updatedAttempt = database.prepare(`
             UPDATE generation_provider_attempts
             SET
-              outcome = 'provider-failed',
-              failure_code = 'PROVIDER_RESULT_MISSING',
+              outcome = 'outcome-unknown',
+              failure_code = 'OUTCOME_UNKNOWN_BILLING_RISK',
               finished_at = ?
             WHERE
               task_id = ?

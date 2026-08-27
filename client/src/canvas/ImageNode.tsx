@@ -1912,7 +1912,6 @@ function ImageNodeImpl({
   }, []);
   const [retryTaskId, setRetryTaskId] = useState<string>();
   const [reconcileBusy, setReconcileBusy] = useState(false);
-  const [reconcileConfirmedMissing, setReconcileConfirmedMissing] = useState(false);
   const [pollingPausedTaskId, setPollingPausedTaskId] = useState<string>();
   const pollingPausedTaskIdRef = useRef<string | undefined>(undefined);
   const [unverifiedRecoveryTaskId, setUnverifiedRecoveryTaskId] =
@@ -2493,7 +2492,6 @@ function ImageNodeImpl({
     selectedImageModel.generationAvailable !== false,
   );
   const showImageRetry = generationRetryVisible({
-    confirmedMissing: reconcileConfirmedMissing,
     errorCode: data.imageGenerationErrorCode,
     retryAvailable,
   });
@@ -3104,14 +3102,8 @@ function ImageNodeImpl({
       const message = result.reconcileOutcome
         ? reconcileOutcomeMessage(result.reconcileOutcome)
         : "";
-      if (result.reconcileOutcome === "missing") {
-        setReconcileConfirmedMissing(true);
-        setRetryTaskId(result.task?.id);
-        setUploadError(message, "PROVIDER_RESULT_MISSING");
-        return;
-      }
       if (result.reconcileOutcome !== "recovered") {
-        setUploadError(message);
+        setUploadError(message, result.task?.errorCode);
         return;
       }
       if (!result.task || result.status === "stale") return;

@@ -1,18 +1,54 @@
 # MODEL-CONTRACT-001 实时断点
 
-更新时间：2026-08-26
+更新时间：2026-08-27
 
-当前状态：`R0-R7_IMPLEMENTED / V0_6_49_PRODUCTION_UI_P1 / V0_6_50_PRODUCTION_TECHNICAL_PASS / USER_RECHECK_PENDING`
+当前状态：`V0_6_50_PRODUCTION_TECHNICAL_PASS / USER_RECHECK_FAILED_15_OF_27_PASS / 12_FAIL_OR_INSUFFICIENT / VERSION_A_TARGETED_AUTO_PASS / VERSION_A_COMMIT_PENDING / RELEASE_GATE_CLOSED`
+
+## 0.1 版本 A 付费安全候选（2026-08-27）
+
+- schema保持41。付费边界后的`AUTH/PERMISSION/RATE_LIMIT/NETWORK/TIMEOUT/REMOTE/PROVIDER_RESULT_FORMAT`均保留为`outcome-unknown`；稳定任务码为`OUTCOME_UNKNOWN_BILLING_RISK`，UI不显示新付费重试。只有明确`PROVIDER_REFUNDED`或`PROVIDER_NOT_ACCEPTED_NO_CHARGE`才可开放新attempt。
+- “核对结果”在无task ID/查询空时只把原任务标为不确定；不会创建任务或Provider attempt。m38 API证据在核对前后task数与paid-attempt计数完全不变，随后retry仍为`RETRY_OUTCOME_UNKNOWN`。
+- GPT Image新增白名单`output[].type=image_generation_call/result=<PNG base64>`成功结构，仍执行PNG、大小和结果安全链；未知/仿冒结构继续`PROVIDER_RESULT_FORMAT`并禁止重提。Mureka 429解析`Retry-After`，只提示多久后核对原任务，单次fixture请求数为1。
+- GK证据下沉到模式级：文生视频为`UNKNOWN/BLOCKED`并在Provider前拒绝；首帧模式为`EXACT/declarative`，继续只接受Prompt+恰好1张first-frame。
+- 当前源码的最小受影响safe证据：m5 `22/22 PASS`、m38 `15/15 PASS`，Node`22.23.1`/npm`10.9.8`，source/snapshot均为`229370b0939d4a0aae5b4e9f8436f5bdefad3897058aad3aa5899426e2a70317`，4173不变；m22 `41/41 PASS`覆盖未知格式中性提示。此前同一版本A改动下m102 `7/7`、m26 `10/10`、m53 `26/26 PASS`，其后未修改对应GK compiler/default、Mureka adapter或GPT Image parser，因此按“不重复已成功且未受影响测试”保留有效回执。
+- safe runner预检、生产构建、架构/源码/secret与动态loopback门均通过；测试只用新临时目录、fake Provider/OSS和假数据。当前Goal累计真实Provider POST 0、Generation 0、OSS写0、生产写0、新费用0；既有`⚡2.182`仍不可换算，真实付费分支继续阻断。
+- 首轮m38曾暴露两个当前源码不一致断言：AUTH/PERMISSION新语义应为unknown，以及CURRENT_STATE治理标记后缀不满足既有正则；精确修正后只重跑m38并`15/15 PASS`。没有运行full。
+- 保护路径事件：版本A收口自检时误发起一次针对`spec/public-templates-director-split-revision.json`的`shasum`命令；命令没有产生摘要输出，未修改、未暂存、未提交该路径。此后不再对该路径执行任何读取或Git操作。该偏差必须保留在最终回执中，不冒充“从未尝试读取”。
+- 唯一下一动作：完成版本A独立暂存/commit并把精确commit/tree写回checkpoint；随后才进入版本B。
+
+## 0. 本 Session 返工 R0 现场冻结（2026-08-27）
+
+- 唯一最新 Goal 已由用户明确启动；只执行`MODEL_CONTRACT_001_USER_RECHECK_REMEDIATION_GOAL_PROMPT_2026-08-27.md`代码块，不恢复或拼接历史 Goal。
+- `git fetch --prune origin`后复核：工作树`/Users/mymy/Documents/unboundry-model-contract-001-2026-08-26`，分支`codex/model-contract-user-recheck-fixes`，`HEAD = origin/main = cc9df2a57aca8abc68596ee398e19de6bd0b4ef3`，tree `f91bfb23d30da1b0f8b0543f11c6d2ed3e397dc3`。
+- R0开始时不是“只有4个文件”：实际为14个tracked修改和3个untracked返工文档。4个产品候选文件属于进入本Goal前的未提交差异；其余治理/方案差异也属于进入本Goal前的现场。全部保留，不用`reset/clean/checkout`覆盖，也不冒充本Session实现证据。
+- R0冻结文件SHA-256：`AGENTS 427a57ec…55ff`、`TASKS d3f8cd1b…e6e1`、`App 0c56b7a8…d3f9`、`styles 2e32d129…e85f`、`modelReleaseDefaults ac1e335d…2670`、原矩阵`c076de7a…4887`、checkpoint`591aa1f9…eb40`、历史Goal`db70b3f1…91ac`、原方案`9545037a…8462`、原用户清单`54557dbd…1c31`、总矩阵`74a95737…ca48`、CURRENT_STATE`e852b6ff…6787`、m102`b7b8e72e…4d01`、上线规矩`41477381…c393`、新返工矩阵`8a81852e…a779`、新Goal`36733a0b…08f9`、新方案`fc5c632b…e545`；`git diff --check`通过。
+- 已逐块审查4个产品候选差异：CAS稳定错误码与部分预览/UI文案可保留；但“先保存草稿才可本地校验”、普通管理员可编辑内部mode/role ID、非精确文档首页支撑EXACT和隐藏caret断言均与新Goal冲突，必须在版本B纠正。
+- 只读生产复核：公网`v0.6.50`，live/ready健康；当前release`/opt/unboundry/releases/v0.6.50-model-contract-workbench-entry-20260827`，service active/enabled、`NRestarts=0`，schema41、quick_check ok、FK0、active tasks 0。旧4173监听仍属于历史工作树`/Users/mymy/Documents/unboundry/app`，未触碰。
+- 只读账本显示生产数据自历史回执后有用户活动，但本Goal没有生产写、Provider请求、OSS写或费用。既有平台账本`⚡2.182`无法核验人民币换算，因此本Goal后续真实付费生成保持阻断；只用fake Provider、临时数据和既有任务证据。
+- GitHub只读复核：最新不可移动版本为`v0.6.50`、无开放PR；当前最小未占用patch建议为`v0.6.51`，候选冻结前必须再次核验。
+- 版本A根因已关闭：平台查询空/无task ID不再调用“确认缺失”或补提交，而是复用schema41的`outcome-unknown`并写稳定码`OUTCOME_UNKNOWN_BILLING_RISK`；只有权威未受理/未计费或已退款证据才允许新付费attempt。
+- R0本身没有测试或提交；版本A现已完成最小受影响safe定向验证，等待独立暂存/commit。commit/checkpoint完成前不得进入版本B。
 
 ## 1. 当前身份与版本
 
-- 隔离工作树：`/Users/mymy/Documents/unboundry-model-contract-001-2026-08-26`；v0.6.50产品merge已落`main`，当前仅用生产回执分支收口文档。
+- 隔离工作树：`/Users/mymy/Documents/unboundry-model-contract-001-2026-08-26`；当前分支`codex/model-contract-user-recheck-fixes`，`HEAD = origin/main = cc9df2a57aca8abc68596ee398e19de6bd0b4ef3` / tree `f91bfb23d30da1b0f8b0543f11c6d2ed3e397dc3`。
+- 进入本Goal前已有4个产品候选文件：`client/src/App.tsx`、`client/src/styles.css`、`server/modelReleaseDefaults.ts`、`tests/m102-model-execution-contracts.spec.ts`，合计336 insertions/28 deletions；R0已冻结并逐块审查，保留有效内容但不把它们冒充已完成。
 - v0.6.48产品已由PR #112合并，merge `c9db1dd20fcddee877425ade9879a9b87aab093e` / tree `c34957940ee51763f49d74d2109a7e954e53a799`，tag与GitHub Release已发布；生产切换前恢复演练准确暴露bootstrap审计actor不满足`users`外键，因此v0.6.48没有激活到生产。
 - v0.6.49已由PR #113合并为`3a0b58375db6cb64246d9cf2634519918629fb69` / tree `de1607724b54048474c056a5cb6326071308381c`，tag/GitHub Release和生产发布完成。生产实页随后发现活动模型没有“合同工作台”入口P1；按同一版本线最小未占用patch自动选择`v0.6.50`。当前hotfix基线为`origin/main@3a0b58375db6cb64246d9cf2634519918629fb69` / tree `de1607724b54048474c056a5cb6326071308381c`，schema继续保持`41`。
 - v0.6.50已由PR #114合并为`d3f5490f524b2d8d212ef7607d85afbf1981ca05` / tree `5b12ebeb97ed7a0e9ed34927fca51de2d0fd38ad`；PR/main CI、不可移动tag/GitHub Release均通过。
 - 普通开发：Node `25.9.0` / npm `11.12.1`；safe/release兼容通道：Node `22.23.1` / npm `10.9.8`。
 - 生产当前为v0.6.50：`/opt/unboundry/releases/v0.6.50-model-contract-workbench-entry-20260827`，Node `22.23.2` / npm `10.9.8`，service active/enabled，`NRestarts=0`；schema41、integrity ok、FK0。活动模型入口P1已由生产浏览器关闭，技术状态为`PRODUCTION_V0_6_50_TECHNICAL_PASS / USER_RECHECK`。
 - 4173既有监听属于旧工作树，全部safe回执均为`listener4173=unchanged`。受保护JSON未读取、未修改、未暂存。
+
+### 1.1 2026-08-27 用户复验返工入口
+
+- 用户要求由 Computer Use 代为执行原27项清单；本轮真实验收结果为15项通过、12项失败或证据不足，不能升级`USER_PASS`。
+- P0：GK/grok-video-3可能已计费但无task ID/结果，现有恢复路径把“平台匹配为空”误当“未提交”并开放新付费尝试；GPT Image已计费但结果解析失败；Mureka出现429。真实账本合计`⚡2.182`，平台未提供可核验人民币换算。
+- P1：合同工作台的草稿/发布/未保存状态不清、本地校验误触发CAS冲突、预览入口不可发现、部分官方文档缺失或不精确、模式/角色内部ID暴露、校验禁用原因不清、原生蓝色checkbox和只读输入光标不符合UI规范。
+- 新权威方案：`spec/MODEL_CONTRACT_001_USER_RECHECK_REMEDIATION_PLAN_2026-08-27.md`。
+- 新返工矩阵：`spec/MODEL_CONTRACT_001_USER_RECHECK_REMEDIATION_ACCEPTANCE_MATRIX_2026-08-27.md`。
+- 新Session Goal：`spec/MODEL_CONTRACT_001_USER_RECHECK_REMEDIATION_GOAL_PROMPT_2026-08-27.md`。
+- 固定施工顺序：版本A付费安全与结果恢复 → 版本B工作台/文档/UI/Provider兼容 → 27项Computer Use → 独立只读全量Review → 修复P0/P1 → 唯一safe full → PR/CI候选 → 生产发布授权门。
 
 ## 2. R0-R6实现事实
 
@@ -65,12 +101,12 @@
 - 独立Review：主实现同一线程首轮`P0=3 / P1=8 / NO-GO`、第二轮`P0=1 / P1=2 / NO-GO`、第三轮`P0=0 / P1=0 / GO`；full后两处UI治理修复同线程增量复核仍为GO。v0.6.50入口热修增量Review首轮`P0=0 / P1=1 / NO-GO`，文档语义冲突修复后同一线程最终`P0=0 / P1=0 / GO`。审查均只读且未运行测试。
 - GitHub/merge/tag/Release：v0.6.48、v0.6.49与v0.6.50均已完成；v0.6.50为PR #114 / merge `d3f5490f…1ca05` / immutable tag+Release。
 - 生产发布/技术验收：v0.6.50零schema/零数据迁移发布、生产实页与四视口技术复验通过，状态`PRODUCTION_V0_6_50_TECHNICAL_PASS`。
-- 真实Provider控制面、真实生成、OSS测试写入、费用：`0 / 0 / 0 / 0`。
+- v0.6.50原发布技术门的真实Provider控制面、真实生成、OSS测试写入、费用历史值为`0 / 0 / 0 / 0`；2026-08-27用户复验另有真实生成与平台账本`⚡2.182`，不得合并抹零，也不得在无法换算时冒充人民币金额。
 - 成片视觉质量与服装款式保持：`USER_RECHECK`，不得由请求快照冒充通过。
 - `USER_PASS`：未取得，只有用户按最终手工清单明确确认后才能写入。
 
 ## 5. 唯一下一动作
 
-用户按`spec/MODEL_CONTRACT_001_USER_RECHECK_2026-08-26.md`完成生产实页与成片视觉复验；只有用户明确回复“MODEL-CONTRACT-001 验收通过”才可升级`USER_PASS`。
+完成版本A独立暂存/commit并回写精确commit/tree；随后按同一已激活Goal进入版本B。之后依次完成27项候选Computer Use、全量Review、唯一safe full和PR/CI候选；只在merge/tag/GitHub Release/生产写入之前停在最终发布授权门。
 
-恢复顺序仍为：`AGENTS.md → 上线规矩.md → CURRENT_STATE → 本checkpoint → 主方案 → 独立矩阵 → Goal prompt → TASKS顶部 → 总验收矩阵顶部`。受保护文件`spec/public-templates-director-split-revision.json`永远不得读取、修改、暂存、提交、移动或删除。
+恢复顺序改为：`AGENTS.md → 上线规矩.md → CURRENT_STATE → 本checkpoint → 新返工方案 → 新返工矩阵 → 原主方案 → 原独立矩阵 → 原用户清单 → TASKS顶部 → 总验收矩阵顶部`。受保护文件`spec/public-templates-director-split-revision.json`永远不得读取、修改、暂存、提交、移动或删除。

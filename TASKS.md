@@ -1,5 +1,23 @@
 # Unboundry 绿地复刻当前任务
 
+## MODEL-CONTRACT-001 用户复验失败返工（VERSION A TARGETED AUTO PASS / COMMIT PENDING / RELEASE GATE CLOSED）
+
+- [x] 记录真实Computer Use基线：原27项清单15项通过、12项失败或证据不足；v0.6.50历史生产技术证据保留，但不得升级`USER_PASS`。
+- [x] 记录P0：GK/grok-video-3可能计费但无task ID/结果，现有“查询空→确认缺失→允许新付费尝试”路径不安全；GPT Image已计费但结果解析失败；Mureka 429不得自动重提。
+- [x] 记录P1：草稿/发布/未保存状态、错误CAS冲突、预览不可发现、官方文档不足、模式/角色内部ID、校验禁用原因、原生蓝色checkbox和只读输入光标。
+- [x] 冻结版本A→版本B→27项Computer Use→全量Review→唯一safe full→PR/CI→生产发布授权门的方案。
+- [x] 建立新方案、独立返工矩阵和新Session可复制Goal；原Goal模板标记为历史，不得恢复。
+- [x] R0只读冻结完成：`HEAD=origin/main=cc9df2a`/tree`f91bfb2`；实际进入时为14 tracked + 3 untracked，4个产品候选差异已逐块审查并保留；4173归属旧工作树，生产v0.6.50/schema41健康，Provider/OSS/生产写/费用均0。
+- [x] 费用停止线确认：既有平台账本`⚡2.182`无法核验人民币换算，因此本Goal真实付费生成保持阻断，只用fake/临时数据/既有任务证据。
+- [x] 版本A实现与最小受影响safe定向：付费边界后的不确定结果禁止自动/人工重提；GPT Image白名单结果、Mureka 429和GK模式级证据已修复。m5 `22/22`、m38 `15/15`、m22 `41/41`及对应m102/m26/m53均通过；真实Provider/OSS/生产写/新费用0。
+- [ ] 版本B：修复工作台三态、CAS/本地校验/预览、官方文档、模式/角色人话界面、UI与可访问性。
+- [ ] 候选网站Computer Use完整重跑27项并记录Provider POST/费用/截图。
+- [ ] 候选冻结后独立只读全量Review；修复全部P0/P1并由同一线程复核到GO。
+- [ ] 本Goal唯一正式safe full、commit/push/PR/CI和候选冻结。
+- [ ] 唯一下一动作：完成版本A独立暂存/commit并回写精确commit/tree；在此之前不进入版本B。
+
+权威方案：`spec/MODEL_CONTRACT_001_USER_RECHECK_REMEDIATION_PLAN_2026-08-27.md`；矩阵：`spec/MODEL_CONTRACT_001_USER_RECHECK_REMEDIATION_ACCEPTANCE_MATRIX_2026-08-27.md`；断点：`spec/MODEL_CONTRACT_001_CHECKPOINT.md`；新Goal：`spec/MODEL_CONTRACT_001_USER_RECHECK_REMEDIATION_GOAL_PROMPT_2026-08-27.md`。
+
 ## MODEL-CONTRACT-001 模型执行合同治理（R0-R7 / v0.6.50 PRODUCTION TECHNICAL PASS / USER_RECHECK）
 
 - [x] 从`origin/main@7b475416a77cdee8d7b04ce965600551aa16858c`建立干净隔离worktree并核对生产v0.6.47/schema41、工具链、tag/Release与4173监听身份。
