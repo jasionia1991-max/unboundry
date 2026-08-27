@@ -6,6 +6,8 @@
 
 2026-08-27 MODEL-CONTRACT-002 当前权威状态：v0.6.52生产只读dry-run与v0.6.53冻结副本演练均fail-closed并保留为未部署不可变证据；修正版`v0.6.54`已完成PR #120/main CI、merge、tag/Release、fresh tag build、候选与生产冻结副本双幂等演练、备份、原子数据/版本切换、回滚门、33静态文件逐字节、66秒稳定门和零付费生产浏览器验收。生产运行v0.6.54/schema41，service active/enabled、NRestarts0；GK为已发布revision 2/EXACT并显示文字与单首帧，`kwvideo-v2`已归档。真实Provider/Generation/OSS/新费用均0，失败任务未重跑；当前严格为`PRODUCTION_V0_6_54_TECHNICAL_PASS / USER_RECHECK`，不得冒充成片质量或`USER_PASS`。权威回执为`spec/V0_6_54_PRODUCTION_RECEIPT_2026-08-27.json`。
 
+2026-08-27 INC-GEN-016 当前权威状态：用户随后授权对目标GK首帧任务执行一次真实生成；task `da761fff-6a65-46fd-84cf-4dc5bddbc985` 的唯一新付费attempt越过Provider boundary但没有持久task ID，最终为`OUTCOME_UNKNOWN_BILLING_RISK`，没有result asset且实际费用未知；系统未重提。普通页面仍要求点击“核对结果”，因此v0.6.54真实自动结果闭环失败，当前为`INCIDENT_OPEN / FINAL_AUDITED_PLAN / IMPLEMENTATION_NOT_STARTED / RELEASE_GATE_CLOSED`。本轮用户只授权文档落地并明确“先别改代码”；权威Plan、Matrix、Checkpoint见`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_*`。后续不得从历史授权自动实施。
+
 人和 AI 共用的上线拍板规矩见仓库根目录 `上线规矩.md`。发布前必须分别获得版本号确认和允许发布；一次授权只用一次。
 
 ## 1. 每次开始或上下文恢复必读
@@ -15,16 +17,19 @@
 1. `上线规矩.md`
 2. `spec/UNBOUNDRY_CURRENT_STATE.md`
 3. `README.md`
-4. `spec/MODEL_CONTRACT_002_CHECKPOINT.md`（当前活动Goal的唯一实时断点）
-5. `spec/MODEL_CONTRACT_002_IMMUTABLE_REVISION_REMEDIATION_PLAN_2026-08-27.md`
-6. `spec/MODEL_CONTRACT_002_ACCEPTANCE_MATRIX_2026-08-27.md`
-7. `spec/UNBOUNDRY_REMEDIATION_PLAN_2026-08-09.md`
-8. `spec/UNBOUNDRY_REMEDIATION_CHECKPOINT.md`
-9. `spec/UNBOUNDRY_HANDOFF_2026-08-09.md`
-10. `TASKS.md` 当前区块
-11. `spec/INCIDENT_2026-08-20_TEMPLATE_GROUP_FAILURE_AND_QUEUED_TASK_HANDOFF.md`（2026-08-20 事一/事二交接，接手必读）
-12. `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`（事一/事二查证后的全局审计结论、修复设计与验收门）
-13. `spec/UNBOUNDRY_ACCEPTANCE_MATRIX.md` 当前区块
+4. `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_CHECKPOINT.md`（当前事故与唯一实时断点）
+5. `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_PLAN_2026-08-27.md`
+6. `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_ACCEPTANCE_MATRIX_2026-08-27.md`
+7. `spec/MODEL_CONTRACT_002_CHECKPOINT.md`（历史发布断点）
+8. `spec/MODEL_CONTRACT_002_IMMUTABLE_REVISION_REMEDIATION_PLAN_2026-08-27.md`
+9. `spec/MODEL_CONTRACT_002_ACCEPTANCE_MATRIX_2026-08-27.md`
+10. `spec/UNBOUNDRY_REMEDIATION_PLAN_2026-08-09.md`
+11. `spec/UNBOUNDRY_REMEDIATION_CHECKPOINT.md`
+12. `spec/UNBOUNDRY_HANDOFF_2026-08-09.md`
+13. `TASKS.md` 当前区块
+14. `spec/INCIDENT_2026-08-20_TEMPLATE_GROUP_FAILURE_AND_QUEUED_TASK_HANDOFF.md`（2026-08-20 事一/事二交接，接手必读）
+15. `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`（事一/事二查证后的全局审计结论、修复设计与验收门）
+16. `spec/UNBOUNDRY_ACCEPTANCE_MATRIX.md` 当前区块
 
 然后只读核对 `pwd`、Git 分支、HEAD、工作树、package 版本和 Node 版本。与施工断点不一致时停止，不得继续施工。
 
@@ -35,6 +40,8 @@
 - `scripts/run-safe-tests.mjs`、源码覆盖门和不可变release builder继续使用Node `22.23.1` / npm `10.9.8`专用兼容通道，以复现当前生产代际；这是显式测试/发布例外，不是项目默认shell。`engines`同时覆盖两端，未来迁移生产前不得删除Node 22兼容边界。
 
 ## 2. 当前授权边界
+
+- **2026-08-27 INC-GEN-016 当前权威状态**：只允许将最终审计方案落地为文档；代码、测试、schema、package/lock、commit/push/PR/tag/Release、SSH、生产写、真实Provider/OSS和新费用均未授权。历史一次真实GK attempt授权已经消费，不能重试或复用。未来只有用户明确启动新Goal后才可进入R0；真实验收预算、版本号和发布必须分别重新授权；没有真实结果自动回到项目不得写完成或`USER_PASS`；
 
 - **2026-08-26 v0.6.47 当前权威状态**：生产运行`v0.6.47/schema41`，服务active/enabled、NRestarts=0；PR #110、PR/main CI、merge `24541b3`、不可移动tag/Release、fresh build、冻结备份`v0.6.47-cutover-final2-20j2R3`、恢复/schema/integrity/FK/数据门、原子切换、公网/回环/inventory/5资源和60秒稳定门通过。真实Provider/Generation/OSS/费用0；用户随后明确回复`v0.6.47 验收通过`，当前聚合状态为`PRODUCTION_V0_6_47_USER_PASS / USER_PASS`。原回执`spec/V0_6_47_PRODUCTION_RECEIPT_2026-08-26.json`保留生成时技术状态。一次性v0.6.47授权已消费，后续新代码、Provider或发布需要新授权；
 - **2026-08-27 MODEL-CONTRACT-001 当前权威状态**：用户知悉本轮没有新真实付费生成且仍有`USER_RECHECK`后，明确授权PR #116与候选v0.6.51发布。PR/main CI、merge `0c639385…ea5c`、tag/Release、fresh build、冻结恢复、原子切换和回滚门均通过；生产release为`/opt/unboundry/releases/v0.6.51-model-contract-remediation-20260827`，service active/enabled、NRestarts=0，schema41/integrity/FK通过，tasks933/attempts942/active0等基线在发布与浏览器复验中不变，33个静态文件逐字节一致，四视口工作台无溢出。真实Provider/Generation/OSS/新费用均0；一次性发布授权已消费，当前严格为`PRODUCTION_V0_6_51_TECHNICAL_PASS / USER_RECHECK`，不得升级`USER_PASS`；

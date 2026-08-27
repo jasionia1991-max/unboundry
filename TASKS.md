@@ -1,5 +1,21 @@
 # Unboundry 绿地复刻当前任务
 
+## INC-GEN-016 Provider结果自动回收与全模型不回归（FINAL AUDITED PLAN / IMPLEMENTATION NOT STARTED）
+
+- [x] 记录真实生产事件：目标GK首帧任务唯一新付费attempt越过Provider boundary但无task ID/result asset，最终`OUTCOME_UNKNOWN_BILLING_RISK`；未重提。
+- [x] 完成最终审计：确认响应合同、持久任务号、后台恢复、结果资产/Canvas投影和用户流程必须一起修复。
+- [x] 冻结用户产品合同：用户只点一次生成，系统自动完成；普通用户不得去中转站、填写任务号或点击核对。
+- [x] 冻结全模型非回归合同：当前已发布模型、专用connector、历史任务、旧Canvas、模板和不可变Revision必须保持正常。
+- [x] 建立最终Plan、27项验收Matrix、实时Checkpoint和未来可复制Goal模板。
+- [x] 文档落地后`git diff --check`通过，safe m38定向`15/15 PASS`、异常0、4173 unchanged；没有运行产品full。
+- [ ] R0实施时只读冻结最新Git/生产/package/schema/全模型基线并补预期红。
+- [ ] R1～R5实现有限响应合同、持久恢复Worker、结果资产/投影解耦、用户UI收口和全模型回归。
+- [ ] R6冻结候选、风险驱动测试和独立终审P0=0/P1=0。
+- [ ] R7未来单独授权后执行一次真实GK首帧验收；结果必须自动回到项目，禁止自动重提。
+- [ ] R8未来分别确认版本号和发布授权后才可GitHub/生产发布；用户明确确认前保持`USER_RECHECK`。
+
+本轮授权仅为文档落地，代码与测试均未开始。权威方案：`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_PLAN_2026-08-27.md`；矩阵：`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_ACCEPTANCE_MATRIX_2026-08-27.md`；断点：`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_CHECKPOINT.md`；未来Goal：`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_GOAL_PROMPT_2026-08-27.md`。
+
 ## MODEL-CONTRACT-002 历史 revision 与当前发布政策解耦（PRODUCTION v0.6.54 TECHNICAL PASS / USER_RECHECK）
 
 - [x] 从最新`origin/main@41bef082b7349667b3161b705e8b705eabe84e83`建立干净隔离worktree，完成生产、目标任务、11模型、22模板/34节点和4173只读基线。
