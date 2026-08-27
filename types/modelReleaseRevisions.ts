@@ -31,6 +31,15 @@ export type ModelContractValidation = Readonly<{
   compilerHash: string;
   impact: Readonly<{
     incompatibleTemplateIds: readonly string[];
+    nodeMatrix?: readonly Readonly<{
+      afterModeId?: string;
+      beforeModeId?: string;
+      compatible: boolean;
+      inputRoles: readonly string[];
+      nodeId: string;
+      reason?: string;
+      templateId: string;
+    }>[];
     preexistingIncompatibleTemplateIds?: readonly string[];
     templateIds: readonly string[];
   }>;

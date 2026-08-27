@@ -1,5 +1,25 @@
 # Unboundry 绿地复刻当前任务
 
+## MODEL-CONTRACT-002 历史 revision 与当前发布政策解耦（本地候选 / USER_RECHECK）
+
+- [x] 从最新`origin/main@41bef082b7349667b3161b705e8b705eabe84e83`建立干净隔离worktree，完成生产、目标任务、11模型、22模板/34节点和4173只读基线。
+- [x] 历史revision完整性与当前发布政策解耦；document/compiler hash、身份、安全编译和支持版本继续fail-closed。
+- [x] GK当前合同提升为version 2，文生视频与恰好一张首帧均可执行；revision 1不改写。
+- [x] 显式CAS升级、语义模板矩阵、11模型dry-run/apply与零Provider账本已实现。
+- [x] `kwvideo-v2`因无可核验文字基础证据选择停用归档，保留历史任务/Canvas，不伪造EXACT。
+- [x] 首轮m102修正后12/12，m12+m22+m57为23/23 PASS；均为临时/fake/动态loopback，4173不变，真实Provider/OSS/费用0。
+- [x] 新增schema41/11模型完整升级用例最终m102 `13/13 PASS`；含跨模型事务故障全回滚、重复执行零新增、22/34兼容和参数/Provider绑定负向门。
+- [x] 独立终审首轮`P0=0 / P1=6 / NO-GO`；六项已关闭：模板真实参数/状态/显式顺序、精确11模型与Provider/credential脱敏快照、rollback当前政策、apply staging证明、capability schema版本签名、内部完整性causeCode。修复后相同源码m102 `13/13`、m38 `15/15 PASS`，等待同一线程复核。
+- [x] 同一线程第二轮为`P0=0 / P1=3 / NO-GO`；已补生产22/34脱敏冻结矩阵、完整Provider/credential基线hash事务CAS和无效凭据门、固定staging allowlist/root symlink/app-data拒绝/私有只读manifest摘要/数据库SHA负向门；修正一次矩阵字段分类后m102 `13/13 PASS`，等待第三轮复核。
+- [x] 第三轮`P0=0/P1=2/NO-GO`指出矩阵测试残余硬编码和`TMPDIR`可扩张allowlist；两项修复后m102 `13/13 PASS`，同一线程第四轮最终`P0=0 / P1=0 / GO`。
+- [x] 独立Review放行后唯一正式safe full执行一次：`122/122 specs、1085/1085 tests PASS`，失败/重试/跳过均0，4173不变。
+- [x] 本地产品候选commit `5c7419f7dec0114ac86e8595fa964e57c840ce3b`、tree `23197c6ec3c37c98770a9121e01730f19709f5d6`；现场核验建议v0.6.52，候选回执已冻结。PR/CI因未授权保持NOT_RUN。
+- [x] 用户先确认采用`v0.6.52`，随后明确要求直接完成；本次GitHub与生产发布授权已取得，仍不授权真实Provider生成、OSS写入或失败任务重跑。
+- [x] v0.6.52 package/lock/final runtime冻结；默认Node25 build PASS，Node22 safe m38+m81 `56/56 PASS`，source/snapshot `78b96eacab4a7c4b5de76009cc96878eae51f428865ea4a80c3705977220e177`，未重复full。
+- [ ] 冻结v0.6.52版本门，完成PR/CI、merge、不可移动tag/GitHub Release、fresh tag build、冻结恢复、原子切换与回滚门。
+
+权威方案：`spec/MODEL_CONTRACT_002_IMMUTABLE_REVISION_REMEDIATION_PLAN_2026-08-27.md`；矩阵：`spec/MODEL_CONTRACT_002_ACCEPTANCE_MATRIX_2026-08-27.md`；断点：`spec/MODEL_CONTRACT_002_CHECKPOINT.md`。
+
 ## MODEL-CONTRACT-001 用户复验失败返工（PRODUCTION V0.6.51 TECHNICAL PASS / USER_RECHECK）
 
 - [x] 记录真实Computer Use基线：原27项清单15项通过、12项失败或证据不足；v0.6.50历史生产技术证据保留，但不得升级`USER_PASS`。

@@ -233,7 +233,7 @@ export function compileModelExecutionContract(input: unknown) {
   ], "模型执行合同");
   if (!connectorFamilies.has(input.connectorFamily as ModelContractConnectorFamily) ||
       !Number.isSafeInteger(input.connectorVersion) || Number(input.connectorVersion) < 1 ||
-      input.version !== 1 || !record(input.create) || !record(input.result) ||
+      ![1, 2].includes(Number(input.version)) || !record(input.create) || !record(input.result) ||
       !Array.isArray(input.modes) || input.modes.length < 1 || input.modes.length > 16) {
     throw new Error("模型执行合同版本或connector无效");
   }

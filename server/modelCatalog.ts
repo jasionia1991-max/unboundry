@@ -60,7 +60,11 @@ import type {
 } from "../types/modelReleaseRevisions";
 import {
   publishedTemplateIdsUsingModel,
+  publishedTemplateGraphs,
 } from "./templateContractQueries";
+import {
+  analyzeModelContractTemplateCompatibility,
+} from "./modelContractTemplateCompatibility";
 
 type Capability = GenerationCapabilityKind;
 type ModelStatus = "disabled" | "draft" | "published";
@@ -471,6 +475,25 @@ function modelTemplateImpact(
       modelContractTemplateCompatibilitySignature(proposedDocument) !==
         modelContractTemplateCompatibilitySignature(activeDocument)),
   );
+  if (
+    changed &&
+    activeDocument?.runtime === "declarative" &&
+    proposedDocument?.runtime === "declarative" &&
+    activeDocument.connectorFamily === proposedDocument.connectorFamily
+  ) {
+    const semantic = analyzeModelContractTemplateCompatibility({
+      active: activeDocument,
+      proposed: proposedDocument,
+      rows: publishedTemplateGraphs(store),
+    });
+    return {
+      incompatibleTemplateIds: semantic.incompatibleTemplateIds,
+      nodeMatrix: semantic.nodes,
+      preexistingIncompatibleTemplateIds:
+        semantic.preexistingIncompatibleTemplateIds,
+      templateIds: semantic.templateIds,
+    };
+  }
   return {
     // Model Catalog cannot silently rewrite published template graphs. Until a
     // template-specific proposal is versioned, any execution-affecting change
@@ -563,6 +586,50 @@ export function publishedModelReleaseSeeds(store: DatabaseSync) {
     provider_model_id: string;
     provider_profile_id: string;
     provider_protocol: ProviderProtocol;
+  }>;
+}
+
+export function modelContractUpgradeSeeds(store: DatabaseSync) {
+  return store.prepare(`
+    SELECT
+      models.archived_at,
+      models.capability,
+      models.default_parameters,
+      models.id,
+      models.provider_model_id,
+      models.provider_profile_id,
+      models.provider_protocol,
+      models.status,
+      providers.catalog_credential_revision,
+      providers.driver AS provider_driver,
+      providers.key_status AS provider_key_status,
+      providers.provider_configuration_version,
+      providers.status AS provider_status
+    FROM model_profiles AS models
+    JOIN provider_profiles AS providers
+      ON providers.id = models.provider_profile_id
+    WHERE
+      (models.status = 'published' AND models.archived_at IS NULL)
+      OR (
+        models.provider_model_id = 'kwvideo-v2' AND
+        models.status = 'disabled' AND
+        models.archived_at IS NOT NULL
+      )
+    ORDER BY models.id
+  `).all() as Array<{
+    archived_at: string | null;
+    capability: GenerationCapabilityKind;
+    default_parameters: string;
+    id: string;
+    provider_driver: string;
+    provider_key_status: string;
+    provider_model_id: string;
+    provider_profile_id: string;
+    provider_protocol: ProviderProtocol;
+    provider_configuration_version: number;
+    provider_status: string;
+    catalog_credential_revision: string | null;
+    status: string;
   }>;
 }
 
@@ -824,7 +891,7 @@ type ModelReferenceCounts = {
   tasks: number;
 };
 
-function modelReferenceCounts(
+export function modelReferenceCounts(
   store: DatabaseSync,
   modelId: string,
 ): ModelReferenceCounts {

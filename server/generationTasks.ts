@@ -115,7 +115,11 @@ import {
   compileModelContractRequest,
   compileModelExecutionContract,
 } from "./modelExecutionContractCompiler";
-import { assertModelReleaseRevisionIntegrity } from "./modelReleaseRevisionStore";
+import {
+  assertModelReleaseRevisionIntegrity,
+  ModelContractIntegrityError,
+} from "./modelReleaseRevisionStore";
+import type { ModelReleaseRevision } from "../types/modelReleaseRevisions";
 import {
   relayMediaModelContract,
   relayMediaPollingDecision,
@@ -514,16 +518,10 @@ function requireTaskProviderSnapshot(
   const expectedVersion = task.modelConfiguration.providerConfigurationVersion;
   const expectedProfileId = task.providerProfileId ??
     task.modelConfiguration.providerProfileId;
-  const release = task.modelConfiguration.modelReleaseRevision;
+  const release = task.modelConfiguration.modelReleaseRevision as
+    ModelReleaseRevision | undefined;
   if (release !== undefined) {
-    try {
-      assertModelReleaseRevisionIntegrity(release);
-    } catch {
-      throw new ProviderGenerationConfigurationError(
-        "PROVIDER_CONFIGURATION_MISMATCH",
-        "模型合同快照校验失败，已阻止请求",
-      );
-    }
+    assertGenerationTaskModelReleaseSnapshotIntegrity(release);
     if (
       release.document.modelId !== task.modelConfiguration.modelId ||
       release.document.providerProfileId !== expectedProfileId ||
@@ -562,6 +560,22 @@ function requireTaskProviderSnapshot(
     );
   }
   return profile;
+}
+
+export function assertGenerationTaskModelReleaseSnapshotIntegrity(
+  release: ModelReleaseRevision,
+) {
+  try {
+    assertModelReleaseRevisionIntegrity(release);
+  } catch (error) {
+    throw new ProviderGenerationConfigurationError(
+      "PROVIDER_CONFIGURATION_MISMATCH",
+      "模型合同快照校验失败，已阻止请求",
+      error instanceof ModelContractIntegrityError
+        ? error.code
+        : "FROZEN_REVISION_DOCUMENT_INVALID",
+    );
+  }
 }
 
 type GenerationLaunchOptions = {
@@ -2297,6 +2311,10 @@ function logGenerationDiagnostic(
       error instanceof Error && "code" in error
         ? (error as Error & { code?: unknown }).code
         : undefined;
+    const rawCauseCode =
+      error instanceof Error && "causeCode" in error
+        ? (error as Error & { causeCode?: unknown }).causeCode
+        : undefined;
     console.error(JSON.stringify({
       event: "generation-diagnostic",
       timestamp: new Date().toISOString(),
@@ -2305,6 +2323,7 @@ function logGenerationDiagnostic(
       errorName,
       errorCode: failureCode ?? detectedCode ??
         (typeof rawCode === "string" ? rawCode : undefined) ?? null,
+      causeCode: typeof rawCauseCode === "string" ? rawCauseCode : null,
       message: error instanceof Error ? error.message : String(error),
     }));
   } catch {
@@ -3158,6 +3177,11 @@ export async function relayMediaParametersForTask(
     if (!Array.isArray(rawInputs) || rawInputs.length > 32) {
       throw new RelayProviderError("FORMAT");
     }
+    const declaredRoleIds = new Set(
+      compiled.contract.modes.flatMap((mode) =>
+        mode.roles.map((role) => role.id)
+      ),
+    );
     const runtimeInputs = [];
     for (const raw of rawInputs) {
       if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
@@ -3170,6 +3194,14 @@ export async function relayMediaParametersForTask(
         (item.kind !== "audio" && item.kind !== "image" &&
           item.kind !== "text" && item.kind !== "video")
       ) throw new RelayProviderError("FORMAT");
+      // Upstream instruction/context text has already been composed into the
+      // frozen task prompt. It is not an additional media role unless the
+      // immutable execution contract explicitly declares it as one.
+      if (
+        item.kind === "text" &&
+        !declaredRoleIds.has(item.role) &&
+        (item.role === "instruction" || item.role === "context-text")
+      ) continue;
       const value = item.kind === "text"
         ? task.prompt
         : typeof item.assetId === "string"
