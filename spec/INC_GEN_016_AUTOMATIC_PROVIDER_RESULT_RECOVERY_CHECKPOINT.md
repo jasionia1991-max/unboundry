@@ -1,10 +1,40 @@
 # INC-GEN-016 实时断点
 
-状态：`PRODUCTION_V0_6_55_TECHNICAL_PASS / REAL_PROVIDER_REFUNDED / NO_RESULT / USER_RECHECK`
+状态：`V0_6_56_REVIEW_GO / P0_0_P1_0 / GITHUB_CI_PENDING / RELEASE_GATE_CLOSED / USER_RECHECK`
 
 更新时间：2026-08-28
 
 ## 当前事实
+
+### 2026-08-28 v0.6.56 独立Review首轮
+
+- 冻结候选`c29295ce23727f50806a2cf422e128c52386f8d3`、tree`03972428fe234586fcddf823209e105af223e742`的独立只读Review为`P0=0/P1=2/NO-GO`；没有push、发布、生产写或真实Provider请求。
+- P1-1：有限声明式解析仍接受数字`0`或字符串`"0"`；需明确拒绝零值并补双负向fixture。P1-2：唯一实施方案残留“当前生产v0.6.54”历史句，与v0.6.56的R0生产v0.6.55身份冲突。
+- 两项正在最小修复：只在声明式有限候选中拒绝全零ID，不扩大通用connector；实施方案明确当前生产v0.6.55并把v0.6.54/事故起点改为历史证据。修复后只复验m102和文档门m38，再冻结新commit交回同一Review线程。
+- 两项已最小修复：m102+m38 `29/29 PASS`，failed/skipped/retries/reportErrors/blocked均0，source/snapshot `6cb0ce4461e2010232a6729d565aebaf8de40337db15dca28e49075647be6e12`，4173监听不变；没有重复m53/m81/m88或运行full，真实Provider/OSS/生产写/费用0。下一步只冻结增量commit并交回同一Review线程复核。
+- 修复增量commit`333866c`交回同一Review线程后，两项P1均关闭，最终为`P0=0/P1=0/GO`；复核只读且未重复测试。风险定向已覆盖真实形状、所有有限负向、共享adapter、媒体publication、版本准入和权威文档；本次窄修无需另跑full。下一门为GitHub PR/CI，仍禁止生产写和真实Provider请求。
+- Review结论同步后文档治理m38 `16/16 PASS`，异常均0，source/snapshot `a53ad6992cc1d2d8f0dc1b8bcc1b01eac79ddf3d60797be4814443c2ed068687`，4173监听不变；没有重复业务spec。
+
+### 2026-08-28 v0.6.56 预期红、实现与定向绿
+
+- 预期红只执行m102：发现122 specs/1090 tests，13项中12通过、唯一失败精确落在真实数字`data.task_ids[]`/`data.任务ids[]`无法提取；Node22.23.1/npm10.9.8，source/snapshot `32c0c2af8de8ff0ec0b8989da0227095c2867fd91b4e150aba7c36465eb2d7e7`，4173监听不变，真实Provider/OSS/生产写/费用0。
+- 实现保持顶层`task_id`为canonical，只新增两个已观测数组别名；每个出现的数组必须恰好一个安全整数或安全字符串，所有出现路径规范化后必须唯一一致。空数组、多值、别名冲突、canonical冲突、非整数、危险字符串、`data.task_id`和`data.id`均继续以可恢复`FORMAT`失败，不扩张任意JSONPath。
+- 修复后m102 `13/13 PASS`，source/snapshot `29e7603ec163a10c148de8519bd1ea72fab6cdfa81a54601bf0f6a32c1faef3e`；版本同步为package/lock `0.6.56`，schema保持41，final runtime admission增加0.6.56。
+- 共享adapter、媒体publication和版本准入风险定向m53+m81+m88共`103/103 PASS`，failed/skipped/retries/reportErrors/blocked均0，source/snapshot `90d11593f069b31b134f2d2d9e888ad9a1f277642bc27e16e48536d73394c21b`，4173监听不变。未重复m102、未运行full；真实Provider/OSS/生产写和新增USD20预算消费仍为0。
+- 文档治理首次命令因误写不存在的m38文件名在执行前阻断，随后两次只暴露`UNBOUNDRY_CURRENT_STATE.md`的旧固定版本标签格式；只修正文档标签后最小复验m38 `16/16 PASS`，source/snapshot `f1ca77e28bdfe54c6102db516a0aa2a61e766559749029eea1d01e34dd33cf8a`，没有重复业务spec或运行full。
+- 下一门是冻结候选commit后进行一次独立只读Review；Review未给出`P0=0/P1=0/GO`前不得push、发布、生产写或真实生成。
+
+### 2026-08-28 v0.6.56 新Goal R0实时基线
+
+- 用户明确指定新版本`v0.6.56`，新增真实生成总预算上限USD20，并授权修复、Review、GitHub/CI、不可移动tag/Release、生产备份恢复发布回滚和同一目标Canvas真实GK验收。首单预估上限USD10；只有明确未受理/未扣费或退款时最多允许一次替代提交，任何unknown禁止第二次Provider POST。
+- 新干净隔离工作树：`/Users/mymy/Documents/unboundry-inc-gen-016-v0.6.56-2026-08-28`；分支`codex/inc-gen-016-v0.6.56`；基线`origin/main@86e17db78559a83e781e75ba8c1b1eaa0079ac0e`、tree`97cc8165fdbb0c17a54914fccbc11dbe8f8c1e55`。远端`v0.6.56`未占用；R0时package为0.6.55，schema41，默认Node25.9.0/npm11.12.1。
+- 生产只读身份：v0.6.55/schema41，公网live/ready通过，active lease和写入准入正常；release仍为`/opt/unboundry/releases/v0.6.55-inc-gen-016-20260828`，service active/enabled、NRestarts0。
+- R0生产计数：tasks954、provider attempts964、active0、当前`OUTCOME_UNKNOWN_BILLING_RISK`任务0、media910、publications501、canvases72、models20、published models10、templates50、published templates48。
+- 10个当前已发布模型身份、capability、provider model和protocol已重新从生产脱敏冻结；未计划修改的专用connector、模板、Canvas和历史Revision必须保持不变。
+- 目标Canvas`67bfb2ee-f895-4308-9111-9de188306514`为revision296/graphRevision138、42节点/72边；目标节点存在，仍为`grok-video-3`、9:16、720p、10秒、音频开启、输出1，生成false，错误`PROVIDER_REFUNDED`，没有result asset。
+- 目标task`da761fff-6a65-46fd-84cf-4dc5bddbc985`保持failed/attempt3/`PROVIDER_REFUNDED`、actual cost 0、provider task ID/result asset均空；attempt2为`PROVIDER_NOT_ACCEPTED_NO_CHARGE`，attempt3为明确退款。旧USD20授权已消费；本次新增USD20尚未消费。
+- 已证实的新缺口是Provider真实创建响应含数字`data.task_ids[]`和数字`data.任务ids[]`，而`submitContractRelayMedia()`只读取顶层`task_id`。v0.6.56只允许把这两个已证实有限路径规范化为唯一一致task ID；不得扩张为万能猜测、任意JSONPath或接受多值冲突。
+- 受保护`spec/public-templates-director-split-revision.json`未读取、未修改、未暂存；历史工作树未清理；R0期间真实Provider/Generation/OSS写和新费用均0。
 
 ### 2026-08-28 生产发布与真实Provider最终结果
 

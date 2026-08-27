@@ -1716,6 +1716,35 @@ function taskIdCandidates(body: Record<string, unknown>) {
   return candidates.filter((value) => value !== undefined && value !== null);
 }
 
+function declarativeTaskIdCandidates(
+  body: Record<string, unknown>,
+  apiKey: string,
+) {
+  const candidates: unknown[] = [];
+  if (Object.hasOwn(body, "task_id")) candidates.push(body.task_id);
+
+  if (isRecord(body.data)) {
+    for (const name of ["task_ids", "任务ids"] as const) {
+      if (!Object.hasOwn(body.data, name)) continue;
+      const values = body.data[name];
+      if (!Array.isArray(values) || values.length !== 1) {
+        throw new RelayProviderError("FORMAT");
+      }
+      candidates.push(values[0]);
+    }
+  }
+
+  const normalizedTaskIds = candidates.map((value) =>
+    cleanExternalTaskId(value, apiKey)
+  );
+  if (normalizedTaskIds.some((taskId) => /^0+$/.test(taskId))) {
+    throw new RelayProviderError("FORMAT");
+  }
+  const taskIds = [...new Set(normalizedTaskIds)];
+  if (taskIds.length !== 1) throw new RelayProviderError("FORMAT");
+  return taskIds;
+}
+
 export async function submitRelayMedia(
   connection: RelayProviderConnection,
   request: RelayMediaGenerateRequest,
@@ -1782,14 +1811,13 @@ export async function submitContractRelayMedia(
     protocol: request.providerProtocol,
     providerTaskMayStillRun: true,
   });
-  // The declarative contract owns the finite task-id path. Provider response
-  // envelopes may add harmless metadata (for example request_id) without
-  // changing that contract; response bytes are already bounded by
-  // relayJsonRequest and cleanExternalTaskId still rejects unsafe IDs.
+  // The declarative contract owns a finite response normalization rule. Its
+  // canonical task_id and the two observed GK array aliases must all resolve
+  // to one safe ID; arbitrary nested paths and ambiguous arrays stay rejected.
   if (!isRecord(body)) throw new RelayProviderError("FORMAT", true);
-  let taskId: string;
+  let taskIds: string[];
   try {
-    taskId = cleanExternalTaskId(body.task_id, connection.apiKey);
+    taskIds = declarativeTaskIdCandidates(body, connection.apiKey);
   } catch (error) {
     if (error instanceof RelayProviderError && error.code === "FORMAT") {
       throw new RelayProviderError("FORMAT", true);
@@ -1798,8 +1826,8 @@ export async function submitContractRelayMedia(
   }
   return {
     capability: request.capability,
-    externalTaskId: taskId,
-    externalTaskIds: [taskId],
+    externalTaskId: taskIds[0],
+    externalTaskIds: taskIds,
     providerProtocol: "media-generate" as const,
     state: "queued" as const,
   };

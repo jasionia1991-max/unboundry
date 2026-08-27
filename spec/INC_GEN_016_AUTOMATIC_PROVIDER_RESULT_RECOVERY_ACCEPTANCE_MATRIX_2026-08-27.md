@@ -1,13 +1,13 @@
 # INC-GEN-016 验收矩阵
 
-状态：`PRODUCTION_TECHNICAL_PASS / REAL_PROVIDER_REFUNDED / NO_RESULT / USER_RECHECK`
+状态：`V0_6_56_REVIEW_GO / P0_0_P1_0 / GITHUB_CI_PENDING / RELEASE_GATE_CLOSED / USER_RECHECK`
 
 | ID | Priority | 验收项 | 必须证据 | 当前状态 |
 |---|---:|---|---|---|
 | APR-001 | P0 | 一次用户动作最多一次 Provider POST | 并发/双击/超时/重启账本 | AUTO_PASS |
 | APR-002 | P0 | 提交前持久化完整 paid boundary 身份 | DB事务与故障注入 | AUTO_PASS |
 | APR-003 | P0 | Provider task ID 在首次 poll 前原子持久化 | response→store crash matrix | AUTO_PASS |
-| APR-004 | P0 | 有限响应路径兼容真实外壳及无害附加字段 | 脱敏真实fixture + 负向合同 | AUTO_PASS |
+| APR-004 | P0 | 有限响应路径兼容真实外壳及无害附加字段 | 脱敏真实fixture + 负向合同 | AUTO_PASS_13_OF_13 |
 | APR-005 | P0 | 响应证据脱敏且不泄露secret/prompt/签名URL | secret/source gate | AUTO_PASS |
 | APR-006 | P0 | 异步connector具备正式可恢复能力 | idempotency/request-id/ledger/owned-relay证据 | AUTO_PASS |
 | APR-007 | P0 | 响应丢失自动进入RECONCILING且零新POST | network fault + paid ledger | AUTO_PASS |
@@ -24,18 +24,18 @@
 | APR-018 | P0 | 旧Canvas和模板无需手工迁移 | 真实冻结引用矩阵 | AUTO_PASS |
 | APR-019 | P0 | schema/Worker/rollback不丢在途任务 | expand-contract rehearsal | AUTO_PASS |
 | APR-020 | P1 | 明确失败/拒绝/退款只在项目内表达 | response/UI matrix | REAL_PROVIDER_REFUND_UI_PASS |
-| APR-021 | P0 | GK原始首帧场景真实结果自动回画布 | 单次付费生产证据 | REAL_PROVIDER_FAILED_REFUNDED_NO_RESULT |
-| APR-022 | P0 | 真实结果刷新后仍可播放且任务中心/素材库可找 | Browser + DB/asset evidence | NOT_RUN_NO_RESULT |
-| APR-023 | P0 | 实际修改的每个connector family有真实端到端证据 | connector release ledger | REAL_PROVIDER_TERMINAL_REFUND_EVIDENCE_NO_SUCCESS |
+| APR-021 | P0 | GK原始首帧场景真实结果自动回画布 | 单次付费生产证据 | V0_6_56_AUTHORIZED_NOT_CONSUMED |
+| APR-022 | P0 | 真实结果刷新后仍可播放且任务中心/素材库可找 | Browser + DB/asset evidence | V0_6_56_NOT_RUN |
+| APR-023 | P0 | 实际修改的每个connector family有真实端到端证据 | connector release ledger | V0_6_56_AUTHORIZED_NOT_CONSUMED |
 | APR-024 | P0 | 独立终审P0=0/P1=0 | frozen candidate review | AUTO_PASS_P0_0_P1_0_GO |
-| APR-025 | P0 | 风险驱动验证完成且正式full最多一次 | test receipts | AUTO_PASS_FULL_1089_1090_ONE_STALE_ASSERTION_M22_41_41 |
-| APR-026 | P0 | 版本、发布、费用授权分别有效且未复用 | authority ledger | AUTHORIZATION_CONSUMED_CLOSED |
+| APR-025 | P0 | 风险驱动验证完成且正式full最多一次 | test receipts | V0_6_56_TARGETED_PASS_132 / REMEDIATION_29_PASS / FULL_NOT_REQUIRED |
+| APR-026 | P0 | 版本、发布、费用授权分别有效且未复用 | authority ledger | V0_6_56_AUTHORIZED_NOT_CONSUMED |
 | APR-027 | P0 | 用户明确确认生产项目内结果 | ordinary-user checklist | USER_RECHECK |
 
 ## 放行规则
 
-- APR-001～020、024～025 未全部有证据：不得进入真实 Provider 门。
-- APR-021～023 未通过：不得进入版本发布门。
+- APR-001～020、024～025 未全部有证据：不得进入GitHub、发布、生产或真实Provider门。
+- APR-021～023只能在v0.6.56生产技术门通过后执行；未通过时不得写`REAL_PROVIDER_PASS`或关闭事故，但不倒置为“发布前必须先有生产结果”。
 - APR-026 未授权：不得 commit/push/PR/tag/Release/SSH/生产写或真实生成。
 - APR-027 未由用户明确确认：不得写 `USER_PASS`。
 - 任何当前已发布模型、历史任务、Canvas、模板或不可变 Revision 回归：立即 `NO-GO`，不能以 GK 成功抵消。
@@ -46,3 +46,9 @@
 - 历史attempt2经平台完整当日账本证明未受理且未扣费；只在此证据成立后消费唯一替代提交。attempt3由Provider返回HTTP 200，但没有可提取的字符串task ID；平台账本随后明确显示`已退款`、金额0.924、成功0、退款1，且没有结果作品。
 - Unboundry已把attempt2收口为`PROVIDER_NOT_ACCEPTED_NO_CHARGE`，把attempt3收口为`PROVIDER_REFUNDED`，实际费用均为0；项目内显示“平台未完成本次生成，费用已全额退回；未再次提交”。
 - APR-021、APR-022和APR-023的成功条件未满足，真实结果门失败；版本、发布和唯一替代提交授权均已消费，禁止再次Provider POST。v0.6.55技术发布事实保留，但不得写`REAL_PROVIDER_PASS`或`USER_PASS`。
+
+## v0.6.56 续作放行
+
+- 新Goal新增USD20总预算；首单预估上限USD10，只有明确未受理/未扣费或退款时最多替代一次，任何unknown禁止第二次POST。
+- APR-004必须用真实脱敏形状fixture证明数字双路径唯一一致，并用零/多/冲突/危险值负向证明fail-closed。
+- v0.6.56候选、独立Review、CI、冻结备份/恢复/回滚和生产技术门全部通过前，APR-021～023预算不得消费。

@@ -1,5 +1,19 @@
 # Unboundry 绿地复刻当前任务
 
+## INC-GEN-016 v0.6.56 数字task ID响应续作（REVIEW GO / GITHUB CI PENDING）
+
+- [x] 从最新`origin/main@86e17db`建立干净隔离工作树，确认v0.6.56未占用。
+- [x] 只读冻结生产v0.6.55/schema41、10个已发布模型、目标Canvas和退款task；真实Provider/OSS写/新费用0。
+- [x] 补真实脱敏数字`data.task_ids[]`/`data.任务ids[]`预期红与有限负向矩阵；预期红12/13且唯一命中目标缺口。
+- [x] 实施唯一一致task ID规范化，保持canonical合同、unknown围栏和未修改connector不变；m102 13/13通过。
+- [x] 风险定向m53+m81+m88 103/103通过，package/lock/final runtime同步0.6.56；没有运行full、真实Provider/OSS/生产写/费用0。
+- [x] 文档治理m38按旧版本标签最小修正后16/16通过；风险定向合计132项通过，未运行full。
+- [x] 首个冻结候选`c29295c`独立Review为P0=0/P1=2/NO-GO：零值ID未拒绝、唯一方案残留生产v0.6.54旧身份。
+- [x] 最小修复零值ID与方案生产身份冲突，m102+m38 29/29通过；没有重复共享回归或运行full。
+- [x] 同一Review线程增量复核最终P0=0/P1=0/GO；窄改动风险定向充分，不另跑full。
+- [ ] 完成GitHub/CI、不可移动v0.6.56与生产发布门。
+- [ ] 在新增USD20上限内完成同一目标Canvas真实GK结果自动回填和刷新保持；用户确认前保持`USER_RECHECK`。
+
 ## INC-GEN-016 Provider结果自动回收与全模型不回归（PRODUCTION v0.6.55 TECHNICAL PASS / REAL PROVIDER REFUNDED / USER_RECHECK）
 
 - [x] 记录真实生产事件：目标GK首帧任务唯一新付费attempt越过Provider boundary但无task ID/result asset，最终`OUTCOME_UNKNOWN_BILLING_RISK`；未重提。

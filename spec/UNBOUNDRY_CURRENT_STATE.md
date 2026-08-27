@@ -1,18 +1,23 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网运行v0.6.55/schema41且服务健康；PR/main CI、不可移动tag/Release、冻结备份、恢复演练、原子发布、回滚和66秒稳定门通过。受控真实GK替代提交被Provider明确全额退款且没有结果，实际费用0；当前严格为`PRODUCTION_V0_6_55_TECHNICAL_PASS / REAL_PROVIDER_REFUNDED / NO_RESULT / USER_RECHECK`，不得再次POST或写`REAL_PROVIDER_PASS/USER_PASS`。
+> **状态分层**：现网运行v0.6.55/schema41且服务健康，既有退款结果与不可移动发布身份不变。用户已启动v0.6.56续作Goal，新增USD20预算并授权修复、Review、GitHub/CI、不可移动发布、生产和同一目标Canvas真实验收；首轮独立Review的`P0=0/P1=2`已最小修复，同一线程最终`P0=0/P1=0/GO`，严格为`GITHUB_CI_PENDING / RELEASE_GATE_CLOSED / USER_RECHECK`，新增预算尚未消费。
 
 更新日期：2026-08-28
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.55**
-本地候选代码版本：**v0.6.55**
+当前代码包版本：**v0.6.56**
+本地候选代码版本：**v0.6.56**
+当前生产部署版本：**v0.6.55**
 本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_55_USER_RECHECK`
-当前计划标记：`INC_GEN_016_PRODUCTION_TECHNICAL_PASS / REAL_PROVIDER_REFUNDED_NO_RESULT`
+当前计划标记：`INC_GEN_016_V0_6_56_REVIEW_GO / GITHUB_CI_PENDING`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`INC_GEN_016_AUTHORIZATION_CONSUMED_CLOSED / USER_RECHECK`
+当前发布门：`INC_GEN_016_V0_6_56_AUTHORIZED / RELEASE_GATE_CLOSED / USER_RECHECK`
 
 ## INC-GEN-016 当前区块（2026-08-28）
+
+- v0.6.56续作Goal已授权：新版本、修复、Review、GitHub/CI、tag/Release、生产备份恢复发布回滚、目标Canvas真实GK验收及新增USD20总预算。首单预估上限USD10；只有明确未受理/未扣费或退款时最多替代一次，任何unknown禁止第二次POST。
+- 新工作树`/Users/mymy/Documents/unboundry-inc-gen-016-v0.6.56-2026-08-28`基于最新`origin/main@86e17db78559a83e781e75ba8c1b1eaa0079ac0e`；v0.6.56未占用。R0生产计数tasks954/attempts964/active0/current unknown billing0/media910/publications501/canvases72/models20/published10/templates50/published48。
+- 新修复范围只覆盖真实响应中的数字`data.task_ids[]`与`data.任务ids[]`，要求所有出现路径唯一一致并规范化为canonical task ID；空数组、多值、冲突、非整数、危险值和任意嵌套继续fail-closed。预期红唯一命中，修复后m102 `13/13`，共享adapter/媒体publication/版本准入定向`103/103`通过；独立Review和发布门尚未完成，真实Provider预算0。
 
 - 用户核心合同：只点击一次生成；系统自动提交、追踪、恢复、保存结果并回到项目。普通用户不登录中转站、不填写任务号、不点击“核对结果”。
 - 生产发布：PR #122和main Quality通过；merge `7bdc40f67697e1e3be735db947d3b26ba5b6c0bd`、注释tag `v0.6.55`及GitHub Release不可移动发布完成。生产release为`/opt/unboundry/releases/v0.6.55-inc-gen-016-20260828`；schema41、integrity ok、FK0、service active/enabled、NRestarts0，rollout为目标allowlist。

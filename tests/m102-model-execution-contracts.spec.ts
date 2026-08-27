@@ -1410,6 +1410,97 @@ test("GK transport accepts the declared task id with harmless response envelope 
     code: "FORMAT",
     providerTaskMayStillRun: true,
   });
+
+  const numericEvidence: Array<Record<string, unknown>> = [];
+  const numericSubmission = await submitContractRelayMedia(connection, {
+    capability: "video",
+    model: "grok-video-3",
+    params: { images: ["https://cdn.example.test/first.png"] },
+    prompt: "real numeric task id envelope",
+    providerProtocol: "media-generate",
+  }, gkContract, {
+    fetcher: async () => new Response(JSON.stringify({
+      data: {
+        task_ids: [921_337],
+        "任务ids": [921_337],
+        "对话组ID": "safe-conversation-group",
+      },
+    }), {
+      headers: {
+        "Content-Type": "application/json",
+        "X-Request-Id": "provider-request-numeric-001",
+      },
+      status: 200,
+    }),
+    onProviderResponseEvidence: (item) => numericEvidence.push(item),
+  });
+
+  expect(numericSubmission.externalTaskId).toBe("921337");
+  expect(numericSubmission.externalTaskIds).toEqual(["921337"]);
+  expect(numericEvidence).toContainEqual(expect.objectContaining({
+    fieldPaths: expect.arrayContaining([
+      "data.task_ids[]:number",
+      "data.任务ids[]:number",
+      "data.对话组ID",
+    ]),
+    httpStatus: 200,
+    providerRequestId: "provider-request-numeric-001",
+  }));
+  expect(JSON.stringify(numericEvidence)).not.toContain("fixture-secret");
+  expect(JSON.stringify(numericEvidence)).not.toContain("real numeric task id envelope");
+
+  for (const [name, response, expectedTaskId] of [
+    ["english alias", { data: { task_ids: [921_338] } }, "921338"],
+    ["chinese alias", { data: { "任务ids": [921_339] } }, "921339"],
+    [
+      "canonical and aliases agree",
+      { task_id: "921340", data: { task_ids: [921_340], "任务ids": ["921340"] } },
+      "921340",
+    ],
+  ] as const) {
+    const accepted = await submitContractRelayMedia(connection, {
+      capability: "video",
+      model: "grok-video-3",
+      params: { images: ["https://cdn.example.test/first.png"] },
+      prompt: name,
+      providerProtocol: "media-generate",
+    }, gkContract, {
+      fetcher: async () => new Response(JSON.stringify(response), {
+        headers: { "Content-Type": "application/json" },
+        status: 200,
+      }),
+    });
+    expect(accepted.externalTaskIds, name).toEqual([expectedTaskId]);
+  }
+
+  for (const [name, response] of [
+    ["aliases conflict", { data: { task_ids: [1], "任务ids": [2] } }],
+    ["canonical conflicts", { task_id: "1", data: { task_ids: [2] } }],
+    ["empty alias", { data: { task_ids: [] } }],
+    ["multiple ids", { data: { task_ids: [1, 2] } }],
+    ["numeric zero id", { data: { task_ids: [0] } }],
+    ["string zero id", { data: { task_ids: ["0"] } }],
+    ["unsafe numeric id", { data: { task_ids: [1.5] } }],
+    ["unsafe string id", { data: { task_ids: ["unsafe/task/id"] } }],
+    ["arbitrary data.task_id", { data: { task_id: "not-declared" } }],
+    ["arbitrary data.id", { data: { id: "not-declared" } }],
+  ] as const) {
+    await expect(submitContractRelayMedia(connection, {
+      capability: "video",
+      model: "grok-video-3",
+      params: { images: ["https://cdn.example.test/first.png"] },
+      prompt: name,
+      providerProtocol: "media-generate",
+    }, gkContract, {
+      fetcher: async () => new Response(JSON.stringify(response), {
+        headers: { "Content-Type": "application/json" },
+        status: 200,
+      }),
+    }), name).rejects.toMatchObject({
+      code: "FORMAT",
+      providerTaskMayStillRun: true,
+    });
+  }
 });
 
 test("admin contract workbench is separate, structured and responsive with zero Provider calls", async ({ page }) => {
