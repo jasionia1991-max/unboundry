@@ -14,7 +14,7 @@
 - [ ] R7未来单独授权后执行一次真实GK首帧验收；结果必须自动回到项目，禁止自动重提。
 - [ ] R8未来分别确认版本号和发布授权后才可GitHub/生产发布；用户明确确认前保持`USER_RECHECK`。
 
-本次新Goal已明确授权实现、v0.6.55、GitHub/生产和受控真实GK验收；候选冻结、Review、full、发布和真实Provider门仍按矩阵逐项执行。权威方案：`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_PLAN_2026-08-27.md`；矩阵：`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_ACCEPTANCE_MATRIX_2026-08-27.md`；断点：`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_CHECKPOINT.md`。
+本次新Goal已明确授权实现、v0.6.55、GitHub/生产和受控真实GK验收；冻结候选独立Review首轮`P0=3/P1=4/NO-GO`的七项发现已修复，正等待同一线程增量复核。Review GO、唯一full、发布和真实Provider门仍按矩阵逐项执行。权威方案：`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_PLAN_2026-08-27.md`；矩阵：`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_ACCEPTANCE_MATRIX_2026-08-27.md`；断点：`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_CHECKPOINT.md`。
 
 ## MODEL-CONTRACT-002 历史 revision 与当前发布政策解耦（PRODUCTION v0.6.54 TECHNICAL PASS / USER_RECHECK）
 

@@ -1356,6 +1356,30 @@ test("GK transport accepts the declared task id with harmless response envelope 
     },
     { url: "https://api.example.test/v1/media/status?task_id=task-gk-001" },
   ]);
+
+  const malformedEvidence: Array<Record<string, unknown>> = [];
+  const malformed = await submitContractRelayMedia(connection, {
+    capability: "video",
+    model: "grok-video-3",
+    params: { images: ["https://cdn.example.test/first.png"] },
+    prompt: "response shape recovery",
+    providerProtocol: "media-generate",
+  }, gkContract, {
+    fetcher: async () => new Response("not-json", {
+      headers: { "Content-Type": "application/json" },
+      status: 200,
+    }),
+    onProviderResponseEvidence: (item) => malformedEvidence.push(item),
+  }).catch((error: unknown) => error);
+  expect(malformed).toMatchObject({
+    code: "FORMAT",
+    providerTaskMayStillRun: true,
+  });
+  expect(malformedEvidence).toContainEqual(expect.objectContaining({
+    failureStage: "response-format",
+    httpStatus: 200,
+    responseBytes: 8,
+  }));
 });
 
 test("admin contract workbench is separate, structured and responsive with zero Provider calls", async ({ page }) => {

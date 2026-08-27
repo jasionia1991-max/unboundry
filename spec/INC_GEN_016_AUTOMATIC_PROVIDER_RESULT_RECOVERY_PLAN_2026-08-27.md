@@ -1,14 +1,14 @@
 # INC-GEN-016：Provider 结果自动回收与全模型不回归最终方案
 
-状态：`FINAL_AUDITED_PLAN / DOCUMENTATION_ONLY / IMPLEMENTATION_NOT_STARTED / INCIDENT_OPEN / RELEASE_GATE_CLOSED`
+状态：`ACTIVE_IMPLEMENTATION / REVIEW_FINDINGS_REMEDIATED / INCREMENTAL_REVIEW_PENDING / INCIDENT_OPEN / RELEASE_GATE_CLOSED`
 
 建立日期：2026-08-27
 
 ## 0. 权威与当前边界
 
-本文件是 INC-GEN-016 的唯一实施合同。验收细目以 `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_ACCEPTANCE_MATRIX_2026-08-27.md` 为准，实时状态以 `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_CHECKPOINT.md` 为准。未来实施只能由用户重新明确启动的 Goal 授权；`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_GOAL_PROMPT_2026-08-27.md` 只是可复制模板，不是当前授权。
+本文件是 INC-GEN-016 的唯一实施合同。验收细目以 `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_ACCEPTANCE_MATRIX_2026-08-27.md` 为准，实时状态以 `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_CHECKPOINT.md` 为准。用户已在本次Session用完整`/goal`启动实施；`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_GOAL_PROMPT_2026-08-27.md` 保留为本次授权来源的冻结副本，不替代实时Checkpoint。
 
-本轮只落地文档。禁止修改产品代码、测试、schema、package、锁文件或生产；禁止 commit、push、PR、tag、Release、SSH、真实 Provider、OSS 和付费生成。
+本轮已授权产品代码、测试、v0.6.55、本地commit、GitHub/CI/merge/tag/Release、可恢复生产发布和一次受控真实Provider验收；执行仍受Review GO、唯一safe full、备份/恢复/回滚门、USD 20总预算和unknown禁止第二次POST约束。
 
 当前生产仍为 `v0.6.54 / schema41`。2026-08-27 对生产画布 `67bfb2ee-f895-4308-9111-9de188306514` 的视频节点 `video-019c3604-bae5-4880-b7ac-8410231df6a0` 只提交了一次新付费 attempt：任务 `da761fff-6a65-46fd-84cf-4dc5bddbc985` 从 attempt 1 增至 attempt 2，请求越过 Provider boundary，但没有持久 `provider_task_id`，最终为 `OUTCOME_UNKNOWN_BILLING_RISK`；`result_asset_id` 和实际费用均无，预估费用为 USD 10。系统两次只读账本核对均没有唯一匹配，未再次提交。
 

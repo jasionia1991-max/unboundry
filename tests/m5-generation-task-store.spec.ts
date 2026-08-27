@@ -2088,6 +2088,26 @@ test("automatic recovery uses a durable CAS lease and binds one provider task wi
       code: "AUTOMATIC_RESULT_RECOVERY",
       message: "automatic recovery",
     })!;
+    const recoveryWindow = store.providerRecoveryWindow(task.id);
+    expect(recoveryWindow).toBeDefined();
+
+    const repeatedEvidence = {
+      failureStage: "poll",
+      fieldPaths: ["status:string"],
+      httpStatus: 200,
+    } as const;
+    store.recordProviderResponseEvidence(task.id, repeatedEvidence);
+    store.recordProviderResponseEvidence(task.id, repeatedEvidence);
+    for (let index = 0; index < 70; index += 1) {
+      store.recordProviderResponseEvidence(task.id, {
+        failureStage: `poll-${index}`,
+        fieldPaths: ["status:string"],
+        httpStatus: 200,
+      });
+    }
+    expect(store.listEvents(task.id).filter((event) =>
+      event.errorCode === "PROVIDER_RESPONSE_EVIDENCE"
+    )).toHaveLength(64);
 
     const claimed = store.claimRecovering(task.id, recovering.updatedAt);
     expect(claimed).toMatchObject({
@@ -2107,6 +2127,7 @@ test("automatic recovery uses a durable CAS lease and binds one provider task wi
       checkpoint.updatedAt,
       new Date(Date.parse(checkpoint.updatedAt) + 30_000),
     )).toMatchObject({ state: "recovering" });
+    expect(store.providerRecoveryWindow(task.id)).toEqual(recoveryWindow);
 
     store.setProviderTaskId(task.id, "provider-task-recovered-1");
     expect(store.getProviderAttemptForTask(task.id)).toMatchObject({
@@ -2142,6 +2163,7 @@ test("automatic recovery expires into the administrator incident queue", async (
     }).task;
     store.transition(task.id, "running");
     store.recordProviderAttempt(task.id);
+    store.setProviderTaskId(task.id, "operator-incident-provider-task");
     const recovering = store.transition(task.id, "recovering", {
       code: "AUTOMATIC_RESULT_RECOVERY",
       message: "automatic recovery",
@@ -2156,6 +2178,9 @@ test("automatic recovery expires into the administrator incident queue", async (
       state: "failed",
     });
     expect(store.listOperatorIncidents().map(({ id }) => id)).toContain(task.id);
+    expect(store.listFailedAutoRecoverable(
+      new Date(Date.parse(task.createdAt) + 27 * 60 * 60_000),
+    ).map(({ id }) => id)).not.toContain(task.id);
   } finally {
     store.close();
     await rm(dataDirectory, { force: true, recursive: true });
@@ -2545,7 +2570,7 @@ test("an initial admission committed before response failure returns 5xx and rem
     expect(submission.status()).toBe(500);
     await expect(submission.json()).resolves.toEqual({
       code: "GENERATION_TASK_ACCEPTED_RESPONSE_FAILED",
-      error: "生成任务已提交，响应暂不可用，请等待状态核对",
+      error: "生成任务已提交，响应暂不可用；系统会自动跟进",
     });
 
     const recovered = await request.get(

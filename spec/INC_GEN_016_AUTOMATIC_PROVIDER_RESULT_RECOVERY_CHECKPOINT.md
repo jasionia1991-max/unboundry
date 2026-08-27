@@ -1,8 +1,8 @@
 # INC-GEN-016 实时断点
 
-状态：`R1-R5_AUTO_PASS / CANDIDATE_FREEZE_PENDING / INCIDENT_OPEN / RELEASE_GATE_CLOSED`
+状态：`REVIEW_FINDINGS_REMEDIATED / INCREMENTAL_REVIEW_PENDING / INCIDENT_OPEN / RELEASE_GATE_CLOSED`
 
-更新时间：2026-08-27
+更新时间：2026-08-28
 
 ## 当前事实
 
@@ -33,6 +33,13 @@
 - 定向绿证据：m102+m5 `38/38`，m38 `16/16`，m53-server+m57+m68+m88 `70/70`，三类媒体节点+m68 `22/22`，全模型/connector矩阵 `82/82`；所有失败/重试/跳过均0。source/snapshot末次为`74c7db3d697f5d102301b759adb840387e19100e329e0341c309bbd037cbea64`，4173 listener始终不变。
 - 所有定向验证只使用本轮新临时目录、动态loopback、Fake Provider/OSS；真实Provider/OSS/生产写/费用仍为0。正式safe full尚未运行，必须等候选冻结后的独立Review最终GO。
 
+### 独立Review首轮与修复
+
+- 冻结候选commit `4fe7ad6a686663857faaf36ccf48269e036cd675`的唯一独立Review首轮为`P0=3/P1=4/NO-GO`；没有运行safe full、发布或生产写。
+- 已修复：同一Provider task恢复保持原execution attempt并可完成原账本；Ark/Mureka及所有unsafe no-ID attempt重启后保持recovering且零重提；远端错误正文不再进入任务/UI/日志；账本匹配使用不受CAS checkpoint改写的Provider attempt→首次recovery窗口；`OPERATOR_INCIDENT`不再被自动恢复；权威文档不再把当前Goal写成文档-only；relay/Ark/Mureka完整记录成功、HTTP失败、超限和畸形响应的脱敏结构证据，事件按任务去重并上限64条。
+- 受影响定向验证：首轮5 specs/75 tests中72通过，3项失败均为旧测试预期；按最小范围修正后m26+m5 `35/35 PASS`。其余同轮m102 `13/13`、m16 `11/11`、m38 `16/16`已通过。全部使用safe runner、Node22.23.1、新临时目录、动态loopback和Fake Provider，4173监听不变，真实Provider/OSS/生产写/费用0。
+- 当前候选尚未获得Review GO；下一步只能把本次修复交回同一Review线程增量复核。唯一safe full仍未运行。
+
 - 工作树：`/Users/mymy/Documents/unboundry-model-contract-002-2026-08-27`
 - 当前 Git：`main@384c27f`，开始落档前与 `origin/main` 一致且工作树干净。
 - 当前生产：`v0.6.54 / schema41 / service healthy / USER_RECHECK`。
@@ -50,15 +57,14 @@
 - 没有正式恢复能力的异步 connector 不得切换为可用新路径；旧路径在新路径验收成功前保持不动。
 - 真实结果没有自动回到生产项目，就不能发布或关闭事故。
 
-## 历史授权与当前账本
+## 历史授权记录（已被当前Goal取代）
 
 - 下列“只授权文档”是上一Session历史时点，已被本次新Goal的明确实施授权取代；不得反向把历史边界当成当前阻断。
-- 用户随后要求生成新Session一次性Goal并提前写明实施所需权限；Goal模板现已冻结v0.6.55、GitHub/生产、目标画布、真实费用USD 20上限和一次最终全量Review。只有用户在新Session完整发送该Goal时才生效，本Session仍不启动开发。
-- 已修改范围只能是 Markdown 权威文档；产品代码、测试、schema、package/lock 均不得修改。
-- 本轮 Provider/Generation/OSS/生产/GitHub/费用预算均为 0。
-- 历史一次真实生成授权已经消费，不能复用；下一次真实验收、版本号和发布均需未来明确授权。
+- 用户随后要求生成新Session一次性Goal并提前写明实施所需权限；Goal模板冻结了v0.6.55、GitHub/生产、目标画布、真实费用USD 20上限和一次最终全量Review。用户已在本次Session完整发送并激活该Goal。
+- “只能修改Markdown”“预算为0”“未来另行授权”均只描述上一Session，不是当前执行边界。
+- 当前仍未消费真实Provider/OSS/生产写或费用；GitHub/生产/真实验收只有在前置门通过后才可执行。
 
-## 文档落地验证
+## 历史文档落地验证
 
 - `git diff --check` 通过；变更范围只有 Markdown 权威文档，没有产品代码、测试、schema、package 或锁文件变化。
 - 受保护 `spec/public-templates-director-split-revision.json` 未读取、未修改、未暂存。
@@ -79,4 +85,4 @@
 
 ## 唯一下一步
 
-冻结候选并执行一次独立只读全量Review；只有P0=0/P1=0/GO后才运行唯一正式safe full。
+将七项修复交回同一独立Review线程增量复核；只有P0=0/P1=0/GO后才运行唯一正式safe full。

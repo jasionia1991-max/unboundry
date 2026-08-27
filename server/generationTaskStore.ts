@@ -2041,9 +2041,27 @@ export function createGenerationTaskStore(dataDirectory: string) {
         responseBytes: evidence.responseBytes,
         structureHash: evidence.structureHash?.slice(0, 64),
       };
+      const serialized = JSON.stringify(safe);
+      const summary = database.prepare(`
+        SELECT
+          COUNT(*) AS count,
+          (
+            SELECT error_message
+            FROM generation_task_events
+            WHERE task_id = ? AND error_code = 'PROVIDER_RESPONSE_EVIDENCE'
+            ORDER BY id DESC
+            LIMIT 1
+          ) AS latest
+        FROM generation_task_events
+        WHERE task_id = ? AND error_code = 'PROVIDER_RESPONSE_EVIDENCE'
+      `).get(taskId, taskId) as { count: number; latest: string | null };
+      // Polling can produce hundreds of structurally identical responses.
+      // Keep a finite, deduplicated diagnostic trail instead of allowing the
+      // evidence table to grow without bound.
+      if (Number(summary.count) >= 64 || summary.latest === serialized) return;
       recordEvent.run(
         taskId, task.state, "PROVIDER_RESPONSE_EVIDENCE",
-        JSON.stringify(safe), new Date().toISOString(),
+        serialized, new Date().toISOString(),
       );
     },
 
@@ -2074,9 +2092,9 @@ export function createGenerationTaskStore(dataDirectory: string) {
     },
 
     /**
-     * Failed tasks that still hold an accepted Provider task id and have not
-     * used their single automatic resume slot. The server-side recovery sweep
-     * uses this list so a result can be re-collected without any user action.
+     * Failed tasks that still hold an accepted Provider task id. The
+     * server-side recovery sweep re-collects the same paid execution attempt;
+     * the local attempt number is therefore not a retry budget.
      */
     listFailedAutoRecoverable(olderThan: Date) {
       return (
@@ -2086,8 +2104,8 @@ export function createGenerationTaskStore(dataDirectory: string) {
             FROM generation_tasks
             WHERE
               state = 'failed'
-              AND attempt < 2
               AND provider_task_id IS NOT NULL
+              AND error_code != 'OPERATOR_INCIDENT'
               AND updated_at <= ?
             ORDER BY updated_at ASC, rowid ASC
             LIMIT 200
@@ -2750,6 +2768,26 @@ export function createGenerationTaskStore(dataDirectory: string) {
       });
     },
 
+    providerRecoveryWindow(taskId: string) {
+      const task = readById.get(taskId) as GenerationTaskRow | undefined;
+      if (!task) return undefined;
+      const attemptCreatedAt = generationProviderAttemptCreatedAt(database, {
+        executionAttempt: task.attempt,
+        providerTaskId: task.provider_task_id ?? undefined,
+        taskId,
+      });
+      const recovery = database.prepare(`
+        SELECT created_at
+        FROM generation_task_events
+        WHERE task_id = ? AND state = 'recovering'
+        ORDER BY created_at ASC, id ASC
+        LIMIT 1
+      `).get(taskId) as { created_at: string } | undefined;
+      return attemptCreatedAt && recovery?.created_at
+        ? { createdAt: attemptCreatedAt, updatedAt: recovery.created_at }
+        : undefined;
+    },
+
     attachProviderTaskId,
 
     settleProviderAttempt,
@@ -3354,12 +3392,10 @@ export function failRecoveredGenerationTasks(
   return store.listRecovering().filter((task) => {
     if (task.providerTaskId || preservedTaskIds.has(task.id)) return false;
     const attempt = store.getProviderAttemptForTask(task.id);
-    const providerProtocol = task.modelConfiguration.providerProtocol;
     // A lost response after the paid boundary is durable recovery work, not a
     // restart failure. Keeping it in recovering is what preserves the strict
     // zero-new-POST contract across process restarts.
     if (
-      providerProtocol === "media-generate" &&
       attempt &&
       attempt.executionAttempt === task.attempt &&
       ["boundary-claimed", "outcome-unknown", "response-received"].includes(

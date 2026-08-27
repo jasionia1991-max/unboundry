@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { ProviderProfile } from "./providerProfiles";
 import {
   ProviderRequestDeadlineError,
@@ -70,11 +71,26 @@ export class VolcengineArkVideoError extends Error {
       | "REMOTE"
       | "TIMEOUT",
     message: string,
+    readonly providerTaskMayStillRun = false,
   ) {
     super(message);
     this.name = "VolcengineArkVideoError";
   }
 }
+
+export type ArkVideoResponseEvidence = Readonly<{
+  contentType?: string;
+  failureStage?: string;
+  fieldPaths: readonly string[];
+  httpStatus?: number;
+  providerRequestId?: string;
+  responseBytes?: number;
+  structureHash?: string;
+}>;
+
+type ArkVideoResponseEvidenceCallback = (
+  evidence: ArkVideoResponseEvidence,
+) => void;
 
 const providerTaskPattern = /^[a-z0-9._-]{3,160}$/i;
 
@@ -241,8 +257,15 @@ function mediaContent(input: ArkVideoMediaInput) {
 async function limitedJson(
   response: Response,
   deadline: ProviderRequestDeadline,
+  onProviderResponseEvidence?: ArkVideoResponseEvidenceCallback,
 ) {
+  const baseEvidence = arkResponseEvidenceBase(response);
   if (!response.body) {
+    onProviderResponseEvidence?.({
+      ...baseEvidence,
+      failureStage: "response-body",
+      responseBytes: 0,
+    });
     throw new VolcengineArkVideoError("FORMAT", "方舟没有返回可读数据");
   }
   const reader = deadline.wrapStream(response.body).getReader();
@@ -254,47 +277,78 @@ async function limitedJson(
     size += value.byteLength;
     if (size > 2 * 1_024 * 1_024) {
       void reader.cancel().catch(() => undefined);
+      onProviderResponseEvidence?.({
+        ...baseEvidence,
+        failureStage: "response-size",
+        responseBytes: size,
+      });
       throw new VolcengineArkVideoError("FORMAT", "方舟返回数据过大");
     }
     chunks.push(value);
   }
   try {
-    return JSON.parse(
+    const body = JSON.parse(
       Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString("utf8"),
     ) as Record<string, unknown>;
+    const fieldPaths = responseStructure(body);
+    onProviderResponseEvidence?.({
+      ...baseEvidence,
+      fieldPaths,
+      responseBytes: size,
+      structureHash: createHash("sha256")
+        .update(JSON.stringify(fieldPaths))
+        .digest("hex"),
+    });
+    return body;
   } catch {
+    onProviderResponseEvidence?.({
+      ...baseEvidence,
+      failureStage: "response-format",
+      responseBytes: size,
+    });
     throw new VolcengineArkVideoError("FORMAT", "方舟返回格式无法识别");
   }
 }
 
-async function providerErrorText(
-  response: Response,
-  deadline: ProviderRequestDeadline,
-) {
-  if (!response.body) return "";
-  const reader = deadline.wrapStream(response.body).getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    size += value.byteLength;
-    if (size > 4_096) {
-      void reader.cancel().catch(() => undefined);
-      break;
+function cleanResponseHeader(value: string | null) {
+  const normalized = value?.replace(/[^A-Za-z0-9._:/+;= -]/g, "").trim();
+  return normalized ? normalized.slice(0, 160) : undefined;
+}
+
+function arkResponseEvidenceBase(response: Response) {
+  return {
+    contentType: cleanResponseHeader(response.headers.get("content-type")),
+    fieldPaths: [] as readonly string[],
+    httpStatus: response.status,
+    providerRequestId: cleanResponseHeader(
+      response.headers.get("x-request-id") ??
+        response.headers.get("x-trace-id") ??
+        response.headers.get("request-id"),
+    ),
+  };
+}
+
+function responseStructure(value: unknown) {
+  const paths: string[] = [];
+  const visit = (item: unknown, path: string, depth: number) => {
+    if (paths.length >= 128 || depth > 6) return;
+    if (Array.isArray(item)) {
+      paths.push(`${path || "$"}[]`);
+      if (item.length) visit(item[0], `${path || "$"}[]`, depth + 1);
+      return;
     }
-    chunks.push(value);
-  }
-  try {
-    const bytes = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
-    const body = JSON.parse(bytes.toString("utf8")) as {
-      error?: { message?: unknown };
-    };
-    const message = body.error?.message;
-    return typeof message === "string" ? message.slice(0, 400) : "";
-  } catch {
-    return "";
-  }
+    if (item && typeof item === "object") {
+      for (const key of Object.keys(item).sort().slice(0, 64)) {
+        const next = path ? `${path}.${key}` : key;
+        paths.push(next);
+        visit((item as Record<string, unknown>)[key], next, depth + 1);
+      }
+      return;
+    }
+    paths.push(`${path || "$"}:${item === null ? "null" : typeof item}`);
+  };
+  visit(value, "", 0);
+  return [...new Set(paths)].sort();
 }
 
 async function requestJson(
@@ -305,6 +359,7 @@ async function requestJson(
   operation: ProviderRequestOperation,
   beforeProviderRequest?: () => void,
   deadlineOptions?: ProviderRequestDeadlineOverrides,
+  onProviderResponseEvidence?: ArkVideoResponseEvidenceCallback,
 ) {
   if (profile.driver !== "volcengine-ark") {
     throw new VolcengineArkVideoError("FORMAT", "当前平台不支持方舟视频生成");
@@ -330,36 +385,54 @@ async function requestJson(
         redirect: "error",
         signal: deadline.signal,
       }));
+      const baseEvidence = arkResponseEvidenceBase(response);
       if (response.status === 401 || response.status === 403) {
+        onProviderResponseEvidence?.({ ...baseEvidence, failureStage: "http-status" });
         if (response.body) void response.body.cancel().catch(() => undefined);
         throw new VolcengineArkVideoError("AUTH", "火山方舟授权失败");
       }
       if (response.status === 429) {
+        onProviderResponseEvidence?.({ ...baseEvidence, failureStage: "http-status" });
         if (response.body) void response.body.cancel().catch(() => undefined);
         throw new VolcengineArkVideoError("RATE_LIMIT", "火山方舟正在限流，请稍后再试");
       }
       if (!response.ok) {
-        const message = await providerErrorText(response, deadline);
-        throw new VolcengineArkVideoError(
-          "REMOTE",
-          message || "火山方舟暂时无法处理视频任务",
-        );
+        onProviderResponseEvidence?.({ ...baseEvidence, failureStage: "http-status" });
+        if (response.body) void response.body.cancel().catch(() => undefined);
+        throw new VolcengineArkVideoError("REMOTE", "火山方舟暂时无法处理视频任务");
       }
-      if (response.status === 204) return {};
-      return limitedJson(response, deadline);
+      if (response.status === 204) {
+        onProviderResponseEvidence?.({ ...baseEvidence, responseBytes: 0 });
+        return {};
+      }
+      return limitedJson(response, deadline, onProviderResponseEvidence);
     });
   } catch (error) {
-    if (error instanceof VolcengineArkVideoError) throw error;
+    if (error instanceof VolcengineArkVideoError) {
+      if (operation === "submit" && error.code === "FORMAT") {
+        throw new VolcengineArkVideoError(error.code, error.message, true);
+      }
+      throw error;
+    }
     if (error instanceof ProviderRequestDeadlineError) {
       throw new VolcengineArkVideoError(
         error.code,
         error.code === "TIMEOUT" ? "火山方舟请求超时" : "视频任务已取消",
+        operation === "submit",
       );
     }
     if (init.signal?.aborted) {
-      throw new VolcengineArkVideoError("CANCELLED", "视频任务已取消");
+      throw new VolcengineArkVideoError(
+        "CANCELLED",
+        "视频任务已取消",
+        operation === "submit",
+      );
     }
-    throw new VolcengineArkVideoError("NETWORK", "无法连接火山方舟");
+    throw new VolcengineArkVideoError(
+      "NETWORK",
+      "无法连接火山方舟",
+      operation === "submit",
+    );
   }
 }
 
@@ -379,6 +452,7 @@ export async function createVolcengineArkVideoTask(
   signal?: AbortSignal,
   beforeProviderRequest?: () => void,
   deadlineOptions?: ProviderRequestDeadlineOverrides,
+  onProviderResponseEvidence?: ArkVideoResponseEvidenceCallback,
 ) {
   const prompt = input.prompt.trim();
   const duration = input.duration ?? 5;
@@ -426,10 +500,15 @@ export async function createVolcengineArkVideoTask(
     "submit",
     beforeProviderRequest,
     deadlineOptions,
+    onProviderResponseEvidence,
   );
   const id = typeof body.id === "string" ? body.id : "";
   if (!providerTaskPattern.test(id)) {
-    throw new VolcengineArkVideoError("FORMAT", "方舟没有返回视频任务编号");
+    throw new VolcengineArkVideoError(
+      "FORMAT",
+      "方舟没有返回视频任务编号",
+      true,
+    );
   }
   return { id };
 }
@@ -440,6 +519,7 @@ export async function getVolcengineArkVideoTask(
   fetcher: typeof fetch = fetch,
   signal?: AbortSignal,
   deadlineOptions?: ProviderRequestDeadlineOverrides,
+  onProviderResponseEvidence?: ArkVideoResponseEvidenceCallback,
 ): Promise<ArkVideoStatus> {
   if (!providerTaskPattern.test(providerTaskId)) {
     throw new VolcengineArkVideoError("FORMAT", "方舟视频任务编号无效");
@@ -452,6 +532,7 @@ export async function getVolcengineArkVideoTask(
     "poll",
     undefined,
     deadlineOptions,
+    onProviderResponseEvidence,
   );
   const state = String(body.status ?? "") as ArkVideoStatus["state"];
   if (!["queued", "running", "cancelled", "succeeded", "failed"].includes(state)) {
@@ -487,6 +568,7 @@ export async function cancelVolcengineArkVideoTask(
   fetcher: typeof fetch = fetch,
   signal?: AbortSignal,
   deadlineOptions?: ProviderRequestDeadlineOverrides,
+  onProviderResponseEvidence?: ArkVideoResponseEvidenceCallback,
 ) {
   if (!providerTaskPattern.test(providerTaskId)) {
     throw new VolcengineArkVideoError("FORMAT", "方舟视频任务编号无效");
@@ -499,6 +581,7 @@ export async function cancelVolcengineArkVideoTask(
     "cancel",
     undefined,
     deadlineOptions,
+    onProviderResponseEvidence,
   );
 }
 

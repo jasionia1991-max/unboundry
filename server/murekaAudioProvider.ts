@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { ProviderProfile } from "./providerProfiles";
 import {
   ProviderRequestDeadlineError,
@@ -65,13 +66,28 @@ export class MurekaAudioError extends Error {
     public readonly code: MurekaAudioErrorCode,
     providerMessage?: string,
     public readonly retryAfterSeconds?: number,
+    public readonly providerTaskMayStillRun = false,
   ) {
-    // Provider text is sanitized and length-capped before it may reach the UI;
-    // the local default remains the fallback whenever no safe message exists.
+    // Only locally owned text is accepted here; raw Provider bodies are never
+    // propagated into task state, UI, or logs.
     super(providerMessage || murekaAudioErrorMessages[code]);
     this.name = "MurekaAudioError";
   }
 }
+
+export type MurekaAudioResponseEvidence = Readonly<{
+  contentType?: string;
+  failureStage?: string;
+  fieldPaths: readonly string[];
+  httpStatus?: number;
+  providerRequestId?: string;
+  responseBytes?: number;
+  structureHash?: string;
+}>;
+
+type MurekaAudioResponseEvidenceCallback = (
+  evidence: MurekaAudioResponseEvidence,
+) => void;
 
 function retryAfterSeconds(response: Response) {
   const raw = response.headers.get("retry-after")?.trim();
@@ -163,10 +179,61 @@ export function buildMurekaAudioRequest(input: {
   throw new Error("Mureka music mode is not supported");
 }
 
+function cleanResponseHeader(value: string | null) {
+  const normalized = value?.replace(/[^A-Za-z0-9._:/+;= -]/g, "").trim();
+  return normalized ? normalized.slice(0, 160) : undefined;
+}
+
+function responseHeader(response: Response, name: string) {
+  try {
+    return response.headers.get(name);
+  } catch {
+    return null;
+  }
+}
+
+function murekaResponseEvidenceBase(response: Response) {
+  return {
+    contentType: cleanResponseHeader(responseHeader(response, "content-type")),
+    fieldPaths: [] as readonly string[],
+    httpStatus: response.status,
+    providerRequestId: cleanResponseHeader(
+      responseHeader(response, "x-request-id") ??
+        responseHeader(response, "x-trace-id") ??
+        responseHeader(response, "request-id"),
+    ),
+  };
+}
+
+function responseStructure(value: unknown) {
+  const paths: string[] = [];
+  const visit = (item: unknown, path: string, depth: number) => {
+    if (paths.length >= 128 || depth > 6) return;
+    if (Array.isArray(item)) {
+      paths.push(`${path || "$"}[]`);
+      if (item.length) visit(item[0], `${path || "$"}[]`, depth + 1);
+      return;
+    }
+    if (item && typeof item === "object") {
+      for (const key of Object.keys(item).sort().slice(0, 64)) {
+        const next = path ? `${path}.${key}` : key;
+        paths.push(next);
+        visit((item as Record<string, unknown>)[key], next, depth + 1);
+      }
+      return;
+    }
+    paths.push(`${path || "$"}:${item === null ? "null" : typeof item}`);
+  };
+  visit(value, "", 0);
+  return [...new Set(paths)].sort();
+}
+
 async function limitedJson(
   response: Response,
   deadline: ProviderRequestDeadline,
+  onProviderResponseEvidence?: MurekaAudioResponseEvidenceCallback,
 ) {
+  const baseEvidence = murekaResponseEvidenceBase(response);
   let text = "";
   try {
     if (response.body) {
@@ -179,6 +246,11 @@ async function limitedJson(
         size += value.byteLength;
         if (size > 2 * 1024 * 1024) {
           void reader.cancel().catch(() => undefined);
+          onProviderResponseEvidence?.({
+            ...baseEvidence,
+            failureStage: "response-size",
+            responseBytes: size,
+          });
           throw new MurekaAudioError("FORMAT");
         }
         chunks.push(value);
@@ -198,6 +270,11 @@ async function limitedJson(
     throw new MurekaAudioError("NETWORK");
   }
   if (Buffer.byteLength(text, "utf8") > 2 * 1024 * 1024) {
+    onProviderResponseEvidence?.({
+      ...baseEvidence,
+      failureStage: "response-size",
+      responseBytes: Buffer.byteLength(text, "utf8"),
+    });
     throw new MurekaAudioError("FORMAT");
   }
   try {
@@ -205,8 +282,22 @@ async function limitedJson(
     if (!body || typeof body !== "object" || Array.isArray(body)) {
       throw new MurekaAudioError("FORMAT");
     }
+    const fieldPaths = responseStructure(body);
+    onProviderResponseEvidence?.({
+      ...baseEvidence,
+      fieldPaths,
+      responseBytes: Buffer.byteLength(text, "utf8"),
+      structureHash: createHash("sha256")
+        .update(JSON.stringify(fieldPaths))
+        .digest("hex"),
+    });
     return body as Record<string, unknown>;
   } catch {
+    onProviderResponseEvidence?.({
+      ...baseEvidence,
+      failureStage: "response-format",
+      responseBytes: Buffer.byteLength(text, "utf8"),
+    });
     throw new MurekaAudioError("FORMAT");
   }
 }
@@ -231,6 +322,7 @@ async function murekaRequest(
   operation: ProviderRequestOperation,
   beforeProviderRequest?: () => void,
   deadlineOptions?: ProviderRequestDeadlineOverrides,
+  onProviderResponseEvidence?: MurekaAudioResponseEvidenceCallback,
 ) {
   if (
     profile.driver !== "mureka" ||
@@ -258,7 +350,6 @@ async function murekaRequest(
         redirect: "error",
         signal: deadline.signal,
       }));
-      const body = await limitedJson(response, deadline);
       let ok: boolean;
       let status: number;
       try {
@@ -268,25 +359,16 @@ async function murekaRequest(
         throw new MurekaAudioError("REMOTE");
       }
       if (!ok) {
+        onProviderResponseEvidence?.({
+          ...murekaResponseEvidenceBase(response),
+          failureStage: "http-status",
+        });
+        if (response.body) void response.body.cancel().catch(() => undefined);
         const code = status === 401 || status === 403
           ? "AUTH"
           : status === 429
             ? "RATE_LIMIT"
             : "REMOTE";
-        const message = body && typeof body === "object" &&
-            !Array.isArray(body) &&
-            typeof (body as Record<string, unknown>).message === "string"
-          ? String((body as Record<string, unknown>).message)
-              .replace(/\s+/g, " ")
-              .trim()
-              .slice(0, 200)
-          : "";
-        // 远端文本可能回显请求密钥：AUTH 一律使用本地友好文案；
-        // 其余情况只要包含密钥就丢弃远端文本，防止密钥进入 UI/日志。
-        const safeMessage =
-          code === "AUTH" || containsProviderKey(message, profile.apiKey ?? "")
-            ? ""
-            : message;
         const retryAfter = code === "RATE_LIMIT"
           ? retryAfterSeconds(response)
           : undefined;
@@ -294,19 +376,46 @@ async function murekaRequest(
           code,
           code === "RATE_LIMIT" && retryAfter
             ? `Mureka 正在限流，可在约${retryAfter}秒后继续核对原任务；系统不会自动重新提交`
-            : safeMessage || undefined,
+            : undefined,
           retryAfter,
         );
       }
-      return body;
+      return limitedJson(response, deadline, onProviderResponseEvidence);
     });
   } catch (error) {
-    if (error instanceof MurekaAudioError) throw error;
-    if (error instanceof ProviderRequestDeadlineError) {
-      throw new MurekaAudioError(error.code);
+    if (error instanceof MurekaAudioError) {
+      if (operation === "submit" && error.code === "FORMAT") {
+        throw new MurekaAudioError(
+          error.code,
+          error.message,
+          error.retryAfterSeconds,
+          true,
+        );
+      }
+      throw error;
     }
-    if (init.signal?.aborted) throw new MurekaAudioError("CANCELLED");
-    throw new MurekaAudioError("NETWORK");
+    if (error instanceof ProviderRequestDeadlineError) {
+      throw new MurekaAudioError(
+        error.code,
+        undefined,
+        undefined,
+        operation === "submit",
+      );
+    }
+    if (init.signal?.aborted) {
+      throw new MurekaAudioError(
+        "CANCELLED",
+        undefined,
+        undefined,
+        operation === "submit",
+      );
+    }
+    throw new MurekaAudioError(
+      "NETWORK",
+      undefined,
+      undefined,
+      operation === "submit",
+    );
   }
 }
 
@@ -317,6 +426,7 @@ export async function createMurekaAudioTask(
   signal?: AbortSignal,
   beforeProviderRequest?: () => void,
   deadlineOptions?: ProviderRequestDeadlineOverrides,
+  onProviderResponseEvidence?: MurekaAudioResponseEvidenceCallback,
 ) {
   const request = buildMurekaAudioRequest(input);
   const body = await murekaRequest(
@@ -331,13 +441,14 @@ export async function createMurekaAudioTask(
     "submit",
     beforeProviderRequest,
     deadlineOptions,
+    onProviderResponseEvidence,
   );
   const id = typeof body.id === "string" ? body.id.trim() : "";
   if (
     !/^[a-z0-9._-]{1,160}$/i.test(id) ||
     containsProviderKey(id, profile.apiKey ?? "")
   ) {
-    throw new MurekaAudioError("FORMAT");
+    throw new MurekaAudioError("FORMAT", undefined, undefined, true);
   }
   return {
     id,
@@ -354,6 +465,7 @@ export async function getMurekaAudioTask(
   fetcher: typeof fetch = fetch,
   signal?: AbortSignal,
   deadlineOptions?: ProviderRequestDeadlineOverrides,
+  onProviderResponseEvidence?: MurekaAudioResponseEvidenceCallback,
 ): Promise<MurekaAudioTaskStatus> {
   if (!/^[a-z0-9._-]{1,160}$/i.test(taskId)) {
     throw new MurekaAudioError("FORMAT");
@@ -369,6 +481,7 @@ export async function getMurekaAudioTask(
     "poll",
     undefined,
     deadlineOptions,
+    onProviderResponseEvidence,
   );
   const status = typeof body.status === "string"
     ? body.status.toLowerCase()

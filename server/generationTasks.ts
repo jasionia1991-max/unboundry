@@ -750,7 +750,7 @@ export async function runGenerationRecoverySweep(options?: {
   // 避免前后端在同一窗口内重复抢同一个任务。
   const olderThan = new Date(Date.now() - 2 * 60_000);
   for (const task of store.listFailedAutoRecoverable(olderThan)) {
-    if (task.attempt >= 2 || task.state !== "failed") continue;
+    if (task.state !== "failed") continue;
     const retry = retrySafetyDecision(
       task,
       store.getProviderAttemptForTask(task.id),
@@ -758,23 +758,16 @@ export async function runGenerationRecoverySweep(options?: {
     );
     if (!retry.allowed || retry.mode !== "resume-provider-task") continue;
     if (resumeProviderTaskSnapshotProblem(task)) continue;
-    const binding = store
-      .retryBindingsForCanvas(task.canvasId, task.ownerId ?? undefined)
-      .get(task.id);
-    if (!binding) continue;
     try {
-      const queued = store.admitRetry({
-        canvasId: task.canvasId,
-        expectedAttempt: task.attempt,
-        expectedCanvasRevision: binding.canvasRevision,
-        expectedGenerationInputKey: binding.generationInputKey,
-        expectedUpdatedAt: task.updatedAt,
-        kind: task.kind,
-        mode: "resume-provider-task",
-        nodeId: task.nodeId,
-        taskId: task.id,
+      // Resuming an already accepted Provider task is the same paid attempt.
+      // failed -> recovering -> running deliberately preserves task.attempt;
+      // admitRetry/queued would increment it and break publication evidence.
+      const recovering = store.transition(task.id, "recovering", {
+        code: "AUTOMATIC_RESULT_RECOVERY",
+        message: "系统正在自动找回平台结果；不会重新提交付费请求",
       });
-      if (queued) launch(task.id, task.kind);
+      const running = recovering ? store.resume(recovering.id) : undefined;
+      if (running) launch(running.id, running.kind);
     } catch {
       // A concurrent terminal/fence transition wins; never force a paid retry.
     }
@@ -2219,33 +2212,33 @@ function safeFailure(error: unknown, kind: "text" | "audio" | "image" | "video")
     return { code: error.code, message: error.message };
   }
   if (error instanceof ProviderMediaError) {
-    return { code: error.code, message: error.message };
+    return { code: error.code, message: "平台媒体处理失败，请稍后查看任务状态" };
   }
   if (error instanceof OpenRouterImageError) {
-    return { code: error.code, message: error.message };
+    return { code: error.code, message: "图片平台请求未完成，请稍后查看任务状态" };
   }
   if (error instanceof VolcengineArkVideoError) {
-    return { code: error.code, message: error.message };
+    return { code: error.code, message: "火山方舟视频请求未完成，请稍后查看任务状态" };
   }
   if (error instanceof MurekaAudioError) {
     return {
       code: error.code,
       message: error.code === "RATE_LIMIT" && error.retryAfterSeconds
         ? `Mureka 正在限流，系统会在约${error.retryAfterSeconds}秒后继续跟进原任务；不会重新提交`
-        : error.message,
+        : "Mureka 音频请求未完成，请稍后查看任务状态",
     };
   }
   if (error instanceof TextGenerationProviderError) {
-    return { code: error.code, message: error.message };
+    return { code: error.code, message: "文本平台请求未完成，请稍后查看任务状态" };
   }
   if (error instanceof ArkFilesError) {
-    return { code: error.code, message: error.message };
+    return { code: error.code, message: "平台文件处理失败，请稍后查看任务状态" };
   }
   if (error instanceof RelayProviderError) {
-    return { code: error.code, message: error.message };
+    return { code: error.code, message: "生成平台请求未完成，请稍后查看任务状态" };
   }
   if (error instanceof ProviderResultMediaError) {
-    return { code: error.code, message: error.message };
+    return { code: error.code, message: "平台结果保存未完成，系统会继续安全处理" };
   }
   if (error instanceof ResourceBudgetError) {
     return {
@@ -2378,7 +2371,8 @@ function logGenerationDiagnostic(
       errorCode: failureCode ?? detectedCode ??
         (typeof rawCode === "string" ? rawCode : undefined) ?? null,
       causeCode: typeof rawCauseCode === "string" ? rawCauseCode : null,
-      message: error instanceof Error ? error.message : String(error),
+      // Never copy Provider bodies, prompts, or signed URLs into logs.
+      message: "Generation operation failed",
     }));
   } catch {
     // Diagnostics must never affect generation.
@@ -4388,10 +4382,11 @@ async function autoMatchRelayProviderTask(task: GenerationTask) {
     .filter((item) => item.state === "success")
     .map((item) => ({ createdAt: item.createdAt, updatedAt: item.updatedAt }));
   const records = await listRelayUsageRecords(profile);
+  const recoveryWindow = taskStore().providerRecoveryWindow(task.id);
   return matchRelayUsageRecord({
     competingLocals: context.competitors,
-    localCreatedAt: task.createdAt,
-    localUpdatedAt: task.updatedAt,
+    localCreatedAt: recoveryWindow?.createdAt ?? task.createdAt,
+    localUpdatedAt: recoveryWindow?.updatedAt ?? task.updatedAt,
     occupiedTaskIds: context.occupiedTaskIds,
     providerModelId: task.providerModelId,
     records,
@@ -5058,14 +5053,22 @@ async function executeVideoTask(
             }),
           );
           if (created.state !== "accepted") {
-            throw new VolcengineArkVideoError("FORMAT", "方舟没有返回视频任务编号");
+            throw new VolcengineArkVideoError(
+              "FORMAT",
+              "方舟没有返回视频任务编号",
+              true,
+            );
           }
           taskStore().setProviderTaskId(taskId, created.providerTaskId);
           return created;
         },
       });
       if (created.state !== "accepted") {
-        throw new VolcengineArkVideoError("FORMAT", "方舟没有返回视频任务编号");
+        throw new VolcengineArkVideoError(
+          "FORMAT",
+          "方舟没有返回视频任务编号",
+          true,
+        );
       }
       providerTaskId = created.providerTaskId;
     }
@@ -5148,6 +5151,17 @@ async function executeVideoTask(
     return;
   } catch (error) {
     if (taskStore().get(taskId)?.state === "cancelled") return;
+    if (
+      error instanceof VolcengineArkVideoError &&
+      error.providerTaskMayStillRun &&
+      taskStore().get(taskId)?.state === "running"
+    ) {
+      taskStore().transition(taskId, "recovering", {
+        code: "AUTOMATIC_RESULT_RECOVERY",
+        message: "系统正在安全核对方舟任务；不会重新提交付费请求",
+      });
+      return;
+    }
     const failure = safeFailure(error, "video");
     logGenerationDiagnostic(taskId, "video-execution", error, failure.code);
     try {
@@ -5251,13 +5265,15 @@ async function executeAudioTask(taskId: string) {
             }),
           );
           if (created.state !== "accepted") {
-            throw new MurekaAudioError("FORMAT");
+            throw new MurekaAudioError("FORMAT", undefined, undefined, true);
           }
           taskStore().setProviderTaskId(taskId, created.providerTaskId);
           return created;
         },
       });
-      if (created.state !== "accepted") throw new MurekaAudioError("FORMAT");
+      if (created.state !== "accepted") {
+        throw new MurekaAudioError("FORMAT", undefined, undefined, true);
+      }
       providerTaskId = created.providerTaskId;
     }
 
@@ -5339,6 +5355,17 @@ async function executeAudioTask(taskId: string) {
     throw new MurekaAudioError("TIMEOUT");
   } catch (error) {
     if (taskStore().get(taskId)?.state === "cancelled") return;
+    if (
+      error instanceof MurekaAudioError &&
+      error.providerTaskMayStillRun &&
+      taskStore().get(taskId)?.state === "running"
+    ) {
+      taskStore().transition(taskId, "recovering", {
+        code: "AUTOMATIC_RESULT_RECOVERY",
+        message: "系统正在安全核对 Mureka 任务；不会重新提交付费请求",
+      });
+      return;
+    }
     const failure = safeFailure(error, "audio");
     logGenerationDiagnostic(taskId, "audio-execution", error, failure.code);
     try {

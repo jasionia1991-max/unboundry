@@ -2326,6 +2326,16 @@ test("server recovery sweep auto-resumes a failed task that still holds a Provid
     const taskId = created.task.id;
     const running = store.transition(taskId, "running");
     expect(running).toMatchObject({ attempt: 1, state: "running" });
+    // A historical task may already be on attempt 2. Recovery of its accepted
+    // Provider task is not a third paid attempt and must preserve this number.
+    database.prepare(`
+      UPDATE generation_tasks SET attempt = 2 WHERE id = ?
+    `).run(taskId);
+    database.prepare(`
+      INSERT INTO generation_admission_events (
+        task_id, execution_attempt, owner_id, kind, admission_type, created_at
+      ) VALUES (?, 2, ?, 'image', 'new-paid-retry', ?)
+    `).run(taskId, ownerId, baseline);
     store.recordProviderAttempt(taskId);
     store.setProviderTaskId(taskId, "sweep-provider-task-123");
     store.transition(taskId, "failed", {
@@ -2356,13 +2366,25 @@ test("server recovery sweep auto-resumes a failed task that still holds a Provid
 
     const launched: string[] = [];
     await runGenerationRecoverySweep({
-      launch: (id) => launched.push(id),
+      launch: (id) => {
+        launched.push(id);
+        expect(store.get(id)).toMatchObject({ attempt: 2, state: "running" });
+        store.complete(id, {
+          actualCostMicrounits: 5_000_000,
+          resultAssetId: "sweep-recovered-asset-001",
+        });
+      },
       store,
     });
     const recovered = store.get(taskId);
-    expect(recovered?.state).toBe("queued");
-    expect(recovered?.attempt).toBe(1);
+    expect(recovered?.state).toBe("success");
+    expect(recovered?.attempt).toBe(2);
     expect(launched).toEqual([taskId]);
+    expect(store.getProviderAttemptForTask(taskId)).toMatchObject({
+      executionAttempt: 2,
+      outcome: "completed",
+      providerTaskId: "sweep-provider-task-123",
+    });
   } finally {
     database.close();
     await rm(dataDirectory, { force: true, recursive: true });

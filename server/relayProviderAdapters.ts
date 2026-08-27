@@ -527,46 +527,20 @@ function remoteError(status: number) {
   return new RelayProviderError("REMOTE", false, undefined, status);
 }
 
-async function providerErrorText(response: Response) {
-  if (!response.body) return "";
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    size += value.byteLength;
-    if (size > 4_096) {
-      await reader.cancel();
-      break;
-    }
-    chunks.push(value);
-  }
-  const text = Buffer.concat(
-    chunks.map((chunk) => Buffer.from(chunk)),
-  ).toString("utf8");
-  try {
-    const body = JSON.parse(text) as {
-      error?: { message?: unknown };
-      message?: unknown;
-    };
-    const message = typeof body.error?.message === "string"
-      ? body.error.message
-      : typeof body.message === "string"
-        ? body.message
-        : "";
-    return message.replace(/\s+/g, " ").trim().slice(0, 400);
-  } catch {
-    return text.replace(/\s+/g, " ").trim().slice(0, 400);
-  }
-}
-
-async function readLimitedJson(response: Response, maximumBytes: number) {
+async function readLimitedJson(
+  response: Response,
+  maximumBytes: number,
+  onFailure?: (responseBytes: number | undefined, stage: string) => void,
+) {
   const declared = Number(response.headers.get("Content-Length"));
   if (Number.isFinite(declared) && declared > maximumBytes) {
+    onFailure?.(declared, "response-size");
     throw new RelayProviderError("FORMAT");
   }
-  if (!response.body) throw new RelayProviderError("FORMAT");
+  if (!response.body) {
+    onFailure?.(0, "response-body");
+    throw new RelayProviderError("FORMAT");
+  }
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
@@ -576,6 +550,7 @@ async function readLimitedJson(response: Response, maximumBytes: number) {
     size += value.byteLength;
     if (size > maximumBytes) {
       await reader.cancel();
+      onFailure?.(size, "response-size");
       throw new RelayProviderError("FORMAT");
     }
     chunks.push(value);
@@ -587,6 +562,7 @@ async function readLimitedJson(response: Response, maximumBytes: number) {
       responseBytes: bytes.byteLength,
     };
   } catch {
+    onFailure?.(size, "response-format");
     throw new RelayProviderError("FORMAT");
   }
 }
@@ -696,18 +672,32 @@ async function relayJsonRequest(input: {
         failureStage: "http-status",
         responseBytes: Number(response.headers.get("content-length")) || undefined,
       });
-      const providerText = await providerErrorText(response);
-      const error = remoteError(response.status);
-      throw providerText
-        ? new RelayProviderError(
-            error.code,
-            error.providerTaskMayStillRun,
-            providerText,
-            error.statusCode,
-          )
-        : error;
+      if (response.body) await response.body.cancel().catch(() => undefined);
+      throw remoteError(response.status);
     }
-    const parsed = await readLimitedJson(response, input.maximumResponseBytes);
+    let parsed: Awaited<ReturnType<typeof readLimitedJson>>;
+    try {
+      parsed = await readLimitedJson(
+        response,
+        input.maximumResponseBytes,
+        (responseBytes, failureStage) =>
+          input.execution.onProviderResponseEvidence?.({
+            ...baseEvidence,
+            failureStage,
+            responseBytes,
+          }),
+      );
+    } catch (error) {
+      if (error instanceof RelayProviderError) {
+        throw new RelayProviderError(
+          error.code,
+          Boolean(input.providerTaskMayStillRun),
+          undefined,
+          response.status,
+        );
+      }
+      throw error;
+    }
     const fieldPaths = responseStructure(parsed.body);
     input.execution.onProviderResponseEvidence?.({
       ...baseEvidence,
