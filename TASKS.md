@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻当前任务
 
-## INC-GEN-016 Provider结果自动回收与全模型不回归（REVIEW GO / FORMAL FULL EXECUTED / GITHUB GATE ACTIVE）
+## INC-GEN-016 Provider结果自动回收与全模型不回归（PRODUCTION v0.6.55 TECHNICAL PASS / REAL PROVIDER REFUNDED / USER_RECHECK）
 
 - [x] 记录真实生产事件：目标GK首帧任务唯一新付费attempt越过Provider boundary但无task ID/result asset，最终`OUTCOME_UNKNOWN_BILLING_RISK`；未重提。
 - [x] 完成最终审计：确认响应合同、持久任务号、后台恢复、结果资产/Canvas投影和用户流程必须一起修复。
@@ -11,10 +11,10 @@
 - [x] R0只读冻结最新Git/生产/package/schema/全模型基线并补预期红：2 specs/36 tests中34通过、2项精准预期失败；真实Provider/OSS/生产写/费用0，4173不变。
 - [x] R1～R5实现有限响应合同、脱敏响应证据、持久恢复Worker/CAS/退避/管理员事故队列、结果资产/投影解耦、普通用户UI收口和全模型回归；定向绿228项，真实费用0。
 - [x] R6同一独立Review线程第三轮对冻结commit `5860c51`给出`P0=0/P1=0/GO`；唯一正式safe full执行一次为`1089/1090 PASS`，唯一旧文案断言按最小集修正后m22 `41/41 PASS`，未运行第二次full。
-- [ ] R7按本次Goal已授权预算执行一次真实GK首帧验收；结果必须自动回到项目，禁止自动重提。
-- [ ] R8按本次Goal已授权边界完成v0.6.55 GitHub/生产发布；用户明确确认前保持`USER_RECHECK`。
+- [x] R7已消费授权执行真实GK首帧验收：attempt2获无扣费证据后只替代提交一次；attempt3被Provider全额退款且无结果，项目内退款提示通过，但真实结果验收失败，禁止再POST。
+- [x] R8已完成v0.6.55 PR/main CI、不可移动tag/Release、冻结备份/恢复演练、原子发布、回滚和稳定门；生产技术通过，真实Provider为`REFUNDED_NO_RESULT`，保持`USER_RECHECK`。
 
-本次新Goal已明确授权实现、v0.6.55、GitHub/生产和受控真实GK验收；独立Review三轮最终为`P0=0/P1=0/GO`。最终受影响定向`102/102 PASS`；唯一正式full为`1089/1090 PASS`，唯一失败是已审新文案对应的陈旧测试断言，修正后m22最小复验`41/41 PASS`，未运行第二次full。当前进入GitHub/CI门；真实Provider/OSS/生产写/费用仍为0。权威方案：`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_PLAN_2026-08-27.md`；矩阵：`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_ACCEPTANCE_MATRIX_2026-08-27.md`；断点：`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_CHECKPOINT.md`。
+本次Goal的代码、Review、唯一full、GitHub与v0.6.55生产技术发布均已完成；生产schema41、服务健康、未知付费task为0。受控真实GK门只产生一次替代提交，Provider明确全额退款且没有结果资产，实际费用为0；因此停在`PRODUCTION_TECHNICAL_PASS / REAL_PROVIDER_REFUNDED / NO_RESULT / USER_RECHECK`，不得再次POST或升级为`REAL_PROVIDER_PASS/USER_PASS`。权威方案：`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_PLAN_2026-08-27.md`；矩阵：`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_ACCEPTANCE_MATRIX_2026-08-27.md`；断点：`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_CHECKPOINT.md`；生产回执：`spec/V0_6_55_PRODUCTION_RECEIPT_2026-08-28.json`。
 
 ## MODEL-CONTRACT-002 历史 revision 与当前发布政策解耦（PRODUCTION v0.6.54 TECHNICAL PASS / USER_RECHECK）
 

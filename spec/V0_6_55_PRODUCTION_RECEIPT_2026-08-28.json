@@ -1,0 +1,227 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "INC-GEN-016-V0.6.55-PRODUCTION-2026-08-28",
+  "recordedAt": "2026-08-28T02:21:00+08:00",
+  "status": "PRODUCTION_V0_6_55_TECHNICAL_PASS_REAL_PROVIDER_REFUNDED_NO_RESULT",
+  "acceptance": {
+    "automaticEngineering": "PASS_WITH_TARGETED_VERIFICATION_AND_PRIOR_SINGLE_FULL",
+    "independentReview": "P0_0_P1_0_GO",
+    "productionTechnical": "PASS",
+    "realProvider": "REFUNDED_NO_RESULT",
+    "refundUx": "PASS",
+    "realResultReturnedToCanvas": false,
+    "userQuality": "USER_RECHECK",
+    "userPass": false
+  },
+  "scope": {
+    "goal": "INC-GEN-016",
+    "releasePurpose": "Persist and automatically recover accepted asynchronous provider tasks, preserve paid-attempt identity, publish provider results before Canvas projection, and remove ordinary-user manual reconciliation.",
+    "schemaMigration": false,
+    "realProviderGenerationAttempted": true,
+    "targetCanvasId": "67bfb2ee-f895-4308-9111-9de188306514",
+    "targetNodeId": "video-019c3604-bae5-4880-b7ac-8410231df6a0",
+    "targetTaskId": "da761fff-6a65-46fd-84cf-4dc5bddbc985",
+    "ossResultWrite": false,
+    "unrelatedCanvasWrite": false
+  },
+  "source": {
+    "repository": "https://github.com/jasionia1991-max/unboundry",
+    "baselineCommit": "384c27f152b",
+    "frozenImplementationCommit": "5860c51be9602a0292ba343f80d63b2104d6c98f",
+    "releaseCandidateCommit": "8ffcdeb4be9b48acc3e9e5c58b054238eafbc420",
+    "candidateTree": "5be35b37ada49576e43c80fefb01b102cbe4e086",
+    "pullRequest": 122,
+    "pullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/122",
+    "mergeCommit": "7bdc40f67697e1e3be735db947d3b26ba5b6c0bd",
+    "mergeTree": "5be35b37ada49576e43c80fefb01b102cbe4e086",
+    "prQualityRun": 33100464212,
+    "prQualityJob": 98616476673,
+    "prQualityResult": "PASS",
+    "mainQualityRun": 33100549022,
+    "mainQualityJob": 98616774437,
+    "mainQualityResult": "PASS",
+    "tag": "v0.6.55",
+    "annotatedTagObject": "77b705f6fa20a0f8d4ac2285fc8122933514122c",
+    "tagPeeledCommit": "7bdc40f67697e1e3be735db947d3b26ba5b6c0bd",
+    "tagTree": "5be35b37ada49576e43c80fefb01b102cbe4e086",
+    "releaseUrl": "https://github.com/jasionia1991-max/unboundry/releases/tag/v0.6.55",
+    "releasePublishedAt": "2026-08-27T17:52:48Z",
+    "releaseDraft": false,
+    "releasePrerelease": false
+  },
+  "verification": {
+    "finalIndependentReview": {
+      "candidateCommit": "5860c51be9602a0292ba343f80d63b2104d6c98f",
+      "p0": 0,
+      "p1": 0,
+      "decision": "GO"
+    },
+    "formalFullSuite": {
+      "executedOnce": true,
+      "discoveredSpecs": 122,
+      "discoveredTests": 1090,
+      "passed": 1089,
+      "failed": 1,
+      "onlyFailure": "m22 stale copy assertion after the reviewed product wording changed",
+      "secondFullSuiteExecuted": false
+    },
+    "failedSubsetClosure": {
+      "spec": "m22-generation-state-integrity",
+      "tests": 41,
+      "passed": 41,
+      "failed": 0
+    },
+    "governanceBeforeRelease": {
+      "spec": "m38-generation-runtime-incidents",
+      "tests": 16,
+      "passed": 16,
+      "failed": 0
+    },
+    "productionReceiptDocumentation": {
+      "spec": "m38-generation-runtime-incidents",
+      "tests": 16,
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "sourceAndSnapshotSha256": "28e85a90c6735578f10e024a0338a5952607550352f2d923649a072671aa663d",
+      "port4173Unchanged": true
+    },
+    "businessOrFullSuiteRepeatedAfterDocumentation": false
+  },
+  "artifact": {
+    "tagArchiveSha256": "4017968c1c50196c55eb1de036aa76579eaefb93e4120976f6754ccbd1255745",
+    "tagArchiveBytes": 29984662,
+    "releasePath": "/opt/unboundry/releases/v0.6.55-inc-gen-016-20260828",
+    "releaseFileCountExcludingInventory": 6021,
+    "distFileCount": 33,
+    "inventorySha256": "0912e077fa48762baef7f4ee78b68e3e5cac6d25e75d36820a1bdeaf94713103",
+    "builder": {
+      "node": "22.23.2",
+      "npm": "10.9.8",
+      "freshBuild": "PASS"
+    }
+  },
+  "rehearsal": {
+    "restoreCopy": "PASS",
+    "cloneStability": "PASS",
+    "standbyReadiness": "PASS",
+    "paidProviderRequests": 0
+  },
+  "backupAndCutover": {
+    "cutoverBackupPath": "/var/lib/unboundry-rollbacks/v0.6.55-cutover-frozen.wcaUii",
+    "sourceManifestSha256": "72d57c9fdd079d9b6441b1b49b3d56004bf20a4ad156c1ce97fd137dc341afcc",
+    "databaseSchema": 41,
+    "databaseIntegrity": "ok",
+    "foreignKeyViolations": 0,
+    "atomicReleaseSwitch": "PASS",
+    "rollback": "PASS_WITH_SYSTEMD_START_LIMIT_RESET",
+    "rollbackOperationalNote": "The rollback test hit systemd StartLimitBurst. reset-failed restored v0.6.54 healthy before the final forward v0.6.55 switch. No application or data failure occurred."
+  },
+  "production": {
+    "hostAlias": "live-cockpit",
+    "currentRelease": "/opt/unboundry/releases/v0.6.55-inc-gen-016-20260828",
+    "versionEndpoint": "0.6.55",
+    "service": "unboundry",
+    "serviceState": "active",
+    "serviceEnabled": true,
+    "serviceRestarts": 0,
+    "finalActiveEnterTimestamp": "2026-08-28T02:17:43+08:00",
+    "runtimeNode": "22.23.2",
+    "runtimeNpm": "10.9.8",
+    "schema": 41,
+    "databaseIntegrity": "ok",
+    "foreignKeyViolations": 0,
+    "publicRootStatus": 200,
+    "loopbackLive": "active",
+    "loopbackReady": "active",
+    "journalErrorsAfterFinalStart": 0,
+    "rolloutMode": "allowlist",
+    "rolloutScope": "target account and target Canvas only",
+    "beforeCounts": {
+      "tasks": 954,
+      "attempts": 963,
+      "active": 0,
+      "unknownBillingTasks": 1,
+      "media": 910,
+      "publications": 501,
+      "canvases": 72,
+      "models": 20,
+      "publishedModels": 10,
+      "templates": 50,
+      "publishedTemplates": 48
+    },
+    "afterCounts": {
+      "tasks": 954,
+      "attempts": 964,
+      "active": 0,
+      "unknownBillingTasks": 0,
+      "media": 910,
+      "publications": 501,
+      "canvases": 72
+    },
+    "stabilityGate": {
+      "start": "2026-08-28T02:19:48+08:00",
+      "end": "2026-08-28T02:20:54+08:00",
+      "stableSeconds": 66,
+      "countsUnchanged": true,
+      "serviceStable": true
+    }
+  },
+  "realProviderAcceptance": {
+    "providerFamily": "gk-video-3",
+    "authorizedEstimatedBudgetUsd": 20,
+    "perSubmissionEstimatedLimitUsd": 10,
+    "actualChargedUsd": 0,
+    "attempt2": {
+      "previousOutcome": "OUTCOME_UNKNOWN_BILLING_RISK",
+      "authoritativeLedgerEvidence": "No matching target entry in the complete provider daily consumption ledger or works list",
+      "finalOutcome": "definitive-rejected",
+      "failureCode": "PROVIDER_NOT_ACCEPTED_NO_CHARGE",
+      "actualCostMicrounits": 0,
+      "providerTaskId": null,
+      "resultAssetId": null,
+      "backupPath": "/var/lib/unboundry-rollbacks/v0.6.55-inc-gen-016-nocharge.T0evyW",
+      "backupDatabaseSha256": "99eed262d0e624855794e561b54f296f496d8b6e6b8472bfc93ebcdc458af1ff"
+    },
+    "attempt3": {
+      "isOnlyAuthorizedReplacement": true,
+      "admittedAt": "2026-08-27T18:14:26.952Z",
+      "providerHttpStatus": 200,
+      "responseBytes": 192,
+      "responseShape": "data.task_ids[]:number, data.任务ids[]:number, data.对话组ID:string",
+      "parsedProviderTaskId": null,
+      "providerLedgerStatus": "refunded",
+      "providerLedgerAmount": 0.924,
+      "providerDailySuccessCount": 0,
+      "providerDailyRefundCount": 1,
+      "resultWorkExists": false,
+      "finalOutcome": "provider-failed",
+      "failureCode": "PROVIDER_REFUNDED",
+      "actualCostMicrounits": 0,
+      "resultAssetId": null,
+      "backupPath": "/var/lib/unboundry-rollbacks/v0.6.55-inc-gen-016-refund.lL33YP",
+      "backupDatabaseSha256": "5f64577b630a3ddfe717c38bdf15351d603109805eb20768f4d05abf7ba27a21"
+    },
+    "browserFinalMessage": "平台未完成本次生成，费用已全额退回；未再次提交",
+    "additionalProviderPostsAllowed": false,
+    "additionalProviderPostsMade": false,
+    "result": "REFUNDED_NO_RESULT"
+  },
+  "acceptanceMatrixOutcome": {
+    "APR-020": "REAL_PROVIDER_REFUND_UI_PASS",
+    "APR-021": "REAL_PROVIDER_FAILED_REFUNDED_NO_RESULT",
+    "APR-022": "NOT_RUN_NO_RESULT",
+    "APR-023": "REAL_PROVIDER_TERMINAL_REFUND_EVIDENCE_NO_SUCCESS",
+    "APR-026": "AUTHORIZATION_CONSUMED_CLOSED",
+    "APR-027": "USER_RECHECK"
+  },
+  "stoppingCondition": {
+    "met": true,
+    "reason": "The provider refunded the only authorized replacement submission and produced no recoverable result. The authorization permits no further Provider POST.",
+    "goalCompletionAchieved": false,
+    "realProviderPass": false,
+    "userPass": false
+  },
+  "nextAction": "Do not click retry. Continuing real-provider acceptance requires a new explicit user authorization and budget after numeric task ID parsing is repaired."
+}
