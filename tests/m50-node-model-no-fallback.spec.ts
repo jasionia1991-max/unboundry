@@ -17,28 +17,36 @@ import {
 
 const activeModels = {
   audio: {
+    configurationRevision: "a05000000000000000000001",
     displayName: "新音频模型",
     id: "active-audio-model",
     providerDriver: "mureka",
     providerModelId: "mureka-9",
+    releaseRevisionId: "a0500000-0000-4000-8000-000000000001",
   },
   image: {
+    configurationRevision: "a05000000000000000000002",
     displayName: "新图片模型",
     id: "active-image-model",
     providerDriver: "openrouter",
     providerModelId: "openai/gpt-image-2",
+    releaseRevisionId: "a0500000-0000-4000-8000-000000000002",
   },
   text: {
+    configurationRevision: "a05000000000000000000003",
     displayName: "新文字模型",
     id: "active-text-model",
     providerDriver: "volcengine-ark",
     providerModelId: "doubao-seed-2-0-lite-260428",
+    releaseRevisionId: "a0500000-0000-4000-8000-000000000003",
   },
   video: {
+    configurationRevision: "a05000000000000000000004",
     displayName: "新视频模型",
     id: "active-video-model",
     providerDriver: "volcengine-ark",
     providerModelId: "doubao-seedance-2-0-mini-260615",
+    releaseRevisionId: "a0500000-0000-4000-8000-000000000004",
   },
 } as const;
 
@@ -98,6 +106,7 @@ test("saved ids are exact references and only an empty id may inherit the defaul
     id: activeModels.image.id,
     isDefault: true,
     parameterSchema: schemas.image,
+    releaseRevisionId: activeModels.image.releaseRevisionId,
   };
 
   expect(resolvePublishedModel([model])).toBe(model);
@@ -154,6 +163,7 @@ test("saved ids are exact references and only an empty id may inherit the defaul
       providerDriver: activeModels.video.providerDriver,
       providerModelId: activeModels.video.providerModelId,
     }),
+    releaseRevisionId: activeModels.video.releaseRevisionId,
   };
   const savedVideoNode = {
     data: {
@@ -218,6 +228,7 @@ test("all four nodes preserve unavailable saved models until an explicit compati
           (typeof activeModels)[ModelCapability],
         ]>).map(([capability, model]) => ({
           capability,
+          configurationRevision: model.configurationRevision,
           displayName: model.displayName,
           generationAvailable: true,
           generationUnavailableReason: "",
@@ -232,6 +243,7 @@ test("all four nodes preserve unavailable saved models until an explicit compati
             : undefined,
           isDefault: true,
           parameterSchema: schemas[capability],
+          releaseRevisionId: model.releaseRevisionId,
         })),
       },
       status: 200,

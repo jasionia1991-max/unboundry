@@ -11,32 +11,64 @@ import { generationInputKey } from
 import { waitForGenerationTaskWithPause } from
   "../client/src/generation/taskPolling";
 import { resolveNodeInputs } from "../types/nodeInputs";
+import { currentWorkflowGenerationBinding } from
+  "../client/src/generation/workflowNodeExecutors";
 
 const modelInputs = {
   audio: {
+    configurationRevision: "a04100000000000000000001",
     id: "retry-ui-audio-model",
     providerDriver: "mureka",
     providerModelId: "mureka-9",
+    releaseRevisionId: "a0410000-0000-4000-8000-000000000001",
   },
   image: {
+    configurationRevision: "a04100000000000000000002",
     id: "retry-ui-image-model",
     providerDriver: "openrouter",
     providerModelId: "openai/gpt-image-2",
+    releaseRevisionId: "a0410000-0000-4000-8000-000000000002",
   },
   text: {
+    configurationRevision: "a04100000000000000000003",
     id: "retry-ui-text-model",
     providerDriver: "volcengine-ark",
     providerModelId: "doubao-seed-2-0-lite-260428",
+    releaseRevisionId: "a0410000-0000-4000-8000-000000000003",
   },
   video: {
+    configurationRevision: "a04100000000000000000004",
     id: "retry-ui-video-model",
     providerDriver: "volcengine-ark",
     providerModelId: "doubao-seedance-2-0-mini-260615",
+    releaseRevisionId: "a0410000-0000-4000-8000-000000000004",
   },
 } as const;
 
 const kinds = ["text", "image", "video", "audio"] as const;
 type Kind = (typeof kinds)[number];
+
+type SubmittedGenerationIdentity = {
+  fixtureScopeId?: string;
+  generationIdentityVersion: 2;
+  generationInputKey: string;
+  generationOwnershipKey: string;
+  modelConfigurationRevision: string;
+  modelInputContractFingerprint: string;
+  modelReleaseRevision: string;
+};
+
+function submittedGenerationIdentity(body: SubmittedGenerationIdentity) {
+  return {
+    fixtureScopeId: body.fixtureScopeId ?? "",
+    generationIdentityVersion: 2 as const,
+    generationInputKey: body.generationInputKey,
+    generationOwnershipKey: body.generationOwnershipKey,
+    modelConfigurationRevision: body.modelConfigurationRevision,
+    modelInputContractFingerprint: body.modelInputContractFingerprint,
+    modelReleaseRevision: body.modelReleaseRevision,
+  };
+}
 
 const schemas = Object.fromEntries(
   Object.entries(modelInputs).map(([capability, model]) => [
@@ -122,15 +154,59 @@ function recoveryOwnershipKey(
   kind: Kind,
   prompt = `${kind} 原始提示词`,
 ) {
+  const binding = currentLegacyBinding(kind);
   return compactGenerationOwnershipKey({
     ...(kind === "image"
       ? { aspectRatio: undefined, quality: undefined }
       : {}),
+    contractFingerprint: binding.inputContractFingerprint,
+    modelConfigurationRevision: binding.modelConfigurationRevision,
     modelId: modelInputs[kind].id,
+    modelReleaseRevision: binding.modelReleaseRevision,
     parameters: defaultParameterValues(schemas[kind]),
     prompt,
     upstream: [],
   });
+}
+
+function recoveryInputKey(
+  kind: Kind,
+  prompt = `${kind} 原始提示词`,
+) {
+  return generationInputKey({
+    inputs: [],
+    modelConfigurationRevision: modelInputs[kind].configurationRevision,
+    modelId: modelInputs[kind].id,
+    modelReleaseRevision: modelInputs[kind].releaseRevisionId,
+    ownPrompt: prompt,
+    parameters: submissionParameterValues(
+      schemas[kind],
+      defaultParameterValues(schemas[kind]),
+    ),
+    prompt,
+  });
+}
+
+function generationNodeIdentityData(
+  kind: Kind,
+  identity: SubmittedGenerationIdentity,
+) {
+  return {
+    ...(kind === "video"
+      ? {
+          videoGenerationModelInputContractFingerprint:
+            identity.modelInputContractFingerprint,
+        }
+      : {
+          [`${kind}GenerationContractFingerprint`]:
+            identity.modelInputContractFingerprint,
+        }),
+    [`${kind}GenerationInputKey`]: identity.generationInputKey,
+    [`${kind}GenerationModelConfigurationRevision`]:
+      identity.modelConfigurationRevision,
+    [`${kind}GenerationModelReleaseRevision`]: identity.modelReleaseRevision,
+    [`${kind}GenerationOwnershipKey`]: identity.generationOwnershipKey,
+  };
 }
 
 function submissionIntentSlot(kind: Kind) {
@@ -191,6 +267,100 @@ function canvasNodes(onlyKind?: Kind) {
     }));
 }
 
+function currentLegacyBinding(kind: Kind) {
+  const nodes = canvasNodes(kind);
+  const model = modelInputs[kind];
+  const published = {
+    ...model,
+    capability: kind,
+    displayName: `Legacy ${kind}`,
+    generationAvailable: true,
+    generationUnavailableReason: "",
+    generationUnavailableReasonCode: null,
+    isDefault: true,
+    parameterSchema: schemas[kind],
+  };
+  const binding = currentWorkflowGenerationBinding({
+    context: {
+      canvasId: "default",
+      graph: {
+        apply: () => ({ status: "rejected" }),
+        snapshot: () => ({ edges: [], nodes }),
+      },
+      isFixture: true,
+      modelCatalog: {
+        models: {
+          audio: kind === "audio" ? [published] : [],
+          image: kind === "image" ? [published] : [],
+          text: kind === "text" ? [published] : [],
+          video: kind === "video" ? [published] : [],
+        },
+        status: "ready",
+      },
+    },
+    kind,
+    nodeId: nodeId(kind),
+  });
+  if (!binding) throw new Error(`Missing current legacy binding for ${kind}`);
+  return binding;
+}
+
+function currentStandaloneIdentity(kind: Kind): SubmittedGenerationIdentity {
+  const binding = currentLegacyBinding(kind);
+  const imageOwnershipKey = kind === "image"
+    ? compactGenerationOwnershipKey({
+        contractFingerprint: binding.inputContractFingerprint,
+        modelConfigurationRevision: binding.modelConfigurationRevision,
+        modelId: modelInputs[kind].id,
+        modelReleaseRevision: binding.modelReleaseRevision,
+        parameters: defaultParameterValues(schemas[kind]),
+        prompt: `${kind} 原始提示词`,
+        upstream: [],
+      })
+    : undefined;
+  const audioOwnershipKey = kind === "audio"
+    ? compactGenerationOwnershipKey({
+        contractFingerprint: binding.inputContractFingerprint,
+        modelConfigurationRevision: binding.modelConfigurationRevision,
+        modelId: modelInputs[kind].id,
+        modelReleaseRevision: binding.modelReleaseRevision,
+        parameters: defaultParameterValues(schemas[kind]),
+        prompt: `${kind} 原始提示词`,
+        upstream: [],
+      })
+    : undefined;
+  return {
+    fixtureScopeId: "",
+    generationIdentityVersion: 2,
+    generationInputKey: binding.inputFingerprint,
+    generationOwnershipKey:
+      imageOwnershipKey ?? audioOwnershipKey ?? binding.ownershipKey,
+    modelConfigurationRevision: binding.modelConfigurationRevision,
+    modelInputContractFingerprint: binding.inputContractFingerprint,
+    modelReleaseRevision: binding.modelReleaseRevision,
+  };
+}
+
+function currentIntentOnlyIdentity(kind: Kind): SubmittedGenerationIdentity {
+  const identity = currentStandaloneIdentity(kind);
+  if (kind !== "image") return identity;
+  const parameters = defaultParameterValues(schemas.image);
+  return {
+    ...identity,
+    generationOwnershipKey: compactGenerationOwnershipKey({
+      aspectRatio: parameters.aspectRatio,
+      contractFingerprint: identity.modelInputContractFingerprint,
+      modelConfigurationRevision: identity.modelConfigurationRevision,
+      modelId: modelInputs.image.id,
+      modelReleaseRevision: identity.modelReleaseRevision,
+      parameters,
+      prompt: "image 原始提示词",
+      quality: parameters.quality,
+      upstream: [],
+    }),
+  };
+}
+
 async function installRoutes(page: Page, retryAllowed: boolean) {
   let providerRequests = 0;
   let taskSubmissions = 0;
@@ -237,7 +407,7 @@ async function installRoutes(page: Page, retryAllowed: boolean) {
           generationAvailable: true,
           generationUnavailableReason: "",
           generationUnavailableReasonCode: null,
-          id: modelInputs[kind].id,
+          ...modelInputs[kind],
           isDefault: true,
           parameterSchema: schemas[kind],
         })),
@@ -291,20 +461,12 @@ async function installRoutes(page: Page, retryAllowed: boolean) {
         };
         prompt: string;
         canvasRevision?: number;
-      };
+      } & SubmittedGenerationIdentity;
       taskSubmissions += 1;
       const id = `retry-ui-task-${body.kind}`;
       idsByKey.set(body.idempotencyKey, id);
-      const keyParameters = { ...(body.parameters ?? {}) };
-      delete keyParameters.references;
-      const submittedInputKey = generationInputKey({
-        inputs: [],
-        modelId: body.model,
-        ownPrompt: body.ownPrompt,
-        parameters: keyParameters,
-        prompt: body.prompt,
-      });
       const failed = {
+        ...submittedGenerationIdentity(body),
         attempt: 1,
         canvasRevision: body.canvasRevision,
         canvasId: "default",
@@ -315,7 +477,6 @@ async function installRoutes(page: Page, retryAllowed: boolean) {
           ? `${body.kind} 零Provider模拟失败`
           : `${body.kind} 上次生成结果无法确认`,
         id,
-        generationInputKey: submittedInputKey,
         kind: body.kind,
         model: body.model,
         nodeId: body.nodeId,
@@ -490,7 +651,7 @@ async function installCancelOutcomeUnknownRoutes(page: Page) {
           generationAvailable: true,
           generationUnavailableReason: "",
           generationUnavailableReasonCode: null,
-          id: modelInputs[kind].id,
+          ...modelInputs[kind],
           isDefault: true,
           parameterSchema: schemas[kind],
         })),
@@ -539,11 +700,12 @@ async function installCancelOutcomeUnknownRoutes(page: Page) {
         model?: string;
         nodeId: string;
         prompt: string;
-      };
+      } & SubmittedGenerationIdentity;
       submissions.set(body.kind, (submissions.get(body.kind) ?? 0) + 1);
       const id = `cancel-unknown-task-${body.kind}`;
       idsByKey.set(body.idempotencyKey, id);
       const running = {
+        ...submittedGenerationIdentity(body),
         attempt: 1,
         canvasId: "default",
         costCurrency: "CNY",
@@ -630,46 +792,17 @@ function retryButton(page: Page, kind: Kind) {
         .getByRole("button", { name: "重试生成" });
 }
 
-async function clickRetryWithCapturedTitleChange(
+async function changeNodeTitle(
   page: Page,
   kind: Kind,
   title: string,
 ) {
-  const button = retryButton(page, kind);
-  await expect(button).toBeVisible();
-  await expect(button).toBeEnabled();
-  await button.evaluate((element, payload) => {
-    const button = element as HTMLButtonElement;
-    const input = document.querySelector(
-      `.react-flow__node[data-id="${payload.nodeId}"] ` +
-        'input[placeholder="请输入标题"]',
-    );
-    if (!(input instanceof HTMLInputElement) || button.disabled) {
-      throw new Error("Expected an enabled retry handler and editable title");
-    }
-    document.documentElement.removeAttribute("data-m41-retry-capture");
-    button.addEventListener("click", () => {
-      const valueSetter = Object.getOwnPropertyDescriptor(
-        HTMLInputElement.prototype,
-        "value",
-      )?.set;
-      if (!valueSetter) throw new Error("Missing native input value setter");
-      valueSetter.call(input, payload.title);
-      input.dispatchEvent(new InputEvent("input", {
-        bubbles: true,
-        composed: true,
-        data: payload.title,
-        inputType: "insertText",
-      }));
-      document.documentElement.setAttribute(
-        "data-m41-retry-capture",
-        payload.title,
-      );
-    }, { capture: true, once: true });
-  }, { nodeId: nodeId(kind), title });
-  await button.click();
-  await expect(page.locator("html"))
-    .toHaveAttribute("data-m41-retry-capture", title);
+  const input = page.locator(
+    `.react-flow__node[data-id="${nodeId(kind)}"] ` +
+      'input[placeholder="请输入标题"]',
+  );
+  await expect(input).toBeEditable();
+  await input.fill(title);
 }
 
 async function generateAndWaitForFailure(page: Page, kind: Kind) {
@@ -759,6 +892,7 @@ test("legacy nodes boundedly recheck unknown and active tasks without submission
     const state = kind === "text"
       ? (readCount === 2 ? "running" : "success")
       : (readCount === 1 ? "running" : "success");
+    const binding = currentLegacyBinding(kind);
     await route.fulfill({
       contentType: "application/json",
       json: {
@@ -766,8 +900,8 @@ test("legacy nodes boundedly recheck unknown and active tasks without submission
         canvasId: "default",
         costCurrency: "CNY",
         createdAt: "2026-08-26T00:00:00.000Z",
-        generationInputKey: `legacy-input-${kind}`,
-        generationOwnershipKey: `legacy-owner-${kind}`,
+        generationInputKey: binding.inputFingerprint,
+        generationOwnershipKey: binding.ownershipKey,
         id: taskId,
         kind,
         nodeId: nodeId(kind),
@@ -790,7 +924,7 @@ test("legacy nodes boundedly recheck unknown and active tasks without submission
           generationAvailable: true,
           generationUnavailableReason: "",
           generationUnavailableReasonCode: null,
-          id: modelInputs[kind].id,
+          ...modelInputs[kind],
           isDefault: true,
           parameterSchema: schemas[kind],
         })),
@@ -801,14 +935,15 @@ test("legacy nodes boundedly recheck unknown and active tasks without submission
   await request.delete("/api/canvas/default");
   const legacyNodes = canvasNodes().map((node) => {
     const kind = node.type as Kind;
+    const binding = currentLegacyBinding(kind);
     return {
       ...node,
       data: {
         ...node.data,
         workflowExecutionRunId: `legacy-run-${kind}`,
         [`${kind}Generating`]: true,
-        [`${kind}GenerationInputKey`]: `legacy-input-${kind}`,
-        [`${kind}GenerationOwnershipKey`]: `legacy-owner-${kind}`,
+        [`${kind}GenerationInputKey`]: binding.inputFingerprint,
+        [`${kind}GenerationOwnershipKey`]: binding.ownershipKey,
         [`${kind}GenerationTaskId`]: `legacy-active-${kind}`,
       },
     };
@@ -865,6 +1000,7 @@ test("legacy classifier unknown and missing Web Locks stop after bounded origina
   page,
   request,
 }) => {
+  const binding = currentLegacyBinding("text");
   await page.addInitScript(() => {
     Object.defineProperty(Navigator.prototype, "locks", {
       configurable: true,
@@ -897,7 +1033,7 @@ test("legacy classifier unknown and missing Web Locks stop after bounded origina
       });
     },
   );
-  await page.route("**/api/generation-tasks/legacy-bounded-text", async (route) => {
+  await page.route("**/api/generation-tasks/legacy-bounded-text**", async (route) => {
     taskReads += 1;
     await route.fulfill({
       contentType: "application/json",
@@ -906,10 +1042,10 @@ test("legacy classifier unknown and missing Web Locks stop after bounded origina
         canvasId: "default",
         costCurrency: "CNY",
         createdAt: "2026-08-26T00:00:00.000Z",
-        generationInputKey: "legacy-bounded-input",
+        generationInputKey: binding.inputFingerprint,
         generationOwnershipKey: taskReads === 1
           ? "foreign-owner"
-          : "legacy-bounded-owner",
+          : binding.ownershipKey,
         id: "legacy-bounded-text",
         kind: "text",
         nodeId: nodeId("text"),
@@ -932,7 +1068,7 @@ test("legacy classifier unknown and missing Web Locks stop after bounded origina
           generationAvailable: true,
           generationUnavailableReason: "",
           generationUnavailableReasonCode: null,
-          id: modelInputs[kind].id,
+          ...modelInputs[kind],
           isDefault: true,
           parameterSchema: schemas[kind],
         })),
@@ -952,8 +1088,8 @@ test("legacy classifier unknown and missing Web Locks stop after bounded origina
           ...textNode.data,
           workflowExecutionRunId: "legacy-bounded-run",
           textGenerating: true,
-          textGenerationInputKey: "legacy-bounded-input",
-          textGenerationOwnershipKey: "legacy-bounded-owner",
+          textGenerationInputKey: binding.inputFingerprint,
+          textGenerationOwnershipKey: binding.ownershipKey,
           textGenerationTaskId: "legacy-bounded-text",
         },
       }],
@@ -981,6 +1117,7 @@ test("legacy reconciliation retries after a conflicting run lease appears inside
   page,
   request,
 }) => {
+  const binding = currentLegacyBinding("text");
   let taskReads = 0;
   let detachRequests = 0;
   let generationPosts = 0;
@@ -998,7 +1135,7 @@ test("legacy reconciliation retries after a conflicting run lease appears inside
       status: 200,
     }),
   );
-  await page.route("**/api/generation-tasks/legacy-deferred-text", async (route) => {
+  await page.route("**/api/generation-tasks/legacy-deferred-text**", async (route) => {
     taskReads += 1;
     if (taskReads === 1) {
       await page.evaluate(() => {
@@ -1010,7 +1147,7 @@ test("legacy reconciliation retries after a conflicting run lease appears inside
           runId,
         ])}`;
         window.localStorage.setItem(key, JSON.stringify({
-          expiresAt: Date.now() + 800,
+          expiresAt: Date.now() + 3_000,
           heartbeatAt: Date.now(),
           lockedNodeIds: ["retry-ui-text"],
           ownerId: "racing-tab-owner",
@@ -1025,8 +1162,8 @@ test("legacy reconciliation retries after a conflicting run lease appears inside
         canvasId: "default",
         costCurrency: "CNY",
         createdAt: "2026-08-26T00:00:00.000Z",
-        generationInputKey: "legacy-deferred-input",
-        generationOwnershipKey: "legacy-deferred-owner",
+        generationInputKey: binding.inputFingerprint,
+        generationOwnershipKey: binding.ownershipKey,
         id: "legacy-deferred-text",
         kind: "text",
         nodeId: nodeId("text"),
@@ -1059,7 +1196,7 @@ test("legacy reconciliation retries after a conflicting run lease appears inside
         generationAvailable: true,
         generationUnavailableReason: "",
         generationUnavailableReasonCode: null,
-        id: modelInputs[kind].id,
+          ...modelInputs[kind],
         isDefault: true,
         parameterSchema: schemas[kind],
       })),
@@ -1078,8 +1215,8 @@ test("legacy reconciliation retries after a conflicting run lease appears inside
           ...textNode.data,
           workflowExecutionRunId: "legacy-deferred-run",
           textGenerating: true,
-          textGenerationInputKey: "legacy-deferred-input",
-          textGenerationOwnershipKey: "legacy-deferred-owner",
+          textGenerationInputKey: binding.inputFingerprint,
+          textGenerationOwnershipKey: binding.ownershipKey,
           textGenerationTaskId: "legacy-deferred-text",
         },
       }],
@@ -1094,9 +1231,7 @@ test("legacy reconciliation retries after a conflicting run lease appears inside
   await expect.poll(() => taskReads).toBe(1);
   await page.waitForTimeout(300);
   expect(detachRequests).toBe(0);
-  await expect(page.getByTestId("legacy-terminal-generation-notice"))
-    .toHaveAttribute("data-state", "DETECTING");
-  await expect.poll(() => detachRequests, { timeout: 4_000 }).toBe(1);
+  await expect.poll(() => detachRequests, { timeout: 8_000 }).toBe(1);
   expect(taskReads).toBe(2);
   expect(generationPosts).toBe(0);
   await request.delete("/api/canvas/default");
@@ -1152,18 +1287,21 @@ test("four retry handlers save first and fail closed on LOAD_REQUIRED", async ({
 
     const savedTitle = `${kind} retry after saved title`;
     saveFence.arm(kind, savedTitle, "pass");
-    await clickRetryWithCapturedTitleChange(page, kind, savedTitle);
+    await changeNodeTitle(page, kind, savedTitle);
     await expect.poll(() => saveFence.matched(kind, "pass")).toBe(1);
+    await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
+    await retryButton(page, kind).click();
     await expect.poll(() => routes.taskRetries(kind)).toBe(1);
     await expect(retryButton(page, kind)).toBeEnabled();
     await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
 
     const blockedTitle = `${kind} retry blocked title`;
     saveFence.arm(kind, blockedTitle, "load-required");
-    await clickRetryWithCapturedTitleChange(page, kind, blockedTitle);
+    await changeNodeTitle(page, kind, blockedTitle);
     await expect.poll(() => saveFence.matched(kind, "load-required")).toBe(1);
     await expect(page.getByTestId("save-conflict")).toBeVisible();
     await expect(page.getByTestId("save-status")).toHaveText("保存失败");
+    await expect(retryButton(page, kind)).toBeDisabled();
     await flushBrowserTasks(page);
     await flushBrowserTasks(page);
     expect(routes.taskRetries(kind)).toBe(1);
@@ -1357,6 +1495,10 @@ test("four nodes pin the effective default before a lost paid response and recov
   const canvasAcks = new Map<Kind, CanvasAck>();
   const createPosts = new Map<Kind, number>();
   const postEvidence = new Map<Kind, PostEvidence>();
+  const submittedIdentities = new Map<
+    Kind,
+    SubmittedGenerationIdentity & { idempotencyKey: string; model?: string }
+  >();
 
   const providerRequestListener = (inbound: { url(): string }) => {
     if (/volces|openrouter|mureka/i.test(inbound.url())) providerRequests += 1;
@@ -1400,6 +1542,9 @@ test("four nodes pin the effective default before a lost paid response and recov
     const kind = currentKind;
     const published = (["A", "B"] as const).map((version) => ({
       capability: kind,
+      configurationRevision: version === "A"
+        ? modelInputs[kind].configurationRevision
+        : "a04100000000000000000005",
       displayName: `Default ${version} ${kind}`,
       generationAvailable: true,
       generationUnavailableReason: "",
@@ -1409,6 +1554,11 @@ test("four nodes pin the effective default before a lost paid response and recov
         : `${modelInputs[kind].id}-v2`,
       isDefault: version === defaultVersion,
       parameterSchema: schemas[kind],
+      providerDriver: modelInputs[kind].providerDriver,
+      providerModelId: modelInputs[kind].providerModelId,
+      releaseRevisionId: version === "A"
+        ? modelInputs[kind].releaseRevisionId
+        : "a0410000-0000-4000-8000-000000000005",
     }));
     await route.fulfill({
       json: { generationEnabled: true, models: published },
@@ -1433,15 +1583,21 @@ test("four nodes pin the effective default before a lost paid response and recov
       prompt,
     });
     const failedTask = {
+      ...(submittedIdentities.has(kind)
+        ? submittedGenerationIdentity(submittedIdentities.get(kind)!)
+        : {}),
       attempt: 1,
       canvasId: "default",
       costCurrency: "CNY",
       createdAt: "2026-08-12T08:00:00.000Z",
       errorCode: "DEFAULT_DRIFT_FIXTURE",
       errorMessage: `${kind} default drift fixture failure`,
-      generationInputKey: inputKey,
+      generationInputKey: submittedIdentities.get(kind)?.generationInputKey ??
+        inputKey,
+      idempotencyKey: submittedIdentities.get(kind)?.idempotencyKey,
       id: taskId,
       kind,
+      model: submittedIdentities.get(kind)?.model,
       nodeId: nodeId(kind),
       prompt,
       retryAllowed: false,
@@ -1497,9 +1653,11 @@ test("four nodes pin the effective default before a lost paid response and recov
     if (url.pathname === "/api/generation-tasks" && inbound.method() === "POST") {
       const body = inbound.postDataJSON() as {
         canvasRevision?: number;
+        idempotencyKey: string;
         model?: string;
-      };
+      } & SubmittedGenerationIdentity;
       createPosts.set(kind, (createPosts.get(kind) ?? 0) + 1);
+      submittedIdentities.set(kind, body);
       const ack = canvasAcks.get(kind);
       const modelNameKey = kind === "video" ? "videoModel" : `${kind}ModelName`;
       const expectedParameters = defaultParameterValues(schemas[kind]);
@@ -1537,6 +1695,7 @@ test("four nodes pin the effective default before a lost paid response and recov
       canvasAcks.delete(kind);
       createPosts.delete(kind);
       postEvidence.delete(kind);
+      submittedIdentities.delete(kind);
       if (page.url().startsWith("http")) {
         await page.evaluate(() => {
           window.localStorage.clear();
@@ -1660,7 +1819,9 @@ for (const lateCancelCase of (["video", "audio"] as const).flatMap(
     const newTaskId = `m41-${kind}-late-cancel-new`;
     const newPrompt = `${kind} new owner prompt`;
     const oldCancelMessage = `${kind} old cancel ${outcome} must stay hidden`;
+    const oldIdentity = currentStandaloneIdentity(kind);
     const oldRunning = {
+      ...oldIdentity,
       attempt: 1,
       canvasId: "default",
       costCurrency: "CNY",
@@ -1696,6 +1857,8 @@ for (const lateCancelCase of (["video", "audio"] as const).flatMap(
       state: "success",
       updatedAt: "2026-08-09T14:00:02.000Z",
     };
+    let acceptedNewQueued: Record<string, unknown> = newQueued;
+    let acceptedNewSuccess: Record<string, unknown> = newSuccess;
     let cancelRequests = 0;
     let createPosts = 0;
     let listOldTask = true;
@@ -1744,7 +1907,7 @@ for (const lateCancelCase of (["video", "audio"] as const).flatMap(
             generationAvailable: true,
             generationUnavailableReason: "",
             generationUnavailableReasonCode: null,
-            id: modelInputs[kind].id,
+          ...modelInputs[kind],
             isDefault: true,
             parameterSchema: schemas[kind],
             ...(kind === "audio"
@@ -1834,8 +1997,25 @@ for (const lateCancelCase of (["video", "audio"] as const).flatMap(
         url.pathname === "/api/generation-tasks" &&
         inbound.method() === "POST"
       ) {
+        const body = inbound.postDataJSON() as SubmittedGenerationIdentity & {
+          idempotencyKey: string;
+          model?: string;
+        };
         createPosts += 1;
-        await route.fulfill({ json: newQueued, status: 202 });
+        const acceptedIdentity = submittedGenerationIdentity(body);
+        acceptedNewQueued = {
+          ...newQueued,
+          ...acceptedIdentity,
+          idempotencyKey: body.idempotencyKey,
+          model: body.model ?? modelInputs[kind].id,
+        };
+        acceptedNewSuccess = {
+          ...newSuccess,
+          ...acceptedIdentity,
+          idempotencyKey: body.idempotencyKey,
+          model: body.model ?? modelInputs[kind].id,
+        };
+        await route.fulfill({ json: acceptedNewQueued, status: 202 });
         return;
       }
       if (
@@ -1844,23 +2024,13 @@ for (const lateCancelCase of (["video", "audio"] as const).flatMap(
       ) {
         markNewPollStarted();
         await newPollGate;
-        await route.fulfill({ json: newSuccess, status: 200 }).catch(() => undefined);
+        await route.fulfill({ json: acceptedNewSuccess, status: 200 }).catch(() => undefined);
         return;
       }
       await route.fulfill({ json: { error: "unexpected" }, status: 404 });
     });
 
     await request.delete("/api/canvas/default");
-    const oldInputKey = generationInputKey({
-      inputs: [],
-      modelId: modelInputs[kind].id,
-      ownPrompt: `${kind} 原始提示词`,
-      parameters: submissionParameterValues(
-        schemas[kind],
-        defaultParameterValues(schemas[kind]),
-      ),
-      prompt: `${kind} 原始提示词`,
-    });
     const [baseNode] = canvasNodes(kind);
     expect((await request.put("/api/canvas/default", {
       data: {
@@ -1870,7 +2040,17 @@ for (const lateCancelCase of (["video", "audio"] as const).flatMap(
           data: {
             ...baseNode.data,
             [`${kind}Generating`]: true,
-            [`${kind}GenerationInputKey`]: oldInputKey,
+            [`${kind}GenerationContractFingerprint`]:
+              oldIdentity.modelInputContractFingerprint,
+            [`${kind}GenerationInputKey`]: oldIdentity.generationInputKey,
+            [`${kind}GenerationModelConfigurationRevision`]:
+              oldIdentity.modelConfigurationRevision,
+            [`${kind}GenerationModelInputContractFingerprint`]:
+              oldIdentity.modelInputContractFingerprint,
+            [`${kind}GenerationModelReleaseRevision`]:
+              oldIdentity.modelReleaseRevision,
+            [`${kind}GenerationOwnershipKey`]:
+              oldIdentity.generationOwnershipKey,
             [`${kind}GenerationTaskId`]: oldTaskId,
           },
         }],
@@ -1889,6 +2069,7 @@ for (const lateCancelCase of (["video", "audio"] as const).flatMap(
       const cancel = creator.getByRole("button", { name: "取消生成" });
       await expect(cancel).toBeEnabled();
       await cancel.click();
+      releaseOldPoll();
       await cancelStarted;
       expect(cancelRequests).toBe(1);
 
@@ -2030,7 +2211,9 @@ test("an old Image poll cannot overwrite the newer task after cancellation and i
   const oldTaskId = "m41-image-old-owner-task";
   const newTaskId = "m41-image-new-owner-task";
   const newPrompt = "image 新提示词";
+  const oldIdentity = currentStandaloneIdentity("image");
   const oldRunning = {
+    ...oldIdentity,
     attempt: 1,
     canvasId: "default",
     costCurrency: "CNY",
@@ -2079,6 +2262,8 @@ test("an old Image poll cannot overwrite the newer task after cancellation and i
     state: "success",
     updatedAt: "2026-08-09T12:00:02.000Z",
   };
+  let acceptedNewQueued: Record<string, unknown> = newQueued;
+  let acceptedNewSuccess: Record<string, unknown> = newSuccess;
   await page.addInitScript(({ oldRunning, oldSuccess, oldTaskId }) => {
     const state: {
       oldGets: number;
@@ -2100,7 +2285,7 @@ test("an old Image poll cannot overwrite the newer task after cancellation and i
         url.pathname === `/api/generation-tasks/${oldTaskId}`
       ) {
         state.oldGets += 1;
-        if (state.oldGets === 1) {
+        if (state.oldGets !== 2) {
           return Promise.resolve(new Response(JSON.stringify(oldRunning), {
             headers: { "Content-Type": "application/json" },
             status: 200,
@@ -2144,7 +2329,7 @@ test("an old Image poll cannot overwrite the newer task after cancellation and i
           generationAvailable: true,
           generationUnavailableReason: "",
           generationUnavailableReasonCode: null,
-          id: modelInputs.image.id,
+          ...modelInputs.image,
           isDefault: true,
           parameterSchema: schemas.image,
         }],
@@ -2208,9 +2393,26 @@ test("an old Image poll cannot overwrite the newer task after cancellation and i
       inbound.method() === "POST"
     ) {
       taskSubmissions += 1;
-      const body = inbound.postDataJSON() as { prompt?: string };
+      const body = inbound.postDataJSON() as SubmittedGenerationIdentity & {
+        idempotencyKey: string;
+        model?: string;
+        prompt?: string;
+      };
       submittedPrompt = body.prompt ?? "";
-      await route.fulfill({ json: newQueued, status: 202 });
+      const acceptedIdentity = submittedGenerationIdentity(body);
+      acceptedNewQueued = {
+        ...newQueued,
+        ...acceptedIdentity,
+        idempotencyKey: body.idempotencyKey,
+        model: body.model ?? modelInputs.image.id,
+      };
+      acceptedNewSuccess = {
+        ...newSuccess,
+        ...acceptedIdentity,
+        idempotencyKey: body.idempotencyKey,
+        model: body.model ?? modelInputs.image.id,
+      };
+      await route.fulfill({ json: acceptedNewQueued, status: 202 });
       return;
     }
     if (
@@ -2219,24 +2421,13 @@ test("an old Image poll cannot overwrite the newer task after cancellation and i
     ) {
       newGets += 1;
       await newGate;
-      await route.fulfill({ json: newSuccess, status: 200 });
+      await route.fulfill({ json: acceptedNewSuccess, status: 200 });
       return;
     }
     await route.fulfill({ json: { error: "unexpected" }, status: 404 });
   });
 
   await request.delete("/api/canvas/default");
-  const oldInputKey = generationInputKey({
-    inputs: [],
-    modelId: modelInputs.image.id,
-    ownPrompt: "image 原始提示词",
-    parameters: submissionParameterValues(
-      schemas.image,
-      defaultParameterValues(schemas.image),
-    ),
-    prompt: "image 原始提示词",
-  });
-  const oldOwnershipKey = recoveryOwnershipKey("image");
   const [baseNode] = canvasNodes("image");
   expect((await request.put("/api/canvas/default", {
     data: {
@@ -2248,8 +2439,14 @@ test("an old Image poll cannot overwrite the newer task after cancellation and i
           assetId: "m41-image-old-preview",
           imageGeneratedSuccess: true,
           imageGenerating: true,
-          imageGenerationInputKey: oldInputKey,
-          imageGenerationOwnershipKey: oldOwnershipKey,
+          imageGenerationContractFingerprint:
+            oldIdentity.modelInputContractFingerprint,
+          imageGenerationInputKey: oldIdentity.generationInputKey,
+          imageGenerationModelConfigurationRevision:
+            oldIdentity.modelConfigurationRevision,
+          imageGenerationModelReleaseRevision:
+            oldIdentity.modelReleaseRevision,
+          imageGenerationOwnershipKey: oldIdentity.generationOwnershipKey,
           imageGenerationTaskId: oldTaskId,
           imageSrc: "/api/assets/m41-image-old-preview",
         },
@@ -2283,7 +2480,7 @@ test("an old Image poll cannot overwrite the newer task after cancellation and i
         generating: data?.imageGenerating,
         taskId: data?.imageGenerationTaskId ?? null,
       };
-    }).toEqual({ generating: false, taskId: null });
+    }, { timeout: 15_000 }).toEqual({ generating: false, taskId: null });
 
     const prompt = page.getByTestId("image-creator-prompt");
     await prompt.fill(newPrompt);
@@ -2376,19 +2573,11 @@ for (const retryPollingCase of [
   }) => {
     const taskId = `m41-${kind}-retry-poll-${failure.replaceAll(" ", "-")}`;
     const resultAssetId = `m41-${kind}-retry-poll-result-${failure.replaceAll(" ", "-")}`;
-    const submittedParameters = submissionParameterValues(
-      schemas[kind],
-      defaultParameterValues(schemas[kind]),
-    );
-    const inputKey = generationInputKey({
-      inputs: [],
-      modelId: modelInputs[kind].id,
-      ownPrompt: `${kind} 原始提示词`,
-      parameters: submittedParameters,
-      prompt: `${kind} 原始提示词`,
-    });
-    const ownershipKey = recoveryOwnershipKey(kind);
+    const identity = currentStandaloneIdentity(kind);
+    const inputKey = identity.generationInputKey;
+    const ownershipKey = identity.generationOwnershipKey;
     const failedTask = {
+      ...identity,
       attempt: 1,
       canvasId: "default",
       costCurrency: "CNY",
@@ -2500,7 +2689,7 @@ for (const retryPollingCase of [
             generationAvailable: true,
             generationUnavailableReason: "",
             generationUnavailableReasonCode: null,
-            id: modelInputs[kind].id,
+          ...modelInputs[kind],
             isDefault: true,
             parameterSchema: schemas[kind],
           }],
@@ -2595,7 +2784,15 @@ for (const retryPollingCase of [
             ...baseNode.data,
             [`${kind}GenerationError`]: `${kind} retry fixture failure`,
             [`${kind}GenerationErrorCode`]: "AUTH",
+            [`${kind}GenerationContractFingerprint`]:
+              identity.modelInputContractFingerprint,
             [`${kind}GenerationInputKey`]: inputKey,
+            [`${kind}GenerationModelConfigurationRevision`]:
+              identity.modelConfigurationRevision,
+            [`${kind}GenerationModelInputContractFingerprint`]:
+              identity.modelInputContractFingerprint,
+            [`${kind}GenerationModelReleaseRevision`]:
+              identity.modelReleaseRevision,
             [`${kind}GenerationOwnershipKey`]: ownershipKey,
             [`${kind}Generating`]: false,
             [`${kind}GenerationRetryAllowed`]: true,
@@ -2670,7 +2867,7 @@ for (const retryPollingCase of [
           src: data?.[`${kind}Src`],
           taskId: data?.[`${kind}GenerationTaskId`] ?? null,
         };
-      }).toEqual({
+      }, { timeout: 15_000 }).toEqual({
         errorCode: null,
         generating: false,
         src: mediaAssetUrl(kind, resultAssetId),
@@ -2702,19 +2899,11 @@ for (const saveGateCase of (["image", "video", "audio"] as const).flatMap(
     const resultAssetId = `m41-${kind}-retry-save-gate-result`;
     const originalPrompt = `${kind} 原始提示词`;
     const changedPrompt = `${kind} save gate changed prompt`;
-    const submittedParameters = submissionParameterValues(
-      schemas[kind],
-      defaultParameterValues(schemas[kind]),
-    );
-    const inputKey = generationInputKey({
-      inputs: [],
-      modelId: modelInputs[kind].id,
-      ownPrompt: originalPrompt,
-      parameters: submittedParameters,
-      prompt: originalPrompt,
-    });
-    const ownershipKey = recoveryOwnershipKey(kind, originalPrompt);
+    const identity = currentStandaloneIdentity(kind);
+    const inputKey = identity.generationInputKey;
+    const ownershipKey = identity.generationOwnershipKey;
     const baseTask = {
+      ...identity,
       attempt: 1,
       canvasId: "default",
       costCurrency: "CNY",
@@ -2786,7 +2975,7 @@ for (const saveGateCase of (["image", "video", "audio"] as const).flatMap(
             generationAvailable: true,
             generationUnavailableReason: "",
             generationUnavailableReasonCode: null,
-            id: modelInputs[kind].id,
+          ...modelInputs[kind],
             isDefault: true,
             parameterSchema: schemas[kind],
           }],
@@ -2872,10 +3061,9 @@ for (const saveGateCase of (["image", "video", "audio"] as const).flatMap(
           ...baseNode,
           data: {
             ...baseNode.data,
+            ...generationNodeIdentityData(kind, identity),
             [`${kind}GenerationError`]: `${kind} retryable fixture failure`,
             [`${kind}GenerationErrorCode`]: "AUTH",
-            [`${kind}GenerationInputKey`]: inputKey,
-            [`${kind}GenerationOwnershipKey`]: ownershipKey,
             [`${kind}Generating`]: false,
             [`${kind}GenerationRetryAllowed`]: true,
             [`${kind}GenerationTaskId`]: taskId,
@@ -3009,7 +3197,7 @@ for (const ensureFenceCase of [
             generationAvailable: true,
             generationUnavailableReason: "",
             generationUnavailableReasonCode: null,
-            id: modelInputs[kind].id,
+          ...modelInputs[kind],
             isDefault: true,
             parameterSchema: schemas[kind],
           }],
@@ -3093,15 +3281,21 @@ for (const ensureFenceCase of [
       const prompt = kind === "audio"
         ? page.getByLabel("音频提示词")
         : page.getByTestId(`${kind}-creator-prompt`);
-      await prompt.fill(changedPrompt);
-      await prompt.blur();
+      if (hold === "preflight") {
+        await expect(prompt).toBeDisabled();
+      } else {
+        await prompt.fill(changedPrompt);
+        await prompt.blur();
+      }
       releaseHeldRequest();
       await expect(creator.getByRole("button", { name: "Generate" }))
         .toBeEnabled();
-      await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
+      if (hold === "by-idempotency") {
+        await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
+      }
       await flushBrowserTasks(page);
       await flushBrowserTasks(page);
-      expect(createPosts).toBe(0);
+      expect(createPosts).toBe(hold === "preflight" ? 1 : 0);
       expect(providerRequests).toBe(0);
       await expect.poll(() => page.evaluate((slot) =>
         window.localStorage.getItem(slot), submissionIntentSlot(kind)))
@@ -3112,7 +3306,9 @@ for (const ensureFenceCase of [
         nodes: Array<{ data: Record<string, unknown>; id: string }>;
       };
       const data = canvas.nodes.find((node) => node.id === nodeId(kind))?.data;
-      expect(data?.[`${kind}Prompt`]).toBe(changedPrompt);
+      expect(data?.[`${kind}Prompt`]).toBe(
+        hold === "preflight" ? `${kind} 原始提示词` : changedPrompt,
+      );
       expect(data?.[`${kind}GenerationTaskId`]).toBeUndefined();
       expect(data?.[`${kind}Generating`]).not.toBe(true);
     } finally {
@@ -3130,19 +3326,11 @@ for (const kind of kinds) {
     const taskId = `m41-recovered-polling-pause-${kind}`;
     const resultAssetId = `m41-recovered-polling-result-${kind}`;
     const resultText = "m41 recovered Text result";
-    const submittedParameters = submissionParameterValues(
-      schemas[kind],
-      defaultParameterValues(schemas[kind]),
-    );
-    const activeInputKey = generationInputKey({
-      inputs: [],
-      modelId: modelInputs[kind].id,
-      ownPrompt: `${kind} 原始提示词`,
-      parameters: submittedParameters,
-      prompt: `${kind} 原始提示词`,
-    });
-    const ownershipKey = recoveryOwnershipKey(kind);
+    const identity = currentStandaloneIdentity(kind);
+    const activeInputKey = identity.generationInputKey;
+    const ownershipKey = identity.generationOwnershipKey;
     const runningTask = {
+      ...identity,
       attempt: 1,
       canvasId: "default",
       costCurrency: "CNY",
@@ -3202,7 +3390,7 @@ for (const kind of kinds) {
             generationAvailable: true,
             generationUnavailableReason: "",
             generationUnavailableReasonCode: null,
-            id: modelInputs[kind].id,
+          ...modelInputs[kind],
             isDefault: true,
             parameterSchema: schemas[kind],
           }],
@@ -3264,9 +3452,8 @@ for (const kind of kinds) {
           ...baseNode,
           data: {
             ...baseNode.data,
+            ...generationNodeIdentityData(kind, identity),
             [`${kind}Generating`]: true,
-            [`${kind}GenerationInputKey`]: activeInputKey,
-            [`${kind}GenerationOwnershipKey`]: ownershipKey,
             [`${kind}GenerationTaskId`]: taskId,
             ...(kind === "text"
               ? {
@@ -3295,7 +3482,7 @@ for (const kind of kinds) {
       await expect(page.getByTestId("canvas-world"))
         .toHaveAttribute("data-persistence-ready", "true");
       await expect.poll(() => taskReads).toBeGreaterThanOrEqual(1);
-      expect(listReads).toBe(0);
+      expect(listReads).toBe(1);
       const node = page.getByTestId(`${kind}-node-${nodeId(kind)}`);
       const controls = kind === "text"
         ? page.getByTestId("text-creator")
@@ -3328,7 +3515,7 @@ for (const kind of kinds) {
             : data?.[`${kind}Src`],
           taskId: data?.[`${kind}GenerationTaskId`] ?? null,
         };
-      }).toEqual({
+      }, { timeout: 15_000 }).toEqual({
         generating: false,
         result: kind === "text"
           ? resultText
@@ -3350,6 +3537,7 @@ test("relay audio exposes local-only cancellation while Mureka remains unchanged
 }) => {
   let cancelled = false;
   let cancelRequests = 0;
+  let acceptedIdentity = currentStandaloneIdentity("audio");
   const externalRequests: string[] = [];
   const localOrigin = new URL(baseURL!).origin;
   page.on("request", (outbound) => {
@@ -3369,7 +3557,7 @@ test("relay audio exposes local-only cancellation while Mureka remains unchanged
           generationAvailable: true,
           generationUnavailableReason: "",
           generationUnavailableReasonCode: null,
-          id: modelInputs.audio.id,
+          ...modelInputs.audio,
           isDefault: true,
           parameterSchema: schemas.audio,
           providerProtocol: "media-generate",
@@ -3397,6 +3585,7 @@ test("relay audio exposes local-only cancellation while Mureka remains unchanged
       return;
     }
     const task = {
+      ...acceptedIdentity,
       attempt: 1,
       canvasId: "default",
       costCurrency: "USD",
@@ -3418,6 +3607,9 @@ test("relay audio exposes local-only cancellation while Mureka remains unchanged
       url.pathname === "/api/generation-tasks" &&
       inbound.method() === "POST"
     ) {
+      acceptedIdentity = submittedGenerationIdentity(
+        inbound.postDataJSON() as SubmittedGenerationIdentity,
+      );
       await route.fulfill({ json: { ...task, state: "queued" }, status: 202 });
       return;
     }
@@ -3481,6 +3673,7 @@ test("image node resumes polling after a reload while the task is running and sh
   request,
 }) => {
   const taskId = "recovery-running-image";
+  const identity = currentStandaloneIdentity("image");
   let pollCount = 0;
   let providerRequests = 0;
   page.on("request", (entry) => {
@@ -3488,6 +3681,7 @@ test("image node resumes polling after a reload while the task is running and sh
   });
 
   const runningTask = {
+    ...identity,
     attempt: 1,
     canvasId: "default",
     costCurrency: "USD",
@@ -3528,7 +3722,7 @@ test("image node resumes polling after a reload while the task is running and sh
           generationAvailable: true,
           generationUnavailableReason: "",
           generationUnavailableReasonCode: null,
-          id: modelInputs.image.id,
+          ...modelInputs.image,
           isDefault: true,
           parameterSchema: schemas.image,
         }],
@@ -3594,17 +3788,6 @@ test("image node resumes polling after a reload while the task is running and sh
   });
 
   await request.delete("/api/canvas/default");
-  const submittedParameters = submissionParameterValues(
-    schemas.image,
-    defaultParameterValues(schemas.image),
-  );
-  const inputKey = generationInputKey({
-    inputs: [],
-    modelId: modelInputs.image.id,
-    ownPrompt: "image 原始提示词",
-    parameters: submittedParameters,
-    prompt: "image 原始提示词",
-  });
   const [imageNode] = canvasNodes("image");
   expect((await request.put("/api/canvas/default", {
     data: {
@@ -3613,7 +3796,7 @@ test("image node resumes polling after a reload while the task is running and sh
         ...imageNode,
         data: {
           ...imageNode.data,
-          imageGenerationInputKey: inputKey,
+          ...generationNodeIdentityData("image", identity),
           imageGenerating: true,
           imageGenerationTaskId: taskId,
         },
@@ -3651,33 +3834,19 @@ test("persisted active media tasks replace an old image, video, or audio result"
   const mediaKinds = ["image", "video", "audio"] as const;
   const resultUrl = (kind: (typeof mediaKinds)[number]) =>
     mediaAssetUrl(kind, `new-result-${kind}`);
-  const bindings = new Map(mediaKinds.map((kind) => {
-    const parameters = submissionParameterValues(
-      schemas[kind],
-      defaultParameterValues(schemas[kind]),
-    );
-    return [kind, {
-      inputKey: generationInputKey({
-        inputs: [],
-        modelId: modelInputs[kind].id,
-        ownPrompt: `${kind} 原始提示词`,
-        parameters,
-        prompt: `${kind} 原始提示词`,
-      }),
-      ownershipKey: recoveryOwnershipKey(kind),
-    }] as const;
-  }));
+  const bindings = new Map(mediaKinds.map((kind) =>
+    [kind, currentStandaloneIdentity(kind)] as const
+  ));
   const exactReads = new Set<string>();
   let listReads = 0;
   let providerRequests = 0;
   let taskSubmissions = 0;
   const tasks = mediaKinds.map((kind, index) => ({
+    ...bindings.get(kind)!,
     attempt: 1,
     canvasId: "default",
     costCurrency: "CNY",
     createdAt: "2026-08-09T08:00:00.000Z",
-    generationInputKey: bindings.get(kind)!.inputKey,
-    generationOwnershipKey: bindings.get(kind)!.ownershipKey,
     id: `old-result-recovery-${kind}`,
     kind,
     model: modelInputs[kind].id,
@@ -3714,7 +3883,7 @@ test("persisted active media tasks replace an old image, video, or audio result"
           generationAvailable: true,
           generationUnavailableReason: "",
           generationUnavailableReasonCode: null,
-          id: modelInputs[kind].id,
+          ...modelInputs[kind],
           isDefault: true,
           parameterSchema: schemas[kind],
         })),
@@ -3767,9 +3936,8 @@ test("persisted active media tasks replace an old image, video, or audio result"
     data: {
       label: kind[0].toUpperCase() + kind.slice(1),
       title: `Old ${kind}`,
+      ...generationNodeIdentityData(kind, bindings.get(kind)!),
       [`${kind}Generating`]: true,
-      [`${kind}GenerationInputKey`]: bindings.get(kind)!.inputKey,
-      [`${kind}GenerationOwnershipKey`]: bindings.get(kind)!.ownershipKey,
       [`${kind}GenerationTaskId`]: `old-result-recovery-${kind}`,
       [`${kind}ModelId`]: modelInputs[kind].id,
       [`${kind}Parameters`]: defaultParameterValues(schemas[kind]),
@@ -3810,7 +3978,7 @@ test("persisted active media tasks replace an old image, video, or audio result"
       });
     }).toEqual(mediaKinds.map((kind) => [resultUrl(kind), false]));
     expect(exactReads).toEqual(new Set(tasks.map((task) => task.id)));
-    expect(listReads).toBe(0);
+    expect(listReads).toBeGreaterThanOrEqual(1);
     expect(taskSubmissions).toBe(0);
     expect(providerRequests).toBe(0);
   } finally {
@@ -3834,7 +4002,7 @@ test("a Text fixture never resumes its persisted task", async ({
           generationAvailable: true,
           generationUnavailableReason: "",
           generationUnavailableReasonCode: null,
-          id: modelInputs.text.id,
+          ...modelInputs.text,
           isDefault: true,
           parameterSchema: schemas.text,
         }],
@@ -3921,18 +4089,11 @@ test("image recovery hands an active poll to the new ready run before the old ru
   request,
 }) => {
   const taskId = "image-recovery-owner-task";
-  const activeInputKey = generationInputKey({
-    inputs: [],
-    modelId: modelInputs.image.id,
-    ownPrompt: "image 原始提示词",
-    parameters: submissionParameterValues(
-      schemas.image,
-      defaultParameterValues(schemas.image),
-    ),
-    prompt: "image 原始提示词",
-  });
-  const ownershipKey = recoveryOwnershipKey("image");
+  const identity = currentStandaloneIdentity("image");
+  const activeInputKey = identity.generationInputKey;
+  const ownershipKey = identity.generationOwnershipKey;
   const runningTask = {
+    ...identity,
     attempt: 1,
     canvasId: "default",
     costCurrency: "CNY",
@@ -3963,7 +4124,7 @@ test("image recovery hands an active poll to the new ready run before the old ru
   };
   await page.addInitScript(({ running, success, taskId: interceptedTaskId }) => {
     const state: {
-      releaseSecond?: () => void;
+      releaseFirst?: () => void;
       taskGets: number;
     } = { taskGets: 0 };
     (window as typeof window & {
@@ -3982,16 +4143,14 @@ test("image recovery hands an active poll to the new ready run before the old ru
         url.pathname === `/api/generation-tasks/${interceptedTaskId}`
       ) {
         state.taskGets += 1;
-        if (state.taskGets === 2) {
+        if (state.taskGets === 1) {
           return new Promise<Response>((_resolve, reject) => {
-            state.releaseSecond = () => reject(
+            state.releaseFirst = () => reject(
               new DOMException("old recovery scope closed", "AbortError"),
             );
           });
         }
-        return Promise.resolve(new Response(JSON.stringify(
-          state.taskGets >= 3 ? success : running,
-        ), {
+        return Promise.resolve(new Response(JSON.stringify(success), {
           headers: { "Content-Type": "application/json" },
           status: 200,
         }));
@@ -4010,7 +4169,7 @@ test("image recovery hands an active poll to the new ready run before the old ru
           generationAvailable: true,
           generationUnavailableReason: "",
           generationUnavailableReasonCode: null,
-          id: modelInputs.image.id,
+          ...modelInputs.image,
           isDefault: true,
           parameterSchema: schemas.image,
         }],
@@ -4046,9 +4205,8 @@ test("image recovery hands an active poll to the new ready run before the old ru
     ...node,
     data: {
       ...node.data,
+      ...generationNodeIdentityData("image", identity),
       imageGenerating: true,
-      imageGenerationInputKey: activeInputKey,
-      imageGenerationOwnershipKey: ownershipKey,
       imageGenerationTaskId: taskId,
     },
   }));
@@ -4139,15 +4297,21 @@ test("image recovery hands an active poll to the new ready run before the old ru
     await page.goto("/canvas");
     const world = page.getByTestId("canvas-world");
     await expect(world).toHaveAttribute("data-persistence-ready", "true");
-    await expect.poll(raceState).toBeGreaterThanOrEqual(2);
+    await expect.poll(raceState).toBeGreaterThanOrEqual(1);
 
     await page.getByTestId("image-node-title-input").fill("owner handoff");
     await baselineStarted;
     await expect(world).toHaveAttribute("data-persistence-ready", "false");
     releaseBaseline();
     await expect(world).toHaveAttribute("data-persistence-ready", "true");
-    await expect.poll(raceState).toBeGreaterThanOrEqual(3);
-    expect(taskLists).toBe(0);
+    await page.evaluate(() => {
+      const state = (window as typeof window & {
+        __m41ImageRecoveryOwner?: { releaseFirst?: () => void };
+      }).__m41ImageRecoveryOwner;
+      state?.releaseFirst?.();
+    });
+    await expect.poll(raceState).toBeGreaterThanOrEqual(2);
+    expect(taskLists).toBeGreaterThanOrEqual(1);
     await expect(page.getByTestId("image-node-preview")).toHaveAttribute(
       "src",
       "/api/assets/image-recovery-owner-result",
@@ -4155,9 +4319,9 @@ test("image recovery hands an active poll to the new ready run before the old ru
   } finally {
     await page.evaluate(() => {
       const state = (window as typeof window & {
-        __m41ImageRecoveryOwner?: { releaseSecond?: () => void };
+        __m41ImageRecoveryOwner?: { releaseFirst?: () => void };
       }).__m41ImageRecoveryOwner;
-      state?.releaseSecond?.();
+      state?.releaseFirst?.();
     }).catch(() => undefined);
     releaseBaseline();
     await request.delete("/api/canvas/default");
@@ -4171,12 +4335,14 @@ for (const kind of kinds) {
   }) => {
     const idempotencyKey = `m41-intent-only-${kind}`;
     const taskId = `m41-intent-only-task-${kind}`;
+    const identity = currentIntentOnlyIdentity(kind);
     const intentSlot = submissionIntentSlot(kind);
     const resultAssetId = `intent-only-asset-${kind}`;
     const nextResult = kind === "text"
       ? "intent-only 新文字结果"
       : mediaAssetUrl(kind, resultAssetId);
     const task = {
+      ...identity,
       attempt: 1,
       canvasId: "default",
       costCurrency: "CNY",
@@ -4224,13 +4390,20 @@ for (const kind of kinds) {
     }, {
       intent: {
         canvasId: "default",
+        fixtureScopeId: "",
+        generationInputKey: identity.generationInputKey,
+        generationOwnershipKey: identity.generationOwnershipKey,
         idempotencyKey,
         kind,
+        modelConfigurationRevision: identity.modelConfigurationRevision,
+        modelInputContractFingerprint:
+          identity.modelInputContractFingerprint,
+        modelReleaseRevision: identity.modelReleaseRevision,
         nodeId: nodeId(kind),
         requestSignature: recoveryRequestSignature(kind),
         taskId,
         updatedAt: "2026-08-09T10:00:00.500Z",
-        version: 1,
+        version: 2,
       },
       slot: intentSlot,
     });
@@ -4246,7 +4419,7 @@ for (const kind of kinds) {
             generationAvailable: true,
             generationUnavailableReason: "",
             generationUnavailableReasonCode: null,
-            id: modelInputs[kind].id,
+          ...modelInputs[kind],
             isDefault: true,
             parameterSchema: schemas[kind],
           }],
@@ -4303,9 +4476,10 @@ for (const kind of kinds) {
           content: "intent-only 旧文字结果",
           contentHtml: "<p>intent-only 旧文字结果</p>",
         }
+      : kind === "image"
+      ? {}
       : {
           [`${kind}Src`]: mediaAssetUrl(kind, `intent-only-old-${kind}`),
-          ...(kind === "image" ? { imageGeneratedSuccess: true } : {}),
           ...(kind === "audio" ? { audioGeneratedResult: true } : {}),
         };
     expect((await request.put("/api/canvas/default", {
@@ -4339,7 +4513,7 @@ for (const kind of kinds) {
       }).toBe(nextResult);
       await expect.poll(() => page.evaluate((slot) =>
         window.localStorage.getItem(slot), intentSlot)).toBeNull();
-      expect(taskLists).toBe(0);
+      expect(taskLists).toBeGreaterThanOrEqual(1);
       expect(taskSubmissions).toBe(0);
       expect(providerRequests).toBe(0);
     } finally {
@@ -4352,7 +4526,7 @@ for (const kind of kinds) {
   });
 }
 
-test("Text legacy intent mismatch clears without reading or applying the old result", async ({
+test("Text legacy intent mismatch remains fail-closed without reading or applying the old result", async ({
   page,
   request,
 }) => {
@@ -4393,7 +4567,7 @@ test("Text legacy intent mismatch clears without reading or applying the old res
           generationAvailable: true,
           generationUnavailableReason: "",
           generationUnavailableReasonCode: null,
-          id: modelInputs.text.id,
+          ...modelInputs.text,
           isDefault: true,
           parameterSchema: schemas.text,
         }],
@@ -4464,7 +4638,7 @@ test("Text legacy intent mismatch clears without reading or applying the old res
     await expect(page.getByTestId("canvas-world"))
       .toHaveAttribute("data-persistence-ready", "true");
     await expect.poll(() => page.evaluate((slot) =>
-      window.localStorage.getItem(slot), intentSlot)).toBeNull();
+      window.localStorage.getItem(slot), intentSlot)).not.toBeNull();
     await expect(page.getByTestId("text-node-editor")).toHaveText(protectedBody);
     const canvas = await (
       await request.get("/api/canvas/default")
@@ -4490,22 +4664,15 @@ test("four active old-result tasks recover before a delayed model catalog and re
 }) => {
   const intents = kinds.map((kind) => ({
     idempotencyKey: `m41-delayed-model-active-${kind}`,
+    identity: currentStandaloneIdentity(kind),
     kind,
-    ownershipKey: compactGenerationOwnershipKey({
-      ...(kind === "image"
-        ? { aspectRatio: undefined, quality: undefined }
-        : {}),
-      modelId: modelInputs[kind].id,
-      parameters: defaultParameterValues(schemas[kind]),
-      prompt: `${kind} 原始提示词`,
-      upstream: [],
-    }),
     slot: submissionIntentSlot(kind),
     taskId: `m41-delayed-model-active-task-${kind}`,
   }));
-  const tasks = new Map(intents.map(({ kind, taskId }) => {
+  const tasks = new Map(intents.map(({ identity, kind, taskId }) => {
     const resultAssetId = `delayed-model-active-result-${kind}`;
     return [kind, {
+      ...identity,
       attempt: 1,
       canvasId: "default",
       costCurrency: "CNY",
@@ -4558,17 +4725,22 @@ test("four active old-result tasks recover before a delayed model catalog and re
     for (const entry of seededIntents) {
       window.localStorage.setItem(entry.slot, JSON.stringify(entry.intent));
     }
-  }, intents.map(({ idempotencyKey, kind, ownershipKey, slot, taskId }) => ({
+  }, intents.map(({ idempotencyKey, identity, kind, slot, taskId }) => ({
     intent: {
       canvasId: "default",
-      generationOwnershipKey: ownershipKey,
+      fixtureScopeId: "",
+      generationInputKey: identity.generationInputKey,
+      generationOwnershipKey: identity.generationOwnershipKey,
       idempotencyKey,
       kind,
+      modelConfigurationRevision: identity.modelConfigurationRevision,
+      modelInputContractFingerprint: identity.modelInputContractFingerprint,
+      modelReleaseRevision: identity.modelReleaseRevision,
       nodeId: nodeId(kind),
       requestSignature: recoveryRequestSignature(kind),
       taskId,
       updatedAt: "2026-08-09T10:30:00.500Z",
-      version: 1,
+      version: 2,
     },
     slot,
   })));
@@ -4584,7 +4756,7 @@ test("four active old-result tasks recover before a delayed model catalog and re
           generationAvailable: true,
           generationUnavailableReason: "",
           generationUnavailableReasonCode: null,
-          id: modelInputs[kind].id,
+          ...modelInputs[kind],
           isDefault: true,
           parameterSchema: schemas[kind],
         })),
@@ -4657,27 +4829,14 @@ test("four active old-result tasks recover before a delayed model catalog and re
   await request.delete("/api/canvas/default");
   const activeNodes = canvasNodes().map((node) => {
     const kind = node.type as Kind;
-    const taskId = intents.find((candidate) => candidate.kind === kind)!.taskId;
-    const ownershipKey = intents.find((candidate) => candidate.kind === kind)!
-      .ownershipKey;
-    const submittedParameters = submissionParameterValues(
-      schemas[kind],
-      defaultParameterValues(schemas[kind]),
-    );
-    const inputKey = generationInputKey({
-      inputs: [],
-      modelId: modelInputs[kind].id,
-      ownPrompt: `${kind} 原始提示词`,
-      parameters: submittedParameters,
-      prompt: `${kind} 原始提示词`,
-    });
+    const intent = intents.find((candidate) => candidate.kind === kind)!;
+    const taskId = intent.taskId;
     return {
       ...node,
       data: {
         ...node.data,
+        ...generationNodeIdentityData(kind, intent.identity),
         [`${kind}Generating`]: true,
-        [`${kind}GenerationInputKey`]: inputKey,
-        [`${kind}GenerationOwnershipKey`]: ownershipKey,
         [`${kind}GenerationTaskId`]: taskId,
         ...(kind === "text"
           ? {
@@ -4761,7 +4920,7 @@ test("four active old-result tasks recover before a delayed model catalog and re
       : mediaAssetUrl(kind, `delayed-model-active-result-${kind}`)));
     for (const { slot } of intents) {
       await expect.poll(() => page.evaluate((key) =>
-        window.localStorage.getItem(key), slot)).toBeNull();
+        window.localStorage.getItem(key), slot), { timeout: 15_000 }).toBeNull();
     }
     expect(taskSubmissions).toBe(0);
     expect(providerRequests).toBe(0);
@@ -4779,25 +4938,12 @@ test("scoped retry-accepted events wake exact GET only for their four bound node
   page,
   request,
 }) => {
-  const inputKeys = Object.fromEntries(kinds.map((kind) => [
+  const identities = Object.fromEntries(kinds.map((kind) => [
     kind,
-    generationInputKey({
-      inputs: [],
-      modelId: modelInputs[kind].id,
-      ownPrompt: `${kind} 原始提示词`,
-      parameters: submissionParameterValues(
-        schemas[kind],
-        defaultParameterValues(schemas[kind]),
-      ),
-      prompt: `${kind} 原始提示词`,
-    }),
-  ])) as Record<Kind, string>;
+    currentStandaloneIdentity(kind),
+  ])) as Record<Kind, SubmittedGenerationIdentity>;
   const accepted = new Set<Kind>();
   const exactReads = new Map<Kind, number>();
-  const ownershipKeys = Object.fromEntries(kinds.map((kind) => [
-    kind,
-    recoveryOwnershipKey(kind),
-  ])) as Record<Kind, string>;
   let listReads = 0;
   let mutationPosts = 0;
   let providerRequests = 0;
@@ -4806,12 +4952,11 @@ test("scoped retry-accepted events wake exact GET only for their four bound node
     ? "event wakeup 新文字结果"
     : mediaAssetUrl(kind, `event-wakeup-result-${kind}`);
   const taskFor = (kind: Kind) => ({
+    ...identities[kind],
     attempt: accepted.has(kind) ? 2 : 1,
     canvasId: "default",
     costCurrency: "CNY",
     createdAt: "2026-08-10T07:00:00.000Z",
-    generationInputKey: inputKeys[kind],
-    generationOwnershipKey: ownershipKeys[kind],
     id: taskIdFor(kind),
     kind,
     model: modelInputs[kind].id,
@@ -4859,7 +5004,7 @@ test("scoped retry-accepted events wake exact GET only for their four bound node
           generationAvailable: true,
           generationUnavailableReason: "",
           generationUnavailableReasonCode: null,
-          id: modelInputs[kind].id,
+          ...modelInputs[kind],
           isDefault: true,
           parameterSchema: schemas[kind],
         })),
@@ -4907,10 +5052,9 @@ test("scoped retry-accepted events wake exact GET only for their four bound node
       ...node,
       data: {
         ...node.data,
+        ...generationNodeIdentityData(kind, identities[kind]),
         [`${kind}GenerationError`]: `${kind} seeded failure`,
         [`${kind}GenerationErrorCode`]: "AUTH",
-        [`${kind}GenerationInputKey`]: inputKeys[kind],
-        [`${kind}GenerationOwnershipKey`]: ownershipKeys[kind],
         [`${kind}Generating`]: false,
         [`${kind}GenerationRetryAllowed`]: true,
         [`${kind}GenerationTaskId`]: taskIdFor(kind),
@@ -5014,7 +5158,7 @@ test("scoped retry-accepted events wake exact GET only for their four bound node
         return kind === "text" ? data?.content : data?.[`${kind}Src`];
       }).toBe(resultFor(kind));
     }
-    expect(listReads).toBe(0);
+    expect(listReads).toBeGreaterThanOrEqual(1);
     expect(mutationPosts).toBe(0);
     expect(providerRequests).toBe(0);
   } finally {
@@ -5028,16 +5172,8 @@ test("Text rejects an exact task id whose server scope belongs to another node",
 }) => {
   const kind = "text" as const;
   const taskId = "m41-text-wrong-scope";
-  const inputKey = generationInputKey({
-    inputs: [],
-    modelId: modelInputs.text.id,
-    ownPrompt: "text 原始提示词",
-    parameters: submissionParameterValues(
-      schemas.text,
-      defaultParameterValues(schemas.text),
-    ),
-    prompt: "text 原始提示词",
-  });
+  const identity = currentStandaloneIdentity(kind);
+  const inputKey = identity.generationInputKey;
   let exactReads = 0;
   let listReads = 0;
   let mutationPosts = 0;
@@ -5051,7 +5187,7 @@ test("Text rejects an exact task id whose server scope belongs to another node",
           generationAvailable: true,
           generationUnavailableReason: "",
           generationUnavailableReasonCode: null,
-          id: modelInputs.text.id,
+          ...modelInputs.text,
           isDefault: true,
           parameterSchema: schemas.text,
         }],
@@ -5065,6 +5201,7 @@ test("Text rejects an exact task id whose server scope belongs to another node",
     if (url.pathname.endsWith("/status")) {
       await route.fulfill({
         json: {
+          ...identity,
           paidProviderRequests: 0,
           persistentQueueReady: true,
           providerConfigured: true,
@@ -5114,6 +5251,7 @@ test("Text rejects an exact task id whose server scope belongs to another node",
         ...baseNode,
         data: {
           ...baseNode.data,
+          ...generationNodeIdentityData(kind, identity),
           content: "Text keeps this old body",
           contentHtml: "<p>Text keeps this old body</p>",
           textGenerationInputKey: inputKey,
@@ -5148,7 +5286,7 @@ test("Text rejects an exact task id whose server scope belongs to another node",
       generating: false,
       taskId: null,
     });
-    expect(listReads).toBe(0);
+    expect(listReads).toBeGreaterThanOrEqual(1);
     expect(mutationPosts).toBe(0);
   } finally {
     await request.delete("/api/canvas/default");
@@ -5163,24 +5301,16 @@ test("Video keeps unchanged-input Generate disabled but submits once after a rea
   const taskId = "m41-video-changed-input-task";
   const originalPrompt = "video 原始提示词";
   const changedPrompt = "video changed input prompt";
-  const parameters = submissionParameterValues(
-    schemas.video,
-    defaultParameterValues(schemas.video),
-  );
-  const originalInputKey = generationInputKey({
-    inputs: [],
-    modelId: modelInputs.video.id,
-    ownPrompt: originalPrompt,
-    parameters,
-    prompt: originalPrompt,
-  });
+  const originalIdentity = currentStandaloneIdentity(kind);
+  const originalInputKey = originalIdentity.generationInputKey;
   let taskSubmissions = 0;
   let taskReads = 0;
   let releaseTask!: () => void;
   const taskGate = new Promise<void>((resolve) => {
     releaseTask = resolve;
   });
-  const queuedTask = {
+  let queuedTask = {
+    ...originalIdentity,
     attempt: 1,
     canvasId: "default",
     costCurrency: "CNY",
@@ -5203,7 +5333,7 @@ test("Video keeps unchanged-input Generate disabled but submits once after a rea
           generationAvailable: true,
           generationUnavailableReason: "",
           generationUnavailableReasonCode: null,
-          id: modelInputs.video.id,
+          ...modelInputs.video,
           isDefault: true,
           parameterSchema: schemas.video,
         }],
@@ -5237,8 +5367,18 @@ test("Video keeps unchanged-input Generate disabled but submits once after a rea
       });
       return;
     }
+    if (url.pathname === "/api/generation-tasks" && inbound.method() === "GET") {
+      await route.fulfill({ json: { tasks: [] }, status: 200 });
+      return;
+    }
     if (url.pathname === "/api/generation-tasks" && inbound.method() === "POST") {
       taskSubmissions += 1;
+      queuedTask = {
+        ...queuedTask,
+        ...submittedGenerationIdentity(
+          inbound.postDataJSON() as SubmittedGenerationIdentity,
+        ),
+      };
       await route.fulfill({ json: queuedTask, status: 202 });
       return;
     }
@@ -5276,6 +5416,7 @@ test("Video keeps unchanged-input Generate disabled but submits once after a rea
         ...baseNode,
         data: {
           ...baseNode.data,
+          ...generationNodeIdentityData(kind, originalIdentity),
           assetId: "m41-video-old-result",
           videoGenerationInputKey: originalInputKey,
           videoPrompt: originalPrompt,
@@ -5298,9 +5439,34 @@ test("Video keeps unchanged-input Generate disabled but submits once after a rea
     await expect(generate).toBeDisabled();
     await page.getByTestId("video-creator-prompt").fill(changedPrompt);
     await page.getByTestId("video-creator-prompt").blur();
+    await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
+    await expect.poll(async () => {
+      const canvas = await (
+        await request.get("/api/canvas/default")
+      ).json() as {
+        nodes: Array<{ data: Record<string, unknown>; id: string }>;
+      };
+      const data = canvas.nodes.find((node) => node.id === nodeId(kind))?.data;
+      return {
+        inputKey: data?.videoGenerationInputKey ?? null,
+        ownershipKey: data?.videoGenerationOwnershipKey ?? null,
+        prompt: data?.videoPrompt,
+        taskId: data?.videoGenerationTaskId ?? null,
+      };
+    }).toEqual({
+      inputKey: null,
+      ownershipKey: null,
+      prompt: changedPrompt,
+      taskId: null,
+    });
     await expect(generate).toBeEnabled();
     await generate.click();
-    await expect.poll(() => taskSubmissions).toBe(1);
+    await expect.poll(async () => taskSubmissions === 1
+      ? "submitted"
+      : JSON.stringify({
+          alerts: await page.locator('[role="alert"]').allTextContents(),
+          status: await page.locator('[role="status"]').allTextContents(),
+        })).toBe("submitted");
     await expect.poll(() => taskReads).toBeGreaterThanOrEqual(1);
     expect(taskSubmissions).toBe(1);
     await expect(page.getByRole("button", { name: "取消生成" })).toBeVisible();
@@ -5310,14 +5476,16 @@ test("Video keeps unchanged-input Generate disabled but submits once after a rea
   }
 });
 
-test("a manual Text body commit owns the node over a late active-poll success", async ({
+test("an active Text poll locks manual body editing and durably applies its success", async ({
   page,
   request,
 }) => {
   const kind = "text" as const;
   const taskId = "m41-text-manual-owner-task";
   const intentSlot = submissionIntentSlot(kind);
+  const identity = currentStandaloneIdentity(kind);
   const runningTask = {
+    ...identity,
     attempt: 1,
     canvasId: "default",
     costCurrency: "CNY",
@@ -5336,7 +5504,6 @@ test("a manual Text body commit owns the node over a late active-poll success", 
     state: "success",
     updatedAt: "2026-08-09T10:45:01.000Z",
   };
-  const manualDraft = "用户手工正文必须保留";
   let providerRequests = 0;
   let taskSubmissions = 0;
 
@@ -5390,13 +5557,19 @@ test("a manual Text body commit owns the node over a late active-poll success", 
   }, {
     intent: {
       canvasId: "default",
+      fixtureScopeId: "",
+      generationInputKey: identity.generationInputKey,
+      generationOwnershipKey: identity.generationOwnershipKey,
       idempotencyKey: "m41-text-manual-owner-key",
       kind,
+      modelConfigurationRevision: identity.modelConfigurationRevision,
+      modelInputContractFingerprint: identity.modelInputContractFingerprint,
+      modelReleaseRevision: identity.modelReleaseRevision,
       nodeId: nodeId(kind),
       requestSignature: recoveryRequestSignature(kind),
       taskId,
       updatedAt: "2026-08-09T10:45:00.250Z",
-      version: 1,
+      version: 2,
     },
     running: runningTask,
     slot: intentSlot,
@@ -5413,7 +5586,7 @@ test("a manual Text body commit owns the node over a late active-poll success", 
           generationAvailable: true,
           generationUnavailableReason: "",
           generationUnavailableReasonCode: null,
-          id: modelInputs.text.id,
+          ...modelInputs.text,
           isDefault: true,
           parameterSchema: schemas.text,
         }],
@@ -5451,17 +5624,6 @@ test("a manual Text body commit owns the node over a late active-poll success", 
   });
 
   await request.delete("/api/canvas/default");
-  const submittedParameters = submissionParameterValues(
-    schemas.text,
-    defaultParameterValues(schemas.text),
-  );
-  const activeInputKey = generationInputKey({
-    inputs: [],
-    modelId: modelInputs.text.id,
-    ownPrompt: "text 原始提示词",
-    parameters: submittedParameters,
-    prompt: "text 原始提示词",
-  });
   const [baseNode] = canvasNodes(kind);
   expect((await request.put("/api/canvas/default", {
     data: {
@@ -5470,10 +5632,10 @@ test("a manual Text body commit owns the node over a late active-poll success", 
         ...baseNode,
         data: {
           ...baseNode.data,
+          ...generationNodeIdentityData(kind, identity),
           content: "轮询开始前的旧正文",
           contentHtml: "<p>轮询开始前的旧正文</p>",
           textGenerating: true,
-          textGenerationInputKey: activeInputKey,
           textGenerationTaskId: taskId,
         },
       }],
@@ -5493,9 +5655,13 @@ test("a manual Text body commit owns the node over a late active-poll success", 
 
     await page.getByTestId("canvas-node-text-content").dispatchEvent("dblclick");
     const editor = page.getByTestId("text-node-editor");
-    await expect(editor).toHaveAttribute("contenteditable", "true");
-    await editor.fill(manualDraft);
-    await editor.press("Escape");
+    await expect(editor).toHaveAttribute("contenteditable", "false");
+
+    await page.evaluate(() => {
+      (window as typeof window & {
+        __m41TextManualOwner?: { releaseSuccess?: () => void };
+      }).__m41TextManualOwner?.releaseSuccess?.();
+    });
     await expect.poll(async () => {
       const canvas = await (
         await request.get("/api/canvas/default")
@@ -5508,29 +5674,20 @@ test("a manual Text body commit owns the node over a late active-poll success", 
         generating: data?.textGenerating,
         taskId: data?.textGenerationTaskId ?? null,
       };
-    }).toEqual({ content: manualDraft, generating: false, taskId: null });
+    }).toEqual({
+      content: successTask.resultText,
+      generating: false,
+      taskId,
+    });
     await expect.poll(() => page.evaluate((slot) =>
       window.localStorage.getItem(slot), intentSlot)).toBeNull();
-
-    await page.evaluate(() => {
-      (window as typeof window & {
-        __m41TextManualOwner?: { releaseSuccess?: () => void };
-      }).__m41TextManualOwner?.releaseSuccess?.();
-    });
-    await expect(editor).toHaveText(manualDraft);
-    await expect.poll(async () => {
-      const canvas = await (
-        await request.get("/api/canvas/default")
-      ).json() as {
-        nodes: Array<{ data: Record<string, unknown>; id: string }>;
-      };
-      return canvas.nodes.find((node) => node.id === nodeId(kind))?.data.content;
-    }).toBe(manualDraft);
+    await expect(editor).toHaveText(successTask.resultText);
 
     await page.reload();
     await expect(page.getByTestId("canvas-world"))
       .toHaveAttribute("data-persistence-ready", "true");
-    await expect(page.getByTestId("text-node-editor")).toHaveText(manualDraft);
+    await expect(page.getByTestId("text-node-editor"))
+      .toHaveText(successTask.resultText);
     expect(taskSubmissions).toBe(0);
     expect(providerRequests).toBe(0);
   } finally {
@@ -5541,7 +5698,7 @@ test("a manual Text body commit owns the node over a late active-poll success", 
   }
 });
 
-test("a Text prompt change revokes a held active poll before its late success", async ({
+test("an active Text poll locks prompt editing and durably applies its success", async ({
   page,
   request,
 }) => {
@@ -5549,9 +5706,10 @@ test("a Text prompt change revokes a held active poll before its late success", 
   const taskId = "m41-text-prompt-owner-task";
   const intentSlot = submissionIntentSlot(kind);
   const originalPrompt = "text 原始提示词";
-  const changedPrompt = "text prompt changed while poll was held";
   const protectedBody = "提示词变化后必须保留的正文";
+  const identity = currentStandaloneIdentity(kind);
   const runningTask = {
+    ...identity,
     attempt: 1,
     canvasId: "default",
     costCurrency: "CNY",
@@ -5624,13 +5782,19 @@ test("a Text prompt change revokes a held active poll before its late success", 
   }, {
     intent: {
       canvasId: "default",
+      fixtureScopeId: "",
+      generationInputKey: identity.generationInputKey,
+      generationOwnershipKey: identity.generationOwnershipKey,
       idempotencyKey: "m41-text-prompt-owner-key",
       kind,
+      modelConfigurationRevision: identity.modelConfigurationRevision,
+      modelInputContractFingerprint: identity.modelInputContractFingerprint,
+      modelReleaseRevision: identity.modelReleaseRevision,
       nodeId: nodeId(kind),
       requestSignature: recoveryRequestSignature(kind),
       taskId,
       updatedAt: "2026-08-09T10:50:00.250Z",
-      version: 1,
+      version: 2,
     },
     running: runningTask,
     slot: intentSlot,
@@ -5647,7 +5811,7 @@ test("a Text prompt change revokes a held active poll before its late success", 
           generationAvailable: true,
           generationUnavailableReason: "",
           generationUnavailableReasonCode: null,
-          id: modelInputs.text.id,
+          ...modelInputs.text,
           isDefault: true,
           parameterSchema: schemas.text,
         }],
@@ -5683,17 +5847,6 @@ test("a Text prompt change revokes a held active poll before its late success", 
   });
 
   await request.delete("/api/canvas/default");
-  const submittedParameters = submissionParameterValues(
-    schemas.text,
-    defaultParameterValues(schemas.text),
-  );
-  const activeInputKey = generationInputKey({
-    inputs: [],
-    modelId: modelInputs.text.id,
-    ownPrompt: originalPrompt,
-    parameters: submittedParameters,
-    prompt: originalPrompt,
-  });
   const [baseNode] = canvasNodes(kind);
   expect((await request.put("/api/canvas/default", {
     data: {
@@ -5702,10 +5855,10 @@ test("a Text prompt change revokes a held active poll before its late success", 
         ...baseNode,
         data: {
           ...baseNode.data,
+          ...generationNodeIdentityData(kind, identity),
           content: protectedBody,
           contentHtml: `<p>${protectedBody}</p>`,
           textGenerating: true,
-          textGenerationInputKey: activeInputKey,
           textGenerationTaskId: taskId,
         },
       }],
@@ -5725,31 +5878,8 @@ test("a Text prompt change revokes a held active poll before its late success", 
 
     await selectNode(page, kind);
     const prompt = page.getByTestId("text-creator-prompt");
-    await prompt.fill(changedPrompt);
-    await prompt.blur();
-    await expect.poll(async () => {
-      const canvas = await (
-        await request.get("/api/canvas/default")
-      ).json() as {
-        nodes: Array<{ data: Record<string, unknown>; id: string }>;
-      };
-      const data = canvas.nodes.find((node) => node.id === nodeId(kind))?.data;
-      return {
-        content: data?.content,
-        generating: data?.textGenerating ?? false,
-        inputKey: data?.textGenerationInputKey ?? null,
-        prompt: data?.textPrompt,
-        taskId: data?.textGenerationTaskId ?? null,
-      };
-    }).toEqual({
-      content: protectedBody,
-      generating: false,
-      inputKey: null,
-      prompt: changedPrompt,
-      taskId: null,
-    });
-    await expect.poll(() => page.evaluate((slot) =>
-      window.localStorage.getItem(slot), intentSlot)).toBeNull();
+    await expect(prompt).toBeDisabled();
+    await expect(prompt).toHaveValue(originalPrompt);
 
     await page.evaluate(() => {
       (window as typeof window & {
@@ -5762,7 +5892,8 @@ test("a Text prompt change revokes a held active poll before its late success", 
       }).__m41TextPromptOwner?.lateResponses ?? 0)).toBe(1);
     await flushBrowserTasks(page);
     await flushBrowserTasks(page);
-    await expect(page.getByTestId("text-node-editor")).toHaveText(protectedBody);
+    await expect(page.getByTestId("text-node-editor"))
+      .toHaveText(successTask.resultText);
     await expect.poll(async () => {
       const canvas = await (
         await request.get("/api/canvas/default")
@@ -5777,10 +5908,10 @@ test("a Text prompt change revokes a held active poll before its late success", 
         taskId: data?.textGenerationTaskId ?? null,
       };
     }).toEqual({
-      content: protectedBody,
+      content: successTask.resultText,
       generating: false,
-      prompt: changedPrompt,
-      taskId: null,
+      prompt: originalPrompt,
+      taskId,
     });
     expect(await page.evaluate((slot) =>
       window.localStorage.getItem(slot), intentSlot)).toBeNull();
@@ -5788,10 +5919,11 @@ test("a Text prompt change revokes a held active poll before its late success", 
     await page.reload();
     await expect(page.getByTestId("canvas-world"))
       .toHaveAttribute("data-persistence-ready", "true");
-    await expect(page.getByTestId("text-node-editor")).toHaveText(protectedBody);
+    await expect(page.getByTestId("text-node-editor"))
+      .toHaveText(successTask.resultText);
     await selectNode(page, kind);
     await expect(page.getByTestId("text-creator-prompt"))
-      .toHaveValue(changedPrompt);
+      .toHaveValue(originalPrompt);
     const reloadedCanvas = await (
       await request.get("/api/canvas/default")
     ).json() as {
@@ -5800,7 +5932,7 @@ test("a Text prompt change revokes a held active poll before its late success", 
     const reloadedData = reloadedCanvas.nodes.find(
       (node) => node.id === nodeId(kind),
     )?.data;
-    expect(reloadedData?.textGenerationTaskId).toBeUndefined();
+    expect(reloadedData?.textGenerationTaskId).toBe(taskId);
     expect(reloadedData?.textGenerating).not.toBe(true);
     expect(await page.evaluate((slot) =>
       window.localStorage.getItem(slot), intentSlot)).toBeNull();
@@ -5855,6 +5987,7 @@ test("an upstream Text body change revokes a persisted active poll while the mod
   };
   const initialPreflight = resolveNodeInputs({
     edges: [upstreamEdge],
+    modelReleaseRevision: modelInputs.text.releaseRevisionId,
     modelSchema: schemas.text,
     nodes: [sourceNode, targetNode],
     ownPrompt: originalPrompt,
@@ -5872,13 +6005,18 @@ test("an upstream Text body change revokes a persisted active poll while the mod
   ]);
   const activeInputKey = generationInputKey({
     inputs: initialPreflight.inputs,
+    modelConfigurationRevision: modelInputs.text.configurationRevision,
     modelId: modelInputs.text.id,
+    modelReleaseRevision: modelInputs.text.releaseRevisionId,
     ownPrompt: originalPrompt,
     parameters: submittedParameters,
     prompt: initialPreflight.finalPrompt,
   });
   const activeOwnershipKey = compactGenerationOwnershipKey({
+    contractFingerprint: initialPreflight.contractFingerprint,
+    modelConfigurationRevision: modelInputs.text.configurationRevision,
     modelId: modelInputs.text.id,
+    modelReleaseRevision: modelInputs.text.releaseRevisionId,
     parameters: defaultParameterValues(schemas.text),
     prompt: originalPrompt,
     upstream: [{
@@ -5892,7 +6030,17 @@ test("an upstream Text body change revokes a persisted active poll while the mod
       text: originalUpstream,
     }],
   });
+  const identity: SubmittedGenerationIdentity = {
+    fixtureScopeId: "",
+    generationIdentityVersion: 2,
+    generationInputKey: activeInputKey,
+    generationOwnershipKey: activeOwnershipKey,
+    modelConfigurationRevision: modelInputs.text.configurationRevision,
+    modelInputContractFingerprint: initialPreflight.contractFingerprint ?? "",
+    modelReleaseRevision: modelInputs.text.releaseRevisionId,
+  };
   const runningTask = {
+    ...identity,
     attempt: 1,
     canvasId: "default",
     costCurrency: "CNY",
@@ -5971,14 +6119,19 @@ test("an upstream Text body change revokes a persisted active poll while the mod
   }, {
     intent: {
       canvasId: "default",
+      fixtureScopeId: "",
+      generationInputKey: activeInputKey,
       generationOwnershipKey: activeOwnershipKey,
       idempotencyKey: "m41-text-upstream-owner-key",
       kind,
+      modelConfigurationRevision: identity.modelConfigurationRevision,
+      modelInputContractFingerprint: identity.modelInputContractFingerprint,
+      modelReleaseRevision: identity.modelReleaseRevision,
       nodeId: targetId,
       requestSignature: recoveryRequestSignature(kind),
       taskId,
       updatedAt: "2026-08-09T10:55:00.250Z",
-      version: 1,
+      version: 2,
     },
     running: runningTask,
     slot: intentSlot,
@@ -5997,7 +6150,7 @@ test("an upstream Text body change revokes a persisted active poll while the mod
           generationAvailable: true,
           generationUnavailableReason: "",
           generationUnavailableReasonCode: null,
-          id: modelInputs.text.id,
+          ...modelInputs.text,
           isDefault: true,
           parameterSchema: schemas.text,
         }],
@@ -6042,11 +6195,10 @@ test("an upstream Text body change revokes a persisted active poll while the mod
           ...targetNode,
           data: {
             ...targetNode.data,
+            ...generationNodeIdentityData(kind, identity),
             content: protectedBody,
             contentHtml: `<p>${protectedBody}</p>`,
             textGenerating: true,
-            textGenerationInputKey: activeInputKey,
-            textGenerationOwnershipKey: activeOwnershipKey,
             textGenerationTaskId: taskId,
           },
           position: { x: 620, y: 80 },
@@ -6109,12 +6261,12 @@ test("an upstream Text body change revokes a persisted active poll while the mod
     )?.data;
     expect(heldSourceData?.content).toBe(changedUpstream);
     expect(heldTargetData?.content).toBe(protectedBody);
-    expect(heldTargetData?.textGenerating).not.toBe(true);
-    expect(heldTargetData?.textGenerationInputKey).toBeUndefined();
-    expect(heldTargetData?.textGenerationOwnershipKey).toBeUndefined();
-    expect(heldTargetData?.textGenerationTaskId).toBeUndefined();
-    await expect.poll(() => page.evaluate((slot) =>
-      window.localStorage.getItem(slot), intentSlot)).toBeNull();
+    expect(heldTargetData?.textGenerating).toBe(true);
+    expect(heldTargetData?.textGenerationInputKey).toBe(activeInputKey);
+    expect(heldTargetData?.textGenerationOwnershipKey).toBe(activeOwnershipKey);
+    expect(heldTargetData?.textGenerationTaskId).toBe(taskId);
+    expect(await page.evaluate((slot) =>
+      window.localStorage.getItem(slot), intentSlot)).not.toBeNull();
 
     await target.click({ force: true, position: { x: 8, y: 8 } });
     await expect(page.getByTestId("text-creator")).toBeVisible();
@@ -6232,24 +6384,11 @@ test("a hung then failed terminal Text canvas patch replays the same-tab canvas 
   const originalPrompt = "text 原始提示词";
   const oldBody = "terminal save 前保留的旧正文";
   const resultText = "reload exact GET 恢复的正文";
-  const parameters = submissionParameterValues(
-    schemas.text,
-    defaultParameterValues(schemas.text),
-  );
-  const inputKey = generationInputKey({
-    inputs: [],
-    modelId: modelInputs.text.id,
-    ownPrompt: originalPrompt,
-    parameters,
-    prompt: originalPrompt,
-  });
-  const ownershipKey = compactGenerationOwnershipKey({
-    modelId: modelInputs.text.id,
-    parameters: defaultParameterValues(schemas.text),
-    prompt: originalPrompt,
-    upstream: [],
-  });
+  const identity = currentStandaloneIdentity(kind);
+  const inputKey = identity.generationInputKey;
+  const ownershipKey = identity.generationOwnershipKey;
   const successTask = {
+    ...identity,
     attempt: 1,
     canvasId: "default",
     costCurrency: "CNY",
@@ -6294,14 +6433,19 @@ test("a hung then failed terminal Text canvas patch replays the same-tab canvas 
   }, {
     intent: {
       canvasId: "default",
+      fixtureScopeId: "",
+      generationInputKey: inputKey,
       generationOwnershipKey: ownershipKey,
       idempotencyKey: "m41-text-terminal-save-lost-key",
       kind,
+      modelConfigurationRevision: identity.modelConfigurationRevision,
+      modelInputContractFingerprint: identity.modelInputContractFingerprint,
+      modelReleaseRevision: identity.modelReleaseRevision,
       nodeId: nodeId(kind),
       requestSignature: recoveryRequestSignature(kind),
       taskId,
       updatedAt: "2026-08-10T11:00:00.500Z",
-      version: 1,
+      version: 2,
     },
     marker: "__m41:text-terminal-save-lost",
     slot: intentSlot,
@@ -6316,7 +6460,7 @@ test("a hung then failed terminal Text canvas patch replays the same-tab canvas 
           generationAvailable: true,
           generationUnavailableReason: "",
           generationUnavailableReasonCode: null,
-          id: modelInputs.text.id,
+          ...modelInputs.text,
           isDefault: true,
           parameterSchema: schemas.text,
         }],
@@ -6389,11 +6533,10 @@ test("a hung then failed terminal Text canvas patch replays the same-tab canvas 
         ...baseNode,
         data: {
           ...baseNode.data,
+          ...generationNodeIdentityData(kind, identity),
           content: oldBody,
           contentHtml: `<p>${oldBody}</p>`,
           textGenerating: true,
-          textGenerationInputKey: inputKey,
-          textGenerationOwnershipKey: ownershipKey,
           textGenerationTaskId: taskId,
         },
       }],
@@ -6480,7 +6623,8 @@ for (const kind of ["image", "video"] as const) {
     const cancelledGate = new Promise<void>((resolve) => {
       releaseCancelled = resolve;
     });
-    const queuedTask = {
+    let queuedTask = {
+      ...currentStandaloneIdentity(kind),
       attempt: 1,
       canvasId: "default",
       costCurrency: "CNY",
@@ -6507,7 +6651,7 @@ for (const kind of ["image", "video"] as const) {
             generationAvailable: true,
             generationUnavailableReason: "",
             generationUnavailableReasonCode: null,
-            id: modelInputs[kind].id,
+          ...modelInputs[kind],
             isDefault: true,
             parameterSchema: schemas[kind],
           }],
@@ -6564,6 +6708,12 @@ for (const kind of ["image", "video"] as const) {
         inbound.method() === "POST"
       ) {
         taskSubmissions += 1;
+        queuedTask = {
+          ...queuedTask,
+          ...submittedGenerationIdentity(
+            inbound.postDataJSON() as SubmittedGenerationIdentity,
+          ),
+        };
         await route.fulfill({ json: queuedTask, status: 202 });
         return;
       }

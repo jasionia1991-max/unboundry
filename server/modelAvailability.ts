@@ -3,6 +3,7 @@ import {
   providerProtocolSupportsCapability,
   type ProviderProtocol,
 } from "../types/relayProtocols";
+import { registeredModelExecution } from "./modelExecutionRegistry";
 
 export type ModelGenerationUnavailableReasonCode =
   | "ACCOUNT_CREDENTIAL_INVALID"
@@ -63,7 +64,7 @@ function unavailable(
  * Static adapter compatibility. This is deliberately Provider-request free:
  * it describes adapters shipped by this server, not remote account state.
  */
-export function modelGenerationAdapterSupported(
+export function legacyModelGenerationAdapterSupported(
   input: Pick<
     ModelRuntimeAvailabilityInput,
     | "capability"
@@ -97,6 +98,29 @@ export function modelGenerationAdapterSupported(
   return input.providerDriver === "mureka" &&
     input.costCurrency === "USD" &&
     /^(auto|mureka-(7\.6|8|9))$/i.test(input.providerModelId);
+}
+
+/**
+ * New-task availability is exact-model registered. Historical task execution
+ * does not call this gate and continues from its frozen task snapshot.
+ */
+export function modelGenerationAdapterSupported(
+  input: Pick<
+    ModelRuntimeAvailabilityInput,
+    | "capability"
+    | "costCurrency"
+    | "providerDriver"
+    | "providerModelId"
+    | "providerProtocol"
+  >,
+) {
+  const descriptor = registeredModelExecution({
+    capability: input.capability,
+    providerDriver: input.providerDriver,
+    providerModelId: input.providerModelId,
+    providerProtocol: input.providerProtocol ?? "native",
+  });
+  return Boolean(descriptor && descriptor.costCurrency === input.costCurrency);
 }
 
 /**

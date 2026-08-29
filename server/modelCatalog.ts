@@ -65,6 +65,9 @@ import {
 import {
   analyzeModelContractTemplateCompatibility,
 } from "./modelContractTemplateCompatibility";
+import { assertRegisteredModelExecutionTotality } from
+  "./modelExecutionRegistry";
+import { assertActiveModelContractHealth } from "./activeModelContractHealth";
 
 type Capability = GenerationCapabilityKind;
 type ModelStatus = "disabled" | "draft" | "published";
@@ -206,7 +209,14 @@ function mediaInputPolicy(row: ModelSchemaRow) {
     : undefined;
 }
 
-function modelConfigurationRevision(row: ModelRow) {
+export function modelConfigurationRevision(
+  row: Pick<
+    ModelRow,
+    "capability" | "default_parameters" | "id" |
+      "model_configuration_updated_at" | "provider_driver" |
+      "provider_model_id"
+  >,
+) {
   return createHash("sha256").update(JSON.stringify({
     id: row.id,
     mediaInputPolicy: mediaInputPolicy(row),
@@ -531,6 +541,13 @@ function assertReleaseDocumentMatchesModel(
   if (JSON.stringify(exactSchema) !== JSON.stringify(document.capabilitySchema)) {
     throw new Error("能力参数schema含未知字段或违反Provider约束");
   }
+  assertRegisteredModelExecutionTotality({
+    capability: row.capability,
+    capabilitySchema: exactSchema,
+    providerDriver: row.provider_driver,
+    providerModelId: row.provider_model_id,
+    providerProtocol: row.provider_protocol,
+  });
 }
 
 function activateModelRelease(
@@ -812,16 +829,22 @@ async function modelRuntimeAvailability(rows: ModelRow[], ownerId: string) {
           providerState.reason === "account-credential-invalid"
         ),
       );
-      const contract = modelContractsRequired(db())
-        ? modelContractState(db(), row.id)
-        : undefined;
-      const contractUnavailable = Boolean(
-        contract && (
-          !contract.active ||
-          contract.active.document.runtime === "blocked" ||
-          contract.active.document.evidence === "UNKNOWN"
-        ),
-      );
+      let contractHealthy = true;
+      try {
+        assertActiveModelContractHealth({
+          capability: row.capability,
+          costCurrency: row.cost_currency,
+          modelId: row.id,
+          parameterSchema: parameterSchema(row),
+          providerDriver: row.provider_driver,
+          providerModelId: row.provider_model_id,
+          providerProfileId: row.provider_profile_id,
+          providerProtocol: row.provider_protocol,
+          store: db(),
+        });
+      } catch {
+        contractHealthy = false;
+      }
       return [
         row.id,
         evaluateModelRuntimeAvailability({
@@ -836,7 +859,7 @@ async function modelRuntimeAvailability(rows: ModelRow[], ownerId: string) {
         capability: row.capability,
         costCurrency: row.cost_currency,
         emergencyStop: safety.emergencyStop,
-        globalEnabled: safety.globalEnabled && !contractUnavailable,
+        globalEnabled: safety.globalEnabled && contractHealthy,
         latestCapabilitySuccessAt:
           row.latest_capability_success_at ?? undefined,
         latestProviderAttemptAt:
@@ -1175,6 +1198,7 @@ export async function publicModelsApi(
       parameterSchema: parameterSchema(row),
       providerName: row.provider_display_name,
       providerProtocol: row.provider_protocol,
+      releaseRevisionId: modelContractState(db(), row.id).active?.revisionId,
       isDefault: Boolean(row.is_default),
       ...availability.get(row.id)!,
     })),
@@ -1645,6 +1669,15 @@ export async function adminModelsApi(
         schema,
         status: input.status,
       });
+      if (input.status === "published") {
+        assertRegisteredModelExecutionTotality({
+          capability: input.capability,
+          capabilitySchema: schema,
+          providerDriver: provider.driver,
+          providerModelId: input.providerModelId,
+          providerProtocol: input.providerProtocol,
+        });
+      }
       if (input.status === "published" && modelContractsRequired(store)) {
         throw new Error("请先以草稿创建模型，再在合同工作台完成验证与发布");
       }
@@ -1820,6 +1853,15 @@ export async function adminModelsApi(
         schema: validatedSchema,
         status: input.status,
       });
+      if (input.status === "published") {
+        assertRegisteredModelExecutionTotality({
+          capability: current.capability,
+          capabilitySchema: validatedSchema,
+          providerDriver: provider.driver,
+          providerModelId: input.providerModelId,
+          providerProtocol: input.providerProtocol,
+        });
+      }
       if (input.status === "published" && modelContractsRequired(store)) {
         const active = modelContractState(store, path).active;
         if (

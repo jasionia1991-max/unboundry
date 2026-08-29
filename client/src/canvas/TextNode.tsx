@@ -73,7 +73,6 @@ import {
   GENERATION_TASK_RETRY_ACCEPTED_EVENT,
   GenerationRequestError,
   getGenerationTask,
-  listGenerationTasks,
   recoverPendingGenerationTask,
   waitForGenerationTask,
   type GenerationTaskRetryAcceptedDetail,
@@ -82,6 +81,7 @@ import {
 import { createBrowserSingleNodeGenerationTaskPort } from "../generation/browserSingleNodeGenerationTaskPort";
 import {
   createSingleNodeGenerationLifecycle,
+  taskMatchesSingleNodeGenerationIdentity,
   type SingleNodeGenerationAdapter,
   type SingleNodeGenerationBlocked,
   type SingleNodeLifecycleResult,
@@ -115,9 +115,12 @@ type TextTaskOwner = {
 };
 
 function createTextGenerationAdapter(input: {
+  contractFingerprint: string;
   inputKey: string;
   modelId?: string;
   modelName?: string;
+  modelConfigurationRevision: string;
+  modelReleaseRevision: string;
   nodeId: string;
   ownershipKey: string;
   parameters?: ProbeNodeType["data"]["textParameters"];
@@ -133,6 +136,10 @@ function createTextGenerationAdapter(input: {
           textModelId: input.modelId,
           textModelName: input.modelName,
           textParameters: input.parameters,
+          textGenerationContractFingerprint: input.contractFingerprint,
+          textGenerationModelConfigurationRevision:
+            input.modelConfigurationRevision,
+          textGenerationModelReleaseRevision: input.modelReleaseRevision,
         },
       };
     },
@@ -147,7 +154,11 @@ function createTextGenerationAdapter(input: {
           textGenerating: true,
           textGenerationError: undefined,
           textGenerationErrorCode: undefined,
+          textGenerationContractFingerprint: plan.contractFingerprint,
           textGenerationInputKey: plan.inputKey,
+          textGenerationModelConfigurationRevision:
+            plan.modelConfigurationRevision,
+          textGenerationModelReleaseRevision: plan.modelReleaseRevision,
           textGenerationOwnershipKey: task.generationOwnershipKey ?? plan.ownershipKey,
           textGenerationRetryAllowed: undefined,
           textGenerationRetryBlockCode: undefined,
@@ -228,8 +239,11 @@ function createTextGenerationAdapter(input: {
       const block = input.readBlock();
       if (block) return block;
       return {
+        contractFingerprint: input.contractFingerprint,
         inputKey: input.inputKey,
         kind: "text",
+        modelConfigurationRevision: input.modelConfigurationRevision,
+        modelReleaseRevision: input.modelReleaseRevision,
         nodeId: input.nodeId,
         ownershipKey: input.ownershipKey,
         payload: input.payload,
@@ -243,9 +257,11 @@ function textTaskMatchesNode(
   canvasId: string,
   nodeId: string,
   taskId = task.id,
+  fixtureScopeId = "",
 ) {
   return task.id === taskId &&
     task.canvasId === canvasId &&
+    (task.fixtureScopeId ?? "") === fixtureScopeId &&
     task.kind === "text" &&
     task.nodeId === nodeId;
 }
@@ -479,6 +495,7 @@ function TextNodeImpl({
   );
   const editorRef = useRef<HTMLDivElement>(null);
   const bodyLocalValue = useRef(bodyValue);
+  const textDataMutationVersionRef = useRef(0);
   const activeTaskRef = useRef<string | null>(null);
   const textTaskOwnerRef = useRef<TextTaskOwner | undefined>(undefined);
   const textTerminalPatchPendingTaskRef = useRef<string | undefined>(undefined);
@@ -488,7 +505,15 @@ function TextNodeImpl({
     owner: TextTaskOwner;
     taskId: string;
   } | null>(null);
-  const { graphCommandPort, setEdges, setNodes } = useCanvasGraphMutation();
+  const {
+    canvasMutationPendingNodeIds,
+    graphCommandPort,
+    mutateGraph,
+    setEdges,
+    setNodes,
+    tryAdoptNodes,
+  } = useCanvasGraphMutation();
+  const canvasMutationPending = canvasMutationPendingNodeIds.has(id);
   const { getNodes } = useReactFlow<ProbeNodeType>();
   const canvasEdges = useEdges();
   const canvasNodes = useNodes<ProbeNodeType>();
@@ -497,6 +522,7 @@ function TextNodeImpl({
     accountId,
     canvasId,
     canvasRevision,
+    fixtureScopeId,
     flushCanvasSave,
     isFixture,
     persistenceReady,
@@ -546,7 +572,7 @@ function TextNodeImpl({
     // A manual body commit owns the node from this point on. Clear the whole
     // v2 slot (not only a possibly stale task id) so a late recovery cannot
     // reclaim the node after refresh.
-    clearGenerationSubmissionIntent("text", canvasId, id, undefined, accountId);
+    clearGenerationSubmissionIntent("text", canvasId, id, undefined, accountId, fixtureScopeId);
   };
   const revokeTextTaskForGenerationInputChange = () => {
     recoveryTaskRef.current?.controller.abort("text-generation-input-changed");
@@ -560,7 +586,24 @@ function TextNodeImpl({
     setServerInputProblems([]);
     // Input changes revoke the complete v2 slot, including an intent that has
     // been recorded while ensureGenerationTask is still awaiting preflight.
-    clearGenerationSubmissionIntent("text", canvasId, id, undefined, accountId);
+    clearGenerationSubmissionIntent("text", canvasId, id, undefined, accountId, fixtureScopeId);
+  };
+  const commitTextDataMutation = (
+    update: (current: ProbeNodeType["data"]) => ProbeNodeType["data"],
+    afterApplied: () => void = revokeTextTaskForGenerationInputChange,
+  ) => {
+    const mutationVersion = textDataMutationVersionRef.current + 1;
+    textDataMutationVersionRef.current = mutationVersion;
+    void mutateGraph(({ edges, nodes }) => ({
+      edges,
+      nodes: nodes.map((node) => node.id === id
+        ? { ...node, data: update(node.data) }
+        : node),
+    })).then((applied) => {
+      if (applied && textDataMutationVersionRef.current === mutationVersion) {
+        afterApplied();
+      }
+    });
   };
   const titleControl = useCompositionSafeText({
     onCommit: (nextTitle) => {
@@ -577,51 +620,33 @@ function TextNodeImpl({
   });
   const promptControl = useCompositionSafeText({
     onCommit: (nextPrompt) => {
-      revokeTextTaskForGenerationInputChange();
-      setNodes((nodes) =>
-        nodes.map((node) =>
-          node.id === id
-            ? {
-                ...node,
-                data: {
-                  ...clearFailedTextGeneration(node.data),
-                  textPrompt: nextPrompt,
-                },
-              }
-            : node,
-        ),
-      );
+      commitTextDataMutation((current) => ({
+        ...clearFailedTextGeneration(current),
+        textPrompt: nextPrompt,
+      }));
     },
     onEditSessionStart: checkpoint,
     value: data.textPrompt ?? "",
   });
   const bodyControl = useCompositionSafeRichText({
     onCommit: (nextValue) => {
-      revokeTextTaskForManualBodyEdit();
-      setBodyValue(nextValue);
-      setNodes((nodes) =>
-        nodes.map((node) =>
-          node.id === id
-            ? {
-                ...node,
-                data: {
-                  ...node.data,
-                  content: nextValue.text,
-                  contentHtml: nextValue.html,
-                  textGenerationError: undefined,
-                  textGenerationErrorCode: undefined,
-                  textGenerationInputKey: undefined,
-                  textGenerationOwnershipKey: undefined,
-                  textGenerationRetryAllowed: undefined,
-                  textGenerationRetryBlockCode: undefined,
-                  textGenerationRetryBlockReason: undefined,
-                  textGenerating: false,
-                  textGenerationTaskId: undefined,
-                },
-              }
-            : node,
-        ),
-      );
+      commitTextDataMutation((current) => ({
+        ...current,
+        content: nextValue.text,
+        contentHtml: nextValue.html,
+        textGenerationError: undefined,
+        textGenerationErrorCode: undefined,
+        textGenerationInputKey: undefined,
+        textGenerationOwnershipKey: undefined,
+        textGenerationRetryAllowed: undefined,
+        textGenerationRetryBlockCode: undefined,
+        textGenerationRetryBlockReason: undefined,
+        textGenerating: false,
+        textGenerationTaskId: undefined,
+      }), () => {
+        setBodyValue(nextValue);
+        revokeTextTaskForManualBodyEdit();
+      });
     },
     onEditSessionStart: checkpoint,
     value: bodyValue,
@@ -658,6 +683,7 @@ function TextNodeImpl({
     : [];
   const inputPreflight = resolveNodeInputs({
     edges: canvasEdges,
+    modelReleaseRevision: selectedTextModel?.releaseRevisionId,
     modelSchema: selectedTextModel?.parameterSchema,
     nodes: canvasNodes,
     ownPrompt: promptControl.committedValue,
@@ -678,7 +704,9 @@ function TextNodeImpl({
   };
   const generationInputKey = createGenerationInputKey({
     inputs: inputPreflight.inputs,
+    modelConfigurationRevision: selectedTextModel?.configurationRevision,
     modelId: selectedTextModelId,
+    modelReleaseRevision: selectedTextModel?.releaseRevisionId,
     ownPrompt: promptControl.committedValue,
     parameters: textSubmissionParameters,
     prompt: inputPreflight.finalPrompt,
@@ -693,9 +721,7 @@ function TextNodeImpl({
         metadataStatus: input.metadataStatus,
         order: input.order,
         ready: input.state === "ready",
-        role: typeof edge?.data?.inputRole === "string"
-          ? edge.data.inputRole
-          : defaultNodeInputRole(input.kind, "text"),
+        role: input.role,
         source: input.sourceNodeId,
         sourceKind: input.kind,
         src: input.kind === "text" ? undefined : input.preview,
@@ -704,18 +730,30 @@ function TextNodeImpl({
       };
     });
   const effectiveGenerationInputFingerprint = generationOwnershipKey({
+    contractFingerprint: inputPreflight.contractFingerprint,
+    modelConfigurationRevision: selectedTextModel?.configurationRevision,
     modelId: selectedTextModelId,
+    modelReleaseRevision: selectedTextModel?.releaseRevisionId,
     parameters: selectedTextModel ? textParameters : data.textParameters,
     prompt: promptControl.committedValue,
     upstream: generationOwnershipUpstream,
   });
   const rawGenerationInputFingerprint = generationOwnershipKey({
+    contractFingerprint: data.textGenerationOwnershipKey
+      ? data.textGenerationContractFingerprint
+      : inputPreflight.contractFingerprint,
+    modelConfigurationRevision: data.textGenerationOwnershipKey
+      ? data.textGenerationModelConfigurationRevision
+      : selectedTextModel?.configurationRevision,
     // An ownership-bound task uses only the durable snapshot. A node that has
     // not admitted a task yet materializes the effective catalog choice before
     // the paid POST, so a later default change cannot silently retarget it.
     modelId: data.textGenerationOwnershipKey
       ? data.textModelId
       : selectedTextModelId,
+    modelReleaseRevision: data.textGenerationOwnershipKey
+      ? data.textGenerationModelReleaseRevision
+      : selectedTextModel?.releaseRevisionId,
     parameters: data.textGenerationOwnershipKey
       ? data.textParameters
       : selectedTextModel
@@ -848,10 +886,7 @@ function TextNodeImpl({
       !data.textGenerationInputKey &&
       !data.textGenerationOwnershipKey
     ) return;
-    revokeTextTaskForGenerationInputChange();
-    setNodes((nodes) => nodes.map((node) => node.id === id
-      ? { ...node, data: clearFailedTextGeneration(node.data) }
-      : node));
+    commitTextDataMutation((current) => clearFailedTextGeneration(current));
   }, [
     data.textGenerating,
     data.textGenerationInputKey,
@@ -871,6 +906,7 @@ function TextNodeImpl({
   }, [singleNodeChrome]);
 
   useEffect(() => {
+    if (canvasMutationPending) return;
     const nextValue = storedRichTextValue(
       data.content ?? "",
       data.contentHtml,
@@ -880,7 +916,7 @@ function TextNodeImpl({
         ? current
         : nextValue,
     );
-  }, [data.content, data.contentHtml]);
+  }, [canvasMutationPending, data.content, data.contentHtml]);
 
   useEffect(() => {
     const editor = editorRef.current;
@@ -959,17 +995,23 @@ function TextNodeImpl({
   ) => {
     if (
       !ownsTextTask(owner) ||
-      !textTaskMatchesNode(task, canvasId, id, owner.taskId)
+      !textTaskMatchesNode(task, canvasId, id, owner.taskId, fixtureScopeId)
     ) return false;
+    if (!taskMatchesSingleNodeGenerationIdentity(task, {
+      contractFingerprint: data.textGenerationContractFingerprint ?? "",
+      inputKey: owner.generationInputKey ?? "",
+      modelConfigurationRevision:
+        data.textGenerationModelConfigurationRevision ?? "",
+      modelReleaseRevision: data.textGenerationModelReleaseRevision ?? "",
+      ownershipKey: owner.generationOwnershipKey ?? "",
+    })) {
+      throw new Error("文字任务合同已变化，旧结果已保留且未覆盖当前节点");
+    }
     const resultText = task.resultText?.trim() ?? "";
     if (!resultText) throw new Error("文字结果不完整");
     textTerminalPatchPendingTaskRef.current = task.id;
     const nextValue = storedRichTextValue(resultText, plainTextHtml(resultText));
-    checkpoint(false);
-    setBodyValue(nextValue);
-    bodyLocalValue.current = nextValue;
-    setEmpty(false);
-    setNodes((nodes) => nodes.map((node) => node.id === id
+    const applied = await tryAdoptNodes(id, (nodes) => nodes.map((node) => node.id === id
       ? {
           ...node,
           data: {
@@ -994,33 +1036,24 @@ function TextNodeImpl({
           },
         }
       : node));
+    if (!applied) {
+      if (textTerminalPatchPendingTaskRef.current === task.id) {
+        textTerminalPatchPendingTaskRef.current = undefined;
+      }
+      return false;
+    }
+    setBodyValue(nextValue);
+    bodyLocalValue.current = nextValue;
+    setEmpty(false);
     setGenerationError("");
-    await flushCanvasSave();
-    clearGenerationSubmissionIntent("text", canvasId, id, task.id, accountId);
+    clearGenerationSubmissionIntent("text", canvasId, id, task.id, accountId, fixtureScopeId);
     if (textTerminalPatchPendingTaskRef.current === task.id) {
       textTerminalPatchPendingTaskRef.current = undefined;
     }
     return true;
   };
 
-  const clearTextIntentAfterDurableTerminalPatch = (taskId: string) => {
-    void (async () => {
-      try {
-        await flushCanvasSave();
-        clearGenerationSubmissionIntent(
-          "text",
-          canvasId,
-          id,
-          taskId,
-          accountId,
-        );
-      } catch {
-        // Keep the intent for exact-GET recovery when the canvas ACK is lost.
-      }
-    })();
-  };
-
-  const persistTextGenerationFailure = (
+  const persistTextGenerationFailure = async (
     taskId: string,
     owner: TextTaskOwner,
     message: string,
@@ -1029,15 +1062,14 @@ function TextNodeImpl({
     retryBlockCode?: string,
     retryBlockReason?: string,
   ) => {
-    if (!ownsTextTask(owner) || taskId !== owner.taskId) return;
+    if (!ownsTextTask(owner) || taskId !== owner.taskId) return false;
     const visibleMessage = generationFailureMessage(
       message,
       retryAllowed ? undefined : retryBlockReason,
       errorCode,
       "text",
     );
-    setGenerationError(visibleMessage);
-    setNodes((nodes) => nodes.map((node) => node.id === id
+    const applied = await tryAdoptNodes(id, (nodes) => nodes.map((node) => node.id === id
       ? {
           ...node,
           data: {
@@ -1054,17 +1086,26 @@ function TextNodeImpl({
           },
       }
       : node));
-    clearTextIntentAfterDurableTerminalPatch(taskId);
+    if (!applied) return false;
+    setGenerationError(visibleMessage);
+    clearGenerationSubmissionIntent(
+      "text",
+      canvasId,
+      id,
+      taskId,
+      accountId,
+      fixtureScopeId,
+    );
+    return true;
   };
 
-  const persistTextGenerationCancellation = (
+  const persistTextGenerationCancellation = async (
     taskId: string,
     owner: TextTaskOwner,
     message: string,
   ) => {
-    if (!ownsTextTask(owner) || taskId !== owner.taskId) return;
-    setGenerationError(message);
-    setNodes((nodes) => nodes.map((node) => node.id === id
+    if (!ownsTextTask(owner) || taskId !== owner.taskId) return false;
+    const applied = await tryAdoptNodes(id, (nodes) => nodes.map((node) => node.id === id
       ? {
           ...node,
           data: {
@@ -1079,9 +1120,19 @@ function TextNodeImpl({
             textGenerating: false,
             textGenerationTaskId: undefined,
           },
-        }
+      }
       : node));
-    clearTextIntentAfterDurableTerminalPatch(taskId);
+    if (!applied) return false;
+    setGenerationError(message);
+    clearGenerationSubmissionIntent(
+      "text",
+      canvasId,
+      id,
+      taskId,
+      accountId,
+      fixtureScopeId,
+    );
+    return true;
   };
 
   const finishTextTask = async (
@@ -1097,31 +1148,31 @@ function TextNodeImpl({
         pollingPausedTaskIdRef.current = taskId;
         setPollingPausedTaskId(taskId);
         setGenerationError(POLLING_PAUSED_MESSAGE);
-      }, signal);
+      }, signal, fixtureScopeId);
     } catch (error) {
       if (!ownsTextTask(owner)) return;
       if (pollingPausedTaskIdRef.current === taskId) return;
       throw error;
     }
     if (!ownsTextTask(owner)) return;
-    if (!textTaskMatchesNode(task, canvasId, id, taskId)) {
+    if (!textTaskMatchesNode(task, canvasId, id, taskId, fixtureScopeId)) {
       throw new Error("文字任务关联不一致，已停止恢复");
     }
     if (task.state === "success") {
-      await applyGeneratedText(task, owner);
+      const applied = await applyGeneratedText(task, owner);
+      if (!applied) return false;
       pollingPausedTaskIdRef.current = undefined;
       setPollingPausedTaskId(undefined);
-      return;
+      return true;
     }
     if (task.state === "cancelled") {
-      persistTextGenerationCancellation(
+      return await persistTextGenerationCancellation(
         taskId,
         owner,
         task.errorMessage ?? "文字生成已取消",
       );
-      return;
     }
-    persistTextGenerationFailure(
+    return await persistTextGenerationFailure(
       taskId,
       owner,
       task.errorMessage ?? "文字生成失败，请稍后再试",
@@ -1165,6 +1216,7 @@ function TextNodeImpl({
         id,
         persistedTaskId,
         accountId,
+        fixtureScopeId,
       );
       return;
     }
@@ -1185,34 +1237,42 @@ function TextNodeImpl({
           persistedOwnershipKey &&
           persistedOwnershipKey !== rawGenerationInputFingerprint
         ) {
-          setUnverifiedRecoveryTaskId((current) =>
-            current === persistedTaskId ? undefined : current
+          commitTextDataMutation(
+            (current) => current.textGenerationTaskId === persistedTaskId
+              ? clearFailedTextGeneration(current)
+              : current,
+            () => {
+              setUnverifiedRecoveryTaskId((current) =>
+                current === persistedTaskId ? undefined : current
+              );
+              revokeTextTaskForGenerationInputChange();
+            },
           );
-          revokeTextTaskForGenerationInputChange();
-          setNodes((nodes) => nodes.map((node) =>
-            node.id === id && node.data.textGenerationTaskId === persistedTaskId
-              ? { ...node, data: clearFailedTextGeneration(node.data) }
-              : node
-          ));
           return;
         }
         if (!persistedOwnershipKey) {
           if (!catalogReady) return;
           if (persistedInputKey && persistedInputKey !== generationInputKey) {
-            setUnverifiedRecoveryTaskId((current) =>
-              current === persistedTaskId ? undefined : current
+            commitTextDataMutation(
+              (current) => current.textGenerationTaskId === persistedTaskId
+                ? clearFailedTextGeneration(current)
+                : current,
+              () => {
+                setUnverifiedRecoveryTaskId((current) =>
+                  current === persistedTaskId ? undefined : current
+                );
+                revokeTextTaskForGenerationInputChange();
+              },
             );
-            revokeTextTaskForGenerationInputChange();
-            setNodes((nodes) => nodes.map((node) =>
-              node.id === id && node.data.textGenerationTaskId === persistedTaskId
-                ? { ...node, data: clearFailedTextGeneration(node.data) }
-                : node
-            ));
             return;
           }
         }
         persistedTaskReadPending = true;
-        task = await getGenerationTask(persistedTaskId, controller.signal);
+        task = await getGenerationTask(
+          persistedTaskId,
+          controller.signal,
+          fixtureScopeId,
+        );
         persistedTaskReadPending = false;
       } else {
         task = await recoverPendingGenerationTask(
@@ -1222,16 +1282,21 @@ function TextNodeImpl({
           controller.signal,
           selectedTextModel ? textGenerationRequestInput : undefined,
           accountId,
-          { generationOwnershipKey: rawGenerationInputFingerprint },
+          {
+            generationInputKey: persistedInputKey ?? generationInputKey,
+            generationOwnershipKey: rawGenerationInputFingerprint,
+            fixtureScopeId,
+            modelInputContractFingerprint:
+              data.textGenerationContractFingerprint ??
+              inputPreflight.contractFingerprint,
+            modelConfigurationRevision:
+              data.textGenerationModelConfigurationRevision ??
+              selectedTextModel?.configurationRevision,
+            modelReleaseRevision:
+              data.textGenerationModelReleaseRevision ??
+              selectedTextModel?.releaseRevisionId,
+          },
         );
-        if (!task && data.textGenerating) {
-          if (!data.textGenerationOwnershipKey && !catalogReady) return;
-          const matches = (await listGenerationTasks(canvasId, controller.signal))
-            .filter((candidate) =>
-              candidate.kind === "text" && candidate.nodeId === id
-            );
-          if (matches.length === 1) task = matches[0];
-        }
       }
       if (
         controller.signal.aborted ||
@@ -1255,6 +1320,7 @@ function TextNodeImpl({
           id,
           persistedTaskId ?? task.id,
           accountId,
+          fixtureScopeId,
         );
         if (persistedTaskId) {
           setNodes((nodes) => nodes.map((node) =>
@@ -1280,6 +1346,7 @@ function TextNodeImpl({
             id,
             persistedTaskId ?? task.id,
             accountId,
+            fixtureScopeId,
           );
           if (persistedTaskId) {
             setNodes((nodes) => nodes.map((node) =>
@@ -1291,7 +1358,13 @@ function TextNodeImpl({
           return;
         }
       }
-      if (!textTaskMatchesNode(task, canvasId, id, persistedTaskId ?? task.id)) {
+      if (!textTaskMatchesNode(
+        task,
+        canvasId,
+        id,
+        persistedTaskId ?? task.id,
+        fixtureScopeId,
+      )) {
         if (persistedTaskId) {
           setUnverifiedRecoveryTaskId((current) =>
             current === persistedTaskId ? undefined : current
@@ -1302,6 +1375,7 @@ function TextNodeImpl({
             id,
             persistedTaskId,
             accountId,
+            fixtureScopeId,
           );
           setNodes((nodes) => nodes.map((node) =>
             node.id === id && node.data.textGenerationTaskId === persistedTaskId
@@ -1342,11 +1416,20 @@ function TextNodeImpl({
           }
         : task;
       const recoveryAdapter = createTextGenerationAdapter({
+        contractFingerprint: task.modelInputContractFingerprint ??
+          data.textGenerationContractFingerprint ??
+          inputPreflight.contractFingerprint ?? "",
         inputKey: persistedInputKey ??
           task.generationInputKey ??
           generationInputKey,
         modelId: data.textModelId,
         modelName: data.textModelName,
+        modelConfigurationRevision: task.modelConfigurationRevision ??
+          data.textGenerationModelConfigurationRevision ??
+          selectedTextModel?.configurationRevision ?? "",
+        modelReleaseRevision: task.modelReleaseRevision ??
+          data.textGenerationModelReleaseRevision ??
+          selectedTextModel?.releaseRevisionId ?? "",
         nodeId: id,
         ownershipKey: recoveredOwnershipKey ??
           rawGenerationInputFingerprint,
@@ -1384,6 +1467,7 @@ function TextNodeImpl({
         },
         tasks: createBrowserSingleNodeGenerationTaskPort({
           accountId,
+          fixtureScopeId,
           onPollingPaused(pausedTaskId) {
             if (!owner || !ownsTextTask(owner)) return;
             pollingPausedTaskIdRef.current = pausedTaskId;
@@ -1416,6 +1500,7 @@ function TextNodeImpl({
         id,
         result.task.id,
         accountId,
+        fixtureScopeId,
       );
       if (textTerminalPatchPendingTaskRef.current === result.task.id) {
         textTerminalPatchPendingTaskRef.current = undefined;
@@ -1536,9 +1621,13 @@ function TextNodeImpl({
       checkpoint();
       const lifecycle = createSingleNodeGenerationLifecycle({
         adapter: createTextGenerationAdapter({
+          contractFingerprint: inputPreflight.contractFingerprint ?? "",
           inputKey: requestedGenerationInputKey,
           modelId: requestedModelId,
           modelName: requestedModelName,
+          modelConfigurationRevision:
+            selectedTextModel.configurationRevision ?? "",
+          modelReleaseRevision: selectedTextModel.releaseRevisionId ?? "",
           nodeId: id,
           ownershipKey: requestedGenerationOwnershipKey,
           parameters: requestedParameters,
@@ -1562,6 +1651,7 @@ function TextNodeImpl({
         },
         tasks: createBrowserSingleNodeGenerationTaskPort({
           accountId,
+          fixtureScopeId,
           onPollingPaused(taskId) {
             pollingPausedTaskIdRef.current = taskId;
             setPollingPausedTaskId(taskId);
@@ -1580,7 +1670,7 @@ function TextNodeImpl({
       if (!result.task) {
         return { message: "生成输入已修改，已停止本次生成", status: "failed" };
       }
-      clearGenerationSubmissionIntent("text", canvasId, id, result.task.id, accountId);
+      clearGenerationSubmissionIntent("text", canvasId, id, result.task.id, accountId, fixtureScopeId);
       if (result.status !== "success") {
         const message = result.task.errorMessage ?? "文字生成失败，请稍后再试";
         setGenerationError(generationFailureMessage(
@@ -1652,9 +1742,16 @@ function TextNodeImpl({
       if (!graphCommandPort) return;
       const lifecycle = createSingleNodeGenerationLifecycle({
         adapter: createTextGenerationAdapter({
+          contractFingerprint: data.textGenerationContractFingerprint ??
+            inputPreflight.contractFingerprint ?? "",
           inputKey: requestedGenerationInputKey,
           modelId: selectedTextModelId,
           modelName: textModelSelection.displayName,
+          modelConfigurationRevision:
+            data.textGenerationModelConfigurationRevision ??
+            selectedTextModel.configurationRevision ?? "",
+          modelReleaseRevision: data.textGenerationModelReleaseRevision ??
+            selectedTextModel.releaseRevisionId ?? "",
           nodeId: id,
           ownershipKey: requestedGenerationOwnershipKey,
           parameters: { ...textParameters },
@@ -1681,6 +1778,7 @@ function TextNodeImpl({
         },
         tasks: createBrowserSingleNodeGenerationTaskPort({
           accountId,
+          fixtureScopeId,
           onPollingPaused(pausedTaskId) {
             pollingPausedTaskIdRef.current = pausedTaskId;
             setPollingPausedTaskId(pausedTaskId);
@@ -1693,7 +1791,7 @@ function TextNodeImpl({
       });
       const result = await lifecycle.retry({ id: taskId });
       if (!result.task || result.status === "stale") return;
-      clearGenerationSubmissionIntent("text", canvasId, id, taskId, accountId);
+      clearGenerationSubmissionIntent("text", canvasId, id, taskId, accountId, fixtureScopeId);
       if (result.status === "success") {
         const resultText = result.task.resultText?.trim() ?? "";
         const nextValue = storedRichTextValue(resultText, plainTextHtml(resultText));
@@ -1723,7 +1821,7 @@ function TextNodeImpl({
         return;
       }
       if (ownsTextTask(owner)) {
-        persistTextGenerationFailure(
+        await persistTextGenerationFailure(
           taskId,
           owner,
           error instanceof Error ? error.message : "文字生成重试失败",
@@ -1758,7 +1856,13 @@ function TextNodeImpl({
     );
     try {
       await flushCanvasSave();
-      await finishTextTask(taskId, owner);
+      const applied = await finishTextTask(taskId, owner);
+      if (applied === false) {
+        pollingPausedTaskIdRef.current = taskId;
+        setPollingPausedTaskId(taskId);
+        setGenerationError("画布修改正在安全保存，任务结果将在稍后继续写回");
+        return;
+      }
       const finished = getNodes().find((node) => node.id === id);
       if (finished?.data.textGenerationError) {
         setGenerationError(finished.data.textGenerationError);
@@ -1789,6 +1893,10 @@ function TextNodeImpl({
     }
     void resumeTextPolling();
   };
+  const semanticEditBlocked = Boolean(
+    data.textGenerating || submitting || legacySubmissionBlocked ||
+      lockedNodeIds.has(id),
+  );
 
   return (
     <>
@@ -1833,19 +1941,14 @@ function TextNodeImpl({
       >
         {selectedTextModel ? (
           <NodeParameterControl
+            disabled={semanticEditBlocked}
             keys={textInputParameterKeys}
             onChange={(key, value) => {
               if (Object.is(textParameters[key], value)) return;
-              revokeTextTaskForGenerationInputChange();
-              setNodes((nodes) => nodes.map((node) => node.id === id
-                ? {
-                    ...node,
-                    data: {
-                      ...clearFailedTextGeneration(node.data),
-                      textParameters: { ...textParameters, [key]: value },
-                    },
-                  }
-                : node));
+              commitTextDataMutation((current) => ({
+                ...clearFailedTextGeneration(current),
+                textParameters: { ...textParameters, [key]: value },
+              }));
             }}
             onEditSessionStart={checkpoint}
             schema={textParameterSchema}
@@ -1863,33 +1966,42 @@ function TextNodeImpl({
           </button>
         )}
         <UpstreamInputCards
-          disabled={Boolean(data.textGenerating || submitting || legacySubmissionBlocked)}
+          disabled={Boolean(
+            data.textGenerating || submitting || legacySubmissionBlocked ||
+              lockedNodeIds.has(id)
+          )}
           inputs={inputPreflight.inputs}
           onMove={(edgeId, direction) => {
-            revokeTextTaskForGenerationInputChange();
-            checkpoint();
-            setNodes((nodes) => nodes.map((node) => node.id === id
-              ? { ...node, data: clearFailedTextGeneration(node.data) }
-              : node));
-            setEdges((edges) => moveNodeInputEdge(edges, id, edgeId, direction));
+            void mutateGraph(({ edges, nodes }) => ({
+              edges: moveNodeInputEdge(edges, id, edgeId, direction),
+              nodes: nodes.map((node) => node.id === id
+                ? { ...node, data: clearFailedTextGeneration(node.data) }
+                : node),
+            })).then((applied) => {
+              if (applied) revokeTextTaskForGenerationInputChange();
+            });
           }}
           onRemove={(edgeId) => {
-            revokeTextTaskForGenerationInputChange();
-            checkpoint();
-            setNodes((nodes) => nodes.map((node) => node.id === id
-              ? { ...node, data: clearFailedTextGeneration(node.data) }
-              : node));
-            setEdges((edges) => edges.filter((edge) => edge.id !== edgeId));
+            void mutateGraph(({ edges, nodes }) => ({
+              edges: edges.filter((edge) => edge.id !== edgeId),
+              nodes: nodes.map((node) => node.id === id
+                ? { ...node, data: clearFailedTextGeneration(node.data) }
+                : node),
+            })).then((applied) => {
+              if (applied) revokeTextTaskForGenerationInputChange();
+            });
           }}
           onRoleChange={(edgeId, role) => {
-            revokeTextTaskForGenerationInputChange();
-            checkpoint();
-            setNodes((nodes) => nodes.map((node) => node.id === id
-              ? { ...node, data: clearFailedTextGeneration(node.data) }
-              : node));
-            setEdges((edges) => edges.map((edge) => edge.id === edgeId
-              ? { ...edge, data: { ...edge.data, inputRole: role } }
-              : edge));
+            void mutateGraph(({ edges, nodes }) => ({
+              edges: edges.map((edge) => edge.id === edgeId
+                ? { ...edge, data: { ...edge.data, inputRole: role } }
+                : edge),
+              nodes: nodes.map((node) => node.id === id
+                ? { ...node, data: clearFailedTextGeneration(node.data) }
+                : node),
+            })).then((applied) => {
+              if (applied) revokeTextTaskForGenerationInputChange();
+            });
           }}
           problems={inputProblems}
           roleOptions={(input) => availableNodeInputRoles({
@@ -1919,6 +2031,7 @@ function TextNodeImpl({
           data-canvas-text-edit="graph"
           data-composition-active={promptControl.composing || undefined}
           data-testid="text-creator-prompt"
+          disabled={semanticEditBlocked}
           onChange={(event) => {
             promptControl.change(
               event.target.value,
@@ -1941,6 +2054,7 @@ function TextNodeImpl({
         <div className="text-creator-controls">
           <NodeModelControl
             capability="text"
+            disabled={semanticEditBlocked}
             icon="text"
             onChange={(modelId, displayName) => {
               const nextModel = textModels?.find((model) => model.id === modelId);
@@ -1963,44 +2077,28 @@ function TextNodeImpl({
                 setModelSwitchProblem(`模型未切换：${blocked.message}`);
                 return;
               }
-              revokeTextTaskForGenerationInputChange();
               setModelSwitchProblem("");
               setServerInputProblems([]);
-              checkpoint();
-              setNodes((nodes) =>
-                nodes.map((node) =>
-                  node.id === id
-                    ? {
-                        ...node,
-                        data: {
-                          ...clearFailedTextGeneration(node.data),
-                          textModelId: modelId,
-                          textModelName: displayName,
-                          textParameters: nextParameters,
-                        },
-                      }
-                    : node,
-                ),
-              );
+              commitTextDataMutation((current) => ({
+                ...clearFailedTextGeneration(current),
+                textModelId: modelId,
+                textModelName: displayName,
+                textParameters: nextParameters,
+              }));
             }}
             selectedId={textModelSelection.selectedId}
             selectedName={textModelSelection.displayName}
           />
           {selectedTextModel && (
             <NodeParameterControl
+              disabled={semanticEditBlocked}
               keys={textMainParameterKeys}
               onChange={(key, value) => {
                 if (Object.is(textParameters[key], value)) return;
-                revokeTextTaskForGenerationInputChange();
-                setNodes((nodes) => nodes.map((node) => node.id === id
-                  ? {
-                      ...node,
-                      data: {
-                        ...clearFailedTextGeneration(node.data),
-                        textParameters: { ...textParameters, [key]: value },
-                      },
-                    }
-                  : node));
+                commitTextDataMutation((current) => ({
+                  ...clearFailedTextGeneration(current),
+                  textParameters: { ...textParameters, [key]: value },
+                }));
               }}
               onEditSessionStart={checkpoint}
               schema={textParameterSchema}
@@ -2017,19 +2115,14 @@ function TextNodeImpl({
           </button>
           {selectedTextModel ? (
             <NodeParameterControl
+              disabled={semanticEditBlocked}
               keys={textCountParameterKeys}
               onChange={(key, value) => {
                 if (Object.is(textParameters[key], value)) return;
-                revokeTextTaskForGenerationInputChange();
-                setNodes((nodes) => nodes.map((node) => node.id === id
-                  ? {
-                      ...node,
-                      data: {
-                        ...clearFailedTextGeneration(node.data),
-                        textParameters: { ...textParameters, [key]: value },
-                      },
-                    }
-                  : node));
+                commitTextDataMutation((current) => ({
+                  ...clearFailedTextGeneration(current),
+                  textParameters: { ...textParameters, [key]: value },
+                }));
               }}
               onEditSessionStart={checkpoint}
               schema={textParameterSchema}
@@ -2059,6 +2152,8 @@ function TextNodeImpl({
               recoveringTask ||
               data.textGenerating ||
               legacySubmissionBlocked ||
+              lockedNodeIds.has(id) ||
+              canvasMutationPending ||
               isFixture ||
               (retryableTask
                 ? !retryGenerationEnabled
@@ -2182,7 +2277,7 @@ function TextNodeImpl({
           data-testid="canvas-node-text-content"
           onDoubleClick={(event) => {
             event.stopPropagation();
-            if (legacySubmissionBlocked) return;
+            if (semanticEditBlocked) return;
             const { clientX, clientY } = event;
             setBodyEditing(true);
             requestAnimationFrame(() => {
@@ -2217,7 +2312,7 @@ function TextNodeImpl({
         >
           <div
             className={`text-node-editor${bodyEditing ? " ProseMirror-focused" : ""}`}
-            contentEditable={bodyEditing}
+            contentEditable={bodyEditing && !semanticEditBlocked}
             data-canvas-text-edit="graph"
             data-committed-rich-html={bodyControl.committedValue.html}
             data-composition-active={bodyControl.composing || undefined}
@@ -2237,7 +2332,6 @@ function TextNodeImpl({
               event.currentTarget.dataset.committedRichHtml = nextValue.html;
             }}
             onCompositionStart={() => {
-              revokeTextTaskForManualBodyEdit();
               bodyControl.compositionStart();
             }}
             onInput={(event) => {

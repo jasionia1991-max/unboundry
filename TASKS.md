@@ -1,5 +1,129 @@
 # Unboundry 绿地复刻当前任务
 
+## INC-GEN-017 工作流自动自愈与模型合同隔离（FORMAL SAFE FULL CONSUMED / REVIEW P0=0 P1=0 P2=1 GO / R7 COMPOSITE BROWSER TARGETED PASS / R8 PR #126 CI PASS / MERGE READY）
+
+- [x] 用户已显式启动一次性Goal；建立`codex/inc-gen-017-workflow-self-healing-2026-08-28`并绑定实时`origin/main@75f6c1a`。
+- [x] R0只读冻结v0.6.56/schema41、20模型/10 published、Node/npm、生产release/健康/数据完整性与USD100硬预算；受保护JSON未读取或改动。
+- [x] R0经safe runner确认6类预期红：m102+m17+m22为67/72、m30为9/10；未知模型fallback、Mureka多结果、Grok单首帧、checkpoint歧义、自动续作、Seedance角色迁移均按预期失败，Provider POST/费用0。
+- [x] R1完成group/run精确准入、v1读/v2写、缓存损坏/缺失权威重建、accepted原任务恢复、同/变更snapshot自动续作和通知去重；safe m22 `41/41 PASS`、异常0、source/snapshot`31a5d1b3…f0dee`、4173 unchanged、真实Provider/费用0。
+- [x] R2完成共享纯语义compiler、revision模式优先级、Canvas单一nodes+edges状态事务、模型/模式命令、保存revision确认与失败回滚；VideoNode不再直接迁移模型切换角色且task/result/ownership保留。边界Review `P0=0/P1=0`；safe m30 `10/10 PASS`、m50 `2/2 PASS`、异常0，最后source/snapshot`67d630e6…da801`，4173 unchanged，Provider POST/费用0。
+- [x] R3确定性收口Seedance text/首尾帧/全能参考 adapter映射、Grok文字/单首帧schema和Mureka单结果；旧合同错误只按匹配contractFingerprint清理，非匹配Provider错误及task/result/ownership保留。safe m16 `12/12`、m17 `17/17`、m30 `10/10 PASS`，异常0；末次source/snapshot分别`adae795d…0777`、`adeba0c3…82db`，4173 unchanged，Provider POST/费用0。
+- [x] R4为实时全部10个published模型建立精确identity→adapter registry、逐字段/全部mode与reference set边界totality、零Provider shadow、服务端任务创建一次判定和两个fail-closed回退开关；历史任务保留冻结revision/schema/adapter，未来未知模型不再继承generic fallback。迁移Review `P0=0/P1=0`；safe m102 `16/16`、m12 `6/6`、m32 `6/6 PASS`，末次source/snapshot`036648bf…9092`，4173 unchanged，Provider POST/费用0。
+- [x] R5从生产只读清单冻结脱敏10模型快照并动态生成10×10=`100`个有向切换对；逐模型枚举全部字段选项、数值/文本/数量边界、黄金任务决策、单结果、错误、等价规范化和冻结恢复，并验证“精确注册可发布、只有通用协议不可发布”两类未来假模型。safe m102 `19/19 PASS`（source/snapshot`af8afe8e…39d0d`）、m17 `17/17 PASS`（`51b9d766…95b5`）；直接依赖m16/m26/m32/m33/m53/m57合计`78/78 PASS`，m12修正旧draft fixture后`6/6 PASS`（`6d69a666…cd5c`）。库存1099、异常0、4173 unchanged、Provider POST/费用0。
+- [x] R6故障注入首轮m5/m22/m38/m40/m88为`130/133`并精确关闭冻结角色被重释、旧fixture schema和状态开关三项；m38+m5、体验边界m22、registry回归m102+m12+m17三个最终最小集均`42/42 PASS`，同树m40 `14/14`、m88 `36/36 PASS`。库存1100、异常0、4173 unchanged、Provider POST/费用和生产/OSS写0。
+- [x] R6冻结前边界与体验Review `P0=0/P1=0`；新增Relay精确schema仅从命名registry查表，普通UI无任务面板/外部平台/Provider URL路径，候选源码冻结为`b577309e…d7e4f`。
+- [x] 对冻结候选执行两个互斥范围的独立只读逐代码终审；全部10个published模型、全部Provider/模型分支、工作流/Canvas/恢复/通知/测试调用链已逐项覆盖，合并结论`P0=0/P1=16/P2=8/NO-GO`，全程只读且未触发测试/构建/Provider/OSS/生产。
+- [x] 关闭工作流12项P1：规范化语义贯通、accepted-only、通知去重、孤立task重建、混合cache损坏、并发安全回滚、多group调用者、durable restart、手动corruption门、success proof语义、snapshot role/order/revision、malformed lease导航。
+- [x] 关闭模型/Provider4项P1：Mureka歌词边界、relay响应单结果强校验、Seedance重叠模式priority发布门、统一server-side feature flag fail-closed门。
+- [x] 最小受影响验证全绿：m22 `43/43`、m30 `11/11`、m102 `22/22`、m27 `20/20`，m68 `4/4`及m5/m16/m17/m38/m40/m57/m79/m88直接依赖无失败；文档同步m38 `16/16 PASS`，最近source/snapshot`d3c27771…1952`、库存1105、异常0、4173 unchanged。
+- [x] 原两名独立审查上下文完成第二轮复核：模型/Provider `P0=0/P1=0/P2=1/GO`，工作流 `P0=0/P1=8/P2=2/NO-GO`，合并`P0=0/P1=8/P2=3/NO-GO`；候选再次解冻。
+- [x] 关闭第二轮8项P1和3项P2：durable服务端workflow binding、cache/lease全入口fail-closed、terminal revision/contract、稳定后lock set、lease-loss通知去重，以及availability/pending graph/兄弟组Continue；补齐双checkpoint崩溃自愈、已投影standalone成功task和blocked group隔离。
+- [x] 第二轮整改最小验证：m30 `11/11 PASS`（source/snapshot`76e0a755…e5c5`），最终产品树m22 `43/43 PASS`（`1a30fe8d…674a`），异常0、库存1105、4173 unchanged；typecheck和`git diff --check`通过，Provider POST/费用/OSS/生产写0。
+- [x] 五份治理文档已同步；第三候选产品源码冻结为最终safe source/snapshot `1a30fe8d…674a`，其后没有产品/测试代码变更。
+- [x] 原两个审查上下文第三轮只读复核完成，合并`P0=0/P1=6/P2=4/NO-GO`；第三候选解冻，正式full/GitHub/版本/生产/Provider继续禁止。
+- [x] 关闭第三轮6项P1与同局部4项P2：revision identity、checkpoint corruption Continue、standalone revision/contract、workflow binding幂等、relay取消费用围栏、standalone projected recovery，以及availability/lease/imageTool/AGENTS治理。
+- [x] 第三轮整改最小受影响验证全绿：m22/m40/m100/m102/m5/m38/m27/m30/m12/m81/m86/m88均PASS；治理同步后m38 `16/16 PASS`，末次治理safe source/snapshot`9c142661…a6de`。库存1105、异常0、4173 unchanged，typecheck与diff-check通过；第四候选已冻结。
+- [x] 第四候选两路只读复核合并`P0=0/P1=7/P2=4/NO-GO`；工作流覆盖完整，模型范围因只读通配误触受保护JSON而安全停止，未发生任何写入或外部操作。
+- [x] 关闭第四轮7项P1与同局部4项P2：standalone/unknown/workflow terminal完整identity，navigation/delete/exact-key corruption，TTS submittable ownership，多结果、image-tool CAS和迁移身份围栏。
+- [x] 第四轮最小受影响验证：safe m40 `15/15`、m22 `44/44`、m15 `7/7`、m26 `10/10`、m100 `13/13 PASS`；库存1108、异常0、4173 unchanged，最近产品+测试source/snapshot`b62f7f29…4b05d`，typecheck/diff-check通过。
+- [x] 五份治理文档同步后safe m38 `16/16 PASS`，source/snapshot`479ce3bb…8c87`、异常0、4173 unchanged；第五候选已冻结。
+- [x] 第五候选主线程只读复核发现prefixed malformed checkpoint/lease key被静默忽略，`P0=0/P1=1/NO-GO`；候选立即解冻并停止两路审查。
+- [x] 修复malformed key corruption门并补lease acquire/checkpoint write/navigation零变更回归；safe m22 `44/44 PASS`、source/snapshot`dc8a12a1…84f3`、库存1108、异常0、4173 unchanged，typecheck/diff-check通过。
+- [x] 治理safe m38 `16/16 PASS`，source/snapshot`d1f4201a…faf0`、异常0、4173 unchanged；第六候选已冻结。
+- [x] 第六候选主线程复核发现同根残余P1：合法JSON非数组/不完整prefixed key与空value仍被静默忽略；候选解冻并停止两路审查。
+- [x] 完整关闭prefixed key/value结构损坏族：严格tuple/scope/runId结构门，非数组、不完整tuple和空value均corrupted；safe m22 `44/44 PASS`、source/snapshot`c3b348fc…618e4`、库存1108、异常0、4173 unchanged，typecheck/diff-check通过。
+- [x] 治理safe m38 `16/16 PASS`、source/snapshot`ab9d6008…d7994`、库存1108、异常0、4173 unchanged；第七候选已冻结。
+- [x] 第七候选主线程终审发现P1：corrupted cache保留后，权威重建仍无法write/lease/clear，纯localStorage损坏可永久阻塞；候选解冻并停止两路全量审查。
+- [x] 实施经服务端task+Canvas权威核验且跨标签安全的缓存修复闭环：Web Lock活动门、精确raw CAS、原字节保留、变化即撤销、quarantined scope持续重查服务端；无权威或活动foreign run时零新POST阻断。
+- [x] 第七轮最小验证：typecheck/diff-check通过；m22两次诊断性`43/44`均为长链双页竞态零新增/零重复POST并安全interrupted，增强失败诊断后当前树`44/44 PASS`、source/snapshot`72d76cd…d7f26`、库存1108、异常0、4173 unchanged。
+- [x] 六份治理文档同步并通过safe m38 `16/16 PASS`，source/snapshot`35ab0be5…3ce6b9`、库存1108、异常0、4173 unchanged；第八候选已冻结。
+- [x] 第八候选主线程终审发现P1并停止两路审查：authority读取/重建在Canvas admission锁外存在跨标签TOCTOU；foreign lock/瞬态失败后自动入口不再触发，手动可重复红错。候选已解冻。
+- [x] 将task+Canvas authority重建、Web Lock判断和cache raw CAS置于同一Canvas admission临界区；authority task ID基线在最终lease admission拒绝临界区后新相关task。自动恢复仅在瞬态失败时做40×250ms有界重试并由storage/lease事件再唤醒，普通run不循环重启；手动/Continue恢复通知中性且去重。
+- [x] 第八轮最小验证最终safe m22 `44/44 PASS`，source/snapshot`b5a8405e…5666e`、库存1108、异常0、4173 unchanged；四次诊断性`43/44`分别关闭活动标记滞留、summary唤醒风暴、effect依赖重启与历史task过度阻断。TypeScript/diff-check通过，真实Provider POST/费用0。
+- [x] 同步六份治理文档并通过safe m38 `16/16 PASS`，source/snapshot`38e07c9b…4a9a`、库存1108、异常0、4173 unchanged；第九候选已冻结。
+- [x] 第九候选主线程终审发现`P0=0/P1=1/NO-GO`并停止两路审查：手动/Continue遇foreign lock后，自动effect因局部等待标志为假忽略锁释放事件，恢复不会自行继续；候选已解冻。
+- [x] 修复实时cache损坏/隔离状态唤醒门并补精确回归；m22首轮唯一双页竞态为零新增/零重复POST安全诊断，未改代码复跑后`44/44 PASS`，source/snapshot`8e9f759a…e4c1`、库存1108、异常0、4173 unchanged，typecheck/diff-check通过。
+- [x] 同步六份治理文档并通过治理m38 `16/16 PASS`，source/snapshot`5a4d1c60…21758`、库存1108、异常0、4173 unchanged；第十候选已冻结。
+- [x] 原两个审查上下文完成第十候选完整只读终审，合并`P0=0/P1=6/P2=4/NO-GO`；候选已解冻。
+- [x] 关闭第十轮6项P1与同局部4项P2：GPT Image 2同步route/单primary提交、stable-empty authority、有界lock唤醒、checkpoint scope、损坏intent+服务端active-task幂等门、standalone完整scope、snapshot/configurationRevision、通知/面板/pending graph一致性。
+- [x] 定向证据最终全绿：m102 `23/23`、m40 `17/17`、m5 `27/27`、m57 `16/16`、m22 `44/44 PASS`；库存1112、异常0、4173 unchanged，最近source/snapshot`2d8c36b0…28b7e`，typecheck/diff-check通过。两次测试前安全门阻断与一次m22诊断失败已记录，真实Provider POST/费用、生产/OSS/真实数据写0。
+- [x] 六份治理文档同步并通过治理m38 `16/16 PASS`，source/snapshot`62da784d…23707`、库存1112、异常0、4173 unchanged；第十一候选已冻结，仅交原两个审查上下文完整只读终审。
+- [x] 第十一候选原两个上下文完整只读终审完成，合并`P0=0/P1=5/P2=6/NO-GO`；候选已解冻。
+- [x] 关闭configurationRevision完整身份、损坏intent版本化收敛、standalone fixture scope、native Web Lock release事件顺序、OpenRouter native GPT Image post-boundary unknown五项P1，并在同局部关闭六项P2。
+- [x] 第十一轮整改定向证据全绿：m22 `44/44`、m81 `41/41`、m88 `36/36`、m100+m31+m68 `28/28`、最终m5+m68+m1 `34/34 PASS`；库存1113、异常0、4173 unchanged，最近source/snapshot`fa23d0c1…4d38fc`，typecheck/diff-check通过，真实Provider POST/费用0。
+- [x] 治理m38两次`15/16`精确暴露并补齐旧retry fixture的完整expected identity和workflow binding configuration revision；最终`16/16 PASS`、source/snapshot`d7f3cc93…e8fb4`、库存1113、异常0、4173 unchanged。
+- [x] 第十二候选两路完整只读终审完成：模型/Provider `P0=0/P1=0/P2=0/GO`，工作流`P0=0/P1=3/P2=3/NO-GO`；合并NO-GO并解冻。
+- [x] 第十二轮3项P1与3项P2完成整改：standalone恢复、unknown idempotency、任务面板/task mutation/legacy state统一按fixture与完整generation identity隔离；stable-empty与无locks.query浏览器状态明确fail-closed。
+- [x] 关闭单节点prepare早于跨tab admission的并发空窗；admission只覆盖prepare→accepted binding持久化，Provider轮询不占锁。safe m100 `13/13`、m22 `44/44`、m40 `17/17 PASS`，source/snapshot`78c33729…eaa27`、库存1113、异常0、4173 unchanged，typecheck/diff-check通过。
+- [x] 六份治理文档同步后safe m38 `16/16 PASS`，source/snapshot`30bf17b9…92563`、库存1113、异常0、4173 unchanged；随后仅回写该证据。
+- [x] 第十三候选原两路完整只读终审完成并合并为`P0=0/P1=5/P2=1/NO-GO`；候选已解冻，正式full、GitHub、版本、生产和真实Provider继续禁止。
+- [x] 关闭reconcile fixture scope、reconcile/usage Provider lease、Grok3 exact recovery contract、startup/worker/sweep/launch/auto-retry统一feature flag四项服务端P1。
+- [x] 把Video execute-time模型/角色迁移与fresh identity重算放入单节点Canvas admission，并补model/mode retained/admission guard；补accepted map configuration revision比较。
+- [x] 最小直接依赖最终有效证据：m100/m102/m38/m57首轮通过；只修失败测试后m30 `12/12`、m5 `28/28 PASS`，最终source/snapshot`e233a4b4…3a27b`、库存1117、异常0、4173 unchanged；typecheck/diff-check通过。
+- [x] 六份治理同步后safe m38 `16/16 PASS`，source/snapshot`ca0efc14…08c4b`、库存1117、异常0、4173 unchanged；第十四候选产品/测试树`e233a4b4…3a27b`已冻结。
+- [x] 原两个审查上下文完成第十四候选完整只读终审：模型/Provider `P0/P1/P2=0/GO`，工作流`P0=0/P1=3/P2=1/NO-GO`；候选已解冻。
+- [x] 关闭Video旧点击覆盖新Canvas、非Video/Canvas mutation跨tab lease绕过、lease-only corruption永久阻塞三项P1，并补legacy fixture equality P2；所有节点/Canvas语义与结构写入共用跨tab admission，Video stale click以revision+semantic fingerprint拒绝。
+- [x] 最小直接依赖safe m22 `44/44`、m30 `13/13 PASS`，合计`57/57`、库存1118、source/snapshot`f45f84ce…f568`、异常0、4173 unchanged；typecheck/diff-check通过，Provider POST/费用和生产/OSS写0。
+- [x] 同步六份治理文档并通过治理safe m38 `16/16 PASS`，source/snapshot`73587e37…9beb`、库存1118、异常0、4173 unchanged；第十五候选产品/测试树`f45f84ce…f568`已冻结。
+- [x] 第十五候选主线程终审发现并记录P1：Text上游动作连续调用admitted node/edge setter时第二次固定被pending门拒绝，且submission intent在admission前撤销；候选解冻并停止两路审查。
+- [x] 关闭第十五候选主线程P1：新增单次Canvas admission的原子nodes+edges `mutateGraph`端口；Text角色/移动/删除只在提交成功后撤销intent，foreign lease拒绝保持node/edge/error/intent原值。
+- [x] safe m27新增真实行为回归并最终`21/21 PASS`；库存1119、source/snapshot`5e2a807b…09fa`、异常0、4173 unchanged，TypeScript与diff-check通过。两次诊断失败仅为fixture缺published Text模型及缺正式项目保存身份。
+- [x] 同步治理文档并通过治理safe m38 `16/16 PASS`；库存1119、source/snapshot`bb48efe0…24d89`、异常0、4173 unchanged。第十六候选产品/测试树`5e2a807b…09fa`已冻结。
+- [x] 第十六候选原两路终审在主线程先发现durable-save P1后中止，候选解冻整改；不把未完成审查记为GO。
+- [x] 第十六候选主线程终审发现并记录P1：共享Canvas admission在内存commit后、durable save/revision前释放，后来的另一标签group可按旧服务器图越过；候选解冻并停止两路审查。
+- [x] 让全部风险Canvas mutation的admission覆盖flush与confirmed revision；m27真实双标签延迟PUT证明保存未完成时另一页无法取得Canvas lock，最终`21/21 PASS`、库存1119、source/snapshot`b8e125ae…a8c2`、异常0、4173 unchanged，TypeScript/diff-check通过。
+- [x] 同步六份治理文档并通过治理safe m38 `16/16 PASS`；库存1119、source/snapshot`e4678fb3…e3416`、异常0、4173 unchanged。第十七候选产品/测试树`b8e125ae…a8c2`已冻结。
+- [x] 原`r6_workflow_review`完成第十七候选76/76个安全范围改动文件、全diff/hunk、关键分支与完整调用链终审，结论`P0=0/P1=6/P2=3/NO-GO`；候选已解冻，`r6_model_review`按硬门停止且不记GO。
+- [x] 关闭第十七候选六项P1：POST返回后fresh-plan fence、existing-task apply+flush admission、upload adoption admission、Image tool placeholder/derived admission、ReactFlow raw edge remove、intent仅在durable applied后清理；Playlist导出同步改为组合graph mutation。
+- [x] 完成最小直接回归：m100 `15/15`、m27 `21/21`、m1-minimap-edge `7/7`、m37 `35/35`、m30最终`13/13 PASS`；库存1120、最终产品/测试source/snapshot`c4b9bce6…40933`、异常0、4173 unchanged，TypeScript/diff-check通过。
+- [x] 同步六份治理文档并通过治理safe m38 `16/16 PASS`；库存1120、source/snapshot`cf053737…3dedf`、异常0、4173 unchanged。第十八候选产品/测试树`c4b9bce6…40933`已冻结。
+- [x] 原`r6_workflow_review`与`r6_model_review`完成第十八候选完整只读终审：模型/Provider `P0=0/P1=0/P2=1/GO`，工作流84/84文件为`P0=0/P1=4/P2=2/NO-GO`，合并`P0=0/P1=4/P2=3/NO-GO`；候选已解冻。
+- [x] 关闭第十八轮4项P1：group最终admission重验durable revision/snapshot；四类手动暂停恢复await graph durable apply后清intent；上下文菜单删除锁定被删边全部端点；媒体上传开始态与控件进入Canvas admission/semantic block。
+- [x] 同局部关闭3项P2：relay usage occupied IDs按fixture隔离；raw edge add/replace与raw node remove统一走受保护图事务。
+- [x] 完成最小直接回归：m22/m27/m37最终`44/44、22/22、36/36 PASS`，合计`102/102`、source/snapshot`21a1b01d…fd422`、库存1122、异常0、4173 unchanged；同整改树此前m30 `13/13`、m57 `17/17 PASS`继续有效，TypeScript/diff-check通过。
+- [x] 同步六份治理文档并通过治理m38 `16/16 PASS`；库存1122、source/snapshot`56997014…452f6`、异常0、4173 unchanged。第十九候选产品/测试树`21a1b01d…fd422`已冻结。
+- [x] 原`r6_workflow_review`与`r6_model_review`完成第十九候选完整只读终审：工作流84/84文件、21/21测试调用链`P0=0/P1=0/P2=1/GO`；模型/Provider 10/10 published、11/11 identities`P0=0/P1=0/P2=0/GO`；合并`P0=0/P1=0/P2=1/GO`。
+- [x] 登记非阻断`P2-19-1`：adoption保存失败回滚可覆盖同页并发position/selection/dimensions变化；后续以字段级三方CAS与m37回归处理，不阻断本次Review GO。
+- [x] 同步Review GO后六份治理文档并运行治理safe m38；`16/16 PASS`、库存1122、source/snapshot`783344b1…a259`、异常0、4173 unchanged。
+- [x] 在同一冻结候选上执行本Goal唯一正式safe full；原始结果为122/122 specs、1122 tests中`1023 PASS / 95 FAIL / 4 NOT_RUN`，retries/reportErrors0，source/snapshot`15fa9980…acd2`、immutable builder `1/5 PASS`、4173 unchanged；该full已永久消费，禁止重跑。
+- [x] 正式full失败整改第一批：修复同页连续Canvas语义修改在异步admission期间被拒绝/丢失，并让跨标签锁等待最新graph fingerprint持久化；补齐m86任务面板retry fixture完整版本身份。safe m86最终`83/83 PASS`（`18ef7c5a…7dce`），治理m38 `16/16 PASS`（`6f888528…21eb`），异常0、4173 unchanged，TypeScript/diff-check通过。
+- [x] 正式full失败整改第二批：关闭Image/Audio/Video上传开始/完成态Canvas admission、旧render取消与连续上传读取上一资产的时序；补齐m2-image GPT Image工具fixture的configuration/release/generation identity。safe m2-image `13/13`、m2-audio+m2-video `5/5 PASS`，最终source/snapshot`299d2e9a…783ae`，异常0、4173 unchanged，TypeScript/diff-check通过；正式full禁止重跑。
+- [x] 第二批六份治理文档同步后治理safe m38 `16/16 PASS`，库存1122、source/snapshot`e795be07…9f51f`、失败/重试/跳过/reportErrors0、4173 unchanged；批次checkpoint完成，下一批仅处理m2-text/m50/m84。
+- [x] 正式full失败整改第三批：Canvas admission真正开始时进入保存中；TextNode以mutation version和pending fence拒绝旧回调/graph echo覆盖最新rich text。safe m2-text `8/8 PASS`，source/snapshot`eb2d3fe…2493`。
+- [x] m50补齐published模型合法configuration revision与immutable release UUID fixture后`2/2 PASS`；m84-copy-paste无需产品改动为`3/3 PASS`，共同最终source/snapshot`b5d58e55…77d9`。末次异常0、库存1122、4173 unchanged，TypeScript/diff-check通过。
+- [x] 第三批六份治理文档同步后治理safe m38 `16/16 PASS`，库存1122、source/snapshot`f181f990…2d69`、失败/重试/跳过/reportErrors0、4173 unchanged；正式full永久禁止重跑。
+- [x] 冻结full失败整改候选：safe source/snapshot`f181f990…2d69`，正式full保持永久已消费且不得重跑。
+- [x] full整改增量只读复核完成：模型/Provider `P0=0/P1=0/P2=0/GO`；工作流运行时无新P0/P1，但95 FAIL/4 NOT_RUN缺逐项闭合，合并`P0=0/P1=1/P2=3/NO-GO`。
+- [x] 从原始full回执完成27个失败spec、95项失败和m29/m65四项NOT_RUN的逐项根因映射；全部只运行最小失败spec，正式full未重跑。最后m73 `16/16`、m77 `11/11`，合计`27/27 PASS`、source/snapshot`720b0ea6…a9499c`、异常0、4173 unchanged。
+- [x] 关闭`tryAdoptNodes`字段级回滚和上传开始mutation durable失败遗留`uploading`两项P2：字段级三方CAS保留并发几何/UI，上传开始态使用带checkpoint的durable adoption并串行化替换；safe m37最终`38/38 PASS`、库存1124、source/snapshot`de0d967a…8b4`、异常0、4173 unchanged，TypeScript通过。
+- [x] P2关闭后的六份治理文档同步并通过safe m38 `16/16 PASS`；库存1124、source/snapshot`bce62952…c61e`、异常0、4173 unchanged。
+- [x] 失败映射闭合后的六份治理同步与safe m38通过：`16/16 PASS`、库存1124、source/snapshot`7246af43…45b11`、异常0、4173 unchanged；产品/测试候选以`720b0ea6…a9499c`冻结。
+- [x] 整改候选独立增量终审覆盖96/96个安全范围文件及六份治理文档，结论`P0=0/P1=0/P2=1/GO`；唯一legacy corruption signal P2零新task/Provider POST，登记为非阻断。
+- [x] R7隔离浏览器组合验收通过：m22 `44/44`、m68 `4/4`、最终m30 `13/13 PASS`，有效合计`61/61`；覆盖三组真实规模、A失败时B/C继续、刷新续作/零重复task、任务面板兄弟组与Seedance首帧→multimodal/reference-image原子迁移。首轮`60/61`仅为旧源码断言，产品上传门更严格；对齐测试后最终m30 source/snapshot`5fc0da23…8d35`、异常0、4173 unchanged。按组合证据收口，不冒充单一monolithic fixture。
+- [x] R7六份治理回写后safe m38 `16/16 PASS`，库存1124、source/snapshot`26bbf3a8…82c3`、异常0、4173 unchanged；R7治理门闭合。
+- [x] R8版本身份核验：origin/main未前进；v0.6.57本地tag、远端tag和GitHub Release均未占用，选择为最低可用patch；package/lock、final runtime allowlist与m81断言已同步，生产仍为v0.6.56/schema41。
+- [x] v0.6.57版本直接safe m38+m81 `57/57 PASS`，库存1124、source/snapshot`2e0c5fee…0c3a5`、异常0、4173 unchanged；TypeScript/diff-check通过。
+- [x] 候选提交前最终治理m38 `16/16 PASS`，库存1124、source/snapshot`d82e3545…b945b`、异常0、4173 unchanged。
+- [x] 精确排除两份受保护JSON后提交v0.6.57功能候选：commit`46a9abf`、tree`43825c5e…9a4c7`，109个Goal范围文件。
+- [x] 功能候选提交后治理safe m38 `16/16 PASS`，source/snapshot`a52ff92c…92527`、库存1124、异常0、4173 unchanged；六份治理文档已同步并可提交。
+- [x] 治理commit`0941fc5`已推送并创建PR #126；base/head身份一致且mergeable。
+- [x] PR #126 head`d153b61`的Quality gates通过（run`33269246033`/job`99144636759`，28秒）。
+- [ ] 等待CI证据纯文档head的同一门；通过后合并main并创建不可变v0.6.57 tag/Release。
+- [ ] 运行治理m38并提交治理收口，然后push/PR/CI、可回滚生产发布与限额内最小真实Provider验收；正式full不得重跑。
+
+- [x] 全链路只读分析工作流checkpoint、自动恢复、Seedance输入模式/角色、模型发布合同、任务准入和Provider adapter。
+- [x] 定位画布卡死根因：准入读取画布级最新checkpoint，未按group/run隔离；正常恢复仍依赖任务面板。
+- [x] 定位Seedance全能参考根因：模型/模式切换只改节点参数，不原子迁移已有edge role；Provider能力没有被证明损坏。
+- [x] 证实Grok schema/声明式执行合同不闭合和Mureka outputCount双真相。
+- [x] 首版方案独立审计发现六项P1并全部写回关闭：恢复权威、snapshot、过度耦合、模型决策、错误提示和registry切换顺序。
+- [x] 冻结SHC-01～27、R0～R8、逐文件清单、旧数据策略、当前10模型处置、测试与25项发布硬门。
+- [x] 建立独立46项验收矩阵和实时Checkpoint；文档冻结时审计`P0=0/P1=0`，当前实施状态按实时矩阵逐阶段更新。
+- [x] 最终文档`git diff --check`通过；safe m38定向`16/16 PASS`、异常0、source/snapshot一致、4173 unchanged；未运行产品full。
+- [x] 建立新Session一次性实施Goal提示词，冻结完整权限、费用上限、安全红线、防失忆Checkpoint和逐代码Review门；文件存在本身不授权当前Session实施。
+- [x] 用户已在新Session发送Goal提示词并启动实施；旧“等待授权”边界已被本次最新Goal取代。
+
+权威方案：`spec/INC_GEN_017_WORKFLOW_SELF_HEALING_AND_MODEL_CONTRACT_ISOLATION_PLAN_2026-08-28.md`；矩阵：`spec/INC_GEN_017_ACCEPTANCE_MATRIX_2026-08-28.md`；断点：`spec/INC_GEN_017_CHECKPOINT.md`；一次性Goal：`spec/INC_GEN_017_ONE_SHOT_GOAL_PROMPT_2026-08-28.md`。生产继续是v0.6.56/schema41，历史INC-GEN-016状态不改写。
+
 ## INC-GEN-016 v0.6.56 数字task ID响应续作（PRODUCTION TECHNICAL PASS / REAL PROVIDER PASS / USER RECHECK）
 
 - [x] 从最新`origin/main@86e17db`建立干净隔离工作树，确认v0.6.56未占用。

@@ -441,7 +441,7 @@ function PlaylistNodeImpl({
   const zoomValue = useRef(1);
   const { getNode, getViewport, screenToFlowPosition } =
     useReactFlow<ProbeNodeType>();
-  const { setNodes, tryAdoptNodes } = useCanvasGraphMutation();
+  const { mutateGraph, setNodes } = useCanvasGraphMutation();
   const { accountId, canvasId, persistenceReady } = useGenerationCanvas();
   const mediaAdoptionScopeRef = useRef(`${accountId}\u0000${canvasId}`);
   mediaAdoptionScopeRef.current = `${accountId}\u0000${canvasId}`;
@@ -1115,10 +1115,14 @@ function PlaylistNodeImpl({
                           x: window.innerWidth / 2 - 222,
                           y: window.innerHeight / 2 - 125,
                         });
-                        checkpoint();
-                        const adopted = tryAdoptNodes(id, (nodes) => {
-                          return [
-                            ...nodes,
+                        const adopted = await mutateGraph(({ edges, nodes }) => {
+                          if (!nodes.some((node) => node.id === id)) {
+                            return { edges, nodes };
+                          }
+                          return {
+                            edges,
+                            nodes: [
+                              ...nodes,
                             {
                               id: nodeId,
                               type: "video",
@@ -1144,7 +1148,8 @@ function PlaylistNodeImpl({
                               },
                               style: { height: 250, width: 444 },
                             },
-                          ];
+                            ],
+                          };
                         });
                         if (!adopted) {
                           await discardPlaylistVideoAsset(asset.assetId);

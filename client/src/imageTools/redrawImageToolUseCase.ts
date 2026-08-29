@@ -5,7 +5,11 @@ import type {
 import { imageToolMaximums } from "../../../types/imageTools";
 import { NODE_DEFAULT_SIZES } from "../canvas/mediaGeometry";
 import type { ProbeNodeType } from "../canvas/ProbeNode";
-import type { CanvasGraphCommandPort } from "../canvas/canvasPorts";
+import type {
+  CanvasGraphCommand,
+  CanvasGraphCommandCommit,
+  CanvasGraphCommandPort,
+} from "../canvas/canvasPorts";
 import type { CuttableEdge } from "../canvas/canvasTypes";
 import type { SingleNodeGenerationLifecycle } from
   "../generation/singleNodeGenerationLifecycle";
@@ -85,6 +89,7 @@ export function redrawOwnershipEvidence(input: RedrawOwnershipEvidenceInput) {
 export function createRedrawImageToolUseCase(input: Readonly<{
   afterPlaceholderCreated(): Promise<void>;
   capability: ImageToolCapability;
+  commit?: CanvasGraphCommandCommit;
   createLifecycle(plan: RedrawGenerationPlan): SingleNodeGenerationLifecycle;
   graph: CanvasGraphCommandPort;
   media: DerivedImageMediaPort;
@@ -217,7 +222,7 @@ export function createRedrawImageToolUseCase(input: Readonly<{
           targetHandle: "target",
           type: "cuttable",
         };
-        const graphResult = input.graph.apply({
+        const graphCommand: CanvasGraphCommand = {
           fence: {
             expectedRevision: command.expectedRevision,
             kind: "image",
@@ -241,7 +246,10 @@ export function createRedrawImageToolUseCase(input: Readonly<{
               }) },
             ],
           }),
-        });
+        };
+        const graphResult = input.commit
+          ? await input.commit(graphCommand)
+          : input.graph.apply(graphCommand);
         if (graphResult.status !== "applied") {
           throw new Error("原图片或画布版本已发生变化，请重新打开重绘工具");
         }

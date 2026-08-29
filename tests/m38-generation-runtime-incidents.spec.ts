@@ -5,6 +5,9 @@ import { join } from "node:path";
 import { expect, test } from "./safe-test";
 import { saveAccountCredential } from "../server/accountCredentials";
 import { openAppDatabase } from "../server/database";
+import { bootstrapPublishedModelContracts } from
+  "../server/modelReleaseBootstrap";
+import { modelContractState } from "../server/modelReleaseRevisionStore";
 import { createGenerationSafetyStore } from "../server/generationSafety";
 import {
   createGenerationTaskStore,
@@ -32,7 +35,12 @@ import { StorageConfigurationBusyError } from "../server/secureStorageProfiles";
 import {
   createVolcengineArkTextResponse,
 } from "../server/volcengineArkTextProvider";
-import { knownModelParameterSchema } from "../types/modelParameters";
+import {
+  cleanParameterSchema,
+  knownModelParameterSchema,
+  providerParameterSchema,
+  validateParameterSchemaConstraints,
+} from "../types/modelParameters";
 
 const arkProfile: ProviderProfile = {
   apiKey: "test-only-ark-key-never-sent",
@@ -336,14 +344,27 @@ test("an auth incident grants one atomic recovery attempt per credential revisio
         providerModelId: "doubao-seedance-2-0-mini-260615",
         providerProfileId,
       },
-    ] as const).map((model) => ({
-      ...model,
-      parameterSchema: knownModelParameterSchema({
+    ] as const).map((model) => {
+      const knownSchema = knownModelParameterSchema({
         capability: model.capability,
         providerDriver: model.providerDriver,
         providerModelId: model.providerModelId,
-      }),
-    }));
+      });
+      const constraints = providerParameterSchema({
+        capability: model.capability,
+        providerDriver: model.providerDriver,
+        providerModelId: model.providerModelId,
+      });
+      return {
+        ...model,
+        parameterSchema: constraints
+          ? validateParameterSchemaConstraints(
+              cleanParameterSchema(model.capability, knownSchema, knownSchema),
+              constraints,
+            )
+          : knownSchema,
+      };
+    });
     const insertBinding = database.prepare(`
       INSERT INTO node_model_bindings (
         node_type, model_id, enabled, is_default, sort_order,
@@ -369,6 +390,7 @@ test("an auth incident grants one atomic recovery attempt per credential revisio
         baseline,
       );
     }
+    bootstrapPublishedModelContracts(database, ownerId);
     database.prepare(`
       UPDATE generation_safety_settings
       SET
@@ -408,6 +430,7 @@ test("an auth incident grants one atomic recovery attempt per credential revisio
           providerProfileId
         ? credentialRevision
         : imageCredential.credentialVersion;
+      const modelReleaseRevision = modelContractState(database, model).active!;
       const created = store.admitOrGet({
         canvasId: "default",
         costCurrency: kind === "image" ? "USD" : "CNY",
@@ -419,7 +442,8 @@ test("an auth incident grants one atomic recovery attempt per credential revisio
         modelConfiguration: {
           credentialVersion: taskCredentialRevision,
           modelId: model,
-          parameterSchema: modelFixture.parameterSchema,
+          modelReleaseRevision,
+          parameterSchema: modelReleaseRevision.document.capabilitySchema,
           providerConfigurationVersion: 1,
           providerDriver: modelFixture.providerDriver,
           providerModelId: modelFixture.providerModelId,
@@ -1362,6 +1386,7 @@ test("only capability success or an explicit Provider/model update clears an aut
         VALUES ('__test__', '__test__', 'Test User', 'test-only', 'admin', 'active', ?, ?)
       `)
       .run(timestamp, timestamp);
+    bootstrapPublishedModelContracts(credentialStore, "__test__");
     await saveAccountCredential(
       credentialStore,
       "__test__",
@@ -1574,7 +1599,7 @@ test("only capability success or an explicit Provider/model update clears an aut
         ) VALUES (
           ?, 'default', ?, ?, 'retry safety prompt', ?, ?, ?, ?,
           'failed', 1, ?, 'safe retry fixture', ?, ?, '__test__',
-          5000000, ?, ?, ?, ?, '{}'
+          5000000, ?, ?, ?, ?, ?
         )
       `);
       const retryFixtureKinds = new Map<
@@ -1583,6 +1608,18 @@ test("only capability success or an explicit Provider/model update clears an aut
       >();
       const retryGenerationInputKey = (id: string) =>
         `generation-input-${id}`;
+      const retryGenerationOwnershipKey = (id: string) =>
+        `ownership-${id}`;
+      const retryModelConfigurationRevision = (id: string) =>
+        `configuration-${id}`;
+      const retryModelInputContractFingerprint = (id: string) =>
+        id === "retry-network-unknown"
+          ? "mic2-workflow-fixture"
+          : `mic2-${id}`;
+      const retryModelReleaseRevision = (id: string) =>
+        id === "retry-network-unknown"
+          ? "model-revision-fixture"
+          : `release-${id}`;
       const addRetryFixture = (input: {
         code: string;
         id: string;
@@ -1609,6 +1646,15 @@ test("only capability success or an explicit Provider/model update clears an aut
           input.providerModelId,
           input.providerTaskId ?? null,
           input.kind === "text" || input.kind === "video" ? "CNY" : "USD",
+          JSON.stringify({
+            fixtureScopeId: "",
+            generationIdentityVersion: 2,
+            modelConfigurationRevision:
+              retryModelConfigurationRevision(input.id),
+            modelInputContractFingerprint:
+              retryModelInputContractFingerprint(input.id),
+            modelReleaseRevision: retryModelReleaseRevision(input.id),
+          }),
         );
       };
       const retryFence = (id: string) => {
@@ -1619,6 +1665,14 @@ test("only capability success or an explicit Provider/model update clears an aut
           expectedAttempt: 1,
           expectedCanvasRevision: 1,
           expectedGenerationInputKey: retryGenerationInputKey(id),
+          expectedGenerationOwnershipKey:
+            retryGenerationOwnershipKey(id),
+          expectedFixtureScopeId: "",
+          expectedModelConfigurationRevision:
+            retryModelConfigurationRevision(id),
+          expectedModelInputContractFingerprint:
+            retryModelInputContractFingerprint(id),
+          expectedModelReleaseRevision: retryModelReleaseRevision(id),
           expectedUpdatedAt: retryTimestamp,
           kind,
           nodeId: `node-${id}`,
@@ -1673,6 +1727,25 @@ test("only capability success or an explicit Provider/model update clears an aut
         providerModelId: textModelId,
         providerProfileId: arkProfileId,
       });
+      database.prepare(`
+        UPDATE generation_tasks SET model_configuration = ? WHERE id = ?
+      `).run(JSON.stringify({
+        fixtureScopeId: "",
+        generationIdentityVersion: 2,
+        modelConfigurationRevision:
+          retryModelConfigurationRevision("retry-network-unknown"),
+        modelInputContractFingerprint: "mic2-workflow-fixture",
+        modelReleaseRevision: "model-revision-fixture",
+        workflowBinding: {
+          generationInputKey: retryGenerationInputKey("retry-network-unknown"),
+          generationOwnershipKey: "ownership-retry-network-unknown",
+          groupId: "workflow-group-fixture",
+          modelConfigurationRevision:
+            retryModelConfigurationRevision("retry-network-unknown"),
+          modelReleaseRevision: "model-revision-fixture",
+          runId: "workflow-run-fixture",
+        },
+      }), "retry-network-unknown");
       database.prepare(`
         INSERT INTO generation_provider_attempts (
           task_id, execution_attempt, provider_profile_id, provider_model_id,
@@ -1867,7 +1940,15 @@ test("only capability success or an explicit Provider/model update clears an aut
         JSON.stringify(Array.from(retryFixtureKinds, ([id, kind]) => ({
           data: {
             [`${kind}GenerationInputKey`]: retryGenerationInputKey(id),
+            [`${kind}GenerationOwnershipKey`]:
+              retryGenerationOwnershipKey(id),
             [`${kind}GenerationTaskId`]: id,
+            [`${kind}InputContractFingerprint`]:
+              retryModelInputContractFingerprint(id),
+            [`${kind}ModelConfigurationRevision`]:
+              retryModelConfigurationRevision(id),
+            [`${kind}ModelReleaseRevision`]:
+              retryModelReleaseRevision(id),
           },
           id: `node-${id}`,
           type: kind,
@@ -1920,6 +2001,16 @@ test("only capability success or an explicit Provider/model update clears an aut
         expect(await summary.json()).toMatchObject({
           retryAllowed: false,
           retryBlockCode: "RETRY_OUTCOME_UNKNOWN",
+          ...(id === "retry-network-unknown"
+            ? {
+                generationInputKey: retryGenerationInputKey(id),
+                generationOwnershipKey: "ownership-retry-network-unknown",
+                modelInputContractFingerprint: "mic2-workflow-fixture",
+                modelReleaseRevision: "model-revision-fixture",
+                workflowExecutionRunId: "workflow-run-fixture",
+                workflowGroupId: "workflow-group-fixture",
+              }
+            : {}),
         });
         const response = await incidentRequest(
           `/api/generation-tasks/${id}/retry`,
@@ -1937,6 +2028,22 @@ test("only capability success or an explicit Provider/model update clears an aut
       const tasksBeforeReconcile = Number((database.prepare(`
         SELECT COUNT(*) AS count FROM generation_tasks
       `).get() as { count: number }).count);
+      const crossFixtureReconcile = await incidentRequest(
+        "/api/generation-tasks/retry-network-unknown/reconcile",
+        {
+          body: JSON.stringify({
+            ...retryFence("retry-network-unknown"),
+            expectedFixtureScopeId: "other-fixture",
+          }),
+          method: "POST",
+        },
+      );
+      expect(crossFixtureReconcile.status).toBe(409);
+      expect(await crossFixtureReconcile.json()).toMatchObject({
+        code: "RETRY_BINDING_STALE",
+      });
+      expect(generationProviderAttemptCounts(database))
+        .toEqual(attemptsBeforeReconcile);
       const unverifiedManualTaskId = await incidentRequest(
         "/api/generation-tasks/retry-network-unknown/reconcile",
         {
@@ -2264,7 +2371,7 @@ test("server recovery sweep auto-resumes a failed task that still holds a Provid
     const parameterSchema = knownModelParameterSchema({
       capability: "image",
       providerDriver: "multi-protocol-relay",
-      providerModelId: "youchuang-gpt-image-2",
+      providerModelId: "gemini-3-pro-image-preview",
     });
     database.prepare(`
       INSERT INTO model_profiles (
@@ -2272,13 +2379,13 @@ test("server recovery sweep auto-resumes a failed task that still holds a Provid
         capability, status, default_parameters, created_at, updated_at,
         max_cost_microunits, cost_currency, provider_protocol
       ) VALUES (
-        ?, ?, ?, ?, 'image', 'published', ?, ?, ?, 5000000, 'CNY', 'media-generate'
+        ?, ?, ?, ?, 'image', 'published', ?, ?, ?, 5000000, 'USD', 'media-generate'
       )
     `).run(
       modelProfileId,
       "Sweep Image",
       providerProfileId,
-      "youchuang-gpt-image-2",
+      "gemini-3-pro-image-preview",
       JSON.stringify(parameterSchema),
       baseline,
       baseline,
@@ -2289,6 +2396,7 @@ test("server recovery sweep auto-resumes a failed task that still holds a Provid
         created_at, updated_at
       ) VALUES ('image', ?, 1, 1, 1, ?, ?)
     `).run(modelProfileId, baseline, baseline);
+    bootstrapPublishedModelContracts(database, ownerId);
     database.prepare(`
       UPDATE generation_safety_settings
       SET
@@ -2311,7 +2419,7 @@ test("server recovery sweep auto-resumes a failed task that still holds a Provid
     );
     const created = store.admitOrGet({
       canvasId: "sweep-canvas",
-      costCurrency: "CNY",
+      costCurrency: "USD",
       credentialRevision: credential.credentialVersion,
       estimatedCostMicrounits: 5_000_000,
       idempotencyKey: "sweep-recovery-1",
@@ -2320,10 +2428,12 @@ test("server recovery sweep auto-resumes a failed task that still holds a Provid
       modelConfiguration: {
         credentialVersion: credential.credentialVersion,
         modelId: modelProfileId,
-        parameterSchema,
+        modelReleaseRevision: modelContractState(database, modelProfileId).active,
+        parameterSchema: modelContractState(database, modelProfileId).active!
+          .document.capabilitySchema,
         providerConfigurationVersion: 1,
         providerDriver: "multi-protocol-relay",
-        providerModelId: "youchuang-gpt-image-2",
+        providerModelId: "gemini-3-pro-image-preview",
         providerProfileId,
         providerProtocol: "media-generate",
       },
@@ -2334,7 +2444,7 @@ test("server recovery sweep auto-resumes a failed task that still holds a Provid
         inputs: [],
       },
       prompt: "sweep recovery",
-      providerModelId: "youchuang-gpt-image-2",
+      providerModelId: "gemini-3-pro-image-preview",
       providerProfileId,
     });
     expect(created.created).toBe(true);
@@ -2429,6 +2539,31 @@ test("server recovery sweep binds one ledger match and launches without a second
     });
     const launched: string[] = [];
     let matches = 0;
+    const previousWorkflowFlag =
+      process.env.UNBOUNDRY_WORKFLOW_SELF_HEALING_V2;
+    process.env.UNBOUNDRY_WORKFLOW_SELF_HEALING_V2 = "0";
+    try {
+      await runGenerationRecoverySweep({
+        launch: (id) => launched.push(id),
+        match: async () => {
+          matches += 1;
+          return { status: "none" as const };
+        },
+        store,
+      });
+      expect(matches).toBe(0);
+      expect(launched).toEqual([]);
+      expect(store.get(running.id)).toMatchObject({
+        providerTaskId: undefined,
+        state: "recovering",
+      });
+    } finally {
+      if (previousWorkflowFlag === undefined) {
+        delete process.env.UNBOUNDRY_WORKFLOW_SELF_HEALING_V2;
+      } else {
+        process.env.UNBOUNDRY_WORKFLOW_SELF_HEALING_V2 = previousWorkflowFlag;
+      }
+    }
     await runGenerationRecoverySweep({
       launch: (id) => launched.push(id),
       match: async () => {
@@ -2487,7 +2622,7 @@ test("server recovery sweep relaunches stale queued tasks and leaves fresh ones 
     const parameterSchema = knownModelParameterSchema({
       capability: "image",
       providerDriver: "multi-protocol-relay",
-      providerModelId: "youchuang-gpt-image-2",
+      providerModelId: "gemini-3-pro-image-preview",
     });
     database.prepare(`
       INSERT INTO model_profiles (
@@ -2495,13 +2630,13 @@ test("server recovery sweep relaunches stale queued tasks and leaves fresh ones 
         capability, status, default_parameters, created_at, updated_at,
         max_cost_microunits, cost_currency, provider_protocol
       ) VALUES (
-        ?, ?, ?, ?, 'image', 'published', ?, ?, ?, 5000000, 'CNY', 'media-generate'
+        ?, ?, ?, ?, 'image', 'published', ?, ?, ?, 5000000, 'USD', 'media-generate'
       )
     `).run(
       modelProfileId,
       "Queued Sweep Image",
       providerProfileId,
-      "youchuang-gpt-image-2",
+      "gemini-3-pro-image-preview",
       JSON.stringify(parameterSchema),
       baseline,
       baseline,
@@ -2512,6 +2647,7 @@ test("server recovery sweep relaunches stale queued tasks and leaves fresh ones 
         created_at, updated_at
       ) VALUES ('image', ?, 1, 1, 1, ?, ?)
     `).run(modelProfileId, baseline, baseline);
+    bootstrapPublishedModelContracts(database, ownerId);
     database.prepare(`
       UPDATE generation_safety_settings
       SET
@@ -2535,16 +2671,18 @@ test("server recovery sweep relaunches stale queued tasks and leaves fresh ones 
     const modelConfiguration = {
       credentialVersion: credential.credentialVersion,
       modelId: modelProfileId,
-      parameterSchema,
+      modelReleaseRevision: modelContractState(database, modelProfileId).active,
+      parameterSchema: modelContractState(database, modelProfileId).active!
+        .document.capabilitySchema,
       providerConfigurationVersion: 1,
       providerDriver: "multi-protocol-relay",
-      providerModelId: "youchuang-gpt-image-2",
+      providerModelId: "gemini-3-pro-image-preview",
       providerProfileId,
       providerProtocol: "media-generate",
     };
     const aged = store.admitOrGet({
       canvasId: "queued-sweep-canvas",
-      costCurrency: "CNY",
+      costCurrency: "USD",
       credentialRevision: credential.credentialVersion,
       estimatedCostMicrounits: 5_000_000,
       idempotencyKey: "queued-sweep-aged-1",
@@ -2555,12 +2693,12 @@ test("server recovery sweep relaunches stale queued tasks and leaves fresh ones 
       ownerId,
       parameters: { inputSchemaVersion: 1, inputs: [] },
       prompt: "aged queued task",
-      providerModelId: "youchuang-gpt-image-2",
+      providerModelId: "gemini-3-pro-image-preview",
       providerProfileId,
     });
     const fresh = store.admitOrGet({
       canvasId: "queued-sweep-canvas",
-      costCurrency: "CNY",
+      costCurrency: "USD",
       credentialRevision: credential.credentialVersion,
       estimatedCostMicrounits: 5_000_000,
       idempotencyKey: "queued-sweep-fresh-1",
@@ -2571,7 +2709,7 @@ test("server recovery sweep relaunches stale queued tasks and leaves fresh ones 
       ownerId,
       parameters: { inputSchemaVersion: 1, inputs: [] },
       prompt: "fresh queued task",
-      providerModelId: "youchuang-gpt-image-2",
+      providerModelId: "gemini-3-pro-image-preview",
       providerProfileId,
     });
     expect(aged.created).toBe(true);

@@ -9,6 +9,10 @@ import {
   type ModelParameterValue,
 } from "./modelParameters";
 import {
+  normalizeModelInputs,
+  type ModelInputTransitionIntent,
+} from "./modelInputSemanticCompiler";
+import {
   generationCapabilityKinds,
   type GenerationCapabilityKind,
 } from "./nodeVocabulary";
@@ -121,8 +125,10 @@ export type NodeInputProblem = {
 
 export type NodeInputPreflight = {
   canSubmit: boolean;
+  contractFingerprint?: string;
   finalPrompt: string;
   inputs: ResolvedNodeInput[];
+  normalizedParameters?: Readonly<Record<string, ModelParameterValue>>;
   problems: NodeInputProblem[];
   snapshot: NodeInputSnapshot[];
 };
@@ -502,16 +508,18 @@ function modelLimit(
 export function resolveNodeInputs(input: {
   edges: readonly GraphEdge[];
   mediaInputPolicy?: "seedance-2";
+  modelReleaseRevision?: string;
   modelSchema?: ModelParameterSchema;
   nodes: readonly GraphNode[];
   ownPrompt?: string;
   parameters?: Record<string, ModelParameterValue>;
   targetId: string;
   targetKind: NodeInputKind;
+  transitionIntent?: ModelInputTransitionIntent;
 }): NodeInputPreflight {
   const byId = new Map(input.nodes.map((node) => [node.id, node]));
   const problems: NodeInputProblem[] = [];
-  const parameters = input.parameters ?? (input.modelSchema
+  let parameters = input.parameters ?? (input.modelSchema
     ? defaultParameterValues(input.modelSchema)
     : {});
   const incomingEdges = input.edges.filter((edge) => edge.target === input.targetId);
@@ -616,6 +624,40 @@ export function resolveNodeInputs(input: {
       };
     })
     .sort((a, b) => a.order - b.order);
+
+  let semanticContractFingerprint: string | undefined;
+  if (input.modelSchema) {
+    const semantic = normalizeModelInputs({
+      connectedInputs: inputs.map((item) => ({
+        kind: item.kind,
+        order: item.order,
+        role: item.role,
+        semanticId: item.edgeId,
+      })),
+      modelReleaseRevision: input.modelReleaseRevision ?? "schema-v2:unversioned",
+      requestedParameters: parameters,
+      schema: input.modelSchema,
+      transitionIntent: input.transitionIntent ?? "execute",
+    });
+    semanticContractFingerprint = semantic.contractFingerprint;
+    parameters = { ...semantic.normalizedParameters };
+    const roleByEdge = new Map(
+      semantic.normalizedSemanticInputs.map((item) => [item.semanticId, item.role]),
+    );
+    for (const item of inputs) {
+      const normalizedRole = roleByEdge.get(item.edgeId);
+      if (normalizedRole) item.role = normalizedRole as NodeInputRole;
+    }
+    for (const problem of semantic.blockingProblems) {
+      if (problem.code === "MODE_AMBIGUOUS" || problem.code === "MODE_UNSUPPORTED") {
+        problems.push({
+          code: "COMBINATION_UNSUPPORTED",
+          edgeId: problem.semanticId,
+          message: problem.message,
+        });
+      }
+    }
+  }
 
   const rolePolicy = activeRolePolicy(input.modelSchema, parameters);
   for (const kind of nodeInputKinds) {
@@ -1015,8 +1057,10 @@ export function resolveNodeInputs(input: {
 
   return {
     canSubmit: Boolean(finalPrompt) && problems.length === 0,
+    contractFingerprint: semanticContractFingerprint,
     finalPrompt,
     inputs,
+    normalizedParameters: input.modelSchema ? parameters : undefined,
     problems,
     snapshot: inputs.map(({ assetId, kind, order, role, sourceNodeId }) => ({
       assetId,

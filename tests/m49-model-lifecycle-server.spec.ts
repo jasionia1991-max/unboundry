@@ -100,6 +100,12 @@ test("model archive, restore and guarded deletion preserve identity and never ca
       driver: "openrouter",
       label: "Lifecycle Provider",
     });
+    const lifecycleProfile = await saveProviderProfile({
+      apiKey: `lifecycle-ark-${randomUUID()}`,
+      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      driver: "volcengine-ark",
+      label: "Lifecycle Ark Provider",
+    });
     const started = await startLifecycleServer();
     server = started.server;
     const { origin } = started;
@@ -138,8 +144,8 @@ test("model archive, restore and guarded deletion preserve identity and never ca
         displayName: name,
         isDefault: options.isDefault ?? false,
         maxCostMicrounits: 0,
-        providerModelId: `test/${name.toLowerCase().replaceAll(" ", "-")}`,
-        providerProfileId: profile.id,
+        providerModelId: "doubao-seed-2-0-lite-260428",
+        providerProfileId: lifecycleProfile.id,
         sortOrder: 100,
         status: options.status ?? "draft",
       });

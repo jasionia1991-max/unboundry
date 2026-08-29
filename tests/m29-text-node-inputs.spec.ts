@@ -2,6 +2,7 @@ import {
   expect,
   test,
   type APIRequestContext,
+  type Page,
 } from "./safe-test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -12,8 +13,14 @@ import {
 import {
   cleanParameterSchema,
   defaultParameterSchema,
+  knownModelParameterSchema,
   type ModelParameterSchema,
 } from "../types/modelParameters";
+import { openAppDatabase } from "../server/database";
+import {
+  bootstrapPublishedModelContracts,
+  modelReleaseBootstrapActorUserId,
+} from "../server/modelReleaseBootstrap";
 
 const allTextUpstreamInputs = {
   audio: { limitMode: "context" as const, supported: true },
@@ -327,12 +334,13 @@ const audioAssetId = "p2-ready-audio.mp3";
 const temporaryModelIds: string[] = [];
 let compatibleModelId = "";
 let incompatibleModelId = "";
+let providerProfileId = "";
 let originalRoot: CanvasDocument | undefined;
 
 async function createTextModel(
   request: APIRequestContext,
   displayName: string,
-  parameterSchema: ModelParameterSchema,
+  _parameterSchema: ModelParameterSchema,
 ) {
   const response = await request.post("/api/admin/models", {
     data: {
@@ -340,17 +348,77 @@ async function createTextModel(
       displayName,
       isDefault: false,
       maxCostMicrounits: 0,
-      parameterSchema,
-      providerModelId: `fixture/${displayName.toLowerCase().replaceAll(" ", "-")}`,
-      providerProfileId: "provider-unconfigured",
+      parameterSchema: knownModelParameterSchema({
+        capability: "text",
+        providerDriver: "volcengine-ark",
+        providerModelId: "doubao-seed-2-0-lite-260428",
+      }),
+      providerModelId: "doubao-seed-2-0-lite-260428",
+      providerProfileId,
       sortOrder: 9_000 + temporaryModelIds.length,
-      status: "published",
+      status: "draft",
     },
   });
   expect(response.status()).toBe(201);
   const body = await response.json() as { model: { id: string } };
+  const contractResponse = await request.get(
+    `/api/admin/models/${body.model.id}/contract`,
+  );
+  expect(contractResponse.ok()).toBeTruthy();
+  const contract = await contractResponse.json() as {
+    suggestedDocument: Record<string, unknown>;
+  };
+  expect((await request.post(
+    `/api/admin/models/${body.model.id}/contract/draft`,
+    { data: { document: contract.suggestedDocument, expectedDraftVersion: 0 } },
+  )).ok()).toBeTruthy();
+  expect((await request.post(
+    `/api/admin/models/${body.model.id}/contract/publish`,
+    { data: { expectedDraftVersion: 1 } },
+  )).ok()).toBeTruthy();
+  expect((await request.patch(`/api/admin/models/${body.model.id}`, {
+    data: { status: "published" },
+  })).ok()).toBeTruthy();
   temporaryModelIds.push(body.model.id);
   return body.model.id;
+}
+
+async function installTextModelRoute(page: Page) {
+  await page.route("**/api/models", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        generationEnabled: false,
+        models: [
+          {
+            capability: "text",
+            configurationRevision: "a02900000000000000000001",
+            displayName: compatibleModelName,
+            generationAvailable: false,
+            generationUnavailableReason: "管理员已关闭真实生成",
+            generationUnavailableReasonCode: "GLOBAL_GENERATION_DISABLED",
+            id: compatibleModelId,
+            isDefault: true,
+            parameterSchema: textInputSchema(),
+            releaseRevisionId: "a0290000-0000-4000-8000-000000000001",
+          },
+          {
+            capability: "text",
+            configurationRevision: "a02900000000000000000002",
+            displayName: incompatibleModelName,
+            generationAvailable: false,
+            generationUnavailableReason: "管理员已关闭真实生成",
+            generationUnavailableReasonCode: "GLOBAL_GENERATION_DISABLED",
+            id: incompatibleModelId,
+            isDefault: false,
+            parameterSchema: incompatibleTextInputSchema(),
+            releaseRevisionId: "a0290000-0000-4000-8000-000000000002",
+          },
+        ],
+      },
+      status: 200,
+    });
+  });
 }
 
 async function uploadReadyMedia(request: APIRequestContext) {
@@ -423,6 +491,17 @@ test.describe.serial("P2 Text integration stays on the saved root canvas", () =>
   test.beforeAll(async ({ request }) => {
     const root = await request.get(`/api/canvas/${rootCanvasId}`);
     if (root.ok()) originalRoot = await root.json() as CanvasDocument;
+    const providerResponse = await request.post("/api/admin/providers", {
+      data: {
+        baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+        driver: "volcengine-ark",
+        label: "P2 Text Ark",
+      },
+    });
+    expect(providerResponse.status()).toBe(201);
+    providerProfileId = (await providerResponse.json() as {
+      profile: { id: string };
+    }).profile.id;
     compatibleModelId = await createTextModel(
       request,
       compatibleModelName,
@@ -433,6 +512,20 @@ test.describe.serial("P2 Text integration stays on the saved root canvas", () =>
       incompatibleModelName,
       incompatibleTextInputSchema(),
     );
+    const dataDirectoryResponse = await request.get("/api/test-data-directory");
+    expect(dataDirectoryResponse.ok()).toBeTruthy();
+    const dataDirectory = (await dataDirectoryResponse.json() as {
+      dataDirectory: string;
+    }).dataDirectory;
+    const database = openAppDatabase(dataDirectory);
+    try {
+      bootstrapPublishedModelContracts(
+        database,
+        modelReleaseBootstrapActorUserId(database),
+      );
+    } finally {
+      database.close();
+    }
     await uploadReadyMedia(request);
     await saveRootCanvas(request);
   });
@@ -476,6 +569,7 @@ test.describe.serial("P2 Text integration stays on the saved root canvas", () =>
       }
     });
 
+    await installTextModelRoute(page);
     await page.goto("/canvas");
     const world = page.getByTestId("canvas-world");
     await expect(world).toHaveAttribute("data-persistence-ready", "true");
@@ -651,8 +745,9 @@ test.describe.serial("P2 Text integration stays on the saved root canvas", () =>
     const preflightResponse = await request.post("/api/generation-tasks/preflight", {
       data: body,
     });
-    expect(preflightResponse.ok()).toBeTruthy();
-    const preflight = await preflightResponse.json() as {
+    const preflightText = await preflightResponse.text();
+    expect(preflightResponse.ok(), preflightText).toBeTruthy();
+    const preflight = JSON.parse(preflightText) as {
       canEnqueue: boolean;
       canSubmit: boolean;
       enqueueProblem?: { code: string; message: string };
@@ -668,7 +763,7 @@ test.describe.serial("P2 Text integration stays on the saved root canvas", () =>
       providerRequests: 0,
     });
     expect(preflight.problems).toEqual([]);
-    expect(preflight.provider.adapterSupported).toBe(false);
+    expect(preflight.provider.adapterSupported).toBe(true);
     expect(preflight.enqueueProblem?.code).toBe("GLOBAL_GENERATION_DISABLED");
 
     const submission = await request.post("/api/generation-tasks", { data: body });
@@ -692,6 +787,7 @@ test.describe.serial("P2 Text integration stays on the saved root canvas", () =>
     page,
     request,
   }) => {
+    await installTextModelRoute(page);
     await page.goto("/canvas");
     const world = page.getByTestId("canvas-world");
     await expect(world).toHaveAttribute("data-persistence-ready", "true");

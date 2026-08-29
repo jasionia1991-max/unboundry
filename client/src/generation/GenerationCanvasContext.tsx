@@ -41,6 +41,8 @@ export type GenerationCanvasState = {
   persistenceReady: boolean;
   /** Retry may enter the save gate; unlike canvasRevision, dirty state does not disable it. */
   retryGenerationEnabled: boolean;
+  /** Read the current durable server graph revision while holding Canvas admission. */
+  readAuthoritativeCanvasRevision: () => Promise<number>;
   adoptAuthoritativeGenerationMutation: (
     mutation: AuthoritativeGenerationCanvasMutation,
   ) => boolean;
@@ -63,6 +65,7 @@ export const GenerationCanvasContext = createContext<GenerationCanvasState>({
   adoptAuthoritativeGenerationMutation: () => false,
   persistenceReady: true,
   retryGenerationEnabled: false,
+  readAuthoritativeCanvasRevision: async () => -1,
   flushCanvasSave: async () => {},
   waitForCanvasRevision: async () => -1,
 });

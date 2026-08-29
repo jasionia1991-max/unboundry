@@ -29,6 +29,8 @@ export type PublishedModel = {
   capability: ModelCapability;
   /** Optional during a rolling deploy; validation fails stale when absent. */
   configurationRevision?: string;
+  /** Exact active immutable release UUID used by semantic/task contracts. */
+  releaseRevisionId?: string;
   displayName: string;
   generationAvailable: boolean;
   generationUnavailableReason: string;

@@ -22,8 +22,11 @@ import {
 } from "../generation/groupRunSummary";
 import {
   clearGroupRunCheckpoint,
+  GROUP_RUN_AUTHORITY_EVENT,
   GROUP_RUN_CHECKPOINT_EVENT,
-  readGroupRunCheckpoint,
+  groupRunAuthorityRecoverySupported,
+  isGroupRunAuthoritySettledEmpty,
+  readGroupRunCheckpointCache,
   requestGroupRunContinue,
   requestGroupRunStop,
   type GroupRunCheckpoint,
@@ -85,6 +88,7 @@ function taskDurationLabel(task: GenerationTaskSummary) {
 function TaskRow({
   canvasId,
   canvasScopeId,
+  groupRunScope,
   getActionSignal,
   isCurrentScope,
   onActionError,
@@ -95,6 +99,7 @@ function TaskRow({
 }: {
   canvasId: string;
   canvasScopeId: string;
+  groupRunScope: GroupRunSummaryScope;
   getActionSignal: (
     scopeId: string,
     canvasId: string,
@@ -113,7 +118,9 @@ function TaskRow({
   const reconcilable =
     task.state === "failed" && task.reconcileAllowed === true;
   const rowIsCurrent =
-    task.canvasId === canvasId && isCurrentScope(canvasScopeId, canvasId);
+    task.canvasId === canvasId &&
+    (task.fixtureScopeId ?? "") === groupRunScope.fixtureScopeId &&
+    isCurrentScope(canvasScopeId, canvasId);
   return (
     <li
       className="tasks-row"
@@ -148,7 +155,11 @@ function TaskRow({
               const signal = getActionSignal(canvasScopeId, canvasId);
               if (!signal) return;
               setBusy(true);
-              void cancelGenerationTask(task.id, signal)
+              void cancelGenerationTask(
+                task.id,
+                signal,
+                groupRunScope.fixtureScopeId,
+              )
                 .catch(() => undefined)
                 .finally(() => {
                   if (!isCurrentScope(canvasScopeId, canvasId)) return;
@@ -169,7 +180,11 @@ function TaskRow({
               !rowIsCurrent ||
               !retryEnabled ||
               !waitForCanvasRevision ||
-              !task.generationInputKey
+              !task.generationInputKey ||
+              !task.generationOwnershipKey ||
+              !task.modelInputContractFingerprint ||
+              !task.modelConfigurationRevision ||
+              !task.modelReleaseRevision
             }
             onClick={() => {
               if (
@@ -177,15 +192,26 @@ function TaskRow({
                 !isCurrentScope(canvasScopeId, canvasId) ||
                 !retryEnabled ||
                 !waitForCanvasRevision ||
-                !task.generationInputKey
+                !task.generationInputKey ||
+                !task.generationOwnershipKey ||
+                !task.modelInputContractFingerprint ||
+                !task.modelConfigurationRevision ||
+                !task.modelReleaseRevision
               ) return;
               const signal = getActionSignal(canvasScopeId, canvasId);
               if (!signal) return;
               setBusy(true);
               void reconcileGenerationTask({
+                accountId: groupRunScope.accountId,
                 canvasId: task.canvasId,
+                fixtureScopeId: groupRunScope.fixtureScopeId,
                 generationInputKey: task.generationInputKey,
+                generationOwnershipKey: task.generationOwnershipKey,
                 kind: task.kind,
+                modelInputContractFingerprint:
+                  task.modelInputContractFingerprint,
+                modelConfigurationRevision: task.modelConfigurationRevision,
+                modelReleaseRevision: task.modelReleaseRevision,
                 nodeId: task.nodeId,
                 taskId: task.id,
               }, waitForCanvasRevision, undefined, signal)
@@ -235,7 +261,11 @@ function TaskRow({
               !rowIsCurrent ||
               !retryEnabled ||
               !waitForCanvasRevision ||
-              !task.generationInputKey
+              !task.generationInputKey ||
+              !task.generationOwnershipKey ||
+              !task.modelInputContractFingerprint ||
+              !task.modelConfigurationRevision ||
+              !task.modelReleaseRevision
             }
             onClick={() => {
               if (
@@ -243,15 +273,26 @@ function TaskRow({
                 !isCurrentScope(canvasScopeId, canvasId) ||
                 !retryEnabled ||
                 !waitForCanvasRevision ||
-                !task.generationInputKey
+                !task.generationInputKey ||
+                !task.generationOwnershipKey ||
+                !task.modelInputContractFingerprint ||
+                !task.modelConfigurationRevision ||
+                !task.modelReleaseRevision
               ) return;
               const signal = getActionSignal(canvasScopeId, canvasId);
               if (!signal) return;
               setBusy(true);
               void retryGenerationTask({
+                accountId: groupRunScope.accountId,
                 canvasId: task.canvasId,
+                fixtureScopeId: groupRunScope.fixtureScopeId,
                 generationInputKey: task.generationInputKey,
+                generationOwnershipKey: task.generationOwnershipKey,
                 kind: task.kind,
+                modelInputContractFingerprint:
+                  task.modelInputContractFingerprint,
+                modelConfigurationRevision: task.modelConfigurationRevision,
+                modelReleaseRevision: task.modelReleaseRevision,
                 nodeId: task.nodeId,
                 taskId: task.id,
               }, waitForCanvasRevision, signal)
@@ -306,7 +347,11 @@ function TaskRow({
               const signal = getActionSignal(canvasScopeId, canvasId);
               if (!signal) return;
               setBusy(true);
-              void abandonGenerationTask(task, signal)
+              void abandonGenerationTask(
+                task,
+                signal,
+                groupRunScope.fixtureScopeId,
+              )
                 .catch(() => undefined)
                 .finally(() => {
                   if (!isCurrentScope(canvasScopeId, canvasId)) return;
@@ -347,8 +392,9 @@ export function GenerationTasksPanel({
   const [actionError, setActionError] = useState("");
   const [readError, setReadError] = useState("");
   const [groupSummary, setGroupSummary] = useState<GroupRunSummary>();
-  const [groupCheckpoint, setGroupCheckpoint] =
-    useState<GroupRunCheckpoint>();
+  const [groupCheckpoints, setGroupCheckpoints] =
+    useState<GroupRunCheckpoint[]>([]);
+  const [groupRecoveryPending, setGroupRecoveryPending] = useState(false);
   const [summaryClock, setSummaryClock] = useState(() => Date.now());
   const mounted = useRef(false);
   const scope = useRef({ canvasId, canvasScopeId });
@@ -379,6 +425,15 @@ export function GenerationTasksPanel({
       : undefined;
   };
 
+  const checkpointRecoveryPending = () => {
+    const checkpointCache = readGroupRunCheckpointCache(groupRunScope);
+    return {
+      checkpoints: checkpointCache.checkpoints,
+      pending: (checkpointCache.corrupted || checkpointCache.quarantined) &&
+        !isGroupRunAuthoritySettledEmpty(groupRunScope),
+    };
+  };
+
   const refresh = (
     requestedScopeId = canvasScopeId,
     requestedCanvasId = canvasId,
@@ -391,14 +446,21 @@ export function GenerationTasksPanel({
     refreshController.current = controller;
     const epoch = ++refreshEpoch.current;
     setLoading(true);
-    listGenerationTasks(requestedCanvasId, controller.signal)
+    listGenerationTasks(
+      requestedCanvasId,
+      controller.signal,
+      groupRunScope.fixtureScopeId,
+    )
       .then((next) => {
         if (
           controller.signal.aborted ||
           refreshEpoch.current !== epoch ||
           !isCurrentScope(requestedScopeId, requestedCanvasId)
         ) return;
-        setTasks(next.filter((task) => task.canvasId === requestedCanvasId));
+        setTasks(next.filter((task) =>
+          task.canvasId === requestedCanvasId &&
+          (task.fixtureScopeId ?? "") === groupRunScope.fixtureScopeId
+        ));
         setReadError("");
       })
       .catch(() => {
@@ -428,13 +490,17 @@ export function GenerationTasksPanel({
     setTasks([]);
     setActionError("");
     setReadError("");
-    const checkpoint = readGroupRunCheckpoint(groupRunScope);
+    const checkpointState = checkpointRecoveryPending();
+    const checkpoints = checkpointState.checkpoints;
+    setGroupRecoveryPending(checkpointState.pending);
     const summary = visibleGroupRunSummary(readLastGroupRunSummary(groupRunScope));
-    setGroupCheckpoint(checkpoint);
+    setGroupCheckpoints(checkpoints);
     setGroupSummary(
-      checkpoint?.status === "interrupted" &&
-        checkpoint.runId === summary?.runId &&
-        isActiveGroupRunStatus(summary.status)
+      checkpoints.some((checkpoint) =>
+        checkpoint.status === "interrupted" &&
+        checkpoint.runId === summary?.runId
+      ) &&
+        isActiveGroupRunStatus(summary?.status ?? "cancelled")
         ? undefined
         : summary,
     );
@@ -483,20 +549,24 @@ export function GenerationTasksPanel({
 
   useEffect(() => {
     const onCheckpoint = () => {
-      const checkpoint = readGroupRunCheckpoint(groupRunScope);
-      setGroupCheckpoint(checkpoint);
-      if (checkpoint?.status === "interrupted") {
+      const checkpointState = checkpointRecoveryPending();
+      const checkpoints = checkpointState.checkpoints;
+      setGroupCheckpoints(checkpoints);
+      setGroupRecoveryPending(checkpointState.pending);
+      if (checkpoints.some((checkpoint) => checkpoint.status === "interrupted")) {
         setGroupSummary((current) =>
-          current?.runId === checkpoint.runId &&
-            isActiveGroupRunStatus(current.status)
+          checkpoints.some((checkpoint) => current?.runId === checkpoint.runId) &&
+            isActiveGroupRunStatus(current?.status ?? "cancelled")
             ? undefined
             : current
         );
       }
     };
+    window.addEventListener(GROUP_RUN_AUTHORITY_EVENT, onCheckpoint);
     window.addEventListener(GROUP_RUN_CHECKPOINT_EVENT, onCheckpoint);
     window.addEventListener("storage", onCheckpoint);
     return () => {
+      window.removeEventListener(GROUP_RUN_AUTHORITY_EVENT, onCheckpoint);
       window.removeEventListener(GROUP_RUN_CHECKPOINT_EVENT, onCheckpoint);
       window.removeEventListener("storage", onCheckpoint);
     };
@@ -530,6 +600,22 @@ export function GenerationTasksPanel({
       <div className="tasks-divider" />
       {visibleError && (
         <p className="tasks-error" role="alert">{visibleError}</p>
+      )}
+      {groupRecoveryPending && groupCheckpoints.length === 0 && (
+        <section
+          className="tasks-group-summary"
+          data-status="recovering"
+          data-testid="tasks-group-recovery"
+        >
+          <div className="tasks-group-summary-header">
+            <strong>{groupRunAuthorityRecoverySupported()
+              ? "正在安全核对整组任务"
+              : "当前浏览器无法安全自动恢复"}</strong>
+          </div>
+          <p>{groupRunAuthorityRecoverySupported()
+            ? "系统会根据画布与已接收任务自动恢复，不会重复提交。"
+            : "请刷新页面或使用支持 Web Locks 的浏览器后重试；系统不会重复提交。"}</p>
+        </section>
       )}
       {groupSummary && (
         <section
@@ -611,9 +697,15 @@ export function GenerationTasksPanel({
           )}
         </section>
       )}
-      {groupCheckpoint &&
-        !isActiveGroupRunStatus(groupSummary?.status ?? "cancelled") && (
+      {groupCheckpoints
+        .filter((groupCheckpoint) => !(
+          isActiveGroupRunStatus(groupSummary?.status ?? "cancelled") &&
+          groupSummary?.groupId === groupCheckpoint.groupId &&
+          groupSummary.runId === groupCheckpoint.runId
+        ))
+        .map((groupCheckpoint) => (
         <section
+          key={groupCheckpoint.runId}
           className="tasks-group-summary"
           data-status="interrupted"
           data-testid="tasks-group-checkpoint"
@@ -654,7 +746,7 @@ export function GenerationTasksPanel({
             放弃续跑记录
           </button>
         </section>
-      )}
+      ))}
       {loading && tasks.length === 0 ? (
         <p className="tasks-empty">正在读取生成任务…</p>
       ) : tasks.length === 0 ? (
@@ -675,6 +767,7 @@ export function GenerationTasksPanel({
                     canvasId={canvasId}
                     canvasScopeId={canvasScopeId}
                     getActionSignal={getActionSignal}
+                    groupRunScope={groupRunScope}
                     isCurrentScope={isCurrentScope}
                     key={task.id}
                     onActionError={setActionError}
@@ -699,6 +792,7 @@ export function GenerationTasksPanel({
                     canvasId={canvasId}
                     canvasScopeId={canvasScopeId}
                     getActionSignal={getActionSignal}
+                    groupRunScope={groupRunScope}
                     isCurrentScope={isCurrentScope}
                     key={task.id}
                     onActionError={setActionError}
@@ -720,6 +814,7 @@ export function GenerationTasksPanel({
                     canvasId={canvasId}
                     canvasScopeId={canvasScopeId}
                     getActionSignal={getActionSignal}
+                    groupRunScope={groupRunScope}
                     isCurrentScope={isCurrentScope}
                     key={task.id}
                     onActionError={setActionError}

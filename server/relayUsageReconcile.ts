@@ -76,12 +76,17 @@ export function parseRelayUsageRecords(body: unknown): RelayUsageRecord[] {
 export async function listRelayUsageRecords(
   profile: ProviderProfile,
   fetcher?: typeof fetch,
+  options: { beforeRequest?: () => void; signal?: AbortSignal } = {},
 ) {
   if (!profile.apiKey) throw new RelayRemoteError("AUTH");
   const body = await relayGetJson(
     profile,
     "/skills/usage?detail=1&limit=50",
     fetcher,
+    {
+      beforeRequest: options.beforeRequest,
+      signal: options.signal,
+    },
   );
   return parseRelayUsageRecords(body);
 }

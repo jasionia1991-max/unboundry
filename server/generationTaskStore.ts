@@ -23,6 +23,8 @@ import {
 import { generationCapabilityRegistry } from "./generationCapabilityRegistry";
 import type { GenerationCapabilityKind } from "../types/nodeVocabulary";
 import type { ModelReleaseRevision } from "../types/modelReleaseRevisions";
+import type { ProviderProtocol } from "../types/relayProtocols";
+import { assertActiveModelContractHealth } from "./activeModelContractHealth";
 
 export const generationTaskKinds: readonly GenerationCapabilityKind[] =
   generationCapabilityRegistry.kinds();
@@ -84,7 +86,12 @@ export type GenerationTaskRetryFence = {
   canvasId: string;
   expectedAttempt: number;
   expectedCanvasRevision: number;
+  expectedFixtureScopeId: string;
   expectedGenerationInputKey: string;
+  expectedGenerationOwnershipKey: string;
+  expectedModelConfigurationRevision: string;
+  expectedModelInputContractFingerprint: string;
+  expectedModelReleaseRevision: string;
   expectedUpdatedAt: string;
   kind: GenerationTaskKind;
   nodeId: string;
@@ -412,16 +419,25 @@ function canvasRetryBindings(
 
 const requestIntentKeys = [
   "canvasId",
+  "fixtureScopeId",
+  "generationIdentityVersion",
+  "generationInputKey",
+  "generationOwnershipKey",
+  "imageTool",
   "inputSchemaVersion",
   "inputs",
   "kind",
   "model",
+  "modelConfigurationRevision",
+  "modelInputContractFingerprint",
+  "modelReleaseRevision",
   "nodeId",
   "ownPrompt",
   "parameters",
   "prompt",
+  "workflowBinding",
 ] as const;
-const requestIntentFingerprintVersion = "intent-v2:";
+const requestIntentFingerprintVersion = "intent-v3:";
 
 function whitelistedRequestIntent(value: Record<string, unknown>) {
   return Object.fromEntries(
@@ -457,14 +473,56 @@ function stableClientIntent(
     (Object.hasOwn(supplied, "parameters") &&
       (!supplied.parameters ||
         Array.isArray(supplied.parameters) ||
-        typeof supplied.parameters !== "object"))
+        typeof supplied.parameters !== "object")) ||
+    (Object.hasOwn(supplied, "fixtureScopeId") &&
+      (typeof supplied.fixtureScopeId !== "string" ||
+        supplied.fixtureScopeId.length > 120)) ||
+    (Object.hasOwn(supplied, "generationIdentityVersion") &&
+      supplied.generationIdentityVersion !== 2) ||
+    (Object.hasOwn(supplied, "generationInputKey") &&
+      (typeof supplied.generationInputKey !== "string" ||
+        supplied.generationInputKey.length < 1 ||
+        supplied.generationInputKey.length > 32_000)) ||
+    (Object.hasOwn(supplied, "generationOwnershipKey") &&
+      (typeof supplied.generationOwnershipKey !== "string" ||
+        supplied.generationOwnershipKey.length < 1 ||
+        supplied.generationOwnershipKey.length > 2_000)) ||
+    [
+      "modelConfigurationRevision",
+      "modelInputContractFingerprint",
+      "modelReleaseRevision",
+    ].some((key) => Object.hasOwn(supplied, key) &&
+      (typeof supplied[key] !== "string" ||
+        String(supplied[key]).length < 1 ||
+        String(supplied[key]).length > 500))
   ) {
     throw new Error("Invalid generation request intent");
   }
   return {
     canvasId,
+    ...(Object.hasOwn(supplied, "fixtureScopeId")
+      ? { fixtureScopeId: supplied.fixtureScopeId }
+      : {}),
+    ...(Object.hasOwn(supplied, "generationIdentityVersion")
+      ? { generationIdentityVersion: supplied.generationIdentityVersion }
+      : {}),
+    ...(Object.hasOwn(supplied, "generationInputKey")
+      ? { generationInputKey: supplied.generationInputKey }
+      : {}),
+    ...(Object.hasOwn(supplied, "generationOwnershipKey")
+      ? { generationOwnershipKey: supplied.generationOwnershipKey }
+      : {}),
     kind: supplied.kind,
     model: Object.hasOwn(supplied, "model") ? supplied.model : null,
+    ...(Object.hasOwn(supplied, "modelConfigurationRevision")
+      ? { modelConfigurationRevision: supplied.modelConfigurationRevision }
+      : {}),
+    ...(Object.hasOwn(supplied, "modelInputContractFingerprint")
+      ? { modelInputContractFingerprint: supplied.modelInputContractFingerprint }
+      : {}),
+    ...(Object.hasOwn(supplied, "modelReleaseRevision")
+      ? { modelReleaseRevision: supplied.modelReleaseRevision }
+      : {}),
     nodeId: supplied.nodeId,
     prompt: supplied.prompt,
     ...(Object.hasOwn(supplied, "ownPrompt")
@@ -479,6 +537,12 @@ function stableClientIntent(
     parameters: Object.hasOwn(supplied, "parameters")
       ? supplied.parameters
       : {},
+    ...(Object.hasOwn(supplied, "imageTool")
+      ? { imageTool: supplied.imageTool }
+      : {}),
+    ...(Object.hasOwn(supplied, "workflowBinding")
+      ? { workflowBinding: supplied.workflowBinding }
+      : {}),
   };
 }
 
@@ -792,6 +856,7 @@ export function createGenerationTaskStore(dataDirectory: string) {
     archived_at: string | null;
     binding_enabled: number;
     capability: GenerationTaskKind;
+    cost_currency: "CNY" | "USD";
     default_parameters: string;
     model_status: "archived" | "draft" | "published";
     provider_configuration_version: number;
@@ -808,6 +873,7 @@ export function createGenerationTaskStore(dataDirectory: string) {
       SELECT
         models.archived_at,
         models.capability,
+        models.cost_currency,
         models.default_parameters,
         models.provider_model_id,
         models.provider_profile_id,
@@ -843,7 +909,13 @@ export function createGenerationTaskStore(dataDirectory: string) {
     const suppliedRelease = input.modelConfiguration.modelReleaseRevision as
       | ModelReleaseRevision
       | undefined;
-    if (releaseState?.history.length || modelContractsRequired(database)) {
+    if (!modelContractsRequired(database)) {
+      throw new GenerationProviderAttemptBlockedError(
+        "MODEL_UNAVAILABLE",
+        "模型合同bootstrap尚未完成，未创建新的付费请求",
+      );
+    }
+    {
       const active = releaseState?.active;
       if (!active) {
         throw new GenerationProviderAttemptBlockedError(
@@ -901,7 +973,9 @@ export function createGenerationTaskStore(dataDirectory: string) {
       providerDriver: binding.provider_driver,
       providerModelId: binding.provider_model_id,
     });
-    let authoritativeParameterSchema: unknown;
+    let authoritativeParameterSchema: ReturnType<
+      typeof knownModelParameterSchema
+    >;
     try {
       const stored = JSON.parse(binding.default_parameters) as unknown;
       authoritativeParameterSchema =
@@ -926,6 +1000,24 @@ export function createGenerationTaskStore(dataDirectory: string) {
         );
       }
       authoritativeParameterSchema = fallbackSchema;
+    }
+    try {
+      assertActiveModelContractHealth({
+        capability: binding.capability,
+        costCurrency: binding.cost_currency,
+        modelId: input.modelId!,
+        parameterSchema: authoritativeParameterSchema,
+        providerDriver: binding.provider_driver,
+        providerModelId: binding.provider_model_id,
+        providerProfileId: binding.provider_profile_id,
+        providerProtocol: binding.provider_protocol as ProviderProtocol,
+        store: database,
+      });
+    } catch {
+      throw new GenerationProviderAttemptBlockedError(
+        "MODEL_UNAVAILABLE",
+        "模型active immutable contract不完整，未创建新的付费请求",
+      );
     }
     if (
       !Number.isSafeInteger(suppliedVersion) ||
@@ -1335,6 +1427,35 @@ export function createGenerationTaskStore(dataDirectory: string) {
           }));
         }
 
+        // A different browser intent must not create a sibling task while the
+        // same semantic input is already queued/running, even before the first
+        // worker records a Provider attempt. This closes the accepted-task
+        // gap after a local intent is lost or corrupted.
+        const activeSameInput = database.prepare(`
+          SELECT id
+          FROM generation_tasks
+          WHERE
+            owner_id = ?
+            AND canvas_id = ?
+            AND node_id = ?
+            AND kind = ?
+            AND request_fingerprint = ?
+            AND state IN ('queued', 'running', 'retrying', 'recovering')
+          LIMIT 1
+        `).get(
+          normalized.ownerId,
+          normalized.canvasId,
+          normalized.nodeId,
+          normalized.kind,
+          fingerprint,
+        );
+        if (activeSameInput) {
+          throw new GenerationProviderAttemptBlockedError(
+            "RETRY_OUTCOME_UNKNOWN",
+            "同一输入已有任务正在安全执行；系统会继续原任务，当前不能重复提交",
+          );
+        }
+
         const unresolvedSameInput = database.prepare(`
           SELECT t.id
           FROM generation_tasks AS t
@@ -1375,7 +1496,6 @@ export function createGenerationTaskStore(dataDirectory: string) {
             AND t.node_id = ?
             AND t.kind = ?
             AND t.request_fingerprint = ?
-            AND t.state != 'cancelled'
             AND attempt.outcome IN ('accepted', 'response-received')
           LIMIT 1
         `).get(
@@ -1632,7 +1752,6 @@ export function createGenerationTaskStore(dataDirectory: string) {
           AND t.kind = ?
           AND t.request_fingerprint = ?
           AND t.id != ?
-          AND t.state != 'cancelled'
           AND attempt.outcome IN ('accepted', 'response-received')
         LIMIT 1
       `).get(
@@ -1647,6 +1766,7 @@ export function createGenerationTaskStore(dataDirectory: string) {
 
     listOwnerRelayMatchContext(input: {
       excludeTaskId: string;
+      fixtureScopeId: string;
       kind: GenerationTask["kind"];
       ownerId: string;
       providerModelId: string;
@@ -1660,22 +1780,25 @@ export function createGenerationTaskStore(dataDirectory: string) {
         !identifierPattern.test(input.providerModelId) ||
         input.providerModelId.length > 160 ||
         !identifierPattern.test(input.providerProfileId) ||
-        input.providerProfileId.length > 120
+        input.providerProfileId.length > 120 ||
+        typeof input.fixtureScopeId !== "string" ||
+        input.fixtureScopeId.length > 120
       ) {
         throw new Error("Invalid relay match context");
       }
       const occupied = database.prepare(`
-        SELECT provider_task_id
+        SELECT provider_task_id, model_configuration
         FROM generation_tasks
         WHERE
           owner_id = ?
           AND provider_profile_id = ?
           AND provider_task_id IS NOT NULL
       `).all(input.ownerId, input.providerProfileId) as Array<{
+        model_configuration: string;
         provider_task_id: string;
       }>;
       const competitors = database.prepare(`
-        SELECT id, created_at, updated_at, state
+        SELECT id, created_at, model_configuration, updated_at, state
         FROM generation_tasks
         WHERE
           owner_id = ?
@@ -1693,19 +1816,50 @@ export function createGenerationTaskStore(dataDirectory: string) {
       ) as Array<{
         created_at: string;
         id: string;
+        model_configuration: string;
         state: string;
         updated_at: string;
       }>;
       return {
-        competitors: competitors.map((row) => ({
-          createdAt: row.created_at,
-          id: row.id,
-          state: row.state,
-          updatedAt: row.updated_at,
-        })),
-        occupiedTaskIds: occupied
-          .map((row) => row.provider_task_id)
-          .filter(Boolean),
+        competitors: competitors.flatMap((row) => {
+          try {
+            const configuration = JSON.parse(row.model_configuration) as unknown;
+            if (
+              !configuration ||
+              typeof configuration !== "object" ||
+              Array.isArray(configuration) ||
+              (typeof (configuration as Record<string, unknown>).fixtureScopeId ===
+                  "string"
+                ? (configuration as Record<string, unknown>).fixtureScopeId
+                : "") !== input.fixtureScopeId
+            ) return [];
+          } catch {
+            return [];
+          }
+          return [{
+            createdAt: row.created_at,
+            id: row.id,
+            state: row.state,
+            updatedAt: row.updated_at,
+          }];
+        }),
+        occupiedTaskIds: occupied.flatMap((row) => {
+          try {
+            const configuration = JSON.parse(row.model_configuration) as unknown;
+            if (
+              !configuration ||
+              typeof configuration !== "object" ||
+              Array.isArray(configuration) ||
+              (typeof (configuration as Record<string, unknown>).fixtureScopeId ===
+                  "string"
+                ? (configuration as Record<string, unknown>).fixtureScopeId
+                : "") !== input.fixtureScopeId
+            ) return [];
+          } catch {
+            return [];
+          }
+          return row.provider_task_id ? [row.provider_task_id] : [];
+        }),
       };
     },
 
@@ -2159,7 +2313,21 @@ export function createGenerationTaskStore(dataDirectory: string) {
         input.expectedUpdatedAt.length > 80 ||
         typeof input.expectedGenerationInputKey !== "string" ||
         input.expectedGenerationInputKey.length < 1 ||
-        input.expectedGenerationInputKey.length > 100_000
+        input.expectedGenerationInputKey.length > 100_000 ||
+        typeof input.expectedGenerationOwnershipKey !== "string" ||
+        input.expectedGenerationOwnershipKey.length < 1 ||
+        input.expectedGenerationOwnershipKey.length > 2_000 ||
+        typeof input.expectedFixtureScopeId !== "string" ||
+        input.expectedFixtureScopeId.length > 120 ||
+        typeof input.expectedModelConfigurationRevision !== "string" ||
+        input.expectedModelConfigurationRevision.length < 1 ||
+        input.expectedModelConfigurationRevision.length > 500 ||
+        typeof input.expectedModelInputContractFingerprint !== "string" ||
+        input.expectedModelInputContractFingerprint.length < 1 ||
+        input.expectedModelInputContractFingerprint.length > 500 ||
+        typeof input.expectedModelReleaseRevision !== "string" ||
+        input.expectedModelReleaseRevision.length < 1 ||
+        input.expectedModelReleaseRevision.length > 500
       ) {
         throw new Error("Invalid generation retry fence");
       }
@@ -2177,11 +2345,50 @@ export function createGenerationTaskStore(dataDirectory: string) {
         if (
           current.canvas_id !== input.canvasId ||
           current.node_id !== input.nodeId ||
-          current.kind !== input.kind
+          current.kind !== input.kind ||
+          current.model_configuration === null
         ) {
           throw new GenerationTaskRetryFenceError(
             "RETRY_BINDING_STALE",
             "任务已不再绑定当前画布节点",
+          );
+        }
+        let currentModelConfiguration: Record<string, unknown>;
+        try {
+          const parsed = JSON.parse(current.model_configuration) as unknown;
+          if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+            throw new Error("invalid task model configuration");
+          }
+          currentModelConfiguration = parsed as Record<string, unknown>;
+        } catch {
+          throw new GenerationTaskRetryFenceError(
+            "RETRY_BINDING_STALE",
+            "任务冻结模型合同无法验证，不能继续旧任务",
+          );
+        }
+        const currentRelease = currentModelConfiguration.modelReleaseRevision;
+        const currentReleaseId = currentRelease &&
+            typeof currentRelease === "object" &&
+            typeof (currentRelease as Record<string, unknown>).revisionId === "string"
+          ? String((currentRelease as Record<string, unknown>).revisionId)
+          : "";
+        if (
+          currentModelConfiguration.generationIdentityVersion !== 2 ||
+          currentModelConfiguration.fixtureScopeId !==
+            input.expectedFixtureScopeId ||
+          currentModelConfiguration.generationInputKey !==
+            input.expectedGenerationInputKey ||
+          currentModelConfiguration.generationOwnershipKey !==
+            input.expectedGenerationOwnershipKey ||
+          currentModelConfiguration.modelConfigurationRevision !==
+            input.expectedModelConfigurationRevision ||
+          currentModelConfiguration.modelInputContractFingerprint !==
+            input.expectedModelInputContractFingerprint ||
+          currentReleaseId !== input.expectedModelReleaseRevision
+        ) {
+          throw new GenerationTaskRetryFenceError(
+            "RETRY_BINDING_STALE",
+            "任务冻结模型合同已变化，不能继续旧任务",
           );
         }
         if (
@@ -2228,7 +2435,9 @@ export function createGenerationTaskStore(dataDirectory: string) {
           !binding ||
           binding.kind !== current.kind ||
           binding.nodeId !== current.node_id ||
-          binding.generationInputKey !== input.expectedGenerationInputKey
+          binding.generationInputKey !== input.expectedGenerationInputKey ||
+          binding.generationOwnershipKey !==
+            input.expectedGenerationOwnershipKey
         ) {
           throw new GenerationTaskRetryFenceError(
             "RETRY_BINDING_STALE",
@@ -3246,17 +3455,39 @@ export function createGenerationTaskStore(dataDirectory: string) {
     },
 
     markOutcomeUnknownBillingRisk(input: {
+      expectedFixtureScopeId: string;
       expectedUpdatedAt: string;
       taskId: string;
     }) {
+      if (
+        typeof input.expectedFixtureScopeId !== "string" ||
+        input.expectedFixtureScopeId.length > 120
+      ) {
+        throw new Error("Invalid generation task fixture scope");
+      }
       const timestamp = new Date().toISOString();
       database.exec("BEGIN IMMEDIATE");
       try {
         const task = readById.get(input.taskId) as GenerationTaskRow | undefined;
+        let fixtureScopeId = "";
+        try {
+          const configuration = JSON.parse(task?.model_configuration ?? "null") as unknown;
+          if (configuration && typeof configuration === "object" &&
+            !Array.isArray(configuration) &&
+            typeof (configuration as Record<string, unknown>).fixtureScopeId ===
+              "string") {
+            fixtureScopeId = String(
+              (configuration as Record<string, unknown>).fixtureScopeId,
+            );
+          }
+        } catch {
+          throw new Error("Generation task fixture scope is invalid");
+        }
         if (
           !task ||
           task.state !== "failed" ||
-          task.updated_at !== input.expectedUpdatedAt
+          task.updated_at !== input.expectedUpdatedAt ||
+          fixtureScopeId !== input.expectedFixtureScopeId
         ) {
           throw new Error("Generation task changed concurrently");
         }

@@ -1,5 +1,9 @@
 import type { ProbeNodeType } from "../canvas/ProbeNode";
-import type { CanvasGraphCommandPort } from "../canvas/canvasPorts";
+import type {
+  CanvasGraphCommand,
+  CanvasGraphCommandCommit,
+  CanvasGraphCommandPort,
+} from "../canvas/canvasPorts";
 import type { CuttableEdge } from "../canvas/canvasTypes";
 import type { ImageToolOperation } from "../../../types/imageTools";
 import { findVacantImageToolPlacement } from "./imageToolPlacement";
@@ -39,6 +43,7 @@ const derivedOperations = new Set<ImageToolOperation>([
 ]);
 
 export function createDerivedImageToolUseCase(input: Readonly<{
+  commit?: CanvasGraphCommandCommit;
   graph: CanvasGraphCommandPort;
   media: DerivedImageMediaPort;
   operation: "annotate" | "crop" | "enhance-conservative" | "quick-split" |
@@ -99,7 +104,7 @@ export function createDerivedImageToolUseCase(input: Readonly<{
           targetHandle: "target",
           type: "cuttable",
         };
-        const result = input.graph.apply({
+        const graphCommand: CanvasGraphCommand = {
           fence: {
             expectedRevision: command.expectedRevision,
             kind: "image",
@@ -126,7 +131,10 @@ export function createDerivedImageToolUseCase(input: Readonly<{
               ],
             };
           },
-        });
+        };
+        const result = input.commit
+          ? await input.commit(graphCommand)
+          : input.graph.apply(graphCommand);
         if (result.status !== "applied") {
           throw new Error(
             result.reason === "persistence-unavailable"

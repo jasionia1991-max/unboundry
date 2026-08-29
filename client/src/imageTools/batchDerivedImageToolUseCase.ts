@@ -1,5 +1,9 @@
 import type { ProbeNodeType } from "../canvas/ProbeNode";
-import type { CanvasGraphCommandPort } from "../canvas/canvasPorts";
+import type {
+  CanvasGraphCommand,
+  CanvasGraphCommandCommit,
+  CanvasGraphCommandPort,
+} from "../canvas/canvasPorts";
 import type { CuttableEdge } from "../canvas/canvasTypes";
 import type {
   DerivedImageAsset,
@@ -8,6 +12,7 @@ import type {
 import { findVacantImageToolPlacement } from "./imageToolPlacement";
 
 export function createBatchDerivedImageToolUseCase(input: Readonly<{
+  commit?: CanvasGraphCommandCommit;
   graph: CanvasGraphCommandPort;
   media: DerivedImageMediaPort;
   operation: "quick-split";
@@ -92,7 +97,7 @@ export function createBatchDerivedImageToolUseCase(input: Readonly<{
           targetHandle: "target",
           type: "cuttable",
         }));
-        const result = input.graph.apply({
+        const graphCommand: CanvasGraphCommand = {
           fence: {
             expectedRevision: command.expectedRevision,
             kind: "image",
@@ -127,7 +132,10 @@ export function createBatchDerivedImageToolUseCase(input: Readonly<{
               ],
             };
           },
-        });
+        };
+        const result = input.commit
+          ? await input.commit(graphCommand)
+          : input.graph.apply(graphCommand);
         if (result.status !== "applied") {
           throw new Error("原图片或画布版本已发生变化，请重新打开快速分割");
         }

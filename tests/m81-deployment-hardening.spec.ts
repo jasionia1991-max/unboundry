@@ -44,8 +44,11 @@ import {
 } from "../server/database";
 import {
   createGenerationTaskStore,
-  GenerationProviderAttemptBlockedError,
+  GenerationTaskRetryFenceError,
 } from "../server/generationTaskStore";
+import { bootstrapPublishedModelContracts } from
+  "../server/modelReleaseBootstrap";
+import { modelContractState } from "../server/modelReleaseRevisionStore";
 import { saveProviderProfile } from "../server/providerProfiles";
 import {
   coordinateRuntimeShutdown,
@@ -151,6 +154,7 @@ test("release role and bridge-mode selection are exact and fail closed", () => {
   expect(releaseRoleFromEnvironment("0.6.54", {})).toBe("final");
   expect(releaseRoleFromEnvironment("0.6.55", {})).toBe("final");
   expect(releaseRoleFromEnvironment("0.6.56", {})).toBe("final");
+  expect(releaseRoleFromEnvironment("0.6.57", {})).toBe("final");
   expect(releaseRoleFromEnvironment("0.5.2", {})).toBe("bridge");
   expect(releaseRoleFromEnvironment("0.5.2", {
     UNBOUNDRY_RELEASE_ROLE: "bridge",
@@ -1763,6 +1767,12 @@ async function seedQueuedStartupGenerationFixture(
       `);
       insertBinding.run("text", textModelId, timestamp, timestamp);
       insertBinding.run("video", videoModelId, timestamp, timestamp);
+      bootstrapPublishedModelContracts(database, ownerId);
+      const textModelRelease = modelContractState(database, textModelId).active;
+      const videoModelRelease = modelContractState(database, videoModelId).active;
+      if (!textModelRelease || !videoModelRelease) {
+        throw new Error("M81 startup fixture model contracts were not published");
+      }
       database.prepare(`
         UPDATE generation_safety_settings
         SET
@@ -1794,7 +1804,8 @@ async function seedQueuedStartupGenerationFixture(
           modelConfiguration: {
             credentialVersion: credential.credentialVersion,
             modelId: textModelId,
-            parameterSchema: textParameterSchema,
+            modelReleaseRevision: textModelRelease,
+            parameterSchema: textModelRelease.document.capabilitySchema,
             providerConfigurationVersion: 1,
             providerDriver: "volcengine-ark",
             providerModelId: textProviderModelId,
@@ -1824,7 +1835,8 @@ async function seedQueuedStartupGenerationFixture(
           modelConfiguration: {
             credentialVersion: credential.credentialVersion,
             modelId: videoModelId,
-            parameterSchema: videoParameterSchema,
+            modelReleaseRevision: videoModelRelease,
+            parameterSchema: videoModelRelease.document.capabilitySchema,
             providerConfigurationVersion: 1,
             providerDriver: "volcengine-ark",
             providerModelId: videoProviderModelId,
@@ -3802,6 +3814,7 @@ test("bridge schema-37 routing and exact schema-38 startup never run implicit mi
     try {
       const retryTask = migratedStore.get("m81-schema38-gap-task")!;
       const retryInputKey = "m81-schema38-gap-input-key";
+      const retryOwnershipKey = "m81-schema38-gap-ownership-key";
       const retryCanvasRevision = 1;
       const retryCanvas = openAppDatabase(schema38Directory);
       try {
@@ -3817,6 +3830,7 @@ test("bridge schema-37 routing and exact schema-38 startup never run implicit mi
           JSON.stringify([{
             data: {
               imageGenerationInputKey: retryInputKey,
+              imageGenerationOwnershipKey: retryOwnershipKey,
               imageGenerationTaskId: retryTask.id,
             },
             id: retryTask.nodeId,
@@ -3836,7 +3850,12 @@ test("bridge schema-37 routing and exact schema-38 startup never run implicit mi
         canvasId: retryTask.canvasId,
         expectedAttempt: retryTask.attempt,
         expectedCanvasRevision: retryCanvasRevision,
+        expectedFixtureScopeId: "",
         expectedGenerationInputKey: retryInputKey,
+        expectedGenerationOwnershipKey: retryOwnershipKey,
+        expectedModelConfigurationRevision: "m81-legacy-config",
+        expectedModelInputContractFingerprint: "mic2:m81-legacy-contract",
+        expectedModelReleaseRevision: "00000000-0000-4000-8000-000000000081",
         expectedUpdatedAt: retryTask.updatedAt,
         kind: retryTask.kind,
         mode: "new-paid-attempt",
@@ -3848,7 +3867,7 @@ test("bridge schema-37 routing and exact schema-38 startup never run implicit mi
           providerProfileId: "m81-schema38-provider",
         },
         taskId: "m81-schema38-gap-task",
-      })).toThrow(GenerationProviderAttemptBlockedError);
+      })).toThrow(GenerationTaskRetryFenceError);
     } finally {
       migratedStore.close();
     }

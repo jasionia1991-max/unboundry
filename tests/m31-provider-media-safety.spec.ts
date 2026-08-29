@@ -3,6 +3,11 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test, type APIRequestContext } from "./safe-test";
+import { openAppDatabase } from "../server/database";
+import {
+  bootstrapPublishedModelContracts,
+  modelReleaseBootstrapActorUserId,
+} from "../server/modelReleaseBootstrap";
 import type { MediaRecord } from "../server/mediaRegistry";
 import {
   arkVideoBase64Bytes,
@@ -539,9 +544,16 @@ test("client preserves structured 409 problems for exact reference cards without
   try {
     let captured: unknown;
     await submitVideoGeneration({
+      accountId: "__test__",
       canvasId: "zero-network",
+      generationIdentityVersion: 2,
+      generationInputKey: "input-zero-network",
+      generationOwnershipKey: "ownership-zero-network",
       idempotencyKey: "zero-network-409",
       model: "model-zero-network",
+      modelConfigurationRevision: "config-zero-network",
+      modelInputContractFingerprint: "mic2:zero-network",
+      modelReleaseRevision: "00000000-0000-4000-8000-000000000031",
       nodeId: "target",
       parameters: {},
       prompt: "zero network",
@@ -724,8 +736,8 @@ test("connected cards share uploading while a failed replacement preserves the a
   };
   await expect.poll(readAcceptedAssetId).toMatch(/.+/);
   const acceptedAssetId = await readAcceptedAssetId();
+  await expect(input).toBeEnabled();
 
-  await input.setInputFiles([]);
   await input.setInputFiles({
     name: "replacement.mp3",
     mimeType: "audio/mpeg",
@@ -792,6 +804,20 @@ test.describe.serial("trusted duration blocks an invalid paid Video request befo
     });
     expect(modelResponse.status()).toBe(201);
     integrationModelId = (await modelResponse.json() as { model: { id: string } }).model.id;
+    const dataDirectoryResponse = await request.get("/api/test-data-directory");
+    expect(dataDirectoryResponse.ok()).toBeTruthy();
+    const dataDirectory = (await dataDirectoryResponse.json() as {
+      dataDirectory: string;
+    }).dataDirectory;
+    const database = openAppDatabase(dataDirectory);
+    try {
+      bootstrapPublishedModelContracts(
+        database,
+        modelReleaseBootstrapActorUserId(database),
+      );
+    } finally {
+      database.close();
+    }
 
     for (let index = 0; index < integrationAssetIds.length; index += 1) {
       const response = await request.post(
@@ -877,12 +903,13 @@ test.describe.serial("trusted duration blocks an invalid paid Video request befo
     const preflightResponse = await request.post("/api/generation-tasks/preflight", {
       data: body,
     });
-    expect(preflightResponse.ok()).toBeTruthy();
     const preflight = await preflightResponse.json() as {
       canSubmit: boolean;
+      error?: string;
       problems: Array<{ edgeId?: string; message: string }>;
       providerRequests: number;
     };
+    expect(preflightResponse.ok(), JSON.stringify(preflight)).toBeTruthy();
     expect(preflight.canSubmit).toBeFalsy();
     expect(preflight.providerRequests).toBe(0);
     expect(preflight.problems).toContainEqual(expect.objectContaining({

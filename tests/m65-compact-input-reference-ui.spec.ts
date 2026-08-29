@@ -6,7 +6,7 @@ import {
   type Page,
 } from "./safe-test";
 import {
-  defaultParameterSchema,
+  knownModelParameterSchema,
   type ModelParameterSchema,
 } from "../types/modelParameters";
 
@@ -28,29 +28,23 @@ type CanvasDocument = {
 };
 
 function modelSchema(): ModelParameterSchema {
-  return {
-    ...defaultParameterSchema("text"),
-    inputPolicy: {
-      promptPolicy: "own-required",
-      required: {},
-      roles: {
-        audio: ["context-audio"],
-        image: ["context-image", "subject"],
-        text: ["context-text"],
-        video: ["context-video"],
-      },
-      switchPolicy: "keep-edge",
-    },
-    upstreamInputs: {
-      audio: { limitMode: "context", supported: true },
-      image: { limitMode: "context", supported: true },
-      text: { limitMode: "context", supported: true },
-      video: { limitMode: "context", supported: true },
-    },
-  };
+  return knownModelParameterSchema({
+    capability: "text",
+    providerDriver: "volcengine-ark",
+    providerModelId: "doubao-seed-2-0-lite-260428",
+  });
 }
 
 async function createModel(request: APIRequestContext) {
+  const providerResponse = await request.post("/api/admin/providers", {
+    data: {
+      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      driver: "volcengine-ark",
+      label: "M65 Ark Fixture",
+    },
+  });
+  expect(providerResponse.status()).toBe(201);
+  const provider = await providerResponse.json() as { profile: { id: string } };
   const response = await request.post("/api/admin/models", {
     data: {
       capability: "text",
@@ -58,8 +52,8 @@ async function createModel(request: APIRequestContext) {
       isDefault: false,
       maxCostMicrounits: 0,
       parameterSchema: modelSchema(),
-      providerModelId: "fixture/m65-compact-input-reference-ui",
-      providerProfileId: "provider-unconfigured",
+      providerModelId: "doubao-seed-2-0-lite-260428",
+      providerProfileId: provider.profile.id,
       sortOrder: 9_650,
       status: "published",
     },
@@ -316,13 +310,10 @@ test.describe.serial("compact upstream references stay one-row and zero Provider
     await expect(imageDetails.getByText(longProblem, { exact: true })).toBeVisible();
     await expect(creator.getByText(longProblem, { exact: true })).toHaveCount(1);
 
-    const role = imageDetails.getByRole("group", { name: `${imageTitle}角色` });
-    await expect(role).toBeVisible();
-    await expect(role.locator('[role="radio"]')).toHaveCount(2);
-    await role.locator('[data-value="subject"]').click();
+    await expect(imageDetails.getByRole("group", { name: `${imageTitle}角色` }))
+      .toHaveCount(0);
     await expect(references.locator('[data-input-kind="image"]'))
-      .toHaveAttribute("data-input-role", "subject");
-    await role.locator('[data-value="context-image"]').click();
+      .toHaveAttribute("data-input-role", "context-image");
 
     const moveBackward = imageDetails.getByRole("button", { name: `向前移动 ${imageTitle}` });
     const moveForward = imageDetails.getByRole("button", { name: `向后移动 ${imageTitle}` });

@@ -66,10 +66,16 @@ function publishedModel(input: {
 }) {
   return {
     ...input,
+    configurationRevision: input.capability === "text"
+      ? "a06000000000000000000001"
+      : "a06000000000000000000002",
     generationAvailable: true,
     generationUnavailableReason: "",
     generationUnavailableReasonCode: null,
     isDefault: true,
+    releaseRevisionId: input.capability === "text"
+      ? "a0600000-0000-4000-8000-000000000001"
+      : "a0600000-0000-4000-8000-000000000002",
   };
 }
 
@@ -133,6 +139,17 @@ test("relay Text node exposes bounded defaults and keeps them in zero-Provider p
       url.pathname === "/api/generation-tasks/by-idempotency"
     ) {
       await route.fulfill({ status: 404 });
+      return;
+    }
+    if (
+      request.method() === "GET" &&
+      url.pathname === "/api/generation-tasks"
+    ) {
+      await route.fulfill({
+        contentType: "application/json",
+        json: { tasks: [] },
+        status: 200,
+      });
       return;
     }
     if (
@@ -262,6 +279,17 @@ test("relay doubao TTS node shows only documented controls and reveals emotion s
       url.pathname === "/api/generation-tasks/by-idempotency"
     ) {
       await route.fulfill({ status: 404 });
+      return;
+    }
+    if (
+      request.method() === "GET" &&
+      url.pathname === "/api/generation-tasks"
+    ) {
+      await route.fulfill({
+        contentType: "application/json",
+        json: { tasks: [] },
+        status: 200,
+      });
       return;
     }
     if (

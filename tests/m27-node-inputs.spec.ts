@@ -4,6 +4,7 @@ import {
   type APIRequestContext,
   type Page,
 } from "./safe-test";
+import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
@@ -18,7 +19,10 @@ import {
   knownModelParameterSchema,
 } from "../types/modelParameters";
 import { canvasDocumentFingerprint } from "../client/src/canvas/canvasDocumentFingerprint";
+import { openAppDatabase } from "../server/database";
 import { persistedNodeOwnPrompt } from "../server/inputPreflight";
+import { bootstrapPublishedModelContracts } from
+  "../server/modelReleaseBootstrap";
 
 function zeroProviderInputSchema() {
   const schema = knownModelParameterSchema({
@@ -62,6 +66,38 @@ async function connectNodes(page: Page, sourceId: string, targetId: string) {
   await page.mouse.up();
 }
 
+async function publishDraftModel(
+  request: APIRequestContext,
+  modelId: string,
+) {
+  const contract = await request.get(`/api/admin/models/${modelId}/contract`);
+  expect(contract.ok()).toBeTruthy();
+  const { suggestedDocument } = await contract.json() as {
+    suggestedDocument: Record<string, unknown>;
+  };
+  const draft = await request.post(
+    `/api/admin/models/${modelId}/contract/draft`,
+    { data: { document: suggestedDocument, expectedDraftVersion: 0 } },
+  );
+  expect(draft.ok()).toBeTruthy();
+  const published = await request.post(
+    `/api/admin/models/${modelId}/contract/publish`,
+    { data: { expectedDraftVersion: 1 } },
+  );
+  expect(published.ok()).toBeTruthy();
+  const directoryResponse = await request.get("/api/test-data-directory");
+  expect(directoryResponse.ok()).toBeTruthy();
+  const { dataDirectory } = await directoryResponse.json() as {
+    dataDirectory: string;
+  };
+  const database = openAppDatabase(dataDirectory);
+  try {
+    bootstrapPublishedModelContracts(database, "__test__");
+  } finally {
+    database.close();
+  }
+}
+
 async function ensureZeroProviderInputModel(request: APIRequestContext) {
   const existingResponse = await request.get("/api/admin/models");
   const existing = await existingResponse.json() as {
@@ -82,30 +118,48 @@ async function ensureZeroProviderInputModel(request: APIRequestContext) {
     zeroModelIds.add(found.id);
     return found.id;
   }
+  const providerResponse = await request.post("/api/admin/providers", {
+    data: {
+      baseUrl: "https://openrouter.ai/api/v1",
+      driver: "openrouter",
+      label: "零费用图片入参测试 Provider",
+    },
+  });
+  expect(providerResponse.status()).toBe(201);
+  const providerId = (await providerResponse.json() as {
+    profile: { id: string };
+  }).profile.id;
   const createdResponse = await request.post("/api/admin/models", {
     data: {
       capability: "image",
       displayName: "零费用图片入参测试模型",
-      isDefault: true,
+      isDefault: false,
       maxCostMicrounits: 0,
       parameterSchema: zeroProviderInputSchema(),
-      providerModelId: "fixture/image-input-model",
-      providerProfileId: "provider-unconfigured",
+      providerModelId: "openai/gpt-image-2",
+      providerProfileId: providerId,
       sortOrder: 1,
-      status: "published",
+      status: "draft",
     },
   });
-  expect(createdResponse.status()).toBe(201);
-  const created = await createdResponse.json() as { model: { id: string } };
+  const createdText = await createdResponse.text();
+  expect(createdResponse.status(), createdText).toBe(201);
+  const created = JSON.parse(createdText) as { model: { id: string } };
+  await publishDraftModel(request, created.model.id);
+  const selected = await request.patch(`/api/admin/models/${created.model.id}`, {
+    data: { isDefault: true, status: "published" },
+  });
+  expect(selected.ok()).toBeTruthy();
   zeroModelIds.add(created.model.id);
   return created.model.id;
 }
 
 function zeroProviderVideoSchema() {
-  return {
-    ...defaultParameterSchema("video"),
-    referenceInputs: { audio: 0, image: 1, video: 0 },
-  };
+  return knownModelParameterSchema({
+    capability: "video",
+    providerDriver: "multi-protocol-relay",
+    providerModelId: "grok-video-3",
+  });
 }
 
 async function ensureZeroProviderVideoModel(request: APIRequestContext) {
@@ -129,21 +183,39 @@ async function ensureZeroProviderVideoModel(request: APIRequestContext) {
     zeroModelIds.add(found.id);
     return found.id;
   }
+  const providerResponse = await request.post("/api/admin/providers", {
+    data: {
+      baseUrl: "https://relay.example.test/v1",
+      driver: "multi-protocol-relay",
+      label: "零费用视频入参测试 Provider",
+    },
+  });
+  expect(providerResponse.status()).toBe(201);
+  const providerId = (await providerResponse.json() as {
+    profile: { id: string };
+  }).profile.id;
   const createdResponse = await request.post("/api/admin/models", {
     data: {
       capability: "video",
       displayName: "零费用视频入参测试模型",
-      isDefault: true,
+      isDefault: false,
       maxCostMicrounits: 0,
       parameterSchema: zeroProviderVideoSchema(),
-      providerModelId: "fixture/video-input-model",
-      providerProfileId: "provider-unconfigured",
+      providerModelId: "grok-video-3",
+      providerProfileId: providerId,
+      providerProtocol: "media-generate",
       sortOrder: 1,
-      status: "published",
+      status: "draft",
     },
   });
-  expect(createdResponse.status()).toBe(201);
-  const created = await createdResponse.json() as { model: { id: string } };
+  const createdText = await createdResponse.text();
+  expect(createdResponse.status(), createdText).toBe(201);
+  const created = JSON.parse(createdText) as { model: { id: string } };
+  await publishDraftModel(request, created.model.id);
+  const selected = await request.patch(`/api/admin/models/${created.model.id}`, {
+    data: { isDefault: true, status: "published" },
+  });
+  expect(selected.ok()).toBeTruthy();
   zeroModelIds.add(created.model.id);
   return created.model.id;
 }
@@ -164,11 +236,14 @@ async function ensureGarmentAsset(request: APIRequestContext) {
       "X-File-Name": "fixture-garment.png",
     },
   });
-  expect(uploaded.status()).toBe(201);
+  const uploadedText = await uploaded.text();
+  expect(uploaded.status(), uploadedText).toBe(201);
 }
 
 test.afterAll(async ({ request }) => {
-  await request.delete(`/api/assets/${garmentAssetId}`);
+  // Keep this shared fixed-ID fixture inside the disposable safe-test root.
+  // Playwright runs afterAll before restarting a failed worker, while deleted
+  // media IDs are intentionally tombstoned and cannot be uploaded again.
   for (const modelId of zeroModelIds) {
     const disabled = await request.patch(`/api/admin/models/${modelId}`, {
       data: { isDefault: false, status: "disabled" },
@@ -355,7 +430,7 @@ test("full upstream text reaches final Prompt while card summaries stay compact"
   ]);
 });
 
-test("OpenRouter text mode keeps an image edge visible but blocks submission", () => {
+test("OpenRouter text mode keeps an image edge and normalizes to its image contract", () => {
   const result = resolveNodeInputs({
     edges: [{ id: "kept-image", source: "source-image", target: "target" }],
     modelSchema: knownModelParameterSchema({
@@ -377,10 +452,13 @@ test("OpenRouter text mode keeps an image edge visible but blocks submission", (
     targetKind: "image",
   });
   expect(result.inputs.map(({ edgeId }) => edgeId)).toEqual(["kept-image"]);
-  expect(result.problems).toContainEqual(expect.objectContaining({
-    code: "MODEL_UNSUPPORTED",
-  }));
-  expect(result.canSubmit).toBeFalsy();
+  expect(result.inputs[0]).toMatchObject({
+    compatibility: "compatible",
+    role: "reference-image",
+  });
+  expect(result.normalizedParameters).toMatchObject({ inputMode: "image" });
+  expect(result.problems).toEqual([]);
+  expect(result.canSubmit).toBeTruthy();
 });
 
 test("resolver exposes empty, uploading, ready, invalid and missing without deleting edges", () => {
@@ -426,6 +504,48 @@ test("resolver exposes empty, uploading, ready, invalid and missing without dele
     order: 6,
     role: "context-text",
   });
+});
+
+test("manual terminal recovery and raw structural deletes await one durable Canvas admission", async () => {
+  const sources = await Promise.all(
+    ["Text", "Audio", "Image", "Video"].map(async (kind) => ({
+      kind,
+      source: await readFile(resolve(
+        process.cwd(),
+        `client/src/canvas/${kind}Node.tsx`,
+      ), "utf8"),
+    })),
+  );
+  for (const { kind, source } of sources) {
+    expect(source, kind).toContain("const applied = await tryAdoptNodes(id,");
+    expect(source, kind).toContain("clearGenerationSubmissionIntent(");
+    const resumeStart = source.indexOf(`const resume${kind}Polling = async`);
+    const resumeEnd = source.indexOf("\n  const ", resumeStart + 10);
+    const resume = source.slice(
+      resumeStart,
+      resumeEnd > resumeStart ? resumeEnd : undefined,
+    );
+    expect(resumeStart, kind).toBeGreaterThan(-1);
+    expect(resume, kind).toContain("const applied = await");
+    expect(resume, kind).toContain("pollingPausedTaskIdRef.current = taskId");
+  }
+
+  const canvas = await readFile(resolve(
+    process.cwd(),
+    "client/src/canvas/CanvasSurface.tsx",
+  ), "utf8");
+  expect(canvas).toContain("const deleteNodesWithAdmission = (");
+  expect(canvas).toContain("actualNodeIds.add(edge.source)");
+  expect(canvas).toContain("actualNodeIds.add(edge.target)");
+  expect(canvas).toContain(
+    "deleteNodesWithAdmission(requestedRemovals.map((change) => change.id))",
+  );
+  expect(canvas).toContain(
+    'const structural = changes.filter((change) => change.type !== "select")',
+  );
+  expect(canvas).toContain("const nextEdges = applyEdgeChanges(structural, currentEdges)");
+  expect(canvas).toContain("rollbackAfterDurableFailure?.(result)");
+  expect(canvas).toContain("node.data !== committedNode.data");
 });
 
 test("administrator model schema keeps roles, required counts and switch policy", () => {
@@ -516,10 +636,11 @@ test("generation submission cannot bypass persisted-edge preflight by omitting t
     code: string;
     problems: Array<{ code: string; edgeId?: string }>;
   };
-  expect(submissionBody).toMatchObject({
-    code: "INPUT_INVALID",
-    problems: [{ code: "INVALID", edgeId: "forbidden-audio-image" }],
-  });
+  expect(submissionBody.code).toBe("INPUT_INVALID");
+  expect(submissionBody.problems).toContainEqual(expect.objectContaining({
+    code: "INVALID",
+    edgeId: "forbidden-audio-image",
+  }));
   expect(submissionBody.problems.map(({ code }) => code)).toEqual(
     structuralBody.problems.map(({ code }) => code),
   );
@@ -662,10 +783,7 @@ test("server rejects forged ready media, invalid role/order and a stale canvas w
   const roleProblems = (await rolePreflight.json() as {
     problems: Array<{ code: string }>;
   }).problems.map(({ code }) => code);
-  expect(roleProblems).toEqual(expect.arrayContaining([
-    "ORDER_INVALID",
-    "ROLE_UNSUPPORTED",
-  ]));
+  expect(roleProblems).toContain("ORDER_INVALID");
   const roleSubmit = await request.post("/api/generation-tasks", {
     data: roleBody,
   });
@@ -1031,6 +1149,11 @@ test("allowed Video media edges pass zero-cost preflight without creating a task
       edges: [{ id: "kept-image-video", source: "source-image", target: "target-video" }],
       nodes: [
         {
+          data: {},
+          id: "video-reference-group",
+          type: "group",
+        },
+        {
           data: {
             assetId: garmentAssetId,
             imageSrc: `/api/assets/${garmentAssetId}`,
@@ -1041,6 +1164,7 @@ test("allowed Video media edges pass zero-cost preflight without creating a task
         {
           data: { videoPrompt: "让服装轻微转动" },
           id: "target-video",
+          parentId: "video-reference-group",
           type: "video",
         },
       ],
@@ -1083,8 +1207,8 @@ test("allowed Video media edges pass zero-cost preflight without creating a task
   expect(preflight.canEnqueue).toBeFalsy();
   expect(preflight.problems).toEqual([]);
   expect(preflight.provider).toEqual({
-    adapterSupported: false,
-    configured: false,
+    adapterSupported: true,
+    configured: true,
   });
   expect(preflight.providerBalance).toMatchObject({
     checked: false,
@@ -1092,6 +1216,27 @@ test("allowed Video media edges pass zero-cost preflight without creating a task
   });
   expect(typeof preflight.safetyAdmission.allowed).toBe("boolean");
   expect(preflight.providerRequests).toBe(0);
+  const frozenRevision = (preflight as typeof preflight & {
+    modelReleaseRevision?: { revisionId?: string };
+  }).modelReleaseRevision?.revisionId;
+  expect(frozenRevision).toBeTruthy();
+  const forgedWorkflowSubmit = await request.post("/api/generation-tasks", {
+    data: {
+      ...body,
+      idempotencyKey: `video-reference-forged-${Date.now()}`,
+      workflowBinding: {
+        generationInputKey: "input-fingerprint",
+        generationOwnershipKey: "ownership-key",
+        groupId: "different-group",
+        modelReleaseRevision: frozenRevision,
+        runId: "workflow-run",
+      },
+    },
+  });
+  expect(forgedWorkflowSubmit.status()).toBe(409);
+  expect(await forgedWorkflowSubmit.json()).toMatchObject({
+    code: "WORKFLOW_BINDING_MISMATCH",
+  });
   const submit = await request.post("/api/generation-tasks", { data: body });
   expect(submit.status()).toBe(503);
   const tasks = await (await request.get(
@@ -1379,6 +1524,254 @@ test("Image Text+Image input cards merge, delete, undo and survive refresh with 
   await page.reload();
   await expect(page.getByTestId("image-creator-references").locator(":scope > div")).toHaveCount(2);
   await expect(page.getByTestId("image-creator-prompt")).toHaveValue("正面平铺，展示领口细节。");
+  const after = await (await request.get("/api/generation-tasks/status")).json() as {
+    paidProviderRequests: number;
+  };
+  expect(after.paidProviderRequests).toBe(before.paidProviderRequests);
+  expect(taskPosts).toEqual([]);
+});
+
+test("Text upstream role reorder and removal are atomic and preserve intent when a foreign lease rejects them", async ({
+  page,
+  request,
+}) => {
+  const textModelId = "fixture-text-upstream-atomic";
+  await page.route("**/api/models", async (route) => {
+    await route.fulfill({
+      body: JSON.stringify({
+        generationEnabled: false,
+        models: [{
+          capability: "text",
+          configurationRevision: "0123456789abcdef01234567",
+          displayName: "零费用文字输入原子测试模型",
+          generationAvailable: false,
+          id: textModelId,
+          isDefault: true,
+          parameterSchema: {
+            ...defaultParameterSchema("text"),
+            inputPolicy: {
+              promptPolicy: "own-required",
+              roles: {
+                audio: [],
+                image: [],
+                text: ["context-text", "instruction"],
+                video: [],
+              },
+              switchPolicy: "keep-edge",
+            },
+          },
+          releaseRevisionId: "11111111-1111-4111-8111-111111111111",
+        }],
+      }),
+      contentType: "application/json",
+      status: 200,
+    });
+  });
+  const projectResponse = await request.post("/api/projects", { data: {} });
+  expect(projectResponse.status()).toBe(201);
+  const project = await projectResponse.json() as { id: string };
+  const canvasId = project.id;
+  const baselineResponse = await request.get(`/api/canvas/${canvasId}`);
+  expect(baselineResponse.ok()).toBeTruthy();
+  const baseline = await baselineResponse.json() as {
+    loadToken: string;
+    revision: number;
+  };
+  const saved = await request.put(`/api/canvas/${canvasId}`, {
+    data: {
+      edges: [{
+        data: { inputOrder: 1, inputRole: "context-text" },
+        id: "source-a-target",
+        source: "source-a",
+        target: "target-text",
+        type: "cuttable",
+      }, {
+        data: { inputOrder: 2, inputRole: "context-text" },
+        id: "source-b-target",
+        source: "source-b",
+        target: "target-text",
+        type: "cuttable",
+      }],
+      nodes: [{
+        data: { content: "第一段上下文", label: "Text", title: "来源A" },
+        id: "source-a",
+        position: { x: 80, y: 80 },
+        style: { height: 220, width: 300 },
+        type: "text",
+      }, {
+        data: { content: "第二段上下文", label: "Text", title: "来源B" },
+        id: "source-b",
+        position: { x: 80, y: 380 },
+        style: { height: 220, width: 300 },
+        type: "text",
+      }, {
+        data: {
+          label: "Text",
+          textGenerationError: "旧输入错误",
+          textGenerationErrorCode: "INPUT_INVALID",
+          textModelId,
+          textParameters: {},
+          textPrompt: "整合上下文",
+          textPromptReady: true,
+          title: "目标文字",
+        },
+        id: "target-text",
+        position: { x: 620, y: 220 },
+        style: { height: 220, width: 300 },
+        type: "text",
+      }],
+      observedLoadToken: baseline.loadToken,
+      observedRevision: baseline.revision,
+      revision: baseline.revision,
+      saveAttemptId: randomUUID(),
+      saveSequence: 1,
+      saveSessionId: randomUUID(),
+      viewport: { x: 0, y: 0, zoom: 1 },
+    },
+  });
+  expect(saved.ok()).toBeTruthy();
+  const before = await (await request.get("/api/generation-tasks/status")).json() as {
+    paidProviderRequests: number;
+  };
+  const taskPosts: string[] = [];
+  page.on("request", (entry) => {
+    if (entry.method() === "POST" && /\/api\/generation-tasks(?:$|\?)/.test(entry.url())) {
+      taskPosts.push(entry.url());
+    }
+  });
+
+  await page.goto(`/canvas/${canvasId}`);
+  const world = page.getByTestId("canvas-world");
+  await expect(world).toHaveAttribute("data-persistence-ready", "true");
+  await page.locator('.react-flow__node[data-id="target-text"]').click();
+  const cards = page.getByTestId("text-upstream-inputs");
+  await expect(cards.locator(":scope > div")).toHaveCount(2);
+  await cards.getByRole("button", { name: "查看引用 来源B" }).click();
+  const moveSourceB = page.getByRole("button", { name: "向前移动 来源B" });
+  const foreignLeaseKey = `unboundry-group-run-lease:v1:${JSON.stringify([
+    "__test__",
+    canvasId,
+    "",
+    "foreign-run",
+  ])}`;
+  const intentKey =
+    `unboundry:generation-submission:v2:__test__:${encodeURIComponent(canvasId)}:text:target-text`;
+  await page.evaluate(({ foreignLeaseKey, intentKey }) => {
+    const now = Date.now();
+    window.localStorage.setItem(foreignLeaseKey, JSON.stringify({
+      expiresAt: now + 60_000,
+      heartbeatAt: now,
+      lockedNodeIds: ["target-text"],
+      ownerId: "foreign-owner",
+      runId: "foreign-run",
+    }));
+    window.localStorage.setItem(intentKey, "preserve-on-rejected-mutation");
+  }, { foreignLeaseKey, intentKey });
+  await moveSourceB.click();
+  await expect.poll(async () => page.evaluate((key) =>
+    window.localStorage.getItem(key), intentKey
+  )).toBe("preserve-on-rejected-mutation");
+  await expect.poll(async () => {
+    const document = await (await request.get(`/api/canvas/${canvasId}`)).json() as {
+      edges: Array<{ data?: { inputOrder?: number }; id: string }>;
+      nodes: Array<{ data?: { textGenerationError?: string }; id: string }>;
+    };
+    return {
+      error: document.nodes.find((node) => node.id === "target-text")
+        ?.data?.textGenerationError,
+      order: document.edges
+        .map((edge) => [edge.id, edge.data?.inputOrder] as const)
+        .sort(([left], [right]) => left.localeCompare(right)),
+    };
+  }).toEqual({
+    error: "旧输入错误",
+    order: [["source-a-target", 1], ["source-b-target", 2]],
+  });
+  await page.evaluate((key) => window.localStorage.removeItem(key), foreignLeaseKey);
+  await expect(moveSourceB).toBeEnabled();
+  const canvasAdmissionLockName =
+    `unboundry-group-run-canvas-admission:${JSON.stringify(canvasId)}`;
+  let releaseDelayedSave: () => void = () => undefined;
+  let markDelayedSaveSeen: () => void = () => undefined;
+  const delayedSaveSeen = new Promise<void>((resolve) => {
+    markDelayedSaveSeen = resolve;
+  });
+  const delayedSaveReleased = new Promise<void>((resolve) => {
+    releaseDelayedSave = resolve;
+  });
+  let delayedSaveHeld = false;
+  await page.route(`**/api/canvas/${canvasId}`, async (route) => {
+    if (route.request().method() === "PUT" && !delayedSaveHeld) {
+      delayedSaveHeld = true;
+      markDelayedSaveSeen();
+      await delayedSaveReleased;
+    }
+    await route.continue();
+  });
+  const secondPage = await page.context().newPage();
+  try {
+    await secondPage.goto("/");
+    await page.getByTestId("upstream-input-role-source-b-target")
+      .getByRole("radio", { name: "生成指令" }).click();
+    await delayedSaveSeen;
+    expect(await page.evaluate((key) =>
+      window.localStorage.getItem(key), intentKey
+    )).toBe("preserve-on-rejected-mutation");
+    expect(await secondPage.evaluate((lockName) =>
+      navigator.locks.request(
+        lockName,
+        { ifAvailable: true },
+        (lock) => Boolean(lock),
+      ), canvasAdmissionLockName
+    )).toBe(false);
+    releaseDelayedSave();
+    await expect.poll(async () => secondPage.evaluate((lockName) =>
+      navigator.locks.request(
+        lockName,
+        { ifAvailable: true },
+        (lock) => Boolean(lock),
+      ), canvasAdmissionLockName
+    )).toBe(true);
+  } finally {
+    releaseDelayedSave();
+    await secondPage.close();
+  }
+  await expect.poll(async () => {
+    const document = await (await request.get(`/api/canvas/${canvasId}`)).json() as {
+      edges: Array<{ data?: { inputRole?: string }; id: string }>;
+    };
+    return document.edges.find((edge) => edge.id === "source-b-target")
+      ?.data?.inputRole;
+  }).toBe("instruction");
+  await expect.poll(async () => page.evaluate((key) =>
+    window.localStorage.getItem(key), intentKey
+  )).toBeNull();
+  await moveSourceB.click();
+  await expect.poll(async () => {
+    const document = await (await request.get(`/api/canvas/${canvasId}`)).json() as {
+      edges: Array<{ data?: { inputOrder?: number }; id: string }>;
+      nodes: Array<{ data?: { textGenerationError?: string }; id: string }>;
+    };
+    return {
+      error: document.nodes.find((node) => node.id === "target-text")
+        ?.data?.textGenerationError,
+      order: document.edges
+        .map((edge) => [edge.id, edge.data?.inputOrder] as const)
+        .sort(([left], [right]) => left.localeCompare(right)),
+    };
+  }).toEqual({
+    error: undefined,
+    order: [["source-a-target", 2], ["source-b-target", 1]],
+  });
+
+  await cards.getByRole("button", { name: "删除引用 来源A" }).click();
+  await expect(world).toHaveAttribute("data-edge-count", "1");
+  await expect.poll(async () => {
+    const document = await (await request.get(`/api/canvas/${canvasId}`)).json() as {
+      edges: Array<{ id: string }>;
+    };
+    return document.edges.map((edge) => edge.id);
+  }).toEqual(["source-b-target"]);
   const after = await (await request.get("/api/generation-tasks/status")).json() as {
     paidProviderRequests: number;
   };

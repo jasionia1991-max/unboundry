@@ -2316,6 +2316,11 @@ test("DELETE wins staged and external-ready uploads without losing late OSS clea
 test("restart finalizes resumed OSS evidence against the original paid Provider attempt", async () => {
   await withDataDirectory("generated-oss-recovery", async (directory) => {
     const ownerId = "m88-oss-recovery-owner";
+    const retryInputKey = "m88-oss-recovery-input-key";
+    const retryOwnershipKey = "m88-oss-recovery-ownership-key";
+    const modelConfigurationRevision = "m88-legacy-config";
+    const modelInputContractFingerprint = "mic2:m88-legacy-contract";
+    const modelReleaseRevision = "00000000-0000-4000-8000-000000000088";
     addOwner(directory, ownerId);
     const initialStore = createGenerationTaskStore(directory);
     const task = initialStore.create({
@@ -2324,6 +2329,15 @@ test("restart finalizes resumed OSS evidence against the original paid Provider 
       idempotencyKey: "m88-oss-recovery-publication",
       kind: "image",
       model: "m88-image-model",
+      modelConfiguration: {
+        fixtureScopeId: "",
+        generationIdentityVersion: 2,
+        generationInputKey: retryInputKey,
+        generationOwnershipKey: retryOwnershipKey,
+        modelConfigurationRevision,
+        modelInputContractFingerprint,
+        modelReleaseRevision: { revisionId: modelReleaseRevision },
+      },
       nodeId: "m88-oss-recovery-node",
       ownerId,
       parameters: {},
@@ -2343,7 +2357,6 @@ test("restart finalizes resumed OSS evidence against the original paid Provider 
       message: "m88 resume the accepted remote task",
     });
     const failedTask = initialStore.get(task.id)!;
-    const retryInputKey = "m88-oss-recovery-input-key";
     const retryCanvasRevision = 1;
     const retryCanvas = openAppDatabase(directory);
     try {
@@ -2359,6 +2372,7 @@ test("restart finalizes resumed OSS evidence against the original paid Provider 
         JSON.stringify([{
           data: {
             imageGenerationInputKey: retryInputKey,
+            imageGenerationOwnershipKey: retryOwnershipKey,
             imageGenerationTaskId: failedTask.id,
           },
           id: failedTask.nodeId,
@@ -2373,7 +2387,12 @@ test("restart finalizes resumed OSS evidence against the original paid Provider 
       canvasId: failedTask.canvasId,
       expectedAttempt: failedTask.attempt,
       expectedCanvasRevision: retryCanvasRevision,
+      expectedFixtureScopeId: "",
       expectedGenerationInputKey: retryInputKey,
+      expectedGenerationOwnershipKey: retryOwnershipKey,
+      expectedModelConfigurationRevision: modelConfigurationRevision,
+      expectedModelInputContractFingerprint: modelInputContractFingerprint,
+      expectedModelReleaseRevision: modelReleaseRevision,
       expectedUpdatedAt: failedTask.updatedAt,
       kind: failedTask.kind,
       mode: "resume-provider-task",

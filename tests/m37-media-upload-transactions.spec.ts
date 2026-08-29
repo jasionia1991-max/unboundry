@@ -8,7 +8,10 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { tryCommitCanvasNodeAdoption } from "../client/src/canvas/CanvasGraphMutationContext";
+import {
+  rollbackCanvasNodeAdoption,
+  tryCommitCanvasNodeAdoption,
+} from "../client/src/canvas/CanvasGraphMutationContext";
 import type { ProbeNodeType } from "../client/src/canvas/ProbeNode";
 import {
   createCanvasGraphCommandPort,
@@ -87,6 +90,29 @@ const clientUploadBranches = [
 ] as const;
 
 type ClientUploadBranch = (typeof clientUploadBranches)[number];
+
+test("Image, Video and Audio upload start states require durable Canvas admission", () => {
+  for (const kind of ["Image", "Video", "Audio"] as const) {
+    const source = readFileSync(
+      resolve(process.cwd(), `client/src/canvas/${kind}Node.tsx`),
+      "utf8",
+    );
+    const loadStart = source.indexOf("const loadFile = async");
+    const loadEnd = source.indexOf(
+      kind === "Image" ? "const applyDerivedImage = async" : "const togglePlayback = async",
+      loadStart,
+    );
+    const loadFile = source.slice(loadStart, loadEnd);
+    expect(loadStart, kind).toBeGreaterThan(-1);
+    expect(loadEnd, kind).toBeGreaterThan(loadStart);
+    expect(loadFile, kind).toContain("semanticEditBlocked ||");
+    expect(loadFile, kind).toContain("uploadInFlight.current");
+    expect(loadFile, kind).toContain("const prepared = await tryAdoptNodes(id");
+    expect(loadFile, kind).toContain("if (!prepared)");
+    expect(source, kind).toContain("disabled={uploadControlBlocked}");
+    expect(source, kind).toContain("replaceDisabled={uploadControlBlocked}");
+  }
+});
 
 function branchPostPattern(branch: ClientUploadBranch) {
   return branch.id === "playlist"
@@ -453,7 +479,7 @@ async function expectClientUploadFailureSettled(
   await expect(feedback).not.toHaveText("");
 }
 
-function persistenceLossGate(page: Page, canvasId: string) {
+function persistenceLossGate(page: Page, canvasId: string, skipPuts = 0) {
   let resolveCreated!: () => void;
   let resolveRelease!: () => void;
   const created = new Promise<void>((resolve) => {
@@ -475,6 +501,11 @@ function persistenceLossGate(page: Page, canvasId: string) {
       return;
     }
     if (route.request().method() !== "PUT" || intercepted) {
+      await route.continue();
+      return;
+    }
+    if (skipPuts > 0) {
+      skipPuts -= 1;
       await route.continue();
       return;
     }
@@ -567,6 +598,113 @@ test("atomic media adoption rejects a target removed before commit", () => {
   expect(committed).toBeUndefined();
 });
 
+test("failed media adoption rolls back only unchanged fields and preserves concurrent geometry", () => {
+  const before = {
+    ...emptyNode("image", 0),
+    data: {
+      ...emptyNode("image", 0).data,
+      assetId: "accepted-image",
+      imageSrc: "/api/assets/accepted-image",
+      inputState: "ready",
+    },
+    height: 250,
+    selected: false,
+    style: { height: 250, width: 280 },
+    width: 280,
+  } as unknown as ProbeNodeType;
+  const committed = {
+    ...before,
+    data: {
+      ...before.data,
+      imageGenerationError: undefined,
+      inputState: "uploading",
+      inputStateReason: "图片正在上传",
+    },
+    height: undefined,
+    measured: undefined,
+    style: { height: 320, width: 320 },
+    width: undefined,
+  } as ProbeNodeType;
+  const concurrent = {
+    ...committed,
+    measured: { height: 333, width: 444 },
+    position: { x: 901, y: 902 },
+    selected: true,
+    style: { ...committed.style, width: 444 },
+  } as ProbeNodeType;
+  const rolledBack = rollbackCanvasNodeAdoption({
+    beforeById: new Map([[before.id, before]]),
+    committedById: new Map([[committed.id, committed]]),
+    current: [concurrent],
+  })[0]!;
+
+  expect(rolledBack.data).toMatchObject({
+    assetId: "accepted-image",
+    imageSrc: "/api/assets/accepted-image",
+    inputState: "ready",
+  });
+  expect(rolledBack.data.inputStateReason).toBeUndefined();
+  expect(rolledBack).toMatchObject({
+    height: 250,
+    measured: { height: 333, width: 444 },
+    position: { x: 901, y: 902 },
+    selected: true,
+    style: { height: 250, width: 444 },
+    width: 280,
+  });
+});
+
+test("Image, Video and Audio upload start save failure leaves no uploading state", async ({
+  page,
+  request,
+}) => {
+  const canvasId = "interaction.upload-media-sandbox-current";
+  const kinds: MediaKind[] = ["image", "video", "audio"];
+  const uploadPosts: string[] = [];
+  page.on("request", (entry) => {
+    if (
+      entry.method() === "POST" &&
+      kinds.some((kind) => entry.url().includes(uploadConfig[kind].endpoint))
+    ) uploadPosts.push(entry.url());
+  });
+
+  try {
+    for (const [index, kind] of kinds.entries()) {
+      await saveCanvas(request, canvasId, [emptyNode(kind, index)]);
+      await page.goto(`/__fixture/${canvasId}`);
+      const world = page.getByTestId("canvas-world");
+      await expect(world).toHaveAttribute("data-persistence-ready", "true");
+      const gate = persistenceLossGate(page, canvasId);
+      const node = page.locator(
+        `.react-flow__node[data-id="${kind}-transaction"]`,
+      );
+      const selection = node.getByTestId(uploadConfig[kind].inputTestId)
+        .setInputFiles(uploadConfig[kind].file);
+      await gate.created;
+      await expect(node.getByLabel(`${kind === "image" ? "图片" : kind === "video" ? "视频" : "音频"}上传中`))
+        .toBeVisible();
+      gate.release();
+      await selection;
+      await expect(node.getByLabel(`${kind === "image" ? "图片" : kind === "video" ? "视频" : "音频"}上传中`))
+        .toHaveCount(0);
+      await expect.poll(async () =>
+        (await persistedNodes(request, canvasId))[0]?.data.inputState ?? null
+      ).toBeNull();
+      await page.unroute(`**/api/canvas/${canvasId}`);
+      await page.reload();
+      await expect(page.getByTestId("canvas-world"))
+        .toHaveAttribute("data-persistence-ready", "true");
+      await expect(page.locator(
+        `.react-flow__node[data-id="${kind}-transaction"]`,
+      ).getByTestId(uploadConfig[kind].inputTestId)).toBeEnabled();
+    }
+    expect(uploadPosts).toEqual([]);
+  } finally {
+    await page.unroute(`**/api/canvas/${canvasId}`);
+    await request.delete(`/api/canvas/${canvasId}`);
+  }
+});
+
 test("ready Image, Video and Audio replacements keep the accepted asset when upload fails", async ({
   page,
   request,
@@ -612,8 +750,9 @@ test("ready Image, Video and Audio replacements keep the accepted asset when upl
 
     for (const [index, kind] of kinds.entries()) {
       const node = page.locator(`.react-flow__node[data-id="${kind}-transaction"]`);
-      await node.getByTestId(uploadConfig[kind].inputTestId)
-        .setInputFiles(uploadConfig[kind].file);
+      const input = node.getByTestId(uploadConfig[kind].inputTestId);
+      await expect(input).toBeEnabled();
+      await input.setInputFiles(uploadConfig[kind].file);
       await expect(node.getByRole("alert"))
         .toContainText(`${kind} replacement rejected`);
       await expect(node.locator("[data-asset-id]")).toHaveAttribute(
@@ -698,11 +837,17 @@ test("undo or node removal invalidates held Image, Video and Audio responses and
       )).status()).toBe(404);
     }
 
-    await expect.poll(async () => (await persistedNodes(request, canvasId)).map((node) => ({
-      assetId: node.data.assetId ?? null,
-      id: node.id,
-      source: node.data.audioSrc ?? node.data.imageSrc ?? node.data.videoSrc ?? null,
-    }))).toEqual(kinds.map((kind) => ({
+    await expect.poll(async () => (await persistedNodes(request, canvasId))
+      .map((node) => ({
+        assetId: node.data.assetId ?? null,
+        id: node.id.replace(/-restored-\d+$/, ""),
+        source: node.data.audioSrc ?? node.data.imageSrc ?? node.data.videoSrc ?? null,
+      }))
+      .sort((left, right) => kinds.indexOf(
+        left.id.replace("-transaction", "") as MediaKind,
+      ) - kinds.indexOf(
+        right.id.replace("-transaction", "") as MediaKind,
+      ))).toEqual(kinds.map((kind) => ({
       assetId: null,
       id: `${kind}-transaction`,
       source: null,
@@ -719,7 +864,7 @@ test("undo or node removal invalidates held Image, Video and Audio responses and
   }
 });
 
-test("later Image, Video and Audio uploads win when older responses arrive last", async ({
+test("Image, Video and Audio serialize replacements behind the active upload", async ({
   page,
   request,
 }) => {
@@ -744,21 +889,24 @@ test("later Image, Video and Audio uploads win when older responses arrive last"
         .getByTestId(uploadConfig[kind].inputTestId);
       await input.setInputFiles(uploadConfig[kind].file);
       const first = await gates[kind].created[0];
+      await expect(input).toBeDisabled();
+      gates[kind].release(0);
+      await expect.poll(async () => (await persistedNodes(request, canvasId))
+        .find(({ id }) => id === `${kind}-transaction`)?.data.assetId)
+        .toBe(first.assetId);
+      await expect(input).toBeEnabled();
+      adoptedAssets.push({ kind, assetId: first.assetId });
+
       await input.setInputFiles(uploadConfig[kind].file);
       const second = await gates[kind].created[1];
+      await expect(input).toBeDisabled();
       gates[kind].release(1);
 
       await expect.poll(async () => (await persistedNodes(request, canvasId))
         .find(({ id }) => id === `${kind}-transaction`)?.data.assetId)
         .toBe(second.assetId);
       adoptedAssets.push({ kind, assetId: second.assetId });
-      gates[kind].release(0);
-      await expect.poll(async () => (await request.get(
-        `${uploadConfig[kind].endpoint}${first.assetId}`,
-      )).status()).toBe(404);
-      expect((await request.get(
-        `${uploadConfig[kind].endpoint}${second.assetId}`,
-      )).ok()).toBeTruthy();
+      await expect(input).toBeEnabled();
     }
 
     const nodes = await persistedNodes(request, canvasId);
@@ -784,7 +932,7 @@ for (const kind of ["image", "video", "audio"] as const) {
       `**${uploadConfig[kind].endpoint}*`,
       1,
     );
-    const persistenceGate = persistenceLossGate(page, canvasId);
+    const persistenceGate = persistenceLossGate(page, canvasId, 1);
     const before = await paidProviderRequests(request);
     const taskPosts = monitorProviderRequests(page);
     const deletedPaths = monitorAssetDeletes(page);
@@ -800,14 +948,11 @@ for (const kind of ["image", "video", "audio"] as const) {
 
       await node.getByTestId(uploadConfig[kind].inputTestId)
         .setInputFiles(uploadConfig[kind].file);
-      const [asset] = await Promise.all([
-        uploadGate.created[0],
-        persistenceGate.created,
-      ]);
-
+      const asset = await uploadGate.created[0];
+      uploadGate.release(0);
+      await persistenceGate.created;
       persistenceGate.release();
       await expect(world).toHaveAttribute("data-persistence-ready", "false");
-      uploadGate.release(0);
 
       await expect.poll(async () => (
         await request.get(`${uploadConfig[kind].endpoint}${asset.assetId}`)

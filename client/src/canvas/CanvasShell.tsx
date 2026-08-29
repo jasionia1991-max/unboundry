@@ -22,7 +22,8 @@ import { GenerationTasksPanel } from "./GenerationTasksPanel";
 import { createGroupRunSummaryScope } from "../generation/groupRunSummary";
 import {
   confirmGroupRunNavigation,
-  readGroupRunCheckpoint,
+  readGroupRunCheckpointCache,
+  readGroupRunLeaseCache,
   readGroupRunStarting,
 } from "../generation/groupRunCheckpoint";
 import { useCompositionSafeText } from "./CompositionSafeText";
@@ -1743,12 +1744,20 @@ export function CanvasShell({
   };
 
   const deleteCurrentProject = async () => {
-    const activeRun = readGroupRunCheckpoint(groupRunScope);
+    const checkpointCache = readGroupRunCheckpointCache(groupRunScope);
+    const leaseCache = readGroupRunLeaseCache(groupRunScope);
     if (
+      checkpointCache.corrupted || leaseCache.corrupted ||
       readGroupRunStarting(groupRunScope) ||
-      (activeRun && ["preparing", "running", "stopping"].includes(activeRun.status))
+      checkpointCache.checkpoints.some((run) =>
+        ["preparing", "running", "stopping"].includes(run.status)
+      )
     ) {
-      setProjectActionError("整组执行中不能删除当前项目，请先停止后续并等待已开始节点完成");
+      setProjectActionError(
+        checkpointCache.corrupted || leaseCache.corrupted
+          ? "整组恢复记录无法安全核对，当前项目未删除"
+          : "整组执行中不能删除当前项目，请先停止后续并等待已开始节点完成",
+      );
       return;
     }
     if (!projectId || !beginProjectAction("delete")) return;

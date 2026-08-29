@@ -52,6 +52,7 @@ import {
   clearGroupRunStarting,
   clearGroupRunCheckpoint,
   acquireGroupRunLease,
+  GROUP_RUN_AUTHORITY_EVENT,
   GROUP_RUN_CONTINUE_EVENT,
   GROUP_RUN_LEASE_EVENT,
   GROUP_RUN_STOP_EVENT,
@@ -62,18 +63,24 @@ import {
   hasConflictingActiveGroupRunLeaseForCanvas,
   isGroupRunLeaseActive,
   markGroupRunStarting,
+  quarantineCorruptGroupRunCacheAfterAuthority,
+  readGroupRunCheckpointCache,
   readGroupRunCheckpoint,
   readGroupRunCheckpoints,
   readGroupRunLease,
+  readGroupRunLeaseCache,
   releaseGroupRunLease,
   renewGroupRunLease,
   runWithGroupRunCanvasAdmission,
+  setGroupRunAuthoritySettledEmpty,
   taskMatchesAcceptedBinding,
   type AcceptedTaskBinding,
   type GroupRunCheckpoint,
   verifiedCheckpointSuccessIds,
   writeGroupRunCheckpoint,
 } from "./groupRunCheckpoint";
+import { reconstructGroupRecoveryDecision } from "./groupRunRecovery";
+import { publishGroupRunNotificationOnce } from "./groupRunNotification";
 import { runExclusiveCanvasSubmit } from "./saveGate";
 import { listGenerationTasks } from "./generationTasks";
 import {
@@ -262,6 +269,7 @@ export function WorkflowExecutionProvider({
     flushCanvasSave,
     isFixture,
     persistenceReady,
+    readAuthoritativeCanvasRevision,
     waitForCanvasRevision,
   } = useGenerationCanvas();
   const save = useMemo<CanvasSavePort>(() => ({
@@ -303,9 +311,15 @@ export function WorkflowExecutionProvider({
     runId: string;
   }>());
   const runLocks = useRef(new Map<string, ReadonlySet<string>>());
-  const automaticRecoveryScopes = useRef(new Set<string>());
+  const automaticRecoveryScopeKey = useRef<string | undefined>(undefined);
   const legacyReconciliationRunToken = useRef(0);
   const legacyRecheckAttempts = useRef(new Map<string, number>());
+  const publishedRunNotifications = useRef(new Map<
+    string,
+    Set<"recovering" | "terminal">
+  >());
+  const notifyCurrent = useRef(notify);
+  notifyCurrent.current = notify;
   const getLegacyNodes = useRef(getNodes);
   getLegacyNodes.current = getNodes;
   const [legacyGenerationStates, setLegacyGenerationStates] = useState<
@@ -316,6 +330,7 @@ export function WorkflowExecutionProvider({
       const candidate = legacyTerminalGenerationCandidate({
         accountId,
         canvasId,
+        fixtureScopeId,
         node,
       });
       if (candidate) {
@@ -333,7 +348,7 @@ export function WorkflowExecutionProvider({
         ? [[node.id, node.type, "incomplete"]]
         : [];
     }),
-  ), [accountId, canvasId, nodesSnapshot]);
+  ), [accountId, canvasId, fixtureScopeId, nodesSnapshot]);
   const hasLegacyGenerationBindings = legacyBindingSignature !== "[]";
   const [executingGroupIds, setExecutingGroupIds] = useState<
     ReadonlySet<string>
@@ -341,6 +356,9 @@ export function WorkflowExecutionProvider({
   const [lockedNodeIds, setLockedNodeIds] = useState<ReadonlySet<string>>(
     new Set(),
   );
+  const [foreignLeaseLockedNodeIds, setForeignLeaseLockedNodeIds] = useState<
+    ReadonlySet<string>
+  >(new Set());
   const publishActiveRunState = useCallback(() => {
     const nextGroups = new Set([
       ...startingGroups.current.keys(),
@@ -352,8 +370,46 @@ export function WorkflowExecutionProvider({
     }
     setExecutingGroupIds(nextGroups);
     setLockedNodeIds(nextLocks);
-    onRetainedNodeIdsChange(nextLocks);
-  }, [onRetainedNodeIdsChange]);
+  }, []);
+  useEffect(() => {
+    const scope = { accountId, canvasId, fixtureScopeId };
+    const refresh = () => {
+      const cache = readGroupRunLeaseCache(scope);
+      const next = new Set<string>();
+      if (cache.corrupted) {
+        for (const node of nodesSnapshot) {
+          if (isExecutableWorkflowNode(node)) next.add(node.id);
+        }
+      } else {
+        for (const lease of cache.leases) {
+          if (!isGroupRunLeaseActive(lease) ||
+            lease.ownerId === getGroupRunExecutionOwnerId()) continue;
+          for (const nodeId of lease.lockedNodeIds) next.add(nodeId);
+        }
+      }
+      setForeignLeaseLockedNodeIds((current) =>
+        current.size === next.size && [...current].every((id) => next.has(id))
+          ? current
+          : next
+      );
+    };
+    refresh();
+    window.addEventListener("storage", refresh);
+    window.addEventListener(GROUP_RUN_LEASE_EVENT, refresh);
+    window.addEventListener(GROUP_RUN_AUTHORITY_EVENT, refresh);
+    return () => {
+      window.removeEventListener("storage", refresh);
+      window.removeEventListener(GROUP_RUN_LEASE_EVENT, refresh);
+      window.removeEventListener(GROUP_RUN_AUTHORITY_EVENT, refresh);
+    };
+  }, [accountId, canvasId, fixtureScopeId, nodesSnapshot]);
+  const effectiveLockedNodeIds = useMemo(() => new Set([
+    ...lockedNodeIds,
+    ...foreignLeaseLockedNodeIds,
+  ]), [foreignLeaseLockedNodeIds, lockedNodeIds]);
+  useEffect(() => {
+    onRetainedNodeIdsChange(effectiveLockedNodeIds);
+  }, [effectiveLockedNodeIds, onRetainedNodeIdsChange]);
 
   const setLegacyGenerationState = useCallback((
     nodeId: string,
@@ -380,10 +436,15 @@ export function WorkflowExecutionProvider({
     replaceLegacyGenerationSubmissionBlocks({
       accountId,
       canvasId,
+      fixtureScopeId,
       states: legacyGenerationStates,
     });
-    return () => clearLegacyGenerationSubmissionBlocks(accountId, canvasId);
-  }, [accountId, canvasId, legacyGenerationStates]);
+    return () => clearLegacyGenerationSubmissionBlocks(
+      accountId,
+      canvasId,
+      fixtureScopeId,
+    );
+  }, [accountId, canvasId, fixtureScopeId, legacyGenerationStates]);
 
   useEffect(() => {
     if (executingGroupIds.size === 0 && startingGroupIds.current.size === 0) {
@@ -480,15 +541,14 @@ export function WorkflowExecutionProvider({
       try {
         await flushCanvasSave();
         if (isCancelled?.()) return;
-        await waitForCanvasRevision(30_000);
+        const revision = await waitForCanvasRevision(30_000);
         if (isCancelled?.()) return;
         const stripped = stripStaleCanvasSaveErrors(getNodes(), groupId);
-        if (!stripped.changed) return;
+        if (!stripped.changed) return revision;
         setNodes(stripped.nodes);
         await flushCanvasSave();
         if (isCancelled?.()) return;
-        await waitForCanvasRevision(30_000);
-        return;
+        return await waitForCanvasRevision(30_000);
       } catch (error) {
         if (attempt === attempts - 1) throw error;
         await new Promise((resolve) => setTimeout(resolve, 1_000));
@@ -506,29 +566,247 @@ export function WorkflowExecutionProvider({
         notify("验收页面不会触发真实生成");
         return;
       }
+      if (["0", "false"].includes(
+        String(import.meta.env.VITE_UNBOUNDRY_WORKFLOW_SELF_HEALING_V2 ?? "")
+          .toLowerCase(),
+      )) {
+        notify("工作流自动自愈已由管理员临时止损；本轮未提交生成任务", "error");
+        return;
+      }
       if (runningGroups.current.has(groupId) || startingGroupIds.current.has(groupId)) {
         return;
       }
       const scope = { accountId, canvasId, fixtureScopeId };
-      const existingCheckpoint = !resumeCheckpoint
-        ? readGroupRunCheckpoint(scope)
-        : undefined;
+      const recoveryNotificationRunId = resumeCheckpoint?.runId ??
+        `cache-recovery:${groupId}`;
+      const notifyPreAdmissionRecoveryOnce = (
+        message: string,
+        kind: "error" | "info" = "info",
+      ) => {
+        const phase = kind === "error" ? "terminal" : "recovering";
+        if (publishGroupRunNotificationOnce(publishedRunNotifications.current, {
+          accountId,
+          canvasId,
+          errorClass: kind === "error"
+            ? "pre-admission-terminal"
+            : "pre-admission-recovering",
+          groupId,
+          nodeId: groupId,
+          runId: recoveryNotificationRunId,
+        }, phase)) notify(message, kind);
+      };
+      const acceptedTaskMapsMatch = (
+        left: GroupRunCheckpoint["acceptedTasks"],
+        right: GroupRunCheckpoint["acceptedTasks"],
+      ) => {
+        const leftEntries = Object.entries(left ?? {}).sort(([a], [b]) =>
+          a.localeCompare(b)
+        );
+        const rightEntries = Object.entries(right ?? {}).sort(([a], [b]) =>
+          a.localeCompare(b)
+        );
+        return leftEntries.length === rightEntries.length &&
+          leftEntries.every(([nodeId, binding], index) => {
+            const [rightNodeId, rightBinding] = rightEntries[index] ?? [];
+            return nodeId === rightNodeId &&
+              binding.nodeId === rightBinding?.nodeId &&
+              binding.kind === rightBinding.kind &&
+              binding.taskId === rightBinding.taskId &&
+              binding.ownershipKey === rightBinding.ownershipKey &&
+              binding.inputFingerprint === rightBinding.inputFingerprint &&
+              binding.modelInputContractFingerprint ===
+                rightBinding.modelInputContractFingerprint &&
+              binding.modelConfigurationRevision ===
+                rightBinding.modelConfigurationRevision &&
+              binding.modelReleaseRevision ===
+                rightBinding.modelReleaseRevision;
+          });
+      };
+      let recoveryAuthorityTaskIds: ReadonlySet<string> | undefined;
+      const readRecoveryAuthority = async () => {
+        const tasks = await listGenerationTasks(
+          canvasId,
+          undefined,
+          scope.fixtureScopeId,
+        );
+        recoveryAuthorityTaskIds = new Set(tasks.map((task) => task.id));
+        return reconstructGroupRecoveryDecision({
+          nodes: getNodes(),
+          scope,
+          tasks,
+        });
+      };
+      if (resumeCheckpoint &&
+        Object.keys(resumeCheckpoint.acceptedTasks ?? {}).length > 0) {
+        acceptedTasksOnly = true;
+      }
       const liveRunIds = new Set([
         ...[...startingGroups.current.values()].map((run) => run.runId),
         ...[...runningGroups.current.values()].map((run) => run.runId),
       ]);
-      if (existingCheckpoint && !liveRunIds.has(existingCheckpoint.runId)) {
-        notify("当前画布有一轮未完成记录，请在生成任务面板继续或明确放弃后再开始新一轮", "error");
-        return;
-      }
       const candidateNodes = getNodes();
       const candidateEdges = getEdges();
+      let durableRestartCheckpoint: GroupRunCheckpoint | undefined;
+      const resumeCache = resumeCheckpoint
+        ? readGroupRunCheckpointCache(scope)
+        : undefined;
+      const resumeLeaseCache = resumeCheckpoint
+        ? readGroupRunLeaseCache(scope)
+        : undefined;
+      if (resumeCheckpoint && (
+        resumeCache?.corrupted || resumeCache?.quarantined ||
+        resumeLeaseCache?.corrupted || resumeLeaseCache?.quarantined
+      )) {
+        try {
+          const reconstructed = await quarantineCorruptGroupRunCacheAfterAuthority(
+            scope,
+            readRecoveryAuthority,
+          );
+          if (!reconstructed) {
+            notifyPreAdmissionRecoveryOnce(
+              "系统正在安全核对已接收任务，确认后会自动继续",
+            );
+            return;
+          }
+          const exact = reconstructed.checkpoints.find((checkpoint) =>
+            checkpoint.groupId === resumeCheckpoint?.groupId &&
+            checkpoint.runId === resumeCheckpoint?.runId
+          );
+          if (
+            reconstructed.blockedGroupIds.includes(groupId) || !exact ||
+            !acceptedTaskMapsMatch(
+              exact.acceptedTasks,
+              resumeCheckpoint.acceptedTasks,
+            )
+          ) {
+            notifyPreAdmissionRecoveryOnce(
+              "恢复缓存无法从已接收任务完整重建；本轮未提交新任务",
+              "error",
+            );
+            return;
+          }
+          if (reconstructed.checkpoints.some((checkpoint) =>
+            !writeGroupRunCheckpoint(checkpoint)
+          )) {
+            notifyPreAdmissionRecoveryOnce(
+              "自动恢复记录无法安全保存；本轮未提交新任务",
+              "error",
+            );
+            return;
+          }
+          resumeCheckpoint = exact;
+          acceptedTasksOnly = true;
+        } catch {
+          notifyPreAdmissionRecoveryOnce(
+            "系统正在安全核对已接收任务，确认后会自动继续",
+          );
+          return;
+        }
+      }
+      if (!resumeCheckpoint) {
+        const cache = readGroupRunCheckpointCache(scope);
+        const leaseCache = readGroupRunLeaseCache(scope);
+        const cacheNeedsAuthorityQuarantine =
+          cache.corrupted || cache.quarantined ||
+          leaseCache.corrupted || leaseCache.quarantined;
+        let groupCheckpoints = cache.checkpoints
+          .filter((candidate) =>
+            candidate.groupId === groupId && !liveRunIds.has(candidate.runId)
+          );
+        if (cacheNeedsAuthorityQuarantine || groupCheckpoints.length === 0) {
+          try {
+            const reconstructed = cacheNeedsAuthorityQuarantine
+              ? await quarantineCorruptGroupRunCacheAfterAuthority(
+                scope,
+                readRecoveryAuthority,
+              )
+              : await runWithGroupRunCanvasAdmission(
+                canvasId,
+                readRecoveryAuthority,
+              );
+            if (!reconstructed) {
+              notifyPreAdmissionRecoveryOnce(
+                "系统正在安全核对已接收任务，确认后会自动继续",
+              );
+              return;
+            }
+            if (reconstructed.blockedGroupIds.includes(groupId)) {
+              notifyPreAdmissionRecoveryOnce(
+                "系统发现无法完整核对的已接收任务；本轮未提交新任务",
+                "error",
+              );
+              return;
+            }
+            const rebuiltAll = reconstructed.checkpoints.filter((checkpoint) =>
+              !liveRunIds.has(checkpoint.runId)
+            );
+            for (const checkpoint of rebuiltAll) {
+              if (!writeGroupRunCheckpoint(checkpoint)) {
+                notifyPreAdmissionRecoveryOnce(
+                  "自动恢复记录无法安全保存；本轮未提交新任务",
+                  "error",
+                );
+                return;
+              }
+            }
+            const rebuilt = rebuiltAll.filter((checkpoint) =>
+              checkpoint.groupId === groupId &&
+              !liveRunIds.has(checkpoint.runId)
+            );
+            groupCheckpoints = rebuilt;
+          } catch {
+            notifyPreAdmissionRecoveryOnce(
+              "系统正在安全核对已接收任务，确认后会自动继续",
+            );
+            return;
+          }
+        }
+        if (groupCheckpoints.length > 1) {
+          const acceptedRecords = groupCheckpoints.filter((checkpoint) =>
+            Object.keys(checkpoint.acceptedTasks ?? {}).length > 0
+          );
+          const currentGraphRecords = groupCheckpoints.filter((checkpoint) =>
+            checkpoint.resumeMode === "current-graph" &&
+            Object.keys(checkpoint.acceptedTasks ?? {}).length === 0
+          );
+          if (
+            groupCheckpoints.length === 2 && acceptedRecords.length === 1 &&
+            currentGraphRecords.length === 1
+          ) {
+            resumeCheckpoint = acceptedRecords[0];
+            durableRestartCheckpoint = currentGraphRecords[0];
+            acceptedTasksOnly = true;
+          } else {
+            notifyPreAdmissionRecoveryOnce(
+              "当前工作组存在多轮相互冲突的恢复记录；系统只核对原任务，未提交新任务",
+              "error",
+            );
+            return;
+          }
+        }
+        const existingCheckpoint = resumeCheckpoint ?? groupCheckpoints[0];
+        if (existingCheckpoint) {
+          if (Object.keys(existingCheckpoint.acceptedTasks ?? {}).length > 0) {
+            resumeCheckpoint = existingCheckpoint;
+            acceptedTasksOnly = true;
+          } else if (existingCheckpoint.resumeMode === "current-graph") {
+            resumeCheckpoint = existingCheckpoint;
+            acceptedTasksOnly = false;
+          } else if (!clearGroupRunCheckpoint(scope, undefined, existingCheckpoint.runId)) {
+            notifyPreAdmissionRecoveryOnce(
+              "当前工作组的陈旧恢复缓存无法安全释放；本轮未提交生成任务",
+              "error",
+            );
+            return;
+          }
+        }
+      }
       const childIds = new Set(
         candidateNodes
           .filter((node) => node.parentId === groupId)
           .map((node) => node.id),
       );
-      const candidateLockIds = new Set([groupId, ...childIds]);
+      let candidateLockIds = new Set([groupId, ...childIds]);
       for (const edge of candidateEdges) {
         if (childIds.has(edge.target)) candidateLockIds.add(edge.source);
       }
@@ -544,7 +822,7 @@ export function WorkflowExecutionProvider({
           : childIds.has(conflictingNodeId)
             ? "组内节点"
             : "直接输入";
-        notify(
+        notifyPreAdmissionRecoveryOnce(
           `另一轮正在使用${conflictRole}“${workflowNodeTitle(conflictingNode, conflictingNodeId)}”（节点 ${conflictingNodeId}），本轮未提交任何生成任务`,
           "error",
         );
@@ -560,12 +838,40 @@ export function WorkflowExecutionProvider({
       publishActiveRunState();
       const runSequence = nextGroupRunSequence();
       let checkpoint: GroupRunCheckpoint | undefined;
+      let restartCheckpoint: GroupRunCheckpoint | undefined;
+      let stableCanvasRevision: number | undefined;
       const abortController = new AbortController();
       let leaseAcquired = false;
       let leaseTimer: number | undefined;
       let leaseRenewInFlight: Promise<boolean> | undefined;
       let summaryBaseForError: (() => Omit<GroupRunSummary, "status">) | undefined;
       const ownerId = getGroupRunExecutionOwnerId();
+      let terminalErrorPublished = false;
+      const notifyRecoveryOnce = (
+        nodeId: string,
+        errorClass: string,
+        message: string,
+        kind: "error" | "info" = "info",
+      ) => {
+        if (kind === "error") {
+          if (terminalErrorPublished) return;
+          terminalErrorPublished = true;
+        }
+        const phase = kind === "error" ? "terminal" : "recovering";
+        if (publishGroupRunNotificationOnce(publishedRunNotifications.current, {
+          accountId,
+          canvasId,
+          errorClass,
+          groupId,
+          nodeId,
+          runId,
+        }, phase)) notify(message, kind);
+      };
+      const notifyTerminalErrorOnce = (
+        errorClass: string,
+        message: string,
+        nodeId = groupId,
+      ) => notifyRecoveryOnce(nodeId, errorClass, message, "error");
       const isStartingCancelled = () =>
         startingGroups.current.get(groupId)?.cancelled === true;
       const expectedLease = () => ({ ownerId, runId });
@@ -590,9 +896,14 @@ export function WorkflowExecutionProvider({
         // awaits. Direct external sources are part of the input snapshot too.
         refreshRunLocks(getNodes(), getEdges());
         try {
-          await waitForCanvasStable(groupId, isStartingCancelled);
+          stableCanvasRevision = await waitForCanvasStable(
+            groupId,
+            isStartingCancelled,
+          );
         } catch (error) {
-          notify(
+          notifyRecoveryOnce(
+            groupId,
+            "canvas-save-wait",
             error instanceof Error
               ? error.message
               : "画布内容还在保存，稍后会继续，请稍候",
@@ -600,9 +911,31 @@ export function WorkflowExecutionProvider({
           return;
         }
         if (isStartingCancelled()) return;
-        const nodes = getNodes();
-        const edges = getEdges();
-        const children = nodes.filter((node) => node.parentId === groupId);
+        if (!Number.isSafeInteger(stableCanvasRevision)) return;
+        let nodes = getNodes();
+        let edges = getEdges();
+        let children = nodes.filter((node) => node.parentId === groupId);
+        const stableChildIds = new Set(children.map((node) => node.id));
+        const stableLockIds = new Set([groupId, ...stableChildIds]);
+        for (const edge of edges) {
+          if (stableChildIds.has(edge.target)) stableLockIds.add(edge.source);
+        }
+        const stableConflictNodeId = [...stableLockIds].find((nodeId) =>
+          [...runLocks.current.entries()].some(([otherRunId, locks]) =>
+            otherRunId !== runId && locks.has(nodeId)
+          )
+        );
+        if (stableConflictNodeId) {
+          notifyTerminalErrorOnce(
+            "stable-lock-conflict",
+            "画布保存期间参与整组执行的节点发生变化；本轮未提交生成任务",
+            stableConflictNodeId,
+          );
+          return;
+        }
+        candidateLockIds = stableLockIds;
+        runLocks.current.set(runId, candidateLockIds);
+        publishActiveRunState();
         const nodeById = new Map(nodes.map((node) => [node.id, node]));
         const incomingTextTargets = new Set<string>();
         for (const edge of edges) {
@@ -610,7 +943,7 @@ export function WorkflowExecutionProvider({
             incomingTextTargets.add(edge.target);
           }
         }
-        const executableIds = new Set(
+        let executableIds = new Set(
           children
             .filter((node) => isExecutableWorkflowNode(node, {
               hasIncomingText: incomingTextTargets.has(node.id),
@@ -649,13 +982,34 @@ export function WorkflowExecutionProvider({
           return;
         }
 
+        const modelConfigurationRevisions = Object.fromEntries(
+          Object.entries(executorModelCatalog.models).flatMap(([kind, models]) =>
+            (models ?? []).flatMap((model) =>
+              model.configurationRevision
+                ? [[`${kind}:${model.id}`, model.configurationRevision]]
+                : [],
+            )
+          ),
+        );
+        const modelReleaseRevisions = Object.fromEntries(
+          Object.entries(executorModelCatalog.models).flatMap(([kind, models]) =>
+            (models ?? []).flatMap((model) =>
+              model.releaseRevisionId
+                ? [[`${kind}:${model.id}`, model.releaseRevisionId]]
+                : [],
+            )
+          ),
+        );
         const snapshotFingerprint = groupRunSnapshotFingerprint({
           edges,
           executableNodeIds: executableIds,
           groupId,
+          modelConfigurationRevisions,
+          modelReleaseRevisions,
           nodes,
         });
         let initialSuccessNodeIds = new Set<string>();
+        let resumeSnapshotMatches = true;
         if (resumeCheckpoint) {
           const expectedIds = [...resumeCheckpoint.executableNodeIds].sort();
           const actualIds = [...executableIds].sort();
@@ -663,16 +1017,28 @@ export function WorkflowExecutionProvider({
             resumeCheckpoint.accountId !== accountId ||
             resumeCheckpoint.canvasId !== canvasId ||
             resumeCheckpoint.fixtureScopeId !== fixtureScopeId ||
-            resumeCheckpoint.groupId !== groupId ||
-            resumeCheckpoint.snapshotFingerprint !== snapshotFingerprint ||
-            JSON.stringify(expectedIds) !== JSON.stringify(actualIds)
+            resumeCheckpoint.groupId !== groupId
           ) {
-            notify("画布内容已变化，不能安全继续上一轮；请重新检查后开始新一轮", "error");
+            notifyTerminalErrorOnce(
+              "resume-scope-mismatch",
+              "恢复记录不属于当前工作组；本轮未提交生成任务",
+            );
             return;
           }
-          const verification = verifiedCheckpointSuccessIds(resumeCheckpoint, nodes);
-          if (verification.mismatchNodeId) {
-            notify("上一轮成功结果的任务凭证与当前画布不一致，已阻止重复生成", "error");
+          resumeSnapshotMatches =
+            resumeCheckpoint.snapshotFingerprint === snapshotFingerprint &&
+            JSON.stringify(expectedIds) === JSON.stringify(actualIds);
+          const verification = verifiedCheckpointSuccessIds(
+            resumeCheckpoint,
+            nodes,
+            modelConfigurationRevisions,
+          );
+          if (verification.mismatchNodeId && resumeSnapshotMatches) {
+            notifyTerminalErrorOnce(
+              "resume-proof-mismatch",
+              "上一轮成功结果的任务凭证与当前画布不一致，已阻止重复生成",
+              verification.mismatchNodeId,
+            );
             return;
           }
           initialSuccessNodeIds = verification.verified;
@@ -690,7 +1056,72 @@ export function WorkflowExecutionProvider({
             Date.now(),
             [...candidateLockIds],
             async () => {
-              const tasks = await listGenerationTasks(canvasId);
+              const tasks = await listGenerationTasks(
+                canvasId,
+                undefined,
+                scope.fixtureScopeId,
+              );
+              if (recoveryAuthorityTaskIds && tasks.some((task) =>
+                candidateLockIds.has(task.nodeId) &&
+                !recoveryAuthorityTaskIds?.has(task.id)
+              )) {
+                return false;
+              }
+              const admissionRevision = await waitForCanvasRevision(30_000);
+              const authoritativeRevision =
+                await readAuthoritativeCanvasRevision();
+              const admissionNodes = getNodes();
+              const admissionEdges = getEdges();
+              const admissionChildren = admissionNodes.filter((node) =>
+                node.parentId === groupId
+              );
+              const admissionChildIds = new Set(
+                admissionChildren.map((node) => node.id),
+              );
+              const admissionLockIds = new Set([groupId, ...admissionChildIds]);
+              for (const edge of admissionEdges) {
+                if (admissionChildIds.has(edge.target)) {
+                  admissionLockIds.add(edge.source);
+                }
+              }
+              const admissionNodeById = new Map(
+                admissionNodes.map((node) => [node.id, node]),
+              );
+              const admissionTextTargets = new Set<string>();
+              for (const edge of admissionEdges) {
+                if (admissionNodeById.get(edge.source)?.type === "text") {
+                  admissionTextTargets.add(edge.target);
+                }
+              }
+              const admissionExecutableIds = new Set(
+                admissionChildren
+                  .filter((node) => isExecutableWorkflowNode(node, {
+                    hasIncomingText: admissionTextTargets.has(node.id),
+                  }))
+                  .map((node) => node.id),
+              );
+              const admissionFingerprint = groupRunSnapshotFingerprint({
+                edges: admissionEdges,
+                executableNodeIds: admissionExecutableIds,
+                groupId,
+                modelConfigurationRevisions,
+                modelReleaseRevisions,
+                nodes: admissionNodes,
+              });
+              if (
+                admissionRevision !== stableCanvasRevision ||
+                authoritativeRevision !== stableCanvasRevision ||
+                admissionFingerprint !== snapshotFingerprint ||
+                [...admissionExecutableIds].sort().join("\u0000") !==
+                  [...executableIds].sort().join("\u0000") ||
+                [...admissionLockIds].sort().join("\u0000") !==
+                  [...candidateLockIds].sort().join("\u0000")
+              ) return false;
+              nodes = admissionNodes;
+              edges = admissionEdges;
+              children = admissionChildren;
+              executableIds = admissionExecutableIds;
+              candidateLockIds = admissionLockIds;
               return !tasks.some((task) =>
                 ["queued", "running", "retrying", "recovering"].includes(
                   task.state,
@@ -710,11 +1141,11 @@ export function WorkflowExecutionProvider({
           )
         );
         if (!leaseAcquired) {
-          notify(
+          notifyTerminalErrorOnce(
+            "lease-admission-blocked",
             "locks" in window.navigator
               ? "当前画布已在其他标签页执行，请等待完成后再继续"
               : "当前浏览器不支持安全的跨标签整组执行，本轮已阻止",
-            "error",
           );
           return;
         }
@@ -740,7 +1171,10 @@ export function WorkflowExecutionProvider({
               current.publishStopping();
             }
             if (starting) starting.cancelled = true;
-            notify("执行租约已失效，已阻止后续节点；请核对已提交任务", "error");
+            notifyTerminalErrorOnce(
+              "lease-lost",
+              "执行租约已失效，已阻止后续节点；系统会继续核对已提交任务",
+            );
           }).finally(() => {
             if (leaseRenewInFlight === renewal) leaseRenewInFlight = undefined;
           });
@@ -763,6 +1197,7 @@ export function WorkflowExecutionProvider({
           accountId,
           canvasId,
           fixtureScopeId,
+          groupId,
           graph,
           isCancelled,
           isFixture,
@@ -794,7 +1229,7 @@ export function WorkflowExecutionProvider({
           successProofs: resumeCheckpoint?.successProofs ?? {},
           lease: readGroupRunLease(scope, runId),
           updatedAt: Date.now(),
-          version: 1,
+          version: 2,
         };
         if (!writeGroupRunCheckpoint(checkpoint, expectedLease())) {
           notify("浏览器无法保存整组进度，为避免刷新后重复生成，本轮已阻止", "error");
@@ -854,8 +1289,13 @@ export function WorkflowExecutionProvider({
         if (acceptedTasksOnly) {
           const accepted = Object.values(checkpoint.acceptedTasks ?? {});
           if (accepted.length === 0) {
-            notify("上一轮没有已接收任务，保留待处理节点且未自动提交", "info");
-            return;
+            if (resumeSnapshotMatches) {
+              notifyRecoveryOnce(
+                groupId,
+                "pending-auto-continue",
+                "正在自动继续上一轮尚未提交的节点",
+              );
+            }
           }
           for (const nodeId of executableIds) {
             if (!nodeStates.has(nodeId)) {
@@ -948,7 +1388,9 @@ export function WorkflowExecutionProvider({
               } catch (error) {
                 if (!abortController.signal.aborted) {
                   nodeStates.set(binding.nodeId, "failed");
-                  notify(
+                  notifyRecoveryOnce(
+                    binding.nodeId,
+                    "accepted-task-reconcile",
                     error instanceof Error ? error.message : "自动核对任务失败",
                     "error",
                   );
@@ -974,6 +1416,7 @@ export function WorkflowExecutionProvider({
           const verification = verifiedCheckpointSuccessIds(
             running.checkpoint,
             getNodes(),
+            modelConfigurationRevisions,
           );
           const projectionResults = [
             ...directProjectionReceipts,
@@ -996,20 +1439,146 @@ export function WorkflowExecutionProvider({
             );
           if (complete && clearGroupRunCheckpoint(scope, expectedLease())) {
             publishGroupRunSummary({ ...summaryBase(), status: "success" });
-            notify("已自动核对并保存上一轮已接收任务；没有提交新任务", "success");
-          } else {
-            running.checkpoint = {
-              ...running.checkpoint,
-              nodeStates: Object.fromEntries(nodeStates),
-              projectionPendingNodeIds,
-              status: "interrupted",
-              updatedAt: Date.now(),
-            };
-            checkpoint = running.checkpoint;
-            writeGroupRunCheckpoint(running.checkpoint, expectedLease());
-            notify("已核对上一轮已接收任务；待处理节点未自动提交，请在任务面板继续或放弃", "info");
+            return;
           }
-          return;
+          if (!resumeSnapshotMatches) {
+            const acceptedSettled = accepted.every((binding) =>
+              nodeStates.get(binding.nodeId) === "success"
+            );
+            if (!acceptedSettled || running.cancelled || !projectionsSettled) {
+              running.checkpoint = {
+                ...running.checkpoint,
+                nodeStates: Object.fromEntries(nodeStates),
+                projectionPendingNodeIds,
+                status: "interrupted",
+                updatedAt: Date.now(),
+              };
+              checkpoint = running.checkpoint;
+              writeGroupRunCheckpoint(running.checkpoint, expectedLease());
+              notifyRecoveryOnce(
+                groupId,
+                "snapshot-changed-reconcile",
+                "画布已变化；系统继续核对原任务，确认安全前不会提交当前图的新任务",
+              );
+              return;
+            }
+            const reusableSuccessIds = [...verification.verified]
+              .filter((nodeId) => {
+                if (!executableIds.has(nodeId)) return false;
+                const node = getNodes().find((candidate) => candidate.id === nodeId);
+                if (!node || !["audio", "image", "text", "video"].includes(node.type)) {
+                  return false;
+                }
+                const proof = running.checkpoint.successProofs[nodeId];
+                const current = currentWorkflowGenerationBinding({
+                  context: {
+                    canvasId,
+                    graph,
+                    isFixture,
+                    modelCatalog: executorModelCatalog,
+                  },
+                  kind: node.type as AcceptedTaskBinding["kind"],
+                  nodeId,
+                });
+                return Boolean(
+                  proof?.inputFingerprint && proof.modelReleaseRevision && current &&
+                  proof.inputFingerprint === current.inputFingerprint &&
+                  proof.modelReleaseRevision === current.modelReleaseRevision &&
+                  proof.ownershipKey === current.ownershipKey,
+                );
+              });
+            const reusableSuccessProofs = Object.fromEntries(
+              reusableSuccessIds.flatMap((nodeId) => {
+                const proof = running.checkpoint.successProofs[nodeId];
+                return proof ? [[nodeId, proof]] : [];
+              }),
+            );
+            if (durableRestartCheckpoint && (
+              durableRestartCheckpoint.accountId !== accountId ||
+              durableRestartCheckpoint.canvasId !== canvasId ||
+              durableRestartCheckpoint.fixtureScopeId !== fixtureScopeId ||
+              durableRestartCheckpoint.groupId !== groupId ||
+              durableRestartCheckpoint.snapshotFingerprint !== snapshotFingerprint ||
+              JSON.stringify([...durableRestartCheckpoint.executableNodeIds].sort()) !==
+                JSON.stringify([...executableIds].sort())
+            )) {
+              notifyTerminalErrorOnce(
+                "snapshot-restart-conflict",
+                "当前图续作记录与已保存画布不一致；系统仅保留原任务结果，未提交新任务",
+              );
+              return;
+            }
+            const pendingRestartCheckpoint: GroupRunCheckpoint =
+              durableRestartCheckpoint ?? {
+                accountId,
+                canvasId,
+                executableNodeIds: [...executableIds],
+                fixtureScopeId,
+                groupId,
+                nodeStates: Object.fromEntries(
+                  reusableSuccessIds.map((nodeId) => [nodeId, "success" as const]),
+                ),
+                resumeMode: "current-graph",
+                runId: crypto.randomUUID(),
+                snapshotFingerprint,
+                startedAt: Date.now(),
+                status: "preparing",
+                successProofs: reusableSuccessProofs,
+                updatedAt: Date.now(),
+                version: 2,
+              };
+            if (!writeGroupRunCheckpoint(pendingRestartCheckpoint)) {
+              notifyTerminalErrorOnce(
+                "snapshot-restart-write",
+                "旧运行已完成核对，但当前图续作记录无法安全保存；未提交新任务",
+              );
+              return;
+            }
+            if (!clearGroupRunCheckpoint(scope, expectedLease())) {
+              notifyTerminalErrorOnce(
+                "snapshot-old-clear",
+                "旧运行已完成核对，但恢复缓存无法精确关闭；当前图未提交新任务",
+              );
+              return;
+            }
+            restartCheckpoint = pendingRestartCheckpoint;
+            notifyRecoveryOnce(
+              groupId,
+              "snapshot-changed-restart",
+              "上一轮原任务已恢复；画布有变化，正在按当前图自动继续",
+            );
+            return;
+          }
+
+          initialSuccessNodeIds = verification.verified;
+          for (const nodeId of projectionPendingNodeIds) {
+            initialSuccessNodeIds.delete(nodeId);
+          }
+          for (const binding of accepted) {
+            resumeInFlightNodeIds.add(binding.nodeId);
+          }
+          for (const nodeId of initialSuccessNodeIds) remainingIds.delete(nodeId);
+          runningGroups.current.delete(groupId);
+          checkpoint = {
+            ...running.checkpoint,
+            nodeStates: Object.fromEntries(nodeStates),
+            projectionPendingNodeIds,
+            status: "preparing",
+            updatedAt: Date.now(),
+          };
+          if (!writeGroupRunCheckpoint(checkpoint, expectedLease())) {
+            notifyTerminalErrorOnce(
+              "pending-auto-continue-checkpoint",
+              "自动续作状态无法保存；本次未提交新的生成任务",
+            );
+            return;
+          } else {
+            notifyRecoveryOnce(
+              groupId,
+              "pending-auto-continue",
+              "上一轮原任务已恢复，正在自动继续未完成节点",
+            );
+          }
         }
 
         const preflightFailures: Array<{
@@ -1076,20 +1645,19 @@ export function WorkflowExecutionProvider({
             reason: first.message,
             status: "failed",
           });
+          let terminalMessage =
+            `整组执行已阻止：发现 ${preflightFailures.length} 个不兼容节点；首个“${firstTitle}”：${first.message}${resumeCheckpoint ? "（本次未提交新任务）" : "（未提交任何生成任务）"}`;
           if (initialSuccessNodeIds.size === 0) {
             if (!clearGroupRunCheckpoint(scope, expectedLease())) {
-              notify("准备失败，但续跑记录无法清理；请勿重复开始", "error");
+              terminalMessage = "准备失败且续跑记录无法清理；请勿重复开始";
             }
           } else {
             checkpoint = { ...checkpoint, status: "interrupted", updatedAt: Date.now() };
             if (!writeGroupRunCheckpoint(checkpoint, expectedLease())) {
-              notify("准备失败且进度无法保存；请勿重复开始", "error");
+              terminalMessage = "准备失败且进度无法保存；请勿重复开始";
             }
           }
-          notify(
-            `整组执行已阻止：发现 ${preflightFailures.length} 个不兼容节点；首个“${firstTitle}”：${first.message}${resumeCheckpoint ? "（本次未提交新任务）" : "（未提交任何生成任务）"}`,
-            "error",
-          );
+          notifyTerminalErrorOnce("static-preflight", terminalMessage, first.nodeId);
           return;
         }
 
@@ -1101,7 +1669,10 @@ export function WorkflowExecutionProvider({
         }
         checkpoint = { ...checkpoint, status: "running", updatedAt: Date.now() };
         if (!writeGroupRunCheckpoint(checkpoint, expectedLease())) {
-          notify("运行状态无法保存，为避免刷新后重复生成，本轮已停止", "error");
+          notifyTerminalErrorOnce(
+            "run-checkpoint-start",
+            "运行状态无法保存，为避免刷新后重复生成，本轮已停止",
+          );
           return;
         }
         const running = {
@@ -1144,7 +1715,11 @@ export function WorkflowExecutionProvider({
               if (proof) running.checkpoint.successProofs[nodeId] = proof;
               else {
                 running.cancelled = true;
-                notify("节点已返回成功但缺少可持续任务凭证，已阻止后续节点", "error");
+                notifyTerminalErrorOnce(
+                  "success-proof-missing",
+                  "节点已返回成功但缺少可持续任务凭证，已阻止后续节点",
+                  nodeId,
+                );
               }
             }
             const nextCheckpoint = {
@@ -1162,7 +1737,11 @@ export function WorkflowExecutionProvider({
             if (!writeGroupRunCheckpoint(nextCheckpoint, expectedLease())) {
               running.checkpointWriteFailed = true;
               running.cancelled = true;
-              notify("整组进度无法保存，已阻止后续节点；请核对已提交任务", "error");
+              notifyTerminalErrorOnce(
+                "run-checkpoint-progress",
+                "整组进度无法保存，已阻止后续节点；请核对已提交任务",
+                nodeId,
+              );
             }
             publishGroupRunSummary({
               ...summaryBase(),
@@ -1311,7 +1890,7 @@ export function WorkflowExecutionProvider({
             };
             running.checkpoint = interrupted;
             writeGroupRunCheckpoint(interrupted, expectedLease());
-            notify("生成已完成；结果自动写回未完成，请从任务面板找回原结果", "info");
+            notify("生成已完成；结果写回正在后台自动恢复，原结果已安全保留", "info");
             publishGroupRunSummary({
               ...summaryBase(),
               reason: "生成已完成，但结果写回遇到语义冲突或已耗尽自动重试",
@@ -1326,7 +1905,10 @@ export function WorkflowExecutionProvider({
             };
             running.checkpoint = interrupted;
             writeGroupRunCheckpoint(interrupted, expectedLease());
-            notify("整组已完成，但续跑记录无法清理；请勿重复开始", "error");
+            notifyTerminalErrorOnce(
+              "success-checkpoint-clear",
+              "整组已完成，但续跑记录无法清理；请勿重复开始",
+            );
             publishGroupRunSummary({
               ...summaryBase(),
               reason: "整组已完成，但续跑记录无法安全清理",
@@ -1344,15 +1926,19 @@ export function WorkflowExecutionProvider({
           };
           if (!writeGroupRunCheckpoint(running.checkpoint, expectedLease())) {
             running.checkpointWriteFailed = true;
-            notify("整组终态无法保存；已阻止后续节点，请核对已提交任务", "error");
+            notifyTerminalErrorOnce(
+              "terminal-checkpoint-write",
+              "整组终态无法保存；已阻止后续节点，请核对已提交任务",
+            );
           }
           if (result.status === "failed") {
             const blocked = result.blockedNodeIds.length > 0
               ? `；另有 ${result.blockedNodeIds.length} 个后续节点因上游失败未运行`
               : "";
-            notify(
+            notifyTerminalErrorOnce(
+              "workflow-failed",
               `整组执行部分失败：${result.message ?? "请查看节点错误提示"}${blocked}`,
-              "error",
+              firstFailedNodeId,
             );
           } else if (result.status === "skipped") {
             notify(`整组执行已停止：${result.message ?? "有节点未就绪"}`);
@@ -1384,13 +1970,26 @@ export function WorkflowExecutionProvider({
             updatedAt: Date.now(),
           };
           if (!writeGroupRunCheckpoint(interrupted, expectedLease())) {
-            notify("整组异常且终态无法保存；请核对已提交任务后再继续", "error");
+            notifyTerminalErrorOnce(
+              "exception-checkpoint-write",
+              "整组异常且终态无法保存；请核对已提交任务后再继续",
+            );
           }
         }
-        notify(`${message}；可在生成任务面板核对后继续剩余节点`, "error");
+        notifyTerminalErrorOnce(
+          "workflow-exception",
+          `${message}；系统已保留已提交任务并自动核对，受影响分支暂停，其他结果不受影响`,
+        );
       } finally {
         abortController.abort("run-finished");
         if (leaseTimer !== undefined) window.clearInterval(leaseTimer);
+        if (leaseAcquired) {
+          // Publish the cooperative lease-release wake while this local run is
+          // still registered. The automatic recovery listener can then tell
+          // that the durable checkpoint belongs to the run that is currently
+          // settling, instead of immediately re-entering a terminal run.
+          releaseGroupRunLease(scope, runId, ownerId);
+        }
         if (runningGroups.current.get(groupId)?.runId === runId) {
           runningGroups.current.delete(groupId);
         }
@@ -1400,10 +1999,20 @@ export function WorkflowExecutionProvider({
         }
         runLocks.current.delete(runId);
         clearGroupRunStarting(scope, runId);
-        if (leaseAcquired) {
-          releaseGroupRunLease(scope, runId, ownerId);
-        }
         publishActiveRunState();
+        if (restartCheckpoint) {
+          window.setTimeout(() => {
+            // This is a freshly persisted current-graph run. The old run's
+            // accepted tasks are already settled. Yield one browser task so
+            // React commits the recovered terminal node state before the new
+            // graph is checked for still-generating nodes.
+            void executeGroup(
+              (restartCheckpoint as GroupRunCheckpoint).groupId,
+              restartCheckpoint as GroupRunCheckpoint,
+              false,
+            );
+          }, 0);
+        }
       }
     },
     [
@@ -1416,10 +2025,13 @@ export function WorkflowExecutionProvider({
       notify,
       publishActiveRunState,
       waitForCanvasStable,
+      readAuthoritativeCanvasRevision,
       executorModelCatalog,
       registry,
     ],
   );
+  const executeGroupCurrent = useRef(executeGroup);
+  executeGroupCurrent.current = executeGroup;
 
   useEffect(() => {
     const continuePreviousRun = (event: Event) => {
@@ -1430,7 +2042,9 @@ export function WorkflowExecutionProvider({
         checkpoint.canvasId !== canvasId ||
         checkpoint.fixtureScopeId !== fixtureScopeId
       ) return;
-      void executeGroup(checkpoint.groupId, checkpoint);
+      const hasAcceptedTasks = Object.keys(checkpoint.acceptedTasks ?? {}).length > 0;
+      if (!hasAcceptedTasks && checkpoint.resumeMode !== "current-graph") return;
+      void executeGroup(checkpoint.groupId, checkpoint, hasAcceptedTasks);
     };
     window.addEventListener(GROUP_RUN_CONTINUE_EVENT, continuePreviousRun);
     return () => window.removeEventListener(
@@ -1440,37 +2054,252 @@ export function WorkflowExecutionProvider({
   }, [accountId, canvasId, executeGroup, fixtureScopeId]);
 
   useEffect(() => {
-    if (isFixture) return;
+    if (isFixture || !persistenceReady || modelCatalogStatus === "loading") return;
     const scope = { accountId, canvasId, fixtureScopeId };
     const scopeKey = JSON.stringify(scope);
-    if (automaticRecoveryScopes.current.has(scopeKey)) return;
-    automaticRecoveryScopes.current.add(scopeKey);
+    if (automaticRecoveryScopeKey.current === scopeKey) return;
+    automaticRecoveryScopeKey.current = scopeKey;
     let disposed = false;
+    let reconcileInFlight: Promise<void> | undefined;
+    let reconcileRequested = false;
+    let awaitingAuthorityWake = false;
+    let authorityConfirmedStableEmpty = false;
+    setGroupRunAuthoritySettledEmpty(scope, false);
+    let authorityRetryTimer: number | undefined;
+    const clearAuthorityRetry = () => {
+      if (authorityRetryTimer === undefined) return;
+      window.clearTimeout(authorityRetryTimer);
+      authorityRetryTimer = undefined;
+    };
+    const scheduleAuthorityRetry = () => {
+      if (disposed || authorityRetryTimer !== undefined) return;
+      authorityRetryTimer = window.setTimeout(() => {
+        authorityRetryTimer = undefined;
+        requestReconcile();
+      }, 15_000);
+    };
+    const notifyAutomaticRecoveryOnce = (
+      groupId: string,
+      runId: string,
+    ) => {
+      if (publishGroupRunNotificationOnce(publishedRunNotifications.current, {
+        accountId,
+        canvasId,
+        errorClass: "automatic-authority-recovery",
+        groupId,
+        nodeId: groupId,
+        runId,
+      }, "recovering")) {
+        notifyCurrent.current(
+          "系统正在安全核对已接收任务，确认后会自动继续",
+          "info",
+        );
+      }
+    };
     const reconcile = async () => {
       // Canvas hydration and model-catalog hydration are asynchronous. Wait for
-      // the exact checkpoint graph to be visible before the single auto attempt.
+      // the exact checkpoint graph to be visible. Each wake has a bounded retry
+      // window; storage/lease changes can trigger another bounded window.
       for (let attempt = 0; attempt < 40 && !disposed; attempt += 1) {
-        const nodeIds = new Set(getNodes().map((node) => node.id));
-        const checkpoints = readGroupRunCheckpoints(scope).filter((checkpoint) =>
-          Object.keys(checkpoint.acceptedTasks ?? {}).length > 0 &&
+        const nodeIds = new Set(getLegacyNodes.current().map((node) => node.id));
+        const cache = readGroupRunCheckpointCache(scope);
+        const leaseCache = readGroupRunLeaseCache(scope);
+        const cacheNeedsAuthorityQuarantine =
+          cache.corrupted || cache.quarantined ||
+          leaseCache.corrupted || leaseCache.quarantined;
+        let checkpoints = cache.checkpoints.filter((checkpoint) =>
+          (Object.keys(checkpoint.acceptedTasks ?? {}).length > 0 ||
+            checkpoint.resumeMode === "current-graph") &&
           nodeIds.has(checkpoint.groupId) &&
           checkpoint.executableNodeIds.every((nodeId) => nodeIds.has(nodeId))
         );
+        if (cacheNeedsAuthorityQuarantine ||
+          (checkpoints.length === 0 && nodeIds.size > 0)) {
+          try {
+            const readRecoveryAuthority = async () => {
+              const tasks = await listGenerationTasks(
+                canvasId,
+                undefined,
+                scope.fixtureScopeId,
+              );
+              return reconstructGroupRecoveryDecision({
+                nodes: getLegacyNodes.current(),
+                scope,
+                tasks,
+              });
+            };
+            const reconstructed = cacheNeedsAuthorityQuarantine
+              ? await quarantineCorruptGroupRunCacheAfterAuthority(
+                scope,
+                readRecoveryAuthority,
+              )
+              : await runWithGroupRunCanvasAdmission(
+                canvasId,
+                readRecoveryAuthority,
+              );
+            if (!reconstructed) {
+              awaitingAuthorityWake = true;
+              const checkpoint = checkpoints[0];
+              notifyAutomaticRecoveryOnce(
+                checkpoint?.groupId ?? "canvas-recovery",
+                checkpoint?.runId ?? `automatic-recovery:${scopeKey}`,
+              );
+              await new Promise((resolve) => window.setTimeout(resolve, 250));
+              continue;
+            }
+            awaitingAuthorityWake = false;
+            reconcileRequested = false;
+            const blockedGroupIds = new Set(reconstructed.blockedGroupIds);
+            let writeFailed = false;
+            for (const checkpoint of reconstructed.checkpoints) {
+              if (blockedGroupIds.has(checkpoint.groupId)) continue;
+              if (!writeGroupRunCheckpoint(checkpoint)) {
+                awaitingAuthorityWake = true;
+                notifyAutomaticRecoveryOnce(
+                  checkpoint.groupId,
+                  checkpoint.runId,
+                );
+                writeFailed = true;
+                break;
+              }
+            }
+            if (writeFailed) {
+              await new Promise((resolve) => window.setTimeout(resolve, 250));
+              continue;
+            }
+            const currentNodeIds = new Set(
+              getLegacyNodes.current().map((node) => node.id),
+            );
+            checkpoints = reconstructed.checkpoints.filter((checkpoint) =>
+              !blockedGroupIds.has(checkpoint.groupId) &&
+              (Object.keys(checkpoint.acceptedTasks ?? {}).length > 0 ||
+                checkpoint.resumeMode === "current-graph") &&
+              currentNodeIds.has(checkpoint.groupId) &&
+              checkpoint.executableNodeIds.every((nodeId) =>
+                currentNodeIds.has(nodeId)
+              )
+            );
+            if (checkpoints.length === 0) {
+              if (blockedGroupIds.size > 0) {
+                awaitingAuthorityWake = true;
+                notifyAutomaticRecoveryOnce(
+                  blockedGroupIds.values().next().value ?? "canvas-recovery",
+                  `automatic-recovery:${scopeKey}`,
+                );
+                scheduleAuthorityRetry();
+              } else {
+                authorityConfirmedStableEmpty = true;
+                setGroupRunAuthoritySettledEmpty(scope, true);
+                clearAuthorityRetry();
+              }
+              return;
+            }
+          } catch {
+            // Server authority unavailable: do not infer that no task exists and
+            // never open a new submission path from browser cache alone.
+            awaitingAuthorityWake = true;
+            const checkpoint = checkpoints[0];
+            notifyAutomaticRecoveryOnce(
+              checkpoint?.groupId ?? "canvas-recovery",
+              checkpoint?.runId ?? `automatic-recovery:${scopeKey}`,
+            );
+            await new Promise((resolve) => window.setTimeout(resolve, 250));
+            continue;
+          }
+        }
         if (checkpoints.length > 0) {
+          authorityConfirmedStableEmpty = false;
+          setGroupRunAuthoritySettledEmpty(scope, false);
+          clearAuthorityRetry();
+          awaitingAuthorityWake = false;
+          reconcileRequested = false;
+          const groups = new Map<string, GroupRunCheckpoint[]>();
           for (const checkpoint of checkpoints) {
+            const group = groups.get(checkpoint.groupId) ?? [];
+            group.push(checkpoint);
+            groups.set(checkpoint.groupId, group);
+          }
+          for (const [groupId, groupCheckpoints] of groups) {
             if (disposed) return;
-            await executeGroup(checkpoint.groupId, checkpoint, true);
+            if (groupCheckpoints.length === 1) {
+              const checkpoint = groupCheckpoints[0];
+              await executeGroupCurrent.current(
+                groupId,
+                checkpoint,
+                Object.keys(checkpoint.acceptedTasks ?? {}).length > 0,
+              );
+            } else {
+              await executeGroupCurrent.current(groupId);
+            }
           }
           return;
         }
         await new Promise((resolve) => window.setTimeout(resolve, 250));
       }
+      if (awaitingAuthorityWake) scheduleAuthorityRetry();
     };
-    void reconcile();
+    const requestReconcile = (): void => {
+      if (disposed) return;
+      if (reconcileInFlight) {
+        reconcileRequested = true;
+        return;
+      }
+      reconcileInFlight = reconcile().finally(() => {
+        reconcileInFlight = undefined;
+        if (disposed || !reconcileRequested) return;
+        reconcileRequested = false;
+        requestReconcile();
+      });
+    };
+    const wakeRecovery = (event?: Event) => {
+      // Same-window lease events are cooperative lock wakes, not a signal to
+      // restart every durable terminal checkpoint. Cross-tab checkpoint/lease
+      // changes arrive through `storage`; a local lease release only matters
+      // when authority reconciliation was already waiting on that lock.
+      const cache = readGroupRunCheckpointCache(scope);
+      const leaseCache = readGroupRunLeaseCache(scope);
+      if (
+        event?.type === GROUP_RUN_LEASE_EVENT && !awaitingAuthorityWake &&
+        !leaseCache.corrupted && !leaseCache.quarantined
+      ) return;
+      const durableWorkAppeared = cache.checkpoints.some((checkpoint) =>
+        !runningGroups.current.has(checkpoint.groupId) &&
+        !startingGroupIds.current.has(checkpoint.groupId) &&
+        (Object.keys(checkpoint.acceptedTasks ?? {}).length > 0 ||
+          checkpoint.resumeMode === "current-graph")
+      );
+      if (
+        awaitingAuthorityWake || cache.corrupted || leaseCache.corrupted ||
+        durableWorkAppeared ||
+        ((cache.quarantined || leaseCache.quarantined) &&
+          !authorityConfirmedStableEmpty)
+      ) {
+        authorityConfirmedStableEmpty = false;
+        setGroupRunAuthoritySettledEmpty(scope, false);
+        requestReconcile();
+      }
+    };
+    window.addEventListener("storage", wakeRecovery);
+    window.addEventListener(GROUP_RUN_LEASE_EVENT, wakeRecovery);
+    requestReconcile();
     return () => {
       disposed = true;
+      setGroupRunAuthoritySettledEmpty(scope, false);
+      clearAuthorityRetry();
+      window.removeEventListener("storage", wakeRecovery);
+      window.removeEventListener(GROUP_RUN_LEASE_EVENT, wakeRecovery);
+      if (automaticRecoveryScopeKey.current === scopeKey) {
+        automaticRecoveryScopeKey.current = undefined;
+      }
     };
-  }, [accountId, canvasId, executeGroup, fixtureScopeId, getNodes, isFixture]);
+  }, [
+    accountId,
+    canvasId,
+    fixtureScopeId,
+    isFixture,
+    modelCatalogStatus,
+    persistenceReady,
+  ]);
 
   useEffect(() => {
     if (isFixture || !persistenceReady || modelCatalogStatus === "loading") return;
@@ -1530,6 +2359,7 @@ export function WorkflowExecutionProvider({
         const candidate = legacyTerminalGenerationCandidate({
           accountId,
           canvasId,
+          fixtureScopeId: scope.fixtureScopeId,
           node,
         });
         return candidate ? [candidate] : [];
@@ -1562,7 +2392,12 @@ export function WorkflowExecutionProvider({
         for (const node of nodes) {
           if (
             isIncompleteLegacyTerminalGenerationBinding(node) ||
-            legacyTerminalGenerationCandidate({ accountId, canvasId, node })
+            legacyTerminalGenerationCandidate({
+              accountId,
+              canvasId,
+              fixtureScopeId: scope.fixtureScopeId,
+              node,
+            })
           ) setLegacyGenerationState(node.id, "UNKNOWN_BLOCKED");
         }
         boundedUnknownRecheck(`policy:${scopeKey}`);
@@ -1575,7 +2410,12 @@ export function WorkflowExecutionProvider({
         for (const node of nodes) {
           if (
             isIncompleteLegacyTerminalGenerationBinding(node) ||
-            legacyTerminalGenerationCandidate({ accountId, canvasId, node })
+            legacyTerminalGenerationCandidate({
+              accountId,
+              canvasId,
+              fixtureScopeId: scope.fixtureScopeId,
+              node,
+            })
           ) setLegacyGenerationState(node.id, "PASSTHROUGH");
         }
         return;
@@ -1585,7 +2425,11 @@ export function WorkflowExecutionProvider({
       const readTask = (taskId: string) => {
         const existing = taskReads.get(taskId);
         if (existing) return existing;
-        const pending = getGenerationTask(taskId, controller.signal);
+        const pending = getGenerationTask(
+          taskId,
+          controller.signal,
+          scope.fixtureScopeId,
+        );
         taskReads.set(taskId, pending);
         return pending;
       };
@@ -1600,7 +2444,7 @@ export function WorkflowExecutionProvider({
             continue;
           }
           const conflictingLease = await hasConflictingActiveGroupRunLeaseForCanvas(
-            canvasId,
+            scope,
             candidate.nodeId,
             candidate.runId,
           );
@@ -1672,7 +2516,7 @@ export function WorkflowExecutionProvider({
                   runLocks.current.has(candidate.runId) ||
                   exactCheckpointOwns(candidate) || activeLeaseOwns(candidate) ||
                   await hasConflictingActiveGroupRunLeaseForCanvas(
-                    canvasId,
+                    scope,
                     candidate.nodeId,
                     candidate.runId,
                   )
@@ -1834,9 +2678,9 @@ export function WorkflowExecutionProvider({
       cancelGroup,
       executeGroup,
       executingGroupIds,
-      lockedNodeIds,
+      lockedNodeIds: effectiveLockedNodeIds,
     }),
-    [cancelGroup, executeGroup, executingGroupIds, lockedNodeIds],
+    [cancelGroup, effectiveLockedNodeIds, executeGroup, executingGroupIds],
   );
 
   return (

@@ -15,6 +15,7 @@ import {
   CanvasNodeRegistry,
   canvasNodeRegistry,
 } from "../client/src/canvas/canvasNodeRegistry";
+import type { ProbeNodeType } from "../client/src/canvas/ProbeNode";
 import {
   createSingleNodeGenerationLifecycle,
   type SingleNodeGenerationLifecycle,
@@ -470,6 +471,256 @@ const profile = (input: Pick<ProviderProfile, "driver" | "id">): ProviderProfile
   label: `P2 ${input.id}`,
   updatedAt: "2026-08-22T00:00:00.000Z",
   ...input,
+});
+
+test("single-node submission prepares its fresh semantic adapter inside admission", async () => {
+  let revision = 0;
+  let admissionDepth = 0;
+  let preparedInsideAdmission = false;
+  let ensuredFreshIdentity = false;
+  let watchedOutsideAdmission = false;
+  let snapshot: CanvasGraphSnapshot = {
+    edges: [],
+    nodes: [{
+      data: { label: "Fresh text node", textPrompt: "fresh prompt" },
+      id: "fresh-node",
+      position: { x: 0, y: 0 },
+      type: "text",
+    }],
+    revision,
+  };
+  const graph = createCanvasGraphCommandPort({
+    commit(next) {
+      snapshot = { ...next, revision: undefined };
+    },
+    persistenceReady: () => true,
+    snapshot: () => snapshot,
+  });
+  const save: CanvasSavePort = {
+    async flush() {},
+    async waitForRevision() {
+      revision += 1;
+      snapshot = { ...snapshot, revision };
+      return { revision };
+    },
+  };
+  const plan = (suffix: "old" | "fresh") => ({
+    contractFingerprint: `mic2:${suffix}`,
+    inputKey: `input-${suffix}`,
+    kind: "text" as const,
+    modelConfigurationRevision: `configuration-${suffix}`,
+    modelReleaseRevision: `00000000-0000-4000-8000-000000000${suffix === "old" ? "201" : "202"}`,
+    nodeId: "fresh-node",
+    ownershipKey: `ownership-${suffix}`,
+    payload: { canvasId: "fresh-canvas", nodeId: "fresh-node" },
+  });
+  const summary = (state: GenerationTaskSummary["state"]): GenerationTaskSummary => ({
+    attempt: 1,
+    canvasId: "fresh-canvas",
+    costCurrency: "CNY",
+    createdAt: "2026-08-29T00:00:00.000Z",
+    generationIdentityVersion: 2,
+    generationInputKey: "input-fresh",
+    generationOwnershipKey: "ownership-fresh",
+    id: "fresh-task",
+    kind: "text",
+    modelConfigurationRevision: "configuration-fresh",
+    modelInputContractFingerprint: "mic2:fresh",
+    modelReleaseRevision: "00000000-0000-4000-8000-000000000202",
+    nodeId: "fresh-node",
+    prompt: "fresh prompt",
+    ...(state === "success" ? { resultText: "fresh result" } : {}),
+    state,
+    updatedAt: "2026-08-29T00:00:01.000Z",
+  });
+  const adapter = (suffix: "old" | "fresh") => ({
+    applyPrepared(node: ProbeNodeType) {
+      return { ...node, data: { ...node.data, textModelId: suffix } };
+    },
+    applyBinding(node: ProbeNodeType, task: GenerationTaskSummary) {
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          textGenerating: true,
+          textGenerationTaskId: task.id,
+        },
+      };
+    },
+    applyTerminal(node: ProbeNodeType, task: GenerationTaskSummary) {
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          content: task.resultText,
+          textGenerating: false,
+        },
+      };
+    },
+    kind: "text" as const,
+    readPlan() {
+      return plan(suffix);
+    },
+  });
+  const lifecycle = createSingleNodeGenerationLifecycle({
+    adapter: adapter("old"),
+    graph,
+    nodeId: "fresh-node",
+    async prepareSubmissionAdapter() {
+      preparedInsideAdmission = admissionDepth === 1;
+      return adapter("fresh");
+    },
+    randomUUID: () => "fresh-run",
+    save,
+    tasks: {
+      async cancel() { return summary("cancelled"); },
+      async ensure(currentPlan) {
+        ensuredFreshIdentity = admissionDepth === 1 &&
+          currentPlan.inputKey === "input-fresh" &&
+          currentPlan.ownershipKey === "ownership-fresh";
+        return {
+          generationOwnershipKey: "ownership-fresh",
+          idempotencyKey: "fresh-idempotency",
+          recovered: false,
+          task: summary("running"),
+        };
+      },
+      async reconcile() {
+        return { outcome: "recovered", task: summary("success") };
+      },
+      async recover() { return summary("running"); },
+      async retry() { return summary("running"); },
+      async watch() {
+        watchedOutsideAdmission = admissionDepth === 0;
+        return summary("success");
+      },
+      async withSubmissionAdmission(_currentPlan, work) {
+        admissionDepth += 1;
+        try {
+          return await work();
+        } finally {
+          admissionDepth -= 1;
+        }
+      },
+    },
+  });
+  await expect(lifecycle.generate()).resolves.toMatchObject({
+    status: "success",
+    task: { id: "fresh-task" },
+  });
+  expect({
+    ensuredFreshIdentity,
+    preparedInsideAdmission,
+    watchedOutsideAdmission,
+  }).toEqual({
+    ensuredFreshIdentity: true,
+    preparedInsideAdmission: true,
+    watchedOutsideAdmission: true,
+  });
+  expect(snapshot.nodes[0]?.data).toMatchObject({
+    content: "fresh result",
+    textModelId: "fresh",
+  });
+});
+
+test("single-node admission refuses a task accepted for semantics edited during POST", async () => {
+  let revision = 1;
+  let admissionDepth = 0;
+  let currentPrompt = "original prompt";
+  let snapshot: CanvasGraphSnapshot = {
+    edges: [],
+    nodes: [{
+      data: { label: "Text", textPrompt: currentPrompt },
+      id: "post-race-node",
+      position: { x: 0, y: 0 },
+      type: "text",
+    }],
+    revision,
+  };
+  const graph = createCanvasGraphCommandPort({
+    commit(next) { snapshot = { ...next, revision: undefined }; },
+    persistenceReady: () => true,
+    snapshot: () => snapshot,
+  });
+  const plan = () => ({
+    contractFingerprint: `mic2:${currentPrompt}`,
+    inputKey: `input:${currentPrompt}`,
+    kind: "text" as const,
+    modelConfigurationRevision: "configuration-1",
+    modelReleaseRevision: "00000000-0000-4000-8000-000000000203",
+    nodeId: "post-race-node",
+    ownershipKey: `ownership:${currentPrompt}`,
+    payload: { prompt: currentPrompt },
+  });
+  const originalTask: GenerationTaskSummary = {
+    attempt: 1,
+    canvasId: "post-race-canvas",
+    costCurrency: "CNY",
+    createdAt: "2026-08-29T00:00:00.000Z",
+    generationIdentityVersion: 2,
+    generationInputKey: "input:original prompt",
+    generationOwnershipKey: "ownership:original prompt",
+    id: "post-race-task",
+    kind: "text",
+    modelConfigurationRevision: "configuration-1",
+    modelInputContractFingerprint: "mic2:original prompt",
+    modelReleaseRevision: "00000000-0000-4000-8000-000000000203",
+    nodeId: "post-race-node",
+    prompt: "original prompt",
+    state: "running",
+    updatedAt: "2026-08-29T00:00:01.000Z",
+  };
+  const lifecycle = createSingleNodeGenerationLifecycle({
+    adapter: {
+      applyBinding(node, task) {
+        return { ...node, data: { ...node.data, textGenerationTaskId: task.id } };
+      },
+      applyTerminal(node) { return node; },
+      kind: "text",
+      readPlan: plan,
+    },
+    graph,
+    nodeId: "post-race-node",
+    randomUUID: () => "post-race-run",
+    save: {
+      async flush() {},
+      async waitForRevision() {
+        revision += 1;
+        snapshot = { ...snapshot, revision };
+        return { revision };
+      },
+    },
+    tasks: {
+      async cancel() { return originalTask; },
+      async ensure() {
+        expect(admissionDepth).toBe(1);
+        currentPrompt = "edited during POST";
+        snapshot = {
+          ...snapshot,
+          nodes: snapshot.nodes.map((node) => node.id === "post-race-node"
+            ? { ...node, data: { ...node.data, textPrompt: currentPrompt } }
+            : node),
+        };
+        return {
+          generationOwnershipKey: originalTask.generationOwnershipKey!,
+          idempotencyKey: "post-race-intent",
+          recovered: false,
+          task: originalTask,
+        };
+      },
+      async reconcile() { return { outcome: "recovered", task: originalTask }; },
+      async recover() { return originalTask; },
+      async retry() { return originalTask; },
+      async watch() { return originalTask; },
+      async withSubmissionAdmission(_plan, work) {
+        admissionDepth += 1;
+        try { return await work(); } finally { admissionDepth -= 1; }
+      },
+    },
+  });
+  await expect(lifecycle.generate()).rejects.toThrow(/生成输入已修改/);
+  expect(admissionDepth).toBe(0);
+  expect(snapshot.nodes[0]?.data.textGenerationTaskId).toBeUndefined();
 });
 
 function modularImageToolCapability(
@@ -1021,7 +1272,12 @@ test("Canvas graph/save ports are independently replaceable and preserve write f
     snapshot: () => imageToolSnapshot,
   });
   const discarded: string[] = [];
+  let imageToolCommitCalls = 0;
   const derived = createDerivedImageToolUseCase({
+    async commit(command) {
+      imageToolCommitCalls += 1;
+      return imageToolGraph.apply(command);
+    },
     graph: imageToolGraph,
     media: {
       async discard(assetId) { discarded.push(assetId); },
@@ -1055,6 +1311,7 @@ test("Canvas graph/save ports are independently replaceable and preserve write f
   });
   expect(imageToolSnapshot.nodes).toHaveLength(2);
   expect(imageToolSnapshot.edges).toHaveLength(1);
+  expect(imageToolCommitCalls).toBe(1);
   expect(imageToolSnapshot.nodes[1]?.data).toMatchObject({
     imageAssetOrigin: "image-tool",
     imageHasTransparency: false,
@@ -1062,6 +1319,27 @@ test("Canvas graph/save ports are independently replaceable and preserve write f
     imageToolOperationId: "operation-1",
     imageToolSourceAssetId: "source-asset",
   });
+  expect(imageToolSnapshot.nodes[0]?.data).toMatchObject({
+    imageToolGraphOperationId: "operation-1",
+    imageToolGraphOperationRevision: 4,
+    imageToolGraphOwnershipKey: "owner-1",
+    imageToolGraphRunId: "run-1",
+    imageToolGraphSourceAssetId: "source-asset",
+  });
+  expect(imageToolGraph.apply({
+    fence: {
+      expectedRevision: 4,
+      kind: "image",
+      nodeId: "source-node",
+      operationId: "operation-same-revision",
+      ownershipKey: "owner-2",
+      runId: "run-2",
+      sourceAssetId: "source-asset",
+    },
+    scope: "image-tool",
+    update: (snapshot) => snapshot,
+  })).toEqual({ reason: "fence-rejected", status: "rejected" });
+  expect(imageToolSnapshot.nodes).toHaveLength(2);
   expect(discarded).toEqual([]);
   await expect(derived.execute({
     expectedRevision: 5,
@@ -1073,7 +1351,10 @@ test("Canvas graph/save ports are independently replaceable and preserve write f
     sourceNodeId: "source-node",
     title: "Crop",
   })).rejects.toThrow(/版本已发生变化/);
+  expect(imageToolCommitCalls).toBe(2);
   expect(discarded).toEqual(["derived-0"]);
+
+  imageToolSnapshot = { ...imageToolSnapshot, revision: 5 };
 
   let batchSequence = 0;
   const batchDiscarded: string[] = [];
@@ -1109,7 +1390,7 @@ test("Canvas graph/save ports are independently replaceable and preserve write f
     })
   );
   await expect(batch.execute({
-    expectedRevision: 4,
+    expectedRevision: 5,
     files: splitFiles,
     grid: 2,
     operationId: "operation-split-1",
@@ -1137,14 +1418,15 @@ test("Canvas graph/save ports are independently replaceable and preserve write f
   );
   expect(batchDiscarded).toEqual([]);
 
-  for (const grid of [3, 4] as const) {
+  for (const [offset, grid] of ([3, 4] as const).entries()) {
+    imageToolSnapshot = { ...imageToolSnapshot, revision: 6 + offset };
     const files = Array.from({ length: grid ** 2 }, (_, index) =>
       new File([Uint8Array.from([index])], `split-${grid}-${index}.png`, {
         type: "image/png",
       })
     );
     await expect(batch.execute({
-      expectedRevision: 4,
+      expectedRevision: 6 + offset,
       files,
       grid,
       operationId: `operation-split-${grid}`,
@@ -2638,8 +2920,12 @@ test("single-node lifecycle replaces React with fenced graph save and task ports
     canvasId: "canvas-1",
     costCurrency: "CNY",
     createdAt: "2026-08-22T00:00:00.000Z",
+    generationIdentityVersion: 2,
     generationInputKey: "input-1",
     generationOwnershipKey: "owner-1",
+    modelConfigurationRevision: "config-revision-1",
+    modelInputContractFingerprint: "mic2:test-contract",
+    modelReleaseRevision: "00000000-0000-4000-8000-000000000100",
     id: "task-1",
     kind: "text",
     nodeId: "text-1",
@@ -2651,8 +2937,10 @@ test("single-node lifecycle replaces React with fenced graph save and task ports
   let ensureCalls = 0;
   let preparedCalls = 0;
   let preparedBeforeEnsure = false;
+  let submissionAdmissionDepth = 0;
   let retryCalls = 0;
   let retryRevisionWaits = 0;
+  const graphApplyAdmissionDepths: number[] = [];
   let reconcileOutcome: "ambiguous" | "outcome-unknown" | "recovered" = "recovered";
   let watchCalls = 0;
   const tasks: SingleNodeGenerationTaskPort = {
@@ -2661,6 +2949,7 @@ test("single-node lifecycle replaces React with fenced graph save and task ports
     },
     async ensure(_plan, context) {
       ensureCalls += 1;
+      expect(submissionAdmissionDepth).toBe(1);
       context.assertCurrent();
       preparedBeforeEnsure = context.canvasRevision === 1 &&
         snapshot.nodes[0]?.data.textModelId === "text-model-1";
@@ -2699,7 +2988,17 @@ test("single-node lifecycle replaces React with fenced graph save and task ports
     },
     async watch() {
       watchCalls += 1;
+      expect(submissionAdmissionDepth).toBe(0);
       return task("success");
+    },
+    async withSubmissionAdmission(_plan, work) {
+      expect(submissionAdmissionDepth).toBe(0);
+      submissionAdmissionDepth += 1;
+      try {
+        return await work();
+      } finally {
+        submissionAdmissionDepth -= 1;
+      }
     },
   };
   const lifecycle = createSingleNodeGenerationLifecycle({
@@ -2712,6 +3011,7 @@ test("single-node lifecycle replaces React with fenced graph save and task ports
         };
       },
       applyBinding(node, boundTask, plan) {
+        graphApplyAdmissionDepths.push(submissionAdmissionDepth);
         return {
           ...node,
           data: {
@@ -2724,6 +3024,7 @@ test("single-node lifecycle replaces React with fenced graph save and task ports
         };
       },
       applyTerminal(node, finalTask) {
+        graphApplyAdmissionDepths.push(submissionAdmissionDepth);
         return {
           ...node,
           data: {
@@ -2739,8 +3040,11 @@ test("single-node lifecycle replaces React with fenced graph save and task ports
       kind: "text",
       readPlan() {
         return {
+          contractFingerprint: "mic2:test-contract",
           inputKey: "input-1",
           kind: "text",
+          modelConfigurationRevision: "config-revision-1",
+          modelReleaseRevision: "00000000-0000-4000-8000-000000000100",
           nodeId: "text-1",
           ownershipKey: "owner-1",
           payload: { prompt: "draw a moon" },
@@ -2773,6 +3077,18 @@ test("single-node lifecycle replaces React with fenced graph save and task ports
     textGenerationTaskId: "task-1",
   });
 
+  tasks.recover = async () => ({
+    ...task("success"),
+    modelReleaseRevision: "00000000-0000-4000-8000-000000000101",
+    resultText: "wrong revision result",
+  });
+  await expect(lifecycle.recover()).resolves.toEqual({
+    reason: "stale",
+    status: "stale",
+  });
+  expect(snapshot.nodes[0]?.data.content).toBe("moon result");
+  tasks.recover = async () => task("running");
+
   tasks.watch = async () => {
     watchCalls += 1;
     snapshot = {
@@ -2792,11 +3108,11 @@ test("single-node lifecycle replaces React with fenced graph save and task ports
   });
   expect(snapshot.nodes[0]?.data.content).toBe("moon result");
   expect({ flushes, preparedCalls, retryCalls, retryRevisionWaits, revisionWaits, watchCalls }).toEqual({
-    flushes: 3,
+    flushes: 4,
     preparedCalls: 1,
     retryCalls: 1,
     retryRevisionWaits: 1,
-    revisionWaits: 4,
+    revisionWaits: 5,
     watchCalls: 2,
   });
 
@@ -2819,11 +3135,11 @@ test("single-node lifecycle replaces React with fenced graph save and task ports
     task: { id: "task-1", resultText: "moon result" },
   });
   expect({ flushes, preparedCalls, retryCalls, retryRevisionWaits, revisionWaits, watchCalls }).toEqual({
-    flushes: 4,
+    flushes: 6,
     preparedCalls: 1,
     retryCalls: 2,
     retryRevisionWaits: 2,
-    revisionWaits: 7,
+    revisionWaits: 8,
     watchCalls: 3,
   });
 
@@ -2834,7 +3150,7 @@ test("single-node lifecycle replaces React with fenced graph save and task ports
     task: { id: "task-1" },
   });
   expect(snapshot.nodes[0]?.data.content).toBe("moon result");
-  expect({ flushes, revisionWaits }).toEqual({ flushes: 4, revisionWaits: 8 });
+  expect({ flushes, revisionWaits }).toEqual({ flushes: 6, revisionWaits: 9 });
 
   reconcileOutcome = "outcome-unknown";
   await expect(lifecycle.reconcile({ id: "task-1" })).resolves.toMatchObject({
@@ -2851,7 +3167,8 @@ test("single-node lifecycle replaces React with fenced graph save and task ports
     textGenerating: false,
     textGenerationErrorCode: undefined,
   });
-  expect({ flushes, revisionWaits }).toEqual({ flushes: 4, revisionWaits: 9 });
+  expect({ flushes, revisionWaits }).toEqual({ flushes: 6, revisionWaits: 10 });
+  expect(graphApplyAdmissionDepths.every((depth) => depth === 1)).toBe(true);
 
   const imageToolGeneration = createGenerationImageToolUseCase({
     lifecycle: {

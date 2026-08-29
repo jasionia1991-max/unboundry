@@ -23,7 +23,7 @@ import {
   publicTemplateCard,
   validTemplateGraph,
 } from "../server/templateCatalog";
-import { defaultParameterSchema } from "../types/modelParameters";
+import { knownModelParameterSchema } from "../types/modelParameters";
 
 const port = Number(process.env.UNBOUNDRY_TEST_AUX_PORT);
 const origin = `http://127.0.0.1:${port}`;
@@ -144,7 +144,10 @@ test("template graph contract rejects self-parented groups and missing top-level
   expect(validTemplateGraph(duplicateNode)).toBe(false);
 });
 
-function pinnedImageGenerationGraph(modelId?: string) {
+function pinnedImageGenerationGraph(
+  modelId?: string,
+  imageParameters: Record<string, unknown> = {},
+) {
   return {
     edges: [{
       data: { inputOrder: 1, inputRole: "reference-image" },
@@ -173,7 +176,7 @@ function pinnedImageGenerationGraph(modelId?: string) {
     }, {
       data: {
         imageModelId: modelId,
-        imageParameters: {},
+        imageParameters,
         imagePrompt: "生成商品主图",
         imagePromptReady: true,
         label: "Image",
@@ -193,7 +196,6 @@ function pinnedImageGenerationGraph(modelId?: string) {
 function seedPublishedImageModel(
   store: ReturnType<typeof openAppDatabase>,
   modelId: string,
-  maxReferenceImages: number,
 ) {
   const now = timestamp();
   const providerId = `${modelId}-provider`;
@@ -203,8 +205,11 @@ function seedPublishedImageModel(
       provider_configuration_version
     ) VALUES (?, '模板兼容测试平台', 'multi-protocol-relay', 'enabled', ?, ?, 1)
   `).run(providerId, now, now);
-  const schema = defaultParameterSchema("image");
-  schema.referenceInputs.image = maxReferenceImages;
+  const schema = knownModelParameterSchema({
+    capability: "image",
+    providerDriver: "multi-protocol-relay",
+    providerModelId: "gpt-image-2",
+  });
   store.prepare(`
     INSERT INTO model_profiles (
       id, display_name, provider_profile_id, provider_model_id,
@@ -502,7 +507,7 @@ test("public template publication pins a compatible model before becoming visibl
         )
       `).run(now, now);
       const modelId = "template-compatible-image";
-      const schema = seedPublishedImageModel(store, modelId, 0);
+      seedPublishedImageModel(store, modelId);
       const draft = savePublicTemplate(store, "compat-admin", {
         graph: pinnedImageGenerationGraph(),
         title: "待绑定模型模板",
@@ -522,19 +527,14 @@ test("public template publication pins a compatible model before becoming visibl
         "compat-admin",
         draft.id,
         {
-          graph: pinnedImageGenerationGraph(modelId),
+          graph: pinnedImageGenerationGraph(modelId, { quality: "ultra" }),
           status: "published",
         },
-      )).toThrow("当前模型不支持image类型上游");
+      )).toThrow("节点参数与推荐模型");
       expect(store.prepare(`
         SELECT status FROM public_templates WHERE id = ?
       `).get(draft.id)).toEqual({ status: "draft" });
 
-      schema.referenceInputs.image = 1;
-      store.prepare(`
-        UPDATE model_profiles SET default_parameters = ?, updated_at = ?
-        WHERE id = ?
-      `).run(JSON.stringify(schema), new Date(Date.now() + 1).toISOString(), modelId);
       const published = updatePublicTemplate(
         store,
         "compat-admin",

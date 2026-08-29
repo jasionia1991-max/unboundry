@@ -16,6 +16,8 @@ import { parseTemplateGraph } from "./templateCatalog";
 import { publishedModelReleaseSeeds } from "./modelCatalog";
 import { publishedTemplateModelContracts } from "./modelCatalog";
 import { modelReleaseDocumentForId } from "./modelReleaseDefaults";
+import { assertRegisteredModelExecutionTotality } from
+  "./modelExecutionRegistry";
 import {
   markModelContractsRequired,
   modelContractState,
@@ -101,11 +103,6 @@ export function bootstrapPublishedModelContracts(
   const published = [];
   const skipped = [];
   for (const row of rows) {
-    const state = modelContractState(store, row.id);
-    if (state.history.length) {
-      skipped.push(row.id);
-      continue;
-    }
     const document = modelReleaseDocumentForId({
       capability: row.capability,
       capabilitySchema: schema(row),
@@ -115,6 +112,21 @@ export function bootstrapPublishedModelContracts(
       providerProfileId: row.provider_profile_id,
       providerProtocol: row.provider_protocol,
     });
+    assertRegisteredModelExecutionTotality({
+      capability: row.capability,
+      capabilitySchema: document.capabilitySchema,
+      providerDriver: row.provider_driver,
+      providerModelId: row.provider_model_id,
+      providerProtocol: row.provider_protocol,
+    });
+    const state = modelContractState(store, row.id);
+    if (state.history.length) {
+      // Existing immutable history does not exempt the currently published
+      // catalog row from the same executable-totality gate as a first
+      // bootstrap. This is validation-only: historical revisions stay intact.
+      skipped.push(row.id);
+      continue;
+    }
     const draft = saveModelContractDraft(
       store,
       actorUserId,
@@ -155,6 +167,13 @@ export function bootstrapPublishedModelContracts(
     ) {
       throw new Error(`模型 ${row.id} 没有可激活的精确发布快照`);
     }
+    assertRegisteredModelExecutionTotality({
+      capability: row.capability,
+      capabilitySchema: active.document.capabilitySchema,
+      providerDriver: row.provider_driver,
+      providerModelId: row.provider_model_id,
+      providerProtocol: row.provider_protocol,
+    });
   }
   const markedRequired = markModelContractsRequired(store, actorUserId, {
     modelIds,

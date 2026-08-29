@@ -163,7 +163,10 @@ function validateFrozenDocument(document: ModelReleaseDocument) {
   if (
     !["blocked", "declarative", "specialized-code"].includes(document.runtime) ||
     !["EXACT", "GENERIC_GUESS", "SPECIALIZED", "UNKNOWN"].includes(document.evidence) ||
-    !/^[a-z0-9._:-]{1,160}$/i.test(document.providerModelId) ||
+    !/^[a-z0-9._:-]{1,120}(?:\/[a-z0-9._:-]{1,120})?$/i.test(
+      document.providerModelId,
+    ) ||
+    document.providerModelId.length > 160 ||
     !/^[a-z0-9-]{3,120}$/i.test(document.providerProfileId) ||
     !Number.isSafeInteger(document.connectorVersion) ||
     document.connectorVersion < 1 ||

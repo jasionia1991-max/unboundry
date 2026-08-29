@@ -122,6 +122,51 @@ test("Seedance Mini create request uses the selected supported parameters", asyn
   });
 });
 
+test("Seedance Mini serializes one ordered first and last frame without changing their roles", async () => {
+  let request: RequestInit | undefined;
+  await createVolcengineArkVideoTask(
+    profile,
+    {
+      inputs: [
+        {
+          kind: "image",
+          order: 1,
+          role: "first-frame",
+          reference: { kind: "public-url", value: "https://signed.example.test/first.png" },
+        },
+        {
+          kind: "image",
+          order: 2,
+          role: "last-frame",
+          reference: { kind: "public-url", value: "https://signed.example.test/last.png" },
+        },
+      ],
+      model: "doubao-seedance-2-0-mini-260615",
+      prompt: "从第一帧自然过渡到最后一帧",
+    },
+    async (_input, init) => {
+      request = init;
+      return new Response(JSON.stringify({ id: "cgt-first-last-001" }), {
+        headers: { "Content-Type": "application/json" },
+        status: 200,
+      });
+    },
+  );
+  expect(JSON.parse(String(request?.body)).content).toEqual([
+    { text: "从第一帧自然过渡到最后一帧", type: "text" },
+    {
+      image_url: { url: "https://signed.example.test/first.png" },
+      role: "first_frame",
+      type: "image_url",
+    },
+    {
+      image_url: { url: "https://signed.example.test/last.png" },
+      role: "last_frame",
+      type: "image_url",
+    },
+  ]);
+});
+
 test("Seedance Mini serializes ordered multimodal inputs after text without persisting adapter URLs", async () => {
   let request: RequestInit | undefined;
   const created = await createVolcengineArkVideoTask(

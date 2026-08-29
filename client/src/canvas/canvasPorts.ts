@@ -48,6 +48,10 @@ export type CanvasGraphCommandResult = Readonly<{
   status: "applied" | "rejected";
 }>;
 
+export type CanvasGraphCommandCommit = (
+  command: CanvasGraphCommand,
+) => Promise<CanvasGraphCommandResult>;
+
 /** React state, in-memory graphs and future persistence adapters implement this. */
 export interface CanvasGraphCommandPort {
   apply(command: CanvasGraphCommand): CanvasGraphCommandResult;
@@ -100,8 +104,31 @@ function imageToolFenceMatches(
   ) return false;
   const node = snapshot.nodes.find((candidate) => candidate.id === fence.nodeId);
   return Boolean(
-    node && node.type === "image" && node.data.assetId === fence.sourceAssetId,
+    node && node.type === "image" && node.data.assetId === fence.sourceAssetId &&
+      node.data.imageToolGraphOperationRevision !== fence.expectedRevision,
   );
+}
+
+function attachImageToolGraphReceipt(
+  snapshot: CanvasGraphSnapshot,
+  fence: CanvasImageToolWriteFence,
+): CanvasGraphSnapshot {
+  return {
+    ...snapshot,
+    nodes: snapshot.nodes.map((node) => node.id === fence.nodeId
+      ? {
+          ...node,
+          data: {
+            ...node.data,
+            imageToolGraphOperationId: fence.operationId,
+            imageToolGraphOperationRevision: fence.expectedRevision,
+            imageToolGraphOwnershipKey: fence.ownershipKey,
+            imageToolGraphRunId: fence.runId,
+            imageToolGraphSourceAssetId: fence.sourceAssetId,
+          },
+        }
+      : node),
+  };
 }
 
 function commandFenceMatches(
@@ -142,7 +169,10 @@ export function createCanvasGraphCommandPort(input: {
       if (!commandFenceMatches(current, command)) {
         return { reason: "fence-rejected", status: "rejected" };
       }
-      const next = command.update(current);
+      const updated = command.update(current);
+      const next = command.scope === "image-tool"
+        ? attachImageToolGraphReceipt(updated, command.fence)
+        : updated;
       if (!input.persistenceReady() || !commandFenceMatches(current, command)) {
         return { reason: "persistence-unavailable", status: "rejected" };
       }

@@ -1,5 +1,4 @@
-import type { ModelParameterValue } from "../../../types/modelParameters";
-import type { ResolvedNodeInput } from "../../../types/nodeInputs";
+export { generationInputKey } from "../../../types/generationIdentity";
 import type { GenerationTaskSummary } from "./generationTasks";
 import {
   friendlyGenerationMessage,
@@ -8,48 +7,6 @@ import {
 
 export const RETRY_OUTCOME_UNKNOWN_MESSAGE =
   "上次结果仍在自动找回中；为避免重复扣费，当前不能重新生成";
-
-function stableValue(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(stableValue);
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .filter(([, item]) => item !== undefined)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, item]) => [key, stableValue(item)]),
-    );
-  }
-  return value;
-}
-
-/**
- * The retry binding deliberately excludes canvasRevision. Autosave changes the
- * revision, but only a real Provider input change may detach an old task.
- */
-export function generationInputKey(input: {
-  inputs: readonly ResolvedNodeInput[];
-  modelId?: string;
-  ownPrompt?: string;
-  parameters: Record<string, ModelParameterValue>;
-  prompt: string;
-}) {
-  return JSON.stringify(stableValue({
-    inputs: input.inputs.map((item) => ({
-      assetId: item.assetId,
-      edgeId: item.edgeId,
-      kind: item.kind,
-      order: item.order,
-      role: item.role,
-      sourceNodeId: item.sourceNodeId,
-      state: item.state,
-      text: item.text,
-    })),
-    modelId: input.modelId,
-    ownPrompt: input.ownPrompt?.trim() ?? "",
-    parameters: input.parameters,
-    prompt: input.prompt.trim(),
-  }));
-}
 
 export function generationRetryBlockReason(
   task: Pick<

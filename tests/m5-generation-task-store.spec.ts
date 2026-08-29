@@ -9,6 +9,9 @@ import {
   applyPendingSchemaMigrationsInTransaction,
   openAppDatabase,
 } from "../server/database";
+import { bootstrapPublishedModelContracts } from
+  "../server/modelReleaseBootstrap";
+import { modelContractState } from "../server/modelReleaseRevisionStore";
 import {
   createGenerationTaskStore,
   failRecoveredGenerationTasks,
@@ -22,7 +25,10 @@ import {
   type GenerationTask,
 } from "../server/generationTaskStore";
 import { saveProviderProfile } from "../server/providerProfiles";
+import { openRouterImagePostBoundaryRecovery } from "../server/generationTasks";
+import { OpenRouterImageError } from "../server/openRouterImageProvider";
 import { knownModelParameterSchema } from "../types/modelParameters";
+import type { ModelReleaseRevision } from "../types/modelReleaseRevisions";
 
 type AdmissionChildOutcome = {
   created?: boolean;
@@ -31,6 +37,57 @@ type AdmissionChildOutcome = {
   message?: string;
   taskId?: string;
 };
+
+let atomicModelReleaseRevision: ModelReleaseRevision | undefined;
+
+test("native GPT Image post-boundary uncertainty enters durable recovery", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-gpt-image-unknown-"));
+  const store = createGenerationTaskStore(dataDirectory);
+  try {
+    for (const code of ["CANCELLED", "FORMAT", "NETWORK", "TIMEOUT"] as const) {
+      const created = store.create({
+        canvasId: `gpt-image-post-boundary-${code.toLowerCase()}`,
+        idempotencyKey: `gpt-image-post-boundary-${code.toLowerCase()}`,
+        kind: "image",
+        nodeId: `gpt-image-${code.toLowerCase()}`,
+        ownerId: "__test__",
+        prompt: `${code} after provider boundary`,
+        providerModelId: "openai/gpt-image-2",
+        providerProfileId: `gpt-image-post-boundary-${code.toLowerCase()}`,
+      }).task;
+      const running = store.transition(created.id, "running")!;
+      store.recordProviderAttempt(created.id);
+      const providerAttempt = store.getProviderAttemptForTask(created.id)!;
+      const decision = openRouterImagePostBoundaryRecovery({
+        error: new OpenRouterImageError(code, code),
+        latest: running,
+        providerAttempt,
+      });
+      expect(decision).toBeDefined();
+      store.transition(created.id, "failed", decision!.failure);
+      store.transition(created.id, "recovering", decision!.recovery);
+      expect(store.get(created.id)).toMatchObject({
+        attempt: 1,
+        errorCode: "AUTOMATIC_RESULT_RECOVERY",
+        state: "recovering",
+      });
+      expect(store.getProviderAttemptForTask(created.id)).toMatchObject({
+        executionAttempt: 1,
+        failureCode: "OUTCOME_UNKNOWN_BILLING_RISK",
+        outcome: "outcome-unknown",
+      });
+      expect(store.hasUnsafeProviderAttemptForNewPaidRetry(created.id)).toBe(true);
+    }
+    expect(openRouterImagePostBoundaryRecovery({
+      error: new OpenRouterImageError("AUTH", "definitive"),
+      latest: { attempt: 1, state: "running" },
+      providerAttempt: { executionAttempt: 1, outcome: "boundary-claimed" },
+    })).toBeUndefined();
+  } finally {
+    store.close();
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
 
 const atomicAdmissionChildBootstrap = `
   import { access } from "node:fs/promises";
@@ -216,9 +273,19 @@ function seedAtomicGenerationFixture(
       max_cost_microunits, cost_currency
     ) VALUES (
       ?, 'Atomic Image', ?, 'openai/gpt-image-2', 'image', 'published',
-      '{}', ?, ?, 1000000, 'USD'
+      ?, ?, ?, 1000000, 'USD'
     )
-  `).run(modelId, profileId, timestamp, timestamp);
+  `).run(
+    modelId,
+    profileId,
+    JSON.stringify(knownModelParameterSchema({
+      capability: "image",
+      providerDriver: "openrouter",
+      providerModelId: "openai/gpt-image-2",
+    })),
+    timestamp,
+    timestamp,
+  );
   database.prepare(`
     INSERT INTO node_model_bindings (
       node_type, model_id, enabled, is_default, sort_order,
@@ -251,6 +318,11 @@ function seedAtomicGenerationFixture(
       updated_at = ?
     WHERE id = 1
   `).run(timestamp);
+  bootstrapPublishedModelContracts(database, owners[0]);
+  atomicModelReleaseRevision = modelContractState(database, modelId).active;
+  if (!atomicModelReleaseRevision) {
+    throw new Error("atomic fixture model release was not published");
+  }
   return { modelId, profileId, timestamp };
 }
 
@@ -275,11 +347,8 @@ function atomicImageRequest(input: {
     modelConfiguration: input.modelConfiguration ?? {
       credentialVersion: credentialRevision,
       modelId: "atomic-image-model",
-      parameterSchema: knownModelParameterSchema({
-        capability: "image",
-        providerDriver: "openrouter",
-        providerModelId: "openai/gpt-image-2",
-      }),
+      modelReleaseRevision: atomicModelReleaseRevision,
+      parameterSchema: atomicModelReleaseRevision?.document.capabilitySchema,
       providerConfigurationVersion: 1,
       providerDriver: "openrouter",
       providerModelId: "openai/gpt-image-2",
@@ -307,14 +376,18 @@ function seedGenerationRetryBinding(
   dataDirectory: string,
   task: Pick<
     GenerationTask,
-    "attempt" | "canvasId" | "id" | "kind" | "nodeId" | "ownerId" | "updatedAt"
+    "attempt" | "canvasId" | "id" | "kind" | "modelConfiguration" |
+      "nodeId" | "ownerId" | "updatedAt"
   >,
   generationInputKey: string,
   expectedCanvasRevision = 1,
-  generationOwnershipKey?: string,
+  generationOwnershipKey = "fixture-retry-ownership",
   workflowExecutionRunId?: string,
 ) {
   const database = openAppDatabase(dataDirectory);
+  const modelConfigurationRevision = "fixture-config-revision";
+  const modelInputContractFingerprint = "mic2:fixture-retry-contract";
+  const modelReleaseRevision = "00000000-0000-4000-8000-000000000005";
   try {
     const ownerId = task.ownerId ?? "__test__";
     database.prepare(`
@@ -348,6 +421,22 @@ function seedGenerationRetryBinding(
       }]),
       task.updatedAt,
     );
+    database.prepare(`
+      UPDATE generation_tasks
+      SET model_configuration = ?
+      WHERE id = ?
+    `).run(JSON.stringify({
+      ...task.modelConfiguration,
+      fixtureScopeId: "",
+      generationIdentityVersion: 2,
+      generationInputKey,
+      generationOwnershipKey,
+      modelConfigurationRevision,
+      modelInputContractFingerprint,
+      modelReleaseRevision: {
+        revisionId: modelReleaseRevision,
+      },
+    }), task.id);
   } finally {
     database.close();
   }
@@ -355,7 +444,12 @@ function seedGenerationRetryBinding(
     canvasId: task.canvasId,
     expectedAttempt: task.attempt,
     expectedCanvasRevision,
+    expectedFixtureScopeId: "",
     expectedGenerationInputKey: generationInputKey,
+    expectedGenerationOwnershipKey: generationOwnershipKey,
+    expectedModelConfigurationRevision: modelConfigurationRevision,
+    expectedModelInputContractFingerprint: modelInputContractFingerprint,
+    expectedModelReleaseRevision: modelReleaseRevision,
     expectedUpdatedAt: task.updatedAt,
     kind: task.kind,
     nodeId: task.nodeId,
@@ -842,6 +936,7 @@ test("explicit abandon preserves accepted paid evidence and cannot create a retr
         data: {
           acknowledgeRemoteResultMayBeLost: true,
           expectedAttempt: failed.attempt,
+          expectedFixtureScopeId: "",
           expectedUpdatedAt: "2020-01-01T00:00:00.000Z",
         },
       },
@@ -857,6 +952,7 @@ test("explicit abandon preserves accepted paid evidence and cannot create a retr
         data: {
           acknowledgeRemoteResultMayBeLost: true,
           expectedAttempt: failed.attempt,
+          expectedFixtureScopeId: "",
           expectedUpdatedAt: failed.updatedAt,
         },
       },
@@ -979,6 +1075,7 @@ test("explicit abandon also releases a failed synchronous result without a remot
         data: {
           acknowledgeRemoteResultMayBeLost: true,
           expectedAttempt: failed.attempt,
+          expectedFixtureScopeId: "",
           expectedUpdatedAt: failed.updatedAt,
         },
       },
@@ -1976,6 +2073,7 @@ test("empty Provider search preserves billing risk while authoritative refund un
       canvasId: "provider-certainty",
       idempotencyKey: "provider-certainty-unknown-0001",
       kind: "video",
+      modelConfiguration: { fixtureScopeId: "scope-a" },
       nodeId: "provider-certainty-unknown",
       ownerId: "__test__",
       prompt: "lost response",
@@ -1988,7 +2086,13 @@ test("empty Provider search preserves billing risk while authoritative refund un
       code: "PROVIDER_REQUEST_FAILED",
       message: "response lost",
     })!;
+    expect(() => store.markOutcomeUnknownBillingRisk({
+      expectedFixtureScopeId: "scope-b",
+      expectedUpdatedAt: failed.updatedAt,
+      taskId: failed.id,
+    })).toThrow("Generation task changed concurrently");
     const marked = store.markOutcomeUnknownBillingRisk({
+      expectedFixtureScopeId: "scope-a",
       expectedUpdatedAt: failed.updatedAt,
       taskId: failed.id,
     });
@@ -2296,6 +2400,34 @@ test("the same input cannot open a second paid task while the last outcome is un
   }
 });
 
+test("the same input cannot mint a sibling key while the first task is queued before Provider attempt", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-queued-same-input-"));
+  const seed = openAppDatabase(dataDirectory);
+  seedAtomicGenerationFixture(seed, ["atomic-owner-a"]);
+  seed.close();
+  const store = createGenerationTaskStore(dataDirectory);
+  try {
+    const first = store.admitOrGet(atomicImageRequest({
+      idempotencyKey: "same-input-queued-0001",
+    }));
+    expect(first).toMatchObject({ created: true, task: { state: "queued" } });
+    expect(store.getProviderAttemptForTask(first.task.id)).toBeUndefined();
+    expect(() => store.admitOrGet(atomicImageRequest({
+      idempotencyKey: "same-input-queued-0002",
+    }))).toThrow(GenerationProviderAttemptBlockedError);
+    try {
+      store.admitOrGet(atomicImageRequest({
+        idempotencyKey: "same-input-queued-0002",
+      }));
+    } catch (error) {
+      expect(error).toMatchObject({ code: "RETRY_OUTCOME_UNKNOWN" });
+    }
+  } finally {
+    store.close();
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
 test("the same input cannot open a new task after a sibling already holds accepted or response-received evidence", async () => {
   const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-sibling-paid-"));
   const seed = openAppDatabase(dataDirectory);
@@ -2446,6 +2578,10 @@ test("generation submission stays disabled until a real Provider is configured",
     imageProviderConfigured: false,
     imageSubmissionEnabled: false,
     historicalEstimatedProviderAttempts: 0,
+    incGen017FeatureFlags: {
+      modelInputContractV2: true,
+      workflowSelfHealingV2: true,
+    },
     paidProviderRequests: expect.any(Number),
     persistentQueueReady: true,
     protectionReady: true,
@@ -2542,9 +2678,19 @@ test("an initial admission committed before response failure returns 5xx and rem
         max_cost_microunits, cost_currency, provider_protocol
       ) VALUES (
         ?, 'Post-commit image', ?, 'openai/gpt-image-2',
-        'image', 'published', '{}', ?, ?, 1000000, 'USD', 'native'
+        'image', 'published', ?, ?, ?, 1000000, 'USD', 'native'
       )
-    `).run(modelId, profile.id, timestamp, timestamp);
+    `).run(
+      modelId,
+      profile.id,
+      JSON.stringify(knownModelParameterSchema({
+        capability: "image",
+        providerDriver: "openrouter",
+        providerModelId: "openai/gpt-image-2",
+      })),
+      timestamp,
+      timestamp,
+    );
     database.prepare(`
       INSERT INTO node_model_bindings (
         node_type, model_id, enabled, is_default, sort_order,
@@ -2578,6 +2724,7 @@ test("an initial admission committed before response failure returns 5xx and rem
       SET key_status = 'valid', key_checked_at = ?
       WHERE account_id = '__test__' AND provider_profile_id = ?
     `).run(timestamp, profile.id);
+    bootstrapPublishedModelContracts(database, "__test__");
 
     const saved = await request.put(`/api/canvas/${canvasId}`, {
       data: {

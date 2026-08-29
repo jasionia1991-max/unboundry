@@ -225,6 +225,9 @@ function generationPostCount(page: Page) {
 
 const PANEL_RETRY_TASK_ID = "m86-panel-retry-task";
 const PANEL_RETRY_INPUT_KEY = "m86-panel-retry-input-key";
+const PANEL_RETRY_OWNERSHIP_KEY = "m86-panel-retry-ownership-key";
+const PANEL_RETRY_CONFIGURATION_REVISION =
+  "m86-panel-retry-configuration-revision";
 
 function panelRetryTask(canvasId: string) {
   return {
@@ -235,12 +238,17 @@ function panelRetryTask(canvasId: string) {
     createdAt: "2026-08-09T00:00:00.000Z",
     errorCode: "TEST_FAILURE",
     errorMessage: "离线门禁测试失败",
+    fixtureScopeId: "",
     id: PANEL_RETRY_TASK_ID,
     generationInputKey: PANEL_RETRY_INPUT_KEY,
+    generationOwnershipKey: PANEL_RETRY_OWNERSHIP_KEY,
     kind: "text",
     nodeId: "m86-panel-retry-node",
     prompt: "Panel retry gate",
     retryAllowed: true,
+    modelInputContractFingerprint: "mic2:m86-panel-retry",
+    modelConfigurationRevision: PANEL_RETRY_CONFIGURATION_REVISION,
+    modelReleaseRevision: "00000000-0000-4000-8000-000000000086",
     state: "failed",
     updatedAt: "2026-08-09T00:00:01.000Z",
   } as const;
@@ -847,7 +855,12 @@ test("GenerationTasksPanel surfaces a detached retry and emits no accepted wakeu
     canvasId: "default",
     expectedAttempt: 1,
     expectedCanvasRevision: 1,
+    expectedFixtureScopeId: "",
     expectedGenerationInputKey: PANEL_RETRY_INPUT_KEY,
+    expectedGenerationOwnershipKey: PANEL_RETRY_OWNERSHIP_KEY,
+    expectedModelConfigurationRevision: PANEL_RETRY_CONFIGURATION_REVISION,
+    expectedModelInputContractFingerprint: "mic2:m86-panel-retry",
+    expectedModelReleaseRevision: "00000000-0000-4000-8000-000000000086",
     expectedUpdatedAt: "2026-08-09T00:00:01.000Z",
     kind: "text",
     nodeId: "m86-panel-retry-node",
@@ -1765,7 +1778,9 @@ test("same-session SUPERSEDED binds only the known high-water fingerprint", asyn
       id: "text-primary",
     }),
   ]));
-  await expect(page.getByTestId("save-status")).toHaveText("保存中...");
+  // Sequence 2 is already confirmed by the same-session high-water GET, so the
+  // obsolete sequence-1 response no longer keeps the durable status pending.
+  await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
   releaseOldSave();
   await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
   expect(canvasGetCount).toBeGreaterThan(initialGetCount);

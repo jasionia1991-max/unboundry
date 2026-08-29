@@ -189,7 +189,10 @@ export async function generateOpenRouterImage(
       );
     }
     const body = await limitedJson(response);
-    const image = body.data?.[0];
+    if (!Array.isArray(body.data) || body.data.length !== 1) {
+      throw new OpenRouterImageError("FORMAT", "模型返回的图片数量无法核对");
+    }
+    const image = body.data[0];
     if (!image?.b64_json || (image.media_type && image.media_type !== "image/png")) {
       throw new OpenRouterImageError("FORMAT", "模型没有返回可用的PNG图片");
     }

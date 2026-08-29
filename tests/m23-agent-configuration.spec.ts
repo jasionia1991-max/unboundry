@@ -1,17 +1,33 @@
 import { expect, test } from "./safe-test";
-import { defaultParameterSchema } from "../types/modelParameters";
+import { knownModelParameterSchema } from "../types/modelParameters";
 
 test("Agent models, paused skills and suggestions come from the safe local configuration", async ({
   page,
   request,
 }) => {
+  const providerResponse = await request.post("/api/admin/providers", {
+    data: {
+      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      driver: "volcengine-ark",
+      label: "Agent Config Ark",
+    },
+  });
+  expect(providerResponse.status()).toBe(201);
+  const provider = await providerResponse.json() as { profile: { id: string } };
+  const parameterSchema = knownModelParameterSchema({
+    capability: "text",
+    providerDriver: "volcengine-ark",
+    providerModelId: "doubao-seed-2-0-lite-260428",
+  });
+  expect(parameterSchema).toBeTruthy();
   const createdResponse = await request.post("/api/admin/models", {
     data: {
       capability: "text",
       displayName: "Doubao Seed",
       isDefault: true,
-      parameterSchema: defaultParameterSchema("text"),
-      providerModelId: "test/doubao-seed-lite",
+      parameterSchema,
+      providerModelId: "doubao-seed-2-0-lite-260428",
+      providerProfileId: provider.profile.id,
       sortOrder: 1,
       status: "published",
     },

@@ -4,6 +4,11 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { expect, test } from "./safe-test";
+import { openAppDatabase } from "../server/database";
+import {
+  bootstrapPublishedModelContracts,
+  modelReleaseBootstrapActorUserId,
+} from "../server/modelReleaseBootstrap";
 import type {
   ModelParameterField,
   ModelParameterSchema,
@@ -99,6 +104,20 @@ test("only administrators manage models while users receive a safe published cat
     });
     expect(arkProviderResponse.status).toBe(201);
     const arkProvider = (await arkProviderResponse.json()).profile as { id: string };
+    const imageProviderResponse = await request("/api/admin/providers", {
+      body: JSON.stringify({
+        apiKey: "test-openrouter-key-12345",
+        baseUrl: "https://openrouter.ai/api/v1",
+        driver: "openrouter",
+        label: "Test OpenRouter",
+      }),
+      cookie: adminCookie,
+      method: "POST",
+    });
+    expect(imageProviderResponse.status).toBe(201);
+    const imageProvider = (await imageProviderResponse.json()).profile as {
+      id: string;
+    };
     const providerStatusBefore = await (
       await request("/api/generation-tasks/status", { cookie: adminCookie })
     ).json() as { paidProviderRequests: number };
@@ -171,11 +190,30 @@ test("only administrators manage models while users receive a safe published cat
       method: "PATCH",
     })).status).toBe(200);
 
+    // Drafts may be narrowed while they are being edited, but publication now
+    // requires the exact registered execution contract. Restore that contract
+    // before publishing; the direct database mutation below remains the legacy
+    // stored-schema recovery case this test is intended to exercise.
+    expect((await request(`/api/admin/models/${seedance.id}`, {
+      body: JSON.stringify({ parameterSchema: seedance.parameterSchema }),
+      cookie: adminCookie,
+      method: "PATCH",
+    })).status).toBe(200);
+
     expect((await request(`/api/admin/models/${seedance.id}`, {
       body: JSON.stringify({ status: "published" }),
       cookie: adminCookie,
       method: "PATCH",
     })).status).toBe(200);
+    const contractBootstrap = openAppDatabase(dataDirectory);
+    try {
+      bootstrapPublishedModelContracts(
+        contractBootstrap,
+        modelReleaseBootstrapActorUserId(contractBootstrap),
+      );
+    } finally {
+      contractBootstrap.close();
+    }
     const weakAssetId = "seedance-constraint-guard-image";
     const weakAsset = await readFile(resolve(
       process.cwd(),
@@ -240,6 +278,16 @@ test("only administrators manage models while users receive a safe published cat
       directDatabase.close();
     }
 
+    const invalidExistingHistoryBootstrap = openAppDatabase(dataDirectory);
+    try {
+      expect(() => bootstrapPublishedModelContracts(
+        invalidExistingHistoryBootstrap,
+        modelReleaseBootstrapActorUserId(invalidExistingHistoryBootstrap),
+      )).toThrow();
+    } finally {
+      invalidExistingHistoryBootstrap.close();
+    }
+
     const guardedCatalog = await (
       await request("/api/admin/models", { cookie: adminCookie })
     ).json() as { models: Array<{ id: string; parameterSchema: ModelParameterSchema }> };
@@ -266,12 +314,16 @@ test("only administrators manage models while users receive a safe published cat
     expect(guardedPreflight.status).toBe(200);
     const guardedPreflightBody = await guardedPreflight.json() as {
       canSubmit: boolean;
+      parameters: Record<string, unknown>;
       problems: Array<{ code: string }>;
       providerRequests: number;
+      snapshot: Array<{ role: string }>;
     };
-    expect(guardedPreflightBody.canSubmit).toBe(false);
-    expect(guardedPreflightBody.problems.map((problem) => problem.code))
-      .toContain("ROLE_UNSUPPORTED");
+    expect(guardedPreflightBody.canSubmit).toBe(true);
+    expect(guardedPreflightBody.problems).toEqual([]);
+    expect(guardedPreflightBody.parameters.inputMode).toBe("multimodal");
+    expect(guardedPreflightBody.snapshot.map((item) => item.role))
+      .toEqual(["reference-image"]);
     expect(guardedPreflightBody.providerRequests).toBe(0);
 
     const providerStatusAfter = await (
@@ -332,41 +384,8 @@ test("only administrators manage models while users receive a safe published cat
         capability: "image",
         displayName: "Private Image Model",
         isDefault: false,
-        parameterSchema: {
-          fields: [
-            {
-              defaultValue: "1:1",
-              key: "aspectRatio",
-              label: "比例",
-              options: [
-                { label: "自适应", value: "auto" },
-                { label: "1:1", value: "1:1" },
-              ],
-              type: "select",
-            },
-            {
-              defaultValue: "high",
-              key: "quality",
-              label: "画质",
-              options: [
-                { label: "自动", value: "auto" },
-                { label: "高", value: "high" },
-              ],
-              type: "select",
-            },
-            {
-              defaultValue: 1,
-              key: "outputCount",
-              label: "数量",
-              options: [{ label: "1×", value: 1 }],
-              type: "select",
-            },
-          ],
-          referenceInputs: { audio: 0, image: 2, video: 0 },
-          version: 1,
-        },
-        providerModelId: "internal/image-v1",
-        providerProfileId: arkProvider.id,
+        providerModelId: "openai/gpt-image-2",
+        providerProfileId: imageProvider.id,
         sortOrder: 20,
         status: "draft",
       }),
@@ -382,6 +401,28 @@ test("only administrators manage models while users receive a safe published cat
     expect(
       beforePublish.models.map((item: { displayName: string }) => item.displayName),
     ).not.toContain("Private Image Model");
+
+    const privateContract = await request(
+      `/api/admin/models/${model.id}/contract`,
+      { cookie: adminCookie },
+    );
+    expect(privateContract.status).toBe(200);
+    const { suggestedDocument: privateDocument } = await privateContract.json() as {
+      suggestedDocument: Record<string, unknown>;
+    };
+    expect((await request(`/api/admin/models/${model.id}/contract/draft`, {
+      body: JSON.stringify({
+        document: privateDocument,
+        expectedDraftVersion: 0,
+      }),
+      cookie: adminCookie,
+      method: "POST",
+    })).status).toBe(200);
+    expect((await request(`/api/admin/models/${model.id}/contract/publish`, {
+      body: JSON.stringify({ expectedDraftVersion: 1 }),
+      cookie: adminCookie,
+      method: "POST",
+    })).status).toBe(200);
 
     expect(
       (
@@ -427,20 +468,27 @@ test("only administrators manage models while users receive a safe published cat
     expect(published).toMatchObject({
       capability: "image",
       imageParameters: {
-        aspectRatios: ["auto", "1:1"],
-        maxReferenceImages: 2,
-        qualities: ["auto", "high"],
+        aspectRatios: ["auto", "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9"],
+        maxReferenceImages: 16,
+        qualities: ["auto", "low", "medium", "high"],
       },
       isDefault: true,
-      providerName: "Test Ark",
+      providerName: "Test OpenRouter",
       parameterSchema: {
-        referenceInputs: { audio: 0, image: 2, video: 0 },
+        referenceInputs: { audio: 0, image: 16, video: 0 },
         version: 2,
       },
     });
     expect(published).not.toHaveProperty("providerModelId");
     expect(published).not.toHaveProperty("baseUrl");
     expect(published).not.toHaveProperty("apiKey");
+    expect(published.configurationRevision).toMatch(/^[a-f0-9]{24}$/);
+    expect(published.releaseRevisionId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+    expect(published.releaseRevisionId).not.toBe(
+      published.configurationRevision,
+    );
     expect(publicBody).toMatchObject({ generationEnabled: false });
 
     expect(
@@ -516,7 +564,7 @@ test("administrator model center is visible and published models reach new node 
       capability: "image",
       displayName: "Image Test Model",
       isDefault: true,
-      providerModelId: "test/image-model",
+      providerModelId: "openai/gpt-image-2",
       providerProfileId: providerAlpha.id,
       sortOrder: 10,
       status: "published",
@@ -529,7 +577,7 @@ test("administrator model center is visible and published models reach new node 
       capability: "image",
       displayName: "Image Alternate Model",
       isDefault: false,
-      providerModelId: "test/image-alternate",
+      providerModelId: "openai/gpt-image-2",
       providerProfileId: providerBeta.id,
       sortOrder: 20,
       status: "published",
@@ -542,7 +590,7 @@ test("administrator model center is visible and published models reach new node 
       capability: "image",
       displayName: "Image Test Model",
       isDefault: false,
-      providerModelId: "test/image-model-beta",
+      providerModelId: "openai/gpt-image-2",
       providerProfileId: providerBeta.id,
       sortOrder: 30,
       status: "published",
@@ -643,7 +691,7 @@ test("administrator model center is visible and published models reach new node 
   ).toBeEnabled();
   await expect(
     parameterPanel.getByRole("button", { name: "高画质" }),
-  ).toBeDisabled();
+  ).toBeEnabled();
   await expect(
     parameterPanel.getByRole("button", { name: "1K画质" }),
   ).toBeDisabled();
@@ -1028,6 +1076,7 @@ test("all four node model types persist the shared upstream input contract witho
     }
 
     await editor.getByRole("button", { name: "保存参数设置" }).click();
+    await expect(editor).toHaveCount(0);
   }
 
   const stored = await (await page.request.get("/api/admin/models")).json() as {

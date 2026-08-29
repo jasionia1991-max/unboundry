@@ -5,10 +5,10 @@ import {
   submissionParameterValues,
 } from "../../../types/modelParameters";
 import {
-  defaultNodeInputRole,
   resolveNodeInputs,
   type NodeInputProblem,
 } from "../../../types/nodeInputs";
+import { generationOwnershipEvidence } from "../../../types/generationIdentity";
 import { NODE_DEFAULT_SIZES } from "../canvas/mediaGeometry";
 import { trustedMediaPatch } from "../canvas/mediaInputMetadata";
 import type { CanvasGraphSnapshot } from "../canvas/canvasPorts";
@@ -34,7 +34,10 @@ import {
   friendlyGenerationMessage,
   generationMessageFallback,
 } from "./friendlyGenerationMessage";
-import { groupRunResultKey } from "./groupRunCheckpoint";
+import {
+  groupRunResultKey,
+  taskMatchesAcceptedBinding,
+} from "./groupRunCheckpoint";
 import {
   groupResultProjectionApplicationId,
   groupResultSemanticRevision,
@@ -64,11 +67,14 @@ type ExecutionPlan = {
   currentOwnershipKey: string;
   effectiveOwnershipKey: string;
   inputKey: string;
+  inputContractFingerprint: string;
   inputs: ReturnType<typeof resolveNodeInputs>["inputs"];
   kind: WorkflowExecutorKind;
   model: PublishedModel;
+  modelConfigurationRevision: string;
   modelDisplayName: string;
   modelId: string;
+  modelReleaseRevision: string;
   modelPatch: Record<string, unknown>;
   node: ProbeNodeType;
   normalizedParameters: Record<string, ModelParameterValue>;
@@ -124,31 +130,6 @@ function supportedImageValue(values: string[], preferred?: string) {
   return values[0] ?? "auto";
 }
 
-function generationOwnershipUpstream(
-  kind: WorkflowExecutorKind,
-  inputs: ReturnType<typeof resolveNodeInputs>["inputs"],
-  edges: CanvasGraphSnapshot["edges"],
-) {
-  return inputs.map((input) => {
-    const edge = edges.find((candidate) => candidate.id === input.edgeId);
-    return {
-      assetId: input.kind === "text" ? undefined : input.assetId,
-      edgeId: input.edgeId,
-      metadataStatus: input.metadataStatus,
-      order: input.order,
-      ready: input.state === "ready",
-      role: typeof edge?.data?.inputRole === "string"
-        ? edge.data.inputRole
-        : defaultNodeInputRole(input.kind, kind),
-      source: input.sourceNodeId,
-      sourceKind: input.kind,
-      src: input.kind === "text" ? undefined : input.preview,
-      status: input.state,
-      text: input.kind === "text" ? input.text : undefined,
-    };
-  });
-}
-
 function createExecutionPlan(
   kind: WorkflowExecutorKind,
   nodeId: string,
@@ -186,6 +167,13 @@ function createExecutionPlan(
     };
   }
   const model = selection.model;
+  if (!model.configurationRevision || !model.releaseRevisionId) {
+    return {
+      errorCode: "MODEL_EXECUTION_CONTRACT_INVALID",
+      message: `${kindLabels[kind]}模型缺少已发布合同版本，未提交生成任务`,
+      status: "failed",
+    };
+  }
   const schema = model.parameterSchema ?? defaultParameterSchema(kind);
   const prompt = ownPrompt(node, kind);
   let normalized = normalizeParameterValues(
@@ -249,10 +237,11 @@ function createExecutionPlan(
       videoParameters: normalized,
     };
   }
-  const submission = submissionParameterValues(schema, normalized);
+  let submission = submissionParameterValues(schema, normalized);
   const inputPreflight = resolveNodeInputs({
     edges,
     mediaInputPolicy: kind === "video" ? model.mediaInputPolicy : undefined,
+    modelReleaseRevision: model.releaseRevisionId,
     modelSchema: inputSchema,
     nodes,
     ownPrompt: prompt,
@@ -260,43 +249,105 @@ function createExecutionPlan(
     targetId: nodeId,
     targetKind: kind,
   });
+  if (!inputPreflight.contractFingerprint) {
+    return {
+      errorCode: "MODEL_EXECUTION_CONTRACT_INVALID",
+      message: `${kindLabels[kind]}模型输入合同无法生成稳定指纹，未提交生成任务`,
+      status: "failed",
+    };
+  }
+  normalized = normalizeParameterValues(
+    schema,
+    inputPreflight.normalizedParameters ?? normalized,
+  );
+  submission = submissionParameterValues(schema, normalized);
+  if (kind === "image") {
+    modelPatch = {
+      imageAspectRatio: normalized.aspectRatio,
+      imageModelConfigurationRevision: model.configurationRevision,
+      imageModelId: selection.selectedId,
+      imageModelName: selection.displayName,
+      imageParameters: normalized,
+      imageQuality: normalized.quality,
+    };
+  } else if (kind === "text") {
+    modelPatch = {
+      textModelConfigurationRevision: model.configurationRevision,
+      textModelId: selection.selectedId,
+      textModelName: selection.displayName,
+      textParameters: normalized,
+    };
+  } else if (kind === "audio") {
+    modelPatch = {
+      audioModelConfigurationRevision: model.configurationRevision,
+      audioModelId: selection.selectedId,
+      audioModelName: selection.displayName,
+      audioParameters: normalized,
+    };
+  } else {
+    modelPatch = {
+      videoInputContractFingerprint: inputPreflight.contractFingerprint,
+      videoModel: selection.displayName,
+      videoModelConfigurationRevision: model.configurationRevision,
+      videoModelId: selection.selectedId,
+      videoParameters: normalized,
+    };
+  }
   const problems = [
     ...(modelProblem ? [modelProblem] : []),
     ...inputPreflight.problems,
   ];
   const inputKey = generationInputKey({
     inputs: inputPreflight.inputs,
+    modelConfigurationRevision: model.configurationRevision,
     modelId: selection.selectedId,
+    modelReleaseRevision: model.releaseRevisionId,
     ownPrompt: prompt,
     parameters: submission,
     prompt: inputPreflight.finalPrompt,
   });
-  const upstream = generationOwnershipUpstream(kind, inputPreflight.inputs, edges);
-  const effectiveOwnershipValue = kind === "image"
-    ? {
-        aspectRatio: normalized.aspectRatio,
-        modelId: selection.selectedId,
-        parameters: normalized,
-        prompt,
-        quality: normalized.quality,
-        upstream,
-      }
-    : { modelId: selection.selectedId, parameters: normalized, prompt, upstream };
+  const effectiveOwnershipValue = generationOwnershipEvidence({
+    contractFingerprint: inputPreflight.contractFingerprint,
+    inputs: inputPreflight.inputs,
+    kind,
+    modelConfigurationRevision: model.configurationRevision,
+    modelId: selection.selectedId,
+    modelReleaseRevision: model.releaseRevisionId,
+    parameters: submission,
+    prompt,
+  });
+  const upstream = effectiveOwnershipValue.upstream;
   const boundOwnershipKey = node.data[`${kind}GenerationOwnershipKey`];
+  const boundNormalized = kind === "image"
+    ? normalizeParameterValues(schema, {
+        ...node.data.imageParameters,
+        ...(node.data.imageAspectRatio
+          ? { aspectRatio: node.data.imageAspectRatio }
+          : {}),
+        ...(node.data.imageQuality ? { quality: node.data.imageQuality } : {}),
+      })
+    : normalizeParameterValues(schema, savedParameters(node, kind));
+  const boundSubmission = submissionParameterValues(schema, boundNormalized);
   const rawOwnershipValue = kind === "image"
     ? {
         aspectRatio: boundOwnershipKey
           ? node.data.imageAspectRatio
           : normalized.aspectRatio,
+        contractFingerprint: inputPreflight.contractFingerprint,
+        modelConfigurationRevision: model.configurationRevision,
         modelId: boundOwnershipKey ? node.data.imageModelId : selection.selectedId,
-        parameters: boundOwnershipKey ? node.data.imageParameters : normalized,
+        modelReleaseRevision: model.releaseRevisionId,
+        parameters: boundOwnershipKey ? boundSubmission : submission,
         prompt,
         quality: boundOwnershipKey ? node.data.imageQuality : normalized.quality,
         upstream,
       }
     : {
+        contractFingerprint: inputPreflight.contractFingerprint,
+        modelConfigurationRevision: model.configurationRevision,
         modelId: boundOwnershipKey ? saved.id : selection.selectedId,
-        parameters: boundOwnershipKey ? savedParameters(node, kind) : normalized,
+        modelReleaseRevision: model.releaseRevisionId,
+        parameters: boundOwnershipKey ? boundSubmission : submission,
         prompt,
         upstream,
       };
@@ -316,11 +367,14 @@ function createExecutionPlan(
     currentOwnershipKey: generationOwnershipKey(rawOwnershipValue),
     effectiveOwnershipKey: generationOwnershipKey(effectiveOwnershipValue),
     inputKey,
+    inputContractFingerprint: inputPreflight.contractFingerprint,
     inputs: inputPreflight.inputs,
     kind,
     model,
+    modelConfigurationRevision: model.configurationRevision,
     modelDisplayName: selection.displayName ?? model.displayName,
     modelId: selection.selectedId,
+    modelReleaseRevision: model.releaseRevisionId,
     modelPatch,
     node,
     normalizedParameters: normalized,
@@ -350,7 +404,10 @@ export function currentWorkflowGenerationBinding(input: {
   const plan = createExecutionPlan(input.kind, input.nodeId, input.context);
   return isPlan(plan)
     ? {
+        inputContractFingerprint: plan.inputContractFingerprint,
         inputFingerprint: plan.inputKey,
+        modelConfigurationRevision: plan.modelConfigurationRevision,
+        modelReleaseRevision: plan.modelReleaseRevision,
         ownershipKey: plan.currentOwnershipKey,
       }
     : undefined;
@@ -385,15 +442,49 @@ function createBoundRecoveryPlan(
   }
   const saved = savedModel(node, kind);
   const prompt = ownPrompt(node, kind);
+  const modelReleaseRevision = context.acceptedTask?.modelReleaseRevision ??
+    (typeof node.data[`${kind}GenerationModelReleaseRevision`] === "string"
+      ? node.data[`${kind}GenerationModelReleaseRevision`] as string
+      : undefined);
+  const modelConfigurationRevision =
+    typeof node.data[`${kind}ModelConfigurationRevision`] === "string"
+      ? node.data[`${kind}ModelConfigurationRevision`] as string
+      : undefined;
+  if (!modelReleaseRevision) {
+    return {
+      message: "已有任务缺少可核对的模型合同版本，结果已保留但未覆盖当前内容",
+      status: "failed",
+    };
+  }
+  if (!modelConfigurationRevision) {
+    return {
+      message: "已有任务缺少可核对的模型配置版本，结果已保留但未覆盖当前内容",
+      status: "failed",
+    };
+  }
+  const inputContractFingerprint =
+    context.acceptedTask?.modelInputContractFingerprint ??
+    (kind === "video"
+      ? node.data.videoGenerationModelInputContractFingerprint
+      : node.data[`${kind}GenerationContractFingerprint`]);
+  if (typeof inputContractFingerprint !== "string" || !inputContractFingerprint) {
+    return {
+      message: "已有任务缺少可核对的输入合同指纹，结果已保留但未覆盖当前内容",
+      status: "failed",
+    };
+  }
   return {
     currentOwnershipKey: ownershipKey,
     effectiveOwnershipKey: ownershipKey,
     inputKey: typeof persistedInputKey === "string" ? persistedInputKey : "",
+    inputContractFingerprint,
     inputs: [],
     kind,
     model: {} as PublishedModel,
+    modelConfigurationRevision,
     modelDisplayName: saved.name ?? saved.id ?? "",
     modelId: saved.id ?? "",
+    modelReleaseRevision,
     modelPatch: {},
     node,
     normalizedParameters: savedParameters(node, kind) ?? {},
@@ -484,6 +575,74 @@ async function applyFencedNodeUpdate(input: {
   });
 }
 
+async function persistExecutionContract(
+  context: NodeExecutorContext,
+  plan: ExecutionPlan,
+): Promise<ExecutionPlan | NodeRunResult> {
+  const roleByEdge = new Map(plan.inputs.map((item) => [item.edgeId, item.role]));
+  let snapshot = context.graph.snapshot();
+  const node = snapshot.nodes.find((candidate) => candidate.id === plan.node.id);
+  if (!node || node.type !== plan.kind) {
+    return { message: "节点已变化，未保存输入合同", status: "failed" };
+  }
+  const nodeChanged = Object.entries(plan.modelPatch).some(([key, value]) =>
+    JSON.stringify((node.data as Record<string, unknown>)[key]) !== JSON.stringify(value)
+  );
+  const edgeChanged = snapshot.edges.some((edge) =>
+    roleByEdge.has(edge.id) && roleByEdge.get(edge.id) !== edge.data?.inputRole
+  );
+  if (!nodeChanged && !edgeChanged) return plan;
+  if (snapshot.revision === undefined) {
+    const receipt = await context.save.waitForRevision();
+    snapshot = context.graph.snapshot();
+    if (snapshot.revision !== receipt.revision) {
+      return { message: "画布版本已变化，未保存输入合同", status: "failed" };
+    }
+  }
+  const applied = context.graph.apply({
+    fence: {
+      expectedRevision: snapshot.revision,
+      kind: plan.kind,
+      nodeId: plan.node.id,
+      ownershipKey: nodeOwnershipKey(
+        plan.node,
+        plan.kind,
+        plan.currentOwnershipKey,
+      ),
+      runId: context.runId,
+      taskId: taskIdFor(plan.node, plan.kind),
+    },
+    scope: "generation",
+    update: (current) => ({
+      ...current,
+      edges: current.edges.map((edge) => {
+        const role = roleByEdge.get(edge.id);
+        return role !== undefined && role !== edge.data?.inputRole
+          ? { ...edge, data: { ...edge.data, inputRole: role } }
+          : edge;
+      }),
+      nodes: current.nodes.map((candidate) => candidate.id === plan.node.id
+        ? {
+            ...candidate,
+            data: { ...candidate.data, ...plan.modelPatch },
+          } as ProbeNodeType
+        : candidate),
+    }),
+  });
+  if (applied.status !== "applied") {
+    return { message: "画布已变化，未保存输入合同", status: "failed" };
+  }
+  await context.save.flush();
+  await context.save.waitForRevision();
+  const current = createExecutionPlan(plan.kind, plan.node.id, context);
+  if (!isPlan(current) ||
+    current.inputKey !== plan.inputKey ||
+    current.effectiveOwnershipKey !== plan.effectiveOwnershipKey) {
+    return { message: "输入合同保存后发生变化，未提交生成任务", status: "failed" };
+  }
+  return current;
+}
+
 function nodeOwnershipKey(
   node: ProbeNodeType,
   kind: WorkflowExecutorKind,
@@ -557,16 +716,31 @@ function bindingPatch(
     [`${plan.kind}GenerationError`]: undefined,
     [`${plan.kind}GenerationErrorCode`]: undefined,
     [`${plan.kind}GenerationInputKey`]: plan.inputKey,
+    [`${plan.kind}GenerationModelConfigurationRevision`]:
+      plan.modelConfigurationRevision,
+    [`${plan.kind}GenerationModelReleaseRevision`]: plan.modelReleaseRevision,
     [`${plan.kind}GenerationOwnershipKey`]: ownershipKey,
     [`${plan.kind}GenerationRetryAllowed`]: undefined,
     [`${plan.kind}GenerationRetryBlockCode`]: undefined,
     [`${plan.kind}GenerationRetryBlockReason`]: undefined,
     [`${plan.kind}GenerationTaskId`]: task.id,
     [`${plan.kind}Generating`]: true,
+    groupRunSuccessInputFingerprint: undefined,
+    groupRunSuccessModelConfigurationRevision: undefined,
+    groupRunSuccessModelReleaseRevision: undefined,
     groupRunSuccessOwnershipKey: undefined,
     groupRunSuccessResultKey: undefined,
     groupRunSuccessTaskId: undefined,
     workflowExecutionRunId: runId,
+    ...(plan.kind === "video"
+      ? {
+          videoGenerationModelInputContractFingerprint:
+            plan.inputContractFingerprint,
+        }
+      : {
+          [`${plan.kind}GenerationContractFingerprint`]:
+            plan.inputContractFingerprint,
+        }),
     ...(plan.kind === "image" ? { imageGeneratedSuccess: false } : {}),
   };
 }
@@ -627,6 +801,9 @@ function successNodePatch(
   ownershipKey: string,
 ) {
   const proof = {
+    groupRunSuccessInputFingerprint: plan.inputKey,
+    groupRunSuccessModelConfigurationRevision: plan.modelConfigurationRevision,
+    groupRunSuccessModelReleaseRevision: plan.modelReleaseRevision,
     groupRunSuccessOwnershipKey: ownershipKey,
     groupRunSuccessResultKey: groupRunResultKey(
       plan.kind === "text"
@@ -757,6 +934,38 @@ async function applyTerminalTask(
   if (!taskMatches(task, plan.kind, context.canvasId, plan.node.id)) {
     return { message: "生成任务关联不一致，已停止结果回写", status: "failed" };
   }
+  if (task.generationIdentityVersion !== 2) {
+    return {
+      errorCode: "RESULT_OWNERSHIP_CONFLICT",
+      message: "任务缺少完整版本化语义身份，结果已安全保留但未覆盖当前内容",
+      status: "failed",
+    };
+  }
+  if (task.modelReleaseRevision !== plan.modelReleaseRevision) {
+    return {
+      errorCode: "RESULT_OWNERSHIP_CONFLICT",
+      message: "任务使用的模型合同版本与当前节点不一致，结果已安全保留但未覆盖当前内容",
+      status: "failed",
+    };
+  }
+  if (task.modelConfigurationRevision !== plan.modelConfigurationRevision) {
+    return {
+      errorCode: "RESULT_OWNERSHIP_CONFLICT",
+      message: "任务使用的模型配置版本与当前节点不一致，结果已安全保留但未覆盖当前内容",
+      status: "failed",
+    };
+  }
+  if (
+    task.generationInputKey !== plan.inputKey ||
+    task.generationOwnershipKey !== ownershipKey ||
+    task.modelInputContractFingerprint !== plan.inputContractFingerprint
+  ) {
+    return {
+      errorCode: "RESULT_OWNERSHIP_CONFLICT",
+      message: "任务输入合同与当前节点不一致，结果已安全保留但未覆盖当前内容",
+      status: "failed",
+    };
+  }
   const boundNode = context.graph.snapshot().nodes.find(
     (node) => node.id === plan.node.id,
   );
@@ -798,6 +1007,7 @@ async function applyTerminalTask(
       plan.node.id,
       task.id,
       context.accountId,
+      context.fixtureScopeId,
     );
     return {
       errorCode: task.errorCode,
@@ -809,7 +1019,8 @@ async function applyTerminalTask(
   if (
     !isPlan(current) ||
     current.currentOwnershipKey !== ownershipKey ||
-    current.inputKey !== plan.inputKey
+    current.inputKey !== plan.inputKey ||
+    task.modelInputContractFingerprint !== current.inputContractFingerprint
   ) {
     return {
       errorCode: "RESULT_OWNERSHIP_CONFLICT",
@@ -877,11 +1088,15 @@ async function applyTerminalTask(
     plan.node.id,
     task.id,
     context.accountId,
+    context.fixtureScopeId,
   );
   return {
     projection,
     status: "success",
     successProof: {
+      inputFingerprint: plan.inputKey,
+      modelConfigurationRevision: plan.modelConfigurationRevision,
+      modelReleaseRevision: plan.modelReleaseRevision,
       ownershipKey,
       resultKey,
       taskId: task.id,
@@ -895,7 +1110,11 @@ async function waitForTerminalTask(
   task: GenerationTaskSummary,
 ) {
   if (["cancelled", "failed", "success"].includes(task.state)) return task;
-  return waitForGenerationTask(task.id, context.signal);
+  return waitForGenerationTask(
+    task.id,
+    context.signal,
+    context.fixtureScopeId,
+  );
 }
 
 function createExecutor(kind: WorkflowExecutorKind): NodeExecutor {
@@ -944,8 +1163,12 @@ function createExecutor(kind: WorkflowExecutorKind): NodeExecutor {
         const acceptedTask = await getGenerationTask(
           accepted.taskId,
           context.signal,
+          context.fixtureScopeId,
         );
-        if (!taskMatches(acceptedTask, kind, context.canvasId, nodeId)) {
+        if (
+          !taskMatches(acceptedTask, kind, context.canvasId, nodeId) ||
+          !taskMatchesAcceptedBinding(accepted, acceptedTask)
+        ) {
           return { message: "已接收任务与当前节点不一致", status: "failed" };
         }
         const applied = await applyFencedNodeUpdate({
@@ -959,9 +1182,23 @@ function createExecutor(kind: WorkflowExecutorKind): NodeExecutor {
             data: {
               ...node.data,
               [`${kind}GenerationOwnershipKey`]: accepted.ownershipKey,
+              [`${kind}GenerationInputKey`]: accepted.inputFingerprint,
+              [`${kind}GenerationModelConfigurationRevision`]:
+                accepted.modelConfigurationRevision,
+              [`${kind}GenerationModelReleaseRevision`]:
+                accepted.modelReleaseRevision,
               [`${kind}GenerationTaskId`]: accepted.taskId,
               [`${kind}Generating`]: true,
               workflowExecutionRunId: context.runId,
+              ...(kind === "video"
+                ? {
+                    videoGenerationModelInputContractFingerprint:
+                      accepted.modelInputContractFingerprint,
+                  }
+                : {
+                    [`${kind}GenerationContractFingerprint`]:
+                      accepted.modelInputContractFingerprint,
+                  }),
             },
           }),
         });
@@ -989,7 +1226,13 @@ function createExecutor(kind: WorkflowExecutorKind): NodeExecutor {
         accepted.kind !== kind ||
         accepted.nodeId !== nodeId ||
         accepted.taskId !== taskId ||
-        accepted.ownershipKey !== ownershipKey
+        accepted.ownershipKey !== ownershipKey ||
+        accepted.inputFingerprint !== plan.inputKey ||
+        accepted.modelInputContractFingerprint !==
+          plan.inputContractFingerprint ||
+        accepted.modelConfigurationRevision !==
+          plan.modelConfigurationRevision ||
+        accepted.modelReleaseRevision !== plan.modelReleaseRevision
       )) {
         return {
           errorCode: "RESULT_OWNERSHIP_CONFLICT",
@@ -997,7 +1240,11 @@ function createExecutor(kind: WorkflowExecutorKind): NodeExecutor {
           status: "failed",
         };
       }
-      const task = await getGenerationTask(taskId, context.signal);
+      const task = await getGenerationTask(
+        taskId,
+        context.signal,
+        context.fixtureScopeId,
+      );
       if (!taskMatches(task, kind, context.canvasId, nodeId)) {
         return { message: "已有任务与当前节点不一致", status: "failed" };
       }
@@ -1008,7 +1255,7 @@ function createExecutor(kind: WorkflowExecutorKind): NodeExecutor {
       if (context.isCancelled()) {
         return { message: "已停止后续节点", status: "skipped" };
       }
-      const plan = createExecutionPlan(kind, nodeId, context);
+      let plan = createExecutionPlan(kind, nodeId, context);
       if (!isPlan(plan)) return plan;
       if (isGenerating(plan.node, kind)) {
         const existingTaskId = taskIdFor(plan.node, kind);
@@ -1023,6 +1270,9 @@ function createExecutor(kind: WorkflowExecutorKind): NodeExecutor {
           ? persistInputFailure(context, plan, problem)
           : { message: "生成指令为空", status: "skipped" };
       }
+      const persistedPlan = await persistExecutionContract(context, plan);
+      if (!isPlan(persistedPlan)) return persistedPlan;
+      plan = persistedPlan;
       let admittedTask: GenerationTaskSummary;
       let ownershipKey = plan.effectiveOwnershipKey;
       try {
@@ -1050,7 +1300,13 @@ function createExecutor(kind: WorkflowExecutorKind): NodeExecutor {
               }
             },
             {
+              fixtureScopeId: context.fixtureScopeId,
+              generationInputKey: plan.inputKey,
+              modelInputContractFingerprint: plan.inputContractFingerprint,
+              modelConfigurationRevision: plan.modelConfigurationRevision,
               generationOwnershipKey: plan.effectiveOwnershipKey,
+              modelReleaseRevision: plan.modelReleaseRevision,
+              workflowGroupId: context.groupId,
               workflowRunId: context.runId,
             },
           );
@@ -1063,7 +1319,11 @@ function createExecutor(kind: WorkflowExecutorKind): NodeExecutor {
         ownershipKey = admitted.ensured.generationOwnershipKey ??
           plan.effectiveOwnershipKey;
         await context.onTaskAccepted?.({
+          inputFingerprint: plan.inputKey,
           kind,
+          modelInputContractFingerprint: plan.inputContractFingerprint,
+          modelConfigurationRevision: plan.modelConfigurationRevision,
+          modelReleaseRevision: plan.modelReleaseRevision,
           nodeId,
           ownershipKey,
           taskId: admittedTask.id,

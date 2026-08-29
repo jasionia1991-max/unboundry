@@ -45,23 +45,37 @@ import {
   clearGroupRunCheckpoint,
   clearGroupRunStarting,
   confirmGroupRunNavigation,
+  groupRunAuthorityRecoverySupported,
   groupRunSnapshotFingerprint,
   groupRunSuccessProof,
   getGroupRunExecutionOwnerId,
   hasConflictingActiveGroupRunLeaseForCanvas,
   hasForeignActiveGroupRunLeaseForCanvas,
+  isGroupRunAuthoritySettledEmpty,
   markGroupRunStarting,
+  quarantineCorruptGroupRunCacheAfterAuthority,
+  readGroupCheckpoints,
   readGroupRunCheckpoint,
+  readGroupRunCheckpointCache,
   readGroupRunCheckpoints,
   readGroupRunLease,
+  readGroupRunLeaseCache,
   readGroupRunStarting,
   releaseGroupRunLease,
   renewGroupRunLease,
+  setGroupRunAuthoritySettledEmpty,
   taskMatchesAcceptedBinding,
   writeGroupRunCheckpoint,
   verifiedCheckpointSuccessIds,
   type GroupRunCheckpoint,
 } from "../client/src/generation/groupRunCheckpoint";
+import {
+  reconstructGroupRecoveryCheckpoints,
+  reconstructGroupRecoveryDecision,
+} from
+  "../client/src/generation/groupRunRecovery";
+import { publishGroupRunNotificationOnce } from
+  "../client/src/generation/groupRunNotification";
 import { NodeExecutorRegistry } from "../client/src/generation/nodeExecutorRegistry";
 import type { NodeExecutorContext } from
   "../client/src/generation/nodeExecutorRegistry";
@@ -72,8 +86,18 @@ import {
 import type { ProbeNodeType } from "../client/src/canvas/ProbeNode";
 import { createCanvasGraphCommandPort } from
   "../client/src/canvas/canvasPorts";
-import { defaultParameterSchema } from "../types/modelParameters";
+import {
+  defaultParameterSchema,
+  knownModelParameterSchema,
+  type ModelParameterValue,
+} from "../types/modelParameters";
+import { normalizeModelInputs } from "../types/modelInputSemanticCompiler";
 import { resolveNodeInputs } from "../types/nodeInputs";
+import {
+  generationInputKey,
+  generationOwnershipEvidence,
+  generationOwnershipKey,
+} from "../types/generationIdentity";
 import {
   reconcileGenerationTask,
   retryGenerationTask,
@@ -136,6 +160,7 @@ test("39-node legacy fixture finds exactly five stale candidates across three ru
     const candidate = legacyTerminalGenerationCandidate({
       accountId: "account-a",
       canvasId: "canvas-a",
+      fixtureScopeId: "",
       node,
     });
     return candidate ? [candidate] : [];
@@ -166,6 +191,7 @@ test("legacy terminal classifier is exact, checksum-complete and fail-closed", (
   const candidate = legacyTerminalGenerationCandidate({
     accountId: "account-a",
     canvasId: "canvas-a",
+    fixtureScopeId: "",
     node,
   });
   expect(candidate).toBeTruthy();
@@ -419,7 +445,9 @@ test("all four headless executors preflight, run, recover and apply without moun
       label: `${kind} fixture`,
       title: `${kind} fixture`,
       [`${kind}ModelId`]: `headless-${kind}-model`,
-      [`${kind}Parameters`]: {},
+      [`${kind}Parameters`]: kind === "audio"
+        ? { emotion: "auto", emotionScale: 5 }
+        : {},
       [`${kind}Prompt`]: `${kind} headless prompt`,
       ...(kind === "text" ? {} : { [`${kind}PromptReady`]: true }),
     },
@@ -429,6 +457,7 @@ test("all four headless executors preflight, run, recover and apply without moun
   })) as ProbeNodeType[];
   const models = Object.fromEntries(kinds.map((kind) => [kind, [{
     capability: kind,
+    configurationRevision: `headless-${kind}-revision-1`,
     displayName: `Headless ${kind}`,
     generationAvailable: true,
     generationUnavailableReason: "",
@@ -444,11 +473,22 @@ test("all four headless executors preflight, run, recover and apply without moun
         }
       : {}),
     isDefault: true,
-    parameterSchema: defaultParameterSchema(kind),
+    parameterSchema: kind === "audio"
+      ? knownModelParameterSchema({
+          capability: "audio",
+          providerDriver: "multi-protocol-relay",
+          providerModelId: "doubao-tts-2.0",
+        })
+      : defaultParameterSchema(kind),
+    releaseRevisionId: `00000000-0000-4000-8000-00000000000${
+      kinds.indexOf(kind) + 1
+    }`,
   }]])) as NodeExecutorContext["modelCatalog"]["models"];
   const tasks = new Map<string, Record<string, unknown>>();
+  const postedIdentities: Array<Record<string, unknown>> = [];
   const boundNodes = new Map<string, ProbeNodeType>();
   const posts: string[] = [];
+  const postedParameters = new Map<string, Record<string, unknown>>();
   const recoveryOrder: string[] = [];
   let flushes = 0;
   let mutateTextSemanticBeforeRead = false;
@@ -466,17 +506,47 @@ test("all four headless executors preflight, run, recover and apply without moun
     if (url.startsWith("/api/generation-tasks/by-idempotency")) {
       return response({ error: "not found" }, 404);
     }
+    if (url.startsWith("/api/generation-tasks?canvasId=") && method === "GET") {
+      return response({ tasks: [...tasks.values()] });
+    }
     if (url === "/api/generation-tasks/preflight" && method === "POST") {
       return response({ canEnqueue: true, canSubmit: true, problems: [] });
     }
     if (url === "/api/generation-tasks" && method === "POST") {
       const body = JSON.parse(String(init?.body)) as {
+        fixtureScopeId: string;
+        generationIdentityVersion: 2;
+        generationInputKey: string;
+        generationOwnershipKey: string;
         kind: (typeof kinds)[number];
         model: string;
+        modelConfigurationRevision: string;
+        modelInputContractFingerprint: string;
+        modelReleaseRevision: string;
         nodeId: string;
+        parameters: Record<string, unknown>;
         prompt: string;
+        workflowBinding: {
+          generationInputKey: string;
+          generationOwnershipKey: string;
+          groupId: string;
+          modelConfigurationRevision: string;
+          modelReleaseRevision: string;
+          runId: string;
+        };
       };
+      postedIdentities.push({
+        fixtureScopeId: body.fixtureScopeId,
+        generationIdentityVersion: body.generationIdentityVersion,
+        generationInputKey: body.generationInputKey,
+        generationOwnershipKey: body.generationOwnershipKey,
+        modelConfigurationRevision: body.modelConfigurationRevision,
+        modelInputContractFingerprint: body.modelInputContractFingerprint,
+        modelReleaseRevision: body.modelReleaseRevision,
+        workflowBinding: body.workflowBinding,
+      });
       posts.push(body.nodeId);
+      postedParameters.set(body.nodeId, body.parameters);
       const taskId = `headless-task-${body.kind}`;
       const resultAssetId = `headless-result-${body.kind}`;
       const task = {
@@ -487,6 +557,13 @@ test("all four headless executors preflight, run, recover and apply without moun
         id: taskId,
         kind: body.kind,
         model: body.model,
+        fixtureScopeId: body.fixtureScopeId,
+        generationIdentityVersion: body.generationIdentityVersion,
+        generationInputKey: body.generationInputKey,
+        generationOwnershipKey: body.generationOwnershipKey,
+        modelConfigurationRevision: body.modelConfigurationRevision,
+        modelInputContractFingerprint: body.modelInputContractFingerprint,
+        modelReleaseRevision: body.modelReleaseRevision,
         nodeId: body.nodeId,
         prompt: body.prompt,
         ...(body.kind === "text"
@@ -514,12 +591,15 @@ test("all four headless executors preflight, run, recover and apply without moun
             }),
         state: "success",
         updatedAt: "2026-08-21T00:00:01.000Z",
+        workflowExecutionRunId: body.workflowBinding.runId,
+        workflowGroupId: body.workflowBinding.groupId,
       };
       tasks.set(taskId, task);
       return response({ ...task, state: "running" }, 202);
     }
-    const taskId = url.startsWith("/api/generation-tasks/")
-      ? url.split("/").at(-1)
+    const taskUrl = new URL(url, "http://127.0.0.1");
+    const taskId = taskUrl.pathname.startsWith("/api/generation-tasks/")
+      ? taskUrl.pathname.split("/").at(-1)
       : undefined;
     if (taskId && tasks.has(taskId)) {
       if (taskId === "headless-task-text" && mutateTextSemanticBeforeRead) {
@@ -545,6 +625,7 @@ test("all four headless executors preflight, run, recover and apply without moun
     accountId: "headless-account",
     canvasId,
     fixtureScopeId: "",
+    groupId: "headless-group",
     graph,
     isCancelled: () => false,
     isFixture: false,
@@ -573,13 +654,18 @@ test("all four headless executors preflight, run, recover and apply without moun
     },
   } as NodeExecutorContext & {
     acceptedTask?: {
+      inputFingerprint?: string;
       kind: (typeof kinds)[number];
+      modelConfigurationRevision?: string;
+      modelInputContractFingerprint: string;
+      modelReleaseRevision?: string;
       nodeId: string;
       ownershipKey: string;
       taskId: string;
     };
     onTaskAccepted: (binding: {
       kind: (typeof kinds)[number];
+      modelInputContractFingerprint: string;
       nodeId: string;
       ownershipKey: string;
       taskId: string;
@@ -594,11 +680,18 @@ test("all four headless executors preflight, run, recover and apply without moun
       expect(executor?.kind).toBe(kind);
       await expect(executor!.preflight(nodeId, context, executableIds, "static"))
         .resolves.toEqual({ status: "success" });
-      await expect(executor!.run(nodeId, context, executableIds))
-        .resolves.toMatchObject({ status: "success" });
+      const runResult = await executor!.run(nodeId, context, executableIds);
+      expect(runResult.status, JSON.stringify({ postedIdentities, runResult }))
+        .toBe("success");
       expect(boundNodes.has(kind)).toBe(true);
     }
     expect(posts.sort()).toEqual(kinds.map((kind) => `headless-${kind}`).sort());
+    expect(postedParameters.get("headless-audio")).toMatchObject({
+      emotion: "auto",
+    });
+    expect(postedParameters.get("headless-audio")).not.toHaveProperty(
+      "emotionScale",
+    );
     for (const kind of kinds) {
       const taskId = `headless-task-${kind}`;
       expect(recoveryOrder.indexOf(`accepted:${taskId}`)).toBeGreaterThanOrEqual(0);
@@ -626,7 +719,19 @@ test("all four headless executors preflight, run, recover and apply without moun
         node.id === nodeId ? acceptedBeforeNodeBinding : node
       );
       context.acceptedTask = {
+        inputFingerprint: String(
+          boundNodes.get(kind)!.data[`${kind}GenerationInputKey`],
+        ),
         kind,
+        modelConfigurationRevision: String(
+          tasks.get(`headless-task-${kind}`)?.modelConfigurationRevision,
+        ),
+        modelInputContractFingerprint: String(
+          tasks.get(`headless-task-${kind}`)?.modelInputContractFingerprint,
+        ),
+        modelReleaseRevision: String(
+          tasks.get(`headless-task-${kind}`)?.modelReleaseRevision,
+        ),
         nodeId,
         ownershipKey: String(
           boundNodes.get(kind)!.data[`${kind}GenerationOwnershipKey`],
@@ -643,8 +748,51 @@ test("all four headless executors preflight, run, recover and apply without moun
     nodes = nodes.map((node) => node.id === "headless-text"
       ? boundNodes.get("text")!
       : node);
+    const textContentBeforeContractConflict = nodes.find(
+      (node) => node.id === "headless-text",
+    )?.data.content;
+    const textTask = tasks.get("headless-task-text")!;
+    const textContractFingerprint = String(
+      textTask.modelInputContractFingerprint,
+    );
+    textTask.state = "failed";
+    textTask.errorMessage = "old contract failed";
+    textTask.modelInputContractFingerprint = "different-contract";
+    context.acceptedTask = {
+      inputFingerprint: String(
+        boundNodes.get("text")!.data.textGenerationInputKey,
+      ),
+      kind: "text",
+      modelConfigurationRevision: String(textTask.modelConfigurationRevision),
+      modelInputContractFingerprint: textContractFingerprint,
+      modelReleaseRevision: String(textTask.modelReleaseRevision),
+      nodeId: "headless-text",
+      ownershipKey: String(
+        boundNodes.get("text")!.data.textGenerationOwnershipKey,
+      ),
+      taskId: "headless-task-text",
+    };
+    await expect(createNodeExecutorRegistry().get(
+      nodes.find((node) => node.id === "headless-text"),
+    )!.recover("headless-text", context)).resolves.toMatchObject({
+      status: "failed",
+    });
+    expect(nodes.find((node) => node.id === "headless-text")?.data.content)
+      .toBe(textContentBeforeContractConflict);
+    textTask.state = "success";
+    textTask.errorMessage = undefined;
+    textTask.modelInputContractFingerprint = textContractFingerprint;
     context.acceptedTask = {
       kind: "text",
+      modelConfigurationRevision: String(
+        tasks.get("headless-task-text")?.modelConfigurationRevision,
+      ),
+      modelInputContractFingerprint: String(
+        tasks.get("headless-task-text")?.modelInputContractFingerprint,
+      ),
+      modelReleaseRevision: String(
+        tasks.get("headless-task-text")?.modelReleaseRevision,
+      ),
       nodeId: "headless-text",
       ownershipKey: "wrong-owner",
       taskId: "headless-task-text",
@@ -661,6 +809,15 @@ test("all four headless executors preflight, run, recover and apply without moun
       : node);
     context.acceptedTask = {
       kind: "text",
+      modelConfigurationRevision: String(
+        tasks.get("headless-task-text")?.modelConfigurationRevision,
+      ),
+      modelInputContractFingerprint: String(
+        tasks.get("headless-task-text")?.modelInputContractFingerprint,
+      ),
+      modelReleaseRevision: String(
+        tasks.get("headless-task-text")?.modelReleaseRevision,
+      ),
       nodeId: "headless-text",
       ownershipKey: String(
         boundNodes.get("text")!.data.textGenerationOwnershipKey,
@@ -675,9 +832,9 @@ test("all four headless executors preflight, run, recover and apply without moun
       status: "failed",
     });
     expect(posts).toHaveLength(4);
-    // Admission/binding remains durable before paid work. Terminal success is
-    // now projected by the outer group persistence boundary exactly once.
-    expect(flushes).toBe(8);
+    // Each initial execution durably persists its normalized contract and its
+    // accepted binding before paid work; recovery then projects each result.
+    expect(flushes).toBe(12);
   } finally {
     globalThis.fetch = previousFetch;
     if (previousWindow) host.window = previousWindow;
@@ -1164,12 +1321,14 @@ test("group run snapshot ignores camera geometry and generated output but fences
   }];
   const input = {
     edges: [{
+      data: { inputOrder: 1, inputRole: "reference-image" as const },
       id: "reference-image",
       source: "reference",
       target: "image",
     }],
     executableNodeIds: new Set(["image"]),
     groupId: "group",
+    modelConfigurationRevisions: { "image:model-a": "revision-a" },
   };
   const original = groupRunSnapshotFingerprint({ ...input, nodes: base });
   const movedWithOutput = base.map((node) => node.id === "image" ? {
@@ -1200,6 +1359,64 @@ test("group run snapshot ignores camera geometry and generated output but fences
   } : node);
   expect(groupRunSnapshotFingerprint({ ...input, nodes: changedReference }))
     .not.toBe(original);
+  expect(groupRunSnapshotFingerprint({
+    ...input,
+    edges: input.edges.map((edge) => ({
+      ...edge,
+      data: { ...edge.data, inputRole: "subject" as const },
+    })),
+    nodes: base,
+  })).not.toBe(original);
+  expect(groupRunSnapshotFingerprint({
+    ...input,
+    edges: input.edges.map((edge) => ({
+      ...edge,
+      data: { ...edge.data, inputOrder: 2 },
+    })),
+    nodes: base,
+  })).not.toBe(original);
+  expect(groupRunSnapshotFingerprint({
+    ...input,
+    modelConfigurationRevisions: { "image:model-a": "revision-b" },
+    nodes: base,
+  })).not.toBe(original);
+
+  const videoNodes: ProbeNodeType[] = [{
+    id: "video-group",
+    type: "group",
+    data: { label: "视频组", variant: "group" },
+    position: { x: 0, y: 0 },
+  }, {
+    id: "video",
+    parentId: "video-group",
+    type: "video",
+    data: {
+      label: "视频",
+      videoInputContractFingerprint: "contract-a",
+      videoModelId: "video-model",
+      videoParameters: { inputMode: "text" },
+      videoPrompt: "一段视频",
+      videoPromptReady: true,
+    },
+    position: { x: 0, y: 0 },
+  }];
+  const videoFingerprint = groupRunSnapshotFingerprint({
+    edges: [],
+    executableNodeIds: new Set(["video"]),
+    groupId: "video-group",
+    nodes: videoNodes,
+  });
+  expect(groupRunSnapshotFingerprint({
+    edges: [],
+    executableNodeIds: new Set(["video"]),
+    groupId: "video-group",
+    nodes: videoNodes.map((node) => node.id === "video"
+      ? {
+          ...node,
+          data: { ...node.data, videoInputContractFingerprint: "contract-b" },
+        }
+      : node),
+  })).not.toBe(videoFingerprint);
 });
 
 test("group run success proof is exact and resume fails closed on mismatch", () => {
@@ -1209,15 +1426,22 @@ test("group run success proof is exact and resume fails closed on mismatch", () 
     type: "text",
     data: {
       content: "已生成文案",
+      groupRunSuccessInputFingerprint: "input-a",
+      groupRunSuccessModelConfigurationRevision: "configuration-a",
+      groupRunSuccessModelReleaseRevision: "revision-a",
       groupRunSuccessOwnershipKey: "owner-a",
       groupRunSuccessTaskId: "task-a",
       label: "文案",
+      textModelId: "model-a",
     },
     position: { x: 0, y: 0 },
   };
   expect(groupRunSuccessProof(node)).toMatchObject({
     ownershipKey: "owner-a",
     taskId: "task-a",
+    inputFingerprint: "input-a",
+    modelConfigurationRevision: "configuration-a",
+    modelReleaseRevision: "revision-a",
   });
   expect(groupRunSuccessProof(node)?.resultKey).toEqual(expect.any(String));
   const checkpoint: GroupRunCheckpoint = {
@@ -1233,6 +1457,9 @@ test("group run success proof is exact and resume fails closed on mismatch", () 
     status: "interrupted",
     successProofs: {
       text: {
+        inputFingerprint: "input-a",
+        modelConfigurationRevision: "configuration-a",
+        modelReleaseRevision: "revision-a",
         ownershipKey: "owner-a",
         resultKey: groupRunSuccessProof(node)!.resultKey,
         taskId: "task-a",
@@ -1243,6 +1470,11 @@ test("group run success proof is exact and resume fails closed on mismatch", () 
   };
   expect(verifiedCheckpointSuccessIds(checkpoint, [node]).verified)
     .toEqual(new Set(["text"]));
+  expect(verifiedCheckpointSuccessIds(
+    checkpoint,
+    [node],
+    { "text:model-a": "configuration-b" },
+  )).toMatchObject({ mismatchNodeId: "text" });
   const changed = {
     ...node,
     data: { ...node.data, groupRunSuccessTaskId: "task-b" },
@@ -1254,6 +1486,18 @@ test("group run success proof is exact and resume fails closed on mismatch", () 
     data: { ...node.data, content: "已被替换的文案" },
   };
   expect(verifiedCheckpointSuccessIds(checkpoint, [changedResult]))
+    .toMatchObject({ mismatchNodeId: "text" });
+  const changedInput = {
+    ...node,
+    data: { ...node.data, groupRunSuccessInputFingerprint: "input-b" },
+  };
+  expect(verifiedCheckpointSuccessIds(checkpoint, [changedInput]))
+    .toMatchObject({ mismatchNodeId: "text" });
+  const changedRevision = {
+    ...node,
+    data: { ...node.data, groupRunSuccessModelReleaseRevision: "revision-b" },
+  };
+  expect(verifiedCheckpointSuccessIds(checkpoint, [changedRevision]))
     .toMatchObject({ mismatchNodeId: "text" });
 });
 
@@ -1315,6 +1559,7 @@ test("group run starting guard permits disjoint leases and rejects overlap", asy
     setItem: (key: string, value: string) => values.set(key, value),
   } satisfies Storage;
   const fakeWindow = new EventTarget() as Window;
+  const heldLockNames = new Set<string>();
   let confirmResult = false;
   Object.defineProperties(fakeWindow, {
     confirm: { value: () => confirmResult },
@@ -1324,16 +1569,29 @@ test("group run starting guard permits disjoint leases and rejects overlap", asy
       value: {
         locks: {
           request: async (
-            _name: string,
+            name: string,
             _options: { ifAvailable: boolean },
             callback: (lock: unknown) => Promise<boolean> | boolean,
-          ) => callback({}),
+          ) => {
+            heldLockNames.add(name);
+            try {
+              return await callback({});
+            } finally {
+              heldLockNames.delete(name);
+            }
+          },
         },
       },
     },
   });
   host.window = fakeWindow;
   const scope = { accountId: "account", canvasId: "canvas", fixtureScopeId: "" };
+  const leaseReleaseEventHeldStates: boolean[] = [];
+  fakeWindow.addEventListener("unboundry:group-run-lease", () => {
+    leaseReleaseEventHeldStates.push([...heldLockNames].some((name) =>
+      name.startsWith("unboundry-group-run:") && name.endsWith(":run-a")
+    ));
+  });
   try {
     markGroupRunStarting(scope, "group", "run-a");
     expect(readGroupRunStarting(scope)).toEqual({ groupId: "group", runId: "run-a" });
@@ -1364,9 +1622,9 @@ test("group run starting guard permits disjoint leases and rejects overlap", asy
       ["group-a", "node-a"],
     )).toBe(false);
     expect(readGroupRunLease(scope, "run-a")?.ownerId).toBe("owner-a");
-    expect(await hasForeignActiveGroupRunLeaseForCanvas("canvas", "node-a"))
+    expect(await hasForeignActiveGroupRunLeaseForCanvas(scope, "node-a"))
       .toBe(true);
-    expect(await hasForeignActiveGroupRunLeaseForCanvas("canvas", "node-c"))
+    expect(await hasForeignActiveGroupRunLeaseForCanvas(scope, "node-c"))
       .toBe(false);
     expect(await acquireGroupRunLease(
       scope,
@@ -1386,11 +1644,11 @@ test("group run starting guard permits disjoint leases and rejects overlap", asy
       key.startsWith("unboundry-group-run-lease:v1:")
     )).toHaveLength(2);
     expect(await hasConflictingActiveGroupRunLeaseForCanvas(
-      "canvas",
+      scope,
       "node-c",
     )).toBe(true);
     expect(await hasConflictingActiveGroupRunLeaseForCanvas(
-      "canvas",
+      scope,
       "node-c",
       "run-c",
     )).toBe(false);
@@ -1411,7 +1669,11 @@ test("group run starting guard permits disjoint leases and rejects overlap", asy
     }, {
       acceptedTasks: {
         [`node-${groupId.at(-1)}`]: {
+          inputFingerprint: `input-${runId}`,
           kind: "text" as const,
+          modelConfigurationRevision: `configuration-${runId}`,
+          modelInputContractFingerprint: `contract-${runId}`,
+          modelReleaseRevision: `release-${runId}`,
           nodeId: `node-${groupId.at(-1)}`,
           ownershipKey: `owner-${runId}`,
           taskId: `task-${runId}`,
@@ -1440,16 +1702,36 @@ test("group run starting guard permits disjoint leases and rejects overlap", asy
     const acceptedRunA = readGroupRunCheckpoint(scope, "run-a")
       ?.acceptedTasks?.["node-a"];
     expect(taskMatchesAcceptedBinding(acceptedRunA, {
+      generationIdentityVersion: 2,
+      generationInputKey: "input-run-a",
+      generationOwnershipKey: "owner-run-a",
       id: "task-run-a",
       kind: "text",
+      modelConfigurationRevision: "configuration-run-a",
+      modelInputContractFingerprint: "contract-run-a",
+      modelReleaseRevision: "release-run-a",
       nodeId: "node-a",
     })).toBe(true);
     expect(taskMatchesAcceptedBinding(acceptedRunA, {
+      generationIdentityVersion: 2,
+      generationInputKey: "input-run-a",
+      generationOwnershipKey: "owner-run-a",
       id: "task-other",
       kind: "text",
+      modelConfigurationRevision: "configuration-run-a",
+      modelInputContractFingerprint: "contract-run-a",
+      modelReleaseRevision: "release-run-a",
       nodeId: "node-a",
     })).toBe(false);
     expect(readGroupRunCheckpoint(scope, "run-c")?.groupId).toBe("group-c");
+    expect(readGroupCheckpoints(scope, "group-a").map((item) => item.runId))
+      .toEqual(["run-a"]);
+    expect(readGroupCheckpoints(scope, "group-c").map((item) => item.runId))
+      .toEqual(["run-c"]);
+    expect(readGroupRunCheckpoint(scope, "run-a")?.version).toBe(2);
+    // A scope containing sibling groups is ambiguous and must never pick the
+    // newest unrelated checkpoint as execution authority.
+    expect(readGroupRunCheckpoint(scope)).toBeUndefined();
     expect(clearGroupRunCheckpoint(
       scope,
       { ownerId: "owner-a", runId: "run-a" },
@@ -1457,9 +1739,11 @@ test("group run starting guard permits disjoint leases and rejects overlap", asy
     expect(readGroupRunCheckpoint(scope, "run-a")).toBeUndefined();
     expect(readGroupRunCheckpoint(scope, "run-c")?.groupId).toBe("group-c");
     expect(releaseGroupRunLease(scope, "run-a", "owner-a")).toBe(true);
-    expect(await hasForeignActiveGroupRunLeaseForCanvas("canvas", "node-a"))
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 0));
+    expect(leaseReleaseEventHeldStates.at(-1)).toBe(false);
+    expect(await hasForeignActiveGroupRunLeaseForCanvas(scope, "node-a"))
       .toBe(false);
-    expect(await hasForeignActiveGroupRunLeaseForCanvas("canvas", "node-c"))
+    expect(await hasForeignActiveGroupRunLeaseForCanvas(scope, "node-c"))
       .toBe(true);
     expect(releaseGroupRunLease(scope, "run-c", "owner-c")).toBe(true);
 
@@ -1536,9 +1820,15 @@ test("group run starting guard permits disjoint leases and rejects overlap", asy
       throw new Error("task endpoint must stay unreachable while group owns node");
     };
     const target = {
+      accountId: scope.accountId,
       canvasId: scope.canvasId,
+      fixtureScopeId: scope.fixtureScopeId,
       generationInputKey: "input-owner",
+      generationOwnershipKey: "ownership-owner",
       kind: "text" as const,
+      modelInputContractFingerprint: "mic2:owner",
+      modelConfigurationRevision: "config-revision-owner",
+      modelReleaseRevision: "00000000-0000-4000-8000-000000000022",
       nodeId: "node-owner",
       taskId: "task-owner",
     };
@@ -1564,7 +1854,7 @@ test("group run starting guard permits disjoint leases and rejects overlap", asy
     expect(readGroupRunCheckpoint(scope, "run-a")).toBeUndefined();
     expect(readGroupRunCheckpoint(scope, "run-c")?.groupId).toBe("group-c");
     expect(clearGroupRunCheckpoint(scope)).toBe(true);
-    expect(await hasForeignActiveGroupRunLeaseForCanvas("canvas")).toBe(false);
+    expect(await hasForeignActiveGroupRunLeaseForCanvas(scope)).toBe(false);
     const malformedRunId = "run-malformed-binding";
     values.set(
       `unboundry-group-run-checkpoint:v1:${JSON.stringify([
@@ -1586,6 +1876,320 @@ test("group run starting guard permits disjoint leases and rejects overlap", asy
       }),
     );
     expect(readGroupRunCheckpoint(scope, malformedRunId)).toBeUndefined();
+    expect(readGroupRunCheckpointCache(scope).corrupted).toBe(true);
+
+    const reconstructed = reconstructGroupRecoveryCheckpoints({
+      nodes: [
+        { data: {}, id: "recovery-group", type: "group" },
+        {
+          data: {
+            textGenerating: true,
+            textGenerationContractFingerprint: "contract-recovery",
+            textGenerationInputKey: "input-recovery",
+            textGenerationOwnershipKey: "owner-recovery",
+            textGenerationTaskId: "task-recovery",
+            workflowExecutionRunId: "run-recovery",
+          },
+          id: "recovery-text",
+          parentId: "recovery-group",
+          type: "text",
+        },
+      ] as ProbeNodeType[],
+      scope,
+      tasks: [{
+        attempt: 1,
+        canvasId: scope.canvasId,
+        costCurrency: "CNY",
+        createdAt: new Date(now).toISOString(),
+        fixtureScopeId: scope.fixtureScopeId,
+        generationIdentityVersion: 2,
+        generationInputKey: "input-recovery",
+        generationOwnershipKey: "owner-recovery",
+        modelInputContractFingerprint: "contract-recovery",
+        modelConfigurationRevision: "configuration-recovery",
+        id: "task-recovery",
+        kind: "text",
+        nodeId: "recovery-text",
+        prompt: "redacted",
+        state: "running",
+        updatedAt: new Date(now).toISOString(),
+        modelReleaseRevision: "revision-recovery",
+        workflowExecutionRunId: "run-recovery",
+        workflowGroupId: "recovery-group",
+      }],
+    });
+    expect(reconstructed).toMatchObject([{
+      acceptedTasks: {
+        "recovery-text": { taskId: "task-recovery" },
+      },
+      groupId: "recovery-group",
+      runId: "run-recovery",
+      version: 2,
+    }]);
+
+    const orphanDecision = reconstructGroupRecoveryDecision({
+      nodes: [
+        { data: {}, id: "orphan-group", type: "group" },
+        {
+          data: {
+            textGenerationContractFingerprint: "contract-orphan",
+          },
+          id: "orphan-text",
+          parentId: "orphan-group",
+          type: "text",
+        },
+      ] as ProbeNodeType[],
+      scope,
+      tasks: [{
+        attempt: 1,
+        canvasId: scope.canvasId,
+        costCurrency: "CNY",
+        createdAt: new Date(now).toISOString(),
+        fixtureScopeId: scope.fixtureScopeId,
+        generationIdentityVersion: 2,
+        generationInputKey: "input-orphan",
+        generationOwnershipKey: "owner-orphan",
+        modelInputContractFingerprint: "contract-orphan",
+        modelConfigurationRevision: "configuration-orphan",
+        id: "task-orphan",
+        kind: "text",
+        nodeId: "orphan-text",
+        prompt: "redacted",
+        state: "running",
+        updatedAt: new Date(now).toISOString(),
+        modelReleaseRevision: "revision-orphan",
+        workflowExecutionRunId: "run-orphan",
+        workflowGroupId: "orphan-group",
+      }],
+    });
+    expect(orphanDecision).toMatchObject({
+      blockedGroupIds: [],
+      checkpoints: [{
+        acceptedTasks: {
+          "orphan-text": {
+            inputFingerprint: "input-orphan",
+            ownershipKey: "owner-orphan",
+            taskId: "task-orphan",
+          },
+        },
+        groupId: "orphan-group",
+        runId: "run-orphan",
+      }],
+    });
+    const projectedStandaloneAndRecoverableGroup =
+      reconstructGroupRecoveryDecision({
+        nodes: [
+          { data: {}, id: "standalone-group", type: "group" },
+          {
+            data: { content: "already projected" },
+            id: "standalone-text",
+            parentId: "standalone-group",
+            type: "text",
+          },
+          { data: {}, id: "recoverable-group", type: "group" },
+          {
+            data: {
+              textGenerationContractFingerprint: "contract-recoverable",
+            },
+            id: "recoverable-text",
+            parentId: "recoverable-group",
+            type: "text",
+          },
+        ] as ProbeNodeType[],
+        scope,
+        tasks: [
+          {
+            attempt: 1,
+            canvasId: scope.canvasId,
+            costCurrency: "CNY",
+            createdAt: new Date(now).toISOString(),
+            id: "task-standalone",
+            kind: "text",
+            nodeId: "standalone-text",
+            prompt: "redacted",
+            resultText: "already projected",
+            state: "success",
+            updatedAt: new Date(now).toISOString(),
+          },
+          {
+            attempt: 1,
+            canvasId: scope.canvasId,
+            costCurrency: "CNY",
+            createdAt: new Date(now).toISOString(),
+            fixtureScopeId: scope.fixtureScopeId,
+            generationIdentityVersion: 2,
+            generationInputKey: "input-recoverable",
+            generationOwnershipKey: "owner-recoverable",
+            id: "task-recoverable",
+            kind: "text",
+            modelConfigurationRevision: "configuration-recoverable",
+            modelInputContractFingerprint: "contract-recoverable",
+            modelReleaseRevision: "revision-recoverable",
+            nodeId: "recoverable-text",
+            prompt: "redacted",
+            state: "running",
+            updatedAt: new Date(now).toISOString(),
+            workflowExecutionRunId: "run-recoverable",
+            workflowGroupId: "recoverable-group",
+          },
+        ],
+      });
+    expect(projectedStandaloneAndRecoverableGroup.blockedGroupIds).toEqual([]);
+    expect(projectedStandaloneAndRecoverableGroup.checkpoints).toMatchObject([{
+      groupId: "recoverable-group",
+      runId: "run-recoverable",
+    }]);
+    const blockedOrphan = reconstructGroupRecoveryDecision({
+      nodes: [
+        { data: {}, id: "blocked-group", type: "group" },
+        {
+          data: {},
+          id: "blocked-text",
+          parentId: "blocked-group",
+          type: "text",
+        },
+      ] as ProbeNodeType[],
+      scope,
+      tasks: [{
+        attempt: 1,
+        canvasId: scope.canvasId,
+        costCurrency: "CNY",
+        createdAt: new Date(now).toISOString(),
+        id: "task-blocked",
+        kind: "text",
+        nodeId: "blocked-text",
+        prompt: "redacted",
+        state: "success",
+        updatedAt: new Date(now).toISOString(),
+        workflowExecutionRunId: "run-blocked",
+      }],
+    });
+    expect(blockedOrphan.blockedGroupIds).toEqual(["blocked-group"]);
+    expect(blockedOrphan.checkpoints).toEqual([]);
+
+    const foreignFixtureLegacy = reconstructGroupRecoveryDecision({
+      nodes: [
+        { data: {}, id: "fixture-group", type: "group" },
+        {
+          data: {
+            textGenerating: true,
+            textGenerationContractFingerprint: "contract-fixture",
+            textGenerationInputKey: "input-fixture",
+            textGenerationModelConfigurationRevision: "configuration-fixture",
+            textGenerationModelReleaseRevision: "revision-fixture",
+            textGenerationOwnershipKey: "owner-fixture",
+            textGenerationTaskId: "task-fixture",
+            workflowExecutionRunId: "run-fixture",
+          },
+          id: "fixture-text",
+          parentId: "fixture-group",
+          type: "text",
+        },
+      ] as ProbeNodeType[],
+      scope,
+      tasks: [{
+        attempt: 1,
+        canvasId: scope.canvasId,
+        costCurrency: "CNY",
+        createdAt: new Date(now).toISOString(),
+        fixtureScopeId: "different-fixture",
+        generationIdentityVersion: 2,
+        generationInputKey: "input-fixture",
+        generationOwnershipKey: "owner-fixture",
+        id: "task-fixture",
+        kind: "text",
+        modelConfigurationRevision: "configuration-fixture",
+        modelInputContractFingerprint: "contract-fixture",
+        modelReleaseRevision: "revision-fixture",
+        nodeId: "fixture-text",
+        prompt: "redacted",
+        state: "running",
+        updatedAt: new Date(now).toISOString(),
+      }],
+    });
+    expect(foreignFixtureLegacy.checkpoints).toEqual([]);
+
+    values.clear();
+    const aggregateKey = `unboundry-group-run-checkpoint:v1:${JSON.stringify([
+      scope.accountId,
+      scope.canvasId,
+      scope.fixtureScopeId,
+    ])}`;
+    values.set(aggregateKey, JSON.stringify({
+      "run-good": checkpoint("run-good", "group-good"),
+      "run-malformed": { acceptedTasks: { "node-bad": { taskId: 42 } } },
+    }));
+    const mixedCache = readGroupRunCheckpointCache(scope);
+    expect(mixedCache.corrupted).toBe(true);
+    expect(mixedCache.checkpoints.map((item) => item.runId)).toEqual(["run-good"]);
+
+    values.clear();
+    const conflictRunId = "run-exact-legacy-conflict";
+    const legacyConflict = {
+      ...checkpoint(conflictRunId, "group-conflict"),
+      snapshotFingerprint: "snapshot-before",
+      updatedAt: now,
+    };
+    const exactConflict = {
+      ...legacyConflict,
+      snapshotFingerprint: "snapshot-current",
+      updatedAt: now + 1,
+    };
+    values.set(aggregateKey, JSON.stringify({
+      [conflictRunId]: legacyConflict,
+    }));
+    values.set(
+      `unboundry-group-run-checkpoint:v1:${JSON.stringify([
+        scope.accountId,
+        scope.canvasId,
+        scope.fixtureScopeId,
+        conflictRunId,
+      ])}`,
+      JSON.stringify(exactConflict),
+    );
+    const conflictingCache = readGroupRunCheckpointCache(scope);
+    expect(conflictingCache.corrupted).toBe(true);
+    expect(conflictingCache.checkpoints).toMatchObject([{
+      runId: conflictRunId,
+      snapshotFingerprint: "snapshot-current",
+    }]);
+
+    values.clear();
+    const otherAccountScope = { ...scope, accountId: "account-other" };
+    const otherFixtureScope = { ...scope, fixtureScopeId: "fixture-other" };
+    expect(await acquireGroupRunLease(
+      scope,
+      "run-exact-scope",
+      "owner-scope-a",
+      now + 5,
+      ["node-exact-scope"],
+    )).toBe(true);
+    expect(await acquireGroupRunLease(
+      otherAccountScope,
+      "run-exact-scope",
+      "owner-scope-b",
+      now + 5,
+      ["node-exact-scope"],
+    )).toBe(true);
+    expect(await acquireGroupRunLease(
+      otherFixtureScope,
+      "run-exact-scope",
+      "owner-scope-c",
+      now + 5,
+      ["node-exact-scope"],
+    )).toBe(true);
+    expect(releaseGroupRunLease(scope, "run-exact-scope", "owner-scope-a"))
+      .toBe(true);
+    expect(releaseGroupRunLease(
+      otherAccountScope,
+      "run-exact-scope",
+      "owner-scope-b",
+    )).toBe(true);
+    expect(releaseGroupRunLease(
+      otherFixtureScope,
+      "run-exact-scope",
+      "owner-scope-c",
+    )).toBe(true);
     Object.defineProperty(fakeWindow, "navigator", {
       configurable: true,
       value: {},
@@ -1613,6 +2217,21 @@ test("workflow execution has no component registration or render-retention depen
     "utf8",
   );
   const canvas = readFileSync("client/src/canvas/CanvasSurface.tsx", "utf8");
+  const taskPanel = readFileSync(
+    "client/src/canvas/GenerationTasksPanel.tsx",
+    "utf8",
+  );
+  const shell = readFileSync("client/src/canvas/CanvasShell.tsx", "utf8");
+  const taskClient = readFileSync(
+    "client/src/generation/generationTasks.ts",
+    "utf8",
+  );
+  const taskServer = readFileSync("server/generationTasks.ts", "utf8");
+  const taskApi = readFileSync("server/generationTasksApi.ts", "utf8");
+  const checkpointSource = readFileSync(
+    "client/src/generation/groupRunCheckpoint.ts",
+    "utf8",
+  );
   expect(provider).not.toContain("registerWorkflowNode");
   expect(provider).not.toContain("waitForRegistrations");
   expect(provider).toContain("另一轮正在使用${conflictRole}");
@@ -1625,7 +2244,114 @@ test("workflow execution has no component registration or render-retention depen
   expect(provider).toContain("recordDirectProjectionReceipt(binding.nodeId, result)");
   expect(provider).toContain("recordDirectProjectionReceipt(nodeId, nodeResult)");
   expect(provider).toContain("...directProjectionReceipts");
+  expect(provider).toContain("readGroupRunCheckpointCache(scope)");
+  expect(provider).toContain("readGroupRunLeaseCache(scope)");
+  expect(provider).toContain("reconstructGroupRecoveryDecision({");
+  expect(provider.match(
+    /await quarantineCorruptGroupRunCacheAfterAuthority\(/g,
+  )?.length).toBe(3);
+  expect(provider).toContain("readRecoveryAuthority,");
+  expect(provider).toContain(
+    "recoveryAuthorityTaskIds = new Set(tasks.map((task) => task.id))",
+  );
+  expect(provider).toContain(
+    "!recoveryAuthorityTaskIds?.has(task.id)",
+  );
+  expect(provider).toContain(
+    'window.addEventListener("storage", wakeRecovery)',
+  );
+  expect(provider).toContain(
+    "window.addEventListener(GROUP_RUN_LEASE_EVENT, wakeRecovery)",
+  );
+  expect(provider).toContain("authorityConfirmedStableEmpty = true");
+  expect(provider).toContain("setGroupRunAuthoritySettledEmpty(scope, true)");
+  expect(provider).toContain("if (awaitingAuthorityWake) scheduleAuthorityRetry()");
+  expect(provider).toContain("const durableWorkAppeared = cache.checkpoints.some");
+  expect(provider).toContain(
+    "(cache.quarantined || leaseCache.quarantined)",
+  );
+  expect(provider).toContain("reconcileRequested = true");
+  expect(provider).toContain('errorClass: "automatic-authority-recovery"');
+  expect(checkpointSource).toContain("locks.query?.()");
+  expect(checkpointSource).toContain(
+    "const authority = await readVerifiedAuthority()",
+  );
+  expect(checkpointSource).toContain("window.localStorage.getItem(key) !== raw");
+  expect(checkpointSource).toContain("entry.values.delete(key)");
+  expect(taskPanel).toContain("isGroupRunAuthoritySettledEmpty(groupRunScope)");
+  expect(taskPanel).toContain("GROUP_RUN_AUTHORITY_EVENT");
+  expect(taskPanel).toContain("当前浏览器无法安全自动恢复");
+  expect(taskPanel).toContain("请刷新页面或使用支持 Web Locks 的浏览器后重试");
+  expect(provider).toContain(
+    "void executeGroup(checkpoint.groupId, checkpoint, hasAcceptedTasks)",
+  );
+  expect(provider).toContain('resumeMode: "current-graph"');
+  expect(provider).toContain("durableRestartCheckpoint = currentGraphRecords[0]");
+  expect(provider).toContain("durableRestartCheckpoint ?? {");
+  expect(provider).toContain("let terminalErrorPublished = false");
+  expect(provider).toContain(
+    "binding.modelConfigurationRevision ===",
+  );
+  expect(provider).toContain(
+    "rightBinding.modelConfigurationRevision",
+  );
+  expect(provider).toContain('notifyTerminalErrorOnce(\n              "lease-lost"');
+  expect(provider).toContain("candidateLockIds = stableLockIds");
+  const leaseAdmission = provider.indexOf(
+    "leaseAcquired = await runExclusiveCanvasSubmit",
+  );
+  const authoritativeRevisionRead = provider.indexOf(
+    "await readAuthoritativeCanvasRevision()",
+    leaseAdmission,
+  );
+  const leaseAdmissionResult = provider.indexOf(
+    "if (!leaseAcquired)",
+    authoritativeRevisionRead,
+  );
+  expect(leaseAdmission).toBeGreaterThan(-1);
+  expect(authoritativeRevisionRead).toBeGreaterThan(leaseAdmission);
+  expect(leaseAdmissionResult).toBeGreaterThan(authoritativeRevisionRead);
+  expect(provider).toContain(
+    "admissionRevision !== stableCanvasRevision",
+  );
+  expect(provider).toContain(
+    "authoritativeRevision !== stableCanvasRevision",
+  );
+  expect(provider).toContain(
+    "admissionFingerprint !== snapshotFingerprint",
+  );
+  expect(canvas).toContain("readAuthoritativeCanvasRevision");
+  expect(provider).toContain(
+    "const blockedGroupIds = new Set(reconstructed.blockedGroupIds)",
+  );
+  expect(provider).not.toContain(
+    "if (reconstructed.blockedGroupIds.length > 0) return",
+  );
+  const restartWrite = provider.indexOf(
+    "writeGroupRunCheckpoint(pendingRestartCheckpoint)",
+  );
+  const oldRunClear = provider.indexOf(
+    "clearGroupRunCheckpoint(scope, expectedLease())",
+    restartWrite,
+  );
+  expect(restartWrite).toBeGreaterThan(-1);
+  expect(oldRunClear).toBeGreaterThan(restartWrite);
   expect(canvas).not.toContain("retainWorkflowNodesForRender");
+  expect(canvas).not.toContain("isConnectionAllowed(connection, edgesRef.current)");
+  expect(canvas).toContain("runCanvasMutationAdmission(");
+  expect(canvas).toContain("admittedSetNodes");
+  expect(canvas).toContain("admittedSetEdges");
+  expect(taskClient).toContain("runWithCanvasGraphMutationAdmission");
+  expect(taskPanel).toContain("readGroupRunCheckpointCache(groupRunScope)");
+  expect(taskPanel).toContain('data-testid="tasks-group-recovery"');
+  expect(taskPanel).toContain("groupSummary?.groupId === groupCheckpoint.groupId");
+  expect(shell).toContain("readGroupRunCheckpointCache(groupRunScope)");
+  expect(shell).toContain("readGroupRunLeaseCache(groupRunScope)");
+  expect(executors).toContain("inputPreflight.normalizedParameters");
+  expect(executors).toContain("inputs: inputPreflight.inputs");
+  expect(executors).toContain("persistExecutionContract(context, plan)");
+  expect(executors).toContain("workflowGroupId: context.groupId");
+  expect(executors).toContain("task.modelReleaseRevision !== plan.modelReleaseRevision");
   expect(executors).not.toContain("document.");
   expect(executors).not.toContain("window.");
   expect(executors).not.toContain("context.setNodes");
@@ -1636,6 +2362,11 @@ test("workflow execution has no component registration or render-retention depen
   expect(registry).not.toContain('from "react"');
   expect(registry).toContain("graph: CanvasGraphCommandPort");
   expect(registry).toContain("save: CanvasSavePort");
+  expect(taskClient).toContain("...(workflowBinding ? { workflowBinding } : {})");
+  expect(taskServer).toContain("const workflowBinding = durableWorkflowBinding(task)");
+  expect(taskServer).toContain("compileRegisteredModelTaskDecision({");
+  expect(taskApi).toContain('code: "WORKFLOW_BINDING_MISMATCH"');
+  expect(taskApi).toContain("...(workflowBinding ? { workflowBinding } : {})");
 });
 
 test("navigation interrupts every locally owned concurrent run without crossing checkpoint ownership", async () => {
@@ -1728,6 +2459,396 @@ test("navigation interrupts every locally owned concurrent run without crossing 
   }
 });
 
+test("navigation fails closed when any scoped lease cache entry is malformed", () => {
+  const host = globalThis as unknown as { window?: Window };
+  const previousWindow = host.window;
+  const values = new Map<string, string>();
+  const storage = {
+    clear: () => values.clear(),
+    getItem: (key: string) => values.get(key) ?? null,
+    key: (index: number) => [...values.keys()][index] ?? null,
+    get length() {
+      return values.size;
+    },
+    removeItem: (key: string) => values.delete(key),
+    setItem: (key: string, value: string) => values.set(key, value),
+  } satisfies Storage;
+  const fakeWindow = new EventTarget() as Window;
+  Object.defineProperties(fakeWindow, {
+    confirm: { value: () => true },
+    localStorage: { value: storage },
+    navigator: { configurable: true, value: {} },
+  });
+  host.window = fakeWindow;
+  const scope = {
+    accountId: "account-corrupt-lease",
+    canvasId: "canvas-corrupt-lease",
+    fixtureScopeId: "",
+  };
+  const now = Date.now();
+  const checkpoint: GroupRunCheckpoint = {
+    ...scope,
+    executableNodeIds: ["node-a"],
+    groupId: "group-a",
+    nodeStates: { "node-a": "running" },
+    runId: "run-a",
+    snapshotFingerprint: "snapshot-a",
+    startedAt: now,
+    status: "running",
+    successProofs: {},
+    updatedAt: now,
+    version: 2,
+  };
+  const stopped: string[] = [];
+  fakeWindow.addEventListener("unboundry:group-run-stop", (event) => {
+    stopped.push((event as CustomEvent<{ runId: string }>).detail.runId);
+  });
+  try {
+    expect(writeGroupRunCheckpoint(checkpoint)).toBe(true);
+    const leaseKey = (runId: string) =>
+      `unboundry-group-run-lease:v1:${JSON.stringify([
+        scope.accountId,
+        scope.canvasId,
+        scope.fixtureScopeId,
+        runId,
+      ])}`;
+    values.set(leaseKey("run-a"), JSON.stringify({
+      expiresAt: now + 60_000,
+      heartbeatAt: now,
+      lockedNodeIds: ["node-a"],
+      ownerId: "foreign-owner",
+      runId: "run-a",
+    }));
+    values.set(leaseKey("run-bad"), "{not-json");
+    expect(readGroupRunLeaseCache(scope).corrupted).toBe(true);
+    expect(confirmGroupRunNavigation(scope)).toBe(false);
+    expect(stopped).toEqual([]);
+    expect(readGroupRunCheckpoint(scope, "run-a")?.status).toBe("running");
+  } finally {
+    clearGroupRunCheckpoint(scope);
+    if (previousWindow) host.window = previousWindow;
+    else delete host.window;
+  }
+});
+
+test("exact run cache keys reject malformed keys, maps, suffix drift and incomplete leases without mutation", async () => {
+  const host = globalThis as unknown as { window?: Window };
+  const previousWindow = host.window;
+  const values = new Map<string, string>();
+  const storage = {
+    clear: () => values.clear(),
+    getItem: (key: string) => values.get(key) ?? null,
+    key: (index: number) => [...values.keys()][index] ?? null,
+    get length() { return values.size; },
+    removeItem: (key: string) => values.delete(key),
+    setItem: (key: string, value: string) => values.set(key, value),
+  } satisfies Storage;
+  const fakeWindow = new EventTarget() as Window;
+  let heldLockNames: string[] = [];
+  let canvasAdmissionDepth = 0;
+  Object.defineProperties(fakeWindow, {
+    confirm: { value: () => true },
+    localStorage: { value: storage },
+    navigator: {
+      configurable: true,
+      value: {
+        locks: {
+          query: async () => ({
+            held: heldLockNames.map((name) => ({ name })),
+            pending: [],
+          }),
+          request: async <T>(
+            name: string,
+            _options: { ifAvailable: boolean },
+            callback: (lock: unknown) => Promise<T> | T,
+          ) => {
+            const isCanvasAdmission = name.startsWith(
+              "unboundry-group-run-canvas-admission:",
+            );
+            if (isCanvasAdmission) canvasAdmissionDepth += 1;
+            try {
+              return await callback({});
+            } finally {
+              if (isCanvasAdmission) canvasAdmissionDepth -= 1;
+            }
+          },
+        },
+      },
+    },
+  });
+  host.window = fakeWindow;
+  const scope = {
+    accountId: "account-strict-cache",
+    canvasId: "canvas-strict-cache",
+    fixtureScopeId: "",
+  };
+  const now = Date.now();
+  const lease = {
+    expiresAt: now + 60_000,
+    heartbeatAt: now,
+    lockedNodeIds: ["node-a"],
+    ownerId: "owner-a",
+    runId: "run-a",
+  };
+  const checkpoint: GroupRunCheckpoint = {
+    ...scope,
+    executableNodeIds: ["node-a"],
+    groupId: "group-a",
+    nodeStates: { "node-a": "running" },
+    runId: "run-a",
+    snapshotFingerprint: "snapshot-a",
+    startedAt: now,
+    status: "running",
+    successProofs: {},
+    updatedAt: now,
+    version: 2,
+  };
+  const leaseKey = `unboundry-group-run-lease:v1:${JSON.stringify([
+    scope.accountId, scope.canvasId, scope.fixtureScopeId, "run-a",
+  ])}`;
+  const checkpointKey = `unboundry-group-run-checkpoint:v1:${JSON.stringify([
+    scope.accountId, scope.canvasId, scope.fixtureScopeId, "run-a",
+  ])}`;
+  const legacyCheckpointKey =
+    `unboundry-group-run-checkpoint:v1:${JSON.stringify([
+      scope.accountId, scope.canvasId, scope.fixtureScopeId,
+    ])}`;
+  const malformedLeaseKey = "unboundry-group-run-lease:v1:{malformed-scope";
+  const malformedCheckpointKey =
+    "unboundry-group-run-checkpoint:v1:{malformed-scope";
+  const nonArrayLeaseKey =
+    `unboundry-group-run-lease:v1:${JSON.stringify({ scope: "unknown" })}`;
+  const incompleteLeaseKey =
+    `unboundry-group-run-lease:v1:${JSON.stringify([
+      scope.accountId, scope.canvasId,
+    ])}`;
+  const nonArrayCheckpointKey =
+    `unboundry-group-run-checkpoint:v1:${JSON.stringify({ scope: "unknown" })}`;
+  const incompleteCheckpointKey =
+    `unboundry-group-run-checkpoint:v1:${JSON.stringify([
+      scope.accountId, scope.canvasId,
+    ])}`;
+  try {
+    expect(groupRunAuthorityRecoverySupported()).toBe(true);
+    expect(isGroupRunAuthoritySettledEmpty(scope)).toBe(false);
+    let authorityEvents = 0;
+    fakeWindow.addEventListener("unboundry:group-run-authority", () => {
+      authorityEvents += 1;
+    });
+    setGroupRunAuthoritySettledEmpty(scope, true);
+    expect(isGroupRunAuthoritySettledEmpty(scope)).toBe(true);
+    setGroupRunAuthoritySettledEmpty(scope, true);
+    expect(authorityEvents).toBe(1);
+    setGroupRunAuthoritySettledEmpty(scope, false);
+    expect(isGroupRunAuthoritySettledEmpty(scope)).toBe(false);
+    expect(authorityEvents).toBe(2);
+    const otherScopeLeaseKey = `unboundry-group-run-lease:v1:${JSON.stringify([
+      "different-account", scope.canvasId, "different-fixture", "run-other-scope",
+    ])}`;
+    values.set(otherScopeLeaseKey, JSON.stringify({
+      ...lease,
+      runId: "run-other-scope",
+    }));
+    expect(await hasForeignActiveGroupRunLeaseForCanvas(scope, "node-a"))
+      .toBe(false);
+    expect(await hasConflictingActiveGroupRunLeaseForCanvas(scope, "node-a"))
+      .toBe(false);
+    values.delete(otherScopeLeaseKey);
+
+    values.set(malformedLeaseKey, JSON.stringify(lease));
+    expect(readGroupRunLeaseCache(scope).corrupted).toBe(true);
+    expect(await acquireGroupRunLease(
+      scope,
+      "run-malformed",
+      "owner-malformed",
+      now,
+      ["node-a"],
+    )).toBe(false);
+    expect(values.has(malformedLeaseKey)).toBe(true);
+    values.delete(malformedLeaseKey);
+
+    for (const structurallyInvalidKey of [nonArrayLeaseKey, incompleteLeaseKey]) {
+      values.set(structurallyInvalidKey, JSON.stringify(lease));
+      expect(readGroupRunLeaseCache(scope).corrupted).toBe(true);
+      expect(await acquireGroupRunLease(
+        scope,
+        "run-structurally-invalid",
+        "owner-structurally-invalid",
+        now,
+        ["node-a"],
+      )).toBe(false);
+      expect(values.has(structurallyInvalidKey)).toBe(true);
+      values.delete(structurallyInvalidKey);
+    }
+
+    values.set(leaseKey, "");
+    expect(readGroupRunLeaseCache(scope).corrupted).toBe(true);
+    expect(await acquireGroupRunLease(
+      scope,
+      "run-empty-value",
+      "owner-empty-value",
+      now,
+      ["node-a"],
+    )).toBe(false);
+    expect(values.get(leaseKey)).toBe("");
+    values.delete(leaseKey);
+
+    values.set(malformedCheckpointKey, JSON.stringify(checkpoint));
+    expect(readGroupRunCheckpointCache(scope).corrupted).toBe(true);
+    expect(confirmGroupRunNavigation(scope)).toBe(false);
+    expect(writeGroupRunCheckpoint(checkpoint)).toBe(false);
+    expect(values.has(malformedCheckpointKey)).toBe(true);
+    values.delete(malformedCheckpointKey);
+
+    for (const structurallyInvalidKey of [
+      nonArrayCheckpointKey,
+      incompleteCheckpointKey,
+    ]) {
+      values.set(structurallyInvalidKey, JSON.stringify(checkpoint));
+      expect(readGroupRunCheckpointCache(scope).corrupted).toBe(true);
+      expect(confirmGroupRunNavigation(scope)).toBe(false);
+      expect(writeGroupRunCheckpoint(checkpoint)).toBe(false);
+      expect(values.has(structurallyInvalidKey)).toBe(true);
+      values.delete(structurallyInvalidKey);
+    }
+
+    values.set(checkpointKey, "");
+    expect(readGroupRunCheckpointCache(scope).corrupted).toBe(true);
+    expect(confirmGroupRunNavigation(scope)).toBe(false);
+    expect(writeGroupRunCheckpoint(checkpoint)).toBe(false);
+    expect(values.get(checkpointKey)).toBe("");
+    values.delete(checkpointKey);
+
+    values.set(checkpointKey, JSON.stringify({
+      ...checkpoint,
+      accountId: "different-account",
+    }));
+    expect(readGroupRunCheckpointCache(scope).corrupted).toBe(true);
+    expect(readGroupRunCheckpoint(scope, "run-a")).toBeUndefined();
+    values.delete(checkpointKey);
+
+    values.set(legacyCheckpointKey, JSON.stringify({
+      "run-a": checkpoint,
+      "run-b": {
+        ...checkpoint,
+        canvasId: "different-canvas",
+        runId: "run-b",
+      },
+    }));
+    expect(readGroupRunCheckpointCache(scope).corrupted).toBe(true);
+    expect(readGroupRunCheckpoints(scope)).toEqual([checkpoint]);
+    values.delete(legacyCheckpointKey);
+
+    values.set(leaseKey, JSON.stringify({ "run-a": lease }));
+    expect(readGroupRunLeaseCache(scope).corrupted).toBe(true);
+    expect(confirmGroupRunNavigation(scope)).toBe(false);
+    expect(values.has(leaseKey)).toBe(true);
+
+    values.set(leaseKey, JSON.stringify({ ...lease, runId: "run-b" }));
+    expect(readGroupRunLeaseCache(scope).corrupted).toBe(true);
+    expect(releaseGroupRunLease(scope, "run-a", "owner-a")).toBe(false);
+    expect(values.has(leaseKey)).toBe(true);
+
+    const { lockedNodeIds: _locks, ...incompleteLease } = lease;
+    values.set(leaseKey, JSON.stringify(incompleteLease));
+    expect(readGroupRunLeaseCache(scope).corrupted).toBe(true);
+
+    values.delete(leaseKey);
+    values.set(checkpointKey, JSON.stringify({ "run-a": checkpoint }));
+    expect(readGroupRunCheckpointCache(scope).corrupted).toBe(true);
+    expect(confirmGroupRunNavigation(scope)).toBe(false);
+    expect(clearGroupRunCheckpoint(scope, undefined, "run-a")).toBe(false);
+    expect(values.has(checkpointKey)).toBe(true);
+
+    values.set(checkpointKey, JSON.stringify({ ...checkpoint, runId: "run-b" }));
+    expect(readGroupRunCheckpointCache(scope).corrupted).toBe(true);
+    expect(clearGroupRunCheckpoint(scope, undefined, "run-a")).toBe(false);
+    expect(values.has(checkpointKey)).toBe(true);
+
+    values.clear();
+    values.set(malformedLeaseKey, "");
+    expect(readGroupRunCheckpointCache(scope).corrupted).toBe(false);
+    expect(readGroupRunLeaseCache(scope).corrupted).toBe(true);
+    let leaseOnlyAuthorityReads = 0;
+    expect(await quarantineCorruptGroupRunCacheAfterAuthority(
+      scope,
+      async () => {
+        leaseOnlyAuthorityReads += 1;
+        expect(canvasAdmissionDepth).toBe(1);
+        return "lease-only-authority";
+      },
+    )).toBe("lease-only-authority");
+    expect(leaseOnlyAuthorityReads).toBe(1);
+    expect(readGroupRunLeaseCache(scope)).toMatchObject({
+      corrupted: false,
+      quarantined: true,
+    });
+    values.set(malformedLeaseKey, "{changed-after-lease-only-authority");
+    expect(readGroupRunLeaseCache(scope).corrupted).toBe(true);
+    values.set(malformedLeaseKey, "");
+    values.set(nonArrayCheckpointKey, JSON.stringify(checkpoint));
+    expect(readGroupRunLeaseCache(scope).corrupted).toBe(true);
+    expect(readGroupRunCheckpointCache(scope).corrupted).toBe(true);
+    heldLockNames = [
+      `unboundry-group-run:${JSON.stringify([
+        scope.accountId, scope.canvasId, scope.fixtureScopeId,
+      ])}:foreign-run`,
+    ];
+    let authorityReads = 0;
+    expect(await quarantineCorruptGroupRunCacheAfterAuthority(
+      scope,
+      async () => {
+        authorityReads += 1;
+        expect(canvasAdmissionDepth).toBe(1);
+        return "verified-authority";
+      },
+    )).toBeUndefined();
+    expect(authorityReads).toBe(0);
+    expect(readGroupRunLeaseCache(scope).corrupted).toBe(true);
+    heldLockNames = [];
+    expect(await quarantineCorruptGroupRunCacheAfterAuthority(
+      scope,
+      async () => {
+        authorityReads += 1;
+        expect(canvasAdmissionDepth).toBe(1);
+        return "verified-authority";
+      },
+    )).toBe("verified-authority");
+    expect(authorityReads).toBe(1);
+    expect(readGroupRunLeaseCache(scope).corrupted).toBe(false);
+    expect(readGroupRunLeaseCache(scope).quarantined).toBe(true);
+    expect(readGroupRunCheckpointCache(scope).corrupted).toBe(false);
+    expect(readGroupRunCheckpointCache(scope).quarantined).toBe(true);
+    expect(values.get(malformedLeaseKey)).toBe("");
+    expect(values.get(nonArrayCheckpointKey)).toBe(JSON.stringify(checkpoint));
+    expect(writeGroupRunCheckpoint(checkpoint)).toBe(true);
+    expect(readGroupRunCheckpoint(scope, "run-a")?.runId).toBe("run-a");
+    values.set(malformedLeaseKey, "{changed-after-authority");
+    expect(readGroupRunLeaseCache(scope).corrupted).toBe(true);
+    expect(await quarantineCorruptGroupRunCacheAfterAuthority(
+      scope,
+      async () => {
+        expect(canvasAdmissionDepth).toBe(1);
+        values.set(malformedLeaseKey, "{changed-during-authority");
+        return "stale-authority";
+      },
+    )).toBeUndefined();
+    expect(writeGroupRunCheckpoint(checkpoint)).toBe(false);
+    const requestLock = (fakeWindow.navigator as Navigator & {
+      locks: { request: unknown };
+    }).locks.request;
+    Object.defineProperty(fakeWindow, "navigator", {
+      configurable: true,
+      value: { locks: { request: requestLock } },
+    });
+    expect(groupRunAuthorityRecoverySupported()).toBe(false);
+  } finally {
+    setGroupRunAuthoritySettledEmpty(scope, false);
+    if (previousWindow) host.window = previousWindow;
+    else delete host.window;
+  }
+});
+
 test("workflow graph stop waits for an active node and reports descendants pending", async () => {
   let cancelled = false;
   let activeStarted = false;
@@ -1810,6 +2931,31 @@ test("group run summary scope and bounded dismissal isolate accounts and fixture
     runId: `run-${GROUP_RUN_SUMMARY_DISMISSAL_LIMIT}`,
   })).toBe(true);
 
+  const publishedNotices = new Map<string, Set<"recovering" | "terminal">>();
+  const noticeIdentity = {
+    accountId: summary.accountId,
+    canvasId: summary.canvasId,
+    errorClass: "poll-timeout",
+    groupId: summary.groupId,
+    nodeId: "node-a",
+    runId: summary.runId,
+  };
+  expect(Array.from({ length: 30 }, () => publishGroupRunNotificationOnce(
+    publishedNotices,
+    noticeIdentity,
+    "recovering",
+  )).filter(Boolean)).toHaveLength(1);
+  expect(publishGroupRunNotificationOnce(
+    publishedNotices,
+    noticeIdentity,
+    "terminal",
+  )).toBe(true);
+  expect(publishGroupRunNotificationOnce(
+    publishedNotices,
+    noticeIdentity,
+    "terminal",
+  )).toBe(false);
+
   const host = globalThis as unknown as { window?: Window };
   const previousWindow = host.window;
   host.window = new EventTarget() as unknown as Window;
@@ -1873,6 +3019,16 @@ test("friendly generation messages avoid long English and jargon", () => {
   expect(friendlyGenerationMessage(undefined, "image", "PROVIDER_RESULT_FORMAT"))
     .toContain("模型已响应");
   expect(generationFailureIsDefinitive("PROVIDER_RESULT_FORMAT")).toBe(false);
+});
+
+test("workflow recovery never routes ordinary users to task panels or external platforms", () => {
+  const provider = readFileSync(
+    "client/src/generation/WorkflowExecutionProvider.tsx",
+    "utf8",
+  );
+  expect(provider).not.toMatch(
+    /任务面板|任务中心|素材库|外部平台|平台任务号|Provider URL/,
+  );
 });
 
 test("save gate waits for a durable canvas revision before running the node", async () => {
@@ -2408,6 +3564,7 @@ test("group run preflights a truly unmounted offscreen Image and persists the re
   request,
 }) => {
   const modelId = `fixture-no-image-reference-${randomUUID()}`;
+  const modelReleaseRevision = randomUUID();
   const assetId = `fixture-group-reference-${randomUUID()}`;
   const created = await request.post("/api/projects", { data: {} });
   expect(created.status()).toBe(201);
@@ -2440,6 +3597,7 @@ test("group run preflights a truly unmounted offscreen Image and persists the re
         generationEnabled: true,
         models: [{
           capability: "image",
+          configurationRevision: `fixture-image-${modelId}-revision-1`,
           displayName: "不支持参考图测试模型",
           generationAvailable: true,
           id: modelId,
@@ -2450,6 +3608,7 @@ test("group run preflights a truly unmounted offscreen Image and persists the re
           },
           isDefault: true,
           parameterSchema,
+          releaseRevisionId: modelReleaseRevision,
         }],
       }),
       contentType: "application/json",
@@ -2712,12 +3871,21 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
     canvasId: string;
     costCurrency: "CNY";
     createdAt: string;
+    fixtureScopeId: string;
+    generationIdentityVersion: 2;
     id: string;
     kind: "text";
     model: string;
+    modelConfigurationRevision: string;
     nodeId: string;
     prompt: string;
     updatedAt: string;
+    generationInputKey: string;
+    generationOwnershipKey: string;
+    modelReleaseRevision: string;
+    modelInputContractFingerprint: string;
+    workflowExecutionRunId?: string;
+    workflowGroupId?: string;
   };
   const tasks = new Map<string, FakeTask>();
   const taskStates = new Map<string, FakeTaskState>();
@@ -2725,6 +3893,20 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
   const taskPostNodes: string[] = [];
   type CapturedSummary = { groupId: string; runId: string; status: string };
   const terminalSummaries: CapturedSummary[] = [];
+  const modelReleaseRevision = randomUUID();
+  const contractInputsByNode = new Map<string, Array<{
+    kind: "text";
+    order: number;
+    role: "context-text";
+    semanticId: string;
+  }>>([
+    ["run-text-a-next", [{
+      kind: "text",
+      order: 1,
+      role: "context-text",
+      semanticId: "run-edge-a-next",
+    }]],
+  ]);
   let taskSequence = 0;
   const taskJson = (task: FakeTask) => {
     const state = taskStates.get(task.id) ?? "running";
@@ -2764,11 +3946,13 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
         generationEnabled: true,
         models: [{
           capability: "text",
+          configurationRevision: "fixture-group-lock-configuration-1",
           displayName: "整组锁定测试模型",
           generationAvailable: true,
           id: modelId,
           isDefault: true,
           parameterSchema,
+          releaseRevisionId: modelReleaseRevision,
         }],
       },
       status: 200,
@@ -2813,9 +3997,54 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
     }
     if (requestUrl.pathname === "/api/generation-tasks" && method === "POST") {
       const body = route.request().postDataJSON() as {
+        fixtureScopeId: string;
+        generationIdentityVersion: 2;
+        generationInputKey: string;
+        generationOwnershipKey: string;
+        model?: string;
+        modelConfigurationRevision: string;
+        modelInputContractFingerprint: string;
+        modelReleaseRevision: string;
         nodeId: string;
+        ownPrompt?: string;
+        parameters?: Record<string, ModelParameterValue>;
         prompt: string;
+        workflowBinding?: {
+          generationInputKey: string;
+          generationOwnershipKey: string;
+          groupId: string;
+          modelConfigurationRevision: string;
+          modelReleaseRevision: string;
+          runId: string;
+        };
       };
+      const connectedInputs = contractInputsByNode.get(body.nodeId) ?? [];
+      const contractFingerprint = normalizeModelInputs({
+        connectedInputs,
+        modelReleaseRevision,
+        requestedParameters: body.parameters ?? {},
+        schema: parameterSchema,
+        transitionIntent: "execute",
+      }).contractFingerprint;
+      const standaloneInputKey = generationInputKey({
+        inputs: [],
+        modelId: body.model ?? modelId,
+        modelReleaseRevision,
+        ownPrompt: body.ownPrompt,
+        parameters: body.parameters ?? {},
+        prompt: body.prompt,
+      });
+      const standaloneOwnershipKey = generationOwnershipKey(
+        generationOwnershipEvidence({
+          contractFingerprint,
+          inputs: [],
+          kind: "text",
+          modelId: body.model ?? modelId,
+          modelReleaseRevision,
+          parameters: body.parameters ?? {},
+          prompt: body.ownPrompt ?? body.prompt,
+        }),
+      );
       taskSequence += 1;
       const taskId = `fixture-group-lock-task-${taskSequence}-${randomUUID()}`;
       const task: FakeTask = {
@@ -2823,12 +4052,22 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
         canvasId: project.id,
         costCurrency: "CNY",
         createdAt: new Date().toISOString(),
+        fixtureScopeId: body.fixtureScopeId,
+        generationIdentityVersion: body.generationIdentityVersion,
         id: taskId,
         kind: "text",
         model: modelId,
+        modelConfigurationRevision: body.modelConfigurationRevision,
+        modelInputContractFingerprint: body.modelInputContractFingerprint,
         nodeId: body.nodeId,
         prompt: body.prompt,
         updatedAt: new Date().toISOString(),
+        generationInputKey: body.generationInputKey ?? standaloneInputKey,
+        generationOwnershipKey: body.generationOwnershipKey ??
+          standaloneOwnershipKey,
+        modelReleaseRevision: body.modelReleaseRevision ?? modelReleaseRevision,
+        workflowExecutionRunId: body.workflowBinding?.runId,
+        workflowGroupId: body.workflowBinding?.groupId,
       };
       tasks.set(taskId, task);
       taskStates.set(taskId, "running");
@@ -2888,14 +4127,59 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
       taskPostNodes.filter((candidate) => candidate === nodeId).length
     ).toBe(expectedNodePostCount));
   };
-  const discardInterruptedCheckpointsForNextScenario = () => page.evaluate(() => {
-    for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
-      const key = window.localStorage.key(index);
-      if (key?.startsWith("unboundry-group-run-checkpoint:v1:")) {
-        window.localStorage.removeItem(key);
+  const discardInterruptedCheckpointsForNextScenario = async () => {
+    tasks.clear();
+    taskStates.clear();
+    latestTaskByNode.clear();
+    await page.evaluate(() => {
+      for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
+        const key = window.localStorage.key(index);
+        if (
+          key?.startsWith("unboundry-group-run-checkpoint:v1:") ||
+          key?.startsWith("unboundry:generation-submission:v2:")
+        ) window.localStorage.removeItem(key);
       }
-    }
-  });
+    });
+    const response = await request.get(`/api/canvas/${project.id}`);
+    expect(response.ok()).toBeTruthy();
+    const current = await response.json() as {
+      edges: unknown[];
+      loadToken: string;
+      nodes: Array<{ data?: Record<string, unknown>; id: string }>;
+      revision: number;
+    };
+    const saved = await request.put(`/api/canvas/${project.id}`, {
+      data: {
+        edges: current.edges,
+        nodes: current.nodes.map((node) => node.data && node.id.startsWith("run-text-")
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                groupRunSuccessOwnershipKey: undefined,
+                groupRunSuccessResultKey: undefined,
+                groupRunSuccessTaskId: undefined,
+                textGenerating: false,
+                textGenerationContractFingerprint: undefined,
+                textGenerationInputKey: undefined,
+                textGenerationModelReleaseRevision: undefined,
+                textGenerationOwnershipKey: undefined,
+                textGenerationTaskId: undefined,
+                workflowExecutionRunId: undefined,
+              },
+            }
+          : node),
+        observedLoadToken: current.loadToken,
+        observedRevision: current.revision,
+        revision: current.revision,
+        saveAttemptId: randomUUID(),
+        saveSequence: 1,
+        saveSessionId: randomUUID(),
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+    expect(saved.ok()).toBeTruthy();
+  };
   const expectTerminalSummaryCount = (
     groupId: string,
     status: "cancelled" | "failed" | "success",
@@ -3106,6 +4390,7 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
     await expect(page.getByTestId("text-creator-prompt"))
       .toHaveValue("运行期间仍可编辑的无关文案");
     await page.getByTestId("text-creator-prompt").blur();
+    await expect(page.getByTestId("text-creator-prompt")).toBeEnabled();
     await unrelatedText.evaluate((element) => element.dispatchEvent(
       new MouseEvent("click", { bubbles: true }),
     ));
@@ -3142,6 +4427,15 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
     );
     await page.mouse.up();
     await expect(canvas).toHaveAttribute("data-edge-count", "2");
+    await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
+    await expect.poll(() => page.evaluate((lockName) =>
+      navigator.locks.request(
+        lockName,
+        { ifAvailable: true },
+        (lock) => Boolean(lock),
+      ),
+    `unboundry-group-run-canvas-admission:${JSON.stringify(project.id)}`))
+      .toBe(true);
     await targetNode.click();
     await page.keyboard.press("Backspace");
     await expect(canvas).toHaveAttribute("data-node-count", "6");
@@ -3384,6 +4678,18 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
       },
     });
     expect(overlapSave.ok()).toBeTruthy();
+    contractInputsByNode.set("run-text-a", [{
+      kind: "text",
+      order: 1,
+      role: "context-text",
+      semanticId: "run-edge-shared-a",
+    }]);
+    contractInputsByNode.set("run-text-b", [{
+      kind: "text",
+      order: 1,
+      role: "context-text",
+      semanticId: "run-edge-shared-b",
+    }]);
     await page.reload();
     await expect(page.getByTestId("canvas-world")).toHaveAttribute(
       "data-persistence-ready",
@@ -3442,6 +4748,8 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
       },
     });
     expect(restoreSave.ok()).toBeTruthy();
+    contractInputsByNode.delete("run-text-a");
+    contractInputsByNode.delete("run-text-b");
 
     // Two real tabs race the same group. The origin-wide admission lock and
     // active-task check permit one first-layer POST only.
@@ -3491,14 +4799,20 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
         nodeId === "run-text-a-next"
       ).length).toBe(groupRaceDownstreamPosts + 1);
       setLatestTaskState("run-text-a-next", "success");
-      await expect.poll(() => page.evaluate(() => {
-        for (let index = 0; index < window.localStorage.length; index += 1) {
-          if (window.localStorage.key(index)?.startsWith(
-            "unboundry-group-run-lease:v1:",
-          )) return false;
+      await expect.poll(async () => {
+        try {
+          return await page.evaluate(() => {
+            for (let index = 0; index < window.localStorage.length; index += 1) {
+              if (window.localStorage.key(index)?.startsWith(
+                "unboundry-group-run-lease:v1:",
+              )) return false;
+            }
+            return true;
+          });
+        } catch {
+          return false;
         }
-        return true;
-      })).toBe(true);
+      }).toBe(true);
     } finally {
       await secondPage.close();
     }
@@ -3506,7 +4820,13 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
     // A manual Generate and a group claim use the same origin-wide admission
     // lock. Whichever enters first may submit, while the loser observes either
     // the active lease or the accepted task before reaching a second POST.
+    await discardInterruptedCheckpointsForNextScenario();
     await resetGroupPositionsForNextScenario();
+    await page.reload();
+    await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+      "data-persistence-ready",
+      "true",
+    );
     const manualRacePage = await page.context().newPage();
     try {
       await manualRacePage.goto(`/canvas/${project.id}`);
@@ -3541,7 +4861,7 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
       ]);
       await expect.poll(() => taskPostNodes.filter((nodeId) =>
         nodeId === "run-text-a"
-      ).length).toBe(postsBeforeRace + 1);
+      ).length, { timeout: 15_000 }).toBe(postsBeforeRace + 1);
       await expect.poll(async () => [
         await page.locator("body").innerText(),
         await manualRacePage.locator("body").innerText(),
@@ -3580,7 +4900,8 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
     // A hard refresh converts the active run to an interrupted checkpoint,
     // releases its page owner, and resumes the exact accepted task without a
     // duplicate first-layer POST. Reload automatically reconciles only that
-    // accepted task; the pending downstream stays manual.
+    // accepted task; an unchanged snapshot continues pending work itself.
+    await discardInterruptedCheckpointsForNextScenario();
     await resetGroupPositionsForNextScenario();
     const refreshPostsBefore = taskPostNodes.filter((nodeId) =>
       nodeId === "run-text-a"
@@ -3636,15 +4957,12 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
       "data-persistence-ready",
       "true",
     );
-    await page.getByTestId("tasks").click();
-    await expect(page.getByTestId("tasks-group-summary")).toHaveCount(0);
-    await expect(page.getByTestId("tasks-group-checkpoint")).toBeVisible();
     await expect.poll(() => taskPostNodes.filter((nodeId) =>
       nodeId === "run-text-a"
     ).length).toBe(refreshPostsBefore + 1);
     await expect.poll(() => taskPostNodes.filter((nodeId) =>
       nodeId === "run-text-a-next"
-    ).length).toBe(refreshDownstreamBefore);
+    ).length, { timeout: 15_000 }).toBe(refreshDownstreamBefore + 1);
     await expect.poll(async () => {
       const savedCanvas = await (await request.get(
         `/api/canvas/${project.id}`,
@@ -3654,10 +4972,6 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
       return savedCanvas.nodes.find((node) => node.id === "run-text-a")
         ?.data.content;
     }).toContain("已完成 run-text-a");
-    await page.getByTestId("tasks-group-continue").click();
-    await expect.poll(() => taskPostNodes.filter((nodeId) =>
-      nodeId === "run-text-a-next"
-    ).length).toBe(refreshDownstreamBefore + 1);
     setLatestTaskState("run-text-a-next", "success");
     await expect.poll(() => page.evaluate(() => {
       for (let index = 0; index < window.localStorage.length; index += 1) {
@@ -3669,9 +4983,9 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
     })).toBe(true);
 
     // Leaving for a different real canvas uses the same page-exit checkpoint
-    // path. Returning exposes one resumable run and keeps the accepted task
-    // exact instead of minting another paid submission. Returning reconciles
-    // the accepted task automatically but leaves downstream submission manual.
+    // path. While away, a safe edit changes only the pending downstream prompt.
+    // Returning must recover the accepted task, close the old snapshot, create a
+    // current-graph run and continue without making Tasks a required step.
     const otherProjectResponse = await request.post("/api/projects", { data: {} });
     expect(otherProjectResponse.status()).toBe(201);
     const otherProject = await otherProjectResponse.json() as { id: string };
@@ -3688,6 +5002,10 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
         "run-text-a",
         switchPostsBefore + 1,
       );
+      const switchAcceptedTaskId = latestTaskByNode.get("run-text-a");
+      if (!switchAcceptedTaskId || !tasks.has(switchAcceptedTaskId)) {
+        throw new Error("missing exact accepted task for cross-canvas recovery");
+      }
       await expect.poll(() => page.evaluate(() => {
         for (let index = 0; index < window.localStorage.length; index += 1) {
           const key = window.localStorage.key(index);
@@ -3701,34 +5019,60 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
             value?.status === "running" &&
             value.nodeStates?.["run-text-a"] === "running" &&
             value.acceptedTasks?.["run-text-a"]?.taskId
-          ) return true;
+          ) return value.acceptedTasks["run-text-a"].taskId;
         }
-        return false;
-      })).toBe(true);
+        return undefined;
+      })).toBe(switchAcceptedTaskId);
       page.once("dialog", (dialog) => void dialog.accept());
       await page.goto(`/canvas/${otherProject.id}`);
       await expect(page.getByTestId("canvas-world")).toHaveAttribute(
         "data-persistence-ready",
         "true",
       );
-      setLatestTaskState("run-text-a", "success");
+      taskStates.set(switchAcceptedTaskId, "success");
+      const changedResponse = await request.get(`/api/canvas/${project.id}`);
+      expect(changedResponse.ok()).toBeTruthy();
+      const changedCanvas = await changedResponse.json() as {
+        edges: unknown[];
+        loadToken: string;
+        nodes: Array<{ data: Record<string, unknown>; id: string }>;
+        revision: number;
+      };
+      const changedSave = await request.put(`/api/canvas/${project.id}`, {
+        data: {
+          edges: changedCanvas.edges,
+          nodes: changedCanvas.nodes.map((node) =>
+            node.id === "run-text-a-next"
+              ? {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    textPrompt: "生成 A 组第二层文案（返回前已安全更新）",
+                  },
+                }
+              : node
+          ),
+          observedLoadToken: changedCanvas.loadToken,
+          observedRevision: changedCanvas.revision,
+          revision: changedCanvas.revision,
+          saveAttemptId: randomUUID(),
+          saveSequence: 1,
+          saveSessionId: randomUUID(),
+          viewport: { x: 0, y: 0, zoom: 1 },
+        },
+      });
+      expect(changedSave.ok()).toBeTruthy();
       await page.goto(`/canvas/${project.id}`);
       await expect(page.getByTestId("canvas-world")).toHaveAttribute(
         "data-persistence-ready",
         "true",
       );
-      await page.getByTestId("tasks").click();
-      await expect(page.getByTestId("tasks-group-checkpoint")).toBeVisible();
       await expect.poll(() => taskPostNodes.filter((nodeId) =>
         nodeId === "run-text-a"
       ).length).toBe(switchPostsBefore + 1);
       await expect.poll(() => taskPostNodes.filter((nodeId) =>
         nodeId === "run-text-a-next"
-      ).length).toBe(switchDownstreamBefore);
-      await page.getByTestId("tasks-group-continue").click();
-      await expect.poll(() => taskPostNodes.filter((nodeId) =>
-        nodeId === "run-text-a-next"
-      ).length).toBe(switchDownstreamBefore + 1);
+      ).length, { timeout: 15_000 }).toBe(switchDownstreamBefore + 1);
       setLatestTaskState("run-text-a-next", "success");
       await expect.poll(() => page.evaluate(() => {
         for (let index = 0; index < window.localStorage.length; index += 1) {
@@ -3738,6 +5082,8 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
         }
         return true;
       })).toBe(true);
+      await page.getByTestId("tasks").click();
+      await expect(page.getByTestId("tasks-group-checkpoint")).toHaveCount(0);
     } finally {
       await request.delete(`/api/canvas/${otherProject.id}`);
       await request.delete(`/api/projects/${otherProject.id}`);
@@ -3754,6 +5100,8 @@ test("group run ignores a leftover canvas-save error and still blocks a real mod
   request,
 }) => {
   const modelId = `fixture-no-image-reference-stale-${randomUUID()}`;
+  const imageReleaseRevision = randomUUID();
+  const textReleaseRevision = randomUUID();
   const assetId = `fixture-group-reference-stale-${randomUUID()}`;
   const created = await request.post("/api/projects", { data: {} });
   expect(created.status()).toBe(201);
@@ -3786,6 +5134,7 @@ test("group run ignores a leftover canvas-save error and still blocks a real mod
         generationEnabled: true,
         models: [{
           capability: "image",
+          configurationRevision: `fixture-image-${modelId}-revision-1`,
           displayName: "不支持参考图测试模型",
           generationAvailable: true,
           id: modelId,
@@ -3796,13 +5145,16 @@ test("group run ignores a leftover canvas-save error and still blocks a real mod
           },
           isDefault: true,
           parameterSchema,
+          releaseRevisionId: imageReleaseRevision,
         }, {
           capability: "text",
+          configurationRevision: `fixture-text-${modelId}-revision-1`,
           displayName: "文字测试模型",
           generationAvailable: true,
           id: `fixture-text-${modelId}`,
           isDefault: true,
           parameterSchema: defaultParameterSchema("text"),
+          releaseRevisionId: textReleaseRevision,
         }],
       }),
       contentType: "application/json",

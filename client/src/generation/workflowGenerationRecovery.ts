@@ -57,7 +57,9 @@ export function workflowRecoveryPlan(task: {
 }
 
 export async function recoverWorkflowGenerationOnce(input: {
+  accountId: string;
   canvasId: string;
+  fixtureScopeId: string;
   generationInputKey: string;
   kind: GenerationTaskKind;
   nodeId: string;
@@ -68,14 +70,36 @@ export async function recoverWorkflowGenerationOnce(input: {
   status: "failed" | "skipped" | "success";
   task?: GenerationTaskSummary;
 }> {
+  let task = await getGenerationTask(
+    input.taskId,
+    undefined,
+    input.fixtureScopeId,
+  );
+  if (
+    !task.generationOwnershipKey ||
+    !task.modelInputContractFingerprint ||
+    !task.modelConfigurationRevision ||
+    !task.modelReleaseRevision
+  ) {
+    return {
+      message: "历史任务缺少冻结模型合同身份，系统只保留原任务，不自动重试",
+      status: "failed",
+      task,
+    };
+  }
   const target = {
+    accountId: input.accountId,
     canvasId: input.canvasId,
+    fixtureScopeId: input.fixtureScopeId,
     generationInputKey: input.generationInputKey,
+    generationOwnershipKey: task.generationOwnershipKey,
     kind: input.kind,
+    modelInputContractFingerprint: task.modelInputContractFingerprint,
+    modelConfigurationRevision: task.modelConfigurationRevision,
+    modelReleaseRevision: task.modelReleaseRevision,
     nodeId: input.nodeId,
     taskId: input.taskId,
   };
-  let task = await getGenerationTask(input.taskId);
   const plan = workflowRecoveryPlan(task);
   if (plan === "success") return { status: "success", task };
   if (plan === "skip") return { status: "skipped", task };
@@ -88,7 +112,11 @@ export async function recoverWorkflowGenerationOnce(input: {
       ),
     );
     if (result.outcome === "recovered") {
-      const finished = await waitForGenerationTask(result.task.id);
+      const finished = await waitForGenerationTask(
+        result.task.id,
+        undefined,
+        input.fixtureScopeId,
+      );
       return finished.state === "success"
         ? { status: "success", task: finished }
         : {
@@ -115,7 +143,11 @@ export async function recoverWorkflowGenerationOnce(input: {
   const accepted = await withLockBusyRetry(() =>
     retryGenerationTask(target, input.waitForCanvasRevision),
   );
-  const finished = await waitForGenerationTask(accepted.id);
+  const finished = await waitForGenerationTask(
+    accepted.id,
+    undefined,
+    input.fixtureScopeId,
+  );
   if (finished.state === "success") return { status: "success", task: finished };
   return {
     message: finished.errorMessage,

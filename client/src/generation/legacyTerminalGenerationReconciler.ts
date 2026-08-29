@@ -25,6 +25,7 @@ export type LegacyTerminalGenerationState =
 export type LegacyTerminalGenerationCandidate = Readonly<{
   accountId: string;
   canvasId: string;
+  fixtureScopeId: string;
   inputFingerprint: string;
   kind: GenerationTaskKind;
   nodeDataFingerprint: string;
@@ -110,6 +111,7 @@ export function legacyGenerationNodeKind(
 export function legacyTerminalGenerationCandidate(input: {
   accountId: string;
   canvasId: string;
+  fixtureScopeId: string;
   node: ProbeNodeType;
 }): LegacyTerminalGenerationCandidate | undefined {
   const kind = legacyGenerationNodeKind(input.node);
@@ -127,6 +129,7 @@ export function legacyTerminalGenerationCandidate(input: {
   return {
     accountId: input.accountId,
     canvasId: input.canvasId,
+    fixtureScopeId: input.fixtureScopeId,
     inputFingerprint,
     kind,
     nodeDataFingerprint: legacyTerminalNodeDataFingerprint(data),
@@ -145,7 +148,12 @@ export function isIncompleteLegacyTerminalGenerationBinding(
   const data = node.data as Record<string, unknown>;
   return data[`${kind}Generating`] === true &&
     nonEmpty(data.workflowExecutionRunId) &&
-    !legacyTerminalGenerationCandidate({ accountId: "_", canvasId: "_", node });
+    !legacyTerminalGenerationCandidate({
+      accountId: "_",
+      canvasId: "_",
+      fixtureScopeId: "_",
+      node,
+    });
 }
 
 export function legacyTerminalGenerationCandidateStillMatches(
@@ -156,10 +164,12 @@ export function legacyTerminalGenerationCandidateStillMatches(
   const current = legacyTerminalGenerationCandidate({
     accountId: candidate.accountId,
     canvasId: candidate.canvasId,
+    fixtureScopeId: candidate.fixtureScopeId,
     node,
   });
   return Boolean(current &&
     current.runId === candidate.runId && current.taskId === candidate.taskId &&
+    current.fixtureScopeId === candidate.fixtureScopeId &&
     current.ownershipKey === candidate.ownershipKey &&
     current.inputFingerprint === candidate.inputFingerprint &&
     current.nodeDataFingerprint === candidate.nodeDataFingerprint &&
