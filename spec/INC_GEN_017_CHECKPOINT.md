@@ -1,11 +1,18 @@
 # INC-GEN-017 实时断点
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED_FAILED_REMEDIATION_REVIEW_P0_0_P1_0_P2_1_GO_R7_COMPOSITE_BROWSER_TARGETED_PASS_R8_PR_126_CI_PASS_MERGE_READY / PRODUCTION_V0_6_56_UNCHANGED`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / HOTFIX_REVIEW_GO / V0_6_58_CANDIDATE_COMMITTED / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 
 更新时间：2026-08-29
 
 ## 当前结论
 
+- 2026-08-30生产最小真实Provider验收在POST前被合同硬门正确阻断：Seedance/Grok3.5/Grok3旧published合同缺少当前语义元数据，Provider POST=0、费用USD0。热修已把完整schema fallback收窄为仅结构有效的旧Grok3约束不兼容，并在plan与事务内activation双重核对model/provider/protocol、runtime/connector/evidence和完整totality。整改候选diff `dcf8a42db9dd43d36a95bfe700172bcb219a7248e81281e6225fd9d1563cb854`的独立增量终审覆盖8/8文件、10/10 logical models、11/11 exact identities，最终`P0=0/P1=0/P2=0/GO`；m102 `24/24 PASS`，source/snapshot`e93a5baf…610032`、库存1125、4173 unchanged。当前进入v0.6.58准备；版本/GitHub/迁移/真实Provider仍须按后续硬门顺序执行。
+- v0.6.58身份门：刷新后`origin/main`仍为`b34a6f454608da2244f87ca0fffb8e8ef6704050`；本地tag、远端tag和GitHub Release均不存在，是高于生产v0.6.57的最低未占用patch。package/lock、final runtime allowlist与m81直接断言已同步为0.6.58；当前仅为本地候选，生产继续v0.6.57/schema41，版本定向m81+m38通过前不提交或推送。
+- v0.6.58版本直接门最终有效`57/57 PASS`：m81 `41/41`首轮即通过；m38唯一治理失败为CURRENT_STATE代码包版本未同步，修正后单独`16/16 PASS`，source/snapshot`30e11dbd…c7d7b`。Node`22.23.1`/npm`10.9.8`、库存1125、异常0、4173 unchanged；正式full不重跑。当前候选提交就绪，提交前仅运行最终治理m38和精确diff-check。
+- v0.6.58提交前最终治理safe m38 `16/16 PASS`，source/snapshot`79ae8703792cb1f730ea723b3bee2102f86936dd504a32c6ed7189b2dc609cd6`，库存1125、失败/重试/跳过/reportErrors0、4173 unchanged；精确`git diff --check`通过。旧`b577…`终审消息对应已登记并完成多轮整改的早期候选，不改变当前`dcf8…`热修Review GO。随后仅回写本条证据，下一步精确安全提交。
+- v0.6.58功能/版本候选已精确提交为`760dfcf131d5800f8e03e8533199ef1e773a7ea3`，tree`dc8c192e27acf6373899a959e9cc0d4a22f86e3e`，共18个安全范围文件；两个受保护JSON未进入stage/commit。下一步提交后治理m38、六份治理回执commit，再push/PR/CI。
+- 候选提交后治理safe m38 `16/16 PASS`，source/snapshot`1b906cf7b8e8dd64e9a016a28c1219168407f1a89643bbfef3fd33d722968f79`，库存1125、失败/重试/跳过/reportErrors0、4173 unchanged；随后仅回写本条证据，六份治理文档可独立提交。
+- PR #127已创建，base=`main@b34a6f4`、head=`0226d772b292692d7519edc9b238b7f84461a87a`且mergeable；Quality gates / lightweight通过（run`33273711037`、job`99156654353`、31秒）。本次只回写CI证据，推送纯文档最终head后等待同一门再通过才合并。
 - 2026-08-28 用户已在本Session显式发送`/goal`；Goal已激活并授权按一次性提示词连续实施R0～R8、唯一正式full、GitHub/CI、v0.6.57候选发布、生产与累计不超过USD100的最小真实Provider验收。该授权不允许读取受保护JSON、重复未知费用POST、删除真实数据/备份或绕过发布硬门。
 - 实施隔离分支：`codex/inc-gen-017-workflow-self-healing-2026-08-28`；基于实时`origin/main@75f6c1aca055b8b82f258a9d38be5c27ce7d6305`，tree`57a6763b065bdc523697255f8183230e124b09bd`。进入时仅保留本事件既有文档改动，没有覆盖或清理用户工作。
 - package/lock均为`0.6.56`；普通工具链Node`25.9.0`/npm`11.12.1`，safe runner为Node`22.23.1`/npm`10.9.8`。
@@ -167,6 +174,11 @@
 - 功能候选提交后的六份治理文档已完成一致性回归：safe m38 `16/16 PASS`，失败/重试/跳过/reportErrors0、Node`22.23.1`/npm`10.9.8`、库存1124、source/snapshot`a52ff92ca31444b753955fe5f21986fcddefba5bac29bb1a71aa8fbb4b892527`、4173 unchanged。当前只提交这六份治理文档，再push/PR/CI；正式full不得重跑，Provider POST/费用和生产写仍为0。
 - 治理commit`0941fc500c028cc50c101469ef541b7f7c2a3631`已推送并创建PR #126；base仍为`75f6c1a`，head为`0941fc5`，mergeable，GitHub `Quality gates / lightweight`正在运行。生产仍为v0.6.56/schema41，真实Provider POST/费用仍为0。
 - PR #126在head`d153b61`上的`Quality gates / lightweight`已通过（GitHub run `33269246033`，job `99144636759`，28秒）；本次只回写该CI证据，推送后等待新head同一门通过再合并。生产仍为v0.6.56/schema41。
+- PR #126最终head`5c19d65`的Quality gates通过（run`33269310185`/job`99144804703`，33秒）并以merge commit`b34a6f454608da2244f87ca0fffb8e8ef6704050`合入main；main Quality gates run`33269352856`/job`99144914617`亦通过。注释tag`v0.6.57`对象`9e428c31757eaabfbb6468ed4e45b1e3e2e5e824`精确解引用到该merge commit，GitHub Release已发布且不可移动。
+- 精确tag archive SHA为`da9c48bc54d860bdd5cec056fd22f399f205af840bf4c03709f6e479f1b9b591`。首个staging安装发现npm shebang经默认PATH使用Node18，虽构建通过但不作为发布证据且目录保留未删除；新的独立fresh build显式固定Node`22.23.2`/npm`10.9.8`，npm ci、TypeScript、Vite build全通过，release inventory 6035文件、SHA`321256ab46a32e0ce9b05c30a9c8b6ab9cceceed4258b4a4f82a84df882c7581`，dist 33文件。
+- 旧明文backup脚本因硬编码schema39在生产schema41快照验证后fail-closed；失败目录`/var/lib/unboundry-rollbacks/v0.6.57-cutover-frozen.2JcCvY`保留未删除。正式备份改为active=0静默门后停服原样冻结副本，路径`/var/lib/unboundry-rollbacks/v0.6.57-cutover-frozen.bFZKEN`；source/restore各366文件，双清单SHA均`73ac36da6c313231997148a7dbb2b336539de47d0a5b905d4c8c54a6d7cb835d`，两份数据库schema41/integrity ok/FK0且计数一致。恢复副本上的v0.6.57 standby为version/live通过、ready 503 `SERVICE_RUNTIME_ROLE_NOT_ACTIVE`，生产未受影响。
+- 生产已原子切换到`/opt/unboundry/releases/v0.6.57-inc-gen-017-20260830`并完成v0.6.56回滚与v0.6.57前向切换。回环/公网version、live、ready通过，service active/enabled、NRestarts0，33/33静态文件逐字节一致；schema41/integrity ok/FK0，tasks1025、attempts1036、active0、unknown0、media946/1765208255 bytes、canvas74、models20/published10、templates50/published48在备份/切换/72秒稳定门一致，final-start后journal warning 0。当前生产技术通过，真实Provider POST仍为0、费用USD0；下一步只做累计USD100内最小真实Provider验收，unknown即停止。
+- 生产技术回写后的治理m38首轮`15/16`只暴露当前治理标记格式不满足既有单一版本标记合同；同步`CURRENT_V0_6_57_USER_RECHECK`及三份渐进式治理文档/AGENTS生产身份后，失败spec最小复跑为`16/16 PASS`，source/snapshot`7aac68cc00b3fafd07e3a0b024ae5446ecdca9bd120797c24f719c590dc833af`、库存1124、失败/重试/跳过/reportErrors0、4173 unchanged。未重复正式full。
 
 - 已完成只读全链路审计和详细方案冻结，没有修改产品代码。
 - 画布卡死根因已定位为 `executeGroup()` 用画布级最新 checkpoint 阻断任意 group；checkpoint 实际含 group/run 身份，但准入未按组读取。

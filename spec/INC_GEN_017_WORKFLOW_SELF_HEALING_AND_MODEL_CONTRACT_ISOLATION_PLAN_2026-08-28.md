@@ -1,8 +1,22 @@
 # INC-GEN-017：工作流自动自愈与模型合同隔离详细行动方案
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED_FAILED_REMEDIATION_REVIEW_P0_0_P1_0_P2_1_GO_R7_COMPOSITE_BROWSER_TARGETED_PASS_R8_PR_126_CI_PASS_MERGE_READY / PRODUCTION_V0_6_56_UNCHANGED`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / HOTFIX_REVIEW_GO / V0_6_58_CANDIDATE_COMMITTED / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 
 建立日期：2026-08-28
+
+R8生产浏览器在Provider POST前发现旧published schema缺少当前语义合同元数据，v0.6.57按设计fail-closed，真实POST/费用仍为0。整改后plan与事务内activation均核对完整model/provider/protocol identity和runtime/connector/evidence/totality；Seedance、Gemini、Mureka fixture恢复精确协议/driver，并增加错协议、错driver、缺参数阻断。冻结diff `dcf8a42d…3cb854`的独立增量终审覆盖8/8文件、10/10 logical models、11/11 exact identities，最终`P0=0/P1=0/P2=0/GO`；m102 `24/24 PASS`（`e93a5baf…610032`），库存1125、4173 unchanged。现按硬门进入v0.6.58准备，再依次执行GitHub、生产迁移和真实Provider。
+
+v0.6.58身份门已确认：`origin/main@b34a6f454608da2244f87ca0fffb8e8ef6704050`未前进，本地/远端tag与GitHub Release均未占用；package/lock、final runtime allowlist和m81断言已同步。生产仍为v0.6.57/schema41，m81+m38版本定向门通过前不提交或推送。
+
+版本直接门最终有效`57/57 PASS`：m81 `41/41`首轮通过，m38修正唯一治理版本字段后`16/16 PASS`（`30e11dbd…c7d7b`）；库存1125、异常0、4173 unchanged。正式full不重跑，当前只执行提交前最终治理m38和diff-check。
+
+提交前最终治理safe m38现为`16/16 PASS`，source/snapshot`79ae8703792cb1f730ea723b3bee2102f86936dd504a32c6ed7189b2dc609cd6`、库存1125、异常0、4173 unchanged；精确diff-check通过。迟到的`b577…`终审回执属于已记录并关闭的早期候选，不覆盖当前`dcf8…`热修Review GO；随后仅回写本条证据，按硬门进入精确安全提交。
+
+v0.6.58功能/版本候选commit已冻结为`760dfcf131d5800f8e03e8533199ef1e773a7ea3`，tree`dc8c192e27acf6373899a959e9cc0d4a22f86e3e`，18个安全文件且两个受保护JSON未进入提交。按阶段只回写治理、运行提交后m38并提交六份回执，再进入push/PR/CI。
+
+候选提交后治理safe m38为`16/16 PASS`，source/snapshot`1b906cf7b8e8dd64e9a016a28c1219168407f1a89643bbfef3fd33d722968f79`、库存1125、异常0、4173 unchanged；随后仅回写该回执，六份治理文件可独立提交并进入push/PR/CI。
+
+PR #127已创建且base/head为`main@b34a6f4`/`0226d77`、mergeable；Quality gates / lightweight run`33273711037`、job`99156654353`以31秒通过。本轮只回写该CI证据并推送最终纯文档head；必须等待新head同一门通过后才合并与冻结tag。
 
 实施回写：最新用户已显式发送一次性`/goal`并授权R0～R8。唯一正式safe full已永久消费，原始结果`1023 PASS / 95 FAIL / 4 NOT_RUN`且不得改写或重跑。原始27个失败spec与m29/m65四项未运行用例现已全部由最小失败spec执行闭合；最后m73 `16/16`、m77 `11/11`，合计`27/27 PASS`，source/snapshot`720b0ea6f77968e663b2db426a30fe376184a8aec7f3cbebac8c81d462a9499c`，异常0、4173 unchanged。失败映射P1已关闭；当前只允许同步治理、运行治理m38并重新冻结候选做独立只读增量终审。Provider POST/费用与生产/OSS写仍为0；重新终审`P0/P1=0/GO`前不得进入R7、GitHub、版本或生产。
 
@@ -33,6 +47,12 @@ v0.6.57功能候选commit为`46a9abf110e55dd14d9519228c708759224d8c78`，tree`43
 治理commit`0941fc5`已推送，PR #126已创建且base/head身份与候选一致；GitHub Quality gates正在运行。CI通过后按授权合并到main，再对精确merge commit建立不可变v0.6.57 tag/Release。
 
 PR #126 head`d153b61`的Quality gates已通过（run`33269246033`/job`99144636759`）。只回写CI证据后等待最终文档head检查，再合并main并冻结v0.6.57身份。
+
+PR #126最终head与main Quality gates均通过，merge commit`b34a6f4`已由注释tag/GitHub Release v0.6.57不可变标记。精确tag fresh build在Node22.23.2/npm10.9.8通过，inventory 6035文件/`321256ab…c7581`、dist 33；冻结备份`v0.6.57-cutover-frozen.bFZKEN`双副本366/366文件且清单同SHA`73ac36da…835d`，schema41/integrity/FK和计数一致，standby恢复演练通过。
+
+生产已切到`/opt/unboundry/releases/v0.6.57-inc-gen-017-20260830`，v0.6.56回滚和v0.6.57前向切换、回环/公网健康、33/33静态字节、数据不变和72秒稳定门均通过；service active/enabled、NRestarts0、journal warning0。当前只剩USD100内最小真实Provider验收与最终治理回执；unknown禁止第二POST。
+
+生产技术回写治理m38在修正既有单一版本治理标记后最终`16/16 PASS`，source/snapshot`7aac68cc…833af`、库存1124、异常0、4173 unchanged；正式full未重复。
 
 ### R6 第四轮整改与第五候选准备回写（2026-08-29）
 

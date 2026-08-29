@@ -1,6 +1,20 @@
 # INC-GEN-017 验收矩阵
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED_FAILED_REMEDIATION_REVIEW_P0_0_P1_0_P2_1_GO_R7_COMPOSITE_BROWSER_TARGETED_PASS_R8_PR_126_CI_PASS_MERGE_READY / PRODUCTION_V0_6_56_UNCHANGED`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / HOTFIX_REVIEW_GO / V0_6_58_CANDIDATE_COMMITTED / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+
+R8增量门：生产旧published schema在Provider POST前被语义合同校验阻断，POST=0/USD0。迁移plan/apply精确执行identity/totality缺口已关闭；冻结diff `dcf8a42d…3cb854`独立增量终审覆盖8/8文件、10/10 logical models、11/11 exact identities，最终`P0=0/P1=0/P2=0/GO`。m102 `24/24 PASS`（`e93a5baf…610032`），库存1125、4173 unchanged；当前按顺序开放v0.6.58准备，生产迁移与真实Provider尚未开放。
+
+v0.6.58版本身份门：`origin/main@b34a6f4`未前进，本地/远端tag及GitHub Release均未占用；package/lock、final runtime和m81断言已同步。生产仍为v0.6.57/schema41，版本定向m81+m38待执行。
+
+v0.6.58版本直接门最终有效`57/57 PASS`：m81 `41/41`、治理m38修正版本字段后`16/16 PASS`（`30e11dbd…c7d7b`），库存1125、异常0、4173 unchanged；候选提交就绪。
+
+提交前最终治理safe m38 `16/16 PASS`（source/snapshot`79ae8703…609cd6`），库存1125、异常0、4173 unchanged，精确diff-check通过；`b577…`早期候选的12项P1已在本矩阵既有整改/复核证据中闭合，不回退当前`dcf8…`热修Review GO。随后仅回写本条证据。
+
+v0.6.58功能/版本候选commit=`760dfcf131d5800f8e03e8533199ef1e773a7ea3`、tree=`dc8c192e27acf6373899a959e9cc0d4a22f86e3e`，18个安全文件；受保护JSON未进入提交。提交后治理m38与治理commit待执行。
+
+提交后治理safe m38 `16/16 PASS`（source/snapshot`1b906cf7…968f79`），库存1125、异常0、4173 unchanged；随后仅回写该证据，治理commit就绪。
+
+PR #127 head`0226d77`的Quality gates / lightweight已通过（run`33273711037`、job`99156654353`、31秒）；只回写该证据并等待最终纯文档head同一CI门。
 
 | ID | 验收项 | 必须证据 | 当前状态 |
 |---|---|---|---|
@@ -37,8 +51,8 @@
 | IG17-031 | 风险定向回归 | 新spec和直接依赖全绿，命令/环境/源码hash/异常数完整记录 | R7_TARGETED_REGRESSION_PASS |
 | IG17-032 | 唯一正式safe full | 仅候选冻结+Review GO后按风险执行一次；原始结果诚实记录 | CONSUMED_FAILED_1023_PASS_95_FAIL_4_NOT_RUN |
 | IG17-033 | 独立终审 | 冻结候选P0=0/P1=0/GO | REMEDIATION_REVIEW_P0_0_P1_0_P2_1_GO |
-| IG17-034 | GitHub/不可变发布 | 当前Goal已授权：PR/main CI、tag/Release、fresh build | PR_126_CI_PASS_MERGE_READY |
-| IG17-035 | 生产备份/恢复/回滚 | 当前Goal已授权：冻结备份、恢复副本、原子切换、稳定门 | AUTHORIZED_NOT_RUN |
+| IG17-034 | GitHub/不可变发布 | 当前Goal已授权：PR/main CI、tag/Release、fresh build | V0_6_57_GITHUB_RELEASE_FRESH_BUILD_PASS |
+| IG17-035 | 生产备份/恢复/回滚 | 当前Goal已授权：冻结备份、恢复副本、原子切换、稳定门 | PRODUCTION_TECHNICAL_PASS |
 | IG17-036 | 真实Provider最小验收 | 当前Goal累计USD100内已授权；unknown禁止第二POST | AUTHORIZED_NOT_RUN |
 | IG17-037 | 用户实页验收 | 产品发布后由用户按五步清单确认；当前尚未实施 | NOT_RUN |
 | IG17-038 | checkpoint降为缓存 | 缺失/损坏/清空后由Canvas绑定+服务端task重建；无关组不阻塞 | REMEDIATION_TARGETED_PASS_REVIEW_PENDING |
@@ -74,3 +88,7 @@ v0.6.57功能候选已提交为`46a9abf`，tree`43825c5e…9a4c7`；两份受保
 治理commit`0941fc5`已推送，PR #126已创建并处于mergeable；GitHub Quality gates正在运行，tag/Release尚未创建。
 
 PR #126 head`d153b61`的Quality gates已通过（run`33269246033`/job`99144636759`）；最终纯文档head检查通过后即可合并。
+
+PR #126最终head/main CI通过，merge`b34a6f4`、annotated tag object`9e428c31…5e824`和GitHub Release已冻结。fresh tag build为6035文件、inventory`321256ab…c7581`、dist33；冻结备份双副本366/366、清单`73ac36da…835d`，恢复standby通过。生产v0.6.57原子切换、回滚/前向、33/33静态、schema41/integrity/FK0、数据不变和72秒稳定门均通过；真实Provider待执行。
+
+生产技术治理m38最终`16/16 PASS`，source/snapshot`7aac68cc…833af`、库存1124、异常0、4173 unchanged；首轮单一治理标记诊断已精确关闭，正式full未重跑。

@@ -1,8 +1,15 @@
 # Unboundry 绿地复刻验收矩阵
 
-## INC-GEN-017 正式full失败映射关闭、独立终审GO、R7组合浏览器通过与R8 PR #126 CI通过待合并（2026-08-30）
+## INC-GEN-017 正式full失败映射关闭、独立终审GO、R7组合浏览器通过与v0.6.57生产技术通过（2026-08-30）
 
-- 当前状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED_FAILED_REMEDIATION_REVIEW_P0_0_P1_0_P2_1_GO_R7_COMPOSITE_BROWSER_TARGETED_PASS_R8_PR_126_CI_PASS_MERGE_READY / PRODUCTION_V0_6_56_UNCHANGED`。
+- 当前状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / HOTFIX_REVIEW_GO / V0_6_58_CANDIDATE_COMMITTED / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。
+- R8生产最小验收在POST前确认旧published Seedance/Grok3.5/Grok3合同缺失当前语义元数据；系统fail-closed，Provider POST=0/USD0。冻结diff `dcf8a42d…3cb854`独立增量终审覆盖8/8文件、10/10 logical models、11/11 exact identities，最终`P0=0/P1=0/P2=0/GO`；m102 `24/24 PASS`（`e93a5baf…610032`），库存1125、4173 unchanged。当前只开放v0.6.58准备，生产迁移和真实Provider仍待后续硬门。
+- v0.6.58版本身份门确认`origin/main@b34a6f4`未前进，本地/远端tag及GitHub Release均未占用；package/lock、final runtime allowlist和m81断言已同步。本地候选v0.6.58，生产仍为v0.6.57/schema41；版本定向m81+m38待执行。
+- v0.6.58版本直接门最终有效`57/57 PASS`：m81 `41/41`首轮通过，m38修正唯一治理版本字段后`16/16 PASS`（`30e11dbd…c7d7b`），库存1125、异常0、4173 unchanged；候选提交就绪。
+- v0.6.58提交前最终治理safe m38 `16/16 PASS`（source/snapshot`79ae8703…609cd6`），库存1125、异常0、4173 unchanged，精确diff-check通过；迟到的`b577…`终审不覆盖已完成整改后的当前热修Review GO。随后仅回写本条证据。
+- v0.6.58功能/版本候选commit为`760dfcf131d5800f8e03e8533199ef1e773a7ea3`、tree`dc8c192e27acf6373899a959e9cc0d4a22f86e3e`，18个安全文件；受保护JSON未进入提交，提交后治理m38与治理commit待执行。
+- 候选提交后治理safe m38 `16/16 PASS`（source/snapshot`1b906cf7…968f79`），库存1125、异常0、4173 unchanged；随后仅回写该证据，治理commit就绪。
+- PR #127 head`0226d77`的Quality gates / lightweight已通过（run`33273711037`、job`99156654353`、31秒）；只回写CI证据，最终纯文档head复核待执行。
 - 第十七候选六项P1已关闭；safe m100/m27/m1/m37/m30最终`15/15、21/21、7/7、35/35、13/13 PASS`，库存1120、最终产品/测试source/snapshot`c4b9bce6…40933`、异常0、4173 unchanged，TypeScript/diff-check通过。
 - 第十八候选两路完整只读终审已完成：模型/Provider `P0=0/P1=0/P2=1/GO`，工作流84/84文件 `P0=0/P1=4/P2=2/NO-GO`，合并`P0=0/P1=4/P2=3/NO-GO`并解冻候选。
 - 四项P1为group最终admission图TOCTOU、四类手动暂停恢复未await durable graph apply、上下文菜单删除漏锁外部端点、媒体上传开始态绕过admission；三项P2为relay usage fixture occupied-ID、raw edge add/replace、raw node remove。
@@ -34,6 +41,9 @@
 - 功能候选提交后治理safe m38 `16/16 PASS`，source/snapshot`a52ff92c…92527`、库存1124、异常0、4173 unchanged；六份治理文档可提交，之后进入push/PR/CI。
 - 治理commit`0941fc5`已推送并创建PR #126；base/head身份一致、mergeable，Quality gates正在运行，tag/Release与生产步骤未执行。
 - PR #126 head`d153b61`的Quality gates已通过（run`33269246033`/job`99144636759`）；回写证据后的最终纯文档head通过同一门即可合并。
+- PR #126最终head/main Quality gates、merge`b34a6f4`、annotated tag/GitHub Release及fresh tag build通过；发布inventory 6035文件/`321256ab…c7581`、dist33。
+- 冻结备份`v0.6.57-cutover-frozen.bFZKEN`双副本366/366和清单`73ac36da…835d`、恢复standby、生产原子切换、回滚/前向、33/33静态、schema41/integrity/FK0、数据不变、72秒稳定门与journal warning0均通过。生产当前v0.6.57；真实Provider仍为0次/USD0并待最小验收。
+- 生产技术回写治理m38在修正单一版本标记后最终`16/16 PASS`，source/snapshot`7aac68cc…833af`、库存1124、异常0、4173 unchanged；正式full未重跑。
 - 首个候选`b577309e…d7e4f`的两个互斥范围独立终审历史结论为`P0=0/P1=16/P2=8/NO-GO`。16项P1现已实施关闭并完成最小受影响回归；重新冻结候选最近safe source/snapshot为`d3c27771…1952`，仍须由原审查上下文复核GO，之前正式full、GitHub、版本、生产和真实Provider均禁止。
 - R0已冻结实时生产与10个published模型；safe反例m102+m17+m22为`67/72`、m30为`9/10`，Provider POST/费用0。细目状态以独立IG17矩阵为准。
 - R1～R6历史阶段证据继续有效；首个候选终审提出的16项P1已逐项修复。当前最小受影响证据为m22 `43/43`、m30 `11/11`、m102 `22/22`、m27 `20/20`，m68 `4/4`及m5/m16/m17/m38/m40/m57/m79/m88直接依赖无失败；文档同步m38 `16/16 PASS`，库存1105、异常0、4173 unchanged，最近source/snapshot`d3c27771…1952`。尚无重新冻结候选的独立终审GO、full、GitHub、生产或真实Provider通过证据。

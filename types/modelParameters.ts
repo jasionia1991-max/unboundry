@@ -2044,6 +2044,67 @@ export function cleanGptImageSizeMap(
   return hasEntries ? cleaned : undefined;
 }
 
+/**
+ * Published schemas created before semantic contract metadata became
+ * mandatory can be narrower than the exact Provider-owned schema while still
+ * carrying the same user-selectable fields. Only inherit missing metadata;
+ * never widen or replace an existing user field or role declaration here.
+ */
+export function inheritProviderSemanticSchemaDefaults(
+  input: unknown,
+  providerSchema: ModelParameterSchema | undefined,
+): unknown {
+  if (
+    !providerSchema ||
+    !input ||
+    typeof input !== "object" ||
+    Array.isArray(input)
+  ) return input;
+  const candidate = input as Record<string, unknown>;
+  if (candidate.version !== 2 || !Array.isArray(candidate.fields)) return input;
+
+  let referencePolicy = candidate.referencePolicy;
+  const providerReferencePolicy = providerSchema.referencePolicy;
+  if (referencePolicy === undefined && providerReferencePolicy) {
+    referencePolicy = providerReferencePolicy;
+  } else if (
+    providerReferencePolicy?.normalizationPriority &&
+    referencePolicy &&
+    typeof referencePolicy === "object" &&
+    !Array.isArray(referencePolicy)
+  ) {
+    const current = referencePolicy as Partial<ModelReferencePolicy>;
+    if (
+      current.normalizationPriority === undefined &&
+      current.modeKey === providerReferencePolicy.modeKey &&
+      current.modes &&
+      typeof current.modes === "object"
+    ) {
+      const currentModes = Object.keys(current.modes);
+      const inheritedPriority = providerReferencePolicy.normalizationPriority
+        .filter((mode) => currentModes.includes(mode));
+      if (inheritedPriority.length === currentModes.length) {
+        referencePolicy = {
+          ...current,
+          normalizationPriority: inheritedPriority,
+        };
+      }
+    }
+  }
+
+  return {
+    ...candidate,
+    ...(candidate.inputPolicy === undefined && providerSchema.inputPolicy
+      ? { inputPolicy: providerSchema.inputPolicy }
+      : {}),
+    ...(candidate.referenceMediaRules === undefined &&
+        providerSchema.referenceMediaRules
+      ? { referenceMediaRules: providerSchema.referenceMediaRules }
+      : {}),
+    ...(referencePolicy !== undefined ? { referencePolicy } : {}),
+  };
+}
+
 export function cleanParameterSchema(
   capability: ModelCapability,
   input: unknown,

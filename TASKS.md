@@ -1,6 +1,17 @@
 # Unboundry 绿地复刻当前任务
 
-## INC-GEN-017 工作流自动自愈与模型合同隔离（FORMAL SAFE FULL CONSUMED / REVIEW P0=0 P1=0 P2=1 GO / R7 COMPOSITE BROWSER TARGETED PASS / R8 PR #126 CI PASS / MERGE READY）
+## INC-GEN-017 工作流自动自愈与模型合同隔离（FORMAL SAFE FULL CONSUMED / HOTFIX REVIEW GO / V0.6.58 CANDIDATE COMMITTED / REAL PROVIDER NOT POSTED）
+
+- [x] R8生产验收在POST前确认旧published Seedance/Grok3.5/Grok3 schema缺少当前语义合同元数据；系统正确fail-closed，Provider POST=0、费用USD0。
+- [x] 完整schema fallback收窄为仅结构有效的旧Grok3；独立终审`P0=0/P1=1/P2=0/NO-GO`发现的迁移registry totality缺口已在plan/activation双重关闭。Seedance/Gemini/Mureka fixture身份已对齐，错协议、错driver、缺参数均阻断；m102最终`24/24 PASS`（`e93a5baf…610032`），库存1125、4173 unchanged；新冻结diff `dcf8a42d…3cb854`。
+- [x] 既有独立审查上下文已复核8/8文件、10/10 logical models、11/11 exact identities；整改后最终`P0=0/P1=0/P2=0/GO`。现仅开放v0.6.58准备，后续GitHub、生产迁移和真实Provider仍按硬门顺序执行。
+- [x] v0.6.58身份核验：`origin/main@b34a6f4`未前进；本地/远端tag与GitHub Release均未占用；package/lock、final runtime allowlist及m81断言已同步，生产仍为v0.6.57/schema41。
+- [x] v0.6.58版本直接门最终有效`57/57 PASS`：m81 `41/41`首轮通过，m38修正唯一治理版本字段后`16/16 PASS`（`30e11dbd…c7d7b`），库存1125、异常0、4173 unchanged。
+- [x] 提交前最终治理safe m38 `16/16 PASS`（`79ae8703…609cd6`），库存1125、异常0、4173 unchanged；精确diff-check通过。迟到的`b577…`终审属于已关闭的早期候选，不改变当前热修Review GO；随后仅回写本条证据。
+- [x] v0.6.58功能/版本候选已精确提交：`760dfcf131d5800f8e03e8533199ef1e773a7ea3`，tree`dc8c192e27acf6373899a959e9cc0d4a22f86e3e`，18个安全文件；受保护JSON未进入提交。
+- [x] 候选提交后治理safe m38 `16/16 PASS`（`1b906cf7…968f79`），库存1125、异常0、4173 unchanged；随后仅回写该证据，六份治理回执commit就绪。
+- [x] 六份治理回执已提交并push；PR #127 base/head正确且mergeable，head`0226d77`的Quality gates通过（run`33273711037`、job`99156654353`、31秒）。
+- [ ] 推送本次CI证据形成最终纯文档head；同一Quality gates再通过后合并并冻结v0.6.58 tag/Release。
 
 - [x] 用户已显式启动一次性Goal；建立`codex/inc-gen-017-workflow-self-healing-2026-08-28`并绑定实时`origin/main@75f6c1a`。
 - [x] R0只读冻结v0.6.56/schema41、20模型/10 published、Node/npm、生产release/健康/数据完整性与USD100硬预算；受保护JSON未读取或改动。
@@ -108,8 +119,11 @@
 - [x] 功能候选提交后治理safe m38 `16/16 PASS`，source/snapshot`a52ff92c…92527`、库存1124、异常0、4173 unchanged；六份治理文档已同步并可提交。
 - [x] 治理commit`0941fc5`已推送并创建PR #126；base/head身份一致且mergeable。
 - [x] PR #126 head`d153b61`的Quality gates通过（run`33269246033`/job`99144636759`，28秒）。
-- [ ] 等待CI证据纯文档head的同一门；通过后合并main并创建不可变v0.6.57 tag/Release。
-- [ ] 运行治理m38并提交治理收口，然后push/PR/CI、可回滚生产发布与限额内最小真实Provider验收；正式full不得重跑。
+- [x] PR #126最终head/main Quality gates、merge`b34a6f4`、annotated tag/GitHub Release v0.6.57均通过。
+- [x] 精确tag fresh build：Node22.23.2/npm10.9.8、6035文件、inventory`321256ab…c7581`、dist33。
+- [x] 冻结备份/恢复standby/原子切换/回滚前向/33静态字节/schema41数据门/72秒稳定门全部通过；生产当前v0.6.57。
+- [x] 生产技术回写治理m38修正单一版本标记后`16/16 PASS`，source/snapshot`7aac68cc…833af`、库存1124、异常0、4173 unchanged；正式full未重跑。
+- [ ] 累计USD100内执行最小真实Provider验收；outcome unknown立即停止且不第二POST。
 
 - [x] 全链路只读分析工作流checkpoint、自动恢复、Seedance输入模式/角色、模型发布合同、任务准入和Provider adapter。
 - [x] 定位画布卡死根因：准入读取画布级最新checkpoint，未按group/run隔离；正常恢复仍依赖任务面板。
