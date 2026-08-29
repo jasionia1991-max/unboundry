@@ -1,6 +1,6 @@
 # INC-GEN-017：工作流自动自愈与模型合同隔离详细行动方案
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED_FAILED_REMEDIATION_REVIEW_P0_0_P1_0_P2_1_GO_R7_COMPOSITE_BROWSER_TARGETED_PASS_R8_PR_126_CI_PASS_MERGE_READY / PRODUCTION_V0_6_56_UNCHANGED`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED_FAILED_REMEDIATION_REVIEW_P0_0_P1_0_P2_1_GO_R7_COMPOSITE_BROWSER_TARGETED_PASS_R8_V0_6_57_PRODUCTION_TECHNICAL_PASS_REAL_PROVIDER_PENDING / USER_RECHECK`
 
 建立日期：2026-08-28
 
@@ -33,6 +33,12 @@ v0.6.57功能候选commit为`46a9abf110e55dd14d9519228c708759224d8c78`，tree`43
 治理commit`0941fc5`已推送，PR #126已创建且base/head身份与候选一致；GitHub Quality gates正在运行。CI通过后按授权合并到main，再对精确merge commit建立不可变v0.6.57 tag/Release。
 
 PR #126 head`d153b61`的Quality gates已通过（run`33269246033`/job`99144636759`）。只回写CI证据后等待最终文档head检查，再合并main并冻结v0.6.57身份。
+
+PR #126最终head与main Quality gates均通过，merge commit`b34a6f4`已由注释tag/GitHub Release v0.6.57不可变标记。精确tag fresh build在Node22.23.2/npm10.9.8通过，inventory 6035文件/`321256ab…c7581`、dist 33；冻结备份`v0.6.57-cutover-frozen.bFZKEN`双副本366/366文件且清单同SHA`73ac36da…835d`，schema41/integrity/FK和计数一致，standby恢复演练通过。
+
+生产已切到`/opt/unboundry/releases/v0.6.57-inc-gen-017-20260830`，v0.6.56回滚和v0.6.57前向切换、回环/公网健康、33/33静态字节、数据不变和72秒稳定门均通过；service active/enabled、NRestarts0、journal warning0。当前只剩USD100内最小真实Provider验收与最终治理回执；unknown禁止第二POST。
+
+生产技术回写治理m38在修正既有单一版本治理标记后最终`16/16 PASS`，source/snapshot`7aac68cc…833af`、库存1124、异常0、4173 unchanged；正式full未重复。
 
 ### R6 第四轮整改与第五候选准备回写（2026-08-29）
 

@@ -1,6 +1,6 @@
 # INC-GEN-017 验收矩阵
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED_FAILED_REMEDIATION_REVIEW_P0_0_P1_0_P2_1_GO_R7_COMPOSITE_BROWSER_TARGETED_PASS_R8_PR_126_CI_PASS_MERGE_READY / PRODUCTION_V0_6_56_UNCHANGED`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED_FAILED_REMEDIATION_REVIEW_P0_0_P1_0_P2_1_GO_R7_COMPOSITE_BROWSER_TARGETED_PASS_R8_V0_6_57_PRODUCTION_TECHNICAL_PASS_REAL_PROVIDER_PENDING / USER_RECHECK`
 
 | ID | 验收项 | 必须证据 | 当前状态 |
 |---|---|---|---|
@@ -37,8 +37,8 @@
 | IG17-031 | 风险定向回归 | 新spec和直接依赖全绿，命令/环境/源码hash/异常数完整记录 | R7_TARGETED_REGRESSION_PASS |
 | IG17-032 | 唯一正式safe full | 仅候选冻结+Review GO后按风险执行一次；原始结果诚实记录 | CONSUMED_FAILED_1023_PASS_95_FAIL_4_NOT_RUN |
 | IG17-033 | 独立终审 | 冻结候选P0=0/P1=0/GO | REMEDIATION_REVIEW_P0_0_P1_0_P2_1_GO |
-| IG17-034 | GitHub/不可变发布 | 当前Goal已授权：PR/main CI、tag/Release、fresh build | PR_126_CI_PASS_MERGE_READY |
-| IG17-035 | 生产备份/恢复/回滚 | 当前Goal已授权：冻结备份、恢复副本、原子切换、稳定门 | AUTHORIZED_NOT_RUN |
+| IG17-034 | GitHub/不可变发布 | 当前Goal已授权：PR/main CI、tag/Release、fresh build | V0_6_57_GITHUB_RELEASE_FRESH_BUILD_PASS |
+| IG17-035 | 生产备份/恢复/回滚 | 当前Goal已授权：冻结备份、恢复副本、原子切换、稳定门 | PRODUCTION_TECHNICAL_PASS |
 | IG17-036 | 真实Provider最小验收 | 当前Goal累计USD100内已授权；unknown禁止第二POST | AUTHORIZED_NOT_RUN |
 | IG17-037 | 用户实页验收 | 产品发布后由用户按五步清单确认；当前尚未实施 | NOT_RUN |
 | IG17-038 | checkpoint降为缓存 | 缺失/损坏/清空后由Canvas绑定+服务端task重建；无关组不阻塞 | REMEDIATION_TARGETED_PASS_REVIEW_PENDING |
@@ -74,3 +74,7 @@ v0.6.57功能候选已提交为`46a9abf`，tree`43825c5e…9a4c7`；两份受保
 治理commit`0941fc5`已推送，PR #126已创建并处于mergeable；GitHub Quality gates正在运行，tag/Release尚未创建。
 
 PR #126 head`d153b61`的Quality gates已通过（run`33269246033`/job`99144636759`）；最终纯文档head检查通过后即可合并。
+
+PR #126最终head/main CI通过，merge`b34a6f4`、annotated tag object`9e428c31…5e824`和GitHub Release已冻结。fresh tag build为6035文件、inventory`321256ab…c7581`、dist33；冻结备份双副本366/366、清单`73ac36da…835d`，恢复standby通过。生产v0.6.57原子切换、回滚/前向、33/33静态、schema41/integrity/FK0、数据不变和72秒稳定门均通过；真实Provider待执行。
+
+生产技术治理m38最终`16/16 PASS`，source/snapshot`7aac68cc…833af`、库存1124、异常0、4173 unchanged；首轮单一治理标记诊断已精确关闭，正式full未重跑。

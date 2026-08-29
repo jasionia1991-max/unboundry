@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻当前任务
 
-## INC-GEN-017 工作流自动自愈与模型合同隔离（FORMAL SAFE FULL CONSUMED / REVIEW P0=0 P1=0 P2=1 GO / R7 COMPOSITE BROWSER TARGETED PASS / R8 PR #126 CI PASS / MERGE READY）
+## INC-GEN-017 工作流自动自愈与模型合同隔离（FORMAL SAFE FULL CONSUMED / REVIEW P0=0 P1=0 P2=1 GO / R7 COMPOSITE BROWSER TARGETED PASS / PRODUCTION V0.6.57 TECHNICAL PASS / REAL PROVIDER PENDING）
 
 - [x] 用户已显式启动一次性Goal；建立`codex/inc-gen-017-workflow-self-healing-2026-08-28`并绑定实时`origin/main@75f6c1a`。
 - [x] R0只读冻结v0.6.56/schema41、20模型/10 published、Node/npm、生产release/健康/数据完整性与USD100硬预算；受保护JSON未读取或改动。
@@ -108,8 +108,11 @@
 - [x] 功能候选提交后治理safe m38 `16/16 PASS`，source/snapshot`a52ff92c…92527`、库存1124、异常0、4173 unchanged；六份治理文档已同步并可提交。
 - [x] 治理commit`0941fc5`已推送并创建PR #126；base/head身份一致且mergeable。
 - [x] PR #126 head`d153b61`的Quality gates通过（run`33269246033`/job`99144636759`，28秒）。
-- [ ] 等待CI证据纯文档head的同一门；通过后合并main并创建不可变v0.6.57 tag/Release。
-- [ ] 运行治理m38并提交治理收口，然后push/PR/CI、可回滚生产发布与限额内最小真实Provider验收；正式full不得重跑。
+- [x] PR #126最终head/main Quality gates、merge`b34a6f4`、annotated tag/GitHub Release v0.6.57均通过。
+- [x] 精确tag fresh build：Node22.23.2/npm10.9.8、6035文件、inventory`321256ab…c7581`、dist33。
+- [x] 冻结备份/恢复standby/原子切换/回滚前向/33静态字节/schema41数据门/72秒稳定门全部通过；生产当前v0.6.57。
+- [x] 生产技术回写治理m38修正单一版本标记后`16/16 PASS`，source/snapshot`7aac68cc…833af`、库存1124、异常0、4173 unchanged；正式full未重跑。
+- [ ] 累计USD100内执行最小真实Provider验收；outcome unknown立即停止且不第二POST。
 
 - [x] 全链路只读分析工作流checkpoint、自动恢复、Seedance输入模式/角色、模型发布合同、任务准入和Provider adapter。
 - [x] 定位画布卡死根因：准入读取画布级最新checkpoint，未按group/run隔离；正常恢复仍依赖任务面板。

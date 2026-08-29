@@ -1,17 +1,17 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网运行v0.6.56/schema41且服务健康。数字Provider task ID有限规范化已发布；同一目标Canvas唯一真实GK提交已成功完成、自动回填并经刷新保持，实际费用USD10、unknown-billing 0。工程、独立Review、GitHub/CI、不可移动发布、恢复/回滚、生产与真实Provider技术门均通过；用户观看成片并明确确认前严格为`PRODUCTION_TECHNICAL_PASS / REAL_PROVIDER_PASS / USER_RECHECK`。
+> **状态分层**：现网运行v0.6.57/schema41且服务健康。INC-GEN-017工程、独立Review、GitHub/CI、不可移动发布、fresh build、恢复/回滚和生产技术门均通过；本Goal真实Provider验收尚未执行，用户实页确认前严格为`PRODUCTION_TECHNICAL_PASS / REAL_PROVIDER_PENDING / USER_RECHECK`。v0.6.56的真实GK成功回执保留为历史事实，不替代当前版本验收。
 
-更新日期：2026-08-28
+更新日期：2026-08-30
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
 当前代码包版本：**v0.6.57**
 本地候选代码版本：**v0.6.57**
-当前生产部署版本：**v0.6.56**
+当前生产部署版本：**v0.6.57**
 本地候选schema：**41**
-当前治理标记：`CURRENT_V0_6_56_USER_RECHECK`
-当前计划标记：`INC_GEN_017_GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED_FAILED_REMEDIATION_REVIEW_P0_0_P1_0_P2_1_GO_R7_COMPOSITE_BROWSER_TARGETED_PASS_R8_PR_126_CI_PASS_MERGE_READY`
+当前治理标记：`CURRENT_V0_6_57_USER_RECHECK`
+当前计划标记：`INC_GEN_017_GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED_FAILED_REMEDIATION_REVIEW_P0_0_P1_0_P2_1_GO_R7_COMPOSITE_BROWSER_TARGETED_PASS_R8_V0_6_57_PRODUCTION_TECHNICAL_PASS_REAL_PROVIDER_PENDING / USER_RECHECK`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`INC_GEN_016_V0_6_56_AUTHORIZATION_CONSUMED / USER_RECHECK`
+当前发布门：`INC_GEN_017_V0_6_57_PRODUCTION_TECHNICAL_PASS / REAL_PROVIDER_AUTHORIZATION_ACTIVE / USER_RECHECK`
 
 ## INC-GEN-017 当前区块（2026-08-28）
 
@@ -58,6 +58,9 @@
 - 功能候选提交后治理safe m38 `16/16 PASS`，source/snapshot`a52ff92c…92527`、库存1124、失败/重试/跳过/reportErrors0、4173 unchanged。当前六份治理文档可提交；生产仍为v0.6.56/schema41。
 - 治理commit`0941fc5`已推送并创建PR #126；候选mergeable，GitHub Quality gates正在运行。生产仍为v0.6.56/schema41，tag/Release与生产切换尚未执行。
 - PR #126 head`d153b61`的Quality gates已通过（run`33269246033`/job`99144636759`）；只需最终纯文档head复核即可合并。生产仍为v0.6.56/schema41。
+- PR #126最终head/main Quality gates通过，merge`b34a6f4`、annotated tag/GitHub Release v0.6.57与精确tag fresh build均已完成；inventory 6035文件/`321256ab…c7581`、dist33。
+- 生产当前`/opt/unboundry/releases/v0.6.57-inc-gen-017-20260830`：冻结备份`v0.6.57-cutover-frozen.bFZKEN`双副本366/366和清单`73ac36da…835d`，恢复standby、原子切换、v0.6.56回滚/v0.6.57前向、33/33静态、schema41/integrity/FK0、数据不变与72秒稳定门通过；service active/enabled、NRestarts0、journal warning0。真实Provider POST/费用当前仍为0/USD0，下一步为预算内最小验收。
+- 生产技术回写治理m38在对齐`CURRENT_V0_6_57_USER_RECHECK`和三份渐进式治理版本标记后最终`16/16 PASS`，source/snapshot`7aac68cc…833af`、库存1124、异常0、4173 unchanged；正式full未重跑。
 - 第三批整改候选已按`f181f990…2d69`冻结，当前仅允许原两名审查上下文只读增量复核；生产保持v0.6.56/schema41，GitHub/版本/生产/真实Provider未执行。
 - 独立终审合并结论为`P0=0/P1=16/P2=8/NO-GO`。工作流12项P1覆盖规范化语义、accepted-only、终态通知、孤立task重建、混合cache损坏、并发回滚、多group调用者、durable restart、手动corruption门、success proof、snapshot role/order/revision和lease损坏导航；模型/Provider4项P1覆盖Mureka歌词边界、relay单结果响应、Seedance重叠模式priority发布门和统一server feature-flag闸门。
 - 16项P1均已实施关闭；与相同局部相邻的8项P2也已处理。最小受影响证据为m22 `43/43`、m30 `11/11`、m102 `22/22`、m27 `20/20`，m68 `4/4`及m5/m16/m17/m38/m40/m57/m79/m88直接依赖无失败；文档同步m38 `16/16 PASS`，最近source/snapshot`d3c277714ed6aa88079ed9181dcbb0fe98c726b1c643ed689181e707e7261952`，库存1105、异常0、4173 unchanged。
@@ -197,7 +200,7 @@ v0.6.47验证证据：默认Node25.9.0/npm11.12.1下build与architecture通过�
 
 ## 一句话
 
-**生产是 v0.6.56 / schema41；工程、GitHub、生产技术与真实Provider闭环通过，唯一GK提交实际费用USD10、unknown-billing 0；唯一下一步是用户观看目标Canvas成片并明确确认或拒绝。**
+**生产是 v0.6.57 / schema41；INC-GEN-017工程、GitHub、不可变发布、备份恢复、回滚和生产技术门通过，当前Goal真实Provider验收待执行；唯一下一步是完成预算内最小真实Provider验收后由用户按五步清单复验。**
 
 ## INC-GEN-015 老画布孤立生成态与终态结果自动收口（PRODUCTION_V0_6_46_USER_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON）
 
