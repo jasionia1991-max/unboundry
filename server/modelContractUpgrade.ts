@@ -35,8 +35,11 @@ import {
 import {
   analyzeModelContractTemplateCompatibility,
 } from "./modelContractTemplateCompatibility";
+import { assertRegisteredModelExecutionTotality } from
+  "./modelExecutionRegistry";
 import {
   cleanParameterSchema,
+  inheritProviderSemanticSchemaDefaults,
   knownModelParameterSchema,
   providerParameterSchema,
   validateParameterSchemaConstraints,
@@ -68,6 +71,12 @@ const expectedProviderModelIds = Object.freeze([
   "kwvideo-v2",
 ].sort());
 
+const semanticContractUpgradeProviderModelIds = new Set([
+  "doubao-seedance-2-0-mini-260615",
+  "grok-imagine-video-1.5-preview",
+  "grok-video-3",
+]);
+
 function snapshotHash(value: unknown) {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
@@ -94,22 +103,38 @@ function schema(row: SeedRow) {
     providerDriver: row.providerDriver,
     providerModelId: row.providerModelId,
   });
-  return validateParameterSchemaConstraints(
-    cleanParameterSchema(
-      row.capability,
-      JSON.parse(row.default_parameters),
-      fallback,
+  const constraints = providerParameterSchema({
+    capability: row.capability,
+    providerDriver: row.providerDriver,
+    providerModelId: row.providerModelId,
+  });
+  const persisted = JSON.parse(row.default_parameters) as unknown;
+  const cleaned = cleanParameterSchema(
+    row.capability,
+    inheritProviderSemanticSchemaDefaults(
+      persisted,
+      constraints,
     ),
-    providerParameterSchema({
-      capability: row.capability,
-      providerDriver: row.providerDriver,
-      providerModelId: row.providerModelId,
-    }),
+    fallback,
   );
+  try {
+    return validateParameterSchemaConstraints(cleaned, constraints);
+  } catch (error) {
+    if (
+      !constraints ||
+      row.providerModelId !== "grok-video-3" ||
+      !persisted ||
+      typeof persisted !== "object" ||
+      Array.isArray(persisted) ||
+      (persisted as { version?: unknown }).version !== 2 ||
+      !Array.isArray((persisted as { fields?: unknown }).fields)
+    ) throw error;
+    return validateParameterSchemaConstraints(constraints, constraints);
+  }
 }
 
-function targetDocument(row: SeedRow) {
-  return modelReleaseDocumentForId({
+function targetDocument(row: SeedRow, active: ModelReleaseDocument) {
+  const target = modelReleaseDocumentForId({
     capability: row.capability,
     capabilitySchema: schema(row),
     modelId: row.id,
@@ -118,6 +143,64 @@ function targetDocument(row: SeedRow) {
     providerProfileId: row.providerProfileId,
     providerProtocol: row.providerProtocol,
   });
+  if (!semanticContractUpgradeProviderModelIds.has(row.providerModelId)) {
+    return target;
+  }
+  const aligned = Object.freeze({
+    ...target,
+    executionContract: Object.freeze({
+      ...target.executionContract,
+      version: active.executionContract.version,
+    }),
+  });
+  const semanticChanged = inspectModelReleaseDocument(aligned).documentHash !==
+    inspectModelReleaseDocument(active).documentHash;
+  if (semanticChanged) {
+    const requiredVersion = active.executionContract.version === 1
+      ? 2 as const
+      : undefined;
+    if (!requiredVersion) {
+      throw new Error("执行合同版本已达上限，语义升级已阻断");
+    }
+    const version = target.executionContract.version > requiredVersion
+      ? target.executionContract.version
+      : requiredVersion;
+    return Object.freeze({
+      ...target,
+      executionContract: Object.freeze({
+        ...target.executionContract,
+        version,
+      }),
+    });
+  }
+  return target.executionContract.version < active.executionContract.version
+    ? aligned
+    : target;
+}
+
+function assertUpgradeReleaseDocument(
+  row: SeedRow,
+  document: ModelReleaseDocument,
+) {
+  if (
+    document.modelId !== row.id ||
+    document.capability !== row.capability ||
+    document.providerModelId !== row.providerModelId ||
+    document.providerProfileId !== row.providerProfileId ||
+    document.providerProtocol !== row.providerProtocol
+  ) throw new Error("升级合同与模型、Provider或能力身份不一致");
+  const totality = assertRegisteredModelExecutionTotality({
+    capability: row.capability,
+    capabilitySchema: document.capabilitySchema,
+    providerDriver: row.providerDriver,
+    providerModelId: row.providerModelId,
+    providerProtocol: row.providerProtocol,
+  });
+  if (
+    document.runtime !== totality.descriptor.runtime ||
+    document.connectorFamily !== totality.descriptor.connectorFamily ||
+    document.evidence !== totality.descriptor.evidence
+  ) throw new Error("升级合同与精确执行registry不一致");
 }
 
 function modeSummary(document: ModelReleaseDocument) {
@@ -175,24 +258,26 @@ export function planModelContractUpgrade(store: DatabaseSync) {
       frozen.documentHash !== active.hash ||
       frozen.compilerHash !== active.validation.compilerHash
     ) throw new Error(`模型 ${row.id} 的活动revision完整性失败`);
-    const proposed = targetDocument(row);
+    const proposed = targetDocument(row, active.document);
     const proposedProof = inspectModelReleaseDocument(proposed);
     const drift = currentModelReleasePolicyDrift(active.document);
-    const semantic = active.document.runtime === "declarative" &&
-        proposed.runtime === "declarative" &&
-        active.document.connectorFamily === proposed.connectorFamily
+    const archiveWithoutExecution = row.providerModelId === "kwvideo-v2" &&
+      !row.archived_at && !hasTextFoundation(active.document);
+    if (!row.archived_at && !archiveWithoutExecution) {
+      assertUpgradeReleaseDocument(row, proposed);
+    }
+    const semantic = active.document.connectorFamily === proposed.connectorFamily
       ? analyzeModelContractTemplateCompatibility({
           active: active.document,
           proposed,
           rows: templates,
         })
       : undefined;
-    const action = row.providerModelId === "grok-video-3" &&
-        active.hash !== proposedProof.documentHash
-      ? "publish-revision"
-      : row.providerModelId === "kwvideo-v2" && !row.archived_at &&
-          !hasTextFoundation(active.document)
-        ? "archive"
+    const action = archiveWithoutExecution
+      ? "archive"
+      : semanticContractUpgradeProviderModelIds.has(row.providerModelId) &&
+          active.hash !== proposedProof.documentHash
+        ? "publish-revision"
         : "none";
     const profileCredentials = credentials.filter((credential) =>
       credential.provider_profile_id === row.providerProfileId
@@ -280,21 +365,22 @@ export function planModelContractUpgrade(store: DatabaseSync) {
 
 function activateRelease(
   store: DatabaseSync,
-  modelId: string,
+  row: SeedRow,
   document: ModelReleaseDocument,
 ) {
+  assertUpgradeReleaseDocument(row, document);
   const timestamp = new Date().toISOString();
   const model = store.prepare(`
     UPDATE model_profiles
     SET default_parameters = ?, status = 'published',
         published_at = COALESCE(published_at, ?), updated_at = ?
     WHERE id = ? AND archived_at IS NULL
-  `).run(JSON.stringify(document.capabilitySchema), timestamp, timestamp, modelId);
+  `).run(JSON.stringify(document.capabilitySchema), timestamp, timestamp, row.id);
   if (model.changes !== 1) throw new Error("模型发布状态已变化，升级已阻断");
   const binding = store.prepare(`
     UPDATE node_model_bindings SET enabled = 1, updated_at = ?
     WHERE node_type = ? AND model_id = ?
-  `).run(timestamp, document.capability, modelId);
+  `).run(timestamp, document.capability, row.id);
   if (binding.changes !== 1) throw new Error("模型能力绑定不存在，升级已阻断");
 }
 
@@ -390,23 +476,54 @@ export function applyModelContractUpgrade(
       gk.templateImpact.nodeMatrix.length !== 34 ||
       gk.templateImpact.templateIds.length !== 22
     ) throw new Error("GK生产模板语义矩阵未达到22模板/34节点兼容门");
+    const publishable = before.models.filter((model) =>
+      model.action === "publish-revision"
+    );
+    if (publishable.some((model) =>
+      !semanticContractUpgradeProviderModelIds.has(model.providerModelId) ||
+      model.templateImpact.incompatibleTemplateIds.length
+    )) throw new Error("语义合同升级模型或模板影响超出核准边界");
     const kw = before.models.find((model) => model.providerModelId === "kwvideo-v2");
     const archivedKwvideo = kw?.action === "archive"
       ? archiveKwvideo(store, actorUserId, kw.modelId)
       : false;
-    const release = gk.action === "publish-revision"
-      ? upgradeModelContractRevision(store, actorUserId, {
-          document: gk.proposed,
-          expectedActiveRevisionId: gk.activeRevisionId,
-          impact: gk.templateImpact,
-        }, (revision) => activateRelease(store, gk.modelId, revision.document))
-      : { changed: false as const, revision: modelContractState(store, gk.modelId).active! };
+    const rowsById = new Map(seedRows(store).map((row) => [row.id, row]));
+    const releases = publishable.map((model) => {
+      const row = rowsById.get(model.modelId);
+      if (!row) throw new Error("升级模型身份已变化，升级已阻断");
+      const release = upgradeModelContractRevision(store, actorUserId, {
+        document: model.proposed,
+        expectedActiveRevisionId: model.activeRevisionId,
+        impact: model.templateImpact,
+      }, (revision) => activateRelease(store, row, revision.document));
+      return Object.freeze({
+        changed: release.changed,
+        modelId: model.modelId,
+        providerModelId: model.providerModelId,
+        revisionId: release.revision.revisionId,
+        revisionNumber: release.revision.revisionNumber,
+      });
+    });
+    const gkRelease = releases.find((release) =>
+      release.providerModelId === "grok-video-3"
+    );
+    const activeGk = gkRelease ?? (() => {
+      const revision = modelContractState(store, gk.modelId).active!;
+      return {
+        changed: false as const,
+        modelId: gk.modelId,
+        providerModelId: gk.providerModelId,
+        revisionId: revision.revisionId,
+        revisionNumber: revision.revisionNumber,
+      };
+    })();
     return Object.freeze({
       archivedKwvideo,
-      gkRevisionChanged: release.changed,
-      gkRevisionId: release.revision.revisionId,
-      gkRevisionNumber: release.revision.revisionNumber,
+      gkRevisionChanged: activeGk.changed,
+      gkRevisionId: activeGk.revisionId,
+      gkRevisionNumber: activeGk.revisionNumber,
       paidProviderRequests: 0 as const,
+      upgradedModels: Object.freeze(releases),
     });
   });
 }

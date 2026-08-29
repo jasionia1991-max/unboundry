@@ -135,13 +135,13 @@ function validModelId(modelId: string) {
 
 const supportedRuntimeVersions = Object.freeze({
   "generic-async-media": Object.freeze({ 1: [1, 2] }),
-  "specialized-code": Object.freeze({ 1: [1] }),
+  "specialized-code": Object.freeze({ 1: [1, 2] }),
   "openai-chat": Object.freeze({ 1: [1] }),
   "openai-responses": Object.freeze({ 1: [1] }),
   "claude-messages": Object.freeze({ 1: [1] }),
   "gemini-generate-content": Object.freeze({ 1: [1] }),
   "gpt-image": Object.freeze({ 1: [1] }),
-  "ark-native": Object.freeze({ 1: [1] }),
+  "ark-native": Object.freeze({ 1: [1, 2] }),
   "mureka-native": Object.freeze({ 1: [1] }),
 } as const);
 

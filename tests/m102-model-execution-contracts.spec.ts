@@ -1675,16 +1675,17 @@ test("schema41 upgrade audits 11 models, publishes GK revision 2, archives kwvid
       CREATE TABLE canvas_documents (nodes TEXT NOT NULL);
       INSERT INTO provider_profiles VALUES
         ('provider-relay', 'multi-protocol-relay', 'enabled', 'valid', 'catalog-relay-1', 1),
-        ('provider-ark', 'volcengine-ark', 'enabled', 'valid', 'catalog-ark-1', 1);
+        ('provider-ark', 'volcengine-ark', 'enabled', 'valid', 'catalog-ark-1', 1),
+        ('provider-mureka', 'mureka', 'enabled', 'valid', 'catalog-mureka-1', 1);
     `);
     const rows = [
       ["model-text", "text", "doubao-seed-2-0-lite-260428", "provider-ark", "native"],
-      ["model-image-gemini", "image", "gemini-3-pro-image-preview", "provider-relay", "native"],
+      ["model-image-gemini", "image", "gemini-3-pro-image-preview", "provider-relay", "media-generate"],
       ["model-image-gpt", "image", "gpt-image-2", "provider-relay", "gpt-image"],
-      ["model-video-seedance", "video", "doubao-seedance-2-0-mini-260615", "provider-ark", "media-generate"],
+      ["model-video-seedance", "video", "doubao-seedance-2-0-mini-260615", "provider-ark", "native"],
       ["model-video-grok-imagine", "video", "grok-imagine-video-1.5-preview", "provider-relay", "media-generate"],
       ["model-video-kling", "video", "kling-v3-omni-cankao", "provider-relay", "media-generate"],
-      ["model-audio-mureka", "audio", "mureka-9", "provider-relay", "media-generate"],
+      ["model-audio-mureka", "audio", "mureka-9", "provider-mureka", "native"],
       ["model-audio-tts", "audio", "doubao-tts-2.0", "provider-relay", "media-generate"],
       ["model-audio-suno", "audio", "suno-v4.5", "provider-relay", "media-generate"],
       ["model-gk-video-3", "video", "grok-video-3", "provider-relay", "media-generate"],
@@ -1693,18 +1694,28 @@ test("schema41 upgrade audits 11 models, publishes GK revision 2, archives kwvid
     for (const [id, capability, providerModelId, providerProfileId, providerProtocol] of rows) {
       const providerDriver = providerProfileId === "provider-ark"
         ? "volcengine-ark"
-        : "multi-protocol-relay";
+        : providerProfileId === "provider-mureka"
+          ? "mureka"
+          : "multi-protocol-relay";
       const capabilitySchema = knownModelParameterSchema({
         capability,
         providerDriver,
         providerModelId,
       });
+      const persistedCapabilitySchema = structuredClone(capabilitySchema);
+      if (providerModelId === "doubao-seedance-2-0-mini-260615") {
+        delete persistedCapabilitySchema.referencePolicy!.normalizationPriority;
+      }
+      if (providerModelId === "grok-imagine-video-1.5-preview") {
+        delete persistedCapabilitySchema.referencePolicy;
+        delete persistedCapabilitySchema.referenceMediaRules;
+      }
       store.prepare(`
         INSERT INTO model_profiles VALUES (?, ?, ?, ?, ?, ?, 'published', NULL, ?, ?)
       `).run(
         id,
         capability,
-        JSON.stringify(capabilitySchema),
+        JSON.stringify(persistedCapabilitySchema),
         providerModelId,
         providerProfileId,
         providerProtocol,
@@ -1715,7 +1726,7 @@ test("schema41 upgrade audits 11 models, publishes GK revision 2, archives kwvid
         .run(capability, id, "2026-08-27T00:00:00.000Z");
       const currentDocument = defaultModelReleaseDocument({
         capability,
-        capabilitySchema,
+        capabilitySchema: persistedCapabilitySchema,
         modelId: id,
         providerDriver,
         providerModelId,
@@ -1767,8 +1778,59 @@ test("schema41 upgrade audits 11 models, publishes GK revision 2, archives kwvid
         hasTextFoundation: true,
         templateImpact: { incompatibleTemplateIds: [] },
       });
+    expect(plan.models.filter((model) => model.action === "publish-revision")
+      .map((model) => model.providerModelId).sort()).toEqual([
+        "doubao-seedance-2-0-mini-260615",
+        "grok-imagine-video-1.5-preview",
+        "grok-video-3",
+      ]);
+    for (const model of plan.models.filter((item) =>
+      item.action === "publish-revision"
+    )) {
+      expect(model.proposed.executionContract.version).toBe(2);
+    }
     expect(plan.models.find((model) => model.providerModelId === "kwvideo-v2"))
       .toMatchObject({ action: "archive", hasTextFoundation: false });
+    store.prepare(`
+      UPDATE model_profiles SET provider_protocol = 'media-generate'
+      WHERE id = 'model-video-seedance'
+    `).run();
+    expect(() => planModelContractUpgrade(store))
+      .toThrow(/not supported|精确执行registry/);
+    store.prepare(`
+      UPDATE model_profiles SET provider_protocol = 'native'
+      WHERE id = 'model-video-seedance'
+    `).run();
+    store.prepare(`
+      UPDATE provider_profiles SET driver = 'multi-protocol-relay'
+      WHERE id = 'provider-ark'
+    `).run();
+    expect(() => planModelContractUpgrade(store))
+      .toThrow(/not supported|精确执行registry/);
+    store.prepare(`
+      UPDATE provider_profiles SET driver = 'volcengine-ark'
+      WHERE id = 'provider-ark'
+    `).run();
+    const exactSeedanceRow = store.prepare(`
+      SELECT default_parameters FROM model_profiles
+      WHERE id = 'model-video-seedance'
+    `).get() as { default_parameters: string };
+    const missingParameterSeedance = JSON.parse(
+      exactSeedanceRow.default_parameters,
+    );
+    missingParameterSeedance.fields = missingParameterSeedance.fields.filter(
+      (field: { key: string }) => field.key !== "duration",
+    );
+    store.prepare(`
+      UPDATE model_profiles SET default_parameters = ?
+      WHERE id = 'model-video-seedance'
+    `).run(JSON.stringify(missingParameterSeedance));
+    expect(() => planModelContractUpgrade(store))
+      .toThrow(/schema不存在的参数/);
+    store.prepare(`
+      UPDATE model_profiles SET default_parameters = ?
+      WHERE id = 'model-video-seedance'
+    `).run(exactSeedanceRow.default_parameters);
     store.prepare("UPDATE provider_profiles SET provider_configuration_version = 2 WHERE id = 'provider-relay'").run();
     expect(() => applyModelContractUpgrade(store, "admin-a", {
       expectedBaselineSnapshotHash: plan.baselineSnapshotHash,
@@ -1801,7 +1863,16 @@ test("schema41 upgrade audits 11 models, publishes GK revision 2, archives kwvid
       gkRevisionNumber: 2,
       paidProviderRequests: 0,
     });
+    expect(applied.upgradedModels.map((model) => model.providerModelId).sort())
+      .toEqual([
+        "doubao-seedance-2-0-mini-260615",
+        "grok-imagine-video-1.5-preview",
+        "grok-video-3",
+      ]);
     expect(modelContractState(store, "model-gk-video-3").history).toHaveLength(2);
+    expect(modelContractState(store, "model-video-seedance").history).toHaveLength(2);
+    expect(modelContractState(store, "model-video-grok-imagine").history)
+      .toHaveLength(2);
     expect(store.prepare("SELECT status, archived_at FROM model_profiles WHERE id = 'model-kwvideo-v2'").get())
       .toMatchObject({ status: "disabled", archived_at: expect.any(String) });
     const repeatedPlan = planModelContractUpgrade(store);
@@ -1813,7 +1884,30 @@ test("schema41 upgrade audits 11 models, publishes GK revision 2, archives kwvid
       gkRevisionChanged: false,
       gkRevisionNumber: 2,
       paidProviderRequests: 0,
+      upgradedModels: [],
     });
+    const seedanceRow = store.prepare(`
+      SELECT default_parameters FROM model_profiles
+      WHERE id = 'model-video-seedance'
+    `).get() as { default_parameters: string };
+    const invalidSeedanceSchema = JSON.parse(seedanceRow.default_parameters);
+    invalidSeedanceSchema.referenceInputs.image += 1;
+    store.prepare(`
+      UPDATE model_profiles SET default_parameters = ?
+      WHERE id = 'model-video-seedance'
+    `).run(JSON.stringify(invalidSeedanceSchema));
+    expect(() => planModelContractUpgrade(store))
+      .toThrow(/reference input is not supported/);
+    store.prepare(`
+      UPDATE model_profiles SET default_parameters = ?
+      WHERE id = 'model-video-seedance'
+    `).run(seedanceRow.default_parameters);
+    store.prepare(`
+      UPDATE model_profiles SET default_parameters = ?
+      WHERE id = 'model-gk-video-3'
+    `).run(JSON.stringify({ version: 2, fields: [] }));
+    expect(() => planModelContractUpgrade(store))
+      .toThrow(/Invalid model reference inputs/);
   } finally {
     store.close();
   }

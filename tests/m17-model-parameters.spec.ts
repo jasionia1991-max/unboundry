@@ -13,6 +13,7 @@ import {
   defaultParameterSchema,
   defaultParameterValues,
   gptImageSizeMapEntryError,
+  inheritProviderSemanticSchemaDefaults,
   knownModelParameterSchema,
   parameterKeysForGroups,
   parameterFieldVisible,
@@ -22,6 +23,41 @@ import {
   validateParameterSchemaConstraints,
   validateParameterValues,
 } from "../types/modelParameters";
+
+test("exact Provider schemas inherit only missing legacy semantic metadata", () => {
+  const seedance = knownModelParameterSchema({
+    capability: "video",
+    providerDriver: "volcengine-ark",
+    providerModelId: "doubao-seedance-2-0-mini-260615",
+  });
+  const legacySeedance = structuredClone(seedance);
+  delete legacySeedance.referencePolicy!.normalizationPriority;
+  const upgradedSeedance = cleanParameterSchema(
+    "video",
+    inheritProviderSemanticSchemaDefaults(legacySeedance, seedance),
+    seedance,
+  );
+  expect(upgradedSeedance.referencePolicy?.normalizationPriority)
+    .toEqual(["multimodal", "first-last-frame", "text"]);
+  expect(upgradedSeedance.fields).toEqual(legacySeedance.fields);
+
+  const grok35 = knownModelParameterSchema({
+    capability: "video",
+    providerDriver: "multi-protocol-relay",
+    providerModelId: "grok-imagine-video-1.5-preview",
+  });
+  const legacyGrok35 = structuredClone(grok35);
+  delete legacyGrok35.referencePolicy;
+  delete legacyGrok35.referenceMediaRules;
+  const upgradedGrok35 = cleanParameterSchema(
+    "video",
+    inheritProviderSemanticSchemaDefaults(legacyGrok35, grok35),
+    grok35,
+  );
+  expect(upgradedGrok35.referencePolicy).toEqual(grok35.referencePolicy);
+  expect(upgradedGrok35.referenceMediaRules).toEqual(grok35.referenceMediaRules);
+  expect(upgradedGrok35.fields).toEqual(legacyGrok35.fields);
+});
 
 test("future models use the safe shared parameter registry", () => {
   const schema = knownModelParameterSchema({

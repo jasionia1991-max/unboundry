@@ -1,19 +1,24 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网运行v0.6.57/schema41且服务健康。INC-GEN-017工程、独立Review、GitHub/CI、不可移动发布、fresh build、恢复/回滚和生产技术门均通过；本Goal真实Provider验收尚未执行，用户实页确认前严格为`PRODUCTION_TECHNICAL_PASS / REAL_PROVIDER_PENDING / USER_RECHECK`。v0.6.56的真实GK成功回执保留为历史事实，不替代当前版本验收。
+> **状态分层**：现网运行v0.6.57/schema41且服务健康。R8真实Provider验收在POST前发现旧published模型合同迁移缺口并正确fail-closed，Provider POST=0、费用USD0；本地热修已通过独立终审及v0.6.58版本直接门。当前严格为`HOTFIX_REVIEW_GO / V0_6_58_CANDIDATE_COMMIT_READY / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。v0.6.56的真实GK成功回执保留为历史事实，不替代当前版本验收。
 
 更新日期：2026-08-30
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.57**
-本地候选代码版本：**v0.6.57**
+当前代码包版本：**v0.6.58**
+本地候选代码版本：**v0.6.58**
 当前生产部署版本：**v0.6.57**
 本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_57_USER_RECHECK`
-当前计划标记：`INC_GEN_017_GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED_FAILED_REMEDIATION_REVIEW_P0_0_P1_0_P2_1_GO_R7_COMPOSITE_BROWSER_TARGETED_PASS_R8_V0_6_57_PRODUCTION_TECHNICAL_PASS_REAL_PROVIDER_PENDING / USER_RECHECK`
+当前计划标记：`INC_GEN_017_GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / HOTFIX_REVIEW_GO / V0_6_58_CANDIDATE_COMMIT_READY / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`INC_GEN_017_V0_6_57_PRODUCTION_TECHNICAL_PASS / REAL_PROVIDER_AUTHORIZATION_ACTIVE / USER_RECHECK`
+当前发布门：`INC_GEN_017_HOTFIX_REVIEW_GO / V0_6_58_CANDIDATE_COMMIT_READY / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 
 ## INC-GEN-017 当前区块（2026-08-28）
+
+- 2026-08-30 R8生产POST前合同硬门暴露Seedance/Grok3.5/Grok3旧published schema迁移缺口。整改冻结diff `dcf8a42d…3cb854`的独立增量终审覆盖8/8文件、10/10 logical models、11/11 exact identities，最终`P0=0/P1=0/P2=0/GO`；m102 `24/24 PASS`（`e93a5baf…610032`），库存1125、4173 unchanged。当前进入v0.6.58准备；生产迁移和真实Provider尚未执行。
+- v0.6.58身份门：`origin/main@b34a6f4`未前进，本地tag、远端tag和GitHub Release均不存在；package/lock、final runtime allowlist与m81断言已同步。当前本地候选v0.6.58，生产仍为v0.6.57/schema41；版本定向m81+m38待执行。
+- v0.6.58版本直接门最终有效`57/57 PASS`：m81 `41/41`首轮通过，m38修正唯一治理版本字段后`16/16 PASS`（`30e11dbd…c7d7b`），库存1125、异常0、4173 unchanged。当前候选提交就绪，生产仍为v0.6.57/schema41。
+- v0.6.58提交前最终治理safe m38 `16/16 PASS`，source/snapshot`79ae8703…609cd6`、库存1125、异常0、4173 unchanged；精确diff-check通过。`b577…`早期候选终审的12项P1已在后续整改链闭合，当前仍以`dcf8…`热修Review GO为准；随后仅回写本条证据。
 
 - 用户已在本Session显式启动一次性Goal；当前实施分支为`codex/inc-gen-017-workflow-self-healing-2026-08-28`，实时基线`origin/main@75f6c1aca055b8b82f258a9d38be5c27ce7d6305`。
 - R0已完成：只读冻结生产v0.6.56/schema41、20模型/10 published、Node/npm与USD100真实Provider硬预算；Provider POST=0、费用USD0，受保护JSON未读取或改动。

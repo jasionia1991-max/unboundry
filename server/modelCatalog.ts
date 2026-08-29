@@ -28,6 +28,7 @@ import {
 } from "./providerProfiles";
 import {
   cleanParameterSchema,
+  inheritProviderSemanticSchemaDefaults,
   isCustomParameterField,
   knownModelParameterSchema,
   providerParameterSchema,
@@ -118,7 +119,10 @@ function parameterSchema(row: ModelSchemaRow): ModelParameterSchema {
     return validateParameterSchemaConstraints(
       cleanParameterSchema(
         row.capability,
-        JSON.parse(row.default_parameters),
+        inheritProviderSemanticSchemaDefaults(
+          JSON.parse(row.default_parameters),
+          constraints,
+        ),
         fallback,
       ),
       constraints,
