@@ -9,7 +9,7 @@
 当前生产部署版本：**v0.6.56**
 本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_56_USER_RECHECK`
-当前计划标记：`INC_GEN_017_GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED_FAILED_REMEDIATION_REVIEW_P0_0_P1_0_P2_1_GO_R7_COMPOSITE_BROWSER_TARGETED_PASS_R8_PR_126_CI_RUNNING`
+当前计划标记：`INC_GEN_017_GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED_FAILED_REMEDIATION_REVIEW_P0_0_P1_0_P2_1_GO_R7_COMPOSITE_BROWSER_TARGETED_PASS_R8_PR_126_CI_PASS_MERGE_READY`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
 当前发布门：`INC_GEN_016_V0_6_56_AUTHORIZATION_CONSUMED / USER_RECHECK`
 
@@ -57,6 +57,7 @@
 - v0.6.57功能候选已提交为`46a9abf110e55dd14d9519228c708759224d8c78`，tree`43825c5ef8601e3e55d8bced9ca9c48317f9a4c7`；两份受保护JSON未进入提交。生产仍为v0.6.56/schema41，治理commit、GitHub/CI与生产发布待执行。
 - 功能候选提交后治理safe m38 `16/16 PASS`，source/snapshot`a52ff92c…92527`、库存1124、失败/重试/跳过/reportErrors0、4173 unchanged。当前六份治理文档可提交；生产仍为v0.6.56/schema41。
 - 治理commit`0941fc5`已推送并创建PR #126；候选mergeable，GitHub Quality gates正在运行。生产仍为v0.6.56/schema41，tag/Release与生产切换尚未执行。
+- PR #126 head`d153b61`的Quality gates已通过（run`33269246033`/job`99144636759`）；只需最终纯文档head复核即可合并。生产仍为v0.6.56/schema41。
 - 第三批整改候选已按`f181f990…2d69`冻结，当前仅允许原两名审查上下文只读增量复核；生产保持v0.6.56/schema41，GitHub/版本/生产/真实Provider未执行。
 - 独立终审合并结论为`P0=0/P1=16/P2=8/NO-GO`。工作流12项P1覆盖规范化语义、accepted-only、终态通知、孤立task重建、混合cache损坏、并发回滚、多group调用者、durable restart、手动corruption门、success proof、snapshot role/order/revision和lease损坏导航；模型/Provider4项P1覆盖Mureka歌词边界、relay单结果响应、Seedance重叠模式priority发布门和统一server feature-flag闸门。
 - 16项P1均已实施关闭；与相同局部相邻的8项P2也已处理。最小受影响证据为m22 `43/43`、m30 `11/11`、m102 `22/22`、m27 `20/20`，m68 `4/4`及m5/m16/m17/m38/m40/m57/m79/m88直接依赖无失败；文档同步m38 `16/16 PASS`，最近source/snapshot`d3c277714ed6aa88079ed9181dcbb0fe98c726b1c643ed689181e707e7261952`，库存1105、异常0、4173 unchanged。

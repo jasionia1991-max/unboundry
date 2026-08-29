@@ -1,6 +1,6 @@
 # INC-GEN-017 实时断点
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED_FAILED_REMEDIATION_REVIEW_P0_0_P1_0_P2_1_GO_R7_COMPOSITE_BROWSER_TARGETED_PASS_R8_PR_126_CI_RUNNING / PRODUCTION_V0_6_56_UNCHANGED`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED_FAILED_REMEDIATION_REVIEW_P0_0_P1_0_P2_1_GO_R7_COMPOSITE_BROWSER_TARGETED_PASS_R8_PR_126_CI_PASS_MERGE_READY / PRODUCTION_V0_6_56_UNCHANGED`
 
 更新时间：2026-08-29
 
@@ -166,6 +166,7 @@
 - v0.6.57功能候选已提交为`46a9abf110e55dd14d9519228c708759224d8c78`，tree`43825c5ef8601e3e55d8bced9ca9c48317f9a4c7`，共109个Goal范围文件；两份受保护JSON均未进入stage/commit。下一步同步本条治理、safe m38后提交治理收口，再push/PR/CI。
 - 功能候选提交后的六份治理文档已完成一致性回归：safe m38 `16/16 PASS`，失败/重试/跳过/reportErrors0、Node`22.23.1`/npm`10.9.8`、库存1124、source/snapshot`a52ff92ca31444b753955fe5f21986fcddefba5bac29bb1a71aa8fbb4b892527`、4173 unchanged。当前只提交这六份治理文档，再push/PR/CI；正式full不得重跑，Provider POST/费用和生产写仍为0。
 - 治理commit`0941fc500c028cc50c101469ef541b7f7c2a3631`已推送并创建PR #126；base仍为`75f6c1a`，head为`0941fc5`，mergeable，GitHub `Quality gates / lightweight`正在运行。生产仍为v0.6.56/schema41，真实Provider POST/费用仍为0。
+- PR #126在head`d153b61`上的`Quality gates / lightweight`已通过（GitHub run `33269246033`，job `99144636759`，28秒）；本次只回写该CI证据，推送后等待新head同一门通过再合并。生产仍为v0.6.56/schema41。
 
 - 已完成只读全链路审计和详细方案冻结，没有修改产品代码。
 - 画布卡死根因已定位为 `executeGroup()` 用画布级最新 checkpoint 阻断任意 group；checkpoint 实际含 group/run 身份，但准入未按组读取。

@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻当前任务
 
-## INC-GEN-017 工作流自动自愈与模型合同隔离（FORMAL SAFE FULL CONSUMED / REVIEW P0=0 P1=0 P2=1 GO / R7 COMPOSITE BROWSER TARGETED PASS / R8 PR #126 CI RUNNING）
+## INC-GEN-017 工作流自动自愈与模型合同隔离（FORMAL SAFE FULL CONSUMED / REVIEW P0=0 P1=0 P2=1 GO / R7 COMPOSITE BROWSER TARGETED PASS / R8 PR #126 CI PASS / MERGE READY）
 
 - [x] 用户已显式启动一次性Goal；建立`codex/inc-gen-017-workflow-self-healing-2026-08-28`并绑定实时`origin/main@75f6c1a`。
 - [x] R0只读冻结v0.6.56/schema41、20模型/10 published、Node/npm、生产release/健康/数据完整性与USD100硬预算；受保护JSON未读取或改动。
@@ -107,7 +107,8 @@
 - [x] 精确排除两份受保护JSON后提交v0.6.57功能候选：commit`46a9abf`、tree`43825c5e…9a4c7`，109个Goal范围文件。
 - [x] 功能候选提交后治理safe m38 `16/16 PASS`，source/snapshot`a52ff92c…92527`、库存1124、异常0、4173 unchanged；六份治理文档已同步并可提交。
 - [x] 治理commit`0941fc5`已推送并创建PR #126；base/head身份一致且mergeable。
-- [ ] 等待PR #126 Quality gates；通过后合并main并创建不可变v0.6.57 tag/Release。
+- [x] PR #126 head`d153b61`的Quality gates通过（run`33269246033`/job`99144636759`，28秒）。
+- [ ] 等待CI证据纯文档head的同一门；通过后合并main并创建不可变v0.6.57 tag/Release。
 - [ ] 运行治理m38并提交治理收口，然后push/PR/CI、可回滚生产发布与限额内最小真实Provider验收；正式full不得重跑。
 
 - [x] 全链路只读分析工作流checkpoint、自动恢复、Seedance输入模式/角色、模型发布合同、任务准入和Provider adapter。
