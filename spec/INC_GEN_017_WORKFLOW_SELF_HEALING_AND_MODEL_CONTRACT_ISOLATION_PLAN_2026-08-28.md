@@ -1,6 +1,6 @@
 # INC-GEN-017：工作流自动自愈与模型合同隔离详细行动方案
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED_FAILED_REMEDIATION_REVIEW_P0_0_P1_0_P2_1_GO_R7_COMPOSITE_BROWSER_TARGETED_PASS_R8_V0_6_57_CANDIDATE_COMMITTED_GOVERNANCE_COMMIT_READY / PRODUCTION_V0_6_56_UNCHANGED`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED_FAILED_REMEDIATION_REVIEW_P0_0_P1_0_P2_1_GO_R7_COMPOSITE_BROWSER_TARGETED_PASS_R8_PR_126_CI_RUNNING / PRODUCTION_V0_6_56_UNCHANGED`
 
 建立日期：2026-08-28
 
@@ -29,6 +29,8 @@ R8选择最低未占用补丁`v0.6.57`：实时`origin/main`未前进，远端ta
 v0.6.57功能候选commit为`46a9abf110e55dd14d9519228c708759224d8c78`，tree`43825c5ef8601e3e55d8bced9ca9c48317f9a4c7`；两份受保护JSON未进入提交。治理收口m38与治理commit后进入GitHub/CI。
 
 功能候选提交后的治理safe m38为`16/16 PASS`，source/snapshot`a52ff92ca31444b753955fe5f21986fcddefba5bac29bb1a71aa8fbb4b892527`、库存1124、失败/重试/跳过/reportErrors0、4173 unchanged。六份治理文档现可单独提交；随后push/PR/CI，正式full继续永久禁止重跑。
+
+治理commit`0941fc5`已推送，PR #126已创建且base/head身份与候选一致；GitHub Quality gates正在运行。CI通过后按授权合并到main，再对精确merge commit建立不可变v0.6.57 tag/Release。
 
 ### R6 第四轮整改与第五候选准备回写（2026-08-29）
 
