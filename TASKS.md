@@ -10,7 +10,8 @@
 - [x] 提交前最终治理safe m38 `16/16 PASS`（`79ae8703…609cd6`），库存1125、异常0、4173 unchanged；精确diff-check通过。迟到的`b577…`终审属于已关闭的早期候选，不改变当前热修Review GO；随后仅回写本条证据。
 - [x] v0.6.58功能/版本候选已精确提交：`760dfcf131d5800f8e03e8533199ef1e773a7ea3`，tree`dc8c192e27acf6373899a959e9cc0d4a22f86e3e`，18个安全文件；受保护JSON未进入提交。
 - [x] 候选提交后治理safe m38 `16/16 PASS`（`1b906cf7…968f79`），库存1125、异常0、4173 unchanged；随后仅回写该证据，六份治理回执commit就绪。
-- [ ] 提交六份治理回执，push并创建PR；CI通过后合并并冻结v0.6.58 tag/Release。
+- [x] 六份治理回执已提交并push；PR #127 base/head正确且mergeable，head`0226d77`的Quality gates通过（run`33273711037`、job`99156654353`、31秒）。
+- [ ] 推送本次CI证据形成最终纯文档head；同一Quality gates再通过后合并并冻结v0.6.58 tag/Release。
 
 - [x] 用户已显式启动一次性Goal；建立`codex/inc-gen-017-workflow-self-healing-2026-08-28`并绑定实时`origin/main@75f6c1a`。
 - [x] R0只读冻结v0.6.56/schema41、20模型/10 published、Node/npm、生产release/健康/数据完整性与USD100硬预算；受保护JSON未读取或改动。

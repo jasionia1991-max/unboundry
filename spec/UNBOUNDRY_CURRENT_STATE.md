@@ -21,6 +21,7 @@
 - v0.6.58提交前最终治理safe m38 `16/16 PASS`，source/snapshot`79ae8703…609cd6`、库存1125、异常0、4173 unchanged；精确diff-check通过。`b577…`早期候选终审的12项P1已在后续整改链闭合，当前仍以`dcf8…`热修Review GO为准；随后仅回写本条证据。
 - v0.6.58功能/版本候选已提交为`760dfcf131d5800f8e03e8533199ef1e773a7ea3`，tree`dc8c192e27acf6373899a959e9cc0d4a22f86e3e`，18个安全文件，受保护JSON未进入提交；生产继续v0.6.57/schema41且真实Provider POST/费用仍为0。
 - 候选提交后治理safe m38 `16/16 PASS`，source/snapshot`1b906cf7…968f79`、库存1125、异常0、4173 unchanged；随后仅回写该证据，六份治理文档可提交，生产未变。
+- PR #127已创建，base=`main@b34a6f4`、head=`0226d77`且mergeable；Quality gates / lightweight通过（run`33273711037`、job`99156654353`、31秒）。当前只推送本条CI治理回执并等待最终head同一门，生产仍为v0.6.57/schema41。
 
 - 用户已在本Session显式启动一次性Goal；当前实施分支为`codex/inc-gen-017-workflow-self-healing-2026-08-28`，实时基线`origin/main@75f6c1aca055b8b82f258a9d38be5c27ce7d6305`。
 - R0已完成：只读冻结生产v0.6.56/schema41、20模型/10 published、Node/npm与USD100真实Provider硬预算；Provider POST=0、费用USD0，受保护JSON未读取或改动。

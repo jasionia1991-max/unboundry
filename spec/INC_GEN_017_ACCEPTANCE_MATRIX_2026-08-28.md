@@ -14,6 +14,8 @@ v0.6.58功能/版本候选commit=`760dfcf131d5800f8e03e8533199ef1e773a7ea3`、tr
 
 提交后治理safe m38 `16/16 PASS`（source/snapshot`1b906cf7…968f79`），库存1125、异常0、4173 unchanged；随后仅回写该证据，治理commit就绪。
 
+PR #127 head`0226d77`的Quality gates / lightweight已通过（run`33273711037`、job`99156654353`、31秒）；只回写该证据并等待最终纯文档head同一CI门。
+
 | ID | 验收项 | 必须证据 | 当前状态 |
 |---|---|---|---|
 | IG17-001 | 同画布不重叠组互不阻塞 | A组interrupted时B/C组可启动；各自run/lease/task计数独立 | R1_TARGETED_AUTO_PASS |

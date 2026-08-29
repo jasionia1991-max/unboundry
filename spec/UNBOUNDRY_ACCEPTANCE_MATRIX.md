@@ -9,6 +9,7 @@
 - v0.6.58提交前最终治理safe m38 `16/16 PASS`（source/snapshot`79ae8703…609cd6`），库存1125、异常0、4173 unchanged，精确diff-check通过；迟到的`b577…`终审不覆盖已完成整改后的当前热修Review GO。随后仅回写本条证据。
 - v0.6.58功能/版本候选commit为`760dfcf131d5800f8e03e8533199ef1e773a7ea3`、tree`dc8c192e27acf6373899a959e9cc0d4a22f86e3e`，18个安全文件；受保护JSON未进入提交，提交后治理m38与治理commit待执行。
 - 候选提交后治理safe m38 `16/16 PASS`（source/snapshot`1b906cf7…968f79`），库存1125、异常0、4173 unchanged；随后仅回写该证据，治理commit就绪。
+- PR #127 head`0226d77`的Quality gates / lightweight已通过（run`33273711037`、job`99156654353`、31秒）；只回写CI证据，最终纯文档head复核待执行。
 - 第十七候选六项P1已关闭；safe m100/m27/m1/m37/m30最终`15/15、21/21、7/7、35/35、13/13 PASS`，库存1120、最终产品/测试source/snapshot`c4b9bce6…40933`、异常0、4173 unchanged，TypeScript/diff-check通过。
 - 第十八候选两路完整只读终审已完成：模型/Provider `P0=0/P1=0/P2=1/GO`，工作流84/84文件 `P0=0/P1=4/P2=2/NO-GO`，合并`P0=0/P1=4/P2=3/NO-GO`并解冻候选。
 - 四项P1为group最终admission图TOCTOU、四类手动暂停恢复未await durable graph apply、上下文菜单删除漏锁外部端点、媒体上传开始态绕过admission；三项P2为relay usage fixture occupied-ID、raw edge add/replace、raw node remove。

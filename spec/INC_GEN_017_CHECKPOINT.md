@@ -12,6 +12,7 @@
 - v0.6.58提交前最终治理safe m38 `16/16 PASS`，source/snapshot`79ae8703792cb1f730ea723b3bee2102f86936dd504a32c6ed7189b2dc609cd6`，库存1125、失败/重试/跳过/reportErrors0、4173 unchanged；精确`git diff --check`通过。旧`b577…`终审消息对应已登记并完成多轮整改的早期候选，不改变当前`dcf8…`热修Review GO。随后仅回写本条证据，下一步精确安全提交。
 - v0.6.58功能/版本候选已精确提交为`760dfcf131d5800f8e03e8533199ef1e773a7ea3`，tree`dc8c192e27acf6373899a959e9cc0d4a22f86e3e`，共18个安全范围文件；两个受保护JSON未进入stage/commit。下一步提交后治理m38、六份治理回执commit，再push/PR/CI。
 - 候选提交后治理safe m38 `16/16 PASS`，source/snapshot`1b906cf7b8e8dd64e9a016a28c1219168407f1a89643bbfef3fd33d722968f79`，库存1125、失败/重试/跳过/reportErrors0、4173 unchanged；随后仅回写本条证据，六份治理文档可独立提交。
+- PR #127已创建，base=`main@b34a6f4`、head=`0226d772b292692d7519edc9b238b7f84461a87a`且mergeable；Quality gates / lightweight通过（run`33273711037`、job`99156654353`、31秒）。本次只回写CI证据，推送纯文档最终head后等待同一门再通过才合并。
 - 2026-08-28 用户已在本Session显式发送`/goal`；Goal已激活并授权按一次性提示词连续实施R0～R8、唯一正式full、GitHub/CI、v0.6.57候选发布、生产与累计不超过USD100的最小真实Provider验收。该授权不允许读取受保护JSON、重复未知费用POST、删除真实数据/备份或绕过发布硬门。
 - 实施隔离分支：`codex/inc-gen-017-workflow-self-healing-2026-08-28`；基于实时`origin/main@75f6c1aca055b8b82f258a9d38be5c27ce7d6305`，tree`57a6763b065bdc523697255f8183230e124b09bd`。进入时仅保留本事件既有文档改动，没有覆盖或清理用户工作。
 - package/lock均为`0.6.56`；普通工具链Node`25.9.0`/npm`11.12.1`，safe runner为Node`22.23.1`/npm`10.9.8`。
