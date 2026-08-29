@@ -1,6 +1,6 @@
 # INC-GEN-017 验收矩阵
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED_FAILED_REMEDIATION_REVIEW_P0_0_P1_0_P2_1_GO_R7_COMPOSITE_BROWSER_TARGETED_PASS_R8_VERSION_V0_6_57_TARGETED_PASS_CANDIDATE_COMMIT_READY / PRODUCTION_V0_6_56_UNCHANGED`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED_FAILED_REMEDIATION_REVIEW_P0_0_P1_0_P2_1_GO_R7_COMPOSITE_BROWSER_TARGETED_PASS_R8_V0_6_57_CANDIDATE_COMMITTED_GOVERNANCE_COMMIT_READY / PRODUCTION_V0_6_56_UNCHANGED`
 
 | ID | 验收项 | 必须证据 | 当前状态 |
 |---|---|---|---|
@@ -37,7 +37,7 @@
 | IG17-031 | 风险定向回归 | 新spec和直接依赖全绿，命令/环境/源码hash/异常数完整记录 | R7_TARGETED_REGRESSION_PASS |
 | IG17-032 | 唯一正式safe full | 仅候选冻结+Review GO后按风险执行一次；原始结果诚实记录 | CONSUMED_FAILED_1023_PASS_95_FAIL_4_NOT_RUN |
 | IG17-033 | 独立终审 | 冻结候选P0=0/P1=0/GO | REMEDIATION_REVIEW_P0_0_P1_0_P2_1_GO |
-| IG17-034 | GitHub/不可变发布 | 当前Goal已授权：PR/main CI、tag/Release、fresh build | VERSION_V0_6_57_TARGETED_PASS_COMMIT_READY |
+| IG17-034 | GitHub/不可变发布 | 当前Goal已授权：PR/main CI、tag/Release、fresh build | CANDIDATE_46A9ABF_COMMITTED_PR_PENDING |
 | IG17-035 | 生产备份/恢复/回滚 | 当前Goal已授权：冻结备份、恢复副本、原子切换、稳定门 | AUTHORIZED_NOT_RUN |
 | IG17-036 | 真实Provider最小验收 | 当前Goal累计USD100内已授权；unknown禁止第二POST | AUTHORIZED_NOT_RUN |
 | IG17-037 | 用户实页验收 | 产品发布后由用户按五步清单确认；当前尚未实施 | NOT_RUN |
@@ -66,3 +66,7 @@ R8版本门已确认`v0.6.57`为最低未占用patch；origin/main与基线一�
 版本safe m38+m81 `57/57 PASS`，source/snapshot`2e0c5fee…0c3a5`、库存1124、异常0、4173 unchanged；候选提交前治理m38待执行。
 
 候选提交前治理m38 `16/16 PASS`，source/snapshot`d82e3545…b945b`、库存1124、异常0、4173 unchanged；本地候选提交就绪。
+
+v0.6.57功能候选已提交为`46a9abf`，tree`43825c5e…9a4c7`；两份受保护JSON未进入提交。治理commit、push和PR待执行。
+
+候选提交后治理safe m38 `16/16 PASS`，source/snapshot`a52ff92c…92527`、库存1124、异常0、4173 unchanged；六份治理文档提交后进入push/PR/CI。
