@@ -78,6 +78,9 @@ type BrowserLockManager = {
 };
 
 const commonResultKeys = new Set([
+  "groupRunSuccessInputFingerprint",
+  "groupRunSuccessModelConfigurationRevision",
+  "groupRunSuccessModelReleaseRevision",
   "groupRunSuccessOwnershipKey",
   "groupRunSuccessResultKey",
   "groupRunSuccessTaskId",

@@ -1,5 +1,5 @@
 import { expect, test } from "./safe-test";
-import { defaultParameterSchema } from "../types/modelParameters";
+import { knownModelParameterSchema } from "../types/modelParameters";
 import { composeTextControl } from "./helpers/ime";
 
 test("Agent empty panel matches the frozen geometry", async ({ page }) => {
@@ -136,6 +136,15 @@ test("Agent add, canvas reference, confirmation and model menus match", async ({
   page,
   request,
 }) => {
+  const providerResponse = await request.post("/api/admin/providers", {
+    data: {
+      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      driver: "volcengine-ark",
+      label: "Agent Menu Ark Fixture",
+    },
+  });
+  expect(providerResponse.status()).toBe(201);
+  const provider = await providerResponse.json() as { profile: { id: string } };
   const generationRequests: string[] = [];
   page.on("request", (request) => {
     if (/provider|generate/i.test(request.url()) && !request.url().includes("/src/")) {
@@ -148,8 +157,13 @@ test("Agent add, canvas reference, confirmation and model menus match", async ({
       capability: "text",
       displayName: "Doubao Seed",
       isDefault: true,
-      parameterSchema: defaultParameterSchema("text"),
-      providerModelId: "test/doubao-seed-lite",
+      parameterSchema: knownModelParameterSchema({
+        capability: "text",
+        providerDriver: "volcengine-ark",
+        providerModelId: "doubao-seed-2-0-lite-260428",
+      }),
+      providerModelId: "doubao-seed-2-0-lite-260428",
+      providerProfileId: provider.profile.id,
       sortOrder: 1,
       status: "published",
     },

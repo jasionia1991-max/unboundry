@@ -32,6 +32,28 @@ const profile: ProviderProfile = {
   updatedAt: "2026-08-03T00:00:00.000Z",
 };
 
+type SubmittedGenerationIdentity = {
+  fixtureScopeId?: string;
+  generationInputKey: string;
+  generationOwnershipKey: string;
+  modelConfigurationRevision: string;
+  modelInputContractFingerprint: string;
+  modelReleaseRevision: string;
+};
+
+function generationIdentityFromSubmission(value: unknown) {
+  const body = value as SubmittedGenerationIdentity;
+  return {
+    fixtureScopeId: body.fixtureScopeId ?? "",
+    generationIdentityVersion: 2 as const,
+    generationInputKey: body.generationInputKey,
+    generationOwnershipKey: body.generationOwnershipKey,
+    modelConfigurationRevision: body.modelConfigurationRevision,
+    modelInputContractFingerprint: body.modelInputContractFingerprint,
+    modelReleaseRevision: body.modelReleaseRevision,
+  };
+}
+
 function completedResponse(text = "识别结果：红色连衣裙") {
   return new Response(JSON.stringify({
     output: [{
@@ -575,6 +597,8 @@ test("a persisted pending Text task replaces old content after refresh without a
       }
     : undefined;
   const modelId = "model-text-ui-refresh-test";
+  const configurationRevision = "a03300000000000000000001";
+  const releaseRevisionId = "a0330000-0000-4000-8000-000000000001";
   const parameterSchema = knownModelParameterSchema({
     capability: "text",
     providerDriver: "volcengine-ark",
@@ -584,6 +608,7 @@ test("a persisted pending Text task replaces old content after refresh without a
   let afterReload = false;
   let providerRequests = 0;
   let taskSubmissions = 0;
+  let taskIdentity: ReturnType<typeof generationIdentityFromSubmission> | undefined;
 
   page.on("request", (entry) => {
     if (/volces|openrouter|mureka/i.test(entry.url())) providerRequests += 1;
@@ -594,6 +619,7 @@ test("a persisted pending Text task replaces old content after refresh without a
       json: {
         models: [{
           capability: "text",
+          configurationRevision,
           displayName: "Doubao Seed 2.0 Lite 刷新测试",
           generationAvailable: true,
           generationUnavailableReason: "",
@@ -601,6 +627,7 @@ test("a persisted pending Text task replaces old content after refresh without a
           id: modelId,
           isDefault: true,
           parameterSchema,
+          releaseRevisionId,
         }],
       },
       status: 200,
@@ -610,6 +637,7 @@ test("a persisted pending Text task replaces old content after refresh without a
     const requestUrl = new URL(route.request().url());
     const method = route.request().method();
     const baseTask = {
+      ...taskIdentity,
       attempt: 1,
       canvasId: "default",
       costCurrency: "CNY",
@@ -646,9 +674,10 @@ test("a persisted pending Text task replaces old content after refresh without a
     }
     if (requestUrl.pathname === "/api/generation-tasks" && method === "POST") {
       taskSubmissions += 1;
+      taskIdentity = generationIdentityFromSubmission(route.request().postDataJSON());
       await route.fulfill({
         contentType: "application/json",
-        json: { ...baseTask, state: "queued" },
+        json: { ...baseTask, ...taskIdentity, state: "queued" },
         status: 202,
       });
       return;
@@ -749,8 +778,9 @@ test("a persisted pending Text task replaces old content after refresh without a
       .getByRole("button", { name: "Generate" })
       .click();
     await page.getByTestId("rf__node-image-refresh-downstream").click();
+    // Pending replacement preserves the last durable Text content downstream.
     await expect(downstreamCard)
-      .toHaveAttribute("data-input-state", "uploading");
+      .toHaveAttribute("data-input-state", "ready");
     await expect.poll(async () => {
       const response = await request.get("/api/canvas/default");
       if (!response.ok()) return undefined;
@@ -820,6 +850,8 @@ test("Text failure stays visible, refreshes, and retries the same task until inp
       }
     : undefined;
   const modelId = "model-text-ui-failure-test";
+  const configurationRevision = "a03300000000000000000002";
+  const releaseRevisionId = "a0330000-0000-4000-8000-000000000002";
   const nodeId = "text-ui-failure-target";
   const parameterSchema = knownModelParameterSchema({
     capability: "text",
@@ -828,17 +860,11 @@ test("Text failure stays visible, refreshes, and retries the same task until inp
   });
   expect(parameterSchema).toBeTruthy();
   const defaultParameters = defaultParameterValues(parameterSchema!);
-  const taskInputKey = generationInputKey({
-    inputs: [],
-    modelId,
-    ownPrompt: "请生成商品描述",
-    parameters: submissionParameterValues(parameterSchema!, defaultParameters),
-    prompt: "请生成商品描述",
-  });
   let currentTaskId = "text-ui-failure-001";
   let providerRequests = 0;
   let taskRetries = 0;
   let taskSubmissions = 0;
+  let taskIdentity: ReturnType<typeof generationIdentityFromSubmission> | undefined;
 
   page.on("request", (entry) => {
     if (/volces|openrouter|mureka/i.test(entry.url())) providerRequests += 1;
@@ -849,6 +875,7 @@ test("Text failure stays visible, refreshes, and retries the same task until inp
       json: {
         models: [{
           capability: "text",
+          configurationRevision,
           displayName: "Doubao Seed 失败恢复测试",
           generationAvailable: true,
           generationUnavailableReason: "",
@@ -856,6 +883,7 @@ test("Text failure stays visible, refreshes, and retries the same task until inp
           id: modelId,
           isDefault: true,
           parameterSchema,
+          releaseRevisionId,
         }],
       },
       status: 200,
@@ -865,6 +893,7 @@ test("Text failure stays visible, refreshes, and retries the same task until inp
     const url = new URL(route.request().url());
     const method = route.request().method();
     const task = (id: string, state: "failed" | "queued") => ({
+      ...taskIdentity,
       attempt: state === "failed" ? 1 : 0,
       canvasId: "default",
       costCurrency: "CNY",
@@ -873,7 +902,6 @@ test("Text failure stays visible, refreshes, and retries the same task until inp
         ? { errorCode: "AUTH", errorMessage: "零Provider模拟授权失败" }
         : {}),
       id,
-      generationInputKey: taskInputKey,
       kind: "text",
       model: modelId,
       nodeId,
@@ -917,6 +945,7 @@ test("Text failure stays visible, refreshes, and retries the same task until inp
     if (url.pathname === "/api/generation-tasks" && method === "POST") {
       taskSubmissions += 1;
       currentTaskId = `text-ui-failure-00${taskSubmissions}`;
+      taskIdentity = generationIdentityFromSubmission(route.request().postDataJSON());
       await route.fulfill({
         contentType: "application/json",
         json: task(currentTaskId, "queued"),

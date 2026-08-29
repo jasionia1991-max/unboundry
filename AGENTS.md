@@ -19,19 +19,23 @@
 1. `上线规矩.md`
 2. `spec/UNBOUNDRY_CURRENT_STATE.md`
 3. `README.md`
-4. `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_CHECKPOINT.md`（当前事故与唯一实时断点）
-5. `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_PLAN_2026-08-27.md`
-6. `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_ACCEPTANCE_MATRIX_2026-08-27.md`
-7. `spec/MODEL_CONTRACT_002_CHECKPOINT.md`（历史发布断点）
-8. `spec/MODEL_CONTRACT_002_IMMUTABLE_REVISION_REMEDIATION_PLAN_2026-08-27.md`
-9. `spec/MODEL_CONTRACT_002_ACCEPTANCE_MATRIX_2026-08-27.md`
-10. `spec/UNBOUNDRY_REMEDIATION_PLAN_2026-08-09.md`
-11. `spec/UNBOUNDRY_REMEDIATION_CHECKPOINT.md`
-12. `spec/UNBOUNDRY_HANDOFF_2026-08-09.md`
-13. `TASKS.md` 当前区块
-14. `spec/INCIDENT_2026-08-20_TEMPLATE_GROUP_FAILURE_AND_QUEUED_TASK_HANDOFF.md`（2026-08-20 事一/事二交接，接手必读）
-15. `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`（事一/事二查证后的全局审计结论、修复设计与验收门）
-16. `spec/UNBOUNDRY_ACCEPTANCE_MATRIX.md` 当前区块
+4. `spec/INC_GEN_017_CHECKPOINT.md`（当前方案唯一实时断点）
+5. `spec/INC_GEN_017_WORKFLOW_SELF_HEALING_AND_MODEL_CONTRACT_ISOLATION_PLAN_2026-08-28.md`
+6. `spec/INC_GEN_017_ACCEPTANCE_MATRIX_2026-08-28.md`
+7. `spec/INC_GEN_017_ONE_SHOT_GOAL_PROMPT_2026-08-28.md`（只有用户在新Session实际发送其中`/goal`后才成为实施授权）
+8. `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_CHECKPOINT.md`（历史生产断点）
+9. `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_PLAN_2026-08-27.md`
+10. `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_ACCEPTANCE_MATRIX_2026-08-27.md`
+11. `spec/MODEL_CONTRACT_002_CHECKPOINT.md`（历史发布断点）
+12. `spec/MODEL_CONTRACT_002_IMMUTABLE_REVISION_REMEDIATION_PLAN_2026-08-27.md`
+13. `spec/MODEL_CONTRACT_002_ACCEPTANCE_MATRIX_2026-08-27.md`
+14. `spec/UNBOUNDRY_REMEDIATION_PLAN_2026-08-09.md`
+15. `spec/UNBOUNDRY_REMEDIATION_CHECKPOINT.md`
+16. `spec/UNBOUNDRY_HANDOFF_2026-08-09.md`
+17. `TASKS.md` 当前区块
+18. `spec/INCIDENT_2026-08-20_TEMPLATE_GROUP_FAILURE_AND_QUEUED_TASK_HANDOFF.md`（2026-08-20 事一/事二交接，接手必读）
+19. `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`（事一/事二查证后的全局审计结论、修复设计与验收门）
+20. `spec/UNBOUNDRY_ACCEPTANCE_MATRIX.md` 当前区块
 
 然后只读核对 `pwd`、Git 分支、HEAD、工作树、package 版本和 Node 版本。与施工断点不一致时停止，不得继续施工。
 
@@ -42,6 +46,8 @@
 - `scripts/run-safe-tests.mjs`、源码覆盖门和不可变release builder继续使用Node `22.23.1` / npm `10.9.8`专用兼容通道，以复现当前生产代际；这是显式测试/发布例外，不是项目默认shell。`engines`同时覆盖两端，未来迁移生产前不得删除Node 22兼容边界。
 
 ## 2. 当前授权边界
+
+- **2026-08-30 INC-GEN-017 当前权威状态**：用户已在本Session显式发送一次性`/goal`并激活R0～R8授权。产品/类型60、测试36及六份治理文档的独立增量终审为`P0=0/P1=0/P2=1/GO`；唯一正式safe full已永久消费，原始`1023 PASS / 95 FAIL / 4 NOT_RUN`保持不改写，27个失败spec与4项NOT_RUN均已由最小失败集闭合。R7组合浏览器证据`61/61 PASS`，v0.6.57版本m38+m81 `57/57 PASS`且候选提交前治理m38 `16/16 PASS`。本地候选为v0.6.57，生产仍为v0.6.56/schema41；正式full不得重跑，后续只按当前Goal执行GitHub/CI、可回滚发布和USD100内最小真实Provider验收。历史“只授权方案、IMPLEMENTATION_NOT_STARTED”状态已失效；
 
 - **2026-08-28 INC-GEN-016 当前权威状态**：本次`/goal`授权的代码、Review、唯一safe full、GitHub/CI、v0.6.55 tag/Release、生产备份/恢复/发布/回滚和真实GK验收均已执行。生产技术通过；唯一替代attempt被Provider全额退款且没有结果，实际费用0。授权已全部消费，禁止再次Provider POST；没有真实结果，故不得写`REAL_PROVIDER_PASS/USER_PASS`；
 - **2026-08-28 INC-GEN-016 v0.6.56续作授权**：修复、Review、GitHub/CI/tag/Release、生产备份恢复发布回滚和目标Canvas唯一真实GK提交均已执行；实际费用USD10，结果已回填并刷新保持。版本、发布和Provider提交授权全部消费；禁止再次POST、移动v0.6.56或把`USER_RECHECK`自升为`USER_PASS`；

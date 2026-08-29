@@ -19,6 +19,7 @@ type CompositionSafeTextControl = {
   compositionEnd: (value: string) => void;
   compositionStart: () => void;
   keyDown: (event: ReactKeyboardEvent<HTMLElement>) => string | undefined;
+  readCommittedValue: () => string;
   value: string;
 };
 
@@ -46,6 +47,7 @@ type CompositionSafeRichTextControl = {
   keyDown: (
     event: ReactKeyboardEvent<HTMLElement>,
   ) => CompositionSafeRichTextValue | undefined;
+  readCommittedValue: () => CompositionSafeRichTextValue;
   value: CompositionSafeRichTextValue;
 };
 
@@ -66,6 +68,7 @@ type CompositionSafeValueControl<Value> = {
   compositionEnd: (value: Value) => void;
   compositionStart: () => void;
   keyDown: (event: ReactKeyboardEvent<HTMLElement>) => Value | undefined;
+  readCommittedValue: () => Value;
   value: Value;
 };
 
@@ -201,6 +204,7 @@ function useCompositionSafeValue<Value>({
       }
       return event.shiftKey ? applyRedo() : applyUndo();
     },
+    readCommittedValue: () => committed.current,
     value: draft,
   };
 }

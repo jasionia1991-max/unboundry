@@ -16,6 +16,9 @@ export type WorkflowEdgeShape = {
 export type NodeRunStatus = "busy" | "failed" | "skipped" | "success";
 
 export type NodeRunSuccessProof = {
+  inputFingerprint?: string;
+  modelConfigurationRevision?: string;
+  modelReleaseRevision?: string;
   ownershipKey: string;
   resultKey: string;
   taskId: string;

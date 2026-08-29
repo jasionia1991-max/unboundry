@@ -109,6 +109,11 @@ export type ModelReferenceMode = {
 export type ModelReferencePolicy = {
   modeKey: string;
   modes: Record<string, ModelReferenceMode>;
+  /**
+   * Provider-neutral order used only when the current/requested mode cannot
+   * consume every connected input and more than one lossless mode remains.
+   */
+  normalizationPriority?: string[];
 };
 
 export type ModelReferenceMediaRule = {
@@ -688,7 +693,17 @@ function relayDoubaoTtsParameterFields() {
 }
 
 function relayDoubaoTtsParameterSchema() {
-  return schema(relayDoubaoTtsParameterFields());
+  return schema(
+    relayDoubaoTtsParameterFields(),
+    emptyReferenceInputs,
+    undefined,
+    undefined,
+    {
+      promptPolicy: "own-required",
+      roles: { audio: [], image: [], text: ["instruction"], video: [] },
+      switchPolicy: "keep-edge",
+    },
+  );
 }
 
 const relayContractPngRules: ModelReferenceMediaRules = {
@@ -723,6 +738,95 @@ function relayNanoBananaProParameterSchema() {
     roles: { audio: [], image: ["reference-image"], text: ["instruction"], video: [] },
     switchPolicy: "keep-edge",
   }, relayContractPngRules);
+}
+
+function relayGptImage2ParameterSchema() {
+  return schema([
+    catalogField("inputMode", ["text", "image"], "text"),
+    catalogField(
+      "aspectRatio",
+      ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "5:4", "4:5"],
+      "9:16",
+    ),
+    catalogField("quality", ["1k", "2k", "4k"], "2k"),
+    catalogField("outputCount", [1], 1),
+  ], { ...emptyReferenceInputs, image: 1 }, {
+    modeKey: "inputMode",
+    modes: {
+      image: { sets: [{ ...emptyReferenceInputs, image: 1 }] },
+      text: { sets: [{ ...emptyReferenceInputs }] },
+    },
+  }, {
+    audio: { limitMode: "fixed", maxCount: 0, supported: false },
+    image: { limitMode: "context", supported: true },
+    text: { limitMode: "context", supported: true },
+    video: { limitMode: "fixed", maxCount: 0, supported: false },
+  }, {
+    promptPolicy: "own-required",
+    rolePolicies: [{
+      enabledWhen: [{ key: "inputMode", operator: "equals", value: "image" }],
+      roles: { audio: [], image: ["reference-image"], text: ["instruction"], video: [] },
+    }],
+    roles: { audio: [], image: ["reference-image"], text: ["instruction"], video: [] },
+    switchPolicy: "keep-edge",
+  }, relayContractPngRules);
+}
+
+function relayGrokVideo3ParameterSchema() {
+  return schema([
+    catalogField("inputMode", ["text", "image"], "text"),
+    catalogField("aspectRatio", ["1:1", "16:9", "9:16", "3:2", "2:3"], "16:9"),
+    catalogField("resolution", ["720p"], "720p"),
+    catalogField("duration", [6, 10], 6),
+    catalogField("generateAudio", [true, false], true),
+    catalogField("outputCount", [1], 1),
+  ], { ...emptyReferenceInputs, image: 1 }, {
+    modeKey: "inputMode",
+    modes: {
+      image: { sets: [{ ...emptyReferenceInputs, image: 1 }] },
+      text: { sets: [{ ...emptyReferenceInputs }] },
+    },
+  }, undefined, {
+    promptPolicy: "own-required",
+    rolePolicies: [{
+      assignment: { image: ["first-frame"] },
+      enabledWhen: [{ key: "inputMode", operator: "equals", value: "image" }],
+      limits: [{ kind: "image", maxCount: 1, minCount: 1, role: "first-frame" }],
+      roles: { audio: [], image: ["first-frame"], text: ["instruction"], video: [] },
+    }],
+    roles: { audio: [], image: ["first-frame"], text: ["instruction"], video: [] },
+    switchPolicy: "keep-edge",
+  });
+}
+
+function relayGrokImagineVideo15ParameterSchema() {
+  return schema([
+    catalogField("inputMode", ["reference"], "reference"),
+    catalogField("aspectRatio", ["1:1", "16:9", "9:16", "3:2", "2:3"], "16:9"),
+    catalogField("resolution", ["480p", "720p"], "480p"),
+    catalogField(
+      "duration",
+      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+      5,
+    ),
+    catalogField("generateAudio", [true, false], true),
+    catalogField("outputCount", [1], 1),
+  ], { ...emptyReferenceInputs, image: 1 }, {
+    modeKey: "inputMode",
+    modes: {
+      reference: { sets: [{ ...emptyReferenceInputs, image: 1 }] },
+    },
+  }, undefined, {
+    promptPolicy: "own-required",
+    rolePolicies: [{
+      assignment: { image: ["first-frame"] },
+      enabledWhen: [{ key: "inputMode", operator: "equals", value: "reference" }],
+      limits: [{ kind: "image", maxCount: 1, minCount: 1, role: "first-frame" }],
+      roles: { audio: [], image: ["first-frame"], text: ["instruction"], video: [] },
+    }],
+    roles: { audio: [], image: ["first-frame"], text: ["instruction"], video: [] },
+    switchPolicy: "keep-edge",
+  });
 }
 
 function relayKlingV3OmniParameterSchema() {
@@ -763,7 +867,7 @@ function relaySunoV45ParameterSchema() {
       "instrumental",
     ),
     catalogField("lyrics", [], "", {
-      maxLength: 5_000,
+      maxLength: 8_000,
       requiredWhen: lyricsSongOnly,
       visibleWhen: lyricsSongOnly,
     }),
@@ -865,6 +969,7 @@ function seedanceParameterSchema(mini: boolean): ModelParameterSchema {
       multimodal: { sets: [{ audio: 3, image: 9, video: 3 }] },
       text: { sets: [{ ...emptyReferenceInputs }] },
     },
+    normalizationPriority: ["multimodal", "first-last-frame", "text"],
   }, {
     audio: { limitMode: "fixed", maxCount: 3, supported: true },
     image: { limitMode: "fixed", maxCount: 9, supported: true },
@@ -916,26 +1021,29 @@ function seedanceParameterSchema(mini: boolean): ModelParameterSchema {
   }, mini ? seedance2ReferenceMediaRules : seedanceFamilyReferenceMediaRules);
 }
 
+const exactRelayParameterSchemaRegistry = Object.freeze<
+  Record<string, () => ModelParameterSchema>
+>({
+  "audio:doubao-tts-2.0": relayDoubaoTtsParameterSchema,
+  "audio:suno-v4.5": relaySunoV45ParameterSchema,
+  "image:gemini-3-pro-image-preview": relayNanoBananaProParameterSchema,
+  "image:gpt-image-2": relayGptImage2ParameterSchema,
+  "video:grok-imagine-video-1.5-preview": relayGrokImagineVideo15ParameterSchema,
+  "video:grok-video-3": relayGrokVideo3ParameterSchema,
+  "video:kling-v3-omni-cankao": relayKlingV3OmniParameterSchema,
+});
+
 export function providerParameterSchema(input: {
   capability: ModelCapability;
   providerDriver?: string;
   providerModelId?: string;
 }): ModelParameterSchema | undefined {
-  if (
-    input.providerDriver === "multi-protocol-relay" &&
-    input.capability === "image" &&
-    input.providerModelId === "gemini-3-pro-image-preview"
-  ) return relayNanoBananaProParameterSchema();
-  if (
-    input.providerDriver === "multi-protocol-relay" &&
-    input.capability === "video" &&
-    input.providerModelId === "kling-v3-omni-cankao"
-  ) return relayKlingV3OmniParameterSchema();
-  if (
-    input.providerDriver === "multi-protocol-relay" &&
-    input.capability === "audio" &&
-    input.providerModelId === "suno-v4.5"
-  ) return relaySunoV45ParameterSchema();
+  if (input.providerDriver === "multi-protocol-relay") {
+    const exact = exactRelayParameterSchemaRegistry[
+      `${input.capability}:${input.providerModelId ?? ""}`
+    ];
+    if (exact) return exact();
+  }
   if (
     input.capability === "text" &&
     input.providerDriver === "multi-protocol-relay"
@@ -944,13 +1052,6 @@ export function providerParameterSchema(input: {
     // protocol-aware upstream input policy. Chat, Responses, Claude and Gemini
     // each validate their supported input kinds before publication.
     return schema(relayTextParameterFields());
-  }
-  if (
-    input.capability === "audio" &&
-    input.providerDriver === "multi-protocol-relay" &&
-    input.providerModelId === "doubao-tts-2.0"
-  ) {
-    return relayDoubaoTtsParameterSchema();
   }
   if (
     input.capability === "audio" &&
@@ -968,7 +1069,7 @@ export function providerParameterSchema(input: {
         "instrumental",
       ),
       catalogField("lyrics", [], "", {
-        maxLength: 5_000,
+        maxLength: 8_000,
         requiredWhen: lyricsSongOnly,
         visibleWhen: lyricsSongOnly,
       }),
@@ -976,8 +1077,12 @@ export function providerParameterSchema(input: {
         visibleWhen: lyricsSongOnly,
       }),
       catalogField("streamPlayback", [true, false], false),
-      catalogField("outputCount", [1, 2, 3], 1),
-    ]);
+      catalogField("outputCount", [1], 1),
+    ], emptyReferenceInputs, undefined, undefined, {
+      promptPolicy: "own-required",
+      roles: { audio: [], image: [], text: [], video: [] },
+      switchPolicy: "keep-edge",
+    });
   }
   if (
     input.capability === "text" &&
@@ -1019,6 +1124,15 @@ export function providerParameterSchema(input: {
         note: "URL/Base64单视频不超过50MB；Files API单文件不超过512MB，单视频最多使用80000 Token",
         supported: true,
       },
+    }, {
+      promptPolicy: "own-or-upstream-text",
+      roles: {
+        audio: ["context-audio"],
+        image: ["context-image"],
+        text: ["context-text"],
+        video: ["context-video"],
+      },
+      switchPolicy: "keep-edge",
     });
   }
   if (
@@ -1037,6 +1151,14 @@ export function providerParameterSchema(input: {
         image: { sets: [{ ...emptyReferenceInputs, image: 16 }] },
         text: { sets: [{ ...emptyReferenceInputs }] },
       },
+    }, undefined, {
+      promptPolicy: "own-required",
+      rolePolicies: [{
+        enabledWhen: [{ key: "inputMode", operator: "equals", value: "image" }],
+        roles: { audio: [], image: ["reference-image"], text: ["instruction"], video: [] },
+      }],
+      roles: { audio: [], image: ["reference-image"], text: ["instruction"], video: [] },
+      switchPolicy: "keep-edge",
     });
   }
   if (
@@ -2167,7 +2289,32 @@ export function cleanParameterSchema(
     ) {
       throw new Error("Invalid model reference policy");
     }
-    referencePolicy = { modeKey: policy.modeKey, modes };
+    const normalizationPriority = policy.normalizationPriority === undefined
+      ? undefined
+      : (() => {
+          if (
+            !Array.isArray(policy.normalizationPriority) ||
+            policy.normalizationPriority.some((mode) => typeof mode !== "string") ||
+            new Set(policy.normalizationPriority).size !== policy.normalizationPriority.length
+          ) {
+            throw new Error("Invalid model reference normalization priority");
+          }
+          // A provider ceiling may declare more modes than a published model.
+          // Keep its relative priority while stripping modes that the narrowed
+          // schema no longer exposes; every remaining mode must still appear.
+          const narrowed = policy.normalizationPriority.filter((mode) =>
+            Object.prototype.hasOwnProperty.call(modes, mode)
+          );
+          if (narrowed.length !== Object.keys(modes).length) {
+            throw new Error("Invalid model reference normalization priority");
+          }
+          return narrowed;
+        })();
+    referencePolicy = {
+      modeKey: policy.modeKey,
+      modes,
+      ...(normalizationPriority ? { normalizationPriority } : {}),
+    };
   }
   return {
     fields,

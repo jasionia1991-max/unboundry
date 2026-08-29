@@ -11,9 +11,7 @@ import {
   ReactFlow,
   SelectionMode,
   useEdges,
-  useEdgesState,
   useNodes,
-  useNodesState,
   useReactFlow,
   useStoreApi,
   type Connection,
@@ -41,7 +39,9 @@ import {
 } from "react";
 import {
   CanvasGraphMutationContext,
+  rollbackCanvasNodeAdoption,
   tryCommitCanvasNodeAdoption,
+  useCanvasGraphMutation,
 } from "./CanvasGraphMutationContext";
 import {
   CanvasCheckpointContext,
@@ -56,6 +56,10 @@ import { hasInteractionProbeNodes } from "./probeFixtures";
 import { plainTextHtml } from "./TextNode";
 import type { CuttableEdge } from "./canvasTypes";
 import { createCanvasGraphCommandPort } from "./canvasPorts";
+import {
+  buildCanvasModelTransitionCommand,
+  createCanvasModelTransitionPort,
+} from "./CanvasModelTransitionCommand";
 import {
   CanvasSaveSessionStorageError,
   createBrowserCanvasPersistenceFacade,
@@ -104,6 +108,10 @@ import {
   type AuthoritativeGenerationCanvasMutation,
 } from "../generation/GenerationCanvasContext";
 import { createGroupRunSummaryScope } from "../generation/groupRunSummary";
+import {
+  canvasNodeMutationAdmissionHeldLocally,
+  runWithCanvasGraphMutationAdmission,
+} from "../generation/generationTasks";
 import { legacyTerminalNodeDataFingerprint } from
   "../generation/legacyTerminalGenerationReconciler";
 import {
@@ -129,9 +137,8 @@ import {
 } from "../../../types/nodeInputs";
 import {
   normalizeParameterValues,
-  parameterFieldEnabled,
-  parameterOptionEnabled,
 } from "../../../types/modelParameters";
+import { normalizeModelInputs } from "../../../types/modelInputSemanticCompiler";
 import { normalizePersistedMediaNodes } from "../../../types/persistedMediaSources";
 import { UpdateNotice } from "../updates/UpdateNotice";
 import { canvasNodeRegistry } from "./canvasNodeRegistry";
@@ -315,30 +322,33 @@ export function withVideoReferenceInputModeForNewEdges(
   if (node.type !== "video" || !addedMediaKinds.length) return node;
   const model = resolvePublishedModel(videoModels, node.data.videoModelId);
   const schema = model?.parameterSchema;
-  if (!schema) return node;
+  if (!schema || !model.releaseRevisionId) return node;
   const parameters = normalizeParameterValues(schema, node.data.videoParameters);
-  const inputMode = schema.fields.find((field) => field.key === "inputMode");
-  const multimodal = inputMode?.options.find(
-    (option) => option.value === "multimodal",
-  );
-  if (
-    !inputMode ||
-    !multimodal ||
-    (multimodal.availability ?? "available") !== "available" ||
-    !parameterFieldEnabled(inputMode, parameters) ||
-    !parameterOptionEnabled(multimodal, parameters)
-  ) {
+  const nonImageInputs = addedMediaKinds.filter((kind) => kind !== "image");
+  const semantic = normalizeModelInputs({
+    connectedInputs: [
+      ...Array.from({ length: imageCountAfterConnection }, (_, index) => ({
+        kind: "image" as const,
+        order: index + 1,
+        role: "reference-image",
+        semanticId: `image-${index + 1}`,
+      })),
+      ...nonImageInputs.map((kind, index) => ({
+        kind,
+        order: imageCountAfterConnection + index + 1,
+        role: `reference-${kind}`,
+        semanticId: `${kind}-${index + 1}`,
+      })),
+    ],
+    modelReleaseRevision: model.releaseRevisionId,
+    requestedParameters: parameters,
+    schema,
+    transitionIntent: "execute",
+  });
+  if (semantic.blockingProblems.length ||
+      JSON.stringify(semantic.normalizedParameters) === JSON.stringify(parameters)) {
     return node;
   }
-
-  const currentMode = String(parameters.inputMode ?? inputMode.defaultValue);
-  const shouldUpgrade = currentMode === "text" || (
-    currentMode === "first-last-frame" && (
-      addedMediaKinds.some((kind) => kind === "video" || kind === "audio") ||
-      imageCountAfterConnection > 2
-    )
-  );
-  if (!shouldUpgrade) return node;
 
   return {
     ...node,
@@ -346,7 +356,7 @@ export function withVideoReferenceInputModeForNewEdges(
       ...node.data,
       videoParameters: {
         ...node.data.videoParameters,
-        inputMode: "multimodal",
+        ...semantic.normalizedParameters,
       },
     },
   };
@@ -450,7 +460,7 @@ const CuttableEdge = memo(function CuttableEdge({
   targetX,
   targetY,
 }: EdgeProps<CuttableEdge>) {
-  const { setEdges } = useReactFlow<ProbeNodeType, CuttableEdge>();
+  const { setEdges } = useCanvasGraphMutation();
   const { lockedNodeIds } = useWorkflowExecution();
   const checkpoint = useCanvasCheckpoint();
   const [path, labelX, labelY] = getBezierPath({
@@ -1868,20 +1878,22 @@ export function CanvasSurface({
     fixtureId === "interaction.upload-media-sandbox-current";
   const interactive =
     hasInteractionProbeNodes(fixtureId) || workflowFixture || textVideoStarted;
-  const [nodes, setNodesState] = useNodesState<ProbeNodeType>(
-    interactive && !workflowFixture && !persistenceFixture
+  const [graphState, setGraphState] = useState<{
+    edges: CuttableEdge[];
+    nodes: ProbeNodeType[];
+  }>(() => ({
+    edges: workflowFixture || persistenceFixture
+      ? emptyEdges
+      : createProbeEdges(fixtureId),
+    nodes: interactive && !workflowFixture && !persistenceFixture
       ? createProbeNodes(fixtureId)
       : emptyNodes,
-  );
+  }));
+  const { edges, nodes } = graphState;
   const [imageColorFilter, setImageColorFilter] = useState<string>();
   const [workflowRetainedNodeIds, setWorkflowRetainedNodeIds] = useState<
     ReadonlySet<string>
   >(new Set());
-  const [edges, setEdgesState] = useEdgesState<CuttableEdge>(
-    workflowFixture || persistenceFixture
-      ? emptyEdges
-      : createProbeEdges(fixtureId),
-  );
   const renderedNodes = useMemo(
     () => {
       const workflowNodes = workflowRetainedNodeIds.size === 0
@@ -2285,6 +2297,9 @@ export function CanvasSurface({
   const edgesRef = useRef(edges);
   const pendingGuardedNodes = useRef<ProbeNodeType[] | undefined>(undefined);
   const pendingGuardedEdges = useRef<CuttableEdge[] | undefined>(undefined);
+  const settleCanvasMutationDurablyRef = useRef<() => Promise<void>>(
+    async () => undefined,
+  );
   const viewportRef = useRef(viewport);
   const pendingWheelViewport = useRef<Viewport | undefined>(undefined);
   const wheelViewportFrame = useRef<number | undefined>(undefined);
@@ -2299,9 +2314,11 @@ export function CanvasSurface({
       const next = typeof update === "function" ? update(base) : update;
       if (!hadPending && next === base) return;
       pendingGuardedNodes.current = next;
-      setNodesState(next);
+      setGraphState((current) => current.nodes === next
+        ? current
+        : { ...current, nodes: next });
     },
-    [setNodesState],
+    [],
   );
   const setEdges = useCallback<Dispatch<SetStateAction<CuttableEdge[]>>>(
     (update) => {
@@ -2310,10 +2327,24 @@ export function CanvasSurface({
       const next = typeof update === "function" ? update(base) : update;
       if (!hadPending && next === base) return;
       pendingGuardedEdges.current = next;
-      setEdgesState(next);
+      setGraphState((current) => current.edges === next
+        ? current
+        : { ...current, edges: next });
     },
-    [setEdgesState],
+    [],
   );
+  const commitCanvasGraphAtomic = useCallback((snapshot: {
+    edges: readonly CuttableEdge[];
+    nodes: readonly ProbeNodeType[];
+  }) => {
+    const next = {
+      edges: [...snapshot.edges],
+      nodes: [...snapshot.nodes],
+    };
+    pendingGuardedEdges.current = next.edges;
+    pendingGuardedNodes.current = next.nodes;
+    setGraphState(next);
+  }, []);
   const onNodesChange = useCallback(
     (changes: NodeChange<ProbeNodeType>[]) => {
       setNodes((current) => applyNodeChanges(changes, current));
@@ -2908,9 +2939,9 @@ export function CanvasSurface({
   const checkpoint = useCallback((includeHistory = true) => {
     if (!includeHistory) return;
     pushHistory({
-      edges: cloneEdges(edgesRef.current),
+      edges: cloneEdges(pendingGuardedEdges.current ?? edgesRef.current),
       kind: "snapshot",
-      nodes: cloneNodes(nodesRef.current),
+      nodes: cloneNodes(pendingGuardedNodes.current ?? nodesRef.current),
     });
   }, [cloneEdges, cloneNodes, pushHistory]);
 
@@ -3386,40 +3417,78 @@ export function CanvasSurface({
       y: (event.clientY - rect.top - viewport.y) / viewport.zoom,
     };
   };
-  const deleteNodeFromContextMenu = (nodeId: string) => {
-    const root = nodesRef.current.find((node) => node.id === nodeId);
-    if (!root) return;
-    const deletedIds = new Set([nodeId]);
-    if (root.type === "group") {
-      nodesRef.current.forEach((node) => {
-        if (node.parentId === nodeId) deletedIds.add(node.id);
-      });
+  const expandedDeletedNodeIds = (
+    currentNodes: readonly ProbeNodeType[],
+    rootIds: readonly string[],
+  ) => {
+    const deletedIds = new Set(rootIds);
+    let expanded = true;
+    while (expanded) {
+      expanded = false;
+      for (const node of currentNodes) {
+        if (node.parentId && deletedIds.has(node.parentId) &&
+          !deletedIds.has(node.id)) {
+          deletedIds.add(node.id);
+          expanded = true;
+        }
+      }
     }
-    if ([...deletedIds].some((id) => workflowRetainedNodeIds.has(id))) {
+    return deletedIds;
+  };
+  const deleteNodesWithAdmission = (rootIds: readonly string[]) => {
+    const previewNodes = pendingGuardedNodes.current ?? nodesRef.current;
+    const previewEdges = pendingGuardedEdges.current ?? edgesRef.current;
+    const deletedIds = expandedDeletedNodeIds(previewNodes, rootIds);
+    if (deletedIds.size === 0 || !previewNodes.some((node) =>
+      deletedIds.has(node.id)
+    )) return;
+    const plannedNodeIds = new Set(deletedIds);
+    for (const edge of previewEdges) {
+      if (deletedIds.has(edge.source) || deletedIds.has(edge.target)) {
+        plannedNodeIds.add(edge.source);
+        plannedNodeIds.add(edge.target);
+      }
+    }
+    if ([...plannedNodeIds].some((id) => workflowRetainedNodeIds.has(id))) {
       showWorkflowToast("整组执行中，不能删除参与节点", "error");
       return;
     }
-    const deletedNodes = nodesRef.current.filter((node) =>
-      deletedIds.has(node.id),
-    );
-    const deletedEdges = edgesRef.current.filter(
-      (edge) => deletedIds.has(edge.source) || deletedIds.has(edge.target),
-    );
-    pushHistory({
-      edges: cloneEdges(deletedEdges),
-      kind: "delete",
-      nodes: cloneNodes(deletedNodes),
+    void runCanvasMutationAdmission([...plannedNodeIds], () => {
+      const currentNodes = pendingGuardedNodes.current ?? nodesRef.current;
+      const currentEdges = pendingGuardedEdges.current ?? edgesRef.current;
+      const currentDeletedIds = expandedDeletedNodeIds(currentNodes, rootIds);
+      if (!currentNodes.some((node) => currentDeletedIds.has(node.id))) return;
+      const deletedNodes = currentNodes.filter((node) =>
+        currentDeletedIds.has(node.id)
+      );
+      const deletedEdges = currentEdges.filter((edge) =>
+        currentDeletedIds.has(edge.source) || currentDeletedIds.has(edge.target)
+      );
+      const actualNodeIds = new Set(currentDeletedIds);
+      for (const edge of deletedEdges) {
+        actualNodeIds.add(edge.source);
+        actualNodeIds.add(edge.target);
+      }
+      if ([...actualNodeIds].some((id) => !plannedNodeIds.has(id))) {
+        throw new Error("画布已在等待期间变化，本次删除未应用");
+      }
+      pushHistory({
+        edges: cloneEdges(deletedEdges),
+        kind: "delete",
+        nodes: cloneNodes(deletedNodes),
+      });
+      commitCanvasGraphAtomic({
+        nodes: currentNodes.filter((node) => !currentDeletedIds.has(node.id)),
+        edges: currentEdges.filter((edge) =>
+          !currentDeletedIds.has(edge.source) &&
+          !currentDeletedIds.has(edge.target)
+        ),
+      });
+      setPrimaryId(undefined);
     });
-    setNodes((current) =>
-      current.filter((node) => !deletedIds.has(node.id)),
-    );
-    setEdges((current) =>
-      current.filter(
-        (edge) =>
-          !deletedIds.has(edge.source) && !deletedIds.has(edge.target),
-      ),
-    );
-    setPrimaryId(undefined);
+  };
+  const deleteNodeFromContextMenu = (nodeId: string) => {
+    deleteNodesWithAdmission([nodeId]);
   };
   const downloadNodeMedia = (node: ProbeNodeType) => {
     const source =
@@ -3647,9 +3716,10 @@ export function CanvasSurface({
   const isConnectionAllowed = (
     connection: Connection | Edge,
     currentEdges: Edge[],
+    currentNodes: ProbeNodeType[],
   ) => {
-    const sourceType = nodesRef.current.find((node) => node.id === connection.source)?.type;
-    const targetType = nodesRef.current.find((node) => node.id === connection.target)?.type;
+    const sourceType = currentNodes.find((node) => node.id === connection.source)?.type;
+    const targetType = currentNodes.find((node) => node.id === connection.target)?.type;
     return connection.source !== connection.target &&
     connection.sourceHandle === "source" &&
     connection.targetHandle === "target" &&
@@ -3663,71 +3733,68 @@ export function CanvasSurface({
     );
   };
   const isValidConnection = (connection: Connection | Edge) =>
-    isConnectionAllowed(connection, edges);
-  const upgradeImageInputModeForNewEdges = (
+    isConnectionAllowed(
+      connection,
+      pendingGuardedEdges.current ?? edgesRef.current,
+      pendingGuardedNodes.current ?? nodesRef.current,
+    );
+  const normalizeGraphForNewInputs = (
+    beforeNodes: ProbeNodeType[],
+    beforeEdges: CuttableEdge[],
+    afterEdges: CuttableEdge[],
     targetId: string,
     addedSourceIds: readonly string[],
   ) => {
-    const target = nodesRef.current.find((node) => node.id === targetId);
-    if (target?.type !== "image") return;
-
-    // Only the first ready Image reference chooses the compatible input mode.
-    // An empty/uploading/invalid edge is retained as user content, but it must
-    // not prevent the first usable reference from applying the model rule.
-    const alreadyHasReadyImageInput = edgesRef.current.some((edge) => {
-      if (edge.target !== targetId) return false;
-      const source = nodesRef.current.find((node) => node.id === edge.source);
-      return source?.type === "image" &&
-        Boolean(source.data.assetId) &&
-        Boolean(source.data.imageSrc) &&
-        (source.data.inputState === undefined || source.data.inputState === "ready");
+    const target = beforeNodes.find((node) => node.id === targetId);
+    if (!target) return { edges: afterEdges, nodes: beforeNodes };
+    let nextNodes = beforeNodes;
+    if (target.type === "image") {
+      const alreadyHasReadyImageInput = beforeEdges.some((edge) => {
+        if (edge.target !== targetId) return false;
+        const source = beforeNodes.find((node) => node.id === edge.source);
+        return source?.type === "image" && Boolean(source.data.assetId) &&
+          Boolean(source.data.imageSrc) &&
+          (source.data.inputState === undefined || source.data.inputState === "ready");
+      });
+      const addsReadyImage = addedSourceIds.some((sourceId) => {
+        const source = beforeNodes.find((node) => node.id === sourceId);
+        return source?.type === "image" && Boolean(source.data.assetId) &&
+          Boolean(source.data.imageSrc) &&
+          (source.data.inputState === undefined || source.data.inputState === "ready");
+      });
+      if (!alreadyHasReadyImageInput && addsReadyImage) {
+        nextNodes = beforeNodes.map((node) => node.id === targetId
+          ? withImageReferenceInputMode(node, imageModels)
+          : node);
+      }
+    }
+    if (target.type !== "video") return { edges: afterEdges, nodes: nextNodes };
+    const model = resolvePublishedModel(videoModels, target.data.videoModelId);
+    if (!model?.parameterSchema || !model.configurationRevision ||
+      !model.releaseRevisionId) {
+      return { edges: afterEdges, nodes: nextNodes };
+    }
+    const plan = buildCanvasModelTransitionCommand({
+      request: {
+        intent: "execute",
+        model: {
+          configurationRevision: model.configurationRevision,
+          displayName: model.displayName,
+          id: model.id,
+          parameterSchema: model.parameterSchema,
+          releaseRevisionId: model.releaseRevisionId,
+        },
+        nodeId: targetId,
+        requestedParameters: normalizeParameterValues(
+          model.parameterSchema,
+          target.data.videoParameters,
+        ),
+      },
+      snapshot: { edges: afterEdges, nodes: nextNodes },
     });
-    if (alreadyHasReadyImageInput) return;
-
-    const addsReadyImage = addedSourceIds.some((sourceId) => {
-      const source = nodesRef.current.find((node) => node.id === sourceId);
-      return source?.type === "image" &&
-        Boolean(source.data.assetId) &&
-        Boolean(source.data.imageSrc) &&
-        (source.data.inputState === undefined || source.data.inputState === "ready");
-    });
-    if (!addsReadyImage) return;
-
-    setNodes((current) => current.map((node) => node.id === targetId
-      ? withImageReferenceInputMode(node, imageModels)
-      : node));
-  };
-  const upgradeVideoInputModeForNewEdges = (
-    targetId: string,
-    addedSourceIds: readonly string[],
-  ) => {
-    const target = nodesRef.current.find((node) => node.id === targetId);
-    if (target?.type !== "video") return;
-    const addedMediaKinds = addedSourceIds.flatMap((sourceId) => {
-      const kind = nodesRef.current.find((node) => node.id === sourceId)?.type;
-      return kind === "image" || kind === "video" || kind === "audio"
-        ? [kind]
-        : [];
-    });
-    if (!addedMediaKinds.length) return;
-
-    const imageCountAfterConnection = new Set([
-      ...edgesRef.current.flatMap((edge) => {
-        if (edge.target !== targetId) return [];
-        const source = nodesRef.current.find((node) => node.id === edge.source);
-        return source?.type === "image" ? [source.id] : [];
-      }),
-      ...addedSourceIds.filter((sourceId) =>
-        nodesRef.current.find((node) => node.id === sourceId)?.type === "image"),
-    ]).size;
-    setNodes((current) => current.map((node) => node.id === targetId
-      ? withVideoReferenceInputModeForNewEdges(
-          node,
-          videoModels,
-          addedMediaKinds,
-          imageCountAfterConnection,
-        )
-      : node));
+    return plan.status === "ready" && plan.after
+      ? { edges: [...plan.after.edges], nodes: [...plan.after.nodes] }
+      : { edges: afterEdges, nodes: nextNodes };
   };
   const addConnection = (connection: Connection) => {
     if (!persistenceReadyRef.current) return false;
@@ -3738,32 +3805,48 @@ export function CanvasSurface({
       showWorkflowToast("整组执行中，不能修改参与节点的连线", "error");
       return false;
     }
-    if (!isConnectionAllowed(connection, edgesRef.current)) {
-      return false;
-    }
-    const sourceType = nodesRef.current.find((node) => node.id === connection.source)?.type;
-    const targetType = nodesRef.current.find((node) => node.id === connection.target)?.type;
-    checkpoint();
-    upgradeImageInputModeForNewEdges(connection.target, [connection.source]);
-    upgradeVideoInputModeForNewEdges(connection.target, [connection.source]);
-    setEdges((current) =>
-      isConnectionAllowed(connection, current)
-        ? addEdge(
-            {
-              ...connection,
-              id: `edge-${connection.source}-${connection.target}-${current.length}`,
-              interactionWidth: 20,
-              type: "cuttable",
-              data: isNodeInputKind(sourceType) && isNodeInputKind(targetType)
-                ? {
-                    inputOrder: nextNodeInputOrder(current, connection.target),
-                    inputRole: defaultNodeInputRole(sourceType, targetType),
-                  }
-                : undefined,
-            },
-            current,
-          )
-        : current,
+    const beforeNodes = pendingGuardedNodes.current ?? nodesRef.current;
+    const beforeEdges = pendingGuardedEdges.current ?? edgesRef.current;
+    if (!isConnectionAllowed(connection, beforeEdges, beforeNodes)) return false;
+    void runCanvasMutationAdmission(
+      [connection.source, connection.target],
+      () => {
+        const currentNodes = pendingGuardedNodes.current ?? nodesRef.current;
+        const currentEdges = pendingGuardedEdges.current ?? edgesRef.current;
+        if (!isConnectionAllowed(connection, currentEdges, currentNodes)) {
+          throw new Error("画布已在等待期间变化，连线未添加");
+        }
+        const sourceType = currentNodes.find((node) =>
+          node.id === connection.source
+        )?.type;
+        const targetType = currentNodes.find((node) =>
+          node.id === connection.target
+        )?.type;
+        const afterEdges = addEdge(
+          {
+            ...connection,
+            id: `edge-${connection.source}-${connection.target}-${currentEdges.length}`,
+            interactionWidth: 20,
+            type: "cuttable",
+            data: isNodeInputKind(sourceType) && isNodeInputKind(targetType)
+              ? {
+                  inputOrder: nextNodeInputOrder(currentEdges, connection.target),
+                  inputRole: defaultNodeInputRole(sourceType, targetType),
+                }
+              : undefined,
+          },
+          currentEdges,
+        );
+        const after = normalizeGraphForNewInputs(
+          currentNodes,
+          currentEdges,
+          afterEdges,
+          connection.target,
+          [connection.source],
+        );
+        checkpoint();
+        commitCanvasGraphAtomic(after);
+      },
     );
     return true;
   };
@@ -3776,7 +3859,9 @@ export function CanvasSurface({
       showWorkflowToast("整组执行中，不能修改参与节点的连线", "error");
       return;
     }
-    const plannedEdges = [...edgesRef.current];
+    const beforeNodes = pendingGuardedNodes.current ?? nodesRef.current;
+    const beforeEdges = pendingGuardedEdges.current ?? edgesRef.current;
+    const plannedEdges = [...beforeEdges];
     const addedSourceIds: string[] = [];
     for (const sourceId of sourceIds) {
       const connection: Connection = {
@@ -3785,7 +3870,7 @@ export function CanvasSurface({
         target: targetId,
         targetHandle: "target",
       };
-      if (!isConnectionAllowed(connection, plannedEdges)) continue;
+      if (!isConnectionAllowed(connection, plannedEdges, beforeNodes)) continue;
       addedSourceIds.push(sourceId);
       plannedEdges.push({
         ...connection,
@@ -3794,11 +3879,11 @@ export function CanvasSurface({
       });
     }
     if (!addedSourceIds.length) return;
-    checkpoint();
-    upgradeImageInputModeForNewEdges(targetId, addedSourceIds);
-    upgradeVideoInputModeForNewEdges(targetId, addedSourceIds);
-    setEdges((current) =>
-      sourceIds.reduce<CuttableEdge[]>((next, sourceId) => {
+    void runCanvasMutationAdmission([...sourceIds, targetId], () => {
+      const currentNodes = pendingGuardedNodes.current ?? nodesRef.current;
+      const currentEdges = pendingGuardedEdges.current ?? edgesRef.current;
+      const currentAddedSourceIds: string[] = [];
+      const afterEdges = sourceIds.reduce<CuttableEdge[]>((next, sourceId) => {
         const connection: Connection = {
           source: sourceId,
           sourceHandle: "source",
@@ -3806,16 +3891,17 @@ export function CanvasSurface({
           targetHandle: "target",
         };
 
-        return isConnectionAllowed(connection, next)
-          ? addEdge(
+        if (isConnectionAllowed(connection, next, currentNodes)) {
+          currentAddedSourceIds.push(sourceId);
+          return addEdge(
               {
                 ...connection,
                 id: `edge-${sourceId}-${targetId}-${next.length}`,
                 interactionWidth: 20,
                 type: "cuttable",
                 data: (() => {
-                  const sourceType = nodesRef.current.find((node) => node.id === sourceId)?.type;
-                  const targetType = nodesRef.current.find((node) => node.id === targetId)?.type;
+                  const sourceType = currentNodes.find((node) => node.id === sourceId)?.type;
+                  const targetType = currentNodes.find((node) => node.id === targetId)?.type;
                   return isNodeInputKind(sourceType) && isNodeInputKind(targetType)
                     ? {
                           inputOrder: nextNodeInputOrder(next, targetId),
@@ -3825,10 +3911,21 @@ export function CanvasSurface({
                 })(),
               },
               next,
-            )
-          : next;
-      }, current),
-    );
+            );
+        }
+        return next;
+      }, currentEdges);
+      if (currentAddedSourceIds.length === 0) return;
+      const after = normalizeGraphForNewInputs(
+        currentNodes,
+        currentEdges,
+        afterEdges,
+        targetId,
+        currentAddedSourceIds,
+      );
+      checkpoint();
+      commitCanvasGraphAtomic(after);
+    });
   };
   const clearCutIndicators = () =>
     setEdges((current) =>
@@ -4652,6 +4749,45 @@ export function CanvasSurface({
     }
     throw new Error("画布保存超时，请稍后再试");
   }, [persistenceFixture]);
+  const readAuthoritativeCanvasRevision = useCallback(async () => {
+    if (!persistenceFixture) {
+      const revision = generationCanvasRevisionRef.current;
+      if (!Number.isSafeInteger(revision)) {
+        throw new Error("画布版本尚未确认");
+      }
+      return Number(revision);
+    }
+    const controller = new AbortController();
+    const timeout = window.setTimeout(
+      () => controller.abort("canvas-authority-timeout"),
+      PERSIST_LOAD_TIMEOUT_MS,
+    );
+    try {
+      const response = await persistenceFacade.transport.load({
+        canvasId: persistenceId,
+        saveSessionId: persistenceSessionId.current,
+        signal: controller.signal,
+      });
+      if (!response.ok || !persistenceFacade.isLoadedDocument(response.body)) {
+        throw new Error("无法确认画布最新版本");
+      }
+      return response.body.graphRevision ?? response.body.revision;
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  }, [persistenceFacade, persistenceFixture, persistenceId]);
+  settleCanvasMutationDurablyRef.current = async () => {
+    if (!persistenceFixture) return;
+    while (true) {
+      await flushCanvasSave();
+      await waitForCanvasRevision();
+      const latest = canvasSnapshotRef.current();
+      if (
+        latest.fingerprint === persistedDocumentFingerprint.current &&
+        latest.graphFingerprint === persistedGraphFingerprint.current
+      ) return;
+    }
+  };
   const adoptAuthoritativeGenerationMutation = useCallback((
     mutation: AuthoritativeGenerationCanvasMutation,
   ) => {
@@ -4744,6 +4880,7 @@ export function CanvasSurface({
       isFixture: Boolean(fixtureId),
       notify: showWorkflowToast,
       persistenceReady,
+      readAuthoritativeCanvasRevision,
       retryGenerationEnabled,
       waitForCanvasRevision,
     }),
@@ -4755,6 +4892,7 @@ export function CanvasSurface({
       generationCanvasRevision,
       persistenceReady,
       persistenceId,
+      readAuthoritativeCanvasRevision,
       retryGenerationEnabled,
       showWorkflowToast,
       waitForCanvasRevision,
@@ -4776,26 +4914,269 @@ export function CanvasSurface({
     if (!persistenceReadyRef.current) return;
     setNodes(update);
   }, [setNodes]);
+  const [canvasMutationPendingNodeIds, setCanvasMutationPendingNodeIds] =
+    useState<ReadonlySet<string>>(new Set());
+  const canvasMutationPendingNodeCountsRef = useRef(new Map<string, number>());
+  const canvasMutationVersionsRef = useRef(new Map<string, number>());
+  const readCanvasMutationVersion = useCallback(
+    (nodeId: string) => canvasMutationVersionsRef.current.get(nodeId) ?? 0,
+    [],
+  );
+  const canvasMutationScope = useMemo(() => createGroupRunSummaryScope(
+    accountId ?? "",
+    persistenceId,
+    fixtureId ?? "",
+  ), [accountId, fixtureId, persistenceId]);
+  const runCanvasMutationAdmission = useCallback(async <T,>(
+    nodeIds: readonly string[],
+    work: () => Promise<T> | T,
+    rollbackAfterDurableFailure?: (result: T) => Promise<void> | void,
+  ): Promise<T | undefined> => {
+    const affected = [...new Set(nodeIds.filter(Boolean))];
+    for (const nodeId of affected) {
+      canvasMutationVersionsRef.current.set(
+        nodeId,
+        (canvasMutationVersionsRef.current.get(nodeId) ?? 0) + 1,
+      );
+      const count = canvasMutationPendingNodeCountsRef.current.get(nodeId) ?? 0;
+      canvasMutationPendingNodeCountsRef.current.set(nodeId, count + 1);
+    }
+    setCanvasMutationPendingNodeIds((current) =>
+      new Set([...current, ...affected])
+    );
+    try {
+      return await runWithCanvasGraphMutationAdmission(
+        canvasMutationScope,
+        affected,
+        async () => {
+          onSaveStart();
+          const result = await work();
+          try {
+            await settleCanvasMutationDurablyRef.current();
+          } catch (error) {
+            await rollbackAfterDurableFailure?.(result);
+            throw error;
+          }
+          return result;
+        },
+      );
+    } catch (error) {
+      showWorkflowToast(
+        error instanceof Error
+          ? error.message
+          : "当前节点正在整组执行中，画布修改未应用",
+        "error",
+      );
+      return undefined;
+    } finally {
+      setCanvasMutationPendingNodeIds((current) => {
+        const next = new Set(current);
+        for (const nodeId of affected) {
+          const count = canvasMutationPendingNodeCountsRef.current.get(nodeId) ?? 0;
+          if (count <= 1) {
+            canvasMutationPendingNodeCountsRef.current.delete(nodeId);
+            next.delete(nodeId);
+          } else {
+            canvasMutationPendingNodeCountsRef.current.set(nodeId, count - 1);
+          }
+        }
+        return next;
+      });
+    }
+  }, [canvasMutationScope, onSaveStart, showWorkflowToast]);
+  const changedNodeIds = useCallback((
+    before: readonly ProbeNodeType[],
+    after: readonly ProbeNodeType[],
+  ) => {
+    const beforeById = new Map(before.map((node) => [node.id, node]));
+    const afterById = new Map(after.map((node) => [node.id, node]));
+    return [...new Set([...beforeById.keys(), ...afterById.keys()])]
+      .filter((nodeId) => beforeById.get(nodeId) !== afterById.get(nodeId));
+  }, []);
+  const changedEdgeEndpointIds = useCallback((
+    before: readonly CuttableEdge[],
+    after: readonly CuttableEdge[],
+  ) => {
+    const beforeById = new Map(before.map((edge) => [edge.id, edge]));
+    const afterById = new Map(after.map((edge) => [edge.id, edge]));
+    const nodeIds = new Set<string>();
+    for (const edgeId of new Set([...beforeById.keys(), ...afterById.keys()])) {
+      const beforeEdge = beforeById.get(edgeId);
+      const afterEdge = afterById.get(edgeId);
+      if (beforeEdge === afterEdge) continue;
+      if (beforeEdge) {
+        nodeIds.add(beforeEdge.source);
+        nodeIds.add(beforeEdge.target);
+      }
+      if (afterEdge) {
+        nodeIds.add(afterEdge.source);
+        nodeIds.add(afterEdge.target);
+      }
+    }
+    return [...nodeIds];
+  }, []);
+  const admittedSetNodes = useCallback<Dispatch<SetStateAction<ProbeNodeType[]>>>(
+    (update) => {
+      if (!persistenceReadyRef.current) return;
+      const previewBase = pendingGuardedNodes.current ?? nodesRef.current;
+      const preview = typeof update === "function" ? update(previewBase) : update;
+      const plannedNodeIds = changedNodeIds(previewBase, preview);
+      if (plannedNodeIds.length === 0) return;
+      if (plannedNodeIds.every((nodeId) =>
+        canvasNodeMutationAdmissionHeldLocally(canvasMutationScope, nodeId)
+      )) {
+        setNodes(preview);
+        return;
+      }
+      void runCanvasMutationAdmission(plannedNodeIds, () => {
+        const current = pendingGuardedNodes.current ?? nodesRef.current;
+        const next = typeof update === "function" ? update(current) : update;
+        const actualNodeIds = changedNodeIds(current, next);
+        if (actualNodeIds.some((nodeId) => !plannedNodeIds.includes(nodeId))) {
+          throw new Error("画布已在等待期间变化，本次修改未应用");
+        }
+        setNodes(next);
+      });
+    },
+    [canvasMutationScope, changedNodeIds, runCanvasMutationAdmission, setNodes],
+  );
+  const admittedSetEdges = useCallback<Dispatch<SetStateAction<CuttableEdge[]>>>(
+    (update) => {
+      if (!persistenceReadyRef.current) return;
+      const previewBase = pendingGuardedEdges.current ?? edgesRef.current;
+      const preview = typeof update === "function" ? update(previewBase) : update;
+      const plannedNodeIds = changedEdgeEndpointIds(previewBase, preview);
+      if (plannedNodeIds.length === 0) return;
+      if (plannedNodeIds.every((nodeId) =>
+        canvasNodeMutationAdmissionHeldLocally(canvasMutationScope, nodeId)
+      )) {
+        setEdges(preview);
+        return;
+      }
+      void runCanvasMutationAdmission(plannedNodeIds, () => {
+        const current = pendingGuardedEdges.current ?? edgesRef.current;
+        const next = typeof update === "function" ? update(current) : update;
+        const actualNodeIds = changedEdgeEndpointIds(current, next);
+        if (actualNodeIds.some((nodeId) => !plannedNodeIds.includes(nodeId))) {
+          throw new Error("画布连线已在等待期间变化，本次修改未应用");
+        }
+        setEdges(next);
+      });
+    },
+    [canvasMutationScope, changedEdgeEndpointIds, runCanvasMutationAdmission, setEdges],
+  );
+  const mutateGraph = useCallback(async (update: (current: Readonly<{
+    edges: CuttableEdge[];
+    nodes: ProbeNodeType[];
+  }>) => Readonly<{
+    edges: CuttableEdge[];
+    nodes: ProbeNodeType[];
+  }>): Promise<boolean> => {
+    if (!persistenceReadyRef.current) return false;
+    const previewCurrent = {
+      edges: pendingGuardedEdges.current ?? edgesRef.current,
+      nodes: pendingGuardedNodes.current ?? nodesRef.current,
+    };
+    const preview = update(previewCurrent);
+    const plannedNodeIds = [...new Set([
+      ...changedNodeIds(previewCurrent.nodes, preview.nodes),
+      ...changedEdgeEndpointIds(previewCurrent.edges, preview.edges),
+    ])];
+    if (plannedNodeIds.length === 0) return false;
+    const commit = () => {
+      const current = {
+        edges: pendingGuardedEdges.current ?? edgesRef.current,
+        nodes: pendingGuardedNodes.current ?? nodesRef.current,
+      };
+      const next = update(current);
+      const actualNodeIds = [...new Set([
+        ...changedNodeIds(current.nodes, next.nodes),
+        ...changedEdgeEndpointIds(current.edges, next.edges),
+      ])];
+      if (actualNodeIds.some((nodeId) => !plannedNodeIds.includes(nodeId))) {
+        throw new Error("画布已在等待期间变化，本次修改未应用");
+      }
+      if (actualNodeIds.length === 0) return false;
+      checkpoint();
+      commitCanvasGraphAtomic({ edges: next.edges, nodes: next.nodes });
+      return true;
+    };
+    if (plannedNodeIds.every((nodeId) =>
+      canvasNodeMutationAdmissionHeldLocally(canvasMutationScope, nodeId)
+    )) {
+      const applied = commit();
+      if (applied) await settleCanvasMutationDurablyRef.current();
+      return applied;
+    }
+    return (await runCanvasMutationAdmission(plannedNodeIds, commit)) === true;
+  }, [
+    canvasMutationScope,
+    changedEdgeEndpointIds,
+    changedNodeIds,
+    checkpoint,
+    commitCanvasGraphAtomic,
+    runCanvasMutationAdmission,
+  ]);
   const trySetNodes = useCallback((update: SetStateAction<ProbeNodeType[]>) => {
     if (!persistenceReadyRef.current) return false;
     setNodes(update);
     return true;
   }, [setNodes]);
-  const tryAdoptNodes = useCallback((
+  const tryAdoptNodes = useCallback(async (
     targetNodeId: string,
     update: SetStateAction<ProbeNodeType[]>,
-  ) => tryCommitCanvasNodeAdoption({
-    commit: setNodes,
-    currentNodes: () => pendingGuardedNodes.current ?? nodesRef.current,
-    persistenceReady: () => persistenceReadyRef.current,
-    targetNodeId,
-    update,
-  }), [setNodes]);
+    options?: Readonly<{ checkpoint?: boolean }>,
+  ) => {
+    if (!persistenceReadyRef.current) return false;
+    const previewBase = pendingGuardedNodes.current ?? nodesRef.current;
+    const preview = typeof update === "function" ? update(previewBase) : update;
+    if (!previewBase.some((node) => node.id === targetNodeId)) return false;
+    const plannedNodeIds = [...new Set([
+      targetNodeId,
+      ...changedNodeIds(previewBase, preview),
+    ])];
+    let beforeById: Map<string, ProbeNodeType> | undefined;
+    let committedById: Map<string, ProbeNodeType> | undefined;
+    return (await runCanvasMutationAdmission(plannedNodeIds, () => {
+      const current = pendingGuardedNodes.current ?? nodesRef.current;
+      const next = typeof update === "function" ? update(current) : update;
+      if (!current.some((node) => node.id === targetNodeId)) return false;
+      const actualNodeIds = changedNodeIds(current, next);
+      if (actualNodeIds.some((nodeId) => !plannedNodeIds.includes(nodeId))) {
+        throw new Error("画布已在等待期间变化，媒体未接管");
+      }
+      if (options?.checkpoint) checkpoint();
+      const committed = tryCommitCanvasNodeAdoption({
+        commit: setNodes,
+        currentNodes: () => pendingGuardedNodes.current ?? nodesRef.current,
+        persistenceReady: () => persistenceReadyRef.current,
+        targetNodeId,
+        update: next,
+      });
+      if (committed) {
+        beforeById = new Map(actualNodeIds.flatMap((nodeId) => {
+          const node = current.find((candidate) => candidate.id === nodeId);
+          return node ? [[nodeId, node] as const] : [];
+        }));
+        committedById = new Map(actualNodeIds.flatMap((nodeId) => {
+          const node = next.find((candidate) => candidate.id === nodeId);
+          return node ? [[nodeId, node] as const] : [];
+        }));
+      }
+      return committed;
+    }, (committed) => {
+      if (!committed || !beforeById || !committedById) return;
+      const rollbackBeforeById = beforeById;
+      const rollbackCommittedById = committedById;
+      setNodes((current) => rollbackCanvasNodeAdoption({
+        beforeById: rollbackBeforeById,
+        committedById: rollbackCommittedById,
+        current,
+      }));
+    })) === true;
+  }, [changedNodeIds, checkpoint, runCanvasMutationAdmission, setNodes]);
   const workflowGraphPort = useMemo(() => createCanvasGraphCommandPort({
-    commit: (snapshot) => {
-      setNodes([...snapshot.nodes]);
-      setEdges([...snapshot.edges]);
-    },
+    commit: commitCanvasGraphAtomic,
     persistenceReady: () =>
       persistenceReadyRef.current && !persistenceConflict.current,
     snapshot: () => ({
@@ -4803,7 +5184,25 @@ export function CanvasSurface({
       nodes: pendingGuardedNodes.current ?? nodesRef.current,
       revision: generationCanvasRevisionRef.current,
     }),
-  }), [setEdges, setNodes]);
+  }), [commitCanvasGraphAtomic]);
+  const modelTransitionPort = useMemo(() => createCanvasModelTransitionPort({
+    checkpoint,
+    commitAtomic: commitCanvasGraphAtomic,
+    flush: flushCanvasSave,
+    persistenceReady: () =>
+      persistenceReadyRef.current && !persistenceConflict.current,
+    snapshot: () => ({
+      edges: pendingGuardedEdges.current ?? edgesRef.current,
+      nodes: pendingGuardedNodes.current ?? nodesRef.current,
+      revision: generationCanvasRevisionRef.current,
+    }),
+    waitForRevision: waitForCanvasRevision,
+  }), [
+    checkpoint,
+    commitCanvasGraphAtomic,
+    flushCanvasSave,
+    waitForCanvasRevision,
+  ]);
 
   useEffect(() => {
     if (selectedNodeCount <= 1) return;
@@ -4833,11 +5232,15 @@ export function CanvasSurface({
       >
       <CanvasGraphMutationContext.Provider
         value={{
+          applyModelTransition: modelTransitionPort.apply,
+          canvasMutationPendingNodeIds,
           graphCommandPort: workflowGraphPort,
           imageColorFilter,
+          mutateGraph,
+          readCanvasMutationVersion,
           setImageColorFilter,
-          setEdges: guardedSetEdges,
-          setNodes: guardedSetNodes,
+          setEdges: admittedSetEdges,
+          setNodes: admittedSetNodes,
           tryAdoptNodes,
           trySetNodes,
         }}
@@ -5101,17 +5504,43 @@ export function CanvasSurface({
         }}
         onEdgesChange={(changes) => {
           if (!persistenceReady) return;
-          const accepted = changes.filter((change) => {
-            if (change.type !== "remove") return true;
-            const edge = edgesRef.current.find((candidate) => candidate.id === change.id);
-            return !edge ||
-              (!workflowRetainedNodeIds.has(edge.source) &&
-                !workflowRetainedNodeIds.has(edge.target));
-          });
-          if (accepted.length !== changes.length) {
+          const passive = changes.filter((change) => change.type === "select");
+          if (passive.length > 0) onEdgesChange(passive);
+          const structural = changes.filter((change) => change.type !== "select");
+          if (structural.length === 0) return;
+          const previewEdges = pendingGuardedEdges.current ?? edgesRef.current;
+          const previewNext = applyEdgeChanges(structural, previewEdges);
+          const plannedNodeIds = changedEdgeEndpointIds(
+            previewEdges,
+            previewNext,
+          );
+          if (plannedNodeIds.some((nodeId) =>
+            workflowRetainedNodeIds.has(nodeId)
+          )) {
             showWorkflowToast("整组执行中，不能删除参与节点的连线", "error");
+            return;
           }
-          onEdgesChange(accepted);
+          if (plannedNodeIds.length === 0) return;
+          void runCanvasMutationAdmission(plannedNodeIds, () => {
+            const currentNodes = pendingGuardedNodes.current ?? nodesRef.current;
+            const currentEdges = pendingGuardedEdges.current ?? edgesRef.current;
+            const nextEdges = applyEdgeChanges(structural, currentEdges);
+            const actualNodeIds = changedEdgeEndpointIds(
+              currentEdges,
+              nextEdges,
+            );
+            if (actualNodeIds.some((nodeId) =>
+              !plannedNodeIds.includes(nodeId)
+            )) {
+              throw new Error("画布连线已在等待期间变化，本次修改未应用");
+            }
+            if (actualNodeIds.length === 0) return;
+            checkpoint();
+            commitCanvasGraphAtomic({
+              edges: nextEdges,
+              nodes: currentNodes,
+            });
+          });
         }}
         onDelete={({ edges: deletedEdges, nodes: deletedNodes }) => {
           if (!persistenceReady) return;
@@ -5133,34 +5562,52 @@ export function CanvasSurface({
             showWorkflowToast("整组执行中，不能删除参与节点或连线", "error");
             return false;
           }
-          const groupIds = new Set(
-            deletingNodes
-              .filter((node) => node.type === "group")
-              .map((node) => node.id),
-          );
-          if (!groupIds.size) return true;
-          const children = nodesRef.current.filter(
-            (node) => node.parentId && groupIds.has(node.parentId),
-          );
-          const deletingNodeIds = new Set(
-            deletingNodes.map((node) => node.id),
-          );
-          const childIds = new Set(children.map((node) => node.id));
-          const edgeIds = new Set(deletingEdges.map((edge) => edge.id));
-          return {
-            nodes: [
-              ...deletingNodes,
-              ...children.filter((node) => !deletingNodeIds.has(node.id)),
-            ],
-            edges: [
-              ...deletingEdges,
-              ...edgesRef.current.filter(
-                (edge) =>
-                  !edgeIds.has(edge.id) &&
-                  (childIds.has(edge.source) || childIds.has(edge.target)),
-              ),
-            ],
-          };
+          const affectedNodeIds = new Set(deletingNodes.map((node) => node.id));
+          for (const edge of deletingEdges) {
+            affectedNodeIds.add(edge.source);
+            affectedNodeIds.add(edge.target);
+          }
+          const previewNodes = pendingGuardedNodes.current ?? nodesRef.current;
+          for (const groupId of deletingNodes
+            .filter((node) => node.type === "group")
+            .map((node) => node.id)) {
+            for (const node of previewNodes) {
+              if (node.parentId === groupId) affectedNodeIds.add(node.id);
+            }
+          }
+          await runCanvasMutationAdmission([...affectedNodeIds], () => {
+            const currentNodes = pendingGuardedNodes.current ?? nodesRef.current;
+            const currentEdges = pendingGuardedEdges.current ?? edgesRef.current;
+            const deletedNodeIds = new Set(deletingNodes.map((node) => node.id));
+            for (const node of currentNodes) {
+              if (node.parentId && deletedNodeIds.has(node.parentId)) {
+                deletedNodeIds.add(node.id);
+              }
+            }
+            const deletedEdgeIds = new Set(deletingEdges.map((edge) => edge.id));
+            for (const edge of currentEdges) {
+              if (deletedNodeIds.has(edge.source) || deletedNodeIds.has(edge.target)) {
+                deletedEdgeIds.add(edge.id);
+              }
+            }
+            const deletedNodes = currentNodes.filter((node) =>
+              deletedNodeIds.has(node.id)
+            );
+            const deletedEdges = currentEdges.filter((edge) =>
+              deletedEdgeIds.has(edge.id)
+            );
+            pushHistory({
+              edges: deletedEdges.map(stripSelectionFlowMarkers),
+              kind: "delete",
+              nodes: cloneNodes(deletedNodes),
+            });
+            commitCanvasGraphAtomic({
+              nodes: currentNodes.filter((node) => !deletedNodeIds.has(node.id)),
+              edges: currentEdges.filter((edge) => !deletedEdgeIds.has(edge.id)),
+            });
+          });
+          // Deletion is committed inside the cross-tab admission boundary.
+          return false;
         }}
         onInit={(instance) => {
           flowInstance.current = instance;
@@ -5188,6 +5635,15 @@ export function CanvasSurface({
                   change.resizing === undefined &&
                   change.setAttributes === undefined,
               );
+          const requestedRemovals = acceptedChanges.filter((change) =>
+            change.type === "remove"
+          );
+          if (requestedRemovals.length > 0) {
+            deleteNodesWithAdmission(requestedRemovals.map((change) => change.id));
+            acceptedChanges = acceptedChanges.filter((change) =>
+              change.type !== "remove"
+            );
+          }
           if (workflowRetainedNodeIds.size > 0) {
             const retainedGroupIds = new Set(
               nodesRef.current

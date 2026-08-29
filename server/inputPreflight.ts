@@ -15,6 +15,7 @@ type CanvasRow = { edges: string; graph_revision: number; nodes: string };
 type PersistedNode = {
   data?: Record<string, unknown>;
   id: string;
+  parentId?: string;
   type?: string;
 };
 
@@ -142,6 +143,7 @@ export function resolvePersistedNodeInputs(input: {
   canvasId: string;
   expectedRevision?: number;
   modelSchema?: ModelParameterSchema;
+  modelReleaseRevision?: string;
   ownerId: string;
   parameters?: Record<string, ModelParameterValue>;
   targetId: string;
@@ -149,6 +151,7 @@ export function resolvePersistedNodeInputs(input: {
 }): NodeInputPreflight & {
   canvasRevision: number;
   persistedOwnPrompt: string;
+  persistedTargetParentId?: string;
   persistedTargetData: Record<string, unknown>;
 } {
   const database = openAppDatabase();
@@ -189,6 +192,7 @@ export function resolvePersistedNodeInputs(input: {
       ...resolveNodeInputs({
         edges,
         modelSchema: input.modelSchema,
+        modelReleaseRevision: input.modelReleaseRevision,
         nodes,
         ownPrompt: persistedOwnPrompt,
         parameters: input.parameters,
@@ -197,6 +201,7 @@ export function resolvePersistedNodeInputs(input: {
       }),
       canvasRevision: row.graph_revision,
       persistedOwnPrompt,
+      persistedTargetParentId: target.parentId,
       persistedTargetData: { ...(target.data ?? {}) },
     };
   } finally {

@@ -9,6 +9,7 @@ import {
   hasConflictingActiveGroupRunLeaseForCanvas,
   runWithGroupRunCanvasAdmission,
 } from "./groupRunCheckpoint";
+import type { GroupRunSummaryScope } from "./groupRunSummary";
 import { legacyGenerationSubmissionIsBlocked } from
   "./legacyTerminalGenerationState";
 
@@ -32,12 +33,18 @@ export type GenerationTaskSummary = {
   createdAt: string;
   errorCode?: string;
   errorMessage?: string;
+  fixtureScopeId?: string;
   id: string;
+  idempotencyKey?: string;
   providerTaskBound?: boolean;
   reconcileAllowed?: boolean;
+  generationIdentityVersion?: 2;
   generationInputKey?: string;
   /** Client-local ownership evidence restored from the durable browser intent. */
   generationOwnershipKey?: string;
+  modelInputContractFingerprint?: string;
+  modelConfigurationRevision?: string;
+  modelReleaseRevision?: string;
   kind: GenerationTaskKind;
   model?: string;
   nodeId: string;
@@ -67,6 +74,7 @@ export type GenerationTaskSummary = {
   state: GenerationTaskState;
   updatedAt: string;
   workflowExecutionRunId?: string;
+  workflowGroupId?: string;
 };
 
 export type GenerationCapabilityStatus = {
@@ -98,12 +106,12 @@ export class GenerationRequestError extends Error {
 }
 
 async function assertNoConflictingGroupRun(
-  canvasId: string,
+  scope: GroupRunSummaryScope,
   nodeId?: string,
   workflowRunId?: string,
 ) {
   if (await hasConflictingActiveGroupRunLeaseForCanvas(
-    canvasId,
+    scope,
     nodeId,
     workflowRunId,
   )) {
@@ -113,6 +121,77 @@ async function assertNoConflictingGroupRun(
       "GROUP_RUN_ACTIVE",
     );
   }
+}
+
+/**
+ * Hold the cross-tab Canvas admission boundary before a single-node command
+ * mutates its prepared graph state. The caller releases this boundary as soon
+ * as the accepted task binding is durable; Provider polling stays outside it.
+ */
+export function runWithSingleNodeGenerationAdmission<T>(
+  scope: GroupRunSummaryScope,
+  nodeId: string,
+  work: () => Promise<T> | T,
+): Promise<T> {
+  return runWithGroupRunCanvasAdmission(scope.canvasId, async () => {
+    await assertNoConflictingGroupRun(scope, nodeId);
+    const key = JSON.stringify([
+      scope.accountId,
+      scope.canvasId,
+      scope.fixtureScopeId,
+      nodeId,
+    ]);
+    locallyAdmittedCanvasMutationNodes.add(key);
+    try {
+      return await work();
+    } finally {
+      locallyAdmittedCanvasMutationNodes.delete(key);
+    }
+  });
+}
+
+const locallyAdmittedCanvasMutationNodes = new Set<string>();
+
+export function canvasNodeMutationAdmissionHeldLocally(
+  scope: GroupRunSummaryScope,
+  nodeId: string,
+) {
+  return locallyAdmittedCanvasMutationNodes.has(JSON.stringify([
+    scope.accountId,
+    scope.canvasId,
+    scope.fixtureScopeId,
+    nodeId,
+  ]));
+}
+
+/**
+ * Shared cross-tab boundary for Canvas edits whose semantics can affect a
+ * generation input or its graph ownership. Every affected endpoint is checked
+ * while the Canvas admission lock is held.
+ */
+export function runWithCanvasGraphMutationAdmission<T>(
+  scope: GroupRunSummaryScope,
+  nodeIds: readonly string[],
+  work: () => Promise<T> | T,
+): Promise<T> {
+  return runWithGroupRunCanvasAdmission(scope.canvasId, async () => {
+    const affectedNodeIds = [...new Set(nodeIds)];
+    for (const nodeId of affectedNodeIds) {
+      await assertNoConflictingGroupRun(scope, nodeId);
+    }
+    const localKeys = affectedNodeIds.map((nodeId) => JSON.stringify([
+      scope.accountId,
+      scope.canvasId,
+      scope.fixtureScopeId,
+      nodeId,
+    ]));
+    for (const key of localKeys) locallyAdmittedCanvasMutationNodes.add(key);
+    try {
+      return await work();
+    } finally {
+      for (const key of localKeys) locallyAdmittedCanvasMutationNodes.delete(key);
+    }
+  });
 }
 
 const GENERATION_TASK_STATUS_READ_TIMEOUT_MS = 10_000;
@@ -278,9 +357,11 @@ export async function getGenerationCapabilityStatus(
 export async function getGenerationTask(
   taskId: string,
   signal?: AbortSignal,
+  fixtureScopeId = "",
 ): Promise<GenerationTaskSummary> {
   const task = await readTaskStatusJson<GenerationTaskSummary>(
-    `/api/generation-tasks/${encodeURIComponent(taskId)}`,
+    `/api/generation-tasks/${encodeURIComponent(taskId)}` +
+      `?fixtureScopeId=${encodeURIComponent(fixtureScopeId)}`,
     { cache: "no-store" },
     signal,
   ) as GenerationTaskSummary;
@@ -291,12 +372,17 @@ export async function getGenerationTask(
 export async function cancelGenerationTask(
   taskId: string,
   signal?: AbortSignal,
+  fixtureScopeId = "",
 ): Promise<GenerationTaskSummary> {
   return readJson(
-    await fetch(`/api/generation-tasks/${encodeURIComponent(taskId)}`, {
+    await fetch(
+      `/api/generation-tasks/${encodeURIComponent(taskId)}` +
+        `?fixtureScopeId=${encodeURIComponent(fixtureScopeId)}`,
+      {
       method: "DELETE",
       signal,
-    }),
+      },
+    ),
   );
 }
 
@@ -336,7 +422,11 @@ export async function reconcileGenerationTask(
   signal?: AbortSignal,
 ): Promise<GenerationReconcileResult> {
   return runExclusiveCanvasSubmit(target.canvasId, async () => {
-    await assertNoConflictingGroupRun(target.canvasId, target.nodeId);
+    await assertNoConflictingGroupRun({
+      accountId: target.accountId,
+      canvasId: target.canvasId,
+      fixtureScopeId: target.fixtureScopeId ?? "",
+    }, target.nodeId);
     return reconcileGenerationTaskUnlocked(
       target,
       waitForCanvasRevision,
@@ -353,7 +443,11 @@ async function reconcileGenerationTaskUnlocked(
   signal: AbortSignal | undefined,
 ): Promise<GenerationReconcileResult> {
   const expectedCanvasRevision = await waitForCanvasRevision();
-  const before = await getGenerationTask(target.taskId, signal);
+  const before = await getGenerationTask(
+    target.taskId,
+    signal,
+    target.fixtureScopeId,
+  );
   if (!retryTargetMatches(before, target) || !target.generationInputKey) {
     throw new GenerationRequestError(
       "任务已不再绑定当前节点输入，请从节点重新提交",
@@ -379,7 +473,11 @@ async function reconcileGenerationTaskUnlocked(
     );
   }
   const body = await runWithGroupRunCanvasAdmission(target.canvasId, async () => {
-    await assertNoConflictingGroupRun(target.canvasId, target.nodeId);
+    await assertNoConflictingGroupRun({
+      accountId: target.accountId,
+      canvasId: target.canvasId,
+      fixtureScopeId: target.fixtureScopeId ?? "",
+    }, target.nodeId);
     return readMutationJson<GenerationReconcileResult>(
       `/api/generation-tasks/${encodeURIComponent(target.taskId)}/reconcile`,
       {
@@ -388,6 +486,13 @@ async function reconcileGenerationTaskUnlocked(
           expectedAttempt: before.attempt,
           expectedCanvasRevision,
           expectedGenerationInputKey: target.generationInputKey,
+          expectedGenerationOwnershipKey: target.generationOwnershipKey,
+          expectedFixtureScopeId: target.fixtureScopeId ?? "",
+          expectedModelConfigurationRevision:
+            target.modelConfigurationRevision,
+          expectedModelInputContractFingerprint:
+            target.modelInputContractFingerprint,
+          expectedModelReleaseRevision: target.modelReleaseRevision,
           expectedUpdatedAt: before.updatedAt,
           kind: target.kind,
           nodeId: target.nodeId,
@@ -414,6 +519,7 @@ async function reconcileGenerationTaskUnlocked(
 export async function abandonGenerationTask(
   task: Pick<GenerationTaskSummary, "attempt" | "id" | "updatedAt">,
   signal?: AbortSignal,
+  fixtureScopeId = "",
 ): Promise<GenerationTaskSummary> {
   return readJson(
     await fetch(
@@ -422,6 +528,7 @@ export async function abandonGenerationTask(
         body: JSON.stringify({
           acknowledgeRemoteResultMayBeLost: true,
           expectedAttempt: task.attempt,
+          expectedFixtureScopeId: fixtureScopeId,
           expectedUpdatedAt: task.updatedAt,
         }),
         headers: { "Content-Type": "application/json" },
@@ -445,19 +552,113 @@ export type GenerationTaskRetryAcceptedDetail = {
 };
 
 export type GenerationRetryTarget = {
+  accountId: string;
   canvasId: string;
+  fixtureScopeId: string;
   generationInputKey: string;
+  generationOwnershipKey: string;
   kind: GenerationTaskKind;
+  modelInputContractFingerprint: string;
+  modelConfigurationRevision: string;
+  modelReleaseRevision: string;
   nodeId: string;
   taskId: string;
 };
 
 export type GenerationRetryGate = () => Promise<number>;
+export type GenerationRetryCurrentInputGate = () => void;
 
 export type GenerationOwnershipOptions = {
+  canvasAdmissionAlreadyHeld?: boolean;
+  fixtureScopeId?: string;
+  generationInputKey?: string;
   generationOwnershipKey?: string;
+  modelInputContractFingerprint?: string;
+  modelConfigurationRevision?: string;
+  modelReleaseRevision?: string;
+  workflowGroupId?: string;
   workflowRunId?: string;
 };
+
+function workflowBindingFromOptions(options: GenerationOwnershipOptions) {
+  const workflowSupplied = options.workflowGroupId !== undefined ||
+    options.workflowRunId !== undefined;
+  if (!workflowSupplied) return undefined;
+  const fields = [
+    options.workflowGroupId,
+    options.workflowRunId,
+    options.generationOwnershipKey,
+    options.generationInputKey,
+    options.modelConfigurationRevision,
+    options.modelReleaseRevision,
+  ];
+  if (
+    fields.some((value) => typeof value !== "string" || value.length === 0)
+  ) {
+    throw new GenerationRequestError(
+      "工作流任务绑定不完整，已在提交前停止",
+      409,
+      "WORKFLOW_BINDING_INCOMPLETE",
+    );
+  }
+  return {
+    generationInputKey: options.generationInputKey as string,
+    generationOwnershipKey: options.generationOwnershipKey as string,
+    groupId: options.workflowGroupId as string,
+    modelConfigurationRevision: options.modelConfigurationRevision as string,
+    modelReleaseRevision: options.modelReleaseRevision as string,
+    runId: options.workflowRunId as string,
+  };
+}
+
+function taskMatchesWorkflowBinding(
+  task: GenerationTaskSummary,
+  binding: NonNullable<ReturnType<typeof workflowBindingFromOptions>>,
+) {
+  return task.workflowGroupId === binding.groupId &&
+    task.workflowExecutionRunId === binding.runId &&
+    task.generationOwnershipKey === binding.generationOwnershipKey &&
+    task.generationInputKey === binding.generationInputKey &&
+    task.modelConfigurationRevision === binding.modelConfigurationRevision &&
+    task.modelReleaseRevision === binding.modelReleaseRevision;
+}
+
+function taskMatchesGenerationIdentity(
+  task: GenerationTaskSummary,
+  identity: {
+    generationInputKey?: string;
+    generationOwnershipKey?: string;
+    modelInputContractFingerprint?: string;
+    modelConfigurationRevision?: string;
+    modelReleaseRevision?: string;
+  },
+) {
+  return (identity.generationInputKey === undefined ||
+      task.generationInputKey === identity.generationInputKey) &&
+    (identity.generationOwnershipKey === undefined ||
+      task.generationOwnershipKey === identity.generationOwnershipKey) &&
+    (identity.modelInputContractFingerprint === undefined ||
+      task.modelInputContractFingerprint ===
+        identity.modelInputContractFingerprint) &&
+    (identity.modelConfigurationRevision === undefined ||
+      task.modelConfigurationRevision === identity.modelConfigurationRevision) &&
+    (identity.modelReleaseRevision === undefined ||
+      task.modelReleaseRevision === identity.modelReleaseRevision);
+}
+
+function generationIdentityIsComplete(identity: {
+  generationInputKey?: string;
+  generationOwnershipKey?: string;
+  modelInputContractFingerprint?: string;
+  modelConfigurationRevision?: string;
+  modelReleaseRevision?: string;
+}) {
+  return Boolean(
+    identity.generationInputKey && identity.generationOwnershipKey &&
+    identity.modelInputContractFingerprint && identity.modelConfigurationRevision &&
+    identity.modelReleaseRevision,
+  );
+}
 
 function retryTargetMatches(
   task: GenerationTaskSummary,
@@ -465,8 +666,15 @@ function retryTargetMatches(
 ) {
   return task.id === target.taskId &&
     task.canvasId === target.canvasId &&
+    (task.fixtureScopeId ?? "") === (target.fixtureScopeId ?? "") &&
     task.kind === target.kind &&
-    task.nodeId === target.nodeId;
+    task.nodeId === target.nodeId &&
+    task.generationInputKey === target.generationInputKey &&
+    task.generationOwnershipKey === target.generationOwnershipKey &&
+    task.modelInputContractFingerprint ===
+      target.modelInputContractFingerprint &&
+    task.modelConfigurationRevision === target.modelConfigurationRevision &&
+    task.modelReleaseRevision === target.modelReleaseRevision;
 }
 
 function retryWasAccepted(
@@ -489,10 +697,20 @@ export async function retryGenerationTask(
   target: GenerationRetryTarget,
   waitForCanvasRevision: GenerationRetryGate,
   signal?: AbortSignal,
+  assertCurrentInput?: GenerationRetryCurrentInputGate,
 ): Promise<GenerationTaskSummary> {
   return runExclusiveCanvasSubmit(target.canvasId, async () => {
-    await assertNoConflictingGroupRun(target.canvasId, target.nodeId);
-    return retryGenerationTaskUnlocked(target, waitForCanvasRevision, signal);
+    await assertNoConflictingGroupRun({
+      accountId: target.accountId,
+      canvasId: target.canvasId,
+      fixtureScopeId: target.fixtureScopeId ?? "",
+    }, target.nodeId);
+    return retryGenerationTaskUnlocked(
+      target,
+      waitForCanvasRevision,
+      signal,
+      assertCurrentInput,
+    );
   });
 }
 
@@ -500,9 +718,14 @@ async function retryGenerationTaskUnlocked(
   target: GenerationRetryTarget,
   waitForCanvasRevision: GenerationRetryGate,
   signal: AbortSignal | undefined,
+  assertCurrentInput: GenerationRetryCurrentInputGate | undefined,
 ): Promise<GenerationTaskSummary> {
-  const expectedCanvasRevision = await waitForCanvasRevision();
-  const before = await getGenerationTask(target.taskId, signal);
+  await waitForCanvasRevision();
+  const before = await getGenerationTask(
+    target.taskId,
+    signal,
+    target.fixtureScopeId,
+  );
   if (
     !retryTargetMatches(before, target) ||
     !target.generationInputKey ||
@@ -521,11 +744,25 @@ async function retryGenerationTaskUnlocked(
       "RETRY_TASK_CHANGED",
     );
   }
+  // The first gate covers edits already queued when Retry was clicked. A user
+  // can still enqueue a semantic edit while the task GET is in flight, so take
+  // a fresh durable high-water immediately before building the paid request.
+  const expectedCanvasRevision = await waitForCanvasRevision();
+  assertCurrentInput?.();
+  if (signal?.aborted) {
+    throw new DOMException("The operation was aborted", "AbortError");
+  }
   const body = JSON.stringify({
     canvasId: target.canvasId,
     expectedAttempt: before.attempt,
     expectedCanvasRevision,
     expectedGenerationInputKey: target.generationInputKey,
+    expectedGenerationOwnershipKey: target.generationOwnershipKey,
+    expectedFixtureScopeId: target.fixtureScopeId ?? "",
+    expectedModelConfigurationRevision: target.modelConfigurationRevision,
+    expectedModelInputContractFingerprint:
+      target.modelInputContractFingerprint,
+    expectedModelReleaseRevision: target.modelReleaseRevision,
     expectedUpdatedAt: before.updatedAt,
     kind: target.kind,
     nodeId: target.nodeId,
@@ -534,7 +771,19 @@ async function retryGenerationTaskUnlocked(
     const accepted = await runWithGroupRunCanvasAdmission(
       target.canvasId,
       async () => {
-        await assertNoConflictingGroupRun(target.canvasId, target.nodeId);
+        assertCurrentInput?.();
+        if (signal?.aborted) {
+          throw new DOMException("The operation was aborted", "AbortError");
+        }
+        await assertNoConflictingGroupRun({
+          accountId: target.accountId,
+          canvasId: target.canvasId,
+          fixtureScopeId: target.fixtureScopeId ?? "",
+        }, target.nodeId);
+        assertCurrentInput?.();
+        if (signal?.aborted) {
+          throw new DOMException("The operation was aborted", "AbortError");
+        }
         return readMutationJson<GenerationTaskSummary>(
           `/api/generation-tasks/${encodeURIComponent(target.taskId)}/retry`,
           {
@@ -566,7 +815,11 @@ async function retryGenerationTaskUnlocked(
       throw error;
     }
     try {
-      const recovered = await getGenerationTask(target.taskId, signal);
+      const recovered = await getGenerationTask(
+        target.taskId,
+        signal,
+        target.fixtureScopeId,
+      );
       if (
         retryTargetMatches(recovered, target) &&
         retryWasAccepted(before, recovered)
@@ -583,9 +836,11 @@ async function retryGenerationTaskUnlocked(
 export async function listGenerationTasks(
   canvasId: string,
   signal?: AbortSignal,
+  fixtureScopeId = "",
 ): Promise<GenerationTaskSummary[]> {
   const body = await readTaskStatusJson<{ tasks: GenerationTaskSummary[] }>(
-    `/api/generation-tasks?canvasId=${encodeURIComponent(canvasId)}`,
+    `/api/generation-tasks?canvasId=${encodeURIComponent(canvasId)}` +
+      `&fixtureScopeId=${encodeURIComponent(fixtureScopeId)}`,
     { cache: "no-store" },
     signal,
   );
@@ -596,14 +851,19 @@ export async function listGenerationTasks(
 
 type GenerationSubmissionIntent = {
   canvasId: string;
+  fixtureScopeId: string;
+  generationInputKey?: string;
   generationOwnershipKey?: string;
   idempotencyKey: string;
   kind: GenerationTaskKind;
+  modelInputContractFingerprint?: string;
+  modelConfigurationRevision?: string;
+  modelReleaseRevision?: string;
   nodeId: string;
   requestSignature: string;
   taskId?: string;
   updatedAt: string;
-  version: 1;
+  version: 2;
 };
 
 export type RecoverableGenerationInput = Omit<
@@ -619,6 +879,11 @@ export type EnsuredGenerationTask = {
 };
 
 const submissionIntentMemory = new Map<string, GenerationSubmissionIntent>();
+
+type GenerationSubmissionIntentRead =
+  | { status: "missing" }
+  | { intent: GenerationSubmissionIntent; status: "valid" }
+  | { raw: string; status: "corrupted" };
 
 function stableValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stableValue);
@@ -652,18 +917,28 @@ function submissionIntentSlot(
   kind: GenerationTaskKind,
   canvasId: string,
   nodeId: string,
+  fixtureScopeId = "",
 ) {
-  return `unboundry:generation-submission:v2:${encodeURIComponent(accountId)}:${encodeURIComponent(canvasId)}:${kind}:${encodeURIComponent(nodeId)}`;
+  const fixtureSuffix = fixtureScopeId
+    ? `:${encodeURIComponent(fixtureScopeId)}`
+    : "";
+  return `unboundry:generation-submission:v2:${encodeURIComponent(accountId)}:${encodeURIComponent(canvasId)}:${kind}:${encodeURIComponent(nodeId)}${fixtureSuffix}`;
 }
 
 function validIntent(
   value: unknown,
-  expected: { canvasId: string; kind: GenerationTaskKind; nodeId: string },
+  expected: {
+    canvasId: string;
+    fixtureScopeId: string;
+    kind: GenerationTaskKind;
+    nodeId: string;
+  },
 ): value is GenerationSubmissionIntent {
   if (!value || typeof value !== "object") return false;
   const intent = value as Partial<GenerationSubmissionIntent>;
-  return intent.version === 1 &&
+  return intent.version === 2 &&
     intent.canvasId === expected.canvasId &&
+    intent.fixtureScopeId === expected.fixtureScopeId &&
     intent.kind === expected.kind &&
     intent.nodeId === expected.nodeId &&
     typeof intent.idempotencyKey === "string" &&
@@ -673,8 +948,64 @@ function validIntent(
       (typeof intent.generationOwnershipKey === "string" &&
         intent.generationOwnershipKey.length > 0 &&
         intent.generationOwnershipKey.length <= 2_000)) &&
+    (intent.generationInputKey === undefined ||
+      (typeof intent.generationInputKey === "string" &&
+        intent.generationInputKey.length > 0 &&
+        intent.generationInputKey.length <= 32_000)) &&
+    (intent.modelInputContractFingerprint === undefined ||
+      (typeof intent.modelInputContractFingerprint === "string" &&
+        intent.modelInputContractFingerprint.length > 0 &&
+        intent.modelInputContractFingerprint.length <= 500)) &&
+    (intent.modelConfigurationRevision === undefined ||
+      (typeof intent.modelConfigurationRevision === "string" &&
+        intent.modelConfigurationRevision.length > 0 &&
+        intent.modelConfigurationRevision.length <= 500)) &&
+    (intent.modelReleaseRevision === undefined ||
+      (typeof intent.modelReleaseRevision === "string" &&
+        intent.modelReleaseRevision.length > 0 &&
+        intent.modelReleaseRevision.length <= 500)) &&
     typeof intent.updatedAt === "string" &&
     (intent.taskId === undefined || typeof intent.taskId === "string");
+}
+
+function readSubmissionIntentState(
+  accountId: string,
+  kind: GenerationTaskKind,
+  canvasId: string,
+  nodeId: string,
+  fixtureScopeId = "",
+): GenerationSubmissionIntentRead {
+  const slot = submissionIntentSlot(
+    accountId,
+    kind,
+    canvasId,
+    nodeId,
+    fixtureScopeId,
+  );
+  try {
+    const serialized = window.localStorage.getItem(slot);
+    if (serialized !== null) {
+      if (!serialized) return { raw: serialized, status: "corrupted" };
+      try {
+        const parsed: unknown = JSON.parse(serialized);
+        if (validIntent(parsed, { canvasId, fixtureScopeId, kind, nodeId })) {
+          submissionIntentMemory.set(slot, parsed);
+          return { intent: parsed, status: "valid" };
+        }
+      } catch {
+        // The exact raw value remains in storage until server authority has
+        // proved whether an already accepted task exists.
+      }
+      return { raw: serialized, status: "corrupted" };
+    }
+  } catch {
+    // Privacy modes can deny localStorage. The in-memory copy still protects
+    // rapid duplicate clicks for the lifetime of this page.
+  }
+  const memory = submissionIntentMemory.get(slot);
+  return memory
+    ? { intent: memory, status: "valid" }
+    : { status: "missing" };
 }
 
 function readSubmissionIntent(
@@ -682,23 +1013,23 @@ function readSubmissionIntent(
   kind: GenerationTaskKind,
   canvasId: string,
   nodeId: string,
+  fixtureScopeId = "",
 ) {
-  const slot = submissionIntentSlot(accountId, kind, canvasId, nodeId);
-  try {
-    const serialized = window.localStorage.getItem(slot);
-    if (serialized) {
-      const parsed: unknown = JSON.parse(serialized);
-      if (validIntent(parsed, { canvasId, kind, nodeId })) {
-        submissionIntentMemory.set(slot, parsed);
-        return parsed;
-      }
-      window.localStorage.removeItem(slot);
-    }
-  } catch {
-    // Privacy modes can deny localStorage. The in-memory copy still protects
-    // rapid duplicate clicks for the lifetime of this page.
+  const read = readSubmissionIntentState(
+    accountId,
+    kind,
+    canvasId,
+    nodeId,
+    fixtureScopeId,
+  );
+  if (read.status === "corrupted") {
+    throw new GenerationRequestError(
+      "生成请求记录需要先与服务器核对，为避免重复付费暂未提交",
+      409,
+      "GENERATION_INTENT_CORRUPTED",
+    );
   }
-  return submissionIntentMemory.get(slot);
+  return read.status === "valid" ? read.intent : undefined;
 }
 
 function writeSubmissionIntent(
@@ -710,6 +1041,7 @@ function writeSubmissionIntent(
     intent.kind,
     intent.canvasId,
     intent.nodeId,
+    intent.fixtureScopeId,
   );
   try {
     window.localStorage.setItem(slot, JSON.stringify(intent));
@@ -725,6 +1057,38 @@ function writeSubmissionIntent(
   submissionIntentMemory.set(slot, intent);
 }
 
+function replaceCorruptedSubmissionIntent(
+  accountId: string,
+  expectedRaw: string,
+  intent: GenerationSubmissionIntent,
+) {
+  const slot = submissionIntentSlot(
+    accountId,
+    intent.kind,
+    intent.canvasId,
+    intent.nodeId,
+    intent.fixtureScopeId,
+  );
+  try {
+    if (window.localStorage.getItem(slot) !== expectedRaw) {
+      throw new GenerationRequestError(
+        "生成请求记录已在其他页面变化，系统将先重新核对原任务",
+        409,
+        "GENERATION_INTENT_CHANGED",
+      );
+    }
+    window.localStorage.setItem(slot, JSON.stringify(intent));
+  } catch (error) {
+    if (error instanceof GenerationRequestError) throw error;
+    throw new GenerationRequestError(
+      "浏览器无法安全修复生成请求记录，为避免重复付费暂未提交",
+      503,
+      "GENERATION_INTENT_STORAGE_UNAVAILABLE",
+    );
+  }
+  submissionIntentMemory.set(slot, intent);
+}
+
 function prepareGenerationSubmission(
   accountId: string,
   kind: GenerationTaskKind,
@@ -732,56 +1096,78 @@ function prepareGenerationSubmission(
   options: GenerationOwnershipOptions,
 ) {
   const signature = requestSignature(kind, input);
-  const current = readSubmissionIntent(accountId, kind, input.canvasId, input.nodeId);
+  const fixtureScopeId = options.fixtureScopeId ?? "";
+  const current = readSubmissionIntent(
+    accountId,
+    kind,
+    input.canvasId,
+    input.nodeId,
+    fixtureScopeId,
+  );
   const generationOwnershipKey = options.generationOwnershipKey?.trim() || undefined;
+  const generationInputKey = options.generationInputKey?.trim() || undefined;
+  const modelInputContractFingerprint =
+    options.modelInputContractFingerprint?.trim() || undefined;
+  const modelConfigurationRevision =
+    options.modelConfigurationRevision?.trim() || undefined;
+  const modelReleaseRevision = options.modelReleaseRevision?.trim() || undefined;
   if (current) {
-    if (generationOwnershipKey && current.generationOwnershipKey) {
-      if (current.generationOwnershipKey === generationOwnershipKey) {
-        // Catalog-derived request fields may drift. Once both sides carry the
-        // same raw ownership proof, keep the original paid idempotency intent.
-        return current;
-      }
-      // A different non-empty ownership key is a genuinely different run and
-      // deliberately falls through to mint a new idempotency key.
-    } else if (generationOwnershipKey) {
-      if (current.requestSignature !== signature) {
-        // A legacy intent has no raw ownership proof. Never attach today's key
-        // to it unless the old catalog-derived signature still matches exactly.
-        clearGenerationSubmissionIntent(
-          kind,
-          input.canvasId,
-          input.nodeId,
-          undefined,
-          accountId,
-        );
-        throw new GenerationRequestError(
-          "旧生成任务无法证明仍属于当前输入，请再次提交",
-          409,
-          "GENERATION_OWNERSHIP_UNPROVEN",
-        );
-      }
-      const upgraded = { ...current, generationOwnershipKey };
-      writeSubmissionIntent(accountId, upgraded);
-      return upgraded;
-    } else if (current.requestSignature === signature) {
-      // Callers without ownership evidence retain the exact legacy signature
-      // fence; they never receive the relaxed catalog-drift behavior above.
-      return current;
-    }
+    // Never mint a second idempotency key while an older durable intent might
+    // already have crossed the paid boundary. ensureGenerationTask first asks
+    // the server for this exact key; only a confirmed empty lookup may upgrade
+    // the same key to a new semantic identity below.
+    return current;
   }
   const intent: GenerationSubmissionIntent = {
     canvasId: input.canvasId,
+    fixtureScopeId,
+    ...(generationInputKey ? { generationInputKey } : {}),
     ...(generationOwnershipKey ? { generationOwnershipKey } : {}),
     idempotencyKey: crypto.randomUUID(),
     kind,
+    ...(modelInputContractFingerprint ? { modelInputContractFingerprint } : {}),
+    ...(modelConfigurationRevision ? { modelConfigurationRevision } : {}),
+    ...(modelReleaseRevision ? { modelReleaseRevision } : {}),
     nodeId: input.nodeId,
     requestSignature: signature,
     updatedAt: new Date().toISOString(),
-    version: 1,
+    version: 2,
   };
   // This write deliberately happens before preflight and before the paid POST.
   writeSubmissionIntent(accountId, intent);
   return intent;
+}
+
+function replacementGenerationSubmissionIntent(
+  kind: GenerationTaskKind,
+  input: RecoverableGenerationInput,
+  options: GenerationOwnershipOptions,
+  idempotencyKey: string = crypto.randomUUID(),
+  taskId?: string,
+): GenerationSubmissionIntent {
+  const generationOwnershipKey = options.generationOwnershipKey?.trim() || undefined;
+  const generationInputKey = options.generationInputKey?.trim() || undefined;
+  const modelInputContractFingerprint =
+    options.modelInputContractFingerprint?.trim() || undefined;
+  const modelConfigurationRevision =
+    options.modelConfigurationRevision?.trim() || undefined;
+  const modelReleaseRevision = options.modelReleaseRevision?.trim() || undefined;
+  return {
+    canvasId: input.canvasId,
+    fixtureScopeId: options.fixtureScopeId ?? "",
+    ...(generationInputKey ? { generationInputKey } : {}),
+    ...(generationOwnershipKey ? { generationOwnershipKey } : {}),
+    idempotencyKey,
+    kind,
+    ...(modelInputContractFingerprint ? { modelInputContractFingerprint } : {}),
+    ...(modelConfigurationRevision ? { modelConfigurationRevision } : {}),
+    ...(modelReleaseRevision ? { modelReleaseRevision } : {}),
+    nodeId: input.nodeId,
+    requestSignature: requestSignature(kind, input),
+    ...(taskId ? { taskId } : {}),
+    updatedAt: new Date().toISOString(),
+    version: 2,
+  };
 }
 
 function rememberGenerationTask(
@@ -812,20 +1198,41 @@ function taskWithGenerationOwnership(
   task: GenerationTaskSummary,
   intent: GenerationSubmissionIntent,
 ) {
-  return intent.generationOwnershipKey
-    ? { ...task, generationOwnershipKey: intent.generationOwnershipKey }
-    : task;
+  return {
+    ...task,
+    ...(intent.generationInputKey
+      ? { generationInputKey: intent.generationInputKey }
+      : {}),
+    ...(intent.generationOwnershipKey
+      ? { generationOwnershipKey: intent.generationOwnershipKey }
+      : {}),
+  };
 }
 
 export function clearGenerationSubmissionIntent(
   kind: GenerationTaskKind,
   canvasId: string,
   nodeId: string,
-  taskId?: string,
-  accountId = "",
+  taskId: string | undefined,
+  accountId: string,
+  fixtureScopeId: string,
 ) {
-  const slot = submissionIntentSlot(accountId, kind, canvasId, nodeId);
-  const current = readSubmissionIntent(accountId, kind, canvasId, nodeId);
+  const slot = submissionIntentSlot(
+    accountId,
+    kind,
+    canvasId,
+    nodeId,
+    fixtureScopeId,
+  );
+  const read = readSubmissionIntentState(
+    accountId,
+    kind,
+    canvasId,
+    nodeId,
+    fixtureScopeId,
+  );
+  if (read.status === "corrupted" && taskId) return;
+  const current = read.status === "valid" ? read.intent : undefined;
   if (taskId && current && current.taskId !== taskId) return;
   submissionIntentMemory.delete(slot);
   try {
@@ -838,11 +1245,13 @@ export function clearGenerationSubmissionIntent(
 export async function getGenerationTaskByIdempotency(
   canvasId: string,
   idempotencyKey: string,
+  fixtureScopeId = "",
   signal?: AbortSignal,
 ): Promise<GenerationTaskSummary | undefined> {
   return readTaskStatusJson<GenerationTaskSummary>(
     `/api/generation-tasks/by-idempotency?canvasId=${encodeURIComponent(canvasId)}` +
-      `&idempotencyKey=${encodeURIComponent(idempotencyKey)}`,
+      `&idempotencyKey=${encodeURIComponent(idempotencyKey)}` +
+      `&fixtureScopeId=${encodeURIComponent(fixtureScopeId)}`,
     { cache: "no-store" },
     signal,
     true,
@@ -858,9 +1267,46 @@ export async function recoverPendingGenerationTask(
   accountId = "",
   options: GenerationOwnershipOptions = {},
 ) {
-  let intent = readSubmissionIntent(accountId, kind, canvasId, nodeId);
-  if (!intent) return undefined;
+  const fixtureScopeId = options.fixtureScopeId ?? "";
+  const intentRead = readSubmissionIntentState(
+    accountId,
+    kind,
+    canvasId,
+    nodeId,
+    fixtureScopeId,
+  );
+  let intent = intentRead.status === "valid" ? intentRead.intent : undefined;
+  const strictIdentity = {
+    generationInputKey: options.generationInputKey?.trim() || undefined,
+    generationOwnershipKey:
+      options.generationOwnershipKey?.trim() || undefined,
+    modelInputContractFingerprint:
+      options.modelInputContractFingerprint?.trim() || undefined,
+    modelConfigurationRevision:
+      options.modelConfigurationRevision?.trim() || undefined,
+    modelReleaseRevision: options.modelReleaseRevision?.trim() || undefined,
+  };
+  if (Object.values(strictIdentity).some((value) => !value)) return undefined;
+  if (!intent) {
+    const matches = (await listGenerationTasks(
+      canvasId,
+      signal,
+      fixtureScopeId,
+    )).filter((task) =>
+      task.kind === kind && task.nodeId === nodeId &&
+      (task.fixtureScopeId ?? "") === fixtureScopeId &&
+      generationIdentityIsComplete(task) &&
+      taskMatchesGenerationIdentity(task, strictIdentity)
+    );
+    return matches.length === 1 ? matches[0] : undefined;
+  }
   const generationOwnershipKey = options.generationOwnershipKey?.trim() || undefined;
+  const contractIdentityMatches =
+    intent.generationInputKey === options.generationInputKey &&
+    intent.modelInputContractFingerprint === options.modelInputContractFingerprint &&
+    intent.modelConfigurationRevision === options.modelConfigurationRevision &&
+    intent.modelReleaseRevision === options.modelReleaseRevision;
+  if (!contractIdentityMatches) return undefined;
   if (intent.generationOwnershipKey) {
     if (
       !generationOwnershipKey ||
@@ -879,6 +1325,7 @@ export async function recoverPendingGenerationTask(
         nodeId,
         intent.taskId,
         accountId,
+        fixtureScopeId,
       );
       return undefined;
     }
@@ -890,11 +1337,24 @@ export async function recoverPendingGenerationTask(
   const task = await getGenerationTaskByIdempotency(
     canvasId,
     intent.idempotencyKey,
+    fixtureScopeId,
     signal,
   );
   if (!task) return undefined;
-  if (task.canvasId !== canvasId || task.kind !== kind || task.nodeId !== nodeId) {
-    clearGenerationSubmissionIntent(kind, canvasId, nodeId, undefined, accountId);
+  if (
+    task.canvasId !== canvasId || task.kind !== kind || task.nodeId !== nodeId ||
+    (task.fixtureScopeId ?? "") !== fixtureScopeId ||
+    !generationIdentityIsComplete(task) ||
+    !taskMatchesGenerationIdentity(task, strictIdentity)
+  ) {
+    clearGenerationSubmissionIntent(
+      kind,
+      canvasId,
+      nodeId,
+      undefined,
+      accountId,
+      fixtureScopeId,
+    );
     return undefined;
   }
   rememberGenerationTask(accountId, intent, task);
@@ -928,29 +1388,233 @@ export async function ensureGenerationTask(
   assertCurrentInput?: () => void,
   options: GenerationOwnershipOptions = {},
 ): Promise<EnsuredGenerationTask> {
-  if (legacyGenerationSubmissionIsBlocked(accountId, input.canvasId, input.nodeId)) {
+  if (legacyGenerationSubmissionIsBlocked(
+    accountId,
+    input.canvasId,
+    options.fixtureScopeId ?? "",
+    input.nodeId,
+  )) {
     throw new GenerationRequestError(
       "原任务状态仍在安全核对中，为避免重复付费暂不能新建任务",
       409,
       "LEGACY_GENERATION_RECONCILIATION_BLOCKED",
     );
   }
+  const workflowBinding = workflowBindingFromOptions(options);
+  const groupRunScope = {
+    accountId,
+    canvasId: input.canvasId,
+    fixtureScopeId: options.fixtureScopeId ?? "",
+  };
+  const withCanvasAdmission = <T>(work: () => Promise<T> | T) =>
+    options.canvasAdmissionAlreadyHeld
+      ? Promise.resolve().then(work)
+      : runWithGroupRunCanvasAdmission(input.canvasId, work);
   await assertNoConflictingGroupRun(
-    input.canvasId,
+    groupRunScope,
     input.nodeId,
     options.workflowRunId,
   );
-  const intent = prepareGenerationSubmission(accountId, kind, input, options);
-  const prepared = { ...input, idempotencyKey: intent.idempotencyKey };
-  const existing = await getGenerationTaskByIdempotency(
+  const intentRead = readSubmissionIntentState(
+    accountId,
+    kind,
     input.canvasId,
-    intent.idempotencyKey,
+    input.nodeId,
+    options.fixtureScopeId ?? "",
   );
+  const strictIdentity = {
+    generationInputKey: options.generationInputKey?.trim() || undefined,
+    generationOwnershipKey:
+      options.generationOwnershipKey?.trim() || undefined,
+    modelInputContractFingerprint:
+      options.modelInputContractFingerprint?.trim() || undefined,
+    modelConfigurationRevision:
+      options.modelConfigurationRevision?.trim() || undefined,
+    modelReleaseRevision: options.modelReleaseRevision?.trim() || undefined,
+  };
+  const modernIdentityRequired = accountId.trim().length > 0 ||
+    workflowBinding !== undefined;
+  if (modernIdentityRequired && !generationIdentityIsComplete(strictIdentity)) {
+    throw new GenerationRequestError(
+      "生成请求缺少完整版本化输入身份，已在提交前停止",
+      409,
+      "GENERATION_IDENTITY_INCOMPLETE",
+    );
+  }
+  let recoveredFromCorruptIntent: GenerationTaskSummary | undefined;
+  let intent: GenerationSubmissionIntent;
+  if (intentRead.status === "corrupted") {
+    if (!generationIdentityIsComplete(strictIdentity)) {
+      throw new GenerationRequestError(
+        "生成请求记录需要完整输入身份才能安全核对，为避免重复付费暂未提交",
+        409,
+        "GENERATION_INTENT_CORRUPTED",
+      );
+    }
+    const repaired = await withCanvasAdmission(
+      async () => {
+        await assertNoConflictingGroupRun(
+          groupRunScope,
+          input.nodeId,
+          options.workflowRunId,
+        );
+        const nodeTasks = (await listGenerationTasks(
+          input.canvasId,
+          undefined,
+          options.fixtureScopeId ?? "",
+        )).filter(
+          (task) => task.kind === kind && task.nodeId === input.nodeId &&
+            (task.fixtureScopeId ?? "") === (options.fixtureScopeId ?? ""),
+        );
+        const exactMatches = nodeTasks.filter((task) =>
+          task.generationIdentityVersion === 2 &&
+          generationIdentityIsComplete(task) &&
+          taskMatchesGenerationIdentity(task, strictIdentity) &&
+          (!workflowBinding || taskMatchesWorkflowBinding(task, workflowBinding))
+        );
+        if (exactMatches.length > 1) {
+          throw new GenerationRequestError(
+            "服务器存在多条相同输入任务，系统将保留证据并停止重复提交",
+            409,
+            "GENERATION_INTENT_CORRUPTED",
+          );
+        }
+        const authoritative = exactMatches[0];
+        if (authoritative) {
+          if (!authoritative.idempotencyKey) {
+            throw new GenerationRequestError(
+              "原生成任务缺少可验证的提交身份，系统已停止重复提交",
+              409,
+              "GENERATION_INTENT_CORRUPTED",
+            );
+          }
+          const recoveredIntent = replacementGenerationSubmissionIntent(
+            kind,
+            input,
+            options,
+            authoritative.idempotencyKey,
+            authoritative.id,
+          );
+          replaceCorruptedSubmissionIntent(
+            accountId,
+            intentRead.raw,
+            recoveredIntent,
+          );
+          return { intent: recoveredIntent, task: authoritative };
+        }
+        const unresolved = nodeTasks.some((task) =>
+          ["queued", "running", "retrying", "recovering"].includes(task.state) ||
+          task.retryBlockCode === "RETRY_OUTCOME_UNKNOWN"
+        );
+        if (unresolved) {
+          throw new GenerationRequestError(
+            "服务器仍有无法归属的原任务，系统将继续核对且不会重复提交",
+            409,
+            "GENERATION_INTENT_CORRUPTED",
+          );
+        }
+        const replacement = replacementGenerationSubmissionIntent(
+          kind,
+          input,
+          options,
+        );
+        replaceCorruptedSubmissionIntent(accountId, intentRead.raw, replacement);
+        return { intent: replacement };
+      },
+    );
+    intent = repaired.intent;
+    recoveredFromCorruptIntent = repaired.task;
+  } else if (intentRead.status === "missing" && modernIdentityRequired) {
+    const recovered = await withCanvasAdmission(
+      async () => {
+        await assertNoConflictingGroupRun(
+          groupRunScope,
+          input.nodeId,
+          options.workflowRunId,
+        );
+        const nodeTasks = (await listGenerationTasks(
+          input.canvasId,
+          undefined,
+          options.fixtureScopeId ?? "",
+        )).filter(
+          (task) => task.kind === kind && task.nodeId === input.nodeId &&
+            (task.fixtureScopeId ?? "") === (options.fixtureScopeId ?? ""),
+        );
+        const exactMatches = nodeTasks.filter((task) =>
+          task.generationIdentityVersion === 2 &&
+          generationIdentityIsComplete(task) &&
+          taskMatchesGenerationIdentity(task, strictIdentity) &&
+          (!workflowBinding || taskMatchesWorkflowBinding(task, workflowBinding))
+        );
+        if (exactMatches.length > 1) {
+          throw new GenerationRequestError(
+            "服务器存在多条相同输入任务，系统将保留证据并停止重复提交",
+            409,
+            "GENERATION_IDENTITY_AMBIGUOUS",
+          );
+        }
+        const authoritative = exactMatches[0];
+        if (authoritative) {
+          if (!authoritative.idempotencyKey) {
+            throw new GenerationRequestError(
+              "原生成任务缺少可验证的提交身份，系统已停止重复提交",
+              409,
+              "GENERATION_IDENTITY_INCOMPLETE",
+            );
+          }
+          return authoritative;
+        }
+        const unresolvedIncomplete = nodeTasks.some((task) =>
+          (!generationIdentityIsComplete(task) ||
+            task.generationIdentityVersion !== 2) &&
+          (["queued", "running", "retrying", "recovering"].includes(task.state) ||
+            task.retryBlockCode === "RETRY_OUTCOME_UNKNOWN")
+        );
+        if (unresolvedIncomplete) {
+          throw new GenerationRequestError(
+            "服务器仍有旧版任务正在安全核对；完整身份确认前不会重复提交",
+            409,
+            "GENERATION_IDENTITY_INCOMPLETE",
+          );
+        }
+        return undefined;
+      },
+    );
+    if (recovered) {
+      intent = replacementGenerationSubmissionIntent(
+        kind,
+        input,
+        options,
+        recovered.idempotencyKey,
+        recovered.id,
+      );
+      writeSubmissionIntent(accountId, intent);
+      recoveredFromCorruptIntent = recovered;
+    } else {
+      intent = prepareGenerationSubmission(accountId, kind, input, options);
+    }
+  } else {
+    intent = prepareGenerationSubmission(accountId, kind, input, options);
+  }
+  const existing = recoveredFromCorruptIntent ??
+    await getGenerationTaskByIdempotency(
+      input.canvasId,
+      intent.idempotencyKey,
+      options.fixtureScopeId ?? "",
+    );
   if (existing) {
     if (
       existing.canvasId !== input.canvasId ||
+      (existing.fixtureScopeId ?? "") !== (options.fixtureScopeId ?? "") ||
       existing.kind !== kind ||
-      existing.nodeId !== input.nodeId
+      existing.nodeId !== input.nodeId ||
+      (modernIdentityRequired && (
+        existing.generationIdentityVersion !== 2 ||
+        !generationIdentityIsComplete(existing) ||
+        !generationIdentityIsComplete(intent)
+      )) ||
+      !taskMatchesGenerationIdentity(existing, intent) ||
+      (workflowBinding && !taskMatchesWorkflowBinding(existing, workflowBinding))
     ) {
       throw new GenerationRequestError(
         "生成任务关联不一致，请修改内容后再试",
@@ -965,6 +1629,7 @@ export async function ensureGenerationTask(
         input.nodeId,
         undefined,
         accountId,
+        options.fixtureScopeId ?? "",
       );
       throw new GenerationRequestError(
         existing.errorMessage ?? "生成任务已取消",
@@ -981,6 +1646,68 @@ export async function ensureGenerationTask(
     };
   }
 
+  const signature = requestSignature(kind, input);
+  const nextGenerationInputKey = options.generationInputKey?.trim() || undefined;
+  const nextGenerationOwnershipKey =
+    options.generationOwnershipKey?.trim() || undefined;
+  const nextContractFingerprint =
+    options.modelInputContractFingerprint?.trim() || undefined;
+  const nextModelConfigurationRevision =
+    options.modelConfigurationRevision?.trim() || undefined;
+  const nextModelReleaseRevision =
+    options.modelReleaseRevision?.trim() || undefined;
+  if (
+    intent.requestSignature !== signature ||
+    intent.generationInputKey !== nextGenerationInputKey ||
+    intent.generationOwnershipKey !== nextGenerationOwnershipKey ||
+    intent.modelInputContractFingerprint !== nextContractFingerprint ||
+    intent.modelConfigurationRevision !== nextModelConfigurationRevision ||
+    intent.modelReleaseRevision !== nextModelReleaseRevision
+  ) {
+    const {
+      generationInputKey: _oldInputKey,
+      generationOwnershipKey: _oldOwnershipKey,
+      modelInputContractFingerprint: _oldContractFingerprint,
+      modelConfigurationRevision: _oldModelConfigurationRevision,
+      modelReleaseRevision: _oldModelReleaseRevision,
+      taskId: _oldTaskId,
+      ...sameIntent
+    } = intent;
+    intent = {
+      ...sameIntent,
+      ...(nextGenerationInputKey
+        ? { generationInputKey: nextGenerationInputKey }
+        : {}),
+      ...(nextGenerationOwnershipKey
+        ? { generationOwnershipKey: nextGenerationOwnershipKey }
+        : {}),
+      ...(nextContractFingerprint
+        ? { modelInputContractFingerprint: nextContractFingerprint }
+        : {}),
+      ...(nextModelConfigurationRevision
+        ? { modelConfigurationRevision: nextModelConfigurationRevision }
+        : {}),
+      ...(nextModelReleaseRevision
+        ? { modelReleaseRevision: nextModelReleaseRevision }
+        : {}),
+      requestSignature: signature,
+      updatedAt: new Date().toISOString(),
+    };
+    writeSubmissionIntent(accountId, intent);
+  }
+  const prepared = {
+    ...input,
+    fixtureScopeId: options.fixtureScopeId ?? "",
+    generationIdentityVersion: 2 as const,
+    generationInputKey: nextGenerationInputKey,
+    generationOwnershipKey: nextGenerationOwnershipKey,
+    idempotencyKey: intent.idempotencyKey,
+    modelConfigurationRevision: nextModelConfigurationRevision,
+    modelInputContractFingerprint: nextContractFingerprint,
+    modelReleaseRevision: nextModelReleaseRevision,
+    ...(workflowBinding ? { workflowBinding } : {}),
+  };
+
   const preflight = await preflightGeneration(kind, prepared);
   if (!preflight.canSubmit || !preflight.canEnqueue) {
     throw new GenerationRequestError(
@@ -994,9 +1721,9 @@ export async function ensureGenerationTask(
   }
 
   try {
-    return await runWithGroupRunCanvasAdmission(input.canvasId, async () => {
+    return await withCanvasAdmission(async () => {
       await assertNoConflictingGroupRun(
-        input.canvasId,
+        groupRunScope,
         input.nodeId,
         options.workflowRunId,
       );
@@ -1006,8 +1733,15 @@ export async function ensureGenerationTask(
       const task = await postGeneration(kind, prepared);
       if (
         task.canvasId !== input.canvasId ||
+        (task.fixtureScopeId ?? "") !== (options.fixtureScopeId ?? "") ||
         task.kind !== kind ||
         task.nodeId !== input.nodeId ||
+        (modernIdentityRequired && (
+          task.generationIdentityVersion !== 2 ||
+          !generationIdentityIsComplete(task) ||
+          !taskMatchesGenerationIdentity(task, strictIdentity)
+        )) ||
+        (workflowBinding && !taskMatchesWorkflowBinding(task, workflowBinding)) ||
         task.state === "cancelled"
       ) {
         throw new GenerationRequestError(
@@ -1035,12 +1769,19 @@ export async function ensureGenerationTask(
         const recovered = await getGenerationTaskByIdempotency(
           input.canvasId,
           intent.idempotencyKey,
+          options.fixtureScopeId ?? "",
         );
         if (
           recovered &&
+          generationIdentityIsComplete(intent) &&
+          generationIdentityIsComplete(recovered) &&
           recovered.canvasId === input.canvasId &&
+          (recovered.fixtureScopeId ?? "") === (options.fixtureScopeId ?? "") &&
           recovered.kind === kind &&
           recovered.nodeId === input.nodeId &&
+          taskMatchesGenerationIdentity(recovered, intent) &&
+          (!workflowBinding ||
+            taskMatchesWorkflowBinding(recovered, workflowBinding)) &&
           recovered.state !== "cancelled"
         ) {
           rememberGenerationTask(accountId, intent, recovered);
@@ -1070,13 +1811,25 @@ export async function ensureGenerationTask(
         input.nodeId,
         undefined,
         accountId,
+        options.fixtureScopeId ?? "",
       );
     }
     throw error;
   }
 }
 
+type GenerationSubmissionIdentityInput = {
+  fixtureScopeId?: string;
+  generationIdentityVersion: 2;
+  generationInputKey: string;
+  generationOwnershipKey: string;
+  modelConfigurationRevision: string;
+  modelInputContractFingerprint: string;
+  modelReleaseRevision: string;
+};
+
 export async function submitImageGeneration(input: {
+  accountId: string;
   canvasId: string;
   canvasRevision?: number;
   idempotencyKey: string;
@@ -1095,13 +1848,22 @@ export async function submitImageGeneration(input: {
     }>;
   };
   prompt: string;
-}): Promise<GenerationTaskSummary> {
+} & GenerationSubmissionIdentityInput): Promise<GenerationTaskSummary> {
+  const { accountId, fixtureScopeId = "", ...requestInput } = input;
   return runExclusiveCanvasSubmit(input.canvasId, async () => {
     return runWithGroupRunCanvasAdmission(input.canvasId, async () => {
-      await assertNoConflictingGroupRun(input.canvasId, input.nodeId);
+      await assertNoConflictingGroupRun({
+        accountId,
+        canvasId: input.canvasId,
+        fixtureScopeId,
+      }, input.nodeId);
       return readJson(
         await fetch("/api/generation-tasks", {
-          body: JSON.stringify({ ...input, kind: "image" }),
+          body: JSON.stringify({
+            ...requestInput,
+            fixtureScopeId,
+            kind: "image",
+          }),
           headers: { "Content-Type": "application/json" },
           method: "POST",
         }),
@@ -1113,15 +1875,30 @@ export async function submitImageGeneration(input: {
 export type GenerationPreflightInput = {
   canvasId: string;
   canvasRevision?: number;
+  fixtureScopeId?: string;
+  generationIdentityVersion?: 2;
+  generationInputKey?: string;
+  generationOwnershipKey?: string;
   imageTool?: ImageGenerationToolInput;
   idempotencyKey: string;
   inputSchemaVersion?: 1;
   inputs?: NodeInputSnapshot[];
   model?: string;
+  modelConfigurationRevision?: string;
+  modelInputContractFingerprint?: string;
+  modelReleaseRevision?: string;
   nodeId: string;
   ownPrompt?: string;
   parameters?: unknown;
   prompt: string;
+  workflowBinding?: {
+    generationInputKey: string;
+    generationOwnershipKey: string;
+    groupId: string;
+    modelConfigurationRevision: string;
+    modelReleaseRevision: string;
+    runId: string;
+  };
 };
 
 export type GenerationPreflightResult = {
@@ -1206,14 +1983,20 @@ export async function preflightTextGeneration(
 }
 
 export async function submitTextGeneration(
-  input: TextGenerationInput,
+  input: TextGenerationInput & { accountId: string } &
+    GenerationSubmissionIdentityInput,
 ): Promise<GenerationTaskSummary> {
+  const { accountId, fixtureScopeId = "", ...requestInput } = input;
   return runExclusiveCanvasSubmit(input.canvasId, async () => {
     return runWithGroupRunCanvasAdmission(input.canvasId, async () => {
-      await assertNoConflictingGroupRun(input.canvasId, input.nodeId);
+      await assertNoConflictingGroupRun({
+        accountId,
+        canvasId: input.canvasId,
+        fixtureScopeId,
+      }, input.nodeId);
       return readJson(
         await fetch("/api/generation-tasks", {
-          body: JSON.stringify({ ...input, kind: "text" }),
+          body: JSON.stringify({ ...requestInput, fixtureScopeId, kind: "text" }),
           headers: { "Content-Type": "application/json" },
           method: "POST",
         }),
@@ -1223,6 +2006,7 @@ export async function submitTextGeneration(
 }
 
 export async function submitVideoGeneration(input: {
+  accountId: string;
   canvasId: string;
   canvasRevision?: number;
   idempotencyKey: string;
@@ -1233,13 +2017,18 @@ export async function submitVideoGeneration(input: {
   ownPrompt?: string;
   parameters: Record<string, boolean | number | string>;
   prompt: string;
-}): Promise<GenerationTaskSummary> {
+} & GenerationSubmissionIdentityInput): Promise<GenerationTaskSummary> {
+  const { accountId, fixtureScopeId = "", ...requestInput } = input;
   return runExclusiveCanvasSubmit(input.canvasId, async () => {
     return runWithGroupRunCanvasAdmission(input.canvasId, async () => {
-      await assertNoConflictingGroupRun(input.canvasId, input.nodeId);
+      await assertNoConflictingGroupRun({
+        accountId,
+        canvasId: input.canvasId,
+        fixtureScopeId,
+      }, input.nodeId);
       return readJson(
         await fetch("/api/generation-tasks", {
-          body: JSON.stringify({ ...input, kind: "video" }),
+          body: JSON.stringify({ ...requestInput, fixtureScopeId, kind: "video" }),
           headers: { "Content-Type": "application/json" },
           method: "POST",
         }),
@@ -1264,6 +2053,7 @@ export async function preflightVideoGeneration(input: {
 }
 
 export async function submitAudioGeneration(input: {
+  accountId: string;
   canvasId: string;
   canvasRevision?: number;
   idempotencyKey: string;
@@ -1274,13 +2064,18 @@ export async function submitAudioGeneration(input: {
   ownPrompt?: string;
   parameters: Record<string, boolean | number | string>;
   prompt: string;
-}): Promise<GenerationTaskSummary> {
+} & GenerationSubmissionIdentityInput): Promise<GenerationTaskSummary> {
+  const { accountId, fixtureScopeId = "", ...requestInput } = input;
   return runExclusiveCanvasSubmit(input.canvasId, async () => {
     return runWithGroupRunCanvasAdmission(input.canvasId, async () => {
-      await assertNoConflictingGroupRun(input.canvasId, input.nodeId);
+      await assertNoConflictingGroupRun({
+        accountId,
+        canvasId: input.canvasId,
+        fixtureScopeId,
+      }, input.nodeId);
       return readJson(
         await fetch("/api/generation-tasks", {
-          body: JSON.stringify({ ...input, kind: "audio" }),
+          body: JSON.stringify({ ...requestInput, fixtureScopeId, kind: "audio" }),
           headers: { "Content-Type": "application/json" },
           method: "POST",
         }),
@@ -1292,12 +2087,13 @@ export async function submitAudioGeneration(input: {
 export async function waitForGenerationTask(
   taskId: string,
   signal?: AbortSignal,
+  fixtureScopeId = "",
 ) {
   // Generic relay media is allowed to poll for at most 15 minutes server-side.
   // Keep the browser waiting slightly longer so it never reports a false local
   // failure while the durable server task is still running.
   for (let attempt = 0; attempt < 1800; attempt += 1) {
-    const task = await getGenerationTask(taskId, signal);
+    const task = await getGenerationTask(taskId, signal, fixtureScopeId);
     if (["success", "failed", "cancelled"].includes(task.state)) return task;
     await new Promise<void>((resolve, reject) => {
       const onAbort = () => {
@@ -1316,5 +2112,5 @@ export async function waitForGenerationTask(
   // The server task is still active after the local waiting window. Return the
   // current snapshot so the caller can keep the breathing light and continue
   // with automatic recovery instead of showing a red error.
-  return getGenerationTask(taskId, signal);
+  return getGenerationTask(taskId, signal, fixtureScopeId);
 }

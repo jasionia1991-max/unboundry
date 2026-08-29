@@ -117,7 +117,7 @@ test("generation submission fails closed before preflight when localStorage reje
     expect(preflights).toBe(0);
     expect(submissionPosts).toBe(0);
   } finally {
-    clearGenerationSubmissionIntent("text", input.canvasId, input.nodeId);
+    clearGenerationSubmissionIntent("text", input.canvasId, input.nodeId, undefined, "", "");
     globalThis.fetch = originalFetch;
     if (originalWindow) {
       Object.defineProperty(globalThis, "window", {
@@ -129,6 +129,113 @@ test("generation submission fails closed before preflight when localStorage reje
     }
   }
 });
+
+for (const [label, corruptRaw] of [
+  ["empty", ""],
+  ["malformed", "{not-json"],
+] as const) {
+  test(`a ${label} durable intent repairs only from exact server authority and never posts again`, async () => {
+    const originalFetch = globalThis.fetch;
+    const originalWindow = (globalThis as typeof globalThis & { window?: Window })
+      .window;
+    const storage = memoryStorage();
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: { localStorage: storage },
+    });
+    const accountId = `account-corrupt-${label}`;
+    const input = {
+      canvasId: "canvas-idempotency-test",
+      canvasRevision: 2,
+      inputSchemaVersion: 1 as const,
+      inputs: [],
+      model: "text-model-corrupt-intent",
+      nodeId: `text-corrupt-intent-${label}`,
+      ownPrompt: "recover exact accepted task",
+      parameters: { thinking: "disabled" },
+      prompt: "recover exact accepted task",
+    };
+    const identity = {
+      generationInputKey: `input-corrupt-${label}`,
+      generationOwnershipKey: `ownership-corrupt-${label}`,
+      modelInputContractFingerprint: `contract-corrupt-${label}`,
+      modelConfigurationRevision: `config-corrupt-${label}`,
+      modelReleaseRevision: `revision-corrupt-${label}`,
+    };
+    const authoritative = {
+      ...task("text", input.nodeId, `task-corrupt-${label}`),
+      ...identity,
+      generationIdentityVersion: 2 as const,
+      idempotencyKey: `idempotency-corrupt-${label}`,
+    } satisfies GenerationTaskSummary;
+    const slot = `unboundry:generation-submission:v2:${encodeURIComponent(accountId)}:${encodeURIComponent(input.canvasId)}:text:${encodeURIComponent(input.nodeId)}`;
+    storage.setItem(slot, corruptRaw);
+    let authorityReads = 0;
+    let exactReads = 0;
+    let preflights = 0;
+    let submissionPosts = 0;
+    globalThis.fetch = async (url, init) => {
+      const parsed = new URL(String(url), "http://127.0.0.1");
+      if (parsed.pathname.endsWith("/by-idempotency")) {
+        exactReads += 1;
+        return Response.json({ error: "unexpected exact read" }, { status: 500 });
+      }
+      if (parsed.pathname.endsWith("/preflight")) {
+        preflights += 1;
+        return Response.json({ canEnqueue: true, canSubmit: true, problems: [] });
+      }
+      if (parsed.pathname === "/api/generation-tasks" && init?.method === "POST") {
+        submissionPosts += 1;
+        return Response.json(authoritative, { status: 202 });
+      }
+      if (parsed.pathname === "/api/generation-tasks") {
+        authorityReads += 1;
+        return Response.json({ tasks: [authoritative] });
+      }
+      throw new Error(`Unexpected request: ${parsed.pathname}`);
+    };
+
+    try {
+      await expect(ensureGenerationTask(
+        "text",
+        input,
+        accountId,
+        undefined,
+        identity,
+      )).resolves.toMatchObject({
+        idempotencyKey: authoritative.idempotencyKey,
+        recovered: true,
+        task: { id: authoritative.id },
+      });
+      expect(authorityReads).toBe(1);
+      expect(exactReads).toBe(0);
+      expect(preflights).toBe(0);
+      expect(submissionPosts).toBe(0);
+      expect(JSON.parse(storage.getItem(slot) ?? "null")).toMatchObject({
+        idempotencyKey: authoritative.idempotencyKey,
+        taskId: authoritative.id,
+      });
+    } finally {
+      clearGenerationSubmissionIntent(
+        "text",
+        input.canvasId,
+        input.nodeId,
+        undefined,
+        accountId,
+        "",
+      );
+      globalThis.fetch = originalFetch;
+      if (originalWindow) {
+        Object.defineProperty(globalThis, "window", {
+          configurable: true,
+          value: originalWindow,
+        });
+      } else {
+        Reflect.deleteProperty(globalThis, "window");
+      }
+    }
+  });
+}
 
 test("an existing same-page intent remains exact-GET recoverable when storage becomes unavailable", async () => {
   const originalFetch = globalThis.fetch;
@@ -197,7 +304,7 @@ test("an existing same-page intent remains exact-GET recoverable when storage be
     expect(submissionPosts).toBe(1);
   } finally {
     storageUnavailable = false;
-    clearGenerationSubmissionIntent("image", input.canvasId, input.nodeId);
+    clearGenerationSubmissionIntent("image", input.canvasId, input.nodeId, undefined, "", "");
     globalThis.fetch = originalFetch;
     if (originalWindow) {
       Object.defineProperty(globalThis, "window", {
@@ -239,12 +346,19 @@ test("shared four-node submission recovers a lost Text POST response and never c
     if (parsed.pathname === "/api/generation-tasks" && init?.method === "POST") {
       submissionPosts += 1;
       const body = JSON.parse(String(init.body)) as {
+        generationInputKey: string;
+        generationOwnershipKey: string;
         idempotencyKey: string;
         kind: GenerationTaskKind;
+        modelInputContractFingerprint: string;
+        modelReleaseRevision: string;
         nodeId: string;
       };
       submittedKey = body.idempotencyKey;
-      serverTask = task(body.kind, body.nodeId, "task-created-before-response-loss");
+      serverTask = {
+        ...task(body.kind, body.nodeId, "task-created-before-response-loss"),
+        ...identity,
+      };
       throw new TypeError("simulated lost POST response");
     }
     throw new Error(`Unexpected request: ${parsed.pathname}`);
@@ -261,7 +375,13 @@ test("shared four-node submission recovers a lost Text POST response and never c
     parameters: { thinking: "disabled" },
     prompt: "safe prompt",
   };
-  const generationOwnershipKey = "ownership:text-idempotency-target:v1";
+  const identity = {
+    generationInputKey: "input:text-idempotency-target:v1",
+    generationOwnershipKey: "ownership:text-idempotency-target:v1",
+    modelInputContractFingerprint: "contract:text-idempotency-target:v1",
+    modelConfigurationRevision: "config:text-idempotency-target:v1",
+    modelReleaseRevision: "revision:text-idempotency-target:v1",
+  };
 
   try {
     const first = await ensureGenerationTask(
@@ -269,13 +389,13 @@ test("shared four-node submission recovers a lost Text POST response and never c
       input,
       "",
       undefined,
-      { generationOwnershipKey },
+      identity,
     );
     expect(first).toMatchObject({
-      generationOwnershipKey,
+      generationOwnershipKey: identity.generationOwnershipKey,
       recovered: true,
       task: {
-        generationOwnershipKey,
+        generationOwnershipKey: identity.generationOwnershipKey,
         id: "task-created-before-response-loss",
       },
     });
@@ -283,7 +403,7 @@ test("shared four-node submission recovers a lost Text POST response and never c
       ...input,
       // Autosave revisions are deliberately not part of the semantic key.
       canvasRevision: 8,
-    }, "", undefined, { generationOwnershipKey });
+    }, "", undefined, identity);
     expect(second.task.id).toBe(first.task.id);
     expect(second.idempotencyKey).toBe(first.idempotencyKey);
     expect(submissionPosts).toBe(1);
@@ -296,9 +416,9 @@ test("shared four-node submission recovers a lost Text POST response and never c
       undefined,
       undefined,
       "",
-      { generationOwnershipKey },
+      identity,
     )).toMatchObject({
-      generationOwnershipKey,
+      generationOwnershipKey: identity.generationOwnershipKey,
       id: first.task.id,
     });
     expect(await recoverPendingGenerationTask(
@@ -313,13 +433,13 @@ test("shared four-node submission recovers a lost Text POST response and never c
         parameters: { thinking: "catalog-default-drift" },
       },
       "",
-      { generationOwnershipKey },
+      identity,
     )).toMatchObject({
-      generationOwnershipKey,
+      generationOwnershipKey: identity.generationOwnershipKey,
       id: first.task.id,
     });
   } finally {
-    clearGenerationSubmissionIntent("text", input.canvasId, input.nodeId);
+    clearGenerationSubmissionIntent("text", input.canvasId, input.nodeId, undefined, "", "");
     globalThis.fetch = originalFetch;
     if (originalWindow) {
       Object.defineProperty(globalThis, "window", {
@@ -366,17 +486,24 @@ test("initial submission reconciles one committed task after its response return
       submissionPosts += 1;
       order.push("submission-post");
       const body = JSON.parse(String(init.body)) as {
+        generationInputKey: string;
+        generationOwnershipKey: string;
         idempotencyKey: string;
         kind: GenerationTaskKind;
+        modelInputContractFingerprint: string;
+        modelReleaseRevision: string;
         nodeId: string;
       };
       submittedKey = body.idempotencyKey;
-      serverTask = task(
-        body.kind,
-        body.nodeId,
-        "initial-task-committed-before-500",
-        "queued",
-      );
+      serverTask = {
+        ...task(
+          body.kind,
+          body.nodeId,
+          "initial-task-committed-before-500",
+          "queued",
+        ),
+        ...identity,
+      };
       return Response.json({
         code: "GENERATION_TASK_ACCEPTED_RESPONSE_FAILED",
         error: "accepted task summary failed",
@@ -395,7 +522,13 @@ test("initial submission reconciles one committed task after its response return
     parameters: { thinking: "disabled" },
     prompt: "recover committed initial task",
   };
-  const generationOwnershipKey = "ownership:text-initial-500:v1";
+  const identity = {
+    generationInputKey: "input:text-initial-500:v1",
+    generationOwnershipKey: "ownership:text-initial-500:v1",
+    modelInputContractFingerprint: "contract:text-initial-500:v1",
+    modelConfigurationRevision: "config:text-initial-500:v1",
+    modelReleaseRevision: "revision:text-initial-500:v1",
+  };
 
   try {
     const recovered = await ensureGenerationTask(
@@ -403,13 +536,13 @@ test("initial submission reconciles one committed task after its response return
       input,
       "",
       undefined,
-      { generationOwnershipKey },
+      identity,
     );
     expect(recovered).toMatchObject({
       idempotencyKey: submittedKey,
       recovered: true,
       task: {
-        generationOwnershipKey,
+        generationOwnershipKey: identity.generationOwnershipKey,
         id: "initial-task-committed-before-500",
         state: "queued",
       },
@@ -419,7 +552,7 @@ test("initial submission reconciles one committed task after its response return
       input,
       "",
       undefined,
-      { generationOwnershipKey },
+      identity,
     );
     expect(same.idempotencyKey).toBe(submittedKey);
     expect(same.task.id).toBe(recovered.task.id);
@@ -435,7 +568,7 @@ test("initial submission reconciles one committed task after its response return
     ]);
     expect(providerRequests).toBe(0);
   } finally {
-    clearGenerationSubmissionIntent("text", input.canvasId, input.nodeId);
+    clearGenerationSubmissionIntent("text", input.canvasId, input.nodeId, undefined, "", "");
     globalThis.fetch = originalFetch;
     if (originalWindow) {
       Object.defineProperty(globalThis, "window", {
@@ -474,12 +607,16 @@ test("the same ownership key reuses one idempotency intent across catalog-derive
     }
     if (parsed.pathname === "/api/generation-tasks" && init?.method === "POST") {
       const body = JSON.parse(String(init.body)) as {
+        generationOwnershipKey?: string;
         idempotencyKey: string;
         kind: GenerationTaskKind;
         nodeId: string;
       };
       postedKeys.push(body.idempotencyKey);
-      const created = task(body.kind, body.nodeId, "task-ownership-catalog-drift");
+      const created = {
+        ...task(body.kind, body.nodeId, "task-ownership-catalog-drift"),
+        generationOwnershipKey: body.generationOwnershipKey,
+      };
       tasksByKey.set(body.idempotencyKey, created);
       return Response.json(created, { status: 202 });
     }
@@ -529,7 +666,7 @@ test("the same ownership key reuses one idempotency intent across catalog-derive
     expect(preflights).toBe(1);
     expect(providerRequests).toBe(0);
   } finally {
-    clearGenerationSubmissionIntent("image", input.canvasId, input.nodeId);
+    clearGenerationSubmissionIntent("image", input.canvasId, input.nodeId, undefined, "", "");
     globalThis.fetch = originalFetch;
     if (originalWindow) {
       Object.defineProperty(globalThis, "window", {
@@ -542,7 +679,7 @@ test("the same ownership key reuses one idempotency intent across catalog-derive
   }
 });
 
-test("legacy intent ownership upgrades require an exact signature and reject a mismatch", async () => {
+test("legacy intents without complete durable identity remain fail-closed", async () => {
   const originalFetch = globalThis.fetch;
   const originalWindow = (globalThis as typeof globalThis & { window?: Window }).window;
   Object.defineProperty(globalThis, "window", {
@@ -607,10 +744,7 @@ test("legacy intent ownership upgrades require an exact signature and reject a m
       "",
       { generationOwnershipKey: "ownership:legacy-exact:v1" },
     );
-    expect(upgraded).toMatchObject({
-      generationOwnershipKey: "ownership:legacy-exact:v1",
-      id: legacyExact.task.id,
-    });
+    expect(upgraded).toBeUndefined();
     expect(postedByNode.get(exactInput.nodeId)).toEqual([
       legacyExact.idempotencyKey,
     ]);
@@ -622,10 +756,7 @@ test("legacy intent ownership upgrades require an exact signature and reject a m
       undefined,
       "",
       { generationOwnershipKey: "ownership:legacy-exact:v1" },
-    )).resolves.toMatchObject({
-      generationOwnershipKey: "ownership:legacy-exact:v1",
-      id: legacyExact.task.id,
-    });
+    )).resolves.toBeUndefined();
 
     const legacyMismatch = await ensureGenerationTask("text", mismatchInput);
     await expect(recoverPendingGenerationTask(
@@ -654,12 +785,93 @@ test("legacy intent ownership upgrades require an exact signature and reject a m
     )).resolves.toBeUndefined();
     expect(providerRequests).toBe(0);
   } finally {
-    clearGenerationSubmissionIntent("text", exactInput.canvasId, exactInput.nodeId);
+    clearGenerationSubmissionIntent("text", exactInput.canvasId, exactInput.nodeId, undefined, "", "");
     clearGenerationSubmissionIntent(
       "text",
       mismatchInput.canvasId,
       mismatchInput.nodeId,
+      undefined,
+      "",
+      "",
     );
+    globalThis.fetch = originalFetch;
+    if (originalWindow) {
+      Object.defineProperty(globalThis, "window", {
+        configurable: true,
+        value: originalWindow,
+      });
+    } else {
+      Reflect.deleteProperty(globalThis, "window");
+    }
+  }
+});
+
+test("intent-free recovery adopts exactly one full task identity and never a node-only candidate", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWindow = (globalThis as typeof globalThis & { window?: Window }).window;
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: { localStorage: memoryStorage() },
+  });
+  const identity = {
+    generationInputKey: "strict-input",
+    generationOwnershipKey: "strict-owner",
+    modelInputContractFingerprint: "strict-contract",
+    modelConfigurationRevision: "strict-config",
+    modelReleaseRevision: "strict-revision",
+  };
+  let reads = 0;
+  const exact = {
+    ...task("video", "strict-node", "strict-task"),
+    ...identity,
+  };
+  let candidates: GenerationTaskSummary[] = [
+    {
+      ...task("video", "strict-node", "wrong-task"),
+      ...identity,
+      modelInputContractFingerprint: "wrong-contract",
+    },
+    exact,
+  ];
+  globalThis.fetch = async (url) => {
+    const parsed = new URL(String(url), "http://127.0.0.1");
+    if (parsed.pathname === "/api/generation-tasks") {
+      reads += 1;
+      return Response.json({ tasks: candidates });
+    }
+    throw new Error(`Unexpected request: ${parsed.pathname}`);
+  };
+  try {
+    await expect(recoverPendingGenerationTask(
+      "video",
+      "canvas-idempotency-test",
+      "strict-node",
+      undefined,
+      undefined,
+      "",
+      identity,
+    )).resolves.toMatchObject({ id: "strict-task" });
+    candidates = [exact, { ...exact, id: "strict-task-duplicate" }];
+    await expect(recoverPendingGenerationTask(
+      "video",
+      "canvas-idempotency-test",
+      "strict-node",
+      undefined,
+      undefined,
+      "",
+      identity,
+    )).resolves.toBeUndefined();
+    await expect(recoverPendingGenerationTask(
+      "video",
+      "canvas-idempotency-test",
+      "strict-node",
+      undefined,
+      undefined,
+      "",
+      { generationOwnershipKey: identity.generationOwnershipKey },
+    )).resolves.toBeUndefined();
+    expect(reads).toBe(2);
+  } finally {
     globalThis.fetch = originalFetch;
     if (originalWindow) {
       Object.defineProperty(globalThis, "window", {
@@ -750,7 +962,7 @@ test("a deterministic 409 never adopts an old idempotency task and the next clic
     expect(postedKeys[1]).not.toBe(postedKeys[0]);
     expect(providerRequests).toBe(0);
   } finally {
-    clearGenerationSubmissionIntent("text", input.canvasId, input.nodeId);
+    clearGenerationSubmissionIntent("text", input.canvasId, input.nodeId, undefined, "", "");
     globalThis.fetch = originalFetch;
     if (originalWindow) {
       Object.defineProperty(globalThis, "window", {
@@ -763,7 +975,7 @@ test("a deterministic 409 never adopts an old idempotency task and the next clic
   }
 });
 
-test("terminal cleanup and semantic input changes issue a fresh key while failed work stays recoverable", async () => {
+test("durable failed work keeps one key across semantic drift until terminal cleanup", async () => {
   const originalFetch = globalThis.fetch;
   const originalWindow = (globalThis as typeof globalThis & { window?: Window }).window;
   Object.defineProperty(globalThis, "window", {
@@ -784,12 +996,16 @@ test("terminal cleanup and semantic input changes issue a fresh key while failed
       return Response.json({ canEnqueue: true, canSubmit: true, problems: [] });
     }
     const body = JSON.parse(String(init?.body)) as {
+      generationOwnershipKey?: string;
       idempotencyKey: string;
       kind: GenerationTaskKind;
       nodeId: string;
     };
     postedKeys.push(body.idempotencyKey);
-    const created = task(body.kind, body.nodeId, `task-${postedKeys.length}`, "failed");
+    const created = {
+      ...task(body.kind, body.nodeId, `task-${postedKeys.length}`, "failed"),
+      generationOwnershipKey: body.generationOwnershipKey,
+    };
     tasksByKey.set(body.idempotencyKey, created);
     return Response.json(created, { status: 202 });
   };
@@ -827,7 +1043,7 @@ test("terminal cleanup and semantic input changes issue a fresh key while failed
       base,
       "",
       { generationOwnershipKey: baseOwnershipKey },
-    )).toMatchObject({ id: failed.task.id });
+    )).toBeUndefined();
     expect(await recoverPendingGenerationTask(
       "image",
       base.canvasId,
@@ -845,8 +1061,9 @@ test("terminal cleanup and semantic input changes issue a fresh key while failed
       undefined,
       { generationOwnershipKey: changedOwnershipKey },
     );
-    expect(changed.idempotencyKey).not.toBe(failed.idempotencyKey);
-    expect(postedKeys).toHaveLength(2);
+    expect(changed.idempotencyKey).toBe(failed.idempotencyKey);
+    expect(changed.task.id).toBe(failed.task.id);
+    expect(postedKeys).toHaveLength(1);
 
     const changedInput = { ...base, prompt: "changed prompt" };
     for (const [index, mutation] of [
@@ -880,9 +1097,9 @@ test("terminal cleanup and semantic input changes issue a fresh key while failed
         { generationOwnershipKey: changedOwnershipKey },
       );
     }
-    expect(postedKeys).toHaveLength(2);
+    expect(postedKeys).toHaveLength(1);
 
-    clearGenerationSubmissionIntent("image", base.canvasId, base.nodeId);
+    clearGenerationSubmissionIntent("image", base.canvasId, base.nodeId, undefined, "", "");
     const afterTerminalCleanup = await ensureGenerationTask(
       "image",
       { ...base, prompt: "changed prompt" },
@@ -891,9 +1108,9 @@ test("terminal cleanup and semantic input changes issue a fresh key while failed
       { generationOwnershipKey: changedOwnershipKey },
     );
     expect(afterTerminalCleanup.idempotencyKey).not.toBe(changed.idempotencyKey);
-    expect(postedKeys).toHaveLength(3);
+    expect(postedKeys).toHaveLength(2);
   } finally {
-    clearGenerationSubmissionIntent("image", base.canvasId, base.nodeId);
+    clearGenerationSubmissionIntent("image", base.canvasId, base.nodeId, undefined, "", "");
     globalThis.fetch = originalFetch;
     if (originalWindow) {
       Object.defineProperty(globalThis, "window", {
@@ -920,11 +1137,20 @@ for (const hungAt of ["fetch", "body"] as const) {
     let submittedKey = "";
     let submissionPosts = 0;
     let providerRequests = 0;
+    const identity = {
+      fixtureScopeId: "fixture-a",
+      generationInputKey: `input-hung-${hungAt}`,
+      generationOwnershipKey: `owner-hung-${hungAt}`,
+      modelInputContractFingerprint: `contract-hung-${hungAt}`,
+      modelConfigurationRevision: `config-hung-${hungAt}`,
+      modelReleaseRevision: `revision-hung-${hungAt}`,
+    };
     globalThis.fetch = async (url, init) => {
       const parsed = new URL(String(url), "http://127.0.0.1");
       if (/volces|openrouter|mureka/i.test(parsed.href)) providerRequests += 1;
       if (parsed.pathname.endsWith("/by-idempotency")) {
         const key = parsed.searchParams.get("idempotencyKey") ?? "";
+        expect(parsed.searchParams.get("fixtureScopeId")).toBe("fixture-a");
         return serverTask && key === submittedKey
           ? Response.json(serverTask)
           : Response.json({ error: "not found" }, { status: 404 });
@@ -940,7 +1166,11 @@ for (const hungAt of ["fetch", "body"] as const) {
           nodeId: string;
         };
         submittedKey = body.idempotencyKey;
-        serverTask = task(body.kind, body.nodeId, `task-hung-${hungAt}`);
+        serverTask = {
+          ...task(body.kind, body.nodeId, `task-hung-${hungAt}`),
+          ...identity,
+          fixtureScopeId: hungAt === "body" ? "fixture-b" : "fixture-a",
+        };
         if (hungAt === "fetch") {
           return await new Promise<Response>((_resolve, reject) => {
             const abort = () => reject(new DOMException("Aborted", "AbortError"));
@@ -970,14 +1200,34 @@ for (const hungAt of ["fetch", "body"] as const) {
     };
 
     try {
-      await expect(ensureGenerationTask("audio", input)).resolves.toMatchObject({
-        recovered: true,
-        task: { id: `task-hung-${hungAt}` },
-      });
+      const submission = ensureGenerationTask(
+        "audio",
+        input,
+        "",
+        undefined,
+        identity,
+      );
+      if (hungAt === "fetch") {
+        await expect(submission).resolves.toMatchObject({
+          recovered: true,
+          task: { id: `task-hung-${hungAt}` },
+        });
+      } else {
+        await expect(submission).rejects.toMatchObject({
+          code: "GENERATION_RESPONSE_TIMEOUT",
+        });
+      }
       expect(submissionPosts).toBe(1);
       expect(providerRequests).toBe(0);
     } finally {
-      clearGenerationSubmissionIntent("audio", input.canvasId, input.nodeId);
+      clearGenerationSubmissionIntent(
+        "audio",
+        input.canvasId,
+        input.nodeId,
+        undefined,
+        "",
+        identity.fixtureScopeId,
+      );
       globalThis.fetch = originalFetch;
       restoreDeadline();
       if (originalWindow) {
@@ -997,6 +1247,10 @@ test("retry reconciles one accepted task after its POST response is lost", async
   const failed = {
     ...task("text", "retry-lost-node", "retry-lost-task", "failed"),
     generationInputKey: "retry-lost-input-key",
+    generationOwnershipKey: "retry-lost-ownership-key",
+    modelInputContractFingerprint: "mic2:retry-lost",
+    modelConfigurationRevision: "config-revision-retry-lost",
+    modelReleaseRevision: "00000000-0000-4000-8000-000000000401",
     retryAllowed: true,
   } satisfies GenerationTaskSummary;
   let current: GenerationTaskSummary = failed;
@@ -1034,10 +1288,45 @@ test("retry reconciles one accepted task after its POST response is lost", async
   };
 
   try {
+    for (const identityDrift of [
+      { generationInputKey: "other-input" },
+      { generationOwnershipKey: "other-ownership" },
+      { modelInputContractFingerprint: "mic2:other-contract" },
+      { modelConfigurationRevision: "other-config-revision" },
+      { modelReleaseRevision: "00000000-0000-4000-8000-000000000499" },
+    ]) {
+      await expect(retryGenerationTask({
+        accountId: "",
+        canvasId: failed.canvasId,
+        fixtureScopeId: "",
+        generationInputKey: failed.generationInputKey,
+        generationOwnershipKey: failed.generationOwnershipKey,
+        kind: failed.kind,
+        modelInputContractFingerprint: failed.modelInputContractFingerprint,
+        modelConfigurationRevision: failed.modelConfigurationRevision!,
+        modelReleaseRevision: failed.modelReleaseRevision,
+        nodeId: failed.nodeId,
+        taskId: failed.id,
+        ...identityDrift,
+      }, async () => 16)).rejects.toMatchObject({
+        code: "RETRY_BINDING_STALE",
+        status: 409,
+      });
+    }
+    expect(retryPosts).toBe(0);
+    expect(exactReads).toBe(5);
+    exactReads = 0;
+    order.length = 0;
     await expect(retryGenerationTask({
+      accountId: "",
       canvasId: failed.canvasId,
+      fixtureScopeId: "",
       generationInputKey: failed.generationInputKey,
+      generationOwnershipKey: failed.generationOwnershipKey,
       kind: failed.kind,
+      modelInputContractFingerprint: failed.modelInputContractFingerprint,
+      modelConfigurationRevision: failed.modelConfigurationRevision!,
+      modelReleaseRevision: failed.modelReleaseRevision,
       nodeId: failed.nodeId,
       taskId: failed.id,
     }, async () => {
@@ -1059,7 +1348,13 @@ test("retry reconciles one accepted task after its POST response is lost", async
       canvasId: failed.canvasId,
       expectedAttempt: failed.attempt,
       expectedCanvasRevision: 17,
+      expectedFixtureScopeId: "",
       expectedGenerationInputKey: failed.generationInputKey,
+      expectedGenerationOwnershipKey: failed.generationOwnershipKey,
+      expectedModelConfigurationRevision: failed.modelConfigurationRevision,
+      expectedModelInputContractFingerprint:
+        failed.modelInputContractFingerprint,
+      expectedModelReleaseRevision: failed.modelReleaseRevision,
       expectedUpdatedAt: failed.updatedAt,
       kind: failed.kind,
       nodeId: failed.nodeId,
@@ -1075,6 +1370,10 @@ test("retry reconciles the exact queued task after a committed retry returns 500
   const failed = {
     ...task("image", "retry-500-node", "retry-500-task", "failed"),
     generationInputKey: "retry-500-input-key",
+    generationOwnershipKey: "retry-500-ownership-key",
+    modelInputContractFingerprint: "mic2:retry-500",
+    modelConfigurationRevision: "config-revision-retry-500",
+    modelReleaseRevision: "00000000-0000-4000-8000-000000000402",
     retryAllowed: true,
   } satisfies GenerationTaskSummary;
   let current: GenerationTaskSummary = failed;
@@ -1113,9 +1412,15 @@ test("retry reconciles the exact queued task after a committed retry returns 500
 
   try {
     await expect(retryGenerationTask({
+      accountId: "",
       canvasId: failed.canvasId,
+      fixtureScopeId: "",
       generationInputKey: failed.generationInputKey,
+      generationOwnershipKey: failed.generationOwnershipKey,
       kind: failed.kind,
+      modelInputContractFingerprint: failed.modelInputContractFingerprint,
+      modelConfigurationRevision: failed.modelConfigurationRevision!,
+      modelReleaseRevision: failed.modelReleaseRevision,
       nodeId: failed.nodeId,
       taskId: failed.id,
     }, async () => 19)).resolves.toMatchObject({
@@ -1188,6 +1493,7 @@ test("Text Image Video and Audio all use the shared recoverable task port", asyn
       "utf8",
     );
     expect(source).toContain("createBrowserSingleNodeGenerationTaskPort");
+    expect(source).toContain("taskMatchesSingleNodeGenerationIdentity");
     expect(source).not.toMatch(/idempotencyKey:\s*crypto\.randomUUID\(\)/);
   }
   const taskPort = await readFile(
@@ -1199,4 +1505,14 @@ test("Text Image Video and Audio all use the shared recoverable task port", asyn
   );
   expect(taskPort).toMatch(/ensureGenerationTask\(\s*plan\.kind\s*,/);
   expect(taskPort).toContain("generationOwnershipKey: plan.ownershipKey");
+  expect(taskPort.indexOf("const existing = await getGenerationTask("))
+    .toBeLessThan(taskPort.indexOf("const cancelled = await cancelGenerationTask("));
+  const server = await readFile(
+    join(process.cwd(), "server/generationTasks.ts"),
+    "utf8",
+  );
+  expect(server).toContain("imageTool: body.imageTool");
+  expect(server).toContain(
+    "workflowBinding: body.workflowBinding",
+  );
 });

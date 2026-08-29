@@ -2,10 +2,8 @@ import type { ModelParameterSchema } from "../types/modelParameters";
 import type { ProviderProtocol } from "../types/relayProtocols";
 import type { GenerationCapabilityKind } from "../types/nodeVocabulary";
 import type { ModelExecutionContract } from "../types/modelExecutionContracts";
-import type {
-  ModelContractEvidence,
-  ModelReleaseDocument,
-} from "../types/modelReleaseRevisions";
+import type { ModelReleaseDocument } from "../types/modelReleaseRevisions";
+import { registeredModelExecution } from "./modelExecutionRegistry";
 
 export type ModelReleaseSeed = Readonly<{
   capability: GenerationCapabilityKind;
@@ -30,6 +28,7 @@ const verifiedModelDocumentation: Readonly<Record<string, string>> = Object.free
   "doubao-seedance-2-0-mini-260615": "https://www.volcengine.com/docs/82379/2222480",
   "gemini-3-pro-image-preview": "https://ai.google.dev/gemini-api/docs/image-generation",
   "gpt-image-2": "https://platform.openai.com/docs/guides/image-generation",
+  "openai/gpt-image-2": "https://platform.openai.com/docs/guides/image-generation",
   "grok-imagine-video-1.5-preview": "https://docs.x.ai/developers/models/grok-imagine-video",
   "kling-v3-omni-cankao": "https://app.klingai.com/cn/quickstart/klingai-video-3-model-user-guide",
   "mureka-9": "https://platform.mureka.ai/docs/en/changelog.html",
@@ -114,6 +113,13 @@ export function gkVideoExecutionContract(
 }
 
 function connector(seed: ModelReleaseSeed) {
+  const registered = registeredModelExecution({
+    capability: seed.capability,
+    providerDriver: seed.providerDriver,
+    providerModelId: seed.providerModelId,
+    providerProtocol: seed.providerProtocol,
+  });
+  if (registered) return registered.connectorFamily;
   if (seed.providerProtocol === "gpt-image") return "gpt-image" as const;
   if (["openai-chat", "openai-responses", "claude-messages", "gemini-generate-content"]
     .includes(seed.providerProtocol)) return seed.providerProtocol as
@@ -122,13 +128,6 @@ function connector(seed: ModelReleaseSeed) {
   if (seed.providerDriver === "volcengine-ark") return "ark-native" as const;
   if (seed.providerDriver === "mureka") return "mureka-native" as const;
   return "specialized-code" as const;
-}
-
-function evidence(modelId: string): ModelContractEvidence {
-  if (modelId === "gpt-image-2" || modelId === "grok-video-3") return "EXACT";
-  if (modelId === "doubao-tts-2.0") return "SPECIALIZED";
-  if (modelId === "kwvideo-v2") return "UNKNOWN";
-  return "SPECIALIZED";
 }
 
 function endpoint(family: ReturnType<typeof connector>) {
@@ -176,16 +175,22 @@ function specializedContract(seed: ModelReleaseSeed): ModelExecutionContract {
 export function defaultModelReleaseDocument(
   seed: ModelReleaseSeed & { modelId: string },
 ): ModelReleaseDocument {
-  const exactGk = seed.providerModelId === "grok-video-3";
-  const blocked = evidence(seed.providerModelId) === "UNKNOWN";
-  const family = exactGk ? "generic-async-media" as const : connector(seed);
+  const registered = registeredModelExecution({
+    capability: seed.capability,
+    providerDriver: seed.providerDriver,
+    providerModelId: seed.providerModelId,
+    providerProtocol: seed.providerProtocol,
+  });
+  const exactGk = registered?.runtime === "declarative";
+  const blocked = !registered;
+  const family = registered?.connectorFamily ?? connector(seed);
   return Object.freeze({
     capability: seed.capability,
     capabilitySchema: structuredClone(seed.capabilitySchema),
     connectorFamily: family,
     connectorVersion: 1,
     documentation: documentation(seed.providerModelId),
-    evidence: evidence(seed.providerModelId),
+    evidence: registered?.evidence ?? "UNKNOWN",
     executionContract: exactGk
       ? gkVideoExecutionContract(seed.capabilitySchema)
       : specializedContract(seed),
@@ -193,7 +198,7 @@ export function defaultModelReleaseDocument(
     providerModelId: seed.providerModelId,
     providerProfileId: seed.providerProfileId,
     providerProtocol: seed.providerProtocol,
-    runtime: exactGk ? "declarative" : blocked ? "blocked" : "specialized-code",
+    runtime: blocked ? "blocked" : registered.runtime,
   });
 }
 

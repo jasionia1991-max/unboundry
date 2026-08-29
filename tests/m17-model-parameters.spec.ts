@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createGenerationTaskStore } from "../server/generationTaskStore";
 import { buildMurekaAudioRequest } from "../server/murekaAudioProvider";
+import { murekaMediaGenerationProvider } from "../server/providerMediaGenerationAdapters";
 import { availableNodeInputRoles } from "../types/nodeInputs";
 import {
   cleanGptImageSizeMap,
@@ -430,7 +431,12 @@ test("Seedance Provider input floors cannot be omitted while narrower active mod
   delete narrowedModes.referencePolicy!.modes.multimodal;
   narrowedModes.inputPolicy!.rolePolicies = narrowedModes.inputPolicy!.rolePolicies
     ?.filter((policy) => policy.enabledWhen?.[0]?.value !== "multimodal");
-  expect(validate(narrowedModes)).toEqual(narrowedModes);
+  const validatedNarrowedModes = validate(narrowedModes);
+  expect(validatedNarrowedModes.fields.find((field) => field.key === "inputMode")
+    ?.options.map((option) => option.value)).toEqual(["text", "first-last-frame"]);
+  expect(validatedNarrowedModes.referencePolicy?.modes.multimodal).toBeUndefined();
+  expect(validatedNarrowedModes.referencePolicy?.normalizationPriority)
+    .toEqual(["first-last-frame", "text"]);
 
   const omittedUpstream = structuredClone(baseline);
   omittedUpstream.upstreamInputs = undefined;
@@ -504,6 +510,8 @@ test("Mureka audio rules expose only official safe parameters", () => {
     vocalGender: "female",
   });
   expect(schema.referenceInputs).toEqual({ audio: 0, image: 0, video: 0 });
+  expect(schema.fields.find((field) => field.key === "outputCount")?.options)
+    .toEqual([{ label: "1×", value: 1 }]);
   expect(parameterFieldVisible(
     schema.fields.find((field) => field.key === "lyrics")!,
     { musicGenerationMode: "instrumental" },
@@ -512,17 +520,13 @@ test("Mureka audio rules expose only official safe parameters", () => {
     schema.fields.find((field) => field.key === "lyrics")!,
     { musicGenerationMode: "lyrics-song" },
   )).toBe(true);
-  expect(validateParameterValues(schema, {
+  expect(() => validateParameterValues(schema, {
     lyrics: "[Verse]\n你好",
     musicGenerationMode: "lyrics-song",
     outputCount: 2,
     streamPlayback: false,
     vocalGender: "female",
-  })).toMatchObject({
-    lyrics: "[Verse]\n你好",
-    musicGenerationMode: "lyrics-song",
-    outputCount: 2,
-  });
+  })).toThrow("Unsupported model parameter value");
 
   expect(buildMurekaAudioRequest({
     model: "mureka-9",
@@ -542,10 +546,56 @@ test("Mureka audio rules expose only official safe parameters", () => {
   expect(() => buildMurekaAudioRequest({
     model: "mureka-9",
     musicGenerationMode: "instrumental",
-    outputCount: 4,
+    outputCount: 2,
     prompt: "不会发送",
     streamPlayback: false,
   })).toThrow("output count");
+  expect(buildMurekaAudioRequest({
+    lyrics: "歌".repeat(8_000),
+    model: "mureka-9",
+    musicGenerationMode: "lyrics-song",
+    outputCount: 1,
+    prompt: "完整歌曲",
+    streamPlayback: false,
+    vocalGender: "female",
+  }).payload.lyrics).toHaveLength(8_000);
+  expect(() => buildMurekaAudioRequest({
+    lyrics: "歌".repeat(8_001),
+    model: "mureka-9",
+    musicGenerationMode: "lyrics-song",
+    outputCount: 1,
+    prompt: "不会发送",
+    streamPlayback: false,
+    vocalGender: "female",
+  })).toThrow("lyrics");
+  expect(murekaMediaGenerationProvider.normalize({
+    audioUrl: "https://provider.invalid/result.mp3",
+    durationMs: 12_000,
+    state: "succeeded",
+  })).toEqual({
+    outputs: [{
+      durationSeconds: 12,
+      kind: "audio",
+      transientUrl: "https://provider.invalid/result.mp3",
+    }],
+  });
+});
+
+test("grok-video-3 exposes only text and one first-frame input", () => {
+  const schema = knownModelParameterSchema({
+    capability: "video",
+    providerDriver: "multi-protocol-relay",
+    providerModelId: "grok-video-3",
+  });
+  expect(schema.fields.find((field) => field.key === "inputMode")?.options
+    .map((option) => option.value)).toEqual(["text", "image"]);
+  expect(availableNodeInputRoles({
+    kind: "image",
+    modelSchema: schema,
+    parameters: { inputMode: "image" },
+    targetKind: "video",
+  })).toEqual(["first-frame"]);
+  expect(schema.referenceInputs).toEqual({ audio: 0, image: 1, video: 0 });
 });
 
 test("text node shows connected multimodal inputs, removes only the selected edge and never submits", async ({
@@ -560,27 +610,28 @@ test("text node shows connected multimodal inputs, removes only the selected edg
       paidPosts.push(request.url());
     }
   });
-  const createdResponse = await page.request.post("/api/admin/models", {
-    data: {
-      capability: "text",
-      displayName: "Multimodal Text",
-      isDefault: true,
-      parameterSchema: {
-        ...defaultParameterSchema("text"),
-        upstreamInputs: {
-          audio: { limitMode: "context", supported: true },
-          image: { limitMode: "context", supported: true },
-          text: { limitMode: "context", supported: true },
-          video: { limitMode: "context", supported: true },
-        },
-      },
-      providerModelId: "test/multimodal-text",
-      sortOrder: 1,
-      status: "published",
-    },
+  const exactTextModelId = "fixture-doubao-seed-r5";
+  await page.route("**/api/models", async (route) => {
+    await route.fulfill({
+      body: JSON.stringify({
+        generationEnabled: false,
+        models: [{
+          capability: "text",
+          displayName: "Doubao Seed",
+          id: exactTextModelId,
+          isDefault: true,
+          parameterSchema: knownModelParameterSchema({
+            capability: "text",
+            providerDriver: "volcengine-ark",
+            providerModelId: "doubao-seed-2-0-lite-260428",
+          }),
+          providerModelId: "doubao-seed-2-0-lite-260428",
+        }],
+      }),
+      contentType: "application/json",
+      status: 200,
+    });
   });
-  expect(createdResponse.status()).toBe(201);
-  const created = await createdResponse.json() as { model: { id: string } };
   await page.request.delete("/api/canvas/default");
   const nodes = [
     {
@@ -623,7 +674,7 @@ test("text node shows connected multimodal inputs, removes only the selected edg
       data: {
         content: "",
         label: "Text",
-        textModelId: created.model.id,
+        textModelId: exactTextModelId,
         textPromptReady: true,
         title: "豆包多模态理解",
       },
@@ -781,7 +832,7 @@ test("stored version 1 schemas migrate without losing accepted settings", () => 
   });
 });
 
-test("future custom parameters remain safe and automatically join node controls", () => {
+test("future custom parameters stay inert until an exact adapter contract exists", () => {
   const custom = cleanParameterSchema("text", {
     fields: [
       {
@@ -809,14 +860,14 @@ test("future custom parameters remain safe and automatically join node controls"
     providerStatus: "pending",
   });
   expect(parameterKeysForGroups(custom, ["main"])).toEqual(["custom_12345678"]);
-  expect(validateParameterSchemaConstraints(
+  expect(() => validateParameterSchemaConstraints(
     custom,
     providerParameterSchema({
       capability: "text",
       providerDriver: "volcengine-ark",
       providerModelId: "doubao-seed-2-0-lite-260428",
     }),
-  )).toEqual(custom);
+  )).toThrow(/input policy is required/i);
   expect(validateParameterValues(custom, { custom_12345678: "high" }))
     .toEqual({ custom_12345678: "high" });
   expect(() => cleanParameterSchema("text", {
@@ -1150,20 +1201,31 @@ test("text, image, video and audio nodes render admin-defined parameters and per
     },
   } as const;
 
-  for (const capability of ["text", "image", "video", "audio"] as const) {
-    const response = await page.request.post("/api/admin/models", {
-      data: {
-        capability,
-        displayName: `Parameter ${capability}`,
-        isDefault: true,
-        parameterSchema: schemas[capability],
-        providerModelId: `test/${capability}-parameters-v1`,
-        sortOrder: 1,
-        status: "published",
-      },
+  await page.route("**/api/models", async (route) => {
+    await route.fulfill({
+      body: JSON.stringify({
+        generationEnabled: false,
+        models: (["text", "image", "video", "audio"] as const).map((capability) => ({
+          capability,
+          displayName: `Parameter ${capability}`,
+          id: `parameter-${capability}`,
+          ...(capability === "image"
+            ? {
+                imageParameters: {
+                  aspectRatios: ["9:16"],
+                  maxReferenceImages: 4,
+                  qualities: ["high"],
+                },
+              }
+            : {}),
+          isDefault: true,
+          parameterSchema: schemas[capability],
+        })),
+      }),
+      contentType: "application/json",
+      status: 200,
     });
-    expect(response.status()).toBe(201);
-  }
+  });
 
   await page.request.delete("/api/canvas/default");
   await page.goto("/canvas");

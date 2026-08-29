@@ -14,13 +14,14 @@ const LegacyTerminalGenerationStateContext = createContext<LegacyStateMap>(
 
 const blockedScopes = new Map<string, Set<string>>();
 
-function scopeKey(accountId: string, canvasId: string) {
-  return JSON.stringify([accountId, canvasId]);
+function scopeKey(accountId: string, canvasId: string, fixtureScopeId: string) {
+  return JSON.stringify([accountId, canvasId, fixtureScopeId]);
 }
 
 export function replaceLegacyGenerationSubmissionBlocks(input: {
   accountId: string;
   canvasId: string;
+  fixtureScopeId: string;
   states: LegacyStateMap;
 }) {
   const blocked = new Set(
@@ -31,23 +32,27 @@ export function replaceLegacyGenerationSubmissionBlocks(input: {
         : []
     ),
   );
-  if (blocked.size === 0) blockedScopes.delete(scopeKey(input.accountId, input.canvasId));
-  else blockedScopes.set(scopeKey(input.accountId, input.canvasId), blocked);
+  const key = scopeKey(input.accountId, input.canvasId, input.fixtureScopeId);
+  if (blocked.size === 0) blockedScopes.delete(key);
+  else blockedScopes.set(key, blocked);
 }
 
 export function clearLegacyGenerationSubmissionBlocks(
   accountId: string,
   canvasId: string,
+  fixtureScopeId: string,
 ) {
-  blockedScopes.delete(scopeKey(accountId, canvasId));
+  blockedScopes.delete(scopeKey(accountId, canvasId, fixtureScopeId));
 }
 
 export function legacyGenerationSubmissionIsBlocked(
   accountId: string,
   canvasId: string,
+  fixtureScopeId: string,
   nodeId: string,
 ) {
-  return blockedScopes.get(scopeKey(accountId, canvasId))?.has(nodeId) === true;
+  return blockedScopes.get(scopeKey(accountId, canvasId, fixtureScopeId))
+    ?.has(nodeId) === true;
 }
 
 export function LegacyTerminalGenerationStateProvider({

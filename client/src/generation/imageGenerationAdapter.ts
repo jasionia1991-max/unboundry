@@ -15,9 +15,12 @@ import type {
 export function createImageGenerationAdapter(input: {
   aspectRatio?: string;
   bindingOwnershipKey?: string;
+  contractFingerprint: string;
   inputKey: string;
   modelId?: string;
   modelName?: string;
+  modelConfigurationRevision: string;
+  modelReleaseRevision: string;
   nodeId: string;
   ownershipKey: string;
   parameters?: ProbeNodeType["data"]["imageParameters"];
@@ -37,6 +40,10 @@ export function createImageGenerationAdapter(input: {
           imageModelName: input.modelName,
           imageParameters: input.parameters,
           imageQuality: input.quality,
+          imageGenerationContractFingerprint: input.contractFingerprint,
+          imageGenerationModelConfigurationRevision:
+            input.modelConfigurationRevision,
+          imageGenerationModelReleaseRevision: input.modelReleaseRevision,
         },
       };
     },
@@ -52,7 +59,11 @@ export function createImageGenerationAdapter(input: {
           imageGenerating: true,
           imageGenerationError: undefined,
           imageGenerationErrorCode: undefined,
+          imageGenerationContractFingerprint: plan.contractFingerprint,
           imageGenerationInputKey: plan.inputKey,
+          imageGenerationModelConfigurationRevision:
+            plan.modelConfigurationRevision,
+          imageGenerationModelReleaseRevision: plan.modelReleaseRevision,
           imageGenerationOwnershipKey: input.preserveBindingOwnership
             ? input.bindingOwnershipKey
             : task.generationOwnershipKey ?? plan.ownershipKey,
@@ -148,8 +159,11 @@ export function createImageGenerationAdapter(input: {
       const block = input.readBlock();
       if (block) return block;
       return {
+        contractFingerprint: input.contractFingerprint,
         inputKey: input.inputKey,
         kind: "image",
+        modelConfigurationRevision: input.modelConfigurationRevision,
+        modelReleaseRevision: input.modelReleaseRevision,
         nodeId: input.nodeId,
         ownershipKey: input.ownershipKey,
         payload: input.payload,

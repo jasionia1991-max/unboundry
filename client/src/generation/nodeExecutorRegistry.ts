@@ -21,6 +21,7 @@ export type NodeExecutorContext = {
   accountId: string;
   canvasId: string;
   fixtureScopeId: string;
+  groupId: string;
   graph: CanvasGraphCommandPort;
   isCancelled: () => boolean;
   isFixture: boolean;

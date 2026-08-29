@@ -82,6 +82,22 @@ test("OpenRouter image adapter rejects a response without auditable cost", async
   ).rejects.toMatchObject({ code: "FORMAT" } satisfies Partial<OpenRouterImageError>);
 });
 
+test("OpenRouter image adapter rejects multiple results for a single-result request", async () => {
+  const encoded = Buffer.from("image", "utf8").toString("base64");
+  const fetcher: typeof fetch = async () => Response.json({
+    data: [
+      { b64_json: encoded, media_type: "image/png" },
+      { b64_json: encoded, media_type: "image/png" },
+    ],
+    usage: { cost: 0.01 },
+  });
+  await expect(generateOpenRouterImage(
+    profile,
+    { model: "openai/gpt-image-2", prompt: "single result only" },
+    fetcher,
+  )).rejects.toMatchObject({ code: "FORMAT" });
+});
+
 test("OpenRouter image adapter serializes reference images without a real request", async () => {
   const calls: Array<{ init?: RequestInit; url: string }> = [];
   const fetcher: typeof fetch = async (input, init) => {

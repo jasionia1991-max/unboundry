@@ -27,6 +27,7 @@ import {
 import { ResourceBudgetError } from "../server/resourceBudget";
 import { ProviderResultMediaError } from "../server/providerResultMedia";
 import type { ProviderProfile } from "../server/providerProfiles";
+import { listRelayUsageRecords } from "../server/relayUsageReconcile";
 import {
   relayMediaModelContract,
   relayMediaPollingDecision,
@@ -44,6 +45,23 @@ const relayProfile: ProviderProfile = {
   label: "Relay runtime fixture",
   updatedAt: "2026-08-03T00:00:00.000Z",
 };
+
+test("relay usage reconciliation crosses the Provider boundary only after its lease hook", async () => {
+  const order: string[] = [];
+  const records = await listRelayUsageRecords(
+    relayProfile,
+    async () => {
+      order.push("fetch");
+      return new Response(JSON.stringify({ data: [] }), {
+        headers: { "Content-Type": "application/json" },
+        status: 200,
+      });
+    },
+    { beforeRequest: () => order.push("lease") },
+  );
+  expect(records).toEqual([]);
+  expect(order).toEqual(["lease", "fetch"]);
+});
 
 function paidProviderAttempts(directory: string) {
   const database = openAppDatabase(directory);
@@ -887,6 +905,14 @@ test("relay media image video and audio share local-only cancel and resumable ta
     expect(generationTaskCancellationMode({ ...task, state: "running" }))
       .toBe("cancel-relay-media-local");
   }
+  expect(generationTaskCancellationMode(relayTask("image", "gpt-image", {
+    providerTaskId: "historical-gpt-image-task",
+    state: "running",
+  }))).toBe("cancel-relay-media-local");
+  expect(generationTaskCancellationMode(relayTask("image", "gpt-image", {
+    providerTaskId: undefined,
+    state: "running",
+  }))).toBe("cancel-before-provider");
 
   const directory = await mkdtemp(join(tmpdir(), "unboundry-relay-image-retry-"));
   let store: ReturnType<typeof createGenerationTaskStore> | undefined;
@@ -921,11 +947,15 @@ test("relay media image video and audio share local-only cancel and resumable ta
       providerProfileId: relayProfile.id,
       providerTaskId: "remote:image:001",
     });
-    const createTask = (suffix: string, providerProfileId: string) => store!.create({
+    const createTask = (
+      suffix: string,
+      providerProfileId: string,
+      fixtureScopeId = "scope-a",
+    ) => store!.create({
       canvasId: `relay-profile-canvas-${suffix}`,
       idempotencyKey: `relay-profile-isolation-${suffix}`,
       kind: "image" as const,
-      modelConfiguration: { providerProtocol: "media-generate" },
+      modelConfiguration: { fixtureScopeId, providerProtocol: "media-generate" },
       nodeId: `relay-profile-node-${suffix}`,
       ownerId: "__test__",
       prompt: suffix,
@@ -940,10 +970,15 @@ test("relay media image video and audio share local-only cancel and resumable ta
     store.transition(otherProfile.id, "running");
     store.recordProviderAttempt(otherProfile.id);
     store.setProviderTaskId(otherProfile.id, "remote-other-profile");
+    const otherFixture = createTask("other-fixture", "provider-alpha", "scope-b");
+    store.transition(otherFixture.id, "running");
+    store.recordProviderAttempt(otherFixture.id);
+    store.setProviderTaskId(otherFixture.id, "remote-other-fixture");
     const target = createTask("target", "provider-alpha");
 
     expect(store.listOwnerRelayMatchContext({
       excludeTaskId: target.id,
+      fixtureScopeId: "scope-a",
       kind: "image",
       ownerId: "__test__",
       providerModelId: "shared-provider-model",
@@ -952,6 +987,22 @@ test("relay media image video and audio share local-only cancel and resumable ta
       competitors: [{ id: sameProfile.id }],
       occupiedTaskIds: ["remote-same-profile"],
     });
+    expect(store.listOwnerRelayMatchContext({
+      excludeTaskId: target.id,
+      fixtureScopeId: "scope-a",
+      kind: "image",
+      ownerId: "__test__",
+      providerModelId: "shared-provider-model",
+      providerProfileId: "provider-alpha",
+    }).competitors.map(({ id }) => id)).not.toContain(otherFixture.id);
+    expect(store.listOwnerRelayMatchContext({
+      excludeTaskId: target.id,
+      fixtureScopeId: "scope-a",
+      kind: "image",
+      ownerId: "__test__",
+      providerModelId: "shared-provider-model",
+      providerProfileId: "provider-alpha",
+    }).occupiedTaskIds).not.toContain("remote-other-fixture");
 
     const database = openAppDatabase(directory);
     database.prepare(`

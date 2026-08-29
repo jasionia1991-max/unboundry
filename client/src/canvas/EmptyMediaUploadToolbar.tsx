@@ -1,11 +1,13 @@
 import { NodeToolbar, Position } from "@xyflow/react";
 
 export function EmptyMediaUploadToolbar({
+  disabled = false,
   label,
   onUpload,
   testId,
   visible,
 }: {
+  disabled?: boolean;
   label: string;
   onUpload: () => void;
   testId: string;
@@ -19,7 +21,12 @@ export function EmptyMediaUploadToolbar({
       offset={16}
       position={Position.Top}
     >
-      <button aria-label={label} onClick={onUpload} type="button">
+      <button
+        aria-label={label}
+        disabled={disabled}
+        onClick={onUpload}
+        type="button"
+      >
         <svg aria-hidden="true" viewBox="0 0 24 24">
           <path d="M12 16V4M8 8l4-4 4 4M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" />
         </svg>

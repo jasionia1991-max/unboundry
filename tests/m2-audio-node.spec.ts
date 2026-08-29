@@ -184,7 +184,9 @@ test("Audio empty, upload and playback chrome match the frozen basic state", asy
   await title.press("Enter");
   await expect(title).toHaveValue("配乐");
 
-  await page.getByTestId("audio-upload-input").setInputFiles(audioFile);
+  const uploadInput = page.getByTestId("audio-upload-input");
+  await expect(uploadInput).toBeEnabled();
+  await uploadInput.setInputFiles(audioFile);
   const media = page.getByTestId("audio-node-media");
   await expect(media).toHaveCount(1);
   await expect(emptyUploadToolbar).not.toBeVisible();

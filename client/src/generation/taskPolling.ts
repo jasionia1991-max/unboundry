@@ -30,9 +30,10 @@ export async function waitForGenerationTaskWithPause(
   taskId: string,
   onPause: () => void,
   signal?: AbortSignal,
+  fixtureScopeId = "",
 ): Promise<GenerationTaskSummary> {
   try {
-    return await waitForGenerationTask(taskId, signal);
+    return await waitForGenerationTask(taskId, signal, fixtureScopeId);
   } catch (error) {
     if (isPollingAbortError(error)) throw error;
     if (isTransientPollingError(error)) onPause();

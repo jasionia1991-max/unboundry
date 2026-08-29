@@ -17,7 +17,8 @@ test("generation task panel lists running and failed tasks for the canvas", asyn
 }) => {
   const dataDirectory = await serverDataDirectory(request);
   const initial = await request.get(
-    `/api/generation-tasks?canvasId=${encodeURIComponent(canvasId)}`,
+    `/api/generation-tasks?canvasId=${encodeURIComponent(canvasId)}` +
+      `&fixtureScopeId=${encodeURIComponent(canvasId)}`,
   );
   expect(initial.status()).toBe(200);
   await expect(initial.json()).resolves.toEqual({ tasks: [] });
@@ -27,6 +28,7 @@ test("generation task panel lists running and failed tasks for the canvas", asyn
     idempotencyKey: "tasks-panel-running-0001",
     kind: "image",
     model: "fixture/image",
+    modelConfiguration: { fixtureScopeId: canvasId },
     nodeId: "panel-running-image",
     parameters: { count: 1 },
     prompt: "正在生成的测试图片",
@@ -36,6 +38,7 @@ test("generation task panel lists running and failed tasks for the canvas", asyn
     idempotencyKey: "tasks-panel-failed-0001",
     kind: "video",
     model: "fixture/video",
+    modelConfiguration: { fixtureScopeId: canvasId },
     nodeId: "panel-failed-video",
     parameters: { count: 1 },
     prompt: "失败的测试视频",
@@ -45,13 +48,35 @@ test("generation task panel lists running and failed tasks for the canvas", asyn
     code: "PROVIDER_FAILED",
     message: "模型平台未完成本次生成，请重试",
   });
+  const foreign = store.create({
+    canvasId,
+    idempotencyKey: "tasks-panel-foreign-scope-0001",
+    kind: "image",
+    model: "fixture/image",
+    modelConfiguration: { fixtureScopeId: "foreign-fixture" },
+    nodeId: "panel-foreign-image",
+    parameters: { count: 1 },
+    prompt: "不应显示或取消的其他fixture任务",
+  }).task;
   store.close();
 
   const apiProbe = await request.get(
-    `/api/generation-tasks?canvasId=${encodeURIComponent(canvasId)}`,
+    `/api/generation-tasks?canvasId=${encodeURIComponent(canvasId)}` +
+      `&fixtureScopeId=${encodeURIComponent(canvasId)}`,
   );
   expect(apiProbe.status()).toBe(200);
   expect(((await apiProbe.json()) as { tasks: unknown[] }).tasks).toHaveLength(2);
+  const foreignCancel = await request.delete(
+    `/api/generation-tasks/${foreign.id}` +
+      `?fixtureScopeId=${encodeURIComponent(canvasId)}`,
+  );
+  expect(foreignCancel.status()).toBe(404);
+  const foreignIdempotency = await request.get(
+    `/api/generation-tasks/by-idempotency?canvasId=${encodeURIComponent(canvasId)}` +
+      `&idempotencyKey=${encodeURIComponent("tasks-panel-foreign-scope-0001")}` +
+      `&fixtureScopeId=${encodeURIComponent(canvasId)}`,
+  );
+  expect(foreignIdempotency.status()).toBe(404);
 
   await page.goto(`/__fixture/${canvasId}`);
   await page.getByTestId("tasks").click();
@@ -61,6 +86,7 @@ test("generation task panel lists running and failed tasks for the canvas", asyn
   await expect(page.getByTestId("tasks-failed-count")).toHaveText("1");
   await expect(page.getByText("正在生成的测试图片")).toBeVisible();
   await expect(page.getByText("失败的测试视频")).toBeVisible();
+  await expect(page.getByText("不应显示或取消的其他fixture任务")).toHaveCount(0);
   await expect(page.getByText("排队中", { exact: true })).toHaveCount(1);
   await expect(page.getByText("运行中", { exact: true })).toHaveCount(0);
   await expect(page.getByText("失败", { exact: true })).toHaveCount(1);
@@ -82,7 +108,10 @@ test("generation task panel explicitly abandons a received synchronous result wi
     idempotencyKey: "tasks-panel-abandon-response-0001",
     kind: "image",
     model: "fixture/synchronous-image",
-    modelConfiguration: { providerProtocol: "native" },
+    modelConfiguration: {
+      fixtureScopeId: targetCanvasId,
+      providerProtocol: "native",
+    },
     nodeId: "panel-abandon-received-image",
     ownerId: "__test__",
     parameters: {},
@@ -105,7 +134,8 @@ test("generation task panel explicitly abandons a received synchronous result wi
     store = undefined;
 
     const apiProbe = await request.get(
-      `/api/generation-tasks/${task.id}`,
+      `/api/generation-tasks/${task.id}` +
+        `?fixtureScopeId=${encodeURIComponent(targetCanvasId)}`,
     );
     expect(apiProbe.status()).toBe(200);
     await expect(apiProbe.json()).resolves.toMatchObject({
@@ -113,6 +143,18 @@ test("generation task panel explicitly abandons a received synchronous result wi
       id: task.id,
       state: "failed",
     });
+    const foreignAbandon = await request.post(
+      `/api/generation-tasks/${task.id}/abandon`,
+      {
+        data: {
+          acknowledgeRemoteResultMayBeLost: true,
+          expectedAttempt: running.attempt,
+          expectedFixtureScopeId: "foreign-fixture",
+          expectedUpdatedAt: task.updatedAt,
+        },
+      },
+    );
+    expect(foreignAbandon.status()).toBe(404);
 
     let abandonPosts = 0;
     let providerRequests = 0;
@@ -187,6 +229,10 @@ test("generation task panel hides manual reconcile and preserves one accepted re
 }) => {
   const taskId = "tasks-panel-lost-retry-0001";
   const generationInputKey = "tasks-panel-lost-retry-input";
+  const generationOwnershipKey = "tasks-panel-lost-retry-ownership";
+  const modelConfigurationRevision = "tasks-panel-lost-retry-config";
+  const modelInputContractFingerprint = "mic2:tasks-panel-lost-retry";
+  const modelReleaseRevision = "00000000-0000-4000-8000-000000000068";
   const targetCanvasId = "default";
   await request.delete(`/api/canvas/${targetCanvasId}`);
   const seededCanvas = await request.put(`/api/canvas/${targetCanvasId}`, {
@@ -199,6 +245,10 @@ test("generation task panel hides manual reconcile and preserves one accepted re
           textGenerationError: "retry response will be lost",
           textGenerationErrorCode: "OFFLINE_FIXTURE",
           textGenerationInputKey: generationInputKey,
+          textGenerationOwnershipKey: generationOwnershipKey,
+          textInputContractFingerprint: modelInputContractFingerprint,
+          textModelConfigurationRevision: modelConfigurationRevision,
+          textModelReleaseRevision: modelReleaseRevision,
           textGenerationRetryAllowed: true,
           textGenerationTaskId: taskId,
           textGenerating: false,
@@ -228,11 +278,15 @@ test("generation task panel hides manual reconcile and preserves one accepted re
     errorCode: "OFFLINE_FIXTURE",
     errorMessage: "retry response will be lost",
     generationInputKey,
+    generationOwnershipKey,
     id: taskId,
     kind: "text",
     nodeId: "tasks-panel-lost-retry-node",
     prompt: "lost retry response",
     retryAllowed: true,
+    modelConfigurationRevision,
+    modelInputContractFingerprint,
+    modelReleaseRevision,
     state: "failed",
     updatedAt: "2026-08-11T08:00:01.000Z",
   } as const;
@@ -321,7 +375,12 @@ test("generation task panel hides manual reconcile and preserves one accepted re
       canvasId: targetCanvasId,
       expectedAttempt: 1,
       expectedCanvasRevision: durableBeforeRetry.graphRevision,
+      expectedFixtureScopeId: "",
       expectedGenerationInputKey: generationInputKey,
+      expectedGenerationOwnershipKey: generationOwnershipKey,
+      expectedModelConfigurationRevision: modelConfigurationRevision,
+      expectedModelInputContractFingerprint: modelInputContractFingerprint,
+      expectedModelReleaseRevision: modelReleaseRevision,
       expectedUpdatedAt: "2026-08-11T08:00:01.000Z",
       kind: "text",
       nodeId: "tasks-panel-lost-retry-node",
@@ -365,6 +424,29 @@ test("generation task panel shows an empty state and closes with Escape", async 
     ]);
     localStorage.setItem(
       `unboundry-group-run-checkpoint:v1:${scopeKey}`,
+      JSON.stringify({ malformed: true }),
+    );
+    window.dispatchEvent(new CustomEvent("unboundry:group-run-checkpoint"));
+  }, { fixtureScopeId });
+  await expect(page.getByTestId("tasks-group-recovery")).toContainText(
+    "正在安全核对整组任务",
+  );
+  await expect(page.getByTestId("tasks-group-recovery")).toContainText(
+    "不会重复提交",
+  );
+  await page.evaluate(async ({ fixtureScopeId }) => {
+    const status = await fetch("/api/auth/status").then((response) =>
+      response.json()
+    ) as { user?: { id?: string } };
+    const accountId = status.user?.id;
+    if (!accountId) throw new Error("missing fixture account");
+    const scopeKey = JSON.stringify([
+      accountId,
+      fixtureScopeId,
+      fixtureScopeId,
+    ]);
+    localStorage.setItem(
+      `unboundry-group-run-checkpoint:v1:${scopeKey}`,
       JSON.stringify({
         accountId,
         canvasId: fixtureScopeId,
@@ -372,6 +454,7 @@ test("generation task panel shows an empty state and closes with Escape", async 
         fixtureScopeId,
         groupId: "group-a",
         nodeStates: { "text-a": "success", "image-b": "pending" },
+        resumeMode: "current-graph",
         runId: "fixture-interrupted-run",
         snapshotFingerprint: "fixture-snapshot",
         startedAt: Date.now() - 2_000,
@@ -384,11 +467,12 @@ test("generation task panel shows an empty state and closes with Escape", async 
           },
         },
         updatedAt: Date.now(),
-        version: 1,
+        version: 2,
       }),
     );
     window.dispatchEvent(new CustomEvent("unboundry:group-run-checkpoint"));
   }, { fixtureScopeId });
+  await expect(page.getByTestId("tasks-group-recovery")).toHaveCount(0);
   const checkpoint = page.getByTestId("tasks-group-checkpoint");
   await expect(checkpoint).toContainText("已记录 1/2 个成功节点");
   await checkpoint.getByTestId("tasks-group-continue").click();

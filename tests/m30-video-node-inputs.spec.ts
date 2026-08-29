@@ -4,8 +4,11 @@ import {
   type APIRequestContext,
   type Page,
 } from "./safe-test";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { execFile } from "node:child_process";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { promisify } from "node:util";
 import {
   resolveNodeInputs,
   type NodeInputKind,
@@ -17,34 +20,24 @@ import {
 } from "../types/modelParameters";
 import { openAppDatabase } from "../server/database";
 import { resolvePersistedNodeInputs } from "../server/inputPreflight";
+import { bootstrapPublishedModelContracts } from
+  "../server/modelReleaseBootstrap";
+import {
+  buildCanvasModelTransitionCommand,
+  canvasModelTransitionExpectedBefore,
+  createCanvasModelTransitionPort,
+  rollbackCanvasModelTransition,
+} from "../client/src/canvas/CanvasModelTransitionCommand";
+import type { ProbeNodeType } from "../client/src/canvas/ProbeNode";
+import type { CuttableEdge } from "../client/src/canvas/canvasTypes";
 
 const seedanceSchema = knownModelParameterSchema({
   capability: "video",
   providerDriver: "volcengine-ark",
   providerModelId: "doubao-seedance-2-0-mini-260615",
 });
-
-function serverFixtureSchema(): ModelParameterSchema {
-  const rules = seedanceSchema.referenceMediaRules!;
-  const audio = { ...rules.audio! };
-  const video = { ...rules.video! };
-  // The checked-in audio fixture is deliberately long. This local-only model
-  // exercises authoritative metadata hydration, not a paid Seedance limit.
-  delete audio.maxDurationSeconds;
-  delete audio.maxTotalDurationSeconds;
-  delete audio.minDurationSeconds;
-  delete video.minPixelCount;
-  return {
-    ...seedanceSchema,
-    referenceMediaRules: {
-      ...rules,
-      audio,
-      video: { ...video, minDurationSeconds: 0 },
-    },
-  };
-}
-
-const serverSchema = serverFixtureSchema();
+const serverSchema = seedanceSchema;
+const execFileAsync = promisify(execFile);
 
 type GraphNode = {
   data: Record<string, unknown>;
@@ -413,14 +406,371 @@ test("multimodal permits one image subject and one video subject but blocks dupl
   }));
 });
 
+test("Seedance multimodal semantics normalize a retained first-frame role in one durable Canvas transaction", async () => {
+  const graph = multimodalGraph({ audio: 0, image: 1, video: 0 });
+  const retainedFrame = graph.edges.map((item) =>
+    item.source === "p3-image-1"
+      ? { ...item, data: { ...item.data, inputRole: "first-frame" as const } }
+      : item);
+  const result = videoPreflight({
+    edges: retainedFrame,
+    mode: "multimodal",
+    nodes: graph.nodes,
+  });
+  expect(result.canSubmit).toBeTruthy();
+  expect(result.inputs.find(({ sourceNodeId }) => sourceNodeId === "p3-image-1"))
+    .toMatchObject({ compatibility: "compatible", role: "reference-image" });
+  expect(result.problems).toEqual([]);
+
+  const before = {
+    edges: retainedFrame as unknown as CuttableEdge[],
+    nodes: graph.nodes.map((node) => node.id === "p3-target-video"
+      ? {
+          ...node,
+          data: {
+            ...node.data,
+            videoGenerationContractFingerprint: "old-contract",
+            videoGenerationError: "old-contract-error",
+            videoGenerationErrorCode: "INPUT_INVALID",
+            videoGenerationOwnershipKey: "ownership-preserved",
+            videoGenerationTaskId: "task-preserved",
+            videoInputContractFingerprint: "old-contract",
+            videoParameters: { inputMode: "multimodal" },
+          },
+        }
+      : node) as unknown as ProbeNodeType[],
+    revision: 7,
+  };
+  let snapshot = before;
+  let checkpoints = 0;
+  let commits = 0;
+  let flushes = 0;
+  const port = createCanvasModelTransitionPort({
+    checkpoint: () => { checkpoints += 1; },
+    commitAtomic(next) {
+      commits += 1;
+      snapshot = {
+        edges: [...next.edges],
+        nodes: [...next.nodes],
+        revision: next.revision ?? snapshot.revision,
+      };
+    },
+    async flush() { flushes += 1; },
+    persistenceReady: () => true,
+    snapshot: () => snapshot,
+    waitForRevision: async () => 8,
+  });
+  const applied = await port.apply({
+    intent: "model-switch",
+    model: {
+      configurationRevision: "seedance-contract-test",
+      displayName: "Seedance 2.0 Mini Next",
+      id: "seedance-mini-next",
+      parameterSchema: seedanceSchema,
+      releaseRevisionId: "00000000-0000-4000-8000-000000000301",
+    },
+    nodeId: "p3-target-video",
+    requestedParameters: { inputMode: "multimodal" },
+  });
+  expect(applied).toMatchObject({ changed: true, revision: 8, status: "applied" });
+  expect({ checkpoints, commits, flushes }).toEqual({
+    checkpoints: 1,
+    commits: 1,
+    flushes: 1,
+  });
+  expect(snapshot.edges).toHaveLength(before.edges.length);
+  expect(snapshot.edges.find((item) => item.source === "p3-image-1")?.data?.inputRole)
+    .toBe("reference-image");
+  expect(snapshot.nodes.find((item) => item.id === "p3-target-video")?.data)
+    .toMatchObject({
+      videoGenerationOwnershipKey: "ownership-preserved",
+      videoGenerationTaskId: "task-preserved",
+      videoGenerationContractFingerprint: undefined,
+      videoGenerationError: undefined,
+      videoGenerationErrorCode: undefined,
+      videoInputContractFingerprint: expect.stringMatching(/^mic2:/),
+    });
+
+  const unrelatedError = buildCanvasModelTransitionCommand({
+    request: {
+      intent: "model-switch",
+      model: {
+        configurationRevision: "seedance-contract-test-other",
+        displayName: "Seedance 2.0 Mini Other",
+        id: "seedance-mini-other",
+        parameterSchema: seedanceSchema,
+        releaseRevisionId: "00000000-0000-4000-8000-000000000302",
+      },
+      nodeId: "p3-target-video",
+      requestedParameters: { inputMode: "multimodal" },
+    },
+    snapshot: {
+      ...snapshot,
+      nodes: snapshot.nodes.map((node) => node.id === "p3-target-video"
+        ? {
+            ...node,
+            data: {
+              ...node.data,
+              videoGenerationContractFingerprint: "different-contract",
+              videoGenerationError: "provider-error-must-stay",
+              videoGenerationErrorCode: "REMOTE",
+            },
+          }
+        : node),
+    },
+  });
+  expect(unrelatedError.status).toBe("ready");
+  expect(unrelatedError.after?.nodes.find((item) => item.id === "p3-target-video")?.data)
+    .toMatchObject({
+      videoGenerationContractFingerprint: "different-contract",
+      videoGenerationError: "provider-error-must-stay",
+      videoGenerationErrorCode: "REMOTE",
+    });
+
+  const savedAfter = snapshot;
+  const rollbackBefore = JSON.stringify(savedAfter);
+  const rollbackPort = createCanvasModelTransitionPort({
+    checkpoint: () => undefined,
+    commitAtomic(next) {
+      snapshot = {
+        edges: [...next.edges],
+        nodes: [...next.nodes],
+        revision: next.revision ?? snapshot.revision,
+      };
+    },
+    flush: async () => { throw new Error("injected-save-failure"); },
+    persistenceReady: () => true,
+    snapshot: () => snapshot,
+    waitForRevision: async () => 9,
+  });
+  const rolledBack = await rollbackPort.apply({
+    intent: "mode-switch",
+    model: {
+      configurationRevision: "seedance-contract-test",
+      displayName: "Seedance 2.0 Mini",
+      id: "seedance-mini",
+      parameterSchema: seedanceSchema,
+      releaseRevisionId: "00000000-0000-4000-8000-000000000303",
+    },
+    nodeId: "p3-target-video",
+    requestedParameters: { inputMode: "multimodal" },
+  });
+  expect(rolledBack).toMatchObject({ status: "rolled-back" });
+  expect(JSON.stringify(snapshot)).toBe(rollbackBefore);
+});
+
+test("model transition rollback preserves concurrent unrelated graph edits", () => {
+  const before = {
+    edges: [{
+      data: { inputOrder: 1, inputRole: "first-frame" as const },
+      id: "frame-edge",
+      source: "frame",
+      target: "video",
+    }] as unknown as CuttableEdge[],
+    nodes: [{
+      data: { assetId: "frame.png", imageSrc: "/frame.png", label: "首帧" },
+      id: "frame",
+      position: { x: 0, y: 0 },
+      type: "image",
+    }, {
+      data: {
+        label: "视频",
+        videoModelId: "model-before",
+        videoParameters: { inputMode: "first-last-frame" },
+      },
+      id: "video",
+      position: { x: 100, y: 0 },
+      type: "video",
+    }, {
+      data: { content: "原文", label: "无关文案" },
+      id: "unrelated",
+      position: { x: 200, y: 0 },
+      type: "text",
+    }] as ProbeNodeType[],
+    revision: 7,
+  };
+  const after = {
+    ...before,
+    edges: before.edges.map((edge) => ({
+      ...edge,
+      data: { ...edge.data, inputRole: "reference-image" as const },
+    })),
+    nodes: before.nodes.map((node) => node.id === "video"
+      ? {
+          ...node,
+          data: {
+            ...node.data,
+            videoModelId: "model-after",
+            videoParameters: { inputMode: "multimodal" },
+          },
+        }
+      : node),
+  };
+  const current = {
+    ...after,
+    edges: [...after.edges, {
+      data: { inputOrder: 2, inputRole: "instruction" as const },
+      id: "concurrent-edge",
+      source: "unrelated",
+      target: "video",
+    }] as unknown as CuttableEdge[],
+    nodes: after.nodes.map((node) => node.id === "unrelated"
+      ? { ...node, data: { ...node.data, content: "并发新文案" } }
+      : node),
+    revision: 8,
+  };
+  const rolledBack = rollbackCanvasModelTransition({ after, before, current });
+  expect(rolledBack.nodes.find((node) => node.id === "video")?.data)
+    .toMatchObject({
+      videoModelId: "model-before",
+      videoParameters: { inputMode: "first-last-frame" },
+    });
+  expect(rolledBack.edges.find((edge) => edge.id === "frame-edge")?.data?.inputRole)
+    .toBe("first-frame");
+  expect(rolledBack.nodes.find((node) => node.id === "unrelated")?.data.content)
+    .toBe("并发新文案");
+  expect(rolledBack.edges.some((edge) => edge.id === "concurrent-edge")).toBe(true);
+  expect(rolledBack.revision).toBe(8);
+});
+
+test("model transition rejects a stale click after the admitted graph changes", async () => {
+  let snapshot = {
+    edges: [{
+      data: { inputOrder: 1, inputRole: "first-frame" as const },
+      id: "stale-frame-edge",
+      source: "stale-frame",
+      target: "stale-video",
+    }] as unknown as CuttableEdge[],
+    nodes: [{
+      data: { assetId: "frame.png", imageSrc: "/frame.png", label: "首帧" },
+      id: "stale-frame",
+      position: { x: 0, y: 0 },
+      type: "image",
+    }, {
+      data: {
+        label: "视频",
+        videoModelConfigurationRevision: "config-before",
+        videoModelId: "model-before",
+        videoParameters: { inputMode: "first-last-frame" },
+        videoPrompt: "旧点击",
+      },
+      id: "stale-video",
+      position: { x: 100, y: 0 },
+      type: "video",
+    }] as ProbeNodeType[],
+    revision: 7,
+  };
+  const expectedBefore = canvasModelTransitionExpectedBefore(
+    snapshot,
+    "stale-video",
+  );
+  snapshot = {
+    ...snapshot,
+    edges: snapshot.edges.map((edge) => ({
+      ...edge,
+      data: { ...edge.data, inputRole: "reference-image" as const },
+    })),
+    nodes: snapshot.nodes.map((node) => node.id === "stale-video"
+      ? {
+          ...node,
+          data: {
+            ...node.data,
+            videoModelConfigurationRevision: "config-new",
+            videoModelId: "model-new",
+            videoParameters: { inputMode: "multimodal" },
+          },
+        }
+      : node),
+    revision: 8,
+  };
+  let commits = 0;
+  const port = createCanvasModelTransitionPort({
+    checkpoint: () => undefined,
+    commitAtomic() { commits += 1; },
+    flush: async () => undefined,
+    persistenceReady: () => true,
+    snapshot: () => snapshot,
+    waitForRevision: async () => snapshot.revision,
+  });
+  const result = await port.apply({
+    expectedBefore,
+    intent: "execute",
+    model: {
+      configurationRevision: "config-before",
+      displayName: "旧模型",
+      id: "model-before",
+      parameterSchema: seedanceSchema,
+      releaseRevisionId: "00000000-0000-4000-8000-000000000303",
+    },
+    nodeId: "stale-video",
+    requestedParameters: { inputMode: "first-last-frame" },
+  });
+  expect(result).toMatchObject({
+    message: "画布已在等待期间更新，请按当前内容重新生成",
+    status: "rejected",
+  });
+  expect(commits).toBe(0);
+  expect(snapshot.nodes.find((node) => node.id === "stale-video")?.data)
+    .toMatchObject({
+      videoModelConfigurationRevision: "config-new",
+      videoModelId: "model-new",
+      videoParameters: { inputMode: "multimodal" },
+    });
+  expect(snapshot.edges[0]?.data?.inputRole).toBe("reference-image");
+});
+
+test("Video execute transition and interactive switches share Canvas admission", async () => {
+  const source = await readFile(
+    join(process.cwd(), "client/src/canvas/VideoNode.tsx"),
+    "utf8",
+  );
+  const generateStart = source.indexOf("const generateVideo = async");
+  const generateEnd = source.indexOf("const retryVideoGeneration", generateStart);
+  const generate = source.slice(generateStart, generateEnd);
+  const prepare = generate.indexOf("prepareSubmissionAdapter: async () =>");
+  const transition = generate.indexOf(
+    "const transition = await applyModelTransition(",
+  );
+  expect(generateStart).toBeGreaterThan(-1);
+  expect(generateEnd).toBeGreaterThan(generateStart);
+  expect(prepare).toBeGreaterThan(-1);
+  expect(transition).toBeGreaterThan(prepare);
+  expect(generate).toContain("const compiled = compileCurrentSubmission({");
+  expect(generate).toContain("expectedBefore: transitionExpectedBefore");
+  expect(source).toContain("canvasModelTransitionExpectedBefore(");
+  expect(source).toContain("runWithSingleNodeGenerationAdmission({");
+  expect(source).toContain("void applyInteractiveModelTransition({");
+  expect(source).toContain("const semanticEditBlocked = Boolean(");
+  expect(source).toContain("disabled={semanticEditBlocked}");
+  const loadFile = source.slice(
+    source.indexOf("const loadFile = async"),
+    source.indexOf("const togglePlayback = async"),
+  );
+  expect(loadFile).toContain("!file ||");
+  expect(loadFile).toContain("semanticEditBlocked ||");
+  expect(loadFile).toContain("canvasMutationPending ||");
+  expect(loadFile).toContain("uploadInFlight.current");
+  expect(loadFile).toContain("const prepared = await tryAdoptNodes(");
+  expect(loadFile.indexOf("const prepared = await tryAdoptNodes("))
+    .toBeLessThan(loadFile.indexOf("const response = await fetch("));
+  expect(source).toContain("const uploadControlBlocked =");
+  expect(source).toContain(
+    "semanticEditBlocked || canvasMutationPending || uploading",
+  );
+  expect(source).toContain("replaceDisabled={uploadControlBlocked}");
+});
+
 const serverCanvasId = "p3-video-server-preflight";
 const serverModelName = "P3 Zero Provider Video Inputs";
 const serverImageAssetId = "p3-server-image";
-const serverVideoAssetId = "p3-server-video.mp4";
 const serverAudioAssetId = "p3-server-audio.mp3";
 let serverModelId = "";
+let serverProviderId = "";
 
 async function connectNodes(page: Page, sourceId: string, targetId: string) {
+  const sourceNode = page.locator(`.react-flow__node[data-id="${sourceId}"]`);
+  const targetNode = page.locator(`.react-flow__node[data-id="${targetId}"]`);
+  await sourceNode.click();
   const source = page.locator(
     `.react-flow__node[data-id="${sourceId}"] .react-flow__handle.source .node-handle-hit`,
   );
@@ -437,6 +787,7 @@ async function connectNodes(page: Page, sourceId: string, targetId: string) {
     steps: 8,
   });
   await page.mouse.up();
+  await targetNode.click();
 }
 
 async function ensureServerModel(request: APIRequestContext) {
@@ -456,6 +807,18 @@ async function ensureServerModel(request: APIRequestContext) {
     expect(updated.ok()).toBeTruthy();
     return found.id;
   }
+  const providerResponse = await request.post("/api/admin/providers", {
+    data: {
+      apiKey: "zero-provider-p3-video-inputs-key",
+      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      driver: "volcengine-ark",
+      label: "P3 Video Inputs Ark",
+    },
+  });
+  expect(providerResponse.status()).toBe(201);
+  serverProviderId = (await providerResponse.json() as {
+    profile: { id: string };
+  }).profile.id;
   const created = await request.post("/api/admin/models", {
     data: {
       capability: "video",
@@ -463,40 +826,78 @@ async function ensureServerModel(request: APIRequestContext) {
       isDefault: false,
       maxCostMicrounits: 0,
       parameterSchema: serverSchema,
-      providerModelId: "fixture/p3-video-inputs",
-      providerProfileId: "provider-unconfigured",
+      providerModelId: "doubao-seedance-2-0-mini-260615",
+      providerProfileId: serverProviderId,
+      providerProtocol: "native",
       sortOrder: 9_300,
-      status: "published",
+      status: "draft",
     },
   });
   expect(created.status()).toBe(201);
-  return (await created.json() as { model: { id: string } }).model.id;
+  const modelId = (await created.json() as { model: { id: string } }).model.id;
+  const contractResponse = await request.get(
+    `/api/admin/models/${modelId}/contract`,
+  );
+  expect(contractResponse.ok()).toBeTruthy();
+  const { suggestedDocument } = await contractResponse.json() as {
+    suggestedDocument: Record<string, unknown>;
+  };
+  const draft = await request.post(
+    `/api/admin/models/${modelId}/contract/draft`,
+    { data: { document: suggestedDocument, expectedDraftVersion: 0 } },
+  );
+  expect(draft.ok()).toBeTruthy();
+  const published = await request.post(
+    `/api/admin/models/${modelId}/contract/publish`,
+    { data: { expectedDraftVersion: 1 } },
+  );
+  expect(published.ok()).toBeTruthy();
+  const directoryResponse = await request.get("/api/test-data-directory");
+  expect(directoryResponse.ok()).toBeTruthy();
+  const { dataDirectory } = await directoryResponse.json() as {
+    dataDirectory: string;
+  };
+  const database = openAppDatabase(dataDirectory);
+  try {
+    bootstrapPublishedModelContracts(database, "__test__");
+  } finally {
+    database.close();
+  }
+  return modelId;
 }
 
 async function uploadServerMedia(request: APIRequestContext) {
-  const [image, video, audio] = await Promise.all([
-    readFile(resolve(
-      process.cwd(),
-      "spec/reference/upstream-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
-    )),
-    readFile(resolve(process.cwd(), "client/public/fixtures/video-success.mp4")),
-    readFile(resolve(process.cwd(), "client/public/fixtures/audio-success.mp3")),
-  ]);
+  const fixtureDirectory = await mkdtemp(join(tmpdir(), "unboundry-m30-media-"));
+  const audioPath = join(fixtureDirectory, "audio.mp3");
+  let image: Buffer;
+  let audio: Buffer;
+  try {
+    await execFileAsync("ffmpeg", [
+      "-hide_banner", "-loglevel", "error", "-y",
+      "-i", resolve(process.cwd(), "client/public/fixtures/audio-success.mp3"),
+      "-t", "5", "-c:a", "libmp3lame", "-q:a", "9", audioPath,
+    ]);
+    [image, audio] = await Promise.all([
+      readFile(resolve(
+        process.cwd(),
+        "spec/reference/upstream-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
+      )),
+      readFile(audioPath),
+    ]);
+  } finally {
+    await rm(fixtureDirectory, { force: true, recursive: true });
+  }
   const responses = [
     await request.post(`/api/assets/${serverImageAssetId}`, {
       data: image,
       headers: { "Content-Type": "image/png", "X-File-Name": "p3-server.png" },
-    }),
-    await request.post(`/api/video-assets/${serverVideoAssetId}`, {
-      data: video,
-      headers: { "Content-Type": "video/mp4", "X-File-Name": "p3-server.mp4" },
     }),
     await request.post(`/api/audio-assets/${serverAudioAssetId}`, {
       data: audio,
       headers: { "Content-Type": "audio/mpeg", "X-File-Name": "p3-server.mp3" },
     }),
   ];
-  expect(responses.map((response) => response.status())).toEqual([201, 201, 201]);
+  expect(responses.map((response) => response.status())).toEqual([201, 201]);
 }
 
 test.describe.serial("P3 Video server preflight trusts the persisted edge graph", () => {
@@ -509,9 +910,9 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
     await request.delete(`/api/canvas/${serverCanvasId}`);
     await request.delete(`/api/canvas/${serverCanvasId}-image-dimensions`);
     await request.delete("/api/canvas/node.video.empty");
+    await request.delete("/api/canvas/node.video.mode-transition");
     await Promise.all([
       request.delete(`/api/assets/${serverImageAssetId}`),
-      request.delete(`/api/video-assets/${serverVideoAssetId}`),
       request.delete(`/api/audio-assets/${serverAudioAssetId}`),
     ]);
     if (serverModelId) {
@@ -531,13 +932,11 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
         edges: [
           { data: { inputOrder: 1, inputRole: "instruction" }, id: "server-edge-text", source: "server-text", target: "server-video" },
           { data: { inputOrder: 2, inputRole: "subject" }, id: "server-edge-image", source: "server-image", target: "server-video" },
-          { data: { inputOrder: 3, inputRole: "subject" }, id: "server-edge-video", source: "server-video-source", target: "server-video" },
-          { data: { inputOrder: 4, inputRole: "reference-audio" }, id: "server-edge-audio", source: "server-audio", target: "server-video" },
+          { data: { inputOrder: 3, inputRole: "reference-audio" }, id: "server-edge-audio", source: "server-audio", target: "server-video" },
         ],
         nodes: [
           { data: { content: "服务端持久化的上游文字" }, id: "server-text", type: "text" },
           { data: { assetId: serverImageAssetId, imageSrc: `/api/assets/${serverImageAssetId}` }, id: "server-image", type: "image" },
-          { data: { assetId: serverVideoAssetId, videoSrc: `/api/video-assets/${serverVideoAssetId}` }, id: "server-video-source", type: "video" },
           { data: { assetId: serverAudioAssetId, audioSrc: `/api/audio-assets/${serverAudioAssetId}` }, id: "server-audio", type: "audio" },
           {
             data: {
@@ -597,14 +996,14 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
       safetyAdmission: { allowed: boolean };
       snapshot: Array<Record<string, unknown>>;
     };
-    expect(preflight.canSubmit).toBeTruthy();
+    expect(preflight.canSubmit, JSON.stringify(preflight)).toBeTruthy();
     expect(preflight.canEnqueue).toBeFalsy();
     expect(preflight).not.toHaveProperty("costCurrency");
     expect(preflight).not.toHaveProperty("estimatedCostMicrounits");
     expect(preflight.problems).toEqual([]);
     expect(preflight.provider).toEqual({
-      adapterSupported: false,
-      configured: false,
+      adapterSupported: true,
+      configured: true,
     });
     expect(preflight.providerBalance).toMatchObject({
       checked: false,
@@ -616,7 +1015,6 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
     expect(preflight.inputs.map(({ edgeId }) => edgeId)).toEqual([
       "server-edge-text",
       "server-edge-image",
-      "server-edge-video",
       "server-edge-audio",
     ]);
     expect(preflight.inputs.every((input) =>
@@ -625,8 +1023,7 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
     expect(preflight.snapshot).toEqual([
       { kind: "text", order: 1, role: "instruction", sourceNodeId: "server-text" },
       { assetId: serverImageAssetId, kind: "image", order: 2, role: "subject", sourceNodeId: "server-image" },
-      { assetId: serverVideoAssetId, kind: "video", order: 3, role: "subject", sourceNodeId: "server-video-source" },
-      { assetId: serverAudioAssetId, kind: "audio", order: 4, role: "reference-audio", sourceNodeId: "server-audio" },
+      { assetId: serverAudioAssetId, kind: "audio", order: 3, role: "reference-audio", sourceNodeId: "server-audio" },
     ]);
     expect(JSON.stringify(preflight.snapshot)).not.toMatch(/https?:|signed|signature/i);
     expect(JSON.stringify(preflight.snapshot)).not.toContain("forged-client");
@@ -1011,19 +1408,29 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
     // mode remains unchanged until the user adds a new media edge.
     await expect(creator.getByRole("button", { exact: true, name: "文本" }))
       .toBeVisible();
+    await expect.poll(async () => Number(
+      await world.getAttribute("data-save-fingerprint-count") ?? "0",
+    )).toBeGreaterThan(0);
+    await expect(creator.getByRole("button", { exact: true, name: "文本" }))
+      .toBeEnabled();
 
     await connectNodes(page, "p3-ui-image-2", "p3-ui-video");
     await expect(world).toHaveAttribute("data-edge-count", "3");
     await expect(creator.getByRole("button", { exact: true, name: "全能参考" }))
       .toBeVisible();
+    await expect(creator.getByRole("button", { exact: true, name: "全能参考" }))
+      .toBeEnabled();
     await expect(creator.getByTestId("video-creator-prompt")).toHaveValue("");
     await expect(creator.getByTestId("upstream-input-p3-ui-text")).toBeVisible();
     await expect(creator.getByTestId("upstream-input-problem")).toHaveCount(0);
 
     await page.keyboard.press("Meta+z");
     await expect(world).toHaveAttribute("data-edge-count", "2");
+    await page.locator('.react-flow__node[data-id="p3-ui-video"]').click();
     await expect(creator.getByRole("button", { exact: true, name: "文本" }))
       .toBeVisible();
+    await expect(creator.getByRole("button", { exact: true, name: "文本" }))
+      .toBeEnabled();
 
     await connectNodes(page, "p3-ui-image-2", "p3-ui-video");
     await expect(world).toHaveAttribute("data-edge-count", "3");

@@ -63,10 +63,12 @@ export function MediaLoadFallback({
   kind,
   onReload,
   onReplace,
+  replaceDisabled = false,
 }: {
   kind: "图片" | "视频" | "音频";
   onReload: () => void;
   onReplace: () => void;
+  replaceDisabled?: boolean;
 }) {
   return (
     <div
@@ -82,7 +84,9 @@ export function MediaLoadFallback({
       <span>素材已保留，可以重新加载或替换</span>
       <div>
         <button onClick={onReload} type="button">重新加载</button>
-        <button onClick={onReplace} type="button">重新上传</button>
+        <button disabled={replaceDisabled} onClick={onReplace} type="button">
+          重新上传
+        </button>
       </div>
     </div>
   );

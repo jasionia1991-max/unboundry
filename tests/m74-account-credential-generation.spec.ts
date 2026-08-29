@@ -14,6 +14,7 @@ import {
   generationProviderAttemptCounts,
 } from "../server/generationTaskStore";
 import { executeTextTaskWithDependencies } from "../server/generationTasks";
+import { bootstrapPublishedModelContracts } from "../server/modelReleaseBootstrap";
 import { providerMediaUrlForOwner } from "../server/providerMedia";
 import {
   getProviderProfile,
@@ -299,6 +300,7 @@ test("account key availability is owner-isolated: A bad key never affects B or t
       method: "POST",
     });
     expect(bootstrap.status).toBe(201);
+    const bootstrapBody = await bootstrap.json() as { user: { id: string } };
     const adminCookie = cookie(bootstrap);
 
     const provider = await request("/api/admin/providers", {
@@ -347,6 +349,7 @@ test("account key availability is owner-isolated: A bad key never affects B or t
         WHERE id = 1
       `)
       .run();
+    bootstrapPublishedModelContracts(database, bootstrapBody.user.id);
     database.close();
 
     const createUser = async (name: string, password: string) => {

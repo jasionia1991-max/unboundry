@@ -29,6 +29,17 @@ async function expectInsideViewport(locator: Locator) {
   expect(bounds.bottom).toBeLessThanOrEqual(bounds.viewportHeight);
 }
 
+async function setImageUploadFiles(
+  page: Page,
+  files: Parameters<Locator["setInputFiles"]>[0],
+) {
+  const input = page.getByTestId("image-upload-input");
+  await expect(input).toBeEnabled();
+  await input.setInputFiles(files);
+  await expect(input).toBeDisabled();
+  await expect(input).toBeEnabled();
+}
+
 async function expectScreenSpaceSizeInvariant(page: Page, locator: Locator) {
   const zoomSlider = page.getByTestId("zoom-slider");
   const world = page.getByTestId("canvas-world");
@@ -96,6 +107,7 @@ test.beforeEach(async ({ page }, testInfo) => {
       ? [
           {
             capability: "image",
+            configurationRevision: "111111111111111111111111",
             displayName: "Nano Banana 2 Lite",
             generationAvailable: true,
             id: "fixture-nano-banana-2-lite",
@@ -106,9 +118,11 @@ test.beforeEach(async ({ page }, testInfo) => {
             },
             isDefault: true,
             parameterSchema,
+            releaseRevisionId: "00000000-0000-4000-8000-000000000201",
           },
           {
             capability: "image",
+            configurationRevision: "222222222222222222222222",
             displayName: "GPT Image 2",
             generationAvailable: true,
             id: "fixture-gpt-image-2",
@@ -119,10 +133,14 @@ test.beforeEach(async ({ page }, testInfo) => {
             },
             isDefault: false,
             parameterSchema,
+            releaseRevisionId: "00000000-0000-4000-8000-000000000202",
           },
         ]
       : [{
           capability: "image",
+          configurationRevision: gptImageModel
+            ? "222222222222222222222222"
+            : "111111111111111111111111",
           displayName,
           generationAvailable: gptImageTool,
           id: gptImageModel ? "fixture-gpt-image-2" : "fixture-nano-banana-2-lite",
@@ -133,6 +151,9 @@ test.beforeEach(async ({ page }, testInfo) => {
           },
           isDefault: true,
           parameterSchema,
+          releaseRevisionId: gptImageModel
+            ? "00000000-0000-4000-8000-000000000202"
+            : "00000000-0000-4000-8000-000000000201",
         }];
     const models = [...imageModels, {
       capability: "video",
@@ -687,7 +708,7 @@ test("Image empty and local upload states match the observed geometry", async ({
     context.fillRect(0, 0, canvas.width, canvas.height);
     return canvas.toDataURL("image/png").split(",")[1];
   });
-  await page.getByTestId("image-upload-input").setInputFiles({
+  await setImageUploadFiles(page, {
     buffer: Buffer.from(portraitPng, "base64"),
     mimeType: "image/png",
     name: "portrait-180x320.png",
@@ -765,7 +786,7 @@ test("Image quick split crops transparent padding and divides only the visible b
     canvas.height = 16;
     return canvas.toDataURL("image/png").split(",")[1];
   });
-  await page.getByTestId("image-upload-input").setInputFiles({
+  await setImageUploadFiles(page, {
     buffer: Buffer.from(fullyTransparentBase64, "base64"),
     mimeType: "image/png",
     name: "fully-transparent.png",
@@ -788,7 +809,7 @@ test("Image quick split crops transparent padding and divides only the visible b
     context.fillRect(1, 1, 1, 1);
     return canvas.toDataURL("image/png").split(",")[1];
   });
-  await page.getByTestId("image-upload-input").setInputFiles({
+  await setImageUploadFiles(page, {
     buffer: Buffer.from(tinyVisibleBase64, "base64"),
     mimeType: "image/png",
     name: "one-visible-pixel.png",
@@ -817,7 +838,7 @@ test("Image quick split crops transparent padding and divides only the visible b
     context.fillRect(200, 150, 100, 100);
     return canvas.toDataURL("image/png").split(",")[1];
   });
-  await page.getByTestId("image-upload-input").setInputFiles({
+  await setImageUploadFiles(page, {
     buffer: Buffer.from(pngBase64, "base64"),
     mimeType: "image/png",
     name: "transparent-padded.png",
@@ -1175,7 +1196,7 @@ test("Image success keeps the material-fit result, favorite, prompt, and paramet
     context.fillRect(0, 0, canvas.width, canvas.height);
     return canvas.toDataURL("image/png").split(",")[1];
   });
-  await page.getByTestId("image-upload-input").setInputFiles({
+  await setImageUploadFiles(page, {
     buffer: Buffer.from(localReplacementBase64, "base64"),
     mimeType: "image/png",
     name: "local-replacement.png",
@@ -1240,7 +1261,8 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   );
   const card = page.getByTestId("image-node-image-primary");
   await node.click();
-  await page.getByTestId("image-upload-input").setInputFiles(
+  await setImageUploadFiles(
+    page,
     path.resolve(
       "spec/reference/upstream-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
     ),
@@ -1802,9 +1824,16 @@ test("Image multi-angle submits a structured persistent fake task without Provid
           canvasId: body.canvasId,
           costCurrency: "USD",
           createdAt: "2026-08-23T13:00:01.000Z",
+          fixtureScopeId: body.fixtureScopeId,
+          generationIdentityVersion: body.generationIdentityVersion,
+          generationInputKey: body.generationInputKey,
+          generationOwnershipKey: body.generationOwnershipKey,
           id: "fake-multi-angle-task-1",
           kind: "image",
           model: body.model,
+          modelConfigurationRevision: body.modelConfigurationRevision,
+          modelInputContractFingerprint: body.modelInputContractFingerprint,
+          modelReleaseRevision: body.modelReleaseRevision,
           nodeId: body.nodeId,
           prompt: body.prompt,
           state: "queued",
@@ -1820,7 +1849,8 @@ test("Image multi-angle submits a structured persistent fake task without Provid
   await request.delete("/api/canvas/node.image.success");
   await page.setViewportSize({ height: 720, width: 1280 });
   await page.goto("/__fixture/node.image.success");
-  await page.getByTestId("image-upload-input").setInputFiles(
+  await setImageUploadFiles(
+    page,
     path.resolve(
       "spec/reference/upstream-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
     ),
@@ -2020,9 +2050,16 @@ test("Image redraw submits an owner-scoped mask fake task and cancel is lossless
           canvasId: body.canvasId,
           costCurrency: "USD",
           createdAt: "2026-08-23T13:00:01.000Z",
+          fixtureScopeId: body.fixtureScopeId,
+          generationIdentityVersion: body.generationIdentityVersion,
+          generationInputKey: body.generationInputKey,
+          generationOwnershipKey: body.generationOwnershipKey,
           id: "fake-redraw-task-1",
           kind: "image",
           model: body.model,
+          modelConfigurationRevision: body.modelConfigurationRevision,
+          modelInputContractFingerprint: body.modelInputContractFingerprint,
+          modelReleaseRevision: body.modelReleaseRevision,
           nodeId: body.nodeId,
           prompt: body.prompt,
           state: "queued",
@@ -2037,7 +2074,8 @@ test("Image redraw submits an owner-scoped mask fake task and cancel is lossless
   });
   await request.delete("/api/canvas/node.image.success");
   await page.goto("/__fixture/node.image.success");
-  await page.getByTestId("image-upload-input").setInputFiles(
+  await setImageUploadFiles(
+    page,
     path.resolve(
       "spec/reference/upstream-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
     ),

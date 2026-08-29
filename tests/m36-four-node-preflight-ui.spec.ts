@@ -9,24 +9,32 @@ const blockedMessage = "零费用检查：管理员已关闭真实生成";
 
 const modelInputs = {
   audio: {
+    configurationRevision: "a03600000000000000000001",
     id: "preflight-audio-model",
     providerDriver: "mureka",
     providerModelId: "mureka-9",
+    releaseRevisionId: "a0360000-0000-4000-8000-000000000001",
   },
   image: {
+    configurationRevision: "a03600000000000000000002",
     id: "preflight-image-model",
     providerDriver: "openrouter",
     providerModelId: "openai/gpt-image-2",
+    releaseRevisionId: "a0360000-0000-4000-8000-000000000002",
   },
   text: {
+    configurationRevision: "a03600000000000000000003",
     id: "preflight-text-model",
     providerDriver: "volcengine-ark",
     providerModelId: "doubao-seed-2-0-lite-260428",
+    releaseRevisionId: "a0360000-0000-4000-8000-000000000003",
   },
   video: {
+    configurationRevision: "a03600000000000000000004",
     id: "preflight-video-model",
     providerDriver: "volcengine-ark",
     providerModelId: "doubao-seedance-2-0-mini-260615",
+    releaseRevisionId: "a0360000-0000-4000-8000-000000000004",
   },
 } as const;
 
@@ -71,7 +79,7 @@ test("Text, Image, Video and Audio stop after the same non-enqueueable preflight
           generationAvailable: true,
           generationUnavailableReason: "",
           generationUnavailableReasonCode: null,
-          id: model.id,
+          ...model,
           isDefault: true,
           parameterSchema: schemas[capability],
         })),
@@ -214,11 +222,15 @@ test("Text, Image, Video and Audio stop after the same non-enqueueable preflight
     const persisted = await (await request.get("/api/canvas/default")).json() as {
       nodes: Array<{ data: Record<string, unknown>; id: string }>;
     };
-    for (const node of persisted.nodes) {
-      expect(node.data.textGenerationError).toBeUndefined();
-      expect(node.data.imageGenerationError).toBeUndefined();
-      expect(node.data.videoGenerationError).toBeUndefined();
-      expect(node.data.audioGenerationError).toBeUndefined();
+    for (const check of checks) {
+      const node = persisted.nodes.find((candidate) => candidate.id === check.id);
+      expect(node?.data[`${check.kind}GenerationError`])
+        .toBe(check.kind === "video" ? blockedMessage : undefined);
+      for (const otherKind of ["text", "image", "video", "audio"] as const) {
+        if (otherKind !== check.kind) {
+          expect(node?.data[`${otherKind}GenerationError`]).toBeUndefined();
+        }
+      }
     }
     const tasks = await (await request.get(
       "/api/generation-tasks?canvasId=default",
@@ -281,7 +293,7 @@ test("all four real-canvas creators show the same visible platform stop reason",
           generationAvailable: false,
           generationUnavailableReason: "管理员已关闭真实生成",
           generationUnavailableReasonCode: "GLOBAL_GENERATION_DISABLED",
-          id: model.id,
+          ...model,
           isDefault: true,
           parameterSchema: schemas[capability],
         })),

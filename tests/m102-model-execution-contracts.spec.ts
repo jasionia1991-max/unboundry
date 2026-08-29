@@ -39,16 +39,32 @@ import { defaultModelReleaseDocument } from "../server/modelReleaseDefaults";
 import { analyzeModelContractTemplateCompatibility } from "../server/modelContractTemplateCompatibility";
 import { recordAudit } from "../server/audit";
 import {
+  defaultParameterValues,
   defaultParameterSchema,
   knownModelParameterSchema,
+  parameterConditionsMatch,
+  parameterFieldRequired,
+  validateParameterValues,
+  type ModelCapability,
+  type ModelInputRolePolicy,
+  type ModelParameterCondition,
+  type ModelParameterSchema,
+  type ModelParameterValue,
 } from "../types/modelParameters";
+import {
+  normalizeModelInputs,
+  type ModelSemanticInput,
+} from "../types/modelInputSemanticCompiler";
 import {
   pollContractRelayMediaTask,
   submitContractRelayMedia,
 } from "../server/relayProviderAdapters";
 import { modelReleaseBootstrapActorUserId } from "../server/modelReleaseBootstrap";
 import { modelContractTemplateCompatibilitySignature } from "../server/modelCatalog";
+import { assertActiveModelContractHealth } from
+  "../server/activeModelContractHealth";
 import {
+  assertRelayMediaOutputCardinality,
   assertGenerationTaskModelReleaseSnapshotIntegrity,
   relayMediaParametersForTask,
 } from "../server/generationTasks";
@@ -57,6 +73,21 @@ import {
   planModelContractUpgrade,
   runModelContractUpgradeCli,
 } from "../server/modelContractUpgrade";
+import {
+  assertFrozenTaskModelExecutionAdapter,
+  assertModelExecutionRegistryTotality,
+  assertRegisteredModelExecutionTotality,
+  compileRegisteredModelTaskDecision,
+  currentPublishedModelExecutionDescriptors,
+  ExactModelExecutionRegistry,
+  shadowCompareRegisteredModelExecution,
+  type ModelExecutionDescriptor,
+} from "../server/modelExecutionRegistry";
+import {
+  incGen017FeatureFlags,
+  incGen017GenerationEnabled,
+} from "../server/incGen017FeatureFlags";
+import type { ProviderProtocol } from "../types/relayProtocols";
 
 const gkContract = {
   connectorFamily: "generic-async-media",
@@ -87,6 +118,162 @@ const gkContract = {
   result: { resultPath: "result_url", states: { failed: ["failed"], running: ["pending", "running"], succeeded: ["success"] } },
   version: 1,
 } as const;
+
+type PublishedModelSnapshotRow = Readonly<{
+  displayName: string;
+  capability: ModelCapability;
+  providerDriver: string;
+  providerModelId: string;
+  providerProtocol: ProviderProtocol;
+  costCurrency: "CNY" | "USD";
+}>;
+
+function publishedModelSnapshot() {
+  const parsed = JSON.parse(readFileSync(join(
+    process.cwd(),
+    "spec/INC_GEN_017_R0_PUBLISHED_MODEL_SNAPSHOT_2026-08-28.json",
+  ), "utf8")) as {
+    databaseSchema: number;
+    models: PublishedModelSnapshotRow[];
+    productionRelease: string;
+    publishedCount: number;
+    snapshotKind: string;
+  };
+  if (
+    parsed.snapshotKind !== "sanitized-production-published-model-contract-identities" ||
+    parsed.databaseSchema !== 41 ||
+    parsed.models.length !== parsed.publishedCount
+  ) throw new Error("INC-GEN-017 production published-model snapshot is invalid");
+  return parsed;
+}
+
+function modelSchema(row: PublishedModelSnapshotRow) {
+  return knownModelParameterSchema({
+    capability: row.capability,
+    providerDriver: row.providerDriver,
+    providerModelId: row.providerModelId,
+  });
+}
+
+function activePolicyForMode(schema: ModelParameterSchema, mode: string) {
+  const modeKey = schema.referencePolicy?.modeKey;
+  const values = {
+    ...defaultParameterValues(schema),
+    ...(modeKey ? { [modeKey]: mode } : {}),
+  };
+  return schema.inputPolicy?.rolePolicies?.find((policy) =>
+    parameterConditionsMatch(policy.enabledWhen, values)
+  ) ?? (schema.inputPolicy
+    ? { roles: schema.inputPolicy.roles ?? {} } satisfies ModelInputRolePolicy
+    : undefined);
+}
+
+function maximumInputsForMode(
+  schema: ModelParameterSchema,
+  mode: string,
+  set: { audio: number; image: number; video: number },
+) {
+  const policy = activePolicyForMode(schema, mode);
+  const inputs: ModelSemanticInput[] = [];
+  let order = 1;
+  for (const kind of ["audio", "image", "video"] as const) {
+    const limits = (policy?.limits ?? []).filter((limit) => limit.kind === kind);
+    const requiredRoles = limits.flatMap((limit) =>
+      Array.from({ length: limit.minCount }, () => limit.role)
+    );
+    const assignment = policy?.assignment?.[kind] ?? [];
+    const allowed = policy?.roles[kind] ?? [];
+    for (let index = 0; index < set[kind]; index += 1) {
+      const role = requiredRoles[index] ?? assignment[index] ??
+        allowed.find((candidate) => {
+          const limit = limits.find((entry) => entry.role === candidate);
+          return !limit || inputs.filter((item) =>
+            item.kind === kind && item.role === candidate
+          ).length < limit.maxCount;
+        }) ?? allowed[0] ?? `reference-${kind}`;
+      inputs.push({
+        kind,
+        order,
+        role,
+        semanticId: `${mode}:${kind}:${order}`,
+      });
+      order += 1;
+    }
+  }
+  const textRole = policy?.roles.text?.[0];
+  if (textRole) {
+    inputs.push({
+      kind: "text",
+      order,
+      role: textRole,
+      semanticId: `${mode}:text:${order}`,
+    });
+  }
+  return inputs;
+}
+
+function sourceInputCases(schema: ModelParameterSchema) {
+  if (schema.referencePolicy) {
+    return Object.entries(schema.referencePolicy.modes).flatMap(([mode, policy]) =>
+      policy.sets.map((set, setIndex) => ({
+        inputs: maximumInputsForMode(schema, mode, set),
+        mode,
+        setIndex,
+      }))
+    );
+  }
+  const policy = activePolicyForMode(schema, "default");
+  const inputs: ModelSemanticInput[] = [];
+  let order = 1;
+  for (const kind of ["audio", "image", "text", "video"] as const) {
+    const role = policy?.roles[kind]?.[0];
+    if (!role) continue;
+    inputs.push({ kind, order, role, semanticId: `default:${kind}:${order}` });
+    order += 1;
+  }
+  return [{ inputs, mode: "default", setIndex: 0 }];
+}
+
+function activateCondition(
+  values: Record<string, ModelParameterValue>,
+  schema: ModelParameterSchema,
+  condition: ModelParameterCondition,
+) {
+  const field = schema.fields.find((candidate) => candidate.key === condition.key);
+  if (!field) return;
+  const candidates = field.options.map((option) => option.value);
+  if (condition.operator === "equals") values[condition.key] = condition.value!;
+  if (condition.operator === "in") values[condition.key] = condition.values![0];
+  if (condition.operator === "notEquals") {
+    values[condition.key] = candidates.find((value) => value !== condition.value) ?? field.defaultValue;
+  }
+  if (condition.operator === "notIn") {
+    values[condition.key] = candidates.find((value) => !condition.values?.includes(value)) ?? field.defaultValue;
+  }
+  if (condition.operator === "truthy") values[condition.key] = candidates.find(Boolean) ?? true;
+  if (condition.operator === "falsy") values[condition.key] = candidates.find((value) => !value) ?? false;
+}
+
+function activatedValuesForField(
+  schema: ModelParameterSchema,
+  field: ModelParameterSchema["fields"][number],
+) {
+  const values = defaultParameterValues(schema);
+  for (const condition of [
+    ...(field.enabledWhen ?? []),
+    ...(field.visibleWhen ?? []),
+    ...(field.requiredWhen ?? []),
+  ]) activateCondition(values, schema, condition);
+  return values;
+}
+
+function semanticInputIdentity(inputs: readonly ModelSemanticInput[]) {
+  return inputs.map((item) => ({
+    kind: item.kind,
+    order: item.order,
+    semanticId: item.semanticId,
+  }));
+}
 
 test("GK contract compiles deterministically and selects exactly one explicit mode", () => {
   const fixtures = [
@@ -232,6 +419,480 @@ test("GK contract compiles deterministically and selects exactly one explicit mo
     .toBe(modelContractTemplateCompatibilitySignature(documentationOnly));
   expect(modelContractTemplateCompatibilitySignature(document))
     .not.toBe(modelContractTemplateCompatibilitySignature(executionChanged));
+});
+
+test("an unknown future model cannot inherit specialized-code publication", () => {
+  const document = defaultModelReleaseDocument({
+    capability: "video",
+    capabilitySchema: defaultParameterSchema("video"),
+    modelId: "model-future-unregistered",
+    providerDriver: "multi-protocol-relay",
+    providerModelId: "future-video-model-without-adapter",
+    providerProfileId: "provider-fixture",
+    providerProtocol: "media-generate",
+  });
+  expect(document.runtime).toBe("blocked");
+  expect(document.evidence).toBe("UNKNOWN");
+});
+
+test("all ten current models have exact zero-Provider registry totality and shadow parity", () => {
+  const { models: rows, publishedCount } = publishedModelSnapshot();
+  expect(currentPublishedModelExecutionDescriptors).toHaveLength(rows.length);
+  expect(rows).toHaveLength(publishedCount);
+  for (const row of rows) {
+    const capabilitySchema = modelSchema(row);
+    const totality = assertRegisteredModelExecutionTotality({
+      capability: row.capability,
+      capabilitySchema,
+      providerDriver: row.providerDriver,
+      providerModelId: row.providerModelId,
+      providerProtocol: row.providerProtocol,
+      revisionIdentity: `current:${row.providerModelId}`,
+    });
+    expect(totality.resultCount).toBe(1);
+    expect(totality.contractFingerprints.length).toBeGreaterThan(0);
+    const shadow = shadowCompareRegisteredModelExecution({
+      capability: row.capability,
+      capabilitySchema,
+      costCurrency: row.costCurrency,
+      providerDriver: row.providerDriver,
+      providerModelId: row.providerModelId,
+      providerProtocol: row.providerProtocol,
+      revisionIdentity: `current:${row.providerModelId}`,
+    });
+    expect(shadow).toMatchObject({
+      differences: [],
+      equal: true,
+      providerRequests: 0,
+    });
+  }
+  expect(() => assertRegisteredModelExecutionTotality({
+    capability: "video",
+    capabilitySchema: defaultParameterSchema("video"),
+    providerDriver: "multi-protocol-relay",
+    providerModelId: "future-video-model-without-adapter",
+    providerProtocol: "media-generate",
+  })).toThrow(/精确执行registry/);
+});
+
+test("publication rejects overlapping input modes without a complete normalization priority", () => {
+  const schema = knownModelParameterSchema({
+    capability: "video",
+    providerDriver: "volcengine-ark",
+    providerModelId: "doubao-seedance-2-0-mini-260615",
+  });
+  expect(schema.referencePolicy?.normalizationPriority).toBeDefined();
+  const withoutPriority: ModelParameterSchema = {
+    ...schema,
+    referencePolicy: {
+      ...schema.referencePolicy!,
+      normalizationPriority: undefined,
+    },
+  };
+  expect(() => assertRegisteredModelExecutionTotality({
+    capability: "video",
+    capabilitySchema: withoutPriority,
+    providerDriver: "volcengine-ark",
+    providerModelId: "doubao-seedance-2-0-mini-260615",
+    providerProtocol: "native",
+  })).toThrow(/规范化优先级/);
+});
+
+test("a frozen single-result task rejects relay multi-output before saving", () => {
+  let mismatch: unknown;
+  try {
+    assertRelayMediaOutputCardinality({
+      expectedResultCount: 1,
+      outputs: [{ kind: "video" }, { kind: "video" }],
+    });
+  } catch (error) {
+    mismatch = error;
+  }
+  expect(mismatch).toMatchObject({ code: "PROVIDER_RESULT_FORMAT" });
+  expect(() => assertRelayMediaOutputCardinality({
+    expectedResultCount: 1,
+    outputs: [{ kind: "video" }],
+  })).not.toThrow();
+});
+
+test("R5 builds the complete directed switch matrix from the live published snapshot", () => {
+  const { models } = publishedModelSnapshot();
+  const matrixPairs = new Set<string>();
+  for (const source of models) {
+    const sourceSchema = modelSchema(source);
+    for (const sourceCase of sourceInputCases(sourceSchema)) {
+      const sourceParameters = {
+        ...defaultParameterValues(sourceSchema),
+        ...(sourceSchema.referencePolicy
+          ? { [sourceSchema.referencePolicy.modeKey]: sourceCase.mode }
+          : {}),
+      };
+      const admittedSource = normalizeModelInputs({
+        connectedInputs: sourceCase.inputs,
+        modelReleaseRevision: `matrix-source:${source.providerModelId}`,
+        requestedParameters: sourceParameters,
+        schema: sourceSchema,
+        transitionIntent: "execute",
+      });
+      expect(admittedSource.blockingProblems).toEqual([]);
+      for (const target of models) {
+        const pair = `${source.providerDriver}:${source.providerModelId}->${target.providerDriver}:${target.providerModelId}`;
+        matrixPairs.add(pair);
+        const before = semanticInputIdentity(admittedSource.normalizedSemanticInputs);
+        if (source.capability !== target.capability) {
+          expect(semanticInputIdentity(admittedSource.normalizedSemanticInputs)).toEqual(before);
+          continue;
+        }
+        const targetSchema = modelSchema(target);
+        const targetTotality = assertRegisteredModelExecutionTotality({
+          capability: target.capability,
+          capabilitySchema: targetSchema,
+          providerDriver: target.providerDriver,
+          providerModelId: target.providerModelId,
+          providerProtocol: target.providerProtocol,
+          revisionIdentity: `matrix-target:${target.providerModelId}`,
+        });
+        const transition = normalizeModelInputs({
+          connectedInputs: admittedSource.normalizedSemanticInputs,
+          modelReleaseRevision: `matrix-target:${target.providerModelId}`,
+          requestedParameters: defaultParameterValues(targetSchema),
+          schema: targetSchema,
+          transitionIntent: "model-switch",
+        });
+        expect(semanticInputIdentity(transition.normalizedSemanticInputs)).toEqual(before);
+        if (transition.blockingProblems.length) continue;
+        const registeredMode = targetTotality.descriptor.modes[transition.selectedExecutionMode];
+        expect(registeredMode).toBeTruthy();
+        for (const input of transition.normalizedSemanticInputs) {
+          expect(registeredMode.roles[input.kind] ?? []).toContain(input.role);
+        }
+      }
+    }
+  }
+  expect(matrixPairs.size).toBe(models.length * models.length);
+});
+
+test("R5 proves every published model field boundary, golden decision, error and recovery", () => {
+  const { models } = publishedModelSnapshot();
+  for (const row of models) {
+    const capabilitySchema = modelSchema(row);
+    const totality = assertRegisteredModelExecutionTotality({
+      capability: row.capability,
+      capabilitySchema,
+      providerDriver: row.providerDriver,
+      providerModelId: row.providerModelId,
+      providerProtocol: row.providerProtocol,
+      revisionIdentity: `r5-property:${row.providerModelId}`,
+    });
+    const golden = compileRegisteredModelTaskDecision({
+      capability: row.capability,
+      capabilitySchema,
+      costCurrency: row.costCurrency,
+      providerDriver: row.providerDriver,
+      providerModelId: row.providerModelId,
+      providerProtocol: row.providerProtocol,
+      revisionIdentity: `r5-golden:${row.providerModelId}`,
+    });
+    expect(golden).toMatchObject({
+      adapterId: totality.adapterId,
+      costCurrency: row.costCurrency,
+      resultCount: 1,
+    });
+    expect(golden.descriptor).toMatchObject({
+      logicalModelId: row.providerModelId,
+      recoveryIdentity: ["taskId", "requestFingerprint", "modelReleaseRevision"],
+      resultCount: 1,
+      resultKind: row.capability,
+    });
+    expect(Object.keys(golden.descriptor.modes).sort()).toEqual(totality.modes);
+    expect([...golden.descriptor.parameterKeys].sort()).toEqual(
+      capabilitySchema.fields.map((field) => field.key).sort(),
+    );
+
+    for (const field of capabilitySchema.fields) {
+      const base = activatedValuesForField(capabilitySchema, field);
+      const candidates: ModelParameterValue[] = field.options.length
+        ? field.options.map((option) => option.value)
+        : field.type === "number"
+          ? [...new Set([field.min ?? field.defaultValue, field.defaultValue, field.max ?? field.defaultValue])]
+          : field.type === "text" || field.type === "textarea"
+            ? ["x", "x".repeat(field.maxLength ?? 20_000)]
+            : [field.defaultValue];
+      for (const candidate of candidates) {
+        const values = { ...base, [field.key]: candidate };
+        for (const dependent of capabilitySchema.fields) {
+          if (
+            parameterFieldRequired(dependent, values) &&
+            typeof values[dependent.key] === "string" &&
+            !String(values[dependent.key]).trim()
+          ) values[dependent.key] = "required";
+        }
+        expect(() => validateParameterValues(capabilitySchema, values)).not.toThrow();
+      }
+      if (field.type === "text" || field.type === "textarea") {
+        const tooLong = {
+          ...base,
+          [field.key]: "x".repeat((field.maxLength ?? 20_000) + 1),
+        };
+        expect(() => validateParameterValues(capabilitySchema, tooLong)).toThrow(
+          /Unsupported model parameter value/,
+        );
+      } else {
+        const invalidValues = {
+          ...base,
+          [field.key]: "__r5_invalid__",
+        };
+        for (const dependent of capabilitySchema.fields) {
+          if (
+            parameterFieldRequired(dependent, invalidValues) &&
+            typeof invalidValues[dependent.key] === "string" &&
+            !String(invalidValues[dependent.key]).trim()
+          ) invalidValues[dependent.key] = "required";
+        }
+        expect(() => validateParameterValues(capabilitySchema, invalidValues))
+          .toThrow(/Unsupported model parameter value/);
+      }
+    }
+    expect(() => validateParameterValues(capabilitySchema, {
+      ...defaultParameterValues(capabilitySchema),
+      unexpectedR5Field: true,
+    })).toThrow(/Unsupported model parameter/);
+
+    for (const sourceCase of sourceInputCases(capabilitySchema)) {
+      const maximum = capabilitySchema.referencePolicy?.modes[sourceCase.mode]
+        ?.sets[sourceCase.setIndex];
+      const overflowKind = (["audio", "image", "video"] as const).find((kind) =>
+        (maximum?.[kind] ?? 0) > 0
+      );
+      if (!overflowKind || !maximum) continue;
+      const overflow = [
+        ...sourceCase.inputs,
+        {
+          kind: overflowKind,
+          order: sourceCase.inputs.length + 1,
+          role: `reference-${overflowKind}`,
+          semanticId: `overflow:${overflowKind}`,
+        } satisfies ModelSemanticInput,
+      ];
+      const result = normalizeModelInputs({
+        connectedInputs: overflow,
+        modelReleaseRevision: `r5-overflow:${row.providerModelId}`,
+        requestedParameters: {
+          ...defaultParameterValues(capabilitySchema),
+          [capabilitySchema.referencePolicy!.modeKey]: sourceCase.mode,
+        },
+        schema: capabilitySchema,
+        transitionIntent: "execute",
+      });
+      if (!result.blockingProblems.length) {
+        expect(result.selectedExecutionMode).not.toBe(sourceCase.mode);
+      }
+      expect(semanticInputIdentity(result.normalizedSemanticInputs)).toEqual(
+        semanticInputIdentity(overflow),
+      );
+    }
+
+    expect(() => compileRegisteredModelTaskDecision({
+      capability: row.capability,
+      capabilitySchema,
+      costCurrency: row.costCurrency === "USD" ? "CNY" : "USD",
+      providerDriver: row.providerDriver,
+      providerModelId: row.providerModelId,
+      providerProtocol: row.providerProtocol,
+    })).toThrow(/费用币种/);
+    expect(() => assertFrozenTaskModelExecutionAdapter({
+      capability: row.capability,
+      modelExecutionAdapterId: totality.adapterId,
+      providerDriver: row.providerDriver,
+      providerModelId: row.providerModelId,
+      providerProtocol: row.providerProtocol,
+    })).not.toThrow();
+    expect(() => assertFrozenTaskModelExecutionAdapter({
+      capability: row.capability,
+      modelExecutionAdapterId: "invalid-r5-adapter",
+      providerDriver: row.providerDriver,
+      providerModelId: row.providerModelId,
+      providerProtocol: row.providerProtocol,
+    })).toThrow(/冻结adapter/);
+  }
+});
+
+test("R5 admits a future model only after exact registration and rejects protocol-only fallback", () => {
+  const futureDescriptor = Object.freeze({
+    adapterId: "relay-media",
+    capability: "video",
+    connectorFamily: "generic-async-media",
+    costCurrency: "USD",
+    evidence: "EXACT",
+    identities: Object.freeze([{
+      providerDriver: "multi-protocol-relay",
+      providerModelId: "future-video-with-exact-adapter",
+      providerProtocol: "media-generate",
+    }]),
+    logicalModelId: "future-video-with-exact-adapter",
+    modes: Object.freeze({ default: Object.freeze({ roles: Object.freeze({}) }) }),
+    parameterKeys: Object.freeze([
+      "inputMode", "aspectRatio", "resolution", "duration", "generateAudio", "outputCount",
+    ]),
+    recoveryIdentity: Object.freeze([
+      "taskId", "requestFingerprint", "modelReleaseRevision",
+    ]),
+    resultCount: 1,
+    resultKind: "video",
+    runtime: "declarative",
+  } satisfies ModelExecutionDescriptor);
+  const futureRegistry = new ExactModelExecutionRegistry([futureDescriptor]);
+  const capabilitySchema = defaultParameterSchema("video");
+  const exactProof = assertModelExecutionRegistryTotality(futureRegistry, {
+    capability: "video",
+    capabilitySchema,
+    providerDriver: "multi-protocol-relay",
+    providerModelId: "future-video-with-exact-adapter",
+    providerProtocol: "media-generate",
+    revisionIdentity: "future-exact:1",
+  });
+  expect(exactProof).toMatchObject({
+    adapterId: "relay-media",
+    modes: ["default"],
+    resultCount: 1,
+  });
+
+  const protocolOnly = defaultModelReleaseDocument({
+    capability: "video",
+    capabilitySchema,
+    modelId: "model-future-protocol-only",
+    providerDriver: "multi-protocol-relay",
+    providerModelId: "future-video-protocol-only",
+    providerProfileId: "provider-fixture",
+    providerProtocol: "media-generate",
+  });
+  expect(protocolOnly).toMatchObject({ evidence: "UNKNOWN", runtime: "blocked" });
+  expect(() => assertModelExecutionRegistryTotality(futureRegistry, {
+    capability: "video",
+    capabilitySchema,
+    providerDriver: "multi-protocol-relay",
+    providerModelId: "future-video-protocol-only",
+    providerProtocol: "media-generate",
+  })).toThrow(/精确执行registry/);
+});
+
+test("INC-GEN-017 rollback switches fail closed and frozen historical tasks remain readable", () => {
+  const previousModel = process.env.UNBOUNDRY_MODEL_INPUT_CONTRACT_V2;
+  const previousWorkflow = process.env.UNBOUNDRY_WORKFLOW_SELF_HEALING_V2;
+  try {
+    process.env.UNBOUNDRY_MODEL_INPUT_CONTRACT_V2 = "0";
+    process.env.UNBOUNDRY_WORKFLOW_SELF_HEALING_V2 = "0";
+    expect(incGen017FeatureFlags()).toEqual({
+      modelInputContractV2: false,
+      workflowSelfHealingV2: false,
+    });
+    expect(incGen017GenerationEnabled()).toBe(false);
+    process.env.UNBOUNDRY_MODEL_INPUT_CONTRACT_V2 = "1";
+    expect(incGen017GenerationEnabled()).toBe(false);
+    process.env.UNBOUNDRY_WORKFLOW_SELF_HEALING_V2 = "1";
+    expect(incGen017GenerationEnabled()).toBe(true);
+    expect(() => assertFrozenTaskModelExecutionAdapter({
+      capability: "video",
+      providerDriver: "multi-protocol-relay",
+      providerModelId: "future-video-model-without-adapter",
+      providerProtocol: "media-generate",
+      modelExecutionAdapterId: "relay-media",
+    })).toThrow(/冻结adapter/);
+    expect(() => assertFrozenTaskModelExecutionAdapter({
+      capability: "video",
+      providerDriver: "historical-driver",
+      providerModelId: "historical-model",
+      providerProtocol: "native",
+    })).not.toThrow();
+  } finally {
+    if (previousModel === undefined) delete process.env.UNBOUNDRY_MODEL_INPUT_CONTRACT_V2;
+    else process.env.UNBOUNDRY_MODEL_INPUT_CONTRACT_V2 = previousModel;
+    if (previousWorkflow === undefined) delete process.env.UNBOUNDRY_WORKFLOW_SELF_HEALING_V2;
+    else process.env.UNBOUNDRY_WORKFLOW_SELF_HEALING_V2 = previousWorkflow;
+  }
+});
+
+test("INC-GEN-017 stop-loss gate covers API admission and detached launch", () => {
+  const api = readFileSync(
+    join(process.cwd(), "server/generationTasksApi.ts"),
+    "utf8",
+  );
+  const runtime = readFileSync(
+    join(process.cwd(), "server/generationTasks.ts"),
+    "utf8",
+  );
+  expect(api).toContain("incGen017ProtectedMutation");
+  expect(api).toContain("!incGen017GenerationEnabled()");
+  expect(api).toContain('code: "INC_GEN_017_STOP_LOSS"');
+  expect(runtime).toContain("function launchGenerationTask(");
+  expect(runtime).toContain("if (!incGen017GenerationEnabled())");
+  expect(runtime).toContain('throw new Error("INC_GEN_017_STOP_LOSS")');
+  const startup = runtime.slice(
+    runtime.indexOf("export function initializePersistentGenerationTaskWorker"),
+    runtime.indexOf("type TextTaskStore"),
+  );
+  expect(startup.indexOf("if (!incGen017GenerationEnabled())"))
+    .toBeLessThan(startup.indexOf("failInterruptedRetryingGenerationTasks()"));
+  const sweep = runtime.slice(
+    runtime.indexOf("export async function runGenerationRecoverySweep"),
+    runtime.indexOf("export function generationAvailability"),
+  );
+  expect(sweep.match(/!incGen017GenerationEnabled\(\)/g)?.length)
+    .toBeGreaterThanOrEqual(2);
+  const automaticRetry = runtime.slice(
+    runtime.indexOf("async function autoRetryRelayTaskOnce"),
+    runtime.indexOf("async function executeRelayMediaTask"),
+  );
+  expect(automaticRetry.match(/!incGen017GenerationEnabled\(\)/g)?.length)
+    .toBeGreaterThanOrEqual(2);
+});
+
+test("relay recovery uses leased reads and the frozen declarative contract", () => {
+  const runtime = readFileSync(
+    join(process.cwd(), "server/generationTasks.ts"),
+    "utf8",
+  );
+  const recovery = runtime.slice(
+    runtime.indexOf("async function recoverRelayMediaAfterPoll"),
+    runtime.indexOf("async function autoRetryRelayTaskOnce"),
+  );
+  expect(recovery).toContain("withProviderRequestLease({");
+  expect(recovery).toContain("declarativeModelExecutionContract(current)");
+  expect(recovery).toContain("modelExecutionContract: executionContract");
+  const matching = runtime.slice(
+    runtime.indexOf("async function autoMatchRelayProviderTask"),
+    runtime.indexOf("async function executeRelayGptImageTask"),
+  );
+  expect(matching).toContain("withProviderRequestLease({");
+  expect(matching).toContain("beforeRequest: providerBoundary()");
+  const reconcile = runtime.slice(
+    runtime.indexOf("async function inspectReconcileMediaProvider"),
+    runtime.indexOf("async function pollReconcileProviderTask"),
+  );
+  expect(reconcile).toContain("withProviderRequestLease({");
+  expect(reconcile).toContain("declarativeModelExecutionContract(task)");
+  expect(reconcile).toContain("beforeProviderRequest: providerBoundary()");
+});
+
+test("GPT Image task execution is isolated from the generic async media route", () => {
+  const runtime = readFileSync(
+    join(process.cwd(), "server/generationTasks.ts"),
+    "utf8",
+  );
+  const start = runtime.indexOf("async function executeRelayGptImageTask(");
+  const end = runtime.indexOf("async function executeImageTask(", start);
+  expect(start).toBeGreaterThan(-1);
+  expect(end).toBeGreaterThan(start);
+  const route = runtime.slice(start, end);
+  expect(route).toContain("sendPreparedRelayGptImageRequest(");
+  expect(route).toContain('assertRelayProfile(currentProfile, "gpt-image")');
+  expect(route).toContain("taskStore().markProviderResponseReceived({");
+  expect(route).toContain('commitMode: "primary"');
+  expect(route).toContain("expectedResultCount: 1");
+  expect(route).not.toContain("executeRelayMediaTask(");
+  expect(route).not.toContain("routeRelayProviderRequest(");
+  expect(route).not.toContain('"/v1/media/generate"');
+  expect(route).not.toContain('"/v1/media/status"');
 });
 
 test("compiler rejects executable, secret, arbitrary network and ambiguous contracts", () => {
@@ -403,6 +1064,26 @@ function releaseDocument(modelId = "model-gk-video-3") {
   } as const;
 }
 
+function exactReleaseDocument(modelId = "model-gk-video-3") {
+  const current = defaultModelReleaseDocument({
+    capability: "video",
+    capabilitySchema: knownModelParameterSchema({
+      capability: "video",
+      providerDriver: "multi-protocol-relay",
+      providerModelId: "grok-video-3",
+    }),
+    modelId,
+    providerDriver: "multi-protocol-relay",
+    providerModelId: "grok-video-3",
+    providerProfileId: "provider-relay",
+    providerProtocol: "media-generate",
+  });
+  return {
+    ...current,
+    documentation: [{ checkedAt: "2026-08-26", url: "https://provider.invalid/docs" }],
+  } as const;
+}
+
 function stable(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stable);
   if (value && typeof value === "object") {
@@ -497,7 +1178,7 @@ test("explicit upgrade publishes revision 2 atomically and is idempotent", () =>
       revision: historical,
     });
     store.exec("CREATE TABLE release_target (revision_id TEXT NOT NULL)");
-    const current = releaseDocument();
+    const current = exactReleaseDocument();
     expect(() => upgradeModelContractRevision(store, "admin-a", {
       document: current,
       expectedActiveRevisionId: historical.revisionId,
@@ -536,6 +1217,38 @@ test("explicit upgrade publishes revision 2 atomically and is idempotent", () =>
       code: "CURRENT_RELEASE_POLICY_MISMATCH",
     }));
     expect(modelContractState(store, historical.modelId).history).toHaveLength(2);
+    expect(markModelContractsRequired(store, "admin-a", {
+      modelIds: [current.modelId],
+      total: 1,
+    })).toBe(true);
+    expect(assertActiveModelContractHealth({
+      capability: current.capability,
+      costCurrency: "USD",
+      modelId: current.modelId,
+      parameterSchema: current.capabilitySchema,
+      providerDriver: "multi-protocol-relay",
+      providerModelId: current.providerModelId,
+      providerProfileId: current.providerProfileId,
+      providerProtocol: current.providerProtocol,
+      store,
+    }).revisionId).toBe(upgraded.revision.revisionId);
+    expect(() => assertActiveModelContractHealth({
+      capability: current.capability,
+      costCurrency: "USD",
+      modelId: current.modelId,
+      parameterSchema: {
+        ...current.capabilitySchema,
+        referenceInputs: {
+          ...current.capabilitySchema.referenceInputs,
+          image: current.capabilitySchema.referenceInputs.image + 1,
+        },
+      },
+      providerDriver: "multi-protocol-relay",
+      providerModelId: current.providerModelId,
+      providerProfileId: current.providerProfileId,
+      providerProtocol: current.providerProtocol,
+      store,
+    })).toThrow(/身份不一致/);
   } finally {
     store.close();
   }
@@ -1544,11 +2257,11 @@ test("admin contract workbench is separate, structured and responsive with zero 
     data: {
       capability: "image",
       displayName: "Contract Fixture Model",
-      isDefault: true,
-      providerModelId: "fixture-image-model",
+      isDefault: false,
+      providerModelId: "openai/gpt-image-2",
       providerProfileId: provider.id,
       sortOrder: 1,
-      status: "published",
+      status: "draft",
     },
   });
   expect(modelResponse.status()).toBe(201);
@@ -1597,15 +2310,17 @@ test("admin contract workbench is separate, structured and responsive with zero 
     height: getComputedStyle(element).height,
   }))).toEqual({ caret: "rgba(0, 0, 0, 0)", height: "34px" });
   await validateButton.click();
-  await expect(page.getByText("本地验证通过；Provider 请求为 0。")).toBeVisible();
+  await expect(page.locator(".model-contract-feedback")).toHaveText(
+    "本地验证通过；Provider 请求为 0。",
+  );
   await expect(page.getByText("当前页面：无未保存修改 · 已保存草稿：无 · 当前发布版本：无")).toBeVisible();
-  await expect(page.locator("#model-contract-preview")).toContainText("fixture-image-model");
+  await expect(page.locator("#model-contract-preview")).toContainText("openai/gpt-image-2");
   await page.getByRole("button", { name: "已保存草稿", exact: true }).click();
   await expect(page.locator("#model-contract-preview")).toContainText("已保存草稿：无");
   await page.getByRole("button", { name: "保存草稿", exact: true }).click();
   await expect(page.getByText("草稿已保存；本次没有调用 Provider。")).toBeVisible();
   await page.getByRole("button", { name: "已保存草稿", exact: true }).click();
-  await expect(page.locator("#model-contract-preview")).toContainText("fixture-image-model");
+  await expect(page.locator("#model-contract-preview")).toContainText("openai/gpt-image-2");
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "发布", exact: true }).click();
   await expect(page.getByText("当前页面：无未保存修改 · 已保存草稿：无 · 当前发布版本：1")).toBeVisible();

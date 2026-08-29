@@ -2,7 +2,11 @@ import type { ImageGenerationToolInput, ImageToolCapability } from
   "../../../types/imageTools";
 import { NODE_DEFAULT_SIZES } from "../canvas/mediaGeometry";
 import type { ProbeNodeType } from "../canvas/ProbeNode";
-import type { CanvasGraphCommandPort } from "../canvas/canvasPorts";
+import type {
+  CanvasGraphCommand,
+  CanvasGraphCommandCommit,
+  CanvasGraphCommandPort,
+} from "../canvas/canvasPorts";
 import type { CuttableEdge } from "../canvas/canvasTypes";
 import type { SingleNodeGenerationLifecycle } from
   "../generation/singleNodeGenerationLifecycle";
@@ -31,6 +35,7 @@ export type PromptGenerationPlan = Readonly<{
 
 export function createPromptGenerationImageToolUseCase(input: Readonly<{
   afterPlaceholderCreated(): Promise<void>; capability: ImageToolCapability;
+  commit?: CanvasGraphCommandCommit;
   createLifecycle(plan: PromptGenerationPlan): SingleNodeGenerationLifecycle;
   graph: CanvasGraphCommandPort; operation: PromptGenerationOperation;
   ownershipKey(evidence: ReturnType<typeof promptGenerationOwnershipEvidence>): string;
@@ -87,7 +92,7 @@ export function createPromptGenerationImageToolUseCase(input: Readonly<{
       id: `edge-${command.sourceNodeId}-${targetNodeId}`, interactionWidth: 20,
       source: command.sourceNodeId, sourceHandle: "source", target: targetNodeId,
       targetHandle: "target", type: "cuttable" };
-    const applied = input.graph.apply({ fence: { expectedRevision: command.expectedRevision,
+    const graphCommand: CanvasGraphCommand = { fence: { expectedRevision: command.expectedRevision,
       kind: "image", nodeId: command.sourceNodeId, operationId: command.operationId,
       ownershipKey: command.preOwnershipKey, runId: command.runId,
       sourceAssetId: command.sourceAssetId }, scope: "image-tool",
@@ -100,7 +105,10 @@ export function createPromptGenerationImageToolUseCase(input: Readonly<{
             sourceNodeId: command.sourceNodeId,
             width: NODE_DEFAULT_SIZES.image.width,
           }),
-        }] }) });
+        }] }) };
+    const applied = input.commit
+      ? await input.commit(graphCommand)
+      : input.graph.apply(graphCommand);
     if (applied.status !== "applied") throw new Error("原图片或画布版本已变化");
     await input.afterPlaceholderCreated();
     return createGenerationImageToolUseCase({ lifecycle: input.createLifecycle({

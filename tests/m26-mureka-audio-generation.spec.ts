@@ -263,6 +263,19 @@ test("Mureka polling normalizes pending, failure and safe errors", async () => {
       status: "succeeded",
     }), { status: 200 }),
   )).rejects.toBeInstanceOf(MurekaAudioError);
+
+  await expect(getMurekaAudioTask(
+    profile,
+    "mureka-task-multiple-results",
+    "song",
+    async () => new Response(JSON.stringify({
+      choices: [
+        { url: "https://cdn.example.test/result-a.mp3" },
+        { url: "https://cdn.example.test/result-b.mp3" },
+      ],
+      status: "succeeded",
+    }), { status: 200 }),
+  )).rejects.toMatchObject({ code: "FORMAT" });
 });
 
 test("Mureka 429 preserves bounded Retry-After evidence without retrying", async () => {

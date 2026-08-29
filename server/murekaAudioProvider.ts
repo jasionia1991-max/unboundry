@@ -132,7 +132,7 @@ export function buildMurekaAudioRequest(input: {
     throw new Error("Mureka model is not supported");
   }
   const outputCount = Number(input.outputCount);
-  if (!Number.isInteger(outputCount) || outputCount < 1 || outputCount > 3) {
+  if (outputCount !== 1) {
     throw new Error("Mureka output count is not supported");
   }
   const stream = input.streamPlayback === true;
@@ -168,7 +168,7 @@ export function buildMurekaAudioRequest(input: {
       endpoint: "/v1/song/generate",
       payload: {
         gender,
-        lyrics: requiredText(input.lyrics, 5_000, "Mureka lyrics are invalid"),
+        lyrics: requiredText(input.lyrics, 8_000, "Mureka lyrics are invalid"),
         model,
         n: outputCount,
         prompt: requiredText(input.prompt, 1_024, "Mureka prompt is invalid"),
@@ -530,6 +530,7 @@ export async function getMurekaAudioTask(
     throw new MurekaAudioError("FORMAT");
   }
   const choices = Array.isArray(body.choices) ? body.choices : [];
+  if (choices.length !== 1) throw new MurekaAudioError("FORMAT");
   const first = choices[0] as Record<string, unknown> | undefined;
   const audioUrl = typeof first?.url === "string" ? first.url : "";
   try {

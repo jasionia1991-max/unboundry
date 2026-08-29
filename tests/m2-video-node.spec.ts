@@ -259,7 +259,9 @@ test("Video empty, upload and editing states match the frozen basic state", asyn
   await title.press("Enter");
   await expect(title).toHaveValue("成片");
 
-  await page.getByTestId("video-upload-input").setInputFiles(videoFile);
+  const uploadInput = page.getByTestId("video-upload-input");
+  await expect(uploadInput).toBeEnabled();
+  await uploadInput.setInputFiles(videoFile);
   const preview = page.getByTestId("video-node-preview");
   await expect(preview).toBeVisible();
   await expect(emptyUploadToolbar).not.toBeVisible();

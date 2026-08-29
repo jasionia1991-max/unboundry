@@ -13,6 +13,8 @@ import {
 } from "../server/accountCredentials";
 import { openAppDatabase } from "../server/database";
 import { createGenerationTaskStore } from "../server/generationTaskStore";
+import { bootstrapPublishedModelContracts } from "../server/modelReleaseBootstrap";
+import { modelContractState } from "../server/modelReleaseRevisionStore";
 import {
   importProviderCatalogDrafts,
   syncProviderCatalog,
@@ -1064,10 +1066,19 @@ test("credential verification and the paid boundary serialize fail-closed", asyn
         max_cost_microunits, cost_currency, provider_protocol
       ) VALUES (
         'verify-boundary-model', 'Verify boundary model', ?,
-        'openai/gpt-image-2', 'image', 'published', '{}', ?, ?,
+        'openai/gpt-image-2', 'image', 'published', ?, ?, ?,
         1000000, 'USD', 'native'
       )
-    `).run(profile.id, timestamp, timestamp);
+    `).run(
+      profile.id,
+      JSON.stringify(knownModelParameterSchema({
+        capability: "image",
+        providerDriver: "openrouter",
+        providerModelId: "openai/gpt-image-2",
+      })),
+      timestamp,
+      timestamp,
+    );
     store.prepare(`
       INSERT INTO node_model_bindings (
         node_type, model_id, enabled, is_default, sort_order,
@@ -1092,6 +1103,12 @@ test("credential verification and the paid boundary serialize fail-closed", asyn
       profile.id,
       "sk-account-verification-2222",
     );
+    bootstrapPublishedModelContracts(store, "verify-boundary-user");
+    const modelReleaseRevision = modelContractState(
+      store,
+      "verify-boundary-model",
+    ).active;
+    expect(modelReleaseRevision).toBeDefined();
     taskStore = createGenerationTaskStore(directory);
     const task = taskStore.admitOrGet({
       canvasId: "verify-boundary-canvas",
@@ -1102,11 +1119,8 @@ test("credential verification and the paid boundary serialize fail-closed", asyn
       modelConfiguration: {
         credentialVersion: credential.credentialVersion,
         modelId: "verify-boundary-model",
-        parameterSchema: knownModelParameterSchema({
-          capability: "image",
-          providerDriver: "openrouter",
-          providerModelId: "openai/gpt-image-2",
-        }),
+        modelReleaseRevision: modelReleaseRevision!,
+        parameterSchema: modelReleaseRevision!.document.capabilitySchema,
         providerConfigurationVersion: providerConfigurationVersion(profile),
         providerDriver: "openrouter",
         providerModelId: "openai/gpt-image-2",

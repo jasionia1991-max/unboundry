@@ -17,12 +17,24 @@ import type {
   NodeInputSnapshot,
 } from "../types/nodeInputs";
 import type { ImageGenerationToolInput } from "../types/imageTools";
+import {
+  generationInputKey,
+  generationOwnershipEvidence,
+  generationOwnershipKey,
+} from "../types/generationIdentity";
 import { generationTaskApplication } from "./generationTasks";
 import { resolveSeedanceTrustedVideoReferences } from "./seedanceTrustedVideoReferences";
 import {
   resolveSeedanceCharacterReferences,
   SeedanceCharacterReferenceError,
 } from "./seedanceCharacterReferences";
+import { compileRegisteredModelTaskDecision } from
+  "./modelExecutionRegistry";
+import {
+  incGen017FeatureFlags,
+  incGen017GenerationEnabled,
+} from "./incGen017FeatureFlags";
+import { modelConfigurationRevision } from "./modelCatalog";
 
 const {
   GenerationProviderAttemptBlockedError,
@@ -63,15 +75,143 @@ const {
   taskSummaryForOwner,
 } = generationTaskApplication;
 
+function generationTaskFixtureScopeId(task: GenerationTask) {
+  return typeof task.modelConfiguration.fixtureScopeId === "string"
+    ? task.modelConfiguration.fixtureScopeId
+    : "";
+}
+
+function generationTaskMatchesFixtureScope(
+  task: GenerationTask,
+  fixtureScopeId: string,
+) {
+  return generationTaskFixtureScopeId(task) === fixtureScopeId;
+}
+
 type NodeInputGenerationRequest =
   Omit<Partial<GenerationTaskInput>, "kind"> & {
     canvasRevision?: number;
+    generationIdentityVersion?: number;
+    generationInputKey?: string;
+    generationOwnershipKey?: string;
     imageTool?: ImageGenerationToolInput;
     inputSchemaVersion?: number;
     inputs?: NodeInputSnapshot[];
     kind?: NodeInputKind;
+    modelConfigurationRevision?: string;
+    modelInputContractFingerprint?: string;
+    modelReleaseRevision?: string;
     ownPrompt?: string;
+    workflowBinding?: {
+      generationInputKey: string;
+      generationOwnershipKey: string;
+      groupId: string;
+      modelConfigurationRevision: string;
+      modelReleaseRevision: string;
+      runId: string;
+    };
+    fixtureScopeId?: string;
   };
+
+function validatedWorkflowBinding(input: {
+  activeRevisionId?: string;
+  activeConfigurationRevision: string;
+  body: NodeInputGenerationRequest;
+  expectedGenerationInputKey: string;
+  expectedGenerationOwnershipKey: string;
+  persistedTargetParentId?: string;
+}) {
+  const value = input.body.workflowBinding;
+  if (value === undefined) return undefined;
+  const bounded = (candidate: unknown, maximum: number) =>
+    typeof candidate === "string" && candidate.trim().length > 0 &&
+    candidate.length <= maximum;
+  if (
+    !bounded(value.groupId, 200) || !bounded(value.runId, 200) ||
+    !bounded(value.generationOwnershipKey, 2_000) ||
+    !bounded(value.generationInputKey, 32_000) ||
+    !bounded(value.modelConfigurationRevision, 500) ||
+    !bounded(value.modelReleaseRevision, 500) ||
+    value.groupId !== input.persistedTargetParentId ||
+    value.modelReleaseRevision !== input.activeRevisionId ||
+    value.modelConfigurationRevision !== input.activeConfigurationRevision ||
+    value.generationInputKey !== input.expectedGenerationInputKey ||
+    value.generationOwnershipKey !== input.expectedGenerationOwnershipKey
+  ) {
+    throw new Error("工作流任务绑定与已保存画布或模型合同不一致");
+  }
+  return {
+    generationInputKey: value.generationInputKey,
+    generationOwnershipKey: value.generationOwnershipKey,
+    groupId: value.groupId,
+    modelConfigurationRevision: value.modelConfigurationRevision,
+    modelReleaseRevision: value.modelReleaseRevision,
+    runId: value.runId,
+  };
+}
+
+function strictWorkflowIdentity(input: {
+  body: NodeInputGenerationRequest;
+  modelId: string;
+  strict: StrictGenerationPreflight;
+  modelConfigurationRevision: string;
+}) {
+  const modelReleaseRevision = input.strict.modelReleaseRevision?.revisionId;
+  return {
+    generationInputKey: generationInputKey({
+      inputs: input.strict.inputs,
+      modelConfigurationRevision: input.modelConfigurationRevision,
+      modelId: input.modelId,
+      modelReleaseRevision,
+      ownPrompt: input.body.ownPrompt,
+      parameters: input.strict.parameters,
+      prompt: input.strict.finalPrompt,
+    }),
+    generationOwnershipKey: generationOwnershipKey(
+      generationOwnershipEvidence({
+        contractFingerprint: input.strict.contractFingerprint ?? "",
+        inputs: input.strict.inputs,
+        kind: input.body.kind!,
+        modelConfigurationRevision: input.modelConfigurationRevision,
+        modelId: input.modelId,
+        modelReleaseRevision: modelReleaseRevision ?? "",
+        parameters: input.strict.parameters,
+        prompt: String(input.body.ownPrompt ?? ""),
+      }),
+    ),
+    modelConfigurationRevision: input.modelConfigurationRevision,
+    modelInputContractFingerprint: input.strict.contractFingerprint ?? "",
+    modelReleaseRevision: modelReleaseRevision ?? "",
+  };
+}
+
+function validatedGenerationIdentity(input: {
+  body: NodeInputGenerationRequest;
+  expected: ReturnType<typeof strictWorkflowIdentity>;
+}) {
+  const value = input.body;
+  if (
+    value.generationIdentityVersion !== 2 ||
+    value.generationInputKey !== input.expected.generationInputKey ||
+    value.generationOwnershipKey !== input.expected.generationOwnershipKey ||
+    value.modelInputContractFingerprint !==
+      input.expected.modelInputContractFingerprint ||
+    value.modelConfigurationRevision !==
+      input.expected.modelConfigurationRevision ||
+    value.modelReleaseRevision !== input.expected.modelReleaseRevision
+  ) {
+    throw new Error("生成任务完整语义身份与当前模型合同不一致");
+  }
+  return {
+    generationIdentityVersion: 2 as const,
+    generationInputKey: input.expected.generationInputKey,
+    generationOwnershipKey: input.expected.generationOwnershipKey,
+    modelConfigurationRevision: input.expected.modelConfigurationRevision,
+    modelInputContractFingerprint:
+      input.expected.modelInputContractFingerprint,
+    modelReleaseRevision: input.expected.modelReleaseRevision,
+  };
+}
 
 type StrictGenerationPreflight =
   ReturnType<typeof strictGenerationPreflight>;
@@ -129,29 +269,36 @@ export async function generationTasks(
       identity.bypass ? "__test__" : identity.userId,
     );
     const { providerCurrencies, ...publicAvailability } = availability;
+    const incGen017Enabled = incGen017GenerationEnabled();
     json(response, 200, {
       emergencyStop: safety.emergencyStop,
       globalGenerationEnabled: safety.globalEnabled,
+      incGen017FeatureFlags: incGen017FeatureFlags(),
       ...publicAvailability,
       persistentQueueReady: true,
       protectionReady: true,
       submissionEnabled:
+        incGen017Enabled &&
         availability.providerConfigured &&
         safety.globalEnabled &&
         !safety.emergencyStop,
       audioSubmissionEnabled:
+        incGen017Enabled &&
         availability.audioProviderConfigured &&
         safety.globalEnabled &&
         !safety.emergencyStop,
       imageSubmissionEnabled:
+        incGen017Enabled &&
         availability.imageProviderConfigured &&
         safety.globalEnabled &&
         !safety.emergencyStop,
       textSubmissionEnabled:
+        incGen017Enabled &&
         availability.textProviderConfigured &&
         safety.globalEnabled &&
         !safety.emergencyStop,
       videoSubmissionEnabled:
+        incGen017Enabled &&
         availability.videoProviderConfigured &&
         safety.globalEnabled &&
         !safety.emergencyStop,
@@ -159,15 +306,29 @@ export async function generationTasks(
     return;
   }
 
+  const incGen017ProtectedMutation = request.method === "POST" && (
+    path === "" || path === "/" || path === "preflight" ||
+    /\/(retry|reconcile)$/i.test(path)
+  );
+  if (incGen017ProtectedMutation && !incGen017GenerationEnabled()) {
+    json(response, 503, {
+      code: "INC_GEN_017_STOP_LOSS",
+      error: "生成合同或自动恢复已由管理员临时止损；未提交或恢复任务",
+    });
+    return;
+  }
+
   if (request.method === "GET" && path === "") {
     const requestUrl = new URL(request.url ?? "", "http://127.0.0.1");
     const canvasId = requestUrl.searchParams.get("canvasId") ?? "";
+    const fixtureScopeId = requestUrl.searchParams.get("fixtureScopeId") ?? "";
     try {
       const generationStore = taskStore();
       const ownerId = identity.bypass ? undefined : identity.userId;
-      const tasks = identity.bypass
+      const tasks = (identity.bypass
         ? generationStore.list(canvasId)
-        : generationStore.listForOwner(canvasId, identity.userId);
+        : generationStore.listForOwner(canvasId, identity.userId))
+        .filter((task) => generationTaskMatchesFixtureScope(task, fixtureScopeId));
       const bindings = tasks.some(({ state }) => state === "failed")
         ? generationStore.retryBindingsForCanvas(canvasId, ownerId)
         : new Map<string, GenerationTaskCanvasRetryBinding>();
@@ -184,6 +345,7 @@ export async function generationTasks(
     const requestUrl = new URL(request.url ?? "", "http://127.0.0.1");
     const canvasId = requestUrl.searchParams.get("canvasId") ?? "";
     const idempotencyKey = requestUrl.searchParams.get("idempotencyKey") ?? "";
+    const fixtureScopeId = requestUrl.searchParams.get("fixtureScopeId") ?? "";
     try {
       const task = identity.bypass
         ? taskStore().getByIdempotency(canvasId, idempotencyKey)
@@ -193,6 +355,13 @@ export async function generationTasks(
             identity.userId,
           );
       if (!task) {
+        json(response, 404, {
+          code: "GENERATION_TASK_NOT_FOUND",
+          error: "Generation task not found",
+        });
+        return;
+      }
+      if (!generationTaskMatchesFixtureScope(task, fixtureScopeId)) {
         json(response, 404, {
           code: "GENERATION_TASK_NOT_FOUND",
           error: "Generation task not found",
@@ -210,10 +379,12 @@ export async function generationTasks(
   }
 
   if (request.method === "DELETE" && /^[a-z0-9._-]+$/i.test(path)) {
+    const requestUrl = new URL(request.url ?? "", "http://127.0.0.1");
+    const fixtureScopeId = requestUrl.searchParams.get("fixtureScopeId") ?? "";
     const task = identity.bypass
       ? taskStore().get(path)
       : taskStore().getForOwner(path, identity.userId);
-    if (!task) {
+    if (!task || !generationTaskMatchesFixtureScope(task, fixtureScopeId)) {
       json(response, 404, { error: "Generation task not found" });
       return;
     }
@@ -266,17 +437,27 @@ export async function generationTasks(
       const body = await readJsonBody<{
         acknowledgeRemoteResultMayBeLost?: unknown;
         expectedAttempt?: unknown;
+        expectedFixtureScopeId?: unknown;
         expectedUpdatedAt?: unknown;
       }>(request, 2 * 1_024);
       if (
         body.acknowledgeRemoteResultMayBeLost !== true ||
         !Number.isSafeInteger(body.expectedAttempt) ||
         Number(body.expectedAttempt) < 1 ||
+        typeof body.expectedFixtureScopeId !== "string" ||
+        body.expectedFixtureScopeId.length > 120 ||
         typeof body.expectedUpdatedAt !== "string"
       ) {
         json(response, 400, {
           code: "ABANDON_ACK_REQUIRED",
           error: "必须确认将不再尝试恢复该平台结果",
+        });
+        return;
+      }
+      if (!generationTaskMatchesFixtureScope(task, body.expectedFixtureScopeId)) {
+        json(response, 404, {
+          code: "GENERATION_TASK_NOT_FOUND",
+          error: "Generation task not found",
         });
         return;
       }
@@ -313,7 +494,12 @@ export async function generationTasks(
       canvasId?: unknown;
       expectedAttempt?: unknown;
       expectedCanvasRevision?: unknown;
+      expectedFixtureScopeId?: unknown;
       expectedGenerationInputKey?: unknown;
+      expectedGenerationOwnershipKey?: unknown;
+      expectedModelConfigurationRevision?: unknown;
+      expectedModelInputContractFingerprint?: unknown;
+      expectedModelReleaseRevision?: unknown;
       expectedUpdatedAt?: unknown;
       kind?: unknown;
       nodeId?: unknown;
@@ -325,9 +511,23 @@ export async function generationTasks(
       Number(body.expectedAttempt) < 0 ||
       !Number.isSafeInteger(body.expectedCanvasRevision) ||
       Number(body.expectedCanvasRevision) < 0 ||
+      typeof body.expectedFixtureScopeId !== "string" ||
+      body.expectedFixtureScopeId.length > 120 ||
       typeof body.expectedGenerationInputKey !== "string" ||
       body.expectedGenerationInputKey.length < 1 ||
       body.expectedGenerationInputKey.length > 100_000 ||
+      typeof body.expectedGenerationOwnershipKey !== "string" ||
+      body.expectedGenerationOwnershipKey.length < 1 ||
+      body.expectedGenerationOwnershipKey.length > 2_000 ||
+      typeof body.expectedModelConfigurationRevision !== "string" ||
+      body.expectedModelConfigurationRevision.length < 1 ||
+      body.expectedModelConfigurationRevision.length > 500 ||
+      typeof body.expectedModelInputContractFingerprint !== "string" ||
+      body.expectedModelInputContractFingerprint.length < 1 ||
+      body.expectedModelInputContractFingerprint.length > 500 ||
+      typeof body.expectedModelReleaseRevision !== "string" ||
+      body.expectedModelReleaseRevision.length < 1 ||
+      body.expectedModelReleaseRevision.length > 500 ||
       typeof body.expectedUpdatedAt !== "string" ||
       body.expectedUpdatedAt.length < 1 ||
       body.expectedUpdatedAt.length > 80 ||
@@ -354,7 +554,8 @@ export async function generationTasks(
     if (
       task.canvasId !== body.canvasId ||
       task.nodeId !== body.nodeId ||
-      task.kind !== body.kind
+      task.kind !== body.kind ||
+      !generationTaskMatchesFixtureScope(task, body.expectedFixtureScopeId)
     ) {
       json(response, 409, {
         code: "RETRY_BINDING_STALE",
@@ -446,24 +647,14 @@ export async function generationTasks(
         });
         return;
       }
-      const retryModelReleaseRevision = taskStore()
-        .activeModelContractRevision(retry.model.id);
       paidRetrySnapshot = {
         credentialRevision: Number(runtime.credentialVersion),
         modelConfiguration: {
+          ...task.modelConfiguration,
           credentialVersion: Number(runtime.credentialVersion),
-          modelId: retry.model.id,
-          parameterSchema: generationModelSchema(task.kind, retry.model),
           providerConfigurationVersion: providerConfigurationVersion(
             runtime.providerProfile,
           ),
-          providerDriver: retry.model.provider_driver,
-          providerModelId: retry.model.provider_model_id,
-          providerProtocol: retry.model.provider_protocol ?? "native",
-          providerProfileId: retry.model.provider_profile_id,
-          ...(retryModelReleaseRevision
-            ? { modelReleaseRevision: retryModelReleaseRevision }
-            : {}),
         },
         providerModelId: retry.model.provider_model_id,
         providerProfileId: retry.model.provider_profile_id,
@@ -476,7 +667,15 @@ export async function generationTasks(
             canvasId: body.canvasId,
             expectedAttempt: Number(body.expectedAttempt),
             expectedCanvasRevision: Number(body.expectedCanvasRevision),
+            expectedFixtureScopeId: body.expectedFixtureScopeId,
             expectedGenerationInputKey: body.expectedGenerationInputKey,
+            expectedGenerationOwnershipKey:
+              body.expectedGenerationOwnershipKey,
+            expectedModelConfigurationRevision:
+              body.expectedModelConfigurationRevision,
+            expectedModelInputContractFingerprint:
+              body.expectedModelInputContractFingerprint,
+            expectedModelReleaseRevision: body.expectedModelReleaseRevision,
             expectedUpdatedAt: body.expectedUpdatedAt,
             kind: body.kind,
             mode: "resume-provider-task",
@@ -487,7 +686,15 @@ export async function generationTasks(
             canvasId: body.canvasId,
             expectedAttempt: Number(body.expectedAttempt),
             expectedCanvasRevision: Number(body.expectedCanvasRevision),
+            expectedFixtureScopeId: body.expectedFixtureScopeId,
             expectedGenerationInputKey: body.expectedGenerationInputKey,
+            expectedGenerationOwnershipKey:
+              body.expectedGenerationOwnershipKey,
+            expectedModelConfigurationRevision:
+              body.expectedModelConfigurationRevision,
+            expectedModelInputContractFingerprint:
+              body.expectedModelInputContractFingerprint,
+            expectedModelReleaseRevision: body.expectedModelReleaseRevision,
             expectedUpdatedAt: body.expectedUpdatedAt,
             kind: body.kind,
             mode: "new-paid-attempt",
@@ -553,7 +760,12 @@ export async function generationTasks(
       canvasId?: unknown;
       expectedAttempt?: unknown;
       expectedCanvasRevision?: unknown;
+      expectedFixtureScopeId?: unknown;
       expectedGenerationInputKey?: unknown;
+      expectedGenerationOwnershipKey?: unknown;
+      expectedModelConfigurationRevision?: unknown;
+      expectedModelInputContractFingerprint?: unknown;
+      expectedModelReleaseRevision?: unknown;
       expectedUpdatedAt?: unknown;
       kind?: unknown;
       nodeId?: unknown;
@@ -566,9 +778,23 @@ export async function generationTasks(
       Number(body.expectedAttempt) < 0 ||
       !Number.isSafeInteger(body.expectedCanvasRevision) ||
       Number(body.expectedCanvasRevision) < 0 ||
+      typeof body.expectedFixtureScopeId !== "string" ||
+      body.expectedFixtureScopeId.length > 120 ||
       typeof body.expectedGenerationInputKey !== "string" ||
       body.expectedGenerationInputKey.length < 1 ||
       body.expectedGenerationInputKey.length > 100_000 ||
+      typeof body.expectedGenerationOwnershipKey !== "string" ||
+      body.expectedGenerationOwnershipKey.length < 1 ||
+      body.expectedGenerationOwnershipKey.length > 2_000 ||
+      typeof body.expectedModelConfigurationRevision !== "string" ||
+      body.expectedModelConfigurationRevision.length < 1 ||
+      body.expectedModelConfigurationRevision.length > 500 ||
+      typeof body.expectedModelInputContractFingerprint !== "string" ||
+      body.expectedModelInputContractFingerprint.length < 1 ||
+      body.expectedModelInputContractFingerprint.length > 500 ||
+      typeof body.expectedModelReleaseRevision !== "string" ||
+      body.expectedModelReleaseRevision.length < 1 ||
+      body.expectedModelReleaseRevision.length > 500 ||
       typeof body.expectedUpdatedAt !== "string" ||
       body.expectedUpdatedAt.length < 1 ||
       body.expectedUpdatedAt.length > 80 ||
@@ -615,7 +841,8 @@ export async function generationTasks(
     if (
       task.canvasId !== body.canvasId ||
       task.nodeId !== body.nodeId ||
-      task.kind !== body.kind
+      task.kind !== body.kind ||
+      !generationTaskMatchesFixtureScope(task, body.expectedFixtureScopeId)
     ) {
       json(response, 409, {
         code: "RETRY_BINDING_STALE",
@@ -703,6 +930,7 @@ export async function generationTasks(
     if (!current.providerTaskId) {
       try {
         current = taskStore().markOutcomeUnknownBillingRisk({
+          expectedFixtureScopeId: body.expectedFixtureScopeId,
           expectedUpdatedAt: current.updatedAt,
           taskId: current.id,
         });
@@ -766,6 +994,7 @@ export async function generationTasks(
     if (pollState === "failed") {
       try {
         current = taskStore().markOutcomeUnknownBillingRisk({
+          expectedFixtureScopeId: body.expectedFixtureScopeId,
           expectedUpdatedAt: current.updatedAt,
           taskId: current.id,
         });
@@ -791,7 +1020,15 @@ export async function generationTasks(
         canvasId: body.canvasId,
         expectedAttempt: current.attempt,
         expectedCanvasRevision: Number(body.expectedCanvasRevision),
+        expectedFixtureScopeId: body.expectedFixtureScopeId,
         expectedGenerationInputKey: body.expectedGenerationInputKey,
+        expectedGenerationOwnershipKey:
+          body.expectedGenerationOwnershipKey,
+        expectedModelConfigurationRevision:
+          body.expectedModelConfigurationRevision,
+        expectedModelInputContractFingerprint:
+          body.expectedModelInputContractFingerprint,
+        expectedModelReleaseRevision: body.expectedModelReleaseRevision,
         expectedUpdatedAt: current.updatedAt,
         kind: body.kind,
         mode: "resume-provider-task",
@@ -833,10 +1070,12 @@ export async function generationTasks(
   }
 
   if (request.method === "GET" && /^[a-z0-9._-]+$/i.test(path)) {
+    const requestUrl = new URL(request.url ?? "", "http://127.0.0.1");
+    const fixtureScopeId = requestUrl.searchParams.get("fixtureScopeId") ?? "";
     const task = identity.bypass
       ? taskStore().get(path)
       : taskStore().getForOwner(path, identity.userId);
-    if (!task) {
+    if (!task || !generationTaskMatchesFixtureScope(task, fixtureScopeId)) {
       json(response, 404, { error: "Generation task not found" });
       return;
     }
@@ -897,6 +1136,32 @@ export async function generationTasks(
         requireFreshRevision: false,
         targetKind: body.kind,
       });
+      const activeConfigurationRevision = modelConfigurationRevision({
+        ...model,
+        capability: body.kind,
+      });
+      const expectedWorkflowIdentity = strictWorkflowIdentity({
+        body,
+        modelConfigurationRevision: activeConfigurationRevision,
+        modelId: model.id,
+        strict: preflight,
+      });
+      if (identity.bypass && body.generationIdentityVersion === undefined) {
+        Object.assign(body, {
+          generationIdentityVersion: 2,
+          ...expectedWorkflowIdentity,
+        });
+      }
+      validatedWorkflowBinding({
+        activeConfigurationRevision,
+        activeRevisionId: preflight.modelReleaseRevision?.revisionId,
+        body,
+        expectedGenerationInputKey:
+          expectedWorkflowIdentity.generationInputKey,
+        expectedGenerationOwnershipKey:
+          expectedWorkflowIdentity.generationOwnershipKey,
+        persistedTargetParentId: preflight.persistedTargetParentId,
+      });
       const runtime = await generationRuntimeDecision({
         canSubmit: preflight.canSubmit,
         kind: body.kind,
@@ -938,20 +1203,7 @@ export async function generationTasks(
       }
       const ownerId = identity.bypass ? "__test__" : identity.userId;
       const idempotencyKey = String(body.idempotencyKey ?? "");
-      const requestIntent = generationRequestIntent(body, body.kind);
-      const existing = taskStore().getIdempotentIntent({
-        canvasId: String(body.canvasId ?? ""),
-        idempotencyKey,
-        ownerId,
-        requestIntent,
-      });
-      if (existing) {
-        json(response, 200, taskSummaryForOwner(
-          existing,
-          identity.bypass ? undefined : identity.userId,
-        ));
-        return;
-      }
+      let requestIntent: ReturnType<typeof generationRequestIntent>;
       const model = resolveModel(
         body.kind,
         body.model,
@@ -1003,6 +1255,60 @@ export async function generationTasks(
           error: strictInput.problems[0]?.message ?? "节点输入不完整",
           problems: strictInput.problems,
         });
+        return;
+      }
+      let workflowBinding: ReturnType<typeof validatedWorkflowBinding>;
+      let generationIdentity: ReturnType<typeof validatedGenerationIdentity>;
+      try {
+        const activeConfigurationRevision = modelConfigurationRevision({
+          ...model,
+          capability: body.kind,
+        });
+        const expectedWorkflowIdentity = strictWorkflowIdentity({
+          body,
+          modelConfigurationRevision: activeConfigurationRevision,
+          modelId: model.id,
+          strict: strictInput,
+        });
+        if (identity.bypass && body.generationIdentityVersion === undefined) {
+          Object.assign(body, {
+            generationIdentityVersion: 2,
+            ...expectedWorkflowIdentity,
+          });
+        }
+        generationIdentity = validatedGenerationIdentity({
+          body,
+          expected: expectedWorkflowIdentity,
+        });
+        requestIntent = generationRequestIntent(body, body.kind);
+        workflowBinding = validatedWorkflowBinding({
+          activeConfigurationRevision,
+          activeRevisionId: strictInput.modelReleaseRevision?.revisionId,
+          body,
+          expectedGenerationInputKey:
+            expectedWorkflowIdentity.generationInputKey,
+          expectedGenerationOwnershipKey:
+            expectedWorkflowIdentity.generationOwnershipKey,
+          persistedTargetParentId: strictInput.persistedTargetParentId,
+        });
+      } catch (error) {
+        json(response, 409, {
+          code: "WORKFLOW_BINDING_MISMATCH",
+          error: error instanceof Error ? error.message : "工作流任务绑定不一致",
+        });
+        return;
+      }
+      const existing = taskStore().getIdempotentIntent({
+        canvasId: String(body.canvasId ?? ""),
+        idempotencyKey,
+        ownerId,
+        requestIntent,
+      });
+      if (existing) {
+        json(response, 200, taskSummaryForOwner(
+          existing,
+          identity.bypass ? undefined : identity.userId,
+        ));
         return;
       }
       const runtime = await generationRuntimeDecision({
@@ -1077,22 +1383,73 @@ export async function generationTasks(
           ownerId,
         });
       }
-      const activeModelReleaseRevision = taskStore()
+      const currentActiveRevision = taskStore()
         .activeModelContractRevision(model.id);
+      const activeModelReleaseRevision = strictInput.modelReleaseRevision;
+      if (
+        currentActiveRevision?.revisionId !==
+          activeModelReleaseRevision?.revisionId
+      ) {
+        json(response, 409, {
+          code: "MODEL_RELEASE_CHANGED",
+          error: "模型合同已更新，请按当前画布重新提交",
+        });
+        return;
+      }
+      let executionDecision: ReturnType<typeof compileRegisteredModelTaskDecision>;
+      try {
+        executionDecision = compileRegisteredModelTaskDecision({
+          capability: body.kind,
+          capabilitySchema: schema,
+          contractFingerprint: strictInput.contractFingerprint,
+          costCurrency: model.cost_currency,
+          providerDriver: model.provider_driver,
+          providerModelId: model.provider_model_id,
+          providerProtocol: model.provider_protocol ?? "native",
+          revisionIdentity: activeModelReleaseRevision?.revisionId,
+        });
+      } catch (error) {
+        json(response, 409, {
+          code: "MODEL_EXECUTION_CONTRACT_INVALID",
+          error: error instanceof Error
+            ? error.message
+            : "模型执行合同不完整，已在Provider前阻断",
+        });
+        return;
+      }
+      if (
+        executionDecision.contractFingerprint !==
+          generationIdentity.modelInputContractFingerprint
+      ) {
+        json(response, 409, {
+          code: "MODEL_EXECUTION_CONTRACT_INVALID",
+          error: "模型执行合同指纹与输入语义身份不一致",
+        });
+        return;
+      }
       const created = taskStore().admitOrGet({
         canvasId: String(body.canvasId ?? ""),
         credentialRevision: runtime.credentialVersion,
         expectedCanvasRevision: body.canvasRevision,
         estimatedCostMicrounits: taskAuditEstimatedCostMicrounits[
-          model.cost_currency
+          executionDecision.costCurrency
         ],
-        costCurrency: model.cost_currency,
+        costCurrency: executionDecision.costCurrency,
         idempotencyKey,
         kind: body.kind,
         model: model.id,
         modelConfiguration: {
           credentialVersion: runtime.credentialVersion,
+          modelCapability: body.kind,
           modelId: model.id,
+          modelExecutionAdapterId: executionDecision.adapterId,
+          ...generationIdentity,
+          modelInputContractFingerprint: executionDecision.contractFingerprint,
+          modelConfigurationRevision: modelConfigurationRevision({
+            ...model,
+            capability: body.kind,
+          }),
+          modelResultCount: executionDecision.resultCount,
           parameterSchema: schema,
           providerConfigurationVersion: providerConfigurationVersion(
             runtime.providerProfile,
@@ -1101,9 +1458,11 @@ export async function generationTasks(
           providerModelId: model.provider_model_id,
           providerProtocol: model.provider_protocol ?? "native",
           providerProfileId: model.provider_profile_id,
+          fixtureScopeId: String(body.fixtureScopeId ?? ""),
           ...(activeModelReleaseRevision
             ? { modelReleaseRevision: activeModelReleaseRevision }
             : {}),
+          ...(workflowBinding ? { workflowBinding } : {}),
         },
         nodeId: String(body.nodeId ?? ""),
         ownerId,

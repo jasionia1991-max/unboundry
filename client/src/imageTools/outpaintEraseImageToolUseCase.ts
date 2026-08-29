@@ -6,7 +6,11 @@ import type {
 import { imageToolMaximums } from "../../../types/imageTools";
 import { NODE_DEFAULT_SIZES } from "../canvas/mediaGeometry";
 import type { ProbeNodeType } from "../canvas/ProbeNode";
-import type { CanvasGraphCommandPort } from "../canvas/canvasPorts";
+import type {
+  CanvasGraphCommand,
+  CanvasGraphCommandCommit,
+  CanvasGraphCommandPort,
+} from "../canvas/canvasPorts";
 import type { CuttableEdge } from "../canvas/canvasTypes";
 import type { SingleNodeGenerationLifecycle } from
   "../generation/singleNodeGenerationLifecycle";
@@ -91,6 +95,7 @@ export type OutpaintEraseGenerationPlan = Readonly<{
 export function createOutpaintEraseImageToolUseCase(input: Readonly<{
   afterPlaceholderCreated(): Promise<void>;
   capability: ImageToolCapability;
+  commit?: CanvasGraphCommandCommit;
   createLifecycle(plan: OutpaintEraseGenerationPlan): SingleNodeGenerationLifecycle;
   graph: CanvasGraphCommandPort;
   media: DerivedImageMediaPort;
@@ -216,7 +221,7 @@ export function createOutpaintEraseImageToolUseCase(input: Readonly<{
           id: `edge-${command.sourceNodeId}-${targetNodeId}`, interactionWidth: 20,
           source: command.sourceNodeId, sourceHandle: "source", target: targetNodeId,
           targetHandle: "target", type: "cuttable" };
-        const graphResult = input.graph.apply({
+        const graphCommand: CanvasGraphCommand = {
           fence: { expectedRevision: command.expectedRevision, kind: "image",
             nodeId: command.sourceNodeId, operationId: command.operationId,
             ownershipKey: command.preOwnershipKey, runId: command.runId,
@@ -232,7 +237,10 @@ export function createOutpaintEraseImageToolUseCase(input: Readonly<{
                 width: NODE_DEFAULT_SIZES.image.width,
               }),
             }] }),
-        });
+        };
+        const graphResult = input.commit
+          ? await input.commit(graphCommand)
+          : input.graph.apply(graphCommand);
         if (graphResult.status !== "applied") {
           throw new Error(`原图片或画布版本已发生变化，请重新打开${noun}工具`);
         }
