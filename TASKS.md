@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻当前任务
 
-## INC-GEN-017 工作流自动自愈与模型合同隔离（FORMAL SAFE FULL CONSUMED / HOTFIX REVIEW GO / V0.6.58 PREPARATION / REAL PROVIDER NOT POSTED）
+## INC-GEN-017 工作流自动自愈与模型合同隔离（FORMAL SAFE FULL CONSUMED / HOTFIX REVIEW GO / V0.6.58 CANDIDATE COMMITTED / REAL PROVIDER NOT POSTED）
 
 - [x] R8生产验收在POST前确认旧published Seedance/Grok3.5/Grok3 schema缺少当前语义合同元数据；系统正确fail-closed，Provider POST=0、费用USD0。
 - [x] 完整schema fallback收窄为仅结构有效的旧Grok3；独立终审`P0=0/P1=1/P2=0/NO-GO`发现的迁移registry totality缺口已在plan/activation双重关闭。Seedance/Gemini/Mureka fixture身份已对齐，错协议、错driver、缺参数均阻断；m102最终`24/24 PASS`（`e93a5baf…610032`），库存1125、4173 unchanged；新冻结diff `dcf8a42d…3cb854`。
@@ -8,7 +8,9 @@
 - [x] v0.6.58身份核验：`origin/main@b34a6f4`未前进；本地/远端tag与GitHub Release均未占用；package/lock、final runtime allowlist及m81断言已同步，生产仍为v0.6.57/schema41。
 - [x] v0.6.58版本直接门最终有效`57/57 PASS`：m81 `41/41`首轮通过，m38修正唯一治理版本字段后`16/16 PASS`（`30e11dbd…c7d7b`），库存1125、异常0、4173 unchanged。
 - [x] 提交前最终治理safe m38 `16/16 PASS`（`79ae8703…609cd6`），库存1125、异常0、4173 unchanged；精确diff-check通过。迟到的`b577…`终审属于已关闭的早期候选，不改变当前热修Review GO；随后仅回写本条证据。
-- [ ] 提交精确安全范围，push并创建PR；CI通过后合并并冻结v0.6.58 tag/Release。
+- [x] v0.6.58功能/版本候选已精确提交：`760dfcf131d5800f8e03e8533199ef1e773a7ea3`，tree`dc8c192e27acf6373899a959e9cc0d4a22f86e3e`，18个安全文件；受保护JSON未进入提交。
+- [x] 候选提交后治理safe m38 `16/16 PASS`（`1b906cf7…968f79`），库存1125、异常0、4173 unchanged；随后仅回写该证据，六份治理回执commit就绪。
+- [ ] 提交六份治理回执，push并创建PR；CI通过后合并并冻结v0.6.58 tag/Release。
 
 - [x] 用户已显式启动一次性Goal；建立`codex/inc-gen-017-workflow-self-healing-2026-08-28`并绑定实时`origin/main@75f6c1a`。
 - [x] R0只读冻结v0.6.56/schema41、20模型/10 published、Node/npm、生产release/健康/数据完整性与USD100硬预算；受保护JSON未读取或改动。

@@ -2,11 +2,13 @@
 
 ## INC-GEN-017 正式full失败映射关闭、独立终审GO、R7组合浏览器通过与v0.6.57生产技术通过（2026-08-30）
 
-- 当前状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / HOTFIX_REVIEW_GO / V0_6_58_CANDIDATE_COMMIT_READY / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。
+- 当前状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / HOTFIX_REVIEW_GO / V0_6_58_CANDIDATE_COMMITTED / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。
 - R8生产最小验收在POST前确认旧published Seedance/Grok3.5/Grok3合同缺失当前语义元数据；系统fail-closed，Provider POST=0/USD0。冻结diff `dcf8a42d…3cb854`独立增量终审覆盖8/8文件、10/10 logical models、11/11 exact identities，最终`P0=0/P1=0/P2=0/GO`；m102 `24/24 PASS`（`e93a5baf…610032`），库存1125、4173 unchanged。当前只开放v0.6.58准备，生产迁移和真实Provider仍待后续硬门。
 - v0.6.58版本身份门确认`origin/main@b34a6f4`未前进，本地/远端tag及GitHub Release均未占用；package/lock、final runtime allowlist和m81断言已同步。本地候选v0.6.58，生产仍为v0.6.57/schema41；版本定向m81+m38待执行。
 - v0.6.58版本直接门最终有效`57/57 PASS`：m81 `41/41`首轮通过，m38修正唯一治理版本字段后`16/16 PASS`（`30e11dbd…c7d7b`），库存1125、异常0、4173 unchanged；候选提交就绪。
 - v0.6.58提交前最终治理safe m38 `16/16 PASS`（source/snapshot`79ae8703…609cd6`），库存1125、异常0、4173 unchanged，精确diff-check通过；迟到的`b577…`终审不覆盖已完成整改后的当前热修Review GO。随后仅回写本条证据。
+- v0.6.58功能/版本候选commit为`760dfcf131d5800f8e03e8533199ef1e773a7ea3`、tree`dc8c192e27acf6373899a959e9cc0d4a22f86e3e`，18个安全文件；受保护JSON未进入提交，提交后治理m38与治理commit待执行。
+- 候选提交后治理safe m38 `16/16 PASS`（source/snapshot`1b906cf7…968f79`），库存1125、异常0、4173 unchanged；随后仅回写该证据，治理commit就绪。
 - 第十七候选六项P1已关闭；safe m100/m27/m1/m37/m30最终`15/15、21/21、7/7、35/35、13/13 PASS`，库存1120、最终产品/测试source/snapshot`c4b9bce6…40933`、异常0、4173 unchanged，TypeScript/diff-check通过。
 - 第十八候选两路完整只读终审已完成：模型/Provider `P0=0/P1=0/P2=1/GO`，工作流84/84文件 `P0=0/P1=4/P2=2/NO-GO`，合并`P0=0/P1=4/P2=3/NO-GO`并解冻候选。
 - 四项P1为group最终admission图TOCTOU、四类手动暂停恢复未await durable graph apply、上下文菜单删除漏锁外部端点、媒体上传开始态绕过admission；三项P2为relay usage fixture occupied-ID、raw edge add/replace、raw node remove。

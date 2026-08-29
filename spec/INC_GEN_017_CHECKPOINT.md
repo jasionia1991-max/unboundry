@@ -1,6 +1,6 @@
 # INC-GEN-017 实时断点
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / HOTFIX_REVIEW_GO / V0_6_58_CANDIDATE_COMMIT_READY / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / HOTFIX_REVIEW_GO / V0_6_58_CANDIDATE_COMMITTED / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 
 更新时间：2026-08-29
 
@@ -10,6 +10,8 @@
 - v0.6.58身份门：刷新后`origin/main`仍为`b34a6f454608da2244f87ca0fffb8e8ef6704050`；本地tag、远端tag和GitHub Release均不存在，是高于生产v0.6.57的最低未占用patch。package/lock、final runtime allowlist与m81直接断言已同步为0.6.58；当前仅为本地候选，生产继续v0.6.57/schema41，版本定向m81+m38通过前不提交或推送。
 - v0.6.58版本直接门最终有效`57/57 PASS`：m81 `41/41`首轮即通过；m38唯一治理失败为CURRENT_STATE代码包版本未同步，修正后单独`16/16 PASS`，source/snapshot`30e11dbd…c7d7b`。Node`22.23.1`/npm`10.9.8`、库存1125、异常0、4173 unchanged；正式full不重跑。当前候选提交就绪，提交前仅运行最终治理m38和精确diff-check。
 - v0.6.58提交前最终治理safe m38 `16/16 PASS`，source/snapshot`79ae8703792cb1f730ea723b3bee2102f86936dd504a32c6ed7189b2dc609cd6`，库存1125、失败/重试/跳过/reportErrors0、4173 unchanged；精确`git diff --check`通过。旧`b577…`终审消息对应已登记并完成多轮整改的早期候选，不改变当前`dcf8…`热修Review GO。随后仅回写本条证据，下一步精确安全提交。
+- v0.6.58功能/版本候选已精确提交为`760dfcf131d5800f8e03e8533199ef1e773a7ea3`，tree`dc8c192e27acf6373899a959e9cc0d4a22f86e3e`，共18个安全范围文件；两个受保护JSON未进入stage/commit。下一步提交后治理m38、六份治理回执commit，再push/PR/CI。
+- 候选提交后治理safe m38 `16/16 PASS`，source/snapshot`1b906cf7b8e8dd64e9a016a28c1219168407f1a89643bbfef3fd33d722968f79`，库存1125、失败/重试/跳过/reportErrors0、4173 unchanged；随后仅回写本条证据，六份治理文档可独立提交。
 - 2026-08-28 用户已在本Session显式发送`/goal`；Goal已激活并授权按一次性提示词连续实施R0～R8、唯一正式full、GitHub/CI、v0.6.57候选发布、生产与累计不超过USD100的最小真实Provider验收。该授权不允许读取受保护JSON、重复未知费用POST、删除真实数据/备份或绕过发布硬门。
 - 实施隔离分支：`codex/inc-gen-017-workflow-self-healing-2026-08-28`；基于实时`origin/main@75f6c1aca055b8b82f258a9d38be5c27ce7d6305`，tree`57a6763b065bdc523697255f8183230e124b09bd`。进入时仅保留本事件既有文档改动，没有覆盖或清理用户工作。
 - package/lock均为`0.6.56`；普通工具链Node`25.9.0`/npm`11.12.1`，safe runner为Node`22.23.1`/npm`10.9.8`。

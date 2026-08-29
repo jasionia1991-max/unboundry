@@ -1,6 +1,6 @@
 # INC-GEN-017：工作流自动自愈与模型合同隔离详细行动方案
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / HOTFIX_REVIEW_GO / V0_6_58_CANDIDATE_COMMIT_READY / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / HOTFIX_REVIEW_GO / V0_6_58_CANDIDATE_COMMITTED / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 
 建立日期：2026-08-28
 
@@ -11,6 +11,10 @@ v0.6.58身份门已确认：`origin/main@b34a6f454608da2244f87ca0fffb8e8ef670405
 版本直接门最终有效`57/57 PASS`：m81 `41/41`首轮通过，m38修正唯一治理版本字段后`16/16 PASS`（`30e11dbd…c7d7b`）；库存1125、异常0、4173 unchanged。正式full不重跑，当前只执行提交前最终治理m38和diff-check。
 
 提交前最终治理safe m38现为`16/16 PASS`，source/snapshot`79ae8703792cb1f730ea723b3bee2102f86936dd504a32c6ed7189b2dc609cd6`、库存1125、异常0、4173 unchanged；精确diff-check通过。迟到的`b577…`终审回执属于已记录并关闭的早期候选，不覆盖当前`dcf8…`热修Review GO；随后仅回写本条证据，按硬门进入精确安全提交。
+
+v0.6.58功能/版本候选commit已冻结为`760dfcf131d5800f8e03e8533199ef1e773a7ea3`，tree`dc8c192e27acf6373899a959e9cc0d4a22f86e3e`，18个安全文件且两个受保护JSON未进入提交。按阶段只回写治理、运行提交后m38并提交六份回执，再进入push/PR/CI。
+
+候选提交后治理safe m38为`16/16 PASS`，source/snapshot`1b906cf7b8e8dd64e9a016a28c1219168407f1a89643bbfef3fd33d722968f79`、库存1125、异常0、4173 unchanged；随后仅回写该回执，六份治理文件可独立提交并进入push/PR/CI。
 
 实施回写：最新用户已显式发送一次性`/goal`并授权R0～R8。唯一正式safe full已永久消费，原始结果`1023 PASS / 95 FAIL / 4 NOT_RUN`且不得改写或重跑。原始27个失败spec与m29/m65四项未运行用例现已全部由最小失败spec执行闭合；最后m73 `16/16`、m77 `11/11`，合计`27/27 PASS`，source/snapshot`720b0ea6f77968e663b2db426a30fe376184a8aec7f3cbebac8c81d462a9499c`，异常0、4173 unchanged。失败映射P1已关闭；当前只允许同步治理、运行治理m38并重新冻结候选做独立只读增量终审。Provider POST/费用与生产/OSS写仍为0；重新终审`P0/P1=0/GO`前不得进入R7、GitHub、版本或生产。
 

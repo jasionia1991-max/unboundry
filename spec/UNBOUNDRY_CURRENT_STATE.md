@@ -1,6 +1,6 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网运行v0.6.57/schema41且服务健康。R8真实Provider验收在POST前发现旧published模型合同迁移缺口并正确fail-closed，Provider POST=0、费用USD0；本地热修已通过独立终审及v0.6.58版本直接门。当前严格为`HOTFIX_REVIEW_GO / V0_6_58_CANDIDATE_COMMIT_READY / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。v0.6.56的真实GK成功回执保留为历史事实，不替代当前版本验收。
+> **状态分层**：现网运行v0.6.57/schema41且服务健康。R8真实Provider验收在POST前发现旧published模型合同迁移缺口并正确fail-closed，Provider POST=0、费用USD0；本地热修已通过独立终审及v0.6.58版本直接门并完成候选提交。当前严格为`HOTFIX_REVIEW_GO / V0_6_58_CANDIDATE_COMMITTED / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。v0.6.56的真实GK成功回执保留为历史事实，不替代当前版本验收。
 
 更新日期：2026-08-30
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
@@ -9,9 +9,9 @@
 当前生产部署版本：**v0.6.57**
 本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_57_USER_RECHECK`
-当前计划标记：`INC_GEN_017_GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / HOTFIX_REVIEW_GO / V0_6_58_CANDIDATE_COMMIT_READY / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+当前计划标记：`INC_GEN_017_GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / HOTFIX_REVIEW_GO / V0_6_58_CANDIDATE_COMMITTED / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`INC_GEN_017_HOTFIX_REVIEW_GO / V0_6_58_CANDIDATE_COMMIT_READY / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+当前发布门：`INC_GEN_017_HOTFIX_REVIEW_GO / V0_6_58_CANDIDATE_COMMITTED / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 
 ## INC-GEN-017 当前区块（2026-08-28）
 
@@ -19,6 +19,8 @@
 - v0.6.58身份门：`origin/main@b34a6f4`未前进，本地tag、远端tag和GitHub Release均不存在；package/lock、final runtime allowlist与m81断言已同步。当前本地候选v0.6.58，生产仍为v0.6.57/schema41；版本定向m81+m38待执行。
 - v0.6.58版本直接门最终有效`57/57 PASS`：m81 `41/41`首轮通过，m38修正唯一治理版本字段后`16/16 PASS`（`30e11dbd…c7d7b`），库存1125、异常0、4173 unchanged。当前候选提交就绪，生产仍为v0.6.57/schema41。
 - v0.6.58提交前最终治理safe m38 `16/16 PASS`，source/snapshot`79ae8703…609cd6`、库存1125、异常0、4173 unchanged；精确diff-check通过。`b577…`早期候选终审的12项P1已在后续整改链闭合，当前仍以`dcf8…`热修Review GO为准；随后仅回写本条证据。
+- v0.6.58功能/版本候选已提交为`760dfcf131d5800f8e03e8533199ef1e773a7ea3`，tree`dc8c192e27acf6373899a959e9cc0d4a22f86e3e`，18个安全文件，受保护JSON未进入提交；生产继续v0.6.57/schema41且真实Provider POST/费用仍为0。
+- 候选提交后治理safe m38 `16/16 PASS`，source/snapshot`1b906cf7…968f79`、库存1125、异常0、4173 unchanged；随后仅回写该证据，六份治理文档可提交，生产未变。
 
 - 用户已在本Session显式启动一次性Goal；当前实施分支为`codex/inc-gen-017-workflow-self-healing-2026-08-28`，实时基线`origin/main@75f6c1aca055b8b82f258a9d38be5c27ce7d6305`。
 - R0已完成：只读冻结生产v0.6.56/schema41、20模型/10 published、Node/npm与USD100真实Provider硬预算；Provider POST=0、费用USD0，受保护JSON未读取或改动。
