@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻当前任务
 
-## INC-GEN-017 工作流自动自愈与模型合同隔离（FORMAL SAFE FULL CONSUMED / HOTFIX REVIEW GO / V0.6.58 CANDIDATE COMMITTED / REAL PROVIDER NOT POSTED）
+## INC-GEN-017 工作流自动自愈与模型合同隔离（FORMAL SAFE FULL CONSUMED / V0.6.58 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.59 REVIEW GO RELEASE PREPARING / REAL PROVIDER NOT POSTED）
 
 - [x] R8生产验收在POST前确认旧published Seedance/Grok3.5/Grok3 schema缺少当前语义合同元数据；系统正确fail-closed，Provider POST=0、费用USD0。
 - [x] 完整schema fallback收窄为仅结构有效的旧Grok3；独立终审`P0=0/P1=1/P2=0/NO-GO`发现的迁移registry totality缺口已在plan/activation双重关闭。Seedance/Gemini/Mureka fixture身份已对齐，错协议、错driver、缺参数均阻断；m102最终`24/24 PASS`（`e93a5baf…610032`），库存1125、4173 unchanged；新冻结diff `dcf8a42d…3cb854`。
@@ -11,7 +11,18 @@
 - [x] v0.6.58功能/版本候选已精确提交：`760dfcf131d5800f8e03e8533199ef1e773a7ea3`，tree`dc8c192e27acf6373899a959e9cc0d4a22f86e3e`，18个安全文件；受保护JSON未进入提交。
 - [x] 候选提交后治理safe m38 `16/16 PASS`（`1b906cf7…968f79`），库存1125、异常0、4173 unchanged；随后仅回写该证据，六份治理回执commit就绪。
 - [x] 六份治理回执已提交并push；PR #127 base/head正确且mergeable，head`0226d77`的Quality gates通过（run`33273711037`、job`99156654353`、31秒）。
-- [ ] 推送本次CI证据形成最终纯文档head；同一Quality gates再通过后合并并冻结v0.6.58 tag/Release。
+- [x] 最终纯文档head`1441e2b`、PR/main Quality、merge`730ea56`、annotated tag/GitHub Release v0.6.58均通过。
+- [x] 精确tag fresh build：object`959dbc9`→merge`730ea56`，archive`85cfe65e…ffe5b`；Node22.23.2/npm10.9.8、6035文件、inventory`37b52e73…16bb8`、dist33。
+- [x] v0.6.58 quiet gate、冻结source/restore 366/366、双清单`d0fb1598…d632c`及schema41/integrity/FK/计数门通过；恢复副本dry-run在apply前发现Mureka legacy 8000+1/2/3未获迁移核准并fail-closed。生产恢复v0.6.57健康，v0.6.58未部署，失败目录/备份保留。
+- [x] v0.6.59精确legacy Mureka迁移定向m102最终`24/24 PASS`（source/snapshot`c00a705d…ed955`）：只收敛outputCount 1/2/3→1，lyrics继续保持运行时已证明的8000上限；畸形1/4选项fail-closed，重复apply幂等，mureka-native contract v2可读。前置两次诊断分别关闭TypeScript narrowing、schema规范化哈希和runtime v2读取门，均未触发Provider。
+- [x] v0.6.59版本/治理直接门m38+m81 `57/57 PASS`（source/snapshot`6848e45b…ff3f`），库存1125、异常0、4173 unchanged；7文件产品/版本/测试diff hash=`d58b6101…d702`且diff-check通过。
+- [x] v0.6.59独立增量终审覆盖7/7文件、14/14 hunks、完整迁移链、10/10 published模型与11/11 exact identities，最终`P0=0/P1=0/P2=0/GO`。当前生产及v0.6.58冻结source/restore三份DB均为SHA`54468f…12aded`、Mureka lyrics8000+outputCount1/2/3，撤销了按旧Git源码5000提出的首轮P1；Review全程只读、未测试/build/Provider/OSS、未读取受保护JSON。
+- [x] Review GO治理safe m38 `16/16 PASS`（source/snapshot`0cce774d…799a`），库存1125、异常0、4173 unchanged；精确diff-check通过，正式full未重跑。
+- [x] v0.6.59产品/版本候选已提交：`6abe72b72b496de08a7309948b3b3ee06df54652`，tree`25b4a00d19cead0a5ef8080e89db6795543654aa`，精确7个安全文件；两份受保护JSON与六份治理文档未进入提交。
+- [x] 候选提交后治理safe m38 `16/16 PASS`（source/snapshot`25c7a168…7bf9e`），库存1125、异常0、4173 unchanged；正式full未重跑。
+- [x] 两个commit已推送并创建PR #128，base/head=`main@730ea56`/`61f5b2b`；首次TLS握手失败未产生远端变更，原分支重试成功。
+- [x] PR #128治理head`f575836`的Quality gates / lightweight通过（run`33295091931`、job`99213263004`、48秒）。
+- [ ] 提交并推送本条CI证据，等待最终纯文档head同一门；通过后合并、冻结v0.6.59 tag/Release并fresh build。
 
 - [x] 用户已显式启动一次性Goal；建立`codex/inc-gen-017-workflow-self-healing-2026-08-28`并绑定实时`origin/main@75f6c1a`。
 - [x] R0只读冻结v0.6.56/schema41、20模型/10 published、Node/npm、生产release/健康/数据完整性与USD100硬预算；受保护JSON未读取或改动。

@@ -1,17 +1,17 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网运行v0.6.57/schema41且服务健康。R8真实Provider验收在POST前发现旧published模型合同迁移缺口并正确fail-closed，Provider POST=0、费用USD0；本地热修已通过独立终审及v0.6.58版本直接门并完成候选提交。当前严格为`HOTFIX_REVIEW_GO / V0_6_58_CANDIDATE_COMMITTED / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。v0.6.56的真实GK成功回执保留为历史事实，不替代当前版本验收。
+> **状态分层**：现网运行v0.6.57/schema41且服务健康。v0.6.58已完成PR/tag/fresh build，但真实冻结恢复副本dry-run在apply前发现Mureka legacy schema迁移缺口并正确fail-closed，因此v0.6.58保持不可变且未部署。v0.6.59精确整改已通过独立Review，当前严格为`V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_REVIEW_GO_RELEASE_PREPARING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。v0.6.56的真实GK成功回执保留为历史事实，不替代当前版本验收。
 
 更新日期：2026-08-30
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.58**
-本地候选代码版本：**v0.6.58**
+当前代码包版本：**v0.6.59**
+本地候选代码版本：**v0.6.59**
 当前生产部署版本：**v0.6.57**
 本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_57_USER_RECHECK`
-当前计划标记：`INC_GEN_017_GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / HOTFIX_REVIEW_GO / V0_6_58_CANDIDATE_COMMITTED / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+当前计划标记：`INC_GEN_017_GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_REVIEW_GO_RELEASE_PREPARING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`INC_GEN_017_HOTFIX_REVIEW_GO / V0_6_58_CANDIDATE_COMMITTED / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+当前发布门：`INC_GEN_017_V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_REVIEW_GO_RELEASE_PREPARING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 
 ## INC-GEN-017 当前区块（2026-08-28）
 
@@ -22,6 +22,16 @@
 - v0.6.58功能/版本候选已提交为`760dfcf131d5800f8e03e8533199ef1e773a7ea3`，tree`dc8c192e27acf6373899a959e9cc0d4a22f86e3e`，18个安全文件，受保护JSON未进入提交；生产继续v0.6.57/schema41且真实Provider POST/费用仍为0。
 - 候选提交后治理safe m38 `16/16 PASS`，source/snapshot`1b906cf7…968f79`、库存1125、异常0、4173 unchanged；随后仅回写该证据，六份治理文档可提交，生产未变。
 - PR #127已创建，base=`main@b34a6f4`、head=`0226d77`且mergeable；Quality gates / lightweight通过（run`33273711037`、job`99156654353`、31秒）。当前只推送本条CI治理回执并等待最终head同一门，生产仍为v0.6.57/schema41。
+- PR #127最终head/main CI通过并以merge`730ea56`进入main；annotated tag object`959dbc9`与GitHub Release v0.6.58已冻结。精确tag archive`85cfe65e…ffe5b`在服务器Node22.23.2/npm10.9.8 fresh build通过：6035文件、inventory`37b52e73…16bb8`、dist33。生产仍为v0.6.57/schema41，下一步只做冻结恢复与合同迁移。
+- v0.6.58冻结备份`v0.6.58-cutover-frozen.ZXQMnx`双副本、清单`d0fb1598…d632c`、DB`54468f71…12aded`、schema41/integrity/FK0/计数一致。隔离dry-run在apply前因真实Mureka旧歌词8000与outputCount1/2/3不满足当前精确合同而阻断；生产DB未写并恢复v0.6.57回环/公网健康、NRestarts0。v0.6.59现从`main@730ea56`整改精确legacy schema收敛，Provider POST/费用0。
+- v0.6.59 safe m102最终`24/24 PASS`（source/snapshot`c00a705d…ed955`）：精确旧Mureka保持lyrics 8000，只把outputCount 1/2/3收敛为1；畸形1/4阻断、事务apply及重复幂等通过，runtime同时支持冻结contract v1/v2读取。库存1125、异常0、4173 unchanged，生产仍为v0.6.57且Provider POST/费用0。
+- v0.6.59 m38+m81版本/治理直接门`57/57 PASS`（source/snapshot`6848e45b…ff3f`），7文件候选diff`d58b6101…d702`且diff-check通过。候选冻结等待独立增量Review；生产仍为v0.6.57/schema41，Provider POST/费用0。
+- v0.6.59独立增量Review覆盖7/7文件、14/14 hunks、完整migration/transaction/idempotence链、10/10 published logical models与11/11 exact identities，最终`P0=0/P1=0/P2=0/GO`。只读生产核验确认当前DB与v0.6.58冻结source/restore三份SHA均为`54468f…12aded`，published Mureka均为lyrics8000/outputCount1/2/3；因此旧Git源码5000不是本次迁移输入，首轮P1已撤销。当前进入治理m38与精确提交；生产仍v0.6.57且Provider POST/费用0。
+- Review GO治理safe m38 `16/16 PASS`（source/snapshot`0cce774d…799a`），库存1125、异常0、4173 unchanged；diff-check通过且正式full未重跑。当前只提交7个v0.6.59产品/版本/测试文件，治理文档后续独立提交；生产仍v0.6.57/schema41，Provider POST/费用0。
+- v0.6.59产品/版本候选已提交为`6abe72b72b496de08a7309948b3b3ee06df54652`，tree`25b4a00d19cead0a5ef8080e89db6795543654aa`，精确7个安全文件；治理文档与受保护JSON未提交。当前运行提交后治理m38；生产仍v0.6.57/schema41且Provider POST/费用0。
+- 候选提交后治理safe m38 `16/16 PASS`（source/snapshot`25c7a168…7bf9e`），库存1125、异常0、4173 unchanged；正式full未重跑。当前提交六份治理回执后进入push/PR/CI；生产仍v0.6.57/schema41且Provider POST/费用0。
+- 分支已推送，PR #128已创建且base/head=`main@730ea56`/`61f5b2b`；首次push TLS失败未改变远端，重试同一分支成功。当前提交最终治理回执并等待新head CI；生产仍v0.6.57/schema41，Provider POST/费用0。
+- PR #128治理head`f575836`的Quality gates / lightweight已通过（run`33295091931`、job`99213263004`、48秒）。当前只推送本条CI治理证据，等待最终head同一门；生产仍v0.6.57/schema41，Provider POST/费用0。
 
 - 用户已在本Session显式启动一次性Goal；当前实施分支为`codex/inc-gen-017-workflow-self-healing-2026-08-28`，实时基线`origin/main@75f6c1aca055b8b82f258a9d38be5c27ce7d6305`。
 - R0已完成：只读冻结生产v0.6.56/schema41、20模型/10 published、Node/npm与USD100真实Provider硬预算；Provider POST=0、费用USD0，受保护JSON未读取或改动。

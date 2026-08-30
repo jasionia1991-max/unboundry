@@ -142,7 +142,7 @@ const supportedRuntimeVersions = Object.freeze({
   "gemini-generate-content": Object.freeze({ 1: [1] }),
   "gpt-image": Object.freeze({ 1: [1] }),
   "ark-native": Object.freeze({ 1: [1, 2] }),
-  "mureka-native": Object.freeze({ 1: [1] }),
+  "mureka-native": Object.freeze({ 1: [1, 2] }),
 } as const);
 
 function assertRuntimeVersionSupported(document: ModelReleaseDocument) {

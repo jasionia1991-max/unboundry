@@ -1710,6 +1710,24 @@ test("schema41 upgrade audits 11 models, publishes GK revision 2, archives kwvid
         delete persistedCapabilitySchema.referencePolicy;
         delete persistedCapabilitySchema.referenceMediaRules;
       }
+      if (providerModelId === "mureka-9") {
+        persistedCapabilitySchema.fields = persistedCapabilitySchema.fields.map(
+          (field) => {
+            if (field.key === "lyrics") return { ...field, maxLength: 8_000 };
+            if (field.key === "outputCount") {
+              return {
+                ...field,
+                options: [
+                  { label: "1×", value: 1 },
+                  { label: "2×", value: 2 },
+                  { label: "3×", value: 3 },
+                ],
+              };
+            }
+            return field;
+          },
+        );
+      }
       store.prepare(`
         INSERT INTO model_profiles VALUES (?, ?, ?, ?, ?, ?, 'published', NULL, ?, ?)
       `).run(
@@ -1783,6 +1801,7 @@ test("schema41 upgrade audits 11 models, publishes GK revision 2, archives kwvid
         "doubao-seedance-2-0-mini-260615",
         "grok-imagine-video-1.5-preview",
         "grok-video-3",
+        "mureka-9",
       ]);
     for (const model of plan.models.filter((item) =>
       item.action === "publish-revision"
@@ -1868,10 +1887,13 @@ test("schema41 upgrade audits 11 models, publishes GK revision 2, archives kwvid
         "doubao-seedance-2-0-mini-260615",
         "grok-imagine-video-1.5-preview",
         "grok-video-3",
+        "mureka-9",
       ]);
     expect(modelContractState(store, "model-gk-video-3").history).toHaveLength(2);
     expect(modelContractState(store, "model-video-seedance").history).toHaveLength(2);
     expect(modelContractState(store, "model-video-grok-imagine").history)
+      .toHaveLength(2);
+    expect(modelContractState(store, "model-audio-mureka").history)
       .toHaveLength(2);
     expect(store.prepare("SELECT status, archived_at FROM model_profiles WHERE id = 'model-kwvideo-v2'").get())
       .toMatchObject({ status: "disabled", archived_at: expect.any(String) });
@@ -1902,6 +1924,32 @@ test("schema41 upgrade audits 11 models, publishes GK revision 2, archives kwvid
       UPDATE model_profiles SET default_parameters = ?
       WHERE id = 'model-video-seedance'
     `).run(seedanceRow.default_parameters);
+    const exactMurekaRow = store.prepare(`
+      SELECT default_parameters FROM model_profiles
+      WHERE id = 'model-audio-mureka'
+    `).get() as { default_parameters: string };
+    const malformedMureka = JSON.parse(exactMurekaRow.default_parameters);
+    malformedMureka.fields = malformedMureka.fields.map(
+      (field: { key: string }) => field.key === "outputCount"
+        ? {
+            ...field,
+            options: [
+              { label: "1×", value: 1 },
+              { label: "4×", value: 4 },
+            ],
+          }
+        : field,
+    );
+    store.prepare(`
+      UPDATE model_profiles SET default_parameters = ?
+      WHERE id = 'model-audio-mureka'
+    `).run(JSON.stringify(malformedMureka));
+    expect(() => planModelContractUpgrade(store))
+      .toThrow(/模型 mureka-9 合同迁移失败/);
+    store.prepare(`
+      UPDATE model_profiles SET default_parameters = ?
+      WHERE id = 'model-audio-mureka'
+    `).run(exactMurekaRow.default_parameters);
     store.prepare(`
       UPDATE model_profiles SET default_parameters = ?
       WHERE id = 'model-gk-video-3'

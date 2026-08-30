@@ -1,6 +1,6 @@
 # INC-GEN-017 验收矩阵
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / HOTFIX_REVIEW_GO / V0_6_58_CANDIDATE_COMMITTED / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_REVIEW_GO_RELEASE_PREPARING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 
 R8增量门：生产旧published schema在Provider POST前被语义合同校验阻断，POST=0/USD0。迁移plan/apply精确执行identity/totality缺口已关闭；冻结diff `dcf8a42d…3cb854`独立增量终审覆盖8/8文件、10/10 logical models、11/11 exact identities，最终`P0=0/P1=0/P2=0/GO`。m102 `24/24 PASS`（`e93a5baf…610032`），库存1125、4173 unchanged；当前按顺序开放v0.6.58准备，生产迁移与真实Provider尚未开放。
 
@@ -15,6 +15,26 @@ v0.6.58功能/版本候选commit=`760dfcf131d5800f8e03e8533199ef1e773a7ea3`、tr
 提交后治理safe m38 `16/16 PASS`（source/snapshot`1b906cf7…968f79`），库存1125、异常0、4173 unchanged；随后仅回写该证据，治理commit就绪。
 
 PR #127 head`0226d77`的Quality gates / lightweight已通过（run`33273711037`、job`99156654353`、31秒）；只回写该证据并等待最终纯文档head同一CI门。
+
+PR #127最终head/main CI通过，merge`730ea56`、annotated tag object`959dbc9`和GitHub Release v0.6.58已冻结。精确tag archive`85cfe65e…ffe5b`的fresh build通过：Node22.23.2/npm10.9.8、6035文件、inventory`37b52e73…16bb8`、dist33。生产迁移待执行，Provider POST/费用仍为0。
+
+v0.6.58冻结恢复副本dry-run在apply前因真实legacy Mureka歌词8000/outputCount1/2/3未获迁移核准而fail-closed；备份双副本、schema/integrity/FK/计数门均有效，生产恢复v0.6.57健康且v0.6.58未部署。v0.6.59整改状态：精确legacy Mureka收敛+semantic revision核准、畸形反例fail-closed，定向/Review待执行。
+
+v0.6.59迁移直接门：safe m102最终`24/24 PASS`（source/snapshot`c00a705d…ed955`），精确legacy lyrics8000/outputCount1/2/3只收敛为lyrics8000/单结果1；畸形1/4阻断、apply幂等、mureka-native contract v1/v2读取通过。库存1125、异常0、4173 unchanged，Provider POST/费用0；m81+m38与独立Review待执行。
+
+v0.6.59版本/治理门m38+m81 `57/57 PASS`（source/snapshot`6848e45b…ff3f`），库存1125、异常0、4173 unchanged；7文件diff `d58b6101…d702`、diff-check通过。候选已冻结，独立增量Review待执行，P0/P1门仍关闭GitHub/生产。
+
+v0.6.59独立增量Review最终`P0=0/P1=0/P2=0/GO`：7/7允许文件、14/14 hunks、10/10 published logical models、11/11 exact identities及完整migration/transaction/idempotence链全部覆盖。当前生产、冻结source、restore三份DB的SHA256同为`54468f…12aded`，published Mureka合同均为lyrics 8000与outputCount 1/2/3；该只读生产证据撤销了按Git历史5000提出的首轮P1。Review硬门通过，治理m38与精确提交待执行。
+
+Review GO治理m38 `16/16 PASS`（source/snapshot`0cce774d…799a`），库存1125、异常0、4173 unchanged；diff-check通过且正式full未重跑。7文件精确提交待执行。
+
+v0.6.59产品/版本候选commit=`6abe72b72b496de08a7309948b3b3ee06df54652`、tree=`25b4a00d19cead0a5ef8080e89db6795543654aa`，只含7个安全文件；治理文档和受保护JSON未提交。提交后治理m38待执行。
+
+候选提交后治理m38 `16/16 PASS`（source/snapshot`25c7a168…7bf9e`），库存1125、异常0、4173 unchanged；正式full未重跑，六份治理文档提交待执行。
+
+PR #128已创建，base/head=`main@730ea56`/`61f5b2b`；当前open，最终治理head CI待执行。首次TLS push失败未改变远端，原分支重试后成功。
+
+PR #128 head`f575836`的Quality gates / lightweight已通过（run`33295091931`、job`99213263004`、48秒）；只回写本条证据，最终纯文档head CI待执行。
 
 | ID | 验收项 | 必须证据 | 当前状态 |
 |---|---|---|---|
