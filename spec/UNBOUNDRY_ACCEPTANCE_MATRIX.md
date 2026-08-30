@@ -2,7 +2,7 @@
 
 ## INC-GEN-017 正式full失败映射关闭、独立终审GO、R7组合浏览器通过与v0.6.57生产技术通过（2026-08-30）
 
-- 当前状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / HOTFIX_REVIEW_GO / V0_6_58_CANDIDATE_COMMITTED / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。
+- 当前状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_REVIEW_GO_RELEASE_PREPARING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。
 - R8生产最小验收在POST前确认旧published Seedance/Grok3.5/Grok3合同缺失当前语义元数据；系统fail-closed，Provider POST=0/USD0。冻结diff `dcf8a42d…3cb854`独立增量终审覆盖8/8文件、10/10 logical models、11/11 exact identities，最终`P0=0/P1=0/P2=0/GO`；m102 `24/24 PASS`（`e93a5baf…610032`），库存1125、4173 unchanged。当前只开放v0.6.58准备，生产迁移和真实Provider仍待后续硬门。
 - v0.6.58版本身份门确认`origin/main@b34a6f4`未前进，本地/远端tag及GitHub Release均未占用；package/lock、final runtime allowlist和m81断言已同步。本地候选v0.6.58，生产仍为v0.6.57/schema41；版本定向m81+m38待执行。
 - v0.6.58版本直接门最终有效`57/57 PASS`：m81 `41/41`首轮通过，m38修正唯一治理版本字段后`16/16 PASS`（`30e11dbd…c7d7b`），库存1125、异常0、4173 unchanged；候选提交就绪。
@@ -10,6 +10,14 @@
 - v0.6.58功能/版本候选commit为`760dfcf131d5800f8e03e8533199ef1e773a7ea3`、tree`dc8c192e27acf6373899a959e9cc0d4a22f86e3e`，18个安全文件；受保护JSON未进入提交，提交后治理m38与治理commit待执行。
 - 候选提交后治理safe m38 `16/16 PASS`（source/snapshot`1b906cf7…968f79`），库存1125、异常0、4173 unchanged；随后仅回写该证据，治理commit就绪。
 - PR #127 head`0226d77`的Quality gates / lightweight已通过（run`33273711037`、job`99156654353`、31秒）；只回写CI证据，最终纯文档head复核待执行。
+- PR #127最终head/main Quality通过，merge`730ea56`、annotated tag/GitHub Release v0.6.58与精确tag fresh build完成；archive`85cfe65e…ffe5b`、inventory6035/`37b52e73…16bb8`、dist33。生产迁移和真实Provider仍待硬门。
+- v0.6.58冻结恢复副本dry-run在apply前因Mureka legacy歌词8000/outputCount1/2/3未获迁移核准而fail-closed；双备份/清单/DB完整性均有效，生产恢复v0.6.57健康，v0.6.58未部署。v0.6.59精确迁移整改与定向/Review待执行。
+- v0.6.59 safe m102最终`24/24 PASS`（`c00a705d…ed955`）：精确旧Mureka从lyrics8000/outputCount1/2/3收敛为lyrics8000/单结果1；畸形1/4 fail-closed、apply幂等、contract v1/v2读取通过。库存1125、异常0、4173 unchanged；m81+m38与独立Review待执行。
+- v0.6.59 m38+m81 `57/57 PASS`（`6848e45b…ff3f`），7文件候选diff`d58b6101…d702`且diff-check通过；候选冻结待独立增量Review，P0/P1清零前GitHub/生产门继续关闭。
+- v0.6.59独立增量Review最终`P0=0/P1=0/P2=0/GO`，覆盖7/7文件、14/14 hunks、10/10 published模型、11/11 exact identities及完整迁移链。当前生产与冻结source/restore三份DB SHA均为`54468f…12aded`且Mureka合同均为lyrics8000/outputCount1/2/3，旧Git源码5000不构成本次迁移权威；首轮P1已撤销。当前只开放治理m38与精确提交，生产/Provider门仍按顺序关闭。
+- Review GO治理m38 `16/16 PASS`（source/snapshot`0cce774d…799a`），库存1125、异常0、4173 unchanged；diff-check通过、正式full未重跑。7文件产品/版本/测试精确提交待执行。
+- v0.6.59产品/版本候选commit=`6abe72b72b496de08a7309948b3b3ee06df54652`、tree=`25b4a00d19cead0a5ef8080e89db6795543654aa`，只含7个安全文件；治理文档和受保护JSON未提交。提交后治理m38待执行。
+- 候选提交后治理m38 `16/16 PASS`（source/snapshot`25c7a168…7bf9e`），库存1125、异常0、4173 unchanged；正式full未重跑，六份治理文档提交待执行。
 - 第十七候选六项P1已关闭；safe m100/m27/m1/m37/m30最终`15/15、21/21、7/7、35/35、13/13 PASS`，库存1120、最终产品/测试source/snapshot`c4b9bce6…40933`、异常0、4173 unchanged，TypeScript/diff-check通过。
 - 第十八候选两路完整只读终审已完成：模型/Provider `P0=0/P1=0/P2=1/GO`，工作流84/84文件 `P0=0/P1=4/P2=2/NO-GO`，合并`P0=0/P1=4/P2=3/NO-GO`并解冻候选。
 - 四项P1为group最终admission图TOCTOU、四类手动暂停恢复未await durable graph apply、上下文菜单删除漏锁外部端点、媒体上传开始态绕过admission；三项P2为relay usage fixture occupied-ID、raw edge add/replace、raw node remove。

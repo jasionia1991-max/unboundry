@@ -1,6 +1,6 @@
 # INC-GEN-017：工作流自动自愈与模型合同隔离详细行动方案
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / HOTFIX_REVIEW_GO / V0_6_58_CANDIDATE_COMMITTED / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_REVIEW_GO_RELEASE_PREPARING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 
 建立日期：2026-08-28
 
@@ -17,6 +17,24 @@ v0.6.58功能/版本候选commit已冻结为`760dfcf131d5800f8e03e8533199ef1e773
 候选提交后治理safe m38为`16/16 PASS`，source/snapshot`1b906cf7b8e8dd64e9a016a28c1219168407f1a89643bbfef3fd33d722968f79`、库存1125、异常0、4173 unchanged；随后仅回写该回执，六份治理文件可独立提交并进入push/PR/CI。
 
 PR #127已创建且base/head为`main@b34a6f4`/`0226d77`、mergeable；Quality gates / lightweight run`33273711037`、job`99156654353`以31秒通过。本轮只回写该CI证据并推送最终纯文档head；必须等待新head同一门通过后才合并与冻结tag。
+
+PR #127最终head`1441e2b`与main Quality gates均通过，merge commit`730ea56`已由annotated tag/GitHub Release `v0.6.58`不可变标记。tag object`959dbc9`，archive SHA`85cfe65e…ffe5b`；服务器fresh build固定Node22.23.2/npm10.9.8，6035文件、inventory`37b52e73…16bb8`、dist33且TypeScript/Vite/inventory全绿。生产仍为v0.6.57/schema41；进入quiet gate、冻结备份与恢复副本合同迁移。
+
+v0.6.58在真实冻结恢复副本dry-run发现未被fixture覆盖的Mureka旧schema：lyrics 8000与outputCount 1/2/3无法通过当前单结果合同。迁移在apply和生产替换前准确停止；冻结备份`v0.6.58-cutover-frozen.ZXQMnx`双副本与清单有效，失败迁移目录`v0.6.58-contract-upgrade.cTADN5`保留，生产恢复v0.6.57健康，Provider POST/费用0。v0.6.58保持不可变且未部署。实时源码与既有m17证明lyrics运行时上限为8000，本热修不改歌词能力，只收敛outputCount。
+
+修正版递增为最低未占用v0.6.59。只允许精确匹配生产legacy Mureka schema的受控收敛，并把Mureka列入核准semantic revision发布集合；错字段、错选项或其他任意漂移仍阻断且错误携带providerModelId。先补m102生产旧schema/畸形反例，再跑m102+m81+m38最小门、独立增量Review与新PR/tag/fresh build；正式full永久不重跑。
+
+v0.6.59迁移直接证据：safe m102最终`24/24 PASS`，source/snapshot`c00a705d28e55b429d1b7ab952af61f0411fb4c0cbcd31cd465aef92c14ed955`、库存1125、异常0、4173 unchanged。精确legacy 8000+1/2/3只迁移到8000+1，畸形1/4阻断，apply后重复计划/执行幂等；mureka-native contract v2仅用于读取新semantic revision，旧v1继续支持。前置诊断均在同一spec内收口，未触发Provider/OSS/生产。
+
+版本/治理直接门m38+m81随后`57/57 PASS`，source/snapshot`6848e45bd391cf15cbce4c7cc872731be8042088e95b19bbe558f158eda3ff3f`、库存1125、异常0、4173 unchanged。7文件产品/版本/测试diff hash为`d58b6101…d702`且diff-check通过；v0.6.59候选冻结后只做独立增量Review，P0/P1=0/GO前不进入GitHub或生产。
+
+v0.6.59独立增量Review已覆盖7/7允许文件、14/14 diff hunks、完整迁移/身份/runtime/事务/幂等链、10/10 published logical models和11/11 exact identities，最终`P0=0/P1=0/P2=0/GO`。首轮把Git历史默认lyrics 5000误作生产迁移输入的P1，已由当前生产、冻结source与restore三份只读DB证据裁决：三份SHA256均为`54468f…12aded`，published Mureka实际均为lyrics 8000与outputCount 1/2/3；因此候选的exact legacy 8000比较和m102夹具与真实生产一致，P1撤销。Review未运行测试/build或外部写，受保护JSON未读取；现进入治理m38与精确提交。
+
+Review GO后的治理safe m38为`16/16 PASS`，source/snapshot`0cce774d…799a`、库存1125、异常0、4173 unchanged，且diff-check通过；唯一正式full未重跑。现按精确pathspec只提交7个产品/版本/测试文件，治理文档另行收口。
+
+v0.6.59产品/版本候选commit已冻结为`6abe72b72b496de08a7309948b3b3ee06df54652`，tree`25b4a00d19cead0a5ef8080e89db6795543654aa`，精确包含7个已终审文件；六份治理文档与两份受保护JSON未提交。按阶段运行提交后m38，再独立提交治理回执并进入push/PR/CI。
+
+提交后治理safe m38现为`16/16 PASS`，source/snapshot`25c7a168…7bf9e`、库存1125、异常0、4173 unchanged；正式full未重跑。现只提交六份治理回执，之后push/PR/CI。
 
 实施回写：最新用户已显式发送一次性`/goal`并授权R0～R8。唯一正式safe full已永久消费，原始结果`1023 PASS / 95 FAIL / 4 NOT_RUN`且不得改写或重跑。原始27个失败spec与m29/m65四项未运行用例现已全部由最小失败spec执行闭合；最后m73 `16/16`、m77 `11/11`，合计`27/27 PASS`，source/snapshot`720b0ea6f77968e663b2db426a30fe376184a8aec7f3cbebac8c81d462a9499c`，异常0、4173 unchanged。失败映射P1已关闭；当前只允许同步治理、运行治理m38并重新冻结候选做独立只读增量终审。Provider POST/费用与生产/OSS写仍为0；重新终审`P0/P1=0/GO`前不得进入R7、GitHub、版本或生产。
 

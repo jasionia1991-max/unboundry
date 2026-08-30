@@ -1,6 +1,6 @@
 # INC-GEN-017 实时断点
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / HOTFIX_REVIEW_GO / V0_6_58_CANDIDATE_COMMITTED / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_REVIEW_GO_RELEASE_PREPARING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 
 更新时间：2026-08-29
 
@@ -13,6 +13,17 @@
 - v0.6.58功能/版本候选已精确提交为`760dfcf131d5800f8e03e8533199ef1e773a7ea3`，tree`dc8c192e27acf6373899a959e9cc0d4a22f86e3e`，共18个安全范围文件；两个受保护JSON未进入stage/commit。下一步提交后治理m38、六份治理回执commit，再push/PR/CI。
 - 候选提交后治理safe m38 `16/16 PASS`，source/snapshot`1b906cf7b8e8dd64e9a016a28c1219168407f1a89643bbfef3fd33d722968f79`，库存1125、失败/重试/跳过/reportErrors0、4173 unchanged；随后仅回写本条证据，六份治理文档可独立提交。
 - PR #127已创建，base=`main@b34a6f4`、head=`0226d772b292692d7519edc9b238b7f84461a87a`且mergeable；Quality gates / lightweight通过（run`33273711037`、job`99156654353`、31秒）。本次只回写CI证据，推送纯文档最终head后等待同一门再通过才合并。
+- PR #127最终head`1441e2b`的Quality gates通过（run`33273772194`/job`99156817225`，45秒），并以merge commit`730ea56abb8e48a0c7f4af2adcd7a5f9e0a7858a`合入main；main Quality gates run`33273824800`/job`99156956419`亦以45秒通过。注释tag`v0.6.58`对象`959dbc9383acab0f722fe0d05085ec7daf77a4cb`精确解引用到该merge，GitHub Release已发布。
+- 精确tag archive SHA为`85cfe65ee7a542ac724f0c56d59d7f6753058e34a605c95992aa5532963ffe5b`；服务器独立staging`/opt/unboundry/staging/v0.6.58-inc-gen-017-20260830.ktn9zs`固定Node`22.23.2`/npm`10.9.8`，npm ci、TypeScript、Vite build及inventory校验通过：6035文件、inventory SHA`37b52e734cf1986020a2aabcbb796d0ff127252e75259b92135652c68e316bb8`、dist33。生产仍为v0.6.57/schema41，POST/费用0；下一步quiet gate、停服冻结备份与恢复副本迁移。
+- v0.6.58生产quiet gate连续7次均为active0/unsettledUnknown0；冻结备份`/var/lib/unboundry-rollbacks/v0.6.58-cutover-frozen.ZXQMnx`的source/restore各366文件，双清单SHA`d0fb159873114575b2cddd8b866793b2d5a4510cca2cc5bcf54ab509c71d632c`，DB SHA`54468f712d41e089fdf506fcc87f3b3f0e26bb2956d7ff48a79274834712aded`，schema41/integrity ok/FK0且全部计数一致。
+- 隔离迁移副本`/var/lib/unboundry-rollbacks/v0.6.58-contract-upgrade.cTADN5`的dry-run在任何apply/生产替换前fail-closed：真实Mureka旧schema仍为lyrics maxLength 8000与outputCount 1/2/3，而v0.6.58迁移只核准旧Grok3 fallback，报`Model parameter is not supported by this Provider model`。迁移副本/生产DB均未写，v0.6.58 tag/Release保持不可变并标记未部署；生产已恢复v0.6.57，回环/公网version/live/ready、service active/enabled、NRestarts0。
+- 最低未占用补丁v0.6.59本地/远端tag与GitHub Release均不存在；已从`origin/main@730ea56`建立`codex/inc-gen-017-v0.6.59-migration-hotfix`。整改仅接受与生产精确一致的Mureka legacy schema（lyrics 8000、outputCount 1/2/3），收敛为运行时已证明的lyrics 8000+单结果1，并将Mureka加入核准semantic revision集合；其他畸形Mureka继续fail-closed。版本package/lock/runtime/m81同步为0.6.59，正式full不重跑。
+- v0.6.59直接迁移spec m102最终`24/24 PASS`，source/snapshot`c00a705d28e55b429d1b7ab952af61f0411fb4c0cbcd31cd465aef92c14ed955`、库存1125、失败/重试/跳过/reportErrors0、4173 unchanged。精确旧schema、畸形1/4反例、事务apply、重复幂等均通过；实现补齐canonical schema比较及mureka-native contract v2历史读取。前置诊断只暴露并关闭类型收窄、规范化顺序与runtime版本门，Provider POST/费用仍为0。下一步仅跑m81+m38。
+- v0.6.59版本/治理直接safe m38+m81为`57/57 PASS`，source/snapshot`6848e45bd391cf15cbce4c7cc872731be8042088e95b19bbe558f158eda3ff3f`、库存1125、失败/重试/跳过/reportErrors0、4173 unchanged；7个产品/版本/测试文件精确diff hash`d58b6101dada213017bd58f57b0cd683b2b25ee07cc8cd69aef43db04b8fd702`且diff-check通过。候选现冻结，只允许原独立审查上下文做增量终审；P0/P1未清零不进入GitHub/生产。
+- v0.6.59冻结候选增量终审现为`P0=0/P1=0/P2=0/GO`：覆盖7/7允许文件、14/14 diff hunks、完整migration plan→targetDocument→totality→事务activation→重复幂等链，以及10/10 published logical models、11/11 exact identities。终审首轮曾按Git旧源码5000提出Mureka P1；主线程随后只读核对当前生产、冻结source与restore三份DB，SHA256均为`54468f712d41e089fdf506fcc87f3b3f0e26bb2956d7ff48a79274834712aded`，三者published `mureka-9`均精确为lyrics maxLength 8000与outputCount 1×/2×/3×。审查上下文据此确认真实迁移权威是生产冻结DB而非旧源码默认，撤销该P1；全程未运行测试/build、未触发Provider/OSS写、未读取两份受保护JSON。当前Review硬门已通过，下一步治理m38与精确提交。
+- Review GO治理safe m38为`16/16 PASS`，source/snapshot`0cce774d05427a8dbe32462472933999e61aaf4ee58e1b6bc441f761d344799a`、库存1125、失败/重试/跳过/reportErrors0、4173 unchanged；`git diff --check`通过，正式full未重跑。当前只回写本条证据，下一步精确暂存7个产品/版本/测试文件并提交，六份治理文档保持独立未暂存。
+- v0.6.59产品/版本候选已精确提交为`6abe72b72b496de08a7309948b3b3ee06df54652`，tree`25b4a00d19cead0a5ef8080e89db6795543654aa`，只含7个已终审安全文件、105 insertions/15 deletions；六份治理文档与两份受保护JSON均未进入提交。下一步运行提交后治理m38并提交六份治理回执，再push/PR/CI。
+- 候选提交后治理safe m38为`16/16 PASS`，source/snapshot`25c7a168313f0b0d47293482e142896c55e2b98c48a420cbe2d32fe23637bf9e`、库存1125、失败/重试/跳过/reportErrors0、4173 unchanged；正式full未重跑。当前只回写该证据并提交六份治理文档，随后push/PR/CI。
 - 2026-08-28 用户已在本Session显式发送`/goal`；Goal已激活并授权按一次性提示词连续实施R0～R8、唯一正式full、GitHub/CI、v0.6.57候选发布、生产与累计不超过USD100的最小真实Provider验收。该授权不允许读取受保护JSON、重复未知费用POST、删除真实数据/备份或绕过发布硬门。
 - 实施隔离分支：`codex/inc-gen-017-workflow-self-healing-2026-08-28`；基于实时`origin/main@75f6c1aca055b8b82f258a9d38be5c27ce7d6305`，tree`57a6763b065bdc523697255f8183230e124b09bd`。进入时仅保留本事件既有文档改动，没有覆盖或清理用户工作。
 - package/lock均为`0.6.56`；普通工具链Node`25.9.0`/npm`11.12.1`，safe runner为Node`22.23.1`/npm`10.9.8`。
