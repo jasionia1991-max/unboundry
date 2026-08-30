@@ -1,6 +1,6 @@
 # INC-GEN-017 实时断点
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_PR_CI_PASS_FINAL_GOVERNANCE_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_GITHUB_RELEASE_PASS_FRESH_BUILD_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 
 更新时间：2026-08-29
 
@@ -20,6 +20,7 @@
 - v0.6.60产品/版本/测试候选已精确提交为`8be339c387ec9df21e4e6e6ee43da2f14e2ee8dc`，tree=`8179a5540fecd2b920154bb059c788080a0374a4`，只含冻结8文件、308 insertions/27 deletions；六份治理文档与两份受保护JSON均未进入提交。下一步只运行提交后治理m38并独立提交六份治理回执。
 - 候选提交后治理safe m38为`16/16 PASS`，source/snapshot=`fdfbe741ebb004c9d4dc8a740d2ce4217efd94d7ae9f57eabe83f2a2a108d1d0`、库存1125、失败/重试/跳过/reportErrors0、Node`22.23.1`/npm`10.9.8`、4173 unchanged；正式full未重跑。下一步只提交六份治理回执，再push/PR/CI。
 - 两个本地commit已推送并创建PR #129：base=`main@e6341d5`、head=`7f34d094ec219ad15b5fd545167cbfbdbb5dd875`、mergeable；Quality gates / lightweight run=`33298263718`、job=`99221554337`以35秒通过。当前只回写本条CI证据并推送最终纯文档head；新head同一门通过前不得合并。
+- PR #129最终head=`76fd686996ab62bf03818e2559442c3baac80ccf`的Quality gates run=`33298346157`、job=`99221773974`以30秒通过；以merge commit=`b5867b3edf8f39c9a58b4e77d9060e1567dd9de2`合入main，main Quality gates run=`33298393397`、job=`99221893013`以27秒通过。annotated tag object=`c54cf6d107dd891d0ac689b5bd313845e5dd3e72`精确解引用到该merge，GitHub Release `v0.6.60`已发布且非draft/prerelease。下一步只对精确tag做archive/fresh build与生产硬门。
 
 - v0.6.59精确tag archive SHA为`63042cfff78e9364356cb2e1dc1232162fa58bc58417ee2a6c69cd6a6f7471b8`；服务器fresh staging `/opt/unboundry/staging/v0.6.59-inc-gen-017-20260830.qjbYhr`固定Node`22.23.2`/npm`10.9.8`，npm ci、TypeScript和Vite build通过。生产quiet gate连续7次`active=0/unsettledUnknown=0`。
 - v0.6.59冻结备份`/var/lib/unboundry-rollbacks/v0.6.59-cutover-frozen.jufZ1z`的source/restore各366文件、双清单SHA`39c9e6913670a4c1c7aca09bda974fa2108967ea73f7079b9fe309532891ebf3`，冻结DB SHA`13589eea474afb688325c4ad1f54ebdc82a8d66b589c05b7502eb8348cec2261`；schema41、quick_check ok、FK0、active0、unknown0、published10，全部副本和失败证据保留。

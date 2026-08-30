@@ -1,6 +1,6 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网运行v0.6.57/schema41且服务健康。v0.6.58因真实Mureka legacy schema、v0.6.59因真实Grok legacy schema都在隔离迁移apply前正确fail-closed；两个tag/Release保持不可变且未部署。当前严格为`V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_PR_CI_PASS_FINAL_GOVERNANCE_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。v0.6.56的真实GK成功回执保留为历史事实，不替代当前版本验收。
+> **状态分层**：现网运行v0.6.57/schema41且服务健康。v0.6.58因真实Mureka legacy schema、v0.6.59因真实Grok legacy schema都在隔离迁移apply前正确fail-closed；两个tag/Release保持不可变且未部署。当前严格为`V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_GITHUB_RELEASE_PASS_FRESH_BUILD_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。v0.6.56的真实GK成功回执保留为历史事实，不替代当前版本验收。
 
 更新日期：2026-08-30
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
@@ -9,9 +9,9 @@
 当前生产部署版本：**v0.6.57**
 本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_57_USER_RECHECK`
-当前计划标记：`INC_GEN_017_GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_PR_CI_PASS_FINAL_GOVERNANCE_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+当前计划标记：`INC_GEN_017_GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_GITHUB_RELEASE_PASS_FRESH_BUILD_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`INC_GEN_017_V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_PR_CI_PASS_FINAL_GOVERNANCE_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+当前发布门：`INC_GEN_017_V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_GITHUB_RELEASE_PASS_FRESH_BUILD_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 
 ## INC-GEN-017 当前区块（2026-08-28）
 
@@ -27,6 +27,7 @@
 - v0.6.60候选已提交为`8be339c387ec9df21e4e6e6ee43da2f14e2ee8dc`，tree=`8179a5540fecd2b920154bb059c788080a0374a4`，精确8文件；治理文档与受保护JSON未提交。当前只运行提交后治理m38，生产继续v0.6.57/schema41，Provider POST=0/USD0。
 - 候选提交后治理safe m38 `16/16 PASS`，source/snapshot=`fdfbe741ebb004c9d4dc8a740d2ce4217efd94d7ae9f57eabe83f2a2a108d1d0`、库存1125、异常0、4173 unchanged；当前只提交六份治理回执，生产继续v0.6.57/schema41，Provider POST=0/USD0。
 - PR #129已创建，base/head=`main@e6341d5`/`7f34d094ec219ad15b5fd545167cbfbdbb5dd875`且mergeable；Quality gates run`33298263718`/job`99221554337`以35秒通过。当前只推送本条CI治理回执并等待最终head同一门；生产继续v0.6.57/schema41，Provider POST=0/USD0。
+- PR #129最终head`76fd686`与main Quality gates均通过，merge=`b5867b3edf8f39c9a58b4e77d9060e1567dd9de2`；annotated tag object=`c54cf6d107dd891d0ac689b5bd313845e5dd3e72`与GitHub Release v0.6.60已冻结。当前只允许精确tag fresh build与后续生产硬门；生产继续v0.6.57/schema41，Provider POST=0/USD0。
 
 - v0.6.59精确tag archive `63042cff…71b8`的fresh staging `/opt/unboundry/staging/v0.6.59-inc-gen-017-20260830.qjbYhr`在Node22.23.2/npm10.9.8完成npm ci、TypeScript和Vite build；quiet gate连续7次active0/unsettledUnknown0。冻结备份`/var/lib/unboundry-rollbacks/v0.6.59-cutover-frozen.jufZ1z`双副本366/366、清单`39c9e691…ebf3`、DB`13589eea…2261`、schema41/integrity/FK/计数门通过。
 - 隔离迁移副本`/var/lib/unboundry-rollbacks/v0.6.59-contract-upgrade.Nz9OFg`在apply前对真实published `grok-video-3`旧schema报`Invalid model reference policy`并fail-closed；生产DB未写，现网继续v0.6.57/schema41、service active/enabled、NRestarts0。v0.6.59 tag/Release不可变且未部署；当前转入v0.6.60 exact legacy Grok整改，Provider POST=0/USD0。

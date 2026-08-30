@@ -1,6 +1,6 @@
 # INC-GEN-017 验收矩阵
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_PR_CI_PASS_FINAL_GOVERNANCE_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_GITHUB_RELEASE_PASS_FRESH_BUILD_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 
 R8增量门：生产旧published schema在Provider POST前被语义合同校验阻断，POST=0/USD0。迁移plan/apply精确执行identity/totality缺口已关闭；冻结diff `dcf8a42d…3cb854`独立增量终审覆盖8/8文件、10/10 logical models、11/11 exact identities，最终`P0=0/P1=0/P2=0/GO`。m102 `24/24 PASS`（`e93a5baf…610032`），库存1125、4173 unchanged；当前按顺序开放v0.6.58准备，生产迁移与真实Provider尚未开放。
 
@@ -27,6 +27,8 @@ v0.6.60 candidate commit：`8be339c387ec9df21e4e6e6ee43da2f14e2ee8dc`，tree=`81
 v0.6.60 post-commit governance：safe m38 `16/16 PASS`，source/snapshot=`fdfbe741ebb004c9d4dc8a740d2ce4217efd94d7ae9f57eabe83f2a2a108d1d0`、库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged；治理commit=`READY`，GitHub/生产迁移/真实Provider仍`NOT_RUN`。
 
 v0.6.60 PR gate：PR #129 base/head=`main@e6341d5`/`7f34d094ec219ad15b5fd545167cbfbdbb5dd875`且mergeable；Quality gates run=`33298263718`/job=`99221554337`、35秒`PASS`。最终纯文档head CI=`NOT_RUN`，merge/tag/Release/生产迁移/真实Provider仍`NOT_RUN`。
+
+v0.6.60 GitHub gate：最终head=`76fd686996ab62bf03818e2559442c3baac80ccf` Quality run=`33298346157`/job=`99221773974`、30秒`PASS`；merge=`b5867b3edf8f39c9a58b4e77d9060e1567dd9de2`，main run=`33298393397`/job=`99221893013`、27秒`PASS`。annotated tag object=`c54cf6d107dd891d0ac689b5bd313845e5dd3e72`精确指向merge，GitHub Release v0.6.60=`PASS`。fresh build/生产迁移/真实Provider仍`NOT_RUN`。
 
 v0.6.58版本身份门：`origin/main@b34a6f4`未前进，本地/远端tag及GitHub Release均未占用；package/lock、final runtime和m81断言已同步。生产仍为v0.6.57/schema41，版本定向m81+m38待执行。
 
