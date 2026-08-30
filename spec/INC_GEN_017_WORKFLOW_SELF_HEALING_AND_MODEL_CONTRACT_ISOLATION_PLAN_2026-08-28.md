@@ -1,8 +1,52 @@
 # INC-GEN-017：工作流自动自愈与模型合同隔离详细行动方案
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_62_REMEDIATION_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_62_CANDIDATE_COMMITTED_GITHUB_IDENTITY_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 
 建立日期：2026-08-28
+
+候选提交后的safe m38=`16/16 PASS`，source/snapshot=`76716e8779c6a051e087bc3a0bfaf9046fc920e86d01cde7dbeb4985cd2fc747`，库存1125，失败/重试/跳过/reportErrors0，HEAD=`fe152fe35d70dddd2b4e8b201f83ac2635df9241`，Node22.23.1/npm10.9.8，4173 unchanged。下一步单独提交六份治理文档，再执行GitHub身份门；不得把受保护JSON纳入任何commit或PR。
+
+冻结候选已精确提交为`fe152fe35d70dddd2b4e8b201f83ac2635df9241`，tree=`079464b77bbdb226a6fb11c9c4b159fa64590ce1`；commit只含10个产品/版本/测试文件、611 insertions/35 deletions，六份治理文档和受保护JSON均排除。下一步只运行提交后治理m38，再单独提交六份治理回执并进入GitHub身份门。
+
+独立Review GO回写六份治理后的safe m38=`16/16 PASS`，source/snapshot=`ce9126ef4216e1ccad2d80194c51653aa1b3cf64abeb915f1a5afde8d8313fac`，库存1125，失败/重试/跳过/reportErrors0，Node22.23.1/npm10.9.8，4173 unchanged。正式full不重跑，冻结产品hash仍为`bb364480…ae897`。下一步精确提交10个产品/版本/测试文件，再运行提交后治理m38；治理文档与受保护JSON不进入候选commit。
+
+冻结hash`bb364480…ae897`的既有独立审查上下文已完成只读终审：覆盖10/10文件、53/53 hunks、611 insertions/35 deletions、完整schema/模板聚合/迁移/事务/rollback/repeat链、10/10 logical models、11/11 exact identities、6/6 adapters及全部Provider分支，最终`P0=0/P1=0/P2=0/GO`。mixed-template上一轮P1确认关闭，无finding；候选树未变，审查未测试/build/联网/Git写/Provider/OSS/生产，受保护JSON未读取。现在只运行Review GO治理m38，然后精确提交候选与治理回执。
+
+v0.6.62主审GO六份治理同步后，safe m38=`16/16 PASS`，source/snapshot=`bb2f43164ab91e200779c38cb1ab4ac9a3c6e88a65e7132b98fdf944dc1d6d3c`，库存1125，失败/重试/跳过/reportErrors0，Node22.23.1/npm10.9.8，4173 unchanged。正式full永久不重跑；冻结产品hash保持`bb364480…ae897`，立即进入既有独立审查上下文只读终审。
+
+v0.6.62混合模板整改后的主线程最终Review已逐一读完10/10改动文件、53/53 diff hunks与所有关键分支，候选611 insertions/35 deletions。完整调用链覆盖schema exact/near-miss→真实active/proposed模板兼容→逐模板节点聚合→Grok模板迁移/摘要→dry-run/attestation/baseline CAS→Templates域同步事务命令→逐模板CAS→revision/activation/audit→异常整体rollback→repeat action none；横向覆盖10/10 logical models、11/11 exact identities、6/6 adapters与全部Provider提交/轮询/恢复/取消/结果分支。结论`P0=0/P1=0/P2=0/GO`，diff hash=`bb3644800553fbe5d7b303e19ec47e33d3d73ae5e6142933e2bece64527ae897`并冻结。下一步先运行六份治理同步后的safe m38，再由既有独立审查上下文对精确hash只读终审；独立`P0/P1=0/GO`前继续禁止commit/GitHub/生产/Provider。
+
+隔离复验治理门已闭合：六份治理同步后的safe m38=`16/16 PASS`，source/snapshot`91c82e9a…ba85`、库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged。当前按Review协议只做精确候选diff/hash、逐文件/逐hunk/完整链/全模型/全Provider分支主线程Review；正式full不重跑。
+
+v0.6.62混合模板整改后的全新隔离dry-run/apply/repeat已通过。主副本`pLv6YJ`使用当前8个产品/版本文件覆盖的独立staging`U403Kn`，attestation`d49ea1a1…47cbb`；dry-run`d3f27a13…a8d1`/plan`8c0dc03c…cc05`，apply`101e0c54…7739`，DB从原始冻结SHA迁为`55006ca1…6198`并完成5 revision、22模板/34节点。repeat兄弟副本`MhUhK0`的dry-run`9191a7cb…9c3c`/plan`5ff907cd…46f2`为11/11 none、迁移0，apply`d892496f…98db`且DB字节级不变。完整性、FK、active、34 image/0 reference和脱敏audit门通过；生产仍v0.6.57/schema41健康且未写，Provider0/USD0。首次新复制目录因shell取值错误在CLI前停止并保留。当前只允许治理m38、精确Review/冻结及既有独立上下文复核；正式full永久不重跑。
+
+v0.6.62混合模板P1已按最窄边界关闭：analyzer现在逐模板聚合节点结果，只有所有不兼容目标节点在真实active/proposed两侧都失败且graph可解析时才进入preexisting；同模板任何before-pass/after-fail等新增回归都保留为blocking。m102构造历史双失败节点与空格modelId迁移selector near-miss共存，证明plan阻断且apply在写入前停止。TypeScript/diff-check通过；safe m102首轮`23/24`只是测试未接受更早的生产矩阵硬门，精确对齐后最终`24/24 PASS`，source/snapshot`909b1cc8…d3c0`、库存1125、异常0、4173 unchanged。产品语义已变，下一步只建立新的隔离dry-run/apply/repeat证据，再重新精确Review/冻结/独立终审；正式full永久不重跑。
+
+v0.6.62独立只读终审覆盖冻结hash`29e09816…2f55`的10/10文件、50/50 hunks、完整链、10/10 models、11/11 identities与6/6 adapters后给出`P0=0/P1=1/P2=0/NO-GO`。P1是analyzer在任一节点before/after双失败时直接把整个templateId加入preexisting；upgrade再按templateId过滤，可能让同模板另一个before-pass/after-fail新增回归随历史债务一起被扣除。候选已解冻；整改只改节点聚合规则与混合模板回归：模板内所有不兼容节点都必须为双失败，且无unparseable/新增回归，才能归入preexisting。随后最小运行m102/TypeScript/diff-check，因产品语义改变重跑隔离dry-run/apply/repeat，再重新主线程/独立全量Review。审查一次只读误扫非受保护治理spec已如实记录且不采用其内容，受保护JSON未触碰。
+
+v0.6.62主线程最终Review已逐一读完10/10改动文件、50/50 diff hunks和所有关键分支，候选500 insertions/33 deletions。调用链覆盖schema exact/near-miss→target document→真实before/proposed after模板兼容→Grok模板before/after hash与迁移摘要→dry-run/attestation/baseline CAS→Templates域同步事务命令→逐模板CAS→revision/activation/audit→任一异常整体rollback→repeat action none；横向覆盖10/10 logical models、11/11 exact identities与6/6 adapters及其Provider提交/轮询/恢复/取消/结果分支。结论`P0=0/P1=0/P2=0/GO`，diff-check通过，hash=`29e098164e9d996565f7e7b9c57df3738c84c8b783640ddc7e2d589f14c42f55`并冻结。下一步仅由既有独立审查上下文对该精确hash只读终审；不得测试/build、联网、Provider/OSS/生产、Git写入或读取受保护JSON。独立`P0/P1=0/GO`前继续禁止commit/GitHub/生产/Provider。
+
+v0.6.62隔离迁移回执完成六份治理同步后，只运行治理safe m38并取得`16/16 PASS`；source/snapshot=`57f644da93e3c1520cf51d8003fc0b4e24376da92f909d2f53c9e2fe6648d006`，库存1125，失败/重试/跳过/reportErrors0，Node22.23.1/npm10.9.8，4173 unchanged，架构/TypeScript/production build前置通过。正式safe full保持已消费。现在按硬门执行精确候选文件/hunk/统计/hash，再由主线程逐文件、逐diff、逐关键分支、完整事务/CAS/回滚/repeat链、10/10 logical models、11/11 exact identities与6/6 adapters全量Review；P0/P1清零后冻结并交既有独立上下文终审。
+
+v0.6.62最终模板事务迁移已在真实冻结恢复副本闭合：主副本`v0.6.62-contract-recheck.qE9j6A`的dry-run报告SHA=`d3f27a13…a8d1`、plan hash=`8c0dc03c…cc05`；apply报告SHA=`37e7f100…7194`，DB从`13589eea…2261`变为`19ed87b8…039`，精确升级五个legacy revision并以同一事务迁移22模板/34节点，复核为`image=34/reference=0`且audit无graph正文。新兄弟副本`v0.6.62-contract-repeat-template.20260830a`、attestation SHA=`34864a3d…c5b5`的repeat dry-run SHA=`e7019f57…2c66`/plan hash=`760e0da9…9fd4`为11/11 action none、迁移0；repeat apply SHA=`7884ff99…8c7e`、`upgradedModels=[]`且DB字节不变。schema41、quick/integrity ok、FK0、active0，Provider POST=0/USD0，生产保持v0.6.57/schema41且未写。下一步严格先同步六份治理并仅跑safe m38，再做精确diff/hash、主线程逐代码Review、冻结及同一独立上下文只读终审；P0/P1清零前不进入GitHub/生产/Provider。
+
+v0.6.62真实模板旧值不再被当作可扣除债务，而由精确事务迁移承接：仅exact legacy Grok3的`publish-revision`计划扫描已发布模板，把目标节点`videoParameters.inputMode=reference`按现有首帧边迁为`image`、无首帧迁为`text`；对外计划和audit只记录template/node与图hash。apply使用Templates域transaction-scoped command逐行graph CAS，与模型revision发布和audit共享同一事务；任一CAS/发布失败整体回滚，repeat action none不规划迁移。首次直接SQL实现被架构预检以`CROSS_DOMAIN_SQL`阻断，改为域命令后通过。m102两次`23/24`分别证明测试图缺legacy存储形状、夹具范围过宽；最终精确夹具`24/24 PASS`（source/snapshot`8942d621b2d0a884401a656d909be0552317cf4d93f118eb0d9845c29ba748f4`、库存1125、异常0、4173 unchanged），TypeScript/diff-check通过。下一步用该最终代码重跑隔离dry-run/apply/repeat；旧隔离证据不可替代本次复验。
+
+v0.6.62独立P1整改已完成：exact proof只允许analyzer跳过宽泛的identity-preservation结论，不允许替换before合同；`modeForNode`分别以真实active/proposed验证参数和模式。迁移阻断集只扣除analyzer本身确认的两侧均失败preexisting；active-pass/target-fail和unparseable保持blocking。新增精确Grok legacy-only selector回归，TypeScript/diff-check与safe m102 `24/24 PASS`（source/snapshot`8ccaa3cd…c880`、库存1125、异常0、4173 unchanged）。因产品迁移逻辑已变，先重跑隔离真实副本dry-run/apply/repeat，再重新主线程/独立全量Review；旧隔离apply证据保留历史但不替代新代码复验。
+
+v0.6.62独立只读终审对冻结hash`32345132…3f9b`结论为`P0=0/P1=1/P2=0/NO-GO`。P1是exact template bridge把target作为before/after并批量扣除parseable incompatible，掩盖active-pass/target-fail回归。候选已解冻；最小整改为compatibility analyzer显式接受已证明的runtime-equivalent schema transition，只跳过execution-preservation差异判断，但before仍用真实active、after用proposed；blocking严格按after fail且before pass，preexisting严格按before/after均fail，unparseable始终blocking。补exact old-valid→new-invalid回归后只重跑m102/TypeScript/diff-check，再重新主/独立Review。
+
+v0.6.62主线程逐代码Review现已覆盖8/8文件、31/31 hunks、321 insertions/16 deletions、完整迁移/schema/template/attestation/CAS/transaction/activation/immutable/repeat链、10/10 logical models、11/11 exact identities和全部6类adapter，结论`P0=0/P1=0/P2=0/GO`。diff-check通过，候选hash=`32345132965ccebf0c50b5c5d2f661af326188c9f0e73f512080aa8afc863f9b`并冻结；下一步只允许既有独立上下文只读终审。独立GO前不commit、不进入GitHub/生产/真实Provider。
+
+v0.6.62隔离迁移阶段治理safe m38已`16/16 PASS`，source/snapshot=`8a12f5b7402bba528b6caf4a2ccf17583d5112359510d3cb0fc54d91a9c1c11b`、库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged。正式full保持已消费且不重跑；下一阶段只做精确diff/hash、主线程完整增量Review、冻结与独立只读终审。
+
+v0.6.62隔离真实副本dry-run/apply/repeat现已全部闭合，生产未写。主副本最终dry-run报告`95cd8ffb…e9d`、plan hash`51ec14bc…e05`；首次apply报告`9c1cc84b…66af`，五个精确legacy模型升级，隔离DB变为`66554d03…1fb`。首个repeat apply在任何写入前发现无动作Grok仍错误执行22模板/34节点矩阵断言，安全fail-closed且DB未变；实现已改为仅`publish-revision`动作执行该断言，并新增m102回归。干净兄弟副本`v0.6.62-contract-repeat.20260830a`最终全11身份action none，repeat apply报告`b1e766b6…4158`、`upgradedModels=[]`、DB前后字节级同SHA。隔离库schema41、quick/integrity/FK/active/unsettled门通过；生产仍v0.6.57/schema41、原DB SHA`13589eea…2261`，Provider POST=0/USD0。当前safe m102=`24/24 PASS`，source/snapshot=`34a24549034f773892760f994296a040a348cf93f138b265d93677b41299123a`、库存1125、异常0、4173 unchanged。下一步只允许治理m38、精确diff/hash、主线程全量增量Review、冻结与独立只读终审。
+
+v0.6.62隔离真实副本首轮dry-run越过Grok3.5 exact schema门后，在apply前暴露模板分类门把目标合同下前后都失败的历史债务同时计为`preexisting`与阻断`incompatible`。整改不改变普通发布分析器：只对GPT Image 2/Grok3/Grok3.5三个已有字面exact runtime-equivalence证明的迁移，用target合同双侧比较并将可解析preexisting项从阻断集扣除；unparseable graph、非exact迁移和任何新增回归继续阻断。m102新增exact历史债务可迁移与非exact Seedance仍阻断的正反例；三次`23/24`仅为fixture ID重复/graph结构无效诊断，最终`24/24 PASS`（source/snapshot`e1f9e974…abc52`、库存1125、异常0、4173 unchanged），TypeScript/diff-check通过。下一步只重跑隔离dry-run/apply/repeat，正式full永久不重跑。
+
+v0.6.62版本/治理直接safe m38+m81已`57/57 PASS`（16+41），source/snapshot`dc4cd489…43f1`、库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged；正式full永久不重跑。下一步在正式restore的新工作副本执行dry-run/apply/repeat，再做精确diff/hash与完整增量Review。
+
+v0.6.62最低未占用身份已确认并从`origin/main@fe93d835…b8d3f`建立隔离分支。冻结生产副本只读证明Grok3.5 row与active immutable revision同为精确旧形状：用户字段、角色、数量及v1 specialized runtime identity不变，只缺`inputPolicy.promptPolicy`且旧revision未持久化`referencePolicy`。代码只允许row+active exact legacy、proposed exact current、v1完整identity逐字等价的升级证明；row/active near-miss或非该模型滥用均阻断。TypeScript/diff-check通过，safe m102 `24/24 PASS`（source/snapshot`474120c1…099`、库存1125、异常0、4173 unchanged）。下一步safe m81+m38、主线程逐链Review、冻结与独立终审；正式full永久不重跑。
 
 v0.6.61隔离工作副本`v0.6.61-contract-upgrade.Tupzga`的dry-run在apply前对真实`grok-imagine-video-1.5-preview`报`Model input prompt policy cannot weaken this Provider model`并准确停止；工作/生产DB SHA均为`13589eea…2261`且生产未写。v0.6.61不可变且未部署，生产恢复v0.6.57健康。下一修正版必须递增到最低未占用v0.6.62，只接受生产精确legacy Grok3.5 prompt/input合同；任意near-miss与其他模型漂移继续fail-closed，先补m102 exact/near-miss，再执行版本门与完整增量Review。
 
