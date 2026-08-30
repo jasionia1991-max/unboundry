@@ -75,6 +75,7 @@ const semanticContractUpgradeProviderModelIds = new Set([
   "doubao-seedance-2-0-mini-260615",
   "grok-imagine-video-1.5-preview",
   "grok-video-3",
+  "mureka-9",
 ]);
 
 function snapshotHash(value: unknown) {
@@ -95,6 +96,30 @@ function fileSha256(path: string) {
     closeSync(descriptor);
   }
   return hash.digest("hex");
+}
+
+function isExactLegacyMurekaSchema(
+  cleaned: ReturnType<typeof cleanParameterSchema>,
+  current: ReturnType<typeof cleanParameterSchema>,
+) {
+  const legacy = cleanParameterSchema("audio", {
+    ...current,
+    fields: current.fields.map((field) => {
+      if (field.key === "lyrics") return { ...field, maxLength: 8_000 };
+      if (field.key === "outputCount") {
+        return {
+          ...field,
+          options: [
+            { label: "1×", value: 1 },
+            { label: "2×", value: 2 },
+            { label: "3×", value: 3 },
+          ],
+        };
+      }
+      return field;
+    }),
+  }, current);
+  return snapshotHash(cleaned) === snapshotHash(legacy);
 }
 
 function schema(row: SeedRow) {
@@ -120,16 +145,31 @@ function schema(row: SeedRow) {
   try {
     return validateParameterSchemaConstraints(cleaned, constraints);
   } catch (error) {
-    if (
-      !constraints ||
-      row.providerModelId !== "grok-video-3" ||
-      !persisted ||
-      typeof persisted !== "object" ||
-      Array.isArray(persisted) ||
-      (persisted as { version?: unknown }).version !== 2 ||
-      !Array.isArray((persisted as { fields?: unknown }).fields)
-    ) throw error;
-    return validateParameterSchemaConstraints(constraints, constraints);
+    const structurallyVersioned = Boolean(
+      constraints &&
+      persisted &&
+      typeof persisted === "object" &&
+      !Array.isArray(persisted) &&
+      (persisted as { version?: unknown }).version === 2 &&
+      Array.isArray((persisted as { fields?: unknown }).fields),
+    );
+    const approvedLegacySchema = structurallyVersioned && (
+      row.providerModelId === "grok-video-3" ||
+      (
+        row.providerModelId === "mureka-9" &&
+        isExactLegacyMurekaSchema(cleaned, fallback)
+      )
+    );
+    if (approvedLegacySchema && constraints) {
+      return validateParameterSchemaConstraints(
+        cleanParameterSchema(row.capability, constraints, fallback),
+        constraints,
+      );
+    }
+    const message = error instanceof Error ? error.message : "合同schema无效";
+    throw new Error(`模型 ${row.providerModelId} 合同迁移失败: ${message}`, {
+      cause: error,
+    });
   }
 }
 
