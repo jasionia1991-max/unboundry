@@ -1,5 +1,8 @@
 import { compileModelExecutionContract } from "./modelExecutionContractCompiler";
-import { gkVideoExecutionContract } from "./modelReleaseDefaults";
+import {
+  gkVideoExecutionContract,
+  modelReleaseDocumentForId,
+} from "./modelReleaseDefaults";
 import {
   cleanParameterSchema,
   knownModelParameterSchema,
@@ -34,6 +37,43 @@ export function assertCurrentModelReleasePolicy(
       "CURRENT_RELEASE_POLICY_MISMATCH",
       "当前发布策略不允许该模型声明式runtime；必须由已核准的connector拥有执行语义",
     );
+  }
+  const gptImageIdentity = document.providerModelId === "gpt-image-2"
+    ? {
+      providerDriver: "multi-protocol-relay",
+      providerProtocol: "gpt-image" as const,
+    }
+    : document.providerModelId === "openai/gpt-image-2"
+    ? {
+      providerDriver: "openrouter",
+      providerProtocol: "native" as const,
+    }
+    : undefined;
+  if (gptImageIdentity) {
+    const expected = modelReleaseDocumentForId({
+      capability: document.capability,
+      capabilitySchema: document.capabilitySchema,
+      modelId: document.modelId,
+      providerDriver: gptImageIdentity.providerDriver,
+      providerModelId: document.providerModelId,
+      providerProfileId: document.providerProfileId,
+      providerProtocol: gptImageIdentity.providerProtocol,
+    });
+    if (
+      document.capability !== "image" ||
+      document.providerProtocol !== gptImageIdentity.providerProtocol ||
+      document.connectorFamily !== expected.connectorFamily ||
+      document.connectorVersion !== expected.connectorVersion ||
+      document.runtime !== expected.runtime ||
+      document.evidence !== expected.evidence ||
+      JSON.stringify(stable(document.executionContract)) !==
+        JSON.stringify(stable(expected.executionContract))
+    ) {
+      throw new ModelContractPolicyError(
+        "CURRENT_RELEASE_POLICY_MISMATCH",
+        "GPT Image 2执行合同必须与当前代码核准的精确registry和专用adapter一致",
+      );
+    }
   }
   if (document.providerModelId !== "grok-video-3") return;
   const expected = compileModelExecutionContract(
@@ -143,6 +183,43 @@ export function grokVideo3SchemaState(
   }
 }
 
+export function gptImage2SchemaState(
+  input: unknown,
+): "current" | "legacy" | "other" {
+  const current = providerParameterSchema({
+    capability: "image",
+    providerDriver: "multi-protocol-relay",
+    providerModelId: "gpt-image-2",
+  });
+  if (!current) return "other";
+  const fallback = knownModelParameterSchema({
+    capability: "image",
+    providerDriver: "multi-protocol-relay",
+    providerModelId: "gpt-image-2",
+  });
+  try {
+    const cleaned = cleanParameterSchema("image", input, fallback);
+    const canonicalCurrent = cleanParameterSchema("image", current, fallback);
+    if (JSON.stringify(stable(cleaned)) ===
+        JSON.stringify(stable(canonicalCurrent))) return "current";
+    const legacy = cleanParameterSchema("image", {
+      ...current,
+      inputPolicy: {
+        required: {},
+        roles: { image: ["reference-image"] },
+        switchPolicy: "keep-edge",
+      },
+      referenceMediaRules: {},
+      referencePolicy: undefined,
+    }, fallback);
+    return JSON.stringify(stable(cleaned)) === JSON.stringify(stable(legacy))
+      ? "legacy"
+      : "other";
+  } catch {
+    return "other";
+  }
+}
+
 function executionSignature(document: ModelReleaseDocument) {
   return JSON.stringify(stable({
     capabilitySchema: document.capabilitySchema,
@@ -155,6 +232,7 @@ function executionRuntimeSignature(document: ModelReleaseDocument) {
     capability: document.capability,
     connectorFamily: document.connectorFamily,
     connectorVersion: document.connectorVersion,
+    evidence: document.evidence,
     executionContract: {
       ...document.executionContract,
       version: 0,
@@ -172,13 +250,14 @@ export function assertExecutionVersionTransition(
   document: ModelReleaseDocument,
   options: Readonly<{
     equivalentRuntimeSchemaTransition?:
-      "exact-legacy-grok-video-3-v2";
+      | "exact-legacy-gpt-image-2-v1"
+      | "exact-legacy-grok-video-3-v2";
   }> = {},
 ) {
   if (!predecessor) return;
   const changed = executionSignature(predecessor.document) !==
     executionSignature(document);
-  const approvedSameVersionSchemaTransition =
+  const approvedGrokSchemaTransition =
     options.equivalentRuntimeSchemaTransition ===
       "exact-legacy-grok-video-3-v2" &&
     predecessor.document.providerModelId === "grok-video-3" &&
@@ -190,9 +269,22 @@ export function assertExecutionVersionTransition(
     grokVideo3SchemaState(document.capabilitySchema) === "current" &&
     executionRuntimeSignature(predecessor.document) ===
       executionRuntimeSignature(document);
+  const approvedGptImageSchemaTransition =
+    options.equivalentRuntimeSchemaTransition ===
+      "exact-legacy-gpt-image-2-v1" &&
+    predecessor.document.providerModelId === "gpt-image-2" &&
+    document.providerModelId === "gpt-image-2" &&
+    predecessor.document.executionContract.version === 1 &&
+    document.executionContract.version ===
+      predecessor.document.executionContract.version &&
+    gptImage2SchemaState(predecessor.document.capabilitySchema) === "legacy" &&
+    gptImage2SchemaState(document.capabilitySchema) === "current" &&
+    executionRuntimeSignature(predecessor.document) ===
+      executionRuntimeSignature(document);
   if (
     changed &&
-    !approvedSameVersionSchemaTransition &&
+    !approvedGrokSchemaTransition &&
+    !approvedGptImageSchemaTransition &&
     document.executionContract.version <=
       predecessor.document.executionContract.version
   ) {
