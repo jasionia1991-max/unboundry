@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻当前任务
 
-## INC-GEN-017 工作流自动自愈与模型合同隔离（FORMAL SAFE FULL CONSUMED / V0.6.58 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.59 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.60 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.61 GITHUB RELEASE PASS / FRESH BUILD PENDING / REAL PROVIDER NOT POSTED）
+## INC-GEN-017 工作流自动自愈与模型合同隔离（FORMAL SAFE FULL CONSUMED / V0.6.58 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.59 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.60 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.61 FRESH BUILD PASS / PRODUCTION QUIET PENDING / REAL PROVIDER NOT POSTED）
 
 - [x] 关闭第二次独立复核P1：把`openrouter/openai/gpt-image-2/native` exact alias纳入普通发布的完整registry-owned合同硬门；两个exact identity均可validate+publish，evidence、受支持的version-bumped connector与create path漂移阻断。强化反例首轮`23/24`只因fixture先命中既有unsupported runtime version门，修正后safe m102 `24/24 PASS`（source/snapshot`0eced929…50636`），库存1125、异常0、4173 unchanged。
 - [x] 最终六份治理同步后safe m38 `16/16 PASS`，source/snapshot`2b3f2b69…5376f`、库存1125、异常0、4173 unchanged；取代此前`769a79cf…a32f`，正式full未重跑。
@@ -22,7 +22,8 @@
 - [x] PR head`31c4737`的Quality gates通过：run`33303385616`/job`99235504319`、29秒。
 - [x] PR #130最终head`36fabed` Quality gates（run`33303459401`/job`99235705854`、34秒）与merge`fe93d835`后的main Quality gates（run`33303506738`/job`99235834351`、51秒）均通过。
 - [x] annotated tag object`19919318…814fd`精确解引用到merge`fe93d835…b8d3f`，GitHub Release v0.6.61已发布且非draft/prerelease。
-- [ ] 对精确tag做archive/fresh build，随后执行quiet gate、冻结备份、隔离迁移、原子切换与真实Provider验收；正式full不得重跑。
+- [x] 精确tag archive SHA=`70be072c9ea41891fe63f8b793775598307aa49055cb2b6972f94f6b8fdb1a22`；服务器独立staging=`/opt/unboundry/staging/v0.6.61-inc-gen-017-20260830.Dnplbk`固定Node22.23.2/npm10.9.8完成npm ci、TypeScript、Vite build、6035行inventory校验与dist33，inventory SHA=`3efd2f7e6eb49b7f829257f484051ae610098b6f9a66f0e80101bfb0719f4600`。
+- [ ] 执行生产quiet gate、冻结备份、隔离迁移、原子切换与真实Provider验收；正式full不得重跑，生产current仍为v0.6.57。
 
 - [x] v0.6.59精确tag archive `63042cff…71b8`在服务器fresh staging固定Node22.23.2/npm10.9.8完成npm ci、TypeScript和Vite build；7次quiet gate均active0/unsettledUnknown0。
 - [x] v0.6.59冻结备份`v0.6.59-cutover-frozen.jufZ1z`双副本366/366、清单`39c9e691…ebf3`、DB`13589eea…2261`及schema41/integrity/FK/计数门通过；所有证据目录保留。

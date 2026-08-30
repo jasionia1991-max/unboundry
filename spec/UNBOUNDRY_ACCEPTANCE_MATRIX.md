@@ -1,9 +1,10 @@
 # Unboundry 绿地复刻验收矩阵
 
-## INC-GEN-017 正式full已消费、v0.6.60迁移fail-closed与v0.6.61 GitHub Release（2026-08-30）
+## INC-GEN-017 正式full已消费、v0.6.60迁移fail-closed与v0.6.61 fresh build（2026-08-30）
 
-- 当前状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_GITHUB_RELEASE_PASS_FRESH_BUILD_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。
-- PR #130最终head/main CI均通过，merge`fe93d835…b8d3f`；annotated tag object`19919318…814fd`与GitHub Release v0.6.61已冻结。fresh build/生产/Provider待执行。
+- 当前状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_FRESH_BUILD_PASS_PRODUCTION_QUIET_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。
+- v0.6.61精确tag archive=`70be072c…b1a22`；独立staging=`v0.6.61-inc-gen-017-20260830.Dnplbk`固定Node22.23.2/npm10.9.8完成npm ci、TypeScript、Vite、6035行inventory（`3efd2f7e…f4600`）和dist33验证。fresh build=`PASS`；生产quiet/冻结备份/隔离迁移/Provider待执行，current仍v0.6.57/schema41。
+- PR #130最终head/main CI均通过，merge`fe93d835…b8d3f`；annotated tag object`19919318…814fd`与GitHub Release v0.6.61已冻结。
 - PR #130 head`31c4737` Quality gates通过（run`33303385616`/job`99235504319`，29秒）；最终CI回执head待同一门。
 - PR #130 base/head=`main@b5867b3`/`dc64f08`且mergeable；最终纯文档head CI待运行，merge/tag/Release/生产/Provider未运行。
 - GitHub身份门：origin/main`b5867b3…9de2`未前进，v0.6.61 local/remote tag与Release均不存在，无同head PR；14个预期PR文件、515 insertions/26 deletions且无受保护JSON。push/PR/CI待执行。

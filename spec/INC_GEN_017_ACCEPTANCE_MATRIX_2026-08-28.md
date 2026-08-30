@@ -1,8 +1,10 @@
 # INC-GEN-017 验收矩阵
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_GITHUB_RELEASE_PASS_FRESH_BUILD_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_FRESH_BUILD_PASS_PRODUCTION_QUIET_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 
-v0.6.61 GitHub gate：final PR head=`36fabedfca269491cb957e460fb9d60cd3145efe` run=`33303459401`/job=`99235705854`、34秒`PASS`；merge=`fe93d8359a5a3ee5f8bfe1d64f494ec87d4b8d3f`，main run=`33303506738`/job=`99235834351`、51秒`PASS`。annotated tag object=`19919318199d6e6b495853ce331c5aa4c00814fd`精确指向merge，Release v0.6.61=`PASS`。fresh build/生产/真实Provider仍`NOT_RUN`。
+v0.6.61 fresh-build gate：精确tag archive SHA=`70be072c9ea41891fe63f8b793775598307aa49055cb2b6972f94f6b8fdb1a22`且远端校验一致；独立staging=`/opt/unboundry/staging/v0.6.61-inc-gen-017-20260830.Dnplbk`，Node22.23.2/npm10.9.8，npm ci、TypeScript、Vite、6035行inventory和dist33均`PASS`，inventory SHA=`3efd2f7e6eb49b7f829257f484051ae610098b6f9a66f0e80101bfb0719f4600`。生产quiet/冻结备份/隔离迁移/真实Provider仍`NOT_RUN`。
+
+v0.6.61 GitHub gate：final PR head=`36fabedfca269491cb957e460fb9d60cd3145efe` run=`33303459401`/job=`99235705854`、34秒`PASS`；merge=`fe93d8359a5a3ee5f8bfe1d64f494ec87d4b8d3f`，main run=`33303506738`/job=`99235834351`、51秒`PASS`。annotated tag object=`19919318199d6e6b495853ce331c5aa4c00814fd`精确指向merge，Release v0.6.61=`PASS`；fresh build亦已`PASS`，生产/真实Provider仍`NOT_RUN`。
 
 v0.6.61 PR head CI：head=`31c4737f2491de71194c4f42d36be8b27095014d`，Quality gates run=`33303385616`/job=`99235504319`，29秒`PASS`。final receipt head CI=`NOT_RUN`；merge/tag/Release/生产/真实Provider仍`NOT_RUN`。
 
@@ -145,7 +147,7 @@ PR #128最终head`944ae9b`与main CI通过，merge=`e6341d5`；annotated tag obj
 | IG17-031 | 风险定向回归 | 新spec和直接依赖全绿，命令/环境/源码hash/异常数完整记录 | R7_TARGETED_REGRESSION_PASS |
 | IG17-032 | 唯一正式safe full | 仅候选冻结+Review GO后按风险执行一次；原始结果诚实记录 | CONSUMED_FAILED_1023_PASS_95_FAIL_4_NOT_RUN |
 | IG17-033 | 独立终审 | 冻结候选P0=0/P1=0/GO | REMEDIATION_REVIEW_P0_0_P1_0_P2_1_GO |
-| IG17-034 | GitHub/不可变发布 | 当前Goal已授权：PR/main CI、tag/Release、fresh build | V0_6_57_GITHUB_RELEASE_FRESH_BUILD_PASS |
+| IG17-034 | GitHub/不可变发布 | 当前Goal已授权：PR/main CI、tag/Release、fresh build | V0_6_61_GITHUB_RELEASE_FRESH_BUILD_PASS |
 | IG17-035 | 生产备份/恢复/回滚 | 当前Goal已授权：冻结备份、恢复副本、原子切换、稳定门 | PRODUCTION_TECHNICAL_PASS |
 | IG17-036 | 真实Provider最小验收 | 当前Goal累计USD100内已授权；unknown禁止第二POST | AUTHORIZED_NOT_RUN |
 | IG17-037 | 用户实页验收 | 产品发布后由用户按五步清单确认；当前尚未实施 | NOT_RUN |

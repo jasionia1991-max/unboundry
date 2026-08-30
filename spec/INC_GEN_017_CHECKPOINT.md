@@ -1,12 +1,13 @@
 # INC-GEN-017 实时断点
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_GITHUB_RELEASE_PASS_FRESH_BUILD_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_FRESH_BUILD_PASS_PRODUCTION_QUIET_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 
 更新时间：2026-08-30
 
 ## 当前结论
 
-- PR #130最终head=`36fabedfca269491cb957e460fb9d60cd3145efe`的Quality gates run=`33303459401`/job=`99235705854`以34秒通过；PR以merge commit=`fe93d8359a5a3ee5f8bfe1d64f494ec87d4b8d3f`合入main，main Quality gates run=`33303506738`/job=`99235834351`以51秒通过。annotated tag object=`19919318199d6e6b495853ce331c5aa4c00814fd`精确解引用到该merge；GitHub Release `v0.6.61`已发布且非draft/prerelease。首次远端tag探测仅遇一次TLS瞬态失败，后续push与双重远端验证成功。当前只对精确tag执行archive/fresh build；生产仍v0.6.57/schema41，Provider POST=0/USD0。
+- v0.6.61精确tag archive SHA=`70be072c9ea41891fe63f8b793775598307aa49055cb2b6972f94f6b8fdb1a22`，远端归档SHA逐字一致；服务器独立staging=`/opt/unboundry/staging/v0.6.61-inc-gen-017-20260830.Dnplbk`固定Node`22.23.2`/npm`10.9.8`完成npm ci、TypeScript与Vite build。发布清单6035行/6036文件且校验通过，inventory SHA=`3efd2f7e6eb49b7f829257f484051ae610098b6f9a66f0e80101bfb0719f4600`，dist 33文件；归档和staging均保留。生产current仍精确为v0.6.57/schema41、service active/enabled，Provider POST=0/USD0；下一步只执行生产quiet gate。
+- PR #130最终head=`36fabedfca269491cb957e460fb9d60cd3145efe`的Quality gates run=`33303459401`/job=`99235705854`以34秒通过；PR以merge commit=`fe93d8359a5a3ee5f8bfe1d64f494ec87d4b8d3f`合入main，main Quality gates run=`33303506738`/job=`99235834351`以51秒通过。annotated tag object=`19919318199d6e6b495853ce331c5aa4c00814fd`精确解引用到该merge；GitHub Release `v0.6.61`已发布且非draft/prerelease。首次远端tag探测仅遇一次TLS瞬态失败，后续push与双重远端验证成功；该阶段身份门已闭合。
 - PR #130 head=`31c4737f2491de71194c4f42d36be8b27095014d`的Quality gates / lightweight已通过：run=`33303385616`、job=`99235504319`、29秒。当前只提交并推送本条CI治理回执；新的最终纯文档head同一门通过前不得合并。
 - v0.6.61分支已推送并创建PR #130：base=`main@b5867b3edf8f39c9a58b4e77d9060e1567dd9de2`、head=`dc64f08b79eeab55b4b3e892d2ea8cec61b8c0be`、mergeable，URL=`https://github.com/jasionia1991-max/unboundry/pull/130`。当前检查尚未启动；本条回写后推送最终纯文档head，只有该head的Quality gates通过才可合并。
 - v0.6.61 GitHub身份门已刷新：`origin/main=b5867b3edf8f39c9a58b4e77d9060e1567dd9de2`未前进，当前分支HEAD=`cb9639336f87d9c31f66de1ae089d4dbfed2db22`；本地tag、远端tag、GitHub Release `v0.6.61`均不存在，且无同head既有PR。相对origin/main的PR差异精确为14个预期产品/测试/治理文件、515 insertions/26 deletions，不含受保护JSON。当前回写并提交身份治理后推送分支、创建PR并等待最终head CI。
