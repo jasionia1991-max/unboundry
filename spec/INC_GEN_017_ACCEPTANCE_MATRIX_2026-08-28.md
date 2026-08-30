@@ -1,6 +1,8 @@
 # INC-GEN-017 验收矩阵
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_FRESH_BUILD_PASS_PRODUCTION_QUIET_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_PRODUCTION_QUIET_PASS_FROZEN_BACKUP_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+
+v0.6.61 production-quiet gate：连续7次`active=0/unsettledUnknown=0`，current/API version始终v0.6.57，service active/running、NRestarts0，结论`PASS`。首个诊断查询含10条已finished历史unknown（9 failed/1 cancelled），不属于未收口unknown。冻结双副本、恢复验证、隔离迁移与真实Provider仍`NOT_RUN`。
 
 v0.6.61 fresh-build gate：精确tag archive SHA=`70be072c9ea41891fe63f8b793775598307aa49055cb2b6972f94f6b8fdb1a22`且远端校验一致；独立staging=`/opt/unboundry/staging/v0.6.61-inc-gen-017-20260830.Dnplbk`，Node22.23.2/npm10.9.8，npm ci、TypeScript、Vite、6035行inventory和dist33均`PASS`，inventory SHA=`3efd2f7e6eb49b7f829257f484051ae610098b6f9a66f0e80101bfb0719f4600`。生产quiet/冻结备份/隔离迁移/真实Provider仍`NOT_RUN`。
 

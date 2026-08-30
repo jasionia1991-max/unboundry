@@ -1,10 +1,12 @@
 # INC-GEN-017：工作流自动自愈与模型合同隔离详细行动方案
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_FRESH_BUILD_PASS_PRODUCTION_QUIET_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_PRODUCTION_QUIET_PASS_FROZEN_BACKUP_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 
 建立日期：2026-08-28
 
-v0.6.61精确tag archive SHA=`70be072c9ea41891fe63f8b793775598307aa49055cb2b6972f94f6b8fdb1a22`，远端逐字校验一致；服务器独立staging=`/opt/unboundry/staging/v0.6.61-inc-gen-017-20260830.Dnplbk`固定Node22.23.2/npm10.9.8完成npm ci、TypeScript、Vite build、6035行inventory与dist33验证，inventory SHA=`3efd2f7e6eb49b7f829257f484051ae610098b6f9a66f0e80101bfb0719f4600`。生产仍v0.6.57/schema41、Provider POST=0/USD0；当前只执行quiet gate，再按硬门停服冻结双副本和隔离迁移。
+v0.6.61生产quiet gate连续7次`active=0/unsettledUnknown=0`，current/API始终v0.6.57，service active/running、NRestarts0。首个诊断曾把10条已finished的历史unknown误计入未收口口径；只读分布核对后确认9 failed+1 cancelled且均已结束。当前只允许停服、建立新冻结双副本并验证恢复副本，再从restore复制唯一迁移工作副本。
+
+v0.6.61精确tag archive SHA=`70be072c9ea41891fe63f8b793775598307aa49055cb2b6972f94f6b8fdb1a22`，远端逐字校验一致；服务器独立staging=`/opt/unboundry/staging/v0.6.61-inc-gen-017-20260830.Dnplbk`固定Node22.23.2/npm10.9.8完成npm ci、TypeScript、Vite build、6035行inventory与dist33验证，inventory SHA=`3efd2f7e6eb49b7f829257f484051ae610098b6f9a66f0e80101bfb0719f4600`。该fresh-build门已闭合；生产仍v0.6.57/schema41、Provider POST=0/USD0。
 
 PR #130最终head`36fabed`与main Quality gates均通过，merge=`fe93d8359a5a3ee5f8bfe1d64f494ec87d4b8d3f`；annotated tag object=`19919318199d6e6b495853ce331c5aa4c00814fd`精确指向merge，GitHub Release v0.6.61已发布。首次tag探测TLS失败未改变远端，随后push/verify成功；该阶段身份门已闭合。
 

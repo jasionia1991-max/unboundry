@@ -1,8 +1,9 @@
 # Unboundry 绿地复刻验收矩阵
 
-## INC-GEN-017 正式full已消费、v0.6.60迁移fail-closed与v0.6.61 fresh build（2026-08-30）
+## INC-GEN-017 正式full已消费、v0.6.60迁移fail-closed与v0.6.61 production quiet（2026-08-30）
 
-- 当前状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_FRESH_BUILD_PASS_PRODUCTION_QUIET_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。
+- 当前状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_PRODUCTION_QUIET_PASS_FROZEN_BACKUP_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。
+- v0.6.61生产quiet gate连续7次active0/unsettledUnknown0，current/API始终v0.6.57，service active/running、NRestarts0；首个诊断仅额外计入10条已finished历史unknown。quiet gate=`PASS`；冻结双副本、隔离迁移与Provider待执行。
 - v0.6.61精确tag archive=`70be072c…b1a22`；独立staging=`v0.6.61-inc-gen-017-20260830.Dnplbk`固定Node22.23.2/npm10.9.8完成npm ci、TypeScript、Vite、6035行inventory（`3efd2f7e…f4600`）和dist33验证。fresh build=`PASS`；生产quiet/冻结备份/隔离迁移/Provider待执行，current仍v0.6.57/schema41。
 - PR #130最终head/main CI均通过，merge`fe93d835…b8d3f`；annotated tag object`19919318…814fd`与GitHub Release v0.6.61已冻结。
 - PR #130 head`31c4737` Quality gates通过（run`33303385616`/job`99235504319`，29秒）；最终CI回执head待同一门。
