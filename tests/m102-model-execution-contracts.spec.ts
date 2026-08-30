@@ -1294,6 +1294,15 @@ test("execution semantics cannot change without a contract version bump", () => 
     )).toThrow(expect.objectContaining({
       code: "EXECUTION_CONTRACT_VERSION_REQUIRED",
     }));
+    const active = modelContractState(store, first.modelId).active!;
+    expect(() => upgradeModelContractRevision(store, "admin-a", {
+      document: changed,
+      equivalentRuntimeSchemaTransition: "exact-legacy-grok-video-3-v2",
+      expectedActiveRevisionId: active.revisionId,
+      impact: { incompatibleTemplateIds: [], templateIds: [] },
+    })).toThrow(expect.objectContaining({
+      code: "EXECUTION_CONTRACT_VERSION_REQUIRED",
+    }));
   } finally {
     store.close();
   }
@@ -1728,6 +1737,42 @@ test("schema41 upgrade audits 11 models, publishes GK revision 2, archives kwvid
           },
         );
       }
+      if (providerModelId === "grok-video-3") {
+        persistedCapabilitySchema.fields = persistedCapabilitySchema.fields.map(
+          (field) => field.key === "inputMode"
+            ? {
+                ...field,
+                options: [
+                  ...field.options,
+                  { label: "参考", value: "reference" },
+                ],
+              }
+            : field,
+        );
+        persistedCapabilitySchema.referenceInputs = {
+          audio: 0,
+          image: 0,
+          video: 0,
+        };
+        persistedCapabilitySchema.referenceMediaRules = {};
+        delete persistedCapabilitySchema.referencePolicy;
+        persistedCapabilitySchema.inputPolicy = {
+          required: {},
+          roles: {
+            audio: [],
+            image: ["first-frame", "reference-image", "subject"],
+            text: ["instruction"],
+            video: [],
+          },
+          switchPolicy: "keep-edge",
+        };
+        persistedCapabilitySchema.upstreamInputs = {
+          audio: { limitMode: "fixed", maxCount: 0, supported: false },
+          image: { limitMode: "context", supported: true },
+          text: { limitMode: "context", supported: true },
+          video: { limitMode: "fixed", maxCount: 0, supported: false },
+        };
+      }
       store.prepare(`
         INSERT INTO model_profiles VALUES (?, ?, ?, ?, ?, ?, 'published', NULL, ?, ?)
       `).run(
@@ -1751,15 +1796,7 @@ test("schema41 upgrade audits 11 models, publishes GK revision 2, archives kwvid
         providerProfileId,
         providerProtocol,
       });
-      const document = id === "model-gk-video-3"
-        ? {
-            ...currentDocument,
-            executionContract: {
-              ...currentDocument.executionContract,
-              version: 1 as const,
-            },
-          }
-        : currentDocument;
+      const document = currentDocument;
       const revision = {
         createdAt: "2026-08-27T00:00:00.000Z",
         document,
@@ -1783,6 +1820,56 @@ test("schema41 upgrade audits 11 models, publishes GK revision 2, archives kwvid
     }
     store.prepare("INSERT INTO canvas_documents VALUES (?)")
       .run(JSON.stringify([{ data: { videoModelId: "model-kwvideo-v2" } }]));
+    const exactLegacyGrokRow = store.prepare(`
+      SELECT default_parameters FROM model_profiles
+      WHERE id = 'model-gk-video-3'
+    `).get() as { default_parameters: string };
+    const exactLegacyGrokAudit = store.prepare(`
+      SELECT id, details FROM admin_audit_events
+      WHERE action = 'model_contract.publish'
+      ORDER BY id
+    `).all().map((row) => ({
+      details: JSON.parse(String(row.details)) as {
+        modelId: string;
+        revision: {
+          document: ReturnType<typeof defaultModelReleaseDocument>;
+          hash: string;
+          validation: { compilerHash: string };
+        };
+      },
+      id: Number(row.id),
+    })).find((row) => row.details.modelId === "model-gk-video-3")!;
+    const nearMissActiveDocument = {
+      ...exactLegacyGrokAudit.details.revision.document,
+      capabilitySchema: {
+        ...exactLegacyGrokAudit.details.revision.document.capabilitySchema,
+        fields: exactLegacyGrokAudit.details.revision.document.capabilitySchema.fields.map(
+          (field) => field.key === "inputMode"
+            ? {
+                ...field,
+                options: [
+                  ...field.options,
+                  { label: "主体", value: "subject" },
+                ],
+              }
+            : field,
+        ),
+      },
+    };
+    const nearMissActiveDetails = {
+      ...exactLegacyGrokAudit.details,
+      revision: {
+        ...exactLegacyGrokAudit.details.revision,
+        document: nearMissActiveDocument,
+        hash: sha(nearMissActiveDocument),
+      },
+    };
+    store.prepare("UPDATE admin_audit_events SET details = ? WHERE id = ?")
+      .run(JSON.stringify(nearMissActiveDetails), exactLegacyGrokAudit.id);
+    expect(() => planModelContractUpgrade(store))
+      .toThrow(/默认schema与活动revision迁移身份不一致/);
+    store.prepare("UPDATE admin_audit_events SET details = ? WHERE id = ?")
+      .run(JSON.stringify(exactLegacyGrokAudit.details), exactLegacyGrokAudit.id);
     const plan = planModelContractUpgrade(store);
     expect(plan).toMatchObject({
       auditedModelCount: 11,
@@ -1950,6 +2037,25 @@ test("schema41 upgrade audits 11 models, publishes GK revision 2, archives kwvid
       UPDATE model_profiles SET default_parameters = ?
       WHERE id = 'model-audio-mureka'
     `).run(exactMurekaRow.default_parameters);
+    const nearMissGrok = JSON.parse(exactLegacyGrokRow.default_parameters);
+    nearMissGrok.fields = nearMissGrok.fields.map(
+      (field: { key: string; options: Array<{ label: string; value: unknown }> }) =>
+        field.key === "inputMode"
+          ? {
+              ...field,
+              options: [
+                ...field.options,
+                { label: "主体", value: "subject" },
+              ],
+            }
+          : field,
+    );
+    store.prepare(`
+      UPDATE model_profiles SET default_parameters = ?
+      WHERE id = 'model-gk-video-3'
+    `).run(JSON.stringify(nearMissGrok));
+    expect(() => planModelContractUpgrade(store))
+      .toThrow(/模型 grok-video-3 合同迁移失败/);
     store.prepare(`
       UPDATE model_profiles SET default_parameters = ?
       WHERE id = 'model-gk-video-3'
