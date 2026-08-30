@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻当前任务
 
-## INC-GEN-017 工作流自动自愈与模型合同隔离（FORMAL SAFE FULL CONSUMED / V0.6.58 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.59 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.60 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.61 POST-COMMIT GOVERNANCE PASS / GOVERNANCE COMMIT READY / REAL PROVIDER NOT POSTED）
+## INC-GEN-017 工作流自动自愈与模型合同隔离（FORMAL SAFE FULL CONSUMED / V0.6.58 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.59 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.60 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.61 GITHUB IDENTITY PASS / PUSH READY / REAL PROVIDER NOT POSTED）
 
 - [x] 关闭第二次独立复核P1：把`openrouter/openai/gpt-image-2/native` exact alias纳入普通发布的完整registry-owned合同硬门；两个exact identity均可validate+publish，evidence、受支持的version-bumped connector与create path漂移阻断。强化反例首轮`23/24`只因fixture先命中既有unsupported runtime version门，修正后safe m102 `24/24 PASS`（source/snapshot`0eced929…50636`），库存1125、异常0、4173 unchanged。
 - [x] 最终六份治理同步后safe m38 `16/16 PASS`，source/snapshot`2b3f2b69…5376f`、库存1125、异常0、4173 unchanged；取代此前`769a79cf…a32f`，正式full未重跑。
@@ -17,7 +17,8 @@
 - [x] Review GO治理safe m38 `16/16 PASS`，source/snapshot`b5a903f8…d150`、库存1125、异常0、4173 unchanged；runner结束后的外层zsh只读变量包装错误不影响已完成结果且不重跑。
 - [x] 冻结8文件候选已精确提交为`7733464cc997…a45423`，tree`692f11ea…9371`，337 insertions/12 deletions；治理文档与受保护JSON未进入commit。
 - [x] 提交后治理safe m38 `16/16 PASS`，source/snapshot`60754094…14297`、库存1125、异常0、HEAD`7733464…a45423`、4173 unchanged。
-- [ ] 独立提交六份治理回执，再按硬门进入GitHub/CI、v0.6.61不可变发布、隔离迁移与生产验收；正式full不得重跑。
+- [x] 六份治理回执已独立提交为`cb9639336f87…db22`；实时`origin/main@b5867b3`未前进，v0.6.61本地/远端tag与Release未占用，同head PR不存在，14文件PR diff不含受保护JSON。
+- [ ] 推送分支、创建PR并等待最终head/main CI；通过后冻结v0.6.61 tag/Release并进入fresh build、隔离迁移与生产验收；正式full不得重跑。
 
 - [x] v0.6.59精确tag archive `63042cff…71b8`在服务器fresh staging固定Node22.23.2/npm10.9.8完成npm ci、TypeScript和Vite build；7次quiet gate均active0/unsettledUnknown0。
 - [x] v0.6.59冻结备份`v0.6.59-cutover-frozen.jufZ1z`双副本366/366、清单`39c9e691…ebf3`、DB`13589eea…2261`及schema41/integrity/FK/计数门通过；所有证据目录保留。
