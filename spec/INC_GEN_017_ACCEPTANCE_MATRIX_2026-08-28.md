@@ -1,6 +1,64 @@
 # INC-GEN-017 验收矩阵
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_PR_130_CI_PASS_FINAL_RECEIPT_HEAD_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_62_PR_OPEN_FINAL_DOC_HEAD_CI_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+
+v0.6.62 PR CI gate：head `3aef7e8` run/job=`33312070069/99258820272` success in 33s；governance head `d01d564` run/job=`33312135373/99258993752` success in 36s。final doc head CI/merge/main CI/tag/Release=`NOT_RUN`，production/Provider门关闭。
+
+v0.6.62 PR gate：PR #131 base/head=`main@fe93d835`/`3aef7e8`、mergeable；Quality gates/lightweight run=`33312070069`、job=`99258820272` currently running。final governance head CI/merge/main CI/tag/Release=`NOT_RUN`，production/Provider门关闭。
+
+v0.6.62 GitHub identity gate：origin/main=`fe93d8359a5a3ee5f8bfe1d64f494ec87d4b8d3f`且merge-base一致；local/remote tag、Release、same-head PR均不存在。PR diff=16 expected files、845 insertions/49 deletions、protected JSON absent。governance receipt commit/push/PR/CI=`NOT_RUN`，production/Provider门关闭。
+
+v0.6.62 post-commit governance gate：safe m38=`16/16 PASS`，source/snapshot=`76716e8779c6a051e087bc3a0bfaf9046fc920e86d01cde7dbeb4985cd2fc747`、库存1125、失败/重试/跳过/reportErrors0、HEAD=`fe152fe35d70dddd2b4e8b201f83ac2635df9241`、Node22.23.1/npm10.9.8、4173 unchanged。governance commit/GitHub identity=`NOT_RUN`，production/Provider门关闭。
+
+v0.6.62 candidate commit gate：commit=`fe152fe35d70dddd2b4e8b201f83ac2635df9241`、tree=`079464b77bbdb226a6fb11c9c4b159fa64590ce1`，exact 10 files、611 insertions/35 deletions；governance docs/protected JSON excluded。post-commit governance m38=`NOT_RUN`，GitHub/production/Provider门关闭。
+
+v0.6.62 Review-GO governance gate：safe m38=`16/16 PASS`，source/snapshot=`ce9126ef4216e1ccad2d80194c51653aa1b3cf64abeb915f1a5afde8d8313fac`、库存1125、失败/重试/跳过/reportErrors0、Node22.23.1/npm10.9.8、4173 unchanged；formal full未重跑，candidate hash仍为`bb364480…ae897`。exact 10-file commit=`NOT_RUN`，governance/protected JSON excluded。
+
+v0.6.62 independent final review gate：冻结hash=`bb364480…ae897`，10/10 files、53/53 hunks、611 insertions/35 deletions、完整chain、10/10 models、11/11 identities、6/6 adapters与全部Provider分支覆盖；`P0=0/P1=0/P2=0/GO`，mixed-template P1=`CLOSED`，finding=0。审查只读且零test/build/network/Git write/Provider/OSS/production/protected JSON access。Review GO governance m38=`NOT_RUN`；commit/GitHub/production/Provider门关闭。
+
+v0.6.62 main-review governance gate：safe m38=`16/16 PASS`，source/snapshot=`bb2f43164ab91e200779c38cb1ab4ac9a3c6e88a65e7132b98fdf944dc1d6d3c`、库存1125、失败/重试/跳过/reportErrors0、Node22.23.1/npm10.9.8、4173 unchanged；formal full未重跑，candidate hash仍为`bb364480…ae897`。independent Review=`NOT_RUN`，commit/GitHub/production/Provider门关闭。
+
+v0.6.62 mixed-template final main review/freeze gate：10/10 files、53/53 hunks、611 insertions/35 deletions；完整schema/near-miss/real before-proposed after/per-template aggregation/migration summary/dry-run/attestation/baseline CAS/transaction command/per-row CAS/revision/activation/audit/rollback/repeat链，10/10 logical models、11/11 exact identities与6/6 adapters/全部Provider分支覆盖。`P0=0/P1=0/P2=0/GO`，candidate hash=`bb3644800553fbe5d7b303e19ec47e33d3d73ae5e6142933e2bece64527ae897`、candidate=`FROZEN`；governance m38与independent Review=`NOT_RUN`，commit/GitHub/production/Provider门关闭。
+
+v0.6.62 post-isolated-recheck governance gate：safe m38=`16/16 PASS`，source/snapshot=`91c82e9a46af03a52e0fb1adfaa798aa08d411fe48891125d693519c8e89ba85`、库存1125、异常0、4173 unchanged。formal full未重跑；exact diff/hash与main/independent Review=`NOT_RUN`。
+
+v0.6.62 mixed-template isolated recheck gate=`PASS`：主副本`pLv6YJ`，attestation`d49ea1a1…47cbb`，dry-run`d3f27a13…a8d1`/plan`8c0dc03c…cc05`，apply`101e0c54…7739`，DB `13589eea…2261→55006ca1…6198`，5 revisions、22 templates/34 nodes。repeat副本`MhUhK0`，attestation`5183e3d3…92cc`，dry-run`9191a7cb…9c3c`/plan`5ff907cd…46f2`为11/11 none、迁移0；apply`d892496f…98db`且DB字节不变。schema41、quick/integrity、FK0、active0、34 image/0 reference、脱敏audit=`PASS`；production v0.6.57/schema41 unchanged，Provider0/USD0。governance m38、main/independent Review=`NOT_RUN`。
+
+v0.6.62 mixed-template P1 remediation gate：逐模板节点聚合只允许“全部不兼容节点均before/after双失败”进入preexisting；混合历史债务+active-pass/target-fail regression保持blocking，apply在写入前fail-closed。TypeScript/diff-check=`PASS`；safe m102首轮`23/24`仅为断言未接受更早的生产矩阵硬门，最终`24/24 PASS`，source/snapshot=`909b1cc8b111f874c21e7414c7932fcd4b96729207271ca604be58925b91d3c0`、库存1125、异常0、4173 unchanged。isolated dry-run/apply/repeat recheck、main/independent Review=`NOT_RUN`；formal full不重跑，GitHub/production/Provider门关闭。
+
+v0.6.62 independent mixed-template review gate：冻结hash=`29e09816…2f55`，10/10 files、50/50 hunks、完整链、10/10 models、11/11 identities、6/6 adapters覆盖；`P0=0/P1=1/P2=0/NO-GO`。P1为templateId级preexisting过滤可由一个双失败历史节点掩盖同模板另一个before-pass/after-fail新回归；candidate=`UNFROZEN`，节点级聚合整改/混合模板回归/隔离复验/重新Review=`NOT_RUN`，GitHub/production/Provider门关闭。
+
+v0.6.62 final main review/freeze gate：10/10 files、50/50 hunks、500 insertions/33 deletions；完整schema/near-miss/template before-after/migration summary/dry-run/attestation/baseline CAS/transaction command/per-row CAS/revision/activation/audit/rollback/repeat链，10/10 logical models、11/11 exact identities与6/6 adapters/全部Provider分支覆盖。`P0=0/P1=0/P2=0/GO`，diff-check=`PASS`，candidate hash=`29e098164e9d996565f7e7b9c57df3738c84c8b783640ddc7e2d589f14c42f55`、candidate=`FROZEN`；independent Review、commit/GitHub/production/Provider=`NOT_RUN`。
+
+v0.6.62 post-migration governance gate：safe m38=`16/16 PASS`，source/snapshot=`57f644da93e3c1520cf51d8003fc0b4e24376da92f909d2f53c9e2fe6648d006`、库存1125、失败/重试/跳过/reportErrors0、Node22.23.1/npm10.9.8、4173 unchanged；architecture/TypeScript/build preflight=`PASS`。formal full未重跑；candidate hash、main/independent Review=`NOT_RUN`。
+
+v0.6.62 final isolated template-migration gate：主副本dry-run报告SHA=`d3f27a13…a8d1`、plan hash=`8c0dc03c…cc05`；apply报告SHA=`37e7f100…7194`，DB `13589eea…2261→19ed87b8…039`，升级5个exact legacy revision并迁移22模板/34节点，复核`image=34/reference=0`、audit无graph正文。新兄弟副本attestation SHA=`34864a3d…c5b5`，repeat dry-run SHA=`e7019f57…2c66`/plan hash=`760e0da9…9fd4`为11/11 action none、迁移0；repeat apply SHA=`7884ff99…8c7e`、`upgradedModels=[]`、DB前后同SHA。schema41、quick/integrity=`PASS`、FK0、active0、Provider POST=0/USD0；production=v0.6.57/schema41 unchanged。isolated migration=`PASS`；governance m38、main/independent Review=`NOT_RUN`。
+
+v0.6.62 explicit template-migration gate：exact legacy Grok3的22模板/34节点由事务计划显式迁移`videoParameters.inputMode=reference`到`image/text`，plan/audit只含template/node和图hash；Templates域transaction-scoped command逐行CAS，与revision发布同事务，失败回滚且repeat action none。架构预检曾以`CROSS_DOMAIN_SQL`正确阻断直接跨域SQL，改为域命令后通过。m102诊断`23/24`两次仅为legacy存储夹具缺失/范围过宽，最终`24/24 PASS`，source/snapshot=`8942d621b2d0a884401a656d909be0552317cf4d93f118eb0d9845c29ba748f4`、库存1125、异常0、4173 unchanged；TypeScript/diff-check=`PASS`。isolated dry-run/apply/repeat recheck、main/independent Review=`NOT_RUN`。
+
+v0.6.62 independent-P1 remediation gate：真实active-before/proposed-after已恢复；exact proof仅放宽runtime-equivalent identity比较，preexisting只接受两侧均失败，active-pass/target-fail与unparseable保持blocking。Grok legacy-only selector回归与apply fail-closed已覆盖。TypeScript/diff-check=`PASS`；safe m102=`24/24 PASS`，source/snapshot=`8ccaa3cd4d9dbbc5d0b710512491b6755fa00c86560d55454da0cb4ad02ac880`、库存1125、异常0、4173 unchanged。isolated migration recheck/main+independent Review=`NOT_RUN`。
+
+v0.6.62 independent review gate：冻结hash=`32345132…3f9b`，8/8文件、31/31 hunks、完整链、10/10 models、11/11 identities、6/6 adapters覆盖；`P0=0/P1=1/P2=0/NO-GO`。P1为exact migration template compatibility使用target作为before并扣除全部parseable incompatible，可能放行active-pass/target-fail模板。candidate=`UNFROZEN`；真实before/after整改、m102回归及重新Review=`NOT_RUN`，commit/GitHub/生产/Provider仍`NOT_RUN`。
+
+v0.6.62 main review/freeze gate：8/8文件、31/31 hunks、321 insertions/16 deletions，完整schema/template/dry-run/attestation/CAS/transaction/activation/immutable/repeat链、10/10 logical models、11/11 exact identities及6/6 adapters覆盖；`P0=0/P1=0/P2=0/GO`。diff-check=`PASS`，candidate hash=`32345132965ccebf0c50b5c5d2f661af326188c9f0e73f512080aa8afc863f9b`并冻结；independent Review=`NOT_RUN`，commit/GitHub/生产/真实Provider=`NOT_RUN`。
+
+v0.6.62 isolated-migration governance gate：safe m38=`16/16 PASS`，source/snapshot=`8a12f5b7402bba528b6caf4a2ccf17583d5112359510d3cb0fc54d91a9c1c11b`、库存1125、失败/重试/跳过/reportErrors0、Node22.23.1/npm10.9.8、4173 unchanged。formal full未重跑；main/independent Review=`NOT_RUN`。
+
+v0.6.62 isolated-migration gate：主副本dry-run报告SHA=`95cd8ffb…e9d`、plan hash=`51ec14bc…e05`；首次apply报告SHA=`9c1cc84b…66af`，五个精确legacy模型升级，paid Provider POST=0/USD0。首次repeat apply在写入前暴露无动作Grok错误要求22模板/34节点矩阵并fail-closed，DB保持`66554d03…1fb`；修复后干净兄弟副本全11身份action none，repeat apply报告SHA=`b1e766b6…4158`、`upgradedModels=[]`、DB前后字节同SHA。隔离库schema41、quick/integrity、FK0、active0、unsettledUnknown0。最终safe m102=`24/24 PASS`，source/snapshot=`34a24549034f773892760f994296a040a348cf93f138b265d93677b41299123a`、库存1125、异常0、4173 unchanged；isolated dry-run/apply/repeat=`PASS`，Review=`NOT_RUN`，生产仍v0.6.57/schema41且未写。
+
+v0.6.62 version/governance gate：safe m38+m81=`57/57 PASS`（16+41），source/snapshot=`dc4cd489d0028154fa162af228c1a7687c57b3e4efbd2ede6cfa8f4c887143f1`、库存1125、异常0、4173 unchanged。正式full未重跑；isolated real-copy migration与Review=`NOT_RUN`。
+
+v0.6.62 direct migration gate：最低未占用身份与隔离分支已确认；真实Grok3.5 row+active exact legacy、current proposed与v1完整runtime identity门已落实，row/active prompt-policy near-miss及非目标证明滥用均阻断。TypeScript/diff-check=`PASS`；safe m102=`24/24 PASS`，source/snapshot=`474120c1f9fdbc854b0c838c3c05d295a655e537377647624fbec06fe5b47099`、库存1125、异常0、4173 unchanged。m81+m38、完整Review、GitHub、生产迁移与Provider=`NOT_RUN`。
+
+v0.6.61 isolated-migration gate：工作副本=`v0.6.61-contract-upgrade.Tupzga`，attestation=`34d80588…c817e`；dry-run在apply前因真实`grok-imagine-video-1.5-preview` prompt policy旧合同而`FAIL_CLOSED`。工作/生产DB SHA均未变，生产恢复v0.6.57健康，v0.6.61=`UNDEPLOYED`；v0.6.62 exact/near-miss整改、定向测试与Review仍`NOT_RUN`，Provider POST=0/USD0。
+
+v0.6.61 frozen-backup gate：正式目录=`/var/lib/unboundry-rollbacks/v0.6.61-cutover-frozen.q9k50E`，source/restore各366文件，双清单=`a758e801…aea2b`，DB=`13589eea…2261`，Library=`444e64f4…80f49`；两副本schema41、quick/integrity、FK0及任务/尝试/媒体/Canvas/模型/模板/Library计数一致，结论`PASS`。首次清单引号失败目录`v0.6.61-cutover-frozen.LRLTxA`保留且生产未写。隔离迁移与真实Provider仍`NOT_RUN`。
+
+v0.6.61 production-quiet gate：连续7次`active=0/unsettledUnknown=0`，current/API version始终v0.6.57，service active/running、NRestarts0，结论`PASS`。首个诊断查询含10条已finished历史unknown（9 failed/1 cancelled），不属于未收口unknown。冻结双副本、恢复验证、隔离迁移与真实Provider仍`NOT_RUN`。
+
+v0.6.61 fresh-build gate：精确tag archive SHA=`70be072c9ea41891fe63f8b793775598307aa49055cb2b6972f94f6b8fdb1a22`且远端校验一致；独立staging=`/opt/unboundry/staging/v0.6.61-inc-gen-017-20260830.Dnplbk`，Node22.23.2/npm10.9.8，npm ci、TypeScript、Vite、6035行inventory和dist33均`PASS`，inventory SHA=`3efd2f7e6eb49b7f829257f484051ae610098b6f9a66f0e80101bfb0719f4600`。生产quiet/冻结备份/隔离迁移/真实Provider仍`NOT_RUN`。
+
+v0.6.61 GitHub gate：final PR head=`36fabedfca269491cb957e460fb9d60cd3145efe` run=`33303459401`/job=`99235705854`、34秒`PASS`；merge=`fe93d8359a5a3ee5f8bfe1d64f494ec87d4b8d3f`，main run=`33303506738`/job=`99235834351`、51秒`PASS`。annotated tag object=`19919318199d6e6b495853ce331c5aa4c00814fd`精确指向merge，Release v0.6.61=`PASS`；fresh build亦已`PASS`，生产/真实Provider仍`NOT_RUN`。
 
 v0.6.61 PR head CI：head=`31c4737f2491de71194c4f42d36be8b27095014d`，Quality gates run=`33303385616`/job=`99235504319`，29秒`PASS`。final receipt head CI=`NOT_RUN`；merge/tag/Release/生产/真实Provider仍`NOT_RUN`。
 
@@ -143,7 +201,7 @@ PR #128最终head`944ae9b`与main CI通过，merge=`e6341d5`；annotated tag obj
 | IG17-031 | 风险定向回归 | 新spec和直接依赖全绿，命令/环境/源码hash/异常数完整记录 | R7_TARGETED_REGRESSION_PASS |
 | IG17-032 | 唯一正式safe full | 仅候选冻结+Review GO后按风险执行一次；原始结果诚实记录 | CONSUMED_FAILED_1023_PASS_95_FAIL_4_NOT_RUN |
 | IG17-033 | 独立终审 | 冻结候选P0=0/P1=0/GO | REMEDIATION_REVIEW_P0_0_P1_0_P2_1_GO |
-| IG17-034 | GitHub/不可变发布 | 当前Goal已授权：PR/main CI、tag/Release、fresh build | V0_6_57_GITHUB_RELEASE_FRESH_BUILD_PASS |
+| IG17-034 | GitHub/不可变发布 | 当前Goal已授权：PR/main CI、tag/Release、fresh build | V0_6_61_GITHUB_RELEASE_FRESH_BUILD_PASS |
 | IG17-035 | 生产备份/恢复/回滚 | 当前Goal已授权：冻结备份、恢复副本、原子切换、稳定门 | PRODUCTION_TECHNICAL_PASS |
 | IG17-036 | 真实Provider最小验收 | 当前Goal累计USD100内已授权；unknown禁止第二POST | AUTHORIZED_NOT_RUN |
 | IG17-037 | 用户实页验收 | 产品发布后由用户按五步清单确认；当前尚未实施 | NOT_RUN |

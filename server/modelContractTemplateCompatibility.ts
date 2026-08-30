@@ -179,21 +179,27 @@ function modeForNode(
 export function analyzeModelContractTemplateCompatibility(input: Readonly<{
   active: ModelReleaseDocument;
   proposed: ModelReleaseDocument;
+  proposedRows?: readonly TemplateRow[];
   rows: readonly TemplateRow[];
+  runtimeEquivalentSchemaTransition?: boolean;
 }>) {
   const templateIds: string[] = [];
   const incompatibleTemplateIds = new Set<string>();
   const preexistingIncompatibleTemplateIds = new Set<string>();
   const nodes: ModelContractTemplateNodeCompatibility[] = [];
-  const preservesExecution = preservesExistingExecution(
-    input.active,
-    input.proposed,
+  const preservesExecution = input.runtimeEquivalentSchemaTransition === true ||
+    preservesExistingExecution(input.active, input.proposed);
+  const proposedRows = new Map(
+    (input.proposedRows ?? input.rows).map((row) => [row.id, row]),
   );
   for (const row of input.rows) {
     if (!row.graph.includes(input.proposed.modelId)) continue;
     templateIds.push(row.id);
     const graph = parseTemplateGraph(row.graph);
-    if (!graph) {
+    const proposedGraph = parseTemplateGraph(
+      proposedRows.get(row.id)?.graph ?? row.graph,
+    );
+    if (!graph || !proposedGraph) {
       incompatibleTemplateIds.add(row.id);
       nodes.push(Object.freeze({
         compatible: false,
@@ -204,8 +210,13 @@ export function analyzeModelContractTemplateCompatibility(input: Readonly<{
       }));
       continue;
     }
+    let hasIncompatibleNode = false;
+    let hasNonPreexistingIncompatibleNode = false;
     for (const node of graph.nodes) {
       if (!nodeUsesModel(node, input.proposed)) continue;
+      const proposedNode = proposedGraph.nodes.find((candidate) =>
+        candidate.id === node.id && nodeUsesModel(candidate, input.proposed)
+      );
       let before: ReturnType<typeof modeForNode> | undefined;
       let after: ReturnType<typeof modeForNode> | undefined;
       let beforeError: unknown;
@@ -216,12 +227,15 @@ export function analyzeModelContractTemplateCompatibility(input: Readonly<{
         beforeError = error;
       }
       try {
-        after = modeForNode(graph, node, input.proposed);
+        if (!proposedNode) throw new Error("迁移后的模板节点不存在或模型身份已变化");
+        after = modeForNode(proposedGraph, proposedNode, input.proposed);
       } catch (error) {
         afterError = error;
       }
-      if (!before && !after) preexistingIncompatibleTemplateIds.add(row.id);
-      if (!preservesExecution || !before || !after) {
+      const incompatible = !preservesExecution || !before || !after;
+      if (incompatible) {
+        hasIncompatibleNode = true;
+        if (before || after) hasNonPreexistingIncompatibleNode = true;
         incompatibleTemplateIds.add(row.id);
       }
       nodes.push(Object.freeze({
@@ -245,6 +259,13 @@ export function analyzeModelContractTemplateCompatibility(input: Readonly<{
           : {}),
         templateId: row.id,
       }));
+    }
+    // Preexisting debt is a template-level exemption, so every incompatible
+    // targeted node in that template must already fail under both contracts.
+    // A single double-failing node must never hide a sibling that is valid
+    // before the migration but invalid afterwards.
+    if (hasIncompatibleNode && !hasNonPreexistingIncompatibleNode) {
+      preexistingIncompatibleTemplateIds.add(row.id);
     }
   }
   return Object.freeze({

@@ -1,20 +1,50 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网已恢复v0.6.57/schema41且服务健康。v0.6.58因真实Mureka legacy、v0.6.59因真实Grok legacy、v0.6.60因真实GPT Image 2 legacy schema均在隔离迁移apply前正确fail-closed；三个tag/Release保持不可变且未部署。当前严格为`V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_PR_130_CI_PASS_FINAL_RECEIPT_HEAD_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。v0.6.56的真实GK成功回执保留为历史事实，不替代当前版本验收。
+> **状态分层**：现网已恢复v0.6.57/schema41且服务健康。v0.6.58因真实Mureka legacy、v0.6.59因真实Grok legacy、v0.6.60因真实GPT Image 2 legacy、v0.6.61因真实Grok3.5 prompt policy旧合同均在隔离迁移apply前正确fail-closed；四个旧tag/Release保持不可变且未部署。当前严格为`V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_62_PR_OPEN_FINAL_DOC_HEAD_CI_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。v0.6.56的真实GK成功回执保留为历史事实，不替代当前版本验收。
 
 更新日期：2026-08-30
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.61**
-本地候选代码版本：**v0.6.61**
+当前代码包版本：**v0.6.62**
+本地候选代码版本：**v0.6.62**
 当前生产部署版本：**v0.6.57**
 本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_57_USER_RECHECK`
-当前计划标记：`INC_GEN_017_GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_PR_130_CI_PASS_FINAL_RECEIPT_HEAD_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+当前计划标记：`INC_GEN_017_GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_62_PR_OPEN_FINAL_DOC_HEAD_CI_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`INC_GEN_017_V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_PR_130_CI_PASS_FINAL_RECEIPT_HEAD_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+当前发布门：`INC_GEN_017_V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_62_PR_OPEN_FINAL_DOC_HEAD_CI_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 
 ## INC-GEN-017 当前区块（2026-08-28）
 
+- PR #131 head`3aef7e8`与治理head`d01d564`的Quality gates分别33秒、36秒通过。当前推送最终CI回执head并等待同一门；生产仍v0.6.57/schema41，Provider0/USD0。
+- PR #131已创建，base/head=`main@fe93d835`/`3aef7e8`且mergeable；首个Quality gates run`33312070069`/job`99258820272`正在运行。当前推送本条治理回执后等待最终head CI，生产仍v0.6.57/schema41，Provider0/USD0。
+- v0.6.62 GitHub身份门通过：origin/main`fe93d835…b8d3f`未前进，tag/Release/same-head PR未占用，PR diff为16个预期文件、845 insertions/49 deletions且无受保护JSON。当前提交回执后push/PR/CI，生产仍v0.6.57/schema41，Provider0/USD0。
+- 候选提交后治理safe m38=`16/16 PASS`，source/snapshot`76716e87…fc747`、库存1125、异常0、HEAD`fe152fe3…f9241`、4173 unchanged。当前单独提交六份治理回执后进入GitHub身份门；生产仍v0.6.57/schema41，Provider0/USD0。
+- v0.6.62候选commit=`fe152fe3…f9241`、tree=`079464b7…90ce1`，精确10文件/611 insertions/35 deletions；六份治理和受保护JSON未进入commit。当前只运行提交后治理m38并提交治理回执，生产仍v0.6.57/schema41，Provider0/USD0。
+- Review GO六份治理同步后的safe m38=`16/16 PASS`，source/snapshot`ce9126ef…13fac`、库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged；formal full不重跑，冻结产品hash保持`bb364480…ae897`。当前只精确提交10个候选文件，治理文档与受保护JSON不进入候选commit。
+- v0.6.62独立最终Review覆盖冻结hash`bb364480…ae897`的10/10文件、53/53 hunks、完整链、10/10 models、11/11 identities、6/6 adapters与全部Provider分支，结论`P0=0/P1=0/P2=0/GO`，无finding；mixed-template P1已关闭。当前只运行Review GO治理m38后精确提交，生产仍v0.6.57/schema41，Provider0/USD0。
+- v0.6.62主审GO六份治理同步后的safe m38=`16/16 PASS`，source/snapshot`bb2f4316…d6d3c`、库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged；正式full不重跑，冻结产品hash仍为`bb364480…ae897`。当前只允许既有独立上下文只读终审。
+- v0.6.62混合模板整改候选主线程Review已覆盖10/10文件、53/53 hunks、完整迁移/事务/回滚/repeat链、10/10 logical models、11/11 exact identities、6/6 adapters与全部Provider分支，结论`P0=0/P1=0/P2=0/GO`；611 insertions/35 deletions，diff hash=`bb364480…ae897`并冻结。六份治理m38和既有独立上下文终审待执行；此前禁止commit/GitHub/生产/Provider。
+- v0.6.62隔离复验治理safe m38=`16/16 PASS`，source/snapshot`91c82e9a…ba85`、库存1125、异常0、4173 unchanged。正式full不重跑，当前进入精确diff/hash与主线程完整Review。
+- v0.6.62混合模板整改后的新隔离主/重复副本均通过：主dry-run/apply完成5 revisions与22模板/34节点，repeat为11/11 none、迁移0且DB字节不变；schema41、integrity/FK/active、34 image/0 reference和脱敏audit门通过。精确路径与SHA见Checkpoint；生产仍v0.6.57/schema41健康未写，Provider0/USD0。当前只做治理m38与重新Review。
+- v0.6.62混合模板P1已定向关闭：逐模板只有全部不兼容节点均为before/after双失败才标preexisting；混合新增回归保持blocking。TypeScript/diff-check通过，safe m102最终`24/24 PASS`，source/snapshot`909b1cc8…d3c0`、库存1125、异常0、4173 unchanged。当前只重跑新的隔离dry-run/apply/repeat与重新Review；生产仍v0.6.57/schema41、Provider POST=0/USD0。
+- v0.6.62冻结hash`29e09816…2f55`独立终审覆盖10/10文件、50/50 hunks、完整链、10/10 models、11/11 identities和6/6 adapters后为`P0=0/P1=1/P2=0/NO-GO`。P1是templateId级preexisting集合可用一个双失败节点掩盖同模板另一个before-pass/after-fail新回归；候选解冻，当前只实施节点级聚合与混合模板回归，然后最小验证/隔离复验/重新Review。
+- v0.6.62主线程逐代码Review覆盖10/10文件、50/50 hunks、完整schema/template/dry-run/attestation/CAS/transaction/revision/activation/audit/rollback/repeat链、10/10 logical models、11/11 exact identities及6/6 adapters/全部Provider分支；`P0=0/P1=0/P2=0/GO`。候选500 insertions/33 deletions、diff-check通过，hash`29e09816…2f55`并冻结；当前只等待既有独立上下文只读终审，GO前不commit/GitHub/生产/Provider。
+- v0.6.62隔离迁移治理回执safe m38=`16/16 PASS`，source/snapshot`57f644da…8d006`、库存1125、失败/重试/跳过/reportErrors0、Node22.23.1/npm10.9.8、4173 unchanged；架构/TypeScript/build前置通过，正式full未重跑。当前进入候选精确diff/hash与完整Review。
+- v0.6.62最终代码的真实冻结恢复副本迁移已`PASS`：主副本dry-run `d3f27a13…a8d1`/plan `8c0dc03c…cc05`，apply `37e7f100…7194`，DB `13589eea…2261→19ed87b8…039`，五个exact legacy revision升级、22模板/34节点原子迁移，`image=34/reference=0`且audit无graph正文。新兄弟副本attestation `34864a3d…c5b5`的repeat dry-run `e7019f57…2c66`/plan `760e0da9…9fd4`为11/11 action none，repeat apply `7884ff99…8c7e`、`upgradedModels=[]`且DB字节不变。schema41/quick/integrity/FK/active门通过，Provider POST=0/USD0；生产仍v0.6.57/schema41、DB未写。当前仅治理m38与完整Review待执行。
+- v0.6.62当前最终代码已增加显式Grok模板事务迁移：22模板/34节点的legacy `videoParameters.inputMode=reference`按首帧边迁为`image`，否则为`text`；计划/audit仅记录ID和图hash，Templates域事务命令逐行CAS并与revision发布同事务，失败整体回滚且repeat不重做。直接跨域SQL曾被架构预检阻断，已改为合法事务命令。safe m102最终`24/24 PASS`，source/snapshot`8942d621…748f4`、库存1125、异常0、4173 unchanged；两次`23/24`只为测试夹具诊断。生产仍v0.6.57/schema41且未写，当前只重跑隔离dry-run/apply/repeat并重新Review。
+- v0.6.62独立P1已关闭：exact迁移恢复真实active-before/proposed-after，只有两侧均失败可扣为preexisting，legacy-only selector与unparseable保持阻断。TypeScript/diff-check与safe m102 `24/24 PASS`（source/snapshot`8ccaa3cd…c880`、库存1125、异常0、4173 unchanged）；因迁移逻辑改变，隔离真实副本dry-run/apply/repeat与重新Review待执行。
+- v0.6.62冻结hash`32345132…3f9b`独立终审为`P0=0/P1=1/P2=0/NO-GO`，候选解冻。P1：exact schema migration用target同时做before/after并批量扣除parseable incompatible，可放行active legacy有效、target current无效的模板；当前只开放真实before/after最小整改、m102回归与重新Review，发布门关闭。
+- v0.6.62主线程增量终审覆盖8/8文件、31/31 hunks、完整迁移/模板/attestation/CAS/事务/激活/immutable/repeat链、10/10 logical models、11/11 exact identities和6/6 adapter分支，结论`P0=0/P1=0/P2=0/GO`。候选321 insertions/16 deletions、diff-check通过，hash`32345132…3f9b`并冻结；当前等待既有独立上下文只读终审，GO前不commit/GitHub/生产/真实Provider。
+- v0.6.62隔离迁移阶段治理safe m38 `16/16 PASS`，source/snapshot`8a12f5b…c11b`、库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged；正式full未重跑。当前进入精确diff/hash与完整Review。
+- v0.6.62隔离副本dry-run/apply/repeat已`PASS`：最终dry-run报告`95cd8ffb…e9d`、plan hash`51ec14bc…e05`；首次apply报告`9c1cc84b…66af`并升级五个exact legacy活动revision。首个repeat apply在任何写入前暴露无动作Grok误跑22模板/34节点矩阵的幂等缺陷并fail-closed，DB保持post-apply SHA`66554d03…1fb`；修复后干净兄弟副本全11身份action none，repeat apply报告`b1e766b6…4158`、`upgradedModels=[]`、DB前后字节同SHA。隔离库schema41/integrity/FK/active/unsettled门通过；最终safe m102 `24/24 PASS`，source/snapshot`34a24549…123a`、库存1125、异常0、4173 unchanged。生产继续v0.6.57/schema41、DB SHA`13589eea…2261`，Provider POST=0/USD0；当前Review待执行。
+- v0.6.62首轮隔离dry-run已越过Grok3.5 schema门并在apply前暴露历史模板双计阻塞。整改仅对已有exact runtime-equivalence证明的GPT Image 2/Grok3/Grok3.5迁移扣除可解析preexisting项；unparseable、非exact和新增回归继续阻断。最终safe m102 `24/24 PASS`（source/snapshot`e1f9e974…abc52`、库存1125、异常0、4173 unchanged），TypeScript/diff-check通过；下一步重跑隔离dry-run/apply/repeat，Provider POST=0/USD0。
+- v0.6.62版本/治理safe m38+m81 `57/57 PASS`（16+41），source/snapshot`dc4cd489…43f1`、库存1125、异常0、4173 unchanged；正式full未重跑。下一步隔离真实副本dry-run/apply/repeat与完整Review。
+- v0.6.62最低未占用身份已确认，分支基线`origin/main@fe93d835…b8d3f`；exact legacy Grok3.5 row+active到current的v1等价迁移与near-miss阻断已实现。TypeScript/diff-check通过，safe m102 `24/24 PASS`（source/snapshot`474120c1…099`、库存1125、异常0、4173 unchanged）。下一步m81+m38与完整Review；Provider POST=0/USD0。
+- v0.6.61隔离工作副本`v0.6.61-contract-upgrade.Tupzga`在任何apply前因真实Grok3.5旧prompt policy fail-closed；工作/生产DB SHA保持`13589eea…2261`，v0.6.61未部署。生产已恢复v0.6.57健康；下一步v0.6.62 exact legacy整改，Provider POST=0/USD0。
+- v0.6.61首次冻结目录`v0.6.61-cutover-frozen.LRLTxA`因清单引号错误fail-closed并保留；正式目录`v0.6.61-cutover-frozen.q9k50E`的source/restore各366、双清单`a758e801…aea2b`、DB`13589eea…2261`，schema41/integrity/FK及全部关键计数一致。服务inactive/enabled，生产DB未写；下一步仅对restore复制的隔离工作副本迁移。
+- v0.6.61生产quiet gate连续7次active0/unsettledUnknown0；current/API仍为v0.6.57且service active/running、NRestarts0。首个诊断口径含10条已finished历史unknown，按未收口口径核对为0；该门已闭合，Provider POST=0/USD0。
+- v0.6.61精确tag archive SHA=`70be072c9ea41891fe63f8b793775598307aa49055cb2b6972f94f6b8fdb1a22`；服务器独立staging=`/opt/unboundry/staging/v0.6.61-inc-gen-017-20260830.Dnplbk`固定Node22.23.2/npm10.9.8完成npm ci、TypeScript、Vite、6035行inventory（SHA=`3efd2f7e6eb49b7f829257f484051ae610098b6f9a66f0e80101bfb0719f4600`）和dist33验证；该门已闭合，生产仍精确为v0.6.57/schema41，Provider POST=0/USD0。
+- PR #130最终head/main CI通过，merge=`fe93d835…b8d3f`；annotated tag object=`19919318…814fd`精确指向该merge，GitHub Release v0.6.61已发布；该GitHub身份门已闭合。
 - PR #130 head`31c4737`的Quality gates run`33303385616`/job`99235504319`以29秒通过；当前只推送本条CI纯文档回执并等待最终head同一门。
 - v0.6.61分支已推送并创建PR #130，base/head=`main@b5867b3`/`dc64f08`、mergeable；回写本条后推送最终纯文档head，等待Quality gates通过。
 - v0.6.61实时GitHub身份门通过：origin/main`b5867b3…9de2`未前进，v0.6.61 local/remote tag与Release未占用，无既有PR；PR差异14个预期文件且不含受保护JSON。当前提交身份回执后push/PR/CI。

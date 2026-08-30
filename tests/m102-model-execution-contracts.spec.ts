@@ -1390,6 +1390,15 @@ test("execution semantics cannot change without a contract version bump", () => 
     })).toThrow(expect.objectContaining({
       code: "EXECUTION_CONTRACT_VERSION_REQUIRED",
     }));
+    expect(() => upgradeModelContractRevision(store, "admin-a", {
+      document: changed,
+      equivalentRuntimeSchemaTransition:
+        "exact-legacy-grok-imagine-video-1.5-v1",
+      expectedActiveRevisionId: active.revisionId,
+      impact: { incompatibleTemplateIds: [], templateIds: [] },
+    })).toThrow(expect.objectContaining({
+      code: "EXECUTION_CONTRACT_VERSION_REQUIRED",
+    }));
   } finally {
     store.close();
   }
@@ -1462,7 +1471,10 @@ const productionGkAudit = JSON.parse(readFileSync(join(
 };
 const productionGkTemplateNodes = productionGkAudit.templates;
 
-function productionGkTemplateRows(modelId = "model-gk-video-3") {
+function productionGkTemplateRows(
+  modelId = "model-gk-video-3",
+  legacyStoredInputMode = false,
+) {
   return Object.entries(productionGkTemplateNodes).map(([id, nodeIds]) => {
     const normalized = productionGkAudit.normalizedNodeContract;
     const sourceNodes = [
@@ -1474,7 +1486,12 @@ function productionGkTemplateRows(modelId = "model-gk-video-3") {
         label: "视频",
         inputMode: normalized.nodeInputMode,
         videoModelId: modelId,
-        videoParameters: productionGkAudit.normalizedNodeContract.parameters,
+        videoParameters: {
+          ...productionGkAudit.normalizedNodeContract.parameters,
+          ...(legacyStoredInputMode
+            ? { inputMode: normalized.nodeInputMode }
+            : {}),
+        },
         videoPrompt: "脱敏生产提示词",
         videoPromptReady: productionGkAudit.normalizedNodeContract.promptReady,
       },
@@ -1805,6 +1822,7 @@ test("schema41 upgrade audits 11 models, publishes GK revision 2, archives kwvid
       if (providerModelId === "grok-imagine-video-1.5-preview") {
         delete persistedCapabilitySchema.referencePolicy;
         delete persistedCapabilitySchema.referenceMediaRules;
+        delete persistedCapabilitySchema.inputPolicy!.promptPolicy;
       }
       if (providerModelId === "gpt-image-2") {
         delete persistedCapabilitySchema.referencePolicy;
@@ -1910,10 +1928,32 @@ test("schema41 upgrade audits 11 models, publishes GK revision 2, archives kwvid
       } as const;
       recordAudit(store, "admin-a", "model_contract.publish", null, { modelId: id, revision });
     }
-    for (const row of productionGkTemplateRows()) {
+    for (const row of productionGkTemplateRows(
+      "model-gk-video-3",
+      true,
+    )) {
       store.prepare("INSERT INTO public_templates VALUES (?, ?, 'published')")
         .run(row.id, row.graph);
     }
+    const preexistingGptTemplateId =
+      "ffffffff-ffff-4fff-8fff-fffffffffff1";
+    store.prepare("INSERT INTO public_templates VALUES (?, ?, 'published')")
+      .run(preexistingGptTemplateId, JSON.stringify({
+        edges: [],
+        nodes: [{
+          data: {
+            imageModelId: "model-image-gpt",
+            imageParameters: { unsupportedParameter: true },
+            label: "Image",
+          },
+          id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee1",
+          position: { x: 0, y: 0 },
+          style: { height: 250, width: 250 },
+          type: "image",
+          zIndex: 1,
+        }],
+        version: 1,
+      }));
     store.prepare("INSERT INTO canvas_documents VALUES (?)")
       .run(JSON.stringify([{ data: { videoModelId: "model-kwvideo-v2" } }]));
     const exactLegacyGptImageRow = store.prepare(`
@@ -1980,6 +2020,66 @@ test("schema41 upgrade audits 11 models, publishes GK revision 2, archives kwvid
         JSON.stringify(exactLegacyGptImageAudit.details),
         exactLegacyGptImageAudit.id,
       );
+    const exactLegacyGrokImagineRow = store.prepare(`
+      SELECT default_parameters FROM model_profiles
+      WHERE id = 'model-video-grok-imagine'
+    `).get() as { default_parameters: string };
+    const nearMissGrokImagineRow = JSON.parse(
+      exactLegacyGrokImagineRow.default_parameters,
+    );
+    nearMissGrokImagineRow.inputPolicy.promptPolicy = "own-or-upstream-text";
+    store.prepare(`
+      UPDATE model_profiles SET default_parameters = ?
+      WHERE id = 'model-video-grok-imagine'
+    `).run(JSON.stringify(nearMissGrokImagineRow));
+    expect(() => planModelContractUpgrade(store))
+      .toThrow(/模型 grok-imagine-video-1.5-preview 合同迁移失败/);
+    store.prepare(`
+      UPDATE model_profiles SET default_parameters = ?
+      WHERE id = 'model-video-grok-imagine'
+    `).run(exactLegacyGrokImagineRow.default_parameters);
+    const exactLegacyGrokImagineAudit = store.prepare(`
+      SELECT id, details FROM admin_audit_events
+      WHERE action = 'model_contract.publish'
+      ORDER BY id
+    `).all().map((row) => ({
+      details: JSON.parse(String(row.details)) as {
+        modelId: string;
+        revision: {
+          document: ReturnType<typeof defaultModelReleaseDocument>;
+          hash: string;
+          validation: { compilerHash: string };
+        };
+      },
+      id: Number(row.id),
+    })).find((row) => row.details.modelId ===
+      "model-video-grok-imagine")!;
+    const nearMissGrokImagineActiveDocument = structuredClone(
+      exactLegacyGrokImagineAudit.details.revision.document,
+    );
+    nearMissGrokImagineActiveDocument.capabilitySchema.inputPolicy!
+      .promptPolicy = "own-or-upstream-text";
+    const nearMissGrokImagineActiveDetails = {
+      ...exactLegacyGrokImagineAudit.details,
+      revision: {
+        ...exactLegacyGrokImagineAudit.details.revision,
+        document: nearMissGrokImagineActiveDocument,
+        hash: sha(nearMissGrokImagineActiveDocument),
+      },
+    };
+    store.prepare("UPDATE admin_audit_events SET details = ? WHERE id = ?")
+      .run(
+        JSON.stringify(nearMissGrokImagineActiveDetails),
+        exactLegacyGrokImagineAudit.id,
+      );
+    expect(() => planModelContractUpgrade(store)).toThrow(
+      /grok-imagine-video-1.5-preview默认schema与活动revision迁移身份不一致/,
+    );
+    store.prepare("UPDATE admin_audit_events SET details = ? WHERE id = ?")
+      .run(
+        JSON.stringify(exactLegacyGrokImagineAudit.details),
+        exactLegacyGrokImagineAudit.id,
+      );
     const exactLegacyGrokRow = store.prepare(`
       SELECT default_parameters FROM model_profiles
       WHERE id = 'model-gk-video-3'
@@ -2043,6 +2143,149 @@ test("schema41 upgrade audits 11 models, publishes GK revision 2, archives kwvid
         hasTextFoundation: true,
         templateImpact: { incompatibleTemplateIds: [] },
       });
+    const gkTemplateMigrations = plan.models.find((model) =>
+      model.providerModelId === "grok-video-3"
+    )!.templateMigrations;
+    expect(gkTemplateMigrations).toHaveLength(22);
+    expect(gkTemplateMigrations.flatMap((migration) => migration.nodeIds))
+      .toHaveLength(34);
+    expect(plan.models.find((model) => model.providerModelId === "gpt-image-2"))
+      .toMatchObject({
+        action: "publish-revision",
+        templateImpact: {
+          incompatibleTemplateIds: [],
+          preexistingIncompatibleTemplateIds: [preexistingGptTemplateId],
+          templateIds: [preexistingGptTemplateId],
+        },
+      });
+    const mixedGrokTemplateId =
+      "ffffffff-ffff-4fff-8fff-fffffffffff3";
+    store.prepare("INSERT INTO public_templates VALUES (?, ?, 'published')")
+      .run(mixedGrokTemplateId, JSON.stringify({
+        edges: [
+          {
+            data: { inputOrder: 1 },
+            id: "dddddddd-dddd-4ddd-8ddd-ddddddddddd1",
+            source: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee3",
+            target: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee5",
+            type: "cuttable",
+          },
+          {
+            data: { inputOrder: 2, inputRole: "first-frame" },
+            id: "dddddddd-dddd-4ddd-8ddd-ddddddddddd2",
+            source: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee4",
+            target: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee5",
+            type: "cuttable",
+          },
+          {
+            data: { inputOrder: 1 },
+            id: "dddddddd-dddd-4ddd-8ddd-ddddddddddd3",
+            source: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee3",
+            target: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee6",
+            type: "cuttable",
+          },
+          {
+            data: { inputOrder: 2, inputRole: "first-frame" },
+            id: "dddddddd-dddd-4ddd-8ddd-ddddddddddd4",
+            source: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee4",
+            target: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee6",
+            type: "cuttable",
+          },
+        ],
+        nodes: [
+          {
+            data: { label: "Text" },
+            id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee3",
+            position: { x: 0, y: 0 },
+            type: "text",
+            zIndex: 1,
+          },
+          {
+            data: { label: "Image" },
+            id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee4",
+            position: { x: 0, y: 300 },
+            type: "image",
+            zIndex: 1,
+          },
+          {
+            data: {
+              label: "Historical debt",
+              videoModelId: "model-gk-video-3",
+              videoParameters: {
+                inputMode: "reference",
+                unsupportedParameter: true,
+              },
+              videoPrompt: "脱敏生产提示词",
+              videoPromptReady: true,
+            },
+            id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee5",
+            position: { x: 400, y: 0 },
+            type: "video",
+            zIndex: 1,
+          },
+          {
+            data: {
+              label: "New regression",
+              videoModelId: " model-gk-video-3 ",
+              videoParameters: { inputMode: "reference" },
+              videoPrompt: "脱敏生产提示词",
+              videoPromptReady: true,
+            },
+            id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee6",
+            position: { x: 400, y: 300 },
+            type: "video",
+            zIndex: 1,
+          },
+        ],
+        version: 1,
+      }));
+    const mixedGrokPlan = planModelContractUpgrade(store);
+    const mixedGrokImpact = mixedGrokPlan.models.find((model) =>
+      model.providerModelId === "grok-video-3"
+    )!.templateImpact;
+    expect(mixedGrokImpact.incompatibleTemplateIds).toContain(
+      mixedGrokTemplateId,
+    );
+    expect(mixedGrokImpact.preexistingIncompatibleTemplateIds).not.toContain(
+      mixedGrokTemplateId,
+    );
+    expect(() => applyModelContractUpgrade(store, "admin-a", {
+      expectedBaselineSnapshotHash: mixedGrokPlan.baselineSnapshotHash,
+    })).toThrow(
+      /GK生产模板语义矩阵未达到22模板\/34节点兼容门|模板影响超出核准边界/,
+    );
+    store.prepare("DELETE FROM public_templates WHERE id = ?")
+      .run(mixedGrokTemplateId);
+    const regressiveSeedanceTemplateId =
+      "ffffffff-ffff-4fff-8fff-fffffffffff2";
+    store.prepare("INSERT INTO public_templates VALUES (?, ?, 'published')")
+      .run(regressiveSeedanceTemplateId, JSON.stringify({
+        edges: [],
+        nodes: [{
+          data: {
+            label: "Video",
+            videoModelId: "model-video-seedance",
+            videoParameters: { unsupportedParameter: true },
+          },
+          id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee2",
+          position: { x: 0, y: 0 },
+          style: { height: 250, width: 250 },
+          type: "video",
+          zIndex: 1,
+        }],
+        version: 1,
+      }));
+    const regressivePlan = planModelContractUpgrade(store);
+    expect(regressivePlan.models.find((model) =>
+      model.providerModelId === "doubao-seedance-2-0-mini-260615"
+    )?.templateImpact.incompatibleTemplateIds).toEqual([
+      regressiveSeedanceTemplateId,
+    ]);
+    expect(() => applyModelContractUpgrade(store, "admin-a", {
+      expectedBaselineSnapshotHash: regressivePlan.baselineSnapshotHash,
+    })).toThrow(/模板影响超出核准边界/);
+    store.prepare("DELETE FROM public_templates WHERE id = ?")
+      .run(regressiveSeedanceTemplateId);
     expect(plan.models.filter((model) => model.action === "publish-revision")
       .map((model) => model.providerModelId).sort()).toEqual([
         "doubao-seedance-2-0-mini-260615",
@@ -2055,7 +2298,10 @@ test("schema41 upgrade audits 11 models, publishes GK revision 2, archives kwvid
       item.action === "publish-revision"
     )) {
       expect(model.proposed.executionContract.version).toBe(
-        model.providerModelId === "gpt-image-2" ? 1 : 2,
+        model.providerModelId === "gpt-image-2" ||
+          model.providerModelId === "grok-imagine-video-1.5-preview"
+          ? 1
+          : 2,
       );
     }
     expect(plan.models.find((model) => model.providerModelId === "kwvideo-v2"))
@@ -2118,6 +2364,18 @@ test("schema41 upgrade audits 11 models, publishes GK revision 2, archives kwvid
       expectedBaselineSnapshotHash: invalidCredentialPlan.baselineSnapshotHash,
     }))
       .toThrow(/模型能力绑定不存在/);
+    const templateInputModes = () => store.prepare(`
+      SELECT graph FROM public_templates WHERE status = 'published'
+    `).all().flatMap((row) => {
+      const graph = JSON.parse(String(row.graph)) as {
+        nodes: Array<{ data: Record<string, unknown> }>;
+      };
+      return graph.nodes.filter((node) =>
+        node.data.videoModelId === "model-gk-video-3"
+      ).map((node) => (node.data.videoParameters as { inputMode?: unknown })
+        ?.inputMode);
+    });
+    expect(templateInputModes()).toEqual(Array(34).fill("reference"));
     expect(modelContractState(store, "model-gk-video-3").history).toHaveLength(1);
     expect(store.prepare("SELECT status, archived_at FROM model_profiles WHERE id = 'model-kwvideo-v2'").get())
       .toEqual({ status: "published", archived_at: null });
@@ -2148,9 +2406,22 @@ test("schema41 upgrade audits 11 models, publishes GK revision 2, archives kwvid
       .toHaveLength(2);
     expect(modelContractState(store, "model-audio-mureka").history)
       .toHaveLength(2);
+    expect(templateInputModes()).toEqual(Array(34).fill("image"));
     expect(store.prepare("SELECT status, archived_at FROM model_profiles WHERE id = 'model-kwvideo-v2'").get())
       .toMatchObject({ status: "disabled", archived_at: expect.any(String) });
+    store.prepare("DELETE FROM public_templates").run();
     const repeatedPlan = planModelContractUpgrade(store);
+    expect(repeatedPlan.models.find((model) =>
+      model.providerModelId === "grok-video-3"
+    )).toMatchObject({
+      action: "none",
+      templateMigrations: [],
+      templateImpact: {
+        incompatibleTemplateIds: [],
+        nodeMatrix: [],
+        templateIds: [],
+      },
+    });
     const repeated = applyModelContractUpgrade(store, "admin-a", {
       expectedBaselineSnapshotHash: repeatedPlan.baselineSnapshotHash,
     });

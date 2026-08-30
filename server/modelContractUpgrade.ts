@@ -25,6 +25,7 @@ import {
 } from "./modelReleaseRevisionStore";
 import {
   gptImage2SchemaState,
+  grokImagineVideo15SchemaState,
   grokVideo3SchemaState,
 } from "./currentModelReleasePolicy";
 import {
@@ -36,6 +37,10 @@ import {
   publishedTemplateGraphs,
   publishedTemplateIdsUsingModel,
 } from "./templateContractQueries";
+import { parseTemplateGraph } from "./templateCatalog";
+import { migratePublishedTemplateGraphsCommand } from
+  "./templateTransactionCommands";
+import { executeTransactionScopedCommand } from "./transactionCommand";
 import {
   analyzeModelContractTemplateCompatibility,
 } from "./modelContractTemplateCompatibility";
@@ -183,6 +188,47 @@ function gptImage2MigrationSchemaState(
   });
 }
 
+function grokImagineVideo15MigrationSchemaState(
+  row: SeedRow,
+  active: ModelReleaseDocument,
+) {
+  if (row.providerModelId !== "grok-imagine-video-1.5-preview") {
+    return undefined;
+  }
+  let persisted: unknown;
+  try {
+    persisted = JSON.parse(row.default_parameters) as unknown;
+  } catch {
+    return Object.freeze({ active: "other", row: "other" } as const);
+  }
+  return Object.freeze({
+    active: grokImagineVideo15SchemaState(active.capabilitySchema),
+    row: grokImagineVideo15SchemaState(persisted),
+  });
+}
+
+function isExactLegacyGrokImagineVideo15V1SchemaTransition(
+  row: SeedRow,
+  active: ModelReleaseDocument,
+  proposed: ModelReleaseDocument,
+) {
+  const state = grokImagineVideo15MigrationSchemaState(row, active);
+  return state?.row === "legacy" && state.active === "legacy" &&
+    active.executionContract.version === 1 &&
+    proposed.executionContract.version === 1 &&
+    active.modelId === proposed.modelId &&
+    active.capability === proposed.capability &&
+    active.connectorFamily === proposed.connectorFamily &&
+    active.connectorVersion === proposed.connectorVersion &&
+    active.providerModelId === proposed.providerModelId &&
+    active.providerProfileId === proposed.providerProfileId &&
+    active.providerProtocol === proposed.providerProtocol &&
+    active.runtime === proposed.runtime &&
+    active.evidence === proposed.evidence &&
+    snapshotHash(active.executionContract) ===
+      snapshotHash(proposed.executionContract);
+}
+
 function isExactLegacyGptImage2V1SchemaTransition(
   row: SeedRow,
   active: ModelReleaseDocument,
@@ -203,6 +249,67 @@ function isExactLegacyGptImage2V1SchemaTransition(
     active.evidence === proposed.evidence &&
     snapshotHash(active.executionContract) ===
       snapshotHash(proposed.executionContract);
+}
+
+function exactLegacyGrokTemplateMigrations(
+  row: SeedRow,
+  templates: readonly Readonly<{ graph: string; id: string }>[],
+) {
+  if (row.providerModelId !== "grok-video-3") return Object.freeze([]);
+  return Object.freeze(templates.flatMap((template) => {
+    const graph = parseTemplateGraph(template.graph);
+    if (!graph) return [];
+    const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
+    const migratedNodeIds: string[] = [];
+    const nodes = graph.nodes.map((node) => {
+      if (
+        node.type !== "video" ||
+        node.data.videoModelId !== row.id ||
+        !node.data.videoParameters ||
+        typeof node.data.videoParameters !== "object" ||
+        Array.isArray(node.data.videoParameters) ||
+        (node.data.videoParameters as Record<string, unknown>).inputMode !==
+          "reference"
+      ) return node;
+      const hasFirstFrame = graph.edges.some((edge) =>
+        edge.target === node.id &&
+        edge.data?.inputRole === "first-frame" &&
+        nodesById.get(edge.source)?.type === "image"
+      );
+      migratedNodeIds.push(node.id);
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          videoParameters: {
+            ...(node.data.videoParameters as Record<string, unknown>),
+            inputMode: hasFirstFrame ? "image" : "text",
+          },
+        },
+      };
+    });
+    if (!migratedNodeIds.length) return [];
+    const afterGraph = JSON.stringify({ ...graph, nodes });
+    return [Object.freeze({
+      afterGraph,
+      afterGraphHash: snapshotHash(afterGraph),
+      beforeGraph: template.graph,
+      beforeGraphHash: snapshotHash(template.graph),
+      nodeIds: Object.freeze(migratedNodeIds.sort()),
+      templateId: template.id,
+    })];
+  }));
+}
+
+function templateMigrationSummary(
+  migrations: ReturnType<typeof exactLegacyGrokTemplateMigrations>,
+) {
+  return Object.freeze(migrations.map((migration) => Object.freeze({
+    afterGraphHash: migration.afterGraphHash,
+    beforeGraphHash: migration.beforeGraphHash,
+    nodeIds: migration.nodeIds,
+    templateId: migration.templateId,
+  })));
 }
 
 function schema(row: SeedRow) {
@@ -245,6 +352,10 @@ function schema(row: SeedRow) {
       (
         row.providerModelId === "gpt-image-2" &&
         gptImage2SchemaState(persisted) === "legacy"
+      ) ||
+      (
+        row.providerModelId === "grok-imagine-video-1.5-preview" &&
+        grokImagineVideo15SchemaState(persisted) === "legacy"
       ) ||
       (
         row.providerModelId === "mureka-9" &&
@@ -301,6 +412,19 @@ function targetDocument(row: SeedRow, active: ModelReleaseDocument) {
       gptImageSchemaState.row !== gptImageSchemaState.active
     )
   ) throw new Error("gpt-image-2默认schema与活动revision迁移身份不一致");
+  const grokImagineSchemaState =
+    grokImagineVideo15MigrationSchemaState(row, active);
+  if (
+    grokImagineSchemaState && (
+      grokImagineSchemaState.row === "other" ||
+      grokImagineSchemaState.active === "other" ||
+      grokImagineSchemaState.row !== grokImagineSchemaState.active
+    )
+  ) {
+    throw new Error(
+      "grok-imagine-video-1.5-preview默认schema与活动revision迁移身份不一致",
+    );
+  }
   const semanticChanged = inspectModelReleaseDocument(aligned).documentHash !==
     inspectModelReleaseDocument(active).documentHash;
   if (semanticChanged) {
@@ -310,6 +434,13 @@ function targetDocument(row: SeedRow, active: ModelReleaseDocument) {
     const exactLegacyGptImageV1SchemaNarrowing =
       isExactLegacyGptImage2V1SchemaTransition(row, active, aligned);
     if (exactLegacyGptImageV1SchemaNarrowing) return aligned;
+    const exactLegacyGrokImagineV1SchemaNarrowing =
+      isExactLegacyGrokImagineVideo15V1SchemaTransition(
+        row,
+        active,
+        aligned,
+      );
+    if (exactLegacyGrokImagineV1SchemaNarrowing) return aligned;
     const requiredVersion = active.executionContract.version === 1
       ? 2 as const
       : undefined;
@@ -420,27 +551,62 @@ export function planModelContractUpgrade(store: DatabaseSync) {
     if (!row.archived_at && !archiveWithoutExecution) {
       assertUpgradeReleaseDocument(row, proposed);
     }
-    const exactLegacyGrok =
-      grokVideo3MigrationSchemaState(row, active.document)?.row === "legacy";
-    // The exact production legacy Grok schema exposed an unused `reference`
-    // selector while its immutable execution contract already had only text
-    // and first-frame modes. For template impact, compare every saved node
-    // against the narrowed schema on both sides: a template that actually
-    // depends on the removed selector still fails, while the 22/34 templates
-    // whose executable inputs are unchanged remain provably compatible.
-    const compatibilityActive = exactLegacyGrok
-      ? Object.freeze({
-          ...active.document,
-          capabilitySchema: proposed.capabilitySchema,
-        })
-      : active.document;
-    const semantic = compatibilityActive.connectorFamily === proposed.connectorFamily
+    const exactEquivalentRuntimeSchemaTransition =
+      isExactLegacyGptImage2V1SchemaTransition(
+        row,
+        active.document,
+        proposed,
+      ) || isExactLegacyGrokImagineVideo15V1SchemaTransition(
+        row,
+        active.document,
+        proposed,
+      ) || isExactLegacyGrokVideo3V2SchemaTransition(
+        row,
+        active.document,
+        proposed,
+      );
+    const templateMigrations = exactEquivalentRuntimeSchemaTransition
+      ? exactLegacyGrokTemplateMigrations(row, templates)
+      : Object.freeze([]);
+    const proposedTemplates = templateMigrations.length
+      ? (() => {
+          const byId = new Map(templateMigrations.map((migration) => [
+            migration.templateId,
+            migration.afterGraph,
+          ]));
+          return templates.map((template) => ({
+            ...template,
+            graph: byId.get(template.id) ?? template.graph,
+          }));
+        })()
+      : templates;
+    // An exact proof permits the analyzer to skip only its broad runtime/schema
+    // identity comparison. Parameter validity must still use the real active
+    // document for `before` and the target document for `after`, otherwise a
+    // saved legacy-only value could be misclassified as historical debt.
+    const semantic = active.document.connectorFamily === proposed.connectorFamily
       ? analyzeModelContractTemplateCompatibility({
-          active: compatibilityActive,
+          active: active.document,
           proposed,
+          proposedRows: proposedTemplates,
           rows: templates,
+          runtimeEquivalentSchemaTransition:
+            exactEquivalentRuntimeSchemaTransition,
         })
       : undefined;
+    const preexistingIncompatibleTemplateIds = new Set(
+      semantic?.preexistingIncompatibleTemplateIds ?? [],
+    );
+    // Exact migration proofs above establish byte-for-byte runtime identity.
+    // Only a template rejected by both the real active and target documents is
+    // historical debt. Active-pass/target-fail remains a newly introduced
+    // regression, and unparseable graphs remain blocking.
+    const blockingIncompatibleTemplateIds = semantic
+      ? semantic.incompatibleTemplateIds.filter((templateId) =>
+          !exactEquivalentRuntimeSchemaTransition ||
+          !preexistingIncompatibleTemplateIds.has(templateId)
+        )
+      : [];
     const action = archiveWithoutExecution
       ? "archive"
       : semanticContractUpgradeProviderModelIds.has(row.providerModelId) &&
@@ -472,12 +638,15 @@ export function planModelContractUpgrade(store: DatabaseSync) {
       proposedDocumentHash: proposedProof.documentHash,
       proposedModes: modeSummary(proposed),
       proposed,
+      templateMigrations: templateMigrationSummary(templateMigrations),
       templateImpact: semantic
         ? {
-            incompatibleTemplateIds: semantic.incompatibleTemplateIds,
+            incompatibleTemplateIds: Object.freeze(
+              blockingIncompatibleTemplateIds,
+            ),
             nodeMatrix: semantic.nodes,
             preexistingIncompatibleTemplateIds:
-              semantic.preexistingIncompatibleTemplateIds,
+              Object.freeze([...preexistingIncompatibleTemplateIds].sort()),
             templateIds: semantic.templateIds,
           }
         : {
@@ -512,6 +681,7 @@ export function planModelContractUpgrade(store: DatabaseSync) {
       modelId: model.modelId,
       providerModelId: model.providerModelId,
       providerSnapshot: model.providerSnapshot,
+      templateMigrations: model.templateMigrations,
     })),
     providerModelIds,
     schemaVersion: Number(store.prepare("PRAGMA user_version").get()!.user_version),
@@ -639,11 +809,11 @@ export function applyModelContractUpgrade(
     if (unexpected.length) throw new Error("存在GK以外的当前政策漂移，升级已阻断");
     const gk = before.models.find((model) => model.providerModelId === "grok-video-3");
     if (!gk) throw new Error("缺少grok-video-3活动合同");
-    if (
+    if (gk.action === "publish-revision" && (
       gk.templateImpact.incompatibleTemplateIds.length ||
       gk.templateImpact.nodeMatrix.length !== 34 ||
       gk.templateImpact.templateIds.length !== 22
-    ) throw new Error("GK生产模板语义矩阵未达到22模板/34节点兼容门");
+    )) throw new Error("GK生产模板语义矩阵未达到22模板/34节点兼容门");
     const publishable = before.models.filter((model) =>
       model.action === "publish-revision"
     );
@@ -663,6 +833,32 @@ export function applyModelContractUpgrade(
       if (!active || active.revisionId !== model.activeRevisionId) {
         throw new Error("活动模型合同已变化，升级已阻断");
       }
+      const migrations = isExactLegacyGrokVideo3V2SchemaTransition(
+          row,
+          active.document,
+          model.proposed,
+        )
+        ? exactLegacyGrokTemplateMigrations(
+            row,
+            publishedTemplateGraphs(store),
+          )
+        : Object.freeze([]);
+      if (
+        JSON.stringify(templateMigrationSummary(migrations)) !==
+          JSON.stringify(model.templateMigrations)
+      ) throw new Error("模板迁移计划已变化，升级已阻断");
+      executeTransactionScopedCommand(
+        store,
+        migratePublishedTemplateGraphsCommand,
+        { migrations },
+      );
+      if (migrations.length) {
+        recordAudit(store, actorUserId, "model_contract.template_migrate", null, {
+          modelId: model.modelId,
+          paidProviderRequests: 0,
+          templates: templateMigrationSummary(migrations),
+        });
+      }
       const release = upgradeModelContractRevision(store, actorUserId, {
         ...(isExactLegacyGptImage2V1SchemaTransition(
             row,
@@ -671,6 +867,13 @@ export function applyModelContractUpgrade(
           ) ? {
             equivalentRuntimeSchemaTransition:
               "exact-legacy-gpt-image-2-v1" as const,
+          } : isExactLegacyGrokImagineVideo15V1SchemaTransition(
+            row,
+            active.document,
+            model.proposed,
+          ) ? {
+            equivalentRuntimeSchemaTransition:
+              "exact-legacy-grok-imagine-video-1.5-v1" as const,
           } : isExactLegacyGrokVideo3V2SchemaTransition(
             row,
             active.document,
