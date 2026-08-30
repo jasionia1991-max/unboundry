@@ -2,7 +2,8 @@
 
 ## INC-GEN-017 正式full已消费、v0.6.58–v0.6.61迁移fail-closed与v0.6.62隔离复验通过（2026-08-30）
 
-- 当前状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_62_PR_OPEN_FINAL_CI_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。
+- 当前状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_62_PR_OPEN_FINAL_DOC_HEAD_CI_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。
+- v0.6.62 PR CI门：head`3aef7e8` run/job`33312070069/99258820272` 33秒通过；governance head`d01d564` run/job`33312135373/99258993752` 36秒通过。最终纯文档head CI/merge/main CI/tag/Release待执行。
 - v0.6.62 PR门：PR #131 base/head=`main@fe93d835`/`3aef7e8`且mergeable；首个Quality gates/lightweight run`33312070069`、job`99258820272`正在运行。final governance head CI/merge/main CI/tag/Release待执行。
 - v0.6.62 GitHub身份门：origin/main`fe93d835…b8d3f`且merge-base一致；local/remote tag、Release、same-head PR不存在；PR diff精确16文件、845 insertions/49 deletions且无受保护JSON。治理回执commit/push/PR/CI待执行。
 - v0.6.62提交后治理门：safe m38 `16/16 PASS`，source/snapshot`76716e87…fc747`、库存1125、失败/重试/跳过/reportErrors0、HEAD`fe152fe3…f9241`、Node22.23.1/npm10.9.8、4173 unchanged。治理commit/GitHub identity待执行，production/Provider仍关闭。
