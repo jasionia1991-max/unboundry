@@ -1,5 +1,10 @@
 import { compileModelExecutionContract } from "./modelExecutionContractCompiler";
 import { gkVideoExecutionContract } from "./modelReleaseDefaults";
+import {
+  cleanParameterSchema,
+  knownModelParameterSchema,
+  providerParameterSchema,
+} from "../types/modelParameters";
 import type {
   ModelReleaseDocument,
   ModelReleaseRevision,
@@ -80,9 +85,74 @@ function stable(value: unknown): unknown {
   return value;
 }
 
+export function grokVideo3SchemaState(
+  input: unknown,
+): "current" | "legacy" | "other" {
+  const current = providerParameterSchema({
+    capability: "video",
+    providerDriver: "multi-protocol-relay",
+    providerModelId: "grok-video-3",
+  });
+  if (!current) return "other";
+  const fallback = knownModelParameterSchema({
+    capability: "video",
+    providerDriver: "multi-protocol-relay",
+    providerModelId: "grok-video-3",
+  });
+  try {
+    const cleaned = cleanParameterSchema("video", input, fallback);
+    const canonicalCurrent = cleanParameterSchema("video", current, fallback);
+    if (JSON.stringify(stable(cleaned)) ===
+        JSON.stringify(stable(canonicalCurrent))) return "current";
+    const legacy = cleanParameterSchema("video", {
+      ...current,
+      fields: current.fields.map((field) => field.key === "inputMode"
+        ? {
+            ...field,
+            options: [
+              ...field.options,
+              { label: "参考", value: "reference" },
+            ],
+          }
+        : field),
+      inputPolicy: {
+        required: {},
+        roles: {
+          audio: [],
+          image: ["first-frame", "reference-image", "subject"],
+          text: ["instruction"],
+          video: [],
+        },
+        switchPolicy: "keep-edge",
+      },
+      referenceInputs: { audio: 0, image: 0, video: 0 },
+      referenceMediaRules: {},
+      referencePolicy: undefined,
+      upstreamInputs: {
+        audio: { limitMode: "fixed", maxCount: 0, supported: false },
+        image: { limitMode: "context", supported: true },
+        text: { limitMode: "context", supported: true },
+        video: { limitMode: "fixed", maxCount: 0, supported: false },
+      },
+    }, fallback);
+    return JSON.stringify(stable(cleaned)) === JSON.stringify(stable(legacy))
+      ? "legacy"
+      : "other";
+  } catch {
+    return "other";
+  }
+}
+
 function executionSignature(document: ModelReleaseDocument) {
   return JSON.stringify(stable({
     capabilitySchema: document.capabilitySchema,
+    runtime: executionRuntimeSignature(document),
+  }));
+}
+
+function executionRuntimeSignature(document: ModelReleaseDocument) {
+  return JSON.stringify(stable({
+    capability: document.capability,
     connectorFamily: document.connectorFamily,
     connectorVersion: document.connectorVersion,
     executionContract: {
@@ -93,18 +163,36 @@ function executionSignature(document: ModelReleaseDocument) {
     providerProfileId: document.providerProfileId,
     providerProtocol: document.providerProtocol,
     runtime: document.runtime,
+    modelId: document.modelId,
   }));
 }
 
 export function assertExecutionVersionTransition(
   predecessor: ModelReleaseRevision | undefined,
   document: ModelReleaseDocument,
+  options: Readonly<{
+    equivalentRuntimeSchemaTransition?:
+      "exact-legacy-grok-video-3-v2";
+  }> = {},
 ) {
   if (!predecessor) return;
   const changed = executionSignature(predecessor.document) !==
     executionSignature(document);
+  const approvedSameVersionSchemaTransition =
+    options.equivalentRuntimeSchemaTransition ===
+      "exact-legacy-grok-video-3-v2" &&
+    predecessor.document.providerModelId === "grok-video-3" &&
+    document.providerModelId === "grok-video-3" &&
+    predecessor.document.executionContract.version === 2 &&
+    document.executionContract.version ===
+      predecessor.document.executionContract.version &&
+    grokVideo3SchemaState(predecessor.document.capabilitySchema) === "legacy" &&
+    grokVideo3SchemaState(document.capabilitySchema) === "current" &&
+    executionRuntimeSignature(predecessor.document) ===
+      executionRuntimeSignature(document);
   if (
     changed &&
+    !approvedSameVersionSchemaTransition &&
     document.executionContract.version <=
       predecessor.document.executionContract.version
   ) {

@@ -517,6 +517,8 @@ export function upgradeModelContractRevision(
   actorUserId: string,
   input: Readonly<{
     document: ModelReleaseDocument;
+    equivalentRuntimeSchemaTransition?:
+      "exact-legacy-grok-video-3-v2";
     expectedActiveRevisionId: string;
     impact: ModelContractValidation["impact"];
   }>,
@@ -546,7 +548,10 @@ export function upgradeModelContractRevision(
       throw new Error("存在不兼容模板，合同升级已阻断");
     }
     assertPublishedRoleIdentities(state.history, input.document);
-    assertExecutionVersionTransition(predecessor, input.document);
+    assertExecutionVersionTransition(predecessor, input.document, {
+      equivalentRuntimeSchemaTransition:
+        input.equivalentRuntimeSchemaTransition,
+    });
     const revision: ModelReleaseRevision = Object.freeze({
       createdAt: new Date().toISOString(),
       document: structuredClone(input.document),

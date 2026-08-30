@@ -23,6 +23,7 @@ import {
   modelContractState,
   upgradeModelContractRevision,
 } from "./modelReleaseRevisionStore";
+import { grokVideo3SchemaState } from "./currentModelReleasePolicy";
 import {
   modelContractUpgradeSeeds,
   modelReferenceCounts,
@@ -122,6 +123,45 @@ function isExactLegacyMurekaSchema(
   return snapshotHash(cleaned) === snapshotHash(legacy);
 }
 
+function grokVideo3MigrationSchemaState(
+  row: SeedRow,
+  active: ModelReleaseDocument,
+) {
+  if (row.providerModelId !== "grok-video-3") return undefined;
+  let persisted: unknown;
+  try {
+    persisted = JSON.parse(row.default_parameters) as unknown;
+  } catch {
+    return Object.freeze({ active: "other", row: "other" } as const);
+  }
+  return Object.freeze({
+    active: grokVideo3SchemaState(active.capabilitySchema),
+    row: grokVideo3SchemaState(persisted),
+  });
+}
+
+function isExactLegacyGrokVideo3V2SchemaTransition(
+  row: SeedRow,
+  active: ModelReleaseDocument,
+  proposed: ModelReleaseDocument,
+) {
+  const state = grokVideo3MigrationSchemaState(row, active);
+  return state?.row === "legacy" && state.active === "legacy" &&
+    active.executionContract.version === 2 &&
+    proposed.executionContract.version === 2 &&
+    active.modelId === proposed.modelId &&
+    active.capability === proposed.capability &&
+    active.connectorFamily === proposed.connectorFamily &&
+    active.connectorVersion === proposed.connectorVersion &&
+    active.providerModelId === proposed.providerModelId &&
+    active.providerProfileId === proposed.providerProfileId &&
+    active.providerProtocol === proposed.providerProtocol &&
+    active.runtime === proposed.runtime &&
+    active.evidence === proposed.evidence &&
+    snapshotHash(active.executionContract) ===
+      snapshotHash(proposed.executionContract);
+}
+
 function schema(row: SeedRow) {
   const fallback = knownModelParameterSchema({
     capability: row.capability,
@@ -134,15 +174,16 @@ function schema(row: SeedRow) {
     providerModelId: row.providerModelId,
   });
   const persisted = JSON.parse(row.default_parameters) as unknown;
-  const cleaned = cleanParameterSchema(
-    row.capability,
-    inheritProviderSemanticSchemaDefaults(
-      persisted,
-      constraints,
-    ),
-    fallback,
-  );
+  let cleaned: ReturnType<typeof cleanParameterSchema> | undefined;
   try {
+    cleaned = cleanParameterSchema(
+      row.capability,
+      inheritProviderSemanticSchemaDefaults(
+        persisted,
+        constraints,
+      ),
+      fallback,
+    );
     return validateParameterSchemaConstraints(cleaned, constraints);
   } catch (error) {
     const structurallyVersioned = Boolean(
@@ -153,10 +194,14 @@ function schema(row: SeedRow) {
       (persisted as { version?: unknown }).version === 2 &&
       Array.isArray((persisted as { fields?: unknown }).fields),
     );
-    const approvedLegacySchema = structurallyVersioned && (
-      row.providerModelId === "grok-video-3" ||
+    const approvedLegacySchema = structurallyVersioned && constraints && (
+      (
+        row.providerModelId === "grok-video-3" &&
+        grokVideo3SchemaState(persisted) === "legacy"
+      ) ||
       (
         row.providerModelId === "mureka-9" &&
+        cleaned !== undefined &&
         isExactLegacyMurekaSchema(cleaned, fallback)
       )
     );
@@ -193,9 +238,20 @@ function targetDocument(row: SeedRow, active: ModelReleaseDocument) {
       version: active.executionContract.version,
     }),
   });
+  const grokSchemaState = grokVideo3MigrationSchemaState(row, active);
+  if (
+    grokSchemaState && (
+      grokSchemaState.row === "other" ||
+      grokSchemaState.active === "other" ||
+      grokSchemaState.row !== grokSchemaState.active
+    )
+  ) throw new Error("grok-video-3默认schema与活动revision迁移身份不一致");
   const semanticChanged = inspectModelReleaseDocument(aligned).documentHash !==
     inspectModelReleaseDocument(active).documentHash;
   if (semanticChanged) {
+    const exactLegacyGrokV2SchemaNarrowing =
+      isExactLegacyGrokVideo3V2SchemaTransition(row, active, aligned);
+    if (exactLegacyGrokV2SchemaNarrowing) return aligned;
     const requiredVersion = active.executionContract.version === 1
       ? 2 as const
       : undefined;
@@ -306,9 +362,23 @@ export function planModelContractUpgrade(store: DatabaseSync) {
     if (!row.archived_at && !archiveWithoutExecution) {
       assertUpgradeReleaseDocument(row, proposed);
     }
-    const semantic = active.document.connectorFamily === proposed.connectorFamily
+    const exactLegacyGrok =
+      grokVideo3MigrationSchemaState(row, active.document)?.row === "legacy";
+    // The exact production legacy Grok schema exposed an unused `reference`
+    // selector while its immutable execution contract already had only text
+    // and first-frame modes. For template impact, compare every saved node
+    // against the narrowed schema on both sides: a template that actually
+    // depends on the removed selector still fails, while the 22/34 templates
+    // whose executable inputs are unchanged remain provably compatible.
+    const compatibilityActive = exactLegacyGrok
+      ? Object.freeze({
+          ...active.document,
+          capabilitySchema: proposed.capabilitySchema,
+        })
+      : active.document;
+    const semantic = compatibilityActive.connectorFamily === proposed.connectorFamily
       ? analyzeModelContractTemplateCompatibility({
-          active: active.document,
+          active: compatibilityActive,
           proposed,
           rows: templates,
         })
@@ -531,7 +601,19 @@ export function applyModelContractUpgrade(
     const releases = publishable.map((model) => {
       const row = rowsById.get(model.modelId);
       if (!row) throw new Error("升级模型身份已变化，升级已阻断");
+      const active = modelContractState(store, model.modelId).active;
+      if (!active || active.revisionId !== model.activeRevisionId) {
+        throw new Error("活动模型合同已变化，升级已阻断");
+      }
       const release = upgradeModelContractRevision(store, actorUserId, {
+        ...(isExactLegacyGrokVideo3V2SchemaTransition(
+            row,
+            active.document,
+            model.proposed,
+          ) ? {
+            equivalentRuntimeSchemaTransition:
+              "exact-legacy-grok-video-3-v2" as const,
+          } : {}),
         document: model.proposed,
         expectedActiveRevisionId: model.activeRevisionId,
         impact: model.templateImpact,
