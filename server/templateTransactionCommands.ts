@@ -22,3 +22,30 @@ export const transferAndDeleteAccountTemplatesCommand: TransactionScopedCommand<
     return Number(transferred.changes);
   },
 };
+
+export const migratePublishedTemplateGraphsCommand: TransactionScopedCommand<Readonly<{
+  migrations: readonly Readonly<{
+    afterGraph: string;
+    beforeGraph: string;
+    templateId: string;
+  }>[];
+}>, number> = {
+  execute(scope, input) {
+    let migrated = 0;
+    for (const migration of input.migrations) {
+      const updated = scope.prepare(`
+        UPDATE public_templates SET graph = ?
+        WHERE id = ? AND graph = ? AND status = 'published'
+      `).run(
+        migration.afterGraph,
+        migration.templateId,
+        migration.beforeGraph,
+      );
+      if (updated.changes !== 1) {
+        throw new Error("发布模板迁移CAS失败，升级已阻断");
+      }
+      migrated += 1;
+    }
+    return migrated;
+  },
+};

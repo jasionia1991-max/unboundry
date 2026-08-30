@@ -220,6 +220,40 @@ export function gptImage2SchemaState(
   }
 }
 
+export function grokImagineVideo15SchemaState(
+  input: unknown,
+): "current" | "legacy" | "other" {
+  const current = providerParameterSchema({
+    capability: "video",
+    providerDriver: "multi-protocol-relay",
+    providerModelId: "grok-imagine-video-1.5-preview",
+  });
+  if (!current) return "other";
+  const fallback = knownModelParameterSchema({
+    capability: "video",
+    providerDriver: "multi-protocol-relay",
+    providerModelId: "grok-imagine-video-1.5-preview",
+  });
+  try {
+    const cleaned = cleanParameterSchema("video", input, fallback);
+    const canonicalCurrent = cleanParameterSchema("video", current, fallback);
+    if (JSON.stringify(stable(cleaned)) ===
+        JSON.stringify(stable(canonicalCurrent))) return "current";
+    const legacy = cleanParameterSchema("video", {
+      ...current,
+      inputPolicy: current.inputPolicy
+        ? { ...current.inputPolicy, promptPolicy: undefined }
+        : undefined,
+      referencePolicy: undefined,
+    }, fallback);
+    return JSON.stringify(stable(cleaned)) === JSON.stringify(stable(legacy))
+      ? "legacy"
+      : "other";
+  } catch {
+    return "other";
+  }
+}
+
 function executionSignature(document: ModelReleaseDocument) {
   return JSON.stringify(stable({
     capabilitySchema: document.capabilitySchema,
@@ -251,6 +285,7 @@ export function assertExecutionVersionTransition(
   options: Readonly<{
     equivalentRuntimeSchemaTransition?:
       | "exact-legacy-gpt-image-2-v1"
+      | "exact-legacy-grok-imagine-video-1.5-v1"
       | "exact-legacy-grok-video-3-v2";
   }> = {},
 ) {
@@ -281,10 +316,26 @@ export function assertExecutionVersionTransition(
     gptImage2SchemaState(document.capabilitySchema) === "current" &&
     executionRuntimeSignature(predecessor.document) ===
       executionRuntimeSignature(document);
+  const approvedGrokImagineSchemaTransition =
+    options.equivalentRuntimeSchemaTransition ===
+      "exact-legacy-grok-imagine-video-1.5-v1" &&
+    predecessor.document.providerModelId ===
+      "grok-imagine-video-1.5-preview" &&
+    document.providerModelId === "grok-imagine-video-1.5-preview" &&
+    predecessor.document.executionContract.version === 1 &&
+    document.executionContract.version ===
+      predecessor.document.executionContract.version &&
+    grokImagineVideo15SchemaState(
+      predecessor.document.capabilitySchema,
+    ) === "legacy" &&
+    grokImagineVideo15SchemaState(document.capabilitySchema) === "current" &&
+    executionRuntimeSignature(predecessor.document) ===
+      executionRuntimeSignature(document);
   if (
     changed &&
     !approvedGrokSchemaTransition &&
     !approvedGptImageSchemaTransition &&
+    !approvedGrokImagineSchemaTransition &&
     document.executionContract.version <=
       predecessor.document.executionContract.version
   ) {
