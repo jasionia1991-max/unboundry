@@ -1,6 +1,8 @@
 # INC-GEN-017 验收矩阵
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_62_GITHUB_IDENTITY_PASS_PR_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_62_PR_OPEN_FINAL_CI_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+
+v0.6.62 PR gate：PR #131 base/head=`main@fe93d835`/`3aef7e8`、mergeable；Quality gates/lightweight run=`33312070069`、job=`99258820272` currently running。final governance head CI/merge/main CI/tag/Release=`NOT_RUN`，production/Provider门关闭。
 
 v0.6.62 GitHub identity gate：origin/main=`fe93d8359a5a3ee5f8bfe1d64f494ec87d4b8d3f`且merge-base一致；local/remote tag、Release、same-head PR均不存在。PR diff=16 expected files、845 insertions/49 deletions、protected JSON absent。governance receipt commit/push/PR/CI=`NOT_RUN`，production/Provider门关闭。
 
