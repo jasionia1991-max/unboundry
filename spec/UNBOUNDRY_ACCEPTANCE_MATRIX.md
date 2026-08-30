@@ -1,10 +1,11 @@
 # Unboundry 绿地复刻验收矩阵
 
-## INC-GEN-017 正式full已消费、v0.6.62生产与真实Provider通过、v0.6.63后置P1复审GO（2026-08-30）
+## INC-GEN-017 正式full已消费、v0.6.63生产与真实Provider通过（2026-08-30）
 
-- 当前状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_62_PRODUCTION_TECHNICAL_PASS / V0_6_63_REVIEW_GO / REAL_PROVIDER_PASS / USER_RECHECK`。
-- v0.6.63 PR门：PR #132 base/head=`main@dda1bce`/`0ff10fc`且mergeable；首个Quality gates run/job=`33315776774/99268840337`以36秒PASS。最终治理head CI/merge/main CI/tag/Release仍待执行，Provider0、production v0.6.62。
-- v0.6.63后置P1门：accepted-only空凭证已入口fail-closed，同run全部红色终态已统一稳定去重键。safe m22 `44/44 PASS`（`79e5a3d2…cda3`）、m81 `41/41 PASS`（`dd33875b…6ae2`）、治理m38最终`16/16 PASS`（`d87f6f5e…277e`），首轮m38的旧current marker已关闭；独立增量复审`P0=0/P1=0/P2=0/GO`。候选commit `e6cad63`后治理m38 `16/16 PASS`（`9fc99f7f…622c`）；异常0、4173 unchanged、Provider0，formal full不重跑，production仍v0.6.62。
+- 当前状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / PRODUCTION_V0_6_63_TECHNICAL_PASS / REAL_PROVIDER_PASS / USER_RECHECK`。
+- v0.6.63生产门：PR #132 final head/main CI、merge `55ef9557…de9b3`、annotated tag/Release、fresh build、冻结恢复、原子切换、paired rollback/forward、33/33 loop+public static、schema/integrity/FK/counts及72秒7采样全部PASS。退出trap触发的systemd `start-limit-hit`已在确认forward ready/current正确后恢复；最终service active/enabled、NRestarts0、journal warning0，active0/unknownBilling0及业务计数零漂移。结论`PRODUCTION_V0_6_63_TECHNICAL_PASS / REAL_PROVIDER_PASS / USER_RECHECK`。
+- v0.6.63最终治理门：m38首轮15/16仅为旧production marker；精确同步后最小复验16/16 PASS，source/snapshot`7c194edd…56f5a`、库存1125、异常0、4173 unchanged，formal full未重跑。
+- v0.6.63后置P1门：accepted-only空凭证已入口fail-closed，同run全部红色终态已统一稳定去重键。safe m22 `44/44 PASS`（`79e5a3d2…cda3`）、m81 `41/41 PASS`（`dd33875b…6ae2`）、治理m38最终`16/16 PASS`（`d87f6f5e…277e`），首轮m38的旧current marker已关闭；独立增量复审`P0=0/P1=0/P2=0/GO`。候选commit `e6cad63`后治理m38 `16/16 PASS`（`9fc99f7f…622c`）；异常0、4173 unchanged、Provider0，formal full未重跑；该门已随production v0.6.63闭合。
 - 真实Provider门：Seedance 2.0 Mini唯一POST/attempt1明确accepted/completed；三条reference角色与multimodal合同正确，OSS asset ready/published并自动回填原Video，真实reload保持。实际费用`1.412012 CNY`、retry0、unknown0、结果后active0/service稳定。顶部保存文案持续`保存中...`但服务端revision/result持久，登记P2 UI状态观察项；额外Provider POST关闭、用户实页确认待执行。
 - v0.6.62 paired forward+stability：current/API0.6.62、ready active/schema41、service/NRestarts及72秒7采样的active/unknown/关键计数全部稳定，`PRODUCTION_TECHNICAL_PASS`。回滚/前向证据与旧release均保留；Provider POST0/USD0，最小真实验收待执行。
 - v0.6.62 initial cutover与paired rollback：新release inventory/dist、v0.6.62 API/ready/DB/static33/33通过；恢复v0.6.57旧triplet+symlink后公网/回环健康、NRestarts0及DB完整性/计数通过。forward/stability/Provider待执行。

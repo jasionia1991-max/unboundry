@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "INC-GEN-017-V0.6.63-PRODUCTION-2026-08-30",
+  "recordedAt": "2026-08-30T22:20:00+08:00",
+  "status": "PRODUCTION_V0_6_63_TECHNICAL_PASS_REAL_PROVIDER_PASS_USER_RECHECK",
+  "acceptance": {
+    "productionTechnical": "PASS",
+    "realProvider": "PASS_FROM_V0_6_62_ACCEPTANCE",
+    "userQuality": "USER_RECHECK",
+    "userPass": false
+  },
+  "source": {
+    "pullRequest": 132,
+    "mergeCommit": "55ef9557c89a2d1bd945b32028c12baad49de9b3",
+    "mergeTree": "276bb189b957c45163a8ed46705d7b53795e323c",
+    "tag": "v0.6.63",
+    "annotatedTagObject": "bbdbe99cab9ec3da84451df0a57a1b1348ee2308",
+    "releaseUrl": "https://github.com/jasionia1991-max/unboundry/releases/tag/v0.6.63",
+    "tagArchiveSha256": "9ef0617338578b6ac7417f0f9eb6350210180e8a398886379edd3ea96a8aa489",
+    "finalHeadCiRun": 33315850731,
+    "finalHeadCiJob": 99269041618,
+    "mainCiRun": 33315885502,
+    "mainCiJob": 99269139518
+  },
+  "verification": {
+    "formalFullSuiteExecutedOnce": true,
+    "formalFullSuiteRepeated": false,
+    "formalFullOriginal": "1023_PASS_95_FAIL_4_NOT_RUN",
+    "failedSubsetClosure": "27_OF_27_SPECS_PASS",
+    "postReviewTargeted": {
+      "m22": "44_OF_44_PASS",
+      "m81": "41_OF_41_PASS",
+      "m38": "16_OF_16_PASS"
+    },
+    "independentFinalReview": "P0_0_P1_0_P2_0_GO",
+    "publishedLogicalModels": 10,
+    "exactRegistryIdentities": 11,
+    "providerAdapters": 6
+  },
+  "artifact": {
+    "currentRelease": "/opt/unboundry/releases/v0.6.63-inc-gen-017-20260830",
+    "inventoryFiles": 6036,
+    "inventorySha256": "19e2c23c3f3506641e367503910deded8f67b497c48ab250f44d58aefaa40a95",
+    "distFiles": 33,
+    "loopbackStaticByteMatch": "33_OF_33",
+    "publicStaticByteMatch": "33_OF_33"
+  },
+  "frozenBackup": {
+    "path": "/var/lib/unboundry-rollbacks/v0.6.63-cutover-frozen.7P2qXa",
+    "sourceFiles": 366,
+    "restoreFiles": 366,
+    "sourceManifestSha256": "33430ea638250025e600c20578e4440ed32e8635195060e1de6590f5b1bd3d9d",
+    "restoreManifestSha256": "33430ea638250025e600c20578e4440ed32e8635195060e1de6590f5b1bd3d9d",
+    "sourceDatabaseSha256": "7186face89c1ddc6791c9afbc450af2d89038ecc453d9eda7da604dff20a4400",
+    "restoreDatabaseSha256": "7186face89c1ddc6791c9afbc450af2d89038ecc453d9eda7da604dff20a4400",
+    "schema": 41,
+    "quickCheck": "ok",
+    "integrityCheck": "ok",
+    "foreignKeyViolations": 0
+  },
+  "production": {
+    "version": "0.6.63",
+    "schema": 41,
+    "readyMode": "active",
+    "serviceState": "active",
+    "serviceEnabled": true,
+    "serviceRestarts": 0,
+    "journalWarningsAfterRecovery": 0,
+    "pairedRollbackForward": "PASS_WITH_RECOVERED_SCRIPT_START_LIMIT_OBSERVATION",
+    "stabilityWindow": {
+      "start": "2026-08-30T14:18:15.658Z",
+      "end": "2026-08-30T14:19:28.616Z",
+      "samples": 7,
+      "loopbackVersionReady": "PASS",
+      "publicVersionReady": "PASS",
+      "countsStable": true
+    },
+    "finalCounts": {
+      "tasks": 1026,
+      "attempts": 1037,
+      "active": 0,
+      "unknownBilling": 0,
+      "media": 954,
+      "publications": 545,
+      "canvases": 76
+    }
+  },
+  "operationalObservation": {
+    "severity": "P2",
+    "class": "RELEASE_SCRIPT_EXIT_TRAP_START_LIMIT",
+    "description": "The paired rollback script successfully started and health-checked v0.6.63, then its exit trap performed another immediate stop/start and hit the systemd start-rate limit.",
+    "applicationFailureObserved": false,
+    "dataMutationOrLossObserved": false,
+    "providerRequestObserved": false,
+    "recovery": "Confirmed current symlink and successful forward health in journal, ran systemctl reset-failed, started once, then passed all production and stability gates."
+  },
+  "realProviderAcceptance": {
+    "sourceReceipt": "spec/V0_6_62_PRODUCTION_RECEIPT_2026-08-30.json",
+    "providerModel": "Seedance 2.0 Mini",
+    "providerPostsMade": 1,
+    "retryCount": 0,
+    "unknownBillingRisk": false,
+    "actualCostMicrounits": 1412012,
+    "actualCostCurrency": "CNY",
+    "resultReturnedToOriginalNode": true,
+    "resultPersistedAcrossReload": true,
+    "additionalProviderPostsAllowed": false,
+    "additionalProviderPostsMadeDuringV063Release": false
+  },
+  "knownUserRecheck": {
+    "saveStatusObservation": "The page previously remained on 保存中... after the server revision and result were durable.",
+    "resultQuality": "USER_RECHECK",
+    "userPass": false
+  },
+  "stoppingCondition": {
+    "goalTechnicalCompletionAchieved": true,
+    "productionTechnicalPass": true,
+    "realProviderPass": true,
+    "userPass": false
+  },
+  "nextAction": "User performs the five production-page checks and explicitly confirms; only then may USER_RECHECK become USER_PASS."
+}

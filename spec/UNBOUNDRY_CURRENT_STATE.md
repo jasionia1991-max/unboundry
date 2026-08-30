@@ -1,22 +1,24 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网仍为v0.6.62/schema41并已通过发布、成对rollback/forward及唯一Seedance真实Provider回填；本地最低未占用patch v0.6.63已关闭后置增量复审的2项P1并获独立GO。当前严格为`V0_6_62_PRODUCTION_TECHNICAL_PASS / V0_6_63_REVIEW_GO / REAL_PROVIDER_PASS / USER_RECHECK`；v0.6.63进入治理m38与精确发布链。
+> **状态分层**：现网为v0.6.63/schema41，后置2项P1、独立Review、GitHub/CI、不可变tag/Release、fresh build、冻结恢复、原子切换、成对rollback/forward、33/33静态字节、数据完整性及72秒稳定门均已通过。当前严格为`PRODUCTION_V0_6_63_TECHNICAL_PASS / REAL_PROVIDER_PASS / USER_RECHECK`；额外Provider POST已关闭，用户确认前不得写`USER_PASS`。
 
 更新日期：2026-08-30
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
 当前代码包版本：**v0.6.63**
 本地候选代码版本：**v0.6.63**
-当前生产部署版本：**v0.6.62**
+当前生产部署版本：**v0.6.63**
 本地候选schema：**41**
-当前治理标记：`CURRENT_V0_6_62_USER_RECHECK`
-当前计划标记：`INC_GEN_017_GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_62_PRODUCTION_TECHNICAL_PASS / V0_6_63_REVIEW_GO / REAL_PROVIDER_PASS / USER_RECHECK`
+当前治理标记：`CURRENT_V0_6_63_USER_RECHECK`
+当前计划标记：`INC_GEN_017_GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / PRODUCTION_V0_6_63_TECHNICAL_PASS / REAL_PROVIDER_PASS / USER_RECHECK`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`INC_GEN_017_V0_6_63_REVIEW_GO / PRODUCTION_V0_6_62_TECHNICAL_PASS / REAL_PROVIDER_PASS / USER_RECHECK`
+当前发布门：`INC_GEN_017_PRODUCTION_V0_6_63_TECHNICAL_PASS / REAL_PROVIDER_PASS / USER_RECHECK`
 
 ## INC-GEN-017 当前区块（2026-08-28）
 
-- v0.6.63 PR #132已创建：base/head=`main@dda1bce`/`0ff10fc`，mergeable；首个Quality gates run/job=`33315776774/99268840337`以36秒通过。当前推送本治理回执，等待最终head CI后合并；Provider0、生产仍v0.6.62。
-- v0.6.63后置P1整改已独立复审GO：accepted-only空凭证在运行注册/提交前fail-closed；同一run的cancel/stop-loss/checkpoint/exception红色终态统一稳定去重键。safe m22 44/44（`79e5a3d2…cda3`）、m81 41/41（`dd33875b…6ae2`）及治理m38最终16/16（`d87f6f5e…277e`）PASS；m38首轮15/16仅暴露并关闭三份渐进治理文档旧current marker。独立结论`P0=0/P1=0/P2=0/GO`；候选commit=`e6cad632…72b2c`，提交后m38 16/16（`9fc99f7f…622c`）通过。全部库存1125、异常0、4173 unchanged；正式full不重跑、Provider0，当前进入GitHub，生产仍v0.6.62。
+- v0.6.63生产技术收口：PR #132最终head/main CI通过，merge=`55ef9557…de9b3`，annotated tag/Release、fresh tag build、冻结source/restore、原子切换、paired rollback/forward、33/33回环+公网静态字节、schema/integrity/FK与72秒7采样稳定门均通过。退出trap的额外启停曾触发systemd `start-limit-hit`，确认应用forward已ready和current正确后清限流恢复；最终service active/enabled、NRestarts0、journal warning0。稳定样本保持tasks1026/attempts1037/active0/unknownBilling0/media954/publications545/canvases76。当前`PRODUCTION_V0_6_63_TECHNICAL_PASS / REAL_PROVIDER_PASS / USER_RECHECK`；Provider不再POST。
+- 最终治理m38首轮15/16只暴露本文旧production marker，修正后最小复验16/16 PASS；source/snapshot=`7c194edd…56f5a`、库存1125、异常0、4173 unchanged，正式full未重跑。
+- v0.6.63 PR阶段回执：base/head曾为`main@dda1bce`/`0ff10fc`，首个Quality gates run/job=`33315776774/99268840337`以36秒通过；随后最终head CI、merge/main CI、不可变tag/Release和生产v0.6.63门均已闭合，Provider未新增POST。
+- v0.6.63后置P1整改已独立复审GO：accepted-only空凭证在运行注册/提交前fail-closed；同一run的cancel/stop-loss/checkpoint/exception红色终态统一稳定去重键。safe m22 44/44（`79e5a3d2…cda3`）、m81 41/41（`dd33875b…6ae2`）及治理m38最终16/16（`d87f6f5e…277e`）PASS；m38首轮15/16仅暴露并关闭三份渐进治理文档旧current marker。独立结论`P0=0/P1=0/P2=0/GO`；候选commit=`e6cad632…72b2c`，提交后m38 16/16（`9fc99f7f…622c`）通过。全部库存1125、异常0、4173 unchanged；正式full未重跑、Provider未新增POST，该阶段已由GitHub和生产v0.6.63门闭合。
 - v0.6.62唯一Seedance 2.0 Mini真实请求已完成：专用Canvas三条参考边按image/video/audio确定性绑定、模式`multimodal`；attempt1明确accepted/completed，OSS asset ready、publication published、原Video自动回填并在真实reload后保持。实际费用`1.412012 CNY`、retry0、unknown0，结果后service active/NRestarts0/active0。顶部保存文案虽持续`保存中...`，服务端revision与结果均已确认持久，登记为P2 UI状态观察项；当前`REAL_PROVIDER_PASS / USER_RECHECK`，不再允许新Provider POST。
 - v0.6.62 paired forward和72秒7采样稳定门已通过；现网current/API0.6.62、ready active/schema41、service active/running/NRestarts0，active/unknown及tasks1025/attempts1036/media949/publications531/canvas76零漂移。`PRODUCTION_TECHNICAL_PASS`，真实Provider POST0/USD0，下一步最小真实验收。
 - v0.6.62首轮切换已通过API/ready、DB完整性/计数、回环+公网33/33静态字节；随后成对rollback到v0.6.57旧triplet+symlink并通过公网/回环健康、NRestarts0和数据完整性。v0.6.62 live triplet保存在`v0.6.62-forward-live-triplet.GwK6uF`；当前只执行forward恢复，Provider0/USD0。
@@ -299,7 +301,7 @@ v0.6.47验证证据：默认Node25.9.0/npm11.12.1下build与architecture通过�
 
 ## 一句话
 
-**生产是 v0.6.62 / schema41；INC-GEN-017工程、GitHub、不可变发布、备份恢复、回滚、生产技术门和限额内真实Provider验收均已通过；当前仅保留用户五步复验。**
+**生产是 v0.6.63 / schema41；INC-GEN-017工程、GitHub、不可变发布、备份恢复、回滚、生产技术门和限额内真实Provider验收均已通过；当前仅保留用户五步复验。**
 
 ## INC-GEN-015 老画布孤立生成态与终态结果自动收口（PRODUCTION_V0_6_46_USER_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON）
 
