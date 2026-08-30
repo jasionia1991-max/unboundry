@@ -1,20 +1,35 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网已恢复v0.6.57/schema41且服务健康。v0.6.58因真实Mureka legacy、v0.6.59因真实Grok legacy、v0.6.60因真实GPT Image 2 legacy schema均在隔离迁移apply前正确fail-closed；三个tag/Release保持不可变且未部署。当前严格为`V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_REMEDIATION_PREPARING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。v0.6.56的真实GK成功回执保留为历史事实，不替代当前版本验收。
+> **状态分层**：现网已恢复v0.6.57/schema41且服务健康。v0.6.58因真实Mureka legacy、v0.6.59因真实Grok legacy、v0.6.60因真实GPT Image 2 legacy schema均在隔离迁移apply前正确fail-closed；三个tag/Release保持不可变且未部署。当前严格为`V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_POST_COMMIT_GOVERNANCE_PASS_GOVERNANCE_COMMIT_READY / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。v0.6.56的真实GK成功回执保留为历史事实，不替代当前版本验收。
 
 更新日期：2026-08-30
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.60**
-本地候选代码版本：**v0.6.60**
+当前代码包版本：**v0.6.61**
+本地候选代码版本：**v0.6.61**
 当前生产部署版本：**v0.6.57**
 本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_57_USER_RECHECK`
-当前计划标记：`INC_GEN_017_GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_REMEDIATION_PREPARING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+当前计划标记：`INC_GEN_017_GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_POST_COMMIT_GOVERNANCE_PASS_GOVERNANCE_COMMIT_READY / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`INC_GEN_017_V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_REMEDIATION_PREPARING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+当前发布门：`INC_GEN_017_V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_POST_COMMIT_GOVERNANCE_PASS_GOVERNANCE_COMMIT_READY / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 
 ## INC-GEN-017 当前区块（2026-08-28）
 
+- v0.6.61候选提交后治理safe m38 `16/16 PASS`，source/snapshot`60754094…14297`、库存1125、异常0、HEAD`7733464…a45423`、4173 unchanged；当前只提交六份治理回执，再刷新远端身份并进入push/PR/CI。
+- v0.6.61冻结8文件候选已提交为`7733464cc997…a45423`，tree`692f11ea…9371`；治理文档和受保护JSON未进入commit。当前只运行提交后治理m38并独立提交六份治理回执。
+- v0.6.61独立Review GO治理safe m38 `16/16 PASS`，失败/重试/跳过/reportErrors0、库存1125、source/snapshot`b5a903f8…d150`、4173 unchanged；runner成功完成，外层zsh包装只读变量错误不重复测试。当前只精确提交冻结8文件候选，治理文档保持独立。
+- v0.6.61第三候选同一独立审查上下文已完成冻结hash`8e1a52ea…32ae8`只读终审：8/8文件、30/30 hunks、337 insertions/12 deletions、10/10 logical models、11/11 exact identities、全部adapter和完整普通发布/迁移/事务/幂等链，结论`P0=0/P1=0/P2=0/GO`。当前只运行Review GO治理m38；通过前不commit、不进入GitHub/生产/真实Provider。
+- v0.6.61第三候选主线程已完成8/8文件、30/30 hunks、完整迁移/普通发布/事务/CAS/immutable/repeat链、10/10 logical models、11/11 exact identities与全部Provider分支复核，结论`P0=0/P1=0/P2=0/GO`。候选337 insertions/12 deletions、diff-check通过，hash`8e1a52ea…32ae8`并冻结；当前只允许同一独立上下文只读终审，GO前不commit、不进入GitHub/生产/真实Provider。
+- v0.6.61别名整改最终治理safe m38为`16/16 PASS`，source/snapshot`2b3f2b69…5376f`、库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged；取代此前`769a79cf…a32f`。当前只开放精确diff/hash与主线程Review，冻结和独立GO前不进入commit/GitHub/生产/真实Provider。
+- v0.6.61 OpenRouter exact alias残余P1已关闭：relay `gpt-image-2/gpt-image`与OpenRouter `openai/gpt-image-2/native`都由普通发布策略生成并核对各自registry-owned expected contract；exact合同可validate+publish，evidence、受支持的version-bumped connector与create path漂移在激活前阻断。强化反例首轮`23/24`只因测试先命中既有unsupported runtime version门，修正后safe m102 `24/24 PASS`，source/snapshot`0eced929…50636`、库存1125、异常0、4173 unchanged；TypeScript/diff-check通过。
+- v0.6.61第二独立复核为`P0=0/P1=1/P2=0/NO-GO`：relay主GPT身份已关闭，但OpenRouter exact alias `openrouter/openai/gpt-image-2/native`仍可激活version-bumped connector/contract漂移。候选解冻；当前只开放同一exact policy补齐、m102回归和再次复核。
+- v0.6.61整改后主线程复核为`P0=0/P1=0/P2=0/GO`；第二候选8文件/30 hunks、285 insertions/12 deletions、diff-check通过，hash`6ff60ec5…c2d71`并冻结。独立复核GO前不commit、不进入GitHub/生产/真实Provider。
+- v0.6.61独立终审P1已关闭：普通GPT Image 2发布前强制image/gpt-image、connector/version、specialized runtime、EXACT evidence与完整专用执行合同，transition identity同步纳入evidence；TypeScript/diff-check通过，safe m102最终`24/24 PASS`，source/snapshot`bb4d4df1…0bd60`、库存1125、异常0、4173 unchanged。首轮`23/24`仅测试错误文案过窄；当前重新冻结/复核前仍不进入GitHub/生产/真实Provider。
+- v0.6.61独立只读终审覆盖8/8文件、25/25 hunks、完整迁移/普通发布/事务/幂等链与10/10 models、11/11 identities，结论`P0=0/P1=1/P2=0/NO-GO`，候选解冻。P1为普通发布未在激活前强制GPT Image 2 exact registry的runtime/connector/evidence/执行合同，允许evidence漂移revision被激活；当前仅开放最小修复、m102回归和同一上下文复核。
+- v0.6.61主线程终审覆盖8/8文件、25/25 hunks、完整迁移/schema/模板/事务/CAS/immutable revision/幂等链、10/10 published logical models、11/11 exact identities与全部Provider分支，结论`P0=0/P1=0/P2=0/GO`；候选216 insertions/11 deletions、diff-check通过，hash`017c3b94…6a5ea`并冻结。独立只读Review GO前不commit、不进入GitHub/生产/真实Provider。
+- v0.6.61最终safe m102在加入非GPT模型不得滥用`exact-legacy-gpt-image-2-v1`证明的阻断回归后仍为`24/24 PASS`，source/snapshot`da861c1de482fb1b057e684dc0fbf91532400283d90c0ce5d6364617e95a34c6`、库存1125、异常0、4173 unchanged；该结果取代`73797359…5327`作为当前m102证据。Provider POST=0/USD0，正式full未重跑；下一步精确diff/hash与主线程逐链复核。
+- v0.6.61版本/治理直接safe m38+m81 `57/57 PASS`，source/snapshot`c70e4e4670db0ca2e20449240f636732adb2b43c51edca89aa0fbf81eed85699`、库存1125、异常0、4173 unchanged；正式full未重跑。生产继续v0.6.57/schema41、Provider POST=0/USD0；当前只做候选精确复核/冻结与独立Review。
+- v0.6.61精确legacy GPT Image 2迁移只接受生产确认的row+active旧schema，并要求proposed current schema、v1 execution contract和完整runtime identity等价；两侧near-miss均阻断。package/lock/runtime/m81同步0.6.61；TypeScript/diff-check与safe m102 `24/24 PASS`，source/snapshot`73797359030006eb198ac63e60dadcf8c498c921536847a08e81b986d7655327`、库存1125、异常0、4173 unchanged。生产仍v0.6.57/schema41，Provider POST=0/USD0；下一步仅运行safe m81+m38。
 - v0.6.60精确tag archive SHA=`8db3ed0f921a64187b2cdca7ae7c7ae6fcf7e9b2c48f6c0ee3fc3b1659790b03`；服务器独立staging=`/opt/unboundry/staging/v0.6.60-inc-gen-017-20260830.dA88ys`固定Node22.23.2/npm10.9.8完成npm ci、TypeScript、Vite build与6035文件inventory验证，清单SHA=`d14ed3db17e1cc60b025093072a673278f191a33d48e3cbae5889275f13db6c8`、dist33。现网仍精确为v0.6.57/schema41、service active/enabled，Provider POST=0/USD0；下一步quiet gate。
 - v0.6.60生产quiet gate连续7次均为active0/unsettledUnknown0；现网current/API仍为v0.6.57，service active/running、NRestarts0。冻结双副本尚未建立，生产DB未写，Provider POST=0/USD0。
 - v0.6.60正式冻结目录=`/var/lib/unboundry-rollbacks/v0.6.60-cutover-frozen.k3xebQ`，source/restore各366、双清单`a758e801…aea2b`、DB`13589eea…2261`；两副本schema41/quick/integrity/FK0、tasks1025、attempts1036、active0、unknown0、media949/1772056577、canvas76、models20/published10、templates50/published48及Library一致。首个清单失败目录`v0.6.60-cutover-frozen.in7NN7`保留。服务当前inactive/enabled，生产DB未写，Provider POST=0/USD0。

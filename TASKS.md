@@ -1,6 +1,23 @@
 # Unboundry 绿地复刻当前任务
 
-## INC-GEN-017 工作流自动自愈与模型合同隔离（FORMAL SAFE FULL CONSUMED / V0.6.58 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.59 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.60 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.61 REMEDIATION PREPARING / REAL PROVIDER NOT POSTED）
+## INC-GEN-017 工作流自动自愈与模型合同隔离（FORMAL SAFE FULL CONSUMED / V0.6.58 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.59 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.60 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.61 POST-COMMIT GOVERNANCE PASS / GOVERNANCE COMMIT READY / REAL PROVIDER NOT POSTED）
+
+- [x] 关闭第二次独立复核P1：把`openrouter/openai/gpt-image-2/native` exact alias纳入普通发布的完整registry-owned合同硬门；两个exact identity均可validate+publish，evidence、受支持的version-bumped connector与create path漂移阻断。强化反例首轮`23/24`只因fixture先命中既有unsupported runtime version门，修正后safe m102 `24/24 PASS`（source/snapshot`0eced929…50636`），库存1125、异常0、4173 unchanged。
+- [x] 最终六份治理同步后safe m38 `16/16 PASS`，source/snapshot`2b3f2b69…5376f`、库存1125、异常0、4173 unchanged；取代此前`769a79cf…a32f`，正式full未重跑。
+- [x] 主线程逐一复核8/8文件、30/30 hunks、完整迁移/普通发布/事务/CAS/幂等链、10/10 logical models、11/11 exact identities及全部Provider分支，`P0=0/P1=0/P2=0/GO`；第三候选337 insertions/12 deletions、diff-check通过，hash`8e1a52ea…32ae8`并冻结。
+- [x] 同一独立审查上下文只读终审冻结hash`8e1a52ea…32ae8`：覆盖8/8文件、30/30 hunks、10/10 models、11/11 identities与全部adapter/完整调用链，`P0=0/P1=0/P2=0/GO`；未写文件、未测试/build、未联网、未触发Git/Provider/OSS/生产且未读取受保护JSON。
+- [x] 整改后主线程复核为`P0=0/P1=0/P2=0/GO`；第二候选8文件/30 hunks、285 insertions/12 deletions、diff-check通过，hash`6ff60ec5…c2d71`并冻结。
+- [x] 同一独立上下文复核第二候选`6ff60ec5…c2d71`，覆盖8/8文件、30/30 hunks与11/11 identities，结论`P0=0/P1=1/P2=0/NO-GO`；候选解冻。
+- [x] 关闭独立终审P1：普通draft/validate/publish在激活前强制GPT Image 2 exact registry的runtime、connector/version、evidence与完整执行合同，transition identity纳入evidence；TypeScript/diff-check通过，safe m102最终`24/24 PASS`（`bb4d4df1…0bd60`）。
+- [x] v0.6.61主线程终审覆盖8/8文件、25/25 hunks、完整迁移/模板/事务/CAS/幂等链、10/10 published logical models、11/11 exact identities与全部Provider分支，`P0=0/P1=0/P2=0/GO`；候选216 insertions/11 deletions、diff-check通过，hash`017c3b94…6a5ea`并冻结。
+- [x] 独立上下文完成冻结hash`017c3b94…6a5ea`只读终审，覆盖8/8文件、25/25 hunks、10/10 models与11/11 identities，结论`P0=0/P1=1/P2=0/NO-GO`；候选已解冻。
+- [x] v0.6.61最终safe m102在增加非GPT模型不得滥用`exact-legacy-gpt-image-2-v1`证明的回归后仍`24/24 PASS`，source/snapshot`da861c1d…a34c6`、库存1125、异常0、4173 unchanged；Provider POST=0/USD0，正式full未重跑。
+- [x] v0.6.61精确legacy GPT Image 2迁移只允许row+active exact legacy、proposed exact current、v1 execution contract与完整runtime identity等价；row/active near-miss均fail-closed。package/lock/runtime/m81同步0.6.61，TypeScript/diff-check通过，safe m102 `24/24 PASS`（source/snapshot`73797359…5327`），库存1125、异常0、4173 unchanged。
+- [x] v0.6.61版本/治理直接safe m81+m38 `57/57 PASS`（16+41），source/snapshot`c70e4e46…5699`、库存1125、异常0、4173 unchanged；正式full未重跑。
+- [x] Review GO治理safe m38 `16/16 PASS`，source/snapshot`b5a903f8…d150`、库存1125、异常0、4173 unchanged；runner结束后的外层zsh只读变量包装错误不影响已完成结果且不重跑。
+- [x] 冻结8文件候选已精确提交为`7733464cc997…a45423`，tree`692f11ea…9371`，337 insertions/12 deletions；治理文档与受保护JSON未进入commit。
+- [x] 提交后治理safe m38 `16/16 PASS`，source/snapshot`60754094…14297`、库存1125、异常0、HEAD`7733464…a45423`、4173 unchanged。
+- [ ] 独立提交六份治理回执，再按硬门进入GitHub/CI、v0.6.61不可变发布、隔离迁移与生产验收；正式full不得重跑。
 
 - [x] v0.6.59精确tag archive `63042cff…71b8`在服务器fresh staging固定Node22.23.2/npm10.9.8完成npm ci、TypeScript和Vite build；7次quiet gate均active0/unsettledUnknown0。
 - [x] v0.6.59冻结备份`v0.6.59-cutover-frozen.jufZ1z`双副本366/366、清单`39c9e691…ebf3`、DB`13589eea…2261`及schema41/integrity/FK/计数门通过；所有证据目录保留。
@@ -25,7 +42,7 @@
 - [x] 连续7次生产quiet gate均为active0/unsettledUnknown0；current/API仍为v0.6.57，service active/running、NRestarts0。
 - [x] 正式冻结目录`v0.6.60-cutover-frozen.k3xebQ`的source/restore各366文件、双清单`a758e801…aea2b`、DB`13589eea…2261`；schema41/integrity/FK0、tasks1025、attempts1036、media949/1772056577、canvas76、models20/10、templates50/48及Library门一致。首个清单失败目录`v0.6.60-cutover-frozen.in7NN7`保留。
 - [x] v0.6.60隔离工作副本`v0.6.60-contract-upgrade.Ym2zSJ`的dry-run在apply前因真实GPT Image 2旧合同缺reference media rules而fail-closed；工作DB SHA未变、生产未写，失败证据`5f68f8a7…7f6d0`，生产恢复v0.6.57健康。
-- [ ] 确认v0.6.61为最低未占用patch；只对生产精确legacy GPT Image 2合同增加窄迁移与near-miss阻断，运行m102/版本治理最小门并重新独立增量Review。
+- [x] 确认v0.6.61为最低未占用patch；只对生产精确legacy GPT Image 2合同增加窄迁移与near-miss阻断，直接safe m102已通过；版本治理与独立Review继续按后续硬门执行。
 
 - [x] R8生产验收在POST前确认旧published Seedance/Grok3.5/Grok3 schema缺少当前语义合同元数据；系统正确fail-closed，Provider POST=0、费用USD0。
 - [x] 完整schema fallback收窄为仅结构有效的旧Grok3；独立终审`P0=0/P1=1/P2=0/NO-GO`发现的迁移registry totality缺口已在plan/activation双重关闭。Seedance/Gemini/Mureka fixture身份已对齐，错协议、错driver、缺参数均阻断；m102最终`24/24 PASS`（`e93a5baf…610032`），库存1125、4173 unchanged；新冻结diff `dcf8a42d…3cb854`。

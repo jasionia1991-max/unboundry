@@ -1,6 +1,36 @@
 # INC-GEN-017 验收矩阵
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_REMEDIATION_PREPARING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_POST_COMMIT_GOVERNANCE_PASS_GOVERNANCE_COMMIT_READY / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+
+v0.6.61 post-commit governance：safe m38=`16/16 PASS`，失败/重试/跳过/reportErrors0、Node22.23.1/npm10.9.8、库存1125、source/snapshot=`607540947ee72c170aaee299ea793c0ef1c94e7ea25d4688c54a05e346214297`、HEAD=`7733464cc997053a5a66c2882a9858d570a45423`、4173 unchanged。六份治理commit=`READY`；GitHub/生产/真实Provider仍`NOT_RUN`。
+
+v0.6.61 candidate commit：`7733464cc997053a5a66c2882a9858d570a45423`，tree=`692f11eae5d6ea4cb76aad40162d35fed1ab9371`，精确8文件/337 insertions/12 deletions；六份治理文档与受保护JSON未提交。post-commit governance m38=`16/16 PASS`，GitHub/生产/真实Provider仍`NOT_RUN`。
+
+v0.6.61 review-go governance gate：safe m38=`16/16 PASS`，失败/重试/跳过/reportErrors0、Node22.23.1/npm10.9.8、库存1125、source/snapshot=`b5a903f87dfa67e237179cbd13850299fd580580e48cf117cb608bfcc452d150`、4173 unchanged。runner完成后外层zsh包装因只读变量名返回1，仅为命令包装诊断，不重复测试；8文件candidate commit=`READY`。
+
+v0.6.61 third candidate independent review gate：冻结HEAD=`7f2f8d4d750fb2d4bf73cf46240166e457ab05d0`、diff hash=`8e1a52ea3a4d4795c7def721d10ad24b07e8d5bc930a8b858a557b3146732ae8`；8/8文件、30/30 hunks、337 insertions/12 deletions、10/10 logical models、11/11 exact identities、全部adapter及完整普通发布/迁移/事务/幂等链覆盖，`P0=0/P1=0/P2=0/GO`。只读限制全部遵守；Review GO治理m38=`16/16 PASS`，commit/GitHub/生产/真实Provider仍`NOT_RUN`。
+
+v0.6.61 third candidate main review/freeze：8/8文件、30/30 hunks、完整迁移/schema/template/普通发布/事务/CAS/immutable revision/repeat链、10/10 logical models、11/11 exact identities及全部Provider分支覆盖；`P0=0/P1=0/P2=0/GO`。候选337 insertions/12 deletions、diff-check通过，hash=`8e1a52ea3a4d4795c7def721d10ad24b07e8d5bc930a8b858a557b3146732ae8`并冻结；独立终审=`P0_0_P1_0_P2_0_GO`，commit/GitHub/生产/真实Provider仍`NOT_RUN`。
+
+v0.6.61 alias governance gate：最终六份治理同步后safe m38=`16/16 PASS`，source/snapshot=`2b3f2b699693856982b7cbd190efec2a294040adb9c0e3856e902eca29f5376f`、库存1125、异常0、4173 unchanged；取代此前`769a79cf…a32f`。精确diff/hash、主线程Review、冻结与独立复核仍`NOT_RUN`。
+
+v0.6.61 alias remediation gate：relay与OpenRouter两个GPT Image 2 exact identities现在共同进入普通发布的代码权威合同门；exact document均可validate+publish，evidence、受支持的version-bumped connector及create path漂移均在激活前阻断。强化反例首轮`23/24`只因测试先命中既有unsupported runtime version门，修正fixture后safe m102=`24/24 PASS`，source/snapshot=`0eced92961a6d5349db749cbc214c3f759e7f5218fc1a65896e4dfb1b5b50636`、库存1125、异常0、4173 unchanged；TypeScript/diff-check=`PASS`。
+
+v0.6.61 second independent review：8/8文件、30/30 hunks、完整链、10/10 models、11/11 identities覆盖后为`P0=0/P1=1/P2=0/NO-GO`。relay主身份已关闭；OpenRouter exact alias `openrouter/openai/gpt-image-2/native`仍可发布version-bumped connector/contract漂移。候选解冻；别名exact policy、m102回归与再次复核`NOT_RUN`。
+
+v0.6.61 second candidate freeze：主线程复核整改与原完整范围为`P0=0/P1=0/P2=0/GO`；8文件、30 hunks、285 insertions/12 deletions、diff-check通过，hash=`6ff60ec58b2fc4557f4236e915f3297375696785908facf5a583047f487c2d71`并冻结。独立复核=`IN_PROGRESS`，commit/GitHub/生产/真实Provider仍`NOT_RUN`。
+
+v0.6.61 independent P1 remediation：普通GPT Image 2发布前现在强制image/gpt-image、connector/version、runtime、EXACT evidence与完整专用执行合同，transition identity纳入evidence；三类漂移回归均fail-closed。TypeScript/diff-check通过；safe m102最终`24/24 PASS`，source/snapshot=`bb4d4df1bd931319f074f0aee1339c0f138f29e374c919db4f057266f300bd60`、库存1125、异常0、4173 unchanged；首轮`23/24`仅测试文案断言过窄。重新冻结hash与独立复核仍`NOT_RUN`。
+
+v0.6.61 independent review gate：8/8文件、25/25 hunks、完整迁移/普通发布/事务/幂等链、10/10 models、11/11 identities覆盖；`P0=0/P1=1/P2=0/NO-GO`。P1为普通发布未在激活前强制GPT Image 2 exact registry的runtime/connector/evidence/执行合同，`EXACT→SPECIALIZED` evidence漂移可激活。候选解冻；最小修复、m102回归与同一独立复核均`NOT_RUN`，GitHub/生产/真实Provider继续关闭。
+
+v0.6.61 main review/freeze gate：8/8文件、25/25 hunks、完整migration/schema/template/transaction/CAS/immutable revision/repeat链、10/10 published logical models、11/11 exact identities及全部Provider分支覆盖；`P0=0/P1=0/P2=0/GO`。候选216 insertions/11 deletions、diff-check通过，hash=`017c3b942ccf2a57b87e96b0f5f43d0e69e5e15e3f7f0d26cdccbe3d0446a5ea`并冻结；独立Review=`IN_PROGRESS`，commit/GitHub/生产/真实Provider仍`NOT_RUN`。
+
+v0.6.61 final m102 gate：新增非GPT模型滥用`exact-legacy-gpt-image-2-v1`证明的阻断回归后safe m102仍为`24/24 PASS`，source/snapshot=`da861c1de482fb1b057e684dc0fbf91532400283d90c0ce5d6364617e95a34c6`、库存1125、失败/重试/跳过/reportErrors0、4173 unchanged；该结果取代`73797359…5327`作为当前m102证据。Provider POST=0/USD0，正式full未重跑；精确diff/hash、主线程Review和独立Review仍`NOT_RUN`。
+
+v0.6.61 version/governance gate：safe m38+m81 `57/57 PASS`（16+41），source/snapshot=`c70e4e4670db0ca2e20449240f636732adb2b43c51edca89aa0fbf81eed85699`、库存1125、异常0、4173 unchanged；正式full未重跑。精确diff/hash、主线程Review、候选冻结和独立增量Review仍`NOT_RUN`。
+
+v0.6.61 direct migration gate：精确生产legacy GPT Image 2 row+active schema、current proposed schema、v1 execution contract与完整runtime identity门已落实；row/active `referenceInputs.image=2` near-miss均阻断。package/lock/runtime/m81同步0.6.61；TypeScript与diff-check通过，safe m102 `24/24 PASS`，source/snapshot=`73797359030006eb198ac63e60dadcf8c498c921536847a08e81b986d7655327`、库存1125、失败/重试/跳过/reportErrors0、4173 unchanged。m81+m38、冻结Review、GitHub、生产迁移和真实Provider仍`NOT_RUN`。
 
 R8增量门：生产旧published schema在Provider POST前被语义合同校验阻断，POST=0/USD0。迁移plan/apply精确执行identity/totality缺口已关闭；冻结diff `dcf8a42d…3cb854`独立增量终审覆盖8/8文件、10/10 logical models、11/11 exact identities，最终`P0=0/P1=0/P2=0/GO`。m102 `24/24 PASS`（`e93a5baf…610032`），库存1125、4173 unchanged；当前按顺序开放v0.6.58准备，生产迁移与真实Provider尚未开放。
 

@@ -1,8 +1,23 @@
 # Unboundry 绿地复刻验收矩阵
 
-## INC-GEN-017 正式full失败映射关闭、v0.6.60迁移fail-closed与v0.6.61整改准备（2026-08-30）
+## INC-GEN-017 正式full已消费、v0.6.60迁移fail-closed与v0.6.61治理提交就绪（2026-08-30）
 
-- 当前状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_REMEDIATION_PREPARING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。
+- 当前状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_POST_COMMIT_GOVERNANCE_PASS_GOVERNANCE_COMMIT_READY / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。
+- 候选提交后治理safe m38 `16/16 PASS`，source/snapshot`60754094…14297`、库存1125、异常0、HEAD`7733464…a45423`、4173 unchanged；六份治理commit就绪。
+- v0.6.61冻结候选commit=`7733464cc997…a45423`、tree=`692f11ea…9371`，精确8文件/337 insertions/12 deletions；治理文档与受保护JSON未提交。提交后治理m38待运行。
+- Review GO治理safe m38 `16/16 PASS`，失败/重试/跳过/reportErrors0、库存1125、source/snapshot`b5a903f8…d150`、4173 unchanged；安全runner已完整成功，外层zsh包装诊断不重跑。冻结8文件候选commit就绪。
+- v0.6.61第三候选独立只读终审覆盖8/8文件、30/30 hunks、337 insertions/12 deletions、10/10 logical models、11/11 exact identities、全部adapter及完整普通发布/迁移/事务/幂等链，冻结hash`8e1a52ea…32ae8`，结论`P0=0/P1=0/P2=0/GO`。只读限制全部遵守；Review GO治理m38待运行，commit/GitHub/生产/真实Provider仍未运行。
+- v0.6.61第三候选主线程Review覆盖8/8文件、30/30 hunks、完整迁移/普通发布/事务/CAS/immutable/repeat链、10/10 logical models、11/11 exact identities与全部Provider分支，`P0=0/P1=0/P2=0/GO`；候选337 insertions/12 deletions、diff-check通过，hash`8e1a52ea…32ae8`并冻结。独立终审已GO，当前只开放治理m38，GitHub/生产/真实Provider仍关闭。
+- v0.6.61别名整改最终六份治理同步后safe m38 `16/16 PASS`，source/snapshot`2b3f2b69…5376f`、库存1125、异常0、4173 unchanged；取代此前`769a79cf…a32f`。精确diff/hash、主线程Review、冻结与独立复核待执行。
+- v0.6.61 OpenRouter exact alias残余P1已关闭：relay与OpenRouter两个GPT Image 2 exact identities均进入普通发布的registry-owned合同门，exact合同可validate+publish，evidence、受支持的version-bumped connector与create path漂移在激活前阻断。强化反例首轮`23/24`只因fixture先命中既有unsupported runtime version门，修正后safe m102 `24/24 PASS`，source/snapshot`0eced929…50636`、库存1125、异常0、4173 unchanged；TypeScript/diff-check通过。
+- v0.6.61第二独立复核为`P0=0/P1=1/P2=0/NO-GO`：OpenRouter exact alias `openrouter/openai/gpt-image-2/native`未进入普通发布完整合同门，version-bumped connector/contract漂移可激活。候选解冻，最小整改与复核待执行。
+- v0.6.61第二候选主线程复核`P0=0/P1=0/P2=0/GO`；8文件/30 hunks、285 insertions/12 deletions、diff-check通过，hash`6ff60ec5…c2d71`并冻结。独立复核进行中，GitHub/生产/真实Provider未运行。
+- v0.6.61独立终审P1已关闭：普通GPT Image 2发布前强制exact registry runtime/connector/evidence与完整执行合同，transition identity纳入evidence；TypeScript/diff-check通过，safe m102最终`24/24 PASS`（source/snapshot`bb4d4df1…0bd60`），首轮`23/24`仅测试文案断言。重新冻结与同一独立上下文复核待执行。
+- v0.6.61独立只读终审覆盖8/8文件、25/25 hunks、完整迁移/普通发布/事务/幂等链、10/10 models、11/11 identities后为`P0=0/P1=1/P2=0/NO-GO`。普通发布未在激活前强制GPT Image 2 exact registry runtime/connector/evidence/执行合同，允许evidence漂移revision激活；候选解冻，最小整改与复核待执行。
+- v0.6.61主线程增量终审覆盖8/8文件、25/25 hunks、完整迁移/schema/模板/事务/CAS/immutable revision/幂等链、10/10 published logical models、11/11 exact identities与全部Provider分支，`P0=0/P1=0/P2=0/GO`；候选216 insertions/11 deletions、diff-check通过，hash`017c3b94…6a5ea`并冻结。独立Review进行中，GitHub/生产/真实Provider仍`NOT_RUN`。
+- v0.6.61最终safe m102在新增非GPT模型不得滥用`exact-legacy-gpt-image-2-v1`证明的回归后仍`24/24 PASS`，source/snapshot`da861c1d…a34c6`、库存1125、异常0、4173 unchanged；该结果取代`73797359…5327`作为当前m102证据。Provider POST=0/USD0，正式full未重跑。
+- v0.6.61版本/治理直接safe m38+m81 `57/57 PASS`（16+41），source/snapshot`c70e4e46…5699`、库存1125、异常0、4173 unchanged；正式full未重跑。精确diff/hash、主线程Review、候选冻结及独立增量Review待执行。
+- v0.6.61 exact legacy GPT Image 2迁移、row/active near-miss阻断与v1 runtime identity证明已实现；package/lock/runtime/m81同步0.6.61。TypeScript/diff-check和safe m102 `24/24 PASS`（source/snapshot`73797359…5327`），库存1125、异常0、4173 unchanged；m81+m38、冻结Review、GitHub、生产迁移与真实Provider仍`NOT_RUN`。
 - v0.6.59 archive/fresh build、7次quiet gate和冻结备份均通过：archive`63042cff…71b8`、staging`v0.6.59-inc-gen-017-20260830.qjbYhr`、冻结目录`v0.6.59-cutover-frozen.jufZ1z`、双清单`39c9e691…ebf3`。隔离迁移副本`v0.6.59-contract-upgrade.Nz9OFg`在apply前因真实published Grok旧schema报`Invalid model reference policy`而阻断；生产未写且继续v0.6.57健康，v0.6.59未部署，Provider POST=0/USD0。v0.6.60 exact/near-miss测试、版本门、独立Review、GitHub和生产均`NOT_RUN`。
 - v0.6.60最低未占用patch身份通过；只读生产副本确认default schema和活动immutable revision均携带旧text/image/reference Grok合同。exact-only迁移、near-miss阻断和22模板/34节点execution兼容桥已实现；safe m102首轮`23/24`后最小修复，最终`24/24 PASS`（source/snapshot`25f82ecd…e51a2`）。版本/治理直接safe m38+m81随后`57/57 PASS`（16+41），source/snapshot`07053ab1…4490b8`、库存1125、异常0、4173 unchanged；独立Review仍待执行。
 - v0.6.60候选6/6文件已冻结：156 insertions/17 deletions，diff hash=`f4489901…222643`，diff-check通过。独立增量Review进行中；P0/P1清零前GitHub/生产门继续关闭。

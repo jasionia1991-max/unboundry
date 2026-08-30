@@ -1,8 +1,38 @@
 # INC-GEN-017：工作流自动自愈与模型合同隔离详细行动方案
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_REMEDIATION_PREPARING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_POST_COMMIT_GOVERNANCE_PASS_GOVERNANCE_COMMIT_READY / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 
 建立日期：2026-08-28
+
+v0.6.61候选提交后治理safe m38为`16/16 PASS`，source/snapshot`60754094…14297`、库存1125、异常0、HEAD`7733464…a45423`、4173 unchanged。当前只提交六份治理回执，再刷新远端身份并进入push/PR/CI；正式full永久不重跑。
+
+v0.6.61冻结8文件候选已精确提交为`7733464cc997053a5a66c2882a9858d570a45423`，tree`692f11eae5d6ea4cb76aad40162d35fed1ab9371`，337 insertions/12 deletions；治理文档和受保护JSON未提交。当前只运行提交后治理m38，再独立提交六份治理回执并进入push/PR/CI。
+
+v0.6.61 Review GO治理safe m38已`16/16 PASS`，失败/重试/跳过/reportErrors0、库存1125、source/snapshot`b5a903f8…d150`、4173 unchanged。runner已成功完成并清理；其后外层zsh包装因只读变量名`status`返回1，未改变测试结论且不重复运行。当前只精确提交冻结8文件候选，六份治理回执另行收口。
+
+v0.6.61第三候选同一独立审查上下文已对冻结HEAD `7f2f8d4…05d0`与diff hash `8e1a52ea…32ae8`完成只读终审：8/8文件、30/30 hunks、337 insertions/12 deletions，覆盖完整普通发布/回滚、迁移/schema/template/CAS/activation/audit/repeat链、10/10 logical models、11/11 exact identities及全部adapter分支；最终`P0=0/P1=0/P2=0/GO`。审查未写文件、未测试/build、未联网、未触发Git/Provider/OSS/生产且未读取受保护JSON。当前只运行Review GO治理m38；通过后才可精确提交冻结8文件候选。
+
+v0.6.61第三候选主线程全量增量Review已覆盖8/8文件、30/30 hunks、完整migration/schema/template/普通发布/事务/CAS/immutable revision/repeat链、10/10 published logical models、11/11 exact identities与全部Provider/protocol/adapter分支，结论`P0=0/P1=0/P2=0/GO`。候选337 insertions/12 deletions、diff-check通过，精确hash`8e1a52ea…32ae8`并冻结；只允许同一独立上下文只读终审，独立GO前不commit、不进入GitHub/生产/真实Provider。
+
+v0.6.61别名整改最终治理门已闭合：六份治理同步后safe m38 `16/16 PASS`，source/snapshot`2b3f2b69…5376f`、库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged，取代此前`769a79cf…a32f`。当前只做精确diff/hash与主线程全量增量Review；正式full永久不重跑。
+
+v0.6.61 OpenRouter exact alias残余P1已关闭：当前普通发布策略同时识别relay `gpt-image-2/gpt-image`和OpenRouter `openai/gpt-image-2/native`，按各自driver/schema生成registry-owned expected document，并对connector/version、runtime、evidence与完整execution contract做激活前逐字校验。m102证明两个exact identity均可validate+publish，且evidence、受支持的version-bumped connector与create path漂移均fail-closed；强化反例首轮`23/24`只因fixture先命中既有unsupported runtime version门，改为受支持组合后最终`24/24 PASS`（source/snapshot`0eced929…50636`、库存1125、异常0、4173 unchanged）。TypeScript/diff-check通过；下一步治理m38、精确diff/hash与主线程复核。
+
+v0.6.61第二候选独立复核为`P0=0/P1=1/P2=0/NO-GO`：relay主GPT身份已关闭，但同一logical model的OpenRouter exact identity `openrouter/openai/gpt-image-2/native`未进入普通发布exact policy，version-bumped connector/contract漂移仍可激活。候选再次解冻；整改只把该第11个identity纳入同一代码拥有合同并补m102别名回归，复核GO前不进入commit、GitHub、生产或真实Provider。
+
+v0.6.61整改后主线程复核新增普通发布策略门及原完整范围，结论`P0=0/P1=0/P2=0/GO`；第二候选8文件、30 hunks、285 insertions/12 deletions、diff-check通过，精确hash`6ff60ec5…c2d71`并冻结。当前只允许同一独立上下文只读增量终审，复核GO前不进入commit、GitHub、生产或真实Provider。
+
+v0.6.61独立终审P1已关闭：普通合同策略对GPT Image 2逐字约束image/gpt-image身份、connector/version、runtime、EXACT evidence与完整专用执行合同，并把evidence纳入transition runtime signature；错误revision不能被激活。TypeScript/diff-check通过，safe m102新增三类漂移回归最终`24/24 PASS`（source/snapshot`bb4d4df1…0bd60`、库存1125、异常0、4173 unchanged）；首轮`23/24`只是测试错误文案过窄。下一步重新冻结精确hash并交同一独立上下文只读复核。
+
+v0.6.61独立只读终审覆盖8/8文件、25/25 hunks、完整迁移/普通发布/事务/CAS/幂等链和10/10 models、11/11 identities后给出`P0=0/P1=1/P2=0/NO-GO`，候选解冻。P1是普通合同发布路径未将GPT Image 2 exact registry的runtime/connector/evidence/执行合同作为发布前硬门，允许仅把`evidence`从`EXACT`改为`SPECIALIZED`后激活错误revision。整改只收口普通draft/validate/publish共用校验与transition identity并补精确回归；复核GO前不进入commit、GitHub、生产或真实Provider。
+
+v0.6.61主线程增量全量Review已覆盖8/8文件、25/25 hunks、完整迁移/schema/模板/事务/CAS/immutable revision/重复幂等链、10/10 published logical models、11/11 exact identities与全部Provider/protocol/adapter分支，结论`P0=0/P1=0/P2=0/GO`。候选216 insertions/11 deletions、diff-check通过，精确hash`017c3b94…6a5ea`并已冻结；只允许独立只读增量终审，独立`P0/P1=0/GO`前不进入commit、GitHub、生产或真实Provider。
+
+v0.6.61最终m102增量门在增加“非GPT模型不得滥用`exact-legacy-gpt-image-2-v1`同版本证明”反例后仍为`24/24 PASS`，source/snapshot`da861c1d…a34c6`、库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged；该结果是当前m102权威证据。Provider POST=0/USD0，正式full永久不重跑；下一步精确diff/hash与主线程逐链复核。
+
+v0.6.61版本/治理直接safe m38+m81现为`57/57 PASS`（16+41），source/snapshot`c70e4e46…5699`、库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged；正式full永久不重跑。当前只做精确diff/hash与主线程逐链复核，随后冻结候选并启动独立增量全量Review；Review GO前不进入GitHub或生产。
+
+v0.6.61精确legacy GPT Image 2迁移已完成第一道直接门：仅当default row与active immutable revision都精确匹配生产旧schema、proposed精确匹配current schema、execution contract保持v1且完整runtime identity逐字等价时，才允许字面证明`exact-legacy-gpt-image-2-v1`完成同版本schema补全；row/active任一near-miss或身份/contract变化均阻断。package/lock/runtime/m81同步0.6.61；TypeScript、diff-check与safe m102 `24/24 PASS`（source/snapshot`73797359…5327`、库存1125、异常0、4173 unchanged）。下一步只跑safe m81+m38；正式full永久不重跑。
 
 v0.6.60身份门与首个直接回归已完成：`origin/main@e6341d5`未前进，本地/远端tag和GitHub Release均未占用；package/lock/runtime/m81同步。真实旧Grok的精确特征为inputMode text/image/reference、referenceInputs全0、空media rules、无referencePolicy及旧三角色input policy。迁移现在只对这一精确快照收敛到当前窄合同；模板兼容桥只在该精确旧schema启用，并继续逐节点比较immutable execution contract。near-miss额外mode阻断。safe m102首轮`23/24`暴露22模板通用字段diff，最小修复后最终`24/24 PASS`（source/snapshot`25f82ecd…e51a2`），库存1125、异常0、4173 unchanged。
 
