@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻当前任务
 
-## INC-GEN-017 工作流自动自愈与模型合同隔离（FORMAL SAFE FULL CONSUMED / V0.6.58 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.59 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.60 CANDIDATE COMMITTED GOVERNANCE PASS / REAL PROVIDER NOT POSTED）
+## INC-GEN-017 工作流自动自愈与模型合同隔离（FORMAL SAFE FULL CONSUMED / V0.6.58 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.59 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.60 PR CI PASS FINAL GOVERNANCE PENDING / REAL PROVIDER NOT POSTED）
 
 - [x] v0.6.59精确tag archive `63042cff…71b8`在服务器fresh staging固定Node22.23.2/npm10.9.8完成npm ci、TypeScript和Vite build；7次quiet gate均active0/unsettledUnknown0。
 - [x] v0.6.59冻结备份`v0.6.59-cutover-frozen.jufZ1z`双副本366/366、清单`39c9e691…ebf3`、DB`13589eea…2261`及schema41/integrity/FK/计数门通过；所有证据目录保留。
@@ -18,7 +18,8 @@
 - [x] Review GO治理safe m38 `16/16 PASS`，source/snapshot=`3811d4a83a62802d10581bbeb3d1b2b306bfc6ddb423bf4cc0decbc218418a66`、库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged；正式full未重跑。
 - [x] 精确提交8个产品/版本/测试文件：commit=`8be339c387ec9df21e4e6e6ee43da2f14e2ee8dc`、tree=`8179a5540fecd2b920154bb059c788080a0374a4`、308 insertions/27 deletions；六份治理文档与受保护JSON未进入提交。
 - [x] 候选提交后治理safe m38 `16/16 PASS`，source/snapshot=`fdfbe741ebb004c9d4dc8a740d2ce4217efd94d7ae9f57eabe83f2a2a108d1d0`、库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged；正式full未重跑。
-- [ ] 提交六份治理文档，再push/PR/CI。
+- [x] 六份治理文档已提交并与产品commit一起push；PR #129 base/head=`main@e6341d5`/`7f34d094ec219ad15b5fd545167cbfbdbb5dd875`且mergeable，Quality gates run`33298263718`/job`99221554337`以35秒通过。
+- [ ] 提交并推送本条CI治理回执，等待最终纯文档head同一Quality gate通过后合并。
 
 - [x] R8生产验收在POST前确认旧published Seedance/Grok3.5/Grok3 schema缺少当前语义合同元数据；系统正确fail-closed，Provider POST=0、费用USD0。
 - [x] 完整schema fallback收窄为仅结构有效的旧Grok3；独立终审`P0=0/P1=1/P2=0/NO-GO`发现的迁移registry totality缺口已在plan/activation双重关闭。Seedance/Gemini/Mureka fixture身份已对齐，错协议、错driver、缺参数均阻断；m102最终`24/24 PASS`（`e93a5baf…610032`），库存1125、4173 unchanged；新冻结diff `dcf8a42d…3cb854`。

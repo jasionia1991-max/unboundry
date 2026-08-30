@@ -1,6 +1,6 @@
 # INC-GEN-017：工作流自动自愈与模型合同隔离详细行动方案
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_CANDIDATE_COMMITTED_GOVERNANCE_PASS / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_PR_CI_PASS_FINAL_GOVERNANCE_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 
 建立日期：2026-08-28
 
@@ -25,6 +25,8 @@ Review GO后的治理safe m38为`16/16 PASS`，source/snapshot=`3811d4a83a62802d
 冻结8文件候选已精确提交为`8be339c387ec9df21e4e6e6ee43da2f14e2ee8dc`，tree=`8179a5540fecd2b920154bb059c788080a0374a4`，308 insertions/27 deletions；治理文档与受保护JSON均未进入commit。当前运行提交后治理m38，再独立提交六份治理回执。
 
 候选提交后治理safe m38为`16/16 PASS`，source/snapshot=`fdfbe741ebb004c9d4dc8a740d2ce4217efd94d7ae9f57eabe83f2a2a108d1d0`、库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged；正式full不重跑。当前只提交六份治理回执，再进入push/PR/CI。
+
+两个commit已推送，PR #129 base/head=`main@e6341d5`/`7f34d09`且mergeable；Quality gates / lightweight run`33298263718`、job`99221554337`以35秒通过。当前只提交并推送本条CI治理回执，等待最终纯文档head同一门通过后再合并。
 
 v0.6.59精确tag archive `63042cff…71b8`的服务器fresh build与7次quiet gate均通过；冻结备份`v0.6.59-cutover-frozen.jufZ1z`双副本366/366、清单`39c9e691…ebf3`、DB`13589eea…2261`、schema41/integrity/FK/计数门有效。隔离迁移副本`v0.6.59-contract-upgrade.Nz9OFg`在apply前对真实published `grok-video-3`旧schema报`Invalid model reference policy`并fail-closed，生产未写且继续v0.6.57健康。v0.6.59 Release不可变、未部署；当前递增到最低未占用v0.6.60，只允许精确匹配真实legacy Grok schema的受控迁移，任意near-miss继续阻断。先补m102 exact/near-miss，再跑m102+m81+m38、独立增量Review和新PR/tag/fresh build；正式full永久不重跑，Provider POST/费用仍为0。
 

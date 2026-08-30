@@ -1,6 +1,6 @@
 # INC-GEN-017 验收矩阵
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_CANDIDATE_COMMITTED_GOVERNANCE_PASS / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_PR_CI_PASS_FINAL_GOVERNANCE_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 
 R8增量门：生产旧published schema在Provider POST前被语义合同校验阻断，POST=0/USD0。迁移plan/apply精确执行identity/totality缺口已关闭；冻结diff `dcf8a42d…3cb854`独立增量终审覆盖8/8文件、10/10 logical models、11/11 exact identities，最终`P0=0/P1=0/P2=0/GO`。m102 `24/24 PASS`（`e93a5baf…610032`），库存1125、4173 unchanged；当前按顺序开放v0.6.58准备，生产迁移与真实Provider尚未开放。
 
@@ -25,6 +25,8 @@ v0.6.60 review-go governance：safe m38 `16/16 PASS`，source/snapshot=`3811d4a8
 v0.6.60 candidate commit：`8be339c387ec9df21e4e6e6ee43da2f14e2ee8dc`，tree=`8179a5540fecd2b920154bb059c788080a0374a4`，精确8文件/308 insertions/27 deletions；治理文档与受保护JSON未提交。提交后治理m38=`NOT_RUN`，GitHub/生产迁移/真实Provider仍`NOT_RUN`。
 
 v0.6.60 post-commit governance：safe m38 `16/16 PASS`，source/snapshot=`fdfbe741ebb004c9d4dc8a740d2ce4217efd94d7ae9f57eabe83f2a2a108d1d0`、库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged；治理commit=`READY`，GitHub/生产迁移/真实Provider仍`NOT_RUN`。
+
+v0.6.60 PR gate：PR #129 base/head=`main@e6341d5`/`7f34d094ec219ad15b5fd545167cbfbdbb5dd875`且mergeable；Quality gates run=`33298263718`/job=`99221554337`、35秒`PASS`。最终纯文档head CI=`NOT_RUN`，merge/tag/Release/生产迁移/真实Provider仍`NOT_RUN`。
 
 v0.6.58版本身份门：`origin/main@b34a6f4`未前进，本地/远端tag及GitHub Release均未占用；package/lock、final runtime和m81断言已同步。生产仍为v0.6.57/schema41，版本定向m81+m38待执行。
 

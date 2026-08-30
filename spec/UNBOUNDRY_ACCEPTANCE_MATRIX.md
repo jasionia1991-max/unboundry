@@ -1,8 +1,8 @@
 # Unboundry 绿地复刻验收矩阵
 
-## INC-GEN-017 正式full失败映射关闭、v0.6.59迁移fail-closed与v0.6.60候选治理通过（2026-08-30）
+## INC-GEN-017 正式full失败映射关闭、v0.6.59迁移fail-closed与v0.6.60 PR CI通过（2026-08-30）
 
-- 当前状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_CANDIDATE_COMMITTED_GOVERNANCE_PASS / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。
+- 当前状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_PR_CI_PASS_FINAL_GOVERNANCE_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。
 - v0.6.59 archive/fresh build、7次quiet gate和冻结备份均通过：archive`63042cff…71b8`、staging`v0.6.59-inc-gen-017-20260830.qjbYhr`、冻结目录`v0.6.59-cutover-frozen.jufZ1z`、双清单`39c9e691…ebf3`。隔离迁移副本`v0.6.59-contract-upgrade.Nz9OFg`在apply前因真实published Grok旧schema报`Invalid model reference policy`而阻断；生产未写且继续v0.6.57健康，v0.6.59未部署，Provider POST=0/USD0。v0.6.60 exact/near-miss测试、版本门、独立Review、GitHub和生产均`NOT_RUN`。
 - v0.6.60最低未占用patch身份通过；只读生产副本确认default schema和活动immutable revision均携带旧text/image/reference Grok合同。exact-only迁移、near-miss阻断和22模板/34节点execution兼容桥已实现；safe m102首轮`23/24`后最小修复，最终`24/24 PASS`（source/snapshot`25f82ecd…e51a2`）。版本/治理直接safe m38+m81随后`57/57 PASS`（16+41），source/snapshot`07053ab1…4490b8`、库存1125、异常0、4173 unchanged；独立Review仍待执行。
 - v0.6.60候选6/6文件已冻结：156 insertions/17 deletions，diff hash=`f4489901…222643`，diff-check通过。独立增量Review进行中；P0/P1清零前GitHub/生产门继续关闭。
@@ -14,6 +14,7 @@
 - Review GO治理safe m38 `16/16 PASS`，source/snapshot=`3811d4a83a62802d10581bbeb3d1b2b306bfc6ddb423bf4cc0decbc218418a66`、库存1125、异常0、4173 unchanged；当前8文件候选提交就绪，正式full未重跑，GitHub/生产/Provider仍待后续硬门。
 - v0.6.60冻结候选已精确提交：commit=`8be339c387ec9df21e4e6e6ee43da2f14e2ee8dc`、tree=`8179a5540fecd2b920154bb059c788080a0374a4`、8文件/308 insertions/27 deletions；治理文档与受保护JSON未提交。提交后治理m38待执行，生产/Provider未变。
 - 提交后治理safe m38 `16/16 PASS`，source/snapshot=`fdfbe741ebb004c9d4dc8a740d2ce4217efd94d7ae9f57eabe83f2a2a108d1d0`、库存1125、异常0、4173 unchanged；治理commit就绪，正式full未重跑，生产/Provider未变。
+- PR #129 base/head=`main@e6341d5`/`7f34d094ec219ad15b5fd545167cbfbdbb5dd875`且mergeable，Quality gates run`33298263718`/job`99221554337`以35秒通过。当前最终治理head CI待执行；生产v0.6.57/schema41、Provider POST=0/USD0。
 - R8生产最小验收在POST前确认旧published Seedance/Grok3.5/Grok3合同缺失当前语义元数据；系统fail-closed，Provider POST=0/USD0。冻结diff `dcf8a42d…3cb854`独立增量终审覆盖8/8文件、10/10 logical models、11/11 exact identities，最终`P0=0/P1=0/P2=0/GO`；m102 `24/24 PASS`（`e93a5baf…610032`），库存1125、4173 unchanged。当前只开放v0.6.58准备，生产迁移和真实Provider仍待后续硬门。
 - v0.6.58版本身份门确认`origin/main@b34a6f4`未前进，本地/远端tag及GitHub Release均未占用；package/lock、final runtime allowlist和m81断言已同步。本地候选v0.6.58，生产仍为v0.6.57/schema41；版本定向m81+m38待执行。
 - v0.6.58版本直接门最终有效`57/57 PASS`：m81 `41/41`首轮通过，m38修正唯一治理版本字段后`16/16 PASS`（`30e11dbd…c7d7b`），库存1125、异常0、4173 unchanged；候选提交就绪。
