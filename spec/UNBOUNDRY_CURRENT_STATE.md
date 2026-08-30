@@ -15,7 +15,7 @@
 
 ## INC-GEN-017 当前区块（2026-08-28）
 
-- v0.6.63后置P1整改已独立复审GO：accepted-only空凭证在运行注册/提交前fail-closed；同一run的cancel/stop-loss/checkpoint/exception红色终态统一稳定去重键。safe m22 44/44（`79e5a3d2…cda3`）、m81 41/41（`dd33875b…6ae2`）及治理m38最终16/16（`d87f6f5e…277e`）PASS，库存1125、异常0、4173 unchanged；m38首轮15/16仅暴露并关闭三份渐进治理文档旧current marker。独立结论`P0=0/P1=0/P2=0/GO`；正式full不重跑、Provider0，当前精确提交，生产仍v0.6.62。
+- v0.6.63后置P1整改已独立复审GO：accepted-only空凭证在运行注册/提交前fail-closed；同一run的cancel/stop-loss/checkpoint/exception红色终态统一稳定去重键。safe m22 44/44（`79e5a3d2…cda3`）、m81 41/41（`dd33875b…6ae2`）及治理m38最终16/16（`d87f6f5e…277e`）PASS；m38首轮15/16仅暴露并关闭三份渐进治理文档旧current marker。独立结论`P0=0/P1=0/P2=0/GO`；候选commit=`e6cad632…72b2c`，提交后m38 16/16（`9fc99f7f…622c`）通过。全部库存1125、异常0、4173 unchanged；正式full不重跑、Provider0，当前进入GitHub，生产仍v0.6.62。
 - v0.6.62唯一Seedance 2.0 Mini真实请求已完成：专用Canvas三条参考边按image/video/audio确定性绑定、模式`multimodal`；attempt1明确accepted/completed，OSS asset ready、publication published、原Video自动回填并在真实reload后保持。实际费用`1.412012 CNY`、retry0、unknown0，结果后service active/NRestarts0/active0。顶部保存文案虽持续`保存中...`，服务端revision与结果均已确认持久，登记为P2 UI状态观察项；当前`REAL_PROVIDER_PASS / USER_RECHECK`，不再允许新Provider POST。
 - v0.6.62 paired forward和72秒7采样稳定门已通过；现网current/API0.6.62、ready active/schema41、service active/running/NRestarts0，active/unknown及tasks1025/attempts1036/media949/publications531/canvas76零漂移。`PRODUCTION_TECHNICAL_PASS`，真实Provider POST0/USD0，下一步最小真实验收。
 - v0.6.62首轮切换已通过API/ready、DB完整性/计数、回环+公网33/33静态字节；随后成对rollback到v0.6.57旧triplet+symlink并通过公网/回环健康、NRestarts0和数据完整性。v0.6.62 live triplet保存在`v0.6.62-forward-live-triplet.GwK6uF`；当前只执行forward恢复，Provider0/USD0。
