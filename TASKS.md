@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻当前任务
 
-## INC-GEN-017 工作流自动自愈与模型合同隔离（FORMAL SAFE FULL CONSUMED / V0.6.58 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.59 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.60 FROZEN BACKUP PASS ISOLATED MIGRATION PENDING / REAL PROVIDER NOT POSTED）
+## INC-GEN-017 工作流自动自愈与模型合同隔离（FORMAL SAFE FULL CONSUMED / V0.6.58 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.59 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.60 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.61 REMEDIATION PREPARING / REAL PROVIDER NOT POSTED）
 
 - [x] v0.6.59精确tag archive `63042cff…71b8`在服务器fresh staging固定Node22.23.2/npm10.9.8完成npm ci、TypeScript和Vite build；7次quiet gate均active0/unsettledUnknown0。
 - [x] v0.6.59冻结备份`v0.6.59-cutover-frozen.jufZ1z`双副本366/366、清单`39c9e691…ebf3`、DB`13589eea…2261`及schema41/integrity/FK/计数门通过；所有证据目录保留。
@@ -24,7 +24,8 @@
 - [x] v0.6.60精确tag archive SHA=`8db3ed0f…90b03`；服务器独立staging=`v0.6.60-inc-gen-017-20260830.dA88ys`固定Node22.23.2/npm10.9.8，npm ci、TypeScript、Vite、6035文件inventory（`d14ed3db…b6c8`）和dist33全部通过。
 - [x] 连续7次生产quiet gate均为active0/unsettledUnknown0；current/API仍为v0.6.57，service active/running、NRestarts0。
 - [x] 正式冻结目录`v0.6.60-cutover-frozen.k3xebQ`的source/restore各366文件、双清单`a758e801…aea2b`、DB`13589eea…2261`；schema41/integrity/FK0、tasks1025、attempts1036、media949/1772056577、canvas76、models20/10、templates50/48及Library门一致。首个清单失败目录`v0.6.60-cutover-frozen.in7NN7`保留。
-- [ ] 从restore-copy建立唯一迁移工作副本，执行v0.6.60合同迁移dry-run、apply和repeat幂等；任一失败保持生产停机或恢复v0.6.57，绝不写生产DB。
+- [x] v0.6.60隔离工作副本`v0.6.60-contract-upgrade.Ym2zSJ`的dry-run在apply前因真实GPT Image 2旧合同缺reference media rules而fail-closed；工作DB SHA未变、生产未写，失败证据`5f68f8a7…7f6d0`，生产恢复v0.6.57健康。
+- [ ] 确认v0.6.61为最低未占用patch；只对生产精确legacy GPT Image 2合同增加窄迁移与near-miss阻断，运行m102/版本治理最小门并重新独立增量Review。
 
 - [x] R8生产验收在POST前确认旧published Seedance/Grok3.5/Grok3 schema缺少当前语义合同元数据；系统正确fail-closed，Provider POST=0、费用USD0。
 - [x] 完整schema fallback收窄为仅结构有效的旧Grok3；独立终审`P0=0/P1=1/P2=0/NO-GO`发现的迁移registry totality缺口已在plan/activation双重关闭。Seedance/Gemini/Mureka fixture身份已对齐，错协议、错driver、缺参数均阻断；m102最终`24/24 PASS`（`e93a5baf…610032`），库存1125、4173 unchanged；新冻结diff `dcf8a42d…3cb854`。

@@ -1,6 +1,6 @@
 # INC-GEN-017 验收矩阵
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_FROZEN_BACKUP_PASS_ISOLATED_MIGRATION_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_REMEDIATION_PREPARING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 
 R8增量门：生产旧published schema在Provider POST前被语义合同校验阻断，POST=0/USD0。迁移plan/apply精确执行identity/totality缺口已关闭；冻结diff `dcf8a42d…3cb854`独立增量终审覆盖8/8文件、10/10 logical models、11/11 exact identities，最终`P0=0/P1=0/P2=0/GO`。m102 `24/24 PASS`（`e93a5baf…610032`），库存1125、4173 unchanged；当前按顺序开放v0.6.58准备，生产迁移与真实Provider尚未开放。
 
@@ -35,6 +35,8 @@ v0.6.60 fresh-build gate：精确tag archive SHA=`8db3ed0f921a64187b2cdca7ae7c7a
 v0.6.60 production-quiet gate：连续7次`active=0/unsettledUnknown=0`，current与API version仍为v0.6.57，service active/running、NRestarts0，结论`PASS`。冻结双副本、恢复验证、隔离迁移与真实Provider仍`NOT_RUN`。
 
 v0.6.60 frozen-backup gate：正式目录=`/var/lib/unboundry-rollbacks/v0.6.60-cutover-frozen.k3xebQ`，source/restore各366，双清单=`a758e801…aea2b`，DB=`13589eea…2261`；两副本schema41、quick/integrity、FK0、任务/尝试/媒体/Canvas/模型/模板及Library计数一致，结论`PASS`。首个清单命令失败目录`v0.6.60-cutover-frozen.in7NN7`保留，生产数据未写。隔离迁移与真实Provider仍`NOT_RUN`。
+
+v0.6.60 isolated-migration gate：工作副本=`v0.6.60-contract-upgrade.Ym2zSJ`，attestation=`75a9d74a…c87ef6`；dry-run在apply前因真实`gpt-image-2`缺reference media rules而`FAIL_CLOSED`，工作DB SHA未变、生产DB未写，失败证据=`5f68f8a7…7f6d0`。生产恢复v0.6.57健康，v0.6.60=`UNDEPLOYED`；v0.6.61 exact/near-miss整改、定向测试和Review仍`NOT_RUN`，Provider POST=0/USD0。
 
 v0.6.58版本身份门：`origin/main@b34a6f4`未前进，本地/远端tag及GitHub Release均未占用；package/lock、final runtime和m81断言已同步。生产仍为v0.6.57/schema41，版本定向m81+m38待执行。
 

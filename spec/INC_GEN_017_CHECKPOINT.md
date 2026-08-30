@@ -1,6 +1,6 @@
 # INC-GEN-017 实时断点
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_FROZEN_BACKUP_PASS_ISOLATED_MIGRATION_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_REMEDIATION_PREPARING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 
 更新时间：2026-08-29
 
@@ -24,6 +24,7 @@
 - v0.6.60精确tag archive SHA=`8db3ed0f921a64187b2cdca7ae7c7ae6fcf7e9b2c48f6c0ee3fc3b1659790b03`，tag解引用到`b5867b3edf8f39c9a58b4e77d9060e1567dd9de2`；服务器独立staging=`/opt/unboundry/staging/v0.6.60-inc-gen-017-20260830.dA88ys`固定Node`22.23.2`/npm`10.9.8`完成npm ci、TypeScript与Vite build。发布清单6035文件且校验通过，inventory SHA=`d14ed3db17e1cc60b025093072a673278f191a33d48e3cbae5889275f13db6c8`，dist 33文件。生产仍为v0.6.57/schema41、Provider POST=0/USD0；下一步只执行生产quiet gate。
 - v0.6.60生产quiet gate连续7次均为`active=0/unsettledUnknown=0`；全程current仍精确指向v0.6.57，`/api/version=0.6.57`，service active/running、NRestarts0。当前只允许停服后建立新的不可覆盖冻结双副本并验证恢复副本；Provider POST=0/USD0。
 - 首个冻结尝试目录`/var/lib/unboundry-rollbacks/v0.6.60-cutover-frozen.in7NN7`在source复制完成后因清单命令引号错误fail-closed，服务已停且生产数据未写；该目录保留为失败证据。正式冻结目录=`/var/lib/unboundry-rollbacks/v0.6.60-cutover-frozen.k3xebQ`，source/restore各366文件，双清单SHA=`a758e8011c832653c9506407b0794bc63fefc6feaeaf473274195a47ce2aea2b`，DB SHA=`13589eea474afb688325c4ad1f54ebdc82a8d66b589c05b7502eb8348cec2261`。两副本均schema41、quick/integrity ok、FK0，tasks1025、attempts1036、active0、unknown0、media949/1772056577 bytes、canvas76、models20/published10、templates50/published48及Library schema1/integrity/FK0一致。服务保持inactive/enabled；下一步只在新迁移工作副本执行dry-run/apply/repeat。
+- v0.6.60隔离迁移工作副本=`/var/lib/unboundry-rollbacks/v0.6.60-contract-upgrade.Ym2zSJ`，attestation SHA=`75a9d74a…c87ef6`。dry-run在任何apply前因真实`gpt-image-2`旧合同报`Model reference media rules are required by this Provider model`而fail-closed；工作DB SHA在失败前后均为`13589eea…2261`，生产DB未写，失败证据SHA=`5f68f8a7…7f6d0`。v0.6.60 tag/Release保持不可变且未部署；生产已恢复v0.6.57，回环/公网version/live/ready、service active/running、NRestarts0。下一步确认v0.6.61最低未占用身份，只为精确legacy GPT Image 2合同增加窄迁移，任意near-miss继续阻断。
 
 - v0.6.59精确tag archive SHA为`63042cfff78e9364356cb2e1dc1232162fa58bc58417ee2a6c69cd6a6f7471b8`；服务器fresh staging `/opt/unboundry/staging/v0.6.59-inc-gen-017-20260830.qjbYhr`固定Node`22.23.2`/npm`10.9.8`，npm ci、TypeScript和Vite build通过。生产quiet gate连续7次`active=0/unsettledUnknown=0`。
 - v0.6.59冻结备份`/var/lib/unboundry-rollbacks/v0.6.59-cutover-frozen.jufZ1z`的source/restore各366文件、双清单SHA`39c9e6913670a4c1c7aca09bda974fa2108967ea73f7079b9fe309532891ebf3`，冻结DB SHA`13589eea474afb688325c4ad1f54ebdc82a8d66b589c05b7502eb8348cec2261`；schema41、quick_check ok、FK0、active0、unknown0、published10，全部副本和失败证据保留。
