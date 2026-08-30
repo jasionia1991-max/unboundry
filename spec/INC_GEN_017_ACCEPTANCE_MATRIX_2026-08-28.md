@@ -1,6 +1,8 @@
 # INC-GEN-017 验收矩阵
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_FROZEN_BACKUP_PASS_ISOLATED_MIGRATION_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_62_REMEDIATION_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+
+v0.6.61 isolated-migration gate：工作副本=`v0.6.61-contract-upgrade.Tupzga`，attestation=`34d80588…c817e`；dry-run在apply前因真实`grok-imagine-video-1.5-preview` prompt policy旧合同而`FAIL_CLOSED`。工作/生产DB SHA均未变，生产恢复v0.6.57健康，v0.6.61=`UNDEPLOYED`；v0.6.62 exact/near-miss整改、定向测试与Review仍`NOT_RUN`，Provider POST=0/USD0。
 
 v0.6.61 frozen-backup gate：正式目录=`/var/lib/unboundry-rollbacks/v0.6.61-cutover-frozen.q9k50E`，source/restore各366文件，双清单=`a758e801…aea2b`，DB=`13589eea…2261`，Library=`444e64f4…80f49`；两副本schema41、quick/integrity、FK0及任务/尝试/媒体/Canvas/模型/模板/Library计数一致，结论`PASS`。首次清单引号失败目录`v0.6.61-cutover-frozen.LRLTxA`保留且生产未写。隔离迁移与真实Provider仍`NOT_RUN`。
 
