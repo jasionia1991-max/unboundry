@@ -520,14 +520,23 @@ export function WorkflowExecutionProvider({
       runId: nextCheckpoint.runId,
     })) {
       running.checkpointWriteFailed = true;
-      notify("停止状态无法保存，已阻止后续节点；请勿在其他标签页继续", "error");
+      if (publishGroupRunNotificationOnce(publishedRunNotifications.current, {
+        accountId,
+        canvasId,
+        errorClass: "run-terminal",
+        groupId,
+        nodeId: groupId,
+        runId: running.runId,
+      }, "terminal")) {
+        notify("停止状态无法保存，已阻止后续节点；请勿在其他标签页继续", "error");
+      }
     }
     running.publishStopping();
     const activeCount = running.activeNodeIds.size;
     notify(
       `已停止后续节点；当前已开始的 ${activeCount} 个节点仍会继续处理，已经提交的任务会继续并保存结果。`,
     );
-  }, [notify]);
+  }, [accountId, canvasId, notify]);
 
   const waitForCanvasStable = useCallback(async (
     groupId: string,
@@ -566,13 +575,6 @@ export function WorkflowExecutionProvider({
         notify("验收页面不会触发真实生成");
         return;
       }
-      if (["0", "false"].includes(
-        String(import.meta.env.VITE_UNBOUNDRY_WORKFLOW_SELF_HEALING_V2 ?? "")
-          .toLowerCase(),
-      )) {
-        notify("工作流自动自愈已由管理员临时止损；本轮未提交生成任务", "error");
-        return;
-      }
       if (runningGroups.current.has(groupId) || startingGroupIds.current.has(groupId)) {
         return;
       }
@@ -595,6 +597,16 @@ export function WorkflowExecutionProvider({
           runId: recoveryNotificationRunId,
         }, phase)) notify(message, kind);
       };
+      if (["0", "false"].includes(
+        String(import.meta.env.VITE_UNBOUNDRY_WORKFLOW_SELF_HEALING_V2 ?? "")
+          .toLowerCase(),
+      )) {
+        notifyPreAdmissionRecoveryOnce(
+          "工作流自动自愈已由管理员临时止损；本轮未提交生成任务",
+          "error",
+        );
+        return;
+      }
       const acceptedTaskMapsMatch = (
         left: GroupRunCheckpoint["acceptedTasks"],
         right: GroupRunCheckpoint["acceptedTasks"],
@@ -801,6 +813,16 @@ export function WorkflowExecutionProvider({
           }
         }
       }
+      if (
+        acceptedTasksOnly &&
+        Object.keys(resumeCheckpoint?.acceptedTasks ?? {}).length === 0
+      ) {
+        notifyPreAdmissionRecoveryOnce(
+          "恢复记录没有可核对的已接收任务；本轮未提交新任务",
+          "error",
+        );
+        return;
+      }
       const childIds = new Set(
         candidateNodes
           .filter((node) => node.parentId === groupId)
@@ -855,17 +877,19 @@ export function WorkflowExecutionProvider({
       ) => {
         if (kind === "error") {
           if (terminalErrorPublished) return;
-          terminalErrorPublished = true;
         }
         const phase = kind === "error" ? "terminal" : "recovering";
         if (publishGroupRunNotificationOnce(publishedRunNotifications.current, {
           accountId,
           canvasId,
-          errorClass,
+          errorClass: kind === "error" ? "run-terminal" : errorClass,
           groupId,
-          nodeId,
+          nodeId: kind === "error" ? groupId : nodeId,
           runId,
-        }, phase)) notify(message, kind);
+        }, phase)) {
+          if (kind === "error") terminalErrorPublished = true;
+          notify(message, kind);
+        }
       };
       const notifyTerminalErrorOnce = (
         errorClass: string,
@@ -1232,7 +1256,10 @@ export function WorkflowExecutionProvider({
           version: 2,
         };
         if (!writeGroupRunCheckpoint(checkpoint, expectedLease())) {
-          notify("浏览器无法保存整组进度，为避免刷新后重复生成，本轮已阻止", "error");
+          notifyTerminalErrorOnce(
+            "initial-checkpoint-write",
+            "浏览器无法保存整组进度，为避免刷新后重复生成，本轮已阻止",
+          );
           return;
         }
         const directProjectionReceipts: GroupResultProjectionResult[] = [];
@@ -1309,7 +1336,10 @@ export function WorkflowExecutionProvider({
             updatedAt: Date.now(),
           };
           if (!writeGroupRunCheckpoint(checkpoint, expectedLease())) {
-            notify("自动核对进度无法保存；本次未提交任何新任务", "error");
+            notifyTerminalErrorOnce(
+              "accepted-recovery-checkpoint-write",
+              "自动核对进度无法保存；本次未提交任何新任务",
+            );
             return;
           }
           const running = {

@@ -2290,6 +2290,32 @@ test("workflow execution has no component registration or render-retention depen
   expect(provider).toContain("durableRestartCheckpoint ?? {");
   expect(provider).toContain("let terminalErrorPublished = false");
   expect(provider).toContain(
+    'errorClass: kind === "error" ? "run-terminal" : errorClass',
+  );
+  expect(provider).toContain(
+    'errorClass: "run-terminal",\n        groupId,\n        nodeId: groupId,',
+  );
+  expect(provider).not.toContain(
+    'notify("浏览器无法保存整组进度，为避免刷新后重复生成，本轮已阻止", "error")',
+  );
+  expect(provider).not.toContain(
+    'notify("自动核对进度无法保存；本次未提交任何新任务", "error")',
+  );
+  const acceptedOnlyEmptyGuard = provider.indexOf(
+    "acceptedTasksOnly &&\n        Object.keys(resumeCheckpoint?.acceptedTasks ?? {}).length === 0",
+  );
+  const startRegistration = provider.indexOf(
+    "startingGroupIds.current.add(groupId)",
+  );
+  expect(acceptedOnlyEmptyGuard).toBeGreaterThan(-1);
+  expect(acceptedOnlyEmptyGuard).toBeLessThan(startRegistration);
+  expect(provider.slice(acceptedOnlyEmptyGuard, startRegistration)).toContain(
+    "恢复记录没有可核对的已接收任务；本轮未提交新任务",
+  );
+  expect(provider.slice(acceptedOnlyEmptyGuard, startRegistration)).toContain(
+    "return;",
+  );
+  expect(provider).toContain(
     "binding.modelConfigurationRevision ===",
   );
   expect(provider).toContain(

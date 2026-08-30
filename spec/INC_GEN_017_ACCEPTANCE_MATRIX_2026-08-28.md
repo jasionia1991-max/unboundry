@@ -1,6 +1,24 @@
 # INC-GEN-017 验收矩阵
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_62_PR_OPEN_FINAL_DOC_HEAD_CI_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_62_PRODUCTION_TECHNICAL_PASS / V0_6_63_REVIEW_GO / REAL_PROVIDER_PASS / USER_RECHECK`
+
+v0.6.63 post-review P1 gate：accepted-only空凭证在注册/提交前阻断；同一run的红色终态统一稳定去重。safe m22=`44/44 PASS`、m81=`41/41 PASS`、治理m38最终`16/16 PASS`，异常0、4173 unchanged、Provider0；m38首轮15/16的旧current marker已精确修正。independent incremental review=`P0=0/P1=0/P2=0/GO`，formal full不重跑，production仍v0.6.62。
+
+v0.6.62 real Provider gate：Seedance 2.0 Mini唯一POST/attempt1=`accepted→completed`，图片/视频/音频角色=`reference-image/reference-video/reference-audio`，inputMode=`multimodal`；result asset=`OSS ready`、publication=`published`、原Video自动回填且reload保持。实际费用`1.412012 CNY`、retry0、unknown0、结果后active0/service稳定，结论`REAL_PROVIDER_PASS`。顶部保存文案持续`保存中...`但server revision/result已持久，记P2 UI状态观察项；`USER_RECHECK`不变、额外Provider POST关闭。
+
+v0.6.62 forward/stability gate：paired forward后current/API0.6.62、ready active/schema41、service active/running、NRestarts0；72秒7采样回环/公网与active/unknown/关键计数零漂移。rollback/forward evidence retained，结论`PRODUCTION_TECHNICAL_PASS`。real Provider后续已按上方唯一请求完成。
+
+v0.6.62 initial-cutover/rollback gate：release inventory/dist=`PASS`；v0.6.62 current/API/ready、DB integrity/counts、loop/public static33/33=`PASS`。成对rollback到v0.6.57旧triplet+symlink后，loop/public version/ready、service/NRestarts、DB integrity/counts=`PASS`。首个sidecar预检和首个错误static URL均fail-closed。forward/stability/Provider=`NOT_RUN`。
+
+v0.6.62 latest isolated-migration gate：main dry/apply=`PASS`，5 exact legacy revisions、22 templates/34 nodes、paid Provider0；clean repeat 11/11 none、upgrade0、DB byte-identical=`119e35d5…9ca2`。schema41/quick/integrity/FK0/active0/unsettledUnknown0，audit sanitized。错误sidecar repeat在dry-run前fail-closed且保留，production DB/current未变。结论`PASS`；production cutover/Provider=`NOT_RUN`。
+
+v0.6.62 frozen-backup gate：目录=`v0.6.62-cutover-frozen.Y0d1Bm`，source/restore=366/366，双清单SHA=`a758e801…aea2b`；DB=`13589eea…2261`、Library=`444e64f4…f49`。两副本schema41/quick/integrity/FK0及关键计数完全一致，active0/unsettledUnknown0；service inactive/enabled，生产DB未写，结论`PASS`。isolated migration/Provider=`NOT_RUN`。
+
+v0.6.62 production-quiet gate：`2026-08-30T12:56:55Z–12:57:55Z`连续7次`active=0/unsettledUnknown=0`，current/API=v0.6.57、ready active/schema41、service active/running、NRestarts0，结论`PASS`。首个旧迁移过宽诊断37已保留；37均关联终态任务，8条unknown均finished，不属于现行未收口unknown。frozen backup/migration/Provider=`NOT_RUN`。
+
+v0.6.62 fresh-build gate：tag archive SHA=`0e32a951cff0feac80c13fc52bb02b981667d16ad9e2eafb8e920d28cde7e348` local/remote equal；staging=`v0.6.62-inc-gen-017-20260830.w9BL3M/source`，Node22.23.2/npm10.9.8，npm ci/TypeScript/Vite/inventory6035/dist33=`PASS`，inventory SHA=`6d40ebfa0e3d64e3ca86fd9f5f5600abab5f01a142807768cdce301abcf14e21`。production current/API v0.6.57、ready schema41、service healthy；quiet/frozen backup/migration/Provider=`NOT_RUN`。
+
+v0.6.62 merge/release identity gate：final PR head`60badfa` run/job=`33312237020/99259269103` success in 48s；merge=`dda1bce6d3a4692fbc44eb293f7c4adc571d3f57` main run/job=`33312290289/99259413285` success in 30s。annotated tag object=`4cb4ff2b8bcecf4c7c350cc335a99c29cb790854` peels exactly to merge；GitHub Release non-draft/non-prerelease。tag archive/fresh build=`NOT_RUN`，production/Provider门关闭。
 
 v0.6.62 PR CI gate：head `3aef7e8` run/job=`33312070069/99258820272` success in 33s；governance head `d01d564` run/job=`33312135373/99258993752` success in 36s。final doc head CI/merge/main CI/tag/Release=`NOT_RUN`，production/Provider门关闭。
 

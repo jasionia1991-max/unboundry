@@ -1,8 +1,26 @@
 # INC-GEN-017：工作流自动自愈与模型合同隔离详细行动方案
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_62_PR_OPEN_FINAL_DOC_HEAD_CI_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_62_PRODUCTION_TECHNICAL_PASS / V0_6_63_REVIEW_GO / REAL_PROVIDER_PASS / USER_RECHECK`
 
 建立日期：2026-08-28
+
+v0.6.63后置P1整改已完成：accepted-only空凭证入口fail-closed，同run全部红色终态统一稳定去重键；safe m22 44/44、m81 41/41、治理m38最终16/16通过，同一独立上下文复审`P0=0/P1=0/P2=0/GO`。m38首轮15/16只暴露三份渐进治理文档的旧current marker并已精确同步。正式full不重跑、Provider0；当前只进入精确提交和既有发布链，生产仍v0.6.62。
+
+v0.6.62最小真实Provider验收只提交1次Seedance 2.0 Mini并成功：三种参考素材角色与`multimodal`合同在提交前自动规范化；唯一attempt明确accepted/completed，OSS结果ready/published并自动回填原Video，真实reload保持。实际费用`1.412012 CNY`、重试0、unknown0、结果后active0/service稳定。顶部保存文案持续`保存中...`但服务端revision和结果均已持久，登记为P2 UI状态观察项；真实Provider技术结论`REAL_PROVIDER_PASS`，用户确认前继续`USER_RECHECK`，且本Goal不再允许新Provider POST。
+
+v0.6.62成对forward及72秒稳定门通过：回环/公网version/ready、service/NRestarts、active/unknown和业务计数连续7次零漂移；生产技术结论`PRODUCTION_TECHNICAL_PASS`。全部回滚/前向triplet、冻结双副本和旧release继续保留。下一步只消费USD100内最少真实Provider请求；unknown一律零新POST。
+
+v0.6.62首轮生产切换与成对rollback均通过。新release inventory/dist、迁移DB完整性/计数、回环+公网33/33静态字节与v0.6.62健康门已闭合；随后保存v0.6.62 live triplet并恢复v0.6.57旧triplet+symlink，公网/回环健康与旧库完整性通过。首个无sidecar错误预检及静态URL前缀404均fail-closed且不改变业务事实。当前只执行forward triplet+v0.6.62 symlink恢复并进入稳定门。
+
+v0.6.62最新冻结restore的主隔离副本dry-run/apply完成5个exact legacy revision和22模板/34节点迁移；clean repeat为11/11 action none、升级0且DB字节SHA不变。完整SHA与目录见Checkpoint。一次错误混合旧WAL/SHM的repeat副本在dry-run前malformed并保留，未触碰生产。隔离门已PASS；生产仍v0.6.57、DB未写、service inactive/enabled，下一步仅按同一attestation/baseline执行生产迁移与原子current切换，失败从冻结source恢复。
+
+v0.6.62正式冻结目录`v0.6.62-cutover-frozen.Y0d1Bm`的source/restore各366文件，双清单SHA=`a758e801…aea2b`；主DB=`13589eea…2261`、Library=`444e64f4…f49`。schema/integrity/FK、任务/attempt/unknown、媒体、Canvas、模型、模板和Library计数全部一致。service inactive/enabled，生产DB未写；下一阶段只能从restore派生隔离副本完成dry-run/apply/repeat，任何失败恢复原v0.6.57。
+
+v0.6.62生产quiet gate于`2026-08-30T12:56:55Z–12:57:55Z`连续7次`active=0/unsettledUnknown=0`；current/API始终v0.6.57，ready active/schema41，service active/running、NRestarts0。首次旧迁移重建查询过宽计数37后立即停止；只读分类确认全部为终态任务历史账本，8条unknown均已有`finished_at`，不属于现行未收口unknown。当前进入停服冻结双副本；冻结/恢复门会继续独立处理其更保守账本检查，不以quiet gate替代。
+
+v0.6.62精确tag archive SHA=`0e32a951cff0feac80c13fc52bb02b981667d16ad9e2eafb8e920d28cde7e348`并在服务器一致校验；独立staging=`/opt/unboundry/staging/v0.6.62-inc-gen-017-20260830.w9BL3M/source`固定Node22.23.2/npm10.9.8，npm ci、TypeScript、Vite build、6035行release inventory校验与dist33均通过，inventory SHA=`6d40ebfa0e3d64e3ca86fd9f5f5600abab5f01a142807768cdce301abcf14e21`。生产current/API仍v0.6.57，live/ready active/schema41、service active/enabled、NRestarts0。下一步执行连续quiet gate，再冻结双副本备份；尚不写生产DB。
+
+PR #131最终head`60badfa`的Quality gates run/job=`33312237020/99259269103`以48秒通过，merge=`dda1bce6d3a4692fbc44eb293f7c4adc571d3f57`后的main run/job=`33312290289/99259413285`以30秒通过。annotated v0.6.62 tag object=`4cb4ff2b8bcecf4c7c350cc335a99c29cb790854`精确解引用到merge，GitHub Release已发布且非draft/prerelease。下一步从精确tag生成archive并在服务器独立staging固定Node22.23.2/npm10.9.8完成npm ci、TypeScript、Vite、inventory与dist验证；生产不变。
 
 PR #131首个head`3aef7e8`的Quality gates/lightweight run=`33312070069`、job=`99258820272`以33秒通过；随后治理head`d01d564`的run=`33312135373`、job=`99258993752`以36秒通过。现在只提交/推送该CI证据，等待最终纯文档head同一门；通过后合并并等待main CI，再建立annotated tag与GitHub Release。
 
