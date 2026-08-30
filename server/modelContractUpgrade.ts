@@ -23,7 +23,10 @@ import {
   modelContractState,
   upgradeModelContractRevision,
 } from "./modelReleaseRevisionStore";
-import { grokVideo3SchemaState } from "./currentModelReleasePolicy";
+import {
+  gptImage2SchemaState,
+  grokVideo3SchemaState,
+} from "./currentModelReleasePolicy";
 import {
   modelContractUpgradeSeeds,
   modelReferenceCounts,
@@ -74,6 +77,7 @@ const expectedProviderModelIds = Object.freeze([
 
 const semanticContractUpgradeProviderModelIds = new Set([
   "doubao-seedance-2-0-mini-260615",
+  "gpt-image-2",
   "grok-imagine-video-1.5-preview",
   "grok-video-3",
   "mureka-9",
@@ -162,6 +166,45 @@ function isExactLegacyGrokVideo3V2SchemaTransition(
       snapshotHash(proposed.executionContract);
 }
 
+function gptImage2MigrationSchemaState(
+  row: SeedRow,
+  active: ModelReleaseDocument,
+) {
+  if (row.providerModelId !== "gpt-image-2") return undefined;
+  let persisted: unknown;
+  try {
+    persisted = JSON.parse(row.default_parameters) as unknown;
+  } catch {
+    return Object.freeze({ active: "other", row: "other" } as const);
+  }
+  return Object.freeze({
+    active: gptImage2SchemaState(active.capabilitySchema),
+    row: gptImage2SchemaState(persisted),
+  });
+}
+
+function isExactLegacyGptImage2V1SchemaTransition(
+  row: SeedRow,
+  active: ModelReleaseDocument,
+  proposed: ModelReleaseDocument,
+) {
+  const state = gptImage2MigrationSchemaState(row, active);
+  return state?.row === "legacy" && state.active === "legacy" &&
+    active.executionContract.version === 1 &&
+    proposed.executionContract.version === 1 &&
+    active.modelId === proposed.modelId &&
+    active.capability === proposed.capability &&
+    active.connectorFamily === proposed.connectorFamily &&
+    active.connectorVersion === proposed.connectorVersion &&
+    active.providerModelId === proposed.providerModelId &&
+    active.providerProfileId === proposed.providerProfileId &&
+    active.providerProtocol === proposed.providerProtocol &&
+    active.runtime === proposed.runtime &&
+    active.evidence === proposed.evidence &&
+    snapshotHash(active.executionContract) ===
+      snapshotHash(proposed.executionContract);
+}
+
 function schema(row: SeedRow) {
   const fallback = knownModelParameterSchema({
     capability: row.capability,
@@ -198,6 +241,10 @@ function schema(row: SeedRow) {
       (
         row.providerModelId === "grok-video-3" &&
         grokVideo3SchemaState(persisted) === "legacy"
+      ) ||
+      (
+        row.providerModelId === "gpt-image-2" &&
+        gptImage2SchemaState(persisted) === "legacy"
       ) ||
       (
         row.providerModelId === "mureka-9" &&
@@ -246,12 +293,23 @@ function targetDocument(row: SeedRow, active: ModelReleaseDocument) {
       grokSchemaState.row !== grokSchemaState.active
     )
   ) throw new Error("grok-video-3默认schema与活动revision迁移身份不一致");
+  const gptImageSchemaState = gptImage2MigrationSchemaState(row, active);
+  if (
+    gptImageSchemaState && (
+      gptImageSchemaState.row === "other" ||
+      gptImageSchemaState.active === "other" ||
+      gptImageSchemaState.row !== gptImageSchemaState.active
+    )
+  ) throw new Error("gpt-image-2默认schema与活动revision迁移身份不一致");
   const semanticChanged = inspectModelReleaseDocument(aligned).documentHash !==
     inspectModelReleaseDocument(active).documentHash;
   if (semanticChanged) {
     const exactLegacyGrokV2SchemaNarrowing =
       isExactLegacyGrokVideo3V2SchemaTransition(row, active, aligned);
     if (exactLegacyGrokV2SchemaNarrowing) return aligned;
+    const exactLegacyGptImageV1SchemaNarrowing =
+      isExactLegacyGptImage2V1SchemaTransition(row, active, aligned);
+    if (exactLegacyGptImageV1SchemaNarrowing) return aligned;
     const requiredVersion = active.executionContract.version === 1
       ? 2 as const
       : undefined;
@@ -606,7 +664,14 @@ export function applyModelContractUpgrade(
         throw new Error("活动模型合同已变化，升级已阻断");
       }
       const release = upgradeModelContractRevision(store, actorUserId, {
-        ...(isExactLegacyGrokVideo3V2SchemaTransition(
+        ...(isExactLegacyGptImage2V1SchemaTransition(
+            row,
+            active.document,
+            model.proposed,
+          ) ? {
+            equivalentRuntimeSchemaTransition:
+              "exact-legacy-gpt-image-2-v1" as const,
+          } : isExactLegacyGrokVideo3V2SchemaTransition(
             row,
             active.document,
             model.proposed,

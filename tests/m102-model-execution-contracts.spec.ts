@@ -44,6 +44,7 @@ import {
   knownModelParameterSchema,
   parameterConditionsMatch,
   parameterFieldRequired,
+  providerParameterSchema,
   validateParameterValues,
   type ModelCapability,
   type ModelInputRolePolicy,
@@ -940,6 +941,84 @@ test("compiler rejects executable, secret, arbitrary network and ambiguous contr
 test("release validation binds runtime ownership and rejects credential-bearing sources", () => {
   const store = contractStore();
   try {
+    const exactGptImages = [{
+      modelId: "model-image-gpt-policy",
+      providerDriver: "multi-protocol-relay",
+      providerModelId: "gpt-image-2",
+      providerProfileId: "provider-relay",
+      providerProtocol: "gpt-image" as const,
+    }, {
+      modelId: "model-image-openrouter-gpt-policy",
+      providerDriver: "openrouter",
+      providerModelId: "openai/gpt-image-2",
+      providerProfileId: "provider-openrouter",
+      providerProtocol: "native" as const,
+    }].map((identity) => defaultModelReleaseDocument({
+      capability: "image",
+      capabilitySchema: providerParameterSchema({
+        capability: "image",
+        providerDriver: identity.providerDriver,
+        providerModelId: identity.providerModelId,
+      })!,
+      ...identity,
+    }));
+    for (const exactGptImage of exactGptImages) {
+      const exact = saveModelContractDraft(
+        store,
+        "admin-a",
+        exactGptImage,
+        modelContractState(store, exactGptImage.modelId).draftVersion,
+      );
+      expect(() => validateModelContractDraft(
+        store,
+        "admin-a",
+        exactGptImage.modelId,
+        exact.draftVersion,
+      )).not.toThrow();
+      expect(() => publishModelContract(
+        store,
+        "admin-a",
+        exactGptImage.modelId,
+        exact.draftVersion,
+      )).not.toThrow();
+      for (const mutation of [
+        { ...exactGptImage, evidence: "SPECIALIZED" as const },
+        {
+          ...exactGptImage,
+          connectorFamily: "specialized-code" as const,
+          connectorVersion: 1,
+          executionContract: {
+            ...exactGptImage.executionContract,
+            connectorFamily: "specialized-code" as const,
+            connectorVersion: 1,
+            version: 2 as const,
+          },
+        },
+        {
+          ...exactGptImage,
+          executionContract: {
+            ...exactGptImage.executionContract,
+            create: {
+              ...exactGptImage.executionContract.create,
+              path: "/v1/media/generate",
+            },
+          },
+        },
+      ]) {
+        const rejected = saveModelContractDraft(
+          store,
+          "admin-a",
+          mutation,
+          modelContractState(store, mutation.modelId).draftVersion,
+        );
+        expect(() => validateModelContractDraft(
+          store,
+          "admin-a",
+          mutation.modelId,
+          rejected.draftVersion,
+        )).toThrow(/GPT Image 2执行合同/);
+      }
+    }
     const spoofed = {
       ...releaseDocument("model-suno"),
       providerModelId: "suno-v4",
@@ -1298,6 +1377,14 @@ test("execution semantics cannot change without a contract version bump", () => 
     expect(() => upgradeModelContractRevision(store, "admin-a", {
       document: changed,
       equivalentRuntimeSchemaTransition: "exact-legacy-grok-video-3-v2",
+      expectedActiveRevisionId: active.revisionId,
+      impact: { incompatibleTemplateIds: [], templateIds: [] },
+    })).toThrow(expect.objectContaining({
+      code: "EXECUTION_CONTRACT_VERSION_REQUIRED",
+    }));
+    expect(() => upgradeModelContractRevision(store, "admin-a", {
+      document: changed,
+      equivalentRuntimeSchemaTransition: "exact-legacy-gpt-image-2-v1",
       expectedActiveRevisionId: active.revisionId,
       impact: { incompatibleTemplateIds: [], templateIds: [] },
     })).toThrow(expect.objectContaining({
@@ -1719,6 +1806,15 @@ test("schema41 upgrade audits 11 models, publishes GK revision 2, archives kwvid
         delete persistedCapabilitySchema.referencePolicy;
         delete persistedCapabilitySchema.referenceMediaRules;
       }
+      if (providerModelId === "gpt-image-2") {
+        delete persistedCapabilitySchema.referencePolicy;
+        persistedCapabilitySchema.referenceMediaRules = {};
+        persistedCapabilitySchema.inputPolicy = {
+          required: {},
+          roles: { image: ["reference-image"] },
+          switchPolicy: "keep-edge",
+        };
+      }
       if (providerModelId === "mureka-9") {
         persistedCapabilitySchema.fields = persistedCapabilitySchema.fields.map(
           (field) => {
@@ -1820,6 +1916,70 @@ test("schema41 upgrade audits 11 models, publishes GK revision 2, archives kwvid
     }
     store.prepare("INSERT INTO canvas_documents VALUES (?)")
       .run(JSON.stringify([{ data: { videoModelId: "model-kwvideo-v2" } }]));
+    const exactLegacyGptImageRow = store.prepare(`
+      SELECT default_parameters FROM model_profiles
+      WHERE id = 'model-image-gpt'
+    `).get() as { default_parameters: string };
+    const nearMissGptImageRow = JSON.parse(
+      exactLegacyGptImageRow.default_parameters,
+    );
+    nearMissGptImageRow.referenceInputs.image = 2;
+    store.prepare(`
+      UPDATE model_profiles SET default_parameters = ?
+      WHERE id = 'model-image-gpt'
+    `).run(JSON.stringify(nearMissGptImageRow));
+    expect(() => planModelContractUpgrade(store))
+      .toThrow(/模型 gpt-image-2 合同迁移失败/);
+    store.prepare(`
+      UPDATE model_profiles SET default_parameters = ?
+      WHERE id = 'model-image-gpt'
+    `).run(exactLegacyGptImageRow.default_parameters);
+    const exactLegacyGptImageAudit = store.prepare(`
+      SELECT id, details FROM admin_audit_events
+      WHERE action = 'model_contract.publish'
+      ORDER BY id
+    `).all().map((row) => ({
+      details: JSON.parse(String(row.details)) as {
+        modelId: string;
+        revision: {
+          document: ReturnType<typeof defaultModelReleaseDocument>;
+          hash: string;
+          validation: { compilerHash: string };
+        };
+      },
+      id: Number(row.id),
+    })).find((row) => row.details.modelId === "model-image-gpt")!;
+    const nearMissGptImageActiveDocument = {
+      ...exactLegacyGptImageAudit.details.revision.document,
+      capabilitySchema: {
+        ...exactLegacyGptImageAudit.details.revision.document.capabilitySchema,
+        referenceInputs: {
+          ...exactLegacyGptImageAudit.details.revision.document.capabilitySchema
+            .referenceInputs,
+          image: 2,
+        },
+      },
+    };
+    const nearMissGptImageActiveDetails = {
+      ...exactLegacyGptImageAudit.details,
+      revision: {
+        ...exactLegacyGptImageAudit.details.revision,
+        document: nearMissGptImageActiveDocument,
+        hash: sha(nearMissGptImageActiveDocument),
+      },
+    };
+    store.prepare("UPDATE admin_audit_events SET details = ? WHERE id = ?")
+      .run(
+        JSON.stringify(nearMissGptImageActiveDetails),
+        exactLegacyGptImageAudit.id,
+      );
+    expect(() => planModelContractUpgrade(store))
+      .toThrow(/gpt-image-2默认schema与活动revision迁移身份不一致/);
+    store.prepare("UPDATE admin_audit_events SET details = ? WHERE id = ?")
+      .run(
+        JSON.stringify(exactLegacyGptImageAudit.details),
+        exactLegacyGptImageAudit.id,
+      );
     const exactLegacyGrokRow = store.prepare(`
       SELECT default_parameters FROM model_profiles
       WHERE id = 'model-gk-video-3'
@@ -1886,6 +2046,7 @@ test("schema41 upgrade audits 11 models, publishes GK revision 2, archives kwvid
     expect(plan.models.filter((model) => model.action === "publish-revision")
       .map((model) => model.providerModelId).sort()).toEqual([
         "doubao-seedance-2-0-mini-260615",
+        "gpt-image-2",
         "grok-imagine-video-1.5-preview",
         "grok-video-3",
         "mureka-9",
@@ -1893,7 +2054,9 @@ test("schema41 upgrade audits 11 models, publishes GK revision 2, archives kwvid
     for (const model of plan.models.filter((item) =>
       item.action === "publish-revision"
     )) {
-      expect(model.proposed.executionContract.version).toBe(2);
+      expect(model.proposed.executionContract.version).toBe(
+        model.providerModelId === "gpt-image-2" ? 1 : 2,
+      );
     }
     expect(plan.models.find((model) => model.providerModelId === "kwvideo-v2"))
       .toMatchObject({ action: "archive", hasTextFoundation: false });
@@ -1972,6 +2135,7 @@ test("schema41 upgrade audits 11 models, publishes GK revision 2, archives kwvid
     expect(applied.upgradedModels.map((model) => model.providerModelId).sort())
       .toEqual([
         "doubao-seedance-2-0-mini-260615",
+        "gpt-image-2",
         "grok-imagine-video-1.5-preview",
         "grok-video-3",
         "mureka-9",
@@ -1979,6 +2143,8 @@ test("schema41 upgrade audits 11 models, publishes GK revision 2, archives kwvid
     expect(modelContractState(store, "model-gk-video-3").history).toHaveLength(2);
     expect(modelContractState(store, "model-video-seedance").history).toHaveLength(2);
     expect(modelContractState(store, "model-video-grok-imagine").history)
+      .toHaveLength(2);
+    expect(modelContractState(store, "model-image-gpt").history)
       .toHaveLength(2);
     expect(modelContractState(store, "model-audio-mureka").history)
       .toHaveLength(2);

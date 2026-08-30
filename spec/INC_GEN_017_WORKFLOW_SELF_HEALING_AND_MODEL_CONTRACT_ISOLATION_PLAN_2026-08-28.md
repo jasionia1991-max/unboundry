@@ -1,8 +1,44 @@
 # INC-GEN-017：工作流自动自愈与模型合同隔离详细行动方案
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_PR_CI_PASS_FINAL_GOVERNANCE_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_PR_130_CI_PASS_FINAL_RECEIPT_HEAD_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 
 建立日期：2026-08-28
+
+PR #130 head`31c4737`的Quality gates已通过（run`33303385616`/job`99235504319`，29秒）。只回写并推送本条CI证据；最终纯文档head同一门通过后才合并。
+
+v0.6.61分支已推送，PR #130 base/head=`main@b5867b3`/`dc64f08`且mergeable。当前检查尚未启动；回写本条纯文档head后等待同一Quality gates通过，再合并与冻结tag。
+
+v0.6.61实时GitHub身份门通过：`origin/main@b5867b3`未前进，v0.6.61本地/远端tag与Release均未占用，同head PR不存在；当前PR差异为14个预期文件、515 insertions/26 deletions且无受保护JSON。提交本治理回执后推送并创建PR，最终head CI通过前不合并。
+
+v0.6.61候选提交后治理safe m38为`16/16 PASS`，source/snapshot`60754094…14297`、库存1125、异常0、HEAD`7733464…a45423`、4173 unchanged。当前只提交六份治理回执，再刷新远端身份并进入push/PR/CI；正式full永久不重跑。
+
+v0.6.61冻结8文件候选已精确提交为`7733464cc997053a5a66c2882a9858d570a45423`，tree`692f11eae5d6ea4cb76aad40162d35fed1ab9371`，337 insertions/12 deletions；治理文档和受保护JSON未提交。当前只运行提交后治理m38，再独立提交六份治理回执并进入push/PR/CI。
+
+v0.6.61 Review GO治理safe m38已`16/16 PASS`，失败/重试/跳过/reportErrors0、库存1125、source/snapshot`b5a903f8…d150`、4173 unchanged。runner已成功完成并清理；其后外层zsh包装因只读变量名`status`返回1，未改变测试结论且不重复运行。当前只精确提交冻结8文件候选，六份治理回执另行收口。
+
+v0.6.61第三候选同一独立审查上下文已对冻结HEAD `7f2f8d4…05d0`与diff hash `8e1a52ea…32ae8`完成只读终审：8/8文件、30/30 hunks、337 insertions/12 deletions，覆盖完整普通发布/回滚、迁移/schema/template/CAS/activation/audit/repeat链、10/10 logical models、11/11 exact identities及全部adapter分支；最终`P0=0/P1=0/P2=0/GO`。审查未写文件、未测试/build、未联网、未触发Git/Provider/OSS/生产且未读取受保护JSON。当前只运行Review GO治理m38；通过后才可精确提交冻结8文件候选。
+
+v0.6.61第三候选主线程全量增量Review已覆盖8/8文件、30/30 hunks、完整migration/schema/template/普通发布/事务/CAS/immutable revision/repeat链、10/10 published logical models、11/11 exact identities与全部Provider/protocol/adapter分支，结论`P0=0/P1=0/P2=0/GO`。候选337 insertions/12 deletions、diff-check通过，精确hash`8e1a52ea…32ae8`并冻结；只允许同一独立上下文只读终审，独立GO前不commit、不进入GitHub/生产/真实Provider。
+
+v0.6.61别名整改最终治理门已闭合：六份治理同步后safe m38 `16/16 PASS`，source/snapshot`2b3f2b69…5376f`、库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged，取代此前`769a79cf…a32f`。当前只做精确diff/hash与主线程全量增量Review；正式full永久不重跑。
+
+v0.6.61 OpenRouter exact alias残余P1已关闭：当前普通发布策略同时识别relay `gpt-image-2/gpt-image`和OpenRouter `openai/gpt-image-2/native`，按各自driver/schema生成registry-owned expected document，并对connector/version、runtime、evidence与完整execution contract做激活前逐字校验。m102证明两个exact identity均可validate+publish，且evidence、受支持的version-bumped connector与create path漂移均fail-closed；强化反例首轮`23/24`只因fixture先命中既有unsupported runtime version门，改为受支持组合后最终`24/24 PASS`（source/snapshot`0eced929…50636`、库存1125、异常0、4173 unchanged）。TypeScript/diff-check通过；下一步治理m38、精确diff/hash与主线程复核。
+
+v0.6.61第二候选独立复核为`P0=0/P1=1/P2=0/NO-GO`：relay主GPT身份已关闭，但同一logical model的OpenRouter exact identity `openrouter/openai/gpt-image-2/native`未进入普通发布exact policy，version-bumped connector/contract漂移仍可激活。候选再次解冻；整改只把该第11个identity纳入同一代码拥有合同并补m102别名回归，复核GO前不进入commit、GitHub、生产或真实Provider。
+
+v0.6.61整改后主线程复核新增普通发布策略门及原完整范围，结论`P0=0/P1=0/P2=0/GO`；第二候选8文件、30 hunks、285 insertions/12 deletions、diff-check通过，精确hash`6ff60ec5…c2d71`并冻结。当前只允许同一独立上下文只读增量终审，复核GO前不进入commit、GitHub、生产或真实Provider。
+
+v0.6.61独立终审P1已关闭：普通合同策略对GPT Image 2逐字约束image/gpt-image身份、connector/version、runtime、EXACT evidence与完整专用执行合同，并把evidence纳入transition runtime signature；错误revision不能被激活。TypeScript/diff-check通过，safe m102新增三类漂移回归最终`24/24 PASS`（source/snapshot`bb4d4df1…0bd60`、库存1125、异常0、4173 unchanged）；首轮`23/24`只是测试错误文案过窄。下一步重新冻结精确hash并交同一独立上下文只读复核。
+
+v0.6.61独立只读终审覆盖8/8文件、25/25 hunks、完整迁移/普通发布/事务/CAS/幂等链和10/10 models、11/11 identities后给出`P0=0/P1=1/P2=0/NO-GO`，候选解冻。P1是普通合同发布路径未将GPT Image 2 exact registry的runtime/connector/evidence/执行合同作为发布前硬门，允许仅把`evidence`从`EXACT`改为`SPECIALIZED`后激活错误revision。整改只收口普通draft/validate/publish共用校验与transition identity并补精确回归；复核GO前不进入commit、GitHub、生产或真实Provider。
+
+v0.6.61主线程增量全量Review已覆盖8/8文件、25/25 hunks、完整迁移/schema/模板/事务/CAS/immutable revision/重复幂等链、10/10 published logical models、11/11 exact identities与全部Provider/protocol/adapter分支，结论`P0=0/P1=0/P2=0/GO`。候选216 insertions/11 deletions、diff-check通过，精确hash`017c3b94…6a5ea`并已冻结；只允许独立只读增量终审，独立`P0/P1=0/GO`前不进入commit、GitHub、生产或真实Provider。
+
+v0.6.61最终m102增量门在增加“非GPT模型不得滥用`exact-legacy-gpt-image-2-v1`同版本证明”反例后仍为`24/24 PASS`，source/snapshot`da861c1d…a34c6`、库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged；该结果是当前m102权威证据。Provider POST=0/USD0，正式full永久不重跑；下一步精确diff/hash与主线程逐链复核。
+
+v0.6.61版本/治理直接safe m38+m81现为`57/57 PASS`（16+41），source/snapshot`c70e4e46…5699`、库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged；正式full永久不重跑。当前只做精确diff/hash与主线程逐链复核，随后冻结候选并启动独立增量全量Review；Review GO前不进入GitHub或生产。
+
+v0.6.61精确legacy GPT Image 2迁移已完成第一道直接门：仅当default row与active immutable revision都精确匹配生产旧schema、proposed精确匹配current schema、execution contract保持v1且完整runtime identity逐字等价时，才允许字面证明`exact-legacy-gpt-image-2-v1`完成同版本schema补全；row/active任一near-miss或身份/contract变化均阻断。package/lock/runtime/m81同步0.6.61；TypeScript、diff-check与safe m102 `24/24 PASS`（source/snapshot`73797359…5327`、库存1125、异常0、4173 unchanged）。下一步只跑safe m81+m38；正式full永久不重跑。
 
 v0.6.60身份门与首个直接回归已完成：`origin/main@e6341d5`未前进，本地/远端tag和GitHub Release均未占用；package/lock/runtime/m81同步。真实旧Grok的精确特征为inputMode text/image/reference、referenceInputs全0、空media rules、无referencePolicy及旧三角色input policy。迁移现在只对这一精确快照收敛到当前窄合同；模板兼容桥只在该精确旧schema启用，并继续逐节点比较immutable execution contract。near-miss额外mode阻断。safe m102首轮`23/24`暴露22模板通用字段diff，最小修复后最终`24/24 PASS`（source/snapshot`25f82ecd…e51a2`），库存1125、异常0、4173 unchanged。
 
@@ -27,6 +63,16 @@ Review GO后的治理safe m38为`16/16 PASS`，source/snapshot=`3811d4a83a62802d
 候选提交后治理safe m38为`16/16 PASS`，source/snapshot=`fdfbe741ebb004c9d4dc8a740d2ce4217efd94d7ae9f57eabe83f2a2a108d1d0`、库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged；正式full不重跑。当前只提交六份治理回执，再进入push/PR/CI。
 
 两个commit已推送，PR #129 base/head=`main@e6341d5`/`7f34d09`且mergeable；Quality gates / lightweight run`33298263718`、job`99221554337`以35秒通过。当前只提交并推送本条CI治理回执，等待最终纯文档head同一门通过后再合并。
+
+PR #129最终head`76fd686`的Quality gates run`33298346157`/job`99221773974`以30秒通过并merge为`b5867b3edf8f39c9a58b4e77d9060e1567dd9de2`；main run`33298393397`/job`99221893013`以27秒通过。annotated tag object`c54cf6d107dd891d0ac689b5bd313845e5dd3e72`精确指向merge，GitHub Release v0.6.60已发布。当前进入精确tag fresh build、quiet gate、冻结备份与隔离迁移。
+
+v0.6.60精确tag archive SHA为`8db3ed0f921a64187b2cdca7ae7c7ae6fcf7e9b2c48f6c0ee3fc3b1659790b03`并解引用到merge`b5867b3`；服务器新建独立staging`/opt/unboundry/staging/v0.6.60-inc-gen-017-20260830.dA88ys`，固定Node22.23.2/npm10.9.8完成npm ci、TypeScript、Vite build和inventory验证。清单6035文件、SHA`d14ed3db…b6c8`、dist33；生产仍为v0.6.57/schema41，Provider POST/费用0。下一步只执行quiet gate，再停服冻结备份和隔离迁移。
+
+v0.6.60生产quiet gate连续7次均为active0/unsettledUnknown0；current/version仍为v0.6.57，service active/running、NRestarts0。下一步严格先停服并建立新的冻结source/restore双副本、清单和数据库基线，再仅对恢复副本执行迁移；任何失败立即恢复v0.6.57并保留全部证据。
+
+停服后的正式冻结目录为`/var/lib/unboundry-rollbacks/v0.6.60-cutover-frozen.k3xebQ`：source/restore各366文件，双清单SHA`a758e801…aea2b`，DB SHA`13589eea…2261`；schema41、quick/integrity ok、FK0、tasks1025/attempts1036/active0/unknown0、media949/1772056577 bytes、canvas76、models20/published10、templates50/published48及Library门在两副本一致。首个清单引号失败目录`v0.6.60-cutover-frozen.in7NN7`保留且生产数据未写。服务保持inactive/enabled；下一步仅从restore-copy再建唯一迁移工作副本，先dry-run，再apply与repeat幂等。
+
+v0.6.60隔离工作副本`v0.6.60-contract-upgrade.Ym2zSJ`的dry-run在apply前对真实`gpt-image-2`旧合同报缺少reference media rules并准确停止；工作DB SHA未变，生产DB未写，失败证据`5f68f8a7…7f6d0`与全部目录保留。生产已恢复v0.6.57健康，v0.6.60不可变且未部署。下一修正版必须递增到最低未占用v0.6.61，只接受生产精确legacy GPT Image 2 schema并补exact/near-miss回归；不得修改v0.6.60 tag或放宽其他relay/image合同。
 
 v0.6.59精确tag archive `63042cff…71b8`的服务器fresh build与7次quiet gate均通过；冻结备份`v0.6.59-cutover-frozen.jufZ1z`双副本366/366、清单`39c9e691…ebf3`、DB`13589eea…2261`、schema41/integrity/FK/计数门有效。隔离迁移副本`v0.6.59-contract-upgrade.Nz9OFg`在apply前对真实published `grok-video-3`旧schema报`Invalid model reference policy`并fail-closed，生产未写且继续v0.6.57健康。v0.6.59 Release不可变、未部署；当前递增到最低未占用v0.6.60，只允许精确匹配真实legacy Grok schema的受控迁移，任意near-miss继续阻断。先补m102 exact/near-miss，再跑m102+m81+m38、独立增量Review和新PR/tag/fresh build；正式full永久不重跑，Provider POST/费用仍为0。
 

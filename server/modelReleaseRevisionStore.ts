@@ -518,7 +518,8 @@ export function upgradeModelContractRevision(
   input: Readonly<{
     document: ModelReleaseDocument;
     equivalentRuntimeSchemaTransition?:
-      "exact-legacy-grok-video-3-v2";
+      | "exact-legacy-gpt-image-2-v1"
+      | "exact-legacy-grok-video-3-v2";
     expectedActiveRevisionId: string;
     impact: ModelContractValidation["impact"];
   }>,
