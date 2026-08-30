@@ -21,7 +21,8 @@
 - [x] v0.6.59产品/版本候选已提交：`6abe72b72b496de08a7309948b3b3ee06df54652`，tree`25b4a00d19cead0a5ef8080e89db6795543654aa`，精确7个安全文件；两份受保护JSON与六份治理文档未进入提交。
 - [x] 候选提交后治理safe m38 `16/16 PASS`（source/snapshot`25c7a168…7bf9e`），库存1125、异常0、4173 unchanged；正式full未重跑。
 - [x] 两个commit已推送并创建PR #128，base/head=`main@730ea56`/`61f5b2b`；首次TLS握手失败未产生远端变更，原分支重试成功。
-- [ ] 提交并推送本条六份治理回执，等待最终head Quality gates；通过后合并、冻结v0.6.59 tag/Release并fresh build。
+- [x] PR #128治理head`f575836`的Quality gates / lightweight通过（run`33295091931`、job`99213263004`、48秒）。
+- [ ] 提交并推送本条CI证据，等待最终纯文档head同一门；通过后合并、冻结v0.6.59 tag/Release并fresh build。
 
 - [x] 用户已显式启动一次性Goal；建立`codex/inc-gen-017-workflow-self-healing-2026-08-28`并绑定实时`origin/main@75f6c1a`。
 - [x] R0只读冻结v0.6.56/schema41、20模型/10 published、Node/npm、生产release/健康/数据完整性与USD100硬预算；受保护JSON未读取或改动。

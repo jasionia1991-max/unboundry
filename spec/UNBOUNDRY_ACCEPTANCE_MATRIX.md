@@ -19,6 +19,7 @@
 - v0.6.59产品/版本候选commit=`6abe72b72b496de08a7309948b3b3ee06df54652`、tree=`25b4a00d19cead0a5ef8080e89db6795543654aa`，只含7个安全文件；治理文档和受保护JSON未提交。提交后治理m38待执行。
 - 候选提交后治理m38 `16/16 PASS`（source/snapshot`25c7a168…7bf9e`），库存1125、异常0、4173 unchanged；正式full未重跑，六份治理文档提交待执行。
 - PR #128已创建，base/head=`main@730ea56`/`61f5b2b`且open；首次TLS push失败无远端变更，重试原分支成功。最终治理head CI待执行。
+- PR #128治理head`f575836`的Quality gates / lightweight通过（run`33295091931`、job`99213263004`、48秒）；最终纯文档head CI待执行。
 - 第十七候选六项P1已关闭；safe m100/m27/m1/m37/m30最终`15/15、21/21、7/7、35/35、13/13 PASS`，库存1120、最终产品/测试source/snapshot`c4b9bce6…40933`、异常0、4173 unchanged，TypeScript/diff-check通过。
 - 第十八候选两路完整只读终审已完成：模型/Provider `P0=0/P1=0/P2=1/GO`，工作流84/84文件 `P0=0/P1=4/P2=2/NO-GO`，合并`P0=0/P1=4/P2=3/NO-GO`并解冻候选。
 - 四项P1为group最终admission图TOCTOU、四类手动暂停恢复未await durable graph apply、上下文菜单删除漏锁外部端点、媒体上传开始态绕过admission；三项P2为relay usage fixture occupied-ID、raw edge add/replace、raw node remove。

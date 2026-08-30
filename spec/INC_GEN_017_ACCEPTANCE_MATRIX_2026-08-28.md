@@ -34,6 +34,8 @@ v0.6.59产品/版本候选commit=`6abe72b72b496de08a7309948b3b3ee06df54652`、tr
 
 PR #128已创建，base/head=`main@730ea56`/`61f5b2b`；当前open，最终治理head CI待执行。首次TLS push失败未改变远端，原分支重试后成功。
 
+PR #128 head`f575836`的Quality gates / lightweight已通过（run`33295091931`、job`99213263004`、48秒）；只回写本条证据，最终纯文档head CI待执行。
+
 | ID | 验收项 | 必须证据 | 当前状态 |
 |---|---|---|---|
 | IG17-001 | 同画布不重叠组互不阻塞 | A组interrupted时B/C组可启动；各自run/lease/task计数独立 | R1_TARGETED_AUTO_PASS |

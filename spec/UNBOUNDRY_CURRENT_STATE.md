@@ -31,6 +31,7 @@
 - v0.6.59产品/版本候选已提交为`6abe72b72b496de08a7309948b3b3ee06df54652`，tree`25b4a00d19cead0a5ef8080e89db6795543654aa`，精确7个安全文件；治理文档与受保护JSON未提交。当前运行提交后治理m38；生产仍v0.6.57/schema41且Provider POST/费用0。
 - 候选提交后治理safe m38 `16/16 PASS`（source/snapshot`25c7a168…7bf9e`），库存1125、异常0、4173 unchanged；正式full未重跑。当前提交六份治理回执后进入push/PR/CI；生产仍v0.6.57/schema41且Provider POST/费用0。
 - 分支已推送，PR #128已创建且base/head=`main@730ea56`/`61f5b2b`；首次push TLS失败未改变远端，重试同一分支成功。当前提交最终治理回执并等待新head CI；生产仍v0.6.57/schema41，Provider POST/费用0。
+- PR #128治理head`f575836`的Quality gates / lightweight已通过（run`33295091931`、job`99213263004`、48秒）。当前只推送本条CI治理证据，等待最终head同一门；生产仍v0.6.57/schema41，Provider POST/费用0。
 
 - 用户已在本Session显式启动一次性Goal；当前实施分支为`codex/inc-gen-017-workflow-self-healing-2026-08-28`，实时基线`origin/main@75f6c1aca055b8b82f258a9d38be5c27ce7d6305`。
 - R0已完成：只读冻结生产v0.6.56/schema41、20模型/10 published、Node/npm与USD100真实Provider硬预算；Provider POST=0、费用USD0，受保护JSON未读取或改动。
