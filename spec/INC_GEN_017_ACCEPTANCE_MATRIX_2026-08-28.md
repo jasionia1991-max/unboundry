@@ -32,6 +32,8 @@ v0.6.59产品/版本候选commit=`6abe72b72b496de08a7309948b3b3ee06df54652`、tr
 
 候选提交后治理m38 `16/16 PASS`（source/snapshot`25c7a168…7bf9e`），库存1125、异常0、4173 unchanged；正式full未重跑，六份治理文档提交待执行。
 
+PR #128已创建，base/head=`main@730ea56`/`61f5b2b`；当前open，最终治理head CI待执行。首次TLS push失败未改变远端，原分支重试后成功。
+
 | ID | 验收项 | 必须证据 | 当前状态 |
 |---|---|---|---|
 | IG17-001 | 同画布不重叠组互不阻塞 | A组interrupted时B/C组可启动；各自run/lease/task计数独立 | R1_TARGETED_AUTO_PASS |
