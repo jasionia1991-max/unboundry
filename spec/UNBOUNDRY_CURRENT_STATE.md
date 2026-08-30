@@ -1,19 +1,34 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网运行v0.6.57/schema41且服务健康。v0.6.58已完成PR/tag/fresh build，但真实冻结恢复副本dry-run在apply前发现Mureka legacy schema迁移缺口并正确fail-closed，因此v0.6.58保持不可变且未部署。v0.6.59精确整改已通过独立Review，当前严格为`V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_REVIEW_GO_RELEASE_PREPARING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。v0.6.56的真实GK成功回执保留为历史事实，不替代当前版本验收。
+> **状态分层**：现网运行v0.6.57/schema41且服务健康。v0.6.58因真实Mureka legacy schema、v0.6.59因真实Grok legacy schema都在隔离迁移apply前正确fail-closed；两个tag/Release保持不可变且未部署。当前严格为`V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_CANDIDATE_COMMITTED_GOVERNANCE_PASS / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。v0.6.56的真实GK成功回执保留为历史事实，不替代当前版本验收。
 
 更新日期：2026-08-30
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.59**
-本地候选代码版本：**v0.6.59**
+当前代码包版本：**v0.6.60**
+本地候选代码版本：**v0.6.60**
 当前生产部署版本：**v0.6.57**
 本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_57_USER_RECHECK`
-当前计划标记：`INC_GEN_017_GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_REVIEW_GO_RELEASE_PREPARING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+当前计划标记：`INC_GEN_017_GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_CANDIDATE_COMMITTED_GOVERNANCE_PASS / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`INC_GEN_017_V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_REVIEW_GO_RELEASE_PREPARING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+当前发布门：`INC_GEN_017_V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_CANDIDATE_COMMITTED_GOVERNANCE_PASS / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 
 ## INC-GEN-017 当前区块（2026-08-28）
+
+- v0.6.60最低未占用patch身份已确认并从`origin/main@e6341d5`建立隔离分支；package/lock/final runtime/m81同步。只读冻结副本确认Grok default schema与活动immutable revision均是旧text/image/reference宽合同。整改只接受该exact快照，收敛到当前text/image+单first-frame，任意near-miss阻断；模板桥仍逐节点比较execution contract。
+- safe m102首轮`23/24`诊断出通用schema field diff会误报22模板；关闭该精确边界后只重跑m102为`24/24 PASS`，source/snapshot`25f82ecd…e51a2`、库存1125、失败/重试/跳过/reportErrors0、4173 unchanged。随后版本/治理直接safe m38+m81为`57/57 PASS`（16+41），source/snapshot`07053ab1…4490b8`、库存1125、异常0、4173 unchanged；正式full未重跑。当前只开放精确冻结与独立Review；生产继续v0.6.57/schema41，Provider POST=0/USD0。
+- 6文件产品/版本/测试候选已冻结：156 insertions/17 deletions，diff hash=`f4489901…222643`，diff-check通过。独立增量Review进行中；P0/P1清零前禁止commit/GitHub/生产。
+- 主线程终审发现`P0=0/P1=1/NO-GO`并解冻候选：真实active Grok execution contract v2会被现有semantic-change版本上限阻断；模板兼容桥也必须同时核活动revision schema exact。当前仅开放精确v2 narrowing修复、m102最小回归与重新终审。
+- P1整改已完成并收窄证明：row/active必须exact legacy、proposed必须exact current，v2同版本schema transition须全部运行身份与execution contract等价；迁移事务只传字面证明，底层策略再独立验证predecessor/proposed exact schema、Grok3、v2/v2与相同runtime signature，普通管理员发布、非Grok及其他Grok变化的版本门保持不变。m102真实v2、row/active near-miss、apply/repeat及证明滥用阻断最终`24/24 PASS`（source/snapshot`fbb527b7…81ca4`），库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged。
+- 当前树六份治理同步后的safe m38 `16/16 PASS`，source/snapshot=`df49cb21808262d3c56ae257232d81af1ac67ff5f7a073f320b32dcb5f105c10`、库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged；前一树`3236e2bf…72dd3`只保留历史。当前8文件diff为308 insertions/27 deletions、hash=`79252797…d45a5`且diff-check通过；主线程逐链复核、重新冻结和独立Review尚未完成，生产继续v0.6.57/schema41，Provider POST=0/USD0。
+- 主线程已完成8/8文件、全部diff/hunk、完整migration/template/transaction/CAS/idempotence链、10/10 published logical models、11/11 exact identities与全部Provider/protocol/adapter分支复核，结论`P0=0/P1=0/P2=0/GO`。候选以`79252797…d45a5`冻结，只允许同一独立上下文只读终审；生产继续v0.6.57/schema41，Provider POST=0/USD0。
+- 独立只读增量终审现已覆盖8/8文件、31/31 hunks、10/10 logical models、11/11 exact identities、全部Provider/protocol/adapter分支与完整migration/template/transaction/CAS/immutable revision/repeat链，最终`P0=0/P1=0/P2=0/GO`。下一步仅运行治理m38后精确提交；生产继续v0.6.57/schema41，Provider POST=0/USD0。
+- Review GO治理safe m38 `16/16 PASS`，source/snapshot=`3811d4a83a62802d10581bbeb3d1b2b306bfc6ddb423bf4cc0decbc218418a66`、库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged；当前只精确提交8文件候选，生产继续v0.6.57/schema41，Provider POST=0/USD0。
+- v0.6.60候选已提交为`8be339c387ec9df21e4e6e6ee43da2f14e2ee8dc`，tree=`8179a5540fecd2b920154bb059c788080a0374a4`，精确8文件；治理文档与受保护JSON未提交。当前只运行提交后治理m38，生产继续v0.6.57/schema41，Provider POST=0/USD0。
+- 候选提交后治理safe m38 `16/16 PASS`，source/snapshot=`fdfbe741ebb004c9d4dc8a740d2ce4217efd94d7ae9f57eabe83f2a2a108d1d0`、库存1125、异常0、4173 unchanged；当前只提交六份治理回执，生产继续v0.6.57/schema41，Provider POST=0/USD0。
+
+- v0.6.59精确tag archive `63042cff…71b8`的fresh staging `/opt/unboundry/staging/v0.6.59-inc-gen-017-20260830.qjbYhr`在Node22.23.2/npm10.9.8完成npm ci、TypeScript和Vite build；quiet gate连续7次active0/unsettledUnknown0。冻结备份`/var/lib/unboundry-rollbacks/v0.6.59-cutover-frozen.jufZ1z`双副本366/366、清单`39c9e691…ebf3`、DB`13589eea…2261`、schema41/integrity/FK/计数门通过。
+- 隔离迁移副本`/var/lib/unboundry-rollbacks/v0.6.59-contract-upgrade.Nz9OFg`在apply前对真实published `grok-video-3`旧schema报`Invalid model reference policy`并fail-closed；生产DB未写，现网继续v0.6.57/schema41、service active/enabled、NRestarts0。v0.6.59 tag/Release不可变且未部署；当前转入v0.6.60 exact legacy Grok整改，Provider POST=0/USD0。
 
 - 2026-08-30 R8生产POST前合同硬门暴露Seedance/Grok3.5/Grok3旧published schema迁移缺口。整改冻结diff `dcf8a42d…3cb854`的独立增量终审覆盖8/8文件、10/10 logical models、11/11 exact identities，最终`P0=0/P1=0/P2=0/GO`；m102 `24/24 PASS`（`e93a5baf…610032`），库存1125、4173 unchanged。当前进入v0.6.58准备；生产迁移和真实Provider尚未执行。
 - v0.6.58身份门：`origin/main@b34a6f4`未前进，本地tag、远端tag和GitHub Release均不存在；package/lock、final runtime allowlist与m81断言已同步。当前本地候选v0.6.58，生产仍为v0.6.57/schema41；版本定向m81+m38待执行。
@@ -32,6 +47,7 @@
 - 候选提交后治理safe m38 `16/16 PASS`（source/snapshot`25c7a168…7bf9e`），库存1125、异常0、4173 unchanged；正式full未重跑。当前提交六份治理回执后进入push/PR/CI；生产仍v0.6.57/schema41且Provider POST/费用0。
 - 分支已推送，PR #128已创建且base/head=`main@730ea56`/`61f5b2b`；首次push TLS失败未改变远端，重试同一分支成功。当前提交最终治理回执并等待新head CI；生产仍v0.6.57/schema41，Provider POST/费用0。
 - PR #128治理head`f575836`的Quality gates / lightweight已通过（run`33295091931`、job`99213263004`、48秒）。当前只推送本条CI治理证据，等待最终head同一门；生产仍v0.6.57/schema41，Provider POST/费用0。
+- PR #128最终head`944ae9b`、merge`e6341d5`及main Quality gates均通过；annotated tag object`52308b6`与GitHub Release v0.6.59已冻结。当前进入精确tag fresh build；生产仍v0.6.57/schema41，Provider POST/费用0。
 
 - 用户已在本Session显式启动一次性Goal；当前实施分支为`codex/inc-gen-017-workflow-self-healing-2026-08-28`，实时基线`origin/main@75f6c1aca055b8b82f258a9d38be5c27ce7d6305`。
 - R0已完成：只读冻结生产v0.6.56/schema41、20模型/10 published、Node/npm与USD100真实Provider硬预算；Provider POST=0、费用USD0，受保护JSON未读取或改动。

@@ -1,8 +1,30 @@
 # INC-GEN-017 验收矩阵
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_REVIEW_GO_RELEASE_PREPARING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_CANDIDATE_COMMITTED_GOVERNANCE_PASS / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 
 R8增量门：生产旧published schema在Provider POST前被语义合同校验阻断，POST=0/USD0。迁移plan/apply精确执行identity/totality缺口已关闭；冻结diff `dcf8a42d…3cb854`独立增量终审覆盖8/8文件、10/10 logical models、11/11 exact identities，最终`P0=0/P1=0/P2=0/GO`。m102 `24/24 PASS`（`e93a5baf…610032`），库存1125、4173 unchanged；当前按顺序开放v0.6.58准备，生产迁移与真实Provider尚未开放。
+
+v0.6.59的tag archive/fresh build、quiet gate和冻结备份均通过；archive=`63042cff…71b8`，staging=`v0.6.59-inc-gen-017-20260830.qjbYhr`，冻结目录=`v0.6.59-cutover-frozen.jufZ1z`，双清单=`39c9e691…ebf3`。隔离迁移副本`v0.6.59-contract-upgrade.Nz9OFg`在apply前因真实published Grok旧schema的`Invalid model reference policy`阻断，生产未写并继续v0.6.57健康；v0.6.59不可变且未部署。当前进入v0.6.60 exact legacy Grok整改；m102 exact/near-miss、版本门和独立增量Review均为`NOT_RUN`，Provider POST=0/USD0。
+
+v0.6.60 direct migration gate：最低未占用patch身份已通过；精确legacy Grok schema与immutable revision均已由只读生产副本确认。实现只接受该exact快照、near-miss fail-closed，并对22模板/34节点保留逐节点execution比较。safe m102首轮`23/24`只暴露通用字段diff，最小收口后最终`24/24 PASS`，source/snapshot`25f82ecd…e51a2`、库存1125、异常0、4173 unchanged。版本/治理直接safe m38+m81为`57/57 PASS`（16+41），source/snapshot`07053ab1…4490b8`、库存1125、异常0、4173 unchanged；独立Review、GitHub、生产迁移和真实Provider仍`NOT_RUN`。
+
+v0.6.60 candidate freeze：6/6产品/版本/测试文件，156 insertions/17 deletions，diff hash=`f4489901f1fa32da576e9a71c0e9ad66434c32c0a9998ec7f3a490a35e222643`，diff-check通过。独立增量Review为`IN_PROGRESS`；P0/P1门继续关闭GitHub、生产迁移和真实Provider。
+
+v0.6.60 review gate：主线程发现`P0=0/P1=1/NO-GO`。真实active Grok execution contract v2被测试夹具错误降为v1，现有版本门会阻断真实schema narrowing；compatibility bridge还必须同时核active schema exact。候选已解冻，m102 v2 exact/active near-miss回归与独立复核均`NOT_RUN`。
+
+v0.6.60 v2 remediation：row/active exact状态、全运行身份及execution contract等价门已落实；迁移事务只传字面证明`exact-legacy-grok-video-3-v2`，底层策略独立验证predecessor exact legacy、proposed exact current、Grok3、v2/v2与相同runtime signature，普通发布/非Grok/其他Grok schema变化的版本提升规则保持。m102真实v2、row/active near-miss、重复幂等和证明滥用阻断最终safe `24/24 PASS`（source/snapshot`fbb527b7…81ca4`），库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged；前两轮各`23/24`与中间绿色`630b67aa…0357e`、`62026696…40836a3`诊断已精确关闭。扩展8文件候选重新冻结/Review仍`NOT_RUN`。
+
+v0.6.60 remediation governance：当前树六份治理同步后的safe m38 `16/16 PASS`，source/snapshot=`df49cb21808262d3c56ae257232d81af1ac67ff5f7a073f320b32dcb5f105c10`、库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged；前一树`3236e2bf…72dd3`只保留历史。当前8文件diff为308 insertions/27 deletions、hash=`79252797…d45a5`且diff-check通过；主线程逐链复核、正式重新冻结及独立Review仍`NOT_RUN`。
+
+v0.6.60 main review/freeze：主线程逐文件、逐diff/hunk、逐关键分支复核8/8文件及完整migration/template/transaction/CAS/idempotence链，并覆盖10/10 published logical models、11/11 exact identities与所有Provider/protocol/adapter分支；`P0=0/P1=0/P2=0/GO`。候选以hash=`79252797…d45a5`冻结；独立增量Review=`IN_PROGRESS`，GitHub/生产迁移/真实Provider继续`NOT_RUN`。
+
+v0.6.60 independent review gate：8/8文件、31/31 hunks、10/10 logical models、11/11 exact identities及完整migration/template/transaction/CAS/immutable revision/repeat与全部Provider分支覆盖；最终`P0=0/P1=0/P2=0/GO`。Review为只读且零测试/build/外部写；Review GO治理m38、commit/GitHub/生产迁移/真实Provider仍`NOT_RUN`。
+
+v0.6.60 review-go governance：safe m38 `16/16 PASS`，source/snapshot=`3811d4a83a62802d10581bbeb3d1b2b306bfc6ddb423bf4cc0decbc218418a66`、库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged；正式full未重跑。8文件候选commit=`READY`，GitHub/生产迁移/真实Provider仍`NOT_RUN`。
+
+v0.6.60 candidate commit：`8be339c387ec9df21e4e6e6ee43da2f14e2ee8dc`，tree=`8179a5540fecd2b920154bb059c788080a0374a4`，精确8文件/308 insertions/27 deletions；治理文档与受保护JSON未提交。提交后治理m38=`NOT_RUN`，GitHub/生产迁移/真实Provider仍`NOT_RUN`。
+
+v0.6.60 post-commit governance：safe m38 `16/16 PASS`，source/snapshot=`fdfbe741ebb004c9d4dc8a740d2ce4217efd94d7ae9f57eabe83f2a2a108d1d0`、库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged；治理commit=`READY`，GitHub/生产迁移/真实Provider仍`NOT_RUN`。
 
 v0.6.58版本身份门：`origin/main@b34a6f4`未前进，本地/远端tag及GitHub Release均未占用；package/lock、final runtime和m81断言已同步。生产仍为v0.6.57/schema41，版本定向m81+m38待执行。
 
@@ -35,6 +57,8 @@ v0.6.59产品/版本候选commit=`6abe72b72b496de08a7309948b3b3ee06df54652`、tr
 PR #128已创建，base/head=`main@730ea56`/`61f5b2b`；当前open，最终治理head CI待执行。首次TLS push失败未改变远端，原分支重试后成功。
 
 PR #128 head`f575836`的Quality gates / lightweight已通过（run`33295091931`、job`99213263004`、48秒）；只回写本条证据，最终纯文档head CI待执行。
+
+PR #128最终head`944ae9b`与main CI通过，merge=`e6341d5`；annotated tag object=`52308b6`精确指向merge，GitHub Release v0.6.59已发布。tag fresh build与生产迁移待执行。
 
 | ID | 验收项 | 必须证据 | 当前状态 |
 |---|---|---|---|

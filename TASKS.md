@@ -1,6 +1,24 @@
 # Unboundry 绿地复刻当前任务
 
-## INC-GEN-017 工作流自动自愈与模型合同隔离（FORMAL SAFE FULL CONSUMED / V0.6.58 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.59 REVIEW GO RELEASE PREPARING / REAL PROVIDER NOT POSTED）
+## INC-GEN-017 工作流自动自愈与模型合同隔离（FORMAL SAFE FULL CONSUMED / V0.6.58 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.59 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.60 CANDIDATE COMMITTED GOVERNANCE PASS / REAL PROVIDER NOT POSTED）
+
+- [x] v0.6.59精确tag archive `63042cff…71b8`在服务器fresh staging固定Node22.23.2/npm10.9.8完成npm ci、TypeScript和Vite build；7次quiet gate均active0/unsettledUnknown0。
+- [x] v0.6.59冻结备份`v0.6.59-cutover-frozen.jufZ1z`双副本366/366、清单`39c9e691…ebf3`、DB`13589eea…2261`及schema41/integrity/FK/计数门通过；所有证据目录保留。
+- [x] 隔离迁移`v0.6.59-contract-upgrade.Nz9OFg`在apply前因真实published `grok-video-3`旧schema报`Invalid model reference policy`而fail-closed；生产未写并继续v0.6.57健康，v0.6.59 Release不可变且未部署，Provider POST=0/USD0。
+- [x] v0.6.60精确整改真实legacy Grok schema：只读确认继承后的reference policy冲突，完成exact/near-miss m102与最小版本/治理门；候选冻结后进入独立增量Review，P0/P1清零前禁止GitHub和生产。
+- [x] v0.6.60最低未占用patch身份通过；建立`codex/inc-gen-017-v0.6.60-migration-hotfix`，package/lock/runtime/m81同步0.6.60。
+- [x] 只读确认真实旧Grok与活动immutable revision都携带text/image/reference宽schema；实现exact-only迁移与逐节点模板兼容桥，near-miss额外mode阻断。safe m102首轮`23/24`暴露22模板字段diff，最小修复后最终`24/24 PASS`（`25f82ecd…e51a2`），库存1125、异常0、4173 unchanged。
+- [x] v0.6.60版本/治理直接门m38+m81 `57/57 PASS`（16+41），source/snapshot`07053ab1…4490b8`、库存1125、异常0、4173 unchanged；正式full未重跑。
+- [x] 精确diff-check并冻结6文件产品/版本/测试候选：156 insertions/17 deletions，diff hash=`f4489901…222643`；独立增量终审须覆盖全部diff/hunk、迁移事务/幂等链、10/10 published logical models与11/11 exact identities。
+- [x] 主线程终审发现`P0=0/P1=1/NO-GO`并解冻：真实active Grok contract v2会被当前semantic-change上限阻断，且compatibility bridge未同时核active schema exact。
+- [x] 只允许exact row+active legacy schema、proposed exact current、active/target v2 execution contract及完整运行身份等价的schema transition；迁移事务传字面证明，底层策略再独立验证predecessor/proposed exact schema、Grok3/v2/v2/runtime signature，普通发布、非Grok及其他Grok变化仍要求版本提升。m102最终`24/24 PASS`（`fbb527b7…81ca4`），库存1125、异常0、4173 unchanged。
+- [x] 当前树六份治理同步后的safe m38 `16/16 PASS`，source/snapshot=`df49cb21808262d3c56ae257232d81af1ac67ff5f7a073f320b32dcb5f105c10`、库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged；前一树`3236e2bf…72dd3`仅保留历史。当前8文件diff为308 insertions/27 deletions、hash=`79252797…d45a5`且diff-check通过。
+- [x] 主线程逐文件/逐diff/hunk/逐关键分支复核8/8文件、完整migration/template/transaction/CAS/idempotence链、10/10 published logical models、11/11 exact identities及全部Provider/protocol/adapter分支，结论`P0=0/P1=0/P2=0/GO`；精确diff-check/hash复核后以`79252797…d45a5`冻结。
+- [x] 同一独立审查上下文已对冻结8文件候选完成只读增量终审：8/8文件、31/31 hunks、10/10 logical models、11/11 exact identities与完整迁移/事务/幂等/Provider链，最终`P0=0/P1=0/P2=0/GO`；未测试/build/外部写，受保护JSON未读取。
+- [x] Review GO治理safe m38 `16/16 PASS`，source/snapshot=`3811d4a83a62802d10581bbeb3d1b2b306bfc6ddb423bf4cc0decbc218418a66`、库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged；正式full未重跑。
+- [x] 精确提交8个产品/版本/测试文件：commit=`8be339c387ec9df21e4e6e6ee43da2f14e2ee8dc`、tree=`8179a5540fecd2b920154bb059c788080a0374a4`、308 insertions/27 deletions；六份治理文档与受保护JSON未进入提交。
+- [x] 候选提交后治理safe m38 `16/16 PASS`，source/snapshot=`fdfbe741ebb004c9d4dc8a740d2ce4217efd94d7ae9f57eabe83f2a2a108d1d0`、库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged；正式full未重跑。
+- [ ] 提交六份治理文档，再push/PR/CI。
 
 - [x] R8生产验收在POST前确认旧published Seedance/Grok3.5/Grok3 schema缺少当前语义合同元数据；系统正确fail-closed，Provider POST=0、费用USD0。
 - [x] 完整schema fallback收窄为仅结构有效的旧Grok3；独立终审`P0=0/P1=1/P2=0/NO-GO`发现的迁移registry totality缺口已在plan/activation双重关闭。Seedance/Gemini/Mureka fixture身份已对齐，错协议、错driver、缺参数均阻断；m102最终`24/24 PASS`（`e93a5baf…610032`），库存1125、4173 unchanged；新冻结diff `dcf8a42d…3cb854`。
@@ -22,7 +40,8 @@
 - [x] 候选提交后治理safe m38 `16/16 PASS`（source/snapshot`25c7a168…7bf9e`），库存1125、异常0、4173 unchanged；正式full未重跑。
 - [x] 两个commit已推送并创建PR #128，base/head=`main@730ea56`/`61f5b2b`；首次TLS握手失败未产生远端变更，原分支重试成功。
 - [x] PR #128治理head`f575836`的Quality gates / lightweight通过（run`33295091931`、job`99213263004`、48秒）。
-- [ ] 提交并推送本条CI证据，等待最终纯文档head同一门；通过后合并、冻结v0.6.59 tag/Release并fresh build。
+- [x] PR #128最终head`944ae9b`与main Quality gates通过；merge`e6341d5`，annotated tag object`52308b6`和GitHub Release v0.6.59已冻结。
+- [x] 对精确tag生成archive SHA并在服务器独立staging固定Node22/npm10 fresh build；通过后完成quiet gate、冻结备份与隔离迁移，迁移结果如上fail-closed。
 
 - [x] 用户已显式启动一次性Goal；建立`codex/inc-gen-017-workflow-self-healing-2026-08-28`并绑定实时`origin/main@75f6c1a`。
 - [x] R0只读冻结v0.6.56/schema41、20模型/10 published、Node/npm、生产release/健康/数据完整性与USD100硬预算；受保护JSON未读取或改动。
