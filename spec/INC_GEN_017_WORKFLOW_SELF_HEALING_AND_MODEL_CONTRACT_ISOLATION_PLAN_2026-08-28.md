@@ -1,6 +1,6 @@
 # INC-GEN-017：工作流自动自愈与模型合同隔离详细行动方案
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_GITHUB_RELEASE_PASS_FRESH_BUILD_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_FRESH_BUILD_PASS_PRODUCTION_QUIET_GATE_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 
 建立日期：2026-08-28
 
@@ -29,6 +29,8 @@ Review GO后的治理safe m38为`16/16 PASS`，source/snapshot=`3811d4a83a62802d
 两个commit已推送，PR #129 base/head=`main@e6341d5`/`7f34d09`且mergeable；Quality gates / lightweight run`33298263718`、job`99221554337`以35秒通过。当前只提交并推送本条CI治理回执，等待最终纯文档head同一门通过后再合并。
 
 PR #129最终head`76fd686`的Quality gates run`33298346157`/job`99221773974`以30秒通过并merge为`b5867b3edf8f39c9a58b4e77d9060e1567dd9de2`；main run`33298393397`/job`99221893013`以27秒通过。annotated tag object`c54cf6d107dd891d0ac689b5bd313845e5dd3e72`精确指向merge，GitHub Release v0.6.60已发布。当前进入精确tag fresh build、quiet gate、冻结备份与隔离迁移。
+
+v0.6.60精确tag archive SHA为`8db3ed0f921a64187b2cdca7ae7c7ae6fcf7e9b2c48f6c0ee3fc3b1659790b03`并解引用到merge`b5867b3`；服务器新建独立staging`/opt/unboundry/staging/v0.6.60-inc-gen-017-20260830.dA88ys`，固定Node22.23.2/npm10.9.8完成npm ci、TypeScript、Vite build和inventory验证。清单6035文件、SHA`d14ed3db…b6c8`、dist33；生产仍为v0.6.57/schema41，Provider POST/费用0。下一步只执行quiet gate，再停服冻结备份和隔离迁移。
 
 v0.6.59精确tag archive `63042cff…71b8`的服务器fresh build与7次quiet gate均通过；冻结备份`v0.6.59-cutover-frozen.jufZ1z`双副本366/366、清单`39c9e691…ebf3`、DB`13589eea…2261`、schema41/integrity/FK/计数门有效。隔离迁移副本`v0.6.59-contract-upgrade.Nz9OFg`在apply前对真实published `grok-video-3`旧schema报`Invalid model reference policy`并fail-closed，生产未写且继续v0.6.57健康。v0.6.59 Release不可变、未部署；当前递增到最低未占用v0.6.60，只允许精确匹配真实legacy Grok schema的受控迁移，任意near-miss继续阻断。先补m102 exact/near-miss，再跑m102+m81+m38、独立增量Review和新PR/tag/fresh build；正式full永久不重跑，Provider POST/费用仍为0。
 
