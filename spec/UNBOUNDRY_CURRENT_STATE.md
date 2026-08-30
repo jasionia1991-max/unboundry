@@ -1,6 +1,6 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网运行v0.6.57/schema41且服务健康。v0.6.58因真实Mureka legacy schema、v0.6.59因真实Grok legacy schema都在隔离迁移apply前正确fail-closed；两个tag/Release保持不可变且未部署。当前严格为`V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_QUIET_GATE_PASS_FROZEN_BACKUP_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。v0.6.56的真实GK成功回执保留为历史事实，不替代当前版本验收。
+> **状态分层**：生产v0.6.57/schema41已在quiet gate后停服并完成正式冻结；v0.6.58因真实Mureka legacy schema、v0.6.59因真实Grok legacy schema都在隔离迁移apply前正确fail-closed，两个tag/Release保持不可变且未部署。当前严格为`V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_FROZEN_BACKUP_PASS_ISOLATED_MIGRATION_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。v0.6.56的真实GK成功回执保留为历史事实，不替代当前版本验收。
 
 更新日期：2026-08-30
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
@@ -9,14 +9,15 @@
 当前生产部署版本：**v0.6.57**
 本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_57_USER_RECHECK`
-当前计划标记：`INC_GEN_017_GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_QUIET_GATE_PASS_FROZEN_BACKUP_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+当前计划标记：`INC_GEN_017_GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_FROZEN_BACKUP_PASS_ISOLATED_MIGRATION_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`INC_GEN_017_V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_QUIET_GATE_PASS_FROZEN_BACKUP_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+当前发布门：`INC_GEN_017_V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_FROZEN_BACKUP_PASS_ISOLATED_MIGRATION_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 
 ## INC-GEN-017 当前区块（2026-08-28）
 
 - v0.6.60精确tag archive SHA=`8db3ed0f921a64187b2cdca7ae7c7ae6fcf7e9b2c48f6c0ee3fc3b1659790b03`；服务器独立staging=`/opt/unboundry/staging/v0.6.60-inc-gen-017-20260830.dA88ys`固定Node22.23.2/npm10.9.8完成npm ci、TypeScript、Vite build与6035文件inventory验证，清单SHA=`d14ed3db17e1cc60b025093072a673278f191a33d48e3cbae5889275f13db6c8`、dist33。现网仍精确为v0.6.57/schema41、service active/enabled，Provider POST=0/USD0；下一步quiet gate。
 - v0.6.60生产quiet gate连续7次均为active0/unsettledUnknown0；现网current/API仍为v0.6.57，service active/running、NRestarts0。冻结双副本尚未建立，生产DB未写，Provider POST=0/USD0。
+- v0.6.60正式冻结目录=`/var/lib/unboundry-rollbacks/v0.6.60-cutover-frozen.k3xebQ`，source/restore各366、双清单`a758e801…aea2b`、DB`13589eea…2261`；两副本schema41/quick/integrity/FK0、tasks1025、attempts1036、active0、unknown0、media949/1772056577、canvas76、models20/published10、templates50/published48及Library一致。首个清单失败目录`v0.6.60-cutover-frozen.in7NN7`保留。服务当前inactive/enabled，生产DB未写，Provider POST=0/USD0。
 
 - v0.6.60最低未占用patch身份已确认并从`origin/main@e6341d5`建立隔离分支；package/lock/final runtime/m81同步。只读冻结副本确认Grok default schema与活动immutable revision均是旧text/image/reference宽合同。整改只接受该exact快照，收敛到当前text/image+单first-frame，任意near-miss阻断；模板桥仍逐节点比较execution contract。
 - safe m102首轮`23/24`诊断出通用schema field diff会误报22模板；关闭该精确边界后只重跑m102为`24/24 PASS`，source/snapshot`25f82ecd…e51a2`、库存1125、失败/重试/跳过/reportErrors0、4173 unchanged。随后版本/治理直接safe m38+m81为`57/57 PASS`（16+41），source/snapshot`07053ab1…4490b8`、库存1125、异常0、4173 unchanged；正式full未重跑。当前只开放精确冻结与独立Review；生产继续v0.6.57/schema41，Provider POST=0/USD0。
