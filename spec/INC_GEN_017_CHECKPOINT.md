@@ -1,11 +1,12 @@
 # INC-GEN-017 实时断点
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_FROZEN_BACKUP_PASS_ISOLATED_MIGRATION_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_62_REMEDIATION_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 
 更新时间：2026-08-30
 
 ## 当前结论
 
+- v0.6.61隔离迁移工作副本=`/var/lib/unboundry-rollbacks/v0.6.61-contract-upgrade.Tupzga`，pre-apply attestation SHA=`34d805884793c3e28f6aa5b51e49672c223e4e139c27034462b1b50dcb1c817e`。dry-run在任何apply前因真实`grok-imagine-video-1.5-preview`旧合同报`Model input prompt policy cannot weaken this Provider model`而fail-closed；工作DB与生产DB SHA均保持`13589eea474afb688325c4ad1f54ebdc82a8d66b589c05b7502eb8348cec2261`，生产库未写。v0.6.61 tag/Release保持不可变且未部署；生产已恢复v0.6.57，回环version/live/ready、service active/running、NRestarts0通过。下一步确认v0.6.62最低未占用身份，只为该真实exact legacy合同增加窄迁移与near-miss回归；Provider POST=0/USD0。
 - v0.6.61维护停服后，首次冻结目录`/var/lib/unboundry-rollbacks/v0.6.61-cutover-frozen.LRLTxA`在source/restore复制完成后因清单子命令引号把路径展开为`/source`而fail-closed，目录完整保留且生产库未写。正式冻结目录=`/var/lib/unboundry-rollbacks/v0.6.61-cutover-frozen.q9k50E`，source/restore各366文件，双清单SHA=`a758e8011c832653c9506407b0794bc63fefc6feaeaf473274195a47ce2aea2b`，DB SHA=`13589eea474afb688325c4ad1f54ebdc82a8d66b589c05b7502eb8348cec2261`，Library SHA=`444e64f4cfa2ec489629589bb4ac9159433cf4dce426f3bd97fc974e07f80f49`。两副本均schema41、quick/integrity ok、FK0，tasks1025、attempts1036、active0、unsettledUnknown0、media949/1772056577 bytes、canvas76、models20/published10、templates50/published48及Library schema1/integrity/FK0/entries2一致。服务保持inactive/enabled；下一步只从restore复制新迁移工作副本，执行dry-run/apply/repeat。
 - v0.6.61生产quiet gate连续7次均为`active=0/unsettledUnknown=0`；全程current/API精确为v0.6.57，service active/running、NRestarts0。首个只读诊断曾把10条已finished的历史`outcome-unknown`计入，核对分布为9 failed+1 cancelled且finished_at均非空；按“未收口unknown”权威口径为0。该quiet门已闭合，Provider POST=0/USD0。
 - v0.6.61精确tag archive SHA=`70be072c9ea41891fe63f8b793775598307aa49055cb2b6972f94f6b8fdb1a22`，远端归档SHA逐字一致；服务器独立staging=`/opt/unboundry/staging/v0.6.61-inc-gen-017-20260830.Dnplbk`固定Node`22.23.2`/npm`10.9.8`完成npm ci、TypeScript与Vite build。发布清单6035行/6036文件且校验通过，inventory SHA=`3efd2f7e6eb49b7f829257f484051ae610098b6f9a66f0e80101bfb0719f4600`，dist 33文件；归档和staging均保留。该fresh-build门已闭合，生产current仍精确为v0.6.57/schema41、Provider POST=0/USD0。

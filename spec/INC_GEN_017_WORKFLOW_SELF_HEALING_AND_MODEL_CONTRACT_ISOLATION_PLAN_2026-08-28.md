@@ -1,8 +1,10 @@
 # INC-GEN-017：工作流自动自愈与模型合同隔离详细行动方案
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_FROZEN_BACKUP_PASS_ISOLATED_MIGRATION_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_62_REMEDIATION_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 
 建立日期：2026-08-28
+
+v0.6.61隔离工作副本`v0.6.61-contract-upgrade.Tupzga`的dry-run在apply前对真实`grok-imagine-video-1.5-preview`报`Model input prompt policy cannot weaken this Provider model`并准确停止；工作/生产DB SHA均为`13589eea…2261`且生产未写。v0.6.61不可变且未部署，生产恢复v0.6.57健康。下一修正版必须递增到最低未占用v0.6.62，只接受生产精确legacy Grok3.5 prompt/input合同；任意near-miss与其他模型漂移继续fail-closed，先补m102 exact/near-miss，再执行版本门与完整增量Review。
 
 v0.6.61正式冻结目录=`/var/lib/unboundry-rollbacks/v0.6.61-cutover-frozen.q9k50E`：source/restore各366文件，双清单`a758e801…aea2b`，DB`13589eea…2261`，Library`444e64f4…80f49`；schema41、quick/integrity、FK0、tasks1025/attempts1036/active0/unknown0、media949/1772056577、canvas76、models20/10、templates50/48、Library2完全一致。首个清单引号失败目录`v0.6.61-cutover-frozen.LRLTxA`保留且生产数据未写。服务保持inactive/enabled；下一步仅从正式restore复制唯一迁移工作副本并先dry-run。
 

@@ -1,8 +1,9 @@
 # Unboundry 绿地复刻验收矩阵
 
-## INC-GEN-017 正式full已消费、v0.6.60迁移fail-closed与v0.6.61 frozen backup（2026-08-30）
+## INC-GEN-017 正式full已消费、v0.6.58–v0.6.61迁移fail-closed与v0.6.62整改（2026-08-30）
 
-- 当前状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_FROZEN_BACKUP_PASS_ISOLATED_MIGRATION_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。
+- 当前状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_62_REMEDIATION_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。
+- v0.6.61隔离dry-run在apply前因真实Grok3.5旧prompt policy而`FAIL_CLOSED`；工作/生产DB均未写，v0.6.61未部署，生产恢复v0.6.57健康。v0.6.62 exact legacy整改/测试/Review待执行，Provider POST=0/USD0。
 - v0.6.61正式冻结目录`v0.6.61-cutover-frozen.q9k50E`的source/restore各366、双清单`a758e801…aea2b`、DB`13589eea…2261`且schema41/integrity/FK/关键计数一致；首个引号失败目录`v0.6.61-cutover-frozen.LRLTxA`保留。冻结门=`PASS`；隔离迁移与Provider待执行，服务inactive/enabled。
 - v0.6.61生产quiet gate连续7次active0/unsettledUnknown0，current/API始终v0.6.57，service active/running、NRestarts0；首个诊断仅额外计入10条已finished历史unknown。quiet gate=`PASS`；冻结双副本、隔离迁移与Provider待执行。
 - v0.6.61精确tag archive=`70be072c…b1a22`；独立staging=`v0.6.61-inc-gen-017-20260830.Dnplbk`固定Node22.23.2/npm10.9.8完成npm ci、TypeScript、Vite、6035行inventory（`3efd2f7e…f4600`）和dist33验证。fresh build=`PASS`；生产quiet/冻结备份/隔离迁移/Provider待执行，current仍v0.6.57/schema41。

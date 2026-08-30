@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻当前任务
 
-## INC-GEN-017 工作流自动自愈与模型合同隔离（FORMAL SAFE FULL CONSUMED / V0.6.58 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.59 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.60 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.61 FROZEN BACKUP PASS / ISOLATED MIGRATION PENDING / REAL PROVIDER NOT POSTED）
+## INC-GEN-017 工作流自动自愈与模型合同隔离（FORMAL SAFE FULL CONSUMED / V0.6.58–V0.6.61 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.62 REMEDIATION PENDING / REAL PROVIDER NOT POSTED）
 
 - [x] 关闭第二次独立复核P1：把`openrouter/openai/gpt-image-2/native` exact alias纳入普通发布的完整registry-owned合同硬门；两个exact identity均可validate+publish，evidence、受支持的version-bumped connector与create path漂移阻断。强化反例首轮`23/24`只因fixture先命中既有unsupported runtime version门，修正后safe m102 `24/24 PASS`（source/snapshot`0eced929…50636`），库存1125、异常0、4173 unchanged。
 - [x] 最终六份治理同步后safe m38 `16/16 PASS`，source/snapshot`2b3f2b69…5376f`、库存1125、异常0、4173 unchanged；取代此前`769a79cf…a32f`，正式full未重跑。
@@ -25,7 +25,8 @@
 - [x] 精确tag archive SHA=`70be072c9ea41891fe63f8b793775598307aa49055cb2b6972f94f6b8fdb1a22`；服务器独立staging=`/opt/unboundry/staging/v0.6.61-inc-gen-017-20260830.Dnplbk`固定Node22.23.2/npm10.9.8完成npm ci、TypeScript、Vite build、6035行inventory校验与dist33，inventory SHA=`3efd2f7e6eb49b7f829257f484051ae610098b6f9a66f0e80101bfb0719f4600`。
 - [x] 生产quiet gate连续7次均为`active=0/unsettledUnknown=0`，current/API始终v0.6.57，service active/running、NRestarts0。首个诊断口径计入10条已finished的历史unknown；按未收口口径核对为0，不改写历史记录。
 - [x] 首次冻结目录`/var/lib/unboundry-rollbacks/v0.6.61-cutover-frozen.LRLTxA`在source/restore复制后因清单子命令引号错误fail-closed并保留；正式冻结目录`/var/lib/unboundry-rollbacks/v0.6.61-cutover-frozen.q9k50E`的source/restore各366文件，双清单SHA=`a758e801…aea2b`、DB SHA=`13589eea…2261`，schema41/integrity/FK/任务/媒体/Canvas/模型/模板/Library全一致。服务inactive/enabled。
-- [ ] 仅从正式restore复制新迁移工作副本，执行dry-run/apply/repeat；通过后才可原子切换与真实Provider验收。
+- [x] 隔离工作副本`/var/lib/unboundry-rollbacks/v0.6.61-contract-upgrade.Tupzga`、attestation SHA=`34d80588…c817e`；dry-run在任何apply前因真实`grok-imagine-video-1.5-preview`旧合同报`Model input prompt policy cannot weaken this Provider model`而fail-closed。工作/生产DB SHA均保持`13589eea…2261`，v0.6.61不可变且未部署；生产已恢复v0.6.57健康。
+- [ ] 确认v0.6.62最低未占用身份，只对真实Grok3.5 exact legacy prompt/input合同做窄迁移与near-miss阻断；定向测试、完整增量Review GO后再走新PR/tag/fresh build/生产门。
 
 - [x] v0.6.59精确tag archive `63042cff…71b8`在服务器fresh staging固定Node22.23.2/npm10.9.8完成npm ci、TypeScript和Vite build；7次quiet gate均active0/unsettledUnknown0。
 - [x] v0.6.59冻结备份`v0.6.59-cutover-frozen.jufZ1z`双副本366/366、清单`39c9e691…ebf3`、DB`13589eea…2261`及schema41/integrity/FK/计数门通过；所有证据目录保留。
