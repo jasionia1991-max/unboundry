@@ -47,7 +47,7 @@
 
 ## 2. 当前授权边界
 
-- **2026-08-30 INC-GEN-017 当前权威状态**：生产运行`v0.6.57/schema41`，PR #126最终head/main Quality gates、merge`b34a6f4`、不可变tag/GitHub Release、精确tag fresh build、冻结双副本恢复、原子切换、回滚/前向、33/33静态字节、数据不变和72秒稳定门均通过。产品/类型60、测试36及治理文档的独立增量终审为`P0=0/P1=0/P2=1/GO`；唯一正式safe full原始`1023 PASS / 95 FAIL / 4 NOT_RUN`保持不改写，27个失败spec与4项NOT_RUN均由最小失败集闭合且full未重跑。当前Goal真实Provider POST/费用仍为0/USD0，下一步只执行USD100内最小真实Provider验收；unknown禁止第二POST，用户实页确认前保持`USER_RECHECK`。历史“只授权方案、IMPLEMENTATION_NOT_STARTED”状态已失效；
+- **2026-08-30 INC-GEN-017 当前权威状态**：生产运行`v0.6.62/schema41`，PR #126/#131、不可变tag/Release、fresh build、冻结恢复、原子切换、成对rollback/forward、33/33静态字节、数据完整性、72秒稳定门及唯一Seedance真实Provider结果均通过；实际费用`1.412012 CNY`、重试0、unknown0，额外Provider POST权限已消费。后置增量复审的2项P1已在最低未占用patch v0.6.63关闭：accepted-only空凭证入口fail-closed，同run红色终态统一稳定去重；safe m22 44/44、m81 41/41，独立复审`P0=0/P1=0/P2=0/GO`，正式full不重跑。当前是`V0_6_63_REVIEW_GO / PRODUCTION_V0_6_62_TECHNICAL_PASS / REAL_PROVIDER_PASS / USER_RECHECK`；用户实页确认前不得写`USER_PASS`；
 
 - **2026-08-28 INC-GEN-016 当前权威状态**：本次`/goal`授权的代码、Review、唯一safe full、GitHub/CI、v0.6.55 tag/Release、生产备份/恢复/发布/回滚和真实GK验收均已执行。生产技术通过；唯一替代attempt被Provider全额退款且没有结果，实际费用0。授权已全部消费，禁止再次Provider POST；没有真实结果，故不得写`REAL_PROVIDER_PASS/USER_PASS`；
 - **2026-08-28 INC-GEN-016 v0.6.56续作授权**：修复、Review、GitHub/CI/tag/Release、生产备份恢复发布回滚和目标Canvas唯一真实GK提交均已执行；实际费用USD10，结果已回填并刷新保持。版本、发布和Provider提交授权全部消费；禁止再次POST、移动v0.6.56或把`USER_RECHECK`自升为`USER_PASS`；

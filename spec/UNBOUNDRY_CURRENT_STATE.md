@@ -1,20 +1,29 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网已恢复v0.6.57/schema41且服务健康。v0.6.58因真实Mureka legacy、v0.6.59因真实Grok legacy、v0.6.60因真实GPT Image 2 legacy、v0.6.61因真实Grok3.5 prompt policy旧合同均在隔离迁移apply前正确fail-closed；四个旧tag/Release保持不可变且未部署。当前严格为`V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_62_PR_OPEN_FINAL_DOC_HEAD_CI_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。v0.6.56的真实GK成功回执保留为历史事实，不替代当前版本验收。
+> **状态分层**：现网仍为v0.6.62/schema41并已通过发布、成对rollback/forward及唯一Seedance真实Provider回填；本地最低未占用patch v0.6.63已关闭后置增量复审的2项P1并获独立GO。当前严格为`V0_6_62_PRODUCTION_TECHNICAL_PASS / V0_6_63_REVIEW_GO / REAL_PROVIDER_PASS / USER_RECHECK`；v0.6.63进入治理m38与精确发布链。
 
 更新日期：2026-08-30
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.62**
-本地候选代码版本：**v0.6.62**
-当前生产部署版本：**v0.6.57**
+当前代码包版本：**v0.6.63**
+本地候选代码版本：**v0.6.63**
+当前生产部署版本：**v0.6.62**
 本地候选schema：**41**
-当前治理标记：`CURRENT_V0_6_57_USER_RECHECK`
-当前计划标记：`INC_GEN_017_GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_62_PR_OPEN_FINAL_DOC_HEAD_CI_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+当前治理标记：`CURRENT_V0_6_62_USER_RECHECK`
+当前计划标记：`INC_GEN_017_GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_62_PRODUCTION_TECHNICAL_PASS / V0_6_63_REVIEW_GO / REAL_PROVIDER_PASS / USER_RECHECK`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`INC_GEN_017_V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_62_PR_OPEN_FINAL_DOC_HEAD_CI_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+当前发布门：`INC_GEN_017_V0_6_63_REVIEW_GO / PRODUCTION_V0_6_62_TECHNICAL_PASS / REAL_PROVIDER_PASS / USER_RECHECK`
 
 ## INC-GEN-017 当前区块（2026-08-28）
 
+- v0.6.63后置P1整改已独立复审GO：accepted-only空凭证在运行注册/提交前fail-closed；同一run的cancel/stop-loss/checkpoint/exception红色终态统一稳定去重键。safe m22 44/44（`79e5a3d2…cda3`）、m81 41/41（`dd33875b…6ae2`）及治理m38最终16/16（`d87f6f5e…277e`）PASS，库存1125、异常0、4173 unchanged；m38首轮15/16仅暴露并关闭三份渐进治理文档旧current marker。独立结论`P0=0/P1=0/P2=0/GO`；正式full不重跑、Provider0，当前精确提交，生产仍v0.6.62。
+- v0.6.62唯一Seedance 2.0 Mini真实请求已完成：专用Canvas三条参考边按image/video/audio确定性绑定、模式`multimodal`；attempt1明确accepted/completed，OSS asset ready、publication published、原Video自动回填并在真实reload后保持。实际费用`1.412012 CNY`、retry0、unknown0，结果后service active/NRestarts0/active0。顶部保存文案虽持续`保存中...`，服务端revision与结果均已确认持久，登记为P2 UI状态观察项；当前`REAL_PROVIDER_PASS / USER_RECHECK`，不再允许新Provider POST。
+- v0.6.62 paired forward和72秒7采样稳定门已通过；现网current/API0.6.62、ready active/schema41、service active/running/NRestarts0，active/unknown及tasks1025/attempts1036/media949/publications531/canvas76零漂移。`PRODUCTION_TECHNICAL_PASS`，真实Provider POST0/USD0，下一步最小真实验收。
+- v0.6.62首轮切换已通过API/ready、DB完整性/计数、回环+公网33/33静态字节；随后成对rollback到v0.6.57旧triplet+symlink并通过公网/回环健康、NRestarts0和数据完整性。v0.6.62 live triplet保存在`v0.6.62-forward-live-triplet.GwK6uF`；当前只执行forward恢复，Provider0/USD0。
+- v0.6.62最新冻结restore隔离迁移与clean repeat已通过：5 exact revisions、22模板/34节点，repeat 11/11 none且DB字节不变，schema/integrity/FK/unknown/audit门全绿；详细SHA见Checkpoint。错误sidecar副本在dry-run前fail-closed且保留。生产DB/current未变，service inactive/enabled；当前进入生产迁移/切换。
+- v0.6.62正式冻结目录`v0.6.62-cutover-frozen.Y0d1Bm`的source/restore各366文件，双清单`a758e801…aea2b`、主DB`13589eea…2261`、Library`444e64f4…f49`；两副本schema/integrity/FK及全部关键计数一致。service inactive/enabled，生产库未写；当前只执行restore派生隔离迁移。
+- v0.6.62生产quiet gate于`2026-08-30T12:56:55Z–12:57:55Z`连续7次active0/unsettledUnknown0；current/API始终v0.6.57、ready active/schema41、service active/running、NRestarts0。首个过宽旧迁移查询37全部关联终态任务，8条unknown均finished；现行未收口unknown为0。当前进入停服冻结双副本，生产DB尚未写，Provider0/USD0。
+- v0.6.62 tag archive`0e32a951…e7e348`服务器一致；staging`v0.6.62-inc-gen-017-20260830.w9BL3M/source`在Node22.23.2/npm10.9.8完成npm ci、TypeScript、Vite、6035行inventory（`6d40ebfa…14e21`）与dist33。生产仍v0.6.57/schema41健康；当前进入quiet gate，Provider0/USD0。
+- PR #131最终head/main CI分别48秒、30秒通过，merge=`dda1bce6…3f57`；annotated tag object=`4cb4ff2b…90854`精确指向merge，GitHub Release v0.6.62已发布。当前进入tag fresh build，生产仍v0.6.57/schema41，Provider0/USD0。
 - PR #131 head`3aef7e8`与治理head`d01d564`的Quality gates分别33秒、36秒通过。当前推送最终CI回执head并等待同一门；生产仍v0.6.57/schema41，Provider0/USD0。
 - PR #131已创建，base/head=`main@fe93d835`/`3aef7e8`且mergeable；首个Quality gates run`33312070069`/job`99258820272`正在运行。当前推送本条治理回执后等待最终head CI，生产仍v0.6.57/schema41，Provider0/USD0。
 - v0.6.62 GitHub身份门通过：origin/main`fe93d835…b8d3f`未前进，tag/Release/same-head PR未占用，PR diff为16个预期文件、845 insertions/49 deletions且无受保护JSON。当前提交回执后push/PR/CI，生产仍v0.6.57/schema41，Provider0/USD0。
@@ -289,7 +298,7 @@ v0.6.47验证证据：默认Node25.9.0/npm11.12.1下build与architecture通过�
 
 ## 一句话
 
-**生产是 v0.6.57 / schema41；INC-GEN-017工程、GitHub、不可变发布、备份恢复、回滚和生产技术门通过，当前Goal真实Provider验收待执行；唯一下一步是完成预算内最小真实Provider验收后由用户按五步清单复验。**
+**生产是 v0.6.62 / schema41；INC-GEN-017工程、GitHub、不可变发布、备份恢复、回滚、生产技术门和限额内真实Provider验收均已通过；当前仅保留用户五步复验。**
 
 ## INC-GEN-015 老画布孤立生成态与终态结果自动收口（PRODUCTION_V0_6_46_USER_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON）
 

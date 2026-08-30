@@ -1,8 +1,17 @@
 # Unboundry 绿地复刻验收矩阵
 
-## INC-GEN-017 正式full已消费、v0.6.58–v0.6.61迁移fail-closed与v0.6.62隔离复验通过（2026-08-30）
+## INC-GEN-017 正式full已消费、v0.6.62生产与真实Provider通过、v0.6.63后置P1复审GO（2026-08-30）
 
-- 当前状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_62_PR_OPEN_FINAL_DOC_HEAD_CI_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。
+- 当前状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_62_PRODUCTION_TECHNICAL_PASS / V0_6_63_REVIEW_GO / REAL_PROVIDER_PASS / USER_RECHECK`。
+- v0.6.63后置P1门：accepted-only空凭证已入口fail-closed，同run全部红色终态已统一稳定去重键。safe m22 `44/44 PASS`（`79e5a3d2…cda3`）、m81 `41/41 PASS`（`dd33875b…6ae2`）、治理m38最终`16/16 PASS`（`d87f6f5e…277e`），异常0、4173 unchanged、Provider0；首轮m38的旧current marker已关闭，独立增量复审`P0=0/P1=0/P2=0/GO`，formal full不重跑，production仍v0.6.62。
+- 真实Provider门：Seedance 2.0 Mini唯一POST/attempt1明确accepted/completed；三条reference角色与multimodal合同正确，OSS asset ready/published并自动回填原Video，真实reload保持。实际费用`1.412012 CNY`、retry0、unknown0、结果后active0/service稳定。顶部保存文案持续`保存中...`但服务端revision/result持久，登记P2 UI状态观察项；额外Provider POST关闭、用户实页确认待执行。
+- v0.6.62 paired forward+stability：current/API0.6.62、ready active/schema41、service/NRestarts及72秒7采样的active/unknown/关键计数全部稳定，`PRODUCTION_TECHNICAL_PASS`。回滚/前向证据与旧release均保留；Provider POST0/USD0，最小真实验收待执行。
+- v0.6.62 initial cutover与paired rollback：新release inventory/dist、v0.6.62 API/ready/DB/static33/33通过；恢复v0.6.57旧triplet+symlink后公网/回环健康、NRestarts0及DB完整性/计数通过。forward/stability/Provider待执行。
+- v0.6.62最新隔离迁移门：main 5 revisions/22 templates/34 nodes，clean repeat 11/11 none、升级0且DB字节同SHA；schema/integrity/FK/active/unknown/audit均PASS，Provider0。错误WAL/SHM副本在dry-run前fail-closed并保留；production DB/current未变，生产切换待执行。
+- v0.6.62冻结备份门：`v0.6.62-cutover-frozen.Y0d1Bm` source/restore=366/366，双清单`a758e801…aea2b`，主DB`13589eea…2261`、Library`444e64f4…f49`；两副本schema/integrity/FK/计数完全一致，active0/unsettledUnknown0，`PASS`。service inactive/enabled；隔离迁移/Provider待执行。
+- v0.6.62 quiet门：`2026-08-30T12:56:55Z–12:57:55Z`连续7次active0/unsettledUnknown0，current/API v0.6.57、ready active/schema41、service active/running、NRestarts0，`PASS`。首个旧迁移过宽诊断37已保留，均关联终态任务；8条unknown均finished。冻结双副本/迁移/Provider待执行。
+- v0.6.62 fresh-build门：archive`0e32a951…e7e348`本地/服务器同SHA；staging`w9BL3M/source`固定Node22.23.2/npm10.9.8完成npm ci/TypeScript/Vite/6035 inventory/dist33，inventory SHA`6d40ebfa…14e21`。生产v0.6.57/schema41健康，quiet/冻结备份/迁移/Provider待执行。
+- v0.6.62 merge/release门：final PR head`60badfa` CI 48秒通过，merge`dda1bce6…3f57` main CI 30秒通过；annotated tag object`4cb4ff2b…90854`精确解引用到merge，Release非draft/prerelease。tag archive/fresh build待执行。
 - v0.6.62 PR CI门：head`3aef7e8` run/job`33312070069/99258820272` 33秒通过；governance head`d01d564` run/job`33312135373/99258993752` 36秒通过。最终纯文档head CI/merge/main CI/tag/Release待执行。
 - v0.6.62 PR门：PR #131 base/head=`main@fe93d835`/`3aef7e8`且mergeable；首个Quality gates/lightweight run`33312070069`、job`99258820272`正在运行。final governance head CI/merge/main CI/tag/Release待执行。
 - v0.6.62 GitHub身份门：origin/main`fe93d835…b8d3f`且merge-base一致；local/remote tag、Release、same-head PR不存在；PR diff精确16文件、845 insertions/49 deletions且无受保护JSON。治理回执commit/push/PR/CI待执行。

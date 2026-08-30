@@ -1,0 +1,123 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "INC-GEN-017-V0.6.62-PRODUCTION-2026-08-30",
+  "recordedAt": "2026-08-30T21:43:45+08:00",
+  "status": "PRODUCTION_V0_6_62_TECHNICAL_PASS_REAL_PROVIDER_PASS_USER_RECHECK",
+  "acceptance": {
+    "productionTechnical": "PASS",
+    "realProvider": "PASS",
+    "realResultReturnedToCanvas": true,
+    "refreshPersistence": "PASS_WITH_UI_STATUS_OBSERVATION",
+    "userQuality": "USER_RECHECK",
+    "userPass": false
+  },
+  "source": {
+    "pullRequest": 131,
+    "mergeCommit": "dda1bce6d3a4692fbc44eb293f7c4adc571d3f57",
+    "tag": "v0.6.62",
+    "annotatedTagObject": "4cb4ff2b8bcecf4c7c350cc335a99c29cb790854",
+    "releaseUrl": "https://github.com/jasionia1991-max/unboundry/releases/tag/v0.6.62",
+    "tagArchiveSha256": "0e32a951cff0feac80c13fc52bb02b981667d16ad9e2eafb8e920d28cde7e348"
+  },
+  "verification": {
+    "formalFullSuiteExecutedOnce": true,
+    "formalFullSuiteRepeated": false,
+    "formalFullOriginal": "1023_PASS_95_FAIL_4_NOT_RUN",
+    "failedSubsetClosure": "27_OF_27_SPECS_PASS",
+    "finalProductReview": "P0_0_P1_0_P2_1_GO",
+    "migrationHotfixReview": "P0_0_P1_0_P2_0_GO",
+    "publishedLogicalModels": 10,
+    "exactRegistryIdentities": 11,
+    "providerAdapters": 6
+  },
+  "production": {
+    "hostAlias": "live-cockpit",
+    "currentRelease": "/opt/unboundry/releases/v0.6.62-inc-gen-017-20260830",
+    "version": "0.6.62",
+    "schema": 41,
+    "service": "unboundry",
+    "serviceState": "active",
+    "serviceSubState": "running",
+    "serviceRestarts": 0,
+    "readyMode": "active",
+    "rollbackForward": "PASS",
+    "staticAssets": "33_OF_33_BYTE_MATCH",
+    "postResultCounts": {
+      "tasks": 1026,
+      "attempts": 1037,
+      "active": 0,
+      "unsettledUnknown": 0,
+      "media": 954,
+      "publications": 545,
+      "canvases": 76
+    },
+    "postResultJournalWarnings": 0
+  },
+  "realProviderAcceptance": {
+    "providerModel": "Seedance 2.0 Mini",
+    "canvasId": "3b3cb4f8-56c3-49f5-ad42-1a00748ba33a",
+    "nodeId": "video-602d4674-1c34-4363-b734-e6f0b3458dd9",
+    "taskId": "d41bc4e7-8f48-4d32-9bdc-1e37e7bca8f9",
+    "providerPostsMade": 1,
+    "executionAttempt": 1,
+    "providerAccepted": true,
+    "finalOutcome": "completed",
+    "retryCount": 0,
+    "unknownBillingRisk": false,
+    "actualCostMicrounits": 1412012,
+    "actualCostCurrency": "CNY",
+    "authorizedBudgetUsd": 100,
+    "inputContract": {
+      "mode": "multimodal",
+      "roles": [
+        "reference-image",
+        "reference-video",
+        "reference-audio"
+      ]
+    },
+    "resultAsset": {
+      "id": "fd66d5f4-20fa-43f6-b70d-080cb19ad456.mp4",
+      "storageBackend": "oss",
+      "storageStatus": "ready",
+      "publicationState": "published",
+      "contentType": "video/mp4",
+      "byteSize": 1245309,
+      "durationSeconds": 5.088,
+      "width": 864,
+      "height": 496,
+      "checksumPresent": true
+    },
+    "canvasProjection": {
+      "revision": 29,
+      "graphRevision": 28,
+      "nodeCount": 4,
+      "edgeCount": 3,
+      "videoGenerating": false,
+      "videoResultPresent": true,
+      "refreshResultPresent": true
+    },
+    "uiObservation": {
+      "severity": "P2",
+      "saveStatusText": "保存中...",
+      "serverRevisionConfirmed": true,
+      "resultPersistedAcrossReload": true,
+      "dataLossObserved": false,
+      "additionalProviderPostRequired": false
+    },
+    "additionalProviderPostsAllowed": false,
+    "additionalProviderPostsMade": false,
+    "result": "REAL_PROVIDER_PASS"
+  },
+  "knownOperationalObservation": {
+    "dailyBackupService": "FAILED_PREEXISTING_SCHEMA_VALIDATION",
+    "goalCutoverFrozenBackup": "PASS",
+    "goalRestoreRehearsal": "PASS",
+    "impactOnThisProviderAcceptance": "NONE_OBSERVED"
+  },
+  "stoppingCondition": {
+    "goalTechnicalCompletionAchieved": true,
+    "realProviderPass": true,
+    "userPass": false
+  },
+  "nextAction": "User watches the production result and checks the persistent save-status label; only an explicit user confirmation may promote USER_RECHECK to USER_PASS."
+}
