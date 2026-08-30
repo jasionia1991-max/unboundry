@@ -1,10 +1,12 @@
 # INC-GEN-017：工作流自动自愈与模型合同隔离详细行动方案
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_62_PRODUCTION_TECHNICAL_PASS / V0_6_63_REVIEW_GO / REAL_PROVIDER_PASS / USER_RECHECK`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / PRODUCTION_V0_6_63_TECHNICAL_PASS / REAL_PROVIDER_PASS / USER_RECHECK`
 
 建立日期：2026-08-28
 
-v0.6.63后置P1整改已完成：accepted-only空凭证入口fail-closed，同run全部红色终态统一稳定去重键；safe m22 44/44、m81 41/41、治理m38最终16/16通过，同一独立上下文复审`P0=0/P1=0/P2=0/GO`。m38首轮15/16只暴露三份渐进治理文档的旧current marker并已精确同步。正式full不重跑、Provider0；当前只进入精确提交和既有发布链，生产仍v0.6.62。
+v0.6.63最终发布链已完成：PR #132最终head/main CI、merge `55ef9557…de9b3`、annotated tag/Release、tag fresh build、冻结source/restore、原子切换、成对rollback/forward、33/33回环与公网静态字节、schema/integrity/FK/计数及72秒7采样稳定门全部通过。成对脚本退出trap的额外启停触发systemd `start-limit-hit`，确认forward应用已ready且current正确后清限流恢复；最终service active/enabled、NRestarts0、journal warning0。生产为v0.6.63/schema41，结论`PRODUCTION_V0_6_63_TECHNICAL_PASS / REAL_PROVIDER_PASS / USER_RECHECK`；Provider POST授权已消费，正式full不重跑。
+
+v0.6.63后置P1整改已完成：accepted-only空凭证入口fail-closed，同run全部红色终态统一稳定去重键；safe m22 44/44、m81 41/41、治理m38最终16/16通过，同一独立上下文复审`P0=0/P1=0/P2=0/GO`。m38首轮15/16只暴露三份渐进治理文档的旧current marker并已精确同步；最小复跑最终`16/16 PASS`，source/snapshot=`7c194ededd17eb5e2243241b9bd7000d6b452c1a09b27a2794ad52c15ca56f5a`、库存1125、失败/重试/跳过/reportErrors0、4173 unchanged。正式full不重跑、不再触发Provider；生产现为v0.6.63。
 
 v0.6.62最小真实Provider验收只提交1次Seedance 2.0 Mini并成功：三种参考素材角色与`multimodal`合同在提交前自动规范化；唯一attempt明确accepted/completed，OSS结果ready/published并自动回填原Video，真实reload保持。实际费用`1.412012 CNY`、重试0、unknown0、结果后active0/service稳定。顶部保存文案持续`保存中...`但服务端revision和结果均已持久，登记为P2 UI状态观察项；真实Provider技术结论`REAL_PROVIDER_PASS`，用户确认前继续`USER_RECHECK`，且本Goal不再允许新Provider POST。
 
