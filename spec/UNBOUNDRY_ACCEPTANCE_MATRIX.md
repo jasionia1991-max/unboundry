@@ -1,8 +1,9 @@
 # Unboundry 绿地复刻验收矩阵
 
-## INC-GEN-017 正式full已消费、v0.6.60迁移fail-closed与v0.6.61推送就绪（2026-08-30）
+## INC-GEN-017 正式full已消费、v0.6.60迁移fail-closed与v0.6.61 PR #130（2026-08-30）
 
-- 当前状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_GITHUB_IDENTITY_PASS_PUSH_READY / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。
+- 当前状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_PR_130_OPEN_FINAL_HEAD_CI_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`。
+- PR #130 base/head=`main@b5867b3`/`dc64f08`且mergeable；最终纯文档head CI待运行，merge/tag/Release/生产/Provider未运行。
 - GitHub身份门：origin/main`b5867b3…9de2`未前进，v0.6.61 local/remote tag与Release均不存在，无同head PR；14个预期PR文件、515 insertions/26 deletions且无受保护JSON。push/PR/CI待执行。
 - 候选提交后治理safe m38 `16/16 PASS`，source/snapshot`60754094…14297`、库存1125、异常0、HEAD`7733464…a45423`、4173 unchanged；六份治理commit就绪。
 - v0.6.61冻结候选commit=`7733464cc997…a45423`、tree=`692f11ea…9371`，精确8文件/337 insertions/12 deletions；治理文档与受保护JSON未提交。提交后治理m38待运行。
