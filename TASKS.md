@@ -1,7 +1,8 @@
 # Unboundry 绿地复刻当前任务
 
-## INC-GEN-017 工作流自动自愈与模型合同隔离（FORMAL SAFE FULL CONSUMED / V0.6.58–V0.6.61 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.62 CANDIDATE COMMITTED / GITHUB IDENTITY PENDING / REAL PROVIDER NOT POSTED）
+## INC-GEN-017 工作流自动自愈与模型合同隔离（FORMAL SAFE FULL CONSUMED / V0.6.58–V0.6.61 MIGRATION FAIL-CLOSED UNDEPLOYED / V0.6.62 GITHUB IDENTITY PASS / PR PENDING / REAL PROVIDER NOT POSTED）
 
+- [x] v0.6.62实时GitHub身份门通过：`origin/main@fe93d8359a5a3ee5f8bfe1d64f494ec87d4b8d3f`未前进，v0.6.62本地/远端tag与GitHub Release均未占用，同head PR不存在；当前PR差异为16个预期文件、845 insertions/49 deletions且无受保护JSON。提交本治理回执后推送并创建PR，最终head Quality gates通过前不合并。
 - [x] v0.6.62候选提交后治理safe m38=`16/16 PASS`，source/snapshot=`76716e8779c6a051e087bc3a0bfaf9046fc920e86d01cde7dbeb4985cd2fc747`、库存1125、失败/重试/跳过/reportErrors0、HEAD=`fe152fe35d70dddd2b4e8b201f83ac2635df9241`、Node22.23.1/npm10.9.8、4173 unchanged。当前只提交六份治理回执，然后核实时效性强的origin/main、tag、Release、同head PR与PR diff身份门。
 - [x] v0.6.62冻结候选已精确提交为`fe152fe35d70dddd2b4e8b201f83ac2635df9241`，tree=`079464b77bbdb226a6fb11c9c4b159fa64590ce1`；commit恰含10个产品/版本/测试文件、611 insertions/35 deletions。六份治理文档与受保护JSON未进入commit。下一步仅运行提交后治理m38，再提交治理回执。
 - [x] Review GO六份治理同步后的safe m38=`16/16 PASS`，source/snapshot=`ce9126ef4216e1ccad2d80194c51653aa1b3cf64abeb915f1a5afde8d8313fac`、库存1125、失败/重试/跳过/reportErrors0、Node22.23.1/npm10.9.8、4173 unchanged；正式full未重跑，冻结产品hash仍为`bb364480…ae897`。当前只精确提交10个产品/版本/测试文件，治理文档与受保护JSON不进入候选commit。

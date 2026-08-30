@@ -1,11 +1,12 @@
 # INC-GEN-017 实时断点
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_62_CANDIDATE_COMMITTED_GITHUB_IDENTITY_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_62_GITHUB_IDENTITY_PASS_PR_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
 
 更新时间：2026-08-30
 
 ## 当前结论
 
+- v0.6.62实时GitHub身份门已通过：刷新后`origin/main=fe93d8359a5a3ee5f8bfe1d64f494ec87d4b8d3f`且为当前分支merge-base；本地/远端`v0.6.62` tag与GitHub Release均不存在，无同head PR。`origin/main...HEAD`恰为16个预期文件、845 insertions/49 deletions，不含两份受保护JSON。当前提交本治理回执，然后推送分支并创建PR；最终head Quality gates通过前不得合并。
 - v0.6.62候选提交后治理门通过：safe m38=`16/16 PASS`，source/snapshot=`76716e8779c6a051e087bc3a0bfaf9046fc920e86d01cde7dbeb4985cd2fc747`、库存1125、失败/重试/跳过/reportErrors0、HEAD=`fe152fe35d70dddd2b4e8b201f83ac2635df9241`、Node22.23.1/npm10.9.8、4173 unchanged。当前单独提交六份治理回执，随后核实origin/main、v0.6.62 local/remote tag和Release、同head PR与精确PR文件清单。
 - v0.6.62冻结候选已精确提交：commit=`fe152fe35d70dddd2b4e8b201f83ac2635df9241`、tree=`079464b77bbdb226a6fb11c9c4b159fa64590ce1`，恰含10个产品/版本/测试文件与611 insertions/35 deletions。六份治理文档和受保护JSON均未入commit。当前只运行提交后治理m38，再单独提交六份治理回执。
 - Review GO治理门已通过：六份治理同步后safe m38=`16/16 PASS`，source/snapshot=`ce9126ef4216e1ccad2d80194c51653aa1b3cf64abeb915f1a5afde8d8313fac`、库存1125、失败/重试/跳过/reportErrors0、Node22.23.1/npm10.9.8、4173 unchanged。正式full永久不重跑；冻结产品hash保持`bb364480…ae897`。当前只精确提交10个产品/版本/测试文件，治理六文档与受保护JSON不进入该commit。
