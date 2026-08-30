@@ -1,6 +1,8 @@
 # INC-GEN-017 验收矩阵
 
-状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_PRODUCTION_QUIET_PASS_FROZEN_BACKUP_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / V0_6_58_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_59_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_60_MIGRATION_FAIL_CLOSED_UNDEPLOYED / V0_6_61_FROZEN_BACKUP_PASS_ISOLATED_MIGRATION_PENDING / REAL_PROVIDER_NOT_POSTED / USER_RECHECK`
+
+v0.6.61 frozen-backup gate：正式目录=`/var/lib/unboundry-rollbacks/v0.6.61-cutover-frozen.q9k50E`，source/restore各366文件，双清单=`a758e801…aea2b`，DB=`13589eea…2261`，Library=`444e64f4…80f49`；两副本schema41、quick/integrity、FK0及任务/尝试/媒体/Canvas/模型/模板/Library计数一致，结论`PASS`。首次清单引号失败目录`v0.6.61-cutover-frozen.LRLTxA`保留且生产未写。隔离迁移与真实Provider仍`NOT_RUN`。
 
 v0.6.61 production-quiet gate：连续7次`active=0/unsettledUnknown=0`，current/API version始终v0.6.57，service active/running、NRestarts0，结论`PASS`。首个诊断查询含10条已finished历史unknown（9 failed/1 cancelled），不属于未收口unknown。冻结双副本、恢复验证、隔离迁移与真实Provider仍`NOT_RUN`。
 
