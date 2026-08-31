@@ -2,6 +2,8 @@
 
 本文件适用于“包含本文件的 Unboundry Git 工作树”，不再用固定目录名代替仓库身份。用户最新明确指令优先；若与仓库状态或本文冲突，先停止并向用户报告，不得猜测。
 
+2026-08-31 INC-GEN-019 当前权威状态：用户已在本 Session 显式启动一次性 Goal；分支`codex/inc-gen-019-group-admission-2026-08-31`基于实时`origin/main@86685471092941a31c30621233b9238ce6b1c393`。当前严格为`INC_GEN_018_MODEL_CONTRACT_PASS / INC_GEN_019_GROUP_EXECUTION_USER_FAIL / ZERO_NEW_TASK_ADMISSION_ATTEMPT_PROVIDER_POST / R7_FORMAL_FULL_RECORDED_WITH_TARGETED_CLOSURE / R8_VERSION_V0_6_65_VALIDATED`。R1旧代码红与34/34 PUT归因已闭合（33次旧binding reconciliation+1次root normalization，other=0）；R2～R5已实现并定向验证shared monotonic deadline、preflight revision校验、preflight network/5xx同key重试、确定性revision收敛与unknown原key reconcile。业务产品+测试10/10、产品净新增199/450；最终业务冻结diff=`9925eda3…d16ed`、62 hunks。主线程与唯一 independent Review 线程完成初始及formal后增量复核，最终`P0=0/P1=0/P2=0/GO`。唯一formal full原始`1133/1135`与2失败永久保留，m22+m36+m38最小关闭`62/62`，禁止第二次full；formal full1/1、Review代理1/1、真实整组点击0/1，新task/admission/attempt/Provider POST/OSS/费用均0。v0.6.65经本地tag、远端tag、GitHub Release、main/package/生产占用门确认空闲并已同步4个版本身份文件；版本直接safe m81+m38=`57/57 PASS`、source/snapshot=`7749d8dd…5210`，四个版本身份文件按Goal排除在业务10文件分母外，formal full未重跑。版本与发布授权均有效，下一步为显式allowlist提交与GitHub/CI。真实点击前必须证明可靠费用估算满足`CNY + 10×USD <= 100`。用户实页确认前保持`USER_RECHECK`。实时断点为`spec/INC_GEN_019_CHECKPOINT.md`。
+
 2026-08-31 INC-GEN-018 当前权威状态：生产运行`v0.6.64/schema41`，状态严格为`PRODUCTION_V0_6_64_TECHNICAL_PASS / ZERO_PROVIDER_POST_PASS / USER_RECHECK`。R0～R8技术门完成；R6冻结候选独立全量Review覆盖37/37文件、309/309 tracked hunks、10/10 published模型、11/11 registry identities、10/10数据库exact identities及全部Provider/protocol/adapter分支，结论`P0=0/P1=0/P2=7/GO`。R7唯一正式safe full原始`1131/1135`及4失败永久保留，4项均由最小直接复验关闭，5-hunk复审`P0=0/P1=0/P2=0/GO`，隔离浏览器AUTO_PASS；不得重跑formal full或改写为全绿。PR #134 final-head/main CI、不可移动tag/Release、fresh build、冻结恢复、exact Seed/TTS immutable revision迁移、repeat no-op、原子切换及paired rollback/forward均通过；生产10/10 published模型健康，7节点零付费preflight不再出现伪全局关闭，tasks1026/attempts1037不变。Provider POST、OSS写、新费用均为0；用户实页确认前不得写`USER_PASS`。历史9个图片任务的result-recovery轮询与根盘99%登记为R8 P2残余，不在本Goal内擅自重启、清历史或删除release/backup/staging。权威回执为`spec/V0_6_64_PRODUCTION_RECEIPT_2026-08-31.json`。
 
 2026-08-27 MODEL-CONTRACT-001实时基线：生产运行`v0.6.51/schema41`；PR #116已合并为`0c63938536a3056b1b1f652486d2ea5c72ad283f`，候选、merge与tag tree均为`90861ecd464c4413a1bdfe57abad6672227f679e`，注释tag/GitHub Release、PR/main CI、fresh tag build、冻结双副本恢复门、原子切换与回滚门均已完成。生产数据完整性、33个静态文件逐字节、66秒稳定门和四视口零付费浏览器通过；当前13张可见模型卡均有合同工作台入口。真实Provider/Generation/OSS/新费用均为0，一次性v0.6.51发布授权已消费；技术状态严格为`PRODUCTION_V0_6_51_TECHNICAL_PASS / USER_RECHECK`。原隔离工作树`/Users/mymy/Documents/unboundry-model-contract-001-2026-08-26`仍含进入Goal前的用户历史改动，**不得替用户清理、覆盖或把它当成干净main**。
@@ -21,27 +23,31 @@
 1. `上线规矩.md`
 2. `spec/UNBOUNDRY_CURRENT_STATE.md`
 3. `README.md`
-4. `spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_CHECKPOINT.md`（当前唯一实时断点）
-5. `spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_PLAN_2026-08-30.md`
-6. `spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_ACCEPTANCE_MATRIX_2026-08-30.md`
-7. `spec/INC_GEN_018_ONE_SHOT_GOAL_PROMPT_2026-08-31.md`（只有用户在新Session完整发送后才成为实施授权）
-8. `spec/INC_GEN_017_CHECKPOINT.md`（历史生产断点）
-9. `spec/INC_GEN_017_WORKFLOW_SELF_HEALING_AND_MODEL_CONTRACT_ISOLATION_PLAN_2026-08-28.md`
-10. `spec/INC_GEN_017_ACCEPTANCE_MATRIX_2026-08-28.md`
-11. `spec/INC_GEN_017_ONE_SHOT_GOAL_PROMPT_2026-08-28.md`（历史授权已消费，不得恢复）
-12. `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_CHECKPOINT.md`（历史生产断点）
-13. `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_PLAN_2026-08-27.md`
-14. `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_ACCEPTANCE_MATRIX_2026-08-27.md`
-15. `spec/MODEL_CONTRACT_002_CHECKPOINT.md`（历史发布断点）
-16. `spec/MODEL_CONTRACT_002_IMMUTABLE_REVISION_REMEDIATION_PLAN_2026-08-27.md`
-17. `spec/MODEL_CONTRACT_002_ACCEPTANCE_MATRIX_2026-08-27.md`
-18. `spec/UNBOUNDRY_REMEDIATION_PLAN_2026-08-09.md`
-19. `spec/UNBOUNDRY_REMEDIATION_CHECKPOINT.md`
-20. `spec/UNBOUNDRY_HANDOFF_2026-08-09.md`
-21. `TASKS.md` 当前区块
-22. `spec/INCIDENT_2026-08-20_TEMPLATE_GROUP_FAILURE_AND_QUEUED_TASK_HANDOFF.md`（2026-08-20 事一/事二交接，接手必读）
-23. `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`（事一/事二查证后的全局审计结论、修复设计与验收门）
-24. `spec/UNBOUNDRY_ACCEPTANCE_MATRIX.md` 当前区块
+4. `spec/INC_GEN_019_CHECKPOINT.md`（当前唯一实时断点）
+5. `spec/INC_GEN_019_GROUP_EXECUTION_SAVE_RACE_AND_ATOMIC_ADMISSION_FINAL_AUDITED_PLAN_2026-08-31.md`
+6. `spec/INC_GEN_019_ACCEPTANCE_MATRIX_2026-08-31.md`
+7. `spec/INC_GEN_019_ONE_SHOT_GOAL_PROMPT_2026-08-31.md`（本Session授权已激活，仅按断点继续）
+8. `spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_CHECKPOINT.md`（历史生产断点）
+9. `spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_PLAN_2026-08-30.md`
+10. `spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_ACCEPTANCE_MATRIX_2026-08-30.md`
+11. `spec/INC_GEN_018_ONE_SHOT_GOAL_PROMPT_2026-08-31.md`（历史授权已消费，不得恢复）
+12. `spec/INC_GEN_017_CHECKPOINT.md`（历史生产断点）
+13. `spec/INC_GEN_017_WORKFLOW_SELF_HEALING_AND_MODEL_CONTRACT_ISOLATION_PLAN_2026-08-28.md`
+14. `spec/INC_GEN_017_ACCEPTANCE_MATRIX_2026-08-28.md`
+15. `spec/INC_GEN_017_ONE_SHOT_GOAL_PROMPT_2026-08-28.md`（历史授权已消费，不得恢复）
+16. `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_CHECKPOINT.md`（历史生产断点）
+17. `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_PLAN_2026-08-27.md`
+18. `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_ACCEPTANCE_MATRIX_2026-08-27.md`
+19. `spec/MODEL_CONTRACT_002_CHECKPOINT.md`（历史发布断点）
+20. `spec/MODEL_CONTRACT_002_IMMUTABLE_REVISION_REMEDIATION_PLAN_2026-08-27.md`
+21. `spec/MODEL_CONTRACT_002_ACCEPTANCE_MATRIX_2026-08-27.md`
+22. `spec/UNBOUNDRY_REMEDIATION_PLAN_2026-08-09.md`
+23. `spec/UNBOUNDRY_REMEDIATION_CHECKPOINT.md`
+24. `spec/UNBOUNDRY_HANDOFF_2026-08-09.md`
+25. `TASKS.md` 当前区块
+26. `spec/INCIDENT_2026-08-20_TEMPLATE_GROUP_FAILURE_AND_QUEUED_TASK_HANDOFF.md`（2026-08-20 事一/事二交接，接手必读）
+27. `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`（事一/事二查证后的全局审计结论、修复设计与验收门）
+28. `spec/UNBOUNDRY_ACCEPTANCE_MATRIX.md` 当前区块
 
 然后只读核对 `pwd`、Git 分支、HEAD、工作树、package 版本和 Node 版本。与施工断点不一致时停止，不得继续施工。
 

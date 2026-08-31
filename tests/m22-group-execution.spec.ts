@@ -99,6 +99,8 @@ import {
   generationOwnershipKey,
 } from "../types/generationIdentity";
 import {
+  ensureGenerationTask,
+  GenerationRequestError,
   reconcileGenerationTask,
   retryGenerationTask,
 } from "../client/src/generation/generationTasks";
@@ -510,7 +512,13 @@ test("all four headless executors preflight, run, recover and apply without moun
       return response({ tasks: [...tasks.values()] });
     }
     if (url === "/api/generation-tasks/preflight" && method === "POST") {
-      return response({ canEnqueue: true, canSubmit: true, problems: [] });
+      const body = JSON.parse(String(init?.body)) as { canvasRevision: number };
+      return response({
+        canEnqueue: true,
+        canSubmit: true,
+        canvasRevision: body.canvasRevision,
+        problems: [],
+      });
     }
     if (url === "/api/generation-tasks" && method === "POST") {
       const body = JSON.parse(String(init?.body)) as {
@@ -3158,7 +3166,7 @@ test("a pure projection failure does not block the current run downstream", asyn
   expect(events).toEqual(["persist", "persist"]);
 });
 
-test("group persist retry happens once for a still-saving canvas and never for other failures", async () => {
+test("group persist retry is bounded for a still-saving canvas and never covers other failures", async () => {
   const persistCalls: number[] = [];
   let first = true;
   const saved = await runGroupNodeWithPersist({
@@ -3206,6 +3214,60 @@ test("group persist retry happens once for a still-saving canvas and never for o
     message: "已停止后续节点",
     status: "skipped",
   });
+
+  let timeoutClock = 0;
+  let timeoutRuns = 0;
+  const timedOut = await runGroupNodeWithPersist({
+    admissionDeadlineMs: 30_000,
+    now: () => timeoutClock,
+    persist: async () => {
+      timeoutClock += 10_000;
+      return undefined;
+    },
+    run: async () => {
+      timeoutRuns += 1;
+      return {
+        message: "画布内容还在保存，请等待自动保存完成后再试",
+        status: "failed",
+      };
+    },
+  });
+  expect(timedOut).toEqual({
+    errorCode: "SAVE_STABILITY_TIMEOUT",
+    message: "画布持续变化，本次没有创建生成任务。请停止编辑后再试。",
+    status: "failed",
+  });
+  expect(timeoutRuns).toBe(4);
+
+  let preflightClock = 0;
+  let preflightRuns = 0;
+  let preflightPersists = 0;
+  const preflightTimedOut = await runGroupNodeWithPersist({
+    admissionDeadlineMs: 500,
+    now: () => preflightClock,
+    persist: async () => {
+      preflightPersists += 1;
+      return undefined;
+    },
+    run: async () => {
+      preflightRuns += 1;
+      return {
+        errorCode: "PREFLIGHT_RETRYABLE",
+        message: "生成预检暂时未完成，正在自动重试",
+        status: "failed",
+      };
+    },
+    waitForAdmissionRetry: async (milliseconds) => {
+      preflightClock += milliseconds;
+    },
+  });
+  expect(preflightTimedOut).toEqual({
+    errorCode: "PREFLIGHT_TIMEOUT",
+    message: "生成预检持续不可用，本次没有创建生成任务。请稍后再试。",
+    status: "failed",
+  });
+  expect(preflightRuns).toBe(3);
+  expect(preflightPersists).toBe(1);
 
   const projectionBase = {
     accountId: "account-a",
@@ -3484,7 +3546,283 @@ test("group persist retry happens once for a still-saving canvas and never for o
     },
   });
   expect(paintOrder).toEqual(["paint", "flush", "wait"]);
+  await assertRepeatedCanvasRevisionDriftConverges();
 });
+
+async function assertRepeatedCanvasRevisionDriftConverges() {
+  const host = globalThis as unknown as { window?: Window };
+  const previousWindow = host.window;
+  const previousFetch = globalThis.fetch;
+  const values = new Map<string, string>();
+  const storage = {
+    clear: () => values.clear(),
+    getItem: (key: string) => values.get(key) ?? null,
+    key: (index: number) => [...values.keys()][index] ?? null,
+    get length() {
+      return values.size;
+    },
+    removeItem: (key: string) => values.delete(key),
+    setItem: (key: string, value: string) => values.set(key, value),
+  } satisfies Storage;
+  const fakeWindow = new EventTarget() as Window;
+  Object.defineProperties(fakeWindow, {
+    localStorage: { value: storage },
+    navigator: { configurable: true, value: {} },
+  });
+  host.window = fakeWindow;
+
+  const executableNodes: WorkflowNodeShape[] = Array.from(
+    { length: 11 },
+    (_, index) => ({
+      data: { textPrompt: `fixture-${index}` },
+      id: `drift-node-${index}`,
+      type: "text",
+    }),
+  );
+  const fillerNodes: WorkflowNodeShape[] = Array.from(
+    { length: 42 },
+    (_, index) => ({ data: {}, id: `filler-${index}`, type: "note" }),
+  );
+  const executableEdges = Array.from({ length: 9 }, (_, index) => ({
+    id: `executable-edge-${index}`,
+    source: `drift-node-${index % 2}`,
+    target: `drift-node-${index + 2}`,
+  }));
+  const fillerEdges = Array.from({ length: 89 }, (_, index) => ({
+    id: `filler-edge-${index}`,
+    source: `filler-${index % 41}`,
+    target: `filler-${(index % 41) + 1}`,
+  }));
+  const productionShapeNodes = [...executableNodes, ...fillerNodes];
+  const productionShapeEdges = [...executableEdges, ...fillerEdges];
+  expect(productionShapeNodes).toHaveLength(53);
+  expect(productionShapeEdges).toHaveLength(98);
+  expect(buildWorkflowLayers(executableNodes, executableEdges)[0]).toEqual([
+    "drift-node-0",
+    "drift-node-1",
+  ]);
+
+  let canvasRevision = 40;
+  let formalPosts = 0;
+  let preflights = 0;
+  let monotonicNow = 0;
+  let invalidPreflightRevision = false;
+  let retryablePreflightFailures = 0;
+  const retryablePreflightKeys: string[] = [];
+  let formalDeadlinePosts = 0;
+  const postKeys: string[] = [];
+  const response = (body: unknown, status = 200) => new Response(
+    JSON.stringify(body),
+    { headers: { "Content-Type": "application/json" }, status },
+  );
+  globalThis.fetch = (async (input, init) => {
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+        ? input.toString()
+        : input.url;
+    const method = init?.method ?? (input instanceof Request ? input.method : "GET");
+    if (url.startsWith("/api/generation-tasks/by-idempotency")) {
+      return response({ error: "not found" }, 404);
+    }
+    if (url === "/api/generation-tasks/preflight" && method === "POST") {
+      const body = JSON.parse(String(init?.body)) as {
+        idempotencyKey: string;
+        nodeId: string;
+      };
+      preflights += 1;
+      monotonicNow += 4_000;
+      if (body.nodeId === "retryable-preflight-node") {
+        retryablePreflightKeys.push(body.idempotencyKey);
+        retryablePreflightFailures += 1;
+        if (retryablePreflightFailures === 1) {
+          throw new TypeError("synthetic preflight network failure");
+        }
+        if (retryablePreflightFailures === 2) {
+          return response({ error: "synthetic preflight unavailable" }, 503);
+        }
+      }
+      return response({
+        canEnqueue: true,
+        canSubmit: true,
+        canvasRevision: invalidPreflightRevision ? "invalid" : canvasRevision,
+        problems: [],
+      });
+    }
+    if (url === "/api/generation-tasks" && method === "POST") {
+      formalPosts += 1;
+      const body = JSON.parse(String(init?.body)) as {
+        canvasId: string;
+        idempotencyKey: string;
+        kind: "text";
+        nodeId: string;
+        prompt: string;
+      };
+      postKeys.push(body.idempotencyKey);
+      if (body.nodeId === "formal-deadline-node") {
+        formalDeadlinePosts += 1;
+        return await new Promise<Response>(() => {});
+      }
+      if (formalPosts <= 2) {
+        return response({
+          code: "CANVAS_NOT_SAVED",
+          error: "画布内容还在保存，请等待自动保存完成后再试",
+        }, 409);
+      }
+      return response({
+        attempt: 1,
+        canvasId: body.canvasId,
+        costCurrency: "CNY",
+        createdAt: "2026-08-31T00:00:00.000Z",
+        id: "drift-task-accepted",
+        idempotencyKey: body.idempotencyKey,
+        kind: body.kind,
+        nodeId: body.nodeId,
+        prompt: body.prompt,
+        state: "running",
+        updatedAt: "2026-08-31T00:00:01.000Z",
+      }, 202);
+    }
+    throw new Error(`unexpected drift fetch: ${method} ${url}`);
+  }) as typeof fetch;
+
+  const nodeStates = new Map<string, string>();
+  const executionEdges = Array.from({ length: 10 }, (_, index) => ({
+    id: `execution-edge-${index}`,
+    source: "drift-node-0",
+    target: `drift-node-${index + 1}`,
+  }));
+  try {
+    const result = await runWorkflowGraph({
+      edges: executionEdges,
+      executableIds: new Set(executableNodes.map((node) => node.id)),
+      isCancelled: () => false,
+      onNodeStateChange: (nodeId, state) => nodeStates.set(nodeId, state),
+      runNode: async (nodeId) => {
+        if (nodeId !== "drift-node-0") return { status: "success" };
+        return runGroupNodeWithPersist({
+          now: () => monotonicNow,
+          persist: async () => {
+            canvasRevision += 1;
+            monotonicNow += 20;
+            return undefined;
+          },
+          run: async (admissionRemainingMs) => {
+            try {
+              await ensureGenerationTask("text", {
+                canvasId: "drift-canvas",
+                canvasRevision,
+                model: "drift-model",
+                nodeId,
+                prompt: "controlled drift prompt",
+              }, "", undefined, { admissionRemainingMs });
+              return { status: "success" };
+            } catch (error) {
+              return {
+                errorCode: error instanceof GenerationRequestError
+                  ? error.code
+                  : undefined,
+                message: error instanceof Error ? error.message : String(error),
+                status: "failed",
+              };
+            }
+          },
+        });
+      },
+    });
+    expect(result, JSON.stringify({ nodeStates: [...nodeStates], postKeys }))
+      .toEqual({ status: "success" });
+    expect(preflights).toBe(3);
+    expect(formalPosts).toBe(3);
+    expect(new Set(postKeys).size).toBe(1);
+    expect(monotonicNow).toBe(12_060);
+    invalidPreflightRevision = true;
+    await expect(ensureGenerationTask("text", {
+      canvasId: "drift-canvas",
+      canvasRevision,
+      model: "drift-model",
+      nodeId: "invalid-preflight-node",
+      prompt: "invalid preflight revision",
+    })).rejects.toMatchObject({ code: "CANVAS_REVISION_INVALID", status: 409 });
+    expect(formalPosts).toBe(3);
+    invalidPreflightRevision = false;
+    let retryablePreflightPersists = 0;
+    const retryablePreflight = await runGroupNodeWithPersist({
+      now: () => monotonicNow,
+      persist: async () => {
+        retryablePreflightPersists += 1;
+        return undefined;
+      },
+      run: async (admissionRemainingMs) => {
+        try {
+          await ensureGenerationTask("text", {
+            canvasId: "drift-canvas",
+            canvasRevision,
+            model: "drift-model",
+            nodeId: "retryable-preflight-node",
+            prompt: "retry the zero-provider preflight only",
+          }, "", undefined, { admissionRemainingMs });
+          return { status: "success" };
+        } catch (error) {
+          return {
+            errorCode: error instanceof GenerationRequestError
+              ? error.code
+              : undefined,
+            message: error instanceof Error ? error.message : String(error),
+            status: "failed",
+          };
+        }
+      },
+      waitForAdmissionRetry: async (milliseconds) => {
+        monotonicNow += milliseconds;
+      },
+    });
+    expect(retryablePreflight).toEqual({ status: "success" });
+    expect(retryablePreflightFailures).toBe(3);
+    expect(new Set(retryablePreflightKeys).size).toBe(1);
+    expect(formalPosts).toBe(4);
+    expect(retryablePreflightPersists).toBe(1);
+    let formalDeadlinePersists = 0;
+    const formalDeadline = await runGroupNodeWithPersist({
+      admissionDeadlineMs: 4_001,
+      now: () => monotonicNow,
+      persist: async () => {
+        formalDeadlinePersists += 1;
+        return undefined;
+      },
+      run: async (admissionRemainingMs) => {
+        try {
+          await ensureGenerationTask("text", {
+            canvasId: "drift-canvas",
+            canvasRevision,
+            model: "drift-model",
+            nodeId: "formal-deadline-node",
+            prompt: "formal response crosses the shared deadline",
+          }, "", undefined, { admissionRemainingMs });
+          return { status: "success" };
+        } catch (error) {
+          return {
+            errorCode: error instanceof GenerationRequestError
+              ? error.code
+              : undefined,
+            message: error instanceof Error ? error.message : String(error),
+            status: "failed",
+          };
+        }
+      },
+    });
+    expect(formalDeadline).toMatchObject({
+      errorCode: "GENERATION_RESPONSE_TIMEOUT",
+      status: "failed",
+    });
+    expect(formalDeadlinePosts).toBe(1);
+    expect(formalDeadlinePersists).toBe(1);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousWindow === undefined) delete host.window;
+    else host.window = previousWindow;
+  }
+}
 
 test("stale canvas-save leftovers are not group-incompatible and can be stripped", () => {
   const leftover = {
@@ -3919,6 +4257,22 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
   const taskPostNodes: string[] = [];
   type CapturedSummary = { groupId: string; runId: string; status: string };
   const terminalSummaries: CapturedSummary[] = [];
+  const driftCanvasPuts: Array<{
+    nodes: Array<{ data?: Record<string, unknown>; id: string }>;
+    observedRevision?: number;
+    saveSequence?: number;
+  }> = [];
+  let captureDriftCanvasPuts = false;
+  let revisionDriftMode = false;
+  let revisionDriftFormalPosts = 0;
+  page.on("request", (entry) => {
+    if (
+      captureDriftCanvasPuts && entry.method() === "PUT" &&
+      entry.url().endsWith(`/api/canvas/${project.id}`)
+    ) {
+      driftCanvasPuts.push(entry.postDataJSON());
+    }
+  });
   const modelReleaseRevision = randomUUID();
   const contractInputsByNode = new Map<string, Array<{
     kind: "text";
@@ -4003,9 +4357,17 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
       return;
     }
     if (requestUrl.pathname.endsWith("/preflight") && method === "POST") {
+      const preflightBody = route.request().postDataJSON() as {
+        canvasRevision?: number;
+      };
       await route.fulfill({
         contentType: "application/json",
-        json: { canEnqueue: true, canSubmit: true, problems: [] },
+        json: {
+          canEnqueue: true,
+          canSubmit: true,
+          canvasRevision: preflightBody.canvasRevision ?? 0,
+          problems: [],
+        },
         status: 200,
       });
       return;
@@ -4044,6 +4406,22 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
           runId: string;
         };
       };
+      if (revisionDriftMode) {
+        revisionDriftFormalPosts += 1;
+        if (revisionDriftFormalPosts <= 2) {
+          await route.fulfill({
+            contentType: "application/json",
+            json: {
+              code: "CANVAS_NOT_SAVED",
+              error: "画布内容还在保存，请等待自动保存完成后再试",
+              revision: 40 + revisionDriftFormalPosts,
+            },
+            status: 409,
+          });
+          return;
+        }
+        captureDriftCanvasPuts = false;
+      }
       const connectedInputs = contractInputsByNode.get(body.nodeId) ?? [];
       const contractFingerprint = normalizeModelInputs({
         connectedInputs,
@@ -4096,7 +4474,7 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
         workflowGroupId: body.workflowBinding?.groupId,
       };
       tasks.set(taskId, task);
-      taskStates.set(taskId, "running");
+      taskStates.set(taskId, revisionDriftMode ? "failed" : "running");
       latestTaskByNode.set(body.nodeId, taskId);
       taskPostNodes.push(body.nodeId);
       await route.fulfill({
@@ -5114,6 +5492,158 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
       await request.delete(`/api/canvas/${otherProject.id}`);
       await request.delete(`/api/projects/${otherProject.id}`);
     }
+
+    await discardInterruptedCheckpointsForNextScenario();
+    const driftBaseline = await existingCanvasSaveMetadata(request, project.id);
+    const driftNodes = [{
+      data: { label: "Group", title: "revision drift group" },
+      id: "drift-browser-group",
+      position: { x: 100, y: 100 },
+      style: { height: 900, width: 900 },
+      type: "group",
+      zIndex: 0,
+    }, ...Array.from({ length: 11 }, (_, index) => ({
+      data: {
+        label: "Text",
+        textModelId: modelId,
+        textParameters: {},
+        textPrompt: `revision drift fixture ${index}`,
+        textPromptReady: true,
+        textGenerationInputKey: `stale-input-${index}`,
+        textGenerationOwnershipKey: `stale-owner-${index}`,
+        textGenerationTaskId: `stale-task-${index}`,
+        textGenerating: true,
+        ...(index === 0
+          ? {
+              textGenerationError: "画布内容还在保存，请等待自动保存完成后再试",
+              textGenerationErrorCode: "CANVAS_NOT_SAVED",
+            }
+          : {}),
+        title: `drift text ${index}`,
+      },
+      id: `drift-browser-text-${index}`,
+      parentId: "drift-browser-group",
+      position: { x: 30 + (index % 3) * 260, y: 60 + Math.floor(index / 3) * 200 },
+      style: { height: 170, width: 230 },
+      type: "text",
+      zIndex: 1,
+    })), ...Array.from({ length: 22 }, (_, index) => ({
+      data: {
+        label: "Text",
+        textGenerationInputKey: `stale-filler-input-${index}`,
+        textGenerationOwnershipKey: `stale-filler-owner-${index}`,
+        textGenerationTaskId: `stale-filler-task-${index}`,
+        textGenerating: true,
+        textModelId: modelId,
+        textParameters: {},
+        textPrompt: `stale filler ${index}`,
+        textPromptReady: true,
+        title: `stale filler ${index}`,
+      },
+      id: `drift-browser-stale-filler-${index}`,
+      position: { x: 20 + (index % 11) * 75, y: 20 + Math.floor(index / 11) * 75 },
+      style: { height: 60, width: 70 },
+      type: "text",
+      zIndex: 1,
+    })), ...Array.from({ length: 19 }, (_, index) => ({
+      data: { label: "Group", title: `filler ${index}` },
+      id: `drift-browser-filler-${index}`,
+      position: { x: 1200 + (index % 8) * 80, y: Math.floor(index / 8) * 80 },
+      style: { height: 50, width: 50 },
+      type: "group",
+      zIndex: 0,
+    }))];
+    const driftEdges = [
+      ...Array.from({ length: 10 }, (_, index) => ({
+        id: `drift-browser-executable-edge-${index}`,
+        source: "drift-browser-text-0",
+        sourceHandle: "source",
+        target: `drift-browser-text-${index + 1}`,
+        targetHandle: "target",
+        type: "cuttable",
+      })),
+      ...Array.from({ length: 88 }, (_, index) => ({
+        id: `drift-browser-filler-edge-${index}`,
+        source: index % 2 === 0
+          ? `drift-browser-stale-filler-${index % 22}`
+          : `drift-browser-filler-${index % 18}`,
+        sourceHandle: "source",
+        target: index % 2 === 0
+          ? `drift-browser-stale-filler-${(index + 1) % 22}`
+          : `drift-browser-filler-${(index % 18) + 1}`,
+        targetHandle: "target",
+        type: "cuttable",
+      })),
+    ];
+    expect(driftNodes).toHaveLength(53);
+    expect(driftEdges).toHaveLength(98);
+    const driftSeed = await request.put(`/api/canvas/${project.id}`, {
+      data: {
+        edges: driftEdges,
+        nodes: driftNodes,
+        ...driftBaseline,
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+    expect(driftSeed.ok()).toBeTruthy();
+    tasks.clear();
+    taskStates.clear();
+    latestTaskByNode.clear();
+    revisionDriftMode = true;
+    revisionDriftFormalPosts = 0;
+    driftCanvasPuts.length = 0;
+    captureDriftCanvasPuts = true;
+    await page.reload();
+    await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+      "data-persistence-ready",
+      "true",
+    );
+    await installSummaryCapture();
+    await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
+    await page.locator('[data-testid="rf__node-drift-browser-group"]')
+      .evaluate((element) => element.dispatchEvent(new MouseEvent("click", {
+        bubbles: true,
+      })));
+    await page.locator('[data-testid="rf__node-drift-browser-group"]')
+      .getByTestId("group-execute-button").evaluate((element) =>
+        (element as HTMLButtonElement).click()
+      );
+    await expectTerminalSummaryCount("drift-browser-group", "failed", 1);
+    await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
+    await page.waitForTimeout(400);
+    captureDriftCanvasPuts = false;
+    const changedFields = driftCanvasPuts.map((put, index) => {
+      const before = index === 0 ? driftNodes : driftCanvasPuts[index - 1].nodes;
+      const beforeById = new Map(before.map((node) => [node.id, node]));
+      return put.nodes.flatMap((node) => {
+        const previous = (beforeById.get(node.id)?.data ?? {}) as Record<
+          string,
+          unknown
+        >;
+        const next = node.data ?? {};
+        const fields = new Set([...Object.keys(previous), ...Object.keys(next)]);
+        const changed = [...fields].filter((field) =>
+          JSON.stringify(previous[field]) !== JSON.stringify(next[field])
+        );
+        return changed.length > 0 ? [{ fields: changed.sort(), nodeId: node.id }] : [];
+      });
+    });
+    expect(revisionDriftFormalPosts).toBe(3);
+    expect(driftCanvasPuts).toHaveLength(34);
+    expect(changedFields).toHaveLength(34);
+    expect(changedFields.slice(0, 33).every((changes) =>
+      changes.length === 1 &&
+      changes[0].fields.includes("textGenerationOwnershipKey") &&
+      changes[0].fields.includes("textGenerationTaskId")
+    )).toBe(true);
+    expect(changedFields[33]).toEqual([{
+      fields: [
+        "textModelConfigurationRevision",
+        "textModelName",
+        "textParameters",
+      ],
+      nodeId: "drift-browser-text-0",
+    }]);
 
   } finally {
     await request.delete(`/api/canvas/${project.id}`);

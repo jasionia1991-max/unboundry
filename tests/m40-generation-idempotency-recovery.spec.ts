@@ -182,7 +182,7 @@ for (const [label, corruptRaw] of [
       }
       if (parsed.pathname.endsWith("/preflight")) {
         preflights += 1;
-        return Response.json({ canEnqueue: true, canSubmit: true, problems: [] });
+        return Response.json({ canEnqueue: true, canSubmit: true, canvasRevision: JSON.parse(String(init?.body)).canvasRevision, problems: [] });
       }
       if (parsed.pathname === "/api/generation-tasks" && init?.method === "POST") {
         submissionPosts += 1;
@@ -281,7 +281,7 @@ test("an existing same-page intent remains exact-GET recoverable when storage be
     }
     if (parsed.pathname.endsWith("/preflight")) {
       preflights += 1;
-      return Response.json({ canEnqueue: true, canSubmit: true, problems: [] });
+      return Response.json({ canEnqueue: true, canSubmit: true, canvasRevision: JSON.parse(String(init?.body)).canvasRevision, problems: [] });
     }
     if (parsed.pathname === "/api/generation-tasks" && init?.method === "POST") {
       submissionPosts += 1;
@@ -341,7 +341,7 @@ test("shared four-node submission recovers a lost Text POST response and never c
     }
     if (parsed.pathname.endsWith("/preflight")) {
       preflights += 1;
-      return Response.json({ canEnqueue: true, canSubmit: true, problems: [] });
+      return Response.json({ canEnqueue: true, canSubmit: true, canvasRevision: JSON.parse(String(init?.body)).canvasRevision, problems: [] });
     }
     if (parsed.pathname === "/api/generation-tasks" && init?.method === "POST") {
       submissionPosts += 1;
@@ -480,7 +480,7 @@ test("initial submission reconciles one committed task after its response return
     if (parsed.pathname.endsWith("/preflight")) {
       preflights += 1;
       order.push("preflight");
-      return Response.json({ canEnqueue: true, canSubmit: true, problems: [] });
+      return Response.json({ canEnqueue: true, canSubmit: true, canvasRevision: JSON.parse(String(init?.body)).canvasRevision, problems: [] });
     }
     if (parsed.pathname === "/api/generation-tasks" && init?.method === "POST") {
       submissionPosts += 1;
@@ -603,7 +603,7 @@ test("the same ownership key reuses one idempotency intent across catalog-derive
     }
     if (parsed.pathname.endsWith("/preflight")) {
       preflights += 1;
-      return Response.json({ canEnqueue: true, canSubmit: true, problems: [] });
+      return Response.json({ canEnqueue: true, canSubmit: true, canvasRevision: JSON.parse(String(init?.body)).canvasRevision, problems: [] });
     }
     if (parsed.pathname === "/api/generation-tasks" && init?.method === "POST") {
       const body = JSON.parse(String(init.body)) as {
@@ -699,7 +699,7 @@ test("legacy intents without complete durable identity remain fail-closed", asyn
         : Response.json({ error: "not found" }, { status: 404 });
     }
     if (parsed.pathname.endsWith("/preflight")) {
-      return Response.json({ canEnqueue: true, canSubmit: true, problems: [] });
+      return Response.json({ canEnqueue: true, canSubmit: true, canvasRevision: JSON.parse(String(init?.body)).canvasRevision, problems: [] });
     }
     if (parsed.pathname === "/api/generation-tasks" && init?.method === "POST") {
       const body = JSON.parse(String(init.body)) as {
@@ -922,7 +922,7 @@ test("a deterministic 409 never adopts an old idempotency task and the next clic
       return Response.json({ error: "not found" }, { status: 404 });
     }
     if (parsed.pathname.endsWith("/preflight")) {
-      return Response.json({ canEnqueue: true, canSubmit: true, problems: [] });
+      return Response.json({ canEnqueue: true, canSubmit: true, canvasRevision: JSON.parse(String(init?.body)).canvasRevision, problems: [] });
     }
     if (parsed.pathname === "/api/generation-tasks" && init?.method === "POST") {
       const body = JSON.parse(String(init.body)) as {
@@ -993,7 +993,7 @@ test("durable failed work keeps one key across semantic drift until terminal cle
         : Response.json({ error: "not found" }, { status: 404 });
     }
     if (parsed.pathname.endsWith("/preflight")) {
-      return Response.json({ canEnqueue: true, canSubmit: true, problems: [] });
+      return Response.json({ canEnqueue: true, canSubmit: true, canvasRevision: JSON.parse(String(init?.body)).canvasRevision, problems: [] });
     }
     const body = JSON.parse(String(init?.body)) as {
       generationOwnershipKey?: string;
@@ -1156,7 +1156,7 @@ for (const hungAt of ["fetch", "body"] as const) {
           : Response.json({ error: "not found" }, { status: 404 });
       }
       if (parsed.pathname.endsWith("/preflight")) {
-        return Response.json({ canEnqueue: true, canSubmit: true, problems: [] });
+        return Response.json({ canEnqueue: true, canSubmit: true, canvasRevision: JSON.parse(String(init?.body)).canvasRevision, problems: [] });
       }
       if (parsed.pathname === "/api/generation-tasks" && init?.method === "POST") {
         submissionPosts += 1;

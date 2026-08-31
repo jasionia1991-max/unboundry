@@ -1,5 +1,21 @@
 # Unboundry 绿地复刻当前任务
 
+## INC-GEN-019 整组执行保存竞态与原子准入精确修复（R7 FORMAL RECORDED / R8 VERSION VALIDATED）
+
+- [x] 用户在本 Session 显式启动一次性 Goal；基于实时`origin/main@86685471092941a31c30621233b9238ce6b1c393`建立`codex/inc-gen-019-group-admission-2026-08-31`。
+- [x] R0冻结生产v0.6.64/schema41、service健康、tasks1026/admissions946/attempts1037/paidProviderRequests1025/active0/currentUnknown0；本Goal新增task/admission/attempt/POST/OSS/费用0。
+- [x] R0冻结真实`200→409→200→409`与34 Canvas PUT、目标revision95/graphRevision62/saveSequence66，以及11-node/22-edge exact target denominator。
+- [x] R1在75分钟门内用safe runner稳定复现旧代码红测并完成34 PUT writer归因，`34=33+1`且`other=0`；没有误做全局writer debounce。
+- [x] R2～R4在10文件/450产品净新增硬门内实现shared monotonic deadline、preflight revision校验、preflight network/5xx同key重试、确定性revision收敛、unknown原key reconcile及全部退出文案。
+- [x] R5完成m22优先的风险驱动定向验证：m40 17/17、m22 44/44、直接组合117/117，最后deadline传播最小门76项仅一次测试断言误判并以m22 44/44关闭。
+- [x] R6冻结候选，主线程逐代码Review，并只启动一个gpt-5.6-luna/max只读Review代理；10/10文件、62/62 hunks、10/10 published models、11个exact identities及全部Provider分支覆盖，最终P0/P1/P2=0/0/0、GO。
+- [x] R7唯一formal full原始`1133/1135`与2失败永久保留；m36旧fake和m38治理标记经最小修复后，m22+m36+m38=`62/62 PASS`，同一Review线程增量复核P0/P1/P2=0/0/0、GO，未运行第二次full。
+- [x] R8版本身份门选择v0.6.65：本地/远端tag与GitHub Release均未占用，GitHub main/本地base仍为`86685471092941a31c30621233b9238ce6b1c393`，package/生产为v0.6.64；已同步package/lock/final runtime allowlist/m81断言。
+- [x] v0.6.65版本直接safe m81+m38=`57/57 PASS`（41+16），source/snapshot=`7749d8dd…5210`，失败/重试/跳过/blocked/reportErrors均0、4173 unchanged；四个版本身份文件按Goal排除在业务10文件分母外，formal full未重跑。
+- [x] 最终治理同步后只复验m38=`16/16 PASS`，source/snapshot=`6f87c7f4…5776`、异常0、4173 unchanged；formal full继续不重跑。
+- [ ] R8候选GO后完成v0.6.65或最低未占用patch、GitHub/CI、不可变发布、freeze/restore、rollback/forward、零付费门及唯一一次目标group真实点击；真实费用必须满足`CNY + 10×USD <= 100`。
+- [ ] 技术完成后保持`USER_RECHECK`，仅用户实页明确确认才升级`USER_PASS`。
+
 ## INC-GEN-018 模型合同健康边界与旧Revision精确修复（R8 PRODUCTION TECHNICAL PASS / USER RECHECK）
 
 - [x] 记录生产实页回归：用户开启真实生成后，整组预检持续阻断7个节点并误报“管理员已关闭真实生成”；强制刷新和重新打开无效。

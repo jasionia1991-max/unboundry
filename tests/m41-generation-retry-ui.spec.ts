@@ -435,7 +435,7 @@ async function installRoutes(page: Page, retryAllowed: boolean) {
     if (url.pathname.endsWith("/preflight") && method === "POST") {
       await route.fulfill({
         contentType: "application/json",
-        json: { canEnqueue: true, canSubmit: true, problems: [] },
+        json: { canEnqueue: true, canSubmit: true, canvasRevision: route.request().postDataJSON().canvasRevision, problems: [] },
         status: 200,
       });
       return;
@@ -679,7 +679,7 @@ async function installCancelOutcomeUnknownRoutes(page: Page) {
     if (url.pathname.endsWith("/preflight") && method === "POST") {
       await route.fulfill({
         contentType: "application/json",
-        json: { canEnqueue: true, canSubmit: true, problems: [] },
+        json: { canEnqueue: true, canSubmit: true, canvasRevision: route.request().postDataJSON().canvasRevision, problems: [] },
         status: 200,
       });
       return;
@@ -1621,7 +1621,7 @@ test("four nodes pin the effective default before a lost paid response and recov
     }
     if (url.pathname.endsWith("/preflight") && inbound.method() === "POST") {
       await route.fulfill({
-        json: { canEnqueue: true, canSubmit: true, problems: [] },
+        json: { canEnqueue: true, canSubmit: true, canvasRevision: route.request().postDataJSON().canvasRevision, problems: [] },
         status: 200,
       });
       return;
@@ -1939,7 +1939,7 @@ for (const lateCancelCase of (["video", "audio"] as const).flatMap(
       }
       if (url.pathname.endsWith("/preflight") && inbound.method() === "POST") {
         await route.fulfill({
-          json: { canEnqueue: true, canSubmit: true, problems: [] },
+          json: { canEnqueue: true, canSubmit: true, canvasRevision: route.request().postDataJSON().canvasRevision, problems: [] },
           status: 200,
         });
         return;
@@ -2358,7 +2358,7 @@ test("an old Image poll cannot overwrite the newer task after cancellation and i
     }
     if (url.pathname.endsWith("/preflight") && inbound.method() === "POST") {
       await route.fulfill({
-        json: { canEnqueue: true, canSubmit: true, problems: [] },
+        json: { canEnqueue: true, canSubmit: true, canvasRevision: route.request().postDataJSON().canvasRevision, problems: [] },
         status: 200,
       });
       return;
@@ -3004,7 +3004,7 @@ for (const saveGateCase of (["image", "video", "audio"] as const).flatMap(
       }
       if (url.pathname.endsWith("/preflight") && inbound.method() === "POST") {
         await route.fulfill({
-          json: { canEnqueue: true, canSubmit: true, problems: [] },
+          json: { canEnqueue: true, canSubmit: true, canvasRevision: route.request().postDataJSON().canvasRevision, problems: [] },
           status: 200,
         });
         return;
@@ -3234,7 +3234,7 @@ for (const ensureFenceCase of [
           await heldRequest;
         }
         await route.fulfill({
-          json: { canEnqueue: true, canSubmit: true, problems: [] },
+          json: { canEnqueue: true, canSubmit: true, canvasRevision: route.request().postDataJSON().canvasRevision, problems: [] },
           status: 200,
         });
         return;
@@ -3575,7 +3575,7 @@ test("relay audio exposes local-only cancellation while Mureka remains unchanged
     }
     if (url.pathname.endsWith("/preflight")) {
       await route.fulfill({
-        json: { canEnqueue: true, canSubmit: true, problems: [] },
+        json: { canEnqueue: true, canSubmit: true, canvasRevision: route.request().postDataJSON().canvasRevision, problems: [] },
         status: 200,
       });
       return;
@@ -3749,7 +3749,7 @@ test("image node resumes polling after a reload while the task is running and sh
     if (url.pathname.endsWith("/preflight") && method === "POST") {
       await route.fulfill({
         contentType: "application/json",
-        json: { canEnqueue: true, canSubmit: true, problems: [] },
+        json: { canEnqueue: true, canSubmit: true, canvasRevision: route.request().postDataJSON().canvasRevision, problems: [] },
         status: 200,
       });
       return;
@@ -5362,7 +5362,7 @@ test("Video keeps unchanged-input Generate disabled but submits once after a rea
     }
     if (url.pathname.endsWith("/preflight") && inbound.method() === "POST") {
       await route.fulfill({
-        json: { canEnqueue: true, canSubmit: true, problems: [] },
+        json: { canEnqueue: true, canSubmit: true, canvasRevision: route.request().postDataJSON().canvasRevision, problems: [] },
         status: 200,
       });
       return;
@@ -6680,7 +6680,7 @@ for (const kind of ["image", "video"] as const) {
       }
       if (url.pathname.endsWith("/preflight") && inbound.method() === "POST") {
         await route.fulfill({
-          json: { canEnqueue: true, canSubmit: true, problems: [] },
+          json: { canEnqueue: true, canSubmit: true, canvasRevision: route.request().postDataJSON().canvasRevision, problems: [] },
           status: 200,
         });
         return;
