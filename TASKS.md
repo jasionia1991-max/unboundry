@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻当前任务
 
-## INC-GEN-018 模型合同健康边界与旧Revision精确修复（GOAL ACTIVE / R7 COMPLETE / R8 READY）
+## INC-GEN-018 模型合同健康边界与旧Revision精确修复（R8 PRODUCTION TECHNICAL PASS / USER RECHECK）
 
 - [x] 记录生产实页回归：用户开启真实生成后，整组预检持续阻断7个节点并误报“管理员已关闭真实生成”；强制刷新和重新打开无效。
 - [x] 只读证明真实安全状态为`globalEnabled=1/emergencyStop=0`，不是用户操作或浏览器缓存问题。
@@ -26,7 +26,11 @@
 - [x] R7隔离浏览器AUTO_PASS：10/10模型健康与release identity、7/7节点选择、10卡admin UI、global/emergency优先级、Seed malformed单模型`MODEL_CONTRACT_INVALID`及精确恢复全部通过；requests 49、blocked/non-loopback 0，tasks/attempts 0/0、paid0，owned runtime/temp已清理。
 - [x] R8版本占用门选择v0.6.64：local/remote tag与GitHub Release均free，package/生产/main未占用；版本safe m81=`41/41 PASS`，治理m38首轮`15/16`只发现候选版本文档未同步，精确修正后`16/16 PASS`。入GitHub前增量Review `P0=0/P1=0/P2=0/GO`；candidate commit=`790db916…ab618`。
 - [x] R8 GitHub初始head：PR #134 open/mergeable，initial head=`d60a59a…56bdd`，Quality run/job=`33365723417/99405850023`以35秒通过；本治理回执push后必须再过final-head CI才可合并。
-- [ ] R8版本占用、GitHub/CI、不可变tag/Release、生产迁移/rollback/forward与零付费生产验收；新Session Goal已一次性明确授予对应权限，R7门已闭合。
+- [x] R8 GitHub/不可变发布：PR #134 final head=`7467ad2…0965ae7`，final-head CI=`33365802396/99406083381`、merge=`fc046f4…291fe`、main CI=`33365855132/99406242436`均通过；annotated tag object=`99aa90c…25a104`精确peel到merge，v0.6.64 GitHub Release已发布。tag archive SHA=`12e9d5f5…2954`，fresh build与6044行inventory（SHA=`1bb30d16…21b64`）、dist33通过。
+- [x] R8生产技术门：quiet、root-owned冻结source/restore、attested dry-run/apply/repeat、外部exact release+DB pair旧运行时拒绝、原子切换和paired rollback/forward均通过；只发布Seed/TTS两个exact revision，repeat为10 none/升级0/DB字节不变。生产current=`/opt/unboundry/releases/v0.6.64-inc-gen-018-20260831`，service active/enabled、MainPID2859331、NRestarts0、schema41；正式start恰为3，禁止再次stop/restart。
+- [x] R8生产零付费验收：登录态`/api/models`两次HTTP200且10/10 available/完整release identity，admin UI 10个published合同active；目标7节点preflight全部model available且无伪全局关闭，1项可提交、6项仅由当前EMPTY/INVALID输入阻断。前后tasks1026/attempts1037/active0/current unknown0，Provider request count保持1025，Provider POST/OSS写/新费用0；72秒7采样稳定门通过。
+- [x] 不可变生产回执已生成：`spec/V0_6_64_PRODUCTION_RECEIPT_2026-08-31.json`。技术状态为`PRODUCTION_V0_6_64_TECHNICAL_PASS / ZERO_PROVIDER_POST_PASS / USER_RECHECK`；IG18-036～039关闭，IG18-040保持`USER_RECHECK`，只有用户真实页面明确确认才可写`USER_PASS`。
+- [ ] R8用户实页确认：用户确认本事件错误消失且产品行为符合预期后，才关闭IG18-040并升级`USER_PASS`。历史9个图片任务的周期性结果收回/事件日志churn及根盘99%已登记为P2，需另行授权治理，不在本Goal内重启、清历史或删除release/rollback/backup/staging。
 
 权威方案：`spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_PLAN_2026-08-30.md`；矩阵：`spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_ACCEPTANCE_MATRIX_2026-08-30.md`；断点：`spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_CHECKPOINT.md`；新Session提示词：`spec/INC_GEN_018_ONE_SHOT_GOAL_PROMPT_2026-08-31.md`。
 

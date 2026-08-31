@@ -1,6 +1,6 @@
 # INC-GEN-018 验收矩阵
 
-状态：`GOAL_ACTIVE / R0_COMPLETE / R1_TARGETED_PASS / R2_TARGETED_PASS / R3_TARGETED_PASS / R4_TARGETED_PASS / R5_REHEARSAL_PASS / R6_REVIEW_GO / R7_COMPLETE / R8_LOCAL_CANDIDATE`
+状态：`R0_TO_R8_TECHNICAL_COMPLETE / PRODUCTION_V0_6_64_TECHNICAL_PASS / ZERO_PROVIDER_POST_PASS / USER_RECHECK`
 
 更新时间：2026-08-31
 
@@ -14,6 +14,7 @@
 - `R5_REHEARSAL_PASS`：只证明新冻结生产数据库source/restore及独立工作副本的attested dry-run/apply/health/repeat通过，生产库仍未迁移，不代表Review、正式full、GitHub或生产发布通过。
 - `R6_MAIN_REVIEW_GO`：主线程已完成非抽样逐代码Review并清零P0/P1；独立冻结候选终审未完成前不等于R6完成或正式full授权门通过。
 - `R7_COMPLETE`：唯一正式safe full原始`1131/1135`与4项失败永久保留；4项均由最小直接复验关闭，5-hunk独立复审`P0=0/P1=0/P2=0/GO`，隔离浏览器AUTO_PASS。不得改写成正式full全绿。
+- `R8_PRODUCTION_TECHNICAL_PASS`：PR/main CI、不可移动tag/Release、fresh build、冻结恢复、exact迁移、repeat no-op、原子切换、paired rollback/forward、生产10/10健康、零付费preflight与72秒稳定门通过；只证明技术终态，用户实页确认仍为`USER_RECHECK`。
 
 R0证据：实施分支/HEAD、生产v0.6.63/schema41、安全/任务/费用基线与10/10 exact identities已冻结；脱敏快照SHA-256=`fa6a498aeb697277e8f6cdef15d1a0b9e21123a75495c90c1b74b96131090457`。safe m32预期红=`6 PASS / 1 expected FAIL`，唯一失败精确证明enabled平台开关下合同漂移尚未返回`MODEL_CONTRACT_OUT_OF_SYNC`；source/snapshot=`07fae080…f8ebe`，4173 unchanged，Provider/OSS/费用0。
 
@@ -54,10 +55,10 @@ R0证据：实施分支/HEAD、生产v0.6.63/schema41、安全/任务/费用基�
 | IG18-033 | 冻结生产副本演练 | attestation、dry-run/apply/health/repeat、schema/integrity/FK和计数门全通过 | R5_REHEARSAL_PASS |
 | IG18-034 | 完整逐代码Review | 全改动文件/hunk/分支/调用链/全部published模型/exact identities/Provider分支；P0=0/P1=0 | R6_REVIEW_GO / P0=0 / P1=0 / P2=7 |
 | IG18-035 | 唯一正式safe full | Review GO后执行一次；结果、异常、source/snapshot和4173边界完整记录 | FORMAL_FULL_RECORDED_1131_OF_1135 / 4_TARGETED_CLOSED / BROWSER_AUTO_PASS |
-| IG18-036 | GitHub与不可变发布 | 已授权的PR/main CI、tag/Release、fresh build | PR_134_OPEN / INITIAL_HEAD_CI_PASS / FINAL_HEAD_PENDING |
-| IG18-037 | 生产备份与可回滚迁移 | quiet、冻结source/restore、生产副本幂等、原子切换、paired rollback/forward | NOT_RUN |
-| IG18-038 | 生产10/10模型健康 | 当前10个published模型逐一核对，不抽样 | NOT_RUN |
-| IG18-039 | 生产任务与费用计数不变 | 页面预检前后tasks/attempts/active/unknown/Provider POST均不变 | NOT_RUN |
+| IG18-036 | GitHub与不可变发布 | 已授权的PR/main CI、tag/Release、fresh build | PR_134_MERGED / FINAL_HEAD_CI_PASS / MAIN_CI_PASS / IMMUTABLE_TAG_RELEASE_PASS / FRESH_BUILD_PASS |
+| IG18-037 | 生产备份与可回滚迁移 | quiet、冻结source/restore、生产副本幂等、原子切换、paired rollback/forward | PRODUCTION_MIGRATION_BACKUP_ROLLBACK_FORWARD_PASS |
+| IG18-038 | 生产10/10模型健康 | 当前10个published模型逐一核对，不抽样 | PRODUCTION_10_OF_10_MODEL_HEALTH_PASS |
+| IG18-039 | 生产任务与费用计数不变 | 页面预检前后tasks/attempts/active/unknown/Provider POST均不变 | PRODUCTION_ZERO_PROVIDER_POST_OSS_WRITE_NEW_FEE_AND_COUNTS_PASS |
 | IG18-040 | 用户真实页面确认 | 用户确认不再出现该错误且产品行为符合预期 | USER_RECHECK |
 
 ## NO-GO 门
@@ -72,4 +73,4 @@ R0证据：实施分支/HEAD、生产v0.6.63/schema41、安全/任务/费用基�
 6. 候选P0/P1未清零。
 7. 用户尚未在新Session完整发送一次性Goal，却进入代码、GitHub或生产；Goal启动后则按其已明确的版本选择与发布授权执行。
 
-说明：一次性Goal已在本Session启动；R0～R4已有对应只读/定向证据。R4最终m102 30/30与m12 6/6的source/snapshot=`23a006b7…0eae9`，m38 16/16=`9b86a69f…f824b`，并复用同一直接依赖阶段中未受后续修复影响的m22 44/44、m32 7/7、m94 4/4证据；它仍不代表R5～R8、正式full、真实冻结生产副本、生产迁移或用户验收通过。受保护fixture历史事件不删除、不降级，也不再作为当前runner输入。
+说明：一次性Goal已在本Session执行至R8技术终态。R7唯一formal full仍只记录原始`1131/1135`和4项最小关闭，不改写为全绿；R8回执为`spec/V0_6_64_PRODUCTION_RECEIPT_2026-08-31.json`。受保护fixture历史读取事件与第五十一次恢复中的文件名枚举事件均不删除、不降级；后续runner/fixture和严格恢复不再读取或枚举。R8-P2-001历史结果收回事件/日志churn与R8-P2-002根盘99%需另行授权治理，不把它们冒充本轮新增P0/P1，也不得据此擅自重启或清数据。IG18-040仍为`USER_RECHECK`，自动技术证据不能替代用户真实页面确认。

@@ -1,6 +1,6 @@
 # INC-GEN-018 模型合同健康边界与旧 Revision 精确修复方案
 
-状态：`ROOT_CAUSE_VERIFIED / ARCHITECTURE_PLAN_FROZEN / GOAL_PROMPT_READY / IMPLEMENTATION_NOT_STARTED / NOT_CURRENT_SESSION_AUTHORIZATION`
+状态：`GOAL_EXECUTED / R0_TO_R8_TECHNICAL_COMPLETE / PRODUCTION_V0_6_64_TECHNICAL_PASS / ZERO_PROVIDER_POST_PASS / USER_RECHECK`
 
 更新时间：2026-08-31
 
@@ -29,7 +29,7 @@
 11. 该组合逻辑由 INC-GEN-017 功能提交 `46a9abf110e55dd14d9519228c708759224d8c78` 引入，并已进入 v0.6.57～v0.6.63。
 12. 既有 m102 主要用当前代码创建的新 revision 验证活动合同健康，没有回放“生产旧 Seed/TTS revision 缺少 inputPolicy”的历史形状，因此既有 10/10 模型 Review 没有覆盖到这个真实旧数据分支。
 
-### 2.2 尚未执行、不得冒充通过
+### 2.2 R0前尚未执行（历史基线，现已由R0～R8技术门闭合）
 
 - 没有修改代码、测试、数据库或生产配置。
 - 没有为两个模型发布新 revision。
@@ -37,6 +37,8 @@
 - 没有形成代码候选、运行测试或完成候选逐代码 Review。
 - 没有获得版本号、GitHub、发布或生产写授权。
 - 没有发起任何新的真实 Provider 请求；本事件也不需要真实付费生成来证明修复。
+
+以上六项是方案冻结时的初始边界，不是当前实时状态；不得删除或倒写。当前生产终态只以 Checkpoint、Matrix 与 `spec/V0_6_64_PRODUCTION_RECEIPT_2026-08-31.json` 为准。
 
 ## 3. 根因与耦合分类
 
@@ -257,6 +259,15 @@ R8 不由本文或Goal提示词文件的存在自动授权。用户在新Session
 - tasks/attempts/active/unknown和Provider POST计数不变；
 - 用户实页确认前保持 `USER_RECHECK`。
 
+#### R8 实际执行结果（2026-08-31）
+
+- 用户已在本Session完整发送一次性Goal，版本号、GitHub、数据库迁移与生产发布权限按正文一次性消费。PR #134 final-head/main CI、annotated tag/GitHub Release v0.6.64、fresh tag build与6044行inventory均通过。
+- 新鲜生产冻结source/restore、attestation、dry-run/apply/health/repeat、外部exact release+DB pair拒绝、原子切换和paired rollback/forward均通过。迁移仅为Doubao Seed与Doubao TTS 2.0发布两个exact replacement revision；其余8模型none，repeat为10 none、升级0、DB字节不变。
+- 生产运行`/opt/unboundry/releases/v0.6.64-inc-gen-018-20260831`，schema41，service active/enabled、MainPID2859331、NRestarts0；正式start恰为3，禁止再次stop/restart。10/10 published模型健康；目标7节点零付费preflight不再返回伪全局关闭。
+- 迁移与浏览器验收前后tasks1026/attempts1037/active0/current unknown0，Provider request count保持1025；Provider POST、OSS写、新费用均为0。72秒7样本稳定门通过。
+- 技术终态为`PRODUCTION_V0_6_64_TECHNICAL_PASS / ZERO_PROVIDER_POST_PASS / USER_RECHECK`。用户未在真实页面明确确认，故IG18-040不得升级为`USER_PASS`。
+- R8-P2-001保留9个历史失败图片任务的同attempt结果收回轮询/状态事件与日志churn；R8-P2-002保留根盘99%容量风险。它们没有新增task/attempt/admission/Provider POST，不是本轮新增P0/P1；本Goal不擅自重启、清历史或删除release/rollback/backup/staging。
+
 ## 8. 测试与审查文件初始范围
 
 实施时以 R0 真实 diff 为准，至少检查：
@@ -311,7 +322,7 @@ R8 不由本文或Goal提示词文件的存在自动授权。用户在新Session
 
 ## 11. 授权说明
 
-用户当前要求为新的Session准备一次性连续实施Goal。本文、Checkpoint、Matrix和Goal提示词文件的存在不授权当前Session实施；只有用户在新Session完整发送Goal后才激活。该Goal正文已明确确认`v0.6.64`（占用时自动选择最低未占用patch）并明确授权GitHub、数据库迁移和生产发布，同时把真实Provider POST、OSS写和费用硬上限固定为0。
+用户已在本Session完整发送一次性连续实施Goal并激活；本文、Checkpoint、Matrix和Goal提示词文件本身仍不构成未来授权。该Goal正文确认的`v0.6.64`、GitHub、数据库迁移和生产发布权限均已按回执消费；真实Provider POST、OSS写和费用硬上限保持0且已通过。后续代码、tag/Release移动、生产stop/restart、数据清理或Provider动作均需要新的明确授权。
 
 实时断点：`spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_CHECKPOINT.md`
 

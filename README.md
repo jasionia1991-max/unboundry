@@ -6,11 +6,11 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 
-## 当前线上：v0.6.63 / INC-GEN-018生产回归开放（2026-08-31）
+## 当前线上：v0.6.64 / INC-GEN-018生产技术通过（2026-08-31，USER RECHECK）
 
-INC-GEN-017发布时的技术门与唯一Seedance真实结果保留为历史时点事实。用户重新开启真实生成后确认新回归：平台总开关实际开启，但Doubao Seed与Doubao TTS 2.0旧active revision缺当前effective `inputPolicy`，且单模型合同健康被误提示为“管理员已关闭真实生成”。一次性Goal现已启动；R0～R7完成，冻结候选独立终审为`P0=0/P1=0/P2=7/GO`。R7唯一正式safe full原始`1131/1135`及4失败永久保留，4项均已定向关闭且隔离浏览器AUTO_PASS；v0.6.64已选定并形成candidate commit `790db916…ab618`。GitHub与生产迁移/发布尚未开始；生产仍为v0.6.63回归开放，Provider POST、OSS写和新费用为0，用户状态仍是`USER_RECHECK`。
+INC-GEN-018已把平台全局安全状态与单模型合同健康拆开，并只为Doubao Seed与Doubao TTS 2.0的两个精确旧immutable revision发布replacement revision。R0～R8技术门完成；冻结候选独立终审保持`P0=0/P1=0/P2=7/GO`，唯一正式safe full原始`1131/1135`及4失败永久保留，4项均已定向关闭且隔离浏览器AUTO_PASS。PR #134 final-head/main CI、v0.6.64不可移动tag/Release、fresh build、冻结恢复、生产迁移、repeat no-op、原子切换和paired rollback/forward均通过。生产10/10 published模型健康，目标7节点零付费preflight不再出现伪`GLOBAL_GENERATION_DISABLED`；tasks1026/attempts1037/active0不变，Provider POST、OSS写和新费用均为0。当前严格为`PRODUCTION_V0_6_64_TECHNICAL_PASS / ZERO_PROVIDER_POST_PASS / USER_RECHECK`，不能冒充`USER_PASS`。生产回执见[`spec/V0_6_64_PRODUCTION_RECEIPT_2026-08-31.json`](spec/V0_6_64_PRODUCTION_RECEIPT_2026-08-31.json)。
 
-权威入口：[`Checkpoint`](spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_CHECKPOINT.md) → [`Plan`](spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_PLAN_2026-08-30.md) → [`Matrix`](spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_ACCEPTANCE_MATRIX_2026-08-30.md) → [`一次性Goal`](spec/INC_GEN_018_ONE_SHOT_GOAL_PROMPT_2026-08-31.md)。当前断点只以Checkpoint为准，不得把Review GO冒充正式full、生产修复或用户通过。
+权威入口：[`Checkpoint`](spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_CHECKPOINT.md) → [`Plan`](spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_PLAN_2026-08-30.md) → [`Matrix`](spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_ACCEPTANCE_MATRIX_2026-08-30.md) → [`一次性Goal`](spec/INC_GEN_018_ONE_SHOT_GOAL_PROMPT_2026-08-31.md)。当前断点只以Checkpoint为准；技术通过不等于用户实页通过。
 
 ## 历史线上：v0.6.56 数字task ID真实闭环（2026-08-28，USER RECHECK）
 

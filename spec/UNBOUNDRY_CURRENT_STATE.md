@@ -1,21 +1,21 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网仍为v0.6.63/schema41，INC-GEN-017发布时的技术门与真实Seedance结果保留为历史时点事实；INC-GEN-018 R1～R5定向实现/演练与R6全量Review均完成，独立结论`P0=0/P1=0/P2=7/GO`。R7唯一正式safe full原始`1131/1135`和4失败永久保留，4项已用最小直接复验关闭，5-hunk复审`P0=0/P1=0/P2=0/GO`，隔离浏览器AUTO_PASS；不得改写成正式full全绿。v0.6.64已通过占用门和版本/治理定向验证，本地candidate commit=`790db916…ab618`，尚未push。既有m102误读受保护快照的历史事件永久保留，当前runner/fixture已隔离该文件。当前严格为`INC_GEN_018_GOAL_ACTIVE / R0_COMPLETE / R1_TARGETED_PASS / R2_TARGETED_PASS / R3_TARGETED_PASS / R4_TARGETED_PASS / R5_REHEARSAL_PASS / R6_REVIEW_GO / R7_COMPLETE / R8_LOCAL_CANDIDATE / PRODUCTION_V0_6_63_REGRESSION_OPEN / NO_NEW_PROVIDER_POST / USER_RECHECK`。
+> **状态分层**：现网运行v0.6.64/schema41；INC-GEN-018 R0～R8技术门完成，严格为`PRODUCTION_V0_6_64_TECHNICAL_PASS / ZERO_PROVIDER_POST_PASS / USER_RECHECK`。R6冻结候选独立结论`P0=0/P1=0/P2=7/GO`；R7唯一正式safe full原始`1131/1135`和4失败永久保留，4项已用最小直接复验关闭，5-hunk复审`P0=0/P1=0/P2=0/GO`，隔离浏览器AUTO_PASS，绝不改写成formal full全绿。PR #134 final-head/main CI、v0.6.64不可移动tag/Release、fresh build、冻结恢复、exact Seed/TTS immutable revision迁移、repeat no-op、原子切换、paired rollback/forward、10/10模型健康、7节点零付费preflight及72秒稳定门均通过；tasks1026/attempts1037不变。既有受保护fixture历史读取事件与第五十一次文件名枚举事件均永久保留，后续严格恢复为0。历史9个图片任务结果收回churn与根盘99%登记为R8 P2残余，不能扩张为本轮无授权修复。只有用户实页明确确认才可升级`USER_PASS`。
 
 更新日期：2026-08-31
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
 当前代码包版本：**v0.6.64**
 本地候选代码版本：**v0.6.64**
-当前生产部署版本：**v0.6.63**
+当前生产部署版本：**v0.6.64**
 本地候选schema：**41**
-当前治理标记：`CURRENT_V0_6_63_USER_RECHECK`
-当前计划标记：`INC_GEN_018_GOAL_ACTIVE / R0_COMPLETE / R1_TARGETED_PASS / R2_TARGETED_PASS / R3_TARGETED_PASS / R4_TARGETED_PASS / R5_REHEARSAL_PASS / R6_REVIEW_GO / R7_COMPLETE / R8_LOCAL_CANDIDATE / USER_RECHECK`
+当前治理标记：`CURRENT_V0_6_64_USER_RECHECK`
+当前计划标记：`INC_GEN_018_R0_TO_R8_TECHNICAL_COMPLETE / PRODUCTION_V0_6_64_TECHNICAL_PASS / ZERO_PROVIDER_POST_PASS / USER_RECHECK`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`INC_GEN_018_R7_COMPLETE / R8_VERSION_SELECTED_V0_6_64 / PRODUCTION_V0_6_63_REGRESSION_OPEN / USER_RECHECK`
+当前发布门：`INC_GEN_018_R8_PRODUCTION_TECHNICAL_PASS / V0_6_64_AUTHORIZATION_CONSUMED / ZERO_PROVIDER_POST_PASS / USER_RECHECK`
 
 ## INC-GEN-018 当前区块（2026-08-31）
 
-- 用户已在本Session完整发送一次性Goal并启动连续实施；分支`codex/inc-gen-018-contract-health-boundary-2026-08-31`，candidate HEAD=`790db916…ab618`、origin-main=`d3e213da…55ab2`；已证明v0.6.64未占用并选择为候选，package0.6.64/schema41，生产仍v0.6.63/schema41。
+- 用户已在本Session完整发送一次性Goal并连续实施；分支`codex/inc-gen-018-contract-health-boundary-2026-08-31`，candidate commit=`790db916…ab618`，PR final head=`7467ad2…0965ae7`，merge/origin-main=`fc046f4…291fe`；package/生产均为v0.6.64/schema41。
 - R0生产只读冻结完成：v0.6.63/schema41、globalEnabled1/emergencyStop0、tasks1026/attempts1037/active0/current-unsettled-unknown0，10/10 published logical models与10/10 exact identities全部入脱敏快照，SHA=`fa6a498a…0457`。仅Seed/TTS缺`$.inputPolicy`，其余8个active/expected schema一致；两份受保护JSON未读取或触碰。
 - availability预期红完成：safe m32执行7 tests，6通过、唯一预期失败证明enabled平台+out-of-sync合同仍返回available/null；source/snapshot=`07fae080…f8ebe`，4173 unchanged，suite cleaned。测试库存已由1125更新到1126并同步runner coverage target；前置fail-closed尝试如实保留。
 - R0期间真实Provider POST0、OSS写0、新费用0；正式full、迁移、GitHub、版本/tag/Release和生产写仍未执行。下一步仅进入R1 availability状态解耦。
@@ -33,7 +33,11 @@
 - R6的7项P2已登记且不扩大为当前P1：bootstrap缺全模型外层事务；结构有效但不完整v2的语义默认继承；retry helper兼容fallback；CLI attestation path TOCTOU；post-COMMIT `toTask`与历史裸`JSON.parse`一致性；DELETE post-read owner scope；admin contract GET损坏schema错误映射。它们均不绕过Provider边界。正式full、GitHub、版本/tag/Release和生产仍未执行；Provider POST/OSS写/费用0。
 - R7唯一正式safe full已执行且绝不重跑：原始`1131/1135`、4 failures、source/snapshot=`13d932f3…54ad99`、4173 unchanged；m27/m40/m86在四失败最小子集通过，m4最终单spec=`6/6 PASS`。4个测试文件/5 hunks独立复审SHA=`e3cf5d07…530c2`，`P0=0/P1=0/P2=0/GO`。
 - R7隔离浏览器AUTO_PASS：10/10 models healthy、10/10 releaseRevisionId、7/7节点模型可选择、10卡admin UI；API真实验证global关闭、emergency优先、Seed malformed只返回模型级`MODEL_CONTRACT_INVALID`并可精确恢复。49 requests全部loopback/内联，blocked/non-loopback0，tasks/attempts0/0、paid0；owned server/端口/temp均已清理。
-- R8 v0.6.64候选已推送并创建PR #134；初始head=`d60a59a…56bdd`的Quality run/job=`33365723417/99405850023`以35秒通过。本治理回执形成新的final head后必须等待对应CI，尚未合并/tag/Release/生产。生产仍v0.6.63/schema41，Provider POST/OSS写/新费用0。
+- R8初始PR阶段历史：PR #134 initial head=`d60a59a5…6bdd`，initial Quality run/job=`33365723417/99405850023`通过；当时final-head修复、merge与main CI仍待完成。该历史输入已由下一条最终R8证据关闭，不能替代当前final-head/main结论。
+- R8 GitHub与不可变发布完成：PR #134 final head=`7467ad2…0965ae7`，final-head CI=`33365802396/99406083381`、merge=`fc046f4…291fe`、main CI=`33365855132/99406242436`均通过；annotated tag object=`99aa90c…25a104`精确peel到merge，GitHub Release v0.6.64已发布。tag archive SHA=`12e9d5f5…2954`；fresh build、6044行inventory SHA=`1bb30d16…21b64`和dist33均通过。
+- R8生产迁移/回退完成：冻结根`/var/lib/unboundry-rollbacks/v0.6.64-inc-gen-018-r8-frozen.5DiOVQ`必须保留；source/restore DB SHA均为`2eba3bbd…a7a6f6`。primary只为TTS/Seed发布revision2 `57e909c4…1f30b`/`7945b3d6…31ae2`，table diff只涉及model_profiles、admin_audit_events及sqlite_sequence；repeat为10 none、升级0、DB字节不变。外部exact release+DB pair fence正确拒绝旧runtime+迁移库；原子forward、实际rollback、最终forward均通过。生产current为`/opt/unboundry/releases/v0.6.64-inc-gen-018-20260831`，active/enabled、MainPID2859331、NRestarts0，最终启动`2026-08-31T07:21:27Z`；正式start恰为3，严禁再次stop/restart。
+- R8生产零付费验收完成：认证`/api/models`两次HTTP200且10/10 published available、全部完整releaseRevisionId、无意外/敏感公开字段；admin UI显示10个published active contracts。目标Canvas/group的7节点preflight均generationAvailable且无`GLOBAL_GENERATION_DISABLED`，1项可提交、6项只由当前EMPTY/INVALID上游输入阻断。前后schema41/global1/emergency0/models20/published10/templates50/published48/tasks1026/attempts1037/active0/current unknown0/canvases76/media956/publications547不变，Provider request count保持1025，Provider POST/OSS写/新费用0；72秒7样本稳定门通过。
+- 技术终态为`PRODUCTION_V0_6_64_TECHNICAL_PASS / ZERO_PROVIDER_POST_PASS / USER_RECHECK`，不可变回执为`spec/V0_6_64_PRODUCTION_RECEIPT_2026-08-31.json`。IG18-036～039关闭，IG18-040仍须用户真实页面明确确认。历史9个已持有Provider task id的失败图片任务继续同attempt结果收回轮询，未新增task/attempt/admission/Provider POST但会写状态事件与日志；同时根盘99%、可用约1.42GiB，二者登记为R8 P2，仅允许后续单独治理。
 
 - 用户重新开启真实生成后，目标整组预检持续提示7个不兼容节点，首个“提取服装事实”为“管理员已关闭真实生成”；强制刷新和重新打开页面无效。
 - 生产只读核对为`globalEnabled=1/emergencyStop=0`；登录态`/api/models` no-store请求返回10个published模型，其中8个available，Doubao Seed与Doubao TTS 2.0返回伪`GLOBAL_GENERATION_DISABLED`。
