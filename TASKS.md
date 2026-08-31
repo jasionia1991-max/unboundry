@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻当前任务
 
-## INC-GEN-020 同步图片结果持久化与原任务自动收口（v0.6.66 RELEASE AUTHORIZED / IN PROGRESS）
+## INC-GEN-020 同步图片结果持久化与原任务自动收口（PRODUCTION v0.6.66 TECHNICAL PASS / USER RECHECK）
 
 - [x] 冻结生产原任务证据：image/recovering/attempt1、Provider attempt=`response-received`、provider task id/result asset id为空；禁止新Provider POST。
 - [x] 私有OSS路径改为内存PNG直传，不依赖根盘staging；保留大小/SHA/HEAD/private ACL/forbid-overwrite验证。
@@ -11,7 +11,10 @@
 - [x] v0.6.66版本门已同步package/lock、final runtime allowlist和m81断言；safe m38+m81 `59/59 PASS`，source/snapshot=`114bcca0…109c60`。
 - [x] 本地阶段真实Provider POST、OSS写和新费用均为0；用户既有未跟踪受保护文件未触碰。
 - [x] 用户已明确确认并允许发布v0.6.66；本次授权不包含新的真实生成或Provider POST。
-- [ ] 发布后只验证后台自动收口和页面解锁；新的真实整组生成另需新的预算/点击授权。
+- [x] v0.6.66已完成PR #138、PR/main CI、不可变tag/Release、fresh build、冻结备份、原子切换、33/33公网静态和服务健康门。
+- [x] 原任务已由系统自动收口为`RESULT_SAVE_FAILED_NO_RETRY`，active0；无新task/attempt/Provider POST/OSS/费用。
+- [x] 实页已读验：整组按钮可用、任务面板明确不重复提交、console无错误；未点击任何生成/继续/放弃操作。
+- [ ] 保持`USER_RECHECK`；节点alert尚有“自动找回中”旧文案残余。新的真实整组生成、新代码或新发布均需新授权。
 
 ## INC-GEN-019 整组执行保存竞态与原子准入精确修复（PRODUCTION v0.6.65 TECHNICAL PASS / REAL GROUP BUDGET BLOCKED）
 
