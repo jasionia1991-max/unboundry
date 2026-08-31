@@ -20,9 +20,11 @@ import {
   runtimeRoleFromEnvironment,
 } from "../server/runtimeRole";
 import {
+  generationRecoverySweepTimerStateForRuntimeTest,
   prepareGenerationRuntimeRoleTeardown,
   registerGenerationRuntimeRoleCoordinator,
   runGenerationExecutionForRuntimeTest,
+  startAllowlistedLegacyTerminalDetachSweepForRuntimeTest,
 } from "../server/generationTasks";
 
 test.describe.configure({ mode: "serial" });
@@ -578,8 +580,18 @@ test("detached work drain closes admission, aborts once and waits for persistenc
 test("lifecycle freezes HTTP and generation admission before releasing the active lease", async () => {
   const paths = await privateDirectories();
   const originalDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  const originalTerminalMode =
+    process.env.UNBOUNDRY_LEGACY_TERMINAL_RECONCILIATION_MODE;
+  const originalTerminalAllowlist =
+    process.env.UNBOUNDRY_LEGACY_TERMINAL_RECONCILIATION_ALLOWLIST;
   try {
     process.env.UNBOUNDRY_DATA_DIR = paths.dataDirectory;
+    process.env.UNBOUNDRY_LEGACY_TERMINAL_RECONCILIATION_MODE = "allowlist";
+    process.env.UNBOUNDRY_LEGACY_TERMINAL_RECONCILIATION_ALLOWLIST =
+      JSON.stringify([{
+        accountId: "m93-terminal-owner",
+        canvasId: "m93-terminal-canvas",
+      }]);
     const coordinator = createRuntimeRoleCoordinator({
       dataDirectory: paths.dataDirectory,
       role: "active",
@@ -587,6 +599,11 @@ test("lifecycle freezes HTTP and generation admission before releasing the activ
     });
     const unregister = registerGenerationRuntimeRoleCoordinator(coordinator);
     try {
+      startAllowlistedLegacyTerminalDetachSweepForRuntimeTest();
+      expect(generationRecoverySweepTimerStateForRuntimeTest()).toEqual({
+        generation: false,
+        terminalDetach: true,
+      });
       let persist!: () => void;
       let generationAborts = 0;
       const generation = runGenerationExecutionForRuntimeTest(
@@ -643,6 +660,10 @@ test("lifecycle freezes HTTP and generation admission before releasing the activ
         drained: true,
         inFlightRequests: 0,
       });
+      expect(generationRecoverySweepTimerStateForRuntimeTest()).toEqual({
+        generation: false,
+        terminalDetach: false,
+      });
       expect(coordinator.snapshot()).toMatchObject({
         activeLeaseHeld: false,
         draining: true,
@@ -675,6 +696,18 @@ test("lifecycle freezes HTTP and generation admission before releasing the activ
       delete process.env.UNBOUNDRY_DATA_DIR;
     } else {
       process.env.UNBOUNDRY_DATA_DIR = originalDataDirectory;
+    }
+    if (originalTerminalMode === undefined) {
+      delete process.env.UNBOUNDRY_LEGACY_TERMINAL_RECONCILIATION_MODE;
+    } else {
+      process.env.UNBOUNDRY_LEGACY_TERMINAL_RECONCILIATION_MODE =
+        originalTerminalMode;
+    }
+    if (originalTerminalAllowlist === undefined) {
+      delete process.env.UNBOUNDRY_LEGACY_TERMINAL_RECONCILIATION_ALLOWLIST;
+    } else {
+      process.env.UNBOUNDRY_LEGACY_TERMINAL_RECONCILIATION_ALLOWLIST =
+        originalTerminalAllowlist;
     }
     await rm(paths.root, { force: true, recursive: true });
   }

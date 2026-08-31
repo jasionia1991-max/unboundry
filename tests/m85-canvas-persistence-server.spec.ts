@@ -21,6 +21,7 @@ import {
   canvasLegacyGenerationReconciliation,
   legacyTerminalDetachApplicationIdForBinding,
   legacyTerminalNodeDataFingerprint,
+  runAllowlistedLegacyTerminalDetachSweep,
 } from
   "../server/canvasLegacyGenerationReconciliation";
 import {
@@ -857,6 +858,234 @@ test("legacy terminal detach is owner-scoped, atomic, idempotent and fail-closed
       };
       afterStore.close();
       expect(after).toEqual(before);
+    }, { authBypass: false });
+  } finally {
+    restoreEnvironment(
+      "UNBOUNDRY_LEGACY_TERMINAL_RECONCILIATION_MODE",
+      previousMode,
+    );
+    restoreEnvironment(
+      "UNBOUNDRY_LEGACY_TERMINAL_RECONCILIATION_ALLOWLIST",
+      previousAllowlist,
+    );
+  }
+});
+
+test("server sweep detaches only allowlisted failed/cancelled exact bindings without touching ledgers", async () => {
+  const previousMode = process.env.UNBOUNDRY_LEGACY_TERMINAL_RECONCILIATION_MODE;
+  const previousAllowlist =
+    process.env.UNBOUNDRY_LEGACY_TERMINAL_RECONCILIATION_ALLOWLIST;
+  process.env.UNBOUNDRY_LEGACY_TERMINAL_RECONCILIATION_MODE = "allowlist";
+  try {
+    await withCanvasServer("legacy-terminal-sweep", async ({
+      api,
+      dataDirectory,
+    }) => {
+      const ownerId = randomUUID();
+      const canvasId = `m85-terminal-sweep-${randomUUID()}`;
+      const excludedCanvasId = `m85-terminal-excluded-${randomUUID()}`;
+      const boundNode = (input: {
+        kind: "image" | "text";
+        nodeId: string;
+        stateLabel: string;
+        taskId: string;
+      }) => ({
+        data: {
+          [`${input.kind}Generating`]: true,
+          [`${input.kind}GenerationError`]: `old-${input.stateLabel}`,
+          [`${input.kind}GenerationInputKey`]: `input-${input.nodeId}`,
+          [`${input.kind}GenerationOwnershipKey`]: `ownership-${input.nodeId}`,
+          [`${input.kind}GenerationTaskId`]: input.taskId,
+          label: input.stateLabel,
+          userField: `preserve-${input.nodeId}`,
+          workflowExecutionRunId: `run-${input.nodeId}`,
+        },
+        id: input.nodeId,
+        position: { x: 0, y: 0 },
+        type: input.kind,
+      });
+      const failed = boundNode({
+        kind: "image",
+        nodeId: "image-failed",
+        stateLabel: "failed",
+        taskId: "task-sweep-failed",
+      });
+      const cancelled = boundNode({
+        kind: "text",
+        nodeId: "text-cancelled",
+        stateLabel: "cancelled",
+        taskId: "task-sweep-cancelled",
+      });
+      const recoverable = boundNode({
+        kind: "image",
+        nodeId: "image-recoverable",
+        stateLabel: "recoverable",
+        taskId: "task-sweep-recoverable",
+      });
+      const success = boundNode({
+        kind: "text",
+        nodeId: "text-success",
+        stateLabel: "success",
+        taskId: "task-sweep-success",
+      });
+      const running = boundNode({
+        kind: "image",
+        nodeId: "image-running",
+        stateLabel: "running",
+        taskId: "task-sweep-running",
+      });
+      const mismatch = boundNode({
+        kind: "text",
+        nodeId: "text-mismatch",
+        stateLabel: "mismatch",
+        taskId: "different-canvas-task",
+      });
+      const excluded = boundNode({
+        kind: "image",
+        nodeId: "image-excluded",
+        stateLabel: "excluded",
+        taskId: "task-sweep-excluded",
+      });
+      seedUser(dataDirectory, ownerId);
+      const ownerCookie = seedAuthenticatedSession(dataDirectory, ownerId);
+      seedProject(dataDirectory, canvasId, {
+        graphRevision: 9,
+        nodes: [failed, cancelled, recoverable, success, running, mismatch],
+        revision: 6,
+      }, ownerId);
+      seedProject(dataDirectory, excludedCanvasId, {
+        graphRevision: 4,
+        nodes: [excluded],
+        revision: 3,
+      }, ownerId);
+      for (const fixture of [
+        { kind: "image" as const, nodeId: "image-failed", state: "failed" as const, taskId: "task-sweep-failed" },
+        { kind: "text" as const, nodeId: "text-cancelled", state: "cancelled" as const, taskId: "task-sweep-cancelled" },
+        { kind: "image" as const, nodeId: "image-recoverable", state: "failed" as const, taskId: "task-sweep-recoverable" },
+        { kind: "text" as const, nodeId: "text-success", state: "success" as const, taskId: "task-sweep-success" },
+        { kind: "image" as const, nodeId: "image-running", state: "running" as const, taskId: "task-sweep-running" },
+        { kind: "text" as const, nodeId: "text-mismatch", state: "failed" as const, taskId: "task-sweep-mismatch" },
+      ]) {
+        seedGenerationTask(dataDirectory, { canvasId, ownerId, ...fixture });
+      }
+      const recoverableStore = databaseAt(dataDirectory);
+      try {
+        recoverableStore.prepare(`
+          UPDATE generation_tasks
+          SET provider_task_id = 'provider-task-sweep-recoverable'
+          WHERE id = 'task-sweep-recoverable'
+        `).run();
+        recoverableStore.prepare(`
+          UPDATE generation_provider_attempts
+          SET outcome = 'accepted',
+              provider_task_id = 'provider-task-sweep-recoverable',
+              finished_at = NULL
+          WHERE task_id = 'task-sweep-recoverable'
+        `).run();
+      } finally {
+        recoverableStore.close();
+      }
+      seedGenerationTask(dataDirectory, {
+        canvasId: excludedCanvasId,
+        kind: "image",
+        nodeId: "image-excluded",
+        ownerId,
+        state: "failed",
+        taskId: "task-sweep-excluded",
+      });
+      process.env.UNBOUNDRY_LEGACY_TERMINAL_RECONCILIATION_ALLOWLIST =
+        JSON.stringify([
+          { accountId: ownerId, canvasId },
+          { accountId: ownerId, canvasId },
+        ]);
+      const ledger = () => {
+        const store = databaseAt(dataDirectory);
+        try {
+          return Object.fromEntries([
+            "generation_tasks",
+            "generation_task_events",
+            "generation_admission_events",
+            "generation_provider_attempts",
+            "media_assets",
+            "media_publication_attempts",
+          ].map((table) => [
+            table,
+            store.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get(),
+          ]));
+        } finally {
+          store.close();
+        }
+      };
+      const beforeLedger = ledger();
+      process.env.UNBOUNDRY_LEGACY_TERMINAL_RECONCILIATION_MODE = "detect";
+      expect(await runAllowlistedLegacyTerminalDetachSweep({ dataDirectory }))
+        .toEqual({
+          canvasesFailed: 0,
+          canvasesVisited: 0,
+          nodesDetached: 0,
+        });
+      expect((await api("GET", canvasId, undefined, {
+        cookie: ownerCookie,
+      })).body).toMatchObject({ graphRevision: 9, revision: 6 });
+      expect(ledger()).toEqual(beforeLedger);
+      process.env.UNBOUNDRY_LEGACY_TERMINAL_RECONCILIATION_MODE = "allowlist";
+      expect(await runAllowlistedLegacyTerminalDetachSweep({ dataDirectory }))
+        .toEqual({
+          canvasesFailed: 0,
+          canvasesVisited: 1,
+          nodesDetached: 2,
+        });
+      const allowed = await api("GET", canvasId, undefined, {
+        cookie: ownerCookie,
+      });
+      expect(allowed.body).toMatchObject({ graphRevision: 10, revision: 7 });
+      const allowedNodes = allowed.body.nodes as Array<{
+        data: Record<string, unknown>;
+        id: string;
+      }>;
+      for (const [nodeId, kind] of [
+        ["image-failed", "image"],
+        ["text-cancelled", "text"],
+      ] as const) {
+        const data = allowedNodes.find((node) => node.id === nodeId)?.data;
+        expect(data).toMatchObject({
+          [`${kind}Generating`]: false,
+          label: kind === "image" ? "failed" : "cancelled",
+          userField: `preserve-${nodeId}`,
+        });
+        expect(data?.workflowExecutionRunId).toBeUndefined();
+        expect(data?.[`${kind}GenerationTaskId`]).toBeUndefined();
+        expect(data?.[`${kind}GenerationOwnershipKey`]).toBeUndefined();
+        expect(data?.[`${kind}GenerationInputKey`]).toBeUndefined();
+        expect(data?.legacyTerminalDetachApplicationId).toEqual(
+          expect.stringMatching(/^legacy-terminal-detach:/),
+        );
+      }
+      expect(allowedNodes.find((node) => node.id === "text-success")).toEqual(success);
+      expect(allowedNodes.find((node) => node.id === "image-recoverable"))
+        .toEqual(recoverable);
+      expect(allowedNodes.find((node) => node.id === "image-running")).toEqual(running);
+      expect(allowedNodes.find((node) => node.id === "text-mismatch")).toEqual(mismatch);
+      const excludedAfter = await api("GET", excludedCanvasId, undefined, {
+        cookie: ownerCookie,
+      });
+      expect(excludedAfter.body).toMatchObject({
+        graphRevision: 4,
+        nodes: [excluded],
+        revision: 3,
+      });
+      expect(ledger()).toEqual(beforeLedger);
+
+      expect(await runAllowlistedLegacyTerminalDetachSweep({ dataDirectory }))
+        .toEqual({
+          canvasesFailed: 0,
+          canvasesVisited: 1,
+          nodesDetached: 0,
+        });
+      expect((await api("GET", canvasId, undefined, {
+        cookie: ownerCookie,
+      })).body).toMatchObject({ graphRevision: 10, revision: 7 });
+      expect(ledger()).toEqual(beforeLedger);
     }, { authBypass: false });
   } finally {
     restoreEnvironment(

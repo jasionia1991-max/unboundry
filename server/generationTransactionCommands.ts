@@ -11,6 +11,46 @@ export type TerminalGenerationTaskBinding = Readonly<{
   taskId: string;
 }>;
 
+export type FailedCancelledGenerationTaskBinding = Readonly<{
+  kind: TerminalGenerationTaskBinding["kind"];
+  nodeId: string;
+  state: "cancelled" | "failed";
+  taskId: string;
+}>;
+
+export const listFailedCancelledGenerationTaskBindingsCommand:
+TransactionScopedCommand<Readonly<{
+  canvasId: string;
+  ownerId: string;
+}>, FailedCancelledGenerationTaskBinding[]> = {
+  execute(scope, input) {
+    return scope.prepare(`
+      SELECT tasks.id AS taskId, tasks.node_id AS nodeId,
+             tasks.kind, tasks.state
+      FROM generation_tasks AS tasks
+      WHERE tasks.owner_id = ? AND tasks.canvas_id = ?
+        AND tasks.state IN ('failed', 'cancelled')
+        AND (
+          tasks.state = 'cancelled'
+          OR (
+            tasks.provider_task_id IS NULL
+            AND NOT EXISTS (
+              SELECT 1
+              FROM generation_provider_attempts AS attempt
+              WHERE attempt.task_id = tasks.id
+                AND attempt.execution_attempt = tasks.attempt
+                AND attempt.outcome IN (
+                  'boundary-claimed', 'accepted', 'response-received',
+                  'outcome-unknown'
+                )
+            )
+          )
+        )
+      ORDER BY tasks.created_at ASC, tasks.id ASC
+    `).all(input.ownerId, input.canvasId) as FailedCancelledGenerationTaskBinding[];
+  },
+};
+
 export const readTerminalGenerationTaskBindingCommand: TransactionScopedCommand<Readonly<{
   canvasId: string;
   kind: TerminalGenerationTaskBinding["kind"];

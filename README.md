@@ -6,9 +6,9 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 
-## 当前候选：INC-GEN-022 v0.6.68本地热修（2026-09-01）
+## 当前候选：INC-GEN-023 v0.6.69服务端终态解绑（2026-09-01）
 
-v0.6.67已发布到生产并保持健康，但真实整组点击前发现客户端/服务端`terminal-detach` application identity不一致，合法旧任务解绑被HTTP 400拒绝。整组点击0/1、Provider POST0/11、费用0。v0.6.68本地候选已统一十个正式绑定字段并增加跨层回归，safe m22+m85 `71/71 PASS`；用户已确认并允许发布，当前发布进行中。权威断点见[`spec/INC_GEN_022_CHECKPOINT.md`](spec/INC_GEN_022_CHECKPOINT.md)。
+v0.6.68已发布到生产并保持健康；原失败任务已无费用收口为cancelled，但浏览器本地checkpoint/lease仍使客户端解绑持续defer。v0.6.69本地候选用受runtime lease/drain管理的独立terminal-only服务端sweep收口真正不可恢复的failed/cancelled精确绑定，严格按owner+Canvas allowlist运行；success、非终态、可恢复的accepted任务、非allowlist和不匹配绑定保持不变，且不会因空闲启动打开全局generation recovery。全部复审问题均已修复，m81 `42/42`、m85 `28/28`、m93 `7/7`、m38 `18/18`通过，第四轮独立复审`P0=0/P1=0/P2=0/GO`；用户已授权发布，现进入发布。整组点击0/1、Provider POST0/11、费用0。权威断点见[`spec/INC_GEN_023_CHECKPOINT.md`](spec/INC_GEN_023_CHECKPOINT.md)。
 
 ## 当前线上：INC-GEN-020 v0.6.66生产技术通过（2026-09-01，USER RECHECK）
 
