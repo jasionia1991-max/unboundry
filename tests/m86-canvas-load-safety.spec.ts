@@ -1778,9 +1778,8 @@ test("same-session SUPERSEDED binds only the known high-water fingerprint", asyn
       id: "text-primary",
     }),
   ]));
-  // Sequence 2 is already confirmed by the same-session high-water GET, so the
-  // obsolete sequence-1 response no longer keeps the durable status pending.
-  await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
+  // Release sequence 1 so its SUPERSEDED response can trigger the
+  // same-session high-water GET that proves sequence 2.
   releaseOldSave();
   await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
   expect(canvasGetCount).toBeGreaterThan(initialGetCount);

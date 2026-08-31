@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { openAppDatabase } from "./database";
 import {
+  assertModelReleaseRevisionIntegrity,
   modelContractsRequired,
   modelContractState,
 } from "./modelReleaseRevisionStore";
@@ -14,17 +15,11 @@ import {
   generationProviderAttemptCreatedAt,
 } from "./generationAttemptQueries";
 export { generationProviderAttemptCounts } from "./generationAttemptQueries";
-import {
-  cleanParameterSchema,
-  knownModelParameterSchema,
-  providerParameterSchema,
-  validateParameterSchemaConstraints,
-} from "../types/modelParameters";
 import { generationCapabilityRegistry } from "./generationCapabilityRegistry";
 import type { GenerationCapabilityKind } from "../types/nodeVocabulary";
 import type { ModelReleaseRevision } from "../types/modelReleaseRevisions";
 import type { ProviderProtocol } from "../types/relayProtocols";
-import { assertActiveModelContractHealth } from "./activeModelContractHealth";
+import { resolveActiveModelContract } from "./activeModelContractHealth";
 
 export const generationTaskKinds: readonly GenerationCapabilityKind[] =
   generationCapabilityRegistry.kinds();
@@ -351,6 +346,28 @@ function stableValue(value: unknown): unknown {
   return value;
 }
 
+function parsePersistedRecordJson(
+  value: string,
+  label: "任务冻结模型合同" | "任务参数",
+): Record<string, unknown> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value) as unknown;
+  } catch {
+    throw new GenerationProviderAttemptBlockedError(
+      "PROVIDER_CONFIGURATION_MISMATCH",
+      `${label}无法验证，本次没有向模型平台提交`,
+    );
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new GenerationProviderAttemptBlockedError(
+      "PROVIDER_CONFIGURATION_MISMATCH",
+      `${label}无法验证，本次没有向模型平台提交`,
+    );
+  }
+  return parsed as Record<string, unknown>;
+}
+
 function canvasRetryBindings(
   nodesJson: string,
   canvasRevision: number,
@@ -668,6 +685,11 @@ function matchingRequestFingerprint(row: GenerationTaskRow, fingerprint: string)
 }
 
 function toTask(row: GenerationTaskRow): GenerationTask {
+  const modelConfiguration = parsePersistedRecordJson(
+    row.model_configuration,
+    "任务冻结模型合同",
+  );
+  const parameters = parsePersistedRecordJson(row.parameters, "任务参数");
   return {
     attempt: row.attempt,
     canvasId: row.canvas_id,
@@ -681,10 +703,10 @@ function toTask(row: GenerationTaskRow): GenerationTask {
     idempotencyKey: row.idempotency_key,
     kind: row.kind,
     model: row.model ?? undefined,
-    modelConfiguration: JSON.parse(row.model_configuration) as Record<string, unknown>,
+    modelConfiguration,
     nodeId: row.node_id,
     ownerId: row.owner_id ?? undefined,
-    parameters: JSON.parse(row.parameters) as Record<string, unknown>,
+    parameters,
     prompt: row.prompt,
     providerModelId: row.provider_model_id ?? undefined,
     providerProfileId: row.provider_profile_id ?? undefined,
@@ -903,9 +925,6 @@ export function createGenerationTaskStore(dataDirectory: string) {
     providerProfileId: string | null;
   }) {
     const binding = input.binding;
-    const releaseState = input.modelId
-      ? modelContractState(database, input.modelId)
-      : undefined;
     const suppliedRelease = input.modelConfiguration.modelReleaseRevision as
       | ModelReleaseRevision
       | undefined;
@@ -914,37 +933,6 @@ export function createGenerationTaskStore(dataDirectory: string) {
         "MODEL_UNAVAILABLE",
         "模型合同bootstrap尚未完成，未创建新的付费请求",
       );
-    }
-    {
-      const active = releaseState?.active;
-      if (!active) {
-        throw new GenerationProviderAttemptBlockedError(
-          "MODEL_UNAVAILABLE",
-          "该模型已停止接受新任务",
-        );
-      }
-      if (
-        active.document.runtime === "blocked" ||
-        active.document.evidence === "UNKNOWN"
-      ) {
-        throw new GenerationProviderAttemptBlockedError(
-          "MODEL_UNAVAILABLE",
-          "该模型缺少可验证的执行合同，已停止接受新任务",
-        );
-      }
-      if (
-        !suppliedRelease ||
-        suppliedRelease.revisionId !== active.revisionId ||
-        suppliedRelease.hash !== active.hash ||
-        suppliedRelease.document.providerProfileId !== active.document.providerProfileId ||
-        suppliedRelease.document.providerModelId !== active.document.providerModelId ||
-        suppliedRelease.document.connectorVersion !== active.document.connectorVersion
-      ) {
-        throw new GenerationProviderAttemptBlockedError(
-          "PROVIDER_CONFIGURATION_MISMATCH",
-          "模型合同已变化，未创建新的付费请求",
-        );
-      }
     }
     const suppliedVersion = input.modelConfiguration
       .providerConfigurationVersion;
@@ -963,62 +951,57 @@ export function createGenerationTaskStore(dataDirectory: string) {
         "当前模型绑定不可用于真实生成",
       );
     }
-    const fallbackSchema = knownModelParameterSchema({
-      capability: binding.capability,
-      providerDriver: binding.provider_driver,
-      providerModelId: binding.provider_model_id,
-    });
-    const constraints = providerParameterSchema({
-      capability: binding.capability,
-      providerDriver: binding.provider_driver,
-      providerModelId: binding.provider_model_id,
-    });
-    let authoritativeParameterSchema: ReturnType<
-      typeof knownModelParameterSchema
-    >;
+    let suppliedReleaseIntegrityValid = false;
     try {
-      const stored = JSON.parse(binding.default_parameters) as unknown;
-      authoritativeParameterSchema =
-        stored &&
-          typeof stored === "object" &&
-          !Array.isArray(stored) &&
-          Object.keys(stored).length === 0
-          ? fallbackSchema
-          : validateParameterSchemaConstraints(
-              cleanParameterSchema(
-                binding.capability,
-                stored,
-                fallbackSchema,
-              ),
-              constraints,
-            );
-    } catch {
-      if (!constraints) {
-        throw new GenerationProviderAttemptBlockedError(
-          "PROVIDER_CONFIGURATION_MISMATCH",
-          "模型参数规则无效，未创建新的付费请求",
-        );
+      if (suppliedRelease) {
+        assertModelReleaseRevisionIntegrity(suppliedRelease);
+        suppliedReleaseIntegrityValid = true;
       }
-      authoritativeParameterSchema = fallbackSchema;
-    }
-    try {
-      assertActiveModelContractHealth({
-        capability: binding.capability,
-        costCurrency: binding.cost_currency,
-        modelId: input.modelId!,
-        parameterSchema: authoritativeParameterSchema,
-        providerDriver: binding.provider_driver,
-        providerModelId: binding.provider_model_id,
-        providerProfileId: binding.provider_profile_id,
-        providerProtocol: binding.provider_protocol as ProviderProtocol,
-        store: database,
-      });
     } catch {
+      suppliedReleaseIntegrityValid = false;
+    }
+    if (!suppliedReleaseIntegrityValid || !suppliedRelease) {
+      throw new GenerationProviderAttemptBlockedError(
+        "PROVIDER_CONFIGURATION_MISMATCH",
+        "模型合同快照无效，未创建新的付费请求",
+      );
+    }
+    const contractResolution = resolveActiveModelContract({
+      capability: binding.capability,
+      costCurrency: binding.cost_currency,
+      defaultParameters: binding.default_parameters,
+      modelId: input.modelId!,
+      providerDriver: binding.provider_driver,
+      providerModelId: binding.provider_model_id,
+      providerProfileId: binding.provider_profile_id,
+      providerProtocol: binding.provider_protocol as ProviderProtocol,
+      store: database,
+    });
+    const active = contractResolution.active;
+    const canonical = contractResolution.canonical;
+    if (
+      contractResolution.health.state !== "healthy" || !active || !canonical
+    ) {
       throw new GenerationProviderAttemptBlockedError(
         "MODEL_UNAVAILABLE",
         "模型active immutable contract不完整，未创建新的付费请求",
       );
     }
+    if (
+      suppliedRelease.revisionId !== active.revisionId ||
+      suppliedRelease.hash !== active.hash ||
+      suppliedRelease.document.modelId !== active.document.modelId ||
+      suppliedRelease.document.providerProfileId !== active.document.providerProfileId ||
+      suppliedRelease.document.providerModelId !== active.document.providerModelId ||
+      suppliedRelease.document.providerProtocol !== active.document.providerProtocol ||
+      suppliedRelease.document.connectorVersion !== active.document.connectorVersion
+    ) {
+      throw new GenerationProviderAttemptBlockedError(
+        "PROVIDER_CONFIGURATION_MISMATCH",
+        "模型合同已变化，未创建新的付费请求",
+      );
+    }
+    const authoritativeParameterSchema = canonical.capabilitySchema;
     if (
       !Number.isSafeInteger(suppliedVersion) ||
       Number(suppliedVersion) < 1 ||
@@ -1254,6 +1237,21 @@ export function createGenerationTaskStore(dataDirectory: string) {
     },
     close() {
       database.close();
+    },
+
+    /**
+     * Minimal owner-scoped metadata used only when strict task decoding has
+     * already failed. It never parses or returns the persisted JSON payload.
+     */
+    persistedTaskRetryReadErrorCode(id: string, ownerId?: string) {
+      if (!identifierPattern.test(id) || id.length > 200) return undefined;
+      const row = (ownerId === undefined
+        ? readById.get(id)
+        : readByIdAndOwner.get(id, ownerId)) as GenerationTaskRow | undefined;
+      if (!row) return undefined;
+      return row.provider_task_id
+        ? "RETRY_BINDING_STALE" as const
+        : "PROVIDER_CONFIGURATION_MISMATCH" as const;
     },
 
     /**
@@ -2355,15 +2353,34 @@ export function createGenerationTaskStore(dataDirectory: string) {
         }
         let currentModelConfiguration: Record<string, unknown>;
         try {
-          const parsed = JSON.parse(current.model_configuration) as unknown;
-          if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-            throw new Error("invalid task model configuration");
-          }
-          currentModelConfiguration = parsed as Record<string, unknown>;
+          currentModelConfiguration = parsePersistedRecordJson(
+            current.model_configuration,
+            "任务冻结模型合同",
+          );
         } catch {
+          if (input.mode === "new-paid-attempt") {
+            throw new GenerationProviderAttemptBlockedError(
+              "PROVIDER_CONFIGURATION_MISMATCH",
+              "任务冻结模型合同无法验证，未创建新的付费重试",
+            );
+          }
           throw new GenerationTaskRetryFenceError(
             "RETRY_BINDING_STALE",
             "任务冻结模型合同无法验证，不能继续旧任务",
+          );
+        }
+        try {
+          parsePersistedRecordJson(current.parameters, "任务参数");
+        } catch {
+          if (input.mode === "new-paid-attempt") {
+            throw new GenerationProviderAttemptBlockedError(
+              "PROVIDER_CONFIGURATION_MISMATCH",
+              "任务参数无法验证，未创建新的付费重试",
+            );
+          }
+          throw new GenerationTaskRetryFenceError(
+            "RETRY_BINDING_STALE",
+            "任务参数无法验证，不能继续旧任务",
           );
         }
         const currentRelease = currentModelConfiguration.modelReleaseRevision;
@@ -2688,6 +2705,11 @@ export function createGenerationTaskStore(dataDirectory: string) {
             "本次执行已经进入过模型平台，为避免重复扣费没有再次提交",
           );
         }
+        const taskModelConfiguration = parsePersistedRecordJson(
+          current.model_configuration,
+          "任务冻结模型合同",
+        );
+        parsePersistedRecordJson(current.parameters, "任务参数");
         let recoveryAt = Number.NEGATIVE_INFINITY;
         const fixtureOwner = !current.owner_id || current.owner_id === "__test__";
         if (!fixtureOwner) {
@@ -2740,9 +2762,6 @@ export function createGenerationTaskStore(dataDirectory: string) {
             );
           }
 
-          const taskModelConfiguration = JSON.parse(
-            current.model_configuration,
-          ) as Record<string, unknown>;
           assertAuthoritativeProviderSnapshot({
             binding: authoritativeModelBinding(current.model),
             kind: current.kind,
@@ -3339,6 +3358,11 @@ export function createGenerationTaskStore(dataDirectory: string) {
         if (current.state !== "recovering") {
           throw new GenerationTaskTransitionError(current.state, "running");
         }
+        parsePersistedRecordJson(
+          current.model_configuration,
+          "任务冻结模型合同",
+        );
+        parsePersistedRecordJson(current.parameters, "任务参数");
         if (current.provider_task_id) {
           const paidAttempt = providerAttemptForTask(current);
           if (

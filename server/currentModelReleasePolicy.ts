@@ -284,6 +284,8 @@ export function assertExecutionVersionTransition(
   document: ModelReleaseDocument,
   options: Readonly<{
     equivalentRuntimeSchemaTransition?:
+      | "exact-legacy-doubao-seed-v1"
+      | "exact-legacy-doubao-tts-v1"
       | "exact-legacy-gpt-image-2-v1"
       | "exact-legacy-grok-imagine-video-1.5-v1"
       | "exact-legacy-grok-video-3-v2";
@@ -331,11 +333,44 @@ export function assertExecutionVersionTransition(
     grokImagineVideo15SchemaState(document.capabilitySchema) === "current" &&
     executionRuntimeSignature(predecessor.document) ===
       executionRuntimeSignature(document);
+  const approvedIncGen018InputPolicyTransition = (() => {
+    const expectedProviderModelId =
+      options.equivalentRuntimeSchemaTransition ===
+          "exact-legacy-doubao-seed-v1"
+        ? "doubao-seed-2-0-lite-260428"
+        : options.equivalentRuntimeSchemaTransition ===
+            "exact-legacy-doubao-tts-v1"
+        ? "doubao-tts-2.0"
+        : undefined;
+    if (
+      !expectedProviderModelId ||
+      predecessor.document.providerModelId !== expectedProviderModelId ||
+      document.providerModelId !== expectedProviderModelId ||
+      predecessor.document.executionContract.version !== 1 ||
+      document.executionContract.version !== 1 ||
+      executionRuntimeSignature(predecessor.document) !==
+        executionRuntimeSignature(document)
+    ) return false;
+    const beforeSchema = structuredClone(
+      predecessor.document.capabilitySchema,
+    ) as Record<string, unknown>;
+    const afterSchema = structuredClone(
+      document.capabilitySchema,
+    ) as Record<string, unknown>;
+    const addsMissingInputPolicy = beforeSchema.inputPolicy === undefined &&
+      afterSchema.inputPolicy !== undefined;
+    if (!addsMissingInputPolicy) return false;
+    delete beforeSchema.inputPolicy;
+    delete afterSchema.inputPolicy;
+    return JSON.stringify(stable(beforeSchema)) ===
+      JSON.stringify(stable(afterSchema));
+  })();
   if (
     changed &&
     !approvedGrokSchemaTransition &&
     !approvedGptImageSchemaTransition &&
     !approvedGrokImagineSchemaTransition &&
+    !approvedIncGen018InputPolicyTransition &&
     document.executionContract.version <=
       predecessor.document.executionContract.version
   ) {

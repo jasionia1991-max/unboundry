@@ -1,5 +1,35 @@
 # Unboundry 绿地复刻当前任务
 
+## INC-GEN-018 模型合同健康边界与旧Revision精确修复（GOAL ACTIVE / R7 COMPLETE / R8 READY）
+
+- [x] 记录生产实页回归：用户开启真实生成后，整组预检持续阻断7个节点并误报“管理员已关闭真实生成”；强制刷新和重新打开无效。
+- [x] 只读证明真实安全状态为`globalEnabled=1/emergencyStop=0`，不是用户操作或浏览器缓存问题。
+- [x] 只读证明生产10个published模型中8个available；Doubao Seed与Doubao TTS 2.0旧active immutable revision缺当前effective `inputPolicy`，合同健康失败。
+- [x] 定位双重根因：semantic upgrade集合遗漏Seed/TTS；`modelCatalog`把单模型`contractHealthy`折叠进全局`globalEnabled`，`modelAvailability`因此返回伪`GLOBAL_GENERATION_DISABLED`。
+- [x] 确认费用安全边界：本轮点击未创建任务，计数保持tasks1026/attempts1037/active0，新增Provider POST、OSS写和费用均0。
+- [x] 完成独立只读架构复核；结论为“语义合同漂移 + 错误边界耦合”，不是整体模块化失效。
+- [x] 冻结INC-GEN-018 Plan、Checkpoint和40项Matrix；明确事实、方案、未验证项、R0～R8、完整Review和NO-GO门。
+- [x] 落地新Session一次性Goal提示词；内含代码/测试/依赖/commit/GitHub/版本/迁移/发布权限、v0.6.64确定性版本选择、零Provider/OSS/费用硬上限、完整Review与防失忆协议。
+- [x] Goal提示词独立只读终审最终`P0=0/P1=0/P2=0/GO`；权威24项恢复顺序、压缩全量重读、版本证据先写Checkpoint和版本/上线双授权字段均已复核关闭。
+- [x] 用户已在本Session完整发送一次性Goal，Goal active；按正文一次性权限连续实施。
+- [x] R0只读冻结Git/生产/10个published logical models与10个exact identities、Seed/TTS完整revision/hash/schema/引用计数和任务费用基线。脱敏快照SHA=`fa6a498a…0457`；仅两个目标缺`$.inputPolicy`，其余8个active/expected一致。
+- [x] m32预期红确认：122 specs/1126 tests中执行1 spec/7 tests，`6 PASS / 1 expected FAIL`；enabled平台+contract out-of-sync当前仍返回available/null。source/snapshot=`07fae080…f8ebe`、4173 unchanged、Provider POST/OSS/费用0。库存与coverage target前置fail-closed尝试均保留且未到业务测试。
+- [x] R1拆分平台安全与模型合同健康：新增3个模型级稳定错误码，catalog及generation preflight/admission不再把合同状态折叠进globalEnabled；原历史revision与Provider边界继续fail-closed。TypeScript exit0；safe m32 `7/7 PASS`，source/snapshot=`4a73de46…26a14`、4173 unchanged、Provider/OSS/费用0。
+- [x] R2 historical incident与恢复：既有m102曾读取受保护INC-GEN-017快照并触发硬停止；该事件永久保留。后续已改为独立脱敏10-model production-shaped fixture，safe runner与m102均排除两份受保护JSON；不删除、不覆盖、不声称“从未读取”。
+- [x] R2 canonical/planner定向通过：统一effective schema/fingerprint，动态枚举10/10 published/exact identities，只有Seed/TTS为批准transition、其余8个none，任一集合漂移/near-miss/未知差异写前阻断。架构边界通过，TypeScript exit0，m5 `31/31 PASS`，m102 `30/30 PASS`，source/snapshot=`60c5e7ee…18008`，库存1135、异常0、4173 unchanged；Provider/OSS/费用0。
+- [x] R3 exact immutable迁移定向通过：只接受R0完整from identity；Seed/TTS新建revision并保留旧history/document/compiler与原audit；单事务覆盖active CAS、row activation、revision/audit和最终10/10健康。第二目标与最终健康故障均全回滚；独立干净兄弟副本repeat为10 none、升级0、mutation及DB字节不变。最新m102 `30/30 PASS`、source/snapshot=`d89e48c8…235af0`、异常0、4173 unchanged。
+- [x] R4最小直接依赖验证通过：10/10模型目录健康、目标7节点整组预检零阻断且task/attempt不变；已有history bootstrap恢复strict fail-closed，exact registry补齐Mureka/Seedance v2身份。最终m102 `30/30`、m12 `6/6`、m38 `16/16`，并复用m22 `44/44`、m32 `7/7`、m94 `4/4`；异常0、4173 unchanged、Provider/OSS/费用0。
+- [x] R5真实冻结生产副本演练通过：新source/restore DB SHA=`8862f4ed…8dd0f`且schema/integrity/FK/quiet/counts一致；主dry-run只选Seed/TTS，apply后10/10健康；31表diff仅两目标model row、2条追加audit及sequence变化。独立repeat为10 none、升级0，DB前后同SHA=`249386bd…b60da`。生产仍v0.6.63、audit309与全部业务计数不变，Provider/OSS/费用0。
+- [x] R6主线程逐文件/逐diff/完整调用链/10个published模型、11个registry identities、10个数据库exact identities与全部Provider分支Review到`P0=0/P1=0`；真实P1已定向关闭，残余P2已登记。
+- [x] 冻结当前候选并由既有独立上下文完成同分母终审：37/37文件、309/309 tracked hunks、10/10 published、11/11 registry identities、10/10数据库exact identities和全部Provider分支；`P0=0/P1=0/P2=7/GO`，受保护文件访问0。
+- [x] R7唯一正式safe full已消费并永久记录原始`1131/1135`与4失败；只运行最小失败子集后4项全部关闭，最终m4=`6/6`，5-hunk独立复审`P0=0/P1=0/P2=0/GO`，未重复formal full。
+- [x] R7隔离浏览器AUTO_PASS：10/10模型健康与release identity、7/7节点选择、10卡admin UI、global/emergency优先级、Seed malformed单模型`MODEL_CONTRACT_INVALID`及精确恢复全部通过；requests 49、blocked/non-loopback 0，tasks/attempts 0/0、paid0，owned runtime/temp已清理。
+- [x] R8版本占用门选择v0.6.64：local/remote tag与GitHub Release均free，package/生产/main未占用；版本safe m81=`41/41 PASS`，治理m38首轮`15/16`只发现候选版本文档未同步，精确修正后`16/16 PASS`。入GitHub前增量Review `P0=0/P1=0/P2=0/GO`；candidate commit=`790db916…ab618`。
+- [x] R8 GitHub初始head：PR #134 open/mergeable，initial head=`d60a59a…56bdd`，Quality run/job=`33365723417/99405850023`以35秒通过；本治理回执push后必须再过final-head CI才可合并。
+- [ ] R8版本占用、GitHub/CI、不可变tag/Release、生产迁移/rollback/forward与零付费生产验收；新Session Goal已一次性明确授予对应权限，R7门已闭合。
+
+权威方案：`spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_PLAN_2026-08-30.md`；矩阵：`spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_ACCEPTANCE_MATRIX_2026-08-30.md`；断点：`spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_CHECKPOINT.md`；新Session提示词：`spec/INC_GEN_018_ONE_SHOT_GOAL_PROMPT_2026-08-31.md`。
+
 ## INC-GEN-017 工作流自动自愈与模型合同隔离（FORMAL SAFE FULL CONSUMED / V0.6.63 PRODUCTION TECHNICAL PASS / REAL PROVIDER PASS / USER_RECHECK）
 
 - [x] v0.6.63生产收口：PR #132最终head `b2d13b8` CI run/job=`33315850731/99269041618`以32秒通过，merge=`55ef9557c89a2d1bd945b32028c12baad49de9b3`后的main CI run/job=`33315885502/99269139518`以28秒通过；annotated tag object=`bbdbe99cab9ec3da84451df0a57a1b1348ee2308`与GitHub Release不可变。精确tag archive SHA=`9ef0617338578b6ac7417f0f9eb6350210180e8a398886379edd3ea96a8aa489`，fresh build inventory6036/SHA=`19e2c23c3f3506641e367503910deded8f67b497c48ab250f44d58aefaa40a95`、dist33通过。冻结目录`v0.6.63-cutover-frozen.7P2qXa` source/restore各366文件，双清单=`33430ea638250025e600c20578e4440ed32e8635195060e1de6590f5b1bd3d9d`、双DB SHA=`7186face89c1ddc6791c9afbc450af2d89038ecc453d9eda7da604dff20a4400`，schema/integrity/FK/计数一致。生产release=`/opt/unboundry/releases/v0.6.63-inc-gen-017-20260830`；成对rollback到v0.6.62及forward到v0.6.63均实际健康，退出trap的额外启停触发systemd `start-limit-hit`后以`reset-failed`恢复，最终current/API=0.6.63、ready active/schema41、service active/enabled、NRestarts0、journal warning0。33/33回环+公网静态字节通过；`2026-08-30T14:18:15Z–14:19:28Z` 7次稳定采样中tasks1026/attempts1037/active0/unknownBilling0/media954/publications545/canvases76零漂移。结论`PRODUCTION_V0_6_63_TECHNICAL_PASS / REAL_PROVIDER_PASS / USER_RECHECK`；Provider不再POST。

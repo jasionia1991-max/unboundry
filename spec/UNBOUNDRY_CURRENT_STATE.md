@@ -1,17 +1,50 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网为v0.6.63/schema41，后置2项P1、独立Review、GitHub/CI、不可变tag/Release、fresh build、冻结恢复、原子切换、成对rollback/forward、33/33静态字节、数据完整性及72秒稳定门均已通过。当前严格为`PRODUCTION_V0_6_63_TECHNICAL_PASS / REAL_PROVIDER_PASS / USER_RECHECK`；额外Provider POST已关闭，用户确认前不得写`USER_PASS`。
+> **状态分层**：现网仍为v0.6.63/schema41，INC-GEN-017发布时的技术门与真实Seedance结果保留为历史时点事实；INC-GEN-018 R1～R5定向实现/演练与R6全量Review均完成，独立结论`P0=0/P1=0/P2=7/GO`。R7唯一正式safe full原始`1131/1135`和4失败永久保留，4项已用最小直接复验关闭，5-hunk复审`P0=0/P1=0/P2=0/GO`，隔离浏览器AUTO_PASS；不得改写成正式full全绿。v0.6.64已通过占用门和版本/治理定向验证，本地candidate commit=`790db916…ab618`，尚未push。既有m102误读受保护快照的历史事件永久保留，当前runner/fixture已隔离该文件。当前严格为`INC_GEN_018_GOAL_ACTIVE / R0_COMPLETE / R1_TARGETED_PASS / R2_TARGETED_PASS / R3_TARGETED_PASS / R4_TARGETED_PASS / R5_REHEARSAL_PASS / R6_REVIEW_GO / R7_COMPLETE / R8_LOCAL_CANDIDATE / PRODUCTION_V0_6_63_REGRESSION_OPEN / NO_NEW_PROVIDER_POST / USER_RECHECK`。
 
-更新日期：2026-08-30
+更新日期：2026-08-31
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.63**
-本地候选代码版本：**v0.6.63**
+当前代码包版本：**v0.6.64**
+本地候选代码版本：**v0.6.64**
 当前生产部署版本：**v0.6.63**
 本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_63_USER_RECHECK`
-当前计划标记：`INC_GEN_017_GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / PRODUCTION_V0_6_63_TECHNICAL_PASS / REAL_PROVIDER_PASS / USER_RECHECK`
+当前计划标记：`INC_GEN_018_GOAL_ACTIVE / R0_COMPLETE / R1_TARGETED_PASS / R2_TARGETED_PASS / R3_TARGETED_PASS / R4_TARGETED_PASS / R5_REHEARSAL_PASS / R6_REVIEW_GO / R7_COMPLETE / R8_LOCAL_CANDIDATE / USER_RECHECK`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`INC_GEN_017_PRODUCTION_V0_6_63_TECHNICAL_PASS / REAL_PROVIDER_PASS / USER_RECHECK`
+当前发布门：`INC_GEN_018_R7_COMPLETE / R8_VERSION_SELECTED_V0_6_64 / PRODUCTION_V0_6_63_REGRESSION_OPEN / USER_RECHECK`
+
+## INC-GEN-018 当前区块（2026-08-31）
+
+- 用户已在本Session完整发送一次性Goal并启动连续实施；分支`codex/inc-gen-018-contract-health-boundary-2026-08-31`，candidate HEAD=`790db916…ab618`、origin-main=`d3e213da…55ab2`；已证明v0.6.64未占用并选择为候选，package0.6.64/schema41，生产仍v0.6.63/schema41。
+- R0生产只读冻结完成：v0.6.63/schema41、globalEnabled1/emergencyStop0、tasks1026/attempts1037/active0/current-unsettled-unknown0，10/10 published logical models与10/10 exact identities全部入脱敏快照，SHA=`fa6a498a…0457`。仅Seed/TTS缺`$.inputPolicy`，其余8个active/expected schema一致；两份受保护JSON未读取或触碰。
+- availability预期红完成：safe m32执行7 tests，6通过、唯一预期失败证明enabled平台+out-of-sync合同仍返回available/null；source/snapshot=`07fae080…f8ebe`，4173 unchanged，suite cleaned。测试库存已由1125更新到1126并同步runner coverage target；前置fail-closed尝试如实保留。
+- R0期间真实Provider POST0、OSS写0、新费用0；正式full、迁移、GitHub、版本/tag/Release和生产写仍未执行。下一步仅进入R1 availability状态解耦。
+- R1已完成：结构化合同健康分为healthy/out-of-sync/migration-required/invalid，availability新增3个稳定模型级码；catalog与generation preflight/admission保留真实globalEnabled并独立传合同健康。TypeScript exit0，safe m32 `7/7 PASS`、source/snapshot=`4a73de46…26a14`、4173 unchanged；Provider/OSS/费用0。下一步R2 canonical resolver与全published planner。
+- R2定向诊断硬停止：m102三轮结果均为`23/24 PASS`，最后source/snapshot=`45ed56d9…6772a`、4173 unchanged。复查spec确认`publishedModelSnapshot()`读取受保护`spec/INC_GEN_017_R0_PUBLISHED_MODEL_SNAPSHOT_2026-08-28.json`，且本轮safe runner已执行到使用该fixture的测试。文件未修改/暂存/移动/删除且正文未输出，但Goal的禁止读取边界已违反，因此R2/R3不标PASS并停止后续测试、迁移、formal full、GitHub与生产。Provider POST/OSS写/费用仍0。
+- 上一条是历史硬停止时点，不删除也不改写。后续当前实现已去除m102对受保护快照的依赖并新增独立脱敏10-model active-contract fixture；safe runner工作文件集合与m102均排除两份受保护JSON。当前 containment 通过，但不能把历史事件表述为“从未读取”。
+- R2已完成：canonical resolver统一catalog/generation/bootstrap/upgrade的effective schema与fingerprint；planner动态枚举10/10 published/exact identities，只有Seed/TTS得到批准transition，其余8个none，集合漂移、near-miss与未知差异全部写前阻断。11条精确只读跨域SQL边界已获架构预检通过，runner库存精确同步到1135。
+- R2最终最小定向证据：TypeScript `--noEmit` exit0；safe m5 `31/31 PASS`；safe m102 `30/30 PASS`，失败/跳过/重试/reportErrors均0，source/snapshot=`60c5e7ee…18008`，4173 unchanged、suite cleaned。正式full、冻结生产副本、Review、GitHub与生产均未执行；Provider POST/OSS写/新费用继续为0。下一步仅进入R3。
+- R3已完成：仅Seed/TTS exact from identity允许迁移；外层单事务完成active CAS、新immutable revision、published row activation、追加审计和最终10/10健康，旧history/document/compiler/audit前缀保持。第二目标及最终健康故障注入均全回滚；独立干净兄弟副本repeat为10 none、升级0、mutation/DB bytes不变。
+- R3最新最小定向证据：TypeScript exit0、diff-check通过；safe m102 `30/30 PASS`、异常0、source/snapshot=`d89e48c8…235af0`、4173 unchanged、suite cleaned。正式full、真实冻结生产副本、Review、GitHub及生产均未执行；Provider POST/OSS写/新费用继续为0。下一步仅进入R4。
+- R4已完成：10模型代表性catalog为10/10健康，目标7节点整组模型选择预检零阻断且task/attempt计数不变；已有immutable history的bootstrap恢复strict persisted-schema校验，exact registry明确Mureka/Seedance/Grok Video 3为contract v2、其余7个为v1。最终TypeScript/diff-check通过，m102 `30/30`与m12 `6/6`的source/snapshot=`23a006b7…0eae9`，m38 `16/16`=`9b86a69f…f824b`；同阶段m22 `44/44`、m32 `7/7`、m94 `4/4`证据仍有效。正式full、冻结生产副本、Review、GitHub及生产均未执行；Provider POST/OSS写/新费用继续为0。下一步仅进入R5。
+- R5冻结生产数据库副本演练已完成：服务器新source/restore位于`v0.6.63-inc-gen-018-r5-frozen.ngKnVU`，双DB SHA=`8862f4ed…8dd0f`、manifest=`e8aef175…16faa`，schema41/quick/integrity/FK/quiet/counts一致。主dry-run为8 none/仅Seed+TTS 2 publish；apply后10/10 exact healthy。31表全字段hash比较仅`model_profiles/admin_audit_events/sqlite_sequence`变化，两目标只新增`inputPolicy`与更新时间，旧309条audit前缀不变并只追加2条脱敏publish audit，其余28表及全部业务计数不变。独立repeat 10 none、升级0，DB前后同SHA=`249386bd…b60da`。现网current/service与生产audit309/tasks1026/attempts1037等均未变化；Provider/OSS/费用0。
+- R6主线程与独立全量Review均完成：冻结身份HEAD=`d3e213da…55ab2`、30 tracked+7 untracked、309 tracked hunks，tracked diff SHA=`d522e201…10fa5`、候选manifest=`6d0e2792…65382`。独立逐文件/逐hunk/完整链覆盖10/10 published、11/11 registry identity、10/10数据库exact identity和全部Provider/protocol/adapter分支；结论`P0=0/P1=0/P2=7/GO`、受保护文件访问0。`currentModelReleasePolicy`清晰化后的直接依赖m102 `30/30 PASS`，source/snapshot=`bb6b5955…fe37`。
+- 上一条`d522…/6d0e…`精确标识独立产品终审输入；R6 GO后8份docs-only同步输入为tracked diff=`f3e1b85c…e25cb`、manifest=`5ec20647…66c8a`，独立delta审查8/8后要求同步Checkpoint顶端状态并区分两层hash，现已关闭。Checkpoint自包含hash不回写自身；R7正式full前必须只读重算当前完整候选身份，禁止误用旧hash。
+- R6的7项P2已登记且不扩大为当前P1：bootstrap缺全模型外层事务；结构有效但不完整v2的语义默认继承；retry helper兼容fallback；CLI attestation path TOCTOU；post-COMMIT `toTask`与历史裸`JSON.parse`一致性；DELETE post-read owner scope；admin contract GET损坏schema错误映射。它们均不绕过Provider边界。正式full、GitHub、版本/tag/Release和生产仍未执行；Provider POST/OSS写/费用0。
+- R7唯一正式safe full已执行且绝不重跑：原始`1131/1135`、4 failures、source/snapshot=`13d932f3…54ad99`、4173 unchanged；m27/m40/m86在四失败最小子集通过，m4最终单spec=`6/6 PASS`。4个测试文件/5 hunks独立复审SHA=`e3cf5d07…530c2`，`P0=0/P1=0/P2=0/GO`。
+- R7隔离浏览器AUTO_PASS：10/10 models healthy、10/10 releaseRevisionId、7/7节点模型可选择、10卡admin UI；API真实验证global关闭、emergency优先、Seed malformed只返回模型级`MODEL_CONTRACT_INVALID`并可精确恢复。49 requests全部loopback/内联，blocked/non-loopback0，tasks/attempts0/0、paid0；owned server/端口/temp均已清理。
+- R8 v0.6.64候选已推送并创建PR #134；初始head=`d60a59a…56bdd`的Quality run/job=`33365723417/99405850023`以35秒通过。本治理回执形成新的final head后必须等待对应CI，尚未合并/tag/Release/生产。生产仍v0.6.63/schema41，Provider POST/OSS写/新费用0。
+
+- 用户重新开启真实生成后，目标整组预检持续提示7个不兼容节点，首个“提取服装事实”为“管理员已关闭真实生成”；强制刷新和重新打开页面无效。
+- 生产只读核对为`globalEnabled=1/emergencyStop=0`；登录态`/api/models` no-store请求返回10个published模型，其中8个available，Doubao Seed与Doubao TTS 2.0返回伪`GLOBAL_GENERATION_DISABLED`。
+- 根因已由生产状态、活动immutable revision和源码调用链共同确认：两个旧active revision缺当前effective `inputPolicy`；`semanticContractUpgradeProviderModelIds`遗漏Seed/TTS；`modelCatalog`又把`contractHealthy`折叠进全局`globalEnabled`，`modelAvailability`因而输出错误原因。
+- 本轮点击未创建任务，计数保持tasks1026/attempts1037/active0，最新任务早于本轮点击；Provider POST、OSS写和新费用均0。fail-closed避免了错误付费提交，但产品生成能力回归和错误提示均为真实缺陷。
+- 已冻结独立INC-GEN-018 Plan/Checkpoint/Matrix，要求平台安全与单模型合同健康分离、canonical contract单一真相、全published planner、Seed/TTS exact immutable revision迁移、冻结副本dry-run/apply/repeat和零Provider验收。
+- 新Session一次性Goal提示词已由用户在本Session完整发送并激活；其中v0.6.64或最低未占用patch、GitHub/迁移/生产发布权限已经进入本Goal一次性授权，Provider POST/OSS写/费用硬上限仍全部为0。
+- Goal提示词经独立只读终审关闭首轮1项路由P1与2项授权措辞P2，最终`P0=0/P1=0/P2=0/GO`；最终SHA-256=`6206be98…3ec7`，全部权威引用存在且diff-check通过。该GO只证明提示词完整，不是INC-GEN-018产品实现、测试、迁移或生产通过。
+- INC-GEN-017的`P0/P1/P2=0/GO`、v0.6.63发布技术通过及既有Seedance真实结果保留为历史时点事实；本事件不回写这些证据，只覆盖当前产品状态。
+
+权威文件：`spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_PLAN_2026-08-30.md`、`spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_CHECKPOINT.md`、`spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_ACCEPTANCE_MATRIX_2026-08-30.md`、`spec/INC_GEN_018_ONE_SHOT_GOAL_PROMPT_2026-08-31.md`。
 
 ## INC-GEN-017 当前区块（2026-08-28）
 

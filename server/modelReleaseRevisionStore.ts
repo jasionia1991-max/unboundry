@@ -518,6 +518,8 @@ export function upgradeModelContractRevision(
   input: Readonly<{
     document: ModelReleaseDocument;
     equivalentRuntimeSchemaTransition?:
+      | "exact-legacy-doubao-seed-v1"
+      | "exact-legacy-doubao-tts-v1"
       | "exact-legacy-gpt-image-2-v1"
       | "exact-legacy-grok-imagine-video-1.5-v1"
       | "exact-legacy-grok-video-3-v2";

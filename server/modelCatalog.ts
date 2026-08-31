@@ -28,7 +28,6 @@ import {
 } from "./providerProfiles";
 import {
   cleanParameterSchema,
-  inheritProviderSemanticSchemaDefaults,
   isCustomParameterField,
   knownModelParameterSchema,
   providerParameterSchema,
@@ -54,7 +53,11 @@ import {
   setModelContractRevoked,
   validateModelContractDocument,
 } from "./modelReleaseRevisionStore";
-import { modelReleaseDocumentForId } from "./modelReleaseDefaults";
+import {
+  CanonicalPublishedModelContractError,
+  canonicalPublishedCapabilitySchema,
+  resolveCanonicalPublishedModelContract,
+} from "./canonicalPublishedModelContract";
 import type {
   ModelReleaseDocument,
   ModelReleaseRevision,
@@ -68,7 +71,7 @@ import {
 } from "./modelContractTemplateCompatibility";
 import { assertRegisteredModelExecutionTotality } from
   "./modelExecutionRegistry";
-import { assertActiveModelContractHealth } from "./activeModelContractHealth";
+import { inspectActiveModelContractHealth } from "./activeModelContractHealth";
 
 type Capability = GenerationCapabilityKind;
 type ModelStatus = "disabled" | "draft" | "published";
@@ -105,30 +108,31 @@ type ModelSchemaRow = Pick<
 >;
 
 function parameterSchema(row: ModelSchemaRow): ModelParameterSchema {
-  const fallback = knownModelParameterSchema({
+  return canonicalPublishedCapabilitySchema({
     capability: row.capability,
+    defaultParameters: row.default_parameters,
     providerDriver: row.provider_driver,
     providerModelId: row.provider_model_id,
   });
-  const constraints = providerParameterSchema({
-    capability: row.capability,
-    providerDriver: row.provider_driver,
-    providerModelId: row.provider_model_id,
-  });
+}
+
+function readableParameterSchema(row: ModelSchemaRow) {
   try {
-    return validateParameterSchemaConstraints(
-      cleanParameterSchema(
-        row.capability,
-        inheritProviderSemanticSchemaDefaults(
-          JSON.parse(row.default_parameters),
-          constraints,
-        ),
-        fallback,
-      ),
-      constraints,
-    );
-  } catch {
-    return fallback;
+    return parameterSchema(row);
+  } catch (error) {
+    if (error instanceof CanonicalPublishedModelContractError) return undefined;
+    throw error;
+  }
+}
+
+function readableModelConfigurationRevision(
+  row: Parameters<typeof modelConfigurationRevision>[0],
+) {
+  try {
+    return modelConfigurationRevision(row);
+  } catch (error) {
+    if (error instanceof CanonicalPublishedModelContractError) return undefined;
+    throw error;
   }
 }
 
@@ -194,7 +198,8 @@ export function publishedTemplateModelContracts(
 
 function imageParameters(row: ModelRow) {
   if (row.capability !== "image") return undefined;
-  const schema = parameterSchema(row);
+  const schema = readableParameterSchema(row);
+  if (!schema) return undefined;
   const values = (key: string) => schema.fields
     .find((item) => item.key === key)
     ?.options.map((item) => String(item.value)) ?? [];
@@ -419,7 +424,7 @@ function adminModel(
       providerDriver: row.provider_driver,
       providerModelId: row.provider_model_id,
     }),
-    parameterSchema: parameterSchema(row),
+    parameterSchema: readableParameterSchema(row),
     providerConnected:
       row.provider_status === "enabled" &&
       availability.generationUnavailableReasonCode !==
@@ -589,6 +594,7 @@ export function publishedModelReleaseSeeds(store: DatabaseSync) {
     SELECT
       models.id,
       models.capability,
+      models.cost_currency,
       models.default_parameters,
       models.provider_model_id,
       models.provider_profile_id,
@@ -601,6 +607,7 @@ export function publishedModelReleaseSeeds(store: DatabaseSync) {
     ORDER BY models.id
   `).all() as Array<{
     capability: GenerationCapabilityKind;
+    cost_currency: "CNY" | "USD";
     default_parameters: string;
     id: string;
     provider_driver: string;
@@ -610,48 +617,56 @@ export function publishedModelReleaseSeeds(store: DatabaseSync) {
   }>;
 }
 
+export type ModelContractUpgradeSeedRow = Readonly<{
+  archived_at: string | null;
+  binding_enabled: number | null;
+  binding_is_default: number | null;
+  capability: GenerationCapabilityKind;
+  catalog_credential_revision: string | null;
+  cost_currency: "CNY" | "USD";
+  default_parameters: string;
+  display_name: string;
+  id: string;
+  max_cost_microunits: number;
+  provider_configuration_version: number | null;
+  provider_driver: string | null;
+  provider_key_status: string | null;
+  provider_model_id: string;
+  provider_profile_id: string;
+  provider_protocol: ProviderProtocol;
+  provider_status: string | null;
+  status: string;
+}>;
+
 export function modelContractUpgradeSeeds(store: DatabaseSync) {
   return store.prepare(`
     SELECT
       models.archived_at,
       models.capability,
+      models.cost_currency,
       models.default_parameters,
+      models.display_name,
       models.id,
+      models.max_cost_microunits,
       models.provider_model_id,
       models.provider_profile_id,
       models.provider_protocol,
       models.status,
+      bindings.enabled AS binding_enabled,
+      bindings.is_default AS binding_is_default,
       providers.catalog_credential_revision,
       providers.driver AS provider_driver,
       providers.key_status AS provider_key_status,
       providers.provider_configuration_version,
       providers.status AS provider_status
     FROM model_profiles AS models
-    JOIN provider_profiles AS providers
+    LEFT JOIN provider_profiles AS providers
       ON providers.id = models.provider_profile_id
-    WHERE
-      (models.status = 'published' AND models.archived_at IS NULL)
-      OR (
-        models.provider_model_id = 'kwvideo-v2' AND
-        models.status = 'disabled' AND
-        models.archived_at IS NOT NULL
-      )
+    LEFT JOIN node_model_bindings AS bindings
+      ON bindings.model_id = models.id AND bindings.node_type = models.capability
+    WHERE models.status = 'published' AND models.archived_at IS NULL
     ORDER BY models.id
-  `).all() as Array<{
-    archived_at: string | null;
-    capability: GenerationCapabilityKind;
-    default_parameters: string;
-    id: string;
-    provider_driver: string;
-    provider_key_status: string;
-    provider_model_id: string;
-    provider_profile_id: string;
-    provider_protocol: ProviderProtocol;
-    provider_configuration_version: number;
-    provider_status: string;
-    catalog_credential_revision: string | null;
-    status: string;
-  }>;
+  `).all() as ModelContractUpgradeSeedRow[];
 }
 
 function contractError(response: ServerResponse, error: unknown) {
@@ -790,11 +805,13 @@ export function publishedSeedanceValidationModel(
     mediaInputPolicy(candidate) === "seedance-2"
   );
   if (!row) return undefined;
+  const schema = readableParameterSchema(row);
+  if (!schema) return undefined;
   return {
-    configurationRevision: modelConfigurationRevision(row),
+    configurationRevision: readableModelConfigurationRevision(row)!,
     displayName: row.display_name,
     id: row.id,
-    parameterSchema: parameterSchema(row),
+    parameterSchema: schema,
   };
 }
 
@@ -833,22 +850,17 @@ async function modelRuntimeAvailability(rows: ModelRow[], ownerId: string) {
           providerState.reason === "account-credential-invalid"
         ),
       );
-      let contractHealthy = true;
-      try {
-        assertActiveModelContractHealth({
+      const modelContractHealth = inspectActiveModelContractHealth({
           capability: row.capability,
           costCurrency: row.cost_currency,
+          defaultParameters: row.default_parameters,
           modelId: row.id,
-          parameterSchema: parameterSchema(row),
           providerDriver: row.provider_driver,
           providerModelId: row.provider_model_id,
           providerProfileId: row.provider_profile_id,
           providerProtocol: row.provider_protocol,
           store: db(),
         });
-      } catch {
-        contractHealthy = false;
-      }
       return [
         row.id,
         evaluateModelRuntimeAvailability({
@@ -863,13 +875,14 @@ async function modelRuntimeAvailability(rows: ModelRow[], ownerId: string) {
         capability: row.capability,
         costCurrency: row.cost_currency,
         emergencyStop: safety.emergencyStop,
-        globalEnabled: safety.globalEnabled && contractHealthy,
+        globalEnabled: safety.globalEnabled,
         latestCapabilitySuccessAt:
           row.latest_capability_success_at ?? undefined,
         latestProviderAttemptAt:
           row.latest_provider_attempt_at ?? undefined,
         latestAuthFailureAt: row.latest_auth_failure_at ?? undefined,
         modelConfigurationUpdatedAt: row.model_configuration_updated_at,
+        modelContractHealth,
         providerDriver: row.provider_driver,
         providerModelId: row.provider_model_id,
         providerProtocol: row.provider_protocol,
@@ -1193,13 +1206,13 @@ export async function publicModelsApi(
     ),
     models: rows.map((row) => ({
       capability: row.capability,
-      configurationRevision: modelConfigurationRevision(row),
+      configurationRevision: readableModelConfigurationRevision(row),
       costCurrency: row.cost_currency,
       displayName: row.display_name,
       id: row.id,
       imageParameters: imageParameters(row),
       mediaInputPolicy: mediaInputPolicy(row),
-      parameterSchema: parameterSchema(row),
+      parameterSchema: readableParameterSchema(row),
       providerName: row.provider_display_name,
       providerProtocol: row.provider_protocol,
       releaseRevisionId: modelContractState(db(), row.id).active?.revisionId,
@@ -1253,15 +1266,17 @@ export async function adminModelsApi(
           savedDraft: state.draft?.validation?.preview,
         },
         state,
-        suggestedDocument: modelReleaseDocumentForId({
+        suggestedDocument: resolveCanonicalPublishedModelContract({
+          activeDocument: state.active?.document,
           capability: row.capability,
-          capabilitySchema: parameterSchema(row),
+          costCurrency: row.cost_currency,
+          defaultParameters: row.default_parameters,
           modelId: row.id,
           providerDriver: row.provider_driver,
           providerModelId: row.provider_model_id,
           providerProfileId: row.provider_profile_id,
           providerProtocol: row.provider_protocol,
-        }),
+        }).targetDocument,
       });
       return;
     }

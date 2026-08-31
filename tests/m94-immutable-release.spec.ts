@@ -331,6 +331,12 @@ test("safe runner owns the clean, repeat, and malicious synthetic release execut
     });
     expect(await entries(fixture.releases)).toEqual([]);
     const runner = await readFile(join(process.cwd(), "scripts/run-safe-tests.mjs"), "utf8");
+    expect(runner).toContain(
+      '"spec/INC_GEN_017_R0_PUBLISHED_MODEL_SNAPSHOT_2026-08-28.json"',
+    );
+    expect(runner).toContain(
+      '"spec/public-templates-director-split-revision.json"',
+    );
     expect(runner).toContain("immutable-release-builder");
     expect(runner).toContain('umask 0002; exec "$@"');
     expect(runner).toContain("Full snapshot bridge/final fixtures prove the release closure");

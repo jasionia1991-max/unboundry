@@ -2,12 +2,6 @@ import type { DatabaseSync } from "node:sqlite";
 import { selectActiveAdminAuditActorCommand } from "./accountTransactionCommands";
 import { inImmediateTransaction } from "./audit";
 import { openAppDatabase } from "./database";
-import {
-  cleanParameterSchema,
-  knownModelParameterSchema,
-  providerParameterSchema,
-  validateParameterSchemaConstraints,
-} from "../types/modelParameters";
 import type { ProviderProtocol } from "../types/relayProtocols";
 import type { GenerationCapabilityKind } from "../types/nodeVocabulary";
 import { auditPublicTemplateCompatibility } from "./templateCompatibility";
@@ -15,7 +9,8 @@ import { publishedTemplateGraphs } from "./templateContractQueries";
 import { parseTemplateGraph } from "./templateCatalog";
 import { publishedModelReleaseSeeds } from "./modelCatalog";
 import { publishedTemplateModelContracts } from "./modelCatalog";
-import { modelReleaseDocumentForId } from "./modelReleaseDefaults";
+import { resolveCanonicalPublishedModelContract } from
+  "./canonicalPublishedModelContract";
 import { assertRegisteredModelExecutionTotality } from
   "./modelExecutionRegistry";
 import {
@@ -29,6 +24,7 @@ import { executeTransactionScopedCommand } from "./transactionCommand";
 
 type Row = {
   capability: GenerationCapabilityKind;
+  cost_currency: "CNY" | "USD";
   default_parameters: string;
   id: string;
   provider_driver: string;
@@ -37,31 +33,12 @@ type Row = {
   provider_protocol: ProviderProtocol;
 };
 
-function schema(row: Row) {
-  const fallback = knownModelParameterSchema({
-    capability: row.capability,
-    providerDriver: row.provider_driver,
-    providerModelId: row.provider_model_id,
-  });
-  const constraints = providerParameterSchema({
-    capability: row.capability,
-    providerDriver: row.provider_driver,
-    providerModelId: row.provider_model_id,
-  });
-  return validateParameterSchemaConstraints(
-    cleanParameterSchema(
-      row.capability,
-      JSON.parse(row.default_parameters),
-      fallback,
-    ),
-    constraints,
-  );
-}
-
 function templateImpact(
   store: DatabaseSync,
   modelId: string,
-  proposedSchema: ReturnType<typeof schema>,
+  proposedSchema: ReturnType<
+    typeof resolveCanonicalPublishedModelContract
+  >["capabilitySchema"],
 ) {
   const rows = publishedTemplateGraphs(store);
   const templateIds: string[] = [];
@@ -103,15 +80,19 @@ export function bootstrapPublishedModelContracts(
   const published = [];
   const skipped = [];
   for (const row of rows) {
-    const document = modelReleaseDocumentForId({
+    const state = modelContractState(store, row.id);
+    const canonical = resolveCanonicalPublishedModelContract({
       capability: row.capability,
-      capabilitySchema: schema(row),
+      costCurrency: row.cost_currency,
+      defaultParameters: row.default_parameters,
+      inheritProviderSemanticDefaults: state.history.length === 0,
       modelId: row.id,
       providerDriver: row.provider_driver,
       providerModelId: row.provider_model_id,
       providerProfileId: row.provider_profile_id,
       providerProtocol: row.provider_protocol,
     });
+    const document = canonical.targetDocument;
     assertRegisteredModelExecutionTotality({
       capability: row.capability,
       capabilitySchema: document.capabilitySchema,
@@ -119,7 +100,6 @@ export function bootstrapPublishedModelContracts(
       providerModelId: row.provider_model_id,
       providerProtocol: row.provider_protocol,
     });
-    const state = modelContractState(store, row.id);
     if (state.history.length) {
       // Existing immutable history does not exempt the currently published
       // catalog row from the same executable-totality gate as a first

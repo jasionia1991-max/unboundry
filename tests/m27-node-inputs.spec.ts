@@ -545,7 +545,7 @@ test("manual terminal recovery and raw structural deletes await one durable Canv
   );
   expect(canvas).toContain("const nextEdges = applyEdgeChanges(structural, currentEdges)");
   expect(canvas).toContain("rollbackAfterDurableFailure?.(result)");
-  expect(canvas).toContain("node.data !== committedNode.data");
+  expect(canvas).toContain("rollbackCanvasNodeAdoption({");
 });
 
 test("administrator model schema keeps roles, required counts and switch policy", () => {

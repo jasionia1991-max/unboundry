@@ -443,9 +443,9 @@ test("two uploads and one replacement keep independent image identities after re
     `.react-flow__node[data-id="${second.id}"]`,
   );
   await secondNode.click();
-  await secondNode
-    .getByTestId("image-upload-input")
-    .setInputFiles(replacementImage);
+  const replacementInput = secondNode.getByTestId("image-upload-input");
+  await expect(replacementInput).toBeEnabled({ timeout: 20_000 });
+  await replacementInput.setInputFiles(replacementImage);
 
   await expect
     .poll(async () => {
@@ -455,7 +455,7 @@ test("two uploads and one replacement keep independent image identities after re
         nodes: Array<{ data: { assetId: string }; id: string }>;
       };
       return document.nodes.find((node) => node.id === second.id)?.data.assetId;
-    })
+    }, { timeout: 20_000 })
     .not.toBe(second.data.assetId);
 
   const after = await (

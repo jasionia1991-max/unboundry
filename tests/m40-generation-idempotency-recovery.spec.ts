@@ -1341,6 +1341,7 @@ test("retry reconciles one accepted task after its POST response is lost", async
     expect(order).toEqual([
       "save-gate",
       "exact-get",
+      "save-gate",
       "retry-post",
       "exact-get",
     ]);

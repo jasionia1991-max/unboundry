@@ -152,7 +152,10 @@ function resultPath(family: ReturnType<typeof connector>) {
   return "result_url" as const;
 }
 
-function specializedContract(seed: ModelReleaseSeed): ModelExecutionContract {
+function specializedContract(
+  seed: ModelReleaseSeed,
+  version: 1 | 2,
+): ModelExecutionContract {
   const family = connector(seed);
   return {
     connectorFamily: family,
@@ -168,7 +171,7 @@ function specializedContract(seed: ModelReleaseSeed): ModelExecutionContract {
       roles: [],
     }],
     result: { resultPath: resultPath(family) },
-    version: 1,
+    version,
   };
 }
 
@@ -193,7 +196,10 @@ export function defaultModelReleaseDocument(
     evidence: registered?.evidence ?? "UNKNOWN",
     executionContract: exactGk
       ? gkVideoExecutionContract(seed.capabilitySchema)
-      : specializedContract(seed),
+      : specializedContract(
+        seed,
+        registered?.executionContractVersion ?? 1,
+      ),
     modelId: seed.modelId,
     providerModelId: seed.providerModelId,
     providerProfileId: seed.providerProfileId,
