@@ -1,17 +1,29 @@
 # Unboundry 当前权威状态
 
+> **INC-GEN-021 当前状态（2026-09-01）**：现网仍是 v0.6.66，目标整组截图只证明文字成功、首个图片失败、其余下游未运行，因此当前不能写“可正常拿到全部素材”。v0.6.67候选已把图片/视频/音频统一改为 Provider 返回后先 durable staging，OSS/提交短暂失败由 30 秒后台 sweep 续传同一 publication，task attempt 和 Provider POST 不增加；终态旧文案也已修正。TypeScript、diff-check、safe m22 `44/44`、m38+m57+m88+m90 `94/94`、最终 m38+m88 `56/56`通过。用户已确认并允许发布v0.6.67；发布后另授权CNY300、最多11次POST、一次整组点击、不重试、结果不明只核对原任务。权威断点：`spec/INC_GEN_021_CHECKPOINT.md`。
+
 > **状态分层**：现网运行v0.6.66/schema41；INC-GEN-020已完成GitHub发布、冻结备份、原子切换、服务/数据/静态门和目标Canvas只读实页验收。原图片任务已由系统自动收口为`RESULT_SAVE_FAILED_NO_RETRY`，active0，没有新attempt或Provider POST。当前严格为`PRODUCTION_V0_6_66_TECHNICAL_PASS / ORIGINAL_TASK_AUTO_CLOSED / ZERO_NEW_PROVIDER_POST / USER_RECHECK`。
 
 更新日期：2026-09-01
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.66**
-本地候选代码版本：**v0.6.66**
+当前代码包版本：**v0.6.67**
+本地候选代码版本：**v0.6.67**
 当前生产部署版本：**v0.6.66**
 本地候选schema：**41**
-当前治理标记：`CURRENT_V0_6_66_USER_RECHECK`
-当前计划标记：`INC_GEN_020_PRODUCTION_TECHNICAL_PASS / USER_RECHECK`
+当前治理标记：`CURRENT_V0_6_67_USER_RECHECK`
+当前计划标记：`INC_GEN_021_V0_6_67_RELEASE_IN_PROGRESS / REAL_GROUP_AUTHORIZED_NOT_RUN`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`V0_6_66_RELEASE_AUTHORIZATION_CONSUMED / ZERO_NEW_PROVIDER_POST`
+当前发布门：`V0_6_67_RELEASE_AUTHORIZED / REAL_GROUP_CNY300_MAX_11_POST_AUTHORIZED_NOT_RUN`
+
+## INC-GEN-021 当前区块（2026-09-01）
+
+- 用户合同：整组只点一次；Provider 返回的图片、视频、音频先由系统保住并在后台完成保存，用户不重试、不去 Provider 平台捞结果。
+- 当前现网：仍为v0.6.66；截图只有文字成功、图片失败、其余9项未运行，不能写整组或多媒体真实通过。
+- 根因：图片 OSS 前缺 durable staging；视频/音频 staging 在短暂保存失败时被补偿删除；pending generated publication 原来只在启动时恢复。
+- 本地候选：三媒体统一 durable staging；保存失败保留原 task/attempt/publication；30秒 sweep 续传同一字节；pending publication 与 Provider 轮询/匹配互斥；终态错误码覆盖旧 recovery 文案。
+- 证据：TypeScript、diff-check、safe m22 `44/44`、m38+m57+m88+m90 `94/94`、最终 m38+m88 `56/56`通过；真实 Provider POST、真实 OSS、生产写和费用为0。
+- 当前门：v0.6.67 已确认并允许发布；发布后只在 CNY300、最多11次Provider POST、一次点击、不重试、原任务核对边界内验证实际图片/视频/音频结果。
+- 权威方案、断点、Matrix分别为`spec/INC_GEN_021_CROSS_MEDIA_ONE_CLICK_RELIABILITY_PLAN_2026-09-01.md`、`spec/INC_GEN_021_CHECKPOINT.md`、`spec/INC_GEN_021_ACCEPTANCE_MATRIX_2026-09-01.md`。
 
 ## INC-GEN-020 当前区块（2026-09-01）
 

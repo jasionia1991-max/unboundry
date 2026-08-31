@@ -666,7 +666,9 @@ function failGenerationAlternateMediaResult(
   }
 }
 
-export async function recoverPendingGenerationMediaResults() {
+export async function recoverPendingGenerationMediaResults(options?: {
+  prepare?: typeof preparePendingGeneratedMediaPublication;
+}) {
   const outcomes: Array<{
     action: "blocked" | "failed" | "finalized";
     assetId: string;
@@ -722,7 +724,9 @@ export async function recoverPendingGenerationMediaResults() {
       outcomes.push({ action: "failed", assetId: row.asset_id, taskId });
       continue;
     }
-    const prepared = await preparePendingGeneratedMediaPublication(row);
+    const prepared = await (
+      options?.prepare ?? preparePendingGeneratedMediaPublication
+    )(row);
     if (prepared.action === "blocked") {
       outcomes.push({ action: "blocked", assetId: row.asset_id, taskId });
       continue;

@@ -42,6 +42,7 @@ import {
   markMediaDeletionFailed,
   mediaPublicationStagingPath,
   MediaPublicationConflictError,
+  MediaPublicationDeferredError,
   publishLocalMediaPublication,
   reserveMediaPublication,
   stageMediaPublication,
@@ -75,6 +76,8 @@ export async function saveGeneratedMp4(input: {
   label: string;
   ownerId: string;
   task?: GeneratedPublicationTask;
+  /** Test seam for the external-object write; production uses private OSS. */
+  uploadObject?: typeof uploadPrivateAliyunOssObject;
 }) {
   const id = `${randomUUID()}.mp4`;
   const path = videoPath(id);
@@ -122,6 +125,7 @@ export async function saveGeneratedMp4(input: {
   let size = 0;
   let header = Buffer.alloc(0);
   let bodyConsumptionStarted = false;
+  let staged = false;
   try {
     await mkdir(path.directory, { recursive: true });
     handle = await open(mediaPublicationStagingPath(reservation), "wx");
@@ -155,8 +159,9 @@ export async function saveGeneratedMp4(input: {
       mediaHeight: metadata.height,
       mediaWidth: metadata.width,
     });
+    staged = true;
     if (routing.enabled && routing.profile) {
-      await uploadPrivateAliyunOssObject({
+      await (input.uploadObject ?? uploadPrivateAliyunOssObject)({
         byteSize: size,
         checksumSha256,
         contentType: "video/mp4",
@@ -185,6 +190,9 @@ export async function saveGeneratedMp4(input: {
       await input.body.cancel().catch(() => undefined);
     }
     await handle?.close().catch(() => undefined);
+    if (input.task && staged) {
+      throw new MediaPublicationDeferredError();
+    }
     await compensateMediaPublication(reservation, { profile: routing.profile });
     throw error;
   } finally {

@@ -1,5 +1,20 @@
 # Unboundry 绿地复刻当前任务
 
+## INC-GEN-021 图片/视频/音频一次点击可靠交付（v0.6.67 RELEASE IN PROGRESS / REAL GROUP AUTHORIZED）
+
+- [x] 纠正验收结论：现网截图不是整组通过，只是文字成功、图片失败、其余下游未运行。
+- [x] 定位跨媒体根因：图片 OSS 前缺 durable staging；视频/音频 staging 在保存失败时被补偿删除；运行时不周期恢复 pending generated publication。
+- [x] 图片、视频、音频统一保留原 Provider 结果 staging；短暂 OSS/提交失败转后台恢复，不创建新 attempt，不重发 Provider。
+- [x] 后台 sweep 优先续传 pending publication，并与同任务 Provider 轮询/匹配互斥；relay 只继续同一 Provider task id。
+- [x] 修复 `RESULT_SAVE_FAILED_NO_RETRY` 被旧“自动找回中”文案覆盖的问题。
+- [x] TypeScript、diff-check和风险定向 safe specs通过：m22 `44/44`；m38+m57+m88+m90 `94/94`；最终 m38+m88 `56/56`。
+- [x] 故障注入证明图片/视频/音频首次 OSS 失败后都用逐字节相同 staging 自动恢复，attempt/paid request 不增加；三媒体协议回归保持。
+- [x] 本地阶段真实 Provider POST、真实 OSS、生产写和新费用均为0；受保护未跟踪文件未触碰。
+- [x] 用户已确认并允许发布v0.6.67；版本/tag/Release/生产切换授权进入本轮一次性执行。
+- [x] v0.6.67本地/远端tag与GitHub Release未占用；m81 `41/41`、治理m38精确关闭后`18/18`。
+- [x] 唯一正式safe full完整执行122 specs/1140 tests，原始`1139/1140`；唯一未改动m69撤销观测超时在同一source/snapshot `1adf761b…926d5`下只复验该spec并`6/6 PASS`，未运行第二次full，4173不变。
+- [ ] 发布后只在CNY300、最多11次Provider POST、一次点击、不重试、原任务核对边界内执行真实整组；拿到并检查图片/视频/音频后才可写生产通过或 USER_PASS。
+
 ## INC-GEN-020 同步图片结果持久化与原任务自动收口（PRODUCTION v0.6.66 TECHNICAL PASS / USER RECHECK）
 
 - [x] 冻结生产原任务证据：image/recovering/attempt1、Provider attempt=`response-received`、provider task id/result asset id为空；禁止新Provider POST。

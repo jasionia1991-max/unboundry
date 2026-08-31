@@ -167,6 +167,7 @@ import {
   hasPendingMediaDeletions,
   hasPendingUploadMediaPublications,
   MediaPublicationConflictError,
+  MediaPublicationDeferredError,
   MediaPublicationStateError,
   pendingGeneratedPublicationTaskIds,
   recoverPendingMediaDeletions,
@@ -734,24 +735,61 @@ function ensureGenerationRecoverySweep() {
  * or on the user tapping a button.
  */
 export async function runGenerationRecoverySweep(options?: {
+  hasPendingGenerated?: () => boolean;
   launch?: (taskId: string, kind: GenerationTask["kind"]) => void;
   match?: typeof autoMatchRelayProviderTask;
   pendingPublicationTaskIds?: () => ReadonlySet<string>;
+  recoverPending?: typeof recoverPendingGenerationMediaResults;
   store?: ReturnType<typeof createGenerationTaskStore>;
 }) {
   if (!incGen017GenerationEnabled()) return;
   const launch = options?.launch ?? launchGenerationTask;
   const matchProviderTask = options?.match ?? autoMatchRelayProviderTask;
   const store = options?.store ?? taskStore();
+  const hasPendingGenerated = options?.hasPendingGenerated ??
+    (options?.store ? () => false : hasPendingGeneratedMediaPublications);
+  if (hasPendingGenerated()) {
+    try {
+      const outcomes = await (
+        options?.recoverPending ?? recoverPendingGenerationMediaResults
+      )();
+      for (const taskId of new Set(
+        outcomes
+          .filter((outcome) => outcome.action === "finalized")
+          .map((outcome) => outcome.taskId),
+      )) {
+        const recovered = store.get(taskId);
+        if (
+          recovered?.state === "recovering" &&
+          recovered.providerTaskId &&
+          taskProviderProtocol(recovered) === "media-generate"
+        ) {
+          const running = store.resume(taskId);
+          if (running) (options?.launch ?? launchGenerationTask)(running.id, running.kind);
+        }
+      }
+    } catch {
+      // A temporary OSS/storage failure remains a durable pending publication.
+      // The next sweep retries the same bytes and never reaches Provider submit.
+    }
+  }
   let publicationTaskIds: ReadonlySet<string> | undefined;
+  const pendingPublicationTaskIds = options?.pendingPublicationTaskIds ??
+    (options?.store
+      ? () => new Set<string>()
+      : pendingGeneratedPublicationTaskIds);
   const hasPendingPublication = (taskId: string) => {
     publicationTaskIds ??=
-      (options?.pendingPublicationTaskIds ?? pendingGeneratedPublicationTaskIds)();
+      pendingPublicationTaskIds();
     return publicationTaskIds.has(taskId);
   };
   for (const task of store.listRecovering()) {
     const claimed = store.claimRecovering(task.id, task.updatedAt);
     if (!claimed) continue;
+    // A durable publication already owns the exact Provider bytes. Retry that
+    // storage operation first; polling or matching Provider again is needless
+    // and can create a competing publication for the same paid attempt.
+    if (hasPendingPublication(claimed.id)) continue;
     if (claimed.providerTaskId) {
       try {
         const running = store.resume(claimed.id);
@@ -767,8 +805,7 @@ export async function runGenerationRecoverySweep(options?: {
       claimed.kind === "image" &&
       taskProviderProtocol(claimed) === "gpt-image" &&
       providerAttempt?.executionAttempt === claimed.attempt &&
-      providerAttempt.outcome === "response-received" &&
-      !hasPendingPublication(claimed.id)
+      providerAttempt.outcome === "response-received"
     ) {
       // A synchronous GPT Image response has no remote task id to poll. Once
       // the in-process save insurance is exhausted and no durable publication
@@ -2513,6 +2550,10 @@ export async function attemptProviderResultSave(input: {
   taskId: string;
   save: () => Promise<unknown>;
   sleep?: (milliseconds: number) => Promise<void>;
+  store?: Pick<
+    ReturnType<typeof createGenerationTaskStore>,
+    "get" | "transition"
+  >;
 }): Promise<boolean> {
   const backoffMs = input.backoffMs ??
     [1_000, 2_000, 4_000, 8_000, 15_000];
@@ -2523,6 +2564,28 @@ export async function attemptProviderResultSave(input: {
       await input.save();
       return true;
     } catch (error) {
+      if (error instanceof MediaPublicationDeferredError) {
+        logGenerationDiagnostic(input.taskId, "save-deferred", error);
+        try {
+          const store = input.store ?? taskStore();
+          const current = store.get(input.taskId);
+          if (current?.state === "running") {
+            const mediaLabel = current.kind === "image"
+              ? "图片"
+              : current.kind === "video"
+                ? "视频"
+                : "音频";
+            store.transition(input.taskId, "recovering", {
+              code: "AUTOMATIC_RESULT_RECOVERY",
+              message: `${mediaLabel}已生成，系统正在后台安全保存原结果；不会重复提交`,
+            });
+          }
+        } catch {
+          // A concurrent terminal transition wins. The durable publication is
+          // still recovered independently and never justifies a Provider POST.
+        }
+        return false;
+      }
       const transient = isTransientProviderResultSaveError(error) ||
         !isDefinitiveProviderResultSaveError(error);
       if (!transient) throw error;

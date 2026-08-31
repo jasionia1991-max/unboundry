@@ -6,6 +6,10 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 
+## 当前候选：INC-GEN-021 v0.6.67发布中（2026-09-01）
+
+v0.6.67候选为图片、视频、音频统一 durable staging、保存失败后原publication后台续传和终态提示修复。唯一正式safe full原始`1139/1140`，同源码只复验唯一无关m69失败后`6/6 PASS`，未重复full。用户已确认并允许发布；生产仍为v0.6.66，真实整组点击尚未执行。发布后只在CNY300、最多11次Provider POST、一次点击、不重试、结果不明只核对原任务的边界内验收。权威断点见[`spec/INC_GEN_021_CHECKPOINT.md`](spec/INC_GEN_021_CHECKPOINT.md)。
+
 ## 当前线上：INC-GEN-020 v0.6.66生产技术通过（2026-09-01，USER RECHECK）
 
 v0.6.66已完成PR #138、PR/main CI、不可变tag/GitHub Release、exact tag fresh build、schema41冻结备份、原子切换、公网健康与33/33静态文件门。原同步图片任务已由系统自动收口为`RESULT_SAVE_FAILED_NO_RETRY`，active0；task/admission/provider attempt/media/publication计数不变，无新Provider POST、OSS写或费用。登录实页上“整组执行”可用，任务面板明确“不会重复提交”；没有点击任何生成操作。节点alert仍有“自动找回中”旧文案残余，所以保持`USER_RECHECK`。权威断点见[`spec/INC_GEN_020_CHECKPOINT.md`](spec/INC_GEN_020_CHECKPOINT.md)，生产回执见[`spec/V0_6_66_PRODUCTION_RECEIPT_2026-09-01.json`](spec/V0_6_66_PRODUCTION_RECEIPT_2026-09-01.json)。

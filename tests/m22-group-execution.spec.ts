@@ -13,6 +13,7 @@ import {
 } from "../client/src/generation/workflowExecution";
 import { friendlyGenerationMessage } from "../client/src/generation/friendlyGenerationMessage";
 import {
+  generationFailureMessage,
   generationFailureIsDefinitive,
   generationNeedsReconcile,
 } from "../client/src/generation/generationRetry";
@@ -3052,6 +3053,17 @@ test("friendly generation messages avoid long English and jargon", () => {
     .toContain("不会重复付费提交");
   expect(friendlyGenerationMessage(undefined, "image", "PROVIDER_RESULT_FORMAT"))
     .toContain("模型已响应");
+  expect(friendlyGenerationMessage(
+    "系统正在自动找回平台结果；不会重新提交付费请求",
+    "image",
+    "RESULT_SAVE_FAILED_NO_RETRY",
+  )).toBe("图片平台已返回结果，但系统未能安全保存；本轮已自动停止且不会重复提交");
+  expect(generationFailureMessage(
+    "系统正在自动找回平台结果；不会重新提交付费请求",
+    "上次结果仍在系统自动找回中；为避免重复扣费，当前不能重新生成",
+    "RESULT_SAVE_FAILED_NO_RETRY",
+    "image",
+  )).toBe("图片平台已返回结果，但系统未能安全保存；本轮已自动停止且不会重复提交");
   expect(generationFailureIsDefinitive("PROVIDER_RESULT_FORMAT")).toBe(false);
 });
 

@@ -4,7 +4,10 @@ import { link, lstat, mkdir, open, rm, stat } from "node:fs/promises";
 import { basename, join, relative, sep } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
-import { deletePrivateAliyunOssObject } from "./aliyunOss";
+import {
+  deletePrivateAliyunOssObject,
+  uploadPrivateAliyunOssObject,
+} from "./aliyunOss";
 import {
   appDataDirectory,
   currentSchemaManifest,
@@ -59,6 +62,18 @@ export class MediaPublicationStateError extends Error {
   constructor(message = "Media publication changed concurrently") {
     super(message);
     this.name = "MediaPublicationStateError";
+  }
+}
+
+/**
+ * Generated Provider bytes are already durably staged. The foreground worker
+ * must stop creating replacement publications and leave this exact attempt to
+ * the restart-safe publication recovery worker.
+ */
+export class MediaPublicationDeferredError extends Error {
+  constructor() {
+    super("Generated media publication is durably staged for recovery");
+    this.name = "MediaPublicationDeferredError";
   }
 }
 
@@ -1204,16 +1219,43 @@ async function validFile(path: string, row: AttemptRow) {
 
 export async function preparePendingGeneratedMediaPublication(
   row: PendingGeneratedMediaPublication,
+  input?: {
+    uploadObject?: typeof uploadPrivateAliyunOssObject;
+  },
 ) {
     const reservation = reservationFromAttempt(row);
     if (row.state === "compensating" || row.media_storage_status !== "pending") {
       return { action: "failed" as const, reservation };
     }
     if (reservation.storageBackend === "oss") {
-      return {
-        action: row.state === "external-ready" ? "ready" as const : "blocked" as const,
-        reservation,
-      };
+      if (row.state === "external-ready") {
+        return { action: "ready" as const, reservation };
+      }
+      const stagingValid = await validFile(
+        mediaPublicationStagingPath(reservation),
+        row,
+      );
+      if (row.state === "reserved" || !stagingValid) {
+        return { action: "failed" as const, reservation };
+      }
+      try {
+        const profile = await storageProfileById(reservation.storageProfileId);
+        if (!profile || !row.checksum_sha256 || row.byte_size < 1) {
+          return { action: "blocked" as const, reservation };
+        }
+        await (input?.uploadObject ?? uploadPrivateAliyunOssObject)({
+          byteSize: row.byte_size,
+          checksumSha256: row.checksum_sha256,
+          contentType: row.content_type,
+          credentials: profile,
+          filePath: mediaPublicationStagingPath(reservation),
+          objectKey: reservation.objectKey,
+        });
+        markExternalMediaPublicationReady(reservation);
+        return { action: "ready" as const, reservation };
+      } catch {
+        return { action: "blocked" as const, reservation };
+      }
     }
     const finalValid = await validFile(mediaPublicationFinalPath(reservation), row);
     const stagingValid = await validFile(mediaPublicationStagingPath(reservation), row);
