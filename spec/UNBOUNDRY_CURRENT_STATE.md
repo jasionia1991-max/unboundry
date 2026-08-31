@@ -1,17 +1,17 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网运行v0.6.64/schema41；INC-GEN-018模型合同技术门保持通过，但生产真实整组执行已查实因持续Canvas revision漂移得到`200→409→200→409`，严格为`INC_GEN_018_MODEL_CONTRACT_PASS / INC_GEN_019_GROUP_EXECUTION_USER_FAIL / ZERO_NEW_TASK_ADMISSION_ATTEMPT_PROVIDER_POST / R7_FORMAL_FULL_RECORDED_WITH_TARGETED_CLOSURE / R8_VERSION_V0_6_65_VALIDATED / USER_RECHECK`。INC-GEN-019 R0～R7已完成，R8版本直接门已完成、GitHub/生产/真实流未完成。不得用本地测试或v0.6.64零付费门冒充真实整组通过，用户实页确认前不得升级`USER_PASS`。
+> **状态分层**：现网运行v0.6.65/schema41；INC-GEN-019生产技术门已通过，严格为`PRODUCTION_V0_6_65_TECHNICAL_PASS / ZERO_PAID_PREFLIGHT_PASS / REAL_GROUP_FLOW_NOT_RUN_BUDGET_ESTIMATE_BLOCKED / USER_RECHECK`。目标11节点零付费preflight均HTTP200，但可靠实际报价不可得且配置上限折算CNY300超过CNY100，真实点击在付费前停止。不得用零付费门冒充真实整组或用户验收通过。
 
 更新日期：2026-08-31
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
 当前代码包版本：**v0.6.65**
 本地候选代码版本：**v0.6.65**
-当前生产部署版本：**v0.6.64**
+当前生产部署版本：**v0.6.65**
 本地候选schema：**41**
-当前治理标记：`CURRENT_V0_6_64_USER_RECHECK`
-当前计划标记：`INC_GEN_019_R7_FORMAL_FULL_RECORDED_WITH_TARGETED_CLOSURE / R8_VERSION_V0_6_65_VALIDATED / USER_RECHECK`
+当前治理标记：`CURRENT_V0_6_65_USER_RECHECK`
+当前计划标记：`INC_GEN_019_R8_PRODUCTION_TECHNICAL_PASS / REAL_GROUP_FLOW_NOT_RUN_BUDGET_ESTIMATE_BLOCKED / USER_RECHECK`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`INC_GEN_019_R8_VERSION_V0_6_65_SELECTED / VERSION_GATE_VALID / RELEASE_GATE_VALID / REAL_GROUP_CLICK_NOT_USED / USER_RECHECK`
+当前发布门：`INC_GEN_019_V0_6_65_RELEASE_CONSUMED / REAL_GROUP_CLICK_NOT_USED_BUDGET_BLOCKED / USER_RECHECK`
 
 ## INC-GEN-019 当前区块（2026-08-31）
 
@@ -20,7 +20,7 @@
 - R1旧代码稳定红得到两轮preflight200/formal409；生产形状34个Canvas PUT已精确归因为33次旧generation binding逐节点durable reconciliation加1次root model-contract normalization，`other=0`。它们都是不同字段补丁，不是same-fingerprint no-op，因此没有修改全局Canvas writer。
 - 目标Canvas/group exact allowlist为11个logical executable node、22条依赖边、一个root，脱敏digest=`dbb2d0aa9010f0a994a8cce2244238d5fb1b10a5b35f5d758c1c9a084ef24da0`。真实点击仍0/1；每个logical node的task/admission/attempt/POST至多1，总数各不超过11。
 - R2～R5已落地shared monotonic deadline、preflight revision exact校验、preflight network/5xx同key重试、确定性revision 409 exact lookup后同key收敛及formal unknown原key reconcile。最终产品+测试改动10/10、产品净新增199/450、62 hunks、diff=`9925eda3…d16ed`。R6主线程与唯一 independent Review 线程覆盖10/10 published models、11个exact identities及完整Provider链；formal后唯一产品增量仍由同一线程复核，最终P0=0/P1=0/P2=0/GO。R7唯一formal full原始122 specs/1135 tests=`1133/1135`、2失败、0重试/跳过/blocked/reportErrors、source=`ae7289ec…1976`，不得改写为全绿；m22+m36+m38最小关闭=`62/62 PASS`、source=`18a991e9…9ca4`，未运行第二次full。formal full1/1、Review代理1/1；真实点击前还须用可靠estimate证明`CNY + 10×USD <= 100`。
-- R8版本身份门确认v0.6.65本地tag、远端精确tag和GitHub Release均未占用，GitHub main仍为`86685471092941a31c30621233b9238ce6b1c393`，生产公网仍v0.6.64/schema41；已选择高于实时生产的最低未占用patch v0.6.65，并同步package/lock/final runtime allowlist/m81断言。版本直接safe m81+m38=`57/57 PASS`（41+16），source/snapshot=`7749d8dd…5210`、异常0、4173 unchanged；四个版本身份文件按Goal排除在业务10文件分母外，formal full未重跑。版本与发布授权均来自本Session一次性Goal；下一步为显式allowlist提交与GitHub/CI。
+- R8已完成：candidate=`a4750ea…14e8f`、PR #136、merge=`9a32373…89d5`、final-head/main CI success、annotated tag/GitHub Release v0.6.65、exact tag fresh build、冻结恢复、forward→rollback→final forward、33/33静态和生产零付费门。当前release=`/opt/unboundry/releases/v0.6.65-inc-gen-019-20260831`，active/enabled、MainPID2950523、NRestarts0、schema41；前后tasks1026/admissions946/attempts1037/paidProviderRequests1025/active0/currentUnknown0/media956/publications547不变。目标11节点preflight 11/11 HTTP200，formal POST0。预算保守折算CNY300>CNY100且无可靠实际报价，故真实click0/1未消费并硬停止。回执：`spec/V0_6_65_PRODUCTION_RECEIPT_2026-08-31.json`。
 - 权威方案、Goal、断点、Matrix分别为`spec/INC_GEN_019_GROUP_EXECUTION_SAVE_RACE_AND_ATOMIC_ADMISSION_FINAL_AUDITED_PLAN_2026-08-31.md`、`spec/INC_GEN_019_ONE_SHOT_GOAL_PROMPT_2026-08-31.md`、`spec/INC_GEN_019_CHECKPOINT.md`、`spec/INC_GEN_019_ACCEPTANCE_MATRIX_2026-08-31.md`。
 
 ## INC-GEN-018 当前区块（2026-08-31）

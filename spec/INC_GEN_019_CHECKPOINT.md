@@ -1,8 +1,8 @@
 # INC-GEN-019 实施断点
 
-状态：`R0_R7_COMPLETE / R7_FORMAL_FULL_RECORDED_WITH_TARGETED_CLOSURE / R8_VERSION_V0_6_65_VALIDATED / ZERO_NEW_TASK_ADMISSION_ATTEMPT_PROVIDER_POST / USER_RECHECK`
+状态：`R0_R8_TECHNICAL_COMPLETE / PRODUCTION_V0_6_65_TECHNICAL_PASS / REAL_GROUP_FLOW_NOT_RUN_BUDGET_ESTIMATE_BLOCKED / USER_RECHECK`
 
-更新时间：2026-08-31T21:05:00+08:00
+更新时间：2026-08-31T21:37:30+08:00
 
 ## 1. 当前结论
 
@@ -10,7 +10,7 @@
 - 唯一实施 checkout 为 `/Users/mymy/Documents/unboundry-inc-gen-016-v0.6.56-2026-08-28`。已从实时 `origin/main@86685471092941a31c30621233b9238ce6b1c393` 建立分支 `codex/inc-gen-019-group-admission-2026-08-31`；候选 package=`0.6.65`，本机 Node/npm=`25.9.0/11.12.1`。
 - 生产实时为 `/opt/unboundry/releases/v0.6.64-inc-gen-018-20260831`、version=`0.6.64`、schema=`41`，service active/running/enabled、MainPID=`2859331`、NRestarts=`0`，Node/npm=`22.23.2/10.9.8`；公网 `/api/version`、`/api/health/live`、`/api/health/ready` 通过。
 - R0 只读基线为 tasks=`1026`、admissions=`946`、attempts=`1037`、paid Provider requests=`1025`、active=`0`、current unknown=`0`、media=`956`、publications=`547`。本 Goal 新增 task/admission/attempt/Provider POST/OSS/费用均为 `0`。
-- R1～R7 已完成；唯一 independent Review 线程已消费，初始冻结候选和 formal 后唯一产品增量均给出 `P0=0/P1=0/P2=0/GO`。本事件唯一 formal full 已消费并永久保留原始 `1133/1135`；两个失败已用最小集合 `62/62` 关闭，未运行第二次 full。v0.6.65 四个版本身份文件已同步且版本直接门 `m81+m38=57/57 PASS`；GitHub、发布、生产写和真实 Provider 点击均未执行。
+- R1～R8 技术门已完成；唯一 independent Review 线程已消费并给出 `P0=0/P1=0/P2=0/GO`。唯一 formal full 原始 `1133/1135`永久保留，两个失败用最小集合 `62/62`关闭，未运行第二次 full。v0.6.65 PR/main CI、不可移动tag/Release、exact tag fresh build、冻结恢复、forward→rollback→final forward、33/33静态资源、schema/service/data/零付费门均通过。预算门无法证明小于CNY100等值且配置上限保守折算为CNY300，因此真实group click在付费前硬停止、权限未消费。
 
 ## 2. 冻结的真实失败证据
 
@@ -77,7 +77,7 @@ video-4618 -> text-3cc0
 | R5 | COMPLETE | 直接依赖定向验证通过；唯一测试断言误判已最小关闭 |
 | R6 | COMPLETE | 主线程与唯一独立代理覆盖10/10文件、62/62 hunks、完整调用链、10/10 published denominator、11个exact identities与全部4类Provider/protocol分支；初报P1经原代理重核撤回，P2文案已关闭，最终P0=0/P1=0/P2=0/GO；Review代理1/1 |
 | R7 | COMPLETE | 唯一 formal full 1/1：原始1133/1135、2失败、0重试/跳过/blocked/reportErrors；最小m22+m36+m38=62/62关闭，未重跑full；同一Review线程复核增量P0/P1/P2=0/0/0、GO |
-| R8 | IN_PROGRESS | v0.6.65身份与版本直接门通过；GitHub/发布/生产/真实流待执行；真实 group click 0/1，task/admission/attempt/POST/OSS 0/11，费用 0/100 CNY-equivalent |
+| R8 | TECHNICAL_COMPLETE | v0.6.65生产技术通过；11/11零付费preflight HTTP200；可靠实际报价不可得且配置上限折算CNY300>100，真实group click 0/1且未消费；task/admission/attempt/POST/OSS新增0，费用0 |
 
 - 产品+测试改动文件=`10/10`；产品代码 `247 insertions / 48 deletions`，净新增=`199/450`；schema/dependency=`0`。
 - R7最终冻结身份：base HEAD=`86685471092941a31c30621233b9238ce6b1c393`；精确产品+测试 binary diff SHA-256=`9925eda31219fcaac4302d48f20c82f87d1b42ba3c0d810e0e791cf2a97d16ed`；hunks=`62`。候选现为`FROZEN / REVIEW_GO`，唯一 independent Review 线程与 formal full 额度均已消费。
@@ -92,4 +92,12 @@ R8 版本身份只读门已通过并先行冻结：本地 tag `v0.6.65` 无匹�
 
 四个版本身份文件（package、lock、final runtime allowlist、m81断言）已同步；版本直接相关safe m81+m38=`57/57 PASS`（m81 `41/41`、m38 `16/16`），失败/重试/跳过/blocked/reportErrors均0，source/snapshot=`7749d8dd95221cc1ce576b68057ede2dc5890001ce7257e89aa7bd2ed35e5210`，4173 listener unchanged。最终治理同步后只复验m38=`16/16 PASS`，source/snapshot=`6f87c7f4b41ea11386291c4b09f44caa9eb4989011b7d49777f7878b92b65776`，异常0、4173 unchanged。四个版本身份文件属于Goal明确排除在10个业务产品+测试文件分母之外的版本/lock文件，业务分母仍为10/10、产品净新增199/450；formal full未重跑。
 
-唯一下一步：完成显式stage allowlist、候选提交与GitHub PR/CI，不得使用`git add .`。真实 group 点击前仍必须以可靠逐节点 estimate 证明 `CNY + 10×USD <= 100`；无法证明则在点击前硬停止。
+R8生产回执：`spec/V0_6_65_PRODUCTION_RECEIPT_2026-08-31.json`。PR #136 final head=`a4750ea…14e8f`、merge=`9a32373…89d5`，final-head/main CI=`33395815506/99499946238`与`33395914516/99500271971`均success；annotated tag object=`2526238…f41d`精确peel至merge，Release已发布。exact tag archive SHA=`190c07ac…7f2`；fresh build TypeScript/Vite通过，inventory6049、SHA=`80eaaadb…bc07`、dist33。
+
+生产冻结根`/var/lib/unboundry-rollbacks/v0.6.65-inc-gen-019-r8-frozen.5LY5IX`必须保留；source/restore DB SHA均为`5cc8fed3…4600`，manifest均为`6fdde208…fca7`，schema41/integrity ok/FK0。旧backup helper因硬编码schema39在完成有效在线快照后fail-closed，已用独立schema41验证收口；restore DB为独立副本，media使用硬链接。生产完成v0.6.65→v0.6.64→v0.6.65三次受控启动，当前release=`/opt/unboundry/releases/v0.6.65-inc-gen-019-20260831`，active/enabled、MainPID2950523、NRestarts0、稳定至21:37:30；数据库未迁移。
+
+零付费生产门：`/api/models`鉴权200、10/10 available；目标Canvas revision95/graphRevision62；目标11节点preflight 11/11 HTTP200，另有2次root诊断preflight，全部ProviderRequests0，formal generation POST0。前后tasks1026/admissions946/attempts1037/paidProviderRequests1025/active0/currentUnknown0/media956/publications547不变。三张图片配置上限各USD10、text/video上限0，按Goal公式保守折算`0 + 10×30 = CNY300`，超过CNY100；且没有可靠实际报价可证明小于上限，所以`REAL_GROUP_FLOW_NOT_RUN_BUDGET_ESTIMATE_BLOCKED`，不得点击或冒充真实流通过。
+
+生产回执治理m38首轮`15/16`只发现当前治理标记仍为v0.6.64，source/snapshot=`5df84965…dd52`；统一到v0.6.65后最小复验`16/16 PASS`，source/snapshot=`b956ee2e…3d77`，异常0、4173 unchanged。formal full未重跑。
+
+唯一下一步：用户在真实页面主观复验v0.6.65；若未来要真实整组点击，必须先提供可核验且`CNY + 10×USD <= 100`的逐节点实际报价或新的更高预算授权。版本/tag/Release/生产发布授权已消费，禁止再次stop/restart、移动tag、重建Release或发起Provider POST。

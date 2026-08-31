@@ -1,8 +1,8 @@
 # INC-GEN-019 验收矩阵
 
-状态：`R7_FORMAL_FULL_RECORDED_WITH_TARGETED_CLOSURE / R8_VERSION_V0_6_65_VALIDATED / USER_RECHECK`
+状态：`PRODUCTION_V0_6_65_TECHNICAL_PASS / REAL_GROUP_FLOW_NOT_RUN_BUDGET_ESTIMATE_BLOCKED / USER_RECHECK`
 
-更新：2026-08-31T21:05:00+08:00
+更新：2026-08-31T21:37:30+08:00
 
 证据状态只允许：`NOT_RUN`、`EXPECTED_RED`、`TARGETED_PASS`、`REVIEW_GO`、`FORMAL_FULL_RECORDED`、`PRODUCTION_ZERO_PAID_TECHNICAL_PASS`、`REAL_GROUP_FLOW_PASS`、`REAL_GROUP_FLOW_FAIL`、`OUTCOME_UNKNOWN_BILLING_RISK`、`USER_RECHECK`、`USER_PASS`。
 
@@ -42,13 +42,13 @@
 | IG19-032 | 内部收敛不刷错且 reason 文案准确区分 | TARGETED_PASS | m22 retry/timeout/cancel reason 分支；生产文案待R8 |
 | IG19-033 | 测试/零付费/真实流/主观验收严格分层 | TARGETED_PASS | Matrix保持分层；真实流/USER_RECHECK未冒充 |
 | IG19-034 | 唯一 formal full 原始结果永久保留 | FORMAL_FULL_RECORDED | 原始122 specs/1135 tests=`1133/1135`、2失败、0重试/跳过/blocked/reportErrors、source=`ae7289ec…1976`；最小m22+m36+m38=`62/62`关闭，source=`18a991e9…9ca4`，未运行第二次full |
-| IG19-035 | release/DB/service/counts/rollback/forward 完整回执 | NOT_RUN | R8 待执行 |
+| IG19-035 | release/DB/service/counts/rollback/forward 完整回执 | PRODUCTION_ZERO_PAID_TECHNICAL_PASS | PR #136、双CI、v0.6.65 tag/Release、fresh build、冻结source/restore、forward→rollback→final forward、33/33静态、schema41/service/counts/10模型/11节点preflight通过；回执V0_6_65_PRODUCTION_RECEIPT |
 | IG19-036 | 用户真实页面明确确认 | USER_RECHECK | 技术证据不得升级 |
 
 ## R0 计数与硬门
 
 - baseline：tasks1026/admissions946/attempts1037/paidProviderRequests1025/active0/currentUnknown0/media956/publications547。
 - target allowlist：11 logical executable nodes；exact digest=`dbb2d0aa9010f0a994a8cce2244238d5fb1b10a5b35f5d758c1c9a084ef24da0`。
-- formal full=`1/1`（已消费，禁止重跑）；Review agent=`1/1`（同一线程完成formal后增量复核）；真实 group click=`0/1`；新 task/admission/attempt/POST/OSS=`0/11`；新增费用=`0`。
+- formal full=`1/1`（已消费，禁止重跑）；Review agent=`1/1`（同一线程完成formal后增量复核）；真实 group click=`0/1`且因CNY300保守上限超过CNY100未消费；新 task/admission/attempt/POST/OSS=`0/11`；新增费用=`0`。
 - 产品+测试文件=`10/10`；产品净新增=`199/450`（247增/48删）；schema/dependency=`0`；最终冻结diff=`9925eda3…d16ed`、62 hunks；最终最小关闭 source/snapshot=`18a991e9…9ca4`。
 - v0.6.65四个版本身份文件已同步并按Goal排除在业务10文件分母外；版本直接safe m81+m38=`57/57 PASS`（41+16），source/snapshot=`7749d8dd…5210`；最终治理同步后m38=`16/16 PASS`、source/snapshot=`6f87c7f4…5776`，异常0、4173 unchanged；formal full未重跑。

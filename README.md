@@ -6,11 +6,11 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 
-## 当前候选：v0.6.65 / INC-GEN-019（R8发布中，USER RECHECK）
+## 当前线上：v0.6.65 / INC-GEN-019生产技术通过（2026-08-31，USER RECHECK）
 
-INC-GEN-019已完成共享30秒单调deadline、成功preflight revision精确校验、同key有界收敛和formal unknown原key核对；业务产品+测试10/10，独立Review为`P0=0/P1=0/P2=0/GO`。唯一formal full原始`1133/1135`及2失败永久保留，最小关闭`62/62`；版本直接safe m81+m38=`57/57 PASS`，未重跑full。v0.6.65尚未发布，生产仍为v0.6.64/schema41；GitHub、生产零付费门和目标group真实流仍待R8执行，真实点击前必须证明总费用不超过CNY100等值。权威断点见[`spec/INC_GEN_019_CHECKPOINT.md`](spec/INC_GEN_019_CHECKPOINT.md)。
+INC-GEN-019已完成共享30秒单调deadline、成功preflight revision精确校验、同key有界收敛和formal unknown原key核对；业务产品+测试10/10，独立Review为`P0=0/P1=0/P2=0/GO`。唯一formal full原始`1133/1135`及2失败永久保留，最小关闭`62/62`，未重跑full。PR #136、双CI、v0.6.65 tag/Release、fresh build、冻结恢复、forward→rollback→final forward、33/33静态及生产零付费门均通过。目标11节点preflight均HTTP200，但预算配置上限折算CNY300>CNY100，真实整组点击在付费前停止；当前严格为`PRODUCTION_V0_6_65_TECHNICAL_PASS / REAL_GROUP_FLOW_NOT_RUN_BUDGET_ESTIMATE_BLOCKED / USER_RECHECK`。回执见[`spec/V0_6_65_PRODUCTION_RECEIPT_2026-08-31.json`](spec/V0_6_65_PRODUCTION_RECEIPT_2026-08-31.json)。
 
-## 当前线上：v0.6.64 / INC-GEN-018生产技术通过（2026-08-31，USER RECHECK）
+## 历史线上：v0.6.64 / INC-GEN-018生产技术通过（2026-08-31，USER RECHECK）
 
 INC-GEN-018已把平台全局安全状态与单模型合同健康拆开，并只为Doubao Seed与Doubao TTS 2.0的两个精确旧immutable revision发布replacement revision。R0～R8技术门完成；冻结候选独立终审保持`P0=0/P1=0/P2=7/GO`，唯一正式safe full原始`1131/1135`及4失败永久保留，4项均已定向关闭且隔离浏览器AUTO_PASS。PR #134 final-head/main CI、v0.6.64不可移动tag/Release、fresh build、冻结恢复、生产迁移、repeat no-op、原子切换和paired rollback/forward均通过。生产10/10 published模型健康，目标7节点零付费preflight不再出现伪`GLOBAL_GENERATION_DISABLED`；tasks1026/attempts1037/active0不变，Provider POST、OSS写和新费用均为0。当前严格为`PRODUCTION_V0_6_64_TECHNICAL_PASS / ZERO_PROVIDER_POST_PASS / USER_RECHECK`，不能冒充`USER_PASS`。生产回执见[`spec/V0_6_64_PRODUCTION_RECEIPT_2026-08-31.json`](spec/V0_6_64_PRODUCTION_RECEIPT_2026-08-31.json)。
 
