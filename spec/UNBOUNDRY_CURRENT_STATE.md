@@ -32,7 +32,8 @@
 - 上一条`d522…/6d0e…`精确标识独立产品终审输入；R6 GO后8份docs-only同步输入为tracked diff=`f3e1b85c…e25cb`、manifest=`5ec20647…66c8a`，独立delta审查8/8后要求同步Checkpoint顶端状态并区分两层hash，现已关闭。Checkpoint自包含hash不回写自身；R7正式full前必须只读重算当前完整候选身份，禁止误用旧hash。
 - R6的7项P2已登记且不扩大为当前P1：bootstrap缺全模型外层事务；结构有效但不完整v2的语义默认继承；retry helper兼容fallback；CLI attestation path TOCTOU；post-COMMIT `toTask`与历史裸`JSON.parse`一致性；DELETE post-read owner scope；admin contract GET损坏schema错误映射。它们均不绕过Provider边界。正式full、GitHub、版本/tag/Release和生产仍未执行；Provider POST/OSS写/费用0。
 - R7唯一正式safe full已执行且绝不重跑：原始`1131/1135`、4 failures、source/snapshot=`13d932f3…54ad99`、4173 unchanged；m27/m40/m86在四失败最小子集通过，m4最终单spec=`6/6 PASS`。4个测试文件/5 hunks独立复审SHA=`e3cf5d07…530c2`，`P0=0/P1=0/P2=0/GO`。
-- R7隔离浏览器AUTO_PASS：10/10 models healthy、10/10 releaseRevisionId、7/7节点模型可选择、10卡admin UI；API真实验证global关闭、emergency优先、Seed malformed只返回模型级`MODEL_CONTRACT_INVALID`并可精确恢复。49 requests全部loopback/内联，blocked/non-loopback0，tasks/attempts0/0、paid0；owned server/端口/temp均已清理。当前进入R8版本占用与发布前身份门；生产仍v0.6.63/schema41，Provider POST/OSS写/新费用0。
+- R7隔离浏览器AUTO_PASS：10/10 models healthy、10/10 releaseRevisionId、7/7节点模型可选择、10卡admin UI；API真实验证global关闭、emergency优先、Seed malformed只返回模型级`MODEL_CONTRACT_INVALID`并可精确恢复。49 requests全部loopback/内联，blocked/non-loopback0，tasks/attempts0/0、paid0；owned server/端口/temp均已清理。
+- R8 v0.6.64候选已推送并创建PR #134；初始head=`d60a59a…56bdd`的Quality run/job=`33365723417/99405850023`以35秒通过。本治理回执形成新的final head后必须等待对应CI，尚未合并/tag/Release/生产。生产仍v0.6.63/schema41，Provider POST/OSS写/新费用0。
 
 - 用户重新开启真实生成后，目标整组预检持续提示7个不兼容节点，首个“提取服装事实”为“管理员已关闭真实生成”；强制刷新和重新打开页面无效。
 - 生产只读核对为`globalEnabled=1/emergencyStop=0`；登录态`/api/models` no-store请求返回10个published模型，其中8个available，Doubao Seed与Doubao TTS 2.0返回伪`GLOBAL_GENERATION_DISABLED`。

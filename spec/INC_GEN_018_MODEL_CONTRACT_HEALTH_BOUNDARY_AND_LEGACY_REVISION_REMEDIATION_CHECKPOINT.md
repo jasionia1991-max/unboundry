@@ -1401,3 +1401,9 @@ R1：实现平台安全与模型合同健康的类型/错误码边界，最小�
 - 最终stage binary diff SHA-256=`feb49494c231c0cd6f7035ffe7d743a58a35c34205268f54003169223a075c73`，staged tree=`704873fb3abda91747d33926dd7d3473103b6975`。
 - candidate commit=`790db916a272822e98695bb9e557e466f51ab618`，parent=`d3e213da3b516ba8abc8bff4aada4d983f655ab2`，tree=`704873fb3abda91747d33926dd7d3473103b6975`，subject=`fix: restore model contract health boundaries`；45 files changed、9176 insertions、1989 deletions。
 - 提交后安全范围工作树为空；两份受保护JSON仍未暂存、未进入tree。当前origin/main仍为base，尚未push/PR/tag/Release/生产。下一步创建本治理回执commit，再验证final local head后push。
+## R8 GitHub PR 初始 head CI（2026-08-31）
+
+- branch `codex/inc-gen-018-contract-health-boundary-2026-08-31` 已首次push；remote branch初始head=`d60a59a56dd36234cdbeaa776fb13b98f8b56bdd`，base/main=`d3e213da3b516ba8abc8bff4aada4d983f655ab2`。
+- GitHub PR #134=`https://github.com/jasionia1991-max/unboundry/pull/134`，open/non-draft/mergeable；PR head/base与上述identity精确一致。
+- 初始head Quality gates run/job=`33365723417/99405850023`，35秒完成`success`；checkout、Node/npm双通道、npm ci、TypeScript、architecture、dependency vulnerabilities、safe inventory与source coverage全部通过。
+- 现在只新增本治理回执；push后必须等待新的**final-head** CI通过，不能复用初始head CI直接合并。tag/Release/生产仍未开始，Provider/OSS/费用0。

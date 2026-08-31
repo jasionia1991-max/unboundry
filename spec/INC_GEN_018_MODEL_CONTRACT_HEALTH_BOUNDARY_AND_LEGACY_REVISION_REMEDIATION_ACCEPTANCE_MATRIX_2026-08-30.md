@@ -54,7 +54,7 @@ R0证据：实施分支/HEAD、生产v0.6.63/schema41、安全/任务/费用基�
 | IG18-033 | 冻结生产副本演练 | attestation、dry-run/apply/health/repeat、schema/integrity/FK和计数门全通过 | R5_REHEARSAL_PASS |
 | IG18-034 | 完整逐代码Review | 全改动文件/hunk/分支/调用链/全部published模型/exact identities/Provider分支；P0=0/P1=0 | R6_REVIEW_GO / P0=0 / P1=0 / P2=7 |
 | IG18-035 | 唯一正式safe full | Review GO后执行一次；结果、异常、source/snapshot和4173边界完整记录 | FORMAL_FULL_RECORDED_1131_OF_1135 / 4_TARGETED_CLOSED / BROWSER_AUTO_PASS |
-| IG18-036 | GitHub与不可变发布 | 已授权的PR/main CI、tag/Release、fresh build | LOCAL_CANDIDATE_790db916 / GITHUB_NOT_RUN |
+| IG18-036 | GitHub与不可变发布 | 已授权的PR/main CI、tag/Release、fresh build | PR_134_OPEN / INITIAL_HEAD_CI_PASS / FINAL_HEAD_PENDING |
 | IG18-037 | 生产备份与可回滚迁移 | quiet、冻结source/restore、生产副本幂等、原子切换、paired rollback/forward | NOT_RUN |
 | IG18-038 | 生产10/10模型健康 | 当前10个published模型逐一核对，不抽样 | NOT_RUN |
 | IG18-039 | 生产任务与费用计数不变 | 页面预检前后tasks/attempts/active/unknown/Provider POST均不变 | NOT_RUN |
