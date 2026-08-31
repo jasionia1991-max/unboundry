@@ -2,9 +2,9 @@
 
 本文件适用于“包含本文件的 Unboundry Git 工作树”，不再用固定目录名代替仓库身份。用户最新明确指令优先；若与仓库状态或本文冲突，先停止并向用户报告，不得猜测。
 
-当前生产身份：生产运行`v0.6.65/schema41`；一次真实整组执行已创建2个任务，文字成功、同步图片因结果保存失败停在原任务`recovering`。INC-GEN-020候选版本`v0.6.66`已获本次发布授权，当前严格为`PRODUCTION_V0_6_65_IMAGE_RESULT_RECOVERY_STUCK / INC_GEN_020_V0_6_66_RELEASE_AUTHORIZED / USER_RECHECK`。
+当前生产身份：生产运行`v0.6.66/schema41`；INC-GEN-020已完成GitHub发布、冻结备份、原子切换、健康/数据/33静态文件和登录实页门。原同步图片任务已由系统自动收口为`RESULT_SAVE_FAILED_NO_RETRY`，active0，没有新attempt或Provider POST。当前严格为`PRODUCTION_V0_6_66_TECHNICAL_PASS / ORIGINAL_TASK_AUTO_CLOSED / ZERO_NEW_PROVIDER_POST / USER_RECHECK`。
 
-2026-09-01 INC-GEN-020 当前权威状态：唯一施工checkout为`/Users/mymy/Documents/unboundry-inc-gen-016-v0.6.56-2026-08-28`，branch=`codex/inc-gen-020-durable-gpt-image-result`、基线HEAD=`15165c6`、候选package为0.6.66。已实现同步图片结果直接从内存上传私有OSS，不再依赖根盘staging；进程并发/内存预算、OSS大小/SHA/HEAD/private/forbid-overwrite门与本地存储磁盘门保持。精确`gpt-image + response-received + no provider task id + no pending publication`会自动终止原任务并释放整组，绝不新建attempt或第二次Provider POST；`outcome-unknown`和`media-generate`恢复保持。定向safe证据m13+m38+m88+m90共84/84 PASS，TypeScript与diff-check通过；formal full未重跑。用户已明确“确认版本v0.6.66，并允许发布v0.6.66”，本次授权包含commit/push/PR/tag/Release、备份和生产切换；不包含新的真实生成或Provider POST。实时断点为`spec/INC_GEN_020_CHECKPOINT.md`。
+2026-09-01 INC-GEN-020 当前权威状态：v0.6.66已完成candidate `1308c06…cfd31`、PR #138、merge `bbb8001…ce7bb`、PR/main CI、annotated tag/GitHub Release、exact tag fresh build、schema41冻结备份和原子生产切换；当前release=`/opt/unboundry/releases/v0.6.66-inc-gen-020-20260901`，service active/enabled、NRestarts0，公网version/live/ready与33/33静态文件门通过。原任务已在既有15分钟退避到期后自动转`RESULT_SAVE_FAILED_NO_RETRY`，三次采样active0，tasks1028/admissions948/provider attempts1039/media956/publications547不变，无新Provider POST。登录实页整组按钮可用，任务面板明确“不会重复提交”，未点击任何生成操作；节点alert尚有“自动找回中”旧文案残余，所以保持`USER_RECHECK`。v0.6.66一次性版本/发布授权已消费，新代码、新发布或Provider POST需新授权。实时断点为`spec/INC_GEN_020_CHECKPOINT.md`，回执为`spec/V0_6_66_PRODUCTION_RECEIPT_2026-09-01.json`。
 
 2026-08-31 INC-GEN-019 当前权威状态：v0.6.65已完成PR #136双CI、不可移动tag/Release、exact tag fresh build、冻结恢复、forward→rollback→final forward、33/33静态与生产零付费门，当前release=`/opt/unboundry/releases/v0.6.65-inc-gen-019-20260831`、schema41、active/enabled、NRestarts0。业务产品+测试10/10、产品净新增199/450、Review `P0=0/P1=0/P2=0/GO`；唯一formal full原始`1133/1135`永久保留，最小关闭`62/62`，未重跑full。10/10模型available、目标11节点preflight 11/11 HTTP200，但三张图片配置上限合计USD30，按Goal折算CNY300>CNY100且无可靠实际报价，因此真实group click在付费前停止、权限未消费；新增task/admission/attempt/Provider POST/OSS/费用0。当前严格为`PRODUCTION_V0_6_65_TECHNICAL_PASS / REAL_GROUP_FLOW_NOT_RUN_BUDGET_ESTIMATE_BLOCKED / USER_RECHECK`。v0.6.65版本/tag/Release/生产发布授权已消费，禁止再次stop/restart、移动tag、重建Release或发起Provider POST。实时断点为`spec/INC_GEN_019_CHECKPOINT.md`，回执为`spec/V0_6_65_PRODUCTION_RECEIPT_2026-08-31.json`。
 
@@ -27,7 +27,7 @@
 1. `上线规矩.md`
 2. `spec/UNBOUNDRY_CURRENT_STATE.md`
 3. `README.md`
-4. `spec/INC_GEN_020_CHECKPOINT.md`（当前唯一实时断点；本地修复已验，等待新版本号与发布授权）
+4. `spec/INC_GEN_020_CHECKPOINT.md`（当前唯一实时断点；v0.6.66生产技术通过，保持USER_RECHECK）
 5. `spec/INC_GEN_020_DURABLE_GPT_IMAGE_RESULT_PLAN_2026-08-31.md`
 6. `spec/INC_GEN_020_ACCEPTANCE_MATRIX_2026-08-31.md`
 7. `spec/INC_GEN_019_CHECKPOINT.md`（历史生产断点）
@@ -66,7 +66,7 @@
 
 ## 2. 当前授权边界
 
-- **2026-09-01 INC-GEN-020 当前权威状态**：用户同意本地修复方案并强调“用户只点一次、系统自动保存/回收、不得要求用户重复点击或去Provider平台找结果”。本地实现与定向验证已完成；用户已明确确认v0.6.66并允许发布v0.6.66。本次一次性授权包含commit/push/PR/tag/Release、备份、生产切换和原任务自动收口核对；不包含新的真实生成或Provider POST；
+- **2026-09-01 INC-GEN-020 当前权威状态**：用户的核心合同是“只点一次，系统自动保存/回收，不要求重复点击或去Provider平台找结果”。v0.6.66生产技术门已通过，原任务自动收口、整组页面解锁且无新attempt/Provider POST；实页任务面板已读验，但节点alert有一处旧文案残余，所以保持`USER_RECHECK`。v0.6.66一次性commit/push/PR/tag/Release、备份与生产切换授权已消费；新代码、新版本、新发布或Provider POST都需新授权；
 
 - **2026-08-31 INC-GEN-018 当前权威状态**：用户已在本Session完整发送一次性Goal并启动连续实施；R0～R8技术门完成。冻结候选独立终审为`P0=0/P1=0/P2=7/GO`，唯一正式safe full原始`1131/1135`，4项最小关闭并隔离浏览器AUTO_PASS，formal full权限已消费且禁止重跑。PR #134、final-head/main CI、v0.6.64不可移动tag/Release、fresh build、冻结恢复、生产exact迁移、repeat no-op、原子切换、paired rollback/forward、10/10模型健康、7节点零付费preflight与72秒稳定门均通过。当前严格为`PRODUCTION_V0_6_64_TECHNICAL_PASS / ZERO_PROVIDER_POST_PASS / USER_RECHECK`；版本、GitHub、迁移和生产发布一次性权限均已消费，禁止移动tag、重建Release、再次stop/restart、再次Provider POST或把自动证据升级为`USER_PASS`；
 
