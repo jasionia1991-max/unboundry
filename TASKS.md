@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻当前任务
 
-## INC-GEN-019 整组执行保存竞态与原子准入精确修复（R7 FORMAL RECORDED / R8 VERSION VALIDATED）
+## INC-GEN-019 整组执行保存竞态与原子准入精确修复（PRODUCTION v0.6.65 TECHNICAL PASS / REAL GROUP BUDGET BLOCKED）
 
 - [x] 用户在本 Session 显式启动一次性 Goal；基于实时`origin/main@86685471092941a31c30621233b9238ce6b1c393`建立`codex/inc-gen-019-group-admission-2026-08-31`。
 - [x] R0冻结生产v0.6.64/schema41、service健康、tasks1026/admissions946/attempts1037/paidProviderRequests1025/active0/currentUnknown0；本Goal新增task/admission/attempt/POST/OSS/费用0。
@@ -13,7 +13,9 @@
 - [x] R8版本身份门选择v0.6.65：本地/远端tag与GitHub Release均未占用，GitHub main/本地base仍为`86685471092941a31c30621233b9238ce6b1c393`，package/生产为v0.6.64；已同步package/lock/final runtime allowlist/m81断言。
 - [x] v0.6.65版本直接safe m81+m38=`57/57 PASS`（41+16），source/snapshot=`7749d8dd…5210`，失败/重试/跳过/blocked/reportErrors均0、4173 unchanged；四个版本身份文件按Goal排除在业务10文件分母外，formal full未重跑。
 - [x] 最终治理同步后只复验m38=`16/16 PASS`，source/snapshot=`6f87c7f4…5776`、异常0、4173 unchanged；formal full继续不重跑。
-- [ ] R8候选GO后完成v0.6.65或最低未占用patch、GitHub/CI、不可变发布、freeze/restore、rollback/forward、零付费门及唯一一次目标group真实点击；真实费用必须满足`CNY + 10×USD <= 100`。
+- [x] R8完成v0.6.65 PR #136、final-head/main CI、不可移动tag/Release、exact tag fresh build、freeze/restore、forward→rollback→final forward、33/33静态、schema/service/data及10-model/11-node零付费门；生产回执为`spec/V0_6_65_PRODUCTION_RECEIPT_2026-08-31.json`。
+- [x] 真实点击预算门在付费前硬停止：三张图片配置上限合计USD30，按Goal折算CNY300>CNY100，且无可靠实际报价可证明更低；真实group click保持0/1且权限未消费，新增task/admission/attempt/Provider POST/OSS/费用均0。
+- [x] 生产回执治理m38首轮15/16仅暴露当前治理标记仍为v0.6.64；同步为v0.6.65后最小复验16/16 PASS，source/snapshot=`b956ee2e…3d77`、异常0、4173 unchanged；formal full未重跑。
 - [ ] 技术完成后保持`USER_RECHECK`，仅用户实页明确确认才升级`USER_PASS`。
 
 ## INC-GEN-018 模型合同健康边界与旧Revision精确修复（R8 PRODUCTION TECHNICAL PASS / USER RECHECK）

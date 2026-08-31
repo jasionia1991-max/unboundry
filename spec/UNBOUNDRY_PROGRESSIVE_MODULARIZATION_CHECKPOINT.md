@@ -1,9 +1,9 @@
 # Unboundry 渐进式模块化 Checkpoint
 
 更新日期：2026-08-26
-状态：`CURRENT_GOVERNANCE_HARDENING / FIRST_AND_SECOND_BATCH_PRODUCTION_PUBLISHED / CURRENT_V0_6_64_USER_RECHECK / VIEW_005_AUTO_PASS / NO_ACTIVE_NEXT_BATCH`
+状态：`CURRENT_GOVERNANCE_HARDENING / FIRST_AND_SECOND_BATCH_PRODUCTION_PUBLISHED / CURRENT_V0_6_65_USER_RECHECK / VIEW_005_AUTO_PASS / NO_ACTIVE_NEXT_BATCH`
 
-当前收口：第一、第二批已在 v0.6.28 发布，随后由 v0.6.29/30 的商业 Provider 隔离、真实验证、结果兼容与用户验收继续验证组合，并随 v0.6.31 进入普通 main-safe 生产路径。`VIEW-005` 已收口为 `AUTO_PASS`；当前生产为 v0.6.64/schema41，项目默认Node25/npm11且生产继续使用Node22/npm10。v0.6.49/50完成MODEL-CONTRACT-001后端、数据和活动模型入口，v0.6.51完成用户复验返工，v0.6.54完成MODEL-CONTRACT-002历史revision解耦，v0.6.55/56完成INC-GEN-016结果自动恢复和数字task ID真实闭环，当前只待用户观看目标Canvas成片并确认质量。v0.6.32只在真实功能触发点增加MediaBlobStore可取消读取和客户端可替换编辑源resolver；INC-IMGEDIT-003～006按第四批触发原则完成图片工具需要的最小业务、UI、产品质量和可信素材安全边界；v0.6.41只增加角色合规Port/Application/Store及付费前门，v0.6.42只增加accepted-only恢复租约并复用既有Canvas拖动quiet gate，v0.6.44只增加执行成功与Canvas投影解耦及credential verify双版本CAS，v0.6.45增加历史终态核对与原子detach，v0.6.46只修正两条收口路径对opaque长指纹的合同并完成生产灰度，v0.6.47完成工具链治理与生产发布，没有启动第三、第五、第六批或重做整个Canvas。INC-IMGEDIT-006和INC-GEN-015的既有用户确认继续作为历史事实保留；INC-SEEDANCE-002、INC-GEN-013与INC-GEN-014仍待各自用户实页复验。以下冻结身份和施工记录保留原时点，不得再把旧 `USER_RECHECK` 或旧 package 解释为当前状态。
+当前收口：第一、第二批已在 v0.6.28 发布，随后由 v0.6.29/30 的商业 Provider 隔离、真实验证、结果兼容与用户验收继续验证组合，并随 v0.6.31 进入普通 main-safe 生产路径。`VIEW-005` 已收口为 `AUTO_PASS`；当前生产为 v0.6.65/schema41，项目默认Node25/npm11且生产继续使用Node22/npm10。v0.6.49/50完成MODEL-CONTRACT-001后端、数据和活动模型入口，v0.6.51完成用户复验返工，v0.6.54完成MODEL-CONTRACT-002历史revision解耦，v0.6.55/56完成INC-GEN-016结果自动恢复和数字task ID真实闭环，当前只待用户观看目标Canvas成片并确认质量。v0.6.32只在真实功能触发点增加MediaBlobStore可取消读取和客户端可替换编辑源resolver；INC-IMGEDIT-003～006按第四批触发原则完成图片工具需要的最小业务、UI、产品质量和可信素材安全边界；v0.6.41只增加角色合规Port/Application/Store及付费前门，v0.6.42只增加accepted-only恢复租约并复用既有Canvas拖动quiet gate，v0.6.44只增加执行成功与Canvas投影解耦及credential verify双版本CAS，v0.6.45增加历史终态核对与原子detach，v0.6.46只修正两条收口路径对opaque长指纹的合同并完成生产灰度，v0.6.47完成工具链治理与生产发布，没有启动第三、第五、第六批或重做整个Canvas。INC-IMGEDIT-006和INC-GEN-015的既有用户确认继续作为历史事实保留；INC-SEEDANCE-002、INC-GEN-013与INC-GEN-014仍待各自用户实页复验。以下冻结身份和施工记录保留原时点，不得再把旧 `USER_RECHECK` 或旧 package 解释为当前状态。
 
 治理门：后续批次只在真实新功能触发边界问题时立项；没有触发就不得施工。
 
