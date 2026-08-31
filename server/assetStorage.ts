@@ -50,6 +50,7 @@ import {
   type AliyunStorageProfile,
 } from "./secureStorageProfiles";
 import {
+  reserveMediaProcessResources,
   reserveMediaResources,
   ResourceBudgetError,
 } from "./resourceBudget";
@@ -312,6 +313,8 @@ export async function saveGeneratedPng(input: {
   label: string;
   ownerId: string;
   task?: GeneratedPublicationTask;
+  /** Test seam for the external-object write; production uses private OSS. */
+  uploadObject?: typeof uploadPrivateAliyunOssObject;
 }) {
   if (input.bytes.length < 1 || input.bytes.length > maxImageBytes) {
     throw new Error("Generated PNG image size is invalid");
@@ -325,13 +328,15 @@ export async function saveGeneratedPng(input: {
     reservation: ReturnType<typeof reserveMediaPublication>;
     routing: { enabled: boolean; profile?: AliyunStorageProfile };
   } | undefined;
+  let resourceReservation:
+    | ReturnType<typeof reserveMediaProcessResources>
+    | undefined;
   try {
-    releaseResources = await reserveMediaResources({
+    resourceReservation = reserveMediaProcessResources({
       bytes: maxImageBytes,
-      directory: path.directory,
       ownerId: input.ownerId,
     });
-    const dimensions = validatePng(input.bytes);
+    releaseResources = resourceReservation.release;
     publication = await withStorageMediaRoutingReservation((routing) => {
       const objectKey = routing.enabled && routing.profile
         ? createAliyunOssObjectKey("image", "png")
@@ -354,10 +359,11 @@ export async function saveGeneratedPng(input: {
       };
     });
     const { objectKey, reservation, routing } = publication;
-    await mkdir(path.directory, { recursive: true });
-    await writeFile(mediaPublicationStagingPath(reservation), input.bytes, {
-      flag: "wx",
-    });
+    if (!(routing.enabled && routing.profile)) {
+      await mkdir(path.directory, { recursive: true });
+      await resourceReservation.verifyLocalStorage(path.directory);
+    }
+    const dimensions = validatePng(input.bytes);
     stageMediaPublication(reservation, {
       byteSize: input.bytes.length,
       checksumSha256,
@@ -366,16 +372,19 @@ export async function saveGeneratedPng(input: {
       mediaWidth: dimensions.width,
     });
     if (routing.enabled && routing.profile) {
-      await uploadPrivateAliyunOssObject({
+      await (input.uploadObject ?? uploadPrivateAliyunOssObject)({
         byteSize: input.bytes.length,
+        bytes: input.bytes,
         checksumSha256,
         contentType: "image/png",
         credentials: routing.profile,
-        filePath: mediaPublicationStagingPath(reservation),
         objectKey,
       });
       markExternalMediaPublicationReady(reservation);
     } else {
+      await writeFile(mediaPublicationStagingPath(reservation), input.bytes, {
+        flag: "wx",
+      });
       await publishLocalMediaPublication(reservation);
     }
     if (input.task) {

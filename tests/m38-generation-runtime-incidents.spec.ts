@@ -2603,6 +2603,115 @@ test("server recovery sweep binds one ledger match and launches without a second
   }
 });
 
+test("synchronous GPT Image response-save loss closes automatically without a second attempt", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-gpt-image-save-loss-"));
+  const store = createGenerationTaskStore(dataDirectory);
+  try {
+    const created = store.create({
+      canvasId: "gpt-image-save-loss-canvas",
+      idempotencyKey: "gpt-image-save-loss-0001",
+      kind: "image",
+      modelConfiguration: { providerProtocol: "gpt-image" },
+      nodeId: "gpt-image-save-loss-node",
+      ownerId: "__test__",
+      prompt: "close the original response only",
+      providerModelId: "gpt-image-2",
+      providerProfileId: "relay-profile",
+    });
+    const running = store.transition(created.task.id, "running")!;
+    store.recordProviderAttempt(running.id);
+    store.markProviderResponseReceived({
+      executionAttempt: running.attempt,
+      taskId: running.id,
+    });
+    store.transition(running.id, "recovering", {
+      code: "AUTOMATIC_RESULT_RECOVERY",
+      message: "the in-process save insurance was exhausted",
+    });
+    const beforeDatabase = openAppDatabase(dataDirectory);
+    const before = generationProviderAttemptCounts(beforeDatabase);
+    beforeDatabase.close();
+    let matches = 0;
+    const launched: string[] = [];
+    await runGenerationRecoverySweep({
+      launch: (id) => launched.push(id),
+      match: async () => {
+        matches += 1;
+        return { status: "none" as const };
+      },
+      pendingPublicationTaskIds: () => new Set(),
+      store,
+    });
+    expect(store.get(running.id)).toMatchObject({
+      attempt: 1,
+      errorCode: "RESULT_SAVE_FAILED_NO_RETRY",
+      providerTaskId: undefined,
+      state: "failed",
+    });
+    expect(store.getProviderAttemptForTask(running.id)).toMatchObject({
+      executionAttempt: 1,
+      outcome: "response-received",
+      providerTaskId: undefined,
+    });
+    const afterDatabase = openAppDatabase(dataDirectory);
+    expect(generationProviderAttemptCounts(afterDatabase)).toEqual(before);
+    afterDatabase.close();
+    expect(matches).toBe(0);
+    expect(launched).toEqual([]);
+  } finally {
+    store.close();
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("GPT Image unknown outcome remains on original-task recovery", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-gpt-image-unknown-sweep-"));
+  const store = createGenerationTaskStore(dataDirectory);
+  try {
+    const created = store.create({
+      canvasId: "gpt-image-unknown-sweep-canvas",
+      idempotencyKey: "gpt-image-unknown-sweep-0001",
+      kind: "image",
+      modelConfiguration: { providerProtocol: "gpt-image" },
+      nodeId: "gpt-image-unknown-sweep-node",
+      ownerId: "__test__",
+      prompt: "preserve unknown original request",
+      providerModelId: "gpt-image-2",
+      providerProfileId: "relay-profile",
+    });
+    const running = store.transition(created.task.id, "running")!;
+    store.recordProviderAttempt(running.id);
+    store.transition(running.id, "failed", {
+      code: "OUTCOME_UNKNOWN_BILLING_RISK",
+      message: "provider outcome is unknown",
+    });
+    store.transition(running.id, "recovering", {
+      code: "AUTOMATIC_RESULT_RECOVERY",
+      message: "reconcile only the original request",
+    });
+    const beforeDatabase = openAppDatabase(dataDirectory);
+    const before = generationProviderAttemptCounts(beforeDatabase);
+    beforeDatabase.close();
+    await runGenerationRecoverySweep({ store });
+    expect(store.get(running.id)).toMatchObject({
+      attempt: 1,
+      errorCode: "AUTOMATIC_RESULT_RECOVERY",
+      providerTaskId: undefined,
+      state: "recovering",
+    });
+    expect(store.getProviderAttemptForTask(running.id)).toMatchObject({
+      executionAttempt: 1,
+      outcome: "outcome-unknown",
+    });
+    const afterDatabase = openAppDatabase(dataDirectory);
+    expect(generationProviderAttemptCounts(afterDatabase)).toEqual(before);
+    afterDatabase.close();
+  } finally {
+    store.close();
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
 test("server recovery sweep relaunches stale queued tasks and leaves fresh ones alone", async () => {
   const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-queued-sweep-"));
   const store = createGenerationTaskStore(dataDirectory);

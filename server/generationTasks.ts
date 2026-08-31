@@ -736,12 +736,19 @@ function ensureGenerationRecoverySweep() {
 export async function runGenerationRecoverySweep(options?: {
   launch?: (taskId: string, kind: GenerationTask["kind"]) => void;
   match?: typeof autoMatchRelayProviderTask;
+  pendingPublicationTaskIds?: () => ReadonlySet<string>;
   store?: ReturnType<typeof createGenerationTaskStore>;
 }) {
   if (!incGen017GenerationEnabled()) return;
   const launch = options?.launch ?? launchGenerationTask;
   const matchProviderTask = options?.match ?? autoMatchRelayProviderTask;
   const store = options?.store ?? taskStore();
+  let publicationTaskIds: ReadonlySet<string> | undefined;
+  const hasPendingPublication = (taskId: string) => {
+    publicationTaskIds ??=
+      (options?.pendingPublicationTaskIds ?? pendingGeneratedPublicationTaskIds)();
+    return publicationTaskIds.has(taskId);
+  };
   for (const task of store.listRecovering()) {
     const claimed = store.claimRecovering(task.id, task.updatedAt);
     if (!claimed) continue;
@@ -752,6 +759,30 @@ export async function runGenerationRecoverySweep(options?: {
       } catch {
         // A concurrent owner or an invalid frozen snapshot keeps the task in
         // its last durable state; the worker never falls back to submit.
+      }
+      continue;
+    }
+    const providerAttempt = store.getProviderAttemptForTask(claimed.id);
+    if (
+      claimed.kind === "image" &&
+      taskProviderProtocol(claimed) === "gpt-image" &&
+      providerAttempt?.executionAttempt === claimed.attempt &&
+      providerAttempt.outcome === "response-received" &&
+      !hasPendingPublication(claimed.id)
+    ) {
+      // A synchronous GPT Image response has no remote task id to poll. Once
+      // the in-process save insurance is exhausted and no durable publication
+      // exists, keeping the task in recovering cannot recover the bytes. Close
+      // the original task automatically so the group releases without asking
+      // the user to retry or visit the Provider platform.
+      try {
+        store.transition(claimed.id, "failed", {
+          code: "RESULT_SAVE_FAILED_NO_RETRY",
+          message:
+            "图片平台已返回结果，但系统未能安全保存；本轮已自动停止且不会重复提交",
+        });
+      } catch {
+        // A concurrent terminal transition wins. Never create a new attempt.
       }
       continue;
     }
