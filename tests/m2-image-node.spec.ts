@@ -1801,7 +1801,7 @@ test("Image multi-angle submits a structured persistent fake task without Provid
     const method = route.request().method();
     if (url.pathname === "/api/generation-tasks/preflight" && method === "POST") {
       await route.fulfill({
-        body: JSON.stringify({ canEnqueue: true, canSubmit: true, problems: [] }),
+        body: JSON.stringify({ canEnqueue: true, canSubmit: true, canvasRevision: route.request().postDataJSON().canvasRevision, problems: [] }),
         contentType: "application/json",
         status: 200,
       });
@@ -2027,7 +2027,7 @@ test("Image redraw submits an owner-scoped mask fake task and cancel is lossless
     const method = route.request().method();
     if (url.pathname === "/api/generation-tasks/preflight" && method === "POST") {
       await route.fulfill({
-        body: JSON.stringify({ canEnqueue: true, canSubmit: true, problems: [] }),
+        body: JSON.stringify({ canEnqueue: true, canSubmit: true, canvasRevision: route.request().postDataJSON().canvasRevision, problems: [] }),
         contentType: "application/json",
         status: 200,
       });

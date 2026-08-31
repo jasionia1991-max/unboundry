@@ -51,6 +51,7 @@ export type NodeExecutor = {
     nodeId: string,
     context: NodeExecutorContext,
     executableIds: ReadonlySet<string>,
+    admissionRemainingMs?: () => number,
   ) => Promise<NodeRunResult>;
 };
 

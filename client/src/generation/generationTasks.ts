@@ -569,6 +569,7 @@ export type GenerationRetryGate = () => Promise<number>;
 export type GenerationRetryCurrentInputGate = () => void;
 
 export type GenerationOwnershipOptions = {
+  admissionRemainingMs?: () => number;
   canvasAdmissionAlreadyHeld?: boolean;
   fixtureScopeId?: string;
   generationInputKey?: string;
@@ -1364,6 +1365,7 @@ export async function recoverPendingGenerationTask(
 async function postGeneration(
   kind: GenerationTaskKind,
   input: GenerationPreflightInput,
+  signal?: AbortSignal,
 ) {
   return readMutationJson<GenerationTaskSummary>(
     "/api/generation-tasks",
@@ -1372,7 +1374,60 @@ async function postGeneration(
       headers: { "Content-Type": "application/json" },
       method: "POST",
     },
+    signal,
   );
+}
+
+async function runAdmissionStep<T>(
+  remainingMs: (() => number) | undefined,
+  phase: "formal" | "preflight",
+  work: (signal?: AbortSignal) => Promise<T>,
+): Promise<T> {
+  if (!remainingMs) return work();
+  const remaining = Math.floor(remainingMs());
+  if (remaining <= 0) {
+    throw new GenerationRequestError(
+      "画布持续变化，本次没有创建生成任务。请停止编辑后再试。",
+      409,
+      "SAVE_STABILITY_TIMEOUT",
+    );
+  }
+  const controller = new AbortController();
+  let timedOut = false;
+  let timeout: ReturnType<typeof globalThis.setTimeout> | undefined;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timeout = globalThis.setTimeout(() => {
+      timedOut = true;
+      controller.abort("generation-admission-deadline");
+      reject(new GenerationRequestError(
+        phase === "preflight"
+          ? "生成预检暂时未完成，正在自动重试"
+          : "生成请求结果暂时无法确认，正在核对原任务",
+        0,
+        phase === "preflight"
+          ? "PREFLIGHT_RETRYABLE"
+          : "GENERATION_RESPONSE_TIMEOUT",
+      ));
+    }, remaining);
+  });
+  try {
+    return await Promise.race([work(controller.signal), deadline]);
+  } catch (error) {
+    if (timedOut) {
+      throw new GenerationRequestError(
+        phase === "preflight"
+          ? "生成预检暂时未完成，正在自动重试"
+          : "生成请求结果暂时无法确认，正在核对原任务",
+        0,
+        phase === "preflight"
+          ? "PREFLIGHT_RETRYABLE"
+          : "GENERATION_RESPONSE_TIMEOUT",
+      );
+    }
+    throw error;
+  } finally {
+    if (timeout !== undefined) globalThis.clearTimeout(timeout);
+  }
 }
 
 /**
@@ -1708,18 +1763,6 @@ export async function ensureGenerationTask(
     ...(workflowBinding ? { workflowBinding } : {}),
   };
 
-  const preflight = await preflightGeneration(kind, prepared);
-  if (!preflight.canSubmit || !preflight.canEnqueue) {
-    throw new GenerationRequestError(
-      preflight.problems[0]?.message ??
-        preflight.enqueueProblem?.message ??
-        "当前暂时无法创建生成任务",
-      409,
-      preflight.enqueueProblem?.code ?? preflight.problems[0]?.code,
-      preflight.problems,
-    );
-  }
-
   try {
     return await withCanvasAdmission(async () => {
       await assertNoConflictingGroupRun(
@@ -1727,10 +1770,47 @@ export async function ensureGenerationTask(
         input.nodeId,
         options.workflowRunId,
       );
-      // Keep the caller-owned semantic fence adjacent to the paid POST while
-      // the cross-tab canvas admission lock is held.
+      // Preflight, semantic confirmation and the paid boundary share the same
+      // cross-tab admission. The server transaction remains the final fence.
       assertCurrentInput?.();
-      const task = await postGeneration(kind, prepared);
+      let preflight: GenerationPreflightResult;
+      try {
+        preflight = await runAdmissionStep(
+          options.admissionRemainingMs,
+          "preflight",
+          (signal) => preflightGeneration(kind, prepared, signal),
+        );
+      } catch (error) {
+        if (
+          error instanceof GenerationRequestError &&
+          error.status >= 400 && error.status < 500
+        ) throw error;
+        if (
+          error instanceof GenerationRequestError &&
+          error.code === "PREFLIGHT_RETRYABLE"
+        ) throw error;
+        throw new GenerationRequestError(
+          "生成预检暂时未完成，正在自动重试",
+          error instanceof GenerationRequestError ? error.status : 0,
+          "PREFLIGHT_RETRYABLE",
+        );
+      }
+      if (!preflight.canSubmit || !preflight.canEnqueue) {
+        throw new GenerationRequestError(
+          preflight.problems[0]?.message ??
+            preflight.enqueueProblem?.message ??
+            "当前暂时无法创建生成任务",
+          409,
+          preflight.enqueueProblem?.code ?? preflight.problems[0]?.code,
+          preflight.problems,
+        );
+      }
+      assertCurrentInput?.();
+      const task = await runAdmissionStep(
+        options.admissionRemainingMs,
+        "formal",
+        (signal) => postGeneration(kind, prepared, signal),
+      );
       if (
         task.canvasId !== input.canvasId ||
         (task.fixtureScopeId ?? "") !== (options.fixtureScopeId ?? "") ||
@@ -1761,6 +1841,53 @@ export async function ensureGenerationTask(
       };
     });
   } catch (error) {
+    if (
+      error instanceof GenerationRequestError &&
+      error.code === "PREFLIGHT_RETRYABLE"
+    ) {
+      throw error;
+    }
+    if (
+      error instanceof GenerationRequestError &&
+      error.status === 409 && error.code === "CANVAS_NOT_SAVED"
+    ) {
+      const recovered = await getGenerationTaskByIdempotency(
+        input.canvasId,
+        intent.idempotencyKey,
+        options.fixtureScopeId ?? "",
+      );
+      if (recovered) {
+        if (
+          recovered.canvasId !== input.canvasId ||
+          (recovered.fixtureScopeId ?? "") !== (options.fixtureScopeId ?? "") ||
+          recovered.kind !== kind || recovered.nodeId !== input.nodeId ||
+          (modernIdentityRequired && (
+            !generationIdentityIsComplete(intent) ||
+            !generationIdentityIsComplete(recovered) ||
+            !taskMatchesGenerationIdentity(recovered, intent)
+          )) ||
+          (workflowBinding &&
+            !taskMatchesWorkflowBinding(recovered, workflowBinding)) ||
+          recovered.state === "cancelled"
+        ) {
+          throw new GenerationRequestError(
+            "生成任务关联不一致，请修改内容后再试",
+            409,
+            "IDEMPOTENCY_CONFLICT",
+          );
+        }
+        rememberGenerationTask(accountId, intent, recovered);
+        return {
+          generationOwnershipKey: intent.generationOwnershipKey,
+          idempotencyKey: intent.idempotencyKey,
+          recovered: true,
+          task: taskWithGenerationOwnership(recovered, intent),
+        };
+      }
+      // A deterministic revision rejection is before the paid boundary. Keep
+      // the exact intent so the bounded caller loop retries with the same key.
+      throw error;
+    }
     // The POST may have reached the server even when its response did not reach
     // the browser. One read-only reconciliation prevents the next click from
     // creating a second paid task.
@@ -1904,6 +2031,7 @@ export type GenerationPreflightInput = {
 export type GenerationPreflightResult = {
   canEnqueue: boolean;
   canSubmit: boolean;
+  canvasRevision: number;
   enqueueProblem?: {
     code: string;
     message: string;
@@ -1928,37 +2056,59 @@ export type GenerationPreflightResult = {
 export async function preflightGeneration(
   kind: GenerationTaskKind,
   input: GenerationPreflightInput,
+  signal?: AbortSignal,
 ): Promise<GenerationPreflightResult> {
   const result = await readJson<GenerationPreflightResult>(
     await fetch("/api/generation-tasks/preflight", {
       body: JSON.stringify({ ...input, kind }),
       headers: { "Content-Type": "application/json" },
       method: "POST",
+      signal,
     }),
   );
-  if (!result.canEnqueue && !result.enqueueProblem) {
-    const safetyProblem = result.safetyAdmission?.allowed === false &&
-      result.safetyAdmission.message
-      ? {
-          code: result.safetyAdmission.code,
-          message: result.safetyAdmission.message,
-        }
-      : undefined;
-    const providerProblem = result.provider &&
-        (!result.provider.adapterSupported || !result.provider.configured)
-      ? {
-          code: !result.provider.adapterSupported
-            ? "ADAPTER_UNSUPPORTED"
-            : "PROVIDER_PROFILE_MISSING",
-          message: !result.provider.adapterSupported
-            ? "当前模型尚未接入安全生成服务"
-            : "平台安全配置缺失，请联系管理员",
-        }
-      : undefined;
-    result.enqueueProblem = safetyProblem ?? providerProblem ?? {
-      code: "GENERATION_UNAVAILABLE",
-      message: "当前暂时无法创建生成任务",
-    };
+  if (result.canSubmit === false || result.canEnqueue === false) {
+    if (!result.canEnqueue && !result.enqueueProblem) {
+      const safetyProblem = result.safetyAdmission?.allowed === false &&
+        result.safetyAdmission.message
+        ? {
+            code: result.safetyAdmission.code,
+            message: result.safetyAdmission.message,
+          }
+        : undefined;
+      const providerProblem = result.provider &&
+          (!result.provider.adapterSupported || !result.provider.configured)
+        ? {
+            code: !result.provider.adapterSupported
+              ? "ADAPTER_UNSUPPORTED"
+              : "PROVIDER_PROFILE_MISSING",
+            message: !result.provider.adapterSupported
+              ? "当前模型尚未接入安全生成服务"
+              : "平台安全配置缺失，请联系管理员",
+          }
+        : undefined;
+      result.enqueueProblem = safetyProblem ?? providerProblem ?? {
+        code: "GENERATION_UNAVAILABLE",
+        message: "当前暂时无法创建生成任务",
+      };
+    }
+    return result;
+  }
+  if (!Number.isSafeInteger(result.canvasRevision) || result.canvasRevision < 0) {
+    throw new GenerationRequestError(
+      "服务器未返回可验证的画布版本，已停止本次生成",
+      409,
+      "CANVAS_REVISION_INVALID",
+    );
+  }
+  if (
+    input.canvasRevision !== undefined &&
+    result.canvasRevision !== input.canvasRevision
+  ) {
+    throw new GenerationRequestError(
+      "画布内容还在保存，请等待自动保存完成后再试",
+      409,
+      "CANVAS_NOT_SAVED",
+    );
   }
   return result;
 }

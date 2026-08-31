@@ -187,6 +187,7 @@ async function waitForRuntimePreflight(
 }
 
 async function runRegisteredNodeWithRefreshRecovery(input: {
+  admissionRemainingMs: () => number;
   context: NodeExecutorContext;
   executor: NodeExecutor;
   executableIds: ReadonlySet<string>;
@@ -215,6 +216,7 @@ async function runRegisteredNodeWithRefreshRecovery(input: {
       input.nodeId,
       input.context,
       input.executableIds,
+      input.admissionRemainingMs,
     );
     if (result.status !== "busy") return result;
     if (input.isCancelled()) {
@@ -1803,7 +1805,7 @@ export function WorkflowExecutionProvider({
                     signal: abortController.signal,
                   });
                 },
-                run: async () => {
+                run: async (admissionRemainingMs) => {
                   if (resumeInFlightNodeIds.has(nodeId)) {
                     return executor.recover(
                       nodeId,
@@ -1814,6 +1816,7 @@ export function WorkflowExecutionProvider({
                     );
                   }
                   return runRegisteredNodeWithRefreshRecovery({
+                    admissionRemainingMs,
                     context: createExecutorContext(
                       () => running.cancelled,
                       {

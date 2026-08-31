@@ -25,6 +25,14 @@ export function isCanvasNotSavedMessage(message?: string): boolean {
     message.includes("画布还在保存");
 }
 
+function isRetryableAdmissionFailure(result: NodeRunResult): boolean {
+  return result.status === "failed" && (
+    result.errorCode === "CANVAS_NOT_SAVED" ||
+    result.errorCode === "PREFLIGHT_RETRYABLE" ||
+    isCanvasNotSavedMessage(result.message)
+  );
+}
+
 export function shouldIgnoreStaleCanvasSaveProblem(problem?: {
   message?: string;
 }): boolean {
@@ -101,23 +109,59 @@ export async function persistGroupCanvasAfterNode(input: {
 }
 
 /**
- * Persist the canvas after every group-run node, and retry once when the node
- * failed only because the canvas revision was still moving.
+ * Persist the canvas after every group-run node. A deterministic moving-canvas
+ * rejection stays in the same intent and retries only inside one deadline.
  */
 export async function runGroupNodeWithPersist(input: {
+  admissionDeadlineMs?: number;
   isCancelled?: () => boolean;
+  now?: () => number;
   persist: () => Promise<string | undefined>;
   project?: (projection: GroupResultProjection) => void;
-  run: () => Promise<NodeRunResult>;
+  run: (admissionRemainingMs: () => number) => Promise<NodeRunResult>;
+  waitForAdmissionRetry?: (milliseconds: number) => Promise<void>;
 }): Promise<NodeRunResult> {
-  let result = await input.run();
-  if (isCanvasNotSavedMessage(result.message) && result.status === "failed") {
-    const persistError = await input.persist();
-    if (persistError) return { message: persistError, status: "failed" };
+  const now = input.now ?? (() => globalThis.performance?.now() ?? Date.now());
+  const deadline = now() + (input.admissionDeadlineMs ?? 30_000);
+  const admissionRemainingMs = () => Math.max(0, deadline - now());
+  let result = await input.run(admissionRemainingMs);
+  while (
+    isRetryableAdmissionFailure(result) &&
+    now() < deadline
+  ) {
+    if (
+      result.errorCode === "CANVAS_NOT_SAVED" ||
+      isCanvasNotSavedMessage(result.message)
+    ) {
+      const persistError = await input.persist();
+      if (persistError) return { message: persistError, status: "failed" };
+    }
     if (input.isCancelled?.()) {
       return { message: "已停止后续节点", status: "skipped" };
     }
-    result = await input.run();
+    if (result.errorCode === "PREFLIGHT_RETRYABLE") {
+      const waitMs = Math.min(250, admissionRemainingMs());
+      if (waitMs > 0) {
+        await (input.waitForAdmissionRetry ?? ((milliseconds) =>
+          new Promise((resolve) => globalThis.setTimeout(resolve, milliseconds))))(
+            waitMs,
+          );
+      }
+    }
+    result = await input.run(admissionRemainingMs);
+  }
+  if (isRetryableAdmissionFailure(result)) {
+    result = result.errorCode === "PREFLIGHT_RETRYABLE"
+      ? {
+          errorCode: "PREFLIGHT_TIMEOUT",
+          message: "生成预检持续不可用，本次没有创建生成任务。请稍后再试。",
+          status: "failed",
+        }
+      : {
+          errorCode: "SAVE_STABILITY_TIMEOUT",
+          message: "画布持续变化，本次没有创建生成任务。请停止编辑后再试。",
+          status: "failed",
+        };
   }
   const persistError = await input.persist();
   if (persistError && result.status === "success") {

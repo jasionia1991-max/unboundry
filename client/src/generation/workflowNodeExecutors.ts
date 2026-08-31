@@ -1251,7 +1251,7 @@ function createExecutor(kind: WorkflowExecutorKind): NodeExecutor {
       const terminal = await waitForTerminalTask(context, plan, task);
       return applyTerminalTask(context, plan, terminal, ownershipKey);
     },
-    run: async (nodeId, context, executableIds) => {
+    run: async (nodeId, context, executableIds, admissionRemainingMs) => {
       if (context.isCancelled()) {
         return { message: "已停止后续节点", status: "skipped" };
       }
@@ -1306,6 +1306,7 @@ function createExecutor(kind: WorkflowExecutorKind): NodeExecutor {
               modelConfigurationRevision: plan.modelConfigurationRevision,
               generationOwnershipKey: plan.effectiveOwnershipKey,
               modelReleaseRevision: plan.modelReleaseRevision,
+              admissionRemainingMs,
               workflowGroupId: context.groupId,
               workflowRunId: context.runId,
             },

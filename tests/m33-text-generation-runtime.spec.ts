@@ -667,7 +667,7 @@ test("a persisted pending Text task replaces old content after refresh without a
     if (requestUrl.pathname.endsWith("/preflight") && method === "POST") {
       await route.fulfill({
         contentType: "application/json",
-        json: { canEnqueue: true, canSubmit: true, problems: [] },
+        json: { canEnqueue: true, canSubmit: true, canvasRevision: route.request().postDataJSON().canvasRevision, problems: [] },
         status: 200,
       });
       return;
@@ -928,7 +928,7 @@ test("Text failure stays visible, refreshes, and retries the same task until inp
     if (url.pathname.endsWith("/preflight") && method === "POST") {
       await route.fulfill({
         contentType: "application/json",
-        json: { canEnqueue: true, canSubmit: true, problems: [] },
+        json: { canEnqueue: true, canSubmit: true, canvasRevision: route.request().postDataJSON().canvasRevision, problems: [] },
         status: 200,
       });
       return;
