@@ -1,5 +1,18 @@
 # Unboundry 绿地复刻当前任务
 
+## INC-GEN-020 同步图片结果持久化与原任务自动收口（v0.6.66 RELEASE AUTHORIZED / IN PROGRESS）
+
+- [x] 冻结生产原任务证据：image/recovering/attempt1、Provider attempt=`response-received`、provider task id/result asset id为空；禁止新Provider POST。
+- [x] 私有OSS路径改为内存PNG直传，不依赖根盘staging；保留大小/SHA/HEAD/private ACL/forbid-overwrite验证。
+- [x] 拆分进程资源与本地磁盘门：OSS仍受并发/内存限制，本地路径仍执行磁盘余量门。
+- [x] 精确同步图片保存丢失状态由后台终止原任务并释放整组；不新建task/attempt，不要求用户点击重试或去Provider平台回收。
+- [x] `outcome-unknown`继续只核对原任务，`media-generate`自动匹配/轮询合同保持。
+- [x] 定向safe m13+m38+m88+m90共84/84 PASS；TypeScript与diff-check通过；formal full未重跑。
+- [x] v0.6.66版本门已同步package/lock、final runtime allowlist和m81断言；safe m38+m81 `59/59 PASS`，source/snapshot=`114bcca0…109c60`。
+- [x] 本地阶段真实Provider POST、OSS写和新费用均为0；用户既有未跟踪受保护文件未触碰。
+- [x] 用户已明确确认并允许发布v0.6.66；本次授权不包含新的真实生成或Provider POST。
+- [ ] 发布后只验证后台自动收口和页面解锁；新的真实整组生成另需新的预算/点击授权。
+
 ## INC-GEN-019 整组执行保存竞态与原子准入精确修复（PRODUCTION v0.6.65 TECHNICAL PASS / REAL GROUP BUDGET BLOCKED）
 
 - [x] 用户在本 Session 显式启动一次性 Goal；基于实时`origin/main@86685471092941a31c30621233b9238ce6b1c393`建立`codex/inc-gen-019-group-admission-2026-08-31`。

@@ -425,6 +425,23 @@ test("Aliyun OSS SDK operations pin public DNS and the signed read never follows
     });
     expect(events.splice(0)).toEqual(["PUT", "HEAD"]);
 
+    const uploadedBytes = await uploadPrivateAliyunOssObject({
+      ...uploadInput,
+      byteSize: 3,
+      bytes: Buffer.from([1, 2, 3]),
+      filePath: undefined,
+      objectKey: "objects/2026/08/image/guarded-bytes.bin",
+    });
+    expect(uploadedBytes).toMatchObject({
+      etag: "fixture-etag",
+      requestId: "fixture-request-id",
+    });
+    expect(events.splice(0)).toEqual(["PUT", "HEAD"]);
+    await expect(uploadPrivateAliyunOssObject({
+      ...uploadInput,
+      bytes: Buffer.from([1, 2, 3, 4]),
+    })).rejects.toThrow("Invalid OSS upload source");
+
     await deletePrivateAliyunOssObject(
       uploadInput.objectKey,
       credentials,

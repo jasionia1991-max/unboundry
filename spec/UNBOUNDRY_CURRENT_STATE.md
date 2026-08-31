@@ -1,17 +1,27 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网运行v0.6.65/schema41；INC-GEN-019生产技术门已通过，严格为`PRODUCTION_V0_6_65_TECHNICAL_PASS / ZERO_PAID_PREFLIGHT_PASS / REAL_GROUP_FLOW_NOT_RUN_BUDGET_ESTIMATE_BLOCKED / USER_RECHECK`。目标11节点零付费preflight均HTTP200，但可靠实际报价不可得且配置上限折算CNY300超过CNY100，真实点击在付费前停止。不得用零付费门冒充真实整组或用户验收通过。
+> **状态分层**：现网仍运行v0.6.65/schema41旧代码；后续一次真实整组执行已创建2个任务，文字成功、同步图片因结果保存失败停在原任务`recovering`，没有重试。INC-GEN-020候选v0.6.66已获本次发布授权，严格为`PRODUCTION_V0_6_65_IMAGE_RESULT_RECOVERY_STUCK / INC_GEN_020_V0_6_66_RELEASE_AUTHORIZED / USER_RECHECK`。
 
-更新日期：2026-08-31
+更新日期：2026-09-01
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.65**
-本地候选代码版本：**v0.6.65**
+当前代码包版本：**v0.6.66**
+本地候选代码版本：**v0.6.66**
 当前生产部署版本：**v0.6.65**
 本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_65_USER_RECHECK`
-当前计划标记：`INC_GEN_019_R8_PRODUCTION_TECHNICAL_PASS / REAL_GROUP_FLOW_NOT_RUN_BUDGET_ESTIMATE_BLOCKED / USER_RECHECK`
+当前计划标记：`INC_GEN_020_V0_6_66_RELEASE_AUTHORIZED / USER_RECHECK`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`INC_GEN_019_V0_6_65_RELEASE_CONSUMED / REAL_GROUP_CLICK_NOT_USED_BUDGET_BLOCKED / USER_RECHECK`
+当前发布门：`INC_GEN_020_V0_6_66_RELEASE_AUTHORIZED / ZERO_NEW_PROVIDER_POST`
+
+## INC-GEN-020 当前区块（2026-09-01）
+
+- 用户核心合同：整组只点一次；系统自己保存或回收结果，不要求用户反复重试，也不要求用户去Provider平台找结果。
+- 生产原任务`8b6e5b71-c45f-485d-a6a7-7f83dc7be3f1`为image/recovering/attempt1；Provider attempt=`response-received`，provider task id/result asset id均为空。该同步响应没有远端可轮询ID，当前旧代码无法重新取得已经丢失的字节；本轮绝不再发Provider POST。
+- 本地实现：私有OSS路径直接上传内存PNG，不写根盘staging；保留进程并发/内存门和OSS大小、SHA、HEAD、private ACL、forbid-overwrite验证；只有不落本地的OSS路径跳过本地磁盘门，本地存储路径不放宽。
+- 自动收口：精确`gpt-image + response-received + 无provider task id + 无待提交publication`由后台将原任务置为`RESULT_SAVE_FAILED_NO_RETRY`终态，整组自动释放；不创建新task/attempt/Provider POST。`outcome-unknown`继续核对原任务，`media-generate`原有匹配/轮询不变。
+- 定向证据：safe m13 `8/8`，safe m38+m88+m90 `76/76`，合计84/84 PASS；TypeScript `--noEmit`和`git diff --check`通过。没有重复执行INC-GEN-019已经消费的formal full。
+- 边界：本地阶段真实Provider POST、OSS写和新费用均为0。用户已明确确认并允许发布v0.6.66；本次授权不包含新的真实生成或Provider POST。
+- 权威方案、断点、Matrix分别为`spec/INC_GEN_020_DURABLE_GPT_IMAGE_RESULT_PLAN_2026-08-31.md`、`spec/INC_GEN_020_CHECKPOINT.md`、`spec/INC_GEN_020_ACCEPTANCE_MATRIX_2026-08-31.md`。
 
 ## INC-GEN-019 当前区块（2026-08-31）
 

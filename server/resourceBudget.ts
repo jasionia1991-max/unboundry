@@ -28,6 +28,16 @@ export type ResourceReservationInput = Readonly<{
   bytes: number;
   directory: string;
   ownerId: string;
+  /**
+   * External-object publications still consume process memory/concurrency but
+   * do not need a second local copy. Local writers keep the disk fence.
+   */
+  requiresLocalStorage?: boolean;
+}>;
+
+export type ResourceProcessReservation = Readonly<{
+  release: () => void;
+  verifyLocalStorage: (directory: string) => Promise<void>;
 }>;
 
 /** In-memory admission for this single-process deployment. */
@@ -61,7 +71,9 @@ export class ResourceBudget {
     };
   }
 
-  async reserve(input: ResourceReservationInput) {
+  reserveProcess(
+    input: Pick<ResourceReservationInput, "bytes" | "ownerId">,
+  ): ResourceProcessReservation {
     if (
       !input.ownerId ||
       !Number.isSafeInteger(input.bytes) ||
@@ -104,27 +116,37 @@ export class ResourceBudget {
       else this.ownerJobs.delete(input.ownerId);
     };
 
-    try {
-      const info = await this.statFileSystem(input.directory);
-      const available = BigInt(info.bavail) * BigInt(info.bsize);
-      const required = BigInt(claimedBytes + this.options.minimumFreeBytes);
-      if (available < required) {
+    const verifyLocalStorage = async (directory: string) => {
+      try {
+        const info = await this.statFileSystem(directory);
+        const available = BigInt(info.bavail) * BigInt(info.bsize);
+        const required = BigInt(claimedBytes + this.options.minimumFreeBytes);
+        if (available < required) {
+          throw new ResourceBudgetError(
+            "INSUFFICIENT_STORAGE",
+            507,
+            "Insufficient storage for media processing",
+          );
+        }
+      } catch (error) {
+        release();
+        if (error instanceof ResourceBudgetError) throw error;
         throw new ResourceBudgetError(
           "INSUFFICIENT_STORAGE",
           507,
-          "Insufficient storage for media processing",
+          "Storage capacity could not be verified",
         );
       }
-      return release;
-    } catch (error) {
-      release();
-      if (error instanceof ResourceBudgetError) throw error;
-      throw new ResourceBudgetError(
-        "INSUFFICIENT_STORAGE",
-        507,
-        "Storage capacity could not be verified",
-      );
+    };
+    return { release, verifyLocalStorage };
+  }
+
+  async reserve(input: ResourceReservationInput) {
+    const reservation = this.reserveProcess(input);
+    if (input.requiresLocalStorage !== false) {
+      await reservation.verifyLocalStorage(input.directory);
     }
+    return reservation.release;
   }
 }
 
@@ -141,4 +163,10 @@ export async function reserveMediaResources(
 ) {
   await mkdir(input.directory, { recursive: true });
   return mediaResourceBudget.reserve(input);
+}
+
+export function reserveMediaProcessResources(
+  input: Pick<ResourceReservationInput, "bytes" | "ownerId">,
+) {
+  return mediaResourceBudget.reserveProcess(input);
 }

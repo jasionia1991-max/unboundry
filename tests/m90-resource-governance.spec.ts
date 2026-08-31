@@ -534,6 +534,36 @@ test("concurrent disk reservations share one aggregate free-space promise", asyn
   expect(budget.snapshot()).toMatchObject({ activeJobs: 0, reservedBytes: 0 });
 });
 
+test("external-object reservations keep process limits without requiring local disk", async () => {
+  let statsCalls = 0;
+  const budget = new ResourceBudget({
+    globalBytes: 1_000,
+    globalJobs: 1,
+    minimumFreeBytes: 500,
+    perOwnerJobs: 1,
+    statFileSystem: async () => {
+      statsCalls += 1;
+      return { bavail: 0, bsize: 1 };
+    },
+  });
+  const release = await budget.reserve({
+    bytes: 600,
+    directory: "/external-object-does-not-stage-locally",
+    ownerId: "oss-owner",
+    requiresLocalStorage: false,
+  });
+  expect(statsCalls).toBe(0);
+  expect(budget.snapshot()).toMatchObject({ activeJobs: 1, reservedBytes: 600 });
+  await expect(budget.reserve({
+    bytes: 1,
+    directory: "/external-object-does-not-stage-locally",
+    ownerId: "oss-owner",
+    requiresLocalStorage: false,
+  })).rejects.toMatchObject({ code: "RESOURCE_BUSY" });
+  release();
+  expect(budget.snapshot()).toMatchObject({ activeJobs: 0, reservedBytes: 0 });
+});
+
 test("thumbnail leases revoke uncached resolved object URLs", async () => {
   const windowDescriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
   const createDescriptor = Object.getOwnPropertyDescriptor(URL, "createObjectURL");

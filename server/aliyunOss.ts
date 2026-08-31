@@ -250,10 +250,11 @@ export function createAliyunOssObjectKey(
 
 export async function uploadPrivateAliyunOssObject(input: {
   byteSize: number;
+  bytes?: Buffer;
   checksumSha256: string;
   contentType: string;
   credentials: AliyunOssCredentials;
-  filePath: string;
+  filePath?: string;
   objectKey: string;
   network?: AliyunOssNetworkDependencies;
 }) {
@@ -266,17 +267,27 @@ export async function uploadPrivateAliyunOssObject(input: {
   ) {
     throw new Error("Invalid OSS object key");
   }
+  if (
+    (input.bytes === undefined) === (input.filePath === undefined) ||
+    input.bytes && input.bytes.length !== input.byteSize
+  ) {
+    throw new Error("Invalid OSS upload source");
+  }
   const client = configuredClient(input.credentials, input.network);
   try {
-    const result = await client.put(input.objectKey, input.filePath, {
-      headers: {
-        "Content-Type": input.contentType,
-        "x-oss-forbid-overwrite": "true",
-        "x-oss-meta-sha256": input.checksumSha256,
-        "x-oss-object-acl": "private",
+    const result = await client.put(
+      input.objectKey,
+      input.bytes ?? input.filePath!,
+      {
+        headers: {
+          "Content-Type": input.contentType,
+          "x-oss-forbid-overwrite": "true",
+          "x-oss-meta-sha256": input.checksumSha256,
+          "x-oss-object-acl": "private",
+        },
+        mime: input.contentType,
       },
-      mime: input.contentType,
-    });
+    );
     const head = await client.head(input.objectKey);
     const storedSize = Number(
       head.res?.headers?.["content-length"] ?? head.res?.headers?.["Content-Length"],

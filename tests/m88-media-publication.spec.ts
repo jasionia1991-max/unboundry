@@ -6,6 +6,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   rm,
   writeFile,
 } from "node:fs/promises";
@@ -13,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import { DatabaseSync } from "node:sqlite";
-import { assetStorage } from "../server/assetStorage";
+import { assetStorage, saveGeneratedPng } from "../server/assetStorage";
 import { adminTemplatesApi } from "../server/adminTemplates";
 import { audioStorage } from "../server/audioStorage";
 import { adminUsersApi, authApi, authGate } from "../server/auth";
@@ -4479,6 +4480,7 @@ test("GPT Image data references use recoverable OSS upload journals and retain f
         },
         uploadObject: async (input) => {
           expect(input.credentials.bucket).toBe("m88-original-bucket");
+          if (!input.filePath) throw new Error("M88 expected a staged file upload");
           expect(await readFile(input.filePath)).toEqual(png);
           objectKey = input.objectKey;
           const database = openAppDatabase(directory);
@@ -4692,6 +4694,63 @@ test("ready OSS media retains its profile and explicit missing profile IDs never
     const profiles = await listStorageProfiles();
     expect(profiles.activeProfileId).toBe(replacement.id);
     expect(profiles.profiles.map((profile) => profile.id)).toContain(original.id);
+  });
+});
+
+test("generated PNG writes directly to private OSS without a local staging copy", async () => {
+  await withDataDirectory("generated-png-direct-oss", async (directory) => {
+    const ownerId = "m88-generated-png-direct-owner";
+    addOwner(directory, ownerId);
+    const profile = await saveStorageProfile({
+      accessKeyId: "m88-generated-png-direct-key",
+      accessKeySecret: "m88-generated-png-direct-secret",
+      bucket: "m88-generated-png-direct-bucket",
+      endpoint: "https://oss-cn-shanghai.aliyuncs.com",
+      label: "M88 generated PNG direct OSS",
+      region: "oss-cn-shanghai",
+    });
+    await markStorageProfileVerified(profile.id);
+    await activateStorageProfile(profile.id);
+    await setStorageMediaRouting(true);
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "base64",
+    );
+    const uploads: Array<{
+      byteSize: number;
+      bytes?: Buffer;
+      filePath?: string;
+      objectKey: string;
+    }> = [];
+    const saved = await saveGeneratedPng({
+      bytes: png,
+      label: "direct oss result",
+      ownerId,
+      uploadObject: async (input) => {
+        uploads.push(input);
+        expect(input.credentials.bucket).toBe(profile.bucket);
+        expect(input.checksumSha256).toBe(
+          createHash("sha256").update(png).digest("hex"),
+        );
+        return { etag: "fixture", requestId: "fixture", versionId: "" };
+      },
+    });
+    expect(uploads).toHaveLength(1);
+    expect(uploads[0]).toMatchObject({
+      byteSize: png.length,
+      bytes: png,
+    });
+    expect(uploads[0]!.filePath).toBeUndefined();
+    expect(uploads[0]!.objectKey).toMatch(/^objects\//);
+    const media = readyMediaForOwner(ownerId, "image", saved.assetId);
+    expect(media).toMatchObject({
+      byteSize: png.length,
+      storageBackend: "oss",
+      storageProfileId: profile.id,
+      storageStatus: "ready",
+    });
+    const stagingEntries = await readdir(join(directory, "media")).catch(() => []);
+    expect(stagingEntries).toEqual([]);
   });
 });
 
