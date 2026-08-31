@@ -2,7 +2,9 @@
 
 本文件适用于“包含本文件的 Unboundry Git 工作树”，不再用固定目录名代替仓库身份。用户最新明确指令优先；若与仓库状态或本文冲突，先停止并向用户报告，不得猜测。
 
-当前生产身份：生产运行`v0.6.66/schema41`；INC-GEN-020已完成GitHub发布、冻结备份、原子切换、健康/数据/33静态文件和登录实页门。原同步图片任务已由系统自动收口为`RESULT_SAVE_FAILED_NO_RETRY`，active0，没有新attempt或Provider POST。当前严格为`PRODUCTION_V0_6_66_TECHNICAL_PASS / ORIGINAL_TASK_AUTO_CLOSED / ZERO_NEW_PROVIDER_POST / USER_RECHECK`。
+当前生产身份：生产运行`v0.6.67/schema41`且健康；v0.6.67发布授权已消费。真实整组点击前发现terminal-detach客户端/服务端application identity不一致，合法旧任务解绑被HTTP 400拒绝。整组点击0/1、Provider POST0/11、费用0。用户已确认并允许发布v0.6.68，当前严格为`PRODUCTION_V0_6_67_TECHNICAL_PASS / PRE_CLICK_P0 / V0_6_68_RELEASE_AUTHORIZED / RELEASE_IN_PROGRESS / USER_RECHECK`。
+
+2026-09-01 INC-GEN-022 当前候选状态：客户端不得把浏览器缓存字段`fixtureScopeId`纳入服务端terminal-detach application identity；本地v0.6.68候选已显式使用服务端十个合同字段，m22+m85 `71/71 PASS`，服务端owner/task/terminal/binding/fingerprint/result/CAS门不放宽。临时目标allowlist已撤回，生产继续健康运行v0.6.67。用户已确认并允许发布v0.6.68；真实整组点击权限未消费。实时断点为`spec/INC_GEN_022_CHECKPOINT.md`。
 
 2026-09-01 INC-GEN-021 当前候选状态：现网截图不构成整组通过；v0.6.67候选已为图片/视频/音频统一 durable staging、deferred publication 和运行时自动续传，Provider 已返回后不因短暂 OSS 故障丢弃原始字节，也不新增 attempt/Provider POST。TypeScript、diff-check与直接相关 safe specs 已通过；唯一正式safe full原始1139/1140，同源码只复验唯一无关m69失败后6/6通过，未重复full。生产仍是v0.6.66。用户已确认并允许发布v0.6.67；发布后真实整组授权为CNY300、最多11次POST、一次点击、不重试、结果不明只核对原任务。实时断点为`spec/INC_GEN_021_CHECKPOINT.md`。
 

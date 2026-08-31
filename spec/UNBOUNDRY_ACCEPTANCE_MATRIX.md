@@ -1,5 +1,12 @@
 # Unboundry 绿地复刻验收矩阵
 
+## INC-GEN-022 terminal-detach 合同热修（2026-09-01，PRE-CLICK P0 / v0.6.68 RELEASE AUTHORIZED）
+
+- v0.6.67已发布并部署健康；真实整组点击前，客户端/服务端terminal-detach application identity不一致导致HTTP 400，目标旧失败任务未解绑。
+- 安全停止证据：真实整组点击0/1、Provider POST0/11、费用0；只核对原task，未重试、未创建新task/attempt。
+- 本地v0.6.68候选统一十个正式绑定字段，服务端安全门不放宽；safe m22+m85 `71/71 PASS`。
+- v0.6.68明确发布授权已取得；IG22-005已通过，IG22-006～009保持`NOT_RUN`并等待生产部署及唯一一次真实整组验收。独立矩阵：[`spec/INC_GEN_022_ACCEPTANCE_MATRIX_2026-09-01.md`](INC_GEN_022_ACCEPTANCE_MATRIX_2026-09-01.md)。
+
 ## INC-GEN-018 模型合同健康边界与旧Revision精确修复（2026-08-31，R8 PRODUCTION TECHNICAL PASS / USER RECHECK）
 
 - 当前状态：`R0_TO_R8_TECHNICAL_COMPLETE / PRODUCTION_V0_6_64_TECHNICAL_PASS / ZERO_PROVIDER_POST_PASS / USER_RECHECK`。
