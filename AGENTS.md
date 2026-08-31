@@ -2,7 +2,7 @@
 
 本文件适用于“包含本文件的 Unboundry Git 工作树”，不再用固定目录名代替仓库身份。用户最新明确指令优先；若与仓库状态或本文冲突，先停止并向用户报告，不得猜测。
 
-2026-08-31 INC-GEN-018 当前权威状态：生产仍运行`v0.6.63/schema41`，用户重新开启真实生成后的实页预检确认新生产回归。用户已完整发送一次性Goal并启动实施；R0～R7已完成。R6冻结候选独立全量Review覆盖37/37文件、309/309 tracked hunks、10/10 published模型、11/11 registry identities、10/10数据库exact identities及全部Provider/protocol/adapter分支，结论`P0=0/P1=0/P2=7/GO`。R7唯一正式safe full原始`1131/1135`及4失败永久保留，4项均由最小直接复验关闭，5-hunk复审`P0=0/P1=0/P2=0/GO`，隔离浏览器AUTO_PASS；不得重跑formal full或改写为全绿。当前`R8_READY`，GitHub、v0.6.64、生产迁移/发布均未开始，现网仍回归开放且为`USER_RECHECK`；真实Provider POST、OSS写、新费用继续为0。INC-GEN-017历史Review/发布/真实Provider时点事实不改写。
+2026-08-31 INC-GEN-018 当前权威状态：生产仍运行`v0.6.63/schema41`，用户重新开启真实生成后的实页预检确认新生产回归。用户已完整发送一次性Goal并启动实施；R0～R7已完成。R6冻结候选独立全量Review覆盖37/37文件、309/309 tracked hunks、10/10 published模型、11/11 registry identities、10/10数据库exact identities及全部Provider/protocol/adapter分支，结论`P0=0/P1=0/P2=7/GO`。R7唯一正式safe full原始`1131/1135`及4失败永久保留，4项均由最小直接复验关闭，5-hunk复审`P0=0/P1=0/P2=0/GO`，隔离浏览器AUTO_PASS；不得重跑formal full或改写为全绿。v0.6.64已通过占用门与m81/m38，candidate commit=`790db916…ab618`；GitHub和生产迁移/发布尚未开始，现网仍回归开放且为`USER_RECHECK`。真实Provider POST、OSS写、新费用继续为0；INC-GEN-017历史Review/发布/真实Provider时点事实不改写。
 
 2026-08-27 MODEL-CONTRACT-001实时基线：生产运行`v0.6.51/schema41`；PR #116已合并为`0c63938536a3056b1b1f652486d2ea5c72ad283f`，候选、merge与tag tree均为`90861ecd464c4413a1bdfe57abad6672227f679e`，注释tag/GitHub Release、PR/main CI、fresh tag build、冻结双副本恢复门、原子切换与回滚门均已完成。生产数据完整性、33个静态文件逐字节、66秒稳定门和四视口零付费浏览器通过；当前13张可见模型卡均有合同工作台入口。真实Provider/Generation/OSS/新费用均为0，一次性v0.6.51发布授权已消费；技术状态严格为`PRODUCTION_V0_6_51_TECHNICAL_PASS / USER_RECHECK`。原隔离工作树`/Users/mymy/Documents/unboundry-model-contract-001-2026-08-26`仍含进入Goal前的用户历史改动，**不得替用户清理、覆盖或把它当成干净main**。
 

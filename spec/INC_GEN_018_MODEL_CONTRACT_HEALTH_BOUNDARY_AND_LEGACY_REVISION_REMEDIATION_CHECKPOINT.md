@@ -1,6 +1,6 @@
 # INC-GEN-018 实时断点
 
-状态：`GOAL_ACTIVE / R0_COMPLETE / R1_TARGETED_PASS / R2_TARGETED_PASS / R3_TARGETED_PASS / R4_TARGETED_PASS / R5_REHEARSAL_PASS / R6_REVIEW_GO / R7_COMPLETE / R8_READY / PRODUCTION_V0_6_63_REGRESSION_OPEN / NO_NEW_PROVIDER_POST / USER_RECHECK`
+状态：`GOAL_ACTIVE / R0_COMPLETE / R1_TARGETED_PASS / R2_TARGETED_PASS / R3_TARGETED_PASS / R4_TARGETED_PASS / R5_REHEARSAL_PASS / R6_REVIEW_GO / R7_COMPLETE / R8_LOCAL_CANDIDATE / PRODUCTION_V0_6_63_REGRESSION_OPEN / NO_NEW_PROVIDER_POST / USER_RECHECK`
 
 更新时间：2026-08-31
 
@@ -1395,3 +1395,9 @@ R1：实现平台安全与模型合同健康的类型/错误码边界，最小�
 - 入GitHub前post-R6增量独立Review覆盖允许文件15/15、当前增量23/23 hunks；其中4个formal失败测试为5/5 hunks，package/lock/runtime/test版本链与R7/R8治理状态均逐项审查。结论`P0=0/P1=0/P2=0/GO`；确认5-hunk没有弱化Provider零请求、身份/CAS/high-water/hash/刷新持久化断言，v0.6.64候选没有冒充生产发布，formal full原始`1131/1135`未被改写。
 - 写入本节前完整候选为38 tracked modified + 7 safe untracked = 45 files、tracked 320 hunks；tracked binary diff SHA-256=`45d40e42e5399ebb90191a223e10aa182ced71476f126770190f05af4114703b`，tracked diff+7个untracked内容manifest SHA-256=`13977b23eb6298fbac25fb7e8e43de3a84fa754a8b495f142fb113fad0cc3545`，`git diff --check`通过。两份受保护JSON由pathspec显式排除，不进入状态、hash、候选或Review；本节写入会改变自包含Checkpoint，因此上述hash只标识“本节写入前候选”，不冒充最终commit tree。
 - 当前为`R8_VERSION_SELECTED_V0_6_64 / PRE_GITHUB_REVIEW_GO`；下一步只允许精确暂存安全候选、验证stage不含受保护文件、创建candidate/governance commit并进入GitHub。
+## R8 本地候选 commit 回执（2026-08-31）
+
+- 精确stage只使用全仓pathspec并显式排除两份受保护JSON；staged files=`45`，protected staged=`0`。首次`git diff --cached --check`发现新fixture一处行尾空白与EOF多空行；只做格式化修正后最终diff-check通过，没有业务逻辑变化或测试重跑必要。
+- 最终stage binary diff SHA-256=`feb49494c231c0cd6f7035ffe7d743a58a35c34205268f54003169223a075c73`，staged tree=`704873fb3abda91747d33926dd7d3473103b6975`。
+- candidate commit=`790db916a272822e98695bb9e557e466f51ab618`，parent=`d3e213da3b516ba8abc8bff4aada4d983f655ab2`，tree=`704873fb3abda91747d33926dd7d3473103b6975`，subject=`fix: restore model contract health boundaries`；45 files changed、9176 insertions、1989 deletions。
+- 提交后安全范围工作树为空；两份受保护JSON仍未暂存、未进入tree。当前origin/main仍为base，尚未push/PR/tag/Release/生产。下一步创建本治理回执commit，再验证final local head后push。

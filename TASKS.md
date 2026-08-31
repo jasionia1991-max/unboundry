@@ -24,6 +24,7 @@
 - [x] 冻结当前候选并由既有独立上下文完成同分母终审：37/37文件、309/309 tracked hunks、10/10 published、11/11 registry identities、10/10数据库exact identities和全部Provider分支；`P0=0/P1=0/P2=7/GO`，受保护文件访问0。
 - [x] R7唯一正式safe full已消费并永久记录原始`1131/1135`与4失败；只运行最小失败子集后4项全部关闭，最终m4=`6/6`，5-hunk独立复审`P0=0/P1=0/P2=0/GO`，未重复formal full。
 - [x] R7隔离浏览器AUTO_PASS：10/10模型健康与release identity、7/7节点选择、10卡admin UI、global/emergency优先级、Seed malformed单模型`MODEL_CONTRACT_INVALID`及精确恢复全部通过；requests 49、blocked/non-loopback 0，tasks/attempts 0/0、paid0，owned runtime/temp已清理。
+- [x] R8版本占用门选择v0.6.64：local/remote tag与GitHub Release均free，package/生产/main未占用；版本safe m81=`41/41 PASS`，治理m38首轮`15/16`只发现候选版本文档未同步，精确修正后`16/16 PASS`。入GitHub前增量Review `P0=0/P1=0/P2=0/GO`；candidate commit=`790db916…ab618`。
 - [ ] R8版本占用、GitHub/CI、不可变tag/Release、生产迁移/rollback/forward与零付费生产验收；新Session Goal已一次性明确授予对应权限，R7门已闭合。
 
 权威方案：`spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_PLAN_2026-08-30.md`；矩阵：`spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_ACCEPTANCE_MATRIX_2026-08-30.md`；断点：`spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_CHECKPOINT.md`；新Session提示词：`spec/INC_GEN_018_ONE_SHOT_GOAL_PROMPT_2026-08-31.md`。

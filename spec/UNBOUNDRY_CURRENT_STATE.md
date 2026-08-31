@@ -1,6 +1,6 @@
 # Unboundry 当前权威状态
 
-> **状态分层**：现网仍为v0.6.63/schema41，INC-GEN-017发布时的技术门与真实Seedance结果保留为历史时点事实；INC-GEN-018 R1～R5定向实现/演练与R6全量Review均完成，独立结论`P0=0/P1=0/P2=7/GO`。R7唯一正式safe full原始`1131/1135`和4失败永久保留，4项已用最小直接复验关闭，5-hunk复审`P0=0/P1=0/P2=0/GO`，隔离浏览器AUTO_PASS；不得改写成正式full全绿。既有m102误读受保护快照的历史事件永久保留，当前runner/fixture已隔离该文件。当前严格为`INC_GEN_018_GOAL_ACTIVE / R0_COMPLETE / R1_TARGETED_PASS / R2_TARGETED_PASS / R3_TARGETED_PASS / R4_TARGETED_PASS / R5_REHEARSAL_PASS / R6_REVIEW_GO / R7_COMPLETE / R8_READY / PRODUCTION_V0_6_63_REGRESSION_OPEN / NO_NEW_PROVIDER_POST / USER_RECHECK`。
+> **状态分层**：现网仍为v0.6.63/schema41，INC-GEN-017发布时的技术门与真实Seedance结果保留为历史时点事实；INC-GEN-018 R1～R5定向实现/演练与R6全量Review均完成，独立结论`P0=0/P1=0/P2=7/GO`。R7唯一正式safe full原始`1131/1135`和4失败永久保留，4项已用最小直接复验关闭，5-hunk复审`P0=0/P1=0/P2=0/GO`，隔离浏览器AUTO_PASS；不得改写成正式full全绿。v0.6.64已通过占用门和版本/治理定向验证，本地candidate commit=`790db916…ab618`，尚未push。既有m102误读受保护快照的历史事件永久保留，当前runner/fixture已隔离该文件。当前严格为`INC_GEN_018_GOAL_ACTIVE / R0_COMPLETE / R1_TARGETED_PASS / R2_TARGETED_PASS / R3_TARGETED_PASS / R4_TARGETED_PASS / R5_REHEARSAL_PASS / R6_REVIEW_GO / R7_COMPLETE / R8_LOCAL_CANDIDATE / PRODUCTION_V0_6_63_REGRESSION_OPEN / NO_NEW_PROVIDER_POST / USER_RECHECK`。
 
 更新日期：2026-08-31
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
@@ -9,13 +9,13 @@
 当前生产部署版本：**v0.6.63**
 本地候选schema：**41**
 当前治理标记：`CURRENT_V0_6_63_USER_RECHECK`
-当前计划标记：`INC_GEN_018_GOAL_ACTIVE / R0_COMPLETE / R1_TARGETED_PASS / R2_TARGETED_PASS / R3_TARGETED_PASS / R4_TARGETED_PASS / R5_REHEARSAL_PASS / R6_REVIEW_GO / R7_COMPLETE / R8_READY / USER_RECHECK`
+当前计划标记：`INC_GEN_018_GOAL_ACTIVE / R0_COMPLETE / R1_TARGETED_PASS / R2_TARGETED_PASS / R3_TARGETED_PASS / R4_TARGETED_PASS / R5_REHEARSAL_PASS / R6_REVIEW_GO / R7_COMPLETE / R8_LOCAL_CANDIDATE / USER_RECHECK`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
 当前发布门：`INC_GEN_018_R7_COMPLETE / R8_VERSION_SELECTED_V0_6_64 / PRODUCTION_V0_6_63_REGRESSION_OPEN / USER_RECHECK`
 
 ## INC-GEN-018 当前区块（2026-08-31）
 
-- 用户已在本Session完整发送一次性Goal并启动连续实施；分支`codex/inc-gen-018-contract-health-boundary-2026-08-31`，HEAD/origin-main=`d3e213da…55ab2`；已证明v0.6.64未占用并选择为候选，package0.6.64/schema41，生产仍v0.6.63/schema41。
+- 用户已在本Session完整发送一次性Goal并启动连续实施；分支`codex/inc-gen-018-contract-health-boundary-2026-08-31`，candidate HEAD=`790db916…ab618`、origin-main=`d3e213da…55ab2`；已证明v0.6.64未占用并选择为候选，package0.6.64/schema41，生产仍v0.6.63/schema41。
 - R0生产只读冻结完成：v0.6.63/schema41、globalEnabled1/emergencyStop0、tasks1026/attempts1037/active0/current-unsettled-unknown0，10/10 published logical models与10/10 exact identities全部入脱敏快照，SHA=`fa6a498a…0457`。仅Seed/TTS缺`$.inputPolicy`，其余8个active/expected schema一致；两份受保护JSON未读取或触碰。
 - availability预期红完成：safe m32执行7 tests，6通过、唯一预期失败证明enabled平台+out-of-sync合同仍返回available/null；source/snapshot=`07fae080…f8ebe`，4173 unchanged，suite cleaned。测试库存已由1125更新到1126并同步runner coverage target；前置fail-closed尝试如实保留。
 - R0期间真实Provider POST0、OSS写0、新费用0；正式full、迁移、GitHub、版本/tag/Release和生产写仍未执行。下一步仅进入R1 availability状态解耦。
