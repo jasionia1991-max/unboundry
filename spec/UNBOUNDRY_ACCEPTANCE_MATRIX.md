@@ -1,14 +1,14 @@
 # Unboundry 绿地复刻验收矩阵
 
-## INC-GEN-018 模型合同健康边界与旧Revision精确修复（2026-08-31，GOAL ACTIVE / R6 REVIEW GO / R7 READY）
+## INC-GEN-018 模型合同健康边界与旧Revision精确修复（2026-08-31，R8 PRODUCTION TECHNICAL PASS / USER RECHECK）
 
-- 当前状态：`GOAL_ACTIVE / R0_COMPLETE / R1_TARGETED_PASS / R2_TARGETED_PASS / R3_TARGETED_PASS / R4_TARGETED_PASS / R5_REHEARSAL_PASS / R6_REVIEW_GO / R7_READY / PRODUCTION_V0_6_63_REGRESSION_OPEN / NO_NEW_PROVIDER_POST / USER_RECHECK`。
-- 已查实：平台`globalEnabled=1/emergencyStop=0`；10个published模型中8个available，Doubao Seed与Doubao TTS 2.0因旧active revision缺当前effective `inputPolicy`而合同健康失败；migration集合遗漏两者，availability又把模型健康折叠成全局关闭。
-- 本轮点击未新建任务，tasks1026/attempts1037/active0，Provider POST/OSS写/新费用0。生产回归仍未发布修复，不能用本地定向证据冒充现网正确。
-- R0已冻结10/10 published logical models与10/10 exact identities；脱敏快照SHA=`fa6a498a…0457`，仅Seed/TTS缺`$.inputPolicy`。m32预期红`6 PASS / 1 expected FAIL`，source/snapshot=`07fae080…f8ebe`、4173 unchanged。
-- 用户已完整发送一次性Goal并启动实施；R1～R5均已通过。R6主线程与独立冻结候选终审均完成；独立覆盖37/37文件、309/309 tracked hunks、10/10 published模型、11/11 registry identities、10/10数据库exact identities和全部Provider分支，结论`P0=0/P1=0/P2=7/GO`。生产v0.6.63/audit309/任务与媒体计数未写，Provider/OSS/费用0；正式full、GitHub、生产及用户复验仍为`NOT_RUN / USER_RECHECK`。
-- Goal提示词本身的独立文档终审为`P0=0/P1=0/P2=0/GO`；这不改变IG18-011～040的`NOT_RUN/USER_RECHECK`。
-- 独立矩阵：[`spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_ACCEPTANCE_MATRIX_2026-08-30.md`](INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_ACCEPTANCE_MATRIX_2026-08-30.md)；Goal：[`spec/INC_GEN_018_ONE_SHOT_GOAL_PROMPT_2026-08-31.md`](INC_GEN_018_ONE_SHOT_GOAL_PROMPT_2026-08-31.md)。INC-GEN-017下方历史GO与生产技术事实不改写。
+- 当前状态：`R0_TO_R8_TECHNICAL_COMPLETE / PRODUCTION_V0_6_64_TECHNICAL_PASS / ZERO_PROVIDER_POST_PASS / USER_RECHECK`。
+- R0～R6：平台安全与模型合同健康根因查实；exact planner只批准Seed/TTS两个immutable replacement revision，其余8模型none。冻结候选全量Review覆盖37/37文件、309/309 tracked hunks、10/10 published模型、11/11 registry identities、10/10数据库exact identities及全部Provider分支，结论`P0=0/P1=0/P2=7/GO`。
+- R7：唯一正式safe full原始`1131/1135`与4失败永久保留；4项均由最小直接复验关闭，5-hunk独立复审`P0=0/P1=0/P2=0/GO`，隔离浏览器AUTO_PASS。不得重跑或改写为formal full全绿。
+- R8 GitHub/发布：PR #134 final-head/main CI、merge `fc046f4…291fe`、annotated tag/GitHub Release v0.6.64、fresh build、6044行inventory与dist33均通过。
+- R8生产：冻结source/restore、attested dry-run/apply/repeat、外部exact release+DB pair拒绝、原子切换及paired rollback/forward通过；生产v0.6.64/schema41 active/enabled、NRestarts0。10/10 published模型健康；目标7节点零付费preflight不再出现伪全局关闭。前后tasks1026/attempts1037/active0/current unknown0，Provider request count保持1025，Provider POST/OSS写/新费用0；72秒7样本稳定门通过。
+- IG18-036～039已关闭；IG18-040仍为`USER_RECHECK`，技术证据不能替代用户真实页面确认。历史9个图片任务结果收回/状态事件日志churn与根盘99%登记为R8 P2，需另行授权治理。
+- 不可变回执：[`spec/V0_6_64_PRODUCTION_RECEIPT_2026-08-31.json`](V0_6_64_PRODUCTION_RECEIPT_2026-08-31.json)；独立矩阵：[`spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_ACCEPTANCE_MATRIX_2026-08-30.md`](INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_ACCEPTANCE_MATRIX_2026-08-30.md)。INC-GEN-017下方历史GO与生产技术事实不改写。
 
 ## INC-GEN-017 正式full已消费、v0.6.63生产与真实Provider通过（2026-08-30）
 
