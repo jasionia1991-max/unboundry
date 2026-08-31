@@ -120,10 +120,14 @@ import {
   getLegacyTerminalGenerationPolicy,
   isIncompleteLegacyTerminalGenerationBinding,
   legacyTerminalCanvasWriteAllowed,
+  legacyTerminalDetachApplicationId,
   legacyTerminalGenerationCandidate,
   legacyTerminalGenerationCandidateStillMatches,
   parseLegacyTerminalGenerationPolicy,
 } from "../client/src/generation/legacyTerminalGenerationReconciler";
+import {
+  legacyTerminalDetachApplicationIdForBinding,
+} from "../server/canvasLegacyGenerationReconciliation";
 import {
   effectiveLegacyTerminalGenerationState,
 } from "../client/src/generation/legacyTerminalGenerationState";
@@ -199,6 +203,13 @@ test("legacy terminal classifier is exact, checksum-complete and fail-closed", (
   });
   expect(candidate).toBeTruthy();
   if (!candidate) throw new Error("candidate missing");
+  expect(legacyTerminalDetachApplicationId(candidate)).toBe(
+    legacyTerminalDetachApplicationIdForBinding(candidate),
+  );
+  expect(legacyTerminalDetachApplicationId({
+    ...candidate,
+    fixtureScopeId: "fixture-that-is-not-part-of-the-server-binding",
+  })).toBe(legacyTerminalDetachApplicationIdForBinding(candidate));
   const baseTask = {
     attempt: 1,
     canvasId: "canvas-a",

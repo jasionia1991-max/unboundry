@@ -1,6 +1,10 @@
 # INC-GEN-021 Checkpoint
 
-状态：`V0_6_67_RELEASE_AUTHORIZED / RELEASE_IN_PROGRESS / REAL_GROUP_AUTHORIZED_NOT_RUN`
+状态：`V0_6_67_RELEASED_TO_PRODUCTION / PRE_CLICK_P0_FOUND / REAL_GROUP_CLICK_NOT_CONSUMED / SUPERSEDED_BY_INC_GEN_022`
+
+- v0.6.67 已完成 candidate `8728659ca93b8b7225039ce0cd3fd3268bd60484`、PR #140、PR/main CI、merge `78332c50473be83ff678e0f344cfcb6004c98081`、annotated tag/GitHub Release、精确tag Linux fresh build、冻结source/restore与生产原子切换；生产v0.6.67/schema41健康。
+- 真实整组点击前发现terminal-detach application identity客户端/服务端不一致，合法旧任务解绑被HTTP 400拒绝。整组点击0/1、Provider POST0/11、费用0，真实多媒体结果仍未验收。
+- 后续权威断点转为`spec/INC_GEN_022_CHECKPOINT.md`；不得把v0.6.67生产技术通过写成真实整组通过。
 
 - 工作树：`/Users/mymy/Documents/unboundry-inc-gen-016-v0.6.56-2026-08-28`。
 - 分支：`codex/inc-gen-021-cross-media-one-click-reliability`；基线 HEAD `968870189d160dba4374a00b03784eb37d8f58d3`；候选 package 为 `0.6.67`。

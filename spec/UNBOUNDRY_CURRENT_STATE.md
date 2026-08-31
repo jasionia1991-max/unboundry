@@ -1,19 +1,29 @@
 # Unboundry 当前权威状态
 
-> **INC-GEN-021 当前状态（2026-09-01）**：现网仍是 v0.6.66，目标整组截图只证明文字成功、首个图片失败、其余下游未运行，因此当前不能写“可正常拿到全部素材”。v0.6.67候选已把图片/视频/音频统一改为 Provider 返回后先 durable staging，OSS/提交短暂失败由 30 秒后台 sweep 续传同一 publication，task attempt 和 Provider POST 不增加；终态旧文案也已修正。TypeScript、diff-check、safe m22 `44/44`、m38+m57+m88+m90 `94/94`、最终 m38+m88 `56/56`通过。用户已确认并允许发布v0.6.67；发布后另授权CNY300、最多11次POST、一次整组点击、不重试、结果不明只核对原任务。权威断点：`spec/INC_GEN_021_CHECKPOINT.md`。
+> **INC-GEN-022 当前状态（2026-09-01）**：v0.6.67 已完成 GitHub Release、精确 tag fresh build、冻结备份和生产部署，生产服务健康。唯一真实整组点击前，旧失败任务的自动 `terminal-detach` 连续返回 HTTP 400；根因是客户端 application identity 错误包含 `fixtureScopeId`，与服务端正式绑定合同不一致。真实整组点击仍为 0/1，Provider POST 0/11、费用0。最小修复和跨层回归已在本地 v0.6.68 候选通过 m22+m85 `71/71`；用户已确认并允许发布v0.6.68。权威断点：`spec/INC_GEN_022_CHECKPOINT.md`。
 
-> **状态分层**：现网运行v0.6.66/schema41；INC-GEN-020已完成GitHub发布、冻结备份、原子切换、服务/数据/静态门和目标Canvas只读实页验收。原图片任务已由系统自动收口为`RESULT_SAVE_FAILED_NO_RETRY`，active0，没有新attempt或Provider POST。当前严格为`PRODUCTION_V0_6_66_TECHNICAL_PASS / ORIGINAL_TASK_AUTO_CLOSED / ZERO_NEW_PROVIDER_POST / USER_RECHECK`。
+> **状态分层**：现网运行v0.6.67/schema41且健康；v0.6.67发布授权已消费。预点击P0已阻止真实整组，未产生新task/attempt/Provider POST。用户已确认并允许发布v0.6.68；当前严格为`PRODUCTION_V0_6_67_TECHNICAL_PASS / REAL_GROUP_NOT_CLICKED / PRE_CLICK_TERMINAL_DETACH_P0 / V0_6_68_RELEASE_AUTHORIZED / RELEASE_IN_PROGRESS / USER_RECHECK`。
 
 更新日期：2026-09-01
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.67**
-本地候选代码版本：**v0.6.67**
-当前生产部署版本：**v0.6.66**
+当前代码包版本：**v0.6.68**
+本地候选代码版本：**v0.6.68**
+当前生产部署版本：**v0.6.67**
 本地候选schema：**41**
-当前治理标记：`CURRENT_V0_6_67_USER_RECHECK`
-当前计划标记：`INC_GEN_021_V0_6_67_RELEASE_IN_PROGRESS / REAL_GROUP_AUTHORIZED_NOT_RUN`
+当前治理标记：`CURRENT_V0_6_68_USER_RECHECK`
+当前计划标记：`INC_GEN_022_V0_6_68_RELEASE_AUTHORIZED / RELEASE_IN_PROGRESS / REAL_GROUP_CLICK_NOT_CONSUMED`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`V0_6_67_RELEASE_AUTHORIZED / REAL_GROUP_CNY300_MAX_11_POST_AUTHORIZED_NOT_RUN`
+当前发布门：`V0_6_68_RELEASE_AUTHORIZED / REAL_GROUP_CNY300_MAX_11_POST_NOT_CONSUMED`
+
+## INC-GEN-022 当前区块（2026-09-01）
+
+- v0.6.67 已发布并部署；生产服务、版本、schema、静态文件和业务计数门通过。
+- 点击前自动收口发现P0：客户端把浏览器缓存字段 `fixtureScopeId` 纳入 terminal-detach application identity，服务端合同不包含它，合法请求被400拒绝。
+- 页面旧续跑缓存已安全清除，历史任务保留；只核对原任务，没有重试或新Provider请求。目标allowlist随后已撤回，生产恢复原配置并保持健康。
+- 本地 v0.6.68 候选显式使用服务端十个合同字段；服务端owner/task/terminal/binding/fingerprint/result/CAS安全门不放宽。
+- safe m22 `44/44`、m85 `27/27`，合计`71/71 PASS`；真实整组点击0/1，Provider POST0/11，费用0。
+- 用户已确认并允许发布v0.6.68；commit/push/PR/CI/tag/Release、冻结备份和生产切换进入本次一次性授权。真实整组点击仍须等待部署和自动解绑门通过后才能消费。
+- 权威方案、断点、Matrix分别为`spec/INC_GEN_022_TERMINAL_DETACH_CONTRACT_HOTFIX_PLAN_2026-09-01.md`、`spec/INC_GEN_022_CHECKPOINT.md`、`spec/INC_GEN_022_ACCEPTANCE_MATRIX_2026-09-01.md`。
 
 ## INC-GEN-021 当前区块（2026-09-01）
 
@@ -373,7 +383,7 @@ v0.6.47验证证据：默认Node25.9.0/npm11.12.1下build与architecture通过�
 
 ## 一句话
 
-**生产是 v0.6.63 / schema41；INC-GEN-017工程、GitHub、不可变发布、备份恢复、回滚、生产技术门和限额内真实Provider验收均已通过；当前仅保留用户五步复验。**
+**生产是 v0.6.67 / schema41；v0.6.67发布与生产技术门已通过，真实整组点击前发现terminal-detach合同P0并安全停止；当前保持USER_RECHECK。**
 
 ## INC-GEN-015 老画布孤立生成态与终态结果自动收口（PRODUCTION_V0_6_46_USER_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON）
 

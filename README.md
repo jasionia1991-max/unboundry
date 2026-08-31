@@ -6,9 +6,9 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 
-## 当前候选：INC-GEN-021 v0.6.67发布中（2026-09-01）
+## 当前候选：INC-GEN-022 v0.6.68本地热修（2026-09-01）
 
-v0.6.67候选为图片、视频、音频统一 durable staging、保存失败后原publication后台续传和终态提示修复。唯一正式safe full原始`1139/1140`，同源码只复验唯一无关m69失败后`6/6 PASS`，未重复full。用户已确认并允许发布；生产仍为v0.6.66，真实整组点击尚未执行。发布后只在CNY300、最多11次Provider POST、一次点击、不重试、结果不明只核对原任务的边界内验收。权威断点见[`spec/INC_GEN_021_CHECKPOINT.md`](spec/INC_GEN_021_CHECKPOINT.md)。
+v0.6.67已发布到生产并保持健康，但真实整组点击前发现客户端/服务端`terminal-detach` application identity不一致，合法旧任务解绑被HTTP 400拒绝。整组点击0/1、Provider POST0/11、费用0。v0.6.68本地候选已统一十个正式绑定字段并增加跨层回归，safe m22+m85 `71/71 PASS`；用户已确认并允许发布，当前发布进行中。权威断点见[`spec/INC_GEN_022_CHECKPOINT.md`](spec/INC_GEN_022_CHECKPOINT.md)。
 
 ## 当前线上：INC-GEN-020 v0.6.66生产技术通过（2026-09-01，USER RECHECK）
 

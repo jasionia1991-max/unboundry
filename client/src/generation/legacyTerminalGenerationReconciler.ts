@@ -334,8 +334,16 @@ export function legacyTerminalDetachApplicationId(
   resultKey?: string,
 ) {
   return `legacy-terminal-detach:${stableValueFingerprint({
-    ...candidate,
+    accountId: candidate.accountId,
+    canvasId: candidate.canvasId,
+    inputFingerprint: candidate.inputFingerprint,
+    kind: candidate.kind,
+    nodeDataFingerprint: candidate.nodeDataFingerprint,
+    nodeId: candidate.nodeId,
+    ownershipKey: candidate.ownershipKey,
     resultKey,
+    runId: candidate.runId,
+    taskId: candidate.taskId,
   })}`;
 }
 

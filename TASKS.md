@@ -1,5 +1,17 @@
 # Unboundry 绿地复刻当前任务
 
+## INC-GEN-022 terminal-detach 合同热修（v0.6.68 RELEASE AUTHORIZED / IN PROGRESS）
+
+- [x] v0.6.67 已完成 PR/CI/tag/Release、fresh build、冻结备份和生产部署，服务健康。
+- [x] 真实点击前发现 terminal-detach HTTP 400；整组点击0/1，Provider POST0/11，费用0。
+- [x] 根因确认：客户端错误把 `fixtureScopeId` 纳入 application identity，服务端合同不包含该缓存字段。
+- [x] 客户端改为显式十字段合同；m22新增跨层相等性与fixture非参与回归，服务端安全门不放宽。
+- [x] safe m22+m85 `71/71 PASS`，source/snapshot一致，4173 unchanged。
+- [x] 临时目标allowlist已撤回，生产恢复原配置并继续运行v0.6.67。
+- [x] 完成v0.6.68版本/治理/fresh build门：m81 `41/41`、m38修正后`18/18`，TypeScript/build/diff-check通过。
+- [x] 用户已确认版本v0.6.68并允许发布；GitHub、不可变发布、冻结备份和生产切换授权进入本轮一次性执行。
+- [ ] 发布后自动解绑原失败任务，再消费唯一一次整组点击并核验图片/视频/音轨。
+
 ## INC-GEN-021 图片/视频/音频一次点击可靠交付（v0.6.67 RELEASE IN PROGRESS / REAL GROUP AUTHORIZED）
 
 - [x] 纠正验收结论：现网截图不是整组通过，只是文字成功、图片失败、其余下游未运行。
