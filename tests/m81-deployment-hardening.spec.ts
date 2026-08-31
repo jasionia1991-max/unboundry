@@ -163,6 +163,7 @@ test("release role and bridge-mode selection are exact and fail closed", () => {
   expect(releaseRoleFromEnvironment("0.6.65", {})).toBe("final");
   expect(releaseRoleFromEnvironment("0.6.66", {})).toBe("final");
   expect(releaseRoleFromEnvironment("0.6.68", {})).toBe("final");
+  expect(releaseRoleFromEnvironment("0.6.69", {})).toBe("final");
   expect(releaseRoleFromEnvironment("0.5.2", {})).toBe("bridge");
   expect(releaseRoleFromEnvironment("0.5.2", {
     UNBOUNDRY_RELEASE_ROLE: "bridge",
@@ -4404,6 +4405,161 @@ test("listening starts one committed queued task while startup gates keep blocke
   } finally {
     if (server) await stopServer(server);
     await rm(testRoot, { force: true, recursive: true });
+  }
+});
+
+test("listening installs allowlisted terminal detach when no generation task is active", async () => {
+  const fixtureId = "m81-idle-terminal-detach";
+  const dataDirectory = await mkdtemp(
+    join(tmpdir(), "unboundry-m81-idle-terminal-detach-"),
+  );
+  const databasePath = join(dataDirectory, "unboundry.sqlite");
+  const providerLog = join(dataDirectory, startupProviderFixtureLogName);
+  let server: ChildProcess | undefined;
+  try {
+    const fixture = await seedQueuedStartupGenerationFixture(
+      dataDirectory,
+      fixtureId,
+    );
+    let unrelatedTaskBefore: Record<string, unknown> | undefined;
+    let unrelatedAttemptBefore: Record<string, unknown> | undefined;
+    let unrelatedEventCountBefore = 0;
+    const database = openAppDatabase(dataDirectory);
+    try {
+      const task = database.prepare(`
+        SELECT canvas_id, kind, node_id FROM generation_tasks WHERE id = ?
+      `).get(fixture.taskId) as {
+        canvas_id: string;
+        kind: string;
+        node_id: string;
+      };
+      const timestamp = "2026-09-01T00:00:00.000Z";
+      database.prepare(`
+        UPDATE generation_tasks
+        SET state = 'failed', error_code = 'M81_IDLE_TERMINAL',
+            error_message = 'terminal fixture', updated_at = ?
+        WHERE state IN ('queued', 'running', 'recovering', 'retrying')
+      `).run(timestamp);
+      database.prepare(`
+        UPDATE generation_tasks
+        SET canvas_id = 'm81-unrelated-outcome-unknown-canvas',
+            provider_task_id = NULL,
+            error_code = 'OUTCOME_UNKNOWN_BILLING_RISK',
+            error_message = 'must remain untouched by terminal-only startup',
+            updated_at = ?
+        WHERE id = ?
+      `).run(timestamp, fixture.acceptedTaskId);
+      database.prepare(`
+        UPDATE generation_provider_attempts
+        SET outcome = 'outcome-unknown', provider_task_id = NULL,
+            failure_code = 'OUTCOME_UNKNOWN_BILLING_RISK', finished_at = NULL
+        WHERE task_id = ?
+      `).run(fixture.acceptedTaskId);
+      unrelatedTaskBefore = database.prepare(`
+        SELECT canvas_id, error_code, error_message, provider_task_id, state,
+               updated_at
+        FROM generation_tasks WHERE id = ?
+      `).get(fixture.acceptedTaskId) as Record<string, unknown>;
+      unrelatedAttemptBefore = database.prepare(`
+        SELECT execution_attempt, failure_code, finished_at, outcome,
+               provider_task_id
+        FROM generation_provider_attempts WHERE task_id = ?
+      `).get(fixture.acceptedTaskId) as Record<string, unknown>;
+      unrelatedEventCountBefore = (database.prepare(`
+        SELECT COUNT(*) AS count FROM generation_task_events WHERE task_id = ?
+      `).get(fixture.acceptedTaskId) as { count: number }).count;
+      database.prepare(`
+        INSERT INTO canvas_documents (
+          owner_id, id, revision, graph_revision, nodes, edges, viewport,
+          updated_at, save_session_id, save_sequence
+        ) VALUES (?, ?, 1, 1, ?, '[]', '{}', ?, NULL, 0)
+      `).run(
+        fixture.ownerId,
+        task.canvas_id,
+        JSON.stringify([{
+          data: {
+            textGenerating: true,
+            textGenerationInputKey: "m81-idle-input",
+            textGenerationOwnershipKey: "m81-idle-ownership",
+            textGenerationTaskId: fixture.taskId,
+            workflowExecutionRunId: "m81-idle-run",
+          },
+          id: task.node_id,
+          type: task.kind,
+        }]),
+        timestamp,
+      );
+    } finally {
+      database.close();
+    }
+    makeStandaloneDatabase(dataDirectory);
+
+    server = await startServer(dataDirectory, {
+      environment: {
+        UNBOUNDRY_LEGACY_TERMINAL_RECONCILIATION_ALLOWLIST: JSON.stringify([{
+          accountId: fixture.ownerId,
+          canvasId: `${fixtureId}-canvas`,
+        }]),
+        UNBOUNDRY_LEGACY_TERMINAL_RECONCILIATION_MODE: "allowlist",
+      },
+      waitPath: "/api/health/ready",
+    });
+
+    let detached:
+      | { graph_revision: number; nodes: string; revision: number }
+      | undefined;
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      const read = new DatabaseSync(databasePath, { readOnly: true });
+      try {
+        const row = read.prepare(`
+          SELECT graph_revision, nodes, revision FROM canvas_documents
+          WHERE owner_id = ? AND id = ?
+        `).get(fixture.ownerId, `${fixtureId}-canvas`) as {
+          graph_revision: number;
+          nodes: string;
+          revision: number;
+        };
+        const data = (JSON.parse(row.nodes) as Array<{
+          data: Record<string, unknown>;
+        }>)[0]?.data;
+        if (
+          data?.textGenerating === false &&
+          data.textGenerationTaskId === undefined &&
+          data.workflowExecutionRunId === undefined
+        ) {
+          detached = row;
+          break;
+        }
+      } finally {
+        read.close();
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    expect(detached).toMatchObject({ graph_revision: 2, revision: 2 });
+    await expectMissing(providerLog);
+    const preserved = new DatabaseSync(databasePath, { readOnly: true });
+    try {
+      expect(preserved.prepare(`
+        SELECT canvas_id, error_code, error_message, provider_task_id, state,
+               updated_at
+        FROM generation_tasks WHERE id = ?
+      `).get(fixture.acceptedTaskId)).toEqual(unrelatedTaskBefore);
+      expect(preserved.prepare(`
+        SELECT execution_attempt, failure_code, finished_at, outcome,
+               provider_task_id
+        FROM generation_provider_attempts WHERE task_id = ?
+      `).get(fixture.acceptedTaskId)).toEqual(unrelatedAttemptBefore);
+      expect(preserved.prepare(`
+        SELECT COUNT(*) AS count FROM generation_task_events WHERE task_id = ?
+      `).get(fixture.acceptedTaskId)).toEqual({
+        count: unrelatedEventCountBefore,
+      });
+    } finally {
+      preserved.close();
+    }
+  } finally {
+    if (server) await stopServer(server);
+    await rm(dataDirectory, { force: true, recursive: true });
   }
 });
 

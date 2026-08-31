@@ -1,5 +1,21 @@
 # Unboundry 绿地复刻当前任务
 
+## INC-GEN-023 服务端终态解绑（v0.6.69 CANDIDATE REFROZEN / RELEASE AUTHORIZED）
+
+- [x] v0.6.68已发布部署健康；原任务无费用收口为cancelled，整组点击0/1、Provider POST0/11、费用0。
+- [x] 根因冻结：浏览器本地checkpoint/active lease使客户端reconciler持续defer，不能再把用户清缓存或手动放弃作为正式收口路径。
+- [x] 使用独立terminal-only服务端sweep，实现只面向显式allowlist的failed/cancelled精确绑定服务端解绑。
+- [x] success、非终态、非allowlist、task binding不匹配保持不变；单事务/CAS、repeat no-op。
+- [x] m85 `28/28`、首次m38 `18/18`通过；六类生成/Provider/媒体账本不变。
+- [x] 首次独立终审发现active task为0时启动入口未安装sweep的P1及一处过期矩阵P2；两项均已修复，新增真实启动回归后m81 `42/42`、m85 `28/28`，测试库存1142。
+- [x] 用户已明确发送`确认版本 v0.6.69，并允许发布 v0.6.69`；授权尚未消费。
+- [x] 第二次独立复审发现空闲allowlist启动误开全局taskStore的P1；已完全分离terminal detach与generation recovery，并新增其他Canvas outcome-unknown task/attempt/event不变回归。
+- [x] 第三次独立复审发现timer生命周期及failed accepted恢复竞态两个P1和方案注释P2；已把timer纳入runtime lease/drain、teardown清理，并排除provider task id/未决attempt；m85 accepted反例与m93 timer teardown回归已补齐。
+- [x] 联合首轮m81 `42/42`、m85 `28/28`通过，m93仅test seam受safe全局disable影响；修正test-only seam后m93 `7/7 PASS`，最终功能树source/snapshot `3ae7c560…64bc5d`、4173 unchanged。
+- [x] 第四轮独立复审覆盖20/20 tracked文件、52/52 hunks，结论`P0=0/P1=0/P2=0/GO`。
+- [ ] 执行commit/push/PR/tag/Release/生产切换。
+- [ ] 部署后先证明旧绑定服务端自动解除，再消费唯一一次整组点击；最多11次Provider POST、不重试、结果不明只核对原task id。
+
 ## INC-GEN-022 terminal-detach 合同热修（v0.6.68 RELEASE AUTHORIZED / IN PROGRESS）
 
 - [x] v0.6.67 已完成 PR/CI/tag/Release、fresh build、冻结备份和生产部署，服务健康。

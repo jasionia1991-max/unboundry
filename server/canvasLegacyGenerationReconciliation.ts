@@ -3,6 +3,7 @@ import { appDataDirectory, openAppDatabase } from "./database";
 import { requestIdentity } from "./auth";
 import { decodedRequestPath, readJsonBody } from "./httpRequest";
 import {
+  listFailedCancelledGenerationTaskBindingsCommand,
   readTerminalGenerationTaskBindingCommand,
 } from "./generationTransactionCommands";
 import { executeTransactionScopedCommand } from "./transactionCommand";
@@ -34,6 +35,12 @@ type CanvasRow = {
   revision: number;
   viewport: string;
 };
+
+export type LegacyTerminalDetachSweepResult = Readonly<{
+  canvasesFailed: number;
+  canvasesVisited: number;
+  nodesDetached: number;
+}>;
 
 const idPattern = /^[a-z0-9._-]{1,200}$/i;
 const bindingPattern = /^[\w.:/-]{1,2048}$/;
@@ -115,6 +122,22 @@ function rolloutPolicy(accountId: string, canvasId: string) {
         entry.accountId === accountId && entry.canvasId === canvasId
       )),
   } as const;
+}
+
+function uniqueAllowlistEntries() {
+  const seen = new Set<string>();
+  return allowlistEntries().filter((entry) => {
+    const key = `${entry.accountId}\0${entry.canvasId}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+export function allowlistedLegacyTerminalDetachSweepEnabled() {
+  const mode = rolloutMode();
+  return (mode === "allowlist" || mode === "on") &&
+    uniqueAllowlistEntries().length > 0;
 }
 
 function validDetachRequest(
@@ -312,6 +335,130 @@ function responseDocument(
     viewport: JSON.parse(row.viewport),
     ownerId,
     canvasId,
+  };
+}
+
+/**
+ * Active-runtime safety net for legacy failed/cancelled bindings.
+ *
+ * The browser may be closed or may retain a stale local checkpoint/lease, so
+ * terminal cleanup cannot rely on a client request. This sweep is deliberately
+ * narrower than the HTTP endpoint: it only visits explicit allowlist entries,
+ * never detaches success, and derives every proof field from the authoritative
+ * task + Canvas rows inside one write transaction.
+ */
+export async function runAllowlistedLegacyTerminalDetachSweep(
+  options: { dataDirectory?: string } = {},
+): Promise<LegacyTerminalDetachSweepResult> {
+  const entries = uniqueAllowlistEntries();
+  if (!allowlistedLegacyTerminalDetachSweepEnabled()) {
+    return { canvasesFailed: 0, canvasesVisited: 0, nodesDetached: 0 };
+  }
+  const store = openAppDatabase(options.dataDirectory ?? appDataDirectory());
+  let canvasesFailed = 0;
+  let nodesDetached = 0;
+  try {
+    for (const entry of entries) {
+      try {
+        store.exec("BEGIN IMMEDIATE");
+        const row = store.prepare(`
+          SELECT edges, graph_revision, nodes, revision, viewport
+          FROM canvas_documents WHERE owner_id = ? AND id = ?
+        `).get(entry.accountId, entry.canvasId) as CanvasRow | undefined;
+        if (!row) {
+          store.exec("COMMIT");
+          continue;
+        }
+        const nodes = JSON.parse(row.nodes) as unknown[];
+        const tasks = executeTransactionScopedCommand(
+          store,
+          listFailedCancelledGenerationTaskBindingsCommand,
+          { canvasId: entry.canvasId, ownerId: entry.accountId },
+        );
+        let detachedForCanvas = 0;
+        for (const task of tasks) {
+          const index = nodes.findIndex((node) => record(node)?.id === task.nodeId);
+          const node = index >= 0 ? record(nodes[index]) : undefined;
+          const data = record(node?.data);
+          if (!node || !data) continue;
+          const inputFingerprint = data[`${task.kind}GenerationInputKey`];
+          const ownershipKey = data[`${task.kind}GenerationOwnershipKey`];
+          const runId = data.workflowExecutionRunId;
+          if (
+            typeof inputFingerprint !== "string" ||
+            typeof ownershipKey !== "string" ||
+            typeof runId !== "string"
+          ) continue;
+          const binding = {
+            accountId: entry.accountId,
+            canvasId: entry.canvasId,
+            inputFingerprint,
+            kind: task.kind,
+            nodeDataFingerprint: legacyTerminalNodeDataFingerprint(data),
+            nodeId: task.nodeId,
+            observedTerminalState: task.state,
+            ownershipKey,
+            runId,
+            taskId: task.taskId,
+          } as const;
+          const input: TerminalDetachRequest = {
+            ...binding,
+            applicationId: legacyTerminalDetachApplicationIdForBinding(binding),
+          };
+          if (!validDetachRequest(input, entry.canvasId)) continue;
+          const authoritativeTask = executeTransactionScopedCommand(
+            store,
+            readTerminalGenerationTaskBindingCommand,
+            {
+              canvasId: entry.canvasId,
+              kind: task.kind,
+              nodeId: task.nodeId,
+              ownerId: entry.accountId,
+              taskId: task.taskId,
+            },
+          );
+          if (
+            !authoritativeTask ||
+            authoritativeTask.state !== task.state ||
+            !exactBinding(node, data, input)
+          ) continue;
+          const nextData = detachNodeData(data, input, undefined);
+          if (!nextData) continue;
+          nodes[index] = { ...node, data: nextData };
+          detachedForCanvas += 1;
+        }
+        if (detachedForCanvas > 0) {
+          const updated = store.prepare(`
+            UPDATE canvas_documents
+            SET nodes = ?, revision = ?, graph_revision = ?, updated_at = ?
+            WHERE owner_id = ? AND id = ? AND revision = ?
+          `).run(
+            JSON.stringify(nodes),
+            row.revision + 1,
+            row.graph_revision + 1,
+            new Date().toISOString(),
+            entry.accountId,
+            entry.canvasId,
+            row.revision,
+          );
+          if (updated.changes !== 1) {
+            throw new Error("Canvas automatic terminal detach CAS failed");
+          }
+        }
+        store.exec("COMMIT");
+        nodesDetached += detachedForCanvas;
+      } catch {
+        if (store.isTransaction) store.exec("ROLLBACK");
+        canvasesFailed += 1;
+      }
+    }
+  } finally {
+    store.close();
+  }
+  return {
+    canvasesFailed,
+    canvasesVisited: entries.length,
+    nodesDetached,
   };
 }
 

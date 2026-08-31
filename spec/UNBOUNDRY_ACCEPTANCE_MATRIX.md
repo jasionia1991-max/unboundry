@@ -1,5 +1,12 @@
 # Unboundry 绿地复刻验收矩阵
 
+## INC-GEN-023 服务端终态解绑（2026-09-01，v0.6.69 CANDIDATE REFROZEN / RELEASE AUTHORIZED）
+
+- 生产v0.6.68健康；原任务已cancelled，但浏览器本地checkpoint/lease仍阻止客户端解绑。真实整组点击0/1、Provider POST0/11、费用0。
+- v0.6.69候选使用独立terminal-only服务端sweep，只对显式owner+Canvas allowlist内failed/cancelled精确绑定做单事务/CAS解绑。
+- safe m85 `28/28`、m38 `18/18`通过；success、非终态、非allowlist、不匹配绑定和六类生成/Provider/媒体账本均保持不变；repeat no-op。
+- 三轮独立复审发现active0漏装sweep、根矩阵过期、空闲启动误开全局taskStore、timer越过runtime lease及可恢复failed accepted任务竞态；均已修复。m81 `42/42`、m85 `28/28`、m93 `7/7`、m38 `18/18`通过，其他Canvas outcome-unknown账本不变、accepted恢复绑定保留、teardown timer清零；第四轮独立复审`P0=0/P1=0/P2=0/GO`。v0.6.69发布授权已取得但尚未消费。独立矩阵：[`spec/INC_GEN_023_ACCEPTANCE_MATRIX_2026-09-01.md`](INC_GEN_023_ACCEPTANCE_MATRIX_2026-09-01.md)。
+
 ## INC-GEN-022 terminal-detach 合同热修（2026-09-01，PRE-CLICK P0 / v0.6.68 RELEASE AUTHORIZED）
 
 - v0.6.67已发布并部署健康；真实整组点击前，客户端/服务端terminal-detach application identity不一致导致HTTP 400，目标旧失败任务未解绑。

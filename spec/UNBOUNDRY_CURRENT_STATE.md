@@ -1,19 +1,28 @@
 # Unboundry 当前权威状态
 
-> **INC-GEN-022 当前状态（2026-09-01）**：v0.6.67 已完成 GitHub Release、精确 tag fresh build、冻结备份和生产部署，生产服务健康。唯一真实整组点击前，旧失败任务的自动 `terminal-detach` 连续返回 HTTP 400；根因是客户端 application identity 错误包含 `fixtureScopeId`，与服务端正式绑定合同不一致。真实整组点击仍为 0/1，Provider POST 0/11、费用0。最小修复和跨层回归已在本地 v0.6.68 候选通过 m22+m85 `71/71`；用户已确认并允许发布v0.6.68。权威断点：`spec/INC_GEN_022_CHECKPOINT.md`。
+> **INC-GEN-023 当前状态（2026-09-01）**：v0.6.68 已完成发布、精确 tag fresh build、冻结备份和生产部署，生产服务健康。原失败任务已无费用收口为 cancelled，但浏览器本地 checkpoint/active lease 仍使客户端 reconciler defer，Canvas 旧绑定未自动解除。真实整组点击仍为 0/1，Provider POST 0/11、费用0。v0.6.69候选已把解绑收口迁入受runtime lease/drain管理的独立terminal-only服务端sweep，并严格限制到allowlist中的真正不可恢复failed/cancelled精确绑定；全部复审问题已修复，m81 `42/42`、m85 `28/28`、m93 `7/7`、m38 `18/18`通过，第四轮独立复审`P0=0/P1=0/P2=0/GO`。用户已明确授权发布v0.6.69，现进入发布。权威断点：`spec/INC_GEN_023_CHECKPOINT.md`。
 
-> **状态分层**：现网运行v0.6.67/schema41且健康；v0.6.67发布授权已消费。预点击P0已阻止真实整组，未产生新task/attempt/Provider POST。用户已确认并允许发布v0.6.68；当前严格为`PRODUCTION_V0_6_67_TECHNICAL_PASS / REAL_GROUP_NOT_CLICKED / PRE_CLICK_TERMINAL_DETACH_P0 / V0_6_68_RELEASE_AUTHORIZED / RELEASE_IN_PROGRESS / USER_RECHECK`。
+> **状态分层**：现网运行v0.6.68/schema41且健康；v0.6.68发布授权已消费。真实整组尚未点击，未产生本轮新task/attempt/Provider POST。当前严格为`PRODUCTION_V0_6_68_TECHNICAL_PASS / V0_6_69_CANDIDATE_REFROZEN_REVIEW_PENDING / REAL_GROUP_NOT_CLICKED / V0_6_69_RELEASE_AUTHORIZED_NOT_CONSUMED / USER_RECHECK`。
 
 更新日期：2026-09-01
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.68**
-本地候选代码版本：**v0.6.68**
-当前生产部署版本：**v0.6.67**
+当前代码包版本：**v0.6.69**
+本地候选代码版本：**v0.6.69**
+当前生产部署版本：**v0.6.68**
 本地候选schema：**41**
-当前治理标记：`CURRENT_V0_6_68_USER_RECHECK`
-当前计划标记：`INC_GEN_022_V0_6_68_RELEASE_AUTHORIZED / RELEASE_IN_PROGRESS / REAL_GROUP_CLICK_NOT_CONSUMED`
+当前治理标记：`CURRENT_V0_6_69_USER_RECHECK`
+当前计划标记：`INC_GEN_023_V0_6_69_CANDIDATE / SERVER_TERMINAL_DETACH / REAL_GROUP_CLICK_NOT_CONSUMED`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`V0_6_68_RELEASE_AUTHORIZED / REAL_GROUP_CNY300_MAX_11_POST_NOT_CONSUMED`
+当前发布门：`V0_6_69_RELEASE_AUTHORIZED_NOT_CONSUMED / INDEPENDENT_REVIEW_GO / REAL_GROUP_CNY300_MAX_11_POST_NOT_CONSUMED`
+
+## INC-GEN-023 当前区块（2026-09-01）
+
+- 生产 v0.6.68/schema41 已发布并健康；原任务已无费用收口为 cancelled，但浏览器本地 checkpoint/active lease 仍阻止客户端发出解绑请求。
+- v0.6.69 本地候选以独立terminal-only服务端sweep收口 failed/cancelled 精确绑定；只访问显式 allowlist，success、非终态、非allowlist和task binding不匹配均不改，也不会因空闲启动打开全局generation recovery。
+- 单事务/CAS更新Canvas，重复执行幂等；generation task/event/admission/attempt、media和publication账本保持逐项不变。
+- safe m81 `42/42`、m85 `28/28`、m93 `7/7`通过；三轮独立复审发现的active0漏装sweep、根矩阵过期、误开全局taskStore、timer越过runtime lease及可恢复failed accepted任务竞态均已修复。跨Canvas outcome-unknown账本不变、accepted恢复绑定保留、teardown timer清零，测试库存1142，TypeScript、架构、source coverage、production build与4173隔离门通过；等待最终独立复审。
+- 用户已明确确认版本v0.6.69并允许发布；授权尚未消费，独立复审已GO，现执行commit/push/PR/tag/Release/生产切换。真实整组点击仍为0/1，Provider POST0/11，费用0。
+- 权威方案、断点、Matrix分别为`spec/INC_GEN_023_SERVER_TERMINAL_DETACH_PLAN_2026-09-01.md`、`spec/INC_GEN_023_CHECKPOINT.md`、`spec/INC_GEN_023_ACCEPTANCE_MATRIX_2026-09-01.md`。
 
 ## INC-GEN-022 当前区块（2026-09-01）
 
@@ -383,7 +392,7 @@ v0.6.47验证证据：默认Node25.9.0/npm11.12.1下build与architecture通过�
 
 ## 一句话
 
-**生产是 v0.6.67 / schema41；v0.6.67发布与生产技术门已通过，真实整组点击前发现terminal-detach合同P0并安全停止；当前保持USER_RECHECK。**
+**生产是 v0.6.68 / schema41；v0.6.68发布与生产技术门已通过，真实整组点击前发现浏览器本地checkpoint/lease阻止自动解绑并安全停止；当前保持USER_RECHECK。**
 
 ## INC-GEN-015 老画布孤立生成态与终态结果自动收口（PRODUCTION_V0_6_46_USER_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON）
 

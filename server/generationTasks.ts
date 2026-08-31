@@ -20,6 +20,11 @@ import {
 import { createPrivateAliyunOssReadUrl } from "./aliyunOss";
 import { appDataDirectory, openAppDatabase } from "./database";
 import {
+  allowlistedLegacyTerminalDetachSweepEnabled,
+  runAllowlistedLegacyTerminalDetachSweep,
+} from
+  "./canvasLegacyGenerationReconciliation";
+import {
   createGenerationSafetyStore,
   generationSafetyStatus,
 } from "./generationSafety";
@@ -358,6 +363,7 @@ export function prepareGenerationRuntimeRoleTeardown(
   ) {
     throw new Error("Generation runtime teardown still has active executions");
   }
+  clearGenerationRecoverySweepTimers();
   // The shared runtime drain has already waited through Provider transport and
   // durable failure/result persistence. Close the cached writer while the
   // exclusive active lease is still held, then make a later runtime initialize
@@ -713,6 +719,52 @@ function taskStore(launchOptions?: GenerationLaunchOptions) {
 }
 
 let generationRecoverySweepTimer: NodeJS.Timeout | undefined;
+let legacyTerminalDetachSweepTimer: NodeJS.Timeout | undefined;
+
+function clearGenerationRecoverySweepTimers() {
+  if (generationRecoverySweepTimer) clearInterval(generationRecoverySweepTimer);
+  if (legacyTerminalDetachSweepTimer) {
+    clearInterval(legacyTerminalDetachSweepTimer);
+  }
+  generationRecoverySweepTimer = undefined;
+  legacyTerminalDetachSweepTimer = undefined;
+}
+
+function ensureAllowlistedLegacyTerminalDetachSweep(forRuntimeTest = false) {
+  if (
+    legacyTerminalDetachSweepTimer ||
+    (!forRuntimeTest &&
+      process.env.UNBOUNDRY_DISABLE_GENERATION_RECOVERY_SWEEP === "1") ||
+    !allowlistedLegacyTerminalDetachSweepEnabled()
+  ) {
+    return;
+  }
+  legacyTerminalDetachSweepTimer = setInterval(() => {
+    void Promise.resolve()
+      .then(() => runRegisteredGenerationExecution(
+        () => runAllowlistedLegacyTerminalDetachSweep(),
+      ))
+      .catch(() => undefined);
+  }, 30_000);
+  legacyTerminalDetachSweepTimer.unref?.();
+}
+
+export function startAllowlistedLegacyTerminalDetachSweepForRuntimeTest() {
+  if (process.env.UNBOUNDRY_SAFE_TEST !== "1") {
+    throw new Error("Generation terminal sweep test seam is unavailable");
+  }
+  ensureAllowlistedLegacyTerminalDetachSweep(true);
+}
+
+export function generationRecoverySweepTimerStateForRuntimeTest() {
+  if (process.env.UNBOUNDRY_SAFE_TEST !== "1") {
+    throw new Error("Generation sweep timer test seam is unavailable");
+  }
+  return {
+    generation: generationRecoverySweepTimer !== undefined,
+    terminalDetach: legacyTerminalDetachSweepTimer !== undefined,
+  } as const;
+}
 
 function ensureGenerationRecoverySweep() {
   if (
@@ -2952,8 +3004,10 @@ function startupWorkerTestProviderFetcher(): typeof fetch | undefined {
 }
 
 /**
- * Starts or recovers durable active work once per process. The first pass is
- * read-only so an idle database never opens the writer or creates SQLite sidecars.
+ * Starts or recovers durable active work once per process. The first pass only
+ * counts active tasks; an idle non-allowlisted database never opens a writer.
+ * An allowlisted idle runtime may open only the short-lived Canvas detach writer,
+ * while the generation task store remains closed.
  */
 export function initializePersistentGenerationTaskWorker() {
   if (!runtimeRoleCoordinator && runtimeRoleRegistrationRequired) {
@@ -2982,7 +3036,9 @@ export function initializePersistentGenerationTaskWorker() {
       );
     }
     const activeTaskCount = committedActiveGenerationTaskCount();
-    if (activeTaskCount === 0) {
+    const terminalDetachSweepEnabled =
+      allowlistedLegacyTerminalDetachSweepEnabled();
+    if (activeTaskCount === 0 && !terminalDetachSweepEnabled) {
       return { activeTaskCount, writerOpened: false };
     }
     if (!incGen017GenerationEnabled()) {
@@ -2994,7 +3050,19 @@ export function initializePersistentGenerationTaskWorker() {
     ) {
       throw new Error("M81 controlled generation startup failure");
     }
-    failInterruptedRetryingGenerationTasks();
+    if (terminalDetachSweepEnabled) {
+      ensureAllowlistedLegacyTerminalDetachSweep();
+      try {
+        await runAllowlistedLegacyTerminalDetachSweep();
+      } catch {
+        // The next terminal-only sweep retries the same Canvas proof. It never
+        // opens the generation task worker or reaches a Provider submission.
+      }
+    }
+    if (activeTaskCount === 0) {
+      return { activeTaskCount, writerOpened: false };
+    }
+    if (activeTaskCount > 0) failInterruptedRetryingGenerationTasks();
     const providerFetcher = startupWorkerTestProviderFetcher();
     const settledExecutions =
       providerFetcher &&
