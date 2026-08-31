@@ -37,6 +37,7 @@ import {
   mediaPublicationFinalPath,
   mediaPublicationStagingPath,
   MediaPublicationConflictError,
+  MediaPublicationDeferredError,
   publishLocalMediaPublication,
   reserveMediaPublication,
   stageMediaPublication,
@@ -331,6 +332,7 @@ export async function saveGeneratedPng(input: {
   let resourceReservation:
     | ReturnType<typeof reserveMediaProcessResources>
     | undefined;
+  let staged = false;
   try {
     resourceReservation = reserveMediaProcessResources({
       bytes: maxImageBytes,
@@ -359,11 +361,12 @@ export async function saveGeneratedPng(input: {
       };
     });
     const { objectKey, reservation, routing } = publication;
-    if (!(routing.enabled && routing.profile)) {
-      await mkdir(path.directory, { recursive: true });
-      await resourceReservation.verifyLocalStorage(path.directory);
-    }
+    await mkdir(path.directory, { recursive: true });
+    await resourceReservation.verifyLocalStorage(path.directory);
     const dimensions = validatePng(input.bytes);
+    await writeFile(mediaPublicationStagingPath(reservation), input.bytes, {
+      flag: "wx",
+    });
     stageMediaPublication(reservation, {
       byteSize: input.bytes.length,
       checksumSha256,
@@ -371,20 +374,18 @@ export async function saveGeneratedPng(input: {
       mediaHeight: dimensions.height,
       mediaWidth: dimensions.width,
     });
+    staged = true;
     if (routing.enabled && routing.profile) {
       await (input.uploadObject ?? uploadPrivateAliyunOssObject)({
         byteSize: input.bytes.length,
-        bytes: input.bytes,
         checksumSha256,
         contentType: "image/png",
         credentials: routing.profile,
+        filePath: mediaPublicationStagingPath(reservation),
         objectKey,
       });
       markExternalMediaPublicationReady(reservation);
     } else {
-      await writeFile(mediaPublicationStagingPath(reservation), input.bytes, {
-        flag: "wx",
-      });
       await publishLocalMediaPublication(reservation);
     }
     if (input.task) {
@@ -400,6 +401,9 @@ export async function saveGeneratedPng(input: {
     return { assetId: id, ...dimensions, url: `/api/assets/${id}` };
   } catch (error) {
     if (publication) {
+      if (input.task && staged) {
+        throw new MediaPublicationDeferredError();
+      }
       await compensateMediaPublication(publication.reservation, {
         profile: publication.routing.profile,
       });

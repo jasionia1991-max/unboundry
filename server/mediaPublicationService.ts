@@ -26,6 +26,7 @@ import {
 
 export {
   MediaPublicationConflictError,
+  MediaPublicationDeferredError,
   MediaPublicationStateError,
   type DurableMediaReference,
   type GeneratedPublicationTask,

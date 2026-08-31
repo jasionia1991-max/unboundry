@@ -139,8 +139,8 @@ const generationErrorCodeMessages: Record<
     "已向模型提交，系统会自动找回结果且不会重复付费提交",
   AUTOMATIC_RESULT_RECOVERY:
     "系统正在自动找回平台结果；不会重复付费提交",
-  RESULT_SAVE_FAILED_NO_RETRY:
-    "图片平台已返回结果，但系统未能安全保存；本轮已自动停止且不会重复提交",
+  RESULT_SAVE_FAILED_NO_RETRY: (kind) =>
+    `${kind === "image" ? "图片" : kind === "video" ? "视频" : "音频"}平台已返回结果，但系统未能安全保存；本轮已自动停止且不会重复提交`,
   PROVIDER_RECOVERY_ATTEMPT_USED: "模型配置更新后的恢复尝试已使用，请等待结果或联系管理员",
   PROVIDER_REVERIFY_REQUIRED: "平台连接资料已更新，请管理员完成只读连接检查",
   PROVIDER_RESULT_FORMAT: "模型已响应，但结果无法安全识别；本次不会自动重提",
@@ -184,6 +184,12 @@ export function friendlyGenerationMessage(
   kind: GenerationMessageKind,
   code?: string,
 ): string {
+  // Terminal result-loss codes are authoritative. A task can carry an older
+  // recovery checkpoint message after its state has already closed, so never
+  // let that stale text override the terminal status shown on the node.
+  if (code === "RESULT_SAVE_FAILED_NO_RETRY") {
+    return friendlyGenerationCodeMessage(code, kind)!;
+  }
   const trimmed = (message ?? "").trim();
   if (!trimmed) {
     return friendlyGenerationCodeMessage(code, kind) ?? friendlyFallbacks[kind];

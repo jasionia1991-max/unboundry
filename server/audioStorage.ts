@@ -42,6 +42,7 @@ import {
   markMediaDeletionFailed,
   mediaPublicationStagingPath,
   MediaPublicationConflictError,
+  MediaPublicationDeferredError,
   publishLocalMediaPublication,
   reserveMediaPublication,
   stageMediaPublication,
@@ -196,6 +197,8 @@ export async function saveGeneratedAudio(input: {
   label: string;
   ownerId: string;
   task?: GeneratedPublicationTask;
+  /** Test seam for the external-object write; production uses private OSS. */
+  uploadObject?: typeof uploadPrivateAliyunOssObject;
 }) {
   const extension = input.contentType === "audio/wav"
     ? "wav"
@@ -253,6 +256,7 @@ export async function saveGeneratedAudio(input: {
   let size = 0;
   let header = Buffer.alloc(0);
   let bodyConsumptionStarted = false;
+  let staged = false;
   try {
     await mkdir(path.directory, { recursive: true });
     handle = await open(mediaPublicationStagingPath(reservation), "wx");
@@ -287,8 +291,9 @@ export async function saveGeneratedAudio(input: {
       contentType: format.contentType,
       durationSeconds: metadata.durationSeconds,
     });
+    staged = true;
     if (routing.enabled && routing.profile) {
-      await uploadPrivateAliyunOssObject({
+      await (input.uploadObject ?? uploadPrivateAliyunOssObject)({
         byteSize: size,
         checksumSha256,
         contentType: format.contentType,
@@ -317,6 +322,9 @@ export async function saveGeneratedAudio(input: {
       await input.body.cancel().catch(() => undefined);
     }
     await handle?.close().catch(() => undefined);
+    if (input.task && staged) {
+      throw new MediaPublicationDeferredError();
+    }
     await compensateMediaPublication(reservation, { profile: routing.profile });
     throw error;
   } finally {

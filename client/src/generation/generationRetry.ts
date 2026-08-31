@@ -28,6 +28,7 @@ export function generationFailureMessage(
   const visible = errorCode && kind
     ? friendlyGenerationMessage(message, kind, errorCode)
     : message;
+  if (errorCode === "RESULT_SAVE_FAILED_NO_RETRY") return visible;
   if (!retryBlockReason || visible.includes(retryBlockReason)) return visible;
   return `${visible}；${retryBlockReason}`;
 }

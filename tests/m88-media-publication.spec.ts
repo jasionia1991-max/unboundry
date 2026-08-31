@@ -16,7 +16,7 @@ import { Readable } from "node:stream";
 import { DatabaseSync } from "node:sqlite";
 import { assetStorage, saveGeneratedPng } from "../server/assetStorage";
 import { adminTemplatesApi } from "../server/adminTemplates";
-import { audioStorage } from "../server/audioStorage";
+import { audioStorage, saveGeneratedAudio } from "../server/audioStorage";
 import { adminUsersApi, authApi, authGate } from "../server/auth";
 import {
   canvasPersistence,
@@ -41,6 +41,10 @@ import {
 } from "../server/generationResultCommit";
 import { assertGenerationMediaDeletionAllowedInTransaction } from "../server/generationAttemptQueries";
 import {
+  attemptProviderResultSave,
+  runGenerationRecoverySweep,
+} from "../server/generationTasks";
+import {
   cleanupPublicationStaging,
   compensateMediaPublication,
   failMediaPublication,
@@ -51,6 +55,7 @@ import {
   MediaPublicationConflictError,
   markExternalMediaPublicationReady,
   pendingGeneratedPublicationTaskIds,
+  preparePendingGeneratedMediaPublication,
   publishLocalMediaPublication,
   recoverPendingMediaDeletions,
   recoverPendingUploadMediaPublications,
@@ -85,7 +90,7 @@ import {
   storageProfileForMedia,
   withStorageMediaRoutingReservation,
 } from "../server/secureStorageProfiles";
-import { videoStorage } from "../server/videoStorage";
+import { saveGeneratedMp4, videoStorage } from "../server/videoStorage";
 import { expect, test } from "./safe-test";
 
 test.describe.configure({ mode: "serial" });
@@ -4697,7 +4702,7 @@ test("ready OSS media retains its profile and explicit missing profile IDs never
   });
 });
 
-test("generated PNG writes directly to private OSS without a local staging copy", async () => {
+test("generated PNG uses a durable staging copy until private OSS publication commits", async () => {
   await withDataDirectory("generated-png-direct-oss", async (directory) => {
     const ownerId = "m88-generated-png-direct-owner";
     addOwner(directory, ownerId);
@@ -4732,15 +4737,16 @@ test("generated PNG writes directly to private OSS without a local staging copy"
         expect(input.checksumSha256).toBe(
           createHash("sha256").update(png).digest("hex"),
         );
+        expect(await readFile(input.filePath!)).toEqual(png);
         return { etag: "fixture", requestId: "fixture", versionId: "" };
       },
     });
     expect(uploads).toHaveLength(1);
     expect(uploads[0]).toMatchObject({
       byteSize: png.length,
-      bytes: png,
     });
-    expect(uploads[0]!.filePath).toBeUndefined();
+    expect(uploads[0]!.bytes).toBeUndefined();
+    expect(uploads[0]!.filePath).toMatch(/\.publication-.*\.generating$/);
     expect(uploads[0]!.objectKey).toMatch(/^objects\//);
     const media = readyMediaForOwner(ownerId, "image", saved.assetId);
     expect(media).toMatchObject({
@@ -4751,6 +4757,266 @@ test("generated PNG writes directly to private OSS without a local staging copy"
     });
     const stagingEntries = await readdir(join(directory, "media")).catch(() => []);
     expect(stagingEntries).toEqual([]);
+  });
+});
+
+test("generated image video and audio survive OSS failure without Provider resubmission", async () => {
+  await withDataDirectory("generated-png-oss-recovery", async (directory) => {
+    const ownerId = "m88-generated-png-recovery-owner";
+    addOwner(directory, ownerId);
+    const profile = await saveStorageProfile({
+      accessKeyId: "m88-generated-png-recovery-key",
+      accessKeySecret: "m88-generated-png-recovery-secret",
+      bucket: "m88-generated-png-recovery-bucket",
+      endpoint: "https://oss-cn-shanghai.aliyuncs.com",
+      label: "M88 generated PNG recovery",
+      region: "oss-cn-shanghai",
+    });
+    await markStorageProfileVerified(profile.id);
+    await activateStorageProfile(profile.id);
+    await setStorageMediaRouting(true);
+    const store = createGenerationTaskStore(directory);
+    try {
+      const task = store.create({
+        canvasId: "m88-generated-png-recovery-canvas",
+        idempotencyKey: "m88-generated-png-recovery-task",
+        kind: "image",
+        model: "gpt-image-2",
+        nodeId: "m88-generated-png-recovery-node",
+        ownerId,
+        prompt: "durably recover this image",
+        providerModelId: "gpt-image-2",
+        providerProfileId: "m88-provider-profile",
+      }).task;
+      const running = store.transition(task.id, "running")!;
+      recordProviderAttemptFixture(directory, task.id, "response-received");
+      const png = Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+        "base64",
+      );
+      expect(await attemptProviderResultSave({
+        taskId: task.id,
+        store,
+        save: () => saveGeneratedPng({
+          bytes: png,
+          label: "recoverable OSS result",
+          ownerId,
+          task: {
+            actualCostMicrounits: 456,
+            executionAttempt: running.attempt,
+            taskId: task.id,
+          },
+          uploadObject: async () => {
+            throw new Error("deterministic first OSS failure");
+          },
+        }),
+      })).toBe(false);
+      expect(store.get(task.id)).toMatchObject({
+        attempt: 1,
+        state: "recovering",
+      });
+      expect([...pendingGeneratedPublicationTaskIds()]).toEqual([task.id]);
+      const before = openAppDatabase(directory);
+      try {
+        expect(generationProviderAttemptCounts(before)).toEqual({
+          historicalEstimatedProviderAttempts: 0,
+          paidProviderRequests: 1,
+        });
+      } finally {
+        before.close();
+      }
+      let recoveredUploads = 0;
+      await runGenerationRecoverySweep({
+        hasPendingGenerated: () => true,
+        recoverPending: () => recoverPendingGenerationMediaResults({
+          prepare: (row) => preparePendingGeneratedMediaPublication(row, {
+            uploadObject: async (input) => {
+              recoveredUploads += 1;
+              expect(input.credentials.bucket).toBe(profile.bucket);
+              expect(await readFile(input.filePath!)).toEqual(png);
+              return { etag: "fixture", requestId: "fixture", versionId: "" };
+            },
+          }),
+        }),
+        store,
+      });
+      expect(recoveredUploads).toBe(1);
+      expect(store.get(task.id)).toMatchObject({
+        actualCostMicrounits: 456,
+        attempt: 1,
+        state: "success",
+      });
+      const after = openAppDatabase(directory);
+      try {
+        expect(generationProviderAttemptCounts(after)).toEqual({
+          historicalEstimatedProviderAttempts: 0,
+          paidProviderRequests: 1,
+        });
+      } finally {
+        after.close();
+      }
+      expect(await readdir(join(directory, "media"))).toEqual([]);
+
+      const videoTask = store.create({
+        canvasId: "m88-generated-video-recovery-canvas",
+        idempotencyKey: "m88-generated-video-recovery-task",
+        kind: "video",
+        model: "seedance-1-0-pro-250528",
+        nodeId: "m88-generated-video-recovery-node",
+        ownerId,
+        prompt: "durably recover this video",
+        providerModelId: "seedance-1-0-pro-250528",
+        providerProfileId: "m88-provider-profile",
+      }).task;
+      const runningVideo = store.transition(videoTask.id, "running")!;
+      recordProviderAttemptFixture(
+        directory,
+        videoTask.id,
+        "response-received",
+      );
+      const mp4 = await readFile(join(
+        process.cwd(),
+        "client/public/fixtures/video-success.mp4",
+      ));
+      expect(await attemptProviderResultSave({
+        taskId: videoTask.id,
+        store,
+        save: () => saveGeneratedMp4({
+          body: new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(mp4);
+              controller.close();
+            },
+          }),
+          label: "recoverable OSS video",
+          ownerId,
+          task: {
+            actualCostMicrounits: 654,
+            executionAttempt: runningVideo.attempt,
+            taskId: videoTask.id,
+          },
+          uploadObject: async () => {
+            throw new Error("deterministic first video OSS failure");
+          },
+        }),
+      })).toBe(false);
+      expect(store.get(videoTask.id)).toMatchObject({
+        attempt: 1,
+        state: "recovering",
+      });
+      expect([...pendingGeneratedPublicationTaskIds()]).toEqual([videoTask.id]);
+      let recoveredVideoUploads = 0;
+      await runGenerationRecoverySweep({
+        hasPendingGenerated: () => true,
+        recoverPending: () => recoverPendingGenerationMediaResults({
+          prepare: (row) => preparePendingGeneratedMediaPublication(row, {
+            uploadObject: async (input) => {
+              recoveredVideoUploads += 1;
+              expect(input.credentials.bucket).toBe(profile.bucket);
+              expect(await readFile(input.filePath!)).toEqual(mp4);
+              return { etag: "fixture", requestId: "fixture", versionId: "" };
+            },
+          }),
+        }),
+        store,
+      });
+      expect(recoveredVideoUploads).toBe(1);
+      expect(store.get(videoTask.id)).toMatchObject({
+        actualCostMicrounits: 654,
+        attempt: 1,
+        state: "success",
+      });
+      const videoAfter = openAppDatabase(directory);
+      try {
+        expect(generationProviderAttemptCounts(videoAfter)).toEqual({
+          historicalEstimatedProviderAttempts: 0,
+          paidProviderRequests: 2,
+        });
+      } finally {
+        videoAfter.close();
+      }
+      expect(await readdir(join(directory, "media"))).toEqual([]);
+
+      const audioTask = store.create({
+        canvasId: "m88-generated-audio-recovery-canvas",
+        idempotencyKey: "m88-generated-audio-recovery-task",
+        kind: "audio",
+        model: "mureka-9",
+        nodeId: "m88-generated-audio-recovery-node",
+        ownerId,
+        prompt: "durably recover this audio",
+        providerModelId: "mureka-9",
+        providerProfileId: "m88-provider-profile",
+      }).task;
+      const runningAudio = store.transition(audioTask.id, "running")!;
+      recordProviderAttemptFixture(
+        directory,
+        audioTask.id,
+        "response-received",
+      );
+      const wav = wavFixture();
+      expect(await attemptProviderResultSave({
+        taskId: audioTask.id,
+        store,
+        save: () => saveGeneratedAudio({
+          body: new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(wav);
+              controller.close();
+            },
+          }),
+          contentType: "audio/wav",
+          label: "recoverable OSS audio",
+          ownerId,
+          task: {
+            actualCostMicrounits: 789,
+            executionAttempt: runningAudio.attempt,
+            taskId: audioTask.id,
+          },
+          uploadObject: async () => {
+            throw new Error("deterministic first audio OSS failure");
+          },
+        }),
+      })).toBe(false);
+      expect(store.get(audioTask.id)).toMatchObject({
+        attempt: 1,
+        state: "recovering",
+      });
+      expect([...pendingGeneratedPublicationTaskIds()]).toEqual([audioTask.id]);
+      let recoveredAudioUploads = 0;
+      await runGenerationRecoverySweep({
+        hasPendingGenerated: () => true,
+        recoverPending: () => recoverPendingGenerationMediaResults({
+          prepare: (row) => preparePendingGeneratedMediaPublication(row, {
+            uploadObject: async (input) => {
+              recoveredAudioUploads += 1;
+              expect(input.credentials.bucket).toBe(profile.bucket);
+              expect(await readFile(input.filePath!)).toEqual(wav);
+              return { etag: "fixture", requestId: "fixture", versionId: "" };
+            },
+          }),
+        }),
+        store,
+      });
+      expect(recoveredAudioUploads).toBe(1);
+      expect(store.get(audioTask.id)).toMatchObject({
+        actualCostMicrounits: 789,
+        attempt: 1,
+        state: "success",
+      });
+      const audioAfter = openAppDatabase(directory);
+      try {
+        expect(generationProviderAttemptCounts(audioAfter)).toEqual({
+          historicalEstimatedProviderAttempts: 0,
+          paidProviderRequests: 3,
+        });
+      } finally {
+        audioAfter.close();
+      }
+      expect(await readdir(join(directory, "media"))).toEqual([]);
+    } finally {
+      store.close();
+    }
   });
 });
 
