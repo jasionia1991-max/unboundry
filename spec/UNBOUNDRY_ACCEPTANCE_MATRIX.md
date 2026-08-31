@@ -1,5 +1,15 @@
 # Unboundry 绿地复刻验收矩阵
 
+## INC-GEN-018 模型合同健康边界与旧Revision精确修复（2026-08-31，GOAL ACTIVE / R6 REVIEW GO / R7 READY）
+
+- 当前状态：`GOAL_ACTIVE / R0_COMPLETE / R1_TARGETED_PASS / R2_TARGETED_PASS / R3_TARGETED_PASS / R4_TARGETED_PASS / R5_REHEARSAL_PASS / R6_REVIEW_GO / R7_READY / PRODUCTION_V0_6_63_REGRESSION_OPEN / NO_NEW_PROVIDER_POST / USER_RECHECK`。
+- 已查实：平台`globalEnabled=1/emergencyStop=0`；10个published模型中8个available，Doubao Seed与Doubao TTS 2.0因旧active revision缺当前effective `inputPolicy`而合同健康失败；migration集合遗漏两者，availability又把模型健康折叠成全局关闭。
+- 本轮点击未新建任务，tasks1026/attempts1037/active0，Provider POST/OSS写/新费用0。生产回归仍未发布修复，不能用本地定向证据冒充现网正确。
+- R0已冻结10/10 published logical models与10/10 exact identities；脱敏快照SHA=`fa6a498a…0457`，仅Seed/TTS缺`$.inputPolicy`。m32预期红`6 PASS / 1 expected FAIL`，source/snapshot=`07fae080…f8ebe`、4173 unchanged。
+- 用户已完整发送一次性Goal并启动实施；R1～R5均已通过。R6主线程与独立冻结候选终审均完成；独立覆盖37/37文件、309/309 tracked hunks、10/10 published模型、11/11 registry identities、10/10数据库exact identities和全部Provider分支，结论`P0=0/P1=0/P2=7/GO`。生产v0.6.63/audit309/任务与媒体计数未写，Provider/OSS/费用0；正式full、GitHub、生产及用户复验仍为`NOT_RUN / USER_RECHECK`。
+- Goal提示词本身的独立文档终审为`P0=0/P1=0/P2=0/GO`；这不改变IG18-011～040的`NOT_RUN/USER_RECHECK`。
+- 独立矩阵：[`spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_ACCEPTANCE_MATRIX_2026-08-30.md`](INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_ACCEPTANCE_MATRIX_2026-08-30.md)；Goal：[`spec/INC_GEN_018_ONE_SHOT_GOAL_PROMPT_2026-08-31.md`](INC_GEN_018_ONE_SHOT_GOAL_PROMPT_2026-08-31.md)。INC-GEN-017下方历史GO与生产技术事实不改写。
+
 ## INC-GEN-017 正式full已消费、v0.6.63生产与真实Provider通过（2026-08-30）
 
 - 当前状态：`GOAL_ACTIVE / FORMAL_SAFE_FULL_CONSUMED / PRODUCTION_V0_6_63_TECHNICAL_PASS / REAL_PROVIDER_PASS / USER_RECHECK`。

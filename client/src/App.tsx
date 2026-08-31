@@ -168,7 +168,7 @@ type AdminModel = {
   id: string;
   isDefault: boolean;
   parameterConstraints?: ModelParameterSchema;
-  parameterSchema: ModelParameterSchema;
+  parameterSchema?: ModelParameterSchema;
   providerConnected: boolean;
   providerDriver: ProviderDriver;
   providerProfileId: string;
@@ -5797,9 +5797,11 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
                   )}
                   <br />
                   可调参数：
-                  {model.parameterSchema.fields.length
+                  {model.parameterSchema?.fields.length
                     ? model.parameterSchema.fields.map((field) => field.label).join("、")
-                    : "无"}
+                    : model.parameterSchema
+                      ? "无"
+                      : "合同无效（已阻止生成）"}
                   <br />
                   合同：{model.contract?.status === "published"
                     ? `已发布修订 ${model.contract.activeRevision}`
@@ -5904,6 +5906,7 @@ function AdminModels({ currentUser }: { currentUser: AuthUser }) {
                     </button>
                     <button
                       aria-expanded={editingParameterModelId === model.id}
+                      disabled={!model.parameterSchema}
                       onClick={() => {
                         if (editingParameterModelId === model.id) {
                           setEditingParameterModelId("");

@@ -797,6 +797,11 @@ test("a generic Provider check cannot clear a newer capability authentication fa
     costCurrency: "CNY" as const,
     emergencyStop: false,
     globalEnabled: true,
+    modelContractHealth: {
+      activeRevisionId: "healthy-test-revision",
+      fingerprint: "healthy-test-fingerprint",
+      state: "healthy" as const,
+    },
     maxCostMicrounits: 5_000_000,
     providerDriver: "volcengine-ark",
     providerModelId: textModelId,

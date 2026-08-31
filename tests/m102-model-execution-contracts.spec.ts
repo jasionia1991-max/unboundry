@@ -9,6 +9,7 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -23,6 +24,7 @@ import {
 import {
   assertModelReleaseRevisionIntegrity,
   currentModelReleasePolicyDrift,
+  inspectModelReleaseDocument,
   ModelContractConflictError,
   markModelContractsRequired,
   modelContractsRequired,
@@ -36,6 +38,11 @@ import {
   validateModelContractDraft,
 } from "../server/modelReleaseRevisionStore";
 import { defaultModelReleaseDocument } from "../server/modelReleaseDefaults";
+import {
+  canonicalContractFingerprint,
+  canonicalPublishedCapabilitySchema,
+  resolveCanonicalPublishedModelContract,
+} from "../server/canonicalPublishedModelContract";
 import { analyzeModelContractTemplateCompatibility } from "../server/modelContractTemplateCompatibility";
 import { recordAudit } from "../server/audit";
 import {
@@ -62,18 +69,27 @@ import {
 } from "../server/relayProviderAdapters";
 import { modelReleaseBootstrapActorUserId } from "../server/modelReleaseBootstrap";
 import { modelContractTemplateCompatibilitySignature } from "../server/modelCatalog";
-import { assertActiveModelContractHealth } from
-  "../server/activeModelContractHealth";
+import {
+  assertActiveModelContractHealth,
+  inspectActiveModelContractHealth,
+} from "../server/activeModelContractHealth";
+import { evaluateModelRuntimeAvailability } from "../server/modelAvailability";
+import { workflowModelSelectionProblem } from
+  "../client/src/generation/workflowExecution";
 import {
   assertRelayMediaOutputCardinality,
   assertGenerationTaskModelReleaseSnapshotIntegrity,
   relayMediaParametersForTask,
 } from "../server/generationTasks";
 import {
-  applyModelContractUpgrade,
+  createIncGen018ModelContractUpgradeSafeTestHarness,
   planModelContractUpgrade,
   runModelContractUpgradeCli,
 } from "../server/modelContractUpgrade";
+import { openAppDatabase } from "../server/database";
+import {
+  incGen018ActiveModelContractFixtures,
+} from "./fixtures/inc-gen-018-active-model-contracts";
 import {
   assertFrozenTaskModelExecutionAdapter,
   assertModelExecutionRegistryTotality,
@@ -81,6 +97,7 @@ import {
   compileRegisteredModelTaskDecision,
   currentPublishedModelExecutionDescriptors,
   ExactModelExecutionRegistry,
+  registeredModelExecution,
   shadowCompareRegisteredModelExecution,
   type ModelExecutionDescriptor,
 } from "../server/modelExecutionRegistry";
@@ -121,7 +138,6 @@ const gkContract = {
 } as const;
 
 type PublishedModelSnapshotRow = Readonly<{
-  displayName: string;
   capability: ModelCapability;
   providerDriver: string;
   providerModelId: string;
@@ -130,22 +146,23 @@ type PublishedModelSnapshotRow = Readonly<{
 }>;
 
 function publishedModelSnapshot() {
-  const parsed = JSON.parse(readFileSync(join(
-    process.cwd(),
-    "spec/INC_GEN_017_R0_PUBLISHED_MODEL_SNAPSHOT_2026-08-28.json",
-  ), "utf8")) as {
-    databaseSchema: number;
-    models: PublishedModelSnapshotRow[];
-    productionRelease: string;
-    publishedCount: number;
-    snapshotKind: string;
-  };
-  if (
-    parsed.snapshotKind !== "sanitized-production-published-model-contract-identities" ||
-    parsed.databaseSchema !== 41 ||
-    parsed.models.length !== parsed.publishedCount
-  ) throw new Error("INC-GEN-017 production published-model snapshot is invalid");
-  return parsed;
+  const models = currentPublishedModelExecutionDescriptors.map((descriptor) => {
+    const identity = descriptor.identities.find((candidate) =>
+      candidate.providerModelId === descriptor.logicalModelId
+    ) ?? descriptor.identities[0];
+    if (!identity) throw new Error("published execution descriptor has no identity");
+    return Object.freeze({
+      capability: descriptor.capability,
+      costCurrency: descriptor.costCurrency,
+      providerDriver: identity.providerDriver,
+      providerModelId: identity.providerModelId,
+      providerProtocol: identity.providerProtocol,
+    } satisfies PublishedModelSnapshotRow);
+  });
+  return Object.freeze({
+    models: Object.freeze(models),
+    publishedCount: models.length,
+  });
 }
 
 function modelSchema(row: PublishedModelSnapshotRow) {
@@ -516,7 +533,7 @@ test("a frozen single-result task rejects relay multi-output before saving", () 
   })).not.toThrow();
 });
 
-test("R5 builds the complete directed switch matrix from the live published snapshot", () => {
+test("R5 builds the complete directed switch matrix from the current published registry", () => {
   const { models } = publishedModelSnapshot();
   const matrixPairs = new Set<string>();
   for (const source of models) {
@@ -725,6 +742,7 @@ test("R5 admits a future model only after exact registration and rejects protoco
     connectorFamily: "generic-async-media",
     costCurrency: "USD",
     evidence: "EXACT",
+    executionContractVersion: 1,
     identities: Object.freeze([{
       providerDriver: "multi-protocol-relay",
       providerModelId: "future-video-with-exact-adapter",
@@ -1144,13 +1162,19 @@ function releaseDocument(modelId = "model-gk-video-3") {
 }
 
 function exactReleaseDocument(modelId = "model-gk-video-3") {
-  const current = defaultModelReleaseDocument({
+  const capabilitySchema = canonicalPublishedCapabilitySchema({
     capability: "video",
-    capabilitySchema: knownModelParameterSchema({
+    defaultParameters: knownModelParameterSchema({
       capability: "video",
       providerDriver: "multi-protocol-relay",
       providerModelId: "grok-video-3",
     }),
+    providerDriver: "multi-protocol-relay",
+    providerModelId: "grok-video-3",
+  });
+  const current = defaultModelReleaseDocument({
+    capability: "video",
+    capabilitySchema,
     modelId,
     providerDriver: "multi-protocol-relay",
     providerModelId: "grok-video-3",
@@ -1303,8 +1327,8 @@ test("explicit upgrade publishes revision 2 atomically and is idempotent", () =>
     expect(assertActiveModelContractHealth({
       capability: current.capability,
       costCurrency: "USD",
+      defaultParameters: current.capabilitySchema,
       modelId: current.modelId,
-      parameterSchema: current.capabilitySchema,
       providerDriver: "multi-protocol-relay",
       providerModelId: current.providerModelId,
       providerProfileId: current.providerProfileId,
@@ -1314,20 +1338,20 @@ test("explicit upgrade publishes revision 2 atomically and is idempotent", () =>
     expect(() => assertActiveModelContractHealth({
       capability: current.capability,
       costCurrency: "USD",
-      modelId: current.modelId,
-      parameterSchema: {
+      defaultParameters: {
         ...current.capabilitySchema,
         referenceInputs: {
           ...current.capabilitySchema.referenceInputs,
           image: current.capabilitySchema.referenceInputs.image + 1,
         },
       },
+      modelId: current.modelId,
       providerDriver: "multi-protocol-relay",
       providerModelId: current.providerModelId,
       providerProfileId: current.providerProfileId,
       providerProtocol: current.providerProtocol,
       store,
-    })).toThrow(/身份不一致/);
+    })).toThrow(/active模型合同或精确执行registry无效/);
   } finally {
     store.close();
   }
@@ -1668,839 +1692,996 @@ test("sanitized production matrix keeps all 22 templates and 34 GK nodes compati
   }).incompatibleTemplateIds).toEqual([invalidOrder.id]);
 });
 
-test("schema41 upgrade audits 11 models, publishes GK revision 2, archives kwvideo and repeats idempotently", () => {
+const incGen018FixtureProviders = [
+  {
+    catalogCredentialRevision: false,
+    configurationVersion: 1,
+    driver: "multi-protocol-relay",
+    id: "06831aee-5794-44cd-8e43-cc613eb60fdf",
+    label: "Relay configuration 1",
+  },
+  {
+    catalogCredentialRevision: false,
+    configurationVersion: 1,
+    driver: "mureka",
+    id: "b8ee8c7a-6526-4a40-9d76-1d998f7d3eb0",
+    label: "Mureka configuration 1",
+  },
+  {
+    catalogCredentialRevision: false,
+    configurationVersion: 2,
+    driver: "multi-protocol-relay",
+    id: "37f7921b-18f0-43d3-91c5-dfed74f693b3",
+    label: "Relay configuration 2",
+  },
+  {
+    catalogCredentialRevision: true,
+    configurationVersion: 5,
+    driver: "volcengine-ark",
+    id: "f8ed7ddc-7c09-413d-8c8f-b594c39bfe7c",
+    label: "Ark configuration 5",
+  },
+] as const;
+
+const incGen018FixtureModels = [
+  {
+    capability: "video",
+    costCurrency: "USD",
+    displayName: "可灵-Omni 参考生",
+    historyRevisionIds: ["9ebf4e43-1aff-4e83-9272-212cbc5113d9"],
+    id: "3919d490-8739-490a-8bce-0678c27e4760",
+    isDefault: 0,
+    profileId: "06831aee-5794-44cd-8e43-cc613eb60fdf",
+    protocol: "media-generate",
+    providerModelId: "kling-v3-omni-cankao",
+  },
+  {
+    capability: "audio",
+    costCurrency: "USD",
+    displayName: "Mureka V9",
+    historyRevisionIds: [
+      "b626484c-670c-4298-a9e5-90fbf87ee8bb",
+      "dfbd24d0-9751-4145-9e95-1b8e074e7c94",
+    ],
+    id: "4d6196b4-00de-46ca-8011-383ad810a865",
+    isDefault: 0,
+    profileId: "b8ee8c7a-6526-4a40-9d76-1d998f7d3eb0",
+    protocol: "native",
+    providerModelId: "mureka-9",
+  },
+  {
+    capability: "video",
+    costCurrency: "USD",
+    displayName: "grok-video-3",
+    historyRevisionIds: [
+      "77010660-f111-4d80-a45b-6a137be3ca6d",
+      "e873a5c3-d0cd-4a7e-bc52-4b677285795b",
+      "02571121-893e-440f-b45f-a913b3d8d7cf",
+    ],
+    id: "624827c6-5541-4cc8-93ac-4f9d5ce79602",
+    isDefault: 1,
+    profileId: "37f7921b-18f0-43d3-91c5-dfed74f693b3",
+    protocol: "media-generate",
+    providerModelId: "grok-video-3",
+  },
+  {
+    capability: "audio",
+    costCurrency: "USD",
+    displayName: "Doubao TTS 2.0",
+    historyRevisionIds: ["bc0bcfef-21a9-4f6f-aa50-71d3e43a64ad"],
+    id: "65600fd0-739d-4359-9c9c-958e3ae49b05",
+    isDefault: 1,
+    profileId: "37f7921b-18f0-43d3-91c5-dfed74f693b3",
+    protocol: "media-generate",
+    providerModelId: "doubao-tts-2.0",
+  },
+  {
+    capability: "audio",
+    costCurrency: "USD",
+    displayName: "Suno 音乐生成 4.5",
+    historyRevisionIds: ["27cac2d0-3b99-452d-956f-4d59b916f3ed"],
+    id: "65830fc7-3888-48ea-a842-87db6df65ec1",
+    isDefault: 0,
+    profileId: "06831aee-5794-44cd-8e43-cc613eb60fdf",
+    protocol: "media-generate",
+    providerModelId: "suno-v4.5",
+  },
+  {
+    capability: "video",
+    costCurrency: "CNY",
+    displayName: "Seedance 2.0 Mini",
+    historyRevisionIds: [
+      "6cedb460-4047-4b2a-b23e-63180bf3df11",
+      "a62f1d76-a416-4e29-a786-9474ead24e0d",
+    ],
+    id: "897d3dfc-83e4-48e9-a033-ca612338681b",
+    isDefault: 0,
+    profileId: "f8ed7ddc-7c09-413d-8c8f-b594c39bfe7c",
+    protocol: "native",
+    providerModelId: "doubao-seedance-2-0-mini-260615",
+  },
+  {
+    capability: "image",
+    costCurrency: "USD",
+    displayName: "Nano Banana Pro",
+    historyRevisionIds: ["ac2fdd8a-db1f-48b8-99b0-9391d1dad386"],
+    id: "cb2e1041-33f5-49ff-bc99-994a97622db4",
+    isDefault: 0,
+    profileId: "06831aee-5794-44cd-8e43-cc613eb60fdf",
+    protocol: "media-generate",
+    providerModelId: "gemini-3-pro-image-preview",
+  },
+  {
+    capability: "image",
+    costCurrency: "USD",
+    displayName: "GPT Image 2 · 专用协议",
+    historyRevisionIds: [
+      "a4b2ad53-54e4-43cb-a502-69e6c8e9390b",
+      "35c5af5e-a7ea-45fc-88d2-8f54f9da65c6",
+    ],
+    id: "cbaf438c-1c36-48e2-807d-4ce78367d0cf",
+    isDefault: 1,
+    maxCostMicrounits: 10_000_000,
+    profileId: "37f7921b-18f0-43d3-91c5-dfed74f693b3",
+    protocol: "gpt-image",
+    providerModelId: "gpt-image-2",
+  },
+  {
+    capability: "text",
+    costCurrency: "CNY",
+    displayName: "Doubao Seed",
+    historyRevisionIds: ["6ab5deb8-b273-4b8e-a11e-6cf2560dcf9c"],
+    id: "ee51d65e-c924-4a9a-b224-6c4ee180a0ce",
+    isDefault: 1,
+    profileId: "f8ed7ddc-7c09-413d-8c8f-b594c39bfe7c",
+    protocol: "native",
+    providerModelId: "doubao-seed-2-0-lite-260428",
+  },
+  {
+    capability: "video",
+    costCurrency: "USD",
+    displayName: "grok-video-3.5",
+    historyRevisionIds: [
+      "16ecf19d-8329-4771-80e5-5db0f0e90cc2",
+      "e3824408-b340-4b1a-b6de-34042f616854",
+    ],
+    id: "f2abd864-4e38-4081-af52-820629032033",
+    isDefault: 0,
+    profileId: "37f7921b-18f0-43d3-91c5-dfed74f693b3",
+    protocol: "media-generate",
+    providerModelId: "grok-imagine-video-1.5-preview",
+  },
+] as const;
+
+type IncGen018Fixture = ReturnType<typeof seedIncGen018Fixture>;
+
+function seedIncGen018Fixture(dataDirectory: string) {
+  const harness = createIncGen018ModelContractUpgradeSafeTestHarness();
+  const store = openAppDatabase(dataDirectory);
+  const timestamp = "2026-08-30T00:00:00.000Z";
+  store.exec(
+    "DELETE FROM node_model_bindings;" +
+      "DELETE FROM model_profiles;" +
+      "DELETE FROM provider_profiles;" +
+      "DELETE FROM admin_audit_events;",
+  );
+  store.prepare(
+    "INSERT OR IGNORE INTO users (" +
+      "id, login_name, display_name, password_hash, role, status, " +
+      "created_at, updated_at, protected" +
+      ") VALUES (?, ?, ?, ?, 'admin', 'active', ?, ?, 0)",
+  ).run(
+    "admin-a",
+    "admin-a",
+    "Admin A",
+    "test-only",
+    timestamp,
+    timestamp,
+  );
+  for (const provider of incGen018FixtureProviders) {
+    store.prepare(
+      "INSERT INTO provider_profiles (" +
+        "id, display_name, driver, status, key_status, " +
+        "catalog_credential_revision, provider_configuration_version, " +
+        "created_at, updated_at" +
+        ") VALUES (?, ?, ?, 'enabled', 'valid', ?, ?, ?, ?)",
+    ).run(
+      provider.id,
+      provider.label,
+      provider.driver,
+      provider.catalogCredentialRevision
+        ? harness.catalogCredentialRevision
+        : null,
+      provider.configurationVersion,
+      timestamp,
+      timestamp,
+    );
+  }
+  for (const [sortOrder, model] of incGen018FixtureModels.entries()) {
+    const document = structuredClone(
+      incGen018ActiveModelContractFixtures[model.id],
+    );
+    const proof = inspectModelReleaseDocument(document);
+    store.prepare(
+      "INSERT INTO model_profiles (" +
+        "id, display_name, provider_profile_id, provider_model_id, " +
+        "capability, status, default_parameters, max_cost_microunits, " +
+        "cost_currency, archived_at, published_at, provider_protocol, " +
+        "created_at, updated_at" +
+      ") VALUES (?, ?, ?, ?, ?, 'published', ?, ?, ?, NULL, ?, ?, ?, ?)",
+    ).run(
+      model.id,
+      model.displayName,
+      model.profileId,
+      model.providerModelId,
+      model.capability,
+      JSON.stringify(document.capabilitySchema),
+      "maxCostMicrounits" in model ? model.maxCostMicrounits : 0,
+      model.costCurrency,
+      timestamp,
+      model.protocol,
+      timestamp,
+      timestamp,
+    );
+    store.prepare(
+      "INSERT INTO node_model_bindings (" +
+        "node_type, model_id, enabled, is_default, sort_order, " +
+        "created_at, updated_at" +
+        ") VALUES (?, ?, 1, ?, ?, ?, ?)",
+    ).run(
+      model.capability,
+      model.id,
+      model.isDefault,
+      sortOrder,
+      timestamp,
+      timestamp,
+    );
+    for (
+      let revisionIndex = 0;
+      revisionIndex < model.historyRevisionIds.length;
+      revisionIndex += 1
+    ) {
+      const revision = {
+        createdAt: timestamp,
+        document: structuredClone(document),
+        hash: proof.documentHash,
+        modelId: model.id,
+        ...(revisionIndex > 0
+          ? {
+              predecessorRevisionId:
+                model.historyRevisionIds[revisionIndex - 1],
+            }
+          : {}),
+        revisionId: model.historyRevisionIds[revisionIndex],
+        revisionNumber: revisionIndex + 1,
+        validation: {
+          compilerHash: proof.compilerHash,
+          impact: { incompatibleTemplateIds: [], templateIds: [] },
+          paidProviderRequests: 0,
+          preview: { modes: [] },
+          validatedAt: timestamp,
+        },
+      };
+      assertModelReleaseRevisionIntegrity(revision);
+      recordAudit(
+        store,
+        "admin-a",
+        "model_contract.publish",
+        null,
+        { modelId: model.id, revision },
+      );
+    }
+  }
+  expect(markModelContractsRequired(store, "admin-a", {
+    modelIds: incGen018FixtureModels.map((model) => model.id),
+    total: incGen018FixtureModels.length,
+  })).toBe(true);
+  return { dataDirectory, harness, store };
+}
+
+function createIncGen018Fixture(): IncGen018Fixture {
+  const dataDirectory = mkdtempSync(
+    join(tmpdir(), "unboundry-inc-gen-018-upgrade-"),
+  );
+  return seedIncGen018Fixture(dataDirectory);
+}
+
+function openIncGen018Fixture(dataDirectory: string): IncGen018Fixture {
+  return {
+    dataDirectory,
+    harness: createIncGen018ModelContractUpgradeSafeTestHarness(),
+    store: openAppDatabase(dataDirectory),
+  };
+}
+
+function closeIncGen018Fixture(fixture: IncGen018Fixture) {
+  fixture.store.close();
+  rmSync(fixture.dataDirectory, { force: true, recursive: true });
+}
+
+function rawUpgradeMutationSnapshot(store: DatabaseSync) {
+  return JSON.stringify({
+    audit: store.prepare(
+      "SELECT id, actor_user_id, action, target_user_id, details, created_at " +
+        "FROM admin_audit_events ORDER BY id",
+    ).all(),
+    bindings: store.prepare(
+      "SELECT node_type, model_id, enabled, is_default, sort_order, " +
+        "created_at, updated_at FROM node_model_bindings " +
+        "ORDER BY node_type, model_id",
+    ).all(),
+    models: store.prepare(
+      "SELECT id, display_name, provider_profile_id, provider_model_id, " +
+        "capability, status, default_parameters, max_cost_microunits, " +
+        "cost_currency, archived_at, published_at, provider_protocol, " +
+        "created_at, updated_at FROM model_profiles ORDER BY id",
+    ).all(),
+  });
+}
+
+function databaseByteIdentity(dataDirectory: string) {
+  return ["unboundry.sqlite", "unboundry.sqlite-wal"]
+    .map((name) => ({ name, path: join(dataDirectory, name) }))
+    .filter(({ path }) => existsSync(path))
+    .map(({ name, path }) => {
+      const bytes = readFileSync(path);
+      return {
+        bytes: bytes.byteLength,
+        name,
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+      };
+    });
+}
+
+function insertQuietTask(
+  store: DatabaseSync,
+  id: string,
+  state: "failed" | "running",
+  errorCode?: string,
+) {
+  store.prepare(
+    "INSERT INTO generation_tasks (" +
+      "id, canvas_id, node_id, kind, prompt, parameters, " +
+      "idempotency_key, request_fingerprint, state, attempt, " +
+      "error_code, created_at, updated_at, model_configuration, " +
+      "credential_revision" +
+      ") VALUES (?, ?, ?, 'image', 'fixture', '{}', ?, ?, ?, 1, ?, ?, ?, '{}', 1)",
+  ).run(
+    id,
+    "canvas-" + id,
+    "node-" + id,
+    "idempotency-" + id,
+    "fingerprint-" + id,
+    state,
+    errorCode ?? null,
+    "2026-08-30T00:00:00.000Z",
+    "2026-08-30T00:00:00.000Z",
+  );
+}
+
+function insertUnknownAttempt(
+  store: DatabaseSync,
+  taskId: string,
+  evidence: "historical-execution-attempt" | "provider-boundary",
+  finished: boolean,
+) {
+  store.prepare(
+    "INSERT INTO generation_provider_attempts (" +
+      "task_id, execution_attempt, provider_profile_id, provider_model_id, " +
+      "kind, evidence, created_at, finished_at, credential_revision, outcome" +
+      ") VALUES (?, 1, ?, ?, 'image', ?, ?, ?, 1, 'outcome-unknown')",
+  ).run(
+    taskId,
+    "37f7921b-18f0-43d3-91c5-dfed74f693b3",
+    "gpt-image-2",
+    evidence,
+    "2026-08-30T00:00:00.000Z",
+    finished ? "2026-08-30T00:01:00.000Z" : null,
+  );
+}
+
+function applyFixturePlan(fixture: IncGen018Fixture) {
+  const plan = fixture.harness.plan(fixture.store);
+  return fixture.harness.apply(fixture.store, "admin-a", {
+    expectedBaselineSnapshotHash: plan.baselineSnapshotHash,
+    expectedPlanHash: plan.planHash,
+  });
+}
+
+test("INC-GEN-018 CLI requires dual hashes and an exact recovery attestation", () => {
   expect(() => runModelContractUpgradeCli(["--data-dir", "relative"]))
     .toThrow(/绝对隔离数据目录/);
   expect(() => runModelContractUpgradeCli(["--data-dir", "/tmp", "--unknown"]))
     .toThrow(/参数无效/);
-  expect(() => runModelContractUpgradeCli(["--data-dir", "/tmp", "--apply"]))
-    .toThrow(/staging-root/);
-  const stagingRoot = mkdtempSync(join(tmpdir(), "unboundry-contract-staging-"));
-  try {
-    const stagedData = join(stagingRoot, "snapshot-a");
-    mkdirSync(stagedData);
-    chmodSync(stagedData, 0o700);
-    const realStagedData = realpathSync(stagedData);
-    writeFileSync(join(stagedData, "unboundry.sqlite"), "");
-    expect(() => runModelContractUpgradeCli([
-      "--data-dir", stagedData,
-      "--staging-root", stagingRoot,
-      "--expected-plan-hash", "0".repeat(64),
-      "--expected-attestation-sha256", "0".repeat(64),
-      "--apply",
-    ])).toThrow(/恢复暂存证明/);
-    const markerPath = join(stagedData, ".model-contract-upgrade-recovery.json");
+  expect(() => runModelContractUpgradeCli([
+    "--data-dir",
+    "/tmp",
+    "--staging-root",
+    "/tmp",
+    "--expected-plan-hash",
+    "0".repeat(64),
+    "--expected-attestation-sha256",
+    "0".repeat(64),
+    "--apply",
+  ])).toThrow(/expected-baseline-hash/);
+
+  const stagingRoot = mkdtempSync(
+    join(tmpdir(), "unboundry-inc-gen-018-cli-"),
+  );
+  const dataDirectory = join(stagingRoot, "snapshot");
+  mkdirSync(dataDirectory);
+  chmodSync(dataDirectory, 0o700);
+  const fixture = seedIncGen018Fixture(dataDirectory);
+  const publicPlan = planModelContractUpgrade(fixture.store);
+  fixture.store.close();
+  const databasePath = join(dataDirectory, "unboundry.sqlite");
+  const markerPath = join(
+    dataDirectory,
+    ".model-contract-upgrade-recovery.json",
+  );
+  const writeMarker = (purpose: string) => {
+    const databaseBytes = readFileSync(databasePath);
     const marker = {
-      dataDirectoryRealPath: realStagedData,
+      dataDirectoryRealPath: realpathSync(dataDirectory),
       databaseFileName: "unboundry.sqlite",
-      databaseSha256: "0".repeat(64),
-      databaseSizeBytes: 0,
-      purpose: "MODEL-CONTRACT-002",
+      databaseSha256:
+        createHash("sha256").update(databaseBytes).digest("hex"),
+      databaseSizeBytes: statSync(databasePath).size,
+      purpose,
       schemaVersion: 41,
-      snapshotId: "fixture-snapshot-a",
+      snapshotId: "inc-gen-018-cli-fixture",
     };
-    const writeMarker = (value: typeof marker) => {
-      const bytes = `${JSON.stringify(value)}\n`;
-      if (existsSync(markerPath)) chmodSync(markerPath, 0o600);
-      writeFileSync(markerPath, bytes);
-      chmodSync(markerPath, 0o400);
-      return createHash("sha256").update(bytes).digest("hex");
-    };
-    const staleAttestation = writeMarker(marker);
+    if (existsSync(markerPath)) chmodSync(markerPath, 0o600);
+    const bytes = JSON.stringify(marker) + "\n";
+    writeFileSync(markerPath, bytes);
+    chmodSync(markerPath, 0o400);
+    return createHash("sha256").update(bytes).digest("hex");
+  };
+  try {
+    const wrongPurposeSha = writeMarker("MODEL-CONTRACT-002");
     expect(() => runModelContractUpgradeCli([
-      "--data-dir", stagedData,
-      "--staging-root", stagingRoot,
-      "--expected-plan-hash", "0".repeat(64),
-      "--expected-attestation-sha256", staleAttestation,
+      "--data-dir",
+      dataDirectory,
+      "--staging-root",
+      stagingRoot,
+      "--expected-baseline-hash",
+      publicPlan.baselineSnapshotHash,
+      "--expected-plan-hash",
+      publicPlan.planHash,
+      "--expected-attestation-sha256",
+      wrongPurposeSha,
       "--apply",
     ])).toThrow(/待升级数据库不匹配/);
-    const validAttestation = writeMarker({
-      ...marker,
-      databaseSha256: createHash("sha256").update("").digest("hex"),
-    });
-    const rootLink = join(stagingRoot, "root-link");
-    symlinkSync(stagingRoot, rootLink);
+
+    const attestationSha = writeMarker("INC-GEN-018");
     expect(() => runModelContractUpgradeCli([
-      "--data-dir", stagedData,
-      "--staging-root", rootLink,
-      "--expected-plan-hash", "0".repeat(64),
-      "--expected-attestation-sha256", validAttestation,
+      "--data-dir",
+      dataDirectory,
+      "--staging-root",
+      stagingRoot,
+      "--expected-baseline-hash",
+      publicPlan.baselineSnapshotHash,
+      "--expected-plan-hash",
+      publicPlan.planHash,
+      "--expected-attestation-sha256",
+      attestationSha,
       "--apply",
-    ])).toThrow(/根目录身份无效/);
-    const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
-    process.env.UNBOUNDRY_DATA_DIR = stagedData;
-    try {
-      expect(() => runModelContractUpgradeCli([
-        "--data-dir", stagedData,
-        "--staging-root", stagingRoot,
-        "--expected-plan-hash", "0".repeat(64),
-        "--expected-attestation-sha256", validAttestation,
-        "--apply",
-      ])).toThrow(/应用或生产数据目录/);
-    } finally {
-      if (previousDataDirectory === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
-      else process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
-    }
-    const previousTmpDirectory = process.env.TMPDIR;
-    process.env.TMPDIR = "/";
-    try {
-      expect(() => runModelContractUpgradeCli([
-        "--data-dir", stagedData,
-        "--staging-root", "/",
-        "--expected-plan-hash", "0".repeat(64),
-        "--expected-attestation-sha256", validAttestation,
-        "--apply",
-      ])).toThrow(/固定隔离allowlist/);
-    } finally {
-      if (previousTmpDirectory === undefined) delete process.env.TMPDIR;
-      else process.env.TMPDIR = previousTmpDirectory;
-    }
+    ])).toThrow(/schema41\/10模型精确基线/);
   } finally {
     rmSync(stagingRoot, { force: true, recursive: true });
   }
-  const store = contractStore();
+});
+
+test("INC-GEN-018 planner audits the dynamic 10-model denominator and only selects Seed/TTS", () => {
+  const fixture = createIncGen018Fixture();
   try {
-    store.exec(`
-      PRAGMA user_version = 41;
-      CREATE TABLE provider_profiles (
-        id TEXT PRIMARY KEY, driver TEXT NOT NULL, status TEXT NOT NULL,
-        key_status TEXT NOT NULL, catalog_credential_revision TEXT,
-        provider_configuration_version INTEGER NOT NULL
-      );
-      CREATE TABLE account_provider_credentials (
-        account_id TEXT NOT NULL, provider_profile_id TEXT NOT NULL,
-        credential_version INTEGER NOT NULL, key_status TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-      CREATE TABLE model_profiles (
-        id TEXT PRIMARY KEY, capability TEXT NOT NULL,
-        default_parameters TEXT NOT NULL, provider_model_id TEXT NOT NULL,
-        provider_profile_id TEXT NOT NULL, provider_protocol TEXT NOT NULL,
-        status TEXT NOT NULL, archived_at TEXT, published_at TEXT, updated_at TEXT
-      );
-      CREATE TABLE node_model_bindings (
-        node_type TEXT NOT NULL, model_id TEXT NOT NULL, enabled INTEGER NOT NULL,
-        is_default INTEGER NOT NULL, updated_at TEXT,
-        PRIMARY KEY (node_type, model_id)
-      );
-      CREATE TABLE public_templates (id TEXT PRIMARY KEY, graph TEXT NOT NULL, status TEXT NOT NULL);
-      CREATE TABLE generation_tasks (model TEXT NOT NULL, state TEXT NOT NULL);
-      CREATE TABLE canvas_documents (nodes TEXT NOT NULL);
-      INSERT INTO provider_profiles VALUES
-        ('provider-relay', 'multi-protocol-relay', 'enabled', 'valid', 'catalog-relay-1', 1),
-        ('provider-ark', 'volcengine-ark', 'enabled', 'valid', 'catalog-ark-1', 1),
-        ('provider-mureka', 'mureka', 'enabled', 'valid', 'catalog-mureka-1', 1);
-    `);
-    const rows = [
-      ["model-text", "text", "doubao-seed-2-0-lite-260428", "provider-ark", "native"],
-      ["model-image-gemini", "image", "gemini-3-pro-image-preview", "provider-relay", "media-generate"],
-      ["model-image-gpt", "image", "gpt-image-2", "provider-relay", "gpt-image"],
-      ["model-video-seedance", "video", "doubao-seedance-2-0-mini-260615", "provider-ark", "native"],
-      ["model-video-grok-imagine", "video", "grok-imagine-video-1.5-preview", "provider-relay", "media-generate"],
-      ["model-video-kling", "video", "kling-v3-omni-cankao", "provider-relay", "media-generate"],
-      ["model-audio-mureka", "audio", "mureka-9", "provider-mureka", "native"],
-      ["model-audio-tts", "audio", "doubao-tts-2.0", "provider-relay", "media-generate"],
-      ["model-audio-suno", "audio", "suno-v4.5", "provider-relay", "media-generate"],
-      ["model-gk-video-3", "video", "grok-video-3", "provider-relay", "media-generate"],
-      ["model-kwvideo-v2", "video", "kwvideo-v2", "provider-relay", "media-generate"],
-    ] as const;
-    for (const [id, capability, providerModelId, providerProfileId, providerProtocol] of rows) {
-      const providerDriver = providerProfileId === "provider-ark"
-        ? "volcengine-ark"
-        : providerProfileId === "provider-mureka"
-          ? "mureka"
-          : "multi-protocol-relay";
-      const capabilitySchema = knownModelParameterSchema({
-        capability,
-        providerDriver,
-        providerModelId,
-      });
-      const persistedCapabilitySchema = structuredClone(capabilitySchema);
-      if (providerModelId === "doubao-seedance-2-0-mini-260615") {
-        delete persistedCapabilitySchema.referencePolicy!.normalizationPriority;
-      }
-      if (providerModelId === "grok-imagine-video-1.5-preview") {
-        delete persistedCapabilitySchema.referencePolicy;
-        delete persistedCapabilitySchema.referenceMediaRules;
-        delete persistedCapabilitySchema.inputPolicy!.promptPolicy;
-      }
-      if (providerModelId === "gpt-image-2") {
-        delete persistedCapabilitySchema.referencePolicy;
-        persistedCapabilitySchema.referenceMediaRules = {};
-        persistedCapabilitySchema.inputPolicy = {
-          required: {},
-          roles: { image: ["reference-image"] },
-          switchPolicy: "keep-edge",
-        };
-      }
-      if (providerModelId === "mureka-9") {
-        persistedCapabilitySchema.fields = persistedCapabilitySchema.fields.map(
-          (field) => {
-            if (field.key === "lyrics") return { ...field, maxLength: 8_000 };
-            if (field.key === "outputCount") {
-              return {
-                ...field,
-                options: [
-                  { label: "1×", value: 1 },
-                  { label: "2×", value: 2 },
-                  { label: "3×", value: 3 },
-                ],
-              };
-            }
-            return field;
-          },
-        );
-      }
-      if (providerModelId === "grok-video-3") {
-        persistedCapabilitySchema.fields = persistedCapabilitySchema.fields.map(
-          (field) => field.key === "inputMode"
-            ? {
-                ...field,
-                options: [
-                  ...field.options,
-                  { label: "参考", value: "reference" },
-                ],
-              }
-            : field,
-        );
-        persistedCapabilitySchema.referenceInputs = {
-          audio: 0,
-          image: 0,
-          video: 0,
-        };
-        persistedCapabilitySchema.referenceMediaRules = {};
-        delete persistedCapabilitySchema.referencePolicy;
-        persistedCapabilitySchema.inputPolicy = {
-          required: {},
-          roles: {
-            audio: [],
-            image: ["first-frame", "reference-image", "subject"],
-            text: ["instruction"],
-            video: [],
-          },
-          switchPolicy: "keep-edge",
-        };
-        persistedCapabilitySchema.upstreamInputs = {
-          audio: { limitMode: "fixed", maxCount: 0, supported: false },
-          image: { limitMode: "context", supported: true },
-          text: { limitMode: "context", supported: true },
-          video: { limitMode: "fixed", maxCount: 0, supported: false },
-        };
-      }
-      store.prepare(`
-        INSERT INTO model_profiles VALUES (?, ?, ?, ?, ?, ?, 'published', NULL, ?, ?)
-      `).run(
-        id,
-        capability,
-        JSON.stringify(persistedCapabilitySchema),
-        providerModelId,
-        providerProfileId,
-        providerProtocol,
-        "2026-08-27T00:00:00.000Z",
-        "2026-08-27T00:00:00.000Z",
-      );
-      store.prepare(`INSERT INTO node_model_bindings VALUES (?, ?, 1, 0, ?)`)
-        .run(capability, id, "2026-08-27T00:00:00.000Z");
-      const currentDocument = defaultModelReleaseDocument({
-        capability,
-        capabilitySchema: persistedCapabilitySchema,
-        modelId: id,
-        providerDriver,
-        providerModelId,
-        providerProfileId,
-        providerProtocol,
-      });
-      const document = currentDocument;
-      const revision = {
-        createdAt: "2026-08-27T00:00:00.000Z",
-        document,
-        hash: sha(document),
-        modelId: id,
-        revisionId: `00000000-0000-4000-8000-${String(rows.indexOf(rows.find((item) => item[0] === id)!)).padStart(12, "0")}`,
-        revisionNumber: 1,
-        validation: {
-          compilerHash: compileModelExecutionContract(document.executionContract).hash,
-          impact: { incompatibleTemplateIds: [], templateIds: [] },
-          paidProviderRequests: 0,
-          preview: { modes: [] },
-          validatedAt: "2026-08-27T00:00:00.000Z",
-        },
-      } as const;
-      recordAudit(store, "admin-a", "model_contract.publish", null, { modelId: id, revision });
-    }
-    for (const row of productionGkTemplateRows(
-      "model-gk-video-3",
-      true,
-    )) {
-      store.prepare("INSERT INTO public_templates VALUES (?, ?, 'published')")
-        .run(row.id, row.graph);
-    }
-    const preexistingGptTemplateId =
-      "ffffffff-ffff-4fff-8fff-fffffffffff1";
-    store.prepare("INSERT INTO public_templates VALUES (?, ?, 'published')")
-      .run(preexistingGptTemplateId, JSON.stringify({
-        edges: [],
-        nodes: [{
-          data: {
-            imageModelId: "model-image-gpt",
-            imageParameters: { unsupportedParameter: true },
-            label: "Image",
-          },
-          id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee1",
-          position: { x: 0, y: 0 },
-          style: { height: 250, width: 250 },
-          type: "image",
-          zIndex: 1,
-        }],
-        version: 1,
-      }));
-    store.prepare("INSERT INTO canvas_documents VALUES (?)")
-      .run(JSON.stringify([{ data: { videoModelId: "model-kwvideo-v2" } }]));
-    const exactLegacyGptImageRow = store.prepare(`
-      SELECT default_parameters FROM model_profiles
-      WHERE id = 'model-image-gpt'
-    `).get() as { default_parameters: string };
-    const nearMissGptImageRow = JSON.parse(
-      exactLegacyGptImageRow.default_parameters,
-    );
-    nearMissGptImageRow.referenceInputs.image = 2;
-    store.prepare(`
-      UPDATE model_profiles SET default_parameters = ?
-      WHERE id = 'model-image-gpt'
-    `).run(JSON.stringify(nearMissGptImageRow));
-    expect(() => planModelContractUpgrade(store))
-      .toThrow(/模型 gpt-image-2 合同迁移失败/);
-    store.prepare(`
-      UPDATE model_profiles SET default_parameters = ?
-      WHERE id = 'model-image-gpt'
-    `).run(exactLegacyGptImageRow.default_parameters);
-    const exactLegacyGptImageAudit = store.prepare(`
-      SELECT id, details FROM admin_audit_events
-      WHERE action = 'model_contract.publish'
-      ORDER BY id
-    `).all().map((row) => ({
-      details: JSON.parse(String(row.details)) as {
-        modelId: string;
-        revision: {
-          document: ReturnType<typeof defaultModelReleaseDocument>;
-          hash: string;
-          validation: { compilerHash: string };
-        };
-      },
-      id: Number(row.id),
-    })).find((row) => row.details.modelId === "model-image-gpt")!;
-    const nearMissGptImageActiveDocument = {
-      ...exactLegacyGptImageAudit.details.revision.document,
-      capabilitySchema: {
-        ...exactLegacyGptImageAudit.details.revision.document.capabilitySchema,
-        referenceInputs: {
-          ...exactLegacyGptImageAudit.details.revision.document.capabilitySchema
-            .referenceInputs,
-          image: 2,
-        },
-      },
-    };
-    const nearMissGptImageActiveDetails = {
-      ...exactLegacyGptImageAudit.details,
-      revision: {
-        ...exactLegacyGptImageAudit.details.revision,
-        document: nearMissGptImageActiveDocument,
-        hash: sha(nearMissGptImageActiveDocument),
-      },
-    };
-    store.prepare("UPDATE admin_audit_events SET details = ? WHERE id = ?")
-      .run(
-        JSON.stringify(nearMissGptImageActiveDetails),
-        exactLegacyGptImageAudit.id,
-      );
-    expect(() => planModelContractUpgrade(store))
-      .toThrow(/gpt-image-2默认schema与活动revision迁移身份不一致/);
-    store.prepare("UPDATE admin_audit_events SET details = ? WHERE id = ?")
-      .run(
-        JSON.stringify(exactLegacyGptImageAudit.details),
-        exactLegacyGptImageAudit.id,
-      );
-    const exactLegacyGrokImagineRow = store.prepare(`
-      SELECT default_parameters FROM model_profiles
-      WHERE id = 'model-video-grok-imagine'
-    `).get() as { default_parameters: string };
-    const nearMissGrokImagineRow = JSON.parse(
-      exactLegacyGrokImagineRow.default_parameters,
-    );
-    nearMissGrokImagineRow.inputPolicy.promptPolicy = "own-or-upstream-text";
-    store.prepare(`
-      UPDATE model_profiles SET default_parameters = ?
-      WHERE id = 'model-video-grok-imagine'
-    `).run(JSON.stringify(nearMissGrokImagineRow));
-    expect(() => planModelContractUpgrade(store))
-      .toThrow(/模型 grok-imagine-video-1.5-preview 合同迁移失败/);
-    store.prepare(`
-      UPDATE model_profiles SET default_parameters = ?
-      WHERE id = 'model-video-grok-imagine'
-    `).run(exactLegacyGrokImagineRow.default_parameters);
-    const exactLegacyGrokImagineAudit = store.prepare(`
-      SELECT id, details FROM admin_audit_events
-      WHERE action = 'model_contract.publish'
-      ORDER BY id
-    `).all().map((row) => ({
-      details: JSON.parse(String(row.details)) as {
-        modelId: string;
-        revision: {
-          document: ReturnType<typeof defaultModelReleaseDocument>;
-          hash: string;
-          validation: { compilerHash: string };
-        };
-      },
-      id: Number(row.id),
-    })).find((row) => row.details.modelId ===
-      "model-video-grok-imagine")!;
-    const nearMissGrokImagineActiveDocument = structuredClone(
-      exactLegacyGrokImagineAudit.details.revision.document,
-    );
-    nearMissGrokImagineActiveDocument.capabilitySchema.inputPolicy!
-      .promptPolicy = "own-or-upstream-text";
-    const nearMissGrokImagineActiveDetails = {
-      ...exactLegacyGrokImagineAudit.details,
-      revision: {
-        ...exactLegacyGrokImagineAudit.details.revision,
-        document: nearMissGrokImagineActiveDocument,
-        hash: sha(nearMissGrokImagineActiveDocument),
-      },
-    };
-    store.prepare("UPDATE admin_audit_events SET details = ? WHERE id = ?")
-      .run(
-        JSON.stringify(nearMissGrokImagineActiveDetails),
-        exactLegacyGrokImagineAudit.id,
-      );
-    expect(() => planModelContractUpgrade(store)).toThrow(
-      /grok-imagine-video-1.5-preview默认schema与活动revision迁移身份不一致/,
-    );
-    store.prepare("UPDATE admin_audit_events SET details = ? WHERE id = ?")
-      .run(
-        JSON.stringify(exactLegacyGrokImagineAudit.details),
-        exactLegacyGrokImagineAudit.id,
-      );
-    const exactLegacyGrokRow = store.prepare(`
-      SELECT default_parameters FROM model_profiles
-      WHERE id = 'model-gk-video-3'
-    `).get() as { default_parameters: string };
-    const exactLegacyGrokAudit = store.prepare(`
-      SELECT id, details FROM admin_audit_events
-      WHERE action = 'model_contract.publish'
-      ORDER BY id
-    `).all().map((row) => ({
-      details: JSON.parse(String(row.details)) as {
-        modelId: string;
-        revision: {
-          document: ReturnType<typeof defaultModelReleaseDocument>;
-          hash: string;
-          validation: { compilerHash: string };
-        };
-      },
-      id: Number(row.id),
-    })).find((row) => row.details.modelId === "model-gk-video-3")!;
-    const nearMissActiveDocument = {
-      ...exactLegacyGrokAudit.details.revision.document,
-      capabilitySchema: {
-        ...exactLegacyGrokAudit.details.revision.document.capabilitySchema,
-        fields: exactLegacyGrokAudit.details.revision.document.capabilitySchema.fields.map(
-          (field) => field.key === "inputMode"
-            ? {
-                ...field,
-                options: [
-                  ...field.options,
-                  { label: "主体", value: "subject" },
-                ],
-              }
-            : field,
-        ),
-      },
-    };
-    const nearMissActiveDetails = {
-      ...exactLegacyGrokAudit.details,
-      revision: {
-        ...exactLegacyGrokAudit.details.revision,
-        document: nearMissActiveDocument,
-        hash: sha(nearMissActiveDocument),
-      },
-    };
-    store.prepare("UPDATE admin_audit_events SET details = ? WHERE id = ?")
-      .run(JSON.stringify(nearMissActiveDetails), exactLegacyGrokAudit.id);
-    expect(() => planModelContractUpgrade(store))
-      .toThrow(/默认schema与活动revision迁移身份不一致/);
-    store.prepare("UPDATE admin_audit_events SET details = ? WHERE id = ?")
-      .run(JSON.stringify(exactLegacyGrokAudit.details), exactLegacyGrokAudit.id);
-    const plan = planModelContractUpgrade(store);
+    const plan = fixture.harness.plan(fixture.store);
     expect(plan).toMatchObject({
-      auditedModelCount: 11,
+      actionCounts: {
+        blockedInvalidActive: 0,
+        blockedUnclassifiedDrift: 0,
+        none: 8,
+        publishRevision: 2,
+      },
+      auditedModelCount: 10,
+      catalogIdentityMatchCount: 10,
+      exactExecutionIdentityCount: 10,
+      missingExpectedModelIds: [],
       paidProviderRequests: 0,
-      publishedModelCount: 11,
+      publishedModelCount: 10,
       schemaVersion: 41,
+      unexpectedPublishedModelIds: [],
     });
-    expect(plan.models.find((model) => model.providerModelId === "grok-video-3"))
-      .toMatchObject({
-        action: "publish-revision",
-        hasTextFoundation: true,
-        templateImpact: { incompatibleTemplateIds: [] },
-      });
-    const gkTemplateMigrations = plan.models.find((model) =>
-      model.providerModelId === "grok-video-3"
-    )!.templateMigrations;
-    expect(gkTemplateMigrations).toHaveLength(22);
-    expect(gkTemplateMigrations.flatMap((migration) => migration.nodeIds))
-      .toHaveLength(34);
-    expect(plan.models.find((model) => model.providerModelId === "gpt-image-2"))
-      .toMatchObject({
-        action: "publish-revision",
-        templateImpact: {
-          incompatibleTemplateIds: [],
-          preexistingIncompatibleTemplateIds: [preexistingGptTemplateId],
-          templateIds: [preexistingGptTemplateId],
-        },
-      });
-    const mixedGrokTemplateId =
-      "ffffffff-ffff-4fff-8fff-fffffffffff3";
-    store.prepare("INSERT INTO public_templates VALUES (?, ?, 'published')")
-      .run(mixedGrokTemplateId, JSON.stringify({
-        edges: [
-          {
-            data: { inputOrder: 1 },
-            id: "dddddddd-dddd-4ddd-8ddd-ddddddddddd1",
-            source: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee3",
-            target: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee5",
-            type: "cuttable",
-          },
-          {
-            data: { inputOrder: 2, inputRole: "first-frame" },
-            id: "dddddddd-dddd-4ddd-8ddd-ddddddddddd2",
-            source: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee4",
-            target: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee5",
-            type: "cuttable",
-          },
-          {
-            data: { inputOrder: 1 },
-            id: "dddddddd-dddd-4ddd-8ddd-ddddddddddd3",
-            source: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee3",
-            target: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee6",
-            type: "cuttable",
-          },
-          {
-            data: { inputOrder: 2, inputRole: "first-frame" },
-            id: "dddddddd-dddd-4ddd-8ddd-ddddddddddd4",
-            source: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee4",
-            target: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee6",
-            type: "cuttable",
-          },
-        ],
-        nodes: [
-          {
-            data: { label: "Text" },
-            id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee3",
-            position: { x: 0, y: 0 },
-            type: "text",
-            zIndex: 1,
-          },
-          {
-            data: { label: "Image" },
-            id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee4",
-            position: { x: 0, y: 300 },
-            type: "image",
-            zIndex: 1,
-          },
-          {
-            data: {
-              label: "Historical debt",
-              videoModelId: "model-gk-video-3",
-              videoParameters: {
-                inputMode: "reference",
-                unsupportedParameter: true,
-              },
-              videoPrompt: "脱敏生产提示词",
-              videoPromptReady: true,
-            },
-            id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee5",
-            position: { x: 400, y: 0 },
-            type: "video",
-            zIndex: 1,
-          },
-          {
-            data: {
-              label: "New regression",
-              videoModelId: " model-gk-video-3 ",
-              videoParameters: { inputMode: "reference" },
-              videoPrompt: "脱敏生产提示词",
-              videoPromptReady: true,
-            },
-            id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee6",
-            position: { x: 400, y: 300 },
-            type: "video",
-            zIndex: 1,
-          },
-        ],
-        version: 1,
-      }));
-    const mixedGrokPlan = planModelContractUpgrade(store);
-    const mixedGrokImpact = mixedGrokPlan.models.find((model) =>
-      model.providerModelId === "grok-video-3"
-    )!.templateImpact;
-    expect(mixedGrokImpact.incompatibleTemplateIds).toContain(
-      mixedGrokTemplateId,
+    expect(plan.models.map((model) => model.modelId)).toEqual(
+      incGen018FixtureModels.map((model) => model.id).sort(),
     );
-    expect(mixedGrokImpact.preexistingIncompatibleTemplateIds).not.toContain(
-      mixedGrokTemplateId,
+    const transitions = plan.models.filter(
+      (model) => model.action === "publish-revision",
     );
-    expect(() => applyModelContractUpgrade(store, "admin-a", {
-      expectedBaselineSnapshotHash: mixedGrokPlan.baselineSnapshotHash,
-    })).toThrow(
-      /GK生产模板语义矩阵未达到22模板\/34节点兼容门|模板影响超出核准边界/,
-    );
-    store.prepare("DELETE FROM public_templates WHERE id = ?")
-      .run(mixedGrokTemplateId);
-    const regressiveSeedanceTemplateId =
-      "ffffffff-ffff-4fff-8fff-fffffffffff2";
-    store.prepare("INSERT INTO public_templates VALUES (?, ?, 'published')")
-      .run(regressiveSeedanceTemplateId, JSON.stringify({
-        edges: [],
-        nodes: [{
-          data: {
-            label: "Video",
-            videoModelId: "model-video-seedance",
-            videoParameters: { unsupportedParameter: true },
-          },
-          id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee2",
-          position: { x: 0, y: 0 },
-          style: { height: 250, width: 250 },
-          type: "video",
-          zIndex: 1,
-        }],
-        version: 1,
-      }));
-    const regressivePlan = planModelContractUpgrade(store);
-    expect(regressivePlan.models.find((model) =>
-      model.providerModelId === "doubao-seedance-2-0-mini-260615"
-    )?.templateImpact.incompatibleTemplateIds).toEqual([
-      regressiveSeedanceTemplateId,
+    expect(transitions.map((model) => model.modelId).sort()).toEqual([
+      "65600fd0-739d-4359-9c9c-958e3ae49b05",
+      "ee51d65e-c924-4a9a-b224-6c4ee180a0ce",
     ]);
-    expect(() => applyModelContractUpgrade(store, "admin-a", {
-      expectedBaselineSnapshotHash: regressivePlan.baselineSnapshotHash,
-    })).toThrow(/模板影响超出核准边界/);
-    store.prepare("DELETE FROM public_templates WHERE id = ?")
-      .run(regressiveSeedanceTemplateId);
-    expect(plan.models.filter((model) => model.action === "publish-revision")
-      .map((model) => model.providerModelId).sort()).toEqual([
-        "doubao-seedance-2-0-mini-260615",
-        "gpt-image-2",
-        "grok-imagine-video-1.5-preview",
-        "grok-video-3",
-        "mureka-9",
-      ]);
-    for (const model of plan.models.filter((item) =>
-      item.action === "publish-revision"
-    )) {
-      expect(model.proposed.executionContract.version).toBe(
-        model.providerModelId === "gpt-image-2" ||
-          model.providerModelId === "grok-imagine-video-1.5-preview"
+    for (const transition of transitions) {
+      expect(transition.activeCapabilityDifferences.map(({ path }) => path))
+        .toEqual(["$.inputPolicy"]);
+      expect(transition.activeDocumentDifferences.map(({ path }) => path))
+        .toEqual(["$.capabilitySchema.inputPolicy"]);
+      expect(transition.executionIdentityState).toBe("exact-pre");
+    }
+    expect(transitions.find((model) =>
+      model.modelId === "65600fd0-739d-4359-9c9c-958e3ae49b05"
+    )).toMatchObject({
+      proposedDocumentHash:
+        "4d89f4032e7721d9f396d18cda3dfd5181906625042934bbb97c961378113e56",
+      proposedSchemaHash:
+        "15d30ed0e85c5a6a54242cce5ac48a72c9848fe5313cea81e6769b4f58859ad2",
+    });
+    expect(transitions.find((model) =>
+      model.modelId === "ee51d65e-c924-4a9a-b224-6c4ee180a0ce"
+    )).toMatchObject({
+      proposedDocumentHash:
+        "5a2556c9f18cb1e2d46e0ffaecc8025eff93244def1e4f8d8fea4e54322197e9",
+      proposedSchemaHash:
+        "05cf5e3e6433ebb90d4ad21ff14d8c205b63e84bb0ba8536e0e939a031d7cfc4",
+    });
+  } finally {
+    closeIncGen018Fixture(fixture);
+  }
+});
+
+test("INC-GEN-018 blocks near misses, invalid active revisions and an unexpected eleventh model before writes", () => {
+  const scenarios = [
+    {
+      assert(plan: ReturnType<IncGen018Fixture["harness"]["plan"]>) {
+        const model = plan.models.find((item) =>
+          item.modelId === "ee51d65e-c924-4a9a-b224-6c4ee180a0ce"
+        );
+        expect(model).toMatchObject({
+          action: "blocked-unclassified-drift",
+          blockers: ["APPROVED_TARGET_NOT_EXACT_PRE_OR_POST_STATE"],
+        });
+      },
+      mutate(fixture: IncGen018Fixture) {
+        const row = fixture.store.prepare(
+          "SELECT default_parameters FROM model_profiles WHERE id = ?",
+        ).get("ee51d65e-c924-4a9a-b224-6c4ee180a0ce") as {
+          default_parameters: string;
+        };
+        fixture.store.prepare(
+          "UPDATE model_profiles SET default_parameters = ? WHERE id = ?",
+        ).run(
+          JSON.stringify(JSON.parse(row.default_parameters), null, 1),
+          "ee51d65e-c924-4a9a-b224-6c4ee180a0ce",
+        );
+      },
+    },
+    {
+      assert(plan: ReturnType<IncGen018Fixture["harness"]["plan"]>) {
+        expect(plan.models.find((item) =>
+          item.modelId === "3919d490-8739-490a-8bce-0678c27e4760"
+        )).toMatchObject({
+          action: "blocked-invalid-active",
+          blockers: ["FROZEN_REVISION_INTEGRITY_INVALID"],
+        });
+      },
+      mutate(fixture: IncGen018Fixture) {
+        const rows = fixture.store.prepare(
+          "SELECT id, details FROM admin_audit_events " +
+            "WHERE action = 'model_contract.publish' ORDER BY id",
+        ).all() as Array<{ details: string; id: number }>;
+        const active = [...rows].reverse().find((row) =>
+          JSON.parse(row.details).modelId ===
+            "3919d490-8739-490a-8bce-0678c27e4760"
+        )!;
+        const details = JSON.parse(active.details);
+        details.revision.hash = "0".repeat(64);
+        fixture.store.prepare(
+          "UPDATE admin_audit_events SET details = ? WHERE id = ?",
+        ).run(JSON.stringify(details), active.id);
+      },
+    },
+    {
+      assert(plan: ReturnType<IncGen018Fixture["harness"]["plan"]>) {
+        expect(plan).toMatchObject({
+          auditedModelCount: 11,
+          publishedModelCount: 11,
+          unexpectedPublishedModelIds: ["ffffffff-ffff-4fff-8fff-fffffffffff8"],
+        });
+        expect(plan.models.find((item) =>
+          item.modelId === "ffffffff-ffff-4fff-8fff-fffffffffff8"
+        )).toMatchObject({
+          action: "blocked-unclassified-drift",
+          blockers: ["PUBLISHED_MODEL_NOT_IN_R0_BASELINE"],
+        });
+      },
+      mutate(fixture: IncGen018Fixture) {
+        const source = fixture.store.prepare(
+          "SELECT * FROM model_profiles WHERE id = ?",
+        ).get("3919d490-8739-490a-8bce-0678c27e4760") as {
+          capability: string;
+          cost_currency: string;
+          created_at: string;
+          default_parameters: string;
+          max_cost_microunits: number;
+          provider_profile_id: string;
+          provider_protocol: string;
+          published_at: string;
+          updated_at: string;
+        };
+        fixture.store.prepare(
+          "INSERT INTO model_profiles (" +
+            "id, display_name, provider_profile_id, provider_model_id, " +
+            "capability, status, default_parameters, max_cost_microunits, " +
+            "cost_currency, archived_at, published_at, provider_protocol, " +
+            "created_at, updated_at" +
+            ") VALUES (?, ?, ?, ?, ?, 'published', ?, ?, ?, NULL, ?, ?, ?, ?)",
+        ).run(
+          "ffffffff-ffff-4fff-8fff-fffffffffff8",
+          "Unexpected published model",
+          source.provider_profile_id,
+          "unexpected-model",
+          source.capability,
+          source.default_parameters,
+          source.max_cost_microunits,
+          source.cost_currency,
+          source.published_at,
+          source.provider_protocol,
+          source.created_at,
+          source.updated_at,
+        );
+      },
+    },
+  ] as const;
+
+  for (const scenario of scenarios) {
+    const fixture = createIncGen018Fixture();
+    try {
+      scenario.mutate(fixture);
+      const plan = fixture.harness.plan(fixture.store);
+      scenario.assert(plan);
+      const before = rawUpgradeMutationSnapshot(fixture.store);
+      expect(() => fixture.harness.apply(fixture.store, "admin-a", {
+        expectedBaselineSnapshotHash: plan.baselineSnapshotHash,
+        expectedPlanHash: plan.planHash,
+      })).toThrow(/schema41\/10模型精确基线/);
+      expect(rawUpgradeMutationSnapshot(fixture.store)).toBe(before);
+    } finally {
+      closeIncGen018Fixture(fixture);
+    }
+  }
+});
+
+test("INC-GEN-018 quiet gate blocks active/current-unknown/unsettled-boundary evidence without writes", () => {
+  const scenarios = [
+    (fixture: IncGen018Fixture) => {
+      insertQuietTask(fixture.store, "quiet-active", "running");
+    },
+    (fixture: IncGen018Fixture) => {
+      insertQuietTask(
+        fixture.store,
+        "quiet-current-unknown",
+        "failed",
+        "OUTCOME_UNKNOWN_BILLING_RISK",
+      );
+    },
+    (fixture: IncGen018Fixture) => {
+      insertQuietTask(fixture.store, "quiet-provider-boundary", "failed");
+      insertUnknownAttempt(
+        fixture.store,
+        "quiet-provider-boundary",
+        "provider-boundary",
+        false,
+      );
+    },
+  ] as const;
+  for (const seed of scenarios) {
+    const fixture = createIncGen018Fixture();
+    try {
+      seed(fixture);
+      const plan = fixture.harness.plan(fixture.store);
+      const before = rawUpgradeMutationSnapshot(fixture.store);
+      expect(() => fixture.harness.apply(fixture.store, "admin-a", {
+        expectedBaselineSnapshotHash: plan.baselineSnapshotHash,
+        expectedPlanHash: plan.planHash,
+      })).toThrow(
+        /活动任务、当前unknown-billing任务或未收口Provider边界证据/,
+      );
+      expect(rawUpgradeMutationSnapshot(fixture.store)).toBe(before);
+    } finally {
+      closeIncGen018Fixture(fixture);
+    }
+  }
+});
+
+test("INC-GEN-018 quiet gate permits finished Provider and historical unknown evidence", () => {
+  const fixture = createIncGen018Fixture();
+  try {
+    insertQuietTask(fixture.store, "quiet-provider-finished", "failed");
+    insertUnknownAttempt(
+      fixture.store,
+      "quiet-provider-finished",
+      "provider-boundary",
+      true,
+    );
+    insertQuietTask(fixture.store, "quiet-historical-unfinished", "failed");
+    insertUnknownAttempt(
+      fixture.store,
+      "quiet-historical-unfinished",
+      "historical-execution-attempt",
+      false,
+    );
+    const plan = fixture.harness.plan(fixture.store);
+    expect(plan.quietSnapshot).toMatchObject({
+      activeTasks: 0,
+      currentUnknownBillingTasks: 0,
+      unsettledProviderBoundaryUnknown: 0,
+    });
+    const result = fixture.harness.apply(fixture.store, "admin-a", {
+      expectedBaselineSnapshotHash: plan.baselineSnapshotHash,
+      expectedPlanHash: plan.planHash,
+    });
+    expect(result).toMatchObject({ changed: true, paidProviderRequests: 0 });
+  } finally {
+    closeIncGen018Fixture(fixture);
+  }
+});
+
+test("INC-GEN-018 target and final-health failures roll every revision, row and audit write back", () => {
+  const scenarios = [
+    {
+      error: /fixture-second-target/,
+      trigger:
+        "CREATE TRIGGER reject_inc_gen_018_second_target " +
+        "BEFORE UPDATE OF default_parameters ON model_profiles " +
+        "WHEN OLD.id = 'ee51d65e-c924-4a9a-b224-6c4ee180a0ce' " +
+        "BEGIN SELECT RAISE(ABORT, 'fixture-second-target'); END",
+    },
+    {
+      error: /升级后10\/10 published模型未达到精确健康终态/,
+      trigger:
+        "CREATE TRIGGER corrupt_inc_gen_018_final_health " +
+        "AFTER UPDATE OF default_parameters ON model_profiles " +
+        "WHEN OLD.id = 'ee51d65e-c924-4a9a-b224-6c4ee180a0ce' " +
+        "BEGIN UPDATE model_profiles " +
+        "SET default_parameters = default_parameters || ' ' " +
+        "WHERE id = '3919d490-8739-490a-8bce-0678c27e4760'; END",
+    },
+  ] as const;
+  for (const scenario of scenarios) {
+    const fixture = createIncGen018Fixture();
+    try {
+      const plan = fixture.harness.plan(fixture.store);
+      fixture.store.exec(scenario.trigger);
+      const before = rawUpgradeMutationSnapshot(fixture.store);
+      expect(() => fixture.harness.apply(fixture.store, "admin-a", {
+        expectedBaselineSnapshotHash: plan.baselineSnapshotHash,
+        expectedPlanHash: plan.planHash,
+      })).toThrow(scenario.error);
+      expect(rawUpgradeMutationSnapshot(fixture.store)).toBe(before);
+      const after = fixture.harness.plan(fixture.store);
+      expect(after.actionCounts).toMatchObject({
+        none: 8,
+        publishRevision: 2,
+      });
+      expect(modelContractState(
+        fixture.store,
+        "65600fd0-739d-4359-9c9c-958e3ae49b05",
+      ).history).toHaveLength(1);
+      expect(modelContractState(
+        fixture.store,
+        "ee51d65e-c924-4a9a-b224-6c4ee180a0ce",
+      ).history).toHaveLength(1);
+    } finally {
+      closeIncGen018Fixture(fixture);
+    }
+  }
+});
+
+test("INC-GEN-018 upgrades exactly Seed/TTS to 10-of-10 and repeat apply is byte-idempotent", () => {
+  const fixture = createIncGen018Fixture();
+  let sibling: IncGen018Fixture | undefined;
+  try {
+    const targetIds = [
+      "65600fd0-739d-4359-9c9c-958e3ae49b05",
+      "ee51d65e-c924-4a9a-b224-6c4ee180a0ce",
+    ];
+    const historicalStates = new Map(targetIds.map((modelId) => [
+      modelId,
+      JSON.stringify(modelContractState(fixture.store, modelId).history),
+    ]));
+    const auditBefore = (fixture.store.prepare(
+      "SELECT id, actor_user_id, action, target_user_id, details, created_at " +
+        "FROM admin_audit_events WHERE action = 'model_contract.publish' " +
+        "ORDER BY id",
+    ).all() as Array<{ details: string }>).filter((row) =>
+      targetIds.includes(JSON.parse(row.details).modelId)
+    );
+    const before = fixture.harness.plan(fixture.store);
+    const result = fixture.harness.apply(fixture.store, "admin-a", {
+      expectedBaselineSnapshotHash: before.baselineSnapshotHash,
+      expectedPlanHash: before.planHash,
+    });
+    expect(result).toMatchObject({
+      beforeBaselineSnapshotHash: before.baselineSnapshotHash,
+      beforePlanHash: before.planHash,
+      changed: true,
+      paidProviderRequests: 0,
+    });
+    expect(result.upgradedModels.map((model) => model.modelId).sort()).toEqual(
+      targetIds,
+    );
+
+    const after = fixture.harness.plan(fixture.store);
+    expect(after).toMatchObject({
+      actionCounts: {
+        blockedInvalidActive: 0,
+        blockedUnclassifiedDrift: 0,
+        none: 10,
+        publishRevision: 0,
+      },
+      auditedModelCount: 10,
+      catalogIdentityMatchCount: 10,
+      exactExecutionIdentityCount: 10,
+      healthyModelCount: 10,
+      missingExpectedModelIds: [],
+      paidProviderRequests: 0,
+      publishedModelCount: 10,
+      unexpectedPublishedModelIds: [],
+    });
+    for (const model of incGen018FixtureModels) {
+      const expectedHistory = model.historyRevisionIds.length +
+        (model.id === "65600fd0-739d-4359-9c9c-958e3ae49b05" ||
+            model.id === "ee51d65e-c924-4a9a-b224-6c4ee180a0ce"
           ? 1
-          : 2,
+          : 0);
+      expect(modelContractState(fixture.store, model.id).history)
+        .toHaveLength(expectedHistory);
+    }
+    for (const modelId of targetIds) {
+      const history = modelContractState(fixture.store, modelId).history;
+      const historicalLength = JSON.parse(historicalStates.get(modelId)!)
+        .length;
+      expect(JSON.stringify(history.slice(0, historicalLength))).toBe(
+        historicalStates.get(modelId),
+      );
+      expect(history.at(-1)?.predecessorRevisionId).toBe(
+        history.at(-2)?.revisionId,
       );
     }
-    expect(plan.models.find((model) => model.providerModelId === "kwvideo-v2"))
-      .toMatchObject({ action: "archive", hasTextFoundation: false });
-    store.prepare(`
-      UPDATE model_profiles SET provider_protocol = 'media-generate'
-      WHERE id = 'model-video-seedance'
-    `).run();
-    expect(() => planModelContractUpgrade(store))
-      .toThrow(/not supported|精确执行registry/);
-    store.prepare(`
-      UPDATE model_profiles SET provider_protocol = 'native'
-      WHERE id = 'model-video-seedance'
-    `).run();
-    store.prepare(`
-      UPDATE provider_profiles SET driver = 'multi-protocol-relay'
-      WHERE id = 'provider-ark'
-    `).run();
-    expect(() => planModelContractUpgrade(store))
-      .toThrow(/not supported|精确执行registry/);
-    store.prepare(`
-      UPDATE provider_profiles SET driver = 'volcengine-ark'
-      WHERE id = 'provider-ark'
-    `).run();
-    const exactSeedanceRow = store.prepare(`
-      SELECT default_parameters FROM model_profiles
-      WHERE id = 'model-video-seedance'
-    `).get() as { default_parameters: string };
-    const missingParameterSeedance = JSON.parse(
-      exactSeedanceRow.default_parameters,
+    const auditAfter = (fixture.store.prepare(
+      "SELECT id, actor_user_id, action, target_user_id, details, created_at " +
+        "FROM admin_audit_events WHERE action = 'model_contract.publish' " +
+        "ORDER BY id",
+    ).all() as Array<{ details: string }>).filter((row) =>
+      targetIds.includes(JSON.parse(row.details).modelId)
     );
-    missingParameterSeedance.fields = missingParameterSeedance.fields.filter(
-      (field: { key: string }) => field.key !== "duration",
+    expect(JSON.stringify(auditAfter.slice(0, auditBefore.length))).toBe(
+      JSON.stringify(auditBefore),
     );
-    store.prepare(`
-      UPDATE model_profiles SET default_parameters = ?
-      WHERE id = 'model-video-seedance'
-    `).run(JSON.stringify(missingParameterSeedance));
-    expect(() => planModelContractUpgrade(store))
-      .toThrow(/schema不存在的参数/);
-    store.prepare(`
-      UPDATE model_profiles SET default_parameters = ?
-      WHERE id = 'model-video-seedance'
-    `).run(exactSeedanceRow.default_parameters);
-    store.prepare("UPDATE provider_profiles SET provider_configuration_version = 2 WHERE id = 'provider-relay'").run();
-    expect(() => applyModelContractUpgrade(store, "admin-a", {
-      expectedBaselineSnapshotHash: plan.baselineSnapshotHash,
-    })).toThrow(/基线快照已变化/);
-    store.prepare("UPDATE provider_profiles SET provider_configuration_version = 1 WHERE id = 'provider-relay'").run();
-    store.prepare(`
-      INSERT INTO account_provider_credentials VALUES
-        ('owner-invalid', 'provider-relay', 1, 'invalid', '2026-08-27T00:00:00.000Z')
-    `).run();
-    const invalidCredentialPlan = planModelContractUpgrade(store);
-    expect(invalidCredentialPlan.models.find((model) =>
-      model.providerModelId === "grok-video-3"
-    )?.providerSnapshot.invalidAccountCredentialCount).toBe(1);
-    store.prepare("DELETE FROM node_model_bindings WHERE model_id = 'model-gk-video-3'").run();
-    expect(() => applyModelContractUpgrade(store, "admin-a", {
-      expectedBaselineSnapshotHash: invalidCredentialPlan.baselineSnapshotHash,
-    }))
-      .toThrow(/模型能力绑定不存在/);
-    const templateInputModes = () => store.prepare(`
-      SELECT graph FROM public_templates WHERE status = 'published'
-    `).all().flatMap((row) => {
-      const graph = JSON.parse(String(row.graph)) as {
-        nodes: Array<{ data: Record<string, unknown> }>;
+    const appendedAudit = auditAfter.slice(auditBefore.length).map((row) =>
+      JSON.parse(row.details)
+    );
+    expect(appendedAudit.map((details) => details.modelId).sort()).toEqual(
+      targetIds,
+    );
+    expect(appendedAudit.every((details) =>
+      details.releasePolicyUpgrade === true
+    )).toBe(true);
+
+    const taskCountsBeforeCatalogPreflight = fixture.store.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM generation_tasks) AS tasks,
+        (SELECT COUNT(*) FROM generation_provider_attempts) AS attempts
+    `).get() as { attempts: number; tasks: number };
+    const representativeCatalog = incGen018FixtureModels.map((model) => {
+      const row = fixture.store.prepare(`
+        SELECT models.default_parameters, providers.driver
+        FROM model_profiles AS models
+        JOIN provider_profiles AS providers
+          ON providers.id = models.provider_profile_id
+        WHERE models.id = ?
+      `).get(model.id) as { default_parameters: string; driver: string };
+      const modelContractHealth = inspectActiveModelContractHealth({
+        capability: model.capability,
+        costCurrency: model.costCurrency,
+        defaultParameters: row.default_parameters,
+        modelId: model.id,
+        providerDriver: row.driver,
+        providerModelId: model.providerModelId,
+        providerProfileId: model.profileId,
+        providerProtocol: model.protocol,
+        store: fixture.store,
+      });
+      const availability = evaluateModelRuntimeAvailability({
+        accountCredentialState: "valid",
+        capability: model.capability,
+        costCurrency: model.costCurrency,
+        emergencyStop: false,
+        globalEnabled: true,
+        modelContractHealth,
+        providerConfigurationVersionAligned: true,
+        providerDriver: row.driver,
+        providerModelId: model.providerModelId,
+        providerProtocol: model.protocol,
+        providerStatus: "enabled",
+        storedProviderDriver: row.driver,
+      });
+      return {
+        capability: model.capability,
+        id: model.id,
+        modelContractHealth,
+        releaseRevisionId: modelContractState(fixture.store, model.id).active
+          ?.revisionId,
+        ...availability,
       };
-      return graph.nodes.filter((node) =>
-        node.data.videoModelId === "model-gk-video-3"
-      ).map((node) => (node.data.videoParameters as { inputMode?: unknown })
-        ?.inputMode);
     });
-    expect(templateInputModes()).toEqual(Array(34).fill("reference"));
-    expect(modelContractState(store, "model-gk-video-3").history).toHaveLength(1);
-    expect(store.prepare("SELECT status, archived_at FROM model_profiles WHERE id = 'model-kwvideo-v2'").get())
-      .toEqual({ status: "published", archived_at: null });
-    store.prepare("INSERT INTO node_model_bindings VALUES ('video', 'model-gk-video-3', 1, 0, ?)")
-      .run("2026-08-27T00:00:00.000Z");
-    const applied = applyModelContractUpgrade(store, "admin-a", {
-      expectedBaselineSnapshotHash: invalidCredentialPlan.baselineSnapshotHash,
+    expect(representativeCatalog).toHaveLength(10);
+    expect(representativeCatalog.filter((model) =>
+      !model.generationAvailable ||
+      model.generationUnavailableReasonCode !== null ||
+      !model.releaseRevisionId
+    )).toEqual([]);
+    const sevenNodeModelIds = [
+      "ee51d65e-c924-4a9a-b224-6c4ee180a0ce",
+      "65600fd0-739d-4359-9c9c-958e3ae49b05",
+      "3919d490-8739-490a-8bce-0678c27e4760",
+      "4d6196b4-00de-46ca-8011-383ad810a865",
+      "624827c6-5541-4cc8-93ac-4f9d5ce79602",
+      "897d3dfc-83e4-48e9-a033-ca612338681b",
+      "cbaf438c-1c36-48e2-807d-4ce78367d0cf",
+    ];
+    expect(sevenNodeModelIds.map((modelId) => {
+      const model = representativeCatalog.find((item) => item.id === modelId)!;
+      return workflowModelSelectionProblem({
+        isFixture: false,
+        kind: model.capability,
+        model,
+        status: "ready",
+      });
+    })).toEqual(new Array(7).fill(undefined));
+    expect(fixture.store.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM generation_tasks) AS tasks,
+        (SELECT COUNT(*) FROM generation_provider_attempts) AS attempts
+    `).get()).toEqual(taskCountsBeforeCatalogPreflight);
+
+    fixture.store.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+    const siblingDirectory = mkdtempSync(
+      join(tmpdir(), "unboundry-inc-gen-018-repeat-sibling-"),
+    );
+    for (const name of ["unboundry.sqlite", "library.sqlite"]) {
+      const source = join(fixture.dataDirectory, name);
+      if (existsSync(source)) {
+        writeFileSync(join(siblingDirectory, name), readFileSync(source));
+      }
+    }
+    sibling = openIncGen018Fixture(siblingDirectory);
+    const siblingPlan = sibling.harness.plan(sibling.store);
+    expect(siblingPlan.actionCounts).toMatchObject({
+      none: 10,
+      publishRevision: 0,
     });
-    expect(applied).toMatchObject({
-      archivedKwvideo: true,
-      gkRevisionChanged: true,
-      gkRevisionNumber: 2,
-      paidProviderRequests: 0,
-    });
-    expect(applied.upgradedModels.map((model) => model.providerModelId).sort())
-      .toEqual([
-        "doubao-seedance-2-0-mini-260615",
-        "gpt-image-2",
-        "grok-imagine-video-1.5-preview",
-        "grok-video-3",
-        "mureka-9",
-      ]);
-    expect(modelContractState(store, "model-gk-video-3").history).toHaveLength(2);
-    expect(modelContractState(store, "model-video-seedance").history).toHaveLength(2);
-    expect(modelContractState(store, "model-video-grok-imagine").history)
-      .toHaveLength(2);
-    expect(modelContractState(store, "model-image-gpt").history)
-      .toHaveLength(2);
-    expect(modelContractState(store, "model-audio-mureka").history)
-      .toHaveLength(2);
-    expect(templateInputModes()).toEqual(Array(34).fill("image"));
-    expect(store.prepare("SELECT status, archived_at FROM model_profiles WHERE id = 'model-kwvideo-v2'").get())
-      .toMatchObject({ status: "disabled", archived_at: expect.any(String) });
-    store.prepare("DELETE FROM public_templates").run();
-    const repeatedPlan = planModelContractUpgrade(store);
-    expect(repeatedPlan.models.find((model) =>
-      model.providerModelId === "grok-video-3"
-    )).toMatchObject({
-      action: "none",
-      templateMigrations: [],
-      templateImpact: {
-        incompatibleTemplateIds: [],
-        nodeMatrix: [],
-        templateIds: [],
-      },
-    });
-    const repeated = applyModelContractUpgrade(store, "admin-a", {
-      expectedBaselineSnapshotHash: repeatedPlan.baselineSnapshotHash,
+    const rawBeforeRepeat = rawUpgradeMutationSnapshot(sibling.store);
+    const bytesBeforeRepeat = databaseByteIdentity(sibling.dataDirectory);
+    const repeated = sibling.harness.apply(sibling.store, "admin-a", {
+      expectedBaselineSnapshotHash: siblingPlan.baselineSnapshotHash,
+      expectedPlanHash: siblingPlan.planHash,
     });
     expect(repeated).toMatchObject({
-      archivedKwvideo: false,
-      gkRevisionChanged: false,
-      gkRevisionNumber: 2,
+      afterBaselineSnapshotHash: siblingPlan.baselineSnapshotHash,
+      beforeBaselineSnapshotHash: siblingPlan.baselineSnapshotHash,
+      changed: false,
       paidProviderRequests: 0,
       upgradedModels: [],
     });
-    const seedanceRow = store.prepare(`
-      SELECT default_parameters FROM model_profiles
-      WHERE id = 'model-video-seedance'
-    `).get() as { default_parameters: string };
-    const invalidSeedanceSchema = JSON.parse(seedanceRow.default_parameters);
-    invalidSeedanceSchema.referenceInputs.image += 1;
-    store.prepare(`
-      UPDATE model_profiles SET default_parameters = ?
-      WHERE id = 'model-video-seedance'
-    `).run(JSON.stringify(invalidSeedanceSchema));
-    expect(() => planModelContractUpgrade(store))
-      .toThrow(/reference input is not supported/);
-    store.prepare(`
-      UPDATE model_profiles SET default_parameters = ?
-      WHERE id = 'model-video-seedance'
-    `).run(seedanceRow.default_parameters);
-    const exactMurekaRow = store.prepare(`
-      SELECT default_parameters FROM model_profiles
-      WHERE id = 'model-audio-mureka'
-    `).get() as { default_parameters: string };
-    const malformedMureka = JSON.parse(exactMurekaRow.default_parameters);
-    malformedMureka.fields = malformedMureka.fields.map(
-      (field: { key: string }) => field.key === "outputCount"
-        ? {
-            ...field,
-            options: [
-              { label: "1×", value: 1 },
-              { label: "4×", value: 4 },
-            ],
-          }
-        : field,
+    expect(rawUpgradeMutationSnapshot(sibling.store)).toBe(rawBeforeRepeat);
+    expect(databaseByteIdentity(sibling.dataDirectory)).toEqual(
+      bytesBeforeRepeat,
     );
-    store.prepare(`
-      UPDATE model_profiles SET default_parameters = ?
-      WHERE id = 'model-audio-mureka'
-    `).run(JSON.stringify(malformedMureka));
-    expect(() => planModelContractUpgrade(store))
-      .toThrow(/模型 mureka-9 合同迁移失败/);
-    store.prepare(`
-      UPDATE model_profiles SET default_parameters = ?
-      WHERE id = 'model-audio-mureka'
-    `).run(exactMurekaRow.default_parameters);
-    const nearMissGrok = JSON.parse(exactLegacyGrokRow.default_parameters);
-    nearMissGrok.fields = nearMissGrok.fields.map(
-      (field: { key: string; options: Array<{ label: string; value: unknown }> }) =>
-        field.key === "inputMode"
-          ? {
-              ...field,
-              options: [
-                ...field.options,
-                { label: "主体", value: "subject" },
-              ],
-            }
-          : field,
-    );
-    store.prepare(`
-      UPDATE model_profiles SET default_parameters = ?
-      WHERE id = 'model-gk-video-3'
-    `).run(JSON.stringify(nearMissGrok));
-    expect(() => planModelContractUpgrade(store))
-      .toThrow(/模型 grok-video-3 合同迁移失败/);
-    store.prepare(`
-      UPDATE model_profiles SET default_parameters = ?
-      WHERE id = 'model-gk-video-3'
-    `).run(JSON.stringify({ version: 2, fields: [] }));
-    expect(() => planModelContractUpgrade(store))
-      .toThrow(/Invalid model reference inputs/);
   } finally {
-    store.close();
+    if (sibling) closeIncGen018Fixture(sibling);
+    closeIncGen018Fixture(fixture);
   }
 });
 

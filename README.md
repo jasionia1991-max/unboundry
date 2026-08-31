@@ -6,7 +6,13 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 
-## 当前线上：v0.6.56 数字task ID真实闭环（2026-08-28，USER RECHECK）
+## 当前线上：v0.6.63 / INC-GEN-018生产回归开放（2026-08-31）
+
+INC-GEN-017发布时的技术门与唯一Seedance真实结果保留为历史时点事实。用户重新开启真实生成后确认新回归：平台总开关实际开启，但Doubao Seed与Doubao TTS 2.0旧active revision缺当前effective `inputPolicy`，且单模型合同健康被误提示为“管理员已关闭真实生成”。一次性Goal现已启动；R0～R7完成，冻结候选独立终审为`P0=0/P1=0/P2=7/GO`。R7唯一正式safe full原始`1131/1135`及4失败永久保留，4项均已定向关闭且隔离浏览器AUTO_PASS；当前为`R8_READY`。GitHub、v0.6.64与生产迁移/发布尚未开始；生产仍为v0.6.63回归开放，Provider POST、OSS写和新费用为0，用户状态仍是`USER_RECHECK`。
+
+权威入口：[`Checkpoint`](spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_CHECKPOINT.md) → [`Plan`](spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_PLAN_2026-08-30.md) → [`Matrix`](spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_ACCEPTANCE_MATRIX_2026-08-30.md) → [`一次性Goal`](spec/INC_GEN_018_ONE_SHOT_GOAL_PROMPT_2026-08-31.md)。当前断点只以Checkpoint为准，不得把Review GO冒充正式full、生产修复或用户通过。
+
+## 历史线上：v0.6.56 数字task ID真实闭环（2026-08-28，USER RECHECK）
 
 v0.6.56已完成PR #124/main CI、不可移动tag/GitHub Release、fresh build、冻结备份恢复、原子发布、回滚和生产健康门。目标Canvas唯一真实GK提交成功：数字task ID `118533110`已持久化，MP4自动回填并经刷新保持；实际费用USD10、unknown-billing 0。当前严格为`PRODUCTION_V0_6_56_TECHNICAL_PASS / REAL_PROVIDER_PASS / USER_RECHECK`，只有用户看完成片明确确认后才可升级`USER_PASS`。回执见[`spec/V0_6_56_PRODUCTION_RECEIPT_2026-08-28.json`](spec/V0_6_56_PRODUCTION_RECEIPT_2026-08-28.json)。
 

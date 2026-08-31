@@ -41,6 +41,7 @@ export type ModelExecutionDescriptor = Readonly<{
     | "specialized-code";
   costCurrency: "CNY" | "USD";
   evidence: "EXACT" | "SPECIALIZED";
+  executionContractVersion: 1 | 2;
   identities: readonly ModelExecutionIdentity[];
   logicalModelId: string;
   modes: Readonly<Record<string, Readonly<{
@@ -78,6 +79,7 @@ const descriptors = Object.freeze([
     connectorFamily: "ark-native",
     costCurrency: "CNY",
     evidence: "SPECIALIZED",
+    executionContractVersion: 1,
     identities: [{
       providerDriver: "volcengine-ark",
       providerModelId: "doubao-seed-2-0-lite-260428",
@@ -102,6 +104,7 @@ const descriptors = Object.freeze([
     connectorFamily: "gpt-image",
     costCurrency: "USD",
     evidence: "EXACT",
+    executionContractVersion: 1,
     identities: [{
       providerDriver: "multi-protocol-relay",
       providerModelId: "gpt-image-2",
@@ -129,6 +132,7 @@ const descriptors = Object.freeze([
     connectorFamily: "specialized-code",
     costCurrency: "USD",
     evidence: "SPECIALIZED",
+    executionContractVersion: 1,
     identities: [{
       providerDriver: "multi-protocol-relay",
       providerModelId: "gemini-3-pro-image-preview",
@@ -151,6 +155,7 @@ const descriptors = Object.freeze([
     connectorFamily: "ark-native",
     costCurrency: "CNY",
     evidence: "SPECIALIZED",
+    executionContractVersion: 2,
     identities: [{
       providerDriver: "volcengine-ark",
       providerModelId: "doubao-seedance-2-0-mini-260615",
@@ -184,6 +189,7 @@ const descriptors = Object.freeze([
     connectorFamily: "generic-async-media",
     costCurrency: "USD",
     evidence: "EXACT",
+    executionContractVersion: 2,
     identities: [{
       providerDriver: "multi-protocol-relay",
       providerModelId: "grok-video-3",
@@ -209,6 +215,7 @@ const descriptors = Object.freeze([
     connectorFamily: "specialized-code",
     costCurrency: "USD",
     evidence: "SPECIALIZED",
+    executionContractVersion: 1,
     identities: [{
       providerDriver: "multi-protocol-relay",
       providerModelId: "grok-imagine-video-1.5-preview",
@@ -233,6 +240,7 @@ const descriptors = Object.freeze([
     connectorFamily: "specialized-code",
     costCurrency: "USD",
     evidence: "SPECIALIZED",
+    executionContractVersion: 1,
     identities: [{
       providerDriver: "multi-protocol-relay",
       providerModelId: "kling-v3-omni-cankao",
@@ -255,6 +263,7 @@ const descriptors = Object.freeze([
     connectorFamily: "specialized-code",
     costCurrency: "USD",
     evidence: "SPECIALIZED",
+    executionContractVersion: 1,
     identities: [{
       providerDriver: "multi-protocol-relay",
       providerModelId: "doubao-tts-2.0",
@@ -277,6 +286,7 @@ const descriptors = Object.freeze([
     connectorFamily: "mureka-native",
     costCurrency: "USD",
     evidence: "SPECIALIZED",
+    executionContractVersion: 2,
     identities: [{
       providerDriver: "mureka",
       providerModelId: "mureka-9",
@@ -298,6 +308,7 @@ const descriptors = Object.freeze([
     connectorFamily: "specialized-code",
     costCurrency: "USD",
     evidence: "SPECIALIZED",
+    executionContractVersion: 1,
     identities: [{
       providerDriver: "multi-protocol-relay",
       providerModelId: "suno-v4.5",

@@ -35,6 +35,7 @@ import {
   incGen017GenerationEnabled,
 } from "./incGen017FeatureFlags";
 import { modelConfigurationRevision } from "./modelCatalog";
+import { ModelContractHealthError } from "./activeModelContractHealth";
 
 const {
   GenerationProviderAttemptBlockedError,
@@ -225,6 +226,39 @@ function json(response: ServerResponse, status: number, body: unknown) {
   response.end(JSON.stringify(body));
 }
 
+function respondModelContractHealthError(
+  response: ServerResponse,
+  error: unknown,
+) {
+  if (!(error instanceof ModelContractHealthError)) return false;
+  json(response, 409, {
+    causeCode: error.causeCode,
+    code: error.code,
+    error: error.message,
+    problems: generationRuntimeProblems({
+      code: error.code,
+      message: error.message,
+    }),
+  });
+  return true;
+}
+
+function respondPersistedTaskReadError(
+  response: ServerResponse,
+  error: unknown,
+  code: "PROVIDER_CONFIGURATION_MISMATCH" | "RETRY_BINDING_STALE" =
+    "PROVIDER_CONFIGURATION_MISMATCH",
+) {
+  if (!(error instanceof GenerationProviderAttemptBlockedError)) return false;
+  json(response, 409, {
+    code,
+    error: code === "RETRY_BINDING_STALE"
+      ? "任务冻结模型合同无法验证，不能继续旧任务"
+      : error.message,
+  });
+  return true;
+}
+
 function injectInitialGenerationPostCommitFailure(request: IncomingMessage) {
   if (
     process.env.UNBOUNDRY_SAFE_TEST === "1" &&
@@ -335,7 +369,8 @@ export async function generationTasks(
       json(response, 200, {
         tasks: tasks.map((task) => taskSummary(task, bindings.get(task.id))),
       });
-    } catch {
+    } catch (error) {
+      if (respondPersistedTaskReadError(response, error)) return;
       json(response, 400, { error: "Invalid canvas ID" });
     }
     return;
@@ -372,7 +407,8 @@ export async function generationTasks(
         task,
         identity.bypass ? undefined : identity.userId,
       ));
-    } catch {
+    } catch (error) {
+      if (respondPersistedTaskReadError(response, error)) return;
       json(response, 400, { error: "Invalid idempotency lookup" });
     }
     return;
@@ -381,9 +417,20 @@ export async function generationTasks(
   if (request.method === "DELETE" && /^[a-z0-9._-]+$/i.test(path)) {
     const requestUrl = new URL(request.url ?? "", "http://127.0.0.1");
     const fixtureScopeId = requestUrl.searchParams.get("fixtureScopeId") ?? "";
-    const task = identity.bypass
-      ? taskStore().get(path)
-      : taskStore().getForOwner(path, identity.userId);
+    const store = taskStore();
+    let task: GenerationTask | undefined;
+    try {
+      task = identity.bypass
+        ? store.get(path)
+        : store.getForOwner(path, identity.userId);
+    } catch (error) {
+      const code = store.persistedTaskRetryReadErrorCode(
+        path,
+        identity.bypass ? undefined : identity.userId,
+      );
+      if (respondPersistedTaskReadError(response, error, code)) return;
+      throw error;
+    }
     if (!task || !generationTaskMatchesFixtureScope(task, fixtureScopeId)) {
       json(response, 404, { error: "Generation task not found" });
       return;
@@ -426,9 +473,20 @@ export async function generationTasks(
   const abandonMatch = path.match(/^([a-z0-9._-]+)\/abandon$/i);
   if (request.method === "POST" && abandonMatch) {
     const taskId = abandonMatch[1];
-    const task = identity.bypass
-      ? taskStore().get(taskId)
-      : taskStore().getForOwner(taskId, identity.userId);
+    const store = taskStore();
+    let task: GenerationTask | undefined;
+    try {
+      task = identity.bypass
+        ? store.get(taskId)
+        : store.getForOwner(taskId, identity.userId);
+    } catch (error) {
+      const code = store.persistedTaskRetryReadErrorCode(
+        taskId,
+        identity.bypass ? undefined : identity.userId,
+      );
+      if (respondPersistedTaskReadError(response, error, code)) return;
+      throw error;
+    }
     if (!task) {
       json(response, 404, { error: "Generation task not found" });
       return;
@@ -544,9 +602,20 @@ export async function generationTasks(
       });
       return;
     }
-    const task = identity.bypass
-      ? taskStore().get(taskId)
-      : taskStore().getForOwner(taskId, identity.userId);
+    const store = taskStore();
+    let task: GenerationTask | undefined;
+    try {
+      task = identity.bypass
+        ? store.get(taskId)
+        : store.getForOwner(taskId, identity.userId);
+    } catch (error) {
+      const code = store.persistedTaskRetryReadErrorCode(
+        taskId,
+        identity.bypass ? undefined : identity.userId,
+      );
+      if (respondPersistedTaskReadError(response, error, code)) return;
+      throw error;
+    }
     if (!task) {
       json(response, 404, { error: "Generation task not found" });
       return;
@@ -831,9 +900,20 @@ export async function generationTasks(
       });
       return;
     }
-    const task = identity.bypass
-      ? taskStore().get(taskId)
-      : taskStore().getForOwner(taskId, identity.userId);
+    const store = taskStore();
+    let task: GenerationTask | undefined;
+    try {
+      task = identity.bypass
+        ? store.get(taskId)
+        : store.getForOwner(taskId, identity.userId);
+    } catch (error) {
+      const code = store.persistedTaskRetryReadErrorCode(
+        taskId,
+        identity.bypass ? undefined : identity.userId,
+      );
+      if (respondPersistedTaskReadError(response, error, code)) return;
+      throw error;
+    }
     if (!task) {
       json(response, 404, { error: "Generation task not found" });
       return;
@@ -1072,9 +1152,15 @@ export async function generationTasks(
   if (request.method === "GET" && /^[a-z0-9._-]+$/i.test(path)) {
     const requestUrl = new URL(request.url ?? "", "http://127.0.0.1");
     const fixtureScopeId = requestUrl.searchParams.get("fixtureScopeId") ?? "";
-    const task = identity.bypass
-      ? taskStore().get(path)
-      : taskStore().getForOwner(path, identity.userId);
+    let task: GenerationTask | undefined;
+    try {
+      task = identity.bypass
+        ? taskStore().get(path)
+        : taskStore().getForOwner(path, identity.userId);
+    } catch (error) {
+      if (respondPersistedTaskReadError(response, error)) return;
+      throw error;
+    }
     if (!task || !generationTaskMatchesFixtureScope(task, fixtureScopeId)) {
       json(response, 404, { error: "Generation task not found" });
       return;
@@ -1178,6 +1264,7 @@ export async function generationTasks(
     } catch (error) {
       if (error instanceof HttpRequestError) throw error;
       if (canvasRevisionConflict(response, error)) return;
+      if (respondModelContractHealthError(response, error)) return;
       json(response, 400, {
         error: error instanceof Error ? error.message : "提交前检查失败",
       });
@@ -1243,6 +1330,7 @@ export async function generationTasks(
         });
       } catch (error) {
         if (canvasRevisionConflict(response, error)) return;
+        if (respondModelContractHealthError(response, error)) return;
         json(response, 409, {
           code: "INPUT_INVALID",
           error: error instanceof Error ? error.message : "节点输入不完整",

@@ -4,6 +4,7 @@ import {
   type ProviderProtocol,
 } from "../types/relayProtocols";
 import { registeredModelExecution } from "./modelExecutionRegistry";
+import type { ModelContractHealth } from "./activeModelContractHealth";
 
 export type ModelGenerationUnavailableReasonCode =
   | "ACCOUNT_CREDENTIAL_INVALID"
@@ -16,7 +17,10 @@ export type ModelGenerationUnavailableReasonCode =
   | "PROVIDER_DRIVER_MISMATCH"
   | "PROVIDER_REVERIFY_REQUIRED"
   | "EMERGENCY_STOP"
-  | "GLOBAL_GENERATION_DISABLED";
+  | "GLOBAL_GENERATION_DISABLED"
+  | "MODEL_CONTRACT_INVALID"
+  | "MODEL_CONTRACT_MIGRATION_REQUIRED"
+  | "MODEL_CONTRACT_OUT_OF_SYNC";
 
 export type ModelRuntimeAvailability = {
   generationAvailable: boolean;
@@ -33,6 +37,7 @@ export type ModelRuntimeAvailabilityInput = {
   latestCapabilitySuccessAt?: string;
   latestProviderAttemptAt?: string;
   latestAuthFailureAt?: string;
+  modelContractHealth: ModelContractHealth;
   modelConfigurationUpdatedAt?: string;
   providerDriver: string;
   providerModelId: string;
@@ -144,6 +149,24 @@ export function evaluateModelRuntimeAvailability(
     return unavailable(
       "GLOBAL_GENERATION_DISABLED",
       "管理员已关闭真实生成",
+    );
+  }
+  if (input.modelContractHealth?.state === "out-of-sync") {
+    return unavailable(
+      "MODEL_CONTRACT_OUT_OF_SYNC",
+      "当前模型合同与已发布版本不同步，已阻止本次生成",
+    );
+  }
+  if (input.modelContractHealth?.state === "migration-required") {
+    return unavailable(
+      "MODEL_CONTRACT_MIGRATION_REQUIRED",
+      "当前模型需要完成合同迁移后才能生成",
+    );
+  }
+  if (input.modelContractHealth?.state === "invalid") {
+    return unavailable(
+      "MODEL_CONTRACT_INVALID",
+      "当前模型合同无效，已阻止本次生成",
     );
   }
   if (!modelGenerationAdapterSupported(input)) {

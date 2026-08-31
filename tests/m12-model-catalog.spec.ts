@@ -522,6 +522,82 @@ test("only administrators manage models while users receive a safe published cat
     expect(
       afterDisable.models.map((item: { displayName: string }) => item.displayName),
     ).not.toContain("Private Image Model");
+
+    const malformedSchemaDatabase = new DatabaseSync(
+      join(dataDirectory, "unboundry.sqlite"),
+    );
+    try {
+      malformedSchemaDatabase.prepare(`
+        UPDATE generation_safety_settings
+        SET global_enabled = 1, emergency_stop = 0
+        WHERE id = 1
+      `).run();
+      malformedSchemaDatabase.prepare(`
+        UPDATE model_profiles
+        SET default_parameters = '{'
+        WHERE id = ?
+      `).run(seedance.id);
+    } finally {
+      malformedSchemaDatabase.close();
+    }
+
+    const malformedAdminResponse = await request("/api/admin/models", {
+      cookie: adminCookie,
+    });
+    expect(malformedAdminResponse.status).toBe(200);
+    const malformedAdminModel = ((await malformedAdminResponse.json()) as {
+      models: Array<Record<string, unknown>>;
+    }).models.find((item) => item.id === seedance.id);
+    expect(malformedAdminModel).toMatchObject({
+      generationAvailable: false,
+      generationUnavailableReasonCode: "MODEL_CONTRACT_INVALID",
+      id: seedance.id,
+    });
+    expect(malformedAdminModel).not.toHaveProperty("parameterSchema");
+
+    const malformedPublicResponse = await request(
+      "/api/models?capability=video",
+      { cookie: adminCookie },
+    );
+    expect(malformedPublicResponse.status).toBe(200);
+    const malformedPublicModel = ((await malformedPublicResponse.json()) as {
+      models: Array<Record<string, unknown>>;
+    }).models.find((item) => item.id === seedance.id);
+    expect(malformedPublicModel).toMatchObject({
+      generationAvailable: false,
+      generationUnavailableReasonCode: "MODEL_CONTRACT_INVALID",
+      id: seedance.id,
+    });
+    expect(malformedPublicModel).not.toHaveProperty("configurationRevision");
+    expect(malformedPublicModel).not.toHaveProperty("parameterSchema");
+
+    const malformedPreflight = await request("/api/generation-tasks/preflight", {
+      body: JSON.stringify({
+        canvasId: weakCanvasId,
+        canvasRevision: weakCanvasRevision,
+        idempotencyKey: "seedance-malformed-contract-preflight",
+        inputSchemaVersion: 1,
+        kind: "video",
+        model: seedance.id,
+        nodeId: "weak-video-target",
+        ownPrompt: "必须在模型合同边界前失败",
+        parameters: { inputMode: "text" },
+      }),
+      cookie: adminCookie,
+      method: "POST",
+    });
+    expect(malformedPreflight.status).toBe(409);
+    expect(await malformedPreflight.json()).toMatchObject({
+      causeCode: "CANONICAL_PERSISTED_SCHEMA_JSON_INVALID",
+      code: "MODEL_CONTRACT_INVALID",
+    });
+
+    const providerStatusAfterMalformed = await (
+      await request("/api/generation-tasks/status", { cookie: adminCookie })
+    ).json() as { paidProviderRequests: number };
+    expect(providerStatusAfterMalformed.paidProviderRequests).toBe(
+      providerStatusBefore.paidProviderRequests,
+    );
   } finally {
     if (server) await stopServer(server);
     await rm(dataDirectory, { force: true, recursive: true });

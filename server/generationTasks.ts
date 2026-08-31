@@ -127,7 +127,10 @@ import {
 } from "./modelReleaseRevisionStore";
 import type { ModelReleaseRevision } from "../types/modelReleaseRevisions";
 import { incGen017GenerationEnabled } from "./incGen017FeatureFlags";
-import { assertActiveModelContractHealth } from "./activeModelContractHealth";
+import {
+  assertActiveModelContractHealth,
+  inspectActiveModelContractHealth,
+} from "./activeModelContractHealth";
 import {
   relayMediaModelContract,
   relayMediaPollingDecision,
@@ -176,10 +179,6 @@ import {
   storageProfileForMedia,
 } from "./secureStorageProfiles";
 import {
-  cleanParameterSchema,
-  knownModelParameterSchema,
-  providerParameterSchema,
-  validateParameterSchemaConstraints,
   validateParameterValues,
   youchuangGptImageSizes,
   type GptImageSizeMap,
@@ -188,6 +187,8 @@ import {
   type ModelParameterSchema,
   type ModelParameterValue,
 } from "../types/modelParameters";
+import { canonicalPublishedCapabilitySchema } from
+  "./canonicalPublishedModelContract";
 import {
   assertPersistedCanvasRevision,
   CanvasRevisionConflictError,
@@ -1147,8 +1148,8 @@ function activeModelContractHealth(
     return assertActiveModelContractHealth({
       capability: kind,
       costCurrency: model.cost_currency,
+      defaultParameters: model.default_parameters,
       modelId: model.id,
-      parameterSchema: generationModelSchema(kind, model),
       providerDriver: model.provider_driver,
       providerModelId: model.provider_model_id,
       providerProfileId: model.provider_profile_id,
@@ -1222,40 +1223,12 @@ function generationModelSchema(
   kind: NodeInputKind,
   model: GenerationModelRow,
 ): ModelParameterSchema {
-  const fallback = knownModelParameterSchema({
+  return canonicalPublishedCapabilitySchema({
     capability: kind,
+    defaultParameters: model.default_parameters,
     providerDriver: model.provider_driver,
     providerModelId: model.provider_model_id,
   });
-  const constraints = providerParameterSchema({
-    capability: kind,
-    providerDriver: model.provider_driver,
-    providerModelId: model.provider_model_id,
-  });
-  try {
-    const stored = JSON.parse(model.default_parameters) as unknown;
-    if (
-      stored &&
-      typeof stored === "object" &&
-      !Array.isArray(stored) &&
-      Object.keys(stored).length === 0
-    ) {
-      // Historical, already accepted model rows used `{}` before schemas were
-      // versioned. Keep only that exact legacy shape on the known fallback.
-      return fallback;
-    }
-    return validateParameterSchemaConstraints(
-      cleanParameterSchema(
-        kind,
-        stored,
-        fallback,
-      ),
-      constraints,
-    );
-  } catch {
-    if (constraints) return fallback;
-    throw new Error("模型输入规则无效");
-  }
 }
 
 function imageReferences(value: unknown): ImageReference[] {
@@ -1687,12 +1660,24 @@ async function generationRuntimeDecision(input: {
   model: GenerationModelRow;
   ownerId: string;
 }) {
-  let contractHealthy = true;
-  try {
-    activeModelContractHealth(input.kind, input.model);
-  } catch {
-    contractHealthy = false;
-  }
+  const contractStore = openAppDatabase();
+  const modelContractHealth = (() => {
+    try {
+      return inspectActiveModelContractHealth({
+        capability: input.kind,
+        costCurrency: input.model.cost_currency,
+        defaultParameters: input.model.default_parameters,
+        modelId: input.model.id,
+        providerDriver: input.model.provider_driver,
+        providerModelId: input.model.provider_model_id,
+        providerProfileId: input.model.provider_profile_id,
+        providerProtocol: input.model.provider_protocol ?? "native",
+        store: contractStore,
+      });
+    } finally {
+      contractStore.close();
+    }
+  })();
   const adapterSupported = modelGenerationAdapterSupported({
     capability: input.kind,
     costCurrency: input.model.cost_currency,
@@ -1727,13 +1712,14 @@ async function generationRuntimeDecision(input: {
     capability: input.kind,
     costCurrency: input.model.cost_currency,
     emergencyStop: safetyStatus.emergencyStop,
-    globalEnabled: safetyStatus.globalEnabled && contractHealthy,
+    globalEnabled: safetyStatus.globalEnabled,
     latestCapabilitySuccessAt:
       input.model.latest_capability_success_at ?? undefined,
     latestProviderAttemptAt:
       input.model.latest_provider_attempt_at ?? undefined,
     latestAuthFailureAt: input.model.latest_auth_failure_at ?? undefined,
     modelConfigurationUpdatedAt: input.model.model_configuration_updated_at,
+    modelContractHealth,
     providerDriver: input.model.provider_driver,
     providerModelId: input.model.provider_model_id,
     providerProtocol: input.model.provider_protocol,
@@ -1857,11 +1843,11 @@ function strictGenerationPreflight(input: {
   requireFreshRevision: boolean;
   targetKind: NodeInputKind;
 }): StrictGenerationPreflight {
-  const schema = generationModelSchema(input.targetKind, input.model);
   const activeModelReleaseRevision = activeModelContractHealth(
     input.targetKind,
     input.model,
   );
+  const schema = generationModelSchema(input.targetKind, input.model);
   const submittedParameters = { ...(input.body.parameters ?? {}) };
   delete submittedParameters.references;
   const parameters = validateParameterValues(schema, submittedParameters);
@@ -2287,8 +2273,8 @@ async function generationAvailability(ownerId: string) {
         activeRevision = assertActiveModelContractHealth({
           capability: row.capability,
           costCurrency: row.cost_currency,
+          defaultParameters: row.default_parameters,
           modelId: row.id,
-          parameterSchema: generationModelSchema(row.capability, row),
           providerDriver: row.provider_driver,
           providerModelId: row.provider_model_id,
           providerProfileId: row.provider_profile_id,
@@ -2335,6 +2321,11 @@ async function generationAvailability(ownerId: string) {
           row.latest_provider_attempt_at ?? undefined,
         latestAuthFailureAt: row.latest_auth_failure_at ?? undefined,
         modelConfigurationUpdatedAt: row.model_configuration_updated_at,
+        modelContractHealth: {
+          activeRevisionId: activeRevision.revisionId,
+          fingerprint: activeRevision.hash,
+          state: "healthy",
+        },
         providerDriver: row.provider_driver,
         providerModelId: row.provider_model_id,
         providerProtocol: row.provider_protocol,

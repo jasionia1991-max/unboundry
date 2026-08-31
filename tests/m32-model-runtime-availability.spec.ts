@@ -9,6 +9,11 @@ const readyImage: ModelRuntimeAvailabilityInput = {
   costCurrency: "USD",
   emergencyStop: false,
   globalEnabled: true,
+  modelContractHealth: {
+    activeRevisionId: "healthy-test-revision",
+    fingerprint: "healthy-test-fingerprint",
+    state: "healthy",
+  },
   providerDriver: "openrouter",
   providerModelId: "openai/gpt-image-2",
   providerStatus: "enabled",
@@ -157,6 +162,7 @@ test("the shipped Doubao Seed text adapter uses the same runtime gates", () => {
     costCurrency: "CNY",
     emergencyStop: false,
     globalEnabled: true,
+    modelContractHealth: readyImage.modelContractHealth,
     providerDriver: "volcengine-ark",
     providerModelId: "doubao-seed-2-0-lite-260428",
     providerStatus: "enabled",
@@ -174,6 +180,26 @@ test("emergency stop wins over the ordinary global switch", () => {
     globalEnabled: false,
   });
   expect(result.generationUnavailableReasonCode).toBe("EMERGENCY_STOP");
+});
+
+test("an out-of-sync model contract stays distinct from an enabled platform switch", () => {
+  const result = evaluateModelRuntimeAvailability({
+    ...readyImage,
+    globalEnabled: true,
+    modelContractHealth: {
+      activeRevisionId: "legacy-production-revision",
+      causeCode: "CAPABILITY_SCHEMA_OUT_OF_SYNC",
+      expectedFingerprint: "current-contract-fingerprint",
+      state: "out-of-sync",
+    },
+  });
+  expect(result).toMatchObject({
+    generationAvailable: false,
+    generationUnavailableReasonCode: "MODEL_CONTRACT_OUT_OF_SYNC",
+  });
+  expect(result.generationUnavailableReasonCode).not.toBe(
+    "GLOBAL_GENERATION_DISABLED",
+  );
 });
 
 test("platform stop reasons stay consistent even when model setup also needs work", () => {

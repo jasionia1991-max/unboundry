@@ -448,9 +448,13 @@ function workingSourceFiles() {
     ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
     { capture: true },
   );
+  const protectedWorkspaceFiles = new Set([
+    "spec/INC_GEN_017_R0_PUBLISHED_MODEL_SNAPSHOT_2026-08-28.json",
+    "spec/public-templates-director-split-revision.json",
+  ]);
   return result.stdout.split("\0")
     .filter(Boolean)
-    .filter((file) => file !== "spec/public-templates-director-split-revision.json")
+    .filter((file) => !protectedWorkspaceFiles.has(file))
     .sort();
 }
 
@@ -2065,8 +2069,8 @@ async function discover(specs, suiteRoot, sourceRoot, browserRoot) {
         })}`,
       );
     }
-    if (discovery.tests !== 1125) {
-      fail(`the frozen 1125-test inventory changed to ${discovery.tests}`);
+    if (discovery.tests !== 1135) {
+      fail(`the frozen 1135-test inventory changed to ${discovery.tests}`);
     }
     const idsByFile = {};
     const { entries } = collectReportEntries(reportFile, sourceRoot);

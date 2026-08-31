@@ -456,6 +456,400 @@ function seedGenerationRetryBinding(
   };
 }
 
+type RawGenerationTaskMutationSnapshot = {
+  admissionCount: number;
+  eventCount: number;
+  paidProviderRequests: number;
+  providerAttemptCount: number;
+  task: {
+    attempt: number;
+    modelConfiguration: string;
+    parameters: string;
+    state: string;
+    updatedAt: string;
+  };
+  taskCount: number;
+};
+
+function mutatePersistedTaskField(
+  dataDirectory: string,
+  taskId: string,
+  field: "model_configuration" | "parameters",
+  value: string,
+) {
+  const database = openAppDatabase(dataDirectory);
+  try {
+    database.prepare(`
+      UPDATE generation_tasks
+      SET ${field} = ?
+      WHERE id = ?
+    `).run(value, taskId);
+  } finally {
+    database.close();
+  }
+}
+
+function rawGenerationTaskMutationSnapshot(
+  dataDirectory: string,
+  taskId: string,
+): RawGenerationTaskMutationSnapshot {
+  const database = openAppDatabase(dataDirectory);
+  try {
+    const task = database.prepare(`
+      SELECT attempt, state, updated_at, model_configuration, parameters
+      FROM generation_tasks
+      WHERE id = ?
+    `).get(taskId) as {
+      attempt: number;
+      model_configuration: string;
+      parameters: string;
+      state: string;
+      updated_at: string;
+    };
+    const count = (table: string) => Number((database.prepare(`
+      SELECT COUNT(*) AS count
+      FROM ${table}
+      WHERE task_id = ?
+    `).get(taskId) as { count: number }).count);
+    const taskCount = Number((database.prepare(`
+      SELECT COUNT(*) AS count
+      FROM generation_tasks
+      WHERE id = ?
+    `).get(taskId) as { count: number }).count);
+    return {
+      admissionCount: count("generation_admission_events"),
+      eventCount: count("generation_task_events"),
+      paidProviderRequests:
+        generationProviderAttemptCounts(database).paidProviderRequests,
+      providerAttemptCount: count("generation_provider_attempts"),
+      task: {
+        attempt: Number(task.attempt),
+        modelConfiguration: task.model_configuration,
+        parameters: task.parameters,
+        state: task.state,
+        updatedAt: task.updated_at,
+      },
+      taskCount,
+    };
+  } finally {
+    database.close();
+  }
+}
+
+function expectProviderConfigurationMismatch(action: () => unknown) {
+  let caught: unknown;
+  try {
+    action();
+  } catch (error) {
+    caught = error;
+  }
+  expect(caught).toBeInstanceOf(GenerationProviderAttemptBlockedError);
+  expect((caught as GenerationProviderAttemptBlockedError).code).toBe(
+    "PROVIDER_CONFIGURATION_MISMATCH",
+  );
+}
+
+const persistedTaskCorruptionCases = [
+  { field: "model_configuration", value: "{" },
+  { field: "parameters", value: "[]" },
+] as const;
+
+const persistedBoundaryModelConfiguration = {
+  providerConfigurationVersion: 1,
+  providerDriver: "fixture-driver",
+  providerModelId: "fixture-provider-model",
+  providerProfileId: "fixture-provider",
+  providerProtocol: "native",
+};
+
+test("malformed persisted task JSON cannot cross the Provider-attempt boundary", async () => {
+  for (const corruption of persistedTaskCorruptionCases) {
+    const dataDirectory = await mkdtemp(join(
+      tmpdir(),
+      `unboundry-provider-boundary-${corruption.field}-`,
+    ));
+    const store = createGenerationTaskStore(dataDirectory);
+    try {
+      const created = store.create({
+        canvasId: `provider-boundary-${corruption.field}`,
+        idempotencyKey: `provider-boundary-${corruption.field}`,
+        kind: "image",
+        modelConfiguration: persistedBoundaryModelConfiguration,
+        nodeId: `provider-boundary-${corruption.field}`,
+        ownerId: "__test__",
+        parameters: { count: 1 },
+        prompt: "malformed persistence must fail before Provider submission",
+        providerModelId: "fixture-provider-model",
+        providerProfileId: "fixture-provider",
+      }).task;
+      store.transition(created.id, "running");
+      mutatePersistedTaskField(
+        dataDirectory,
+        created.id,
+        corruption.field,
+        corruption.value,
+      );
+      const before = rawGenerationTaskMutationSnapshot(
+        dataDirectory,
+        created.id,
+      );
+
+      expectProviderConfigurationMismatch(() =>
+        store.recordProviderAttempt(created.id)
+      );
+
+      expect(rawGenerationTaskMutationSnapshot(dataDirectory, created.id))
+        .toEqual(before);
+      expect(before).toMatchObject({
+        admissionCount: 0,
+        eventCount: 2,
+        paidProviderRequests: 0,
+        providerAttemptCount: 0,
+        task: { attempt: 1, state: "running" },
+        taskCount: 1,
+      });
+    } finally {
+      store.close();
+      await rm(dataDirectory, { force: true, recursive: true });
+    }
+  }
+});
+
+test("malformed persisted task JSON cannot mutate a new paid retry", async () => {
+  for (const corruption of persistedTaskCorruptionCases) {
+    const dataDirectory = await mkdtemp(join(
+      tmpdir(),
+      `unboundry-paid-retry-${corruption.field}-`,
+    ));
+    const store = createGenerationTaskStore(dataDirectory);
+    try {
+      const created = store.create({
+        canvasId: `paid-retry-${corruption.field}`,
+        idempotencyKey: `paid-retry-${corruption.field}`,
+        kind: "image",
+        modelConfiguration: persistedBoundaryModelConfiguration,
+        nodeId: `paid-retry-${corruption.field}`,
+        ownerId: "__test__",
+        parameters: { count: 1 },
+        prompt: "malformed persistence must fail before paid retry",
+        providerModelId: "fixture-provider-model",
+        providerProfileId: "fixture-provider",
+      }).task;
+      store.transition(created.id, "running");
+      store.transition(created.id, "failed", {
+        code: "PROVIDER_REJECTED",
+        message: "fixture terminal failure before a Provider attempt",
+      });
+      const failed = store.get(created.id)!;
+      const fence = seedGenerationRetryBinding(
+        dataDirectory,
+        failed,
+        `paid-retry-input-${corruption.field}`,
+      );
+      mutatePersistedTaskField(
+        dataDirectory,
+        created.id,
+        corruption.field,
+        corruption.value,
+      );
+      const before = rawGenerationTaskMutationSnapshot(
+        dataDirectory,
+        created.id,
+      );
+
+      expectProviderConfigurationMismatch(() => store.admitRetry({
+        ...fence,
+        mode: "new-paid-attempt",
+        snapshot: {
+          credentialRevision: 1,
+          modelConfiguration: persistedBoundaryModelConfiguration,
+          providerModelId: "fixture-provider-model",
+          providerProfileId: "fixture-provider",
+        },
+        taskId: created.id,
+      }));
+
+      expect(rawGenerationTaskMutationSnapshot(dataDirectory, created.id))
+        .toEqual(before);
+      expect(before).toMatchObject({
+        admissionCount: 0,
+        eventCount: 3,
+        paidProviderRequests: 0,
+        providerAttemptCount: 0,
+        task: { attempt: 1, state: "failed" },
+        taskCount: 1,
+      });
+    } finally {
+      store.close();
+      await rm(dataDirectory, { force: true, recursive: true });
+    }
+  }
+});
+
+test("malformed persisted task JSON cannot mutate recovery or escape API mapping", async ({
+  request,
+}) => {
+  for (const corruption of persistedTaskCorruptionCases) {
+    const dataDirectory = await mkdtemp(join(
+      tmpdir(),
+      `unboundry-resume-${corruption.field}-`,
+    ));
+    const store = createGenerationTaskStore(dataDirectory);
+    try {
+      const created = store.create({
+        canvasId: `resume-${corruption.field}`,
+        idempotencyKey: `resume-${corruption.field}`,
+        kind: "image",
+        modelConfiguration: persistedBoundaryModelConfiguration,
+        nodeId: `resume-${corruption.field}`,
+        ownerId: "__test__",
+        parameters: { count: 1 },
+        prompt: "malformed persistence must fail before recovery resumes",
+        providerModelId: "fixture-provider-model",
+        providerProfileId: "fixture-provider",
+      }).task;
+      store.transition(created.id, "running");
+      store.transition(created.id, "recovering", {
+        code: "AUTOMATIC_RESULT_RECOVERY",
+        message: "fixture recovery checkpoint",
+      });
+      mutatePersistedTaskField(
+        dataDirectory,
+        created.id,
+        corruption.field,
+        corruption.value,
+      );
+      const before = rawGenerationTaskMutationSnapshot(
+        dataDirectory,
+        created.id,
+      );
+
+      expectProviderConfigurationMismatch(() => store.resume(created.id));
+
+      expect(rawGenerationTaskMutationSnapshot(dataDirectory, created.id))
+        .toEqual(before);
+      expect(before).toMatchObject({
+        admissionCount: 0,
+        eventCount: 3,
+        paidProviderRequests: 0,
+        providerAttemptCount: 0,
+        task: { attempt: 1, state: "recovering" },
+        taskCount: 1,
+      });
+    } finally {
+      store.close();
+      await rm(dataDirectory, { force: true, recursive: true });
+    }
+  }
+
+  const dataDirectoryResponse = await request.get("/api/test-data-directory");
+  expect(dataDirectoryResponse.ok()).toBeTruthy();
+  const { dataDirectory } = (await dataDirectoryResponse.json()) as {
+    dataDirectory: string;
+  };
+
+  const cases = [
+    { expectedRetryCode: "PROVIDER_CONFIGURATION_MISMATCH", resume: false },
+    { expectedRetryCode: "RETRY_BINDING_STALE", resume: true },
+  ] as const;
+  for (const item of cases) {
+    let store: ReturnType<typeof createGenerationTaskStore> | undefined =
+      createGenerationTaskStore(dataDirectory);
+    const suffix = `${item.resume ? "resume" : "paid"}-${crypto.randomUUID()}`;
+    const created = store.create({
+      canvasId: `malformed-api-${suffix}`,
+      idempotencyKey: `malformed-api-${suffix}`,
+      kind: item.resume ? "video" : "image",
+      modelConfiguration: persistedBoundaryModelConfiguration,
+      nodeId: `malformed-api-node-${suffix}`,
+      ownerId: "__test__",
+      parameters: { count: 1 },
+      prompt: "malformed API read must fail without mutation",
+      providerModelId: "fixture-provider-model",
+      providerProfileId: "fixture-provider",
+    }).task;
+    try {
+      store.transition(created.id, "running");
+      if (item.resume) {
+        store.recordProviderAttempt(created.id);
+        store.setProviderTaskId(created.id, `remote-${suffix}`);
+      }
+      const failed = store.transition(created.id, "failed", {
+        code: item.resume ? "AUTH" : "PROVIDER_REJECTED",
+        message: "fixture terminal failure",
+      })!;
+      const fence = seedGenerationRetryBinding(
+        dataDirectory,
+        failed,
+        `malformed-api-input-${suffix}`,
+      );
+      mutatePersistedTaskField(
+        dataDirectory,
+        created.id,
+        item.resume ? "parameters" : "model_configuration",
+        item.resume ? "[]" : "{",
+      );
+      const before = rawGenerationTaskMutationSnapshot(dataDirectory, created.id);
+      store.close();
+      store = undefined;
+
+      const summary = await request.get(`/api/generation-tasks/${created.id}`);
+      expect(summary.status()).toBe(409);
+      await expect(summary.json()).resolves.toMatchObject({
+        code: "PROVIDER_CONFIGURATION_MISMATCH",
+      });
+
+      const list = await request.get(
+        `/api/generation-tasks?canvasId=${encodeURIComponent(created.canvasId)}`,
+      );
+      expect(list.status()).toBe(409);
+      await expect(list.json()).resolves.toMatchObject({
+        code: "PROVIDER_CONFIGURATION_MISMATCH",
+      });
+
+      const byIdempotency = await request.get(
+        "/api/generation-tasks/by-idempotency" +
+          `?canvasId=${encodeURIComponent(created.canvasId)}` +
+          `&idempotencyKey=${encodeURIComponent(created.idempotencyKey)}`,
+      );
+      expect(byIdempotency.status()).toBe(409);
+      await expect(byIdempotency.json()).resolves.toMatchObject({
+        code: "PROVIDER_CONFIGURATION_MISMATCH",
+      });
+
+      const retry = await request.post(
+        `/api/generation-tasks/${created.id}/retry`,
+        { data: fence },
+      );
+      expect(retry.status()).toBe(409);
+      await expect(retry.json()).resolves.toMatchObject({
+        code: item.expectedRetryCode,
+      });
+
+      const cancel = await request.delete(
+        `/api/generation-tasks/${created.id}`,
+      );
+      expect(cancel.status()).toBe(409);
+      await expect(cancel.json()).resolves.toMatchObject({
+        code: item.expectedRetryCode,
+      });
+
+      const reconcile = await request.post(
+        `/api/generation-tasks/${created.id}/reconcile`,
+        { data: fence },
+      );
+      expect(reconcile.status()).toBe(409);
+      await expect(reconcile.json()).resolves.toMatchObject({
+        code: item.expectedRetryCode,
+      });
+      expect(rawGenerationTaskMutationSnapshot(dataDirectory, created.id))
+        .toEqual(before);
+    } finally {
+      store?.close();
+    }
+  }
+});
+
 test("generation task creation is idempotent and a running task recovers after reopen", async () => {
   const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-task-store-"));
   const request = {
