@@ -70,6 +70,10 @@ const executeFile = promisify(execFile);
 const providerPort = Number(process.env.UNBOUNDRY_TEST_AUX_PORT);
 const appOrigin = `http://127.0.0.1:${appPort}`;
 const providerOrigin = `http://127.0.0.1:${providerPort}`;
+const tinyPng = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
 
 function stableFixtureValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stableFixtureValue);
@@ -112,8 +116,8 @@ function authoritativeBuilderInputs() {
     {
       kind: "image",
       providerDriver: "multi-protocol-relay",
-      providerModelId: "gpt-image-2",
-      providerProtocol: "gpt-image",
+      providerModelId: "tt-image-2",
+      providerProtocol: "media-generate",
     },
     {
       kind: "video",
@@ -1134,8 +1138,99 @@ async function createPublishedTextModel() {
   return model.model.id;
 }
 
-async function waitForTerminalRun(runId: string) {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
+async function createPublishedTtImageModel() {
+  const providerResponse = await expectOk(await request(
+    "/api/admin/providers",
+    {
+      body: JSON.stringify({
+        apiKey: "inc-gen-027-fake-relay-key",
+        baseUrl: "https://api.lk888.test/v1",
+        driver: "multi-protocol-relay",
+        label: "INC-GEN-027 loopback fake relay",
+      }),
+      method: "POST",
+    },
+  ), "relay provider");
+  const provider = (await providerResponse.json()) as {
+    profile: { id: string };
+  };
+  await expectOk(await request(
+    `/api/account-credentials/${provider.profile.id}`,
+    {
+      body: JSON.stringify({ apiKey: "inc-gen-027-fake-relay-key" }),
+      method: "PUT",
+    },
+  ), "relay account credential");
+  const verifiedFixtureStore = openAppDatabase(
+    String(process.env.UNBOUNDRY_DATA_DIR),
+  );
+  try {
+    const timestamp = new Date().toISOString();
+    const verified = verifiedFixtureStore.prepare(`
+      UPDATE provider_profiles
+      SET status = 'enabled', key_status = 'valid', key_checked_at = ?,
+        catalog_key_status = 'valid', catalog_checked_at = ?, updated_at = ?
+      WHERE id = ? AND driver = 'multi-protocol-relay'
+    `).run(timestamp, timestamp, timestamp, provider.profile.id);
+    if (verified.changes !== 1) {
+      throw new Error("safe-test relay verification fixture did not bind exactly once");
+    }
+  } finally {
+    verifiedFixtureStore.close();
+  }
+  const modelResponse = await expectOk(await request("/api/admin/models", {
+    body: JSON.stringify({
+      capability: "image",
+      displayName: "TT Image 2 · 异步可恢复",
+      isDefault: false,
+      maxCostMicrounits: 0,
+      providerModelId: "tt-image-2",
+      providerProfileId: provider.profile.id,
+      providerProtocol: "media-generate",
+      sortOrder: 1,
+      status: "draft",
+    }),
+    method: "POST",
+  }), "TT Image model");
+  const model = (await modelResponse.json()) as { model: { id: string } };
+  const contractResponse = await expectOk(await request(
+    `/api/admin/models/${model.model.id}/contract`,
+  ), "TT Image model contract");
+  const contract = (await contractResponse.json()) as {
+    suggestedDocument: Record<string, unknown>;
+  };
+  await expectOk(await request(
+    `/api/admin/models/${model.model.id}/contract/draft`,
+    {
+      body: JSON.stringify({
+        document: contract.suggestedDocument,
+        expectedDraftVersion: 0,
+      }),
+      method: "POST",
+    },
+  ), "TT Image model contract draft");
+  await expectOk(await request(
+    `/api/admin/models/${model.model.id}/contract/publish`,
+    {
+      body: JSON.stringify({ expectedDraftVersion: 1 }),
+      method: "POST",
+    },
+  ), "TT Image model contract publish");
+  await expectOk(await request(`/api/admin/models/${model.model.id}`, {
+    body: JSON.stringify({ isDefault: true, status: "published" }),
+    method: "PATCH",
+  }), "TT Image model publish");
+  const database = openAppDatabase(String(process.env.UNBOUNDRY_DATA_DIR));
+  try {
+    bootstrapPublishedModelContracts(database, "__test__");
+  } finally {
+    database.close();
+  }
+  return model.model.id;
+}
+
+async function waitForTerminalRun(runId: string, attempts = 200) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
     const response = await expectOk(
       await request(`/api/workflow-runs/${runId}`),
       "workflow run",
@@ -1330,6 +1425,285 @@ test("INC-GEN-026 true HTTP workflow admits once and reaches a loopback fake Pro
     await app?.close();
     await close(provider);
     globalThis.fetch = originalFetch;
+    if (previousBypass === undefined) {
+      delete process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+    } else {
+      process.env.UNBOUNDRY_TEST_AUTH_BYPASS = previousBypass;
+    }
+  }
+});
+
+test("v0.7.1 TT Image workflow submits once, polls the official route and survives refresh", async () => {
+  const previousBypass = process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+  const previousRelayMediaFetcher =
+    process.env.UNBOUNDRY_TEST_RELAY_MEDIA_FETCHER;
+  const originalFetch = globalThis.fetch;
+  const providerRequests: Array<{
+    body: string;
+    method: string;
+    originalUrl: string;
+  }> = [];
+  let app: ViteDevServer | undefined;
+  let provider: Server | undefined;
+  try {
+    process.env.UNBOUNDRY_TEST_AUTH_BYPASS = "1";
+    process.env.UNBOUNDRY_TEST_RELAY_MEDIA_FETCHER = "1";
+    provider = createHttpServer(async (incoming, response) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of incoming) chunks.push(Buffer.from(chunk));
+      const url = new URL(incoming.url ?? "/", providerOrigin);
+      if (incoming.method === "GET" && url.pathname === "/v1/skills/models") {
+        response.statusCode = 200;
+        response.setHeader("Content-Type", "application/json");
+        response.end(JSON.stringify({
+          models: [{
+            display_name: "TT Image 2",
+            name: "tt-image-2",
+            output_modalities: ["image"],
+            protocols: ["media-generate"],
+            type: "图片",
+          }],
+          total: 1,
+          type: "list",
+        }));
+        return;
+      }
+      if (incoming.method === "GET" && url.pathname === "/v1/models") {
+        response.statusCode = 200;
+        response.setHeader("Content-Type", "application/json");
+        response.end(JSON.stringify({ data: [{ id: "tt-image-2" }] }));
+        return;
+      }
+      if (
+        incoming.method === "POST" &&
+        url.pathname === "/v1/media/generate"
+      ) {
+        response.statusCode = 200;
+        response.setHeader("Content-Type", "application/json");
+        response.end(JSON.stringify({ task_id: "tt_image_task_v071_once" }));
+        return;
+      }
+      if (
+        incoming.method === "GET" &&
+        url.pathname === "/v1/skills/task-status"
+      ) {
+        response.statusCode = 404;
+        response.setHeader("Content-Type", "application/json");
+        response.end(JSON.stringify({ error: "official route required" }));
+        return;
+      }
+      if (
+        incoming.method === "GET" &&
+        url.pathname === "/v1/media/status" &&
+        url.searchParams.get("task_id") === "tt_image_task_v071_once"
+      ) {
+        response.statusCode = 200;
+        response.setHeader("Content-Type", "application/json");
+        response.end(JSON.stringify({
+          is_final: true,
+          result_type: "image",
+          result_url: "https://api.lk888.test/v1/results/tt-image-v071.png",
+          state: "success",
+        }));
+        return;
+      }
+      if (
+        incoming.method === "GET" &&
+        url.pathname === "/v1/results/tt-image-v071.png"
+      ) {
+        response.statusCode = 200;
+        response.setHeader("Content-Length", String(tinyPng.byteLength));
+        response.setHeader("Content-Type", "image/png");
+        response.end(tinyPng);
+        return;
+      }
+      response.statusCode = 404;
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify({ error: "unknown safe-test route" }));
+    });
+    await listen(provider, providerPort);
+    globalThis.fetch = (async (input, init) => {
+      const originalUrl = input instanceof Request ? input.url : String(input);
+      const url = new URL(originalUrl);
+      if (url.hostname === "api.lk888.test") {
+        const body = typeof init?.body === "string" ? init.body : "";
+        providerRequests.push({
+          body,
+          method: input instanceof Request
+            ? input.method
+            : init?.method ?? "GET",
+          originalUrl,
+        });
+        const target = new URL(url.pathname + url.search, providerOrigin);
+        return await originalFetch(target, init);
+      }
+      return await originalFetch(input, init);
+    }) as typeof fetch;
+
+    app = await createViteServer({
+      configFile: "vite.config.ts",
+      logLevel: "silent",
+      server: {
+        host: "127.0.0.1",
+        hmr: false,
+        port: appPort,
+        strictPort: true,
+        ws: false,
+      },
+    });
+    await app.listen();
+    await waitForReady();
+    await expectOk(await request("/api/admin/generation-safety", {
+      body: JSON.stringify(safetySettings),
+      method: "PUT",
+    }), "generation safety");
+    const modelId = await createPublishedTtImageModel();
+    const canvasId = "inc-gen-027-tt-image-http";
+    const groupId = "inc-gen-027-tt-image-group";
+    const prompt = "Create one clean portrait product image";
+    const graph = {
+      edges: [],
+      nodes: [
+        {
+          data: { title: "INC-GEN-027 TT Image Group" },
+          id: groupId,
+          type: "group",
+        },
+        {
+          data: {
+            imageModelId: modelId,
+            imageParameters: {
+              aspectRatio: "9:16",
+              inputMode: "text",
+              outputCount: 1,
+              quality: "2k",
+            },
+            imagePrompt: prompt,
+            imagePromptReady: true,
+            title: "TT Image HTTP",
+          },
+          id: "inc-gen-027-tt-image",
+          parentId: groupId,
+          type: "image",
+        },
+      ],
+    };
+    const canvasResponse = await expectOk(await request(
+      `/api/canvas/${canvasId}`,
+      {
+        body: JSON.stringify({
+          ...graph,
+          revision: 0,
+          viewport: { x: 0, y: 0, zoom: 1 },
+        }),
+        method: "PUT",
+      },
+    ), "TT Image canvas");
+    expect((await canvasResponse.json()).revision).toBeGreaterThan(0);
+    const semantic = compileFrozenWorkflowSemanticPlan({ ...graph, groupId });
+    const createBody = JSON.stringify({
+      canvasId,
+      clientSemanticFingerprint: semantic.semanticFingerprint,
+      groupId,
+    });
+    const createResponse = await expectOk(await request("/api/workflow-runs", {
+      body: createBody,
+      method: "POST",
+    }), "TT Image workflow create");
+    expect(createResponse.status).toBe(202);
+    const created = await createResponse.json() as { id: string };
+    const duplicateResponse = await expectOk(
+      await request("/api/workflow-runs", {
+        body: createBody,
+        method: "POST",
+      }),
+      "TT Image duplicate workflow create",
+    );
+    expect((await duplicateResponse.json() as { id: string }).id).toBe(created.id);
+    const terminal = await waitForTerminalRun(created.id, 800);
+    const refreshedResponse = await expectOk(
+      await request(`/api/workflow-runs/${created.id}`),
+      "TT Image refreshed workflow",
+    );
+    const refreshed = await refreshedResponse.json() as typeof terminal;
+    const database = new DatabaseSync(
+      `${process.env.UNBOUNDRY_DATA_DIR}/unboundry.sqlite`,
+      { readOnly: true },
+    );
+    const evidence = database.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM generation_tasks
+          WHERE canvas_id = ?) AS tasks,
+        (SELECT COUNT(*) FROM generation_provider_attempts AS attempt
+          JOIN generation_tasks AS task ON task.id = attempt.task_id
+          WHERE task.canvas_id = ?) AS attempts,
+        (SELECT COUNT(*) FROM workflow_runs
+          WHERE canvas_id = ?) AS runs,
+        task.provider_task_id AS providerTaskId,
+        task.result_asset_id AS resultAssetId,
+        task.state AS taskState
+      FROM generation_tasks AS task
+      WHERE task.canvas_id = ?
+    `).get(canvasId, canvasId, canvasId, canvasId) as {
+      attempts: number;
+      providerTaskId: string;
+      resultAssetId: string;
+      runs: number;
+      tasks: number;
+      taskState: string;
+    };
+    database.close();
+    const mediaPosts = providerRequests.filter(({ method, originalUrl }) =>
+      method === "POST" &&
+      new URL(originalUrl).pathname === "/v1/media/generate"
+    );
+    expect(mediaPosts).toHaveLength(1);
+    expect(JSON.parse(mediaPosts[0]!.body)).toEqual({
+      model: "tt-image-2",
+      params: { n: 1, quality: "auto", size: "1440x2560" },
+      prompt,
+    });
+    expect(providerRequests.filter(({ originalUrl }) =>
+      new URL(originalUrl).pathname === "/v1/skills/task-status"
+    )).toHaveLength(1);
+    expect(providerRequests.filter(({ originalUrl }) =>
+      new URL(originalUrl).pathname === "/v1/media/status"
+    )).toHaveLength(1);
+    expect(providerRequests.filter(({ originalUrl }) =>
+      new URL(originalUrl).pathname === "/v1/results/tt-image-v071.png"
+    )).toHaveLength(1);
+    expect({
+      attempts: evidence.attempts,
+      providerTaskId: evidence.providerTaskId,
+      refreshedState: refreshed.state,
+      refreshedTaskId: refreshed.nodes[0]?.taskId,
+      resultAssetReady: Boolean(evidence.resultAssetId),
+      runs: evidence.runs,
+      state: terminal.state,
+      taskState: evidence.taskState,
+      tasks: evidence.tasks,
+      terminalTaskId: terminal.nodes[0]?.taskId,
+    }).toEqual({
+      attempts: 1,
+      providerTaskId: "tt_image_task_v071_once",
+      refreshedState: "success",
+      refreshedTaskId: terminal.nodes[0]?.taskId,
+      resultAssetReady: true,
+      runs: 1,
+      state: "success",
+      taskState: "success",
+      tasks: 1,
+      terminalTaskId: expect.any(String),
+    });
+  } finally {
+    await app?.close();
+    await close(provider);
+    globalThis.fetch = originalFetch;
+    if (previousRelayMediaFetcher === undefined) {
+      delete process.env.UNBOUNDRY_TEST_RELAY_MEDIA_FETCHER;
+    } else {
+      process.env.UNBOUNDRY_TEST_RELAY_MEDIA_FETCHER = previousRelayMediaFetcher;
+    }
     if (previousBypass === undefined) {
       delete process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
     } else {

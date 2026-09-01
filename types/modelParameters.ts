@@ -205,8 +205,8 @@ export const gptImageSizeTiers: readonly GptImageSizeTier[] = [
 ];
 
 /**
- * 优创「GPT Image 2 · 专用协议」文档尺寸表（2026-08-19 对照本地爬取快照
- * `.crawl4ai-tool/out/ycaigc-all-models/057_image__gpt-image-2.json` 核对）。
+ * 优创 GPT Image 2 文档尺寸表。同步 gpt-image 与异步 tt-image-2
+ * 共用同一组精确像素档位；异步执行把这里的结果写入 params.size。
  * 1K / 2K / 4K 各档只支持文档列出的比例；文档没有的组合必须拦截，
  * 不能静默退回 1024 系列，也不能乱猜像素。
  */
@@ -253,6 +253,36 @@ export const youchuangGptImageSizes: Readonly<
     "2:1": "3840x1920",
   },
 };
+
+const youchuangQualityLabels: Record<string, string> = {
+  "1k": "1K",
+  "2k": "2K",
+  "4k": "4K",
+};
+
+/** Exact size compiler shared by synchronous and durable GPT Image routes. */
+export function gptImageSizeForAspectRatio(
+  value: unknown,
+  quality: unknown = "1k",
+  sizeMap?: GptImageSizeMap,
+) {
+  const ratio = value === undefined || value === null ? "auto" : String(value);
+  const tier = String(quality ?? "1k").toLowerCase();
+  const configured = sizeMap?.[tier as GptImageSizeTier]?.[ratio];
+  if (configured !== undefined) return configured;
+  if (value === undefined || value === "auto") return "auto" as const;
+  const tierTable =
+    youchuangGptImageSizes[tier as keyof typeof youchuangGptImageSizes] ??
+    youchuangGptImageSizes["1k"];
+  const size = tierTable[ratio];
+  if (size === undefined) {
+    const label = youchuangQualityLabels[tier] ?? "当前";
+    throw new Error(
+      `优创这个画质档（${label}）不支持 ${ratio} 比例，请改回自动比例或换 1K 画质`,
+    );
+  }
+  return size;
+}
 
 const options = (values: Array<ModelParameterValue | [string, ModelParameterValue]>) =>
   values.map((entry) => Array.isArray(entry)
@@ -1028,6 +1058,7 @@ const exactRelayParameterSchemaRegistry = Object.freeze<
   "audio:suno-v4.5": relaySunoV45ParameterSchema,
   "image:gemini-3-pro-image-preview": relayNanoBananaProParameterSchema,
   "image:gpt-image-2": relayGptImage2ParameterSchema,
+  "image:tt-image-2": relayGptImage2ParameterSchema,
   "video:grok-imagine-video-1.5-preview": relayGrokImagineVideo15ParameterSchema,
   "video:grok-video-3": relayGrokVideo3ParameterSchema,
   "video:kling-v3-omni-cankao": relayKlingV3OmniParameterSchema,

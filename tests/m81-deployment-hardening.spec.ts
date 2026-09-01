@@ -175,6 +175,7 @@ test("release role and bridge-mode selection are exact and fail closed", () => {
   expect(releaseRoleFromEnvironment("0.6.69", {})).toBe("final");
   expect(releaseRoleFromEnvironment("0.6.70", {})).toBe("final");
   expect(releaseRoleFromEnvironment("0.7.0", {})).toBe("final");
+  expect(releaseRoleFromEnvironment("0.7.1", {})).toBe("final");
   expect(releaseRoleFromEnvironment("0.5.2", {})).toBe("bridge");
   expect(releaseRoleFromEnvironment("0.5.2", {
     UNBOUNDRY_RELEASE_ROLE: "bridge",

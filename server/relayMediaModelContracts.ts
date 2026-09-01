@@ -1,3 +1,5 @@
+import { gptImageSizeForAspectRatio } from "../types/modelParameters";
+
 export type RelayMediaContractCapability = "audio" | "image" | "video";
 export type RelayMediaContractParamValue = boolean | number | string |
   readonly (boolean | number | string)[];
@@ -87,6 +89,37 @@ const nanoBananaPro: RelayMediaModelContract = Object.freeze({
     allowedKinds: ["image"] as const,
     allowedRoles: ["reference-image"] as const,
     maximumCount: 14,
+    roleParameters: { "reference-image": "images" as const },
+  },
+  resultKind: "image",
+});
+
+const ttImage2: RelayMediaModelContract = Object.freeze({
+  capability: "image",
+  mapParameters(parameters) {
+    assertOnlyFields(parameters, ["aspectRatio", "quality"]);
+    const aspectRatio = requiredChoice(
+      parameters.aspectRatio,
+      ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "5:4", "4:5"] as const,
+      "GPT Image 2 aspect ratio",
+    );
+    const quality = requiredChoice(
+      parameters.quality,
+      ["1k", "2k", "4k"] as const,
+      "GPT Image 2 size tier",
+    );
+    return {
+      n: 1,
+      quality: "auto",
+      size: gptImageSizeForAspectRatio(aspectRatio, quality),
+    };
+  },
+  modelId: "tt-image-2",
+  pollPolicy: { deadlineMs: 15 * 60_000, initialMs: 5_000, maximumMs: 10_000 },
+  referencePolicy: {
+    allowedKinds: ["image"] as const,
+    allowedRoles: ["reference-image"] as const,
+    maximumCount: 1,
     roleParameters: { "reference-image": "images" as const },
   },
   resultKind: "image",
@@ -280,6 +313,7 @@ const kwVideoV2 = explicitLegacyVideoContract({
 
 const contracts = new Map<string, RelayMediaModelContract>([
   [nanoBananaPro.modelId, nanoBananaPro],
+  [ttImage2.modelId, ttImage2],
   [klingV3Omni.modelId, klingV3Omni],
   [sunoV45.modelId, sunoV45],
   [doubaoTts20.modelId, doubaoTts20],

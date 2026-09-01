@@ -38,7 +38,12 @@ export function assertCurrentModelReleasePolicy(
       "当前发布策略不允许该模型声明式runtime；必须由已核准的connector拥有执行语义",
     );
   }
-  const gptImageIdentity = document.providerModelId === "gpt-image-2"
+  const gptImageIdentity = document.providerModelId === "tt-image-2"
+    ? {
+      providerDriver: "multi-protocol-relay",
+      providerProtocol: "media-generate" as const,
+    }
+    : document.providerModelId === "gpt-image-2"
     ? {
       providerDriver: "multi-protocol-relay",
       providerProtocol: "gpt-image" as const,
@@ -71,7 +76,7 @@ export function assertCurrentModelReleasePolicy(
     ) {
       throw new ModelContractPolicyError(
         "CURRENT_RELEASE_POLICY_MISMATCH",
-        "GPT Image 2执行合同必须与当前代码核准的精确registry和专用adapter一致",
+        "GPT Image 2执行合同必须与当前代码核准的精确registry和adapter一致",
       );
     }
   }

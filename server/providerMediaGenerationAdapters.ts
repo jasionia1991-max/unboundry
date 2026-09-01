@@ -127,7 +127,7 @@ export const relayMediaGenerationProvider: MediaGenerationProvider = {
       fetcher: execution.fetcher,
       onProviderResponseEvidence: execution.onProviderResponseEvidence,
       signal: execution.signal,
-      usePinnedTransport: true,
+      usePinnedTransport: execution.usePinnedTransport !== false,
     } as const;
     const contract = execution.metadata?.modelExecutionContract;
     const result = contract
@@ -171,7 +171,7 @@ export const relayMediaGenerationProvider: MediaGenerationProvider = {
       fetcher: execution.fetcher,
       onProviderResponseEvidence: execution.onProviderResponseEvidence,
       signal: execution.signal,
-      usePinnedTransport: true,
+      usePinnedTransport: execution.usePinnedTransport !== false,
     } as const;
     const contract = execution.metadata?.modelExecutionContract;
     const created = contract
