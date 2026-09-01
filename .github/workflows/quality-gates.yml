@@ -19,6 +19,10 @@ jobs:
   lightweight:
     runs-on: macos-15
     timeout-minutes: 20
+    env:
+      NPM_CONFIG_CACHE: ${{ runner.temp }}/unboundry-npm-cache
+      NPM_CONFIG_REGISTRY: https://registry.npmjs.org/
+      UNBOUNDRY_NPM_CONTENT_CACHE: ${{ runner.temp }}/unboundry-npm-cache/_cacache
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -31,11 +35,14 @@ jobs:
         run: |
           test "$(node --version)" = "v25.9.0"
           test "$(npm --version)" = "11.12.1"
+          test "$(npm config get registry)" = "https://registry.npmjs.org/"
       - run: npm ci --ignore-scripts
       - name: TypeScript
         run: npx tsc --noEmit --pretty false -p tsconfig.check.json
       - name: Architecture boundaries
         run: npm run check:architecture
+      - name: Production build
+        run: npm run build
       - name: Dependency vulnerabilities
         run: npm audit --audit-level=high
       - uses: actions/setup-node@v7
@@ -45,6 +52,8 @@ jobs:
         run: npm install --global npm@10.9.8
       - name: Safe test inventory (production-compatible runtime)
         run: npm run test:safe:preflight
+      - name: Workflow reliability integration (fake Provider, isolated data)
+        run: npm run test:ci:reliability
       - name: Source coverage inventory
         run: node scripts/check-source-coverage.mjs
       - name: Source coverage behavior

@@ -46,10 +46,19 @@ import {
   createGenerationTaskStore,
   GenerationTaskRetryFenceError,
 } from "../server/generationTaskStore";
+import { buildAuthoritativeGenerationModelConfiguration } from
+  "../server/authoritativeGenerationModelConfiguration";
+import { authoritativeModelConfigurationRevision } from
+  "../server/modelConfigurationIdentity";
+import { assertRegisteredModelExecutionTotality } from
+  "../server/modelExecutionRegistry";
 import { bootstrapPublishedModelContracts } from
   "../server/modelReleaseBootstrap";
 import { modelContractState } from "../server/modelReleaseRevisionStore";
-import { saveProviderProfile } from "../server/providerProfiles";
+import {
+  providerConfigurationVersion,
+  saveProviderProfile,
+} from "../server/providerProfiles";
 import {
   coordinateRuntimeShutdown,
   createRuntimeLifecycle,
@@ -165,6 +174,7 @@ test("release role and bridge-mode selection are exact and fail closed", () => {
   expect(releaseRoleFromEnvironment("0.6.68", {})).toBe("final");
   expect(releaseRoleFromEnvironment("0.6.69", {})).toBe("final");
   expect(releaseRoleFromEnvironment("0.6.70", {})).toBe("final");
+  expect(releaseRoleFromEnvironment("0.7.0", {})).toBe("final");
   expect(releaseRoleFromEnvironment("0.5.2", {})).toBe("bridge");
   expect(releaseRoleFromEnvironment("0.5.2", {
     UNBOUNDRY_RELEASE_ROLE: "bridge",
@@ -1803,7 +1813,39 @@ async function seedQueuedStartupGenerationFixture(
       );
       const tasks = createGenerationTaskStore(dataDirectory);
       try {
-        const admitted = tasks.admitOrGet({
+        const providerVersion = providerConfigurationVersion(profile);
+        const textNodeId = `${fixtureId}-node`;
+        const textParameters = {
+          inputs: [],
+          responseFormat: "text",
+          thinkingLevel: "minimal",
+        };
+        const textPrompt =
+          "start this committed task without a generation HTTP request";
+        const textGenerationInputKey =
+          `m81:${fixtureId}:${textNodeId}:input`;
+        const textGenerationOwnershipKey =
+          `m81:${fixtureId}:${textNodeId}:ownership`;
+        const textModelInputContractFingerprint =
+          `m81:${fixtureId}:text-contract`;
+        const textModelConfigurationRevision =
+          authoritativeModelConfigurationRevision({
+            capability: "text",
+            id: textModelId,
+            modelConfigurationUpdatedAt: timestamp,
+            parameterSchema: textModelRelease.document.capabilitySchema,
+            providerDriver: "volcengine-ark",
+            providerModelId: textProviderModelId,
+          });
+        const textExecution = assertRegisteredModelExecutionTotality({
+          capability: "text",
+          capabilitySchema: textModelRelease.document.capabilitySchema,
+          providerDriver: "volcengine-ark",
+          providerModelId: textProviderModelId,
+          providerProtocol: "native",
+          revisionIdentity: textModelRelease.revisionId,
+        });
+        const admitted = tasks.admitAuthoritativeOrGet({
           canvasId: `${fixtureId}-canvas`,
           costCurrency: "CNY",
           credentialRevision: credential.credentialVersion,
@@ -1811,55 +1853,125 @@ async function seedQueuedStartupGenerationFixture(
           idempotencyKey: `${fixtureId}-startup-key`,
           kind: "text",
           model: textModelId,
-          modelConfiguration: {
+          modelConfiguration: buildAuthoritativeGenerationModelConfiguration({
             credentialVersion: credential.credentialVersion,
+            generationInputKey: textGenerationInputKey,
+            generationOwnershipKey: textGenerationOwnershipKey,
+            modelCapability: "text",
+            modelConfigurationRevision: textModelConfigurationRevision,
+            modelExecutionAdapterId: textExecution.adapterId,
             modelId: textModelId,
+            modelInputContractFingerprint:
+              textModelInputContractFingerprint,
             modelReleaseRevision: textModelRelease,
+            modelResultCount: textExecution.resultCount,
             parameterSchema: textModelRelease.document.capabilitySchema,
-            providerConfigurationVersion: 1,
+            providerConfigurationVersion: providerVersion,
             providerDriver: "volcengine-ark",
             providerModelId: textProviderModelId,
             providerProfileId: profile.id,
             providerProtocol: "native",
-          },
-          nodeId: `${fixtureId}-node`,
+          }),
+          nodeId: textNodeId,
           ownerId,
-          parameters: {
-            inputs: [],
-            responseFormat: "text",
-            thinkingLevel: "minimal",
-          },
-          prompt: "start this committed task without a generation HTTP request",
+          parameters: textParameters,
+          prompt: textPrompt,
           providerModelId: textProviderModelId,
           providerProfileId: profile.id,
+          requestIntent: {
+            canvasId: `${fixtureId}-canvas`,
+            generationIdentityVersion: 2,
+            generationInputKey: textGenerationInputKey,
+            generationOwnershipKey: textGenerationOwnershipKey,
+            kind: "text",
+            model: textModelId,
+            modelConfigurationRevision: textModelConfigurationRevision,
+            modelInputContractFingerprint:
+              textModelInputContractFingerprint,
+            modelReleaseRevision: textModelRelease.revisionId,
+            nodeId: textNodeId,
+            parameters: textParameters,
+            prompt: textPrompt,
+          },
         });
         expect(admitted.created).toBe(true);
-        const admitVideo = (suffix: string) => tasks.admitOrGet({
-          canvasId: `${fixtureId}-canvas`,
-          costCurrency: "CNY",
-          credentialRevision: credential.credentialVersion,
-          estimatedCostMicrounits: 100_000,
-          idempotencyKey: `${fixtureId}-${suffix}-key`,
-          kind: "video",
-          model: videoModelId,
-          modelConfiguration: {
-            credentialVersion: credential.credentialVersion,
-            modelId: videoModelId,
-            modelReleaseRevision: videoModelRelease,
+        const videoModelConfigurationRevision =
+          authoritativeModelConfigurationRevision({
+            capability: "video",
+            id: videoModelId,
+            modelConfigurationUpdatedAt: timestamp,
             parameterSchema: videoModelRelease.document.capabilitySchema,
-            providerConfigurationVersion: 1,
             providerDriver: "volcengine-ark",
             providerModelId: videoProviderModelId,
-            providerProfileId: profile.id,
-            providerProtocol: "native",
-          },
-          nodeId: `${fixtureId}-${suffix}-node`,
-          ownerId,
-          parameters: {},
-          prompt: "recover committed video work without submitting again",
+          });
+        const videoExecution = assertRegisteredModelExecutionTotality({
+          capability: "video",
+          capabilitySchema: videoModelRelease.document.capabilitySchema,
+          providerDriver: "volcengine-ark",
           providerModelId: videoProviderModelId,
-          providerProfileId: profile.id,
-        }).task;
+          providerProtocol: "native",
+          revisionIdentity: videoModelRelease.revisionId,
+        });
+        const admitVideo = (suffix: string) => {
+          const canvasId = `${fixtureId}-canvas`;
+          const nodeId = `${fixtureId}-${suffix}-node`;
+          const parameters = {};
+          const prompt =
+            "recover committed video work without submitting again";
+          const generationInputKey =
+            `m81:${fixtureId}:${nodeId}:input`;
+          const generationOwnershipKey =
+            `m81:${fixtureId}:${nodeId}:ownership`;
+          const modelInputContractFingerprint =
+            `m81:${fixtureId}:${suffix}:video-contract`;
+          return tasks.admitAuthoritativeOrGet({
+            canvasId,
+            costCurrency: "CNY",
+            credentialRevision: credential.credentialVersion,
+            estimatedCostMicrounits: 100_000,
+            idempotencyKey: `${fixtureId}-${suffix}-key`,
+            kind: "video",
+            model: videoModelId,
+            modelConfiguration: buildAuthoritativeGenerationModelConfiguration({
+              credentialVersion: credential.credentialVersion,
+              generationInputKey,
+              generationOwnershipKey,
+              modelCapability: "video",
+              modelConfigurationRevision: videoModelConfigurationRevision,
+              modelExecutionAdapterId: videoExecution.adapterId,
+              modelId: videoModelId,
+              modelInputContractFingerprint,
+              modelReleaseRevision: videoModelRelease,
+              modelResultCount: videoExecution.resultCount,
+              parameterSchema: videoModelRelease.document.capabilitySchema,
+              providerConfigurationVersion: providerVersion,
+              providerDriver: "volcengine-ark",
+              providerModelId: videoProviderModelId,
+              providerProfileId: profile.id,
+              providerProtocol: "native",
+            }),
+            nodeId,
+            ownerId,
+            parameters,
+            prompt,
+            providerModelId: videoProviderModelId,
+            providerProfileId: profile.id,
+            requestIntent: {
+              canvasId,
+              generationIdentityVersion: 2,
+              generationInputKey,
+              generationOwnershipKey,
+              kind: "video",
+              model: videoModelId,
+              modelConfigurationRevision: videoModelConfigurationRevision,
+              modelInputContractFingerprint,
+              modelReleaseRevision: videoModelRelease.revisionId,
+              nodeId,
+              parameters,
+              prompt,
+            },
+          }).task;
+        };
         const accepted = tasks.transition(
           admitVideo("accepted").id,
           "running",
@@ -4357,7 +4469,7 @@ test("listening starts one committed queued task while startup gates keep blocke
         FROM generation_provider_attempts WHERE task_id = ?
       `).all(active.acceptedTaskId)).toEqual([{
         execution_attempt: 1,
-        outcome: "accepted",
+        outcome: "provider-failed",
       }]);
       expect(completed.prepare(`
         SELECT error_code, state FROM generation_tasks WHERE id = ?

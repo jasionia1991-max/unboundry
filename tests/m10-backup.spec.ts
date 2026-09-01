@@ -2162,6 +2162,634 @@ test("an encrypted frozen snapshot verifies and restores without plaintext or so
   }
 });
 
+test("locked schema42 backup verifies and restores into a fresh private directory", async () => {
+  const root = await mkdtemp(join(tmpdir(), "unboundry-schema42-backup-"));
+  let fixture: Fixture | undefined;
+  try {
+    await verifyLockedSchema42HistoricalProviderEvidence();
+    fixture = await createBackupFixture(root);
+    const generationFrozenAt = "2026-01-01T00:02:00.000Z";
+    fixture.database.prepare(`
+      UPDATE generation_tasks
+      SET state = 'failed', error_code = 'AUTH',
+        error_message = 'schema42 frozen fixture', updated_at = ?
+      WHERE id = 'backup-task'
+    `).run(generationFrozenAt);
+    fixture.database.prepare(`
+      INSERT INTO generation_task_events (
+        task_id, state, error_code, error_message, created_at
+      ) VALUES (
+        'backup-task', 'failed', 'AUTH', 'schema42 frozen fixture', ?
+      )
+    `).run(generationFrozenAt);
+    fixture.database.prepare(`
+      UPDATE generation_safety_settings
+      SET global_enabled = 0, emergency_stop = 1, updated_at = ?
+      WHERE id = 1
+    `).run(generationFrozenAt);
+    fixture.database.prepare(`
+      INSERT INTO admin_audit_events (
+        actor_user_id, action, details, created_at
+      ) VALUES ('backup-user', 'generation_safety.update', ?, ?)
+    `).run(JSON.stringify({
+      after: {
+        emergencyStop: true,
+        globalEnabled: false,
+        updatedAt: generationFrozenAt,
+      },
+    }), generationFrozenAt);
+    fixture.database.exec("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode = DELETE");
+    const sourceInspection = inspectBackupDatabase(
+      join(fixture.dataDirectory, "unboundry.sqlite"),
+      fixture.dataDirectory,
+    );
+    expect(sourceInspection.userVersion).toBe(42);
+    const sourceBefore = await treeFingerprint(fixture.dataDirectory);
+    await expectPackageError(
+      createEncryptedBackup({
+        ...backupOptions(fixture),
+        frozenSourceContract: {
+          expectedDatabaseLogicalSha256: sourceInspection.logicalSha256,
+          expectedSchemaVersion: 41,
+          freezeEvidence: {
+            generationFrozenAt,
+            lastProviderAdmissionAt: null,
+            sourceDatabaseLogicalSha256: sourceInspection.logicalSha256,
+          },
+        },
+      }),
+      "BACKUP_FROZEN_SOURCE_CONTRACT_INVALID",
+    );
+    let currentCliHistoricalSchema: (Error & { stderr?: string }) | undefined;
+    try {
+      await execute(process.execPath, [
+        "scripts/backup-data.mjs",
+        "--source-frozen",
+        "--data-dir",
+        fixture.dataDirectory,
+        "--backup-root",
+        fixture.backupRoot,
+        "--scratch-root",
+        fixture.scratchRoot,
+        "--expected-database-logical-sha256",
+        sourceInspection.logicalSha256,
+        "--expected-schema-version",
+        "41",
+        "--generation-frozen-at",
+        generationFrozenAt,
+        "--last-provider-admission-at",
+        "none",
+        "--recovery-public-key",
+        fixture.paths.recoveryPublic,
+        "--signing-private-key",
+        fixture.paths.signingPrivate,
+      ], { cwd: process.cwd() });
+    } catch (error) {
+      currentCliHistoricalSchema = error as Error & { stderr?: string };
+    }
+    expect(JSON.parse(currentCliHistoricalSchema?.stderr ?? "{}")).toMatchObject({
+      code: "BACKUP_ARGUMENT_INVALID",
+    });
+    let historicalFailure: (Error & { stderr?: string }) | undefined;
+    try {
+      await execute(process.execPath, [
+        "ops/production/backup-data-schema39.mjs",
+      ], { cwd: process.cwd() });
+    } catch (error) {
+      historicalFailure = error as Error & { stderr?: string };
+    }
+    expect(historicalFailure?.stderr).toContain(
+      "HISTORICAL_SCHEMA39_BACKUP_DISABLED",
+    );
+    const packageScripts = JSON.parse(await readFile(
+      join(process.cwd(), "package.json"),
+      "utf8",
+    )).scripts as Record<string, string>;
+    expect(packageScripts["data:backup:oss"]).toBe(
+      "node ops/production/backup-to-oss-retention.mjs",
+    );
+    let wrapperFailure: (Error & { stderr?: string }) | undefined;
+    try {
+      await execute(process.execPath, [
+        "ops/production/backup-to-oss-retention.mjs",
+      ], { cwd: process.cwd() });
+    } catch (error) {
+      wrapperFailure = error as Error & { stderr?: string };
+    }
+    expect(wrapperFailure?.stderr).toContain(
+      "SCHEMA42_OSS_BACKUP_ARGUMENT_INVALID",
+    );
+    expect(await treeFingerprint(fixture.dataDirectory)).toBe(sourceBefore);
+    const wrongWrapperDataDirectory = join(root, "wrong-wrapper-data");
+    await mkdir(wrongWrapperDataDirectory, { mode: 0o700 });
+    const unrelatedWrapperCwd = join(root, "unrelated-wrapper-cwd");
+    await mkdir(unrelatedWrapperCwd, { mode: 0o700 });
+    const wrapperScript = join(
+      process.cwd(),
+      "ops/production/backup-to-oss-retention.mjs",
+    );
+    const wrapperArguments = [
+      wrapperScript,
+      "--data-dir",
+      fixture.dataDirectory,
+      "--backup-root",
+      fixture.backupRoot,
+      "--scratch-root",
+      fixture.scratchRoot,
+      "--recovery-public-key",
+      fixture.paths.recoveryPublic,
+      "--signing-private-key",
+      fixture.paths.signingPrivate,
+      "--expected-database-logical-sha256",
+      sourceInspection.logicalSha256,
+      "--expected-schema-version",
+      "42",
+      "--generation-frozen-at",
+      generationFrozenAt,
+      "--last-provider-admission-at",
+      "none",
+      "--profile-id",
+      "storage-one",
+      "--allow-media-warning",
+      "MEDIA_INTEGRITY_LOCAL_FILE_ORPHAN",
+      "--oss-mirror",
+      JSON.stringify({
+        filePath: fixture.mirrorPath,
+        objectKey: fixture.objectKey,
+        versionId: "fake-version-schema42-wrapper",
+      }),
+    ];
+    const backupRootBeforeInvalidArguments = await treeFingerprint(
+      fixture.backupRoot,
+    );
+    for (const invalidArguments of [
+      [...wrapperArguments, "--unknown-wrapper-option"],
+      [...wrapperArguments, "--prefix", "objects/backups/one", "--prefix",
+        "objects/backups/two"],
+      [...wrapperArguments, "--retain-days", "30", "--retain-days", "31"],
+      [...wrapperArguments, "--apply-upload", "--apply-upload"],
+      [...wrapperArguments, "--prefix"],
+    ]) {
+      let invalidFailure: (Error & { stderr?: string }) | undefined;
+      try {
+        await execute(process.execPath, invalidArguments, {
+          cwd: unrelatedWrapperCwd,
+        });
+      } catch (error) {
+        invalidFailure = error as Error & { stderr?: string };
+      }
+      expect(invalidFailure?.stderr).toContain(
+        "SCHEMA42_OSS_BACKUP_ARGUMENT_INVALID",
+      );
+    }
+    expect(await treeFingerprint(fixture.backupRoot)).toBe(
+      backupRootBeforeInvalidArguments,
+    );
+    const wrapperResult = await execute(process.execPath, wrapperArguments, {
+      cwd: unrelatedWrapperCwd,
+      env: {
+        ...process.env,
+        UNBOUNDRY_DATA_DIR: wrongWrapperDataDirectory,
+      },
+    });
+    expect(JSON.parse(wrapperResult.stdout.trim())).toMatchObject({
+      applyRetention: false,
+      applyUpload: false,
+      databaseLogicalSha256: sourceInspection.logicalSha256,
+      schemaVersion: 42,
+    });
+    expect(await treeFingerprint(fixture.dataDirectory)).toBe(sourceBefore);
+    const backupResult = await execute(process.execPath, [
+      "scripts/backup-data.mjs",
+      "--source-frozen",
+      "--data-dir",
+      fixture.dataDirectory,
+      "--backup-root",
+      fixture.backupRoot,
+      "--scratch-root",
+      fixture.scratchRoot,
+      "--expected-database-logical-sha256",
+      sourceInspection.logicalSha256,
+      "--expected-schema-version",
+      "42",
+      "--generation-frozen-at",
+      generationFrozenAt,
+      "--last-provider-admission-at",
+      "none",
+      "--allow-media-warning",
+      "MEDIA_INTEGRITY_LOCAL_FILE_ORPHAN",
+      "--recovery-public-key",
+      fixture.paths.recoveryPublic,
+      "--signing-private-key",
+      fixture.paths.signingPrivate,
+      "--oss-mirror",
+      JSON.stringify({
+        filePath: fixture.mirrorPath,
+        objectKey: fixture.objectKey,
+        versionId: "fake-version-schema42",
+      }),
+    ], { cwd: process.cwd() });
+    const backup = JSON.parse(backupResult.stdout.trim()) as {
+      captureMode: string;
+      databaseLogicalSha256: string;
+      finalCandidate: boolean;
+      mediaFiles: number;
+      mediaIntegrity: {
+        backupBlockingIssues: number;
+        clean: boolean;
+        evidenceSha256: string;
+        issues: number;
+        sha256: string;
+      };
+      ossMirrors: number;
+      packageDirectory: string;
+      schemaVersion: number;
+      secretFiles: number;
+    };
+    expect(backup).toMatchObject({
+      captureMode: "locked-exact",
+      databaseLogicalSha256: sourceInspection.logicalSha256,
+      finalCandidate: true,
+      mediaFiles: 2,
+      ossMirrors: 1,
+      schemaVersion: 42,
+      secretFiles: 3,
+    });
+    expect(await packageContains(backup.packageDirectory, fixtureSentinel)).toBe(false);
+    expect(await treeFingerprint(fixture.dataDirectory)).toBe(sourceBefore);
+
+    const verifiedResult = await execute(process.execPath, [
+      "scripts/verify-backup.mjs",
+      "--backup-dir",
+      backup.packageDirectory,
+      "--scratch-root",
+      fixture.scratchRoot,
+      "--recovery-private-key",
+      fixture.paths.recoveryPrivate,
+      "--trusted-signing-public-key",
+      fixture.paths.signingPublic,
+    ], { cwd: process.cwd() });
+    const verified = JSON.parse(verifiedResult.stdout) as typeof backup;
+    expect(verified).toMatchObject({
+      captureMode: "locked-exact",
+      databaseLogicalSha256: sourceInspection.logicalSha256,
+      finalCandidate: true,
+      schemaVersion: 42,
+    });
+    expect(verified.mediaIntegrity).toEqual(backup.mediaIntegrity);
+
+    const targetDirectory = join(root, "fresh-schema42-restore");
+    const restoredResult = await execute(process.execPath, [
+      "scripts/restore-backup.mjs",
+      "--backup-dir",
+      backup.packageDirectory,
+      "--target-data-dir",
+      targetDirectory,
+      "--scratch-root",
+      fixture.scratchRoot,
+      "--recovery-private-key",
+      fixture.paths.recoveryPrivate,
+      "--trusted-signing-public-key",
+      fixture.paths.signingPublic,
+    ], { cwd: process.cwd() });
+    const restored = JSON.parse(restoredResult.stdout) as typeof backup;
+    expect(restored).toMatchObject({
+      captureMode: "locked-exact",
+      databaseLogicalSha256: sourceInspection.logicalSha256,
+      finalCandidate: true,
+      schemaVersion: 42,
+    });
+    expect(restored.mediaIntegrity).toEqual(backup.mediaIntegrity);
+    expect(restored.mediaIntegrity.evidenceSha256).toBe(
+      backup.mediaIntegrity.evidenceSha256,
+    );
+    expect(restored.mediaIntegrity.sha256).toBe(backup.mediaIntegrity.sha256);
+    const restoredInspection = inspectBackupDatabase(
+      join(targetDirectory, "unboundry.sqlite"),
+      targetDirectory,
+    );
+    expect(restoredInspection).toMatchObject({
+      foreignKeyViolations: 0,
+      integrityCheck: "ok",
+      logicalSha256: sourceInspection.logicalSha256,
+      userVersion: 42,
+    });
+    expect(restoredInspection.tables).toEqual(sourceInspection.tables);
+    await expect(validateBackupSecrets(
+      join(targetDirectory, "unboundry.sqlite"),
+      join(targetDirectory, "secrets"),
+      targetDirectory,
+    )).resolves.toMatchObject({
+      accountCredentials: 1,
+      masterKeyPresent: true,
+      providerDocumentProfiles: 1,
+      storageDocumentProfiles: 1,
+    });
+    expect(await readFile(
+      join(targetDirectory, "media", fixture.localName),
+    )).toEqual(await readFile(
+      join(fixture.dataDirectory, "media", fixture.localName),
+    ));
+    const restoredMirrorNames = await readdir(join(targetDirectory, "oss-mirrors"));
+    expect(restoredMirrorNames).toHaveLength(1);
+    expect(await readFile(
+      join(targetDirectory, "oss-mirrors", restoredMirrorNames[0]),
+    )).toEqual(await readFile(fixture.mirrorPath));
+    const recoveryIndex = await readOssRecoveryIndex(
+      join(targetDirectory, ossRecoveryIndexFileName),
+    );
+    expect(recoveryIndex).toMatchObject({
+      backupId: backup.packageDirectory.split("/").at(-1)?.replace(/\.ubbackup$/, ""),
+      databaseLogicalSha256: sourceInspection.logicalSha256,
+    });
+    expect(recoveryIndex.entries).toEqual([
+      expect.objectContaining({
+        checksumSha256: sha256(await readFile(fixture.mirrorPath)),
+        objectKey: fixture.objectKey,
+        storageProfileId: "storage-one",
+        versionId: "fake-version-schema42",
+      }),
+    ]);
+    expect((await lstat(targetDirectory)).mode & 0o777).toBe(0o700);
+    expect(await emptyOrMissing(fixture.scratchRoot)).toBe(true);
+  } finally {
+    fixture?.database.close();
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+async function verifyLockedSchema42HistoricalProviderEvidence() {
+  const root = await mkdtemp(join(tmpdir(), "unboundry-schema42-history-"));
+  let fixture: Fixture | undefined;
+  try {
+    fixture = await createBackupFixture(root);
+    const providerAttemptAt = "2026-01-01T00:00:00.000Z";
+    const generationFrozenAt = "2026-01-01T00:02:00.000Z";
+    fixture.database.prepare(`
+      UPDATE generation_tasks
+      SET state = 'failed', error_code = 'AUTH',
+        error_message = 'schema42 frozen fixture', updated_at = ?
+      WHERE id = 'backup-task'
+    `).run(generationFrozenAt);
+    fixture.database.prepare(`
+      UPDATE generation_safety_settings
+      SET global_enabled = 0, emergency_stop = 1, updated_at = ?
+      WHERE id = 1
+    `).run(generationFrozenAt);
+    fixture.database.prepare(`
+      INSERT INTO admin_audit_events (
+        actor_user_id, action, details, created_at
+      ) VALUES ('backup-user', 'generation_safety.update', ?, ?)
+    `).run(JSON.stringify({
+      after: {
+        emergencyStop: true,
+        globalEnabled: false,
+        updatedAt: generationFrozenAt,
+      },
+    }), generationFrozenAt);
+
+    const insertTask = fixture.database.prepare(`
+      INSERT INTO generation_tasks (
+        id, canvas_id, node_id, kind, prompt, model, parameters,
+        idempotency_key, request_fingerprint, state, attempt, error_code,
+        error_message, created_at, updated_at, owner_id,
+        provider_profile_id, provider_model_id, provider_task_id,
+        model_configuration, credential_revision
+      ) VALUES (
+        ?, 'backup-project', ?, 'image', 'historical terminal evidence',
+        'backup-model', '{}', ?, ?, ?, ?, ?, 'historical terminal evidence',
+        ?, ?, 'backup-user', 'provider-one', 'synthetic/backup-model', ?,
+        '{}', 1
+      )
+    `);
+    const insertAttempt = fixture.database.prepare(`
+      INSERT INTO generation_provider_attempts (
+        task_id, execution_attempt, provider_profile_id, provider_model_id,
+        kind, evidence, created_at, owner_id, credential_revision, outcome,
+        provider_task_id, failure_code, finished_at
+      ) VALUES (
+        ?, ?, 'provider-one', 'synthetic/backup-model', 'image',
+        ?, ?, 'backup-user', 1, ?, ?, ?, ?
+      )
+    `);
+    for (const historical of [
+      {
+        errorCode: "USER_ABANDONED",
+        evidence: "provider-boundary",
+        executionAttempt: 1,
+        finishedAt: null,
+        id: "historical-accepted-cancelled",
+        outcome: "accepted",
+        providerTaskId: "historical-provider-accepted",
+        state: "cancelled",
+      },
+      {
+        errorCode: "GENERATION_FAILED",
+        evidence: "provider-boundary",
+        executionAttempt: 1,
+        finishedAt: null,
+        id: "historical-response-failed",
+        outcome: "response-received",
+        providerTaskId: "historical-provider-response",
+        state: "failed",
+      },
+      {
+        errorCode: "PROVIDER_REQUEST_FAILED",
+        evidence: "provider-boundary",
+        executionAttempt: 1,
+        finishedAt: generationFrozenAt,
+        id: "historical-unknown-finished",
+        outcome: "outcome-unknown",
+        providerTaskId: null,
+        state: "failed",
+      },
+      {
+        errorCode: "PROVIDER_REQUEST_FAILED",
+        evidence: "historical-execution-attempt",
+        executionAttempt: 1,
+        finishedAt: null,
+        id: "historical-estimated-unknown",
+        outcome: "outcome-unknown",
+        providerTaskId: null,
+        state: "failed",
+      },
+      {
+        errorCode: "USER_ABANDONED",
+        evidence: "provider-boundary",
+        executionAttempt: 2,
+        finishedAt: generationFrozenAt,
+        id: "historical-current-completed",
+        outcome: "completed",
+        providerTaskId: "historical-provider-current",
+        state: "cancelled",
+      },
+    ] as const) {
+      insertTask.run(
+        historical.id,
+        `${historical.id}-node`,
+        `${historical.id}-idempotency`,
+        `${historical.id}-fingerprint`,
+        historical.state,
+        historical.executionAttempt,
+        historical.errorCode,
+        providerAttemptAt,
+        generationFrozenAt,
+        historical.providerTaskId,
+      );
+      insertAttempt.run(
+        historical.id,
+        historical.executionAttempt,
+        historical.evidence,
+        providerAttemptAt,
+        historical.outcome,
+        historical.providerTaskId,
+        historical.errorCode,
+        historical.finishedAt,
+      );
+    }
+    insertAttempt.run(
+      "historical-current-completed",
+      1,
+      "provider-boundary",
+      providerAttemptAt,
+      "outcome-unknown",
+      null,
+      "PROVIDER_REQUEST_FAILED",
+      null,
+    );
+
+    const contract = () => {
+      fixture!.database.exec(
+        "PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode = DELETE",
+      );
+      const inspection = inspectBackupDatabase(
+        join(fixture!.dataDirectory, "unboundry.sqlite"),
+        fixture!.dataDirectory,
+      );
+      return {
+        expectedDatabaseLogicalSha256: inspection.logicalSha256,
+        expectedSchemaVersion: 42 as const,
+        freezeEvidence: {
+          generationFrozenAt,
+          lastProviderAdmissionAt: providerAttemptAt,
+          sourceDatabaseLogicalSha256: inspection.logicalSha256,
+        },
+      };
+    };
+    const backup = await createEncryptedBackup({
+      ...backupOptions(fixture),
+      frozenSourceContract: contract(),
+      mediaWarningAllowlist: ["MEDIA_INTEGRITY_LOCAL_FILE_ORPHAN"],
+    });
+    expect(backup).toMatchObject({
+      captureMode: "locked-exact",
+      finalCandidate: true,
+      schemaVersion: 42,
+    });
+    const restoredDirectory = join(root, "historical-evidence-restore");
+    await restoreEncryptedBackup({
+      ...verifyOptions(fixture, backup.packageDirectory),
+      targetDirectory: restoredDirectory,
+    });
+    const restored = new DatabaseSync(
+      join(restoredDirectory, "unboundry.sqlite"),
+      { readOnly: true },
+    );
+    try {
+      expect(restored.prepare(`
+        SELECT evidence, outcome, finished_at
+        FROM generation_provider_attempts
+        WHERE task_id = 'historical-unknown-finished'
+      `).get()).toEqual({
+        evidence: "provider-boundary",
+        finished_at: generationFrozenAt,
+        outcome: "outcome-unknown",
+      });
+      expect(restored.prepare(`
+        SELECT evidence, outcome, finished_at
+        FROM generation_provider_attempts
+        WHERE task_id = 'historical-estimated-unknown'
+      `).get()).toEqual({
+        evidence: "historical-execution-attempt",
+        finished_at: null,
+        outcome: "outcome-unknown",
+      });
+      expect(restored.prepare(`
+        SELECT execution_attempt, outcome, finished_at
+        FROM generation_provider_attempts
+        WHERE task_id = 'historical-current-completed'
+        ORDER BY execution_attempt
+      `).all()).toEqual([
+        {
+          execution_attempt: 1,
+          finished_at: null,
+          outcome: "outcome-unknown",
+        },
+        {
+          execution_attempt: 2,
+          finished_at: generationFrozenAt,
+          outcome: "completed",
+        },
+      ]);
+    } finally {
+      restored.close();
+    }
+
+    fixture.database.prepare(`
+      UPDATE generation_provider_attempts
+      SET finished_at = NULL
+      WHERE task_id = 'historical-unknown-finished'
+    `).run();
+    await expectPackageError(
+      createEncryptedBackup({
+        ...backupOptions(fixture),
+        frozenSourceContract: contract(),
+        mediaWarningAllowlist: ["MEDIA_INTEGRITY_LOCAL_FILE_ORPHAN"],
+      }),
+      "BACKUP_UNSETTLED_PROVIDER_ATTEMPTS",
+    );
+    fixture.database.prepare(`
+      UPDATE generation_tasks
+      SET error_code = 'USER_ABANDONED', state = 'running'
+      WHERE id = 'historical-accepted-cancelled'
+    `).run();
+    await expectPackageError(
+      createEncryptedBackup({
+        ...backupOptions(fixture),
+        frozenSourceContract: contract(),
+        mediaWarningAllowlist: ["MEDIA_INTEGRITY_LOCAL_FILE_ORPHAN"],
+      }),
+      "BACKUP_ACTIVE_GENERATION_TASKS",
+    );
+    fixture.database.prepare(`
+      UPDATE generation_tasks
+      SET state = 'cancelled'
+      WHERE id = 'historical-accepted-cancelled'
+    `).run();
+    fixture.database.prepare(`
+      UPDATE generation_provider_attempts
+      SET finished_at = ?
+      WHERE task_id = 'historical-unknown-finished'
+    `).run(generationFrozenAt);
+    fixture.database.prepare(`
+      UPDATE generation_tasks
+      SET error_code = 'OUTCOME_UNKNOWN_BILLING_RISK'
+      WHERE id = 'historical-unknown-finished'
+    `).run();
+    await expectPackageError(
+      createEncryptedBackup({
+        ...backupOptions(fixture),
+        frozenSourceContract: contract(),
+        mediaWarningAllowlist: ["MEDIA_INTEGRITY_LOCAL_FILE_ORPHAN"],
+      }),
+      "BACKUP_UNSETTLED_PROVIDER_ATTEMPTS",
+    );
+  } finally {
+    fixture?.database.close();
+    await rm(root, { force: true, recursive: true });
+  }
+}
+
 test("backup creation fails closed when the integrity report has a backup-blocking issue", async () => {
   const root = await mkdtemp(join(tmpdir(), "unboundry-backup-integrity-block-"));
   let fixture: Fixture | undefined;
@@ -3164,7 +3792,7 @@ test("schema-38 and schema-37 backups stay exact through inspection, format-2 ve
   }
 });
 
-test("final-candidate exact-v37 chain rehydrates fake OSS offline and validates normal runtime startup", async () => {
+test("historical exact-v37 recovery chain rehydrates fake OSS offline and validates normal runtime startup", async () => {
   const root = await mkdtemp(join(tmpdir(), "unboundry-final-v37-"));
   const checkoutBuildRoot = join(process.cwd(), "dist", "client");
   const finalCandidateSource = await readFile(
@@ -4162,6 +4790,7 @@ test("final source capture acquires the shared secret lease before the app datab
     await expectPackageError(
       createEncryptedBackup({
         ...backupOptions(fixture),
+        capturePurpose: "historical-recovery",
         frozenSourceContract: finalFrozenContract(fixture),
         mediaWarningAllowlist: [
           "MEDIA_INTEGRITY_LEGACY_DURATION_PENDING",
@@ -4187,6 +4816,7 @@ test("final source capture acquires the shared secret lease before the app datab
       await expectPackageError(
         createEncryptedBackup({
           ...backupOptions(fixture),
+          capturePurpose: "historical-recovery",
           frozenSourceContract: finalFrozenContract(fixture),
           mediaWarningAllowlist: [
             "MEDIA_INTEGRITY_LEGACY_DURATION_PENDING",
@@ -4220,6 +4850,7 @@ test("final source capture acquires the shared secret lease before the app datab
       .toBeGreaterThanOrEqual(32_768);
     await expect(createEncryptedBackup({
       ...backupOptions(fixture),
+      capturePurpose: "historical-recovery",
       frozenSourceContract: {
         ...finalFrozenContract(fixture),
         expectedDatabaseLogicalSha256: walInspection.logicalSha256,
@@ -4278,6 +4909,7 @@ test("final source capture rejects provider document and SQLite revision split",
     await expectPackageError(
       createEncryptedBackup({
         ...backupOptions(fixture),
+        capturePurpose: "historical-recovery",
         frozenSourceContract: finalFrozenContract(fixture),
         mediaWarningAllowlist: [
           "MEDIA_INTEGRITY_LEGACY_DURATION_PENDING",
@@ -4313,6 +4945,7 @@ test("final source capture rejects provider document and SQLite revision split",
     await expectPackageError(
       createEncryptedBackup({
         ...backupOptions(fixture),
+        capturePurpose: "historical-recovery",
         frozenSourceContract: {
           expectedDatabaseLogicalSha256: quietInspection.logicalSha256,
           expectedSchemaVersion: 37,
@@ -4354,6 +4987,7 @@ test("final source capture rejects an unsettled schema37 Provider boundary", asy
     await expectPackageError(
       createEncryptedBackup({
         ...backupOptions(fixture),
+        capturePurpose: "historical-recovery",
         frozenSourceContract: {
           ...finalFrozenContract(fixture),
           expectedDatabaseLogicalSha256: changed.logicalSha256,
@@ -4417,6 +5051,7 @@ test("final source capture rejects an unsettled schema37 Provider boundary", asy
     await expectPackageError(
       createEncryptedBackup({
         ...backupOptions(schema38Fixture),
+        capturePurpose: "historical-recovery",
         frozenSourceContract: {
           expectedDatabaseLogicalSha256: schema38Inspection.logicalSha256,
           expectedSchemaVersion: 38,

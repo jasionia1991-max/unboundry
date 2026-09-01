@@ -1,12 +1,16 @@
 # Unboundry 项目级 Agent 施工守则
 
-> 2026-09-01 最新用户 `/goal` 已完整激活 INC-GEN-025，并明确覆盖下方“仅文档/未授权”的旧断点描述。当前唯一实现工作树为 `/Users/mymy/Documents/unboundry-inc-gen-025-server-authoritative-2026-09-01`，分支 `codex/inc-gen-025-server-authoritative-group-run`，实时 `origin/main` 基线 `74dc9d9307abee9169a2d2aefc4b01add96114c9`。目标版本已确认为 `v0.6.70`，实现、schema、GitHub/PR/CI/merge/tag/Release、成对生产迁移/回退及门通过后指定 Canvas/group 唯一一次真实整组验收均获本 Goal 一次性授权；真实预算不超过 CNY 300 等值，全部 outbound Provider POST 不超过 11，任何逻辑节点不得第二次原始 POST。受保护文件继续永久禁止读取、哈希、修改、暂存、移动或删除。本段为最新权威，历史段落只作证据。
+> **2026-09-02 INC-GEN-026 当前最高优先级**：用户最新明确说“授权上线，版本号v0.7.0”，R9 的一次性版本、commit/push/PR/CI/tag/GitHub Release、生产 schema42 备份/安装/切换/rollback/forward 授权已经生效。实时门确认 `origin/main=94d77d7618f4c88877b457c2249a824d40dd5633`、v0.7.0 远端 tag/Release 未占用、生产仍为 `v0.6.70/schema42` 且 active/ready、活动 task/未收口 unknown/活动 publication/workflow run 均为 0。本次授权不包括历史 9-task apply、真实 Provider POST、真实 OSS 写、费用或真实 Canvas/group 点击。R0～R8 唯一 formal safe full 原始 `1162/1167` 与最小关闭 `112/112` 永久保留，禁止第二次 full；v0.7.0 版本小差异只跑直接相关 safe spec、build/CI 和增量 Review。唯一工作树仍为 `/Users/mymy/Documents/unboundry-inc-gen-026-workflow-reliability-2026-09-01`，分支 `codex/inc-gen-026-workflow-reliability`。当前恢复入口依次为 `spec/INC_GEN_026_CHECKPOINT.md`、`spec/INC_GEN_026_ONE_CLICK_WORKFLOW_RELIABILITY_FINAL_IMPLEMENTATION_PLAN_2026-09-01.md`、`spec/INC_GEN_026_ACCEPTANCE_MATRIX_2026-09-01.md`、`spec/INC_GEN_026_LOCAL_IMPLEMENTATION_RECEIPT_2026-09-01.md`。
+
+> **以下 INC-GEN-025 段落是历史时点记录，不再是当前授权**：2026-09-01 当时用户 `/goal` 曾激活 INC-GEN-025，并授权 v0.6.70 实现、发布和受控验收。该授权后来已执行并消费；不得据此再次修改、发布或发起真实生成。受保护文件继续永久禁止读取、哈希、修改、暂存、移动或删除。
 
 本文件适用于“包含本文件的 Unboundry Git 工作树”，不再用固定目录名代替仓库身份。用户最新明确指令优先；若与仓库状态或本文冲突，先停止并向用户报告，不得猜测。
 
-当前生产身份：生产运行`v0.6.69/schema41`且健康；INC-GEN-025 当前为 `GOAL_ACTIVE / R7_FORMAL_FULL_EXECUTED_TARGETED_CLOSURE_PASS / R7_DELTA_REVIEW_GO / R8_GITHUB_PENDING / PRODUCTION_V0_6_69_UNCHANGED`。任何发布或真实点击只可在本 Goal 的前置技术、Review、唯一 formal safe full、CI、生产零付费和容量门全部通过后消费。
+历史 INC-GEN-025 发布前身份：当时生产运行`v0.6.69/schema41`，候选处于 R8。当前生产运行`v0.6.70/schema42`，且 INC-GEN-026 审计判定 workflow 业务 NO-GO；不得按本历史段继续发布或点击。
 
-2026-09-01 INC-GEN-025 当前状态：最新 `/goal` 已覆盖早先“只落文档”断点并激活一次性实施授权。服务端durable workflow run、immutable semantic plan、generation task/media publication权威结果、独立Canvas projection、media容量reservation和确定性task幂等已完成R1-R5实现与定向验证；R6主线程+唯一独立Review最终为67文件、277 tracked hunks+15 untracked全文、`P0=0/P1=0/P2=0/GO`。R7唯一formal safe full原始`1149/1154`已永久保留，5项失败均由m2/m38/m92/m57最小子集及共享m5关闭，未运行第二次full；同一Reviewer复审最终增量11文件并盘点整体72文件/299 tracked hunks，结论`P0=0/P1=0/P2=0/GO`。当前进入R8 GitHub/不可变发布；生产迁移与真实点击尚未执行。INC-GEN-024窄候选继续为`SUPERSEDED_NO_GO`。实时断点为`spec/INC_GEN_025_CHECKPOINT.md`。
+2026-09-01 INC-GEN-025 历史状态：当时的实现、定向验证、Review 和 formal full 回执原样保留；后置审计证明这些证据没有穿过关键 HTTP→admission 接缝，也漏掉同步 publication/OSS 故障，因此其 `P0=0/P1=0/GO` 不能作为当前 GO。实时断点已经迁移到 `spec/INC_GEN_026_CHECKPOINT.md`。
+
+下方所有更早 INC/版本状态均为历史时点记录，即使原文保留“当前”字样，也不再是当前授权或当前生产播报。
 
 2026-09-01 INC-GEN-024 当前候选状态：v0.6.69生产真实点击证明旧`cancelled / USER_ABANDONED` accepted task会永久阻止新明确点击，但重复计费围栏有效。v0.6.70候选只允许一次明确新点击在逐项匹配task/node/kind及服务端`cancelled / USER_ABANDONED`后结束旧checkpoint并执行当前图；自动恢复、普通failed、running、outcome-unknown或身份不匹配继续禁止新提交。safe m22 `45/45`、治理m38最终`18/18`与preflight通过；尚未版本化、独立Review或获得发布/再次点击授权。实时断点为`spec/INC_GEN_024_CHECKPOINT.md`。
 
@@ -30,15 +34,27 @@
 
 ## 1. 每次开始或上下文恢复必读
 
-按顺序完整阅读：
+INC-GEN-026 当前任务按顺序完整阅读：
+
+1. `上线规矩.md` 顶部当前区块
+2. `spec/INC_GEN_026_CHECKPOINT.md`
+3. `spec/INC_GEN_026_ONE_CLICK_WORKFLOW_RELIABILITY_FINAL_IMPLEMENTATION_PLAN_2026-09-01.md`
+4. `spec/INC_GEN_026_ACCEPTANCE_MATRIX_2026-09-01.md`
+5. `spec/INC_GEN_026_LOCAL_IMPLEMENTATION_GOAL_PROMPT_2026-09-01.md`（只在用户最新消息明确启动 Goal 时生效）
+6. `spec/UNBOUNDRY_CURRENT_STATE.md` 顶部当前区块
+7. `README.md` 顶部当前区块
+8. `TASKS.md` 顶部当前区块
+9. `/Users/mymy/Documents/unboundry/UNBOUNDRY_AUDIT_REPORT_AND_LEDGER_REVIEW_2026-09-01.md`
+
+下列旧清单只在查历史事故时按需读取，不得覆盖上面的当前路由或恢复旧授权：
 
 1. `上线规矩.md`
 2. `spec/UNBOUNDRY_CURRENT_STATE.md`
 3. `README.md`
-4. `spec/INC_GEN_025_CHECKPOINT.md`（当前唯一实时断点；最新Goal已激活实施与一次性发布/验收授权）
+4. `spec/INC_GEN_025_CHECKPOINT.md`（历史断点；当时 Goal 与一次性授权均已执行并消费）
 5. `spec/INC_GEN_025_SERVER_AUTHORITATIVE_GROUP_RUN_PLAN_2026-09-01.md`
 6. `spec/INC_GEN_025_ACCEPTANCE_MATRIX_2026-09-01.md`
-7. `spec/INC_GEN_025_ONE_SHOT_GOAL_PROMPT_2026-09-01.md`（只有用户在新Session完整粘贴时才是实施/版本/发布/真实验收授权）
+7. `spec/INC_GEN_025_ONE_SHOT_GOAL_PROMPT_2026-09-01.md`（历史授权已消费；禁止复制或重新激活）
 8. `spec/INC_GEN_024_CHECKPOINT.md`（历史诊断断点；v0.6.70窄候选SUPERSEDED_NO_GO）
 9. `spec/INC_GEN_024_EXPLICIT_TERMINAL_RESTART_PLAN_2026-09-01.md`
 10. `spec/INC_GEN_024_ACCEPTANCE_MATRIX_2026-09-01.md`
@@ -75,12 +91,14 @@
 ### 默认工具链与生产兼容通道
 
 - 项目普通开发、类型检查、构建和新shell默认使用`.node-version`中的Node `25.9.0`与`packageManager`中的npm `11.12.1`；不得再把`/Users/mymy/.hermes/node/bin`或`/Users/mymy/.local/bin`中的Node 22预置到普通shell PATH。
-- 当前生产v0.6.69真实运行Node `22.23.2` / npm `10.9.8`；本版没有迁移生产Node运行时。
-- `scripts/run-safe-tests.mjs`、源码覆盖门和不可变release builder继续使用Node `22.23.1` / npm `10.9.8`专用兼容通道，以复现当前生产代际；这是显式测试/发布例外，不是项目默认shell。`engines`同时覆盖两端，未来迁移生产前不得删除Node 22兼容边界。
+- 2026-09-02 R9 只读刷新确认 v0.6.70 生产仍运行 Node `22.23.2` / npm `10.9.8`；本次 v0.7.0 发布保持该运行时，不顺带迁移 Node/npm。
+- `scripts/run-safe-tests.mjs`、源码覆盖门和历史不可变 release builder 继续使用 Node `22.23.1` / npm `10.9.8` 专用兼容通道；它是本地复现通道，不等同于已确认的生产 Node `22.23.2`，也不是项目默认 shell。在完成兼容性审计前不得删除 Node 22 边界。
 
 ## 2. 当前授权边界
 
-- **2026-09-01 INC-GEN-025 当前权威状态**：用户最新 `/goal` 已明确授权当前隔离工作树的一次性实现、v0.6.70、Review、GitHub/Release、成对生产迁移/回退及全部门通过后的指定Canvas/group唯一真实点击。R1-R5实现与定向验证已完成，当前R6 Review；尚未commit/push/PR/tag/Release、生产写、Provider POST或OSS写；
+- **2026-09-02 INC-GEN-026 当前最高权威**：R0～R8 本地实现、测试、Review、唯一 formal safe full 和文档收口已完成。full 原始 `1162/1167` 与 5 项失败如实保留，m41/m73/m81 最小关闭 `112/112 PASS`，未重复 full；用户最新已授权 v0.7.0 的一次性 commit/push/PR/CI/tag/Release，以及生产 schema42 locked-exact backup、安装、切换和 rollback/forward。历史生产 task apply、真实 Provider、真实 OSS、费用和真实 Canvas/group 点击仍未授权；旧授权一律不得复用；
+
+- **2026-09-01 INC-GEN-025 历史授权状态（已执行、已消费）**：当时用户 `/goal` 曾授权该隔离工作树的一次性实现、v0.6.70、Review、GitHub/Release、成对生产迁移/回退及受控真实点击。该段只保留历史过程，不得据此继续 R6、发布、点击或产生费用；
 
 - **2026-09-01 INC-GEN-024 当前权威状态**：用户要求一步到位解决图片/视频/音频一次点击交付。现网v0.6.69健康；本轮唯一真实整组点击已消费，Provider POST0/11、费用0，但没有生成素材，不能写验收通过。v0.6.70本地候选只允许明确新点击越过精确`cancelled / USER_ABANDONED`旧accepted task，自动恢复和结果不明边界不放宽；safe m22 `45/45`与preflight通过。v0.6.70版本/发布授权、独立Review及新的真实点击/预算授权均未取得；
 

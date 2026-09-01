@@ -20,6 +20,7 @@ const identifierPattern = /^[a-z0-9._-]+$/i;
 
 type TaskRow = {
   attempt: number;
+  error_code?: string | null;
   kind: "audio" | "image" | "text" | "video";
   model_configuration?: string;
   owner_id: string | null;
@@ -51,6 +52,136 @@ function transaction<T>(database: DatabaseSync, operation: () => T) {
   } catch (error) {
     if (database.isTransaction) database.exec("ROLLBACK");
     throw error;
+  }
+}
+
+/**
+ * A synchronous Provider response cannot be fetched again after its bytes
+ * disappear from process memory. Atomically close that exact paid attempt
+ * without creating a retryable Provider outcome. If publication already owns
+ * the bytes, hand the task to publication recovery instead.
+ */
+export function settleSynchronousResultSaveExhaustion(input: Readonly<{
+  dataDirectory?: string;
+  executionAttempt: number;
+  taskId: string;
+}>) {
+  if (
+    !identifierPattern.test(input.taskId) ||
+    input.taskId.length > 120 ||
+    !Number.isSafeInteger(input.executionAttempt) ||
+    input.executionAttempt < 1
+  ) {
+    throw new Error("Invalid synchronous result-save settlement");
+  }
+  const database = openAppDatabase(input.dataDirectory);
+  try {
+    return transaction(database, () => {
+      const current = database.prepare(`
+        SELECT task.id, task.state, task.attempt, task.error_code,
+               task.provider_task_id AS task_provider_task_id,
+               attempt.outcome,
+               attempt.provider_task_id AS attempt_provider_task_id
+        FROM generation_tasks AS task
+        JOIN generation_provider_attempts AS attempt
+          ON attempt.task_id = task.id
+          AND attempt.execution_attempt = task.attempt
+          AND attempt.owner_id IS task.owner_id
+          AND attempt.kind = task.kind
+          AND attempt.provider_profile_id IS task.provider_profile_id
+          AND attempt.provider_model_id IS task.provider_model_id
+        WHERE task.id = ?
+      `).get(input.taskId) as
+        | {
+            attempt: number;
+            attempt_provider_task_id: string | null;
+            error_code: string | null;
+            id: string;
+            outcome: string;
+            state: string;
+            task_provider_task_id: string | null;
+          }
+        | undefined;
+      if (
+        !current ||
+        !["running", "recovering"].includes(current.state) ||
+        current.attempt !== input.executionAttempt ||
+        current.task_provider_task_id !== null ||
+        current.attempt_provider_task_id !== null ||
+        current.outcome !== "response-received"
+      ) return undefined;
+
+      const publicationPending = Boolean(database.prepare(`
+        SELECT 1
+        FROM media_publication_attempts
+        WHERE source = 'generation'
+          AND task_id = ?
+          AND task_execution_attempt = ?
+          AND state IN (
+            'reserved', 'staged', 'external-ready', 'compensating'
+          )
+        LIMIT 1
+      `).get(input.taskId, input.executionAttempt));
+      if (
+        publicationPending &&
+        current.state === "recovering" &&
+        current.error_code === "AUTOMATIC_RESULT_RECOVERY"
+      ) return undefined;
+      const nextState = publicationPending ? "recovering" : "failed";
+      const timestamp = new Date().toISOString();
+      const error = publicationPending
+        ? {
+            code: "AUTOMATIC_RESULT_RECOVERY",
+            message: "平台结果已进入安全保存队列；系统会继续原结果且不会重复提交",
+          }
+        : {
+            code: "RESULT_SAVE_FAILED_NO_RETRY",
+            message: "平台已返回结果，但系统未能安全保存；本轮已停止且不会重复提交",
+          };
+      const updatedTask = database.prepare(`
+        UPDATE generation_tasks
+        SET state = ?, error_code = ?, error_message = ?, updated_at = ?
+        WHERE id = ? AND state = ? AND attempt = ?
+          AND provider_task_id IS NULL
+      `).run(
+        nextState,
+        error.code,
+        error.message,
+        timestamp,
+        current.id,
+        current.state,
+        input.executionAttempt,
+      );
+      if (updatedTask.changes !== 1) {
+        throw new Error("Generation task changed concurrently");
+      }
+      if (!publicationPending) {
+        const updatedAttempt = database.prepare(`
+          UPDATE generation_provider_attempts
+          SET failure_code = 'RESULT_SAVE_FAILED_NO_RETRY'
+          WHERE task_id = ? AND execution_attempt = ?
+            AND provider_task_id IS NULL
+            AND outcome = 'response-received'
+        `).run(input.taskId, input.executionAttempt);
+        if (updatedAttempt.changes !== 1) {
+          throw new Error("Provider attempt changed concurrently");
+        }
+      }
+      database.prepare(`
+        INSERT INTO generation_task_events (
+          task_id, state, error_code, error_message, created_at
+        ) VALUES (?, ?, ?, ?, ?)
+      `).run(
+        current.id,
+        nextState,
+        error.code,
+        error.message,
+        timestamp,
+      );
+      return { state: nextState, taskId: current.id } as const;
+    });
+  } finally {
+    database.close();
   }
 }
 
@@ -94,7 +225,7 @@ export function commitGenerationMediaResult(
       const taskId = publicationToken.taskId;
       if (!taskId) throw new Error("Generation publication task is missing");
       const task = database.prepare(`
-        SELECT owner_id, kind, state, attempt, result_asset_id,
+        SELECT owner_id, kind, state, attempt, result_asset_id, error_code,
                provider_model_id, provider_profile_id, provider_task_id
         FROM generation_tasks WHERE id = ?
       `).get(taskId) as TaskRow | undefined;
@@ -120,7 +251,10 @@ export function commitGenerationMediaResult(
       if (
         !task || task.owner_id !== publicationToken.ownerId ||
         task.kind !== publicationToken.kind ||
-        !["running", "recovering"].includes(task.state) ||
+        !["running", "recovering"].includes(task.state) && !(
+          task.state === "failed" &&
+          task.error_code === "RESULT_SAVE_FAILED_NO_RETRY"
+        ) ||
         task.result_asset_id !== null
       ) {
         throw new Error("Generation task lost publication ownership");
@@ -189,7 +323,11 @@ export function commitGenerationMediaResult(
             actual_cost_microunits = ?, provider_usage_tokens = ?,
             error_code = NULL, error_message = NULL, updated_at = ?
         WHERE id = ? AND owner_id = ? AND kind = ?
-          AND attempt = ? AND state IN ('running', 'recovering')
+          AND attempt = ?
+          AND (
+            state IN ('running', 'recovering')
+            OR (state = 'failed' AND error_code = 'RESULT_SAVE_FAILED_NO_RETRY')
+          )
           AND result_asset_id IS NULL
       `).run(
         evidence.assetId,
@@ -680,7 +818,7 @@ export async function recoverPendingGenerationMediaResults(options?: {
     let task: TaskRow | undefined;
     try {
       task = database.prepare(`
-        SELECT owner_id, kind, state, attempt, result_asset_id,
+        SELECT owner_id, kind, state, attempt, result_asset_id, error_code,
                provider_model_id, provider_profile_id, provider_task_id,
                model_configuration
         FROM generation_tasks WHERE id = ?
@@ -698,10 +836,19 @@ export async function recoverPendingGenerationMediaResults(options?: {
       stagingName: row.staging_name,
       storageBackend: row.storage_backend,
       storageProfileId: row.storage_profile_id,
+      taskExecutionAttempt: row.task_execution_attempt ?? undefined,
       taskId,
     };
+    const narrowTerminalRecovery = Boolean(
+      task?.state === "failed" &&
+      task.error_code === "RESULT_SAVE_FAILED_NO_RETRY" &&
+      task.result_asset_id === null,
+    );
     const primaryRecovery = Boolean(
-      task && ["running", "recovering"].includes(task.state) &&
+      task && (
+        ["running", "recovering"].includes(task.state) ||
+        narrowTerminalRecovery
+      ) &&
       task.result_asset_id === null,
     );
     const alternateRecovery = Boolean(
@@ -713,15 +860,10 @@ export async function recoverPendingGenerationMediaResults(options?: {
       task.owner_id !== row.owner_id || task.kind !== row.kind ||
       task.attempt !== row.task_execution_attempt
     ) {
-      if (task?.state === "success") {
-        failGenerationAlternateMediaResult(token, "MEDIA_RECOVERY_TASK_TERMINAL");
-      } else {
-        failGenerationMediaResult(token, "MEDIA_RECOVERY_TASK_TERMINAL");
-      }
-      await compensateMediaPublication(token, {
-        code: "MEDIA_RECOVERY_TASK_TERMINAL",
-      });
-      outcomes.push({ action: "failed", assetId: row.asset_id, taskId });
+      // Provider bytes are a stronger fact than an unrelated/stale task
+      // terminal snapshot. Preserve them for exact recovery or operator
+      // adjudication; never compensate an otherwise intact generated result.
+      outcomes.push({ action: "blocked", assetId: row.asset_id, taskId });
       continue;
     }
     const prepared = await (

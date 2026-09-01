@@ -1,0 +1,28 @@
+{
+  "fixtureSchemaVersion": 1,
+  "purpose": "Minimum redacted evidence shape for INC-GEN-026 historical terminal Provider settlement inspection",
+  "sourceReports": [
+    {
+      "pathLabel": "UNBOUNDRY_AUDIT_REPORT_AND_LEDGER_REVIEW_2026-09-01.md",
+      "sha256": "e31e92a87badd48f61baa8235267f3245d7b866261b63b1538665145b72c0410"
+    },
+    {
+      "pathLabel": "UNBOUNDRY_FULL_AUDIT_2026-09-01.md",
+      "sha256": "52e3bad76efa028be42c16ac253e76dc7615c80240f708b3811f18e804b3d0a0"
+    }
+  ],
+  "observedSharedShape": {
+    "affectedTaskCount": 9,
+    "attemptFailureCode": "GENERATION_FAILED",
+    "attemptFinishedAt": null,
+    "attemptOutcome": "response-received",
+    "taskState": "failed"
+  },
+  "records": [],
+  "blockedEvidence": [
+    {
+      "count": 9,
+      "reason": "The frozen audit reports do not contain the nine exact task ids, attempt numbers, Provider ids, owners, adapters, or row fingerprints. Exact records must be derived read-only from an authorized schema42 snapshot; they are intentionally not guessed here."
+    }
+  ]
+}

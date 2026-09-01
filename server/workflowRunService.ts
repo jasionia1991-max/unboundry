@@ -9,6 +9,8 @@ import {
 } from "./inputPreflight";
 import { workflowMediaCapacity } from "./mediaPublicationService";
 import { admitPreparedGenerationTask } from "./generationAdmissionApplication";
+import { buildAuthoritativeGenerationModelConfiguration } from
+  "./authoritativeGenerationModelConfiguration";
 import { generationTaskApplication } from "./generationTasks";
 import {
   generationInputKey,
@@ -24,13 +26,13 @@ import {
   submissionParameterValues,
   type ModelParameterSchema,
 } from "../types/modelParameters";
-import type { ModelReleaseRevision } from "../types/modelReleaseRevisions";
 import {
   compileRegisteredModelTaskDecision,
   workflowRecoveryPolicy,
-  type WorkflowRecoveryGrade,
 } from "./modelExecutionRegistry";
 import { modelConfigurationRevision } from "./modelCatalog";
+import { assertModelReleaseRevisionIntegrity } from
+  "./modelReleaseRevisionStore";
 import {
   canvasGraphRevisionMatchesInTransaction,
   projectWorkflowResultInTransaction,
@@ -41,62 +43,31 @@ import {
   type FrozenWorkflowSemanticPlan,
 } from "../types/workflowSemanticPlan";
 import { hasActiveWorkflowRunForCanvas } from "./workflowRunLocks";
+import {
+  parseImmutableWorkflowPlan,
+  WorkflowPlanValidationError,
+  type StoredWorkflowNodePlan as StoredNodePlan,
+  type StoredWorkflowPlan,
+  type WorkflowRunSummary,
+} from "../types/workflowRuns";
 
 const activeRunStates = ["running", "stopping"] as const;
 const terminalNodeStates = ["success", "failed", "blocked", "cancelled"] as const;
 
 type ModelRow = NonNullable<ReturnType<typeof generationTaskApplication.resolveModel>>;
 
-type StoredNodePlan = FrozenWorkflowSemanticPlan["nodes"][number] & Readonly<{
-  costCurrency: "CNY" | "USD";
-  modelConfigurationRevision: string;
-  modelReleaseRevision: ModelReleaseRevision;
-  providerDriver: string;
-  providerModelId: string;
-  providerProtocol: string;
-  providerProfileId: string;
-  recoveryEvidence: string;
-  recoveryGrade: WorkflowRecoveryGrade;
-}>;
-
-type StoredWorkflowPlan = Readonly<{
-  edges: FrozenWorkflowSemanticPlan["edges"];
-  executableNodeIds: readonly string[];
-  externalNodes: readonly Record<string, unknown>[];
-  groupId: string;
-  nodes: readonly StoredNodePlan[];
-  semanticFingerprint: string;
-  version: 1;
-}>;
-
-export type WorkflowRunSummary = Readonly<{
-  canvasId: string;
-  createdAt: string;
-  errorCode?: string;
-  errorMessage?: string;
-  groupId: string;
-  id: string;
-  lockedNodeIds: readonly string[];
-  nodes: readonly Readonly<{
-    errorCode?: string;
-    errorMessage?: string;
-    id: string;
-    kind: NodeInputKind;
-    projectionState: "pending" | "applied" | "conflict" | "failed";
-    state: "pending" | "admitting" | "admitted" | "success" | "failed" | "blocked" | "cancelled";
-    taskId?: string;
-  }>[];
-  semanticFingerprint: string;
-  state: "running" | "stopping" | "success" | "failed" | "cancelled";
-  updatedAt: string;
-}>;
-
 function parsePlan(value: unknown): StoredWorkflowPlan {
-  const plan = typeof value === "string" ? JSON.parse(value) : value;
-  if (!plan || typeof plan !== "object" || (plan as { version?: unknown }).version !== 1) {
-    throw new Error("Workflow run plan is invalid");
+  const plan = parseImmutableWorkflowPlan(value);
+  try {
+    for (const node of plan.nodes) {
+      assertModelReleaseRevisionIntegrity(node.modelReleaseRevision);
+    }
+  } catch {
+    throw new WorkflowPlanValidationError(
+      "Workflow model release integrity is invalid",
+    );
   }
-  return plan as StoredWorkflowPlan;
+  return plan;
 }
 
 function nodeSummaryRows(database: DatabaseSync, runId: string) {
@@ -114,19 +85,36 @@ function nodeSummaryRows(database: DatabaseSync, runId: string) {
   }>;
 }
 
+function clientSemanticFingerprint(row: Record<string, unknown>) {
+  try {
+    const plan = JSON.parse(String(row.plan_json)) as Record<string, unknown>;
+    if (
+      typeof plan.clientSemanticFingerprint === "string" &&
+      plan.clientSemanticFingerprint.length > 0
+    ) return plan.clientSemanticFingerprint;
+  } catch {
+    // A malformed stored plan must remain inspectable so the sweep can mark it
+    // failed and release only resources owned by this run.
+  }
+  return String(row.semantic_fingerprint);
+}
+
 function summary(database: DatabaseSync, row: Record<string, unknown>): WorkflowRunSummary {
-  const plan = parsePlan(row.plan_json);
+  const lockedNodeIds = (database.prepare(`
+    SELECT node_id FROM workflow_run_locks
+    WHERE run_id = ? ORDER BY node_id
+  `).all(String(row.id)) as Array<{ node_id: string }>).map(({ node_id }) =>
+    node_id
+  );
   return Object.freeze({
     canvasId: String(row.canvas_id),
+    clientSemanticFingerprint: clientSemanticFingerprint(row),
     createdAt: String(row.created_at),
     ...(row.error_code ? { errorCode: String(row.error_code) } : {}),
     ...(row.error_message ? { errorMessage: String(row.error_message) } : {}),
     groupId: String(row.group_id),
     id: String(row.id),
-    lockedNodeIds: Object.freeze([
-      ...plan.executableNodeIds,
-      ...plan.externalNodes.map(({ id }) => String(id)),
-    ]),
+    lockedNodeIds: Object.freeze(lockedNodeIds),
     nodes: Object.freeze(nodeSummaryRows(database, String(row.id)).map((node) =>
       Object.freeze({
         ...(node.error_code ? { errorCode: node.error_code } : {}),
@@ -320,9 +308,10 @@ export async function createWorkflowRun(input: {
       semanticIdentity: node.semanticIdentity,
     })),
   });
-  const plan: StoredWorkflowPlan = Object.freeze({
+  const plan = parsePlan({
     ...semantic,
-    externalNodes: Object.freeze(semantic.externalNodes.map((node) => ({
+    clientSemanticFingerprint: semantic.semanticFingerprint,
+    externalNodes: semantic.externalNodes.map((node) => ({
       data: {
         ...(node.assetId ? { assetId: node.assetId } : {}),
         ...(node.content ? { content: node.content } : {}),
@@ -330,8 +319,8 @@ export async function createWorkflowRun(input: {
       },
       id: node.id,
       type: node.kind,
-    }))),
-    nodes: Object.freeze(storedNodes),
+    })),
+    nodes: storedNodes,
     semanticFingerprint: authoritativeFingerprint,
   });
   const reservationBytes = workflowMediaCapacity.estimate(
@@ -462,18 +451,40 @@ export async function createWorkflowRun(input: {
 
 export function stopWorkflowRun(ownerId: string, runId: string) {
   const database = openAppDatabase();
+  let result: WorkflowRunSummary | undefined;
+  let shouldKick = false;
   try {
-    const timestamp = new Date().toISOString();
-    database.prepare(`
-      UPDATE workflow_runs
-      SET stop_requested = 1, state = 'stopping', updated_at = ?
-      WHERE id = ? AND owner_id = ? AND state = 'running'
-    `).run(timestamp, runId, ownerId);
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const current = database.prepare(`
+        SELECT * FROM workflow_runs WHERE id = ? AND owner_id = ?
+      `).get(runId, ownerId) as Record<string, unknown> | undefined;
+      if (current?.state === "running") {
+        const changed = database.prepare(`
+          UPDATE workflow_runs
+          SET stop_requested = 1, state = 'stopping', updated_at = ?
+          WHERE id = ? AND owner_id = ? AND state = 'running'
+        `).run(new Date().toISOString(), runId, ownerId);
+        if (changed.changes !== 1) throw new Error("Workflow stop changed concurrently");
+        shouldKick = true;
+      } else if (current?.state === "stopping") {
+        shouldKick = true;
+      }
+      const latest = current
+        ? database.prepare("SELECT * FROM workflow_runs WHERE id = ?")
+            .get(runId) as Record<string, unknown>
+        : undefined;
+      database.exec("COMMIT");
+      result = latest ? summary(database, latest) : undefined;
+    } catch (error) {
+      if (database.isTransaction) database.exec("ROLLBACK");
+      throw error;
+    }
   } finally {
     database.close();
   }
-  kickWorkflowRunner();
-  return getWorkflowRun(ownerId, runId);
+  if (shouldKick) kickWorkflowRunner();
+  return result;
 }
 
 function taskSourceNode(
@@ -529,6 +540,113 @@ function authoritativeTaskResultReady(
   );
 }
 
+function exactWorkflowTaskBinding(input: {
+  nodePlan: StoredNodePlan;
+  nodeRow: Record<string, unknown>;
+  plan: StoredWorkflowPlan;
+  runRow: Record<string, unknown>;
+  task: NonNullable<ReturnType<ReturnType<typeof generationTaskApplication.taskStore>["get"]>>;
+}) {
+  const binding = input.task.modelConfiguration.workflowBinding;
+  if (!binding || typeof binding !== "object" || Array.isArray(binding)) return false;
+  const record = binding as Record<string, unknown>;
+  return input.task.ownerId === String(input.runRow.owner_id) &&
+    input.task.canvasId === String(input.runRow.canvas_id) &&
+    input.task.nodeId === String(input.nodeRow.node_id) &&
+    input.task.kind === input.nodePlan.kind &&
+    input.task.idempotencyKey === String(input.nodeRow.idempotency_key) &&
+    record.runId === String(input.runRow.id) &&
+    record.groupId === input.plan.groupId &&
+    record.reservationId === String(input.runRow.reservation_id) &&
+    record.modelConfigurationRevision === input.nodePlan.modelConfigurationRevision &&
+    record.modelReleaseRevision ===
+      String(input.nodePlan.modelReleaseRevision.revisionId ?? "") &&
+    record.generationInputKey === input.task.modelConfiguration.generationInputKey &&
+    record.generationOwnershipKey ===
+      input.task.modelConfiguration.generationOwnershipKey;
+}
+
+function linkWorkflowTask(input: {
+  database: DatabaseSync;
+  nodeId: string;
+  runId: string;
+  taskId: string;
+}) {
+  const changed = input.database.prepare(`
+    UPDATE workflow_run_nodes
+    SET task_id = ?, state = 'admitted', updated_at = ?
+    WHERE run_id = ? AND node_id = ?
+      AND state = 'admitting' AND task_id IS NULL
+  `).run(
+    input.taskId,
+    new Date().toISOString(),
+    input.runId,
+    input.nodeId,
+  );
+  if (changed.changes === 1) return;
+  const current = input.database.prepare(`
+    SELECT task_id, state FROM workflow_run_nodes
+    WHERE run_id = ? AND node_id = ?
+  `).get(input.runId, input.nodeId) as
+    | { state: string; task_id: string | null }
+    | undefined;
+  if (current?.state !== "admitted" || current.task_id !== input.taskId) {
+    throw new Error("Workflow task link changed concurrently");
+  }
+}
+
+function reconcileAdmittingWorkflowNodes(
+  database: DatabaseSync,
+  runRow: Record<string, unknown>,
+  plan: StoredWorkflowPlan,
+) {
+  const runId = String(runRow.id);
+  const rows = database.prepare(`
+    SELECT * FROM workflow_run_nodes
+    WHERE run_id = ? AND state = 'admitting'
+    ORDER BY plan_index, node_id
+  `).all(runId) as Record<string, unknown>[];
+  const store = generationTaskApplication.taskStore();
+  for (const nodeRow of rows) {
+    const nodeId = String(nodeRow.node_id);
+    const nodePlan = plan.nodes.find(({ id }) => id === nodeId);
+    const task = store.getByIdempotencyForOwner(
+      String(runRow.canvas_id),
+      String(nodeRow.idempotency_key),
+      String(runRow.owner_id),
+    );
+    if (nodePlan && task && exactWorkflowTaskBinding({
+      nodePlan,
+      nodeRow,
+      plan,
+      runRow,
+      task,
+    })) {
+      linkWorkflowTask({ database, nodeId, runId, taskId: task.id });
+      continue;
+    }
+    if (task || !nodePlan) {
+      database.prepare(`
+        UPDATE workflow_run_nodes
+        SET state = 'failed', error_code = 'WORKFLOW_TASK_LINK_MISMATCH',
+          error_message = '已提交任务与冻结工作流身份不一致，已阻止重复创建',
+          updated_at = ?
+        WHERE run_id = ? AND node_id = ? AND state = 'admitting'
+      `).run(new Date().toISOString(), runId, nodeId);
+      continue;
+    }
+    const nextState = Number(runRow.stop_requested) === 1 ||
+        runRow.state === "stopping"
+      ? "cancelled"
+      : "pending";
+    database.prepare(`
+      UPDATE workflow_run_nodes SET state = ?, updated_at = ?
+      WHERE run_id = ? AND node_id = ?
+        AND state = 'admitting' AND task_id IS NULL
+    `).run(nextState, new Date().toISOString(), runId, nodeId);
+  }
+}
+
 async function admitWorkflowNode(input: {
   database: DatabaseSync;
   nodeRow: Record<string, unknown>;
@@ -546,11 +664,19 @@ async function admitWorkflowNode(input: {
     String(input.runRow.owner_id),
   );
   if (existing) {
-    input.database.prepare(`
-      UPDATE workflow_run_nodes
-      SET task_id = ?, state = 'admitted', updated_at = ?
-      WHERE run_id = ? AND node_id = ? AND state = 'admitting'
-    `).run(existing.id, new Date().toISOString(), runId, nodeId);
+    if (!exactWorkflowTaskBinding({
+      nodePlan,
+      nodeRow: input.nodeRow,
+      plan: input.plan,
+      runRow: input.runRow,
+      task: existing,
+    })) throw new Error("已存在任务与冻结工作流身份不一致");
+    linkWorkflowTask({
+      database: input.database,
+      nodeId,
+      runId,
+      taskId: existing.id,
+    });
     return;
   }
   await workflowMediaCapacity.recheck(String(input.runRow.reservation_id));
@@ -703,36 +829,40 @@ async function admitWorkflowNode(input: {
     sourceNodeId: item.sourceNodeId,
     ...(item.kind === "text" ? { text: item.text } : {}),
   }));
-  const admitted = admitPreparedGenerationTask({
-    input: {
-    canvasId: String(input.runRow.canvas_id),
-    costCurrency: execution.costCurrency,
-    credentialRevision: runtime.credentialVersion,
-    estimatedCostMicrounits:
-      generationTaskApplication.taskAuditEstimatedCostMicrounits[execution.costCurrency],
-    idempotencyKey: String(input.nodeRow.idempotency_key),
-    kind: nodePlan.kind,
-    model: nodePlan.modelId,
-    modelConfiguration: {
-      credentialVersion: runtime.credentialVersion,
-      generationIdentityVersion: 2,
+  const authoritativeModelConfiguration =
+    buildAuthoritativeGenerationModelConfiguration({
+      credentialVersion: Number(runtime.credentialVersion),
       generationInputKey: inputKey,
       generationOwnershipKey: ownershipKey,
       modelCapability: nodePlan.kind,
       modelConfigurationRevision: nodePlan.modelConfigurationRevision,
       modelExecutionAdapterId: execution.adapterId,
-      modelInputContractFingerprint: execution.contractFingerprint,
+      modelId: nodePlan.modelId,
+      modelInputContractFingerprint: preflight.contractFingerprint,
       modelReleaseRevision: nodePlan.modelReleaseRevision,
       modelResultCount: execution.resultCount,
       parameterSchema: schema,
       providerConfigurationVersion:
-        generationTaskApplication.providerConfigurationVersion(runtime.providerProfile),
+        generationTaskApplication.providerConfigurationVersion(
+          runtime.providerProfile,
+        ),
       providerDriver: model.provider_driver,
       providerModelId: model.provider_model_id,
       providerProtocol: model.provider_protocol ?? "native",
       providerProfileId: model.provider_profile_id,
       workflowBinding: requestIntent.workflowBinding,
-    },
+    });
+  const admitted = admitPreparedGenerationTask({
+    input: {
+    canvasId: String(input.runRow.canvas_id),
+    costCurrency: execution.costCurrency,
+    credentialRevision: Number(runtime.credentialVersion),
+    estimatedCostMicrounits:
+      generationTaskApplication.taskAuditEstimatedCostMicrounits[execution.costCurrency],
+    idempotencyKey: String(input.nodeRow.idempotency_key),
+    kind: nodePlan.kind,
+    model: nodePlan.modelId,
+    modelConfiguration: authoritativeModelConfiguration,
     nodeId,
     ownerId: String(input.runRow.owner_id),
     parameters: {
@@ -756,13 +886,13 @@ async function admitWorkflowNode(input: {
     providerProfileId: model.provider_profile_id,
     requestIntent,
     },
-    kind: nodePlan.kind,
   });
-  input.database.prepare(`
-    UPDATE workflow_run_nodes
-    SET task_id = ?, state = 'admitted', updated_at = ?
-    WHERE run_id = ? AND node_id = ? AND state = 'admitting'
-  `).run(admitted.task.id, new Date().toISOString(), runId, nodeId);
+  linkWorkflowTask({
+    database: input.database,
+    nodeId,
+    runId,
+    taskId: admitted.task.id,
+  });
 }
 
 function htmlForPlainText(value: string) {
@@ -901,13 +1031,286 @@ function retryFailedWorkflowProjections(runId: string) {
   }
 }
 
+function quarantineMalformedWorkflowRun(
+  database: DatabaseSync,
+  runId: string,
+  message: string,
+) {
+  const taskIds = (database.prepare(`
+    SELECT task_id FROM workflow_run_nodes
+    WHERE run_id = ? AND task_id IS NOT NULL
+  `).all(runId) as Array<{ task_id: string }>).map(({ task_id }) => task_id);
+  const activeTaskRemains =
+    generationTaskApplication.quarantineMalformedWorkflowTaskLinks(taskIds);
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    const timestamp = new Date().toISOString();
+    if (activeTaskRemains) {
+      database.prepare(`
+        UPDATE workflow_runs
+        SET state = 'stopping', stop_requested = 1,
+            error_code = 'WORKFLOW_PLAN_MALFORMED', error_message = ?,
+            updated_at = ?
+        WHERE id = ? AND state IN ('running', 'stopping')
+      `).run(message.slice(0, 500), timestamp, runId);
+      database.prepare(`
+        UPDATE workflow_run_nodes
+        SET state = 'cancelled', error_code = 'WORKFLOW_PLAN_MALFORMED',
+            error_message = ?, updated_at = ?
+        WHERE run_id = ? AND state IN ('pending', 'admitting')
+      `).run(message.slice(0, 500), timestamp, runId);
+      database.exec("COMMIT");
+      return;
+    }
+    database.prepare(`
+      UPDATE workflow_run_nodes
+      SET state = 'failed', error_code = 'WORKFLOW_PLAN_MALFORMED',
+          error_message = ?, updated_at = ?
+      WHERE run_id = ?
+        AND state IN ('pending', 'admitting', 'admitted')
+    `).run(message.slice(0, 500), timestamp, runId);
+    const changed = database.prepare(`
+      UPDATE workflow_runs
+      SET state = 'failed', error_code = 'WORKFLOW_PLAN_MALFORMED',
+          error_message = ?, updated_at = ?
+      WHERE id = ? AND state IN ('running', 'stopping')
+    `).run(message.slice(0, 500), timestamp, runId);
+    if (changed.changes === 1) {
+      database.prepare("DELETE FROM workflow_run_locks WHERE run_id = ?")
+        .run(runId);
+      workflowMediaCapacity.releaseInTransaction({
+        database,
+        now: new Date(timestamp),
+        runId,
+      });
+    }
+    database.exec("COMMIT");
+  } catch (error) {
+    if (database.isTransaction) database.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+function persistFirstWorkflowRunError(input: Readonly<{
+  code: string;
+  database: DatabaseSync;
+  message: string;
+  runId: string;
+  timestamp: string;
+}>) {
+  return input.database.prepare(`
+    UPDATE workflow_runs
+    SET error_code = ?, error_message = ?, updated_at = CASE
+      WHEN updated_at < ? THEN ? ELSE updated_at END
+    WHERE id = ? AND state IN ('running', 'stopping')
+      AND error_code IS NULL
+  `).run(
+    input.code,
+    input.message.slice(0, 500),
+    input.timestamp,
+    input.timestamp,
+    input.runId,
+  ).changes === 1;
+}
+
+function settleWorkflowNodeTerminal(input: Readonly<{
+  code: string;
+  database: DatabaseSync;
+  expectedState: "admitted" | "pending";
+  message: string;
+  nextState: "blocked" | "cancelled" | "failed";
+  nodeId: string;
+  runId: string;
+  timestamp: string;
+}>) {
+  input.database.exec("BEGIN IMMEDIATE");
+  try {
+    const changed = input.database.prepare(`
+      UPDATE workflow_run_nodes
+      SET state = ?, error_code = ?, error_message = ?, updated_at = ?
+      WHERE run_id = ? AND node_id = ? AND state = ?
+    `).run(
+      input.nextState,
+      input.code,
+      input.message.slice(0, 500),
+      input.timestamp,
+      input.runId,
+      input.nodeId,
+      input.expectedState,
+    );
+    if (
+      changed.changes === 1 &&
+      (input.nextState === "failed" || input.nextState === "blocked")
+    ) {
+      persistFirstWorkflowRunError(input);
+    }
+    input.database.exec("COMMIT");
+    return changed.changes === 1;
+  } catch (error) {
+    if (input.database.isTransaction) input.database.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+function finalizeWorkflowRun(database: DatabaseSync, runId: string) {
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    const run = database.prepare(`
+      SELECT state, stop_requested, error_code, error_message
+      FROM workflow_runs WHERE id = ?
+    `).get(runId) as
+      | {
+          error_code: string | null;
+          error_message: string | null;
+          state: string;
+          stop_requested: number;
+        }
+      | undefined;
+    if (!run || !activeRunStates.includes(run.state as never)) {
+      database.exec("COMMIT");
+      return false;
+    }
+    const nodes = database.prepare(`
+      SELECT node_id, plan_index, state, error_code, error_message
+      FROM workflow_run_nodes WHERE run_id = ?
+      ORDER BY updated_at, plan_index, node_id
+    `).all(runId) as Array<{
+      error_code: string | null;
+      error_message: string | null;
+      node_id: string;
+      plan_index: number;
+      state: string;
+    }>;
+    if (
+      nodes.length < 1 ||
+      nodes.some(({ state }) => !terminalNodeStates.includes(state as never))
+    ) {
+      database.exec("COMMIT");
+      return false;
+    }
+    const decisive = nodes.find(({ state }) =>
+      state === "failed" || state === "blocked"
+    );
+    const stopped = Number(run.stop_requested) === 1 || run.state === "stopping";
+    const finalState = stopped
+      ? "cancelled"
+      : decisive
+        ? "failed"
+        : "success";
+    const timestamp = new Date().toISOString();
+    const changed = database.prepare(`
+      UPDATE workflow_runs
+      SET state = ?, error_code = ?, error_message = ?, updated_at = ?
+      WHERE id = ? AND state IN ('running', 'stopping')
+    `).run(
+      finalState,
+      stopped
+        ? "WORKFLOW_STOP_REQUESTED"
+        : run.error_code ?? decisive?.error_code ?? null,
+      stopped
+        ? "整组执行已按服务端最新状态停止"
+        : run.error_message ?? decisive?.error_message ?? null,
+      timestamp,
+      runId,
+    );
+    if (changed.changes === 1) {
+      database.prepare("DELETE FROM workflow_run_locks WHERE run_id = ?")
+        .run(runId);
+      workflowMediaCapacity.releaseInTransaction({
+        database,
+        now: new Date(timestamp),
+        runId,
+      });
+    }
+    database.exec("COMMIT");
+    return changed.changes === 1;
+  } catch (error) {
+    if (database.isTransaction) database.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+function settleWorkflowAdmissionFailure(input: {
+  database: DatabaseSync;
+  error: unknown;
+  nodeId: string;
+  runId: string;
+}) {
+  input.database.exec("BEGIN IMMEDIATE");
+  try {
+    const run = input.database.prepare(`
+      SELECT state, stop_requested FROM workflow_runs WHERE id = ?
+    `).get(input.runId) as
+      | { state: string; stop_requested: number }
+      | undefined;
+    const stopped = !run || run.state === "stopping" ||
+      Number(run.stop_requested) === 1;
+    const timestamp = new Date().toISOString();
+    const code = stopped
+      ? "WORKFLOW_STOP_REQUESTED"
+      : "WORKFLOW_ADMISSION_FAILED";
+    const message = stopped
+      ? "整组执行已按服务端最新状态停止；本节点未提交"
+      : (input.error instanceof Error
+        ? input.error.message
+        : "工作流准入失败").slice(0, 500);
+    const changed = input.database.prepare(`
+      UPDATE workflow_run_nodes
+      SET state = ?, error_code = ?, error_message = ?, updated_at = ?
+      WHERE run_id = ? AND node_id = ? AND state = 'admitting'
+    `).run(
+      stopped ? "cancelled" : "failed",
+      code,
+      message,
+      timestamp,
+      input.runId,
+      input.nodeId,
+    );
+    if (changed.changes === 1) {
+      persistFirstWorkflowRunError({
+        code,
+        database: input.database,
+        message,
+        runId: input.runId,
+        timestamp,
+      });
+    }
+    input.database.exec("COMMIT");
+  } catch (error) {
+    if (input.database.isTransaction) input.database.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+export function settleWorkflowAdmissionFailureForRuntimeTest(input: {
+  database: DatabaseSync;
+  error: unknown;
+  nodeId: string;
+  runId: string;
+}) {
+  if (process.env.UNBOUNDRY_SAFE_TEST !== "1") {
+    throw new Error("Workflow admission settlement test seam is unavailable");
+  }
+  settleWorkflowAdmissionFailure(input);
+}
+
 async function processWorkflowRun(runId: string) {
   const database = openAppDatabase();
   try {
     const run = database.prepare("SELECT * FROM workflow_runs WHERE id = ?")
       .get(runId) as Record<string, unknown> | undefined;
     if (!run || !activeRunStates.includes(run.state as never)) return;
-    const plan = parsePlan(run.plan_json);
+    let plan: StoredWorkflowPlan;
+    try {
+      plan = parsePlan(run.plan_json);
+    } catch (error) {
+      const message = error instanceof WorkflowPlanValidationError
+        ? error.message
+        : "Workflow run plan is malformed";
+      quarantineMalformedWorkflowRun(database, runId, message);
+      return;
+    }
+    reconcileAdmittingWorkflowNodes(database, run, plan);
     const timestamp = new Date().toISOString();
     if (Number(run.stop_requested) === 1) {
       database.prepare(`
@@ -920,6 +1323,29 @@ async function processWorkflowRun(runId: string) {
     const nodes = database.prepare(`
       SELECT * FROM workflow_run_nodes WHERE run_id = ? ORDER BY plan_index
     `).all(runId) as Record<string, unknown>[];
+    const existingDecisive = database.prepare(`
+      SELECT error_code, error_message, updated_at
+      FROM workflow_run_nodes
+      WHERE run_id = ? AND state IN ('failed', 'blocked')
+        AND error_code IS NOT NULL
+      ORDER BY updated_at, plan_index, node_id
+      LIMIT 1
+    `).get(runId) as
+      | {
+          error_code: string;
+          error_message: string | null;
+          updated_at: string;
+        }
+      | undefined;
+    if (existingDecisive) {
+      persistFirstWorkflowRunError({
+        code: existingDecisive.error_code,
+        database,
+        message: existingDecisive.error_message ?? "工作流节点未完成",
+        runId,
+        timestamp: existingDecisive.updated_at,
+      });
+    }
     for (const node of nodes) {
       if (node.state !== "admitted" || !node.task_id) continue;
       const task = store.get(String(node.task_id));
@@ -934,22 +1360,29 @@ async function processWorkflowRun(runId: string) {
         // future admission remains fenced, but terminalize this workflow node
         // to release its graph locks and capacity reservation. Never POST
         // again from the workflow runner.
-        database.prepare(`
-          UPDATE workflow_run_nodes
-          SET state = 'failed', error_code = 'OUTCOME_UNKNOWN_BILLING_RISK',
-            error_message = '模型平台可能已受理；已保留原任务证据并永久禁止本轮重复提交',
-            updated_at = ?
-          WHERE run_id = ? AND node_id = ? AND state = 'admitted'
-        `).run(timestamp, runId, String(node.node_id));
+        settleWorkflowNodeTerminal({
+          code: "OUTCOME_UNKNOWN_BILLING_RISK",
+          database,
+          expectedState: "admitted",
+          message: "模型平台可能已受理；已保留原任务证据并永久禁止本轮重复提交",
+          nextState: "failed",
+          nodeId: String(node.node_id),
+          runId,
+          timestamp,
+        });
       } else if (task.state === "success") {
         const nodePlan = plan.nodes.find(({ id }) => id === String(node.node_id));
         if (!nodePlan || !authoritativeTaskResultReady(nodePlan, task)) {
-          database.prepare(`
-            UPDATE workflow_run_nodes
-            SET state = 'failed', error_code = 'PUBLICATION_MISSING',
-              error_message = '原生成任务缺少可验证的持久结果，未运行下游节点', updated_at = ?
-            WHERE run_id = ? AND node_id = ? AND state = 'admitted'
-          `).run(timestamp, runId, String(node.node_id));
+          settleWorkflowNodeTerminal({
+            code: "PUBLICATION_MISSING",
+            database,
+            expectedState: "admitted",
+            message: "原生成任务缺少可验证的持久结果，未运行下游节点",
+            nextState: "failed",
+            nodeId: String(node.node_id),
+            runId,
+            timestamp,
+          });
           continue;
         }
         database.exec("BEGIN IMMEDIATE");
@@ -980,11 +1413,16 @@ async function processWorkflowRun(runId: string) {
           throw error;
         }
       } else if (task.state === "failed" || task.state === "cancelled") {
-        database.prepare(`
-          UPDATE workflow_run_nodes
-          SET state = 'failed', error_code = ?, error_message = ?, updated_at = ?
-          WHERE run_id = ? AND node_id = ? AND state = 'admitted'
-        `).run(task.errorCode ?? "GENERATION_FAILED", task.errorMessage ?? "生成任务失败", timestamp, runId, String(node.node_id));
+        settleWorkflowNodeTerminal({
+          code: task.errorCode ?? "GENERATION_FAILED",
+          database,
+          expectedState: "admitted",
+          message: task.errorMessage ?? "生成任务失败",
+          nextState: task.state === "cancelled" ? "cancelled" : "failed",
+          nodeId: String(node.node_id),
+          runId,
+          timestamp,
+        });
       }
     }
     const latestStop = database.prepare(`
@@ -1005,100 +1443,140 @@ async function processWorkflowRun(runId: string) {
       const dependencies = JSON.parse(String(node.dependencies_json)) as string[];
       const dependencyStates = dependencies.map((id) => String(byId.get(id)?.state));
       if (dependencyStates.some((state) => ["failed", "blocked", "cancelled"].includes(state))) {
-        database.prepare(`
-          UPDATE workflow_run_nodes SET state = 'blocked', error_code = 'UPSTREAM_FAILED',
-            error_message = '上游节点未成功，未提交本节点', updated_at = ?
-          WHERE run_id = ? AND node_id = ? AND state = 'pending'
-        `).run(timestamp, runId, String(node.node_id));
+        settleWorkflowNodeTerminal({
+          code: "UPSTREAM_FAILED",
+          database,
+          expectedState: "pending",
+          message: "上游节点未成功，未提交本节点",
+          nextState: "blocked",
+          nodeId: String(node.node_id),
+          runId,
+          timestamp,
+        });
         continue;
       }
       if (!dependencyStates.every((state) => state === "success")) continue;
       const claimed = database.prepare(`
         UPDATE workflow_run_nodes SET state = 'admitting', updated_at = ?
         WHERE run_id = ? AND node_id = ? AND state = 'pending'
-      `).run(timestamp, runId, String(node.node_id));
+          AND EXISTS (
+            SELECT 1 FROM workflow_runs
+            WHERE id = ? AND state = 'running' AND stop_requested = 0
+          )
+      `).run(timestamp, runId, String(node.node_id), runId);
       if (Number(claimed.changes) !== 1) continue;
       try {
         await admitWorkflowNode({ database, nodeRow: { ...node, state: "admitting" }, plan, runRow: run });
       } catch (error) {
-        database.prepare(`
-          UPDATE workflow_run_nodes
-          SET state = 'failed', error_code = 'WORKFLOW_ADMISSION_FAILED',
-            error_message = ?, updated_at = ?
-          WHERE run_id = ? AND node_id = ? AND state = 'admitting'
-        `).run(error instanceof Error ? error.message : "工作流准入失败", timestamp, runId, String(node.node_id));
+        settleWorkflowAdmissionFailure({
+          database,
+          error,
+          nodeId: String(node.node_id),
+          runId,
+        });
       }
     }
-    const finalNodes = database.prepare(`
-      SELECT state FROM workflow_run_nodes WHERE run_id = ?
-    `).all(runId) as Array<{ state: string }>;
-    if (finalNodes.some(({ state }) => !terminalNodeStates.includes(state as never))) return;
-    const stopped = Number(latestStop?.stop_requested) === 1;
-    const failed = finalNodes.some(({ state }) => state === "failed" || state === "blocked");
-    const finalState = stopped ? "cancelled" : failed ? "failed" : "success";
-    database.exec("BEGIN IMMEDIATE");
-    try {
-      database.prepare(`
-        UPDATE workflow_runs SET state = ?, updated_at = ? WHERE id = ?
-          AND state IN ('running', 'stopping')
-      `).run(finalState, timestamp, runId);
-      database.prepare("DELETE FROM workflow_run_locks WHERE run_id = ?").run(runId);
-      workflowMediaCapacity.releaseInTransaction({ database, now: new Date(timestamp), runId });
-      database.exec("COMMIT");
-    } catch (error) {
-      if (database.isTransaction) database.exec("ROLLBACK");
-      throw error;
-    }
+    finalizeWorkflowRun(database, runId);
   } finally {
     database.close();
   }
 }
 
-let runnerBusy = false;
-
-export async function runWorkflowSweep() {
-  if (runnerBusy) return;
-  runnerBusy = true;
-  try {
-    const database = openAppDatabase();
-    let ids: string[];
-    let projectionRetryIds: string[];
-    try {
-      ids = (database.prepare(`
-        SELECT id FROM workflow_runs WHERE state IN ('running', 'stopping')
-        ORDER BY created_at
-      `).all() as Array<{ id: string }>).map(({ id }) => id);
-      projectionRetryIds = (database.prepare(`
-        SELECT DISTINCT run.id
-        FROM workflow_runs AS run
-        JOIN workflow_run_nodes AS node ON node.run_id = run.id
-        WHERE run.state IN ('success', 'failed', 'cancelled')
-          AND node.state = 'success' AND node.projection_state = 'failed'
-        ORDER BY run.updated_at LIMIT 50
-      `).all() as Array<{ id: string }>).map(({ id }) => id);
-    } finally {
-      database.close();
-    }
-    for (const id of ids) {
-      try {
-        await processWorkflowRun(id);
-      } catch {
-        // One damaged or temporarily unavailable run must not starve disjoint
-        // runs. Its durable rows remain for the next startup/task-settlement
-        // sweep; no Provider submission is retried here.
-      }
-    }
-    for (const id of projectionRetryIds) {
-      try {
-        retryFailedWorkflowProjections(id);
-      } catch {
-        // Projection owns no Provider boundary. A temporary Canvas/storage
-        // failure remains independently retryable on the existing scheduler.
-      }
-    }
-  } finally {
-    runnerBusy = false;
+export async function runFairWorkflowBatch(
+  ids: readonly string[],
+  process: (id: string) => Promise<void>,
+  concurrency = 4,
+) {
+  if (!Number.isSafeInteger(concurrency) || concurrency < 1 || concurrency > 16) {
+    throw new Error("Invalid workflow batch concurrency");
   }
+  let cursor = 0;
+  await Promise.all(Array.from(
+    { length: Math.min(concurrency, ids.length) },
+    async () => {
+      while (cursor < ids.length) {
+        const index = cursor;
+        cursor += 1;
+        try {
+          await process(ids[index]);
+        } catch {
+          // One damaged run remains durable for the next sweep and cannot
+          // starve an unrelated run assigned to this or another worker.
+        }
+      }
+    },
+  ));
+}
+
+function createWorkflowSweepCoordinator(pass: () => Promise<void>) {
+  let inFlight: Promise<void> | undefined;
+  let rerunRequested = false;
+  return () => {
+    if (inFlight) {
+      // A stop/task settlement may arrive after the active pass captured its
+      // run ids or even after it processed that run. Coalesce those signals,
+      // but guarantee one fresh pass before every waiter is released.
+      rerunRequested = true;
+      return inFlight;
+    }
+    inFlight = (async () => {
+      do {
+        rerunRequested = false;
+        await pass();
+      } while (rerunRequested);
+    })().finally(() => {
+      inFlight = undefined;
+    });
+    return inFlight;
+  };
+}
+
+async function runWorkflowSweepPass() {
+  const database = openAppDatabase();
+  let ids: string[];
+  let projectionRetryIds: string[];
+  try {
+    ids = (database.prepare(`
+      SELECT id FROM workflow_runs WHERE state IN ('running', 'stopping')
+      ORDER BY updated_at, created_at, id
+    `).all() as Array<{ id: string }>).map(({ id }) => id);
+    projectionRetryIds = (database.prepare(`
+      SELECT DISTINCT run.id
+      FROM workflow_runs AS run
+      JOIN workflow_run_nodes AS node ON node.run_id = run.id
+      WHERE run.state IN ('success', 'failed', 'cancelled')
+        AND node.state = 'success' AND node.projection_state = 'failed'
+      ORDER BY run.updated_at LIMIT 50
+    `).all() as Array<{ id: string }>).map(({ id }) => id);
+  } finally {
+    database.close();
+  }
+  await runFairWorkflowBatch(ids, processWorkflowRun);
+  for (const id of projectionRetryIds) {
+    try {
+      retryFailedWorkflowProjections(id);
+    } catch {
+      // Projection owns no Provider boundary. A temporary Canvas/storage
+      // failure remains independently retryable on the existing scheduler.
+    }
+  }
+}
+
+const coordinatedWorkflowSweep = createWorkflowSweepCoordinator(
+  runWorkflowSweepPass,
+);
+
+export function runWorkflowSweep() {
+  return coordinatedWorkflowSweep();
+}
+
+export function workflowSweepCoordinatorForRuntimeTest(
+  pass: () => Promise<void>,
+) {
+  if (process.env.UNBOUNDRY_SAFE_TEST !== "1") {
+    throw new Error("Workflow sweep coordinator test seam is unavailable");
+  }
+  return createWorkflowSweepCoordinator(pass);
 }
 
 export function kickWorkflowRunner() {
@@ -1112,15 +1590,8 @@ export function kickWorkflowRunner() {
 }
 
 export function initializeWorkflowRunner() {
-  const database = openAppDatabase();
-  try {
-    database.prepare(`
-      UPDATE workflow_run_nodes SET state = 'pending', updated_at = ?
-      WHERE state = 'admitting' AND task_id IS NULL
-    `).run(new Date().toISOString());
-  } finally {
-    database.close();
-  }
+  // Every admitting row is reconciled against its deterministic task identity
+  // by the normal sweep before it can be reset or linked.
   kickWorkflowRunner();
 }
 

@@ -43,6 +43,7 @@ import {
   mediaPublicationStagingPath,
   MediaPublicationConflictError,
   MediaPublicationDeferredError,
+  publishGeneratedOssMediaPublication,
   publishLocalMediaPublication,
   reserveMediaPublication,
   stageMediaPublication,
@@ -161,13 +162,14 @@ export async function saveGeneratedMp4(input: {
     });
     staged = true;
     if (routing.enabled && routing.profile) {
-      await (input.uploadObject ?? uploadPrivateAliyunOssObject)({
+      await publishGeneratedOssMediaPublication({
         byteSize: size,
         checksumSha256,
         contentType: "video/mp4",
         credentials: routing.profile,
         filePath: mediaPublicationStagingPath(reservation),
-        objectKey,
+        reservation,
+        uploadObject: input.uploadObject,
       });
       markExternalMediaPublicationReady(reservation);
     } else {

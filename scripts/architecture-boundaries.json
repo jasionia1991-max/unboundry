@@ -260,6 +260,15 @@
       ]
     },
     {
+      "id": "inc-gen-026-workflow-reservation-authority",
+      "owner": "workflow-reliability",
+      "reason": "The workflow admission transaction reads its own media-capacity reservation to bind the exact server-owned reservation before any paid Provider boundary; it performs no media write.",
+      "expiry": "2027-09-01",
+      "fingerprints": [
+        "CROSS_DOMAIN_SQL|server/workflowRunLocks.ts|table:media_capacity_reservations|workflow->media:read"
+      ]
+    },
+    {
       "id": "legacy-provider-storage-imports",
       "owner": "architecture-maintainers",
       "reason": "Exact reviewed Provider to concrete Storage imports remain frozen behind the current port boundary.",

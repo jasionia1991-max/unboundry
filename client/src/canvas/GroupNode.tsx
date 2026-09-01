@@ -102,9 +102,21 @@ function GroupNodeImpl({
     fixtureScopeId,
   );
   const { canManagePublicTemplates } = useCanvasAccount();
-  const { cancelGroup, executeGroup, executingGroupIds } =
+  const { cancelGroup, executeGroup, executingGroupIds, groupExecutionPhases } =
     useWorkflowExecution();
   const executing = executingGroupIds.has(id);
+  const executionPhase = groupExecutionPhases.get(id);
+  const stopSettling = executionPhase === "stopping-preparation" ||
+    executionPhase === "server-stopping";
+  const executionButtonLabel = executionPhase === "preparing"
+    ? "停止准备"
+    : executionPhase === "stopping-preparation"
+      ? "正在核对"
+      : executionPhase === "server-stopping"
+        ? "正在停止"
+        : executing
+          ? "停止后续"
+          : "整组执行";
   const showGroupToolbar = singleNodeChrome || executing;
   const [lastGroupRun, setLastGroupRun] = useState(
     () => readLastGroupRunSummaryForGroup(groupRunScope, id),
@@ -570,15 +582,15 @@ function GroupNodeImpl({
             </svg>
           </button>
           <button
-            aria-label={executing ? "停止后续节点" : "整组执行"}
+            aria-label={executionButtonLabel}
             data-testid="group-execute-button"
-            disabled={!hasExecutableChild || isFixture}
+            disabled={!hasExecutableChild || isFixture || stopSettling}
             onClick={(event) => {
               if (executing) {
                 // A fast second click from the original start double-click can
                 // arrive after React has switched the button to “stop”. Treat
                 // that pair as one start; a later single click still stops.
-                if (event.detail > 1) return;
+                if (event.detail === 2) return;
                 cancelGroup(id);
               } else {
                 void executeGroup(id);
@@ -589,9 +601,15 @@ function GroupNodeImpl({
                 ? "验收页面不会触发真实生成"
                 : !hasExecutableChild
                   ? "组内没有可执行的生成节点"
-                  : executing
-                    ? "停止后续节点；已经开始的任务会继续并保存结果"
-                    : "整组执行"
+                  : executionPhase === "preparing"
+                    ? "停止整组准备；尚未发送的生成请求不会提交"
+                    : executionPhase === "stopping-preparation"
+                      ? "正在核对服务端是否已接收原请求"
+                      : executionPhase === "server-stopping"
+                        ? "服务端正在停止后续节点"
+                        : executing
+                          ? "停止后续节点；已经开始的任务会继续并保存结果"
+                          : "整组执行"
             }
             type="button"
           >
@@ -601,7 +619,7 @@ function GroupNodeImpl({
                 className="group-execute-spinner"
               />
             )}
-            {executing ? "停止后续" : "整组执行"}
+            {executionButtonLabel}
           </button>
           <button
             data-testid="group-template-button"
@@ -712,6 +730,7 @@ function GroupNodeImpl({
         data-child-count={childCount}
         data-testid={`group-node-${id}`}
         data-workflow-run-active={executing ? "true" : undefined}
+        data-workflow-run-phase={executionPhase}
         onPointerEnter={() => setTitleHovered(true)}
         onPointerLeave={() => setTitleHovered(false)}
         style={{ background: data.groupColor ?? "transparent" }}

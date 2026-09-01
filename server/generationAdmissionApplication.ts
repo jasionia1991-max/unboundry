@@ -1,9 +1,10 @@
-import type { GenerationTaskInput } from "./generationTaskStore";
+import type { AuthoritativeGenerationTaskInput } from "./generationTaskStore";
+import { assertAuthoritativeGenerationModelConfiguration } from
+  "./authoritativeGenerationModelConfiguration";
 import { generationTaskApplication } from "./generationTasks";
 
 export type PreparedGenerationAdmission = {
-  input: GenerationTaskInput;
-  kind: GenerationTaskInput["kind"];
+  input: AuthoritativeGenerationTaskInput;
   afterCommit?: () => void;
 };
 
@@ -24,7 +25,11 @@ export class GenerationAdmissionPostCommitError extends Error {
 export function admitPreparedGenerationTask(
   prepared: PreparedGenerationAdmission,
 ) {
-  const admitted = generationTaskApplication.taskStore().admitOrGet(
+  assertAuthoritativeGenerationModelConfiguration(
+    prepared.input.modelConfiguration,
+  );
+  const admitted = generationTaskApplication.taskStore()
+    .admitAuthoritativeOrGet(
     prepared.input,
   );
   try {
@@ -35,7 +40,7 @@ export function admitPreparedGenerationTask(
   if (admitted.created) {
     generationTaskApplication.launchGenerationTask(
       admitted.task.id,
-      prepared.kind,
+      prepared.input.kind,
     );
   }
   return admitted;

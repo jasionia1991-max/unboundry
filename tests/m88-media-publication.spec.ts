@@ -55,6 +55,7 @@ import {
   MediaPublicationConflictError,
   markExternalMediaPublicationReady,
   pendingGeneratedPublicationTaskIds,
+  pendingGeneratedMediaPublications,
   preparePendingGeneratedMediaPublication,
   publishLocalMediaPublication,
   recoverPendingMediaDeletions,
@@ -4727,10 +4728,29 @@ test("generated PNG uses a durable staging copy until private OSS publication co
       filePath?: string;
       objectKey: string;
     }> = [];
+    const store = createGenerationTaskStore(directory);
+    const task = store.create({
+      canvasId: "m88-generated-png-direct-canvas",
+      idempotencyKey: "m88-generated-png-direct-task",
+      kind: "image",
+      model: "gpt-image-2",
+      nodeId: "m88-generated-png-direct-node",
+      ownerId,
+      prompt: "publish direct generated PNG",
+      providerModelId: "gpt-image-2",
+      providerProfileId: "m88-provider-profile",
+    }).task;
+    const running = store.transition(task.id, "running")!;
+    recordProviderAttemptFixture(directory, task.id, "response-received");
     const saved = await saveGeneratedPng({
       bytes: png,
       label: "direct oss result",
       ownerId,
+      task: {
+        actualCostMicrounits: 123,
+        executionAttempt: running.attempt,
+        taskId: task.id,
+      },
       uploadObject: async (input) => {
         uploads.push(input);
         expect(input.credentials.bucket).toBe(profile.bucket);
@@ -4748,6 +4768,11 @@ test("generated PNG uses a durable staging copy until private OSS publication co
     expect(uploads[0]!.bytes).toBeUndefined();
     expect(uploads[0]!.filePath).toMatch(/\.publication-.*\.generating$/);
     expect(uploads[0]!.objectKey).toMatch(/^objects\//);
+    if (!("publicationToken" in saved)) {
+      throw new Error("generated task publication token is missing");
+    }
+    commitGenerationMediaResult(saved.publicationToken);
+    await cleanupPublicationStaging(saved.publicationToken);
     const media = readyMediaForOwner(ownerId, "image", saved.assetId);
     expect(media).toMatchObject({
       byteSize: png.length,
@@ -4755,8 +4780,14 @@ test("generated PNG uses a durable staging copy until private OSS publication co
       storageProfileId: profile.id,
       storageStatus: "ready",
     });
+    expect(store.get(task.id)).toMatchObject({
+      actualCostMicrounits: 123,
+      resultAssetId: saved.assetId,
+      state: "success",
+    });
     const stagingEntries = await readdir(join(directory, "media")).catch(() => []);
     expect(stagingEntries).toEqual([]);
+    store.close();
   });
 });
 
@@ -4816,6 +4847,55 @@ test("generated image video and audio survive OSS failure without Provider resub
         state: "recovering",
       });
       expect([...pendingGeneratedPublicationTaskIds()]).toEqual([task.id]);
+      const quarantinedRow = pendingGeneratedMediaPublications()
+        .find((row) => row.task_id === task.id)!;
+      const quarantinedStagingPath = join(
+        directory,
+        "media",
+        quarantinedRow.staging_name,
+      );
+      const quarantineDatabase = openAppDatabase(directory);
+      try {
+        quarantineDatabase.prepare(`
+          UPDATE media_publication_attempts
+          SET error_code = 'OSS_IDENTITY_QUARANTINED'
+          WHERE attempt_id = ? AND state = 'staged'
+        `).run(quarantinedRow.attempt_id);
+      } finally {
+        quarantineDatabase.close();
+      }
+      await rm(quarantinedStagingPath, { force: true });
+      let quarantinedUploads = 0;
+      expect(await recoverPendingGenerationMediaResults({
+        prepare: (row) => preparePendingGeneratedMediaPublication(row, {
+          uploadObject: async () => {
+            quarantinedUploads += 1;
+            throw new Error("quarantined publication must not upload");
+          },
+        }),
+      })).toEqual([{
+        action: "blocked",
+        assetId: quarantinedRow.asset_id,
+        taskId: task.id,
+      }]);
+      expect(quarantinedUploads).toBe(0);
+      const quarantineVerify = openAppDatabase(directory);
+      try {
+        expect(quarantineVerify.prepare(`
+          SELECT state, error_code AS errorCode
+          FROM media_publication_attempts WHERE attempt_id = ?
+        `).get(quarantinedRow.attempt_id)).toEqual({
+          errorCode: "OSS_IDENTITY_QUARANTINED",
+          state: "staged",
+        });
+        quarantineVerify.prepare(`
+          UPDATE media_publication_attempts SET error_code = NULL
+          WHERE attempt_id = ? AND state = 'staged'
+        `).run(quarantinedRow.attempt_id);
+      } finally {
+        quarantineVerify.close();
+      }
+      await writeFile(quarantinedStagingPath, png, { mode: 0o600 });
       const before = openAppDatabase(directory);
       try {
         expect(generationProviderAttemptCounts(before)).toEqual({

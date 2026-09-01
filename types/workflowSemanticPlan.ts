@@ -117,6 +117,30 @@ export function compileFrozenWorkflowSemanticPlan(input: {
   groupId: string;
   nodes: readonly WorkflowSemanticNode[];
 }) {
+  const nodeIds = input.nodes.map(({ id }) => text(id));
+  if (
+    nodeIds.some((id) => !id) ||
+    new Set(nodeIds).size !== nodeIds.length
+  ) throw new Error("工作流节点身份无效或重复");
+  const knownNodeIds = new Set(nodeIds);
+  const edgeIds = input.edges.map(({ id }) => text(id));
+  if (
+    edgeIds.some((id) => !id) ||
+    new Set(edgeIds).size !== edgeIds.length
+  ) throw new Error("工作流连线身份无效或重复");
+  for (const edge of input.edges) {
+    if (!knownNodeIds.has(edge.source) || !knownNodeIds.has(edge.target)) {
+      throw new Error(`工作流连线 ${edge.id} 指向未知节点`);
+    }
+    if (
+      edge.data?.inputOrder !== undefined &&
+      (!Number.isSafeInteger(edge.data.inputOrder) || Number(edge.data.inputOrder) < 1)
+    ) throw new Error(`工作流连线 ${edge.id} 的输入顺序无效`);
+    if (
+      edge.data?.inputRole !== undefined &&
+      typeof edge.data.inputRole !== "string"
+    ) throw new Error(`工作流连线 ${edge.id} 的输入角色无效`);
+  }
   const children = input.nodes.filter((node) => node.parentId === input.groupId);
   const childIds = new Set(children.map(({ id }) => id));
   const incomingText = new Set(
@@ -131,21 +155,49 @@ export function compileFrozenWorkflowSemanticPlan(input: {
   const executableIds = new Set(executable.map(({ id }) => id));
   if (executable.length === 0) throw new Error("整组没有可执行生成节点");
 
-  const relevantEdges = input.edges.filter((edge) =>
+  const candidateEdges = input.edges.filter((edge) =>
     executableIds.has(edge.target) &&
-    (executableIds.has(edge.source) || input.nodes.some((node) => node.id === edge.source))
-  ).map((edge, index) => ({
+    knownNodeIds.has(edge.source)
+  );
+  const resolvedOrder = new Map<string, number>();
+  for (const target of executableIds) {
+    const targetEdges = candidateEdges.filter((edge) => edge.target === target);
+    const explicit = new Set<number>();
+    for (const edge of targetEdges) {
+      if (edge.data?.inputOrder === undefined) continue;
+      const order = Number(edge.data.inputOrder);
+      if (explicit.has(order)) {
+        throw new Error(`节点 ${target} 存在重复输入顺序`);
+      }
+      explicit.add(order);
+      resolvedOrder.set(edge.id, order);
+    }
+    let fallback = 1;
+    for (const edge of targetEdges
+      .filter((candidate) => candidate.data?.inputOrder === undefined)
+      .sort((left, right) =>
+        left.source.localeCompare(right.source) || left.id.localeCompare(right.id)
+      )) {
+      while (explicit.has(fallback)) fallback += 1;
+      resolvedOrder.set(edge.id, fallback);
+      explicit.add(fallback);
+      fallback += 1;
+    }
+  }
+  const relevantEdges = candidateEdges.map((edge) => ({
     id: edge.id,
-    inputOrder: Number.isSafeInteger(edge.data?.inputOrder) &&
-        Number(edge.data?.inputOrder) >= 1
-      ? Number(edge.data?.inputOrder)
-      : index + 1,
+    inputOrder: resolvedOrder.get(edge.id)!,
     ...(typeof edge.data?.inputRole === "string"
       ? { inputRole: edge.data.inputRole }
       : {}),
     source: edge.source,
     target: edge.target,
-  })).sort((left, right) => left.id.localeCompare(right.id));
+  })).sort((left, right) =>
+    left.target.localeCompare(right.target) ||
+    left.inputOrder - right.inputOrder ||
+    left.source.localeCompare(right.source) ||
+    left.id.localeCompare(right.id)
+  );
 
   const parents = new Map(executable.map(({ id }) => [id, new Set<string>()]));
   for (const edge of relevantEdges) {

@@ -72,6 +72,8 @@ import {
 import { assertRegisteredModelExecutionTotality } from
   "./modelExecutionRegistry";
 import { inspectActiveModelContractHealth } from "./activeModelContractHealth";
+import { authoritativeModelConfigurationRevision } from
+  "./modelConfigurationIdentity";
 
 type Capability = GenerationCapabilityKind;
 type ModelStatus = "disabled" | "draft" | "published";
@@ -226,14 +228,14 @@ export function modelConfigurationRevision(
       "provider_model_id"
   >,
 ) {
-  return createHash("sha256").update(JSON.stringify({
+  return authoritativeModelConfigurationRevision({
+    capability: row.capability,
     id: row.id,
-    mediaInputPolicy: mediaInputPolicy(row),
     modelConfigurationUpdatedAt: row.model_configuration_updated_at,
     parameterSchema: parameterSchema(row),
     providerDriver: row.provider_driver,
     providerModelId: row.provider_model_id,
-  })).digest("hex").slice(0, 24);
+  });
 }
 
 const capabilities: readonly Capability[] = generationCapabilityKinds;

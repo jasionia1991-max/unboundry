@@ -2254,6 +2254,23 @@ test("workflow execution has no component registration or render-retention depen
   );
   expect(provider).not.toContain("registerWorkflowNode");
   expect(provider).not.toContain("waitForRegistrations");
+  expect(provider).toContain("preparation.stopRequested = true");
+  expect(provider).toContain("!preparation.stopRequested\n          ) return");
+  expect(provider).toContain("if (!preparation.submitted) {");
+  expect(provider).toContain("A failed stop\n              // confirmation is not permission");
+  expect(provider).toContain("return await reattachSubmittedServerWorkflowRun({");
+  expect(provider).toContain("if (!workflowRunStatusReadIsRetryable(error)) {");
+  expect(provider).toContain("preparation.reconciliationBlocked = true");
+  expect(provider).toContain("!preparation.reconciliationBlocked &&");
+  expect(provider).toContain(
+    "Server terminal state is authoritative even when the local Canvas",
+  );
+  expect(taskPanel).toContain("parseServerWorkflowRunUpdatedEventDetail");
+  expect(taskPanel).toContain("mergeServerWorkflowRuns(current, runs)");
+  expect(shell).toContain("setSaveConflictMessage(\"\")");
+  expect(canvas).toContain(
+    "if (controller.signal.aborted || signal?.aborted) return false",
+  );
   expect(provider).toContain("另一轮正在使用${conflictRole}");
   expect(provider).toContain("（节点 ${conflictingNodeId}）");
   expect(provider).toContain('running.abortController.abort("foreign-lease")');
@@ -3141,6 +3158,38 @@ test("save gate waits for a durable canvas revision before running the node", as
   const afterFailure = runExclusiveCanvasSubmit("canvas-fail", async () => "ok");
   await expect(failed).rejects.toThrow("first submit failed");
   await expect(afterFailure).resolves.toBe("ok");
+
+  const abortEvents: string[] = [];
+  let releaseAbortOwner!: () => void;
+  const abortOwnerHold = new Promise<void>((resolve) => {
+    releaseAbortOwner = resolve;
+  });
+  const abortOwner = runExclusiveCanvasSubmit("canvas-abort", async () => {
+    abortEvents.push("owner-start");
+    await abortOwnerHold;
+    abortEvents.push("owner-end");
+  });
+  const abortController = new AbortController();
+  const abortedWaiter = runExclusiveCanvasSubmit(
+    "canvas-abort",
+    async () => abortEvents.push("aborted-start"),
+    abortController.signal,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  abortController.abort("cancelled-while-queued");
+  await expect(abortedWaiter).rejects.toBe("cancelled-while-queued");
+  const afterAbort = runExclusiveCanvasSubmit("canvas-abort", async () => {
+    abortEvents.push("after-abort-start");
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(abortEvents).toEqual(["owner-start"]);
+  releaseAbortOwner();
+  await Promise.all([abortOwner, afterAbort]);
+  expect(abortEvents).toEqual([
+    "owner-start",
+    "owner-end",
+    "after-abort-start",
+  ]);
 
   let revision = 14;
   const seen: number[] = [];
@@ -4138,8 +4187,10 @@ test("browser creates one server workflow and stop never submits generation task
   let clientSemanticFingerprint = "";
   let stopPosts = 0;
   let generationTaskPosts = 0;
+  let listFailures = 0;
   let transientStatusFailures = 0;
   let stopped = false;
+  let runCreatedAt = new Date().toISOString();
 
   page.on("request", (entry) => {
     if (
@@ -4168,9 +4219,11 @@ test("browser creates one server workflow and stop never submits generation task
   });
   const runBody = (state: "running" | "stopping" | "cancelled") => ({
     canvasId: project.id,
-    createdAt: "2026-09-01T00:00:00.000Z",
+    clientSemanticFingerprint: clientSemanticFingerprint || "wf1-pending",
+    createdAt: runCreatedAt,
     groupId: "server-group",
     id: runId,
+    lockedNodeIds: ["server-text"],
     nodes: [{
       id: "server-text",
       kind: "text",
@@ -4186,6 +4239,15 @@ test("browser creates one server workflow and stop never submits generation task
     const requestUrl = new URL(requestEntry.url());
     const method = requestEntry.method();
     if (method === "GET" && requestUrl.pathname === "/api/workflow-runs") {
+      if (createPosts === 0 && listFailures === 0) {
+        listFailures += 1;
+        await route.fulfill({
+          body: JSON.stringify({ error: "temporary list failure" }),
+          contentType: "application/json",
+          status: 503,
+        });
+        return;
+      }
       await route.fulfill({
         body: JSON.stringify({
           runs: createPosts > 0 ? [runBody("running")] : [],
@@ -4201,6 +4263,7 @@ test("browser creates one server workflow and stop never submits generation task
         clientSemanticFingerprint?: string;
       };
       clientSemanticFingerprint = body.clientSemanticFingerprint ?? "";
+      runCreatedAt = new Date().toISOString();
       await new Promise((resolve) => setTimeout(resolve, 150));
       // Simulate a response lost after the server durably accepted the run.
       await route.abort("failed");
@@ -4278,6 +4341,7 @@ test("browser creates one server workflow and stop never submits generation task
       "data-persistence-ready",
       "true",
     );
+    await expect.poll(() => listFailures).toBe(1);
     const group = page.locator('[data-testid="rf__node-server-group"]');
     await group.click({ position: { x: 5, y: 5 } });
     const execute = group.getByTestId("group-execute-button");
@@ -4289,11 +4353,24 @@ test("browser creates one server workflow and stop never submits generation task
     await expect.poll(() => createPosts).toBe(1);
     expect(clientSemanticFingerprint).toMatch(/^wf1-[a-z0-9-]+$/);
     expect(transientStatusFailures).toBe(1);
-    await expect(execute).toHaveText("停止后续");
-    await execute.click();
+    await page.reload();
+    await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+      "data-persistence-ready",
+      "true",
+    );
+    await expect(page.getByTestId("workflow-run-toast")).toContainText(
+      "已找回服务端整组执行",
+    );
+    await group.click({ position: { x: 5, y: 5 } });
+    const recoveredExecute = group.getByTestId("group-execute-button");
+    await expect(recoveredExecute).toHaveText("停止后续");
+    await page.waitForTimeout(250);
+    await expect(recoveredExecute).toHaveText("停止后续");
+    await expect.poll(() => createPosts).toBe(1);
+    await recoveredExecute.click();
     await expect.poll(() => stopPosts).toBe(1);
     await expect(page.getByTestId("workflow-run-toast")).toContainText(
-      "已停止后续节点",
+      "服务端已确认停止后续节点",
     );
     await expect.poll(() => generationTaskPosts).toBe(0);
   } finally {

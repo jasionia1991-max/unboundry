@@ -11,6 +11,7 @@ import {
   mediaPublicationFinalPath as mediaPublicationFinalPathImpl,
   mediaPublicationStagingPath as mediaPublicationStagingPathImpl,
   pendingGeneratedPublicationTaskIds as pendingGeneratedPublicationTaskIdsImpl,
+  publishGeneratedOssMediaPublication as publishGeneratedOssMediaPublicationImpl,
   publishLocalMediaPublication as publishLocalMediaPublicationImpl,
   recoverMediaLifecycleAtProcessStartup as recoverMediaLifecycleAtProcessStartupImpl,
   recoverPendingMediaDeletions as recoverPendingMediaDeletionsImpl,
@@ -65,6 +66,7 @@ export interface MediaPublicationService {
   markExternalReady: typeof markExternalMediaPublicationReadyImpl;
   pendingGeneratedTaskIds: typeof pendingGeneratedPublicationTaskIdsImpl;
   publishLocal: typeof publishLocalMediaPublicationImpl;
+  publishGeneratedOss: typeof publishGeneratedOssMediaPublicationImpl;
   readinessAllowsStartup: typeof mediaLifecycleStartupRecoveryAllowsReadinessImpl;
   recoverDeletions: typeof recoverPendingMediaDeletionsImpl;
   recoverStartup: typeof recoverMediaLifecycleAtProcessStartupImpl;
@@ -94,6 +96,7 @@ export const mediaPublicationService = createMediaPublicationService({
   hasPendingUploads: hasPendingUploadMediaPublicationsImpl,
   markExternalReady: markExternalMediaPublicationReadyImpl,
   pendingGeneratedTaskIds: pendingGeneratedPublicationTaskIdsImpl,
+  publishGeneratedOss: publishGeneratedOssMediaPublicationImpl,
   publishLocal: publishLocalMediaPublicationImpl,
   readinessAllowsStartup: mediaLifecycleStartupRecoveryAllowsReadinessImpl,
   recoverDeletions: recoverPendingMediaDeletionsImpl,
@@ -120,6 +123,8 @@ export const hasPendingUploadMediaPublications =
   mediaPublicationService.hasPendingUploads;
 export const markExternalMediaPublicationReady =
   mediaPublicationService.markExternalReady;
+export const publishGeneratedOssMediaPublication =
+  mediaPublicationService.publishGeneratedOss;
 export const markMediaDeletionFailed = mediaPublicationService.failDeletion;
 export const mediaLifecycleStartupRecoveryAllowsReadiness =
   mediaPublicationService.readinessAllowsStartup;

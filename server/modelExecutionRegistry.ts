@@ -52,14 +52,14 @@ const workflowRecoveryPolicies = Object.freeze({
     workflowEligible: true,
   }),
   "openrouter-image": Object.freeze({
-    evidence: "one synchronous image POST; boundary evidence forbids any automatic paid retry",
+    evidence: "synchronous response has no durable retrieve/idempotency/outbox proof; single-node use remains fenced but strong workflow admission is denied",
     grade: "SYNC_RESPONSE_OR_FENCED_UNKNOWN",
-    workflowEligible: true,
+    workflowEligible: false,
   }),
   "relay-gpt-image": Object.freeze({
-    evidence: "one synchronous GPT Image POST; response evidence and durable publication are recovered without another Provider submit",
+    evidence: "durable publication recovery starts only after response bytes arrive; a lost synchronous response has no durable retrieve/idempotency/outbox proof",
     grade: "SYNC_RESPONSE_OR_FENCED_UNKNOWN",
-    workflowEligible: true,
+    workflowEligible: false,
   }),
   "relay-media": Object.freeze({
     evidence: "the accepted relay task id is queried, and a lost create response is matched against usage records without another submit",

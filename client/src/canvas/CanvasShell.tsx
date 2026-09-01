@@ -1127,6 +1127,8 @@ export function CanvasShell({
     durableFixture ? "loading" : "ready",
   );
   const canvasScopeId = JSON.stringify([userId, projectTitleId]);
+  const activeCanvasScopeId = useRef(canvasScopeId);
+  activeCanvasScopeId.current = canvasScopeId;
   const groupRunScope = createGroupRunSummaryScope(
     userId,
     projectId ?? fixtureId ?? "default",
@@ -1168,6 +1170,7 @@ export function CanvasShell({
     value: templateSearch,
   });
   const saveTimer = useRef<number | undefined>(undefined);
+  const saveConflictTimer = useRef<number | undefined>(undefined);
   const nodeSearchInput = useRef<HTMLInputElement>(null);
   const assetsPanel = useRef<HTMLElement>(null);
   const templatesPanel = useRef<HTMLElement>(null);
@@ -1186,6 +1189,10 @@ export function CanvasShell({
   const projectTitleSaveAttempt = useRef(0);
   const projectActionInFlight = useRef<ProjectAction | undefined>(undefined);
   useEffect(() => {
+    window.clearTimeout(saveTimer.current);
+    window.clearTimeout(saveConflictTimer.current);
+    setSaveConflict(false);
+    setSaveConflictMessage("");
     setTextVideoStarted(false);
     setFocusNodeRequest(undefined);
     setHistoryAssetRequest(undefined);
@@ -2344,27 +2351,50 @@ export function CanvasShell({
     historyTab,
   ]);
 
-  const markSaving = useCallback(() => {
+  const markSaving = useCallback((expectedScopeId: string) => {
+    if (activeCanvasScopeId.current !== expectedScopeId) return;
     setSaveStatus("保存中...");
     if (!durableFixture) {
       window.clearTimeout(saveTimer.current);
       saveTimer.current = window.setTimeout(
-        () => setSaveStatus("已保存到云端"),
+        () => {
+          if (activeCanvasScopeId.current === expectedScopeId) {
+            setSaveStatus("已保存到云端");
+          }
+        },
         300,
       );
     }
   }, [durableFixture]);
-  const markSaveConflict = useCallback((message?: string) => {
+  const markSaveConflict = useCallback((expectedScopeId: string, message?: string) => {
+    if (activeCanvasScopeId.current !== expectedScopeId) return;
+    window.clearTimeout(saveTimer.current);
+    window.clearTimeout(saveConflictTimer.current);
     setSaveConflict(true);
     setSaveConflictMessage(message?.trim() || "另一页面已经保存了更新");
     setSaveStatus("保存失败");
-    window.setTimeout(() => setSaveConflict(false), 3_500);
+    saveConflictTimer.current = window.setTimeout(() => {
+      if (activeCanvasScopeId.current === expectedScopeId) {
+        setSaveConflict(false);
+      }
+    }, 3_500);
   }, []);
-  const markSaveSuccess = useCallback(() => {
+  const markSaveFailure = useCallback((expectedScopeId: string, _message?: string) => {
+    if (activeCanvasScopeId.current !== expectedScopeId) return;
+    window.clearTimeout(saveTimer.current);
+    setSaveStatus("保存失败");
+  }, []);
+  const markSaveSuccess = useCallback((expectedScopeId: string) => {
+    if (activeCanvasScopeId.current !== expectedScopeId) return;
+    window.clearTimeout(saveTimer.current);
     setSaveStatus("已保存到云端");
   }, []);
-  const markCanvasLoadState = useCallback((state: CanvasLoadState) => {
-    setCanvasLoadScopeId(canvasScopeId);
+  const markCanvasLoadState = useCallback((
+    expectedScopeId: string,
+    state: CanvasLoadState,
+  ) => {
+    if (activeCanvasScopeId.current !== expectedScopeId) return;
+    setCanvasLoadScopeId(expectedScopeId);
     setCanvasLoadState(state);
     setSaveStatus(
       state === "ready"
@@ -2375,7 +2405,27 @@ export function CanvasShell({
             ? "项目不存在"
             : "画布加载失败",
     );
-  }, [canvasScopeId]);
+  }, []);
+  const markCurrentCanvasLoadState = useCallback(
+    (state: CanvasLoadState) => markCanvasLoadState(canvasScopeId, state),
+    [canvasScopeId, markCanvasLoadState],
+  );
+  const markCurrentSaveConflict = useCallback(
+    (message?: string) => markSaveConflict(canvasScopeId, message),
+    [canvasScopeId, markSaveConflict],
+  );
+  const markCurrentSaveFailure = useCallback(
+    (message?: string) => markSaveFailure(canvasScopeId, message),
+    [canvasScopeId, markSaveFailure],
+  );
+  const markCurrentSaveSuccess = useCallback(
+    () => markSaveSuccess(canvasScopeId),
+    [canvasScopeId, markSaveSuccess],
+  );
+  const markCurrentSaving = useCallback(
+    () => markSaving(canvasScopeId),
+    [canvasScopeId, markSaving],
+  );
 
   return (
     <main
@@ -2410,15 +2460,16 @@ export function CanvasShell({
             onReady={(fitView) => setFitWorld(() => fitView)}
             onGraphContentChange={setGraphHasContent}
             onGenerationRetryGateChange={registerGenerationRetryGate}
-            onLoadStateChange={markCanvasLoadState}
+            onLoadStateChange={markCurrentCanvasLoadState}
             onOpenAssets={() => {
               closePrimarySurfaces();
               setAssetsOpen(true);
             }}
             onSearchIndexChange={setNodeSearchEntries}
-            onSaveConflict={markSaveConflict}
-            onSaveSuccess={markSaveSuccess}
-            onSaveStart={markSaving}
+            onSaveConflict={markCurrentSaveConflict}
+            onSaveFailure={markCurrentSaveFailure}
+            onSaveSuccess={markCurrentSaveSuccess}
+            onSaveStart={markCurrentSaving}
             onZoomChange={setZoomSummary}
             viewportRequest={viewportRequest}
             shellMenuCommand={shellMenuCommand}

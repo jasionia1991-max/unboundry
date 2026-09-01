@@ -114,6 +114,12 @@ type TextTaskOwner = {
   token: symbol;
 };
 
+type TextGenerationRevocationIdentity = {
+  inputKey?: string;
+  ownershipKey?: string;
+  taskId?: string;
+};
+
 function createTextGenerationAdapter(input: {
   contractFingerprint: string;
   inputKey: string;
@@ -285,6 +291,18 @@ function clearFailedTextGeneration(data: ProbeNodeType["data"]) {
     textGenerating: false,
     textGenerationTaskId: undefined,
   };
+}
+
+function clearTextGenerationIfIdentityMatches(
+  data: ProbeNodeType["data"],
+  identity: TextGenerationRevocationIdentity,
+) {
+  if (
+    data.textGenerationTaskId !== identity.taskId ||
+    data.textGenerationInputKey !== identity.inputKey ||
+    data.textGenerationOwnershipKey !== identity.ownershipKey
+  ) return data;
+  return clearFailedTextGeneration(data);
 }
 
 const richTextTags = new Set([
@@ -496,6 +514,11 @@ function TextNodeImpl({
   const editorRef = useRef<HTMLDivElement>(null);
   const bodyLocalValue = useRef(bodyValue);
   const textDataMutationVersionRef = useRef(0);
+  const pendingTextDataMutationRef = useRef<{
+    afterApplied: () => void;
+    key: string;
+    version: number;
+  } | undefined>(undefined);
   const activeTaskRef = useRef<string | null>(null);
   const textTaskOwnerRef = useRef<TextTaskOwner | undefined>(undefined);
   const textTerminalPatchPendingTaskRef = useRef<string | undefined>(undefined);
@@ -529,6 +552,14 @@ function TextNodeImpl({
     retryGenerationEnabled,
     waitForCanvasRevision,
   } = useGenerationCanvas();
+  const textMutationScopeKey = JSON.stringify([
+    accountId,
+    canvasId,
+    fixtureScopeId,
+    id,
+  ]);
+  const liveTextMutationScopeKeyRef = useRef(textMutationScopeKey);
+  liveTextMutationScopeKeyRef.current = textMutationScopeKey;
   const finishedDurationLabel = useFinishedGenerationDuration(
     data.textGenerationTaskId,
     singleNodeChrome && !data.textGenerating,
@@ -574,7 +605,7 @@ function TextNodeImpl({
     // reclaim the node after refresh.
     clearGenerationSubmissionIntent("text", canvasId, id, undefined, accountId, fixtureScopeId);
   };
-  const revokeTextTaskForGenerationInputChange = () => {
+  const revokeTextTaskForGenerationInputChange = (expectedTaskId?: string) => {
     recoveryTaskRef.current?.controller.abort("text-generation-input-changed");
     recoveryTaskRef.current = null;
     textTaskOwnerRef.current = undefined;
@@ -584,16 +615,88 @@ function TextNodeImpl({
     setRecoveringTask(false);
     setGenerationError("");
     setServerInputProblems([]);
-    // Input changes revoke the complete v2 slot, including an intent that has
-    // been recorded while ensureGenerationTask is still awaiting preflight.
-    clearGenerationSubmissionIntent("text", canvasId, id, undefined, accountId, fixtureScopeId);
+    // A persisted task revocation clears only its matching v2 intent. Direct
+    // semantic edits omit the task id so an intent recorded while
+    // ensureGenerationTask is still awaiting preflight is revoked as well.
+    clearGenerationSubmissionIntent(
+      "text",
+      canvasId,
+      id,
+      expectedTaskId,
+      accountId,
+      fixtureScopeId,
+    );
+  };
+  const finishTextGenerationInputRevocation = (
+    identity: TextGenerationRevocationIdentity,
+    expectedScopeKey: string,
+  ) => {
+    const clearExpectedIntent = () => clearGenerationSubmissionIntent(
+      "text",
+      canvasId,
+      id,
+      identity.taskId,
+      accountId,
+      fixtureScopeId,
+    );
+    const owner = textTaskOwnerRef.current;
+    const replacementClaimed = identity.taskId === undefined
+      ? Boolean(owner || recoveryTaskRef.current || activeTaskRef.current)
+      : Boolean(
+          (owner && (
+            owner.taskId !== identity.taskId ||
+            (identity.inputKey !== undefined &&
+              owner.generationInputKey !== identity.inputKey) ||
+            (identity.ownershipKey !== undefined &&
+              owner.generationOwnershipKey !== identity.ownershipKey)
+          )) ||
+          (recoveryTaskRef.current &&
+            recoveryTaskRef.current.taskId !== identity.taskId) ||
+          (activeTaskRef.current && activeTaskRef.current !== identity.taskId),
+        );
+    if (
+      liveTextMutationScopeKeyRef.current !== expectedScopeKey ||
+      replacementClaimed
+    ) {
+      // A task id makes this removal compare-and-delete. A taskless old
+      // intent cannot be distinguished from a newer preflight intent, so it
+      // remains fail-closed when the component scope or owner has changed.
+      if (identity.taskId) clearExpectedIntent();
+      return;
+    }
+    if (identity.taskId) {
+      setUnverifiedRecoveryTaskId((current) =>
+        current === identity.taskId ? undefined : current
+      );
+    }
+    revokeTextTaskForGenerationInputChange(identity.taskId);
   };
   const commitTextDataMutation = (
     update: (current: ProbeNodeType["data"]) => ProbeNodeType["data"],
     afterApplied: () => void = revokeTextTaskForGenerationInputChange,
+    coalescingKey?: string,
   ) => {
+    const pending = pendingTextDataMutationRef.current;
+    if (
+      coalescingKey &&
+      pending?.key === coalescingKey &&
+      pending.version === textDataMutationVersionRef.current
+    ) {
+      // The input-fingerprint and recovery effects can observe the same stale
+      // persisted ownership in one render. Share the durable mutation and let
+      // the last observer supply its guarded cleanup instead of queueing a
+      // no-op save whose callback could be suppressed by the version fence.
+      pending.afterApplied = afterApplied;
+      return;
+    }
     const mutationVersion = textDataMutationVersionRef.current + 1;
     textDataMutationVersionRef.current = mutationVersion;
+    const coalescedMutation = coalescingKey
+      ? { afterApplied, key: coalescingKey, version: mutationVersion }
+      : undefined;
+    if (coalescedMutation) {
+      pendingTextDataMutationRef.current = coalescedMutation;
+    }
     void mutateGraph(({ edges, nodes }) => ({
       edges,
       nodes: nodes.map((node) => node.id === id
@@ -601,7 +704,15 @@ function TextNodeImpl({
         : node),
     })).then((applied) => {
       if (applied && textDataMutationVersionRef.current === mutationVersion) {
-        afterApplied();
+        if (!coalescedMutation) {
+          afterApplied();
+        } else if (pendingTextDataMutationRef.current === coalescedMutation) {
+          coalescedMutation.afterApplied();
+        }
+      }
+    }).finally(() => {
+      if (pendingTextDataMutationRef.current === coalescedMutation) {
+        pendingTextDataMutationRef.current = undefined;
       }
     });
   };
@@ -768,6 +879,13 @@ function TextNodeImpl({
   liveGenerationInputKeyRef.current = generationInputKey;
   const liveGenerationOwnershipKeyRef = useRef(rawGenerationInputFingerprint);
   liveGenerationOwnershipKeyRef.current = rawGenerationInputFingerprint;
+  const textGenerationRevocationKey = JSON.stringify([
+    textMutationScopeKey,
+    data.textGenerationTaskId ?? null,
+    data.textGenerationInputKey ?? null,
+    data.textGenerationOwnershipKey ?? null,
+    rawGenerationInputFingerprint,
+  ]);
   const stableRawGenerationInputFingerprint = useRef<string | undefined>(
     undefined,
   );
@@ -886,7 +1004,16 @@ function TextNodeImpl({
       !data.textGenerationInputKey &&
       !data.textGenerationOwnershipKey
     ) return;
-    commitTextDataMutation((current) => clearFailedTextGeneration(current));
+    const identity = {
+      inputKey: data.textGenerationInputKey,
+      ownershipKey: data.textGenerationOwnershipKey,
+      taskId: data.textGenerationTaskId,
+    } satisfies TextGenerationRevocationIdentity;
+    commitTextDataMutation(
+      (current) => clearTextGenerationIfIdentityMatches(current, identity),
+      () => finishTextGenerationInputRevocation(identity, textMutationScopeKey),
+      textGenerationRevocationKey,
+    );
   }, [
     data.textGenerating,
     data.textGenerationInputKey,
@@ -897,6 +1024,8 @@ function TextNodeImpl({
     persistenceReady,
     rawGenerationInputFingerprint,
     setNodes,
+    textGenerationRevocationKey,
+    textMutationScopeKey,
   ]);
 
   useEffect(() => {
@@ -1237,32 +1366,30 @@ function TextNodeImpl({
           persistedOwnershipKey &&
           persistedOwnershipKey !== rawGenerationInputFingerprint
         ) {
+          const identity = {
+            inputKey: persistedInputKey,
+            ownershipKey: persistedOwnershipKey,
+            taskId: persistedTaskId,
+          } satisfies TextGenerationRevocationIdentity;
           commitTextDataMutation(
-            (current) => current.textGenerationTaskId === persistedTaskId
-              ? clearFailedTextGeneration(current)
-              : current,
-            () => {
-              setUnverifiedRecoveryTaskId((current) =>
-                current === persistedTaskId ? undefined : current
-              );
-              revokeTextTaskForGenerationInputChange();
-            },
+            (current) => clearTextGenerationIfIdentityMatches(current, identity),
+            () => finishTextGenerationInputRevocation(identity, textMutationScopeKey),
+            textGenerationRevocationKey,
           );
           return;
         }
         if (!persistedOwnershipKey) {
           if (!catalogReady) return;
           if (persistedInputKey && persistedInputKey !== generationInputKey) {
+            const identity = {
+              inputKey: persistedInputKey,
+              ownershipKey: persistedOwnershipKey,
+              taskId: persistedTaskId,
+            } satisfies TextGenerationRevocationIdentity;
             commitTextDataMutation(
-              (current) => current.textGenerationTaskId === persistedTaskId
-                ? clearFailedTextGeneration(current)
-                : current,
-              () => {
-                setUnverifiedRecoveryTaskId((current) =>
-                  current === persistedTaskId ? undefined : current
-                );
-                revokeTextTaskForGenerationInputChange();
-              },
+              (current) => clearTextGenerationIfIdentityMatches(current, identity),
+              () => finishTextGenerationInputRevocation(identity, textMutationScopeKey),
+              textGenerationRevocationKey,
             );
             return;
           }
@@ -1591,6 +1718,8 @@ function TextNodeImpl({
     rawGenerationInputFingerprint,
     legacyRecoveryCatalogKey,
     setNodes,
+    textGenerationRevocationKey,
+    textMutationScopeKey,
   ]);
 
   const generateText = async (

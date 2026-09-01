@@ -146,6 +146,28 @@ import type { TemplateNodeKind } from "../../../types/nodeVocabulary";
 
 const emptyNodes: ProbeNodeType[] = [];
 
+function throwIfCanvasWaitAborted(signal?: AbortSignal) {
+  if (signal?.aborted) {
+    throw signal.reason ?? new DOMException("Aborted", "AbortError");
+  }
+}
+
+function waitForCanvasState(ms: number, signal?: AbortSignal) {
+  throwIfCanvasWaitAborted(signal);
+  return new Promise<void>((resolve, reject) => {
+    let timer: number | undefined;
+    const onAbort = () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      reject(signal?.reason ?? new DOMException("Aborted", "AbortError"));
+    };
+    timer = window.setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 /**
  * React Flow does not support a node whose parent points to itself. Older
  * public-template data can contain that invalid root link; treat the template
@@ -1817,6 +1839,7 @@ export function CanvasSurface({
   onReady,
   onSearchIndexChange,
   onSaveConflict,
+  onSaveFailure,
   onSaveSuccess,
   onSaveStart,
   onZoomChange,
@@ -1847,6 +1870,7 @@ export function CanvasSurface({
   onReady: (fitView: () => void) => void;
   onSearchIndexChange?: (entries: CanvasSearchEntry[]) => void;
   onSaveConflict: (message?: string) => void;
+  onSaveFailure: (message?: string) => void;
   onSaveSuccess: () => void;
   onSaveStart: () => void;
   onZoomChange?: (zoom: number) => void;
@@ -4181,6 +4205,7 @@ export function CanvasSurface({
     nodes,
     onProjectMissing,
     onSaveConflict,
+    onSaveFailure,
     onSaveStart,
     onSaveSuccess,
     persistCanvasSaveSession,
@@ -4668,8 +4693,9 @@ export function CanvasSurface({
         isCanvasLoadToken(persistenceObservedLoadToken.current)));
   const generationCanvasRevisionRef = useRef<number | undefined>(undefined);
   generationCanvasRevisionRef.current = generationCanvasRevision;
-  const flushCanvasSave = useCallback(async () => {
+  const flushCanvasSave = useCallback(async (signal?: AbortSignal) => {
     const assertSafePersistence = () => {
+      throwIfCanvasWaitAborted(signal);
       if (
         persistenceFixture &&
         (!persistenceReadyRef.current ||
@@ -4697,12 +4723,16 @@ export function CanvasSurface({
       if (Date.now() > deadline) {
         throw new Error("画布保存超时，请稍后重试");
       }
-      await new Promise((resolve) => setTimeout(resolve, 60));
+      await waitForCanvasState(60, signal);
     }
     assertSafePersistence();
   }, [persistenceFixture]);
-  const waitForCanvasRevision = useCallback(async (timeoutMs = 30_000) => {
+  const waitForCanvasRevision = useCallback(async (
+    timeoutMs = 30_000,
+    signal?: AbortSignal,
+  ) => {
     const assertSafePersistence = () => {
+      throwIfCanvasWaitAborted(signal);
       if (
         persistenceFixture &&
         (!persistenceReadyRef.current ||
@@ -4745,7 +4775,7 @@ export function CanvasSurface({
           }
         }
       }
-      await new Promise((resolve) => setTimeout(resolve, 60));
+      await waitForCanvasState(60, signal);
     }
     throw new Error("画布保存超时，请稍后再试");
   }, [persistenceFixture]);
@@ -4776,6 +4806,96 @@ export function CanvasSurface({
       window.clearTimeout(timeout);
     }
   }, [persistenceFacade, persistenceFixture, persistenceId]);
+  const refreshAuthoritativeCanvasDocument = useCallback(async (
+    signal?: AbortSignal,
+  ) => {
+    if (!persistenceFixture) return false;
+    const scopeId = persistenceScopeId;
+    await flushCanvasSave(signal);
+    if (signal?.aborted) return false;
+    const controller = new AbortController();
+    const relayAbort = () => controller.abort(signal?.reason ?? "workflow-refresh-aborted");
+    if (signal?.aborted) relayAbort();
+    else signal?.addEventListener("abort", relayAbort, { once: true });
+    const timeout = window.setTimeout(
+      () => controller.abort("workflow-refresh-timeout"),
+      PERSIST_LOAD_TIMEOUT_MS,
+    );
+    try {
+      const response = await persistenceFacade.transport.load({
+        canvasId: persistenceId,
+        saveSessionId: persistenceSessionId.current,
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted || signal?.aborted) return false;
+      if (!response.ok || !persistenceFacade.isLoadedDocument(response.body)) {
+        throw new Error("无法刷新服务端已写回的画布结果");
+      }
+      if (
+        persistenceLoadIdentity.current.scopeId !== scopeId ||
+        persistenceConflict.current || persistenceDirty.current ||
+        persistenceSaving.current ||
+        response.body.revision < persistenceRevision.current
+      ) return false;
+      const document = {
+        ...response.body,
+        nodes: normalizeCanvasParentLinks(
+          normalizePersistedMediaNodes(response.body.nodes),
+        ),
+        edges: response.body.edges.map((edge) =>
+          stripSelectionFlowMarkers(
+            edge.style && typeof edge.style === "object"
+              ? { ...edge, style: undefined }
+              : edge,
+          )
+        ),
+      };
+      const graphRevision = document.graphRevision ?? document.revision;
+      const previousServerEpoch = persistenceServerEpoch.current;
+      const previousSequenceFloor = persistenceSequenceFloor.current;
+      try {
+        persistenceServerEpoch.current = document.saveEpoch;
+        persistenceSequenceFloor.current = Math.max(
+          persistenceSequenceFloor.current,
+          document.sessionHighWaterSequence,
+        );
+        persistCanvasSaveSession();
+      } catch (error) {
+        persistenceServerEpoch.current = previousServerEpoch;
+        persistenceSequenceFloor.current = previousSequenceFloor;
+        throw error;
+      }
+      persistenceRevision.current = document.revision;
+      persistenceGraphRevision.current = graphRevision;
+      persistenceObservedRevision.current = document.revision;
+      persistenceObservedLoadToken.current = document.loadToken;
+      if (
+        persistenceExternalRevision.current !== undefined &&
+        persistenceExternalRevision.current <= document.revision
+      ) persistenceExternalRevision.current = undefined;
+      persistedDocumentFingerprint.current = canvasDocumentFingerprint(document);
+      persistedGraphFingerprint.current = canvasGraphFingerprint(document);
+      setConfirmedPersistenceRevision(document.revision);
+      setConfirmedGraphRevision(graphRevision);
+      setNodes(document.nodes);
+      setEdges(document.edges);
+      applyViewport(document.viewport);
+      return true;
+    } finally {
+      window.clearTimeout(timeout);
+      signal?.removeEventListener("abort", relayAbort);
+    }
+  }, [
+    applyViewport,
+    flushCanvasSave,
+    persistenceFacade,
+    persistenceFixture,
+    persistenceId,
+    persistenceScopeId,
+    persistCanvasSaveSession,
+    setEdges,
+    setNodes,
+  ]);
   settleCanvasMutationDurablyRef.current = async () => {
     if (!persistenceFixture) return;
     while (true) {
@@ -4881,6 +5001,7 @@ export function CanvasSurface({
       notify: showWorkflowToast,
       persistenceReady,
       readAuthoritativeCanvasRevision,
+      refreshAuthoritativeCanvasDocument,
       retryGenerationEnabled,
       waitForCanvasRevision,
     }),
@@ -4893,6 +5014,7 @@ export function CanvasSurface({
       persistenceReady,
       persistenceId,
       readAuthoritativeCanvasRevision,
+      refreshAuthoritativeCanvasDocument,
       retryGenerationEnabled,
       showWorkflowToast,
       waitForCanvasRevision,
@@ -4933,6 +5055,7 @@ export function CanvasSurface({
     rollbackAfterDurableFailure?: (result: T) => Promise<void> | void,
   ): Promise<T | undefined> => {
     const affected = [...new Set(nodeIds.filter(Boolean))];
+    let saveStarted = false;
     for (const nodeId of affected) {
       canvasMutationVersionsRef.current.set(
         nodeId,
@@ -4949,6 +5072,7 @@ export function CanvasSurface({
         canvasMutationScope,
         affected,
         async () => {
+          saveStarted = true;
           onSaveStart();
           const result = await work();
           try {
@@ -4961,6 +5085,11 @@ export function CanvasSurface({
         },
       );
     } catch (error) {
+      if (saveStarted) {
+        onSaveFailure(
+          error instanceof Error ? error.message : "画布修改未能保存",
+        );
+      }
       showWorkflowToast(
         error instanceof Error
           ? error.message
@@ -4983,7 +5112,7 @@ export function CanvasSurface({
         return next;
       });
     }
-  }, [canvasMutationScope, onSaveStart, showWorkflowToast]);
+  }, [canvasMutationScope, onSaveFailure, onSaveStart, showWorkflowToast]);
   const changedNodeIds = useCallback((
     before: readonly ProbeNodeType[],
     after: readonly ProbeNodeType[],
@@ -5217,14 +5346,23 @@ export function CanvasSurface({
     }
   }, [selectedNodeCount]);
 
+  const readWorkflowEdges = useCallback(
+    () => pendingGuardedEdges.current ?? edgesRef.current,
+    [],
+  );
+  const readWorkflowNodes = useCallback(
+    () => pendingGuardedNodes.current ?? nodesRef.current,
+    [],
+  );
+
   return (
     <GenerationCanvasContext.Provider
       value={generationCanvasContextValue}
     >
       <WorkflowExecutionProvider
         graph={workflowGraphPort}
-        getEdges={() => pendingGuardedEdges.current ?? edgesRef.current}
-        getNodes={() => pendingGuardedNodes.current ?? nodesRef.current}
+        getEdges={readWorkflowEdges}
+        getNodes={readWorkflowNodes}
         nodesSnapshot={nodes}
         notify={showWorkflowToast}
         onRetainedNodeIdsChange={setWorkflowRetainedNodeIds}

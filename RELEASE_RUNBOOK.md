@@ -1,7 +1,9 @@
 # Unboundry 版本发布 Runbook
 
 给人和接手的 AI 看。作用：从「版本号 + 上线授权」到「线上验证 + 文档收口」的每一步照做，避免每次现场拼命令、用错脚本。
-基线：v0.6.29（2026-08-21）按本流程完成代码发布和不依赖云腾凭据的生产技术验收，状态 `PRODUCTION_CODE_PUBLISHED_CONFIGURATION_BLOCKED / USER_RECHECK`。云腾安全入口缺少其自己的key，故三模型配置和真实smoke保持fail-closed；v0.6.28为上一不可变版。本文不替代 `上线规矩.md` 的授权纪律。
+历史基线：v0.6.29（2026-08-21）曾按旧流程发布；其版本号、路径和先打 tag 的命令不再是可执行模板。当前执行只看下面的 v0.7.0 覆盖层和 `spec/INC_GEN_026_CHECKPOINT.md`。本文不替代 `上线规矩.md` 的授权纪律。
+
+> **2026-09-02 INC-GEN-026 边界**：用户已明确授权 v0.7.0 的一次性 commit/push/PR/CI/tag/Release 与生产 schema42 备份/安装/切换/rollback-forward。唯一 formal full 已消费且不得重跑；v0.7.0 的版本小差异只跑直接相关 safe spec、build/CI 和增量 Review。历史数据 apply、真实 Provider/OSS、费用和真实 Canvas/group 点击仍未授权。
 
 **适用范围**：本 Runbook 只用于「代码 / 构建产物」变更（bump 版本、改逻辑、重发静态资源）。纯公共模板数据变更（新增/修改模板、预览图、种子）走 `上线规矩.md` 的「加模板轻量路径」，**不需要版本号、不打标签、不跑全量**，直接提交 + 服务器灌库。
 
@@ -10,12 +12,14 @@
 - 用户分别说了「版本号」和「可以上线」，缺一句都不动。一次授权只用一次。
 - 删任何东西（含备份目录、临时文件）必须先问用户。
 - 测试不碰 `4173`、本地 `app/data`、`/var/lib/unboundry`、真实媒体/备份；不准未授权真实付费生成。
-- 不能提交的文件：`spec/public-templates-director-split-revision.json`（保持 untracked，不 add、不删）。
+- 两份永久受保护文件都不得读取、hash、复制、移动、修改、删除或暂存：
+  `spec/INC_GEN_017_R0_PUBLISHED_MODEL_SNAPSHOT_2026-08-28.json` 与
+  `spec/public-templates-director-split-revision.json`。
 
 ## 1. 只读核对
 
 ```bash
-cd /Users/mymy/Documents/unboundry/app
+cd <本次 Goal 明确选择且已核对 origin/HEAD/tree 的仓库>
 pwd
 git branch --show-current
 git rev-parse --short HEAD
@@ -27,41 +31,44 @@ grep '"version"' package.json
 
 ## 2. 版本号与发布 commit（本地）
 
-1. `package.json`、`package-lock.json` 版本号 +1（如 `0.6.18` → `0.6.19`）。
+1. `package.json`、`package-lock.json` 精确设为用户批准的 `0.7.0`。
 2. `server/bridgeRuntimeMode.ts` 的 final 角色放行清单加入新版本号。
 3. `tests/m81-deployment-hardening.spec.ts` 加对应断言。
 4. 按需同步 `上线规矩.md`、`TASKS.md`、`spec/UNBOUNDRY_CURRENT_STATE.md` 等记录。
-5. commit（如 `feat: ... bump to v0.6.29`）。先不要打标签、push或开PR；正式safe full必须绑定这个干净候选commit。
+5. 冻结增量 Review 后，用显式文件清单暂存并 commit；两份受保护 JSON 永远不得进入暂存。先不要打标签，tag 只能落在 PR 合并后的精确 main commit。
 
-## 3. 发布前全量安全测试（本地 Mac）
+## 3. 发布前定向门与 GitHub（本地 Mac）
 
-```bash
-node scripts/run-safe-tests.mjs preflight
-node scripts/run-safe-tests.mjs full
-```
+INC-GEN-026/v0.7.0 特例：R8 已经消费唯一 formal full，永久保留原始 `1162/1167` 与最小关闭 `112/112`；不得执行下面的第二次 full。版本号、final allowlist、断言和状态文档这一小段只运行直接相关 safe spec 与增量 Review，随后以 PR/main CI 的 build+m104 门补充发布证据。
+
+本次只保留已执行的 m81+m82 版本门、m10 backup 门、共同 preflight/build/source coverage 和冻结后增量 Review；文档冻结后按需执行治理 m38。不要运行 `node scripts/run-safe-tests.mjs full`。
 
 - 需要Node 22.23.x、npm 10.9.8、Playwright浏览器缓存、npm离线缓存，缺了preflight会明说。
 - 测试必须只使用runner新建的临时数据和回环端口；本地4173、`app/data`、`/var/lib/unboundry`、真实媒体和密钥不得触碰。
-- 发布候选标准以当前测试清单为准。v0.6.29正式full覆盖`119 specs / 1034 tests`，首次`1025/1034`；9个旧测试夹具/可访问名称失败经分类后只重跑失败spec，先`30/31`、再m43 `6/6 PASS`。记录必须保留首次失败，不得把有效覆盖改写成“full零失败”，也不得为放心重复full。
+- v0.6.29 的 `119 specs / 1034 tests` 只作历史账本，不是当前命令或分母。当前 inventory、formal 原始失败、最小关闭和 R9 增量证据只以 INC-GEN-026 Checkpoint/Receipt 为准。
 - 工作树除受保护的未跟踪 `spec/public-templates-director-split-revision.json` 外必须为空；它不得进入测试快照、archive、commit、tag或PR。
 
-全量通过后再打**注释标签**、push并开PR：
+候选冻结后按这个顺序执行，不能把 tag 打在 PR 分支头：
 
 ```bash
-git tag -a v0.6.29 -m "v0.6.29"
 git push origin <branch>
-git push origin v0.6.29
+gh pr create --base main --head <branch>
+# 等待 PR Quality gates 成功后合并，再等待 main Quality gates 成功。
+git fetch origin main --tags
+git tag -a v0.7.0 <merged-main-commit> -m "v0.7.0"
+git push origin v0.7.0
+gh release create v0.7.0 --verify-tag --title "v0.7.0"
 ```
 
-6. 用 `gh` 开 PR 并合并到 `main`（squash），记录 merge commit。
+记录 PR 号、final-head run、merge commit、main run、annotated tag object、peeled commit/tree 和 GitHub Release URL。tag、merge 与 release archive 的 tree 必须一致。
 
 ## 4. 服务器准备发布目录（staging）
 
-1. 把精确源码（对应已合并的 commit）同步到 `/opt/unboundry/staging/unboundry-v<版本>`（如 `git archive` 解包或 scp 源码树）。
+1. 从不可移动 `v0.7.0` tag 导出 archive，校验其 peeled commit/tree 与已通过 main CI 的合并身份一致，再解包到全新 `/opt/unboundry/staging/unboundry-v0.7.0-<唯一后缀>`；不得同步当前脏工作树或复用旧 dist。
 2. 在 staging 内 `npm ci`（完整依赖），然后用 **staging 自身源码**重建产物：
 
 ```bash
-cd /opt/unboundry/staging/unboundry-v0.6.29
+cd /opt/unboundry/staging/unboundry-v0.7.0-<唯一后缀>
 /opt/node22/bin/node /opt/unboundry/node_modules/typescript/bin/tsc --noEmit
 /opt/node22/bin/node node_modules/vite/bin/vite.js build
 ```
@@ -75,42 +82,46 @@ find . -type f -not -name RELEASE-INVENTORY.sha256 -print0 \
 sha256sum -c RELEASE-INVENTORY.sha256 --quiet && echo INVENTORY_OK
 ```
 
-## 5. 正式备份（当前生产同款：明文快照 + 恢复副本 + 双清单）
+## 5. 正式备份（当前 schema42：签名、加密、locked-exact）
 
-注意：正式发布备份用的是服务器 `/opt/unboundry/scripts/backup-data.mjs`（旧明文格式），**不是** release 里那套加密版 backup-data.mjs。二者不要混。
+当前候选只允许 release 内的 `scripts/backup-data.mjs`、
+`scripts/verify-backup.mjs`、`scripts/restore-backup.mjs` 合同。调用时必须显式提供
+schema42、数据库 logical SHA、生成冻结时间、最后 Provider admission、独立 scratch、
+签名私钥路径和恢复公钥路径；任何证据缺失、活动 task、当前 unknown-billing、当前关联的未完成 Provider boundary、活动
+publication、SHA 漂移或 schema 漂移都 fail-closed。备份包必须先 verify，再只恢复到
+全新 0700 私有目录；禁止覆盖活动数据目录。
 
-```bash
-ROOT=/var/lib/unboundry-rollbacks/v0.6.29-frozen-<随机6字符>
-sudo mkdir -p "$ROOT"
-sudo /opt/node22/bin/node /opt/unboundry/scripts/backup-data.mjs \
-  --data-dir /var/lib/unboundry --backup-root "$ROOT"
-SRC=$(sudo ls -d "$ROOT"/*/ | head -1)      # 时间戳子目录
-sudo mv "$SRC" "$ROOT/frozen-source"
-cd "$ROOT/frozen-source"
-find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum | sudo tee "$ROOT/frozen.sha256" >/dev/null
-sudo cp -a "$ROOT/frozen-source" "$ROOT/restore-copy"
-cd "$ROOT/restore-copy"
-find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum | sudo tee "$ROOT/restore.sha256" >/dev/null
-sudo diff -q "$ROOT/frozen.sha256" "$ROOT/restore.sha256" && echo MANIFEST_MATCH
-```
+schema42 包必须原样保留终态历史 evidence；不得为通过 quiet gate 删除、改写或“收口”历史 task/attempt。只有当前运行边界不静默才阻断 current backup。schema37/38 historical-recovery 继续走其严格旧合同。
 
-校验恢复副本数据库（只读）：`PRAGMA user_version` = 39、`integrity_check` = ok、`foreign_key_check` = 0；记下 tasks / attempts / public_templates(published) / active 计数，作为切换前后数据门基准。
+生产 wrapper 的候选源为 `ops/production/backup-to-oss-retention.mjs`。默认不上传；
+真实 `--apply-upload`、timer 安装/启用、OSS 删除/恢复都需要单独授权和不可变版本回执。
+wrapper 必须保留在完整不可变 release tree 的 `ops/production/` 原位置，不得单独复制到
+`/opt/unboundry/scripts` 等脱离 `scripts/` 与 `server/` 的路径；内部 child/import 均从
+wrapper 的 module URL 解析，不能依赖 systemd 当前目录。
+安装前必须记录 wrapper SHA、安装路径/权限、service/timer unit SHA、next-run、
+backup/verify/fresh-restore receipt。`ops/production/backup-data-schema39.mjs` 仅是历史标识，
+已 fail-closed，不能再作为 current timer 源。
+
+恢复副本只读校验：`PRAGMA user_version = 42`、`integrity_check = ok`、
+`foreign_key_check = 0`、logical SHA、关键表计数、媒体和 secrets manifest 与源证据一致。
 
 ## 6. 切换上线
 
 ```bash
-sudo mv /opt/unboundry/staging/unboundry-v0.6.29 \
-  /opt/unboundry/releases/v0.6.29-<描述>-20260821
-sudo ln -s /opt/unboundry/releases/v0.6.29-<描述>-20260821 /opt/unboundry/current.next
+sudo mv /opt/unboundry/staging/unboundry-v0.7.0-<唯一后缀> \
+  /opt/unboundry/releases/v0.7.0-inc-gen-026-20260902
+sudo ln -s /opt/unboundry/releases/v0.7.0-inc-gen-026-20260902 /opt/unboundry/current.next
 sudo mv -T /opt/unboundry/current.next /opt/unboundry/current
 sudo systemctl restart unboundry
 curl -fsS http://127.0.0.1:4173/api/version   # 期望与本次发布版本一致
 ```
 
+切换前记录旧 `current` 精确目标。v0.7.0 首次门通过后，按同一 schema42 数据副本把 `current` 原子切回旧 v0.6.70、启动并验证；再原子 forward 到同一 v0.7.0 release 并验证。每次切换都记录 service、version/live/ready、schema/integrity/FK、关键计数、静态清单和 restart 计数。不得运行历史数据 apply，也不得在 rollback/forward 间调用 Provider 或 OSS。
+
 ## 7. 发布核验
 
 1. 服务：`systemctl is-active unboundry` = active，`NRestarts` = 0。
-2. 数据门（只读）：schema39、integrity ok、FK0、tasks/attempts/templates/active 与备份基准**完全一致**。
+2. 数据门（只读）：当前 schema42、integrity ok、FK0、tasks/attempts/templates/active 与本次 schema42 locked-exact 备份基准**完全一致**。旧 schema39 仅属于历史灾难恢复流程，不得用于当前发布核验。
 3. 公网：`https://canvas.mymy.ltd/api/version` 与本次发布版本一致；首页引用的 `assets/*.js/css` 逐个 `sha256sum`，与 release `dist/client/assets/*` **逐字节一致**。
 4. 外部影响：真实 Provider / 付费生成 / OSS 写入 = 0。
 
@@ -123,9 +134,10 @@ curl -fsS http://127.0.0.1:4173/api/version   # 期望与本次发布版本一�
 
 ## 9. 已知坑（本次踩过，先看这里）
 
-- 服务器 `/opt/unboundry/scripts/backup-data.mjs` 是旧明文脚本；release 里的 `backup-data.mjs` 是加密版，两者目录结构不同，别用错。
+- schema39 明文脚本只属于历史证据；current timer 必须绑定不可变 schema42 加密 wrapper 的精确 SHA，不能靠同名路径猜版本。
+- `scripts/build-release.mjs` 及其 bridge/final 双版本工具固定服务旧 v0.5.2/v0.6.0 不可变演练，不是当前 v0.7.0 发布入口；当前版本按精确合并 commit/tag archive fresh build，不得为凑当前版本改写旧工具。
 - 发布清单 `RELEASE-INVENTORY.sha256` 不含自身行；生成必须排除自身，否则 `sha256sum -c` 永远失败（v0.6.18 也是自包含旧行、发布时以排除自身为准）。
 - `find | xargs sha256sum` 遇 node_modules 里带空格/换行的文件名会断；统一用 `-print0 | sort -z | xargs -0`。
 - staging 的 dist 若与源码来源不明，**重建**后再发布；重算清单在重建之后。
-- 明文备份流程不需要密钥；加密版才需要 `--signing-private-key` / `--recovery-public-key`。
+- current schema42 备份必须使用外部私有 key 文件；密钥内容不得写进仓库、命令回执或备份 manifest。
 - 备份目录父级 `/var/lib/unboundry-rollbacks` 是 root 0700，ubuntu 直接 ls 会 Permission denied；用 `sudo` 查看/操作。

@@ -6,11 +6,15 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 
-## 当前候选：INC-GEN-023 v0.6.69服务端终态解绑（2026-09-01）
+## 当前最高优先级：INC-GEN-026 v0.7.0 发布执行中（2026-09-02）
 
-v0.6.68已发布到生产并保持健康；原失败任务已无费用收口为cancelled，但浏览器本地checkpoint/lease仍使客户端解绑持续defer。v0.6.69本地候选用受runtime lease/drain管理的独立terminal-only服务端sweep收口真正不可恢复的failed/cancelled精确绑定，严格按owner+Canvas allowlist运行；success、非终态、可恢复的accepted任务、非allowlist和不匹配绑定保持不变，且不会因空闲启动打开全局generation recovery。全部复审问题均已修复，m81 `42/42`、m85 `28/28`、m93 `7/7`、m38 `18/18`通过，第四轮独立复审`P0=0/P1=0/P2=0/GO`；用户已授权发布，现进入发布。整组点击0/1、Provider POST0/11、费用0。权威断点见[`spec/INC_GEN_023_CHECKPOINT.md`](spec/INC_GEN_023_CHECKPOINT.md)。
+用户已明确授权 v0.7.0 上线，本次 GitHub/Release 与生产 schema42 备份/切换/rollback-forward 正在执行。生产暂仍为 `v0.6.70/schema42`。R0～R8 唯一 formal safe full 原始 `1162/1167`、定向关闭 `112/112` 与最终 Review `P0=0/P1=0/GO` 保留且不重跑 full；历史数据 apply、真实 Provider/OSS、费用与真实 Canvas/group 点击仍未授权。入口见 [`INC_GEN_026_CHECKPOINT.md`](spec/INC_GEN_026_CHECKPOINT.md)。
 
-## 当前线上：INC-GEN-020 v0.6.66生产技术通过（2026-09-01，USER RECHECK）
+## 历史候选：INC-GEN-023 v0.6.69服务端终态解绑（2026-09-01）
+
+该段保留 v0.6.69 发布前的历史候选事实；它已经被 v0.6.70 与 INC-GEN-026 当前状态取代，不再提供实施、发布、点击或费用授权。历史断点见 [`spec/INC_GEN_023_CHECKPOINT.md`](spec/INC_GEN_023_CHECKPOINT.md)。
+
+## 历史线上：INC-GEN-020 v0.6.66生产技术通过（2026-09-01，USER RECHECK）
 
 v0.6.66已完成PR #138、PR/main CI、不可变tag/GitHub Release、exact tag fresh build、schema41冻结备份、原子切换、公网健康与33/33静态文件门。原同步图片任务已由系统自动收口为`RESULT_SAVE_FAILED_NO_RETRY`，active0；task/admission/provider attempt/media/publication计数不变，无新Provider POST、OSS写或费用。登录实页上“整组执行”可用，任务面板明确“不会重复提交”；没有点击任何生成操作。节点alert仍有“自动找回中”旧文案残余，所以保持`USER_RECHECK`。权威断点见[`spec/INC_GEN_020_CHECKPOINT.md`](spec/INC_GEN_020_CHECKPOINT.md)，生产回执见[`spec/V0_6_66_PRODUCTION_RECEIPT_2026-09-01.json`](spec/V0_6_66_PRODUCTION_RECEIPT_2026-09-01.json)。
 

@@ -65,6 +65,7 @@ import {
   createFakeOssRecoveryIndex,
   ossRecoveryIndexFileName,
 } from "./fakeOssRecovery.ts";
+import { generationReadinessQuery } from "./generationReadinessQuery.ts";
 import { validateLibraryBackupDatabase } from "./libraryBackup.ts";
 
 export const backupPackageFormatVersion = 2 as const;
@@ -77,6 +78,7 @@ const secretDocumentLockMaximumBytes = 1024 * 1024;
 const backupIncompleteMarker = ".unboundry-backup-incomplete";
 const restoreIncompleteMarker = ".unboundry-restore-incomplete";
 const supportedBackupSchemaVersions = new Set([37, 38, 39, 40, 41, 42]);
+const currentBackupSchemaVersion = 42 as const;
 const minimumProviderQuietMilliseconds = 60_000;
 const restorableSecretFiles = new Set([
   "config-master.key",
@@ -90,6 +92,12 @@ const transientSecretFiles = new Set([
 ]);
 
 export type BackupKeyInput = KeyObject | string | Buffer;
+
+export type BackupSchemaVersion = 37 | 38 | 39 | 40 | 41 | 42;
+
+export type BackupCapturePurpose =
+  | "current-schema42"
+  | "historical-recovery";
 
 export type BackupCheckpointName =
   | "after-backup-reservation"
@@ -122,12 +130,13 @@ export type BackupFreezeEvidence = Readonly<{
 
 export type BackupFrozenSourceContract = Readonly<{
   expectedDatabaseLogicalSha256: string;
-  expectedSchemaVersion: 37 | 38 | 39;
+  expectedSchemaVersion: BackupSchemaVersion;
   freezeEvidence: BackupFreezeEvidence;
 }>;
 
 export type CreateEncryptedBackupOptions = Readonly<{
   backupRoot: string;
+  capturePurpose?: BackupCapturePurpose;
   onCheckpoint?: BackupCheckpoint;
   ossMirrors?: readonly BackupOssMirror[];
   recoveryPublicKey: BackupKeyInput;
@@ -152,6 +161,7 @@ export type RestoreEncryptedBackupOptions = VerifyEncryptedBackupOptions &
   Readonly<{ targetDirectory: string }>;
 
 export type InspectFrozenMediaIntegrityOptions = Readonly<{
+  capturePurpose?: BackupCapturePurpose;
   onCheckpoint?: BackupCheckpoint;
   ossMirrors?: readonly BackupOssMirror[];
   scratchRoot?: string;
@@ -448,14 +458,37 @@ function exactUtcTimestamp(value: string, label: string) {
   return milliseconds;
 }
 
+function capturePurposeFor(
+  value: BackupCapturePurpose | undefined,
+  contractPresent: boolean,
+): BackupCapturePurpose {
+  const purpose = value ?? "current-schema42";
+  if (
+    (purpose !== "current-schema42" && purpose !== "historical-recovery") ||
+    (purpose === "historical-recovery" && !contractPresent)
+  ) {
+    fail(
+      "BACKUP_CAPTURE_PURPOSE_INVALID",
+      "Backup capture purpose is invalid",
+    );
+  }
+  return purpose;
+}
+
 function validateFrozenSourceContract(
   contract: BackupFrozenSourceContract,
   capturedNow: number,
+  capturePurpose: BackupCapturePurpose,
 ) {
+  const schemaPurposeMatches = Boolean(contract && typeof contract === "object") &&
+    (capturePurpose === "current-schema42"
+      ? contract.expectedSchemaVersion === currentBackupSchemaVersion
+      : supportedBackupSchemaVersions.has(contract.expectedSchemaVersion) &&
+        contract.expectedSchemaVersion !== currentBackupSchemaVersion);
   if (
     !contract ||
     typeof contract !== "object" ||
-    !supportedBackupSchemaVersions.has(contract.expectedSchemaVersion) ||
+    !schemaPurposeMatches ||
     !/^[a-f0-9]{64}$/.test(contract.expectedDatabaseLogicalSha256) ||
     !contract.freezeEvidence ||
     typeof contract.freezeEvidence !== "object" ||
@@ -510,8 +543,13 @@ function validateLockedSourceContract(
   inspection: BackupDatabaseInspection,
   contract: BackupFrozenSourceContract,
   capturedNow: number,
+  capturePurpose: BackupCapturePurpose,
 ) {
-  const times = validateFrozenSourceContract(contract, capturedNow);
+  const times = validateFrozenSourceContract(
+    contract,
+    capturedNow,
+    capturePurpose,
+  );
   if (inspection.userVersion !== contract.expectedSchemaVersion) {
     fail(
       "BACKUP_SOURCE_SCHEMA_MISMATCH",
@@ -524,91 +562,88 @@ function validateLockedSourceContract(
       "Locked backup source does not have the expected logical fingerprint",
     );
   }
-  const active = database.prepare(`
-    SELECT COUNT(*) AS count
-    FROM generation_tasks
-    WHERE state IN ('queued', 'running', 'retrying', 'recovering')
-  `);
-  active.setReadBigInts(true);
-  const activeRow = active.get() as { count?: bigint } | undefined;
-  if (activeRow?.count !== 0n) {
+  const currentQuietSnapshot = inspection.userVersion >= 39
+    ? generationReadinessQuery.operationalQuietSnapshot(database)
+    : undefined;
+  const activeTasks = currentQuietSnapshot?.activeTasks ?? Number(
+    (database.prepare(`
+      SELECT COUNT(*) AS count
+      FROM generation_tasks
+      WHERE state IN ('queued', 'running', 'retrying', 'recovering')
+    `).get() as { count?: number | bigint } | undefined)?.count ?? 0,
+  );
+  if (activeTasks !== 0) {
     fail(
       "BACKUP_ACTIVE_GENERATION_TASKS",
       "Locked backup source still contains active generation tasks",
     );
   }
-  // Schema 37/38 have no durable Provider outcome column. Reconstruct the
-  // attempt associated with the task exactly as the one-shot bridge migration
-  // does, and reject every Provider-boundary row that cannot be proven settled
-  // from the terminal task state. Keep this check for current schemas as a second,
-  // conservative ledger guard: an explicit outcome must never make a legacy
-  // source shape less safe to capture.
-  const unsettledProviderBoundary = database.prepare(`
-    WITH associated_attempts AS (
-      SELECT
-        task.id AS task_id,
-        COALESCE(
-          CASE WHEN task.provider_task_id IS NOT NULL THEN (
-            SELECT paid.id
-            FROM generation_provider_attempts AS paid
-            WHERE paid.task_id = task.id
-            ORDER BY paid.execution_attempt DESC, paid.id DESC
-            LIMIT 1
-          ) END,
-          (
-            SELECT current_attempt.id
-            FROM generation_provider_attempts AS current_attempt
-            WHERE current_attempt.task_id = task.id
-              AND current_attempt.execution_attempt = task.attempt
-            ORDER BY current_attempt.id DESC
-            LIMIT 1
-          )
-        ) AS attempt_id
-      FROM generation_tasks AS task
-    )
-    SELECT COUNT(*) AS count
-    FROM generation_provider_attempts AS attempt
-    JOIN generation_tasks AS task ON task.id = attempt.task_id
-    JOIN associated_attempts AS associated ON associated.task_id = task.id
-    WHERE attempt.evidence = 'provider-boundary'
-      AND NOT (
-        associated.attempt_id = attempt.id
-        AND (
-          task.state = 'success'
-          OR task.error_code IN (
-            'AUTH', 'PERMISSION', 'RATE_LIMIT', 'PROVIDER_FAILED'
-          )
-        )
+  if (inspection.userVersion < 39) {
+    // Schema 37/38 have no durable Provider outcome column. Reconstruct the
+    // attempt associated with the task exactly as the one-shot bridge
+    // migration does, and reject every Provider-boundary row that cannot be
+    // proven settled from the terminal task state.
+    const unsettledProviderBoundary = database.prepare(`
+      WITH associated_attempts AS (
+        SELECT
+          task.id AS task_id,
+          COALESCE(
+            CASE WHEN task.provider_task_id IS NOT NULL THEN (
+              SELECT paid.id
+              FROM generation_provider_attempts AS paid
+              WHERE paid.task_id = task.id
+              ORDER BY paid.execution_attempt DESC, paid.id DESC
+              LIMIT 1
+            ) END,
+            (
+              SELECT current_attempt.id
+              FROM generation_provider_attempts AS current_attempt
+              WHERE current_attempt.task_id = task.id
+                AND current_attempt.execution_attempt = task.attempt
+              ORDER BY current_attempt.id DESC
+              LIMIT 1
+            )
+          ) AS attempt_id
+        FROM generation_tasks AS task
       )
-  `);
-  unsettledProviderBoundary.setReadBigInts(true);
-  const unsettledProviderBoundaryRow = unsettledProviderBoundary.get() as
-    | { count?: bigint }
-    | undefined;
-  if (unsettledProviderBoundaryRow?.count !== 0n) {
-    fail(
-      "BACKUP_UNSETTLED_PROVIDER_ATTEMPTS",
-      "Provider-boundary attempts are not definitively settled",
-    );
-  }
-  if (inspection.userVersion >= 39) {
-    const nonDefinitiveOutcome = database.prepare(`
       SELECT COUNT(*) AS count
-      FROM generation_provider_attempts
-      WHERE evidence = 'provider-boundary'
-        AND outcome IN (
-          'boundary-claimed', 'accepted', 'response-received',
-          'outcome-unknown'
+      FROM generation_provider_attempts AS attempt
+      JOIN generation_tasks AS task ON task.id = attempt.task_id
+      JOIN associated_attempts AS associated ON associated.task_id = task.id
+      WHERE attempt.evidence = 'provider-boundary'
+        AND NOT (
+          associated.attempt_id = attempt.id
+          AND (
+            task.state = 'success'
+            OR task.error_code IN (
+              'AUTH', 'PERMISSION', 'RATE_LIMIT', 'PROVIDER_FAILED'
+            )
+          )
         )
     `);
-    nonDefinitiveOutcome.setReadBigInts(true);
-    const nonDefinitiveOutcomeRow = nonDefinitiveOutcome.get() as
+    unsettledProviderBoundary.setReadBigInts(true);
+    const unsettledProviderBoundaryRow = unsettledProviderBoundary.get() as
       | { count?: bigint }
       | undefined;
-    if (nonDefinitiveOutcomeRow?.count !== 0n) {
+    if (unsettledProviderBoundaryRow?.count !== 0n) {
       fail(
         "BACKUP_UNSETTLED_PROVIDER_ATTEMPTS",
-        "Provider-boundary attempts have a non-definitive outcome",
+        "Provider-boundary attempts are not definitively settled",
+      );
+    }
+  } else {
+    // Current schemas persist the outcome and local settlement timestamp.
+    // A locked backup must block live billing ambiguity, while preserving
+    // terminal historical evidence exactly. In particular, an old accepted or
+    // response-received attempt attached to an already terminal task is data to
+    // back up, not a reason to rewrite production before a backup can exist.
+    if (
+      currentQuietSnapshot!.currentUnknownBillingTasks !== 0 ||
+      currentQuietSnapshot!.unsettledCurrentProviderBoundaries !== 0
+    ) {
+      fail(
+        "BACKUP_UNSETTLED_PROVIDER_ATTEMPTS",
+        "Locked backup source still contains current unknown Provider evidence",
       );
     }
   }
@@ -742,6 +777,7 @@ async function withOptionalFrozenSourceWriteLock<T>(
   sourceDirectory: string,
   inspectionRoot: string,
   contract: BackupFrozenSourceContract | undefined,
+  capturePurpose: BackupCapturePurpose,
   callback: (inspection: BackupDatabaseInspection | undefined) => Promise<T>,
 ) {
   if (!contract) return callback(undefined);
@@ -769,7 +805,13 @@ async function withOptionalFrozenSourceWriteLock<T>(
     }
     const capturedNow = Date.now();
     const inspection = inspectLockedBackupDatabase(database, inspectionRoot);
-    validateLockedSourceContract(database, inspection, contract, capturedNow);
+    validateLockedSourceContract(
+      database,
+      inspection,
+      contract,
+      capturedNow,
+      capturePurpose,
+    );
     return await callback(inspection);
   } catch (error) {
     primaryError = error;
@@ -2360,7 +2402,8 @@ function summaryFromManifest(
     backupId: manifest.backupId,
     captureMode: manifest.captureMode,
     databaseLogicalSha256: manifest.database.inspection.logicalSha256,
-    finalCandidate: manifest.captureMode === "locked-exact",
+    finalCandidate: manifest.captureMode === "locked-exact" &&
+      manifest.database.inspection.userVersion === currentBackupSchemaVersion,
     mediaFiles: manifest.entries.filter((entry) => entry.kind === "media").length,
     mediaIntegrity: summarizeMediaIntegrity(mediaIntegrity),
     ossMirrors: manifest.entries.filter((entry) => entry.kind === "oss").length,
@@ -2381,6 +2424,10 @@ export async function inspectFrozenMediaIntegrity(
   if (options.sourceFrozen !== true) {
     fail("BACKUP_SOURCE_NOT_FROZEN", "Media inspection source must be explicitly frozen");
   }
+  const capturePurpose = capturePurposeFor(
+    options.capturePurpose,
+    Boolean(options.frozenSourceContract),
+  );
   const sourceDirectory = normalizedAbsolute(
     options.sourceDirectory,
     "Source directory",
@@ -2439,6 +2486,7 @@ export async function inspectFrozenMediaIntegrity(
       sourceDirectory,
       scratch,
       options.frozenSourceContract,
+      capturePurpose,
       async (lockedInspection) => {
         const databaseBefore = await databaseFilesSnapshot(sourceDirectory);
         const mediaDirectory = join(sourceDirectory, "media");
@@ -2541,6 +2589,10 @@ export async function createEncryptedBackup(
   if (options.sourceFrozen !== true) {
     fail("BACKUP_SOURCE_NOT_FROZEN", "Backup source must be explicitly frozen");
   }
+  const capturePurpose = capturePurposeFor(
+    options.capturePurpose,
+    Boolean(options.frozenSourceContract),
+  );
   const sourceDirectory = normalizedAbsolute(options.sourceDirectory, "Source directory");
   const backupRoot = normalizedAbsolute(options.backupRoot, "Backup root");
   const scratchRoot = normalizedAbsolute(options.scratchRoot ?? resolve(tmpdir()), "Scratch root");
@@ -2618,6 +2670,7 @@ export async function createEncryptedBackup(
       sourceDirectory,
       scratch,
       options.frozenSourceContract,
+      capturePurpose,
       async (lockedInspection) => {
         const databaseBefore = await databaseFilesSnapshot(sourceDirectory);
         const libraryBefore = await libraryDatabaseSnapshot(sourceDirectory);

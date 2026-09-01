@@ -38,6 +38,7 @@ import {
   mediaPublicationStagingPath,
   MediaPublicationConflictError,
   MediaPublicationDeferredError,
+  publishGeneratedOssMediaPublication,
   publishLocalMediaPublication,
   reserveMediaPublication,
   stageMediaPublication,
@@ -376,13 +377,14 @@ export async function saveGeneratedPng(input: {
     });
     staged = true;
     if (routing.enabled && routing.profile) {
-      await (input.uploadObject ?? uploadPrivateAliyunOssObject)({
+      await publishGeneratedOssMediaPublication({
         byteSize: input.bytes.length,
         checksumSha256,
         contentType: "image/png",
         credentials: routing.profile,
         filePath: mediaPublicationStagingPath(reservation),
-        objectKey,
+        reservation,
+        uploadObject: input.uploadObject,
       });
       markExternalMediaPublicationReady(reservation);
     } else {

@@ -133,6 +133,10 @@ function loadManifest() {
   assertString(manifest.tsconfig, "manifest.tsconfig");
   assertStringArray(manifest.infrastructureScripts, "manifest.infrastructureScripts");
   assertStringArray(manifest.automaticNpmRoots, "manifest.automaticNpmRoots");
+  assertPlainObject(
+    manifest.auxiliaryOperationalScripts,
+    "manifest.auxiliaryOperationalScripts",
+  );
   assertPlainObject(manifest.operationalScripts, "manifest.operationalScripts");
   return manifest;
 }
@@ -227,9 +231,19 @@ function automaticNpmScripts(packageScripts, roots) {
 function checkOperationalScripts(sourceFiles, manifest) {
   const operationalEntries = Object.entries(manifest.operationalScripts);
   const operationalFiles = operationalEntries.map(([file]) => file);
+  const auxiliaryEntries = Object.entries(manifest.auxiliaryOperationalScripts);
+  const auxiliaryFiles = auxiliaryEntries.map(([file]) => file);
   const allTopLevelScripts = sourceFiles.filter((file) => /^scripts\/[^/]+\.mjs$/.test(file));
+  const allProductionOpsScripts = sourceFiles.filter((file) =>
+    /^ops\/production\/[^/]+\.mjs$/.test(file)
+  );
   const declaredScripts = [...manifest.infrastructureScripts, ...operationalFiles];
   compareSets(allTopLevelScripts, declaredScripts, "scripts/*.mjs partition");
+  compareSets(
+    allProductionOpsScripts,
+    auxiliaryFiles,
+    "ops/production/*.mjs auxiliary partition",
+  );
 
   const overlap = manifest.infrastructureScripts.filter((file) =>
     operationalFiles.includes(file),
@@ -357,11 +371,82 @@ function checkOperationalScripts(sourceFiles, manifest) {
     }
   }
 
-  if (operationalEntries.length !== 32) {
-    fail(`exactly 32 operational MJS scripts are required, found ${operationalEntries.length}`);
+  let auxiliaryBehaviorCovered = 0;
+  for (const [file, record] of auxiliaryEntries) {
+    if (!/^ops\/production\/[^/]+\.mjs$/.test(file)) {
+      fail(`auxiliary operational script must be a production MJS file: ${file}`);
+    }
+    assertPlainObject(record, `manifest.auxiliaryOperationalScripts.${file}`);
+    if (!sha256Pattern.test(record.scriptSha256 ?? "")) {
+      fail(`${file} must have a lowercase SHA-256 scriptSha256`);
+    }
+    if (fileSha256(file) !== record.scriptSha256) {
+      fail(`${file} changed after its behavior review; manifest is stale`);
+    }
+    if (record.mode !== "behavior-test") {
+      fail(`${file} auxiliary mode must be behavior-test`);
+    }
+    auxiliaryBehaviorCovered += 1;
+    assertString(record.target, `${file}.target`);
+    assertString(record.marker, `${file}.marker`);
+    assertStringArray(record.manualNpmScripts, `${file}.manualNpmScripts`);
+    if (!sha256Pattern.test(record.targetSha256 ?? "")) {
+      fail(`${file} must have a lowercase SHA-256 targetSha256`);
+    }
+    if (!record.target.startsWith("tests/") || !sourceContents.has(record.target)) {
+      fail(`${file} behavior target must be a current source under tests/`);
+    }
+    const targetContents = sourceContents.get(record.target);
+    if (!targetContents.includes(file) || !targetContents.includes(record.marker)) {
+      fail(`${file} behavior target or marker is stale`);
+    }
+    if (fileSha256(record.target) !== record.targetSha256) {
+      fail(`${file} behavior target changed after review; manifest is stale`);
+    }
+
+    const fileName = basename(file);
+    const packageOccurrences = Object.entries(packageJson.scripts)
+      .filter(([, command]) => command.includes(file) || command.includes(fileName))
+      .map(([name]) => name);
+    compareSets(
+      packageOccurrences,
+      record.manualNpmScripts,
+      `${file} manual npm references`,
+    );
+    for (const manualName of record.manualNpmScripts) {
+      if (reachableNpmScripts.has(manualName)) {
+        fail(`${file} is reachable from an automatic npm root via ${manualName}`);
+      }
+      for (const [candidateName, command] of Object.entries(packageJson.scripts)) {
+        if (
+          candidateName !== manualName &&
+          npmScriptReferences(command).includes(manualName)
+        ) fail(
+          `${file} manual npm entry ${manualName} is chained from ${candidateName}`,
+        );
+      }
+    }
+    for (const automaticName of reachableNpmScripts) {
+      const command = packageJson.scripts[automaticName];
+      if (command.includes(file) || command.includes(fileName)) {
+        fail(`${file} is executed by automatic npm script ${automaticName}`);
+      }
+    }
+    for (const [candidate, contents] of sourceContents) {
+      if (candidate === file || candidate === record.target) continue;
+      if (contents.includes(file) || contents.includes(fileName)) {
+        fail(`${file} is referenced outside its reviewed behavior target by ${candidate}`);
+      }
+    }
+  }
+
+  if (operationalEntries.length !== 34) {
+    fail(`exactly 34 operational MJS scripts are required, found ${operationalEntries.length}`);
   }
   return {
     behaviorCovered,
+    auxiliaryBehaviorCovered,
+    auxiliaryTotal: auxiliaryEntries.length,
     frozen,
     total: operationalEntries.length,
   };

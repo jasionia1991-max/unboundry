@@ -1,8 +1,8 @@
 # INC-GEN-025 新 Session 一次性 Goal 提示词
 
-状态：`COPYABLE / NOT_ACTIVE_UNTIL_USER_PASTES_IN_NEW_SESSION`
+状态：`HISTORICAL / AUTHORITY_CONSUMED / DO_NOT_COPY_OR_REACTIVATE / SUPERSEDED_BY_INC_GEN_026`
 
-使用方法：在新的 Codex Session 中完整复制并发送下面代码块。不要删减权限、恢复顺序、Review、预算或 NO-GO 条款。
+> 此 Goal 已执行并消费，禁止再次复制启动。下面正文只保留为历史授权证据。当前可复制入口是 `spec/INC_GEN_026_LOCAL_IMPLEMENTATION_GOAL_PROMPT_2026-09-01.md`，且它只授权本地实施，不授权发布、生产或真实 Provider/OSS。
 
 ```text
 /goal

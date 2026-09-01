@@ -1,23 +1,27 @@
 # Unboundry 当前权威状态
 
-> 2026-09-01 最新权威：INC-GEN-025 已由用户 `/goal` 激活。当前隔离实现工作树 `/Users/mymy/Documents/unboundry-inc-gen-025-server-authoritative-2026-09-01`，分支 `codex/inc-gen-025-server-authoritative-group-run`，实时基线 `origin/main@74dc9d9307abee9169a2d2aefc4b01add96114c9`；生产仍为 `v0.6.69/schema41` 且健康。目标版本 `v0.6.70`、实现、Review、不可变发布、成对生产迁移/回退和全部门通过后的唯一真实整组点击已获一次性授权。R1-R5实现与风险定向测试、R6主线程+唯一独立Review均完成；R7唯一formal safe full原始`1149/1154`永久保留，5项均以失败最小子集关闭且未运行第二次full；同一Reviewer最终增量复审盘点当前72文件/299 tracked hunks，`P0=0/P1=0/P2=0/GO`。当前进入R8 GitHub/不可变发布；尚无commit/GitHub/生产写/Provider POST/OSS写/新费用。下方旧版本段落均为历史证据。
+> **2026-09-02 最新权威：INC-GEN-026 v0.7.0 R9 已授权并执行中。** 用户原文“授权上线，版本号v0.7.0”已解除本次 commit/GitHub/Release 与生产 schema42 备份/安装/切换/rollback/forward 门；v0.7.0 tag/Release 实时未占用。R0～R8 唯一 formal safe full 原始 `1162/1167`、定向关闭 `112/112` 和最终增量 Review `P0=0/P1=0/GO` 继续有效且禁止第二次 full。生产实时仍为 `v0.6.70/schema42`、active/ready、NRestarts0，活动 task/未收口 unknown/活动 publication/workflow run 均为0。历史生产 apply、真实 Provider/OSS、费用和真实 Canvas/group 点击仍未授权。权威入口为 `spec/INC_GEN_026_CHECKPOINT.md`。
 
-> **INC-GEN-023 当前状态（2026-09-01）**：v0.6.68 已完成发布、精确 tag fresh build、冻结备份和生产部署，生产服务健康。原失败任务已无费用收口为 cancelled，但浏览器本地 checkpoint/active lease 仍使客户端 reconciler defer，Canvas 旧绑定未自动解除。真实整组点击仍为 0/1，Provider POST 0/11、费用0。v0.6.69候选已把解绑收口迁入受runtime lease/drain管理的独立terminal-only服务端sweep，并严格限制到allowlist中的真正不可恢复failed/cancelled精确绑定；全部复审问题已修复，m81 `42/42`、m85 `28/28`、m93 `7/7`、m38 `18/18`通过，第四轮独立复审`P0=0/P1=0/P2=0/GO`。用户已明确授权发布v0.6.69，现进入发布。权威断点：`spec/INC_GEN_023_CHECKPOINT.md`。
+**生产是 v0.6.70 / schema42；本地候选已升为 v0.7.0，R9 发布执行中，尚未发生生产写或真实 Provider/OSS 请求。**
 
-> **状态分层**：现网运行v0.6.68/schema41且健康；v0.6.68发布授权已消费。真实整组尚未点击，未产生本轮新task/attempt/Provider POST。当前严格为`PRODUCTION_V0_6_68_TECHNICAL_PASS / V0_6_69_CANDIDATE_REFROZEN_REVIEW_PENDING / REAL_GROUP_NOT_CLICKED / V0_6_69_RELEASE_AUTHORIZED_NOT_CONSUMED / USER_RECHECK`。
+> **以下 INC-GEN-025 顶部记录是历史声明快照**：它记录当时的 Goal、测试、Review 和发布前状态；v0.6.70 后续已经发布，最终审计推翻了“可直接继续 R8/真实点击”的当前有效性。其历史授权已消费，不得恢复。
 
-更新日期：2026-09-01
+> **以下所有旧 INC 区块均为历史账本**：其中出现的“当前”“等待发布”“授权尚未消费”等文字只代表当时时点，不能覆盖本页第一段，也不能恢复任何旧授权。
+
+更新日期：2026-09-02
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.70**
-本地候选代码版本：**v0.6.70**
-当前生产部署版本：**v0.6.69**
+当前代码包版本：**v0.7.0**
+本地候选代码版本：**v0.7.0**
+当前生产部署版本：**v0.6.70**
 本地候选schema：**42**
 当前治理标记：`CURRENT_V0_6_70_USER_RECHECK`
-当前计划标记：`INC_GEN_025_V0_6_70_CANDIDATE / SERVER_AUTHORITATIVE_GROUP_RUN / REAL_GROUP_CLICK_NOT_CONSUMED`
+当前发布执行标记：`INC_GEN_026_R9_V0_7_0_AUTHORIZED_IN_PROGRESS`
+当前本地Goal标记：`INC_GEN_026_R0_R8_COMPLETE / LOCAL_CANDIDATE_TECHNICAL_PASS / PRODUCTION_V0_6_70_UNCHANGED / R9_RELEASE_IN_PROGRESS / REAL_PROVIDER_NOT_AUTHORIZED / USER_RECHECK`
+当前计划标记：`FORMAL_FULL_1_OF_1_CONSUMED_RAW_1162_OF_1167 / TARGETED_CLOSURE_112_OF_112 / R9_V0_7_0_AUTHORIZED_IN_PROGRESS`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`V0_6_70_RELEASE_AUTHORIZED_NOT_CONSUMED / INDEPENDENT_REVIEW_GO / FORMAL_FULL_ORIGINAL_1149_OF_1154 / FAILED_SUBSETS_CLOSED / R7_DELTA_REVIEW_GO / R8_GITHUB_PENDING / REAL_GROUP_CNY300_MAX_11_POST_NOT_CONSUMED`
+当前发布门：`V0_7_0_RELEASE_AUTHORIZED / PRODUCTION_SWITCH_AUTHORIZED / HISTORY_APPLY_NO_GO / REAL_PROVIDER_NOT_AUTHORIZED`
 
-## INC-GEN-023 当前区块（2026-09-01）
+## INC-GEN-023 历史区块（2026-09-01）
 
 - 生产 v0.6.68/schema41 已发布并健康；原任务已无费用收口为 cancelled，但浏览器本地 checkpoint/active lease 仍阻止客户端发出解绑请求。
 - v0.6.69 本地候选以独立terminal-only服务端sweep收口 failed/cancelled 精确绑定；只访问显式 allowlist，success、非终态、非allowlist和task binding不匹配均不改，也不会因空闲启动打开全局generation recovery。
@@ -392,9 +396,11 @@ v0.6.47验证证据：默认Node25.9.0/npm11.12.1下build与architecture通过�
 - v0.6.50已完成PR #114、PR/main CI、merge/tag/Release、fresh tag build、冻结备份恢复、原子切换、数据/inventory/六资源逐字节与66秒稳定门。生产最终快照保持tasks898、attempts906、active0、media885、publications476、canvases68、models20/已发布11、templates50/已发布48、audit273不变；service active/enabled、NRestarts0、schema41/integrity ok/FK0。
 - 生产零付费浏览器确认14张模型卡均有工作台入口；grok-video-3活动模型进入八区块工作台，四视口无横向溢出，未点击保存/校验/发布/回滚等写动作。当前为`PRODUCTION_V0_6_50_TECHNICAL_PASS / USER_RECHECK`；权威回执为`spec/V0_6_50_PRODUCTION_RECEIPT_2026-08-27.json`。
 
-## 一句话
+## 历史一句话（INC-GEN-025 发布前快照，不是当前状态）
 
-**生产是 v0.6.69 / schema41；v0.6.69发布与生产技术门已通过。v0.6.70/schema42候选唯一formal safe full原始1149/1154、失败最小子集关闭及增量Review GO已完成，正进入GitHub；尚未发布、迁移或真实点击，当前保持USER_RECHECK。**
+> 以下粗体句只保留当时的原文，不得用于判断当前版本、发布阶段或授权。
+
+**历史时点：生产是 v0.6.69 / schema41；v0.6.69发布与生产技术门已通过。v0.6.70/schema42候选唯一formal safe full原始1149/1154、失败最小子集关闭及增量Review GO已完成，正进入GitHub；尚未发布、迁移或真实点击，当时保持USER_RECHECK。**
 
 ## INC-GEN-015 老画布孤立生成态与终态结果自动收口（PRODUCTION_V0_6_46_USER_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON）
 

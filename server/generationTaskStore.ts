@@ -14,9 +14,10 @@ import {
 import {
   generationProviderAttemptCreatedAt,
   hasUnresolvedGenerationOutcomeForNodeInTransaction,
+  latestGenerationProviderAttemptInTransaction,
 } from "./generationAttemptQueries";
 import {
-  workflowRunAcceptingAdmissionsInTransaction,
+  workflowRunAdmissionAuthorityInTransaction,
   workflowRunLockOwnerInTransaction,
 } from "./workflowRunLocks";
 export { generationProviderAttemptCounts } from "./generationAttemptQueries";
@@ -25,6 +26,19 @@ import type { GenerationCapabilityKind } from "../types/nodeVocabulary";
 import type { ModelReleaseRevision } from "../types/modelReleaseRevisions";
 import type { ProviderProtocol } from "../types/relayProtocols";
 import { resolveActiveModelContract } from "./activeModelContractHealth";
+import {
+  assertAuthoritativeGenerationModelConfiguration,
+  type AuthoritativeGenerationModelConfiguration,
+} from "./authoritativeGenerationModelConfiguration";
+import { assertRegisteredModelExecutionTotality } from
+  "./modelExecutionRegistry";
+import { authoritativeModelConfigurationRevision } from
+  "./modelConfigurationIdentity";
+import {
+  classifyGenerationProviderOutcome,
+  generationOutcomeAdapterId,
+  type GenerationOutcomeAdapterId,
+} from "./generationProviderOutcome";
 
 export const generationTaskKinds: readonly GenerationCapabilityKind[] =
   generationCapabilityRegistry.kinds();
@@ -66,6 +80,24 @@ export type GenerationTaskInput = {
    * hashed; Provider/credential/configuration metadata is never persisted.
    */
   requestIntent?: Record<string, unknown>;
+};
+
+export type AuthoritativeGenerationTaskInput = Omit<
+  GenerationTaskInput,
+  | "credentialRevision"
+  | "model"
+  | "modelConfiguration"
+  | "ownerId"
+  | "providerModelId"
+  | "providerProfileId"
+> & {
+  credentialRevision: number;
+  model: string;
+  modelConfiguration: AuthoritativeGenerationModelConfiguration;
+  ownerId: string;
+  providerModelId: string;
+  providerProfileId: string;
+  requestIntent: Record<string, unknown>;
 };
 
 export type GenerationIdempotentIntentInput = {
@@ -358,6 +390,37 @@ function stableValue(value: unknown): unknown {
     );
   }
   return value;
+}
+
+function recordValue(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function outcomeAdapterForTask(
+  task: Pick<GenerationTaskRow, "kind" | "model_configuration">,
+): GenerationOutcomeAdapterId | undefined {
+  const configuration = parsePersistedRecordJson(
+    task.model_configuration,
+    "任务冻结模型合同",
+  );
+  const explicit = generationOutcomeAdapterId(
+    configuration.modelExecutionAdapterId,
+  );
+  if (explicit) return explicit;
+  const driver = configuration.providerDriver;
+  const protocol = configuration.providerProtocol;
+  if (driver === "volcengine-ark" && task.kind === "text") return "ark-text";
+  if (driver === "volcengine-ark" && task.kind === "video") return "ark-video";
+  if (driver === "mureka" && task.kind === "audio") return "mureka-audio";
+  if (driver === "openrouter" && task.kind === "image") {
+    return "openrouter-image";
+  }
+  if (
+    driver === "multi-protocol-relay" && task.kind === "image" &&
+    protocol === "gpt-image"
+  ) return "relay-gpt-image";
+  if (driver === "multi-protocol-relay") return "relay-media";
+  return undefined;
 }
 
 function parsePersistedRecordJson(
@@ -746,35 +809,40 @@ function toEvent(row: GenerationTaskEventRow): GenerationTaskEvent {
   };
 }
 
-export function createGenerationTaskStore(dataDirectory: string) {
+export function createGenerationTaskStore(
+  dataDirectory: string,
+  options: Readonly<{ recoverRunning?: boolean }> = {},
+) {
   const database = openAppDatabase(dataDirectory);
 
-  const recoveredAt = new Date().toISOString();
-  database.exec("BEGIN IMMEDIATE");
-  try {
-    const recoveringTaskIds = (
-      database
-        .prepare("SELECT id FROM generation_tasks WHERE state = 'running'")
-        .all() as Array<{ id: string }>
-    ).map(({ id }) => id);
-    const recover = database.prepare(`
-      UPDATE generation_tasks
-      SET state = 'recovering', updated_at = ?
-      WHERE id = ? AND state = 'running'
-    `);
-    const recordRecovery = database.prepare(`
-      INSERT INTO generation_task_events (task_id, state, created_at)
-      VALUES (?, 'recovering', ?)
-    `);
-    for (const id of recoveringTaskIds) {
-      if (recover.run(recoveredAt, id).changes === 1) {
-        recordRecovery.run(id, recoveredAt);
+  if (options.recoverRunning !== false) {
+    const recoveredAt = new Date().toISOString();
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const recoveringTaskIds = (
+        database
+          .prepare("SELECT id FROM generation_tasks WHERE state = 'running'")
+          .all() as Array<{ id: string }>
+      ).map(({ id }) => id);
+      const recover = database.prepare(`
+        UPDATE generation_tasks
+        SET state = 'recovering', updated_at = ?
+        WHERE id = ? AND state = 'running'
+      `);
+      const recordRecovery = database.prepare(`
+        INSERT INTO generation_task_events (task_id, state, created_at)
+        VALUES (?, 'recovering', ?)
+      `);
+      for (const id of recoveringTaskIds) {
+        if (recover.run(recoveredAt, id).changes === 1) {
+          recordRecovery.run(id, recoveredAt);
+        }
       }
+      database.exec("COMMIT");
+    } catch (error) {
+      database.exec("ROLLBACK");
+      throw error;
     }
-    database.exec("COMMIT");
-  } catch (error) {
-    database.exec("ROLLBACK");
-    throw error;
   }
 
   const readById = database.prepare(`
@@ -817,42 +885,24 @@ export function createGenerationTaskStore(dataDirectory: string) {
   `);
 
   function providerAttemptForTask(task: GenerationTaskRow) {
-    const byProviderTaskId = task.provider_task_id !== null;
-    return database.prepare(`
-      SELECT
-        credential_revision, execution_attempt, failure_code, finished_at,
-        outcome, provider_model_id, provider_profile_id, provider_task_id
-      FROM generation_provider_attempts
-      WHERE
-        task_id = ?
-        AND owner_id IS ?
-        AND kind = ?
-        AND provider_profile_id IS ?
-        AND provider_model_id IS ?
-        AND ${byProviderTaskId
-          ? "provider_task_id = ?"
-          : "execution_attempt = ?"}
-      ORDER BY execution_attempt DESC
-      LIMIT 1
-    `).get(
-      task.id,
-      task.owner_id,
-      task.kind,
-      task.provider_profile_id,
-      task.provider_model_id,
-      byProviderTaskId ? task.provider_task_id : task.attempt,
-    ) as
-      | {
-          credential_revision: number;
-          execution_attempt: number;
-          failure_code: string | null;
-          finished_at: string | null;
-          outcome: GenerationProviderAttemptOutcome;
-          provider_model_id: string;
-          provider_profile_id: string;
-          provider_task_id: string | null;
-        }
-      | undefined;
+    const attempt = latestGenerationProviderAttemptInTransaction(database, {
+      ...(task.provider_task_id === null
+        ? { executionAttempt: task.attempt }
+        : {}),
+      taskId: task.id,
+    });
+    if (
+      !attempt || attempt.owner_id !== task.owner_id ||
+      attempt.kind !== task.kind ||
+      attempt.provider_profile_id !== task.provider_profile_id ||
+      attempt.provider_model_id !== task.provider_model_id ||
+      (task.provider_task_id !== null &&
+        attempt.provider_task_id !== task.provider_task_id)
+    ) return undefined;
+    return {
+      ...attempt,
+      outcome: attempt.outcome as GenerationProviderAttemptOutcome,
+    };
   }
 
   function hasUnsafeProviderAttemptForNewPaidRetry(taskId: string) {
@@ -894,6 +944,8 @@ export function createGenerationTaskStore(dataDirectory: string) {
     capability: GenerationTaskKind;
     cost_currency: "CNY" | "USD";
     default_parameters: string;
+    id: string;
+    model_configuration_updated_at: string;
     model_status: "archived" | "draft" | "published";
     provider_configuration_version: number;
     provider_driver: string;
@@ -911,6 +963,8 @@ export function createGenerationTaskStore(dataDirectory: string) {
         models.capability,
         models.cost_currency,
         models.default_parameters,
+        models.id,
+        models.updated_at AS model_configuration_updated_at,
         models.provider_model_id,
         models.provider_profile_id,
         models.provider_protocol,
@@ -1016,15 +1070,61 @@ export function createGenerationTaskStore(dataDirectory: string) {
       );
     }
     const authoritativeParameterSchema = canonical.capabilitySchema;
+    let authoritativeConfigurationRevision: string;
+    let totality: ReturnType<typeof assertRegisteredModelExecutionTotality>;
+    try {
+      authoritativeConfigurationRevision =
+        authoritativeModelConfigurationRevision({
+          capability: binding.capability,
+          id: binding.id,
+          modelConfigurationUpdatedAt: binding.model_configuration_updated_at,
+          parameterSchema: authoritativeParameterSchema,
+          providerDriver: binding.provider_driver,
+          providerModelId: binding.provider_model_id,
+        });
+      totality = assertRegisteredModelExecutionTotality({
+        capability: binding.capability,
+        capabilitySchema: authoritativeParameterSchema,
+        providerDriver: binding.provider_driver,
+        providerModelId: binding.provider_model_id,
+        providerProtocol: binding.provider_protocol as ProviderProtocol,
+        revisionIdentity: active.revisionId,
+      });
+    } catch {
+      throw new GenerationProviderAttemptBlockedError(
+        "PROVIDER_CONFIGURATION_MISMATCH",
+        "模型执行合同已变化，未创建新的付费请求",
+      );
+    }
     if (
       !Number.isSafeInteger(suppliedVersion) ||
       Number(suppliedVersion) < 1 ||
       Number(suppliedVersion) !== binding.provider_configuration_version ||
+      input.modelConfiguration.credentialVersion === undefined ||
+      !Number.isSafeInteger(input.modelConfiguration.credentialVersion) ||
+      Number(input.modelConfiguration.credentialVersion) < 1 ||
+      input.modelConfiguration.generationIdentityVersion !== 2 ||
+      typeof input.modelConfiguration.generationInputKey !== "string" ||
+      input.modelConfiguration.generationInputKey.length < 1 ||
+      input.modelConfiguration.generationInputKey.length > 32_000 ||
+      typeof input.modelConfiguration.generationOwnershipKey !== "string" ||
+      input.modelConfiguration.generationOwnershipKey.length < 1 ||
+      input.modelConfiguration.generationOwnershipKey.length > 2_000 ||
+      input.modelConfiguration.modelCapability !== input.kind ||
       input.modelConfiguration.modelId !== input.modelId ||
+      input.modelConfiguration.modelConfigurationRevision !==
+        authoritativeConfigurationRevision ||
+      typeof input.modelConfiguration.modelInputContractFingerprint !== "string" ||
+      input.modelConfiguration.modelInputContractFingerprint.length < 1 ||
+      input.modelConfiguration.modelInputContractFingerprint.length > 500 ||
+      input.modelConfiguration.modelExecutionAdapterId !== totality.adapterId ||
+      input.modelConfiguration.modelResultCount !== totality.resultCount ||
       input.modelConfiguration.providerDriver !== binding.provider_driver ||
       input.modelConfiguration.providerModelId !== binding.provider_model_id ||
       input.modelConfiguration.providerProfileId !== binding.provider_profile_id ||
       input.modelConfiguration.providerProtocol !== binding.provider_protocol ||
+      JSON.stringify(stableValue(suppliedRelease)) !==
+        JSON.stringify(stableValue(active)) ||
       JSON.stringify(stableValue(input.modelConfiguration.parameterSchema)) !==
         JSON.stringify(stableValue(authoritativeParameterSchema))
     ) {
@@ -1034,6 +1134,44 @@ export function createGenerationTaskStore(dataDirectory: string) {
       );
     }
     return binding;
+  }
+
+  function assertAuthoritativeTaskBinding(input: GenerationTaskInput & {
+    modelConfiguration: AuthoritativeGenerationModelConfiguration;
+  }) {
+    const configuration = input.modelConfiguration;
+    const intent = input.requestIntent;
+    const same = (left: unknown, right: unknown) =>
+      JSON.stringify(stableValue(left)) === JSON.stringify(stableValue(right));
+    if (
+      !intent || typeof intent !== "object" || Array.isArray(intent) ||
+      input.kind !== configuration.modelCapability ||
+      input.model !== configuration.modelId ||
+      input.providerModelId !== configuration.providerModelId ||
+      input.providerProfileId !== configuration.providerProfileId ||
+      input.credentialRevision !== configuration.credentialVersion ||
+      intent.canvasId !== input.canvasId ||
+      intent.kind !== input.kind ||
+      intent.model !== input.model ||
+      intent.nodeId !== input.nodeId ||
+      intent.prompt !== input.prompt ||
+      intent.generationIdentityVersion !== 2 ||
+      intent.generationInputKey !== configuration.generationInputKey ||
+      intent.generationOwnershipKey !== configuration.generationOwnershipKey ||
+      intent.modelConfigurationRevision !==
+        configuration.modelConfigurationRevision ||
+      intent.modelInputContractFingerprint !==
+        configuration.modelInputContractFingerprint ||
+      intent.modelReleaseRevision !==
+        configuration.modelReleaseRevision.revisionId ||
+      (configuration.fixtureScopeId !== undefined &&
+        intent.fixtureScopeId !== configuration.fixtureScopeId) ||
+      (configuration.workflowBinding !== undefined
+        ? !same(intent.workflowBinding, configuration.workflowBinding)
+        : intent.workflowBinding !== undefined)
+    ) {
+      throw new Error("Authoritative generation task binding is invalid");
+    }
   }
 
   function markProviderAttemptProgress(input: {
@@ -1244,7 +1382,7 @@ export function createGenerationTaskStore(dataDirectory: string) {
     }
   }
 
-  return {
+  const api = {
     dataDirectory,
     activeModelContractRevision(modelId: string) {
       return modelContractState(database, modelId).active;
@@ -1304,10 +1442,39 @@ export function createGenerationTaskStore(dataDirectory: string) {
      * Authoritative create path. Idempotency lookup, all dynamic safety reads,
      * task/event insertion and admission consumption share one write lock.
      */
+    admitAuthoritativeOrGet(
+      input: AuthoritativeGenerationTaskInput,
+      options: { now?: Date } = {},
+    ) {
+      assertAuthoritativeGenerationModelConfiguration(input.modelConfiguration);
+      return api.admitOrGet(input, options);
+    },
+
+    /**
+     * Historical and safe-fixture compatibility entrypoint. Current runtime
+     * code must use admitAuthoritativeOrGet through generation admission.
+     */
     admitOrGet(
       input: GenerationTaskInput,
       options: { now?: Date } = {},
     ) {
+      let authoritativeInputConfiguration:
+        | AuthoritativeGenerationModelConfiguration
+        | undefined;
+      try {
+        assertAuthoritativeGenerationModelConfiguration(input.modelConfiguration);
+        authoritativeInputConfiguration = input.modelConfiguration;
+      } catch {
+        // Historical fixtures remain supported through this compatibility
+        // entrypoint. Current runtime admission always arrives branded through
+        // admitAuthoritativeOrGet and is checked below before normalization.
+      }
+      if (authoritativeInputConfiguration) {
+        assertAuthoritativeTaskBinding({
+          ...input,
+          modelConfiguration: authoritativeInputConfiguration,
+        });
+      }
       const normalized = normalizeInput(input);
       if (!normalized.ownerId || !normalized.providerProfileId) {
         throw new Error("Atomic generation admission requires owner and Provider");
@@ -1316,8 +1483,9 @@ export function createGenerationTaskStore(dataDirectory: string) {
       const id = randomUUID();
       const timestamp = (options.now ?? new Date()).toISOString();
       let admittedCredentialRevision = normalized.credentialRevision ?? 0;
+      let authoritativeModelConfiguration = normalized.modelConfiguration ?? {};
       let admittedModelConfiguration = JSON.stringify(
-        normalized.modelConfiguration,
+        authoritativeModelConfiguration,
       );
       let created = false;
       let row: GenerationTaskRow | undefined;
@@ -1346,30 +1514,88 @@ export function createGenerationTaskStore(dataDirectory: string) {
           nodeId: normalized.nodeId,
           ownerId: normalized.ownerId,
         });
-        const workflowBinding = normalized.modelConfiguration?.workflowBinding;
-        const workflowRunId = workflowBinding &&
-            typeof workflowBinding === "object" &&
-            typeof (workflowBinding as Record<string, unknown>).runId === "string"
-          ? String((workflowBinding as Record<string, unknown>).runId)
+        const workflowAuthority = workflowRunAdmissionAuthorityInTransaction({
+          canvasId: normalized.canvasId,
+          database,
+          nodeId: normalized.nodeId,
+          ownerId: normalized.ownerId,
+        });
+        const workflowBinding = recordValue(
+          authoritativeModelConfiguration.workflowBinding,
+        )
+          ? authoritativeModelConfiguration.workflowBinding
           : undefined;
-        const workflowRunAcceptingAdmissions = workflowRunId
-          ? workflowRunAcceptingAdmissionsInTransaction({
-              canvasId: normalized.canvasId,
-              database,
-              ownerId: normalized.ownerId,
-              runId: workflowRunId,
-            })
-          : false;
+        const release = recordValue(
+          authoritativeModelConfiguration.modelReleaseRevision,
+        )
+          ? authoritativeModelConfiguration.modelReleaseRevision
+          : undefined;
         if (
-          workflowRunId
-            ? workflowLockRunId !== workflowRunId ||
-              !workflowRunAcceptingAdmissions
-            : Boolean(workflowLockRunId)
+          (!workflowBinding && workflowLockRunId) ||
+          (workflowBinding && (
+            !workflowLockRunId || workflowBinding.runId !== workflowLockRunId ||
+            !workflowAuthority
+          ))
         ) {
           throw new GenerationTaskWorkflowLockedError();
         }
+        if (workflowAuthority) {
+          if (
+            !workflowBinding || !release ||
+            workflowAuthority.runState !== "running" ||
+            workflowAuthority.stopRequested !== 0 ||
+            workflowAuthority.nodeState !== "admitting" ||
+            workflowAuthority.kind !== normalized.kind ||
+            workflowAuthority.idempotencyKey !== normalized.idempotencyKey ||
+            workflowAuthority.nodeSemanticIdentity.length < 1 ||
+            workflowAuthority.nodeSemanticIdentity !==
+              workflowAuthority.planSemanticIdentity ||
+            workflowAuthority.planModelId !== normalized.model ||
+            workflowAuthority.planModelId !==
+              authoritativeModelConfiguration.modelId ||
+            workflowAuthority.planModelConfigurationRevision !==
+              authoritativeModelConfiguration.modelConfigurationRevision ||
+            workflowAuthority.planModelReleaseRevision !== release.revisionId ||
+            workflowAuthority.reservationState !== "active" ||
+            workflowAuthority.reservationExpiresAt <= timestamp ||
+            workflowAuthority.reservationOwnerId !== normalized.ownerId ||
+            workflowAuthority.reservationRunId !== workflowAuthority.runId ||
+            !/^[0-9a-f-]{36}$/i.test(workflowAuthority.reservationId) ||
+            workflowBinding.runId !== workflowAuthority.runId ||
+            workflowBinding.groupId !== workflowAuthority.groupId ||
+            workflowBinding.generationInputKey !==
+              authoritativeModelConfiguration.generationInputKey ||
+            workflowBinding.generationOwnershipKey !==
+              authoritativeModelConfiguration.generationOwnershipKey ||
+            workflowBinding.modelConfigurationRevision !==
+              authoritativeModelConfiguration.modelConfigurationRevision ||
+            workflowBinding.modelReleaseRevision !== release.revisionId ||
+            (workflowBinding.reservationId !== undefined &&
+              workflowBinding.reservationId !== workflowAuthority.reservationId)
+          ) {
+            throw new GenerationTaskWorkflowLockedError();
+          }
+          authoritativeModelConfiguration = {
+            ...authoritativeModelConfiguration,
+            workflowBinding: {
+              generationInputKey: workflowBinding.generationInputKey,
+              generationOwnershipKey: workflowBinding.generationOwnershipKey,
+              groupId: workflowAuthority.groupId,
+              modelConfigurationRevision:
+                workflowBinding.modelConfigurationRevision,
+              modelReleaseRevision: workflowBinding.modelReleaseRevision,
+              reservationId: workflowAuthority.reservationId,
+              runId: workflowAuthority.runId,
+            },
+          };
+          admittedModelConfiguration = JSON.stringify(
+            stableValue(authoritativeModelConfiguration),
+          );
+        } else if (workflowBinding) {
+          throw new GenerationTaskWorkflowLockedError();
+        }
         if (
-          workflowRunId &&
+          workflowAuthority &&
           hasUnresolvedGenerationOutcomeForNodeInTransaction(database, {
             canvasId: normalized.canvasId,
             kind: normalized.kind,
@@ -1420,14 +1646,23 @@ export function createGenerationTaskStore(dataDirectory: string) {
               "账号当前不可执行真实生成",
             );
           }
+        }
+        const explicitSafeFixture = normalized.ownerId === "__test__" &&
+          process.env.UNBOUNDRY_SAFE_TEST === "1" &&
+          typeof authoritativeModelConfiguration.fixtureScopeId === "string" &&
+          authoritativeModelConfiguration.fixtureScopeId.length > 0;
+        if (normalized.ownerId !== "__test__" ||
+            (authoritativeInputConfiguration && !explicitSafeFixture)) {
           assertAuthoritativeProviderSnapshot({
             binding: authoritativeModelBinding(normalized.model ?? null),
             kind: normalized.kind,
-            modelConfiguration: normalized.modelConfiguration ?? {},
+            modelConfiguration: authoritativeModelConfiguration,
             modelId: normalized.model ?? null,
             providerModelId: normalized.providerModelId ?? null,
             providerProfileId: normalized.providerProfileId ?? null,
           });
+        }
+        if (normalized.ownerId !== "__test__") {
           const credential = database.prepare(`
             SELECT
               credentials.credential_version,
@@ -1466,7 +1701,7 @@ export function createGenerationTaskStore(dataDirectory: string) {
             admittedCredentialRevision < 1 ||
             Number(credential.credential_version) !==
               admittedCredentialRevision ||
-            normalized.modelConfiguration?.credentialVersion !==
+            authoritativeModelConfiguration.credentialVersion !==
               admittedCredentialRevision ||
             ((normalized.credentialRevision ?? 0) > 0 &&
               normalized.credentialRevision !== admittedCredentialRevision)
@@ -1477,7 +1712,7 @@ export function createGenerationTaskStore(dataDirectory: string) {
             );
           }
           admittedModelConfiguration = JSON.stringify(stableValue({
-            ...normalized.modelConfiguration,
+            ...authoritativeModelConfiguration,
             credentialVersion: admittedCredentialRevision,
           }));
         }
@@ -2314,6 +2549,15 @@ export function createGenerationTaskStore(dataDirectory: string) {
               AND provider_task_id IS NOT NULL
               AND error_code != 'OPERATOR_INCIDENT'
               AND updated_at <= ?
+              AND EXISTS (
+                SELECT 1
+                FROM generation_provider_attempts AS attempt
+                WHERE attempt.task_id = generation_tasks.id
+                  AND attempt.execution_attempt = generation_tasks.attempt
+                  AND attempt.provider_task_id = generation_tasks.provider_task_id
+                  AND attempt.outcome IN ('accepted', 'response-received')
+                  AND attempt.finished_at IS NULL
+              )
             ORDER BY updated_at ASC, rowid ASC
             LIMIT 200
           `)
@@ -3085,6 +3329,40 @@ export function createGenerationTaskStore(dataDirectory: string) {
 
     settleProviderAttempt,
 
+    /**
+     * Idempotent current-task terminal settlement. The first call delegates
+     * to transition, whose single transaction writes attempt + task + event;
+     * later identical calls are a byte-stable no-op.
+     */
+    settleProviderTerminalFailure(input: {
+      failureCode: string;
+      message: string;
+      taskId: string;
+    }) {
+      assertTaskError({ code: input.failureCode, message: input.message });
+      const current = readById.get(input.taskId) as GenerationTaskRow | undefined;
+      if (!current) throw new Error("Generation task not found");
+      const attempt = providerAttemptForTask(current);
+      if (
+        current.state === "failed" &&
+        current.error_code === input.failureCode &&
+        attempt?.outcome === "provider-failed" &&
+        attempt.failure_code === input.failureCode &&
+        attempt.finished_at
+      ) {
+        return { changed: false, task: toTask(current) } as const;
+      }
+      if (!attempt || !["running", "recovering"].includes(current.state)) {
+        throw new Error("Provider terminal failure cannot settle this task");
+      }
+      const task = api.transition(input.taskId, "failed", {
+        code: input.failureCode,
+        message: input.message,
+      });
+      if (!task) throw new Error("Generation task changed concurrently");
+      return { changed: true, task } as const;
+    },
+
     transition(
       id: string,
       nextState: GenerationTaskState,
@@ -3181,7 +3459,10 @@ export function createGenerationTaskStore(dataDirectory: string) {
         if (result.changes !== 1) {
           throw new Error("Generation task changed concurrently");
         }
-        if (nextState === "failed" && current.attempt >= 1) {
+        if (
+          (nextState === "failed" || nextState === "cancelled") &&
+          current.attempt >= 1
+        ) {
           const attempt = providerAttemptForTask(current);
           if (current.provider_task_id && !attempt) {
             throw new Error("Persisted Provider task evidence is missing");
@@ -3195,8 +3476,43 @@ export function createGenerationTaskStore(dataDirectory: string) {
             ].includes(attempt.outcome)
           ) {
             const providerRefunded = error?.code === "PROVIDER_REFUNDED";
+            const adapterId = outcomeAdapterForTask(current);
+            const explicitProviderTerminalCodes = new Set([
+              "PROVIDER_CANCELLED",
+              "PROVIDER_FAILED",
+              "PROVIDER_REFUNDED",
+            ]);
+            const classified = adapterId &&
+                explicitProviderTerminalCodes.has(error?.code ?? "")
+              ? classifyGenerationProviderOutcome({
+                  adapterId,
+                  attempt: {
+                    failureCode: attempt.failure_code ?? undefined,
+                    finishedAt: attempt.finished_at ?? undefined,
+                    outcome: attempt.outcome,
+                    providerTaskId: attempt.provider_task_id ?? undefined,
+                  },
+                  observation: {
+                    failureCode: error!.code,
+                    kind: "provider-terminal-failed",
+                    ...(current.provider_task_id
+                      ? { providerTaskId: current.provider_task_id }
+                      : {}),
+                  },
+                  publication: { state: "none" },
+                  task: {
+                    errorCode: error?.code,
+                    providerTaskId: current.provider_task_id ?? undefined,
+                    state: "failed",
+                  },
+                })
+              : undefined;
             const nextOutcome: GenerationProviderAttemptOutcome =
-              providerRefunded
+              classified?.action === "settle-terminal-failure"
+                ? "provider-failed"
+                : error?.code === "PROVIDER_NOT_ACCEPTED_NO_CHARGE"
+                  ? "definitive-rejected"
+              : providerRefunded
                 ? "provider-failed"
                 : attempt.outcome === "boundary-claimed"
                   ? "outcome-unknown"
@@ -3295,15 +3611,13 @@ export function createGenerationTaskStore(dataDirectory: string) {
         if (current.provider_task_id) {
           throw new GenerationTaskProviderBoundaryError();
         }
-        if (current.state === "running") {
-          const providerBoundary = database.prepare(`
-            SELECT 1
-            FROM generation_provider_attempts
-            WHERE task_id = ? AND execution_attempt = ?
-            LIMIT 1
-          `).get(current.id, current.attempt);
-          if (providerBoundary) throw new GenerationTaskProviderBoundaryError();
-        }
+        const providerBoundary = database.prepare(`
+          SELECT 1
+          FROM generation_provider_attempts
+          WHERE task_id = ? AND execution_attempt = ?
+          LIMIT 1
+        `).get(current.id, current.attempt);
+        if (providerBoundary) throw new GenerationTaskProviderBoundaryError();
         const result = database.prepare(`
           UPDATE generation_tasks
           SET
@@ -3727,6 +4041,7 @@ export function createGenerationTaskStore(dataDirectory: string) {
       return toTask(readById.get(id) as GenerationTaskRow);
     },
   };
+  return api;
 }
 
 export function failRecoveredGenerationTasks(
@@ -3742,7 +4057,15 @@ export function failRecoveredGenerationTasks(
     if (
       attempt &&
       attempt.executionAttempt === task.attempt &&
-      ["boundary-claimed", "outcome-unknown", "response-received"].includes(
+      [
+        "boundary-claimed",
+        "accepted",
+        "completed",
+        "definitive-rejected",
+        "outcome-unknown",
+        "provider-failed",
+        "response-received",
+      ].includes(
         attempt.outcome,
       )
     ) return false;

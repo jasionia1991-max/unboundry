@@ -37,6 +37,7 @@ import {
 } from "../server/modelExecutionRegistry";
 import {
   assertGenerationMediaDeletionAllowedInTransaction,
+  hasUnresolvedPaidBoundaryInTransaction,
   hasUnresolvedGenerationOutcomeForNodeInTransaction,
 } from
   "../server/generationAttemptQueries";
@@ -49,9 +50,60 @@ import {
   deleteWorkflowRunsForCanvasInTransaction,
   deleteWorkflowRunsForOwnerInTransaction,
   hasActiveWorkflowRunForCanvas,
+  workflowRunAdmissionAuthorityInTransaction,
 } from "../server/workflowRunLocks";
+import { defaultModelReleaseDocument } from "../server/modelReleaseDefaults";
+import { inspectModelReleaseDocument } from
+  "../server/modelReleaseRevisionStore";
+import { knownModelParameterSchema } from "../types/modelParameters";
+import type { ModelReleaseRevision } from "../types/modelReleaseRevisions";
+import type { ProviderProtocol } from "../types/relayProtocols";
 
 const executeFile = promisify(execFile);
+
+function workflowReleaseFixture(input: {
+  index: number;
+  kind: "audio" | "image" | "text" | "video";
+  modelId: string;
+  providerDriver: string;
+  providerModelId: string;
+  providerProfileId: string;
+  providerProtocol: ProviderProtocol;
+}): ModelReleaseRevision {
+  const capabilitySchema = knownModelParameterSchema({
+    capability: input.kind,
+    providerDriver: input.providerDriver,
+    providerModelId: input.providerModelId,
+  });
+  const document = defaultModelReleaseDocument({
+    capability: input.kind,
+    capabilitySchema,
+    modelId: input.modelId,
+    providerDriver: input.providerDriver,
+    providerModelId: input.providerModelId,
+    providerProfileId: input.providerProfileId,
+    providerProtocol: input.providerProtocol,
+  });
+  const proof = inspectModelReleaseDocument(document);
+  return Object.freeze({
+    createdAt: "2026-09-01T00:00:00.000Z",
+    document,
+    hash: proof.documentHash,
+    modelId: input.modelId,
+    revisionId: `00000000-0000-4000-8000-${String(input.index).padStart(12, "0")}`,
+    revisionNumber: 1,
+    validation: Object.freeze({
+      compilerHash: proof.compilerHash,
+      impact: Object.freeze({
+        incompatibleTemplateIds: Object.freeze([]),
+        templateIds: Object.freeze([]),
+      }),
+      paidProviderRequests: 0,
+      preview: Object.freeze({ modes: Object.freeze([]) }),
+      validatedAt: "2026-09-01T00:00:00.000Z",
+    }),
+  });
+}
 
 function migrateMemory(targetVersion = currentSchemaVersion) {
   const database = new DatabaseSync(":memory:");
@@ -319,7 +371,7 @@ test("exact workflow graph locks permit unrelated edits and reject relevant chan
   })).toBe(false);
 });
 
-test("single-node admission is blocked by another run and allowed for its owning run", () => {
+test("single-node admission is blocked by a run and incomplete run bindings fail closed", () => {
   const directory = mkdtempSync(join(tmpdir(), "unboundry-workflow-lock-"));
   chmodSync(directory, 0o700);
   const database = openAppDatabase(directory);
@@ -350,6 +402,10 @@ test("single-node admission is blocked by another run and allowed for its owning
     VALUES ('owner', 'canvas', 'unknown-node', 'run-owner', ?)
   `).run(timestamp);
   database.prepare(`
+    INSERT INTO workflow_run_locks (owner_id, canvas_id, node_id, run_id, created_at)
+    VALUES ('owner', 'other-canvas', 'wrong-canvas-node', 'run-owner', ?)
+  `).run(timestamp);
+  database.prepare(`
     INSERT INTO generation_tasks (
       id, canvas_id, node_id, kind, prompt, parameters, idempotency_key,
       request_fingerprint, state, attempt, error_code, error_message,
@@ -367,6 +423,14 @@ test("single-node admission is blocked by another run and allowed for its owning
     nodeId: "unknown-node",
     ownerId: "owner",
   })).toBe(true);
+  database.exec("BEGIN IMMEDIATE");
+  expect(workflowRunAdmissionAuthorityInTransaction({
+    canvasId: "other-canvas",
+    database,
+    nodeId: "wrong-canvas-node",
+    ownerId: "owner",
+  })).toBeUndefined();
+  database.exec("ROLLBACK");
   database.close();
 
   const store = createGenerationTaskStore(directory);
@@ -382,23 +446,17 @@ test("single-node admission is blocked by another run and allowed for its owning
     providerProfileId: "provider-profile",
   };
   expect(() => store.admitOrGet(base)).toThrow(GenerationTaskWorkflowLockedError);
-  let owningError: unknown;
-  try {
-    store.admitOrGet({
+  expect(() => store.admitOrGet({
       ...base,
       idempotencyKey: "workflow-owning-run",
       modelConfiguration: { workflowBinding: { runId: "run-owner" } },
-    });
-  } catch (error) {
-    owningError = error;
-  }
-  expect(owningError).not.toBeInstanceOf(GenerationTaskWorkflowLockedError);
+  })).toThrow(GenerationTaskWorkflowLockedError);
   expect(() => store.admitOrGet({
     ...base,
     idempotencyKey: "workflow-unknown-run",
     modelConfiguration: { workflowBinding: { runId: "run-owner" } },
     nodeId: "unknown-node",
-  })).toThrow("原任务结果仍不明确");
+  })).toThrow(GenerationTaskWorkflowLockedError);
   const stopped = openAppDatabase(directory);
   stopped.prepare(`
     UPDATE workflow_runs SET stop_requested = 1, state = 'stopping'
@@ -410,6 +468,55 @@ test("single-node admission is blocked by another run and allowed for its owning
     idempotencyKey: "workflow-stopped-run",
     modelConfiguration: { workflowBinding: { runId: "run-owner" } },
   })).toThrow(GenerationTaskWorkflowLockedError);
+  const paidBoundary = store.create({
+    ...base,
+    canvasId: "paid-boundary-canvas",
+    idempotencyKey: "paid-boundary-evidence",
+    nodeId: "paid-boundary-node",
+    ownerId: "__test__",
+  }).task;
+  const historicalBoundary = store.create({
+    ...base,
+    canvasId: "historical-boundary-canvas",
+    idempotencyKey: "historical-boundary-evidence",
+    nodeId: "historical-boundary-node",
+    ownerId: "__test__",
+  }).task;
+  const finishedUnknown = store.create({
+    ...base,
+    canvasId: "finished-unknown-canvas",
+    idempotencyKey: "finished-unknown-evidence",
+    nodeId: "finished-unknown-node",
+    ownerId: "__test__",
+  }).task;
+  for (const task of [paidBoundary, historicalBoundary, finishedUnknown]) {
+    store.transition(task.id, "running");
+    store.recordProviderAttempt(task.id);
+  }
+  const evidenceDatabase = openAppDatabase(directory);
+  evidenceDatabase.prepare(`
+    UPDATE generation_provider_attempts
+    SET evidence = 'historical-execution-attempt'
+    WHERE task_id = ?
+  `).run(historicalBoundary.id);
+  evidenceDatabase.prepare(`
+    UPDATE generation_provider_attempts
+    SET outcome = 'outcome-unknown', finished_at = ?
+    WHERE task_id = ?
+  `).run(timestamp, finishedUnknown.id);
+  expect(hasUnresolvedPaidBoundaryInTransaction(
+    evidenceDatabase,
+    paidBoundary.id,
+  )).toBe(true);
+  expect(hasUnresolvedPaidBoundaryInTransaction(
+    evidenceDatabase,
+    historicalBoundary.id,
+  )).toBe(false);
+  expect(hasUnresolvedPaidBoundaryInTransaction(
+    evidenceDatabase,
+    finishedUnknown.id,
+  )).toBe(true);
+  evidenceDatabase.close();
   store.close();
   rmSync(directory, { force: true, recursive: true });
 });
@@ -548,7 +655,12 @@ test("every registered execution adapter has explicit workflow recovery evidence
     ...workflowRecoveryPolicy(adapterId),
   }));
   expect(policies.every(({ evidence }) => evidence.length > 40)).toBe(true);
-  expect(policies.every(({ workflowEligible }) => workflowEligible)).toBe(true);
+  expect(policies.filter(({ workflowEligible }) => workflowEligible).map(
+    ({ adapterId }) => adapterId,
+  )).toEqual(["ark-text", "ark-video", "mureka-audio", "relay-media"]);
+  expect(policies.filter(({ workflowEligible }) => !workflowEligible).map(
+    ({ adapterId }) => adapterId,
+  )).toEqual(["openrouter-image", "relay-gpt-image"]);
   expect(policies.find(({ adapterId }) => adapterId === "relay-media")?.grade)
     .toBe("DURABLE_USAGE_MATCH");
   expect(policies.find(({ adapterId }) => adapterId === "ark-video")?.grade)
@@ -557,6 +669,236 @@ test("every registered execution adapter has explicit workflow recovery evidence
     .toBe("STORED_RESPONSE_OR_FENCED_UNKNOWN");
   expect(policies.find(({ adapterId }) => adapterId === "relay-gpt-image")?.grade)
     .toBe("SYNC_RESPONSE_OR_FENCED_UNKNOWN");
+});
+
+test("INC-GEN-026 malformed active workflow terminalizes and releases only its own durable resources", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "unboundry-malformed-workflow-"));
+  chmodSync(directory, 0o700);
+  const previousDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = directory;
+  try {
+    const database = openAppDatabase(directory);
+    const timestamp = new Date().toISOString();
+    database.prepare(`
+      INSERT INTO users (
+        id, login_name, display_name, password_hash, role, status,
+        created_at, updated_at
+      ) VALUES ('__test__', 'malformed-workflow', 'Malformed Workflow',
+        'test', 'user', 'active', ?, ?)
+    `).run(timestamp, timestamp);
+    database.prepare(`
+      INSERT INTO canvas_documents (
+        owner_id, id, revision, graph_revision, nodes, edges, viewport,
+        updated_at, save_session_id, save_sequence
+      ) VALUES ('__test__', 'malformed-canvas', 1, 1, '[]', '[]', '{}', ?, NULL, 0)
+    `).run(timestamp);
+    database.prepare(`
+      INSERT INTO workflow_runs (
+        id, owner_id, canvas_id, group_id, graph_revision,
+        semantic_fingerprint, plan_json, state, stop_requested,
+        reservation_id, created_at, updated_at
+      ) VALUES ('malformed-run', '__test__', 'malformed-canvas',
+        'malformed-group', 1, 'malformed-fingerprint', '{"version":1}',
+        'running', 0, 'malformed-reservation', ?, ?)
+    `).run(timestamp, timestamp);
+    database.prepare(`
+      INSERT INTO workflow_run_nodes (
+        run_id, owner_id, node_id, kind, plan_index, dependencies_json,
+        semantic_identity, idempotency_key, state, task_id,
+        projection_state, created_at, updated_at
+      ) VALUES ('malformed-run', '__test__', 'malformed-node', 'text', 0,
+        '[]', 'malformed-semantic', 'malformed-idempotency', 'pending', NULL,
+        'pending', ?, ?)
+    `).run(timestamp, timestamp);
+    database.prepare(`
+      INSERT INTO workflow_run_locks (
+        owner_id, canvas_id, node_id, run_id, created_at
+      ) VALUES ('__test__', 'malformed-canvas', 'malformed-node',
+        'malformed-run', ?)
+    `).run(timestamp);
+    database.prepare(`
+      INSERT INTO media_capacity_reservations (
+        id, owner_id, workflow_run_id, reserved_bytes, state, expires_at,
+        created_at, updated_at
+      ) VALUES ('malformed-reservation', '__test__', 'malformed-run', 1,
+        'active', ?, ?, ?)
+    `).run(new Date(Date.now() + 60_000).toISOString(), timestamp, timestamp);
+    database.close();
+
+    const malformedTaskStore = createGenerationTaskStore(directory);
+    const queuedMalformedTask = malformedTaskStore.create({
+      canvasId: "malformed-canvas",
+      idempotencyKey: "malformed-queued-idempotency",
+      kind: "text",
+      modelConfiguration: {},
+      nodeId: "malformed-queued-node",
+      ownerId: "__test__",
+      prompt: "queued malformed task",
+      providerModelId: "malformed-provider-model",
+      providerProfileId: "malformed-provider-profile",
+    }).task;
+    const paidMalformedTask = malformedTaskStore.create({
+      canvasId: "malformed-canvas",
+      idempotencyKey: "malformed-paid-idempotency",
+      kind: "video",
+      modelConfiguration: {},
+      nodeId: "malformed-paid-node",
+      ownerId: "__test__",
+      prompt: "paid malformed task",
+      providerModelId: "malformed-provider-model",
+      providerProfileId: "malformed-provider-profile",
+    }).task;
+    const unrelatedRunningTask = malformedTaskStore.create({
+      canvasId: "unrelated-canvas",
+      idempotencyKey: "unrelated-running-idempotency",
+      kind: "text",
+      modelConfiguration: {},
+      nodeId: "unrelated-running-node",
+      ownerId: "__test__",
+      prompt: "unrelated running task",
+      providerModelId: "unrelated-provider-model",
+      providerProfileId: "unrelated-provider-profile",
+    }).task;
+    malformedTaskStore.transition(paidMalformedTask.id, "running");
+    malformedTaskStore.recordProviderAttempt(paidMalformedTask.id);
+    malformedTaskStore.transition(paidMalformedTask.id, "recovering", {
+      code: "AUTOMATIC_RESULT_RECOVERY",
+      message: "preserve paid boundary",
+    });
+    malformedTaskStore.transition(unrelatedRunningTask.id, "running");
+    malformedTaskStore.close();
+    const linkedSetup = openAppDatabase(directory);
+    for (const fixture of [{
+      kind: "text",
+      nodeId: "malformed-queued-node",
+      reservationId: "malformed-queued-reservation",
+      runId: "malformed-queued-run",
+      taskId: queuedMalformedTask.id,
+    }, {
+      kind: "video",
+      nodeId: "malformed-paid-node",
+      reservationId: "malformed-paid-reservation",
+      runId: "malformed-paid-run",
+      taskId: paidMalformedTask.id,
+    }] as const) {
+      linkedSetup.prepare(`
+        INSERT INTO workflow_runs (
+          id, owner_id, canvas_id, group_id, graph_revision,
+          semantic_fingerprint, plan_json, state, stop_requested,
+          reservation_id, created_at, updated_at
+        ) VALUES (?, '__test__', 'malformed-canvas', ?, 1, ?,
+          '{"version":1}', 'running', 0, ?, ?, ?)
+      `).run(
+        fixture.runId,
+        `${fixture.runId}-group`,
+        `${fixture.runId}-fingerprint`,
+        fixture.reservationId,
+        timestamp,
+        timestamp,
+      );
+      linkedSetup.prepare(`
+        INSERT INTO workflow_run_nodes (
+          run_id, owner_id, node_id, kind, plan_index, dependencies_json,
+          semantic_identity, idempotency_key, state, task_id,
+          projection_state, created_at, updated_at
+        ) VALUES (?, '__test__', ?, ?, 0, '[]', ?, ?, 'admitted', ?,
+          'pending', ?, ?)
+      `).run(
+        fixture.runId,
+        fixture.nodeId,
+        fixture.kind,
+        `${fixture.nodeId}-semantic`,
+        `${fixture.nodeId}-idempotency`,
+        fixture.taskId,
+        timestamp,
+        timestamp,
+      );
+      linkedSetup.prepare(`
+        INSERT INTO workflow_run_locks (
+          owner_id, canvas_id, node_id, run_id, created_at
+        ) VALUES ('__test__', 'malformed-canvas', ?, ?, ?)
+      `).run(fixture.nodeId, fixture.runId, timestamp);
+      linkedSetup.prepare(`
+        INSERT INTO media_capacity_reservations (
+          id, owner_id, workflow_run_id, reserved_bytes, state, expires_at,
+          created_at, updated_at
+        ) VALUES (?, '__test__', ?, 1, 'active', ?, ?, ?)
+      `).run(
+        fixture.reservationId,
+        fixture.runId,
+        new Date(Date.now() + 60_000).toISOString(),
+        timestamp,
+        timestamp,
+      );
+    }
+    linkedSetup.close();
+
+    const workflow = await import("../server/workflowRunService");
+    await workflow.runWorkflowSweep();
+    const verify = openAppDatabase(directory);
+    expect(verify.prepare(`
+      SELECT state, error_code FROM workflow_runs WHERE id = 'malformed-run'
+    `).get()).toEqual({
+      error_code: "WORKFLOW_PLAN_MALFORMED",
+      state: "failed",
+    });
+    expect(verify.prepare(`
+      SELECT state, error_code FROM workflow_run_nodes
+      WHERE run_id = 'malformed-run'
+    `).get()).toEqual({
+      error_code: "WORKFLOW_PLAN_MALFORMED",
+      state: "failed",
+    });
+    expect(verify.prepare(`
+      SELECT COUNT(*) AS count FROM workflow_run_locks
+      WHERE run_id = 'malformed-run'
+    `).get()).toEqual({ count: 0 });
+    expect(verify.prepare(`
+      SELECT state FROM media_capacity_reservations
+      WHERE id = 'malformed-reservation'
+    `).get()).toEqual({ state: "released" });
+    expect(verify.prepare(`
+      SELECT state, error_code AS errorCode FROM generation_tasks WHERE id = ?
+    `).get(queuedMalformedTask.id)).toEqual({
+      errorCode: "WORKFLOW_PLAN_MALFORMED",
+      state: "cancelled",
+    });
+    expect(verify.prepare(`
+      SELECT state FROM workflow_runs WHERE id = 'malformed-queued-run'
+    `).get()).toEqual({ state: "failed" });
+    expect(verify.prepare(`
+      SELECT state, stop_requested AS stopRequested
+      FROM workflow_runs WHERE id = 'malformed-paid-run'
+    `).get()).toEqual({ state: "stopping", stopRequested: 1 });
+    expect(verify.prepare(`
+      SELECT COUNT(*) AS count FROM workflow_run_locks
+      WHERE run_id = 'malformed-paid-run'
+    `).get()).toEqual({ count: 1 });
+    expect(verify.prepare(`
+      SELECT state FROM media_capacity_reservations
+      WHERE id = 'malformed-paid-reservation'
+    `).get()).toEqual({ state: "active" });
+    expect(verify.prepare(`
+      SELECT
+        task.state,
+        (SELECT COUNT(*) FROM generation_provider_attempts
+          WHERE task_id = task.id) AS attempts
+      FROM generation_tasks AS task WHERE task.id = ?
+    `).get(paidMalformedTask.id)).toEqual({ attempts: 1, state: "recovering" });
+    expect(verify.prepare(`
+      SELECT state FROM generation_tasks WHERE id = ?
+    `).get(unrelatedRunningTask.id)).toEqual({ state: "running" });
+    verify.close();
+    expect(workflow.getWorkflowRun("__test__", "malformed-run")).toMatchObject({
+      errorCode: "WORKFLOW_PLAN_MALFORMED",
+      lockedNodeIds: [],
+      state: "failed",
+    });
+  } finally {
+    if (previousDirectory === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
+    else process.env.UNBOUNDRY_DATA_DIR = previousDirectory;
+    rmSync(directory, { force: true, recursive: true });
+  }
 });
 
 test("server sweep projects authoritative success and stop releases only future nodes", async () => {
@@ -626,6 +968,7 @@ test("server sweep projects authoritative success and stop releases only future 
     taskStore.close();
 
     const plan = JSON.stringify({
+      clientSemanticFingerprint: "semantic-run-client",
       edges: [],
       executableNodeIds: ["text-node"],
       externalNodes: [],
@@ -637,12 +980,20 @@ test("server sweep projects authoritative success and stop releases only future 
         kind: "text",
         modelConfigurationRevision: "model-revision",
         modelId: "text-model",
-        modelReleaseRevision: { revisionId: "release-revision" },
+        modelReleaseRevision: workflowReleaseFixture({
+          index: 101,
+          kind: "text",
+          modelId: "text-model",
+          providerDriver: "volcengine-ark",
+          providerModelId: "doubao-seed-2-0-lite-260428",
+          providerProfileId: "provider-profile",
+          providerProtocol: "native",
+        }),
         ownPrompt: "authoritative prompt",
         parameters: {},
         planIndex: 0,
         providerDriver: "volcengine-ark",
-        providerModelId: "provider-text-model",
+        providerModelId: "doubao-seed-2-0-lite-260428",
         providerProfileId: "provider-profile",
         providerProtocol: "native",
         recoveryEvidence: "stored response",
@@ -654,6 +1005,7 @@ test("server sweep projects authoritative success and stop releases only future 
     });
     const store = openAppDatabase(directory);
     const unknownPlan = JSON.stringify({
+      clientSemanticFingerprint: "unknown-semantic-run-client",
       edges: [],
       executableNodeIds: ["unknown-node"],
       externalNodes: [],
@@ -665,12 +1017,20 @@ test("server sweep projects authoritative success and stop releases only future 
         kind: "image",
         modelConfigurationRevision: "unknown-model-revision",
         modelId: "image-model",
-        modelReleaseRevision: { revisionId: "unknown-release-revision" },
+        modelReleaseRevision: workflowReleaseFixture({
+          index: 102,
+          kind: "image",
+          modelId: "image-model",
+          providerDriver: "multi-protocol-relay",
+          providerModelId: "gpt-image-2",
+          providerProfileId: "provider-profile",
+          providerProtocol: "gpt-image",
+        }),
         ownPrompt: "unknown outcome",
         parameters: {},
         planIndex: 0,
-        providerDriver: "relay",
-        providerModelId: "provider-image-model",
+        providerDriver: "multi-protocol-relay",
+        providerModelId: "gpt-image-2",
         providerProfileId: "provider-profile",
         providerProtocol: "gpt-image",
         recoveryEvidence: "sync response or fenced unknown",
@@ -683,11 +1043,38 @@ test("server sweep projects authoritative success and stop releases only future 
     for (const [runId, groupId, runPlan] of [
       ["success-run", "success-group", plan],
       ["stop-run", "stop-group", JSON.stringify({
+        clientSemanticFingerprint: "stop-semantic-client",
         edges: [],
         executableNodeIds: ["future-node"],
         externalNodes: [],
         groupId: "stop-group",
-        nodes: [],
+        nodes: [{
+          costCurrency: "CNY",
+          dependencies: [],
+          id: "future-node",
+          kind: "text",
+          modelConfigurationRevision: "future-model-revision",
+          modelId: "future-model",
+          modelReleaseRevision: workflowReleaseFixture({
+            index: 103,
+            kind: "text",
+            modelId: "future-model",
+            providerDriver: "volcengine-ark",
+            providerModelId: "doubao-seed-2-0-lite-260428",
+            providerProfileId: "provider-profile",
+            providerProtocol: "native",
+          }),
+          ownPrompt: "future",
+          parameters: {},
+          planIndex: 0,
+          providerDriver: "volcengine-ark",
+          providerModelId: "doubao-seed-2-0-lite-260428",
+          providerProfileId: "provider-profile",
+          providerProtocol: "native",
+          recoveryEvidence: "stored response recovery evidence for stopped future node",
+          recoveryGrade: "STORED_RESPONSE_OR_FENCED_UNKNOWN",
+          semanticIdentity: "future-semantic",
+        }],
         semanticFingerprint: "stop-semantic",
         version: 1,
       })],

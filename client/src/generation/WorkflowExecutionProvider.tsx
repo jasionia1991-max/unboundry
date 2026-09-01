@@ -86,8 +86,13 @@ import { listGenerationTasks } from "./generationTasks";
 import {
   createServerWorkflowRun,
   listServerWorkflowRuns,
-  stopServerWorkflowRun,
+  reattachSubmittedServerWorkflowRun,
+  SERVER_WORKFLOW_RUN_UPDATED_EVENT,
+  stopServerWorkflowRunAndConfirm,
+  type ServerWorkflowRun,
   waitForServerWorkflowRun,
+  workflowRunCreateOutcomeIsUncertain,
+  workflowRunStatusReadIsRetryable,
 } from "./workflowRuns";
 import {
   enqueueGroupResultProjection,
@@ -248,13 +253,21 @@ type WorkflowExecutionValue = {
     checkpoint?: GroupRunCheckpoint,
   ) => Promise<void>;
   executingGroupIds: ReadonlySet<string>;
+  groupExecutionPhases: ReadonlyMap<string, WorkflowGroupExecutionPhase>;
   lockedNodeIds: ReadonlySet<string>;
 };
+
+export type WorkflowGroupExecutionPhase =
+  | "preparing"
+  | "stopping-preparation"
+  | "server-running"
+  | "server-stopping";
 
 const WorkflowExecutionContext = createContext<WorkflowExecutionValue>({
   cancelGroup: () => undefined,
   executeGroup: async () => undefined,
   executingGroupIds: new Set(),
+  groupExecutionPhases: new Map(),
   lockedNodeIds: new Set(),
 });
 
@@ -286,6 +299,7 @@ export function WorkflowExecutionProvider({
     isFixture,
     persistenceReady,
     readAuthoritativeCanvasRevision,
+    refreshAuthoritativeCanvasDocument,
     waitForCanvasRevision,
   } = useGenerationCanvas();
   const save = useMemo<CanvasSavePort>(() => ({
@@ -327,10 +341,22 @@ export function WorkflowExecutionProvider({
     runId: string;
   }>());
   const serverWorkflowRuns = useRef(new Map<string, {
+    abortController?: AbortController;
     runId: string;
     nodeIds: readonly string[];
+    state?: ServerWorkflowRun["state"];
+    stopController?: AbortController;
+    stopping?: boolean;
   }>());
-  const serverStartingGroupIds = useRef(new Set<string>());
+  const serverPreparingGroups = useRef(new Map<string, {
+    abortController: AbortController;
+    clientSemanticFingerprint: string;
+    nodeIds: readonly string[];
+    startedAt: number;
+    reconciliationBlocked: boolean;
+    stopRequested: boolean;
+    submitted: boolean;
+  }>());
   const runLocks = useRef(new Map<string, ReadonlySet<string>>());
   const automaticRecoveryScopeKey = useRef<string | undefined>(undefined);
   const legacyReconciliationRunToken = useRef(0);
@@ -341,6 +367,10 @@ export function WorkflowExecutionProvider({
   >());
   const notifyCurrent = useRef(notify);
   notifyCurrent.current = notify;
+  const getWorkflowEdges = useRef(getEdges);
+  getWorkflowEdges.current = getEdges;
+  const getWorkflowNodes = useRef(getNodes);
+  getWorkflowNodes.current = getNodes;
   const getLegacyNodes = useRef(getNodes);
   getLegacyNodes.current = getNodes;
   const [legacyGenerationStates, setLegacyGenerationStates] = useState<
@@ -377,6 +407,9 @@ export function WorkflowExecutionProvider({
   const [lockedNodeIds, setLockedNodeIds] = useState<ReadonlySet<string>>(
     new Set(),
   );
+  const [groupExecutionPhases, setGroupExecutionPhases] = useState<
+    ReadonlyMap<string, WorkflowGroupExecutionPhase>
+  >(new Map());
   const [foreignLeaseLockedNodeIds, setForeignLeaseLockedNodeIds] = useState<
     ReadonlySet<string>
   >(new Set());
@@ -384,16 +417,44 @@ export function WorkflowExecutionProvider({
     const nextGroups = new Set([
       ...startingGroups.current.keys(),
       ...runningGroups.current.keys(),
+      ...serverPreparingGroups.current.keys(),
       ...serverWorkflowRuns.current.keys(),
     ]);
     const nextLocks = new Set<string>();
+    const nextPhases = new Map<string, WorkflowGroupExecutionPhase>();
+    for (const groupId of startingGroups.current.keys()) {
+      nextPhases.set(groupId, "preparing");
+    }
+    for (const [groupId, run] of runningGroups.current) {
+      nextPhases.set(groupId, run.cancelled ? "server-stopping" : "server-running");
+    }
+    for (const [groupId, run] of serverPreparingGroups.current) {
+      nextPhases.set(
+        groupId,
+        run.stopRequested
+          ? "stopping-preparation"
+          : "preparing",
+      );
+    }
+    for (const [groupId, run] of serverWorkflowRuns.current) {
+      nextPhases.set(
+        groupId,
+        run.stopping || run.state === "stopping"
+          ? "server-stopping"
+          : "server-running",
+      );
+    }
     for (const locks of runLocks.current.values()) {
       for (const nodeId of locks) nextLocks.add(nodeId);
     }
     for (const run of serverWorkflowRuns.current.values()) {
       for (const nodeId of run.nodeIds) nextLocks.add(nodeId);
     }
+    for (const run of serverPreparingGroups.current.values()) {
+      for (const nodeId of run.nodeIds) nextLocks.add(nodeId);
+    }
     setExecutingGroupIds(nextGroups);
+    setGroupExecutionPhases(nextPhases);
     setLockedNodeIds(nextLocks);
   }, []);
   useEffect(() => {
@@ -472,7 +533,7 @@ export function WorkflowExecutionProvider({
   }, [accountId, canvasId, fixtureScopeId, legacyGenerationStates]);
 
   useEffect(() => {
-    if (runningGroups.current.size === 0 && startingGroups.current.size === 0) {
+    if (executingGroupIds.size === 0) {
       return;
     }
     const warnBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -485,7 +546,14 @@ export function WorkflowExecutionProvider({
 
   useEffect(() => {
     const scope = { accountId, canvasId, fixtureScopeId };
-    const interruptForPageExit = () => {
+    const interruptScopedRuns = (reason: string) => {
+      for (const preparation of serverPreparingGroups.current.values()) {
+        preparation.abortController.abort(reason);
+      }
+      for (const run of serverWorkflowRuns.current.values()) {
+        run.abortController?.abort(reason);
+        run.stopController?.abort(reason);
+      }
       const ownerId = getGroupRunExecutionOwnerId();
       for (const starting of startingGroups.current.values()) {
         starting.cancelled = true;
@@ -504,7 +572,7 @@ export function WorkflowExecutionProvider({
         if (running.ownerId !== ownerId) continue;
         running.cancelled = true;
         running.navigationStopped = true;
-        running.abortController.abort("page-exit");
+        running.abortController.abort(reason);
         const interrupted = {
           ...running.checkpoint,
           status: "interrupted" as const,
@@ -518,97 +586,253 @@ export function WorkflowExecutionProvider({
         releaseGroupRunLease(scope, running.runId, ownerId);
       }
     };
+    const interruptForPageExit = () => interruptScopedRuns("page-exit");
     window.addEventListener("pagehide", interruptForPageExit);
-    return () => window.removeEventListener("pagehide", interruptForPageExit);
+    return () => {
+      window.removeEventListener("pagehide", interruptForPageExit);
+      interruptScopedRuns("workflow-scope-changed");
+    };
   }, [accountId, canvasId, fixtureScopeId]);
+
+  const publishServerTerminal = useCallback(async (
+    terminal: ServerWorkflowRun,
+    signal?: AbortSignal,
+  ) => {
+    window.dispatchEvent(new CustomEvent(SERVER_WORKFLOW_RUN_UPDATED_EVENT, {
+      detail: { accountId, canvasId, fixtureScopeId, run: terminal },
+    }));
+    if (
+      terminal.state !== "success" ||
+      terminal.nodes.some(({ projectionState }) => projectionState !== "applied")
+    ) return false;
+    return refreshAuthoritativeCanvasDocument(signal);
+  }, [accountId, canvasId, fixtureScopeId, refreshAuthoritativeCanvasDocument]);
 
   useEffect(() => {
     if (isFixture || !persistenceReady) return;
     const controller = new AbortController();
     const tracked: Array<{ groupId: string; nodeIds: readonly string[]; runId: string }> = [];
+    let recoveryRetryTimer: number | undefined;
+    let recoveryReadFailureNotified = false;
     const release = (item: typeof tracked[number]) => {
       if (serverWorkflowRuns.current.get(item.groupId)?.runId === item.runId) {
         serverWorkflowRuns.current.delete(item.groupId);
       }
-      setExecutingGroupIds((current) => {
-        const next = new Set(current);
-        next.delete(item.groupId);
-        return next;
-      });
-      setLockedNodeIds((current) => {
-        const next = new Set(current);
-        for (const id of item.nodeIds) next.delete(id);
-        return next;
-      });
+      publishActiveRunState();
     };
-    const recover = async () => {
-      const runs = await listServerWorkflowRuns(canvasId, controller.signal);
-      const active = runs.filter(({ state }) => state === "running" || state === "stopping");
-      for (const run of active) {
-        if (controller.signal.aborted || serverWorkflowRuns.current.has(run.groupId)) continue;
-        const item = {
+    const trackActiveRun = async (run: ServerWorkflowRun) => {
+      if (
+        controller.signal.aborted ||
+        serverPreparingGroups.current.has(run.groupId) ||
+        serverWorkflowRuns.current.has(run.groupId)
+      ) return;
+      if (run.canvasId !== canvasId) {
+        throw new Error("服务端返回了其他画布的整组执行身份");
+      }
+      let semanticNodeIds = [run.groupId, ...run.lockedNodeIds];
+      try {
+        const preview = compileFrozenWorkflowSemanticPlan({
+          edges: getWorkflowEdges.current(),
           groupId: run.groupId,
-          nodeIds: run.lockedNodeIds ?? run.nodes.map(({ id }) => id),
-          runId: run.id,
-        };
-        tracked.push(item);
-        serverWorkflowRuns.current.set(run.groupId, {
-          nodeIds: item.nodeIds,
-          runId: item.runId,
+          nodes: getWorkflowNodes.current(),
         });
-        setExecutingGroupIds((current) => new Set([...current, run.groupId]));
-        setLockedNodeIds((current) => new Set([...current, ...item.nodeIds]));
-        if (publishGroupRunNotificationOnce(publishedRunNotifications.current, {
-          accountId,
-          canvasId,
-          errorClass: "server-authority-recovery",
-          groupId: run.groupId,
-          nodeId: run.groupId,
-          runId: run.id,
-        }, "recovering")) {
-          notifyCurrent.current("已找回服务端整组执行；无需保持页面打开", "info");
+        if (preview.semanticFingerprint === run.clientSemanticFingerprint) {
+          semanticNodeIds = [
+            run.groupId,
+            ...preview.executableNodeIds,
+            ...preview.externalNodes.map(({ id }) => id),
+          ];
+        }
+      } catch {
+        // The server's exact locks remain authoritative when the visible
+        // graph no longer matches the durable run.
+      }
+      const item = {
+        groupId: run.groupId,
+        nodeIds: [...new Set(semanticNodeIds)],
+        runId: run.id,
+      };
+      tracked.push(item);
+      serverWorkflowRuns.current.set(run.groupId, {
+        nodeIds: item.nodeIds,
+        runId: item.runId,
+        state: run.state,
+      });
+      publishActiveRunState();
+      if (publishGroupRunNotificationOnce(publishedRunNotifications.current, {
+        accountId,
+        canvasId,
+        errorClass: "server-authority-recovery",
+        groupId: run.groupId,
+        nodeId: run.groupId,
+        runId: run.id,
+      }, "recovering")) {
+        notifyCurrent.current("已找回服务端整组执行；无需保持页面打开", "info");
+      }
+      if (controller.signal.aborted) return;
+      try {
+        const terminal = await waitForServerWorkflowRun(run.id, controller.signal);
+        if (
+          terminal.canvasId !== canvasId ||
+          terminal.groupId !== run.groupId ||
+          terminal.clientSemanticFingerprint !== run.clientSemanticFingerprint
+        ) throw new Error("整组执行状态身份与当前画布不一致");
+        let refreshed = false;
+        let refreshError: unknown;
+        try {
+          refreshed = await publishServerTerminal(terminal, controller.signal);
+        } catch (error) {
+          if (controller.signal.aborted) return;
+          refreshError = error;
         }
         try {
-          const terminal = await waitForServerWorkflowRun(run.id, controller.signal);
           if (terminal.state === "success") {
             notifyCurrent.current(
               terminal.nodes.some(({ projectionState }) => projectionState !== "applied")
                 ? "生成已完成；部分画布写回冲突，原结果已安全保留"
-                : "整组执行完成，结果已保存",
-              "success",
+                : refreshError
+                  ? "整组执行已完成并保存；当前画布同步失败，请刷新页面后重试"
+                : refreshed
+                  ? "整组执行完成，结果已保存并同步到当前画布"
+                  : "整组执行完成，结果已保存；当前未保存编辑已保留",
+              refreshError ? "error" : refreshed ? "success" : "info",
             );
-            window.setTimeout(() => window.location.reload(), 250);
           } else if (terminal.state === "failed") {
             const first = terminal.nodes.find(({ state }) => state === "failed");
             notifyCurrent.current(
               first?.errorMessage ?? "整组执行部分失败；系统未重复提交原任务",
               "error",
             );
+          } else {
+            notifyCurrent.current(
+              "已停止后续节点；已经提交的任务均已收口",
+              "info",
+            );
           }
         } finally {
+          // Server terminal state is authoritative even when the local Canvas
+          // refresh fails. Never keep a completed run locked as "executing".
           release(item);
         }
-      }
-    };
-    void recover().catch((error) => {
-      if (!controller.signal.aborted) {
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        // A non-retryable status/identity incident cannot justify another
+        // run. Keep the server-owned lock without an unbounded request loop.
         notifyCurrent.current(
-          error instanceof Error ? error.message : "暂时无法读取整组执行状态",
+          error instanceof Error ? error.message : "暂时无法核对整组执行状态",
           "error",
         );
       }
-    });
+    };
+    const recover = async () => {
+      try {
+        const runs = await listServerWorkflowRuns(canvasId, controller.signal);
+        recoveryReadFailureNotified = false;
+        const active = runs.filter(({ state }) =>
+          state === "running" || state === "stopping"
+        );
+        for (const run of active) void trackActiveRun(run);
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        if (!workflowRunStatusReadIsRetryable(error)) {
+          notifyCurrent.current(
+            error instanceof Error ? error.message : "无法核对整组执行状态",
+            "error",
+          );
+          return;
+        }
+        if (!recoveryReadFailureNotified) {
+          recoveryReadFailureNotified = true;
+          notifyCurrent.current(
+            error instanceof Error ? error.message : "暂时无法读取整组执行状态",
+            "error",
+          );
+        }
+        recoveryRetryTimer = window.setTimeout(() => {
+          recoveryRetryTimer = undefined;
+          void recover();
+        }, 5_000);
+      }
+    };
+    void recover();
     return () => {
+      if (recoveryRetryTimer !== undefined) {
+        window.clearTimeout(recoveryRetryTimer);
+      }
       controller.abort("workflow-scope-changed");
       for (const item of tracked) release(item);
     };
-  }, [accountId, canvasId, isFixture, persistenceReady]);
+  }, [
+    accountId,
+    canvasId,
+    isFixture,
+    persistenceReady,
+    publishActiveRunState,
+    publishServerTerminal,
+  ]);
 
   const cancelGroup = useCallback((groupId: string) => {
+    const preparation = serverPreparingGroups.current.get(groupId);
+    if (preparation) {
+      preparation.stopRequested = true;
+      if (!preparation.submitted) {
+        preparation.abortController.abort("user-stopped-workflow-preparation");
+        serverPreparingGroups.current.delete(groupId);
+        publishActiveRunState();
+        notify("已停止整组准备，不会提交生成任务");
+      } else {
+        publishActiveRunState();
+        notify("正在核对服务端是否已接收原请求；系统不会再次提交", "info");
+      }
+      return;
+    }
     const serverRun = serverWorkflowRuns.current.get(groupId);
     if (serverRun) {
-      void stopServerWorkflowRun(serverRun.runId).catch(() => undefined);
-      notify("已停止后续节点；已经提交的原任务仍会继续保存结果");
+      if (serverRun.stopping) return;
+      serverRun.stopping = true;
+      publishActiveRunState();
+      void (async () => {
+        const controller = new AbortController();
+        serverRun.stopController = controller;
+        const timeout = window.setTimeout(
+          () => controller.abort("workflow-stop-timeout"),
+          45_000,
+        );
+        try {
+          const stopped = await stopServerWorkflowRunAndConfirm(
+            serverRun.runId,
+            controller.signal,
+          );
+          if (
+            stopped.id !== serverRun.runId || stopped.canvasId !== canvasId ||
+            stopped.groupId !== groupId ||
+            stopped.state === "running"
+          ) throw new Error("服务端没有确认本次停止请求");
+          serverRun.state = stopped.state;
+          publishActiveRunState();
+          window.dispatchEvent(new CustomEvent(SERVER_WORKFLOW_RUN_UPDATED_EVENT, {
+            detail: { accountId, canvasId, fixtureScopeId, run: stopped },
+          }));
+          notify(
+            stopped.state === "stopping"
+              ? "服务端已确认停止后续节点；已提交的原任务会继续保存结果"
+              : "整组已完成收口，无需再次停止",
+            "info",
+          );
+        } catch (error) {
+          serverRun.stopping = false;
+          publishActiveRunState();
+          notify(
+            error instanceof Error ? error.message : "暂时无法确认停止状态",
+            "error",
+          );
+        } finally {
+          window.clearTimeout(timeout);
+          if (serverRun.stopController === controller) {
+            serverRun.stopController = undefined;
+          }
+        }
+      })();
       return;
     }
     const running = runningGroups.current.get(groupId);
@@ -649,7 +873,7 @@ export function WorkflowExecutionProvider({
     notify(
       `已停止后续节点；当前已开始的 ${activeCount} 个节点仍会继续处理，已经提交的任务会继续并保存结果。`,
     );
-  }, [accountId, canvasId, notify]);
+  }, [accountId, canvasId, fixtureScopeId, notify, publishActiveRunState]);
 
   const waitForCanvasStable = useCallback(async (
     groupId: string,
@@ -698,7 +922,7 @@ export function WorkflowExecutionProvider({
         clearGroupRunStarting(legacyScope, legacyCheckpoint.runId);
         clearGroupRunCheckpoint(legacyScope, undefined, legacyCheckpoint.runId);
         notify(
-          "旧版浏览器整组记录已退出调度；服务端会继续核对已接收的原任务，不会重新提交",
+          "旧版浏览器整组记录已退出调度；已接收的原任务不会在这里重新提交",
           "info",
         );
         return;
@@ -707,50 +931,195 @@ export function WorkflowExecutionProvider({
       // freezes semantics, owns DAG admission and recovers without this page.
       if (!resumeCheckpoint) {
         if (
-          serverStartingGroupIds.current.has(groupId) ||
+          serverPreparingGroups.current.has(groupId) ||
           serverWorkflowRuns.current.has(groupId)
         ) return;
-        serverStartingGroupIds.current.add(groupId);
+        let clickPreview: ReturnType<typeof compileFrozenWorkflowSemanticPlan>;
         try {
-          // One user click owns the ordinary auto-save wait. Do not ask the
-          // user to click again merely because the browser graph was ahead of
-          // the durable Canvas document by one debounce window.
-          await flushCanvasSave();
-          await waitForCanvasRevision(30_000);
-          const preview = compileFrozenWorkflowSemanticPlan({
+          clickPreview = compileFrozenWorkflowSemanticPlan({
             edges: getEdges(),
             groupId,
             nodes: getNodes(),
           });
-          let created: Awaited<ReturnType<typeof createServerWorkflowRun>>;
-          try {
-            created = await createServerWorkflowRun({
-              canvasId,
-              clientSemanticFingerprint: preview.semanticFingerprint,
+        } catch (error) {
+          notify(
+            error instanceof Error ? error.message : "当前整组工作流无法执行",
+            "error",
+          );
+          return;
+        }
+        const preparation = {
+          abortController: new AbortController(),
+          clientSemanticFingerprint: clickPreview.semanticFingerprint,
+          nodeIds: [...new Set([
+            groupId,
+            ...clickPreview.executableNodeIds,
+            ...clickPreview.externalNodes.map(({ id }) => id),
+          ])],
+          startedAt: Date.now(),
+          reconciliationBlocked: false,
+          stopRequested: false,
+          submitted: false,
+        };
+        serverPreparingGroups.current.set(groupId, preparation);
+        publishActiveRunState();
+        const preparationTimeout = window.setTimeout(
+          () => {
+            if (!preparation.submitted) {
+              preparation.abortController.abort("workflow-preparation-timeout");
+            }
+          },
+          90_000,
+        );
+        let created: Awaited<ReturnType<typeof createServerWorkflowRun>> | undefined;
+        let pollController: AbortController | undefined;
+        try {
+          // One user click owns the ordinary auto-save wait. Do not ask the
+          // user to click again merely because the browser graph was ahead of
+          // the durable Canvas document by one debounce window.
+          created = await runExclusiveCanvasSubmit(canvasId, async () => {
+            if (preparation.abortController.signal.aborted) {
+              throw preparation.abortController.signal.reason;
+            }
+            await flushCanvasSave(preparation.abortController.signal);
+            if (preparation.abortController.signal.aborted) {
+              throw preparation.abortController.signal.reason;
+            }
+            await waitForCanvasRevision(
+              30_000,
+              preparation.abortController.signal,
+            );
+            if (preparation.abortController.signal.aborted) {
+              throw preparation.abortController.signal.reason;
+            }
+            const preview = compileFrozenWorkflowSemanticPlan({
+              edges: getEdges(),
               groupId,
+              nodes: getNodes(),
             });
-          } catch (createError) {
-            // The HTTP response may be lost after the server durably commits
-            // the run. Reattach by server authority instead of creating or
-            // asking for a second execution click.
-            const active = (await listServerWorkflowRuns(canvasId)).find((run) =>
+            preparation.clientSemanticFingerprint = preview.semanticFingerprint;
+            preparation.nodeIds = [...new Set([
+              groupId,
+              ...preview.executableNodeIds,
+              ...preview.externalNodes.map(({ id }) => id),
+            ])];
+            publishActiveRunState();
+            const activeForGroup = (await listServerWorkflowRuns(
+              canvasId,
+              preparation.abortController.signal,
+            )).filter((run) =>
               run.groupId === groupId &&
               (run.state === "running" || run.state === "stopping")
             );
-            if (!active) throw createError;
-            created = active;
+            const matchingActive = activeForGroup.find((run) =>
+              run.canvasId === canvasId &&
+              run.clientSemanticFingerprint === preview.semanticFingerprint
+            );
+            if (matchingActive) {
+              preparation.submitted = true;
+              return matchingActive;
+            }
+            if (activeForGroup.length > 0) {
+              throw new Error(
+                "服务端已有同组整组执行，当前画布身份不同；已阻止重复提交",
+              );
+            }
+            preparation.submitted = true;
+            try {
+              return await createServerWorkflowRun({
+                canvasId,
+                clientSemanticFingerprint: preview.semanticFingerprint,
+                groupId,
+                signal: preparation.abortController.signal,
+              });
+            } catch (createError) {
+              if (!workflowRunCreateOutcomeIsUncertain(createError)) {
+                throw createError;
+              }
+              if (!preparation.abortController.signal.aborted) {
+                notify(
+                  "服务端接收回执暂时不可见，正在只读找回；不会重复提交",
+                  "info",
+                );
+              }
+              try {
+                return await reattachSubmittedServerWorkflowRun({
+                  canvasId,
+                  clientSemanticFingerprint: preview.semanticFingerprint,
+                  groupId,
+                  signal: preparation.abortController.signal,
+                  startedAt: preparation.startedAt,
+                });
+              } catch (reattachError) {
+                if (!preparation.abortController.signal.aborted) {
+                  // The create outcome remains unknown. A permanent read or
+                  // identity failure stops the request loop but must retain the
+                  // local lock so another click cannot issue a second POST.
+                  preparation.reconciliationBlocked = true;
+                }
+                throw reattachError;
+              }
+            }
+          }, preparation.abortController.signal);
+          if (!created) throw new Error("服务端未返回整组执行身份");
+          if (
+            created.canvasId !== canvasId || created.groupId !== groupId ||
+            created.clientSemanticFingerprint !==
+              preparation.clientSemanticFingerprint
+          ) throw new Error("服务端返回的整组执行身份与本次请求不一致");
+          // Navigation/page exit only detaches this browser scope. Once the
+          // server accepted the run it must continue there; only the user's
+          // explicit Stop intent may issue the stop command.
+          if (
+            preparation.abortController.signal.aborted &&
+            !preparation.stopRequested
+          ) return;
+          if (
+            !preparation.reconciliationBlocked &&
+            serverPreparingGroups.current.get(groupId) === preparation
+          ) {
+            serverPreparingGroups.current.delete(groupId);
           }
+          pollController = new AbortController();
           serverWorkflowRuns.current.set(groupId, {
-            nodeIds: created.lockedNodeIds ?? created.nodes.map(({ id }) => id),
+            abortController: pollController,
+            nodeIds: preparation.nodeIds,
             runId: created.id,
+            state: created.state,
           });
-          setExecutingGroupIds((current) => new Set([...current, groupId]));
-          setLockedNodeIds((current) => new Set([
-            ...current,
-            ...(created.lockedNodeIds ?? created.nodes.map(({ id }) => id)),
-          ]));
-          notify("整组已由服务端接收；关闭页面也会继续，系统不会重复提交原任务");
-          const terminal = await waitForServerWorkflowRun(created.id);
+          publishActiveRunState();
+          if (preparation.stopRequested) {
+            try {
+              const stopped = await stopServerWorkflowRunAndConfirm(created.id);
+              if (
+                stopped.id !== created.id || stopped.canvasId !== canvasId ||
+                stopped.groupId !== groupId || stopped.state === "running"
+              ) {
+                throw new Error("服务端已接收原请求，但尚未确认停止状态");
+              }
+              notify("服务端已接收停止请求；不会提交后续节点", "info");
+            } catch (stopError) {
+              // Keep polling and keep the run locked. A failed stop
+              // confirmation is not permission to forget a server-owned run.
+              notify(
+                stopError instanceof Error
+                  ? stopError.message
+                  : "暂时无法确认停止状态；原整组仍由服务端收口",
+                "error",
+              );
+            }
+          } else {
+            notify("整组已由服务端接收；关闭页面也会继续，系统不会重复提交原任务");
+          }
+          const terminal = ["success", "failed", "cancelled"].includes(created.state)
+            ? created
+            : await waitForServerWorkflowRun(created.id, pollController.signal);
+          if (
+            terminal.canvasId !== canvasId || terminal.groupId !== groupId ||
+            terminal.clientSemanticFingerprint !==
+              preparation.clientSemanticFingerprint
+          ) throw new Error("整组执行终态身份与本次请求不一致");
+          const refreshed = await publishServerTerminal(terminal, pollController.signal);
           if (terminal.state === "success") {
             const projectionPending = terminal.nodes.some(({ projectionState }) =>
               projectionState !== "applied"
@@ -758,10 +1127,11 @@ export function WorkflowExecutionProvider({
             notify(
               projectionPending
                 ? "生成已完成；部分结果写回遇到画布编辑冲突，原结果已安全保留"
-                : "整组执行完成，结果已保存",
-              projectionPending ? "info" : "success",
+                : refreshed
+                  ? "整组执行完成，结果已保存并同步到当前画布"
+                  : "整组执行完成，结果已保存；当前未保存编辑已保留",
+              refreshed ? "success" : "info",
             );
-            window.setTimeout(() => window.location.reload(), 250);
           } else if (terminal.state === "cancelled") {
             notify("已停止后续节点；已经提交的任务均已收口");
           } else {
@@ -773,26 +1143,36 @@ export function WorkflowExecutionProvider({
             );
           }
         } catch (error) {
-          notify(
-            error instanceof Error ? error.message : "整组执行暂时无法开始",
-            "error",
-          );
-        } finally {
-          serverStartingGroupIds.current.delete(groupId);
-          const active = serverWorkflowRuns.current.get(groupId);
-          serverWorkflowRuns.current.delete(groupId);
-          setExecutingGroupIds((current) => {
-            const next = new Set(current);
-            next.delete(groupId);
-            return next;
-          });
-          if (active) {
-            setLockedNodeIds((current) => {
-              const next = new Set(current);
-              for (const id of active.nodeIds) next.delete(id);
-              return next;
-            });
+          if (
+            preparation.abortController.signal.reason ===
+              "workflow-preparation-timeout"
+          ) {
+            notify("整组准备超时，本次尚未提交生成任务，请稍后重试", "error");
+          } else if (
+            !preparation.abortController.signal.aborted &&
+            !pollController?.signal.aborted
+          ) {
+            notify(
+              error instanceof Error ? error.message : "整组执行暂时无法开始",
+              "error",
+            );
           }
+        } finally {
+          window.clearTimeout(preparationTimeout);
+          if (
+            !preparation.reconciliationBlocked &&
+            serverPreparingGroups.current.get(groupId) === preparation
+          ) {
+            serverPreparingGroups.current.delete(groupId);
+          }
+          if (
+            created &&
+            serverWorkflowRuns.current.get(groupId)?.runId === created.id
+          ) {
+            serverWorkflowRuns.current.delete(groupId);
+          }
+          pollController?.abort("workflow-terminal");
+          publishActiveRunState();
         }
         return;
       }
@@ -2279,7 +2659,10 @@ export function WorkflowExecutionProvider({
       waitForCanvasStable,
       readAuthoritativeCanvasRevision,
       executorModelCatalog,
+      flushCanvasSave,
+      publishServerTerminal,
       registry,
+      waitForCanvasRevision,
     ],
   );
   const executeGroupCurrent = useRef(executeGroup);
@@ -2933,9 +3316,16 @@ export function WorkflowExecutionProvider({
       cancelGroup,
       executeGroup,
       executingGroupIds,
+      groupExecutionPhases,
       lockedNodeIds: effectiveLockedNodeIds,
     }),
-    [cancelGroup, effectiveLockedNodeIds, executeGroup, executingGroupIds],
+    [
+      cancelGroup,
+      effectiveLockedNodeIds,
+      executeGroup,
+      executingGroupIds,
+      groupExecutionPhases,
+    ],
   );
 
   return (

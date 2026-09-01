@@ -43,17 +43,22 @@ export type GenerationCanvasState = {
   retryGenerationEnabled: boolean;
   /** Read the current durable server graph revision while holding Canvas admission. */
   readAuthoritativeCanvasRevision: () => Promise<number>;
+  /** Reload a newer authoritative Canvas document after server-side projection. */
+  refreshAuthoritativeCanvasDocument: (signal?: AbortSignal) => Promise<boolean>;
   adoptAuthoritativeGenerationMutation: (
     mutation: AuthoritativeGenerationCanvasMutation,
   ) => boolean;
   /** Wait until the current on-screen graph is durably saved before submitting. */
-  flushCanvasSave: () => Promise<void>;
+  flushCanvasSave: (signal?: AbortSignal) => Promise<void>;
   /**
    * Wait until the canvas is durably saved AND the latest React render has a
    * confirmed revision. Used by generation paths that must not read a stale
    * "canvas is still saving" state from an older render closure.
    */
-  waitForCanvasRevision: (timeoutMs?: number) => Promise<number>;
+  waitForCanvasRevision: (
+    timeoutMs?: number,
+    signal?: AbortSignal,
+  ) => Promise<number>;
 };
 
 export const GenerationCanvasContext = createContext<GenerationCanvasState>({
@@ -66,6 +71,7 @@ export const GenerationCanvasContext = createContext<GenerationCanvasState>({
   persistenceReady: true,
   retryGenerationEnabled: false,
   readAuthoritativeCanvasRevision: async () => -1,
+  refreshAuthoritativeCanvasDocument: async () => false,
   flushCanvasSave: async () => {},
   waitForCanvasRevision: async () => -1,
 });

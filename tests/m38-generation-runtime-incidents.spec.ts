@@ -2,12 +2,18 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { DatabaseSync } from "node:sqlite";
 import { expect, test } from "./safe-test";
 import { saveAccountCredential } from "../server/accountCredentials";
 import { openAppDatabase } from "../server/database";
 import { bootstrapPublishedModelContracts } from
   "../server/modelReleaseBootstrap";
 import { modelContractState } from "../server/modelReleaseRevisionStore";
+import { buildAuthoritativeGenerationModelConfiguration } from
+  "../server/authoritativeGenerationModelConfiguration";
+import { authoritativeModelConfigurationRevision } from
+  "../server/modelConfigurationIdentity";
+import { registeredModelExecution } from "../server/modelExecutionRegistry";
 import { createGenerationSafetyStore } from "../server/generationSafety";
 import {
   createGenerationTaskStore,
@@ -25,6 +31,8 @@ import {
   runGenerationRecoverySweep,
   settleDetachedGenerationExecution,
 } from "../server/generationTasks";
+import { settleSynchronousResultSaveExhaustion } from
+  "../server/generationResultCommit";
 import { evaluateModelRuntimeAvailability } from "../server/modelAvailability";
 import {
   ProviderProfileLockBusyError,
@@ -41,6 +49,7 @@ import {
   providerParameterSchema,
   validateParameterSchemaConstraints,
 } from "../types/modelParameters";
+import type { ProviderProtocol } from "../types/relayProtocols";
 
 const arkProfile: ProviderProfile = {
   apiKey: "test-only-ark-key-never-sent",
@@ -56,6 +65,97 @@ const textModelId = "doubao-seed-2-0-lite-260428";
 const incidentPort = Number(process.env.UNBOUNDRY_TEST_AUX_PORT);
 const incidentOrigin = `http://127.0.0.1:${incidentPort}`;
 const vite = join(process.cwd(), "node_modules/vite/bin/vite.js");
+
+function authoritativeTaskFixture(input: Readonly<{
+  canvasId: string;
+  credentialVersion: number;
+  database: DatabaseSync;
+  kind: GenerationTask["kind"];
+  modelId: string;
+  nodeId: string;
+  parameters: Record<string, unknown>;
+  prompt: string;
+  providerDriver: string;
+  providerModelId: string;
+  providerProfileId: string;
+  providerProtocol: ProviderProtocol;
+}>) {
+  const model = input.database.prepare(`
+    SELECT
+      models.updated_at AS modelConfigurationUpdatedAt,
+      providers.provider_configuration_version AS providerConfigurationVersion
+    FROM model_profiles AS models
+    JOIN provider_profiles AS providers
+      ON providers.id = models.provider_profile_id
+    WHERE models.id = ?
+  `).get(input.modelId) as {
+    modelConfigurationUpdatedAt: string;
+    providerConfigurationVersion: number;
+  } | undefined;
+  const modelReleaseRevision = modelContractState(
+    input.database,
+    input.modelId,
+  ).active;
+  const execution = registeredModelExecution({
+    capability: input.kind,
+    providerDriver: input.providerDriver,
+    providerModelId: input.providerModelId,
+    providerProtocol: input.providerProtocol,
+  });
+  if (!model || !modelReleaseRevision || !execution) {
+    throw new Error("Authoritative m38 generation fixture is incomplete");
+  }
+  const parameterSchema = modelReleaseRevision.document.capabilitySchema;
+  const modelConfigurationRevision = authoritativeModelConfigurationRevision({
+    capability: input.kind,
+    id: input.modelId,
+    modelConfigurationUpdatedAt: model.modelConfigurationUpdatedAt,
+    parameterSchema,
+    providerDriver: input.providerDriver,
+    providerModelId: input.providerModelId,
+  });
+  const generationInputKey =
+    `m38:${input.canvasId}:${input.nodeId}:input`;
+  const generationOwnershipKey =
+    `m38:${input.modelId}:${input.nodeId}:ownership`;
+  const modelInputContractFingerprint =
+    `m38:${input.modelId}:contract`;
+  const modelConfiguration = buildAuthoritativeGenerationModelConfiguration({
+    credentialVersion: input.credentialVersion,
+    generationInputKey,
+    generationOwnershipKey,
+    modelCapability: input.kind,
+    modelConfigurationRevision,
+    modelExecutionAdapterId: execution.adapterId,
+    modelId: input.modelId,
+    modelInputContractFingerprint,
+    modelReleaseRevision,
+    modelResultCount: execution.resultCount,
+    parameterSchema,
+    providerConfigurationVersion: model.providerConfigurationVersion,
+    providerDriver: input.providerDriver,
+    providerModelId: input.providerModelId,
+    providerProfileId: input.providerProfileId,
+    providerProtocol: input.providerProtocol,
+  });
+  return {
+    modelConfiguration,
+    requestIntent: {
+      canvasId: input.canvasId,
+      generationIdentityVersion: 2,
+      generationInputKey,
+      generationOwnershipKey,
+      kind: input.kind,
+      model: input.modelId,
+      modelConfigurationRevision,
+      modelInputContractFingerprint,
+      modelReleaseRevision: modelReleaseRevision.revisionId,
+      nodeId: input.nodeId,
+      parameters: input.parameters,
+      prompt: input.prompt,
+    },
+  };
+}
 
 async function startIncidentServer(dataDirectory: string) {
   const child = spawn(
@@ -430,32 +530,40 @@ test("an auth incident grants one atomic recovery attempt per credential revisio
           providerProfileId
         ? credentialRevision
         : imageCredential.credentialVersion;
-      const modelReleaseRevision = modelContractState(database, model).active!;
+      const canvasId = "default";
+      const nodeId = `recovery-node-${sequence}`;
+      const parameters = {};
+      const prompt = "recovery boundary test";
+      const fixture = authoritativeTaskFixture({
+        canvasId,
+        credentialVersion: taskCredentialRevision,
+        database,
+        kind,
+        modelId: model,
+        nodeId,
+        parameters,
+        prompt,
+        providerDriver: modelFixture.providerDriver,
+        providerModelId: modelFixture.providerModelId,
+        providerProfileId: modelFixture.providerProfileId,
+        providerProtocol: "native",
+      });
       const created = store.admitOrGet({
-        canvasId: "default",
+        canvasId,
         costCurrency: kind === "image" ? "USD" : "CNY",
         credentialRevision: taskCredentialRevision,
         estimatedCostMicrounits: 5_000_000,
         idempotencyKey: `provider-recovery-${sequence}`,
         kind,
         model,
-        modelConfiguration: {
-          credentialVersion: taskCredentialRevision,
-          modelId: model,
-          modelReleaseRevision,
-          parameterSchema: modelReleaseRevision.document.capabilitySchema,
-          providerConfigurationVersion: 1,
-          providerDriver: modelFixture.providerDriver,
-          providerModelId: modelFixture.providerModelId,
-          providerProfileId: modelFixture.providerProfileId,
-          providerProtocol: "native",
-        },
-        nodeId: `recovery-node-${sequence}`,
+        modelConfiguration: fixture.modelConfiguration,
+        nodeId,
         ownerId,
-        parameters: {},
-        prompt: "recovery boundary test",
+        parameters,
+        prompt,
         providerModelId: modelFixture.providerModelId,
         providerProfileId: modelFixture.providerProfileId,
+        requestIntent: fixture.requestIntent,
       });
       expect(created.created).toBe(true);
       return store.transition(created.task.id, "running")!;
@@ -2422,6 +2530,24 @@ test("server recovery sweep auto-resumes a failed task that still holds a Provid
       providerProfileId,
       "test-only-sweep-key",
     );
+    const parameters = {
+      inputSchemaVersion: 1,
+      inputs: [],
+    };
+    const fixture = authoritativeTaskFixture({
+      canvasId: "sweep-canvas",
+      credentialVersion: credential.credentialVersion,
+      database,
+      kind: "image",
+      modelId: modelProfileId,
+      nodeId: "sweep-node",
+      parameters,
+      prompt: "sweep recovery",
+      providerDriver: "multi-protocol-relay",
+      providerModelId: "gemini-3-pro-image-preview",
+      providerProfileId,
+      providerProtocol: "media-generate",
+    });
     const created = store.admitOrGet({
       canvasId: "sweep-canvas",
       costCurrency: "USD",
@@ -2430,27 +2556,14 @@ test("server recovery sweep auto-resumes a failed task that still holds a Provid
       idempotencyKey: "sweep-recovery-1",
       kind: "image",
       model: modelProfileId,
-      modelConfiguration: {
-        credentialVersion: credential.credentialVersion,
-        modelId: modelProfileId,
-        modelReleaseRevision: modelContractState(database, modelProfileId).active,
-        parameterSchema: modelContractState(database, modelProfileId).active!
-          .document.capabilitySchema,
-        providerConfigurationVersion: 1,
-        providerDriver: "multi-protocol-relay",
-        providerModelId: "gemini-3-pro-image-preview",
-        providerProfileId,
-        providerProtocol: "media-generate",
-      },
+      modelConfiguration: fixture.modelConfiguration,
       nodeId: "sweep-node",
       ownerId,
-      parameters: {
-        inputSchemaVersion: 1,
-        inputs: [],
-      },
+      parameters,
       prompt: "sweep recovery",
       providerModelId: "gemini-3-pro-image-preview",
       providerProfileId,
+      requestIntent: fixture.requestIntent,
     });
     expect(created.created).toBe(true);
     const taskId = created.task.id;
@@ -2529,7 +2642,11 @@ test("server recovery sweep binds one ledger match and launches without a second
       canvasId: "no-id-sweep-canvas",
       idempotencyKey: "no-id-sweep-0001",
       kind: "video",
-      modelConfiguration: { providerProtocol: "media-generate" },
+      modelConfiguration: {
+        modelExecutionAdapterId: "relay-media",
+        providerDriver: "multi-protocol-relay",
+        providerProtocol: "media-generate",
+      },
       nodeId: "no-id-sweep-node",
       ownerId: "__test__",
       prompt: "recover one ledger result",
@@ -2544,8 +2661,11 @@ test("server recovery sweep binds one ledger match and launches without a second
     });
     const launched: string[] = [];
     let matches = 0;
+    const previousModelContractFlag =
+      process.env.UNBOUNDRY_MODEL_INPUT_CONTRACT_V2;
     const previousWorkflowFlag =
       process.env.UNBOUNDRY_WORKFLOW_SELF_HEALING_V2;
+    process.env.UNBOUNDRY_MODEL_INPUT_CONTRACT_V2 = "1";
     process.env.UNBOUNDRY_WORKFLOW_SELF_HEALING_V2 = "0";
     try {
       await runGenerationRecoverySweep({
@@ -2562,41 +2682,48 @@ test("server recovery sweep binds one ledger match and launches without a second
         providerTaskId: undefined,
         state: "recovering",
       });
+      process.env.UNBOUNDRY_WORKFLOW_SELF_HEALING_V2 = "1";
+      await runGenerationRecoverySweep({
+        launch: (id) => launched.push(id),
+        match: async () => {
+          matches += 1;
+          return {
+            status: "one" as const,
+            record: {
+              createdAt: running.createdAt,
+              model: "grok-video-3",
+              state: "success" as const,
+              taskId: "provider-ledger-match-001",
+            },
+          };
+        },
+        store,
+      });
+      expect(matches).toBe(1);
+      expect(launched).toEqual([running.id]);
+      expect(store.get(running.id)).toMatchObject({
+        attempt: 1,
+        providerTaskId: "provider-ledger-match-001",
+        state: "running",
+      });
+      expect(store.getProviderAttemptForTask(running.id)).toMatchObject({
+        executionAttempt: 1,
+        outcome: "accepted",
+        providerTaskId: "provider-ledger-match-001",
+      });
     } finally {
+      if (previousModelContractFlag === undefined) {
+        delete process.env.UNBOUNDRY_MODEL_INPUT_CONTRACT_V2;
+      } else {
+        process.env.UNBOUNDRY_MODEL_INPUT_CONTRACT_V2 =
+          previousModelContractFlag;
+      }
       if (previousWorkflowFlag === undefined) {
         delete process.env.UNBOUNDRY_WORKFLOW_SELF_HEALING_V2;
       } else {
         process.env.UNBOUNDRY_WORKFLOW_SELF_HEALING_V2 = previousWorkflowFlag;
       }
     }
-    await runGenerationRecoverySweep({
-      launch: (id) => launched.push(id),
-      match: async () => {
-        matches += 1;
-        return {
-          status: "one" as const,
-          record: {
-            createdAt: running.createdAt,
-            model: "grok-video-3",
-            state: "success" as const,
-            taskId: "provider-ledger-match-001",
-          },
-        };
-      },
-      store,
-    });
-    expect(matches).toBe(1);
-    expect(launched).toEqual([running.id]);
-    expect(store.get(running.id)).toMatchObject({
-      attempt: 1,
-      providerTaskId: "provider-ledger-match-001",
-      state: "running",
-    });
-    expect(store.getProviderAttemptForTask(running.id)).toMatchObject({
-      executionAttempt: 1,
-      outcome: "accepted",
-      providerTaskId: "provider-ledger-match-001",
-    });
   } finally {
     store.close();
     await rm(dataDirectory, { force: true, recursive: true });
@@ -2611,7 +2738,11 @@ test("synchronous GPT Image response-save loss closes automatically without a se
       canvasId: "gpt-image-save-loss-canvas",
       idempotencyKey: "gpt-image-save-loss-0001",
       kind: "image",
-      modelConfiguration: { providerProtocol: "gpt-image" },
+      modelConfiguration: {
+        modelExecutionAdapterId: "relay-gpt-image",
+        providerDriver: "multi-protocol-relay",
+        providerProtocol: "gpt-image",
+      },
       nodeId: "gpt-image-save-loss-node",
       ownerId: "__test__",
       prompt: "close the original response only",
@@ -2624,13 +2755,37 @@ test("synchronous GPT Image response-save loss closes automatically without a se
       executionAttempt: running.attempt,
       taskId: running.id,
     });
-    store.transition(running.id, "recovering", {
-      code: "AUTOMATIC_RESULT_RECOVERY",
-      message: "the in-process save insurance was exhausted",
-    });
     const beforeDatabase = openAppDatabase(dataDirectory);
     const before = generationProviderAttemptCounts(beforeDatabase);
     beforeDatabase.close();
+    const originalError = console.error;
+    console.error = () => undefined;
+    try {
+      expect(await attemptProviderResultSave({
+        backoffMs: [],
+        save: async () => {
+          throw new ProviderResultMediaError(
+            "NETWORK",
+            "the synchronous response could not be staged",
+          );
+        },
+        settleSynchronousResultSave: (input) =>
+          settleSynchronousResultSaveExhaustion({
+            ...input,
+            dataDirectory,
+          }),
+        store,
+        synchronousResponseExecutionAttempt: running.attempt,
+        taskId: running.id,
+      })).toBe(false);
+    } finally {
+      console.error = originalError;
+    }
+    expect(settleSynchronousResultSaveExhaustion({
+      dataDirectory,
+      executionAttempt: running.attempt,
+      taskId: running.id,
+    })).toBeUndefined();
     let matches = 0;
     const launched: string[] = [];
     await runGenerationRecoverySweep({
@@ -2650,11 +2805,19 @@ test("synchronous GPT Image response-save loss closes automatically without a se
     });
     expect(store.getProviderAttemptForTask(running.id)).toMatchObject({
       executionAttempt: 1,
+      failureCode: "RESULT_SAVE_FAILED_NO_RETRY",
       outcome: "response-received",
       providerTaskId: undefined,
     });
     const afterDatabase = openAppDatabase(dataDirectory);
     expect(generationProviderAttemptCounts(afterDatabase)).toEqual(before);
+    expect(afterDatabase.prepare(`
+      SELECT finished_at AS finishedAt FROM generation_provider_attempts
+      WHERE task_id = ? AND execution_attempt = ?
+    `).get(running.id, running.attempt)).toEqual({ finishedAt: null });
+    expect(afterDatabase.prepare(`
+      SELECT COUNT(*) AS count FROM generation_task_events WHERE task_id = ?
+    `).get(running.id)).toEqual({ count: 3 });
     afterDatabase.close();
     expect(matches).toBe(0);
     expect(launched).toEqual([]);
@@ -2782,18 +2945,35 @@ test("server recovery sweep relaunches stale queued tasks and leaves fresh ones 
       providerProfileId,
       "test-only-queued-sweep-key",
     );
-    const modelConfiguration = {
+    const parameters = { inputSchemaVersion: 1, inputs: [] };
+    const agedFixture = authoritativeTaskFixture({
+      canvasId: "queued-sweep-canvas",
       credentialVersion: credential.credentialVersion,
+      database,
+      kind: "image",
       modelId: modelProfileId,
-      modelReleaseRevision: modelContractState(database, modelProfileId).active,
-      parameterSchema: modelContractState(database, modelProfileId).active!
-        .document.capabilitySchema,
-      providerConfigurationVersion: 1,
+      nodeId: "queued-sweep-aged-node",
+      parameters,
+      prompt: "aged queued task",
       providerDriver: "multi-protocol-relay",
       providerModelId: "gemini-3-pro-image-preview",
       providerProfileId,
       providerProtocol: "media-generate",
-    };
+    });
+    const freshFixture = authoritativeTaskFixture({
+      canvasId: "queued-sweep-canvas",
+      credentialVersion: credential.credentialVersion,
+      database,
+      kind: "image",
+      modelId: modelProfileId,
+      nodeId: "queued-sweep-fresh-node",
+      parameters,
+      prompt: "fresh queued task",
+      providerDriver: "multi-protocol-relay",
+      providerModelId: "gemini-3-pro-image-preview",
+      providerProfileId,
+      providerProtocol: "media-generate",
+    });
     const aged = store.admitOrGet({
       canvasId: "queued-sweep-canvas",
       costCurrency: "USD",
@@ -2802,13 +2982,14 @@ test("server recovery sweep relaunches stale queued tasks and leaves fresh ones 
       idempotencyKey: "queued-sweep-aged-1",
       kind: "image",
       model: modelProfileId,
-      modelConfiguration,
+      modelConfiguration: agedFixture.modelConfiguration,
       nodeId: "queued-sweep-aged-node",
       ownerId,
-      parameters: { inputSchemaVersion: 1, inputs: [] },
+      parameters,
       prompt: "aged queued task",
       providerModelId: "gemini-3-pro-image-preview",
       providerProfileId,
+      requestIntent: agedFixture.requestIntent,
     });
     const fresh = store.admitOrGet({
       canvasId: "queued-sweep-canvas",
@@ -2818,13 +2999,14 @@ test("server recovery sweep relaunches stale queued tasks and leaves fresh ones 
       idempotencyKey: "queued-sweep-fresh-1",
       kind: "image",
       model: modelProfileId,
-      modelConfiguration,
+      modelConfiguration: freshFixture.modelConfiguration,
       nodeId: "queued-sweep-fresh-node",
       ownerId,
-      parameters: { inputSchemaVersion: 1, inputs: [] },
+      parameters,
       prompt: "fresh queued task",
       providerModelId: "gemini-3-pro-image-preview",
       providerProfileId,
+      requestIntent: freshFixture.requestIntent,
     });
     expect(aged.created).toBe(true);
     expect(fresh.created).toBe(true);

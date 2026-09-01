@@ -122,6 +122,7 @@
     "tests/m79-canvas-smoothness.spec.ts"
   ],
   "self": [
+    "tests/m104-inc-gen-026-reliability.spec.ts",
     "tests/m11-auth.spec.ts",
     "tests/m14-generation-safety.spec.ts",
     "tests/m38-generation-runtime-incidents.spec.ts",

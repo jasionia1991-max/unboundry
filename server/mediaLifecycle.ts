@@ -5,6 +5,7 @@ import { basename, join, relative, sep } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
 import {
+  AliyunOssPublicationQuarantineError,
   deletePrivateAliyunOssObject,
   uploadPrivateAliyunOssObject,
 } from "./aliyunOss";
@@ -124,6 +125,7 @@ export type MediaPublicationReservation = {
   stagingName: string;
   storageBackend: MediaStorageBackend;
   storageProfileId: string | null;
+  taskExecutionAttempt?: number;
   taskId?: string;
 };
 
@@ -190,6 +192,7 @@ type AttemptRow = {
   object_key: string;
   owner_id: string;
   provider_usage_tokens: number | null;
+  retry_count: number;
   source: "generation" | "upload";
   staging_name: string;
   state: ActivePublicationState | "failed" | "published";
@@ -361,6 +364,7 @@ export function reserveMediaPublication(input: {
       stagingName,
       storageBackend: input.storageBackend,
       storageProfileId: input.storageProfileId ?? null,
+      taskExecutionAttempt: input.task?.executionAttempt,
       taskId: input.task?.taskId,
     };
   }));
@@ -371,6 +375,7 @@ function reservationTuple(reservation: MediaPublicationReservation) {
     reservation.attemptId, reservation.ownerId, reservation.kind,
     reservation.id, reservation.storageBackend, reservation.storageProfileId,
     reservation.objectKey, reservation.finalStorageName, reservation.stagingName,
+    reservation.taskId ?? null, reservation.taskExecutionAttempt ?? null,
   ] as const;
 }
 
@@ -383,6 +388,7 @@ function readAttempt(
     WHERE attempt_id = ? AND owner_id = ? AND kind = ? AND asset_id = ?
       AND storage_backend = ? AND storage_profile_id IS ? AND object_key = ?
       AND final_storage_name = ? AND staging_name = ?
+      AND task_id IS ? AND task_execution_attempt IS ?
   `).get(...reservationTuple(reservation)) as AttemptRow | undefined;
 }
 
@@ -1196,8 +1202,82 @@ function reservationFromAttempt(row: AttemptRow): MediaPublicationReservation {
     stagingName: row.staging_name,
     storageBackend: row.storage_backend,
     storageProfileId: row.storage_profile_id,
+    taskExecutionAttempt: row.task_execution_attempt ?? undefined,
     taskId: row.task_id ?? undefined,
   };
+}
+
+function generatedMediaFormat(reservation: MediaPublicationReservation) {
+  const extension = basename(reservation.finalStorageName)
+    .split(".")
+    .pop()
+    ?.toLowerCase();
+  if (!extension || !/^[a-z0-9]{1,8}$/.test(extension)) {
+    throw new Error("Generated media format is invalid");
+  }
+  return extension;
+}
+
+function quarantineGeneratedMediaPublication(
+  reservation: MediaPublicationReservation,
+) {
+  withDatabase((database) => transaction(database, () => {
+    assertAttemptState(readAttempt(database, reservation), "staged");
+    const changed = database.prepare(`
+      UPDATE media_publication_attempts
+      SET error_code = 'OSS_IDENTITY_QUARANTINED',
+          retry_count = retry_count + 1,
+          updated_at = ?
+      WHERE attempt_id = ? AND state = 'staged'
+    `).run(new Date().toISOString(), reservation.attemptId);
+    if (changed.changes !== 1) throw new MediaPublicationStateError();
+  }));
+}
+
+export async function publishGeneratedOssMediaPublication(input: {
+  byteSize: number;
+  checksumSha256: string;
+  contentType: string;
+  credentials: AliyunStorageProfile;
+  filePath: string;
+  reservation: MediaPublicationReservation;
+  uploadObject?: typeof uploadPrivateAliyunOssObject;
+}) {
+  const { reservation } = input;
+  if (
+    reservation.storageBackend !== "oss" ||
+    !reservation.storageProfileId ||
+    !reservation.taskId ||
+    !reservation.taskExecutionAttempt
+  ) throw new Error("Generated OSS publication identity is incomplete");
+  try {
+    return await (input.uploadObject ?? uploadPrivateAliyunOssObject)({
+      byteSize: input.byteSize,
+      checksumSha256: input.checksumSha256,
+      contentType: input.contentType,
+      credentials: input.credentials,
+      filePath: input.filePath,
+      generationIdentity: {
+        byteSize: input.byteSize,
+        checksumSha256: input.checksumSha256,
+        contentType: input.contentType,
+        executionAttempt: reservation.taskExecutionAttempt,
+        format: generatedMediaFormat(reservation),
+        kind: reservation.kind,
+        objectKey: reservation.objectKey,
+        ownerId: reservation.ownerId,
+        publicationId: reservation.attemptId,
+        storageProfileId: reservation.storageProfileId,
+        taskId: reservation.taskId,
+      },
+      objectKey: reservation.objectKey,
+    });
+  } catch (error) {
+    if (error instanceof AliyunOssPublicationQuarantineError) {
+      quarantineGeneratedMediaPublication(reservation);
+    }
+    throw error;
+  }
 }
 
 async function sha256File(path: string) {
@@ -1227,6 +1307,9 @@ export async function preparePendingGeneratedMediaPublication(
     if (row.state === "compensating" || row.media_storage_status !== "pending") {
       return { action: "failed" as const, reservation };
     }
+    if (row.error_code === "OSS_IDENTITY_QUARANTINED") {
+      return { action: "blocked" as const, reservation };
+    }
     if (reservation.storageBackend === "oss") {
       if (row.state === "external-ready") {
         return { action: "ready" as const, reservation };
@@ -1243,13 +1326,14 @@ export async function preparePendingGeneratedMediaPublication(
         if (!profile || !row.checksum_sha256 || row.byte_size < 1) {
           return { action: "blocked" as const, reservation };
         }
-        await (input?.uploadObject ?? uploadPrivateAliyunOssObject)({
+        await publishGeneratedOssMediaPublication({
           byteSize: row.byte_size,
           checksumSha256: row.checksum_sha256,
           contentType: row.content_type,
           credentials: profile,
           filePath: mediaPublicationStagingPath(reservation),
-          objectKey: reservation.objectKey,
+          reservation,
+          uploadObject: input?.uploadObject,
         });
         markExternalMediaPublicationReady(reservation);
         return { action: "ready" as const, reservation };
