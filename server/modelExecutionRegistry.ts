@@ -74,8 +74,19 @@ export function workflowRecoveryPolicy(
   return workflowRecoveryPolicies[adapterId];
 }
 
+export type ModelExecutionConnectorFamily =
+  | "ark-native"
+  | "generic-async-media"
+  | "gpt-image"
+  | "mureka-native"
+  | "specialized-code";
+
+export type ModelExecutionContractVersion = 1 | 2;
+
 export type ModelExecutionIdentity = Readonly<{
   adapterId?: ModelExecutionAdapterId;
+  connectorFamily?: ModelExecutionConnectorFamily;
+  executionContractVersion?: ModelExecutionContractVersion;
   providerDriver: string;
   providerModelId: string;
   providerProtocol: ProviderProtocol;
@@ -84,15 +95,10 @@ export type ModelExecutionIdentity = Readonly<{
 export type ModelExecutionDescriptor = Readonly<{
   adapterId: ModelExecutionAdapterId;
   capability: ModelCapability;
-  connectorFamily:
-    | "ark-native"
-    | "generic-async-media"
-    | "gpt-image"
-    | "mureka-native"
-    | "specialized-code";
+  connectorFamily: ModelExecutionConnectorFamily;
   costCurrency: "CNY" | "USD";
   evidence: "EXACT" | "SPECIALIZED";
-  executionContractVersion: 1 | 2;
+  executionContractVersion: ModelExecutionContractVersion;
   identities: readonly ModelExecutionIdentity[];
   logicalModelId: string;
   modes: Readonly<Record<string, Readonly<{
@@ -150,23 +156,32 @@ const descriptors = Object.freeze([
     runtime: "specialized-code",
   },
   {
-    adapterId: "relay-gpt-image",
+    adapterId: "relay-media",
     capability: "image",
-    connectorFamily: "gpt-image",
+    connectorFamily: "specialized-code",
     costCurrency: "USD",
     evidence: "EXACT",
-    executionContractVersion: 1,
+    executionContractVersion: 2,
     identities: [{
+      providerDriver: "multi-protocol-relay",
+      providerModelId: "tt-image-2",
+      providerProtocol: "media-generate",
+    }, {
+      adapterId: "relay-gpt-image",
+      connectorFamily: "gpt-image",
+      executionContractVersion: 1,
       providerDriver: "multi-protocol-relay",
       providerModelId: "gpt-image-2",
       providerProtocol: "gpt-image",
     }, {
       adapterId: "openrouter-image",
+      connectorFamily: "gpt-image",
+      executionContractVersion: 1,
       providerDriver: "openrouter",
       providerModelId: "openai/gpt-image-2",
       providerProtocol: "native",
     }],
-    logicalModelId: "gpt-image-2",
+    logicalModelId: "tt-image-2",
     modes: executionModes({
       image: { roles: referenceImage },
       text: { roles: textOnly },
@@ -397,12 +412,22 @@ export class ExactModelExecutionRegistry {
         if (this.#byIdentity.has(key)) {
           throw new Error(`模型执行registry身份重复：${key}`);
         }
-        this.#byIdentity.set(
-          key,
-          identity.adapterId && identity.adapterId !== entry.adapterId
-            ? Object.freeze({ ...entry, adapterId: identity.adapterId })
-            : entry,
-        );
+        const adapterId = identity.adapterId ?? entry.adapterId;
+        const connectorFamily = identity.connectorFamily ?? entry.connectorFamily;
+        const executionContractVersion = identity.executionContractVersion ??
+          entry.executionContractVersion;
+        this.#byIdentity.set(key, (
+            adapterId === entry.adapterId &&
+            connectorFamily === entry.connectorFamily &&
+            executionContractVersion === entry.executionContractVersion
+          )
+          ? entry
+          : Object.freeze({
+              ...entry,
+              adapterId,
+              connectorFamily,
+              executionContractVersion,
+            }));
       }
     }
   }

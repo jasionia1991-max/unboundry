@@ -173,6 +173,46 @@ function modelSchema(row: PublishedModelSnapshotRow) {
   });
 }
 
+test("v0.7.1 TT Image 2 owns the exact async recoverable release contract", () => {
+  const active = incGen018ActiveModelContractFixtures[
+    "cbaf438c-1c36-48e2-807d-4ce78367d0cf"
+  ];
+  const document = defaultModelReleaseDocument({
+    capability: "image",
+    capabilitySchema: active.capabilitySchema,
+    modelId: "cbaf438c-1c36-48e2-807d-4ce78367d0cf",
+    providerDriver: "multi-protocol-relay",
+    providerModelId: "tt-image-2",
+    providerProfileId: "37f7921b-18f0-43d3-91c5-dfed74f693b3",
+    providerProtocol: "media-generate",
+  });
+  const proof = inspectModelReleaseDocument(document);
+  expect({
+    compilerHash: proof.compilerHash,
+    documentHash: proof.documentHash,
+    schemaHash: canonicalContractFingerprint(document.capabilitySchema),
+  }).toEqual({
+    compilerHash:
+      "d50a0345ea0e2e44252b5cd208eacc0fddf30afbbc8726523185f7c1b5689c25",
+    documentHash:
+      "a2693d360e1192a9bde9d2ccb2259f54f30cf0e6c315fd7cc9d10005171d2527",
+    schemaHash:
+      "d0b50d6f0f4b549472541abac05ce0b3d188c03c0c471e644d96a9e425bb7ba7",
+  });
+  expect(document).toMatchObject({
+    connectorFamily: "specialized-code",
+    documentation: [{
+      checkedAt: "2026-09-02",
+      url: "https://ycaigc.lk666.ai/apidoc",
+    }],
+    evidence: "EXACT",
+    executionContract: { version: 2 },
+    providerModelId: "tt-image-2",
+    providerProtocol: "media-generate",
+    runtime: "specialized-code",
+  });
+});
+
 function activePolicyForMode(schema: ModelParameterSchema, mode: string) {
   const modeKey = schema.referencePolicy?.modeKey;
   const values = {
@@ -298,7 +338,7 @@ test("GK contract compiles deterministically and selects exactly one explicit mo
     ["doubao-seed-2-0-lite-260428", "text", "www.volcengine.com"],
     ["doubao-seedance-2-0-mini-260615", "video", "www.volcengine.com"],
     ["gemini-3-pro-image-preview", "image", "ai.google.dev"],
-    ["gpt-image-2", "image", "platform.openai.com"],
+    ["tt-image-2", "image", "ycaigc.lk666.ai"],
     ["grok-imagine-video-1.5-preview", "video", "docs.x.ai"],
     ["kling-v3-omni-cankao", "video", "app.klingai.com"],
     ["mureka-9", "audio", "platform.mureka.ai"],
@@ -311,7 +351,7 @@ test("GK contract compiles deterministically and selects exactly one explicit mo
       providerDriver: providerModelId.startsWith("doubao-") ? "volcengine-ark" : "multi-protocol-relay",
       providerModelId,
       providerProfileId: "provider-fixture",
-      providerProtocol: providerModelId === "gpt-image-2" ? "gpt-image" : "media-generate",
+      providerProtocol: "media-generate",
     });
     expect(new URL(document.documentation[0]!.url).hostname).toBe(hostname);
   }
@@ -2172,7 +2212,7 @@ test("INC-GEN-018 CLI requires dual hashes and an exact recovery attestation", (
   }
 });
 
-test("INC-GEN-018 planner audits the dynamic 10-model denominator and only selects Seed/TTS", () => {
+test("contract planner selects Seed, TTS and the v0.7.1 TT Image async transition", () => {
   const fixture = createIncGen018Fixture();
   try {
     const plan = fixture.harness.plan(fixture.store);
@@ -2180,8 +2220,8 @@ test("INC-GEN-018 planner audits the dynamic 10-model denominator and only selec
       actionCounts: {
         blockedInvalidActive: 0,
         blockedUnclassifiedDrift: 0,
-        none: 8,
-        publishRevision: 2,
+        none: 7,
+        publishRevision: 3,
       },
       auditedModelCount: 10,
       catalogIdentityMatchCount: 10,
@@ -2200,14 +2240,26 @@ test("INC-GEN-018 planner audits the dynamic 10-model denominator and only selec
     );
     expect(transitions.map((model) => model.modelId).sort()).toEqual([
       "65600fd0-739d-4359-9c9c-958e3ae49b05",
+      "cbaf438c-1c36-48e2-807d-4ce78367d0cf",
       "ee51d65e-c924-4a9a-b224-6c4ee180a0ce",
     ]);
     for (const transition of transitions) {
-      expect(transition.activeCapabilityDifferences.map(({ path }) => path))
-        .toEqual(["$.inputPolicy"]);
-      expect(transition.activeDocumentDifferences.map(({ path }) => path))
-        .toEqual(["$.capabilitySchema.inputPolicy"]);
       expect(transition.executionIdentityState).toBe("exact-pre");
+      if (transition.modelId === "cbaf438c-1c36-48e2-807d-4ce78367d0cf") {
+        expect(transition.activeCapabilityDifferences).toEqual([]);
+        expect(transition.activeDocumentDifferences.map(({ path }) => path))
+          .toEqual(expect.arrayContaining([
+            "$.connectorFamily",
+            "$.executionContract.version",
+            "$.providerModelId",
+            "$.providerProtocol",
+          ]));
+      } else {
+        expect(transition.activeCapabilityDifferences.map(({ path }) => path))
+          .toEqual(["$.inputPolicy"]);
+        expect(transition.activeDocumentDifferences.map(({ path }) => path))
+          .toEqual(["$.capabilitySchema.inputPolicy"]);
+      }
     }
     expect(transitions.find((model) =>
       model.modelId === "65600fd0-739d-4359-9c9c-958e3ae49b05"
@@ -2216,6 +2268,19 @@ test("INC-GEN-018 planner audits the dynamic 10-model denominator and only selec
         "4d89f4032e7721d9f396d18cda3dfd5181906625042934bbb97c961378113e56",
       proposedSchemaHash:
         "15d30ed0e85c5a6a54242cce5ac48a72c9848fe5313cea81e6769b4f58859ad2",
+    });
+    expect(transitions.find((model) =>
+      model.modelId === "cbaf438c-1c36-48e2-807d-4ce78367d0cf"
+    )).toMatchObject({
+      displayName: "TT Image 2 · 异步可恢复",
+      proposedCompilerHash:
+        "d50a0345ea0e2e44252b5cd208eacc0fddf30afbbc8726523185f7c1b5689c25",
+      proposedDocumentHash:
+        "a2693d360e1192a9bde9d2ccb2259f54f30cf0e6c315fd7cc9d10005171d2527",
+      proposedSchemaHash:
+        "d0b50d6f0f4b549472541abac05ce0b3d188c03c0c471e644d96a9e425bb7ba7",
+      providerModelId: "tt-image-2",
+      transition: "exact-gpt-image-2-async-v2",
     });
     expect(transitions.find((model) =>
       model.modelId === "ee51d65e-c924-4a9a-b224-6c4ee180a0ce"
@@ -2461,8 +2526,8 @@ test("INC-GEN-018 target and final-health failures roll every revision, row and 
       expect(rawUpgradeMutationSnapshot(fixture.store)).toBe(before);
       const after = fixture.harness.plan(fixture.store);
       expect(after.actionCounts).toMatchObject({
-        none: 8,
-        publishRevision: 2,
+        none: 7,
+        publishRevision: 3,
       });
       expect(modelContractState(
         fixture.store,
@@ -2472,18 +2537,23 @@ test("INC-GEN-018 target and final-health failures roll every revision, row and 
         fixture.store,
         "ee51d65e-c924-4a9a-b224-6c4ee180a0ce",
       ).history).toHaveLength(1);
+      expect(modelContractState(
+        fixture.store,
+        "cbaf438c-1c36-48e2-807d-4ce78367d0cf",
+      ).history).toHaveLength(2);
     } finally {
       closeIncGen018Fixture(fixture);
     }
   }
 });
 
-test("INC-GEN-018 upgrades exactly Seed/TTS to 10-of-10 and repeat apply is byte-idempotent", () => {
+test("contract upgrade applies all three exact transitions and repeat apply is byte-idempotent", () => {
   const fixture = createIncGen018Fixture();
   let sibling: IncGen018Fixture | undefined;
   try {
     const targetIds = [
       "65600fd0-739d-4359-9c9c-958e3ae49b05",
+      "cbaf438c-1c36-48e2-807d-4ce78367d0cf",
       "ee51d65e-c924-4a9a-b224-6c4ee180a0ce",
     ];
     const historicalStates = new Map(targetIds.map((modelId) => [
@@ -2531,10 +2601,7 @@ test("INC-GEN-018 upgrades exactly Seed/TTS to 10-of-10 and repeat apply is byte
     });
     for (const model of incGen018FixtureModels) {
       const expectedHistory = model.historyRevisionIds.length +
-        (model.id === "65600fd0-739d-4359-9c9c-958e3ae49b05" ||
-            model.id === "ee51d65e-c924-4a9a-b224-6c4ee180a0ce"
-          ? 1
-          : 0);
+        (targetIds.includes(model.id) ? 1 : 0);
       expect(modelContractState(fixture.store, model.id).history)
         .toHaveLength(expectedHistory);
     }
@@ -2576,21 +2643,27 @@ test("INC-GEN-018 upgrades exactly Seed/TTS to 10-of-10 and repeat apply is byte
     `).get() as { attempts: number; tasks: number };
     const representativeCatalog = incGen018FixtureModels.map((model) => {
       const row = fixture.store.prepare(`
-        SELECT models.default_parameters, providers.driver
+        SELECT models.default_parameters, models.provider_model_id,
+          models.provider_protocol, providers.driver
         FROM model_profiles AS models
         JOIN provider_profiles AS providers
           ON providers.id = models.provider_profile_id
         WHERE models.id = ?
-      `).get(model.id) as { default_parameters: string; driver: string };
+      `).get(model.id) as {
+        default_parameters: string;
+        driver: string;
+        provider_model_id: string;
+        provider_protocol: ProviderProtocol;
+      };
       const modelContractHealth = inspectActiveModelContractHealth({
         capability: model.capability,
         costCurrency: model.costCurrency,
         defaultParameters: row.default_parameters,
         modelId: model.id,
         providerDriver: row.driver,
-        providerModelId: model.providerModelId,
+        providerModelId: row.provider_model_id,
         providerProfileId: model.profileId,
-        providerProtocol: model.protocol,
+        providerProtocol: row.provider_protocol,
         store: fixture.store,
       });
       const availability = evaluateModelRuntimeAvailability({
@@ -2602,8 +2675,8 @@ test("INC-GEN-018 upgrades exactly Seed/TTS to 10-of-10 and repeat apply is byte
         modelContractHealth,
         providerConfigurationVersionAligned: true,
         providerDriver: row.driver,
-        providerModelId: model.providerModelId,
-        providerProtocol: model.protocol,
+        providerModelId: row.provider_model_id,
+        providerProtocol: row.provider_protocol,
         providerStatus: "enabled",
         storedProviderDriver: row.driver,
       });

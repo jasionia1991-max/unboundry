@@ -29,6 +29,7 @@ const verifiedModelDocumentation: Readonly<Record<string, string>> = Object.free
   "gemini-3-pro-image-preview": "https://ai.google.dev/gemini-api/docs/image-generation",
   "gpt-image-2": "https://platform.openai.com/docs/guides/image-generation",
   "openai/gpt-image-2": "https://platform.openai.com/docs/guides/image-generation",
+  "tt-image-2": "https://ycaigc.lk666.ai/apidoc",
   "grok-imagine-video-1.5-preview": "https://docs.x.ai/developers/models/grok-imagine-video",
   "kling-v3-omni-cankao": "https://app.klingai.com/cn/quickstart/klingai-video-3-model-user-guide",
   "mureka-9": "https://platform.mureka.ai/docs/en/changelog.html",
@@ -36,7 +37,10 @@ const verifiedModelDocumentation: Readonly<Record<string, string>> = Object.free
 
 function documentation(providerModelId: string) {
   const url = verifiedModelDocumentation[providerModelId];
-  return url ? [{ checkedAt: "2026-08-27", url }] : [];
+  return url ? [{
+    checkedAt: providerModelId === "tt-image-2" ? "2026-09-02" : "2026-08-27",
+    url,
+  }] : [];
 }
 
 export function gkVideoExecutionContract(

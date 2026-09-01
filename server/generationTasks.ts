@@ -164,6 +164,7 @@ import { retrieveVolcengineArkTextResponse } from "./volcengineArkTextProvider";
 import type { TextProviderRegistry } from "./providerGenerationTextRuntime";
 import {
   downloadProviderResultMedia,
+  injectedProviderResultFetcherAllowed,
   ProviderResultMediaError,
 } from "./providerResultMedia";
 import type {
@@ -198,10 +199,9 @@ import {
   storageProfileForMedia,
 } from "./secureStorageProfiles";
 import {
+  gptImageSizeForAspectRatio as compileGptImageSizeForAspectRatio,
   validateParameterValues,
-  youchuangGptImageSizes,
   type GptImageSizeMap,
-  type GptImageSizeTier,
   type ModelReferenceMediaRules,
   type ModelParameterSchema,
   type ModelParameterValue,
@@ -4083,36 +4083,20 @@ export async function relayMediaParametersForTask(
   return parameters;
 }
 
-const youchuangQualityLabels: Record<string, string> = {
-  "1k": "1K",
-  "2k": "2K",
-  "4k": "4K",
-};
-
 export function gptImageSizeForAspectRatio(
   value: unknown,
   quality: unknown = "1k",
   sizeMap?: GptImageSizeMap,
 ) {
-  const ratio = value === undefined || value === null ? "auto" : String(value);
-  const tier = String(quality ?? "1k").toLowerCase();
-  const configured =
-    sizeMap?.[tier as GptImageSizeTier]?.[ratio];
-  if (configured !== undefined) return configured;
-  if (value === undefined || value === "auto") return "auto" as const;
-  const tierTable =
-    youchuangGptImageSizes[tier as keyof typeof youchuangGptImageSizes] ??
-    youchuangGptImageSizes["1k"];
-  const size = tierTable[ratio];
-  if (size === undefined) {
-    const label = youchuangQualityLabels[tier] ?? "当前";
+  try {
+    return compileGptImageSizeForAspectRatio(value, quality, sizeMap);
+  } catch (error) {
     throw new RelayProviderError(
       "FORMAT",
       false,
-      `优创这个画质档（${label}）不支持 ${ratio} 比例，请改回自动比例或换 1K 画质`,
+      error instanceof Error ? error.message : undefined,
     );
   }
-  return size;
 }
 
 async function commitSavedGenerationMedia(saved: {
@@ -4171,6 +4155,7 @@ async function saveRelayMediaOutput(input: {
       input.output.mimeType ?? input.expectedAudioContentType,
     kind: input.output.kind,
     signal: input.signal,
+    testFetcher: relayMediaRuntimeTestFetcher(),
     url: input.output.transientUrl,
   });
   if (input.output.kind === "image") {
@@ -4394,6 +4379,7 @@ function mediaProviderExecution(input: {
   signal: AbortSignal;
   task: GenerationTask;
 }): MediaGenerationExecution {
+  const relayMediaTestFetcher = relayMediaRuntimeTestFetcher();
   return {
     absoluteDeadline: input.absoluteDeadline ??
       mediaProviderAbsoluteDeadline(input.task),
@@ -4410,7 +4396,16 @@ function mediaProviderExecution(input: {
     },
     profile: input.profile,
     signal: input.signal,
+    usePinnedTransport: relayMediaTestFetcher ? false : true,
   };
+}
+
+function relayMediaRuntimeTestFetcher(): typeof fetch | undefined {
+  if (
+    process.env.UNBOUNDRY_TEST_RELAY_MEDIA_FETCHER !== "1" ||
+    !injectedProviderResultFetcherAllowed()
+  ) return undefined;
+  return fetch;
 }
 
 function relayOutputsFromNormalized(

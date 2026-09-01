@@ -45,6 +45,11 @@ export type ModelContractUpgradeAction =
 
 type IncGen018ExactTransition =
   | "exact-legacy-doubao-seed-v1"
+  | "exact-legacy-doubao-tts-v1"
+  | "exact-gpt-image-2-async-v2";
+
+type EquivalentRuntimeSchemaTransition =
+  | "exact-legacy-doubao-seed-v1"
   | "exact-legacy-doubao-tts-v1";
 
 type ExactPublishedBaseline = Readonly<{
@@ -78,9 +83,15 @@ type ExactPublishedBaseline = Readonly<{
 }>;
 
 type ApprovedTransition = Readonly<{
+  equivalentRuntimeSchemaTransition?: EquivalentRuntimeSchemaTransition;
   expectedCapabilitySchemaHash: string;
   expectedCompilerHash: string;
   expectedDocumentHash: string;
+  targetIdentity?: Readonly<{
+    displayName: string;
+    protocol: ModelContractUpgradeSeedRow["provider_protocol"];
+    providerModelId: string;
+  }>;
   transition: IncGen018ExactTransition;
 }>;
 
@@ -430,21 +441,40 @@ const exactPublishedBaselines = Object.freeze({
 
 const approvedTransitions = Object.freeze({
   "65600fd0-739d-4359-9c9c-958e3ae49b05": Object.freeze({
+    equivalentRuntimeSchemaTransition: "exact-legacy-doubao-tts-v1",
     expectedCapabilitySchemaHash:
       "15d30ed0e85c5a6a54242cce5ac48a72c9848fe5313cea81e6769b4f58859ad2",
     expectedCompilerHash:
       "41f6a8567ab7962610d0a8b125f539543184e27b30c478a39e98117fabf6ab6b",
     expectedDocumentHash:
       "4d89f4032e7721d9f396d18cda3dfd5181906625042934bbb97c961378113e56",
+    targetIdentity: undefined,
     transition: "exact-legacy-doubao-tts-v1",
   }),
+  "cbaf438c-1c36-48e2-807d-4ce78367d0cf": Object.freeze({
+    equivalentRuntimeSchemaTransition: undefined,
+    expectedCapabilitySchemaHash:
+      "d0b50d6f0f4b549472541abac05ce0b3d188c03c0c471e644d96a9e425bb7ba7",
+    expectedCompilerHash:
+      "d50a0345ea0e2e44252b5cd208eacc0fddf30afbbc8726523185f7c1b5689c25",
+    expectedDocumentHash:
+      "a2693d360e1192a9bde9d2ccb2259f54f30cf0e6c315fd7cc9d10005171d2527",
+    targetIdentity: Object.freeze({
+      displayName: "TT Image 2 · 异步可恢复",
+      protocol: "media-generate",
+      providerModelId: "tt-image-2",
+    }),
+    transition: "exact-gpt-image-2-async-v2",
+  }),
   "ee51d65e-c924-4a9a-b224-6c4ee180a0ce": Object.freeze({
+    equivalentRuntimeSchemaTransition: "exact-legacy-doubao-seed-v1",
     expectedCapabilitySchemaHash:
       "05cf5e3e6433ebb90d4ad21ff14d8c205b63e84bb0ba8536e0e939a031d7cfc4",
     expectedCompilerHash:
       "c55c41a3b4aaee5efa6db73761038a8de4c396705c4865e0c7e663522663cb0b",
     expectedDocumentHash:
       "5a2556c9f18cb1e2d46e0ffaecc8025eff93244def1e4f8d8fea4e54322197e9",
+    targetIdentity: undefined,
     transition: "exact-legacy-doubao-seed-v1",
   }),
 } satisfies Readonly<Record<string, ApprovedTransition>>);
@@ -574,6 +604,46 @@ function expectedStaticIdentity(
     providerModelId: baseline.providerModelId,
     providerStatus: baseline.providerStatus,
     status: "published",
+  });
+}
+
+function acceptedStaticIdentity(
+  baseline: ExactPublishedBaseline,
+  transition: ApprovedTransition | undefined,
+  row: ModelContractUpgradeSeedRow,
+  policy: ModelContractUpgradePolicyContext,
+) {
+  const before = expectedStaticIdentity(baseline, policy);
+  const actual = rowStaticIdentity(row);
+  const beforeDifferences = differences(before, actual);
+  if (beforeDifferences.length === 0) {
+    return Object.freeze({
+      differences: Object.freeze([]),
+      state: "exact-pre" as const,
+    });
+  }
+  if (transition?.targetIdentity) {
+    const after = Object.freeze({
+      ...before,
+      displayName: transition.targetIdentity.displayName,
+      protocol: transition.targetIdentity.protocol,
+      providerModelId: transition.targetIdentity.providerModelId,
+    });
+    const afterDifferences = differences(after, actual);
+    if (afterDifferences.length === 0) {
+      return Object.freeze({
+        differences: Object.freeze([]),
+        state: "exact-post" as const,
+      });
+    }
+    return Object.freeze({
+      differences: Object.freeze(afterDifferences),
+      state: "invalid" as const,
+    });
+  }
+  return Object.freeze({
+    differences: Object.freeze(beforeDifferences),
+    state: "invalid" as const,
   });
 }
 
@@ -793,9 +863,14 @@ function invalidRowReasons(row: ModelContractUpgradeSeedRow) {
 }
 
 function approvedDifferencePaths(
+  transition: IncGen018ExactTransition,
   capabilityDifferences: readonly Difference[],
   documentDifferences: readonly Difference[],
 ) {
+  if (transition === "exact-gpt-image-2-async-v2") {
+    return capabilityDifferences.length === 0 &&
+      documentDifferences.length > 0;
+  }
   return capabilityDifferences.length === 1 &&
     capabilityDifferences[0]?.path === "$.inputPolicy" &&
     documentDifferences.length === 1 &&
@@ -809,6 +884,9 @@ function classifyModel(
 ) {
   const baseline = exactPublishedBaselines[
     row.id as keyof typeof exactPublishedBaselines
+  ];
+  const transition = approvedTransitions[
+    row.id as keyof typeof approvedTransitions
   ];
   const rowSnapshot = Object.freeze({
     ...rowStaticIdentity(row),
@@ -839,10 +917,13 @@ function classifyModel(
       transition: undefined,
     });
   }
-  const identityDifferences = differences(
-    expectedStaticIdentity(baseline, policy),
-    rowStaticIdentity(row),
+  const staticIdentity = acceptedStaticIdentity(
+    baseline,
+    transition,
+    row,
+    policy,
   );
+  const identityDifferences = staticIdentity.differences;
   const invalidReasons = invalidRowReasons(row);
   let state: ReturnType<typeof modelContractState>;
   try {
@@ -925,18 +1006,22 @@ function classifyModel(
     });
   }
   const active = state.active!;
+  const rebuildingExecutionIdentity = Boolean(
+    transition?.targetIdentity && staticIdentity.state === "exact-pre",
+  );
+  const targetIdentity = transition?.targetIdentity;
   let canonical: ReturnType<typeof resolveCanonicalPublishedModelContract>;
   try {
     canonical = resolveCanonicalPublishedModelContract({
-      activeDocument: active.document,
+      activeDocument: rebuildingExecutionIdentity ? undefined : active.document,
       capability: row.capability,
       costCurrency: row.cost_currency,
       defaultParameters: row.default_parameters,
       modelId: row.id,
       providerDriver: row.provider_driver!,
-      providerModelId: row.provider_model_id,
+      providerModelId: targetIdentity?.providerModelId ?? row.provider_model_id,
       providerProfileId: row.provider_profile_id,
-      providerProtocol: row.provider_protocol,
+      providerProtocol: targetIdentity?.protocol ?? row.provider_protocol,
     });
   } catch (error) {
     const code = error instanceof CanonicalPublishedModelContractError
@@ -965,14 +1050,20 @@ function classifyModel(
       transition: undefined,
     });
   }
+  const activeCapabilityDifferences = rebuildingExecutionIdentity
+    ? differences(active.document.capabilitySchema, canonical.capabilitySchema)
+    : canonical.activeCapabilityDifferences;
+  const activeDocumentDifferences = rebuildingExecutionIdentity
+    ? differences(active.document, canonical.targetDocument)
+    : canonical.activeDocumentDifferences;
   let targetProof: ReturnType<typeof inspectModelReleaseDocument>;
   try {
     targetProof = inspectModelReleaseDocument(canonical.targetDocument);
   } catch {
     return Object.freeze({
       action: "blocked-invalid-active" as const,
-      activeCapabilityDifferences: canonical.activeCapabilityDifferences,
-      activeDocumentDifferences: canonical.activeDocumentDifferences,
+      activeCapabilityDifferences,
+      activeDocumentDifferences,
       activeRevision: revisionSummary(active),
       blockers: Object.freeze(["CANONICAL_TARGET_DOCUMENT_INVALID"]),
       catalogIdentityMatchesBaseline: true,
@@ -992,22 +1083,19 @@ function classifyModel(
       transition: undefined,
     });
   }
-  const transition = approvedTransitions[
-    row.id as keyof typeof approvedTransitions
-  ];
   const proposedFields = {
-    activeCapabilityDifferences: canonical.activeCapabilityDifferences,
-    activeDocumentDifferences: canonical.activeDocumentDifferences,
+    activeCapabilityDifferences,
+    activeDocumentDifferences,
     activeRevision: revisionSummary(active),
     catalogIdentityMatchesBaseline: true,
-    displayName: row.display_name,
+    displayName: targetIdentity?.displayName ?? row.display_name,
     identityDifferences: Object.freeze(identityDifferences),
     modelId: row.id,
     proposed: canonical.targetDocument,
     proposedCompilerHash: targetProof.compilerHash,
     proposedDocumentHash: targetProof.documentHash,
     proposedSchemaHash: canonical.capabilityFingerprint,
-    providerModelId: row.provider_model_id,
+    providerModelId: canonical.targetDocument.providerModelId,
     referenceSnapshot: references,
     rowSnapshot,
     stateSnapshot,
@@ -1018,13 +1106,15 @@ function classifyModel(
       targetProof.documentHash === transition.expectedDocumentHash &&
       targetProof.compilerHash === transition.expectedCompilerHash;
     const exactPreState =
+      (!transition.targetIdentity || staticIdentity.state === "exact-pre") &&
       state.history.length === baseline.historyCount &&
       exactBaselineRevision(active, baseline) &&
       rawSha256(row.default_parameters) ===
-        baseline.rawDefaultParametersSha256 &&
+      baseline.rawDefaultParametersSha256 &&
       approvedDifferencePaths(
-        canonical.activeCapabilityDifferences,
-        canonical.activeDocumentDifferences,
+        transition.transition,
+        activeCapabilityDifferences,
+        activeDocumentDifferences,
       );
     if (exactPreState && exactTargetProof) {
       return Object.freeze({
@@ -1037,11 +1127,12 @@ function classifyModel(
       });
     }
     const exactPostState =
+      (!transition.targetIdentity || staticIdentity.state === "exact-post") &&
       exactPostRevision(state, baseline, transition) &&
       rawSha256(row.default_parameters) ===
         rawSha256(JSON.stringify(canonical.capabilitySchema)) &&
-      canonical.activeCapabilityDifferences.length === 0 &&
-      canonical.activeDocumentDifferences.length === 0 &&
+      activeCapabilityDifferences.length === 0 &&
+      activeDocumentDifferences.length === 0 &&
       exactTargetProof;
     if (exactPostState) {
       return Object.freeze({
@@ -1066,8 +1157,8 @@ function classifyModel(
     state.history.length === baseline.historyCount &&
     exactBaselineRevision(active, baseline) &&
     rawSha256(row.default_parameters) === baseline.rawDefaultParametersSha256 &&
-    canonical.activeCapabilityDifferences.length === 0 &&
-    canonical.activeDocumentDifferences.length === 0 &&
+    activeCapabilityDifferences.length === 0 &&
+    activeDocumentDifferences.length === 0 &&
     targetProof.documentHash === baseline.activeDocumentHash &&
     targetProof.compilerHash === baseline.activeCompilerHash &&
     canonical.capabilityFingerprint === baseline.activeSchemaHash;
@@ -1225,10 +1316,20 @@ function activateTargetRelease(
     targetProof.compilerHash !== transition.expectedCompilerHash
   ) throw new Error("目标模型激活身份与核准迁移不一致");
   const serialized = JSON.stringify(document.capabilitySchema);
+  const targetDisplayName = transition.targetIdentity?.displayName ??
+    baseline.displayName;
+  const targetProviderModelId = transition.targetIdentity?.providerModelId ??
+    baseline.providerModelId;
+  const targetProtocol = transition.targetIdentity?.protocol ?? baseline.protocol;
+  if (
+    document.providerModelId !== targetProviderModelId ||
+    document.providerProtocol !== targetProtocol
+  ) throw new Error("目标模型文档与核准静态身份不一致");
   const timestamp = new Date().toISOString();
   const changed = store.prepare(`
     UPDATE model_profiles
-    SET default_parameters = ?, updated_at = ?
+    SET default_parameters = ?, display_name = ?, provider_model_id = ?,
+      provider_protocol = ?, updated_at = ?
     WHERE id = ?
       AND display_name = ?
       AND capability = ?
@@ -1258,6 +1359,9 @@ function activateTargetRelease(
       )
   `).run(
     serialized,
+    targetDisplayName,
+    targetProviderModelId,
+    targetProtocol,
     timestamp,
     row.id,
     baseline.displayName,
@@ -1346,19 +1450,14 @@ function applyModelContractUpgradeWithPolicy(
       model.action === "publish-revision"
     );
     const publishableIds = publishable.map((model) => model.modelId).sort();
+    const exactPostIds = before.models.filter((model) =>
+      model.executionIdentityState === "exact-post" &&
+      model.transition !== undefined
+    ).map((model) => model.modelId).sort();
+    const approvedStateIds = [...publishableIds, ...exactPostIds].sort();
     if (
-      publishableIds.length !== 0 &&
-      snapshotHash(publishableIds) !== snapshotHash(expectedMigrationModelIds)
-    ) throw new Error("合同升级动作集合不等于核准的Seed/TTS精确迁移");
-    if (!publishableIds.length) {
-      const exactPostIds = before.models.filter((model) =>
-        model.executionIdentityState === "exact-post" &&
-        model.transition !== undefined
-      ).map((model) => model.modelId).sort();
-      if (snapshotHash(exactPostIds) !== snapshotHash(expectedMigrationModelIds)) {
-        throw new Error("零迁移只允许Seed/TTS均已处于核准exact post-state");
-      }
-    }
+      snapshotHash(approvedStateIds) !== snapshotHash(expectedMigrationModelIds)
+    ) throw new Error("合同升级动作集合不等于全部核准精确迁移");
     const rowsById = new Map(
       modelContractUpgradeSeeds(store).map((row) => [row.id, row]),
     );
@@ -1366,12 +1465,16 @@ function applyModelContractUpgradeWithPolicy(
       const row = rowsById.get(model.modelId);
       const proposed = model.proposed;
       const transition = model.transition;
-      if (!row || !proposed || !transition) {
+      const transitionPolicy = approvedTransitions[
+        model.modelId as keyof typeof approvedTransitions
+      ];
+      if (!row || !proposed || !transition || !transitionPolicy) {
         throw new Error("合同升级目标缺少精确计划身份");
       }
       const release = upgradeModelContractRevision(store, actorUserId, {
         document: proposed,
-        equivalentRuntimeSchemaTransition: transition,
+        equivalentRuntimeSchemaTransition:
+          transitionPolicy.equivalentRuntimeSchemaTransition,
         expectedActiveRevisionId: model.activeRevision!.revisionId,
         impact: emptyImpact,
       }, (revision) => activateTargetRelease(store, row, revision.document));

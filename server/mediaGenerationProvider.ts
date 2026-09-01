@@ -40,6 +40,8 @@ export type MediaGenerationExecution = Readonly<{
     id: string;
   }>;
   signal?: AbortSignal;
+  /** Safe-test-only override. Production relay media always uses pinned transport. */
+  usePinnedTransport?: boolean;
 }>;
 
 export type MediaGenerationSubmission =

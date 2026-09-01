@@ -44,7 +44,7 @@ function containsSecret(value: string, secret: string) {
   }
 }
 
-function injectedTestFetcherAllowed() {
+export function injectedProviderResultFetcherAllowed() {
   if (process.env.UNBOUNDRY_SAFE_TEST !== "1") return false;
   const dataDirectory = process.env.UNBOUNDRY_DATA_DIR;
   const testRoot = process.env.UNBOUNDRY_TEST_ROOT;
@@ -122,7 +122,7 @@ export async function downloadProviderResultMedia(input: {
   url: string;
 }) {
   const url = safeProviderResultUrl(input.url, input.apiKey);
-  if (input.testFetcher && !injectedTestFetcherAllowed()) {
+  if (input.testFetcher && !injectedProviderResultFetcherAllowed()) {
     throw new ProviderResultMediaError("FORMAT", "模型结果地址无效");
   }
   if (input.signal?.aborted) {

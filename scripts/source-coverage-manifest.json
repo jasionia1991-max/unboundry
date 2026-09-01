@@ -126,7 +126,7 @@
       "scriptSha256": "53e92a0e6268f4a7cb1c618aa1293d27507dd207546c0f988c1e06c0cb7ce94c",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "Full snapshot bridge/final fixtures prove the release closure",
-      "targetSha256": "89a1263fe4da3c77d1964baaa67b1efc33d3f902dcba39be58d5814aca7db1dc"
+      "targetSha256": "479d6fed69aa11881cd2ba664be3215eff90a0f00f214a8844deac97c3dbcee6"
     },
     "scripts/check-greenfield.mjs": {
       "mode": "behavior-test",
@@ -140,14 +140,14 @@
       "scriptSha256": "9b1807c98cd6e59a288fd8b81d29299bb5b34b67e7bed9a2003c8989c95d01e7",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "scripts/check-restart-persistence.mjs",
-      "targetSha256": "89a1263fe4da3c77d1964baaa67b1efc33d3f902dcba39be58d5814aca7db1dc"
+      "targetSha256": "479d6fed69aa11881cd2ba664be3215eff90a0f00f214a8844deac97c3dbcee6"
     },
     "scripts/check-v051-exact-runtime.mjs": {
       "mode": "behavior-test",
       "scriptSha256": "f492c522b5c4eee75ae74e2e6b3945476ac1872bb1bd8c22c4e9a850bb4bc6e4",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "scripts/check-v051-exact-runtime.mjs",
-      "targetSha256": "89a1263fe4da3c77d1964baaa67b1efc33d3f902dcba39be58d5814aca7db1dc"
+      "targetSha256": "479d6fed69aa11881cd2ba664be3215eff90a0f00f214a8844deac97c3dbcee6"
     },
     "scripts/deploy.mjs": {
       "mode": "frozen",
@@ -195,14 +195,14 @@
       "scriptSha256": "03fdfc2b169d0fd9a2a6945e5d0d5cf2dd2c2a065cb44603081f8cc0b9a9051a",
       "target": "tests/m104-inc-gen-026-reliability.spec.ts",
       "marker": "historical terminal settlement is manifest-fenced and repeat apply is a no-op",
-      "targetSha256": "7000b23bc7cb881476a35651883d674a826684e5aca322fa3cf505f322510d07"
+      "targetSha256": "3316e65cc4fa994ac855f9f864d086a8ae9deee7d66d3ca615ebab44bb31a807"
     },
     "scripts/apply-inc-gen-026-attempt-settlements.mjs": {
       "mode": "behavior-test",
       "scriptSha256": "90d6f6e0402a794fb20026db37bce0da02e657e6f857646b00bb5830aa3a7e58",
       "target": "tests/m104-inc-gen-026-reliability.spec.ts",
       "marker": "historical terminal settlement is manifest-fenced and repeat apply is a no-op",
-      "targetSha256": "7000b23bc7cb881476a35651883d674a826684e5aca322fa3cf505f322510d07"
+      "targetSha256": "3316e65cc4fa994ac855f9f864d086a8ae9deee7d66d3ca615ebab44bb31a807"
     },
     "scripts/node-typescript-runtime.mjs": {
       "mode": "behavior-test",

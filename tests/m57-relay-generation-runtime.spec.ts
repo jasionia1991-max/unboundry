@@ -30,6 +30,7 @@ import {
 import { ResourceBudgetError } from "../server/resourceBudget";
 import { ProviderResultMediaError } from "../server/providerResultMedia";
 import type { ProviderProfile } from "../server/providerProfiles";
+import { RelayProviderError } from "../server/relayProviderAdapters";
 import { listRelayUsageRecords } from "../server/relayUsageReconcile";
 import {
   relayMediaModelContract,
@@ -927,9 +928,58 @@ test("GPT Image maps documented Youchuang size tiers and blocks missing combos",
     }
   }
   // 文档没有的组合必须拦截：21:9 各档都没有，未知比例也一样。
-  expect(() => gptImageSizeForAspectRatio("21:9", "1k")).toThrow();
+  expect(() => gptImageSizeForAspectRatio("21:9", "1k"))
+    .toThrow(RelayProviderError);
   expect(() => gptImageSizeForAspectRatio("21:9", "4k")).toThrow();
   expect(() => gptImageSizeForAspectRatio("7:5", "1k")).toThrow();
+});
+
+test("tt-image-2 compiles the durable media request without leaking UI fields", async () => {
+  const schema = providerParameterSchema({
+    capability: "image",
+    providerDriver: "multi-protocol-relay",
+    providerModelId: "tt-image-2",
+  });
+  expect(schema?.fields.map(({ key }) => key)).toEqual([
+    "inputMode",
+    "aspectRatio",
+    "quality",
+    "outputCount",
+  ]);
+  const task = relayTask("image", "media-generate", {
+    providerModelId: "tt-image-2",
+    parameters: {
+      aspectRatio: "9:16",
+      inputMode: "image",
+      inputSchemaVersion: 1,
+      inputs: [{
+        assetId: "tt-image-reference",
+        kind: "image",
+        order: 1,
+        role: "reference-image",
+        sourceNodeId: "tt-image-source",
+      }],
+      outputCount: 1,
+      quality: "2k",
+    },
+  });
+  const before = JSON.stringify(task.parameters);
+  await expect(relayMediaParametersForTask(
+    task,
+    async () => "https://signed.example.test/reference.png",
+  )).resolves.toEqual({
+    images: ["https://signed.example.test/reference.png"],
+    n: 1,
+    quality: "auto",
+    size: "1440x2560",
+  });
+  expect(JSON.stringify(task.parameters)).toBe(before);
+  expect(relayMediaModelContract("tt-image-2")).toMatchObject({
+    capability: "image",
+    modelId: "tt-image-2",
+    referencePolicy: { maximumCount: 1 },
+    resultKind: "image",
+  });
 });
 
 test("gpt-image size lookup honors the admin map, then the built-in table", () => {
