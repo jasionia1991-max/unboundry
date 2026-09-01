@@ -41,6 +41,7 @@ function parseArguments(argv) {
   const mediaWarnings = [];
   let sourceFrozen = false;
   let externalFreezeNonFinal = false;
+  let historicalRecovery = false;
   let requireCleanMedia = false;
   const valueOptions = new Set([
     "--allow-media-warning",
@@ -69,6 +70,16 @@ function parseArguments(argv) {
         );
       }
       externalFreezeNonFinal = true;
+      continue;
+    }
+    if (option === "--historical-recovery") {
+      if (historicalRecovery) {
+        fail(
+          "MEDIA_REPORT_ARGUMENT_INVALID",
+          "Historical recovery mode is duplicated",
+        );
+      }
+      historicalRecovery = true;
       continue;
     }
     if (option === "--require-clean-media") {
@@ -117,6 +128,7 @@ function parseArguments(argv) {
   }
   return {
     externalFreezeNonFinal,
+    historicalRecovery,
     mediaWarnings,
     mirrors,
     requireCleanMedia,
@@ -125,7 +137,7 @@ function parseArguments(argv) {
   };
 }
 
-function parseFrozenSourceContract(values) {
+function parseFrozenSourceContract(values, historicalRecovery) {
   const names = [
     "--expected-database-logical-sha256",
     "--expected-schema-version",
@@ -147,9 +159,12 @@ function parseFrozenSourceContract(values) {
   const expectedSchemaVersion = Number(schemaText);
   const generationFrozenAt = values.get("--generation-frozen-at");
   const admissionText = values.get("--last-provider-admission-at");
+  const schemaAccepted = historicalRecovery
+    ? [37, 38, 39, 40, 41].includes(expectedSchemaVersion)
+    : expectedSchemaVersion === 42;
   if (
     !/^[a-f0-9]{64}$/.test(expectedDatabaseLogicalSha256) ||
-    ![37, 38, 39, 40].includes(expectedSchemaVersion) ||
+    !schemaAccepted ||
     String(expectedSchemaVersion) !== schemaText ||
     !generationFrozenAt ||
     !admissionText
@@ -225,11 +240,20 @@ let pathArguments = [];
 try {
   const parsed = parseArguments(process.argv.slice(2));
   const sourceDirectory = normalizedAbsolutePath(parsed.values.get("--data-dir"));
-  const frozenSourceContract = parseFrozenSourceContract(parsed.values);
+  const frozenSourceContract = parseFrozenSourceContract(
+    parsed.values,
+    parsed.historicalRecovery,
+  );
   if (Boolean(frozenSourceContract) === parsed.externalFreezeNonFinal) {
     fail(
       "MEDIA_REPORT_ARGUMENT_INVALID",
       "Choose either a complete locked source contract or explicit external non-final freeze mode",
+    );
+  }
+  if (parsed.historicalRecovery && !frozenSourceContract) {
+    fail(
+      "MEDIA_REPORT_ARGUMENT_INVALID",
+      "Historical recovery requires a complete historical locked source contract",
     );
   }
   const scratchValue = parsed.values.get("--scratch-root");
@@ -244,6 +268,9 @@ try {
   ];
   await assertMirrorsOutsideSource(sourceDirectory, scratchRoot, ossMirrors);
   const report = await inspectFrozenMediaIntegrity({
+    capturePurpose: parsed.historicalRecovery
+      ? "historical-recovery"
+      : "current-schema42",
     frozenSourceContract,
     mediaWarningAllowlist:
       parsed.requireCleanMedia || parsed.mediaWarnings.length
@@ -257,7 +284,8 @@ try {
   process.stdout.write(`${JSON.stringify({
     ...report,
     captureMode: frozenSourceContract ? "locked-exact" : "external-unverified",
-    finalCandidate: Boolean(frozenSourceContract),
+    finalCandidate: Boolean(frozenSourceContract) &&
+      !parsed.historicalRecovery && report.schemaVersion === 42,
   })}\n`);
   if (
     !report.clean &&

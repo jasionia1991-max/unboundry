@@ -20,7 +20,10 @@ import {
   retrySafetyDecision,
   validateImageToolResultPng,
 } from "../server/generationTasks";
+import { settleSynchronousResultSaveExhaustion } from
+  "../server/generationResultCommit";
 import {
+  MediaPublicationDeferredError,
   MediaPublicationConflictError,
   MediaPublicationStateError,
 } from "../server/mediaLifecycle";
@@ -219,6 +222,185 @@ test("the shared save gate retries unknown errors with a bounded budget and reco
       taskId: "save-gate-unknown",
     });
     expect(parsed.errorCode).toBeNull();
+  } finally {
+    console.error = originalError;
+  }
+});
+
+test("OpenRouter and relay GPT image pre-stage save exhaustion settle the exact response without another paid attempt", async () => {
+  const originalError = console.error;
+  console.error = () => undefined;
+  try {
+    for (const fixture of [{
+      adapterId: "openrouter-image",
+      driver: "openrouter",
+      protocol: "native",
+    }, {
+      adapterId: "relay-gpt-image",
+      driver: "multi-protocol-relay",
+      protocol: "gpt-image",
+    }] as const) {
+      const directory = await mkdtemp(join(
+        tmpdir(),
+        `unboundry-${fixture.adapterId}-save-exhaustion-`,
+      ));
+      const store = createGenerationTaskStore(directory);
+      try {
+        const created = store.create({
+          canvasId: `${fixture.adapterId}-canvas`,
+          idempotencyKey: `${fixture.adapterId}-save-exhaustion-001`,
+          kind: "image",
+          modelConfiguration: {
+            modelExecutionAdapterId: fixture.adapterId,
+            providerDriver: fixture.driver,
+            providerProtocol: fixture.protocol,
+          },
+          nodeId: `${fixture.adapterId}-node`,
+          ownerId: "__test__",
+          prompt: "preserve the exact synchronous Provider response",
+          providerModelId: `${fixture.adapterId}-model`,
+          providerProfileId: `${fixture.adapterId}-profile`,
+        });
+        const running = store.transition(created.task.id, "running")!;
+        store.recordProviderAttempt(running.id);
+        store.markProviderResponseReceived({
+          executionAttempt: running.attempt,
+          taskId: running.id,
+        });
+        const beforeDatabase = openAppDatabase(directory);
+        const before = generationProviderAttemptCounts(beforeDatabase);
+        beforeDatabase.close();
+
+        expect(await attemptProviderResultSave({
+          backoffMs: [],
+          save: async () => {
+            throw new ProviderResultMediaError(
+              "NETWORK",
+              "the synchronous bytes could not be staged",
+            );
+          },
+          settleSynchronousResultSave: (input) =>
+            settleSynchronousResultSaveExhaustion({
+              ...input,
+              dataDirectory: directory,
+            }),
+          store,
+          synchronousResponseExecutionAttempt: running.attempt,
+          taskId: running.id,
+        })).toBe(false);
+
+        expect(store.get(running.id)).toMatchObject({
+          attempt: 1,
+          errorCode: "RESULT_SAVE_FAILED_NO_RETRY",
+          providerTaskId: undefined,
+          state: "failed",
+        });
+        expect(store.getProviderAttemptForTask(running.id)).toMatchObject({
+          executionAttempt: 1,
+          failureCode: "RESULT_SAVE_FAILED_NO_RETRY",
+          outcome: "response-received",
+          providerTaskId: undefined,
+        });
+        const afterDatabase = openAppDatabase(directory);
+        expect(generationProviderAttemptCounts(afterDatabase)).toEqual(before);
+        afterDatabase.close();
+      } finally {
+        store.close();
+        await rm(directory, { force: true, recursive: true });
+      }
+    }
+
+    const deferredDirectory = await mkdtemp(join(
+      tmpdir(),
+      "unboundry-sync-publication-deferred-",
+    ));
+    const deferredStore = createGenerationTaskStore(deferredDirectory);
+    try {
+      const created = deferredStore.create({
+        canvasId: "sync-publication-deferred-canvas",
+        idempotencyKey: "sync-publication-deferred-001",
+        kind: "image",
+        modelConfiguration: {
+          modelExecutionAdapterId: "openrouter-image",
+          providerDriver: "openrouter",
+          providerProtocol: "native",
+        },
+        nodeId: "sync-publication-deferred-node",
+        ownerId: "__test__",
+        prompt: "the durable publication owns these bytes",
+        providerModelId: "sync-publication-deferred-model",
+        providerProfileId: "sync-publication-deferred-profile",
+      });
+      const running = deferredStore.transition(created.task.id, "running")!;
+      deferredStore.recordProviderAttempt(running.id);
+      deferredStore.markProviderResponseReceived({
+        executionAttempt: running.attempt,
+        taskId: running.id,
+      });
+      const timestamp = new Date().toISOString();
+      const publicationDatabase = openAppDatabase(deferredDirectory);
+      publicationDatabase.prepare(`
+        INSERT INTO users (
+          id, login_name, display_name, password_hash, role, status,
+          created_at, updated_at
+        ) VALUES ('__test__', 'sync-publication-test', 'Sync Publication Test',
+          'test', 'user', 'active', ?, ?)
+      `).run(timestamp, timestamp);
+      publicationDatabase.prepare(`
+        INSERT INTO media_publication_attempts (
+          attempt_id, owner_id, kind, asset_id, source, state,
+          storage_backend, final_storage_name, object_key,
+          storage_profile_id, staging_name, task_id,
+          task_execution_attempt, content_type, created_at, updated_at
+        ) VALUES (?, '__test__', 'image', ?, 'generation', 'staged',
+          'local', ?, ?, NULL, ?, ?, ?, 'image/png', ?, ?)
+      `).run(
+        "sync-publication-deferred-attempt",
+        "sync-publication-deferred-asset",
+        "sync-publication-deferred.png",
+        "sync-publication-deferred.png",
+        "sync-publication-deferred.staging",
+        running.id,
+        running.attempt,
+        timestamp,
+        timestamp,
+      );
+      publicationDatabase.close();
+      let terminalSettlementCalls = 0;
+      expect(await attemptProviderResultSave({
+        backoffMs: [],
+        save: async () => {
+          throw new MediaPublicationDeferredError();
+        },
+        settleSynchronousResultSave: () => {
+          terminalSettlementCalls += 1;
+          return undefined;
+        },
+        store: deferredStore,
+        synchronousResponseExecutionAttempt: running.attempt,
+        taskId: running.id,
+      })).toBe(false);
+      expect(terminalSettlementCalls).toBe(0);
+      expect(deferredStore.get(running.id)).toMatchObject({
+        errorCode: "AUTOMATIC_RESULT_RECOVERY",
+        state: "recovering",
+      });
+      expect(settleSynchronousResultSaveExhaustion({
+        dataDirectory: deferredDirectory,
+        executionAttempt: running.attempt,
+        taskId: running.id,
+      })).toBeUndefined();
+      expect(deferredStore.getProviderAttemptForTask(running.id)?.failureCode)
+        .toBeUndefined();
+      const verify = openAppDatabase(deferredDirectory);
+      expect(verify.prepare(`
+        SELECT COUNT(*) AS count FROM generation_task_events WHERE task_id = ?
+      `).get(running.id)).toEqual({ count: 3 });
+      verify.close();
+    } finally {
+      deferredStore.close();
+      await rm(deferredDirectory, { force: true, recursive: true });
+    }
   } finally {
     console.error = originalError;
   }

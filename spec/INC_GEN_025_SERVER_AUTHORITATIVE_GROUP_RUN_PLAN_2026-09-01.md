@@ -1,8 +1,10 @@
 # INC-GEN-025 服务端权威整组执行最终方案
 
-状态：`FINAL_AUDIT_ACCEPTED / PLAN_FROZEN / GOAL_ACTIVE / IMPLEMENTATION_AUTHORIZED`
+状态：`HISTORICAL_IMPLEMENTATION_PLAN / RELEASED_V0_6_70 / POST_RELEASE_AUDIT_NO_GO / SUPERSEDED_BY_INC_GEN_026`
 
 日期：2026-09-01
+
+> 2026-09-01 后置最终审计确认本方案的架构方向仍有参考价值，但当前实现存在 admission P0 和 recovery/publication/OSS/UI/backup/CI 缺口。本文件不再是 current implementation authority，也不携带任何未消费授权。当前入口为 `spec/INC_GEN_026_CHECKPOINT.md`。
 
 ## 1. 结论
 

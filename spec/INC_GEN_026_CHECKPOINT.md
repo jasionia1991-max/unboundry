@@ -1,0 +1,165 @@
+# INC-GEN-026 Checkpoint
+
+更新时间：2026-09-02
+
+状态：`R9_V0_7_0_AUTHORIZED_IN_PROGRESS / R0_R8_COMPLETE / FORMAL_FULL_1_OF_1_CONSUMED / TARGETED_CLOSURE_112_OF_112 / PRODUCTION_V0_6_70_UNCHANGED / REAL_PROVIDER_NOT_AUTHORIZED / USER_RECHECK`
+
+## 当前一句话结论
+
+INC-GEN-026 R0～R8 已在隔离工作树完成。本地候选实现了服务端权威一次点击 workflow、同一任务/结果自动恢复与零第二 Provider create/submit 围栏。唯一 formal safe full 原始结果为 `1162/1167`，5 项失败完整保留；m41 的真实客户端持久化竞态和 m73/m81 的过期夹具已最小关闭为 `112/112 PASS`，没有第二次 full。R0～R8 冻结分母为 61 tracked changed files、640 tracked hunks、13 untracked files，共 74 files；累计独立 Review 为 `P0=0/P1=0/GO`，保留 2 项非阻断 P2。R9 的 v0.7.0 版本差异与 schema42 backup quiet-gate 修正作为独立增量记账，不改写该历史分母。
+
+## 唯一代码身份
+
+- worktree：`/Users/mymy/Documents/unboundry-inc-gen-026-workflow-reliability-2026-09-01`
+- branch：`codex/inc-gen-026-workflow-reliability`
+- baseline HEAD：`94d77d7618f4c88877b457c2249a824d40dd5633`
+- baseline tree：`2101fe347ef02297d9580906b6cadb71603fc45c`
+- baseline origin/main：与 HEAD 相同
+- candidate package/schema：`0.7.0 / 42`
+- current production package/schema：`0.6.70 / 42`
+- safe runner：Node `22.23.1`、npm `10.9.8`、动态 loopback、临时 data、4173 禁止
+- formal full：`1/1`，权限已消费，禁止重跑
+- current complete candidate denominator：`64 tracked changed files / 671 tracked hunks / 13 untracked files / 77 total files`
+- current tracked binary diff SHA-256：`17ae9dbcfa8e594faca782fdb34d329c89dce892d1437d5d23ee5ee57d32e69d`
+
+R9 启动时已实时只读刷新 GitHub 与生产：v0.7.0 tag/Release 未占用；生产 current=`/opt/unboundry/releases/v0.6.70-inc-gen-025-20260901-clean`，service active/enabled、NRestarts=0，公网与回环 version/live/ready 均通过，schema42/integrity ok/FK0，active task=0、unsettled current unknown=0、active publication=0、active workflow run=0。尚无生产写、真实 Provider、真实 OSS 或费用。
+
+## R9 当前授权
+
+- 用户原文：`授权上线，版本号v0.7.0`。
+- 允许：v0.7.0 版本差异、commit/push/PR/CI/tag/GitHub Release、schema42 locked-exact backup/verify/fresh restore、生产安装/切换、上一 schema42 release rollback 与最终 forward、零付费技术门。
+- 不允许：历史 9-task apply、真实 Provider POST、真实 OSS 写/删/恢复、任何费用、真实 Canvas/group 点击。
+- 唯一 formal full 已消费，禁止重跑；版本差异只运行 m81 等直接相关 safe spec、build/CI 与增量 Review。
+
+## 当前权威读取顺序
+
+1. `spec/INC_GEN_026_CHECKPOINT.md`
+2. `spec/INC_GEN_026_ONE_CLICK_WORKFLOW_RELIABILITY_FINAL_IMPLEMENTATION_PLAN_2026-09-01.md`
+3. `spec/INC_GEN_026_ACCEPTANCE_MATRIX_2026-09-01.md`
+4. `spec/INC_GEN_026_LOCAL_IMPLEMENTATION_RECEIPT_2026-09-01.md`
+5. `spec/INC_GEN_026_LOCAL_IMPLEMENTATION_GOAL_PROMPT_2026-09-01.md`（本 Goal 的历史授权文本）
+6. `AGENTS.md`、`spec/UNBOUNDRY_CURRENT_STATE.md`、`TASKS.md`、`上线规矩.md` 顶部当前区块
+
+INC-GEN-025 文档和更早记录只作历史证据，不能恢复已经消费的版本、发布或真实点击授权。
+
+## 已完成的实现
+
+### R1：schema42 backup
+
+- current locked-exact 合同只接受 schema42；37～41 只在显式 historical-recovery 路径保留。
+- schema42 operational quiet gate 只阻断活动 task、当前 unknown-billing task 和当前关联的未完成 provider-boundary attempt；终态历史 Provider 证据原样备份。schema37/38 historical-recovery 的严格重建门与运行时 paid retry fence 均未放宽。
+- backup→签名/加密→verify→fresh private restore 的 logical SHA、schema、integrity、FK、table、media 和 secrets receipt 一致。
+- current OSS wrapper 从自身不可变 module URL 解析完整 release tree，不依赖 WorkingDirectory；显式 data-dir 同时绑定数据库和 storage profile。
+- unknown、缺值、重复 single option/flag 在创建 backup package 或 OSS client 前 fail-closed。
+- wrapper 默认只生成本地 dry-run inventory；真实 upload/delete/restore 和 timer 安装均未执行。
+
+### R2：authoritative admission
+
+- HTTP 与 workflow 共用唯一 opaque/runtime-branded builder。
+- nested modelId、capability、adapter、result count、Provider identity、release revision、semantic identity 与 workflow binding 完整比较。
+- workflow reservation 由服务端事务从 locked run 读取，body 不能省略或伪造。
+- store 保留独立最终 fence；四媒体缺字段或漂移均在 Provider 前失败。
+
+### R3：Provider outcome 与历史 settlement
+
+- 六个 adapter 共用纯 DTO classifier；publication pending 优先，terminal/no-new-fact/billing-unknown/operator incident 单调收敛。
+- Provider terminal failure 原子写 attempt/task/event，finished_at 非空；重复 sweep 不增长事件、不重启、不产生第二 POST。
+- historical inspect/apply 只接受显式非生产 data-dir、私有 exact evidence、DB dev/inode/schema42、source hashes、tool hashes 和逐行 fingerprint。
+- apply 在一个 immediate transaction 中重新检查全部 predicate；重复 apply 为 0 mutation，不删除历史、不改 Provider ID。
+
+### R4：result publication 与 OSS
+
+- OpenRouter 同步图片进入统一 deferred publication/result commit 链。
+- OpenRouter 与 relay-gpt 的同步响应若在 result-save 重试耗尽时仍没有 Provider task id，会先检查同一 publication：有 pending bytes 只恢复原 publication，无 pending bytes 才原子收口为 `RESULT_SAVE_FAILED_NO_RETRY`；重复 settlement 为 no-op，绝不再次 POST。
+- image/video/audio staging 在暂时 OSS 失败时保留相同 bytes/attempt，并由同一 publication 恢复。
+- exact HEAD adopt 要求本地和远端完整 identity 相等；mismatch/unknown 只 quarantine，不覆盖、不删除、不再次 PUT 同 key。
+- result ready、attempt completed、task success 使用权威事务收口。
+
+### R5：server workflow
+
+- run 保存递归冻结的 immutable semantic plan；worker 不再从可变 Canvas 重取生成语义。
+- node claim、task link、stop/finalize、projection、lock/reservation 都有 CAS/事务边界。
+- accepted task 继续收口，stop 只取消未来节点；malformed plan 稳定 terminal 并释放本 run 资源。
+- malformed quarantine 使用 `recoverRunning:false` 的精确 store，不再改变其他 run 的 running task；run 顶层首个决定性错误与 node settlement 同事务持久化，历史 `recovering + provider-failed` 组合自动单调收口。
+- scheduler 对多个 disjoint run 公平，慢/坏 run 不阻塞其他 run。
+
+### R6：browser one-click
+
+- 点击立即建立 preparation handle、group/node/input lock，保存→编译→create/reattach 受同一有界 Web Lock 保护。
+- create 回执不明后只按 canvas/group/semantic identity 只读找回，绝不第二 POST。
+- transient read 继续只读 retry；400/malformed/identity incident 停止无限请求，并保留 unknown-create 本地锁。
+- pagehide/scope change 只 detach 浏览器，不 stop 服务端；stop 必须等待服务端确认。
+- active/terminal history 持久可见，task/run 分区；stale list 不覆盖更新 terminal event；Canvas refresh 失败也释放已 terminal 的本地锁。
+
+### R7：测试与 CI 合同
+
+- 新增 m104 真 HTTP→workflow→task→attempt→loopback fake Provider 集成。
+- safe runner inventory 为 `124 specs / 1167 tests`，Node22/source coverage/TypeScript/build/动态端口/4173/credential/egress 门均通过定向运行的共同 preflight。
+- Quality workflow 已接入固定 registry/cache、production build 和 m104 integration；R0～R8 时点真实 GitHub CI 未运行。R9 现已授权，Matrix IG26-096～098 在实际 PR/main runs 成功前保持 NOT_RUN。
+
+## 风险定向自动证据
+
+| spec | 结果 | 直接覆盖 |
+|---|---:|---|
+| m104 | `10/10 PASS` | builder、6 adapter classifier、OSS adopt/quarantine、immutable/fair workflow、浏览器 identity/reattach、真 HTTP、terminal no-op、历史 settlement、OpenRouter |
+| m10 | `18/18 PASS` | schema42 locked backup/verify/fresh restore、wrapper unrelated cwd/strict args、历史 recovery、immutable release operational check |
+| m5 | `31/31 PASS` | store admission、Provider attempt、atomic transition、resume same Provider evidence |
+| m103 | `11/11 PASS` | schema42 workflow boundary、locks/reservation、malformed plan、server sweep/stop |
+| m88 | `38/38 PASS` | media publication、durable staging、OSS retry、atomic result commit |
+| m22 | `44/44 PASS` | browser one-click/stop/history/saving/source contract |
+| m87 | `8/8 PASS` | media integrity report、locked receipt hashes |
+| m16 | `12/12 PASS` | Ark video Provider boundaries |
+| m33 | `9/9 PASS` | text generation runtime |
+| m41 | `54/54 PASS` | generation retry/UI |
+| m86 | `83/83 PASS` | Canvas scope/load/save safety |
+| m57 | `18/18 PASS` | OpenRouter/relay-gpt 同步 result-save 耗尽、pending publication 与零第二 attempt |
+| m38 | `18/18 PASS` | recovery sweep、同步 response-save loss、严格 authoritative fixture 与治理合同 |
+| m73 | `16/16 PASS` | 当前 admission fixture 使用权威 builder/configuration identity |
+| m81 | `42/42 PASS` | deployment hardening 当前 fixture 与 terminal monotonic expectation |
+
+最终风险定向分母为 `15 unique specs / 412 unique tests PASS`。formal 后直接关闭集合为 m41+m73+m81=`112/112 PASS`；最终 m41 source/snapshot=`eb75ba5445fd11dc3c90ab19ce9df5b84840f14b09cac0b109093f6069e53ed7`，4173 listener identity 保持 `24c91e579e5f03e4327568db06303d4f094c0250c63228866946f7b8a47b8244`。
+
+R9 直接相关增量：m81+m82=`49/49 PASS`；backup quiet-gate 最终 m10=`18/18 PASS`，source/snapshot=`2beab2f80a11e1731db689139a72c5ff5287bad7261e5e2b4f79170542c4dbba`，immutable builder=`1 attempt / 5 invocations / PASS`，snapshot 与 4173 listener unchanged。期间两次前置/夹具失败和一次架构边界失败均如实保留，只修直接根因后最小重跑；没有第二次 full。
+
+R9 文档治理 m38 首轮 `17/18` 只暴露 `UNBOUNDRY_CURRENT_STATE.md` 的固定机器标记被自由文本替换；恢复 `生产是` 与 `CURRENT_V0_6_70_USER_RECHECK`，并把 R9 状态移到独立发布标记后，最小复验 `18/18 PASS`，source/snapshot=`3a258ff6400276103fd8ba3045cdf559aa5c4c06e99e07e3c0048c23dc575da6`，4173 unchanged。
+
+诊断期间曾出现并已关闭的失败必须保留：m104 一次 source-coverage hash 过期、m104 一次缺失 client classifier import、m5 两个夹具/查询问题、m57 一次 fixture FK、m38 首轮 13/18 的五项直接问题；formal full 的 m41 一项真实产品竞态与 m73/m81 四项旧 fixture/expectation 问题也永久保留。每次只修直接根因并重跑最小受影响 spec；formal full 只执行一次。
+
+## 唯一 formal full 与最小关闭
+
+- 命令：`node scripts/run-safe-tests.mjs full`
+- 原始退出：`1`
+- 原始分母：`124/124 specs`、`1167 tests`、`1162 passed`、`5 failed`、`0 skipped/retries/reportErrors`
+- 原始 source/snapshot：`d0fee75970a625e020337b3bc062729e5e575f8345596322f0a2531c2c86f16e`，snapshot unchanged
+- immutable builder：`1 attempt / 5 invocations / PASS`
+- 4173 listener：unchanged
+- m41：输入指纹 effect 与 recovery effect 对同一旧 Text ownership 排队两次撤销，首个 durable callback 被 mutation version 抑制；现按旧 task/input/ownership 精确清图、同 scope/identity 合并一次 durable mutation，并保护新 task。最终 m41 `54/54 PASS`。
+- m73/m81：旧 current-admission fixture 缺 authoritative model identity；保留生产 fail-closed 校验，夹具改用权威 builder。m73 `16/16 PASS`、m81 `42/42 PASS`。
+- formal full 权限已经消费；上面的最小关闭不能把原始 full 改写成全绿，也不允许第二次 full。
+
+## Review 状态
+
+- 主线程已逐链审阅 server/store/workflow/Provider/publication/OSS/client/backup/CI/historical settlement。
+- 首次独立完整 Review 已覆盖 `69/69 files / 542/542 tracked hunks`，结论 `P0=0/P1=2/P2=2/NO-GO`。四项分别是 malformed quarantine 误恢复无关 running task、同步 adapter save exhaustion 悬挂、run 首错未按观察顺序持久化、历史 recovering+provider-failed 悬挂；均已修复并由 m103、m57/m38、m104 直接验证。
+- 修复后服务端完整复审累计覆盖当时 `71/71 files / 591/591 tracked hunks`，结论 `P0=0/P1=0/P2=2/GO`。
+- formal 后 m73/m81 夹具增量复审为 `P0=0/P1=0`；没有放宽生产校验。
+- m41 首次增量复审把 formal 失败识别为真实 P1；修复后的最终 TextNode/m41 复审为 `P0=0/P1=0/P2=0/GO`。
+- backup/CI 增量审计曾发现 WorkingDirectory 与参数 parser 两个 P1；已修复并以 m10 `18/18` 验证，同一 Reviewer 最终复审为 `P0=0/P1=0/代码级 GO`。timer/install/真实 OSS 回执保持 NOT_RUN，不属于本地代码缺陷。
+- R0～R8 最终累计分母为 `74/74 files / 640/640 tracked hunks`；当时文档与测试增量已纳入同一完整 denominator。
+- R9 v0.7.0/backup/docs 已冻结为当前完整 `77 files / 671 tracked hunks`，tracked binary diff SHA-256=`17ae9dbcfa8e594faca782fdb34d329c89dce892d1437d5d23ee5ee57d32e69d`；IG26-099=`AUTO_PASS`。同一独立 Reviewer 已在修正文档状态矛盾后完成增量确认，当前完整候选为 `P0=0/P1=0/P2=2/GO`，IG26-100=`AUTO_PASS`。
+- 两项非阻断 P2：数据库已被破坏且跨 owner 错链时 quarantine 可再加 owner/binding 二次校验；OpenRouter/relay-gpt 同步 save exhaustion 仍缺真实 adapter fake-transport seam。正常 API 已有 exact binding，当前 helper/source wiring 与直接行为测试成立，因此不阻断本地候选。
+
+## 下一阶段
+
+R0～R8 已关闭，R9 v0.7.0 发布与生产切换授权已生效并正在执行。历史数据 apply 与真实 canary 仍是独立 NO-GO，不得夹带执行。
+
+## 授权与永久红线
+
+允许：R0～R8 候选，以及本次 v0.7.0 commit/GitHub/Release、生产 schema42 备份/切换/rollback/forward、零付费技术核验。
+
+禁止：历史生产 data apply、真实 Provider、真实 OSS、费用、真实 Canvas/group 点击。
+
+以下两份文件永久禁止读取、stat/hash、修改、复制、移动、删除、暂存或提交：
+
+- `spec/INC_GEN_017_R0_PUBLISHED_MODEL_SNAPSHOT_2026-08-28.json`
+- `spec/public-templates-director-split-revision.json`

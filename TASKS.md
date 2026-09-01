@@ -1,6 +1,24 @@
 # Unboundry 绿地复刻当前任务
 
-## INC-GEN-025 服务端权威整组执行（v0.6.70 GOAL ACTIVE）
+## INC-GEN-026 一次点击工作流可靠生成与结果自动收口（R9 v0.7.0 AUTHORIZED / IN PROGRESS）
+
+- [x] 只读确认生产 `v0.6.70/schema42`、远端 main/tag/current checkout tree 一致。
+- [x] 接受最终复核的证据化裁决：当前 workflow admission P0，且 recovery/publication/OSS/UI/backup/CI 仍有 P1 缺口。
+- [x] 建立逐文件、逐阶段、带故障矩阵和回滚门的最终实施 Plan。
+- [x] 建立 112 项 Acceptance Matrix；当前仅文档事实为 DOC_PASS，实施项均未运行。
+- [x] 建立 Checkpoint 和本地实施 Goal 提示词；历史 INC-GEN-025 授权不得复用。
+- [x] 独立只读复审首轮 DOCUMENT_NO_GO；补齐九类缺口后同一 Reviewer 增量复审 P0/P1/P2=0/0/0、DOCUMENT_GO，Plan 已冻结。
+- [x] 用户在最新消息明确启动本地实施 Goal；只授权本地 R0～R8。
+- [x] R1～R7 实现与风险定向验证完成：schema42 backup、authoritative admission、Provider outcome、publication/OSS、workflow、client 与 CI 合同均已覆盖。
+- [x] 冻结完整候选分母并完成逐文件/逐 hunk 主审、独立完整 Review 与增量复审；最终分母见本地实施回执。
+- [x] 唯一 formal safe full 原始 `1162/1167`；5 项失败由 m41/m73/m81 最小关闭为 `112/112 PASS`，没有第二次 full。
+- [x] 用户明确“授权上线，版本号v0.7.0”；v0.7.0 tag/Release 未占用，本次 GitHub/Release 与 schema42 备份/切换/rollback-forward 授权生效。
+- [ ] 完成 v0.7.0 版本差异 safe 验证、增量 Review、PR/main CI、tag/Release、生产备份/恢复/切换/rollback-forward 与零付费门。
+- [ ] 历史 9-task apply 与真实 Provider/OSS/费用/Canvas 点击仍未授权，不在本次执行。
+
+当前严格为 `R9_V0_7_0_AUTHORIZED_IN_PROGRESS / PRODUCTION_V0_6_70_UNCHANGED / REAL_PROVIDER_NOT_AUTHORIZED / USER_RECHECK`。权威断点：`spec/INC_GEN_026_CHECKPOINT.md`。
+
+## INC-GEN-025 服务端权威整组执行（HISTORICAL / v0.6.70 RELEASED / POST-AUDIT NO-GO）
 
 - [x] 从实时 `origin/main@74dc9d9307abee9169a2d2aefc4b01add96114c9` 建立隔离工作树与分支；sparse checkout 排除受保护文件。
 - [x] 确认生产 `v0.6.69/schema41` 健康、v0.6.70 未占用、项目/生产 Node 通道和目标 11-node/24-edge 分母。

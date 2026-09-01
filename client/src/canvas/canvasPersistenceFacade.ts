@@ -921,6 +921,7 @@ export interface CanvasPersistenceSaveCoordinatorInput {
   normalizeDocument(document: LoadedCanvasDocument): LoadedCanvasDocument;
   onProjectMissing?: () => void;
   onSaveConflict(message: string): void;
+  onSaveFailure(message?: string): void;
   onSaveStart(): void;
   onSaveSuccess(): void;
   persistCanvasSaveSession(resolvedPendingAttemptId?: string): void;
@@ -1112,6 +1113,7 @@ export function useCanvasPersistenceSaveCoordinator(
     normalizeDocument,
     onProjectMissing,
     onSaveConflict,
+    onSaveFailure,
     onSaveStart,
     onSaveSuccess,
     persistCanvasSaveSession,
@@ -1964,6 +1966,7 @@ export function useCanvasPersistenceSaveCoordinator(
           onSaveSuccess();
         } else if (failed && !persistenceConflict.current) {
           persistenceDirty.current = true;
+          onSaveFailure("保存失败，请检查网络，正在自动重试");
           window.clearTimeout(persistenceSaveTimer.current);
           if (
             persistenceExternalRevision.current !== undefined &&
@@ -2005,6 +2008,7 @@ export function useCanvasPersistenceSaveCoordinator(
     nodes,
     onProjectMissing,
     onSaveConflict,
+    onSaveFailure,
     onSaveSuccess,
     onSaveStart,
     persistenceFacade,

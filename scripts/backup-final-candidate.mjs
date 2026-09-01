@@ -479,6 +479,7 @@ function appendRepeated(arguments_, option, values) {
 function childArguments(parsed, kind) {
   const values = parsed.values;
   const commonContract = [
+    "--historical-recovery",
     "--expected-schema-version",
     "37",
     "--expected-database-logical-sha256",
@@ -3973,17 +3974,17 @@ try {
     report?.schemaVersion !== 37 ||
     report?.databaseLogicalSha256 !== expectedSha ||
     report?.captureMode !== "locked-exact" ||
-    report?.finalCandidate !== true ||
+    report?.finalCandidate !== false ||
     backup?.schemaVersion !== 37 ||
     backup?.databaseLogicalSha256 !== expectedSha ||
     backup?.captureMode !== "locked-exact" ||
-    backup?.finalCandidate !== true ||
+    backup?.finalCandidate !== false ||
     report?.sha256 !== backup?.mediaIntegrity?.sha256 ||
     report?.evidenceSha256 !== backup?.mediaIntegrity?.evidenceSha256
   ) {
     fail(
       "FINAL_BACKUP_SOURCE_CHANGED",
-      "Final-candidate report and encrypted backup do not bind the same exact v37 source",
+      "Historical report and encrypted backup do not bind the same exact v37 source",
     );
   }
 
@@ -4003,11 +4004,11 @@ try {
   if (
     !sameSummary(backup, verified) ||
     verified?.captureMode !== "locked-exact" ||
-    verified?.finalCandidate !== true
+    verified?.finalCandidate !== false
   ) {
     fail(
       "FINAL_BACKUP_VERIFY_MISMATCH",
-      "Verified package summary differs from the created exact-v37 backup",
+      "Verified package summary differs from the historical exact-v37 backup",
     );
   }
   const restored = await runJsonScript("restore-backup.mjs", [
@@ -4018,11 +4019,11 @@ try {
   if (
     !sameSummary(backup, restored) ||
     restored?.captureMode !== "locked-exact" ||
-    restored?.finalCandidate !== true
+    restored?.finalCandidate !== false
   ) {
     fail(
       "FINAL_BACKUP_RESTORE_MISMATCH",
-      "Restored package summary differs from the verified exact-v37 backup",
+      "Restored package summary differs from the verified historical exact-v37 backup",
     );
   }
   const restoredSecretValidation = await validateBackupSecrets(
@@ -4338,7 +4339,7 @@ try {
     backup,
     expectedDatabaseLogicalSha256: expectedSha,
     expectedSchemaVersion: 37,
-    format: "unboundry-final-candidate-backup",
+    format: "unboundry-historical-recovery-backup",
     ...(linuxValidationSandbox
       ? {
           productionLinuxExecution: Object.freeze({

@@ -3,6 +3,10 @@ import { cp, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises"
 import { basename, join, relative, resolve } from "node:path";
 import { backup, DatabaseSync } from "node:sqlite";
 
+throw new Error(
+  "HISTORICAL_SCHEMA39_BACKUP_DISABLED: use the current signed encrypted schema42 backup contract; production installation requires separate authorization",
+);
+
 function argument(name) {
   const index = process.argv.indexOf(name);
   return index >= 0 ? process.argv[index + 1] : undefined;

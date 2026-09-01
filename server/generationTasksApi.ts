@@ -11,6 +11,7 @@ import type {
   GenerationTask,
   GenerationTaskCanvasRetryBinding,
   GenerationTaskInput,
+  AuthoritativeGenerationTaskInput,
 } from "./generationTaskStore";
 import type {
   NodeInputKind,
@@ -40,6 +41,8 @@ import {
   admitPreparedGenerationTask,
   GenerationAdmissionPostCommitError,
 } from "./generationAdmissionApplication";
+import { buildAuthoritativeGenerationModelConfiguration } from
+  "./authoritativeGenerationModelConfiguration";
 
 const {
   GenerationProviderAttemptBlockedError,
@@ -1480,6 +1483,7 @@ export async function generationTasks(
         .activeModelContractRevision(model.id);
       const activeModelReleaseRevision = strictInput.modelReleaseRevision;
       if (
+        !activeModelReleaseRevision ||
         currentActiveRevision?.revisionId !==
           activeModelReleaseRevision?.revisionId
       ) {
@@ -1520,28 +1524,20 @@ export async function generationTasks(
         });
         return;
       }
-      const generationTaskInput: GenerationTaskInput = {
-        canvasId: String(body.canvasId ?? ""),
-        credentialRevision: runtime.credentialVersion,
-        expectedCanvasRevision: body.canvasRevision,
-        estimatedCostMicrounits: taskAuditEstimatedCostMicrounits[
-          executionDecision.costCurrency
-        ],
-        costCurrency: executionDecision.costCurrency,
-        idempotencyKey,
-        kind: body.kind,
-        model: model.id,
-        modelConfiguration: {
-          credentialVersion: runtime.credentialVersion,
+      const authoritativeModelConfiguration =
+        buildAuthoritativeGenerationModelConfiguration({
+          credentialVersion: Number(runtime.credentialVersion),
+          fixtureScopeId: String(body.fixtureScopeId ?? ""),
+          generationInputKey: generationIdentity.generationInputKey,
+          generationOwnershipKey: generationIdentity.generationOwnershipKey,
           modelCapability: body.kind,
-          modelId: model.id,
+          modelConfigurationRevision:
+            generationIdentity.modelConfigurationRevision,
           modelExecutionAdapterId: executionDecision.adapterId,
-          ...generationIdentity,
-          modelInputContractFingerprint: executionDecision.contractFingerprint,
-          modelConfigurationRevision: modelConfigurationRevision({
-            ...model,
-            capability: body.kind,
-          }),
+          modelId: model.id,
+          modelInputContractFingerprint:
+            generationIdentity.modelInputContractFingerprint,
+          modelReleaseRevision: activeModelReleaseRevision,
           modelResultCount: executionDecision.resultCount,
           parameterSchema: schema,
           providerConfigurationVersion: providerConfigurationVersion(
@@ -1551,12 +1547,20 @@ export async function generationTasks(
           providerModelId: model.provider_model_id,
           providerProtocol: model.provider_protocol ?? "native",
           providerProfileId: model.provider_profile_id,
-          fixtureScopeId: String(body.fixtureScopeId ?? ""),
-          ...(activeModelReleaseRevision
-            ? { modelReleaseRevision: activeModelReleaseRevision }
-            : {}),
           ...(workflowBinding ? { workflowBinding } : {}),
-        },
+        });
+      const generationTaskInput: AuthoritativeGenerationTaskInput = {
+        canvasId: String(body.canvasId ?? ""),
+        credentialRevision: Number(runtime.credentialVersion),
+        expectedCanvasRevision: body.canvasRevision,
+        estimatedCostMicrounits: taskAuditEstimatedCostMicrounits[
+          executionDecision.costCurrency
+        ],
+        costCurrency: executionDecision.costCurrency,
+        idempotencyKey,
+        kind: body.kind,
+        model: model.id,
+        modelConfiguration: authoritativeModelConfiguration,
         nodeId: String(body.nodeId ?? ""),
         ownerId,
         parameters: body.kind === "text"
@@ -1595,7 +1599,6 @@ export async function generationTasks(
         created = admitPreparedGenerationTask({
           afterCommit: () => injectInitialGenerationPostCommitFailure(request),
           input: generationTaskInput,
-          kind: body.kind,
         });
       } catch (error) {
         if (!(error instanceof GenerationAdmissionPostCommitError)) throw error;

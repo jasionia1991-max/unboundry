@@ -48,6 +48,10 @@ import {
   type GenerationTaskCanvasRetryBinding,
   type GenerationTaskInput,
 } from "./generationTaskStore";
+import {
+  classifyGenerationProviderOutcome,
+  generationOutcomeAdapterId,
+} from "./generationProviderOutcome";
 import { waitForProviderDelay } from "./providerRequestDeadline";
 import {
   hasActiveGenerationTaskForNodeInTransaction,
@@ -61,6 +65,7 @@ import {
   commitGenerationTextResult,
   publishGenerationMediaCandidate,
   recoverPendingGenerationMediaResults,
+  settleSynchronousResultSaveExhaustion,
 } from "./generationResultCommit";
 import {
   generateOpenRouterImage,
@@ -669,37 +674,11 @@ function taskStore(launchOptions?: GenerationLaunchOptions) {
   }
   const pendingPublicationTasks = pendingGeneratedPublicationTaskIds();
   failRecoveredGenerationTasks(store, pendingPublicationTasks);
-  for (const task of store.listRecovering()) {
-    if (pendingPublicationTasks.has(task.id)) continue;
-    const protocol = taskProviderProtocol(task);
-    if (
-      task.providerTaskId &&
-      (
-        task.kind === "text" ||
-        task.kind === "video" ||
-        task.kind === "audio" ||
-        (
-          task.kind === "image" &&
-          (protocol === "media-generate" || protocol === "gpt-image")
-        )
-      )
-    ) {
-      store.resume(task.id);
-      launchGenerationTask(task.id, task.kind, launchOptions);
-    } else if (
-      !task.providerTaskId &&
-      store.hasUnsafeProviderAttemptForNewPaidRetry(task.id)
-    ) {
-      // The periodic recovery worker owns this durable no-ID checkpoint.
-      // Leaving it in recovering is intentional and never launches submit.
-      continue;
-    } else {
-      store.transition(task.id, "failed", {
-        code: "SERVICE_RESTARTED",
-        message: "服务重启后无法安全继续本次生成，系统未重新提交",
-      });
-    }
-  }
+  recoverGenerationTasksAtStartup({
+    launch: (taskId, kind) => launchGenerationTask(taskId, kind, launchOptions),
+    pendingPublicationTaskIds: pendingPublicationTasks,
+    store,
+  });
   for (const task of store.listQueued()) {
     launchGenerationTask(task.id, task.kind, launchOptions);
   }
@@ -741,6 +720,42 @@ function taskStore(launchOptions?: GenerationLaunchOptions) {
     .catch(() => undefined)
     .finally(() => generationTaskSettlementObserver?.());
   return store;
+}
+
+function quarantineMalformedWorkflowTaskLinks(taskIds: readonly string[]) {
+  // This command deliberately does not initialize the normal task worker:
+  // worker initialization launches every queued task, which would race the
+  // malformed-plan quarantine before it can close the pre-Provider boundary.
+  const quarantineStore = createGenerationTaskStore(appDataDirectory(), {
+    recoverRunning: false,
+  });
+  let activeTaskRemains = false;
+  try {
+    for (const taskId of taskIds) {
+      const task = quarantineStore.get(taskId);
+      if (
+        !task ||
+        !["queued", "running", "retrying", "recovering"].includes(task.state)
+      ) continue;
+      try {
+        quarantineStore.cancelBeforeProviderAttempt(task.id, {
+          code: "WORKFLOW_PLAN_MALFORMED",
+          message: "冻结工作流计划损坏；尚未进入模型平台的任务已停止",
+        });
+      } catch {
+        // A paid boundary or a concurrent transition wins. Its exact durable
+        // task remains active and keeps the workflow resources fenced.
+      }
+      const latest = quarantineStore.get(taskId);
+      if (
+        latest &&
+        ["queued", "running", "retrying", "recovering"].includes(latest.state)
+      ) activeTaskRemains = true;
+    }
+    return activeTaskRemains;
+  } finally {
+    quarantineStore.close();
+  }
 }
 
 let generationRecoverySweepTimer: NodeJS.Timeout | undefined;
@@ -807,6 +822,31 @@ function ensureGenerationRecoverySweep() {
   generationRecoverySweepTimer.unref?.();
 }
 
+function settleRecoveringProviderTerminalFailure(
+  store: ReturnType<typeof createGenerationTaskStore>,
+  task: GenerationTask,
+  providerAttempt: GenerationProviderAttemptEvidence | undefined,
+) {
+  if (
+    task.state !== "recovering" ||
+    providerAttempt?.executionAttempt !== task.attempt ||
+    providerAttempt.outcome !== "provider-failed" ||
+    !providerAttempt.failureCode
+  ) return false;
+  try {
+    store.settleProviderTerminalFailure({
+      failureCode: providerAttempt.failureCode,
+      message: task.errorMessage ??
+        "模型平台已明确结束且未生成结果；系统不会重复提交",
+      taskId: task.id,
+    });
+  } catch {
+    // A concurrent settlement wins. The terminal Provider attempt remains
+    // authoritative and can never authorize another paid request.
+  }
+  return true;
+}
+
 /**
  * Server-side safety net: any failed task that still holds an accepted
  * Provider task id gets one automatic resume (never a new paid request).
@@ -863,13 +903,24 @@ export async function runGenerationRecoverySweep(options?: {
     return publicationTaskIds.has(taskId);
   };
   for (const task of store.listRecovering()) {
-    const claimed = store.claimRecovering(task.id, task.updatedAt);
-    if (!claimed) continue;
+    const providerAttempt = store.getProviderAttemptForTask(task.id);
+    const publicationPending = hasPendingPublication(task.id);
+    const decision = generationRecoveryDecisionForTask(
+      task,
+      providerAttempt,
+      publicationPending,
+    );
+    if (
+      decision.action === "no-new-fact" &&
+      settleRecoveringProviderTerminalFailure(store, task, providerAttempt)
+    ) continue;
     // A durable publication already owns the exact Provider bytes. Retry that
     // storage operation first; polling or matching Provider again is needless
     // and can create a competing publication for the same paid attempt.
-    if (hasPendingPublication(claimed.id)) continue;
-    if (claimed.providerTaskId) {
+    if (decision.action === "recover-publication") continue;
+    if (decision.action === "inspect-original-task") {
+      const claimed = store.claimRecovering(task.id, task.updatedAt);
+      if (!claimed) continue;
       try {
         const running = store.resume(claimed.id);
         if (running) launch(running.id, running.kind);
@@ -879,39 +930,20 @@ export async function runGenerationRecoverySweep(options?: {
       }
       continue;
     }
-    const providerAttempt = store.getProviderAttemptForTask(claimed.id);
     if (
-      claimed.kind === "image" &&
-      taskProviderProtocol(claimed) === "gpt-image" &&
-      providerAttempt?.executionAttempt === claimed.attempt &&
-      providerAttempt.outcome === "response-received"
-    ) {
-      // A synchronous GPT Image response has no remote task id to poll. Once
-      // the in-process save insurance is exhausted and no durable publication
-      // exists, keeping the task in recovering cannot recover the bytes. Close
-      // the original task automatically so the group releases without asking
-      // the user to retry or visit the Provider platform.
-      try {
-        store.transition(claimed.id, "failed", {
-          code: "RESULT_SAVE_FAILED_NO_RETRY",
-          message:
-            "图片平台已返回结果，但系统未能安全保存；本轮已自动停止且不会重复提交",
-        });
-      } catch {
-        // A concurrent terminal transition wins. Never create a new attempt.
-      }
-      continue;
-    }
-    if (
-      taskProviderProtocol(claimed) !== "media-generate" ||
-      claimed.kind === "text"
+      decision.action !== "preserve-billing-unknown" ||
+      taskProviderProtocol(task) !== "media-generate" ||
+      task.kind === "text"
     ) continue;
     try {
-      const match = await matchProviderTask(claimed);
+      // A billing-unknown relay attempt may only perform a read-only lookup.
+      // No recovery checkpoint is written until that lookup supplies one new,
+      // exact Provider task identity.
+      const match = await matchProviderTask(task);
       if (!incGen017GenerationEnabled()) return;
       if (match.status !== "one") continue;
-      store.setProviderTaskId(claimed.id, match.record.taskId);
-      const running = store.resume(claimed.id);
+      store.setProviderTaskId(task.id, match.record.taskId);
+      const running = store.resume(task.id);
       if (running) launch(running.id, running.kind);
     } catch {
       // Search/network/ambiguity is a retryable recovery checkpoint. The
@@ -953,6 +985,119 @@ export async function runGenerationRecoverySweep(options?: {
     if (task.updatedAt > olderThan.toISOString()) continue;
     launch(task.id, task.kind);
   }
+}
+
+function generationRecoveryDecisionForTask(
+  task: GenerationTask,
+  providerAttempt: ReturnType<
+    ReturnType<typeof createGenerationTaskStore>["getProviderAttemptForTask"]
+  >,
+  publicationPending: boolean,
+) {
+  return classifyGenerationProviderOutcome({
+    adapterId: generationOutcomeAdapterForTask(task),
+    attempt: providerAttempt
+      ? {
+          failureCode: providerAttempt.failureCode,
+          finishedAt: providerAttempt.finishedAt,
+          outcome: providerAttempt.outcome,
+          providerTaskId: providerAttempt.providerTaskId,
+        }
+      : undefined,
+    observation: { kind: "none" },
+    publication: { state: publicationPending ? "pending" : "none" },
+    task: {
+      errorCode: task.errorCode,
+      providerTaskId: task.providerTaskId,
+      state: task.state,
+    },
+  });
+}
+
+function recoverGenerationTasksAtStartup(input: {
+  launch: (taskId: string, kind: GenerationTask["kind"]) => void;
+  pendingPublicationTaskIds: ReadonlySet<string>;
+  store: ReturnType<typeof createGenerationTaskStore>;
+}) {
+  for (const task of input.store.listRecovering()) {
+    const providerAttempt = input.store.getProviderAttemptForTask(task.id);
+    const decision = generationRecoveryDecisionForTask(
+      task,
+      providerAttempt,
+      input.pendingPublicationTaskIds.has(task.id),
+    );
+    if (
+      decision.action === "no-new-fact" &&
+      settleRecoveringProviderTerminalFailure(
+        input.store,
+        task,
+        providerAttempt,
+      )
+    ) continue;
+    if (decision.action === "recover-publication") continue;
+    if (decision.action === "inspect-original-task") {
+      const protocol = taskProviderProtocol(task);
+      const inspectable = task.kind === "text" || task.kind === "video" ||
+        task.kind === "audio" ||
+        (task.kind === "image" &&
+          (protocol === "media-generate" || protocol === "gpt-image"));
+      if (!inspectable) continue;
+      const running = input.store.resume(task.id);
+      if (running) input.launch(running.id, running.kind);
+      continue;
+    }
+    if (
+      decision.action === "preserve-billing-unknown" ||
+      decision.action === "no-new-fact" ||
+      decision.action === "quarantine-operator-incident"
+    ) {
+      // Periodic recovery or operator repair owns these durable checkpoints.
+      // Startup never turns them back into an execution or a second POST.
+      continue;
+    }
+    input.store.transition(task.id, "failed", {
+      code: "SERVICE_RESTARTED",
+      message: "服务重启后无法安全继续本次生成，系统未重新提交",
+    });
+  }
+}
+
+export function recoverGenerationTasksAtStartupForRuntimeTest(input: {
+  launch: (taskId: string, kind: GenerationTask["kind"]) => void;
+  pendingPublicationTaskIds?: ReadonlySet<string>;
+  store: ReturnType<typeof createGenerationTaskStore>;
+}) {
+  if (process.env.UNBOUNDRY_SAFE_TEST !== "1") {
+    throw new Error("Generation startup recovery test seam is unavailable");
+  }
+  recoverGenerationTasksAtStartup({
+    launch: input.launch,
+    pendingPublicationTaskIds: input.pendingPublicationTaskIds ?? new Set(),
+    store: input.store,
+  });
+}
+
+function generationOutcomeAdapterForTask(
+  task: Pick<GenerationTask, "kind" | "modelConfiguration">,
+): string {
+  const explicit = generationOutcomeAdapterId(
+    task.modelConfiguration.modelExecutionAdapterId,
+  );
+  if (explicit) return explicit;
+  const driver = task.modelConfiguration.providerDriver;
+  const protocol = task.modelConfiguration.providerProtocol;
+  if (driver === "volcengine-ark" && task.kind === "text") return "ark-text";
+  if (driver === "volcengine-ark" && task.kind === "video") return "ark-video";
+  if (driver === "mureka" && task.kind === "audio") return "mureka-audio";
+  if (driver === "openrouter" && task.kind === "image") {
+    return "openrouter-image";
+  }
+  if (
+    driver === "multi-protocol-relay" && task.kind === "image" &&
+    protocol === "gpt-image"
+  ) return "relay-gpt-image";
+  if (driver === "multi-protocol-relay") return "relay-media";
+  return "unregistered";
 }
 
 function requireSameProviderConfiguration(
@@ -1716,6 +1861,7 @@ function resolveModel(kind: NodeInputKind, modelId: string | undefined, ownerId:
       WHERE
         model_profiles.capability = ?
         AND model_profiles.status = 'published'
+        AND model_profiles.archived_at IS NULL
         AND node_model_bindings.enabled = 1
         AND (? IS NULL OR model_profiles.id = ?)
       ORDER BY
@@ -2411,6 +2557,7 @@ async function generationAvailability(ownerId: string) {
         AND node_model_bindings.node_type = model_profiles.capability
       WHERE
         model_profiles.status = 'published'
+        AND model_profiles.archived_at IS NULL
         AND model_profiles.capability IN ('text', 'audio', 'image', 'video')
         AND node_model_bindings.enabled = 1
     `).all(ownerId, ownerId, ownerId) as Array<
@@ -2629,14 +2776,16 @@ function isDefinitiveProviderResultSaveError(error: unknown) {
 }
 
 /**
- * 所有平台/模型的成片保存共用同一道保险丝：瞬时错误返回 false，
- * 调用方继续轮询并保持任务的呼吸灯；非瞬时错误原样抛出，
- * 绝不把平台已成功、只是本地暂时保存不了的任务提前判红。
+ * 所有平台/模型的成片保存共用同一道保险丝：异步任务的瞬时错误返回
+ * false 并继续原任务轮询；同步响应耗尽保存预算后原子关闭本次尝试，
+ * 保留付费证据且绝不创建第二次 Provider 请求。非瞬时错误原样抛出。
  */
 export async function attemptProviderResultSave(input: {
   backoffMs?: readonly number[];
+  synchronousResponseExecutionAttempt?: number;
   taskId: string;
   save: () => Promise<unknown>;
+  settleSynchronousResultSave?: typeof settleSynchronousResultSaveExhaustion;
   sleep?: (milliseconds: number) => Promise<void>;
   store?: Pick<
     ReturnType<typeof createGenerationTaskStore>,
@@ -2679,6 +2828,13 @@ export async function attemptProviderResultSave(input: {
       if (!transient) throw error;
       if (attempt >= backoffMs.length) {
         logGenerationDiagnostic(input.taskId, "save", error);
+        if (input.synchronousResponseExecutionAttempt !== undefined) {
+          (input.settleSynchronousResultSave ??
+            settleSynchronousResultSaveExhaustion)({
+            executionAttempt: input.synchronousResponseExecutionAttempt,
+            taskId: input.taskId,
+          });
+        }
         return false;
       }
       logGenerationDiagnostic(input.taskId, "save-retry", error);
@@ -5027,6 +5183,7 @@ async function executeRelayGptImageTask(
       outputs: result.outputs,
     });
     const saved = await attemptProviderResultSave({
+      synchronousResponseExecutionAttempt: running.attempt,
       taskId,
       save: () => saveRelayMediaOutput({
         actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
@@ -5120,17 +5277,24 @@ async function executeImageTask(taskId: string) {
         taskId,
       });
       validateRelayPng(result.bytes, taskId);
-      const saved = await saveGeneratedPng({
-        bytes: result.bytes,
-        label: running.prompt.slice(0, 120),
-        ownerId: current.ownerId,
-        task: {
-          actualCostMicrounits: result.actualCostMicrounits,
-          executionAttempt: running.attempt,
-          taskId,
+      const saved = await attemptProviderResultSave({
+        synchronousResponseExecutionAttempt: running.attempt,
+        taskId,
+        save: async () => {
+          const savedMedia = await saveGeneratedPng({
+            bytes: result.bytes,
+            label: running.prompt.slice(0, 120),
+            ownerId: current.ownerId!,
+            task: {
+              actualCostMicrounits: result.actualCostMicrounits,
+              executionAttempt: running.attempt,
+              taskId,
+            },
+          });
+          await commitSavedGenerationMedia(savedMedia);
         },
       });
-      await commitSavedGenerationMedia(saved);
+      if (!saved) return;
       return;
     }
     throw new RelayProviderError("FORMAT");
@@ -6303,6 +6467,36 @@ export function retrySafetyDecision(
       reason: "该任务已进入管理员事故队列，不能人工重试或重新提交",
     };
   }
+  if (providerAttempt) {
+    const terminalDecision = classifyGenerationProviderOutcome({
+      adapterId: generationOutcomeAdapterForTask(task),
+      attempt: {
+        failureCode: providerAttempt.failureCode,
+        finishedAt: providerAttempt.finishedAt,
+        outcome: providerAttempt.outcome,
+        providerTaskId: providerAttempt.providerTaskId,
+      },
+      observation: { kind: "none" },
+      publication: { state: "none" },
+      task: {
+        errorCode: task.errorCode,
+        providerTaskId: task.providerTaskId,
+        state: task.state,
+      },
+    });
+    if (
+      terminalDecision.action === "no-new-fact" &&
+      ["completed", "provider-failed", "definitive-rejected"].includes(
+        providerAttempt.outcome,
+      )
+    ) {
+      return {
+        allowed: false,
+        code: "PROVIDER_TERMINAL",
+        reason: "原平台尝试已有终态结论，系统不会自动重启或重复提交",
+      };
+    }
+  }
   const protocol = taskProviderProtocol(task);
   if (
     task.providerTaskId &&
@@ -6678,6 +6872,7 @@ export const generationTaskApplication = Object.freeze({
   pollReconcileProviderTask,
   preAdmissionRuntimeProblem,
   providerConfigurationVersion,
+  quarantineMalformedWorkflowTaskLinks,
   reconcileCooldownMs,
   requireTaskProviderSnapshot,
   resolveModel,

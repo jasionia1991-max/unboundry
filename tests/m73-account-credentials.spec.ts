@@ -12,7 +12,13 @@ import {
   verifyAccountCredential,
 } from "../server/accountCredentials";
 import { openAppDatabase } from "../server/database";
+import { buildAuthoritativeGenerationModelConfiguration } from
+  "../server/authoritativeGenerationModelConfiguration";
 import { createGenerationTaskStore } from "../server/generationTaskStore";
+import { authoritativeModelConfigurationRevision } from
+  "../server/modelConfigurationIdentity";
+import { assertRegisteredModelExecutionTotality } from
+  "../server/modelExecutionRegistry";
 import { bootstrapPublishedModelContracts } from "../server/modelReleaseBootstrap";
 import { modelContractState } from "../server/modelReleaseRevisionStore";
 import {
@@ -1108,31 +1114,78 @@ test("credential verification and the paid boundary serialize fail-closed", asyn
       store,
       "verify-boundary-model",
     ).active;
-    expect(modelReleaseRevision).toBeDefined();
+    if (!modelReleaseRevision) {
+      throw new Error("Verify-boundary model contract was not published");
+    }
+    const parameters = { count: 1, size: "1k" };
+    const prompt = "verification status must win before the paid boundary";
+    const generationInputKey = "m73:verify-boundary:image-input";
+    const generationOwnershipKey = "m73:verify-boundary:image-ownership";
+    const modelInputContractFingerprint =
+      "m73:verify-boundary:image-contract";
+    const parameterSchema = modelReleaseRevision.document.capabilitySchema;
+    const modelConfigurationRevision =
+      authoritativeModelConfigurationRevision({
+        capability: "image",
+        id: "verify-boundary-model",
+        modelConfigurationUpdatedAt: timestamp,
+        parameterSchema,
+        providerDriver: "openrouter",
+        providerModelId: "openai/gpt-image-2",
+      });
+    const execution = assertRegisteredModelExecutionTotality({
+      capability: "image",
+      capabilitySchema: parameterSchema,
+      providerDriver: "openrouter",
+      providerModelId: "openai/gpt-image-2",
+      providerProtocol: "native",
+      revisionIdentity: modelReleaseRevision.revisionId,
+    });
     taskStore = createGenerationTaskStore(directory);
-    const task = taskStore.admitOrGet({
+    const task = taskStore.admitAuthoritativeOrGet({
       canvasId: "verify-boundary-canvas",
       credentialRevision: credential.credentialVersion,
       idempotencyKey: "verify-boundary-idempotency-0001",
       kind: "image",
       model: "verify-boundary-model",
-      modelConfiguration: {
+      modelConfiguration: buildAuthoritativeGenerationModelConfiguration({
         credentialVersion: credential.credentialVersion,
+        generationInputKey,
+        generationOwnershipKey,
+        modelCapability: "image",
+        modelConfigurationRevision,
+        modelExecutionAdapterId: execution.adapterId,
         modelId: "verify-boundary-model",
-        modelReleaseRevision: modelReleaseRevision!,
-        parameterSchema: modelReleaseRevision!.document.capabilitySchema,
+        modelInputContractFingerprint,
+        modelReleaseRevision,
+        modelResultCount: execution.resultCount,
+        parameterSchema,
         providerConfigurationVersion: providerConfigurationVersion(profile),
         providerDriver: "openrouter",
         providerModelId: "openai/gpt-image-2",
         providerProfileId: profile.id,
         providerProtocol: "native",
-      },
+      }),
       nodeId: "verify-boundary-node",
       ownerId: "verify-boundary-user",
-      parameters: { count: 1, size: "1k" },
-      prompt: "verification status must win before the paid boundary",
+      parameters,
+      prompt,
       providerModelId: "openai/gpt-image-2",
       providerProfileId: profile.id,
+      requestIntent: {
+        canvasId: "verify-boundary-canvas",
+        generationIdentityVersion: 2,
+        generationInputKey,
+        generationOwnershipKey,
+        kind: "image",
+        model: "verify-boundary-model",
+        modelConfigurationRevision,
+        modelInputContractFingerprint,
+        modelReleaseRevision: modelReleaseRevision.revisionId,
+        nodeId: "verify-boundary-node",
+        parameters,
+        prompt,
+      },
     }).task;
     taskStore.transition(task.id, "running");
 

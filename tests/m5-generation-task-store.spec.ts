@@ -12,6 +12,10 @@ import {
 import { bootstrapPublishedModelContracts } from
   "../server/modelReleaseBootstrap";
 import { modelContractState } from "../server/modelReleaseRevisionStore";
+import { authoritativeModelConfigurationRevision } from
+  "../server/modelConfigurationIdentity";
+import { assertRegisteredModelExecutionTotality } from
+  "../server/modelExecutionRegistry";
 import {
   createGenerationTaskStore,
   failRecoveredGenerationTasks,
@@ -330,14 +334,36 @@ function atomicImageRequest(input: {
   credentialRevision?: number;
   idempotencyKey: string;
   modelConfiguration?: Record<string, unknown>;
+  modelConfigurationUpdatedAt?: string;
   nodeId?: string;
   ownerId?: string;
   profileId?: string;
 }) {
+  const release = atomicModelReleaseRevision;
+  if (!release) throw new Error("atomic fixture model release is unavailable");
   const ownerId = input.ownerId ?? "atomic-owner-a";
   const profileId = input.profileId ?? "atomic-provider-profile";
   const nodeId = input.nodeId ?? "atomic-image-node";
   const credentialRevision = input.credentialRevision ?? 1;
+  const generationInputKey = `atomic-image-input:${nodeId}`;
+  const generationOwnershipKey = `atomic-canvas:${nodeId}`;
+  const modelConfigurationRevision = authoritativeModelConfigurationRevision({
+    capability: "image",
+    id: "atomic-image-model",
+    modelConfigurationUpdatedAt: input.modelConfigurationUpdatedAt ??
+      "2026-08-11T08:00:00.000Z",
+    parameterSchema: release.document.capabilitySchema,
+    providerDriver: "openrouter",
+    providerModelId: "openai/gpt-image-2",
+  });
+  const execution = assertRegisteredModelExecutionTotality({
+    capability: "image",
+    capabilitySchema: release.document.capabilitySchema,
+    providerDriver: "openrouter",
+    providerModelId: "openai/gpt-image-2",
+    providerProtocol: "native",
+    revisionIdentity: release.revisionId,
+  });
   return {
     canvasId: "atomic-canvas",
     credentialRevision,
@@ -346,9 +372,17 @@ function atomicImageRequest(input: {
     model: "atomic-image-model",
     modelConfiguration: input.modelConfiguration ?? {
       credentialVersion: credentialRevision,
+      generationIdentityVersion: 2,
+      generationInputKey,
+      generationOwnershipKey,
+      modelCapability: "image",
+      modelConfigurationRevision,
+      modelExecutionAdapterId: execution.adapterId,
       modelId: "atomic-image-model",
-      modelReleaseRevision: atomicModelReleaseRevision,
-      parameterSchema: atomicModelReleaseRevision?.document.capabilitySchema,
+      modelInputContractFingerprint: "mic2:atomic-image-contract",
+      modelReleaseRevision: release,
+      modelResultCount: execution.resultCount,
+      parameterSchema: release.document.capabilitySchema,
       providerConfigurationVersion: 1,
       providerDriver: "openrouter",
       providerModelId: "openai/gpt-image-2",
@@ -368,6 +402,12 @@ function atomicImageRequest(input: {
       nodeId,
       parameters: { count: 1, size: "1k" },
       prompt: "atomic admission image",
+      generationIdentityVersion: 2,
+      generationInputKey,
+      generationOwnershipKey,
+      modelConfigurationRevision,
+      modelInputContractFingerprint: "mic2:atomic-image-contract",
+      modelReleaseRevision: release.revisionId,
     },
   };
 }
@@ -1870,6 +1910,7 @@ test("atomic admission serializes 20 contenders and replays stable owner-scoped 
     enabled.close();
     const otherOwner = stores[3].admitOrGet(atomicImageRequest({
       idempotencyKey: replayRequest.idempotencyKey,
+      modelConfigurationUpdatedAt: "2026-08-11T09:01:00.000Z",
       ownerId: "atomic-owner-b",
     }));
     expect(otherOwner.created).toBe(true);

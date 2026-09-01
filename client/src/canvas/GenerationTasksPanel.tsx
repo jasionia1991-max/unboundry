@@ -31,6 +31,14 @@ import {
   requestGroupRunStop,
   type GroupRunCheckpoint,
 } from "../generation/groupRunCheckpoint";
+import {
+  listServerWorkflowRuns,
+  mergeServerWorkflowRuns,
+  parseServerWorkflowRunUpdatedEventDetail,
+  SERVER_WORKFLOW_RUN_UPDATED_EVENT,
+  stopServerWorkflowRunAndConfirm,
+  type ServerWorkflowRun,
+} from "../generation/workflowRuns";
 
 const kindLabels: Record<GenerationTaskSummary["kind"], string> = {
   audio: "音频",
@@ -388,9 +396,12 @@ export function GenerationTasksPanel({
 }) {
   const canvasId = groupRunScope.canvasId;
   const [tasks, setTasks] = useState<GenerationTaskSummary[]>([]);
+  const [workflowRuns, setWorkflowRuns] = useState<ServerWorkflowRun[]>([]);
+  const [stoppingRunIds, setStoppingRunIds] = useState<ReadonlySet<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [actionError, setActionError] = useState("");
   const [readError, setReadError] = useState("");
+  const [workflowReadError, setWorkflowReadError] = useState("");
   const [groupSummary, setGroupSummary] = useState<GroupRunSummary>();
   const [groupCheckpoints, setGroupCheckpoints] =
     useState<GroupRunCheckpoint[]>([]);
@@ -446,12 +457,11 @@ export function GenerationTasksPanel({
     refreshController.current = controller;
     const epoch = ++refreshEpoch.current;
     setLoading(true);
-    listGenerationTasks(
+    const tasksRequest = listGenerationTasks(
       requestedCanvasId,
       controller.signal,
       groupRunScope.fixtureScopeId,
-    )
-      .then((next) => {
+    ).then((next) => {
         if (
           controller.signal.aborted ||
           refreshEpoch.current !== epoch ||
@@ -470,7 +480,33 @@ export function GenerationTasksPanel({
           !isCurrentScope(requestedScopeId, requestedCanvasId)
         ) return;
         setReadError("生成任务读取失败，请稍后再试");
-      })
+      });
+    const workflowRunsRequest = groupRunScope.fixtureScopeId
+      ? Promise.resolve().then(() => {
+          if (
+            controller.signal.aborted || refreshEpoch.current !== epoch ||
+            !isCurrentScope(requestedScopeId, requestedCanvasId)
+          ) return;
+          setWorkflowRuns([]);
+          setWorkflowReadError("");
+        })
+      : listServerWorkflowRuns(requestedCanvasId, controller.signal)
+          .then((runs) => {
+            if (
+              controller.signal.aborted || refreshEpoch.current !== epoch ||
+              !isCurrentScope(requestedScopeId, requestedCanvasId)
+            ) return;
+            setWorkflowRuns((current) => mergeServerWorkflowRuns(current, runs));
+            setWorkflowReadError("");
+          })
+          .catch(() => {
+            if (
+              controller.signal.aborted || refreshEpoch.current !== epoch ||
+              !isCurrentScope(requestedScopeId, requestedCanvasId)
+            ) return;
+            setWorkflowReadError("整组执行记录读取失败，请稍后再试");
+          });
+    void Promise.allSettled([tasksRequest, workflowRunsRequest])
       .finally(() => {
         if (
           controller.signal.aborted ||
@@ -488,8 +524,11 @@ export function GenerationTasksPanel({
     const currentActionController = new AbortController();
     actionController.current = currentActionController;
     setTasks([]);
+    setWorkflowRuns([]);
+    setStoppingRunIds(new Set());
     setActionError("");
     setReadError("");
+    setWorkflowReadError("");
     const checkpointState = checkpointRecoveryPending();
     const checkpoints = checkpointState.checkpoints;
     setGroupRecoveryPending(checkpointState.pending);
@@ -541,6 +580,28 @@ export function GenerationTasksPanel({
   }, [groupRunScope.accountId, groupRunScope.canvasId, groupRunScope.fixtureScopeId]);
 
   useEffect(() => {
+    const onServerRun = (event: Event) => {
+      let detail: ReturnType<typeof parseServerWorkflowRunUpdatedEventDetail>;
+      try {
+        detail = parseServerWorkflowRunUpdatedEventDetail(
+          (event as CustomEvent<unknown>).detail,
+        );
+      } catch {
+        return;
+      }
+      if (
+        detail.accountId !== groupRunScope.accountId ||
+        detail.canvasId !== canvasId ||
+        detail.fixtureScopeId !== groupRunScope.fixtureScopeId
+      ) return;
+      const run = detail.run;
+      setWorkflowRuns((current) => mergeServerWorkflowRuns(current, [run]));
+    };
+    window.addEventListener(SERVER_WORKFLOW_RUN_UPDATED_EVENT, onServerRun);
+    return () => window.removeEventListener(SERVER_WORKFLOW_RUN_UPDATED_EVENT, onServerRun);
+  }, [canvasId, groupRunScope.accountId, groupRunScope.fixtureScopeId]);
+
+  useEffect(() => {
     if (!groupSummary || !isActiveGroupRunStatus(groupSummary.status)) return;
     setSummaryClock(Date.now());
     const timer = window.setInterval(() => setSummaryClock(Date.now()), 1_000);
@@ -584,7 +645,42 @@ export function GenerationTasksPanel({
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
     .slice(0, 8);
   const changed = () => refresh(canvasScopeId, canvasId);
-  const visibleError = actionError || readError;
+  const visibleError = actionError || workflowReadError || readError;
+  const taskById = new Map(tasks.map((task) => [task.id, task]));
+  const stopWorkflowRun = (run: ServerWorkflowRun) => {
+    const signal = getActionSignal(canvasScopeId, canvasId);
+    if (!signal || stoppingRunIds.has(run.id)) return;
+    setStoppingRunIds((current) => new Set([...current, run.id]));
+    void stopServerWorkflowRunAndConfirm(run.id, signal)
+      .then((stopped) => {
+        if (!isCurrentScope(canvasScopeId, canvasId)) return;
+        if (
+          stopped.id !== run.id || stopped.canvasId !== canvasId ||
+          stopped.groupId !== run.groupId || stopped.state === "running"
+        ) {
+          throw new Error("服务端没有确认本次停止请求");
+        }
+        setWorkflowRuns((current) => [
+          stopped,
+          ...current.filter(({ id }) => id !== stopped.id),
+        ]);
+        setActionError("");
+      })
+      .catch((error: unknown) => {
+        if (!isCurrentScope(canvasScopeId, canvasId)) return;
+        setActionError(
+          error instanceof Error ? error.message : "暂时无法确认停止状态",
+        );
+      })
+      .finally(() => {
+        if (!isCurrentScope(canvasScopeId, canvasId)) return;
+        setStoppingRunIds((current) => {
+          const next = new Set(current);
+          next.delete(run.id);
+          return next;
+        });
+      });
+  };
 
   return (
     <section
@@ -711,12 +807,12 @@ export function GenerationTasksPanel({
           data-testid="tasks-group-checkpoint"
         >
           <div className="tasks-group-summary-header">
-            <strong>上次整组未完成</strong>
+            <strong>旧版整组记录待核对</strong>
           </div>
           <p>
             已记录 {Object.keys(groupCheckpoint.successProofs).length}/
-            {groupCheckpoint.executableNodeIds.length} 个成功节点。继续前会核对任务凭证，
-            不会自动重新生成。
+            {groupCheckpoint.executableNodeIds.length} 个成功节点。这里只退出旧版浏览器调度，
+            不会继续提交剩余节点或重新生成。
           </p>
           <button
             className="tasks-group-summary-locate"
@@ -724,7 +820,7 @@ export function GenerationTasksPanel({
             onClick={() => requestGroupRunContinue(groupCheckpoint)}
             type="button"
           >
-            继续剩余节点
+            退出旧版续跑
           </button>
           <button
             className="tasks-group-summary-locate"
@@ -747,13 +843,98 @@ export function GenerationTasksPanel({
           </button>
         </section>
       ))}
-      {loading && tasks.length === 0 ? (
-        <p className="tasks-empty">正在读取生成任务…</p>
-      ) : tasks.length === 0 ? (
+      {workflowRuns.length > 0 && (
+        <div className="tasks-list" data-testid="workflow-runs-list">
+          <section className="tasks-group">
+            <h3>
+              整组执行历史
+              <span data-testid="workflow-runs-count">{workflowRuns.length}</span>
+            </h3>
+            <ul>
+              {workflowRuns.slice(0, 12).map((run) => {
+                const linkedTasks = run.nodes.flatMap(({ taskId }) => {
+                  const task = taskId ? taskById.get(taskId) : undefined;
+                  return task ? [task] : [];
+                });
+                const providerTaskBound = linkedTasks.filter(
+                  (task) => task.providerTaskBound,
+                ).length;
+                const acceptedTaskCount = run.nodes.filter(
+                  ({ taskId }) => Boolean(taskId),
+                ).length;
+                const providerTaskPending = linkedTasks.length - providerTaskBound;
+                const providerTaskUnknown = acceptedTaskCount - linkedTasks.length;
+                const firstFailed = run.nodes.find(({ state }) => state === "failed");
+                const applied = run.nodes.filter(
+                  ({ projectionState }) => projectionState === "applied",
+                ).length;
+                const projectionPending = run.nodes.filter(
+                  ({ projectionState }) => projectionState === "pending",
+                ).length;
+                const projectionConflict = run.nodes.filter(
+                  ({ projectionState }) => projectionState === "conflict",
+                ).length;
+                const projectionFailed = run.nodes.filter(
+                  ({ projectionState }) => projectionState === "failed",
+                ).length;
+                const activeRun = run.state === "running" || run.state === "stopping";
+                return (
+                  <li
+                    className="tasks-row"
+                    data-state={run.state}
+                    data-testid={`workflow-run-${run.id}`}
+                    key={run.id}
+                  >
+                    <span className="tasks-row-kind">整组</span>
+                    <span
+                      className="tasks-row-prompt"
+                      title={`run id: ${run.id}`}
+                    >
+                      {`run id: ${run.id} · 节点 ${run.nodes.length} · 服务端任务已受理 ${acceptedTaskCount} · Provider 任务号已确认 ${providerTaskBound}${providerTaskPending ? ` / 未绑定 ${providerTaskPending}` : ""}${providerTaskUnknown ? ` / 任务记录未载入 ${providerTaskUnknown}` : ""} · 投影 已应用 ${applied} / 待写回 ${projectionPending} / 冲突 ${projectionConflict} / 失败 ${projectionFailed}`}
+                      {(firstFailed?.errorMessage || run.errorMessage) && (
+                        <span>{` · 首错：${firstFailed?.errorMessage ?? run.errorMessage}`}</span>
+                      )}
+                    </span>
+                    <span className={`tasks-row-state tasks-state-${run.state}`}>
+                      {run.state === "running"
+                        ? "服务端执行中"
+                        : run.state === "stopping"
+                          ? "服务端正在停止"
+                          : run.state === "success"
+                            ? "整组完成"
+                            : run.state === "failed"
+                              ? "整组失败"
+                              : "整组已停止"}
+                    </span>
+                    <span className="tasks-row-time">{relativeTime(run.updatedAt)}</span>
+                    <span className="tasks-row-actions">
+                      {activeRun && (
+                        <button
+                          data-testid={`workflow-run-stop-${run.id}`}
+                          disabled={run.state === "stopping" || stoppingRunIds.has(run.id)}
+                          onClick={() => stopWorkflowRun(run)}
+                          type="button"
+                        >
+                          {run.state === "stopping" || stoppingRunIds.has(run.id)
+                            ? "正在停止"
+                            : "停止后续节点"}
+                        </button>
+                      )}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        </div>
+      )}
+      {loading && tasks.length === 0 && workflowRuns.length === 0 ? (
+        <p className="tasks-empty">正在读取生成任务与整组执行记录…</p>
+      ) : tasks.length === 0 && workflowRuns.length === 0 && !visibleError ? (
         <p className="tasks-empty" data-testid="tasks-empty">
           还没有生成任务
         </p>
-      ) : (
+      ) : tasks.length > 0 ? (
         <div className="tasks-list" data-testid="tasks-list">
           {active.length > 0 && (
             <section className="tasks-group">
@@ -828,7 +1009,7 @@ export function GenerationTasksPanel({
             </section>
           )}
         </div>
-      )}
+      ) : null}
     </section>
   );
 }

@@ -35,7 +35,9 @@ const PROJECT_DEFAULT_NPM = "11.12.1";
 const PROJECT_NODE_ENGINE = ">=22.23.1 <23 || >=25.9.0 <26";
 const PROJECT_NPM_ENGINE = "10.9.8 || 11.12.1";
 const FORBIDDEN_PORT = 4173;
-const USER_HOME = "/Users/mymy";
+const USER_HOME = realpathSync(
+  process.env.UNBOUNDRY_SAFE_USER_HOME ?? process.env.HOME ?? "/Users/mymy",
+);
 const BACKUP_FINAL_CANDIDATE_SPEC = "tests/m10-backup.spec.ts";
 const EXACT_V051_SPEC = "tests/m92-version-compatibility.spec.ts";
 const IMMUTABLE_RELEASE_SPEC = "tests/m94-immutable-release.spec.ts";
@@ -458,7 +460,7 @@ function workingSourceFiles() {
     .sort();
 }
 
-function createTrackedSnapshot(suiteRoot) {
+function createTrackedSnapshot(suiteRoot, browserRequired) {
   const sourceRoot = join(suiteRoot, "source");
   mkdirSync(sourceRoot, { recursive: true });
   const head = run("git", ["rev-parse", "HEAD"], { capture: true }).stdout.trim();
@@ -482,13 +484,29 @@ function createTrackedSnapshot(suiteRoot) {
   run("/usr/bin/git", ["-c", "core.hooksPath=/dev/null", "add", "--all"], {
     cwd: sourceRoot,
   });
-  const installedBrowserRoot = "/Users/mymy/Library/Caches/ms-playwright";
   const browserRoot = join(suiteRoot, "playwright-browsers");
   mkdirSync(browserRoot, { recursive: true });
-  for (const directory of ["chromium-1234", "chromium_headless_shell-1234"]) {
-    const source = join(installedBrowserRoot, directory);
-    if (!existsSync(source)) fail(`missing prepared Playwright browser ${directory}`);
-    run("/bin/cp", ["-cR", source, join(browserRoot, directory)]);
+  if (browserRequired) {
+    const installedBrowserRoot = process.env.UNBOUNDRY_PLAYWRIGHT_BROWSER_CACHE ??
+      "/Users/mymy/Library/Caches/ms-playwright";
+    if (resolve(installedBrowserRoot) !== installedBrowserRoot) {
+      fail("prepared Playwright browser root must be absolute");
+    }
+    for (const directory of ["chromium-1234", "chromium_headless_shell-1234"]) {
+      const source = join(installedBrowserRoot, directory);
+      if (!existsSync(source)) fail(`missing prepared Playwright browser ${directory}`);
+      run("/bin/cp", ["-cR", source, join(browserRoot, directory)]);
+    }
+  } else {
+    for (const directory of ["chromium-1234", "chromium_headless_shell-1234"]) {
+      const placeholder = join(browserRoot, directory);
+      mkdirSync(placeholder, { recursive: true });
+      writeFileSync(
+        join(placeholder, "INSTALLATION_COMPLETE"),
+        "browser-not-required-for-selected-specs\n",
+        { mode: 0o400 },
+      );
+    }
   }
   const installedNodeRuntimeRoot = realpathSync(
     resolve(dirname(process.execPath), ".."),
@@ -516,7 +534,11 @@ async function prepareDependencies(sourceRoot, browserRoot, suiteRoot, offlineIn
     const dataDirectory = join(testRoot, "data");
     const auditFile = join(testRoot, "network-audit.jsonl");
     const reportFile = join(testRoot, "unused-report.json");
-    const cacheSource = "/Users/mymy/.npm/_cacache";
+    const cacheSource = process.env.UNBOUNDRY_NPM_CONTENT_CACHE ??
+      "/Users/mymy/.npm/_cacache";
+    if (resolve(cacheSource) !== cacheSource) {
+      fail("prepared npm content-addressable cache path must be absolute");
+    }
     const cacheRoot = join(testRoot, "npm-cache");
     mkdirSync(dataDirectory, { recursive: true });
     writeFileSync(auditFile, "", "utf8");
@@ -653,15 +675,15 @@ function preflight() {
     new Set(manifested).size !== manifested.length ||
     manifested.join("\n") !== specs.join("\n")
   ) {
-    fail("safe test manifest must be a duplicate-free exact 123-spec partition");
+    fail("safe test manifest must be a duplicate-free exact 124-spec partition");
   }
-  const expectedModeCounts = { dev: 76, hybrid: 4, node: 32, preview: 2, self: 9 };
+  const expectedModeCounts = { dev: 76, hybrid: 4, node: 32, preview: 2, self: 10 };
   for (const mode of expectedModes) {
     if (manifest[mode].length !== expectedModeCounts[mode]) {
       fail(`unexpected ${mode} spec count ${manifest[mode].length}`);
     }
   }
-  if (specs.length !== 123) fail(`expected 123 isolated specs, found ${specs.length}`);
+  if (specs.length !== 124) fail(`expected 124 isolated specs, found ${specs.length}`);
 
   const packageJson = JSON.parse(
     readFileSync(join(repositoryRoot, "package.json"), "utf8"),
@@ -838,6 +860,7 @@ function sanitizedEnvironment({
     // 单元测试直接调用验证，避免测试服务器误捞起夹具任务、误发网络请求。
     UNBOUNDRY_DISABLE_GENERATION_RECOVERY_SWEEP: "1",
     UNBOUNDRY_SAFE_TEST: "1",
+    UNBOUNDRY_SOURCE_HEAD: workspaceBaseline.head,
     UNBOUNDRY_SAFE_RUN_NONCE: sentinelNonce,
     UNBOUNDRY_SAFE_RUN_SENTINEL: sentinel,
     UNBOUNDRY_ORIGINAL_REPOSITORY_ROOT: repositoryRoot,
@@ -1446,7 +1469,11 @@ async function prepareExactV051Attestation(sourceRoot, browserRoot, suiteRoot) {
     spec: join(sourceRoot, EXACT_V051_SPEC),
     testRoot: rehearsalRoot,
   });
-  const cacheSource = "/Users/mymy/.npm/_cacache";
+  const cacheSource = process.env.UNBOUNDRY_NPM_CONTENT_CACHE ??
+    "/Users/mymy/.npm/_cacache";
+  if (resolve(cacheSource) !== cacheSource) {
+    fail("prepared npm content-addressable cache path must be absolute");
+  }
   if (!existsSync(cacheSource)) {
     fail("the prepared npm cache required for exact v0.5.1 is missing");
   }
@@ -1592,6 +1619,9 @@ async function validateFileAndCredentialIsolation(sourceRoot, testRoot, env) {
           operations: ["direct-write"],
           path: creationPath,
         };
+  const gitMetadataRoot = join(repositoryRoot, ".git");
+  const gitMetadataIsDirectory =
+    existsSync(gitMetadataRoot) && lstatSync(gitMetadataRoot).isDirectory();
   const targets = [
     {
       label: "live package manifest",
@@ -1611,11 +1641,21 @@ async function validateFileAndCredentialIsolation(sourceRoot, testRoot, env) {
       join(repositoryRoot, "backups"),
       join(repositoryRoot, "backups"),
     ),
-    protectedExistingOrCreationTarget(
-      "live Git metadata",
-      join(repositoryRoot, ".git"),
-      join(repositoryRoot, ".git"),
-    ),
+    gitMetadataIsDirectory
+      ? {
+          label: "live Git metadata",
+          operations: [
+            "direct-open", "direct-stat", "direct-read", "direct-write",
+            "symlink-stat", "symlink-read",
+          ],
+          path: join(gitMetadataRoot, "HEAD"),
+          writePath: join(gitMetadataRoot, ".unboundry-forbidden-create"),
+        }
+      : protectedExistingOrCreationTarget(
+          "live Git metadata",
+          gitMetadataRoot,
+          gitMetadataRoot,
+        ),
     {
       label: "isolated tracked source",
       operations: ["direct-write", "symlink-write"],
@@ -2037,6 +2077,18 @@ async function discover(specs, suiteRoot, sourceRoot, browserRoot) {
   const testRoot = mkdtempSync(join(suiteRoot, "discovery-"));
   const dataDirectory = join(testRoot, "data");
   mkdirSync(dataDirectory, { recursive: true });
+  const discoveryTools = join(testRoot, "discovery-tools");
+  mkdirSync(discoveryTools, { recursive: true, mode: 0o700 });
+  const discoveryFfmpeg = join(discoveryTools, "ffmpeg");
+  writeFileSync(
+    discoveryFfmpeg,
+    `#!/usr/bin/env node
+if (process.env.UNBOUNDRY_TEST_DISCOVERY_ONLY !== "1") process.exit(70);
+process.exit(0);
+`,
+    { encoding: "utf8", mode: 0o500 },
+  );
+  chmodSync(discoveryFfmpeg, 0o500);
   const auditFile = join(testRoot, "network-audit.jsonl");
   const reportFile = join(testRoot, "report.json");
   writeFileSync(auditFile, "", "utf8");
@@ -2054,6 +2106,8 @@ async function discover(specs, suiteRoot, sourceRoot, browserRoot) {
     testRoot,
   });
   env.UNBOUNDRY_TEST_SPEC = "*";
+  env.UNBOUNDRY_TEST_DISCOVERY_ONLY = "1";
+  env.PATH = `${discoveryTools}:${env.PATH}`;
   try {
     const result = await sandboxedPlaywright(sourceRoot, testRoot, env, ["--list"]);
     if (result.status !== 0 || !existsSync(reportFile)) {
@@ -2069,8 +2123,8 @@ async function discover(specs, suiteRoot, sourceRoot, browserRoot) {
         })}`,
       );
     }
-    if (discovery.tests !== 1154) {
-      fail(`the frozen 1154-test inventory changed to ${discovery.tests}`);
+    if (discovery.tests !== 1167) {
+      fail(`the frozen 1167-test inventory changed to ${discovery.tests}`);
     }
     const idsByFile = {};
     const { entries } = collectReportEntries(reportFile, sourceRoot);
@@ -2101,8 +2155,10 @@ function immutableReleaseLibc() {
 }
 
 function isPostFinalApplicationVersion(version) {
-  const match = /^0\.6\.(\d+)$/.exec(version);
-  return match !== null && Number(match[1]) >= 1;
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
+  if (!match) return false;
+  const [, major, minor, patch] = match.map(Number);
+  return major > 0 || minor > 6 || (minor === 6 && patch >= 1);
 }
 
 function immutableReleaseControllerEnvironment(fixtureRoot) {
@@ -3665,6 +3721,18 @@ function selectedSpecs(allSpecs, selectors) {
   return selected;
 }
 
+function selectedSpecsRequireBrowser(specs) {
+  const manifest = JSON.parse(readFileSync(
+    join(repositoryRoot, "tests/safe-test-manifest.json"),
+    "utf8",
+  ));
+  const browserModes = ["dev", "hybrid", "preview"];
+  return browserModes.some((mode) =>
+    Array.isArray(manifest[mode]) &&
+    manifest[mode].some((spec) => specs.includes(spec))
+  );
+}
+
 async function main() {
   const options = parseArguments(process.argv.slice(2));
   listener4173Baseline = listener4173Snapshot();
@@ -3682,7 +3750,10 @@ async function main() {
   activeSuiteRoot = suiteRoot;
   if (!isInside(systemTemporaryRoot, suiteRoot)) fail("suite root escaped system temp");
   const { browserRoot, capturedWorkspace, files, sourceRoot } =
-    createTrackedSnapshot(suiteRoot);
+    createTrackedSnapshot(
+      suiteRoot,
+      options.command === "full" || selectedSpecsRequireBrowser(specs),
+    );
   if (
     capturedWorkspace.head !== workspaceBaseline.head ||
     capturedWorkspace.sha256 !== workspaceBaseline.sha256

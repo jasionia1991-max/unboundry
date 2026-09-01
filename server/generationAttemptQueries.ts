@@ -2,6 +2,57 @@ import type { DatabaseSync } from "node:sqlite";
 import { assertWorkflowMediaDeletionAllowedInTransaction } from
   "./workflowRunLocks";
 
+export type LatestGenerationProviderAttemptRow = Readonly<{
+  credential_revision: number;
+  evidence: "historical-execution-attempt" | "provider-boundary";
+  execution_attempt: number;
+  failure_code: string | null;
+  finished_at: string | null;
+  kind: string;
+  outcome: string;
+  owner_id: string | null;
+  provider_model_id: string;
+  provider_profile_id: string;
+  provider_task_id: string | null;
+  task_id: string;
+}>;
+
+/** Single latest-attempt read contract shared by runtime and repair tooling. */
+export function latestGenerationProviderAttemptInTransaction(
+  database: DatabaseSync,
+  input: Readonly<{ executionAttempt?: number; taskId: string }>,
+) {
+  return database.prepare(`
+    SELECT
+      task_id, execution_attempt, provider_profile_id, provider_model_id,
+      kind, owner_id, credential_revision, outcome, provider_task_id,
+      failure_code, finished_at, evidence
+    FROM generation_provider_attempts
+    WHERE task_id = ?
+      ${input.executionAttempt === undefined ? "" : "AND execution_attempt = ?"}
+    ORDER BY execution_attempt DESC, id DESC
+    LIMIT 1
+  `).get(
+    input.taskId,
+    ...(input.executionAttempt === undefined ? [] : [input.executionAttempt]),
+  ) as LatestGenerationProviderAttemptRow | undefined;
+}
+
+export function hasUnresolvedPaidBoundaryInTransaction(
+  database: DatabaseSync,
+  taskId: string,
+) {
+  const attempt = latestGenerationProviderAttemptInTransaction(database, { taskId });
+  return Boolean(attempt && attempt.evidence === "provider-boundary" && (
+    attempt.outcome === "outcome-unknown" ||
+    (!attempt.finished_at && [
+      "boundary-claimed",
+      "accepted",
+      "response-received",
+    ].includes(attempt.outcome))
+  ));
+}
+
 export function generationProviderAttemptCounts(database: DatabaseSync) {
   const row = database.prepare(`
     SELECT

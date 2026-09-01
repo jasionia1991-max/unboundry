@@ -1,30 +1,59 @@
-export type ServerWorkflowRun = Readonly<{
+import {
+  parseWorkflowRunSummary,
+  parseWorkflowRunsEnvelope,
+  type WorkflowRunSummary as ServerWorkflowRun,
+} from "../../../types/workflowRuns";
+
+export type { ServerWorkflowRun };
+
+export const SERVER_WORKFLOW_RUN_UPDATED_EVENT =
+  "unboundry:server-workflow-run-updated";
+
+export type ServerWorkflowRunUpdatedEventDetail = Readonly<{
+  accountId: string;
   canvasId: string;
-  createdAt: string;
-  errorCode?: string;
-  errorMessage?: string;
-  groupId: string;
-  id: string;
-  lockedNodeIds: readonly string[];
-  nodes: readonly Readonly<{
-    errorCode?: string;
-    errorMessage?: string;
-    id: string;
-    kind: "text" | "image" | "video" | "audio";
-    projectionState: "pending" | "applied" | "conflict" | "failed";
-    state: "pending" | "admitting" | "admitted" | "success" | "failed" | "blocked" | "cancelled";
-    taskId?: string;
-  }>[];
-  semanticFingerprint: string;
-  state: "running" | "stopping" | "success" | "failed" | "cancelled";
-  updatedAt: string;
+  fixtureScopeId: string;
+  run: ServerWorkflowRun;
 }>;
 
-async function responseJson(response: Response) {
-  const body = await response.json().catch(() => ({})) as Record<string, unknown>;
+const WORKFLOW_RUN_REQUEST_TIMEOUT_MS = 30_000;
+
+function record(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function parseServerWorkflowRunUpdatedEventDetail(
+  value: unknown,
+): ServerWorkflowRunUpdatedEventDetail {
+  if (
+    !record(value) ||
+    Object.keys(value).sort().join(",") !==
+      "accountId,canvasId,fixtureScopeId,run" ||
+    typeof value.accountId !== "string" || value.accountId.length > 200 ||
+    typeof value.canvasId !== "string" || value.canvasId.length < 1 ||
+    value.canvasId.length > 200 ||
+    typeof value.fixtureScopeId !== "string" ||
+    value.fixtureScopeId.length > 200
+  ) throw new Error("Workflow run event scope is invalid");
+  const run = parseWorkflowRunSummary(value.run);
+  if (run.canvasId !== value.canvasId) {
+    throw new Error("Workflow run event identity is invalid");
+  }
+  return Object.freeze({
+    accountId: value.accountId,
+    canvasId: value.canvasId,
+    fixtureScopeId: value.fixtureScopeId,
+    run,
+  });
+}
+
+async function responseJson(response: Response): Promise<unknown> {
+  const body: unknown = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new WorkflowRunHttpError(
-      typeof body.error === "string" ? body.error : "整组执行请求失败",
+      record(body) && typeof body.error === "string"
+        ? body.error
+        : "整组执行请求失败",
       response.status,
     );
   }
@@ -38,16 +67,61 @@ class WorkflowRunHttpError extends Error {
   }
 }
 
-function waitForNextPoll(signal?: AbortSignal) {
+export function workflowRunStatusReadIsRetryable(error: unknown) {
+  return error instanceof TypeError ||
+    (error instanceof Error && error.name === "TimeoutError") ||
+    (error instanceof WorkflowRunHttpError &&
+      (error.status === 408 || error.status === 429 || error.status >= 500));
+}
+
+export function workflowRunCreateOutcomeIsUncertain(error: unknown) {
+  return !(error instanceof WorkflowRunHttpError) ||
+    workflowRunStatusReadIsRetryable(error);
+}
+
+async function boundedWorkflowRequest(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  parentSignal?: AbortSignal,
+) {
+  const controller = new AbortController();
+  const relayAbort = () => controller.abort(
+    parentSignal?.reason ?? new DOMException("Aborted", "AbortError"),
+  );
+  if (parentSignal?.aborted) relayAbort();
+  else parentSignal?.addEventListener("abort", relayAbort, { once: true });
+  const timeout = setTimeout(
+    () => controller.abort(new DOMException(
+      "Workflow run request timed out",
+      "TimeoutError",
+    )),
+    WORKFLOW_RUN_REQUEST_TIMEOUT_MS,
+  );
+  try {
+    const response = await fetch(input, { ...init, signal: controller.signal });
+    return await responseJson(response);
+  } finally {
+    clearTimeout(timeout);
+    parentSignal?.removeEventListener("abort", relayAbort);
+  }
+}
+
+function waitForNextPoll(signal?: AbortSignal, delayMs = 1_000) {
+  if (signal?.aborted) {
+    return Promise.reject(
+      signal.reason ?? new DOMException("Aborted", "AbortError"),
+    );
+  }
   return new Promise<void>((resolve, reject) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const onAbort = () => {
-      window.clearTimeout(timer);
+      if (timer !== undefined) clearTimeout(timer);
       reject(signal?.reason ?? new DOMException("Aborted", "AbortError"));
     };
-    const timer = window.setTimeout(() => {
+    timer = setTimeout(() => {
       signal?.removeEventListener("abort", onAbort);
       resolve();
-    }, 1_000);
+    }, Math.max(1, delayMs));
     signal?.addEventListener("abort", onAbort, { once: true });
   });
 }
@@ -58,7 +132,7 @@ export async function createServerWorkflowRun(input: {
   groupId: string;
   signal?: AbortSignal;
 }) {
-  const response = await fetch("/api/workflow-runs", {
+  const body = await boundedWorkflowRequest("/api/workflow-runs", {
     body: JSON.stringify({
       canvasId: input.canvasId,
       clientSemanticFingerprint: input.clientSemanticFingerprint,
@@ -68,62 +142,167 @@ export async function createServerWorkflowRun(input: {
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
     method: "POST",
-    signal: input.signal,
-  });
-  return await responseJson(response) as ServerWorkflowRun;
+  }, input.signal);
+  const run = parseWorkflowRunSummary(body);
+  if (
+    run.canvasId !== input.canvasId ||
+    run.groupId !== input.groupId ||
+    run.clientSemanticFingerprint !== input.clientSemanticFingerprint
+  ) throw new Error("Workflow create response identity is invalid");
+  return run;
 }
 
 export async function getServerWorkflowRun(runId: string, signal?: AbortSignal) {
-  const response = await fetch(`/api/workflow-runs/${encodeURIComponent(runId)}`, {
+  const body = await boundedWorkflowRequest(
+    `/api/workflow-runs/${encodeURIComponent(runId)}`,
+    {
     cache: "no-store",
     credentials: "same-origin",
+    },
     signal,
-  });
-  return await responseJson(response) as ServerWorkflowRun;
+  );
+  const run = parseWorkflowRunSummary(body);
+  if (run.id !== runId) throw new Error("Workflow get response identity is invalid");
+  return run;
 }
 
 export async function listServerWorkflowRuns(
   canvasId: string,
   signal?: AbortSignal,
 ) {
-  const response = await fetch(
+  const body = await boundedWorkflowRequest(
     `/api/workflow-runs?canvasId=${encodeURIComponent(canvasId)}`,
     {
       cache: "no-store",
       credentials: "same-origin",
-      signal,
     },
+    signal,
   );
-  const body = await responseJson(response) as { runs?: ServerWorkflowRun[] };
-  return Array.isArray(body.runs) ? body.runs : [];
+  const runs = parseWorkflowRunsEnvelope(body).runs;
+  if (runs.some((run) => run.canvasId !== canvasId)) {
+    throw new Error("Workflow list response identity is invalid");
+  }
+  if (new Set(runs.map(({ id }) => id)).size !== runs.length) {
+    throw new Error("Workflow list response contains duplicate identities");
+  }
+  return runs;
 }
 
-export async function stopServerWorkflowRun(runId: string) {
-  const response = await fetch(
+export async function reattachSubmittedServerWorkflowRun(input: {
+  canvasId: string;
+  clientSemanticFingerprint: string;
+  groupId: string;
+  pollIntervalMs?: number;
+  signal?: AbortSignal;
+  startedAt: number;
+}) {
+  for (;;) {
+    if (input.signal?.aborted) {
+      throw input.signal.reason ?? new DOMException("Aborted", "AbortError");
+    }
+    let runs: readonly ServerWorkflowRun[];
+    try {
+      runs = await listServerWorkflowRuns(input.canvasId, input.signal);
+    } catch (error) {
+      if (input.signal?.aborted) throw error;
+      if (!workflowRunStatusReadIsRetryable(error)) throw error;
+      // Once the POST may have reached the server, a failed read is not
+      // evidence that it is safe to submit again. Keep the local lock and use
+      // read-only reconciliation until the exact run becomes visible.
+      await waitForNextPoll(input.signal, input.pollIntervalMs);
+      continue;
+    }
+    const matching = runs.find((run) =>
+      run.canvasId === input.canvasId &&
+      run.groupId === input.groupId &&
+      run.clientSemanticFingerprint === input.clientSemanticFingerprint &&
+      Date.parse(run.createdAt) >= input.startedAt - 1_000
+    );
+    if (matching) return matching;
+    const conflicting = runs.find((run) =>
+      run.groupId === input.groupId &&
+      run.clientSemanticFingerprint !== input.clientSemanticFingerprint &&
+      (run.state === "running" || run.state === "stopping")
+    );
+    if (conflicting) {
+      throw new Error(
+        "服务端已有同组整组执行，当前画布身份不同；已阻止重复提交",
+      );
+    }
+    await waitForNextPoll(input.signal, input.pollIntervalMs);
+  }
+}
+
+export function mergeServerWorkflowRuns(
+  current: readonly ServerWorkflowRun[],
+  incoming: readonly ServerWorkflowRun[],
+) {
+  const merged = new Map(current.map((run) => [run.id, run]));
+  for (const run of incoming) {
+    const existing = merged.get(run.id);
+    if (!existing || Date.parse(run.updatedAt) > Date.parse(existing.updatedAt)) {
+      merged.set(run.id, run);
+    }
+  }
+  return [...merged.values()].sort((left, right) =>
+    Date.parse(right.updatedAt) - Date.parse(left.updatedAt) ||
+    right.id.localeCompare(left.id)
+  );
+}
+
+export async function stopServerWorkflowRun(
+  runId: string,
+  signal?: AbortSignal,
+) {
+  const body = await boundedWorkflowRequest(
     `/api/workflow-runs/${encodeURIComponent(runId)}/stop`,
     {
       cache: "no-store",
       credentials: "same-origin",
       method: "POST",
     },
+    signal,
   );
-  return await responseJson(response) as ServerWorkflowRun;
+  const run = parseWorkflowRunSummary(body);
+  if (run.id !== runId) throw new Error("Workflow stop response identity is invalid");
+  return run;
+}
+
+export async function stopServerWorkflowRunAndConfirm(
+  runId: string,
+  signal?: AbortSignal,
+) {
+  try {
+    return await stopServerWorkflowRun(runId, signal);
+  } catch (stopError) {
+    if (signal?.aborted) throw stopError;
+    try {
+      const current = await getServerWorkflowRun(runId, signal);
+      if (current.state !== "running") return current;
+    } catch {
+      // Preserve the original stop failure. A read failure is not evidence
+      // that the server accepted the stop request.
+    }
+    throw stopError;
+  }
 }
 
 export async function waitForServerWorkflowRun(
   runId: string,
   signal?: AbortSignal,
+  deadlineMs = 24 * 60 * 60_000,
 ) {
+  const startedAt = Date.now();
   for (;;) {
+    if (Date.now() - startedAt > Math.max(1_000, Math.min(deadlineMs, 24 * 60 * 60_000))) {
+      throw new Error("整组执行状态等待超时；服务端仍会保留原任务并禁止重复提交");
+    }
     let run: ServerWorkflowRun;
     try {
       run = await getServerWorkflowRun(runId, signal);
     } catch (error) {
       if (signal?.aborted) throw error;
-      const retryable = error instanceof TypeError ||
-        (error instanceof WorkflowRunHttpError &&
-          (error.status === 408 || error.status === 429 || error.status >= 500));
-      if (!retryable) throw error;
+      if (!workflowRunStatusReadIsRetryable(error)) throw error;
       // A transient status read must not unlock a workflow that the server is
       // still executing. Keep polling the same durable run id.
       await waitForNextPoll(signal);

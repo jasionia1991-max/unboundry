@@ -14,6 +14,42 @@ import {
 
 type MediaKind = "audio" | "image" | "video";
 
+export type AliyunOssGenerationObjectIdentity = Readonly<{
+  byteSize: number;
+  checksumSha256: string;
+  contentType: string;
+  executionAttempt: number;
+  format: string;
+  kind: MediaKind;
+  objectKey: string;
+  ownerId: string;
+  publicationId: string;
+  storageProfileId: string;
+  taskId: string;
+}>;
+
+export type AliyunOssPutOutcome = Readonly<{
+  etag: string;
+  requestId: string;
+  /** Older injected upload seams omit this; the real OSS adapter always sets it. */
+  status?: "adopted" | "created";
+  versionId: string;
+}>;
+
+export class AliyunOssPublicationQuarantineError extends Error {
+  readonly code = "OSS_IDENTITY_QUARANTINED";
+  readonly reason: "HEAD_UNKNOWN" | "IDENTITY_MISMATCH" | "PUT_UNKNOWN";
+
+  constructor(
+    reason: AliyunOssPublicationQuarantineError["reason"],
+    message: string,
+  ) {
+    super(message);
+    this.name = "AliyunOssPublicationQuarantineError";
+    this.reason = reason;
+  }
+}
+
 export type AliyunOssCredentials = {
   accessKeyId: string;
   accessKeySecret: string;
@@ -248,6 +284,124 @@ export function createAliyunOssObjectKey(
   return `objects/${year}/${month}/${kind}/${randomUUID()}.${safeExtension(extension)}`;
 }
 
+function errorStatus(error: unknown) {
+  if (!error || typeof error !== "object") return undefined;
+  const record = error as Record<string, unknown>;
+  const status = Number(record.status ?? record.statusCode);
+  return Number.isFinite(status) ? status : undefined;
+}
+
+function aliyunOssObjectMissing(error: unknown) {
+  return errorStatus(error) === 404 || [
+    "NoSuchKey",
+    "NoSuchObject",
+    "NotFound",
+  ].includes(errorField(error, "code"));
+}
+
+function aliyunOssPutConflict(error: unknown) {
+  return [409, 412].includes(errorStatus(error) ?? 0) || [
+    "FileAlreadyExists",
+    "ObjectAlreadyExists",
+    "PreconditionFailed",
+  ].includes(errorField(error, "code"));
+}
+
+function assertAliyunOssGenerationIdentity(
+  identity: AliyunOssGenerationObjectIdentity,
+  upload: Readonly<{
+    byteSize: number;
+    checksumSha256: string;
+    contentType: string;
+    objectKey: string;
+  }>,
+) {
+  const bounded = (value: string, maximum: number) =>
+    value.length > 0 && value.length <= maximum && !/[\r\n]/.test(value);
+  if (
+    identity.byteSize !== upload.byteSize ||
+    identity.checksumSha256 !== upload.checksumSha256 ||
+    identity.contentType !== upload.contentType ||
+    identity.objectKey !== upload.objectKey ||
+    !Number.isSafeInteger(identity.executionAttempt) ||
+    identity.executionAttempt < 1 ||
+    !bounded(identity.ownerId, 120) ||
+    !bounded(identity.storageProfileId, 120) ||
+    !bounded(identity.publicationId, 120) ||
+    !bounded(identity.taskId, 120) ||
+    !bounded(identity.format, 32) ||
+    !["audio", "image", "video"].includes(identity.kind)
+  ) throw new Error("Invalid generated OSS identity");
+}
+
+export function aliyunOssGenerationIdentityHeaders(
+  identity: AliyunOssGenerationObjectIdentity,
+) {
+  return {
+    "x-oss-meta-unboundry-execution-attempt": String(identity.executionAttempt),
+    "x-oss-meta-unboundry-media-format": identity.format,
+    "x-oss-meta-unboundry-media-kind": identity.kind,
+    "x-oss-meta-unboundry-owner-id": identity.ownerId,
+    "x-oss-meta-unboundry-publication-id": identity.publicationId,
+    "x-oss-meta-unboundry-sha256": identity.checksumSha256,
+    "x-oss-meta-unboundry-storage-profile-id": identity.storageProfileId,
+    "x-oss-meta-unboundry-task-id": identity.taskId,
+  } as const;
+}
+
+function normalizedHeadValue(
+  head: unknown,
+  headerName: string,
+) {
+  if (!head || typeof head !== "object") return "";
+  const record = head as Record<string, unknown>;
+  const response = record.res && typeof record.res === "object"
+    ? record.res as Record<string, unknown>
+    : undefined;
+  const headers = response?.headers && typeof response.headers === "object"
+    ? response.headers as Record<string, unknown>
+    : {};
+  const metadata = record.meta && typeof record.meta === "object"
+    ? record.meta as Record<string, unknown>
+    : {};
+  const lower = headerName.toLowerCase();
+  const metadataName = lower.replace(/^x-oss-meta-/, "");
+  const match = Object.entries(headers).find(([name]) =>
+    name.toLowerCase() === lower
+  )?.[1] ?? Object.entries(metadata).find(([name]) =>
+    name.toLowerCase() === metadataName ||
+    `x-oss-meta-${name.toLowerCase()}` === lower
+  )?.[1];
+  return typeof match === "string" || typeof match === "number"
+    ? String(match)
+    : "";
+}
+
+export function assertExactAliyunOssGenerationHead(
+  identity: AliyunOssGenerationObjectIdentity,
+  head: unknown,
+) {
+  const expected = aliyunOssGenerationIdentityHeaders(identity);
+  for (const [name, value] of Object.entries(expected)) {
+    if (normalizedHeadValue(head, name) !== value) {
+      throw new AliyunOssPublicationQuarantineError(
+        "IDENTITY_MISMATCH",
+        `OSS generated object metadata mismatch: ${name}`,
+      );
+    }
+  }
+  if (
+    normalizedHeadValue(head, "content-length") !== String(identity.byteSize) ||
+    normalizedHeadValue(head, "content-type").toLowerCase() !==
+      identity.contentType.toLowerCase()
+  ) {
+    throw new AliyunOssPublicationQuarantineError(
+      "IDENTITY_MISMATCH",
+      "OSS generated object size or content type mismatch",
+    );
+  }
+}
+
 export async function uploadPrivateAliyunOssObject(input: {
   byteSize: number;
   bytes?: Buffer;
@@ -255,9 +409,10 @@ export async function uploadPrivateAliyunOssObject(input: {
   contentType: string;
   credentials: AliyunOssCredentials;
   filePath?: string;
+  generationIdentity?: AliyunOssGenerationObjectIdentity;
   objectKey: string;
   network?: AliyunOssNetworkDependencies;
-}) {
+}): Promise<AliyunOssPutOutcome> {
   if (!/^[a-f0-9]{64}$/.test(input.checksumSha256)) {
     throw new Error("Invalid SHA-256 checksum");
   }
@@ -273,9 +428,33 @@ export async function uploadPrivateAliyunOssObject(input: {
   ) {
     throw new Error("Invalid OSS upload source");
   }
+  if (input.generationIdentity) {
+    assertAliyunOssGenerationIdentity(input.generationIdentity, input);
+  }
   const client = configuredClient(input.credentials, input.network);
+  if (input.generationIdentity) {
+    try {
+      const existing = await client.head(input.objectKey);
+      assertExactAliyunOssGenerationHead(input.generationIdentity, existing);
+      return {
+        etag: String(existing.res?.headers?.etag ?? ""),
+        requestId: String(existing.res?.headers?.["x-oss-request-id"] ?? ""),
+        status: "adopted",
+        versionId: String(existing.res?.headers?.["x-oss-version-id"] ?? ""),
+      };
+    } catch (error) {
+      if (error instanceof AliyunOssPublicationQuarantineError) throw error;
+      if (!aliyunOssObjectMissing(error)) {
+        throw new AliyunOssPublicationQuarantineError(
+          "HEAD_UNKNOWN",
+          "OSS object identity could not be read; the staged result is quarantined",
+        );
+      }
+    }
+  }
+  let result: Awaited<ReturnType<typeof client.put>>;
   try {
-    const result = await client.put(
+    result = await client.put(
       input.objectKey,
       input.bytes ?? input.filePath!,
       {
@@ -283,12 +462,48 @@ export async function uploadPrivateAliyunOssObject(input: {
           "Content-Type": input.contentType,
           "x-oss-forbid-overwrite": "true",
           "x-oss-meta-sha256": input.checksumSha256,
+          ...(input.generationIdentity
+            ? aliyunOssGenerationIdentityHeaders(input.generationIdentity)
+            : {}),
           "x-oss-object-acl": "private",
         },
         mime: input.contentType,
       },
     );
+  } catch (error) {
+    if (input.generationIdentity && aliyunOssPutConflict(error)) {
+      try {
+        const existing = await client.head(input.objectKey);
+        assertExactAliyunOssGenerationHead(input.generationIdentity, existing);
+        return {
+          etag: String(existing.res?.headers?.etag ?? ""),
+          requestId: String(existing.res?.headers?.["x-oss-request-id"] ?? ""),
+          status: "adopted",
+          versionId: String(existing.res?.headers?.["x-oss-version-id"] ?? ""),
+        };
+      } catch (headError) {
+        if (headError instanceof AliyunOssPublicationQuarantineError) {
+          throw headError;
+        }
+        throw new AliyunOssPublicationQuarantineError(
+          "HEAD_UNKNOWN",
+          "Conflicting OSS object identity could not be read; the staged result is quarantined",
+        );
+      }
+    }
+    if (input.generationIdentity) {
+      throw new AliyunOssPublicationQuarantineError(
+        "PUT_UNKNOWN",
+        "OSS PUT outcome is unknown; the staged result is quarantined without delete or overwrite",
+      );
+    }
+    throw error;
+  }
+  try {
     const head = await client.head(input.objectKey);
+    if (input.generationIdentity) {
+      assertExactAliyunOssGenerationHead(input.generationIdentity, head);
+    }
     const storedSize = Number(
       head.res?.headers?.["content-length"] ?? head.res?.headers?.["Content-Length"],
     );
@@ -298,12 +513,24 @@ export async function uploadPrivateAliyunOssObject(input: {
     return {
       etag: result.res?.headers?.etag ?? "",
       requestId: result.res?.headers?.["x-oss-request-id"] ?? "",
+      status: "created",
       versionId: result.res?.headers?.["x-oss-version-id"] ?? "",
     };
   } catch (error) {
-    try {
-      await client.delete(input.objectKey);
-    } catch {}
+    if (
+      input.generationIdentity &&
+      !(error instanceof AliyunOssPublicationQuarantineError)
+    ) {
+      throw new AliyunOssPublicationQuarantineError(
+        "HEAD_UNKNOWN",
+        "New OSS object could not be verified; the staged result is quarantined without delete",
+      );
+    }
+    if (!input.generationIdentity) {
+      try {
+        await client.delete(input.objectKey);
+      } catch {}
+    }
     throw error;
   }
 }

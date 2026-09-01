@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createCipheriv, createHash, randomBytes } from "node:crypto";
 import {
   chmod,
   mkdir,
@@ -7,6 +7,7 @@ import {
   readFile,
   readdir,
   rm,
+  writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,6 +17,7 @@ import { expect, test } from "./safe-test";
 import {
   databaseMatchesFrozenSchema37Contract,
   databaseMatchesFrozenSchema38Contract,
+  inspectBackupDatabase,
 } from "../server/backupInspection";
 import { currentSchemaVersion, openAppDatabase } from "../server/database";
 import { inspectMediaIntegrity } from "../server/mediaIntegrity";
@@ -25,6 +27,34 @@ const timestamp = "2026-08-09T00:00:00.000Z";
 const digestA = createHash("sha256").update("aaaaa").digest("hex");
 const digestB = createHash("sha256").update("bbbbb").digest("hex");
 const logicalDatabaseHash = "1".repeat(64);
+const providerDocumentAad = Buffer.from(
+  "unboundry:provider-profiles:v1",
+  "utf8",
+);
+const storageDocumentAad = Buffer.from(
+  "unboundry:storage-profiles:v1",
+  "utf8",
+);
+
+function encryptedDocument(
+  key: Buffer,
+  aad: Buffer,
+  document: Record<string, unknown>,
+) {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  cipher.setAAD(aad);
+  const ciphertext = Buffer.concat([
+    cipher.update(JSON.stringify(document), "utf8"),
+    cipher.final(),
+  ]);
+  return JSON.stringify({
+    ciphertext: ciphertext.toString("base64"),
+    iv: iv.toString("base64"),
+    tag: cipher.getAuthTag().toString("base64"),
+    version: 1,
+  });
+}
 
 function rollbackMigration39To38(database: DatabaseSync) {
   if (Number((database.prepare("PRAGMA user_version").get() as {
@@ -1164,6 +1194,105 @@ test("the read-only media report CLI requires a frozen absolute source and leave
     });
     const after = createHash("sha256").update(await readFile(databasePath)).digest("hex");
     expect(after).toBe(before);
+    expect(await readdir(scratchRoot)).toEqual([]);
+
+    const frozenAt = "2026-01-01T00:02:00.000Z";
+    const frozenDatabase = openAppDatabase(fixture.dataDirectory);
+    try {
+      seedUser(frozenDatabase);
+      frozenDatabase.prepare(`
+        UPDATE generation_safety_settings
+        SET global_enabled = 0, emergency_stop = 1, updated_at = ?
+        WHERE id = 1
+      `).run(frozenAt);
+      frozenDatabase.prepare(`
+        INSERT INTO admin_audit_events (
+          actor_user_id, action, details, created_at
+        ) VALUES ('media-user', 'generation_safety.update', ?, ?)
+      `).run(JSON.stringify({
+        after: {
+          emergencyStop: true,
+          globalEnabled: false,
+          updatedAt: frozenAt,
+        },
+      }), frozenAt);
+      frozenDatabase.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+    } finally {
+      frozenDatabase.close();
+    }
+    const secretsDirectory = join(fixture.dataDirectory, "secrets");
+    await mkdir(secretsDirectory, { mode: 0o700 });
+    const secretLockPath = join(
+      secretsDirectory,
+      "provider-profile-write-lock.sqlite",
+    );
+    const secretLock = new DatabaseSync(secretLockPath);
+    secretLock.exec(`
+      PRAGMA journal_mode = DELETE;
+      CREATE TABLE provider_profile_write_lock (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        marker INTEGER NOT NULL
+      );
+      INSERT INTO provider_profile_write_lock (id, marker) VALUES (1, 1);
+    `);
+    secretLock.close();
+    await chmod(secretLockPath, 0o600);
+    const masterKey = randomBytes(32);
+    try {
+      await writeFile(
+        join(secretsDirectory, "config-master.key"),
+        masterKey,
+        { mode: 0o600 },
+      );
+      await writeFile(
+        join(secretsDirectory, "provider-profiles.enc.json"),
+        encryptedDocument(masterKey, providerDocumentAad, {
+          profiles: [],
+          version: 1,
+        }),
+        { mode: 0o600 },
+      );
+      await writeFile(
+        join(secretsDirectory, "storage-profiles.enc.json"),
+        encryptedDocument(masterKey, storageDocumentAad, {
+          activeProfileId: null,
+          mediaRoutingEnabled: false,
+          profiles: [],
+          version: 1,
+        }),
+        { mode: 0o600 },
+      );
+    } finally {
+      masterKey.fill(0);
+    }
+    const inspection = inspectBackupDatabase(databasePath, fixture.dataDirectory);
+    expect(inspection.userVersion).toBe(42);
+    const locked = await execute(process.execPath, [
+      "scripts/report-media-integrity.mjs",
+      "--data-dir",
+      fixture.dataDirectory,
+      "--scratch-root",
+      scratchRoot,
+      "--source-frozen",
+      "--expected-database-logical-sha256",
+      inspection.logicalSha256,
+      "--expected-schema-version",
+      "42",
+      "--generation-frozen-at",
+      frozenAt,
+      "--last-provider-admission-at",
+      "none",
+    ], { cwd: process.cwd() });
+    const lockedReport = JSON.parse(locked.stdout) as Record<string, unknown>;
+    expect(lockedReport).toMatchObject({
+      captureMode: "locked-exact",
+      clean: true,
+      finalCandidate: true,
+      schemaVersion: 42,
+      version: 1,
+    });
+    expect(lockedReport.evidenceSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(lockedReport.sha256).toMatch(/^[a-f0-9]{64}$/);
     expect(await readdir(scratchRoot)).toEqual([]);
 
     let rejected: Error & { stderr?: string } | undefined;
