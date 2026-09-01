@@ -1560,9 +1560,27 @@ test("v0.7.1 TT Image workflow submits once, polls the official route and surviv
     const modelId = await createPublishedTtImageModel();
     const canvasId = "inc-gen-027-tt-image-http";
     const groupId = "inc-gen-027-tt-image-group";
+    const referenceAssetId = "inc-gen-027-tt-image-reference";
+    const referenceUpload = await expectOk(await request(
+      `/api/assets/${referenceAssetId}`,
+      {
+        body: tinyPng,
+        headers: {
+          "Content-Type": "image/png",
+          "X-File-Name": "reference.png",
+        },
+        method: "POST",
+      },
+    ), "TT Image reference upload");
+    expect(referenceUpload.status).toBe(201);
     const prompt = "Create one clean portrait product image";
     const graph = {
-      edges: [],
+      edges: [{
+        data: { inputOrder: 1, inputRole: "reference-image" },
+        id: "inc-gen-027-tt-image-reference-edge",
+        source: "inc-gen-027-tt-image-reference",
+        target: "inc-gen-027-tt-image",
+      }],
       nodes: [
         {
           data: { title: "INC-GEN-027 TT Image Group" },
@@ -1571,10 +1589,21 @@ test("v0.7.1 TT Image workflow submits once, polls the official route and surviv
         },
         {
           data: {
+            assetId: referenceAssetId,
+            imageSrc: `/api/assets/${referenceAssetId}`,
+            inputState: "ready",
+            title: "TT Image reference",
+          },
+          id: "inc-gen-027-tt-image-reference",
+          parentId: groupId,
+          type: "image",
+        },
+        {
+          data: {
             imageModelId: modelId,
             imageParameters: {
               aspectRatio: "9:16",
-              inputMode: "text",
+              inputMode: "image",
               outputCount: 1,
               quality: "2k",
             },
@@ -1658,11 +1687,18 @@ test("v0.7.1 TT Image workflow submits once, polls the official route and surviv
       new URL(originalUrl).pathname === "/v1/media/generate"
     );
     expect(mediaPosts).toHaveLength(1);
-    expect(JSON.parse(mediaPosts[0]!.body)).toEqual({
+    const mediaBody = JSON.parse(mediaPosts[0]!.body) as {
+      images?: string[];
+      model?: string;
+      params?: Record<string, unknown>;
+      prompt?: string;
+    };
+    expect(mediaBody).toMatchObject({
       model: "tt-image-2",
       params: { n: 1, quality: "auto", size: "1440x2560" },
       prompt,
     });
+    expect((mediaBody.params as { images?: string[] }).images).toHaveLength(1);
     expect(providerRequests.filter(({ originalUrl }) =>
       new URL(originalUrl).pathname === "/v1/skills/task-status"
     )).toHaveLength(1);

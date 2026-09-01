@@ -520,7 +520,7 @@ function authoritativeMediaSourceData(
     mediaDurationSeconds: media.durationSeconds ?? undefined,
     mediaHeight: media.mediaHeight ?? undefined,
     mediaMetadataSource: "server",
-    mediaMetadataStatus: media.durationStatus,
+    mediaMetadataStatus: kind === "image" ? "ready" : media.durationStatus,
     mediaStorageBackend: media.storageBackend,
     mediaWidth: media.mediaWidth ?? undefined,
   };
