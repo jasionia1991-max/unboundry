@@ -83,6 +83,8 @@ const {
     assertMediaDeletionAllowedInTransaction:
       assertGenerationMediaDeletionAllowedInTransaction,
     httpHandler: generationTasks,
+    workflowHttpHandler: workflowRunsApi,
+    workflowRuns: workflowRunApplication,
     initializePersistentWorker: initializePersistentGenerationTaskWorker,
     prepareRuntimeRoleTeardown: prepareGenerationRuntimeRoleTeardown,
     readinessQuery: generationReadinessQuery,
@@ -1261,6 +1263,19 @@ function generationTaskApi(runtime: RuntimeInstance): Plugin {
   };
 }
 
+function workflowRunApi(runtime: RuntimeInstance): Plugin {
+  const handler = apiBoundary("workflow-runs", workflowRunsApi, runtime);
+  return {
+    name: "unboundry-workflow-run-api",
+    configurePreviewServer(server) {
+      server.middlewares.use("/api/workflow-runs", handler);
+    },
+    configureServer(server) {
+      server.middlewares.use("/api/workflow-runs", handler);
+    },
+  };
+}
+
 function persistentGenerationTaskStartup(
   server: RuntimeServer,
   installedLifecycle: RuntimeLifecycle,
@@ -1416,6 +1431,7 @@ export default defineConfig(({ command, isPreview }) => {
       generationSafetyAdminApi(runtime),
       canvasPersistenceApi(runtime),
       generationTaskApi(runtime),
+      workflowRunApi(runtime),
       playlistExportApi(runtime),
       playlistThumbnailApi(runtime),
     ],

@@ -82,10 +82,10 @@ function readyImage(database: DatabaseSync, id: string, bytes = id) {
 test("schema 41 owns independent character-compliance checks, attempts and disclosures", () => {
   const db = database();
   try {
-    expect(currentSchemaVersion).toBe(41);
+    expect(currentSchemaVersion).toBe(42);
     expect(databaseMatchesSchemaContract(db)).toBe(true);
     expect((db.prepare("PRAGMA user_version").get() as { user_version: number })
-      .user_version).toBe(41);
+      .user_version).toBe(42);
     const tables = new Set((db.prepare(`
       SELECT name FROM sqlite_schema WHERE type = 'table'
     `).all() as Array<{ name: string }>).map(({ name }) => name));

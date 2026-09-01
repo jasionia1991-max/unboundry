@@ -29,6 +29,20 @@ const logicalDatabaseHash = "1".repeat(64);
 function rollbackMigration39To38(database: DatabaseSync) {
   if (Number((database.prepare("PRAGMA user_version").get() as {
     user_version: number;
+  }).user_version) === 42) {
+    database.exec(`
+      BEGIN IMMEDIATE;
+      DROP TABLE media_capacity_reservations;
+      DROP TABLE workflow_run_locks;
+      DROP TABLE workflow_run_nodes;
+      DROP TABLE workflow_runs;
+      DELETE FROM schema_migrations WHERE version = 42;
+      PRAGMA user_version = 41;
+      COMMIT;
+    `);
+  }
+  if (Number((database.prepare("PRAGMA user_version").get() as {
+    user_version: number;
   }).user_version) === 41) {
     database.exec(`
       BEGIN IMMEDIATE;

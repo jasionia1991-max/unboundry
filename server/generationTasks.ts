@@ -41,6 +41,7 @@ import {
   GenerationTaskProviderBoundaryError,
   GenerationTaskRetryFenceError,
   GenerationTaskTransitionError,
+  GenerationTaskWorkflowLockedError,
   type GenerationPaidRetrySnapshot,
   type GenerationProviderAttemptEvidence,
   type GenerationTask,
@@ -48,6 +49,11 @@ import {
   type GenerationTaskInput,
 } from "./generationTaskStore";
 import { waitForProviderDelay } from "./providerRequestDeadline";
+import {
+  hasActiveGenerationTaskForNodeInTransaction,
+  hasUnresolvedGenerationOutcomeForNodeInTransaction,
+} from
+  "./generationAttemptQueries";
 import {
   commitGenerationMediaOutputSet,
   commitGenerationAlternateMediaResult,
@@ -67,6 +73,7 @@ import {
   readyMediaForOwner,
   type MediaRecord,
 } from "./mediaRegistry";
+import { workflowMediaCapacity } from "./mediaPublicationService";
 import { ResourceBudgetError } from "./resourceBudget";
 import {
   arkVideoBase64BudgetBytes,
@@ -148,6 +155,7 @@ import {
   type TextGenerationInput,
   type TextGenerationRequest,
 } from "./generationProvider";
+import { retrieveVolcengineArkTextResponse } from "./volcengineArkTextProvider";
 import type { TextProviderRegistry } from "./providerGenerationTextRuntime";
 import {
   downloadProviderResultMedia,
@@ -309,6 +317,13 @@ let persistentGenerationWorkerStartup:
   | undefined;
 let persistentGenerationWorkerCoordinator: RuntimeRoleCoordinator | undefined;
 let persistentGenerationWorkerDataDirectory: string | undefined;
+let generationTaskSettlementObserver: (() => void) | undefined;
+
+export function registerGenerationTaskSettlementObserver(
+  observer: (() => void) | undefined,
+) {
+  generationTaskSettlementObserver = observer;
+}
 const launchedGenerationTasks = new Set<string>();
 const pendingGenerationRelaunches = new Map<string, GenerationTask["kind"]>();
 const runningImageRequests = new Map<string, AbortController>();
@@ -419,6 +434,13 @@ function runRegisteredGenerationExecution<T>(
     throw new Error("Generation runtime role coordinator is unavailable");
   }
   return Promise.resolve().then(execute);
+}
+
+/** Register non-Provider generation application work in the same active-role drain. */
+export function runRegisteredGenerationApplicationWork<T>(
+  execute: () => Promise<T> | T,
+) {
+  return runRegisteredGenerationExecution(execute);
 }
 
 export function runGenerationExecutionForRuntimeTest<T>(
@@ -653,6 +675,7 @@ function taskStore(launchOptions?: GenerationLaunchOptions) {
     if (
       task.providerTaskId &&
       (
+        task.kind === "text" ||
         task.kind === "video" ||
         task.kind === "audio" ||
         (
@@ -714,7 +737,9 @@ function taskStore(launchOptions?: GenerationLaunchOptions) {
     ).catch(() => undefined);
   }
   ensureGenerationRecoverySweep();
-  void runGenerationRecoverySweep().catch(() => undefined);
+  void runGenerationRecoverySweep()
+    .catch(() => undefined)
+    .finally(() => generationTaskSettlementObserver?.());
   return store;
 }
 
@@ -775,7 +800,9 @@ function ensureGenerationRecoverySweep() {
     return;
   }
   generationRecoverySweepTimer = setInterval(() => {
-    void runGenerationRecoverySweep().catch(() => undefined);
+    void runGenerationRecoverySweep()
+      .catch(() => undefined)
+      .finally(() => generationTaskSettlementObserver?.());
   }, 30_000);
   generationRecoverySweepTimer.unref?.();
 }
@@ -1080,8 +1107,17 @@ function durableWorkflowBinding(task: GenerationTask) {
     groupId: String(candidate.groupId),
     modelConfigurationRevision: String(candidate.modelConfigurationRevision),
     modelReleaseRevision: String(candidate.modelReleaseRevision),
+    ...(typeof candidate.reservationId === "string" &&
+        /^[a-f0-9-]{36}$/i.test(candidate.reservationId)
+      ? { reservationId: candidate.reservationId }
+      : {}),
     runId: String(candidate.runId),
   };
+}
+
+async function recheckWorkflowCapacityBeforePaidRequest(task: GenerationTask) {
+  const reservationId = durableWorkflowBinding(task)?.reservationId;
+  if (reservationId) await workflowMediaCapacity.recheck(reservationId);
 }
 
 function taskSummary(
@@ -2772,6 +2808,7 @@ function launchGenerationTask(
       // fails closed and the durable queued task is left for the next owner.
       launchGenerationTask(taskId, pendingKind, options);
     }
+    generationTaskSettlementObserver?.();
   });
   const abort = () => {
     runningImageRequests.get(taskId)?.abort();
@@ -2985,7 +3022,11 @@ function startupWorkerTestProviderFetcher(): typeof fetch | undefined {
         status: 200,
       });
     }
+    const responseId = method === "GET" && url.includes("/responses/")
+      ? decodeURIComponent(url.slice(url.lastIndexOf("/") + 1))
+      : "resp_m81-startup-fixture";
     return new Response(JSON.stringify({
+      id: responseId,
       output: [{
         content: [{
           text: "M81 startup worker fake Provider result",
@@ -3091,8 +3132,10 @@ type TextTaskStore = Pick<
   ReturnType<typeof createGenerationTaskStore>,
   | "dataDirectory"
   | "get"
+  | "hasUnsafeProviderAttemptForNewPaidRetry"
   | "markProviderResponseReceived"
   | "recordProviderAttempt"
+  | "setProviderTaskId"
   | "transition"
 >;
 
@@ -3189,6 +3232,7 @@ export async function executeTextTaskWithDependencies(
       profileId: string,
       ownerId: string,
     ) => Promise<ProviderGenerationRequestLease>;
+    beforePaidProviderRequest?: (task: GenerationTask) => Promise<void>;
     fetcher: typeof fetch;
     mediaContentTypeForOwner?: (input: {
       assetId: string;
@@ -3219,10 +3263,19 @@ export async function executeTextTaskWithDependencies(
   },
 ) {
   const current = dependencies.store.get(taskId);
-  if (!current || current.kind !== "text" || current.state !== "queued" || !current.ownerId) {
+  const isStoredResponseRecovery = current?.kind === "text" &&
+    current.state === "running" && Boolean(current.providerTaskId);
+  if (
+    !current ||
+    current.kind !== "text" ||
+    (!isStoredResponseRecovery && current.state !== "queued") ||
+    !current.ownerId
+  ) {
     return;
   }
-  const running = dependencies.store.transition(taskId, "running");
+  const running = isStoredResponseRecovery
+    ? current
+    : dependencies.store.transition(taskId, "running");
   if (!running?.providerProfileId || !running.providerModelId) {
     dependencies.store.transition(taskId, "failed", {
       code: "MODEL_UNAVAILABLE",
@@ -3241,6 +3294,39 @@ export async function executeTextTaskWithDependencies(
         "文字模型配置已失效",
       );
     }
+    let result: {
+      providerResponseId?: string;
+      providerUsageTokens?: number;
+      text: string;
+    };
+    if (running.providerTaskId) {
+      if (protocol !== "native") {
+        throw new TextGenerationProviderError(
+          "FORMAT",
+          "当前文字模型不支持按原响应编号恢复",
+        );
+      }
+      const lease = await dependencies.acquireProfile(
+        running.providerProfileId,
+        running.ownerId!,
+      );
+      try {
+        requireTaskProviderSnapshot(
+          running,
+          lease.profile,
+          lease.credentialRevision,
+        );
+        const leasedFetch = fetchWithProviderLease(lease, dependencies.fetcher);
+        result = await retrieveVolcengineArkTextResponse(
+          lease.profile,
+          running.providerTaskId,
+          leasedFetch,
+          dependencies.signal,
+        );
+      } finally {
+        lease.release();
+      }
+    } else {
     const snapshots = textTaskInputSnapshots(running.parameters.inputs);
     const inputs: TextGenerationInput[] = [];
     for (const snapshot of snapshots) {
@@ -3264,6 +3350,10 @@ export async function executeTextTaskWithDependencies(
       const prepareArkImage = dependencies.prepareArkImage;
       const arkFilesAvailable = protocol === "native" &&
         arkFilesEnabled() &&
+        // A strong workflow counts every outbound Provider POST, including
+        // Files uploads. Keep its one-logical-node/one-POST ceiling exact;
+        // oversized inline media fails before the paid Responses POST.
+        !durableWorkflowBinding(running) &&
         acquireGenerationSnapshot !== undefined &&
         prepareArkImage !== undefined;
       if (arkFilesAvailable && snapshot.kind === "image") {
@@ -3340,11 +3430,11 @@ export async function executeTextTaskWithDependencies(
           : url,
       });
     }
+    await dependencies.beforePaidProviderRequest?.(running);
     const lease = await dependencies.acquireProfile(
       running.providerProfileId,
       running.ownerId!,
     );
-    let result: { providerUsageTokens?: number; text: string };
     try {
       requireTaskProviderSnapshot(
         running,
@@ -3373,6 +3463,8 @@ export async function executeTextTaskWithDependencies(
               : "medium",
           },
           {
+            acceptProviderTaskId: (providerTaskId) =>
+              dependencies.store.setProviderTaskId(taskId, providerTaskId),
             beforeProviderRequest: () =>
               dependencies.store.recordProviderAttempt(taskId),
             fetcher: leasedFetch,
@@ -3384,6 +3476,13 @@ export async function executeTextTaskWithDependencies(
       );
     } finally {
       lease.release();
+    }
+    if (
+      result.providerResponseId &&
+      !dependencies.store.get(taskId)?.providerTaskId
+    ) {
+      dependencies.store.setProviderTaskId(taskId, result.providerResponseId);
+    }
     }
     if (dependencies.store.get(taskId)?.state !== "running") return;
     dependencies.store.markProviderResponseReceived({
@@ -3405,7 +3504,25 @@ export async function executeTextTaskWithDependencies(
     const failure = safeFailure(error, "text");
     logGenerationDiagnostic(taskId, "text-execution", error, failure.code);
     try {
-      dependencies.store.transition(taskId, "failed", failure);
+      const latest = dependencies.store.get(taskId);
+      const shouldRecoverOriginal = Boolean(latest?.providerTaskId) ||
+        (
+          error instanceof TextGenerationProviderError &&
+          error.providerTaskMayStillRun &&
+          dependencies.store.hasUnsafeProviderAttemptForNewPaidRetry(taskId)
+        );
+      dependencies.store.transition(
+        taskId,
+        shouldRecoverOriginal ? "recovering" : "failed",
+        shouldRecoverOriginal
+          ? {
+              code: "AUTOMATIC_RESULT_RECOVERY",
+              message: latest?.providerTaskId
+                ? "系统正在按原文字响应编号自动找回结果；不会重新提交付费请求"
+                : "模型平台可能已受理；系统已禁止重复提交并保留原任务证据",
+            }
+          : failure,
+      );
     } catch {
       // A concurrent terminal transition wins; no second Provider call is made.
     }
@@ -3426,6 +3543,7 @@ async function executeTextTask(taskId: string, fetcher: typeof fetch = fetch) {
     await executeTextTaskWithDependencies(taskId, {
       acquireGenerationSnapshot: acquireProviderGenerationSnapshot,
       acquireProfile: acquireProviderGenerationRequestLease,
+      beforePaidProviderRequest: recheckWorkflowCapacityBeforePaidRequest,
       fetcher,
       mediaUrlForOwner: providerMediaUrlForOwner,
       ossReadUrlForMedia: async (media) => {
@@ -4481,6 +4599,7 @@ async function executeRelayMediaTask(
       );
       cleanup = built?.cleanup;
       try {
+        await recheckWorkflowCapacityBeforePaidRequest(running);
         const submission = await withProviderRequestLease({
           expected: profile,
           fetcher: fetch,
@@ -4858,6 +4977,7 @@ async function executeRelayGptImageTask(
   try {
     let result: Awaited<ReturnType<typeof sendPreparedRelayGptImageRequest>>;
     try {
+      await recheckWorkflowCapacityBeforePaidRequest(running);
       result = await withProviderRequestLease({
         expected: profile,
         fetcher: fetch,
@@ -4965,6 +5085,7 @@ async function executeImageTask(taskId: string) {
       ),
     );
     if (protocol === "native") {
+      await recheckWorkflowCapacityBeforePaidRequest(running);
       const result = await withProviderRequestLease({
         fetcher: fetch,
         ownerId: current.ownerId,
@@ -5503,6 +5624,7 @@ async function executeVideoTask(
     let providerTaskId = running.providerTaskId;
     if (!providerTaskId) {
       const inputs = await arkVideoMediaInputs(running);
+      await recheckWorkflowCapacityBeforePaidRequest(running);
       const created = await withProviderRequestLease({
         expected: profile,
         fetcher,
@@ -5739,6 +5861,7 @@ async function executeAudioTask(taskId: string) {
     let providerTaskId = running.providerTaskId;
     const queryKind = audioQueryKind(running.parameters);
     if (!providerTaskId) {
+      await recheckWorkflowCapacityBeforePaidRequest(running);
       const created = await withProviderRequestLease({
         expected: profile,
         fetcher: fetch,
@@ -6534,6 +6657,7 @@ export const generationTaskApplication = Object.freeze({
   GenerationTaskProviderBoundaryError,
   GenerationTaskRetryFenceError,
   GenerationTaskTransitionError,
+  GenerationTaskWorkflowLockedError,
   ProviderProfileLockBusyError,
   acquireProviderGenerationRequestLease,
   assertPersistedCanvasRevision,
@@ -6545,9 +6669,12 @@ export const generationTaskApplication = Object.freeze({
   generationRuntimeDecision,
   generationRuntimeProblems,
   generationSafetyStatus,
+  hasActiveGenerationTaskForNodeInTransaction,
+  hasUnresolvedGenerationOutcomeForNodeInTransaction,
   lastReconcileAt,
   launchGenerationTask,
   missingModelMessage,
+  runRegisteredApplicationWork: runRegisteredGenerationApplicationWork,
   pollReconcileProviderTask,
   preAdmissionRuntimeProblem,
   providerConfigurationVersion,

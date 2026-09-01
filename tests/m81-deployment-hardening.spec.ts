@@ -164,6 +164,7 @@ test("release role and bridge-mode selection are exact and fail closed", () => {
   expect(releaseRoleFromEnvironment("0.6.66", {})).toBe("final");
   expect(releaseRoleFromEnvironment("0.6.68", {})).toBe("final");
   expect(releaseRoleFromEnvironment("0.6.69", {})).toBe("final");
+  expect(releaseRoleFromEnvironment("0.6.70", {})).toBe("final");
   expect(releaseRoleFromEnvironment("0.5.2", {})).toBe("bridge");
   expect(releaseRoleFromEnvironment("0.5.2", {
     UNBOUNDRY_RELEASE_ROLE: "bridge",
@@ -2033,6 +2034,20 @@ async function writeOldLocalUploadCandidate(
 function rollbackMigration39To38(database: DatabaseSync) {
   if (Number((database.prepare("PRAGMA user_version").get() as {
     user_version: number;
+  }).user_version) === 42) {
+    database.exec(`
+      BEGIN IMMEDIATE;
+      DROP TABLE media_capacity_reservations;
+      DROP TABLE workflow_run_locks;
+      DROP TABLE workflow_run_nodes;
+      DROP TABLE workflow_runs;
+      DELETE FROM schema_migrations WHERE version = 42;
+      PRAGMA user_version = 41;
+      COMMIT;
+    `);
+  }
+  if (Number((database.prepare("PRAGMA user_version").get() as {
+    user_version: number;
   }).user_version) === 41) {
     database.exec(`
       BEGIN IMMEDIATE;
@@ -3650,8 +3665,8 @@ test("bridge schema-37 routing and exact schema-38 startup never run implicit mi
       expect(migrated38.prepare(`
         SELECT version, name FROM schema_migrations ORDER BY version DESC LIMIT 1
       `).get()).toEqual({
-        name: "seedance-character-compliance-precheck",
-        version: 41,
+        name: "server-authoritative-workflow-runs",
+        version: 42,
       });
       expect(migrated38.prepare(`
         SELECT credential_revision FROM account_provider_credential_epochs
@@ -5818,8 +5833,16 @@ test("programmatic Vite close drains durable generation and permits a fresh acti
     });
     try {
       expect(database.prepare(`
-        SELECT state FROM generation_tasks WHERE id = ?
-      `).get(fixture.taskId)).toEqual({ state: "failed" });
+        SELECT error_code, state FROM generation_tasks WHERE id = ?
+      `).get(fixture.taskId)).toEqual({
+        error_code: "AUTOMATIC_RESULT_RECOVERY",
+        state: "recovering",
+      });
+      expect(database.prepare(`
+        SELECT COUNT(*) AS count
+        FROM generation_provider_attempts
+        WHERE task_id = ? AND execution_attempt = 1
+      `).get(fixture.taskId)).toEqual({ count: 1 });
     } finally {
       database.close();
     }

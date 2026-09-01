@@ -54,6 +54,7 @@ import {
   claimLegacyGenerationDataCommand,
   deleteAccountGenerationDataCommand,
 } from "./generationTransactionCommands";
+import { deleteWorkflowRunsForOwnerInTransaction } from "./workflowRunLocks";
 import {
   failAccountMediaDeletionCommand,
   finishAccountMediaDeletionCommand,
@@ -1258,6 +1259,10 @@ function finishAccountDeletion(
     if (privateTemplates !== 0 || publicTemplates !== 0) {
       throw new AccountDeletionReferencedError("Account template transfer is incomplete");
     }
+    // Workflow nodes retain task foreign keys after terminal completion.
+    // Active/unresolved work was fenced above, so remove the aggregate before
+    // deleting its generation task evidence.
+    deleteWorkflowRunsForOwnerInTransaction(store, ownerId);
     executeTransactionScopedCommand(store, deleteAccountGenerationDataCommand, ownerId);
     store.prepare(
       "DELETE FROM account_provider_credentials WHERE account_id = ?",

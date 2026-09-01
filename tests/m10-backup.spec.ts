@@ -207,6 +207,20 @@ function createKeys() {
 function rollbackMigration39To38(database: DatabaseSync) {
   if (Number((database.prepare("PRAGMA user_version").get() as {
     user_version: number;
+  }).user_version) === 42) {
+    database.exec(`
+      BEGIN IMMEDIATE;
+      DROP TABLE media_capacity_reservations;
+      DROP TABLE workflow_run_locks;
+      DROP TABLE workflow_run_nodes;
+      DROP TABLE workflow_runs;
+      DELETE FROM schema_migrations WHERE version = 42;
+      PRAGMA user_version = 41;
+      COMMIT;
+    `);
+  }
+  if (Number((database.prepare("PRAGMA user_version").get() as {
+    user_version: number;
   }).user_version) === 41) {
     database.exec(`
       BEGIN IMMEDIATE;
@@ -3490,7 +3504,7 @@ test("final-candidate exact-v37 chain rehydrates fake OSS offline and validates 
         backfilledDurations: 1,
         drainMilliseconds: 0,
         sourceVersion: 37,
-        targetVersion: 41,
+        targetVersion: 42,
       },
       migrationNativeAudit: {
         externalNetworkAttempts: 0,
@@ -3526,7 +3540,7 @@ test("final-candidate exact-v37 chain rehydrates fake OSS offline and validates 
           readiness: {
             mode: "active",
             mutationsAccepted: true,
-            schemaVersion: 41,
+            schemaVersion: 42,
             status: "ready",
           },
           releaseId: "v0.5.2",
@@ -4832,7 +4846,7 @@ test("logical fingerprints cover every table and sqlite_sequence independent of 
     const before = inspectBackupDatabase(original, inspectionRoot);
     const afterVacuum = inspectBackupDatabase(reorganized, inspectionRoot);
     expect(afterVacuum.logicalSha256).toBe(before.logicalSha256);
-    expect(before.tables).toHaveLength(31);
+    expect(before.tables).toHaveLength(35);
     expect(before.tables.map(({ name }) => name)).toEqual([
       "account_delete_intents",
       "account_permissions",
@@ -4847,6 +4861,7 @@ test("logical fingerprints cover every table and sqlite_sequence independent of 
       "generation_task_events",
       "generation_tasks",
       "media_assets",
+      "media_capacity_reservations",
       "media_delete_intents",
       "media_publication_attempts",
       "model_profiles",
@@ -4865,6 +4880,9 @@ test("logical fingerprints cover every table and sqlite_sequence independent of 
       "sqlite_sequence",
       "user_templates",
       "users",
+      "workflow_run_locks",
+      "workflow_run_nodes",
+      "workflow_runs",
     ]);
     expect(before.schema.objectCounts.trigger).toBe(15);
 

@@ -23,6 +23,57 @@ export type ModelExecutionAdapterId =
   | "relay-gpt-image"
   | "relay-media";
 
+export type WorkflowRecoveryGrade =
+  | "DURABLE_PROVIDER_TASK"
+  | "DURABLE_USAGE_MATCH"
+  | "STORED_RESPONSE_OR_FENCED_UNKNOWN"
+  | "SYNC_RESPONSE_OR_FENCED_UNKNOWN";
+
+export type WorkflowRecoveryPolicy = Readonly<{
+  evidence: string;
+  grade: WorkflowRecoveryGrade;
+  workflowEligible: boolean;
+}>;
+
+const workflowRecoveryPolicies = Object.freeze({
+  "ark-text": Object.freeze({
+    evidence: "one store:true Responses POST; its resp id is durably linked and retrieved by GET, while pre-id ambiguity remains fenced from retry",
+    grade: "STORED_RESPONSE_OR_FENCED_UNKNOWN",
+    workflowEligible: true,
+  }),
+  "ark-video": Object.freeze({
+    evidence: "the accepted Ark task id is durably linked and queried; pre-id response ambiguity is fenced from retry",
+    grade: "DURABLE_PROVIDER_TASK",
+    workflowEligible: true,
+  }),
+  "mureka-audio": Object.freeze({
+    evidence: "the accepted Mureka task id is durably linked and queried; pre-id response ambiguity is fenced from retry",
+    grade: "DURABLE_PROVIDER_TASK",
+    workflowEligible: true,
+  }),
+  "openrouter-image": Object.freeze({
+    evidence: "one synchronous image POST; boundary evidence forbids any automatic paid retry",
+    grade: "SYNC_RESPONSE_OR_FENCED_UNKNOWN",
+    workflowEligible: true,
+  }),
+  "relay-gpt-image": Object.freeze({
+    evidence: "one synchronous GPT Image POST; response evidence and durable publication are recovered without another Provider submit",
+    grade: "SYNC_RESPONSE_OR_FENCED_UNKNOWN",
+    workflowEligible: true,
+  }),
+  "relay-media": Object.freeze({
+    evidence: "the accepted relay task id is queried, and a lost create response is matched against usage records without another submit",
+    grade: "DURABLE_USAGE_MATCH",
+    workflowEligible: true,
+  }),
+} satisfies Readonly<Record<ModelExecutionAdapterId, WorkflowRecoveryPolicy>>);
+
+export function workflowRecoveryPolicy(
+  adapterId: ModelExecutionAdapterId,
+): WorkflowRecoveryPolicy {
+  return workflowRecoveryPolicies[adapterId];
+}
+
 export type ModelExecutionIdentity = Readonly<{
   adapterId?: ModelExecutionAdapterId;
   providerDriver: string;

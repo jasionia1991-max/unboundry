@@ -13,7 +13,12 @@ import {
 } from "./generationSafety";
 import {
   generationProviderAttemptCreatedAt,
+  hasUnresolvedGenerationOutcomeForNodeInTransaction,
 } from "./generationAttemptQueries";
+import {
+  workflowRunAcceptingAdmissionsInTransaction,
+  workflowRunLockOwnerInTransaction,
+} from "./workflowRunLocks";
 export { generationProviderAttemptCounts } from "./generationAttemptQueries";
 import { generationCapabilityRegistry } from "./generationCapabilityRegistry";
 import type { GenerationCapabilityKind } from "../types/nodeVocabulary";
@@ -230,6 +235,15 @@ export class GenerationTaskConflictError extends Error {
   constructor() {
     super("Idempotency key was already used for a different request");
     this.name = "GenerationTaskConflictError";
+  }
+}
+
+export class GenerationTaskWorkflowLockedError extends Error {
+  readonly code = "WORKFLOW_NODE_LOCKED";
+
+  constructor() {
+    super("当前节点正在整组执行中，请等待完成后再单独生成");
+    this.name = "GenerationTaskWorkflowLockedError";
   }
 }
 
@@ -1324,6 +1338,49 @@ export function createGenerationTaskStore(dataDirectory: string) {
           const task = toTask(row);
           database.exec("COMMIT");
           return { created, task };
+        }
+
+        const workflowLockRunId = workflowRunLockOwnerInTransaction({
+          canvasId: normalized.canvasId,
+          database,
+          nodeId: normalized.nodeId,
+          ownerId: normalized.ownerId,
+        });
+        const workflowBinding = normalized.modelConfiguration?.workflowBinding;
+        const workflowRunId = workflowBinding &&
+            typeof workflowBinding === "object" &&
+            typeof (workflowBinding as Record<string, unknown>).runId === "string"
+          ? String((workflowBinding as Record<string, unknown>).runId)
+          : undefined;
+        const workflowRunAcceptingAdmissions = workflowRunId
+          ? workflowRunAcceptingAdmissionsInTransaction({
+              canvasId: normalized.canvasId,
+              database,
+              ownerId: normalized.ownerId,
+              runId: workflowRunId,
+            })
+          : false;
+        if (
+          workflowRunId
+            ? workflowLockRunId !== workflowRunId ||
+              !workflowRunAcceptingAdmissions
+            : Boolean(workflowLockRunId)
+        ) {
+          throw new GenerationTaskWorkflowLockedError();
+        }
+        if (
+          workflowRunId &&
+          hasUnresolvedGenerationOutcomeForNodeInTransaction(database, {
+            canvasId: normalized.canvasId,
+            kind: normalized.kind,
+            nodeId: normalized.nodeId,
+            ownerId: normalized.ownerId,
+          })
+        ) {
+          throw new GenerationProviderAttemptBlockedError(
+            "RETRY_OUTCOME_UNKNOWN",
+            "该节点的原任务结果仍不明确；系统只会核对原任务，不会因新整组编号再次提交",
+          );
         }
 
         if (database.prepare(`
@@ -3169,6 +3226,30 @@ export function createGenerationTaskStore(dataDirectory: string) {
               attempt.execution_attempt,
               attempt.outcome,
             );
+            if (attemptUpdate.changes !== 1) {
+              throw new Error("Provider attempt changed concurrently");
+            }
+          }
+        }
+        if (
+          nextState === "recovering" &&
+          error?.code === "AUTOMATIC_RESULT_RECOVERY" &&
+          !current.provider_task_id &&
+          current.attempt >= 1
+        ) {
+          const attempt = providerAttemptForTask(current);
+          if (attempt?.outcome === "boundary-claimed") {
+            const attemptUpdate = database.prepare(`
+              UPDATE generation_provider_attempts
+              SET
+                outcome = 'outcome-unknown',
+                failure_code = 'OUTCOME_UNKNOWN_BILLING_RISK',
+                finished_at = ?
+              WHERE
+                task_id = ?
+                AND execution_attempt = ?
+                AND outcome = 'boundary-claimed'
+            `).run(timestamp, current.id, attempt.execution_attempt);
             if (attemptUpdate.changes !== 1) {
               throw new Error("Provider attempt changed concurrently");
             }

@@ -1,10 +1,14 @@
 # Unboundry 项目级 Agent 施工守则
 
+> 2026-09-01 最新用户 `/goal` 已完整激活 INC-GEN-025，并明确覆盖下方“仅文档/未授权”的旧断点描述。当前唯一实现工作树为 `/Users/mymy/Documents/unboundry-inc-gen-025-server-authoritative-2026-09-01`，分支 `codex/inc-gen-025-server-authoritative-group-run`，实时 `origin/main` 基线 `74dc9d9307abee9169a2d2aefc4b01add96114c9`。目标版本已确认为 `v0.6.70`，实现、schema、GitHub/PR/CI/merge/tag/Release、成对生产迁移/回退及门通过后指定 Canvas/group 唯一一次真实整组验收均获本 Goal 一次性授权；真实预算不超过 CNY 300 等值，全部 outbound Provider POST 不超过 11，任何逻辑节点不得第二次原始 POST。受保护文件继续永久禁止读取、哈希、修改、暂存、移动或删除。本段为最新权威，历史段落只作证据。
+
 本文件适用于“包含本文件的 Unboundry Git 工作树”，不再用固定目录名代替仓库身份。用户最新明确指令优先；若与仓库状态或本文冲突，先停止并向用户报告，不得猜测。
 
-当前生产身份：生产运行`v0.6.68/schema41`且健康；v0.6.68发布授权已消费。原任务已无费用收口为cancelled，但浏览器本地checkpoint/active lease仍阻止客户端自动解绑；整组点击0/1、Provider POST0/11、费用0。v0.6.69本地候选以独立terminal-only服务端sweep收口，当前严格为`PRODUCTION_V0_6_68_TECHNICAL_PASS / REAL_GROUP_NOT_CLICKED / V0_6_69_CANDIDATE_REFROZEN / RELEASE_AUTHORIZED_NOT_CONSUMED / USER_RECHECK`。
+当前生产身份：生产运行`v0.6.69/schema41`且健康；INC-GEN-025 当前为 `GOAL_ACTIVE / R7_FORMAL_FULL_EXECUTED_TARGETED_CLOSURE_PASS / R7_DELTA_REVIEW_GO / R8_GITHUB_PENDING / PRODUCTION_V0_6_69_UNCHANGED`。任何发布或真实点击只可在本 Goal 的前置技术、Review、唯一 formal safe full、CI、生产零付费和容量门全部通过后消费。
 
-2026-09-01 INC-GEN-023 当前候选状态：v0.6.69只对显式owner+Canvas allowlist内真正不可恢复的failed/cancelled精确绑定做服务端单事务/CAS解绑；success、非终态、持有provider task id或未决attempt的可恢复failed任务、非allowlist和task binding不匹配保持不变，不新增或修改generation/Provider/media账本。全部复审问题均已修复；terminal detach与generation recovery完全分离且timer纳入runtime lease/drain，m81 `42/42`、m85 `28/28`、m93 `7/7`、m38 `18/18`通过，第四轮独立复审`P0=0/P1=0/P2=0/GO`。用户已确认并允许发布v0.6.69，授权尚未消费；真实整组点击权限未消费。实时断点为`spec/INC_GEN_023_CHECKPOINT.md`。
+2026-09-01 INC-GEN-025 当前状态：最新 `/goal` 已覆盖早先“只落文档”断点并激活一次性实施授权。服务端durable workflow run、immutable semantic plan、generation task/media publication权威结果、独立Canvas projection、media容量reservation和确定性task幂等已完成R1-R5实现与定向验证；R6主线程+唯一独立Review最终为67文件、277 tracked hunks+15 untracked全文、`P0=0/P1=0/P2=0/GO`。R7唯一formal safe full原始`1149/1154`已永久保留，5项失败均由m2/m38/m92/m57最小子集及共享m5关闭，未运行第二次full；同一Reviewer复审最终增量11文件并盘点整体72文件/299 tracked hunks，结论`P0=0/P1=0/P2=0/GO`。当前进入R8 GitHub/不可变发布；生产迁移与真实点击尚未执行。INC-GEN-024窄候选继续为`SUPERSEDED_NO_GO`。实时断点为`spec/INC_GEN_025_CHECKPOINT.md`。
+
+2026-09-01 INC-GEN-024 当前候选状态：v0.6.69生产真实点击证明旧`cancelled / USER_ABANDONED` accepted task会永久阻止新明确点击，但重复计费围栏有效。v0.6.70候选只允许一次明确新点击在逐项匹配task/node/kind及服务端`cancelled / USER_ABANDONED`后结束旧checkpoint并执行当前图；自动恢复、普通failed、running、outcome-unknown或身份不匹配继续禁止新提交。safe m22 `45/45`、治理m38最终`18/18`与preflight通过；尚未版本化、独立Review或获得发布/再次点击授权。实时断点为`spec/INC_GEN_024_CHECKPOINT.md`。
 
 2026-09-01 INC-GEN-021 当前候选状态：现网截图不构成整组通过；v0.6.67候选已为图片/视频/音频统一 durable staging、deferred publication 和运行时自动续传，Provider 已返回后不因短暂 OSS 故障丢弃原始字节，也不新增 attempt/Provider POST。TypeScript、diff-check与直接相关 safe specs 已通过；唯一正式safe full原始1139/1140，同源码只复验唯一无关m69失败后6/6通过，未重复full。生产仍是v0.6.66。用户已确认并允许发布v0.6.67；发布后真实整组授权为CNY300、最多11次POST、一次点击、不重试、结果不明只核对原任务。实时断点为`spec/INC_GEN_021_CHECKPOINT.md`。
 
@@ -31,45 +35,54 @@
 1. `上线规矩.md`
 2. `spec/UNBOUNDRY_CURRENT_STATE.md`
 3. `README.md`
-4. `spec/INC_GEN_023_CHECKPOINT.md`（当前唯一实时断点；v0.6.69已授权、待复审后发布）
-5. `spec/INC_GEN_023_SERVER_TERMINAL_DETACH_PLAN_2026-09-01.md`
-6. `spec/INC_GEN_023_ACCEPTANCE_MATRIX_2026-09-01.md`
-7. `spec/INC_GEN_022_CHECKPOINT.md`（历史生产断点；v0.6.68已部署）
-8. `spec/INC_GEN_021_CHECKPOINT.md`（历史跨媒体可靠性断点）
-9. `spec/INC_GEN_021_CROSS_MEDIA_ONE_CLICK_RELIABILITY_PLAN_2026-09-01.md`
-10. `spec/INC_GEN_021_ACCEPTANCE_MATRIX_2026-09-01.md`
-11. `spec/INC_GEN_020_CHECKPOINT.md`（历史生产断点；v0.6.66生产技术通过）
-12. `spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_ACCEPTANCE_MATRIX_2026-08-30.md`
-13. `spec/INC_GEN_018_ONE_SHOT_GOAL_PROMPT_2026-08-31.md`（历史授权已消费，不得恢复）
-14. `spec/INC_GEN_017_CHECKPOINT.md`（历史生产断点）
-15. `spec/INC_GEN_017_WORKFLOW_SELF_HEALING_AND_MODEL_CONTRACT_ISOLATION_PLAN_2026-08-28.md`
-16. `spec/INC_GEN_017_ACCEPTANCE_MATRIX_2026-08-28.md`
-17. `spec/INC_GEN_017_ONE_SHOT_GOAL_PROMPT_2026-08-28.md`（历史授权已消费，不得恢复）
-18. `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_CHECKPOINT.md`（历史生产断点）
-19. `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_PLAN_2026-08-27.md`
-20. `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_ACCEPTANCE_MATRIX_2026-08-27.md`
-21. `spec/MODEL_CONTRACT_002_CHECKPOINT.md`（历史发布断点）
-22. `spec/MODEL_CONTRACT_002_IMMUTABLE_REVISION_REMEDIATION_PLAN_2026-08-27.md`
-23. `spec/MODEL_CONTRACT_002_ACCEPTANCE_MATRIX_2026-08-27.md`
-24. `spec/UNBOUNDRY_REMEDIATION_PLAN_2026-08-09.md`
-25. `spec/UNBOUNDRY_REMEDIATION_CHECKPOINT.md`
-26. `spec/UNBOUNDRY_HANDOFF_2026-08-09.md`
-27. `TASKS.md` 当前区块
-28. `spec/INCIDENT_2026-08-20_TEMPLATE_GROUP_FAILURE_AND_QUEUED_TASK_HANDOFF.md`（2026-08-20 事一/事二交接，接手必读）
-29. `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`（事一/事二查证后的全局审计结论、修复设计与验收门）
-30. `spec/UNBOUNDRY_ACCEPTANCE_MATRIX.md` 当前区块
+4. `spec/INC_GEN_025_CHECKPOINT.md`（当前唯一实时断点；最新Goal已激活实施与一次性发布/验收授权）
+5. `spec/INC_GEN_025_SERVER_AUTHORITATIVE_GROUP_RUN_PLAN_2026-09-01.md`
+6. `spec/INC_GEN_025_ACCEPTANCE_MATRIX_2026-09-01.md`
+7. `spec/INC_GEN_025_ONE_SHOT_GOAL_PROMPT_2026-09-01.md`（只有用户在新Session完整粘贴时才是实施/版本/发布/真实验收授权）
+8. `spec/INC_GEN_024_CHECKPOINT.md`（历史诊断断点；v0.6.70窄候选SUPERSEDED_NO_GO）
+9. `spec/INC_GEN_024_EXPLICIT_TERMINAL_RESTART_PLAN_2026-09-01.md`
+10. `spec/INC_GEN_024_ACCEPTANCE_MATRIX_2026-09-01.md`
+11. `spec/INC_GEN_023_CHECKPOINT.md`（历史生产断点；v0.6.69已部署）
+12. `spec/INC_GEN_023_SERVER_TERMINAL_DETACH_PLAN_2026-09-01.md`
+13. `spec/INC_GEN_023_ACCEPTANCE_MATRIX_2026-09-01.md`
+14. `spec/INC_GEN_022_CHECKPOINT.md`（历史生产断点；v0.6.68已部署）
+15. `spec/INC_GEN_021_CHECKPOINT.md`（历史跨媒体可靠性断点）
+16. `spec/INC_GEN_021_CROSS_MEDIA_ONE_CLICK_RELIABILITY_PLAN_2026-09-01.md`
+17. `spec/INC_GEN_021_ACCEPTANCE_MATRIX_2026-09-01.md`
+18. `spec/INC_GEN_020_CHECKPOINT.md`（历史生产断点；v0.6.66生产技术通过）
+19. `spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_ACCEPTANCE_MATRIX_2026-08-30.md`
+20. `spec/INC_GEN_018_ONE_SHOT_GOAL_PROMPT_2026-08-31.md`（历史授权已消费，不得恢复）
+21. `spec/INC_GEN_017_CHECKPOINT.md`（历史生产断点）
+22. `spec/INC_GEN_017_WORKFLOW_SELF_HEALING_AND_MODEL_CONTRACT_ISOLATION_PLAN_2026-08-28.md`
+23. `spec/INC_GEN_017_ACCEPTANCE_MATRIX_2026-08-28.md`
+24. `spec/INC_GEN_017_ONE_SHOT_GOAL_PROMPT_2026-08-28.md`（历史授权已消费，不得恢复）
+25. `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_CHECKPOINT.md`（历史生产断点）
+26. `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_PLAN_2026-08-27.md`
+27. `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_ACCEPTANCE_MATRIX_2026-08-27.md`
+28. `spec/MODEL_CONTRACT_002_CHECKPOINT.md`（历史发布断点）
+29. `spec/MODEL_CONTRACT_002_IMMUTABLE_REVISION_REMEDIATION_PLAN_2026-08-27.md`
+30. `spec/MODEL_CONTRACT_002_ACCEPTANCE_MATRIX_2026-08-27.md`
+31. `spec/UNBOUNDRY_REMEDIATION_PLAN_2026-08-09.md`
+32. `spec/UNBOUNDRY_REMEDIATION_CHECKPOINT.md`
+33. `spec/UNBOUNDRY_HANDOFF_2026-08-09.md`
+34. `TASKS.md` 当前区块
+35. `spec/INCIDENT_2026-08-20_TEMPLATE_GROUP_FAILURE_AND_QUEUED_TASK_HANDOFF.md`（2026-08-20 事一/事二交接，接手必读）
+36. `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`（事一/事二查证后的全局审计结论、修复设计与验收门）
+37. `spec/UNBOUNDRY_ACCEPTANCE_MATRIX.md` 当前区块
 
 然后只读核对 `pwd`、Git 分支、HEAD、工作树、package 版本和 Node 版本。与施工断点不一致时停止，不得继续施工。
 
 ### 默认工具链与生产兼容通道
 
 - 项目普通开发、类型检查、构建和新shell默认使用`.node-version`中的Node `25.9.0`与`packageManager`中的npm `11.12.1`；不得再把`/Users/mymy/.hermes/node/bin`或`/Users/mymy/.local/bin`中的Node 22预置到普通shell PATH。
-- 当前生产v0.6.68真实运行Node `22.23.2` / npm `10.9.8`；本版没有迁移生产Node运行时。
+- 当前生产v0.6.69真实运行Node `22.23.2` / npm `10.9.8`；本版没有迁移生产Node运行时。
 - `scripts/run-safe-tests.mjs`、源码覆盖门和不可变release builder继续使用Node `22.23.1` / npm `10.9.8`专用兼容通道，以复现当前生产代际；这是显式测试/发布例外，不是项目默认shell。`engines`同时覆盖两端，未来迁移生产前不得删除Node 22兼容边界。
 
 ## 2. 当前授权边界
 
-- **2026-09-01 INC-GEN-023 当前权威状态**：用户要求一步到位解决图片/视频/音频一次点击交付。现网v0.6.68健康，原任务已cancelled但浏览器本地checkpoint/lease仍阻止客户端解绑；真实整组尚未运行。v0.6.69本地候选只对显式allowlist内真正不可恢复的failed/cancelled精确绑定做服务端单事务/CAS解绑，定向safe证据通过且生成/Provider/媒体账本不变；第四轮独立复审`P0=0/P1=0/P2=0/GO`。用户已明确确认并允许发布v0.6.69，该授权尚未消费；真实整组仍只允许CNY300、最多11次Provider POST、一次点击、不重试、结果不明只核对原任务；
+- **2026-09-01 INC-GEN-025 当前权威状态**：用户最新 `/goal` 已明确授权当前隔离工作树的一次性实现、v0.6.70、Review、GitHub/Release、成对生产迁移/回退及全部门通过后的指定Canvas/group唯一真实点击。R1-R5实现与定向验证已完成，当前R6 Review；尚未commit/push/PR/tag/Release、生产写、Provider POST或OSS写；
+
+- **2026-09-01 INC-GEN-024 当前权威状态**：用户要求一步到位解决图片/视频/音频一次点击交付。现网v0.6.69健康；本轮唯一真实整组点击已消费，Provider POST0/11、费用0，但没有生成素材，不能写验收通过。v0.6.70本地候选只允许明确新点击越过精确`cancelled / USER_ABANDONED`旧accepted task，自动恢复和结果不明边界不放宽；safe m22 `45/45`与preflight通过。v0.6.70版本/发布授权、独立Review及新的真实点击/预算授权均未取得；
 
 - **2026-09-01 INC-GEN-020 当前权威状态**：用户的核心合同是“只点一次，系统自动保存/回收，不要求重复点击或去Provider平台找结果”。v0.6.66生产技术门已通过，原任务自动收口、整组页面解锁且无新attempt/Provider POST；实页任务面板已读验，但节点alert有一处旧文案残余，所以保持`USER_RECHECK`。v0.6.66一次性commit/push/PR/tag/Release、备份与生产切换授权已消费；新代码、新版本、新发布或Provider POST都需新授权；
 

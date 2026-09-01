@@ -35,6 +35,7 @@ import type {
   ModelReleaseDocument,
   ModelReleaseRevision,
 } from "../types/modelReleaseRevisions";
+import { currentSchemaVersion } from "./database";
 
 export type ModelContractUpgradeAction =
   | "none"
@@ -1314,13 +1315,13 @@ function applyModelContractUpgradeWithPolicy(
     }
     const publishedDenominator = before.publishedModelCount;
     if (
-      before.schemaVersion !== 41 ||
+      before.schemaVersion !== currentSchemaVersion ||
       before.auditedModelCount !== publishedDenominator ||
       before.catalogIdentityMatchCount !== publishedDenominator ||
       before.exactExecutionIdentityCount !== publishedDenominator ||
       before.missingExpectedModelIds.length ||
       before.unexpectedPublishedModelIds.length
-    ) throw new Error("升级只允许在R0核准的schema41/10模型精确基线上执行");
+    ) throw new Error("升级只允许在R0核准的当前schema/10模型精确基线上执行");
     if (
       before.quietSnapshot.activeTasks !== 0 ||
       before.quietSnapshot.currentUnknownBillingTasks !== 0 ||
@@ -1624,7 +1625,7 @@ function attestApplyDirectory(
   const databasePath = join(realData, "unboundry.sqlite");
   if (
     parsed.purpose !== "INC-GEN-018" ||
-    parsed.schemaVersion !== 41 ||
+    parsed.schemaVersion !== currentSchemaVersion ||
     parsed.dataDirectoryRealPath !== realData ||
     parsed.databaseFileName !== "unboundry.sqlite" ||
     parsed.databaseSizeBytes !== databaseIdentity.size ||

@@ -84,6 +84,12 @@ import { publishGroupRunNotificationOnce } from "./groupRunNotification";
 import { runExclusiveCanvasSubmit } from "./saveGate";
 import { listGenerationTasks } from "./generationTasks";
 import {
+  createServerWorkflowRun,
+  listServerWorkflowRuns,
+  stopServerWorkflowRun,
+  waitForServerWorkflowRun,
+} from "./workflowRuns";
+import {
   enqueueGroupResultProjection,
   type GroupResultProjectionResult,
   waitForGroupResultProjections,
@@ -107,10 +113,18 @@ import {
   LegacyTerminalGenerationStateProvider,
   replaceLegacyGenerationSubmissionBlocks,
 } from "./legacyTerminalGenerationState";
+import { compileFrozenWorkflowSemanticPlan } from
+  "../../../types/workflowSemanticPlan";
 
 export type { NodeRunResult };
 
 const runtimeInputRefreshTimeoutMs = 5_000;
+
+// Keep the retired browser-side recovery branch type-checkable while ensuring
+// it can only quarantine old checkpoints and never resume Provider scheduling.
+const hasLegacyResumeCheckpoint = (
+  checkpoint: GroupRunCheckpoint | undefined,
+): boolean => checkpoint !== undefined;
 
 function workflowNodeTitle(node: ProbeNodeType | undefined, fallback: string) {
   if (typeof node?.data.title === "string" && node.data.title.trim()) {
@@ -312,6 +326,11 @@ export function WorkflowExecutionProvider({
     publishStopping: () => void;
     runId: string;
   }>());
+  const serverWorkflowRuns = useRef(new Map<string, {
+    runId: string;
+    nodeIds: readonly string[];
+  }>());
+  const serverStartingGroupIds = useRef(new Set<string>());
   const runLocks = useRef(new Map<string, ReadonlySet<string>>());
   const automaticRecoveryScopeKey = useRef<string | undefined>(undefined);
   const legacyReconciliationRunToken = useRef(0);
@@ -365,10 +384,14 @@ export function WorkflowExecutionProvider({
     const nextGroups = new Set([
       ...startingGroups.current.keys(),
       ...runningGroups.current.keys(),
+      ...serverWorkflowRuns.current.keys(),
     ]);
     const nextLocks = new Set<string>();
     for (const locks of runLocks.current.values()) {
       for (const nodeId of locks) nextLocks.add(nodeId);
+    }
+    for (const run of serverWorkflowRuns.current.values()) {
+      for (const nodeId of run.nodeIds) nextLocks.add(nodeId);
     }
     setExecutingGroupIds(nextGroups);
     setLockedNodeIds(nextLocks);
@@ -449,7 +472,7 @@ export function WorkflowExecutionProvider({
   }, [accountId, canvasId, fixtureScopeId, legacyGenerationStates]);
 
   useEffect(() => {
-    if (executingGroupIds.size === 0 && startingGroupIds.current.size === 0) {
+    if (runningGroups.current.size === 0 && startingGroups.current.size === 0) {
       return;
     }
     const warnBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -499,7 +522,95 @@ export function WorkflowExecutionProvider({
     return () => window.removeEventListener("pagehide", interruptForPageExit);
   }, [accountId, canvasId, fixtureScopeId]);
 
+  useEffect(() => {
+    if (isFixture || !persistenceReady) return;
+    const controller = new AbortController();
+    const tracked: Array<{ groupId: string; nodeIds: readonly string[]; runId: string }> = [];
+    const release = (item: typeof tracked[number]) => {
+      if (serverWorkflowRuns.current.get(item.groupId)?.runId === item.runId) {
+        serverWorkflowRuns.current.delete(item.groupId);
+      }
+      setExecutingGroupIds((current) => {
+        const next = new Set(current);
+        next.delete(item.groupId);
+        return next;
+      });
+      setLockedNodeIds((current) => {
+        const next = new Set(current);
+        for (const id of item.nodeIds) next.delete(id);
+        return next;
+      });
+    };
+    const recover = async () => {
+      const runs = await listServerWorkflowRuns(canvasId, controller.signal);
+      const active = runs.filter(({ state }) => state === "running" || state === "stopping");
+      for (const run of active) {
+        if (controller.signal.aborted || serverWorkflowRuns.current.has(run.groupId)) continue;
+        const item = {
+          groupId: run.groupId,
+          nodeIds: run.lockedNodeIds ?? run.nodes.map(({ id }) => id),
+          runId: run.id,
+        };
+        tracked.push(item);
+        serverWorkflowRuns.current.set(run.groupId, {
+          nodeIds: item.nodeIds,
+          runId: item.runId,
+        });
+        setExecutingGroupIds((current) => new Set([...current, run.groupId]));
+        setLockedNodeIds((current) => new Set([...current, ...item.nodeIds]));
+        if (publishGroupRunNotificationOnce(publishedRunNotifications.current, {
+          accountId,
+          canvasId,
+          errorClass: "server-authority-recovery",
+          groupId: run.groupId,
+          nodeId: run.groupId,
+          runId: run.id,
+        }, "recovering")) {
+          notifyCurrent.current("已找回服务端整组执行；无需保持页面打开", "info");
+        }
+        try {
+          const terminal = await waitForServerWorkflowRun(run.id, controller.signal);
+          if (terminal.state === "success") {
+            notifyCurrent.current(
+              terminal.nodes.some(({ projectionState }) => projectionState !== "applied")
+                ? "生成已完成；部分画布写回冲突，原结果已安全保留"
+                : "整组执行完成，结果已保存",
+              "success",
+            );
+            window.setTimeout(() => window.location.reload(), 250);
+          } else if (terminal.state === "failed") {
+            const first = terminal.nodes.find(({ state }) => state === "failed");
+            notifyCurrent.current(
+              first?.errorMessage ?? "整组执行部分失败；系统未重复提交原任务",
+              "error",
+            );
+          }
+        } finally {
+          release(item);
+        }
+      }
+    };
+    void recover().catch((error) => {
+      if (!controller.signal.aborted) {
+        notifyCurrent.current(
+          error instanceof Error ? error.message : "暂时无法读取整组执行状态",
+          "error",
+        );
+      }
+    });
+    return () => {
+      controller.abort("workflow-scope-changed");
+      for (const item of tracked) release(item);
+    };
+  }, [accountId, canvasId, isFixture, persistenceReady]);
+
   const cancelGroup = useCallback((groupId: string) => {
+    const serverRun = serverWorkflowRuns.current.get(groupId);
+    if (serverRun) {
+      void stopServerWorkflowRun(serverRun.runId).catch(() => undefined);
+      notify("已停止后续节点；已经提交的原任务仍会继续保存结果");
+      return;
+    }
     const running = runningGroups.current.get(groupId);
     const starting = startingGroups.current.get(groupId);
     if (!running && !starting) return;
@@ -575,6 +686,114 @@ export function WorkflowExecutionProvider({
     ) => {
       if (isFixture) {
         notify("验收页面不会触发真实生成");
+        return;
+      }
+      if (hasLegacyResumeCheckpoint(resumeCheckpoint)) {
+        const legacyCheckpoint = resumeCheckpoint!;
+        const legacyScope = { accountId, canvasId, fixtureScopeId };
+        const leaseOwner = legacyCheckpoint.lease?.ownerId;
+        if (leaseOwner) {
+          releaseGroupRunLease(legacyScope, legacyCheckpoint.runId, leaseOwner);
+        }
+        clearGroupRunStarting(legacyScope, legacyCheckpoint.runId);
+        clearGroupRunCheckpoint(legacyScope, undefined, legacyCheckpoint.runId);
+        notify(
+          "旧版浏览器整组记录已退出调度；服务端会继续核对已接收的原任务，不会重新提交",
+          "info",
+        );
+        return;
+      }
+      // INC-GEN-025: browser is a thin create/poll/stop client. The server
+      // freezes semantics, owns DAG admission and recovers without this page.
+      if (!resumeCheckpoint) {
+        if (
+          serverStartingGroupIds.current.has(groupId) ||
+          serverWorkflowRuns.current.has(groupId)
+        ) return;
+        serverStartingGroupIds.current.add(groupId);
+        try {
+          // One user click owns the ordinary auto-save wait. Do not ask the
+          // user to click again merely because the browser graph was ahead of
+          // the durable Canvas document by one debounce window.
+          await flushCanvasSave();
+          await waitForCanvasRevision(30_000);
+          const preview = compileFrozenWorkflowSemanticPlan({
+            edges: getEdges(),
+            groupId,
+            nodes: getNodes(),
+          });
+          let created: Awaited<ReturnType<typeof createServerWorkflowRun>>;
+          try {
+            created = await createServerWorkflowRun({
+              canvasId,
+              clientSemanticFingerprint: preview.semanticFingerprint,
+              groupId,
+            });
+          } catch (createError) {
+            // The HTTP response may be lost after the server durably commits
+            // the run. Reattach by server authority instead of creating or
+            // asking for a second execution click.
+            const active = (await listServerWorkflowRuns(canvasId)).find((run) =>
+              run.groupId === groupId &&
+              (run.state === "running" || run.state === "stopping")
+            );
+            if (!active) throw createError;
+            created = active;
+          }
+          serverWorkflowRuns.current.set(groupId, {
+            nodeIds: created.lockedNodeIds ?? created.nodes.map(({ id }) => id),
+            runId: created.id,
+          });
+          setExecutingGroupIds((current) => new Set([...current, groupId]));
+          setLockedNodeIds((current) => new Set([
+            ...current,
+            ...(created.lockedNodeIds ?? created.nodes.map(({ id }) => id)),
+          ]));
+          notify("整组已由服务端接收；关闭页面也会继续，系统不会重复提交原任务");
+          const terminal = await waitForServerWorkflowRun(created.id);
+          if (terminal.state === "success") {
+            const projectionPending = terminal.nodes.some(({ projectionState }) =>
+              projectionState !== "applied"
+            );
+            notify(
+              projectionPending
+                ? "生成已完成；部分结果写回遇到画布编辑冲突，原结果已安全保留"
+                : "整组执行完成，结果已保存",
+              projectionPending ? "info" : "success",
+            );
+            window.setTimeout(() => window.location.reload(), 250);
+          } else if (terminal.state === "cancelled") {
+            notify("已停止后续节点；已经提交的任务均已收口");
+          } else {
+            const first = terminal.nodes.find(({ state }) => state === "failed");
+            notify(
+              first?.errorMessage ?? terminal.errorMessage ??
+                "整组执行部分失败；后续分支已停止且不会重复扣费",
+              "error",
+            );
+          }
+        } catch (error) {
+          notify(
+            error instanceof Error ? error.message : "整组执行暂时无法开始",
+            "error",
+          );
+        } finally {
+          serverStartingGroupIds.current.delete(groupId);
+          const active = serverWorkflowRuns.current.get(groupId);
+          serverWorkflowRuns.current.delete(groupId);
+          setExecutingGroupIds((current) => {
+            const next = new Set(current);
+            next.delete(groupId);
+            return next;
+          });
+          if (active) {
+            setLockedNodeIds((current) => {
+              const next = new Set(current);
+              for (const id of active.nodeIds) next.delete(id);
+              return next;
+            });
+          }
+        }
         return;
       }
       if (runningGroups.current.has(groupId) || startingGroupIds.current.has(groupId)) {
@@ -2150,15 +2369,18 @@ export function WorkflowExecutionProvider({
           (checkpoints.length === 0 && nodeIds.size > 0)) {
           try {
             const readRecoveryAuthority = async () => {
-              const tasks = await listGenerationTasks(
-                canvasId,
-                undefined,
-                scope.fixtureScopeId,
-              );
+              const [tasks, serverRuns] = await Promise.all([
+                listGenerationTasks(canvasId, undefined, scope.fixtureScopeId),
+                listServerWorkflowRuns(canvasId),
+              ]);
+              const serverRunIds = new Set(serverRuns.map(({ id }) => id));
               return reconstructGroupRecoveryDecision({
                 nodes: getLegacyNodes.current(),
                 scope,
-                tasks,
+                tasks: tasks.filter((task) =>
+                  !task.workflowExecutionRunId ||
+                  !serverRunIds.has(task.workflowExecutionRunId)
+                ),
               });
             };
             const reconstructed = cacheNeedsAuthorityQuarantine

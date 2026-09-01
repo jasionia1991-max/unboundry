@@ -1,19 +1,21 @@
 # Unboundry 当前权威状态
 
+> 2026-09-01 最新权威：INC-GEN-025 已由用户 `/goal` 激活。当前隔离实现工作树 `/Users/mymy/Documents/unboundry-inc-gen-025-server-authoritative-2026-09-01`，分支 `codex/inc-gen-025-server-authoritative-group-run`，实时基线 `origin/main@74dc9d9307abee9169a2d2aefc4b01add96114c9`；生产仍为 `v0.6.69/schema41` 且健康。目标版本 `v0.6.70`、实现、Review、不可变发布、成对生产迁移/回退和全部门通过后的唯一真实整组点击已获一次性授权。R1-R5实现与风险定向测试、R6主线程+唯一独立Review均完成；R7唯一formal safe full原始`1149/1154`永久保留，5项均以失败最小子集关闭且未运行第二次full；同一Reviewer最终增量复审盘点当前72文件/299 tracked hunks，`P0=0/P1=0/P2=0/GO`。当前进入R8 GitHub/不可变发布；尚无commit/GitHub/生产写/Provider POST/OSS写/新费用。下方旧版本段落均为历史证据。
+
 > **INC-GEN-023 当前状态（2026-09-01）**：v0.6.68 已完成发布、精确 tag fresh build、冻结备份和生产部署，生产服务健康。原失败任务已无费用收口为 cancelled，但浏览器本地 checkpoint/active lease 仍使客户端 reconciler defer，Canvas 旧绑定未自动解除。真实整组点击仍为 0/1，Provider POST 0/11、费用0。v0.6.69候选已把解绑收口迁入受runtime lease/drain管理的独立terminal-only服务端sweep，并严格限制到allowlist中的真正不可恢复failed/cancelled精确绑定；全部复审问题已修复，m81 `42/42`、m85 `28/28`、m93 `7/7`、m38 `18/18`通过，第四轮独立复审`P0=0/P1=0/P2=0/GO`。用户已明确授权发布v0.6.69，现进入发布。权威断点：`spec/INC_GEN_023_CHECKPOINT.md`。
 
 > **状态分层**：现网运行v0.6.68/schema41且健康；v0.6.68发布授权已消费。真实整组尚未点击，未产生本轮新task/attempt/Provider POST。当前严格为`PRODUCTION_V0_6_68_TECHNICAL_PASS / V0_6_69_CANDIDATE_REFROZEN_REVIEW_PENDING / REAL_GROUP_NOT_CLICKED / V0_6_69_RELEASE_AUTHORIZED_NOT_CONSUMED / USER_RECHECK`。
 
 更新日期：2026-09-01
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.6.69**
-本地候选代码版本：**v0.6.69**
-当前生产部署版本：**v0.6.68**
-本地候选schema：**41**
-当前治理标记：`CURRENT_V0_6_69_USER_RECHECK`
-当前计划标记：`INC_GEN_023_V0_6_69_CANDIDATE / SERVER_TERMINAL_DETACH / REAL_GROUP_CLICK_NOT_CONSUMED`
+当前代码包版本：**v0.6.70**
+本地候选代码版本：**v0.6.70**
+当前生产部署版本：**v0.6.69**
+本地候选schema：**42**
+当前治理标记：`CURRENT_V0_6_70_USER_RECHECK`
+当前计划标记：`INC_GEN_025_V0_6_70_CANDIDATE / SERVER_AUTHORITATIVE_GROUP_RUN / REAL_GROUP_CLICK_NOT_CONSUMED`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`V0_6_69_RELEASE_AUTHORIZED_NOT_CONSUMED / INDEPENDENT_REVIEW_GO / REAL_GROUP_CNY300_MAX_11_POST_NOT_CONSUMED`
+当前发布门：`V0_6_70_RELEASE_AUTHORIZED_NOT_CONSUMED / INDEPENDENT_REVIEW_GO / FORMAL_FULL_ORIGINAL_1149_OF_1154 / FAILED_SUBSETS_CLOSED / R7_DELTA_REVIEW_GO / R8_GITHUB_PENDING / REAL_GROUP_CNY300_MAX_11_POST_NOT_CONSUMED`
 
 ## INC-GEN-023 当前区块（2026-09-01）
 
@@ -392,7 +394,7 @@ v0.6.47验证证据：默认Node25.9.0/npm11.12.1下build与architecture通过�
 
 ## 一句话
 
-**生产是 v0.6.68 / schema41；v0.6.68发布与生产技术门已通过，真实整组点击前发现浏览器本地checkpoint/lease阻止自动解绑并安全停止；当前保持USER_RECHECK。**
+**生产是 v0.6.69 / schema41；v0.6.69发布与生产技术门已通过。v0.6.70/schema42候选唯一formal safe full原始1149/1154、失败最小子集关闭及增量Review GO已完成，正进入GitHub；尚未发布、迁移或真实点击，当前保持USER_RECHECK。**
 
 ## INC-GEN-015 老画布孤立生成态与终态结果自动收口（PRODUCTION_V0_6_46_USER_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON）
 

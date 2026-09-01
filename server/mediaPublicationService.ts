@@ -23,6 +23,15 @@ import {
   finishMediaDeletion as finishMediaDeletionImpl,
   markMediaDeletionFailed as markMediaDeletionFailedImpl,
 } from "./mediaRegistry";
+import {
+  estimateWorkflowMediaCapacityBytes,
+  inspectWorkflowMediaCapacity,
+  recheckWorkflowMediaCapacity,
+  releaseWorkflowMediaCapacity,
+  releaseWorkflowMediaCapacityInTransaction,
+  reserveWorkflowMediaCapacityInTransaction,
+} from "./mediaCapacityReservations";
+import { readyMediaForOwner } from "./mediaRegistry";
 
 export {
   MediaPublicationConflictError,
@@ -126,3 +135,14 @@ export const recoverPendingUploadMediaPublications =
   mediaPublicationService.recoverUploads;
 export const reserveMediaPublication = mediaPublicationService.reserve;
 export const stageMediaPublication = mediaPublicationService.stage;
+
+/** Media-owned durable capacity boundary used by server workflow admission. */
+export const workflowMediaCapacity = Object.freeze({
+  estimate: estimateWorkflowMediaCapacityBytes,
+  inspect: inspectWorkflowMediaCapacity,
+  recheck: recheckWorkflowMediaCapacity,
+  readyForOwner: readyMediaForOwner,
+  release: releaseWorkflowMediaCapacity,
+  releaseInTransaction: releaseWorkflowMediaCapacityInTransaction,
+  reserveInTransaction: reserveWorkflowMediaCapacityInTransaction,
+});

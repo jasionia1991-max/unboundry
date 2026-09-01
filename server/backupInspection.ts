@@ -16,6 +16,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import {
   currentSchemaManifest,
+  databaseMatchesSchema41Contract,
 } from "./database.ts";
 import { safeCanonicalAliyunOssEndpoint } from "./outboundNetwork.ts";
 import {
@@ -47,7 +48,7 @@ const providerDrivers = new Set([
 const knownMigrationNames = Object.freeze(
   currentSchemaManifest.map(({ name }) => name),
 );
-const supportedBackupSchemaVersions = new Set([37, 38, 39, 40, 41]);
+const supportedBackupSchemaVersions = new Set([37, 38, 39, 40, 41, 42]);
 const builtInProviderBaseUrls = Object.freeze({
   mureka: "https://api.mureka.ai",
   openrouter: "https://openrouter.ai/api/v1",
@@ -1106,6 +1107,8 @@ function inspectOpenBackupDatabase(
       ? databaseMatchesFrozenSchema38Contract(database)
       : userVersion === 40
       ? databaseMatchesSchema40Contract(database)
+      : userVersion === 41
+      ? databaseMatchesSchema41Contract(database)
       : databaseMatchesSchemaContract(database);
     if (!schemaMatches) {
       fail(

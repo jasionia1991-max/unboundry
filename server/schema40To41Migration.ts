@@ -14,14 +14,14 @@ import {
 } from "./backupInspection.ts";
 import {
   applyPendingSchemaMigrationsInTransaction,
-  currentSchemaVersion,
   databaseMatchesMigrationManifest,
   databaseMatchesSchema40Contract,
-  databaseMatchesSchemaContract,
+  databaseMatchesSchema41Contract,
 } from "./database.ts";
 import { createRuntimeRoleCoordinator } from "./runtimeRole.ts";
 
 const sourceSchemaVersion = 40;
+const targetSchemaVersion = 41;
 const sha256Pattern = /^[a-f0-9]{64}$/;
 
 export class Schema40To41MigrationError extends Error {
@@ -75,12 +75,11 @@ function assertExactSource(database: DatabaseSync, inspectionRoot: string, expec
 function migrateLocked(database: DatabaseSync) {
   applyPendingSchemaMigrationsInTransaction(database, {
     sourceVersion: sourceSchemaVersion,
-    targetVersion: currentSchemaVersion,
+    targetVersion: targetSchemaVersion,
   });
   if (
-    currentSchemaVersion !== 41 ||
-    !databaseMatchesMigrationManifest(database) ||
-    !databaseMatchesSchemaContract(database) ||
+    !databaseMatchesMigrationManifest(database, targetSchemaVersion) ||
+    !databaseMatchesSchema41Contract(database) ||
     database.prepare("PRAGMA foreign_key_check").all().length !== 0
   ) fail("SCHEMA_MIGRATION_TARGET_INVALID", "Migrated database is not exact schema 41");
 }
@@ -159,7 +158,7 @@ export async function migrateSchema40To41(options: Schema40To41MigrationOptions)
           sourceVersion: sourceSchemaVersion,
           status: "verified" as const,
           targetLogicalSha256: after.logicalSha256,
-          targetVersion: currentSchemaVersion,
+          targetVersion: targetSchemaVersion,
         });
       }
       migrateLocked(source);
@@ -172,7 +171,7 @@ export async function migrateSchema40To41(options: Schema40To41MigrationOptions)
         sourceVersion: sourceSchemaVersion,
         status: "complete" as const,
         targetLogicalSha256: after.logicalSha256,
-        targetVersion: currentSchemaVersion,
+        targetVersion: targetSchemaVersion,
       });
     } catch (error) {
       if (sourceTransaction && source.isTransaction) source.exec("ROLLBACK");

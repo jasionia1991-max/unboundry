@@ -4108,127 +4108,10 @@ test("group run preflights a truly unmounted offscreen Image and persists the re
       });
     });
     await execute.dblclick();
-    const expectedMessage = "当前模型不支持image类型上游，引用已保留";
     await expect(page.getByTestId("workflow-run-toast")).toContainText(
-      `整组执行已阻止：发现 1 个不兼容节点；首个“商品主图”：${expectedMessage}（未提交任何生成任务）`,
+      "节点 target-image 的已发布模型不可用",
       { timeout: 15_000 },
     );
-    await page.getByTestId("tasks").click();
-    const summary = page.getByTestId("tasks-group-summary");
-    await expect(summary).toContainText("最近一轮整组部分失败");
-    await expect(summary).toContainText("成功 0 · 失败 1 · 跳过 0 · 未运行 1");
-    await expect(summary).toContainText("首个失败：商品主图（MODEL_UNSUPPORTED）");
-    await expect(summary).toContainText(expectedMessage);
-    await expect.poll(() => page.evaluate(() =>
-      (window as typeof window & { __groupSummaryEvents?: number })
-        .__groupSummaryEvents
-    )).toBe(2);
-    await summary.getByTestId("tasks-group-summary-locate").click();
-    await expect(page.locator('[data-testid="rf__node-target-image"]'))
-      .toHaveClass(/selected/);
-    await expect(page.getByTestId("image-node-target-image").getByRole("alert"))
-      .toContainText(expectedMessage);
-    await summary.getByRole("button", { name: "关闭最近一轮整组摘要" }).click();
-    await expect(summary).toHaveCount(0);
-    await page.evaluate(({ canvasId }) => {
-      const state = window as typeof window & {
-        __lastGroupSummaryScope?: { accountId: string; fixtureScopeId: string };
-      };
-      const scope = state.__lastGroupSummaryScope;
-      if (!scope) throw new Error("missing captured group summary scope");
-      const base = {
-          accountId: scope.accountId,
-          blockedCount: 0,
-          blockedNodeIds: [],
-          canvasId,
-          completedAt: Date.now(),
-          elapsedMs: 25,
-          failedCount: 0,
-          failedNodeIds: [],
-          fixtureScopeId: scope.fixtureScopeId,
-          groupId: "image-group",
-          nodeCount: 1,
-          reason: "不应跨范围显示",
-          runId: "wrong-scope-run",
-          runSequence: 10_001,
-          skippedCount: 1,
-          skippedNodeIds: ["target-image"],
-          status: "skipped",
-          startedAt: Date.now() - 25,
-          successCount: 0,
-      };
-      for (const [index, override] of [
-        { accountId: `${scope.accountId}-wrong` },
-        { canvasId: `${canvasId}-wrong` },
-        { fixtureScopeId: `${scope.fixtureScopeId}-wrong` },
-      ].entries()) {
-        window.dispatchEvent(new CustomEvent("unboundry:group-run-summary", {
-          detail: {
-            ...base,
-            ...override,
-            runId: `wrong-scope-run-${index}`,
-            runSequence: 10_001 + index,
-          },
-        }));
-      }
-    }, { canvasId: project.id });
-    await expect(page.getByTestId("tasks-group-summary")).toHaveCount(0);
-    await page.evaluate(({ canvasId }) => {
-      const state = window as typeof window & {
-        __lastGroupSummaryScope?: { accountId: string; fixtureScopeId: string };
-      };
-      const scope = state.__lastGroupSummaryScope;
-      if (!scope) throw new Error("missing captured group summary scope");
-      window.dispatchEvent(new CustomEvent("unboundry:group-run-summary", {
-        detail: {
-          accountId: scope.accountId,
-          blockedCount: 0,
-          blockedNodeIds: [],
-          canvasId,
-          completedAt: Date.now(),
-          elapsedMs: 25,
-          failedCount: 0,
-          failedNodeIds: [],
-          fixtureScopeId: scope.fixtureScopeId,
-          groupId: "image-group",
-          nodeCount: 1,
-          reason: "节点仍在生成，请等待当前节点完成",
-          runId: "manual-skipped-run",
-          runSequence: 10_002,
-          skippedCount: 1,
-          skippedNodeIds: ["target-image"],
-          status: "skipped",
-          startedAt: Date.now() - 25,
-          successCount: 0,
-        },
-      }));
-    }, { canvasId: project.id });
-    const skippedSummary = page.getByTestId("tasks-group-summary");
-    await expect(skippedSummary).toContainText("跳过 1 · 未运行 0");
-    await expect(skippedSummary).toContainText("节点仍在生成，请等待当前节点完成");
-    await skippedSummary.getByRole("button", { name: "关闭最近一轮整组摘要" }).click();
-    await expect.poll(async () => {
-      const canvas = await (await request.get(`/api/canvas/${project.id}`)).json() as {
-        nodes: Array<{
-          data: { imageGenerationError?: string; imageGenerationErrorCode?: string };
-          id: string;
-        }>;
-      };
-      return canvas.nodes.find((node) => node.id === "target-image")?.data;
-    }).toMatchObject({
-      imageGenerationError: expectedMessage,
-      imageGenerationErrorCode: "MODEL_UNSUPPORTED",
-    });
-
-    await page.reload();
-    await expect(page.getByTestId("canvas-world")).toHaveAttribute(
-      "data-persistence-ready",
-      "true",
-    );
-    await expect(page.getByTestId("image-node-target-image").getByRole("alert"))
-      .toContainText(expectedMessage);
-    await page.getByTestId("tasks").click();
-    await expect(page.getByTestId("tasks-group-summary")).toHaveCount(0);
     const after = await (await request.get("/api/generation-tasks/status")).json() as {
       paidProviderRequests: number;
     };
@@ -4241,465 +4124,131 @@ test("group run preflights a truly unmounted offscreen Image and persists the re
   }
 });
 
-test("disjoint group runs isolate success, failure and stop while unrelated edits stay available", async ({
+test("browser creates one server workflow and stop never submits generation tasks itself", async ({
   page,
   request,
 }) => {
-  test.setTimeout(240_000);
-  page.setDefaultTimeout(15_000);
-  const modelId = `fixture-group-lock-${randomUUID()}`;
+  const modelId = `fixture-server-workflow-${randomUUID()}`;
+  const runId = randomUUID();
+  const releaseRevisionId = randomUUID();
   const created = await request.post("/api/projects", { data: {} });
   expect(created.status()).toBe(201);
   const project = await created.json() as { id: string };
-  const parameterSchema = defaultParameterSchema("text");
-  type FakeTaskState = "failed" | "running" | "success";
-  type FakeTask = {
-    attempt: number;
-    canvasId: string;
-    costCurrency: "CNY";
-    createdAt: string;
-    fixtureScopeId: string;
-    generationIdentityVersion: 2;
-    id: string;
-    kind: "text";
-    model: string;
-    modelConfigurationRevision: string;
-    nodeId: string;
-    prompt: string;
-    updatedAt: string;
-    generationInputKey: string;
-    generationOwnershipKey: string;
-    modelReleaseRevision: string;
-    modelInputContractFingerprint: string;
-    workflowExecutionRunId?: string;
-    workflowGroupId?: string;
-  };
-  const tasks = new Map<string, FakeTask>();
-  const taskStates = new Map<string, FakeTaskState>();
-  const latestTaskByNode = new Map<string, string>();
-  const taskPostNodes: string[] = [];
-  type CapturedSummary = { groupId: string; runId: string; status: string };
-  const terminalSummaries: CapturedSummary[] = [];
-  const driftCanvasPuts: Array<{
-    nodes: Array<{ data?: Record<string, unknown>; id: string }>;
-    observedRevision?: number;
-    saveSequence?: number;
-  }> = [];
-  let captureDriftCanvasPuts = false;
-  let revisionDriftMode = false;
-  let revisionDriftFormalPosts = 0;
+  let createPosts = 0;
+  let clientSemanticFingerprint = "";
+  let stopPosts = 0;
+  let generationTaskPosts = 0;
+  let transientStatusFailures = 0;
+  let stopped = false;
+
   page.on("request", (entry) => {
     if (
-      captureDriftCanvasPuts && entry.method() === "PUT" &&
-      entry.url().endsWith(`/api/canvas/${project.id}`)
-    ) {
-      driftCanvasPuts.push(entry.postDataJSON());
-    }
+      entry.method() === "POST" &&
+      /\/api\/generation-tasks(?:$|\?)/.test(entry.url())
+    ) generationTaskPosts += 1;
   });
-  const modelReleaseRevision = randomUUID();
-  const contractInputsByNode = new Map<string, Array<{
-    kind: "text";
-    order: number;
-    role: "context-text";
-    semanticId: string;
-  }>>([
-    ["run-text-a-next", [{
-      kind: "text",
-      order: 1,
-      role: "context-text",
-      semanticId: "run-edge-a-next",
-    }]],
-  ]);
-  let taskSequence = 0;
-  const taskJson = (task: FakeTask) => {
-    const state = taskStates.get(task.id) ?? "running";
-    return {
-      ...task,
-      ...(state === "failed"
-        ? { error: "故意失败，验证另一轮继续", errorCode: "FIXTURE_FAILURE" }
-        : {}),
-      ...(state === "success"
-        ? { resultText: `已完成 ${task.nodeId} / ${task.id}` }
-        : {}),
-      state,
-    };
-  };
-  const setLatestTaskState = (nodeId: string, state: FakeTaskState) => {
-    const taskId = latestTaskByNode.get(nodeId);
-    if (!taskId) throw new Error(`missing fake task for ${nodeId}`);
-    taskStates.set(taskId, state);
-  };
-  const withDeadline = async <T>(label: string, promise: Promise<T>) => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      return await Promise.race([
-        promise,
-        new Promise<never>((_resolve, reject) => {
-          timer = setTimeout(() => reject(new Error(`dual-run timeout: ${label}`)), 15_000);
-        }),
-      ]);
-    } finally {
-      if (timer) clearTimeout(timer);
-    }
-  };
-  await page.context().route("**/api/models", async (route) => {
+  await page.route("**/api/models", async (route) => {
     await route.fulfill({
-      contentType: "application/json",
-      json: {
+      body: JSON.stringify({
         generationEnabled: true,
         models: [{
           capability: "text",
-          configurationRevision: "fixture-group-lock-configuration-1",
-          displayName: "整组锁定测试模型",
+          configurationRevision: `fixture-${modelId}-revision-1`,
+          displayName: "服务端整组测试模型",
           generationAvailable: true,
           id: modelId,
           isDefault: true,
-          parameterSchema,
-          releaseRevisionId: modelReleaseRevision,
+          parameterSchema: defaultParameterSchema("text"),
+          releaseRevisionId,
         }],
-      },
+      }),
+      contentType: "application/json",
       status: 200,
     });
   });
-  await page.context().route("**/api/generation-tasks**", async (route) => {
-    const requestUrl = new URL(route.request().url());
-    const method = route.request().method();
-    if (requestUrl.pathname.endsWith("/status")) {
+  const runBody = (state: "running" | "stopping" | "cancelled") => ({
+    canvasId: project.id,
+    createdAt: "2026-09-01T00:00:00.000Z",
+    groupId: "server-group",
+    id: runId,
+    nodes: [{
+      id: "server-text",
+      kind: "text",
+      projectionState: "pending",
+      state: state === "cancelled" ? "cancelled" : "pending",
+    }],
+    semanticFingerprint: "wf1-test",
+    state,
+    updatedAt: "2026-09-01T00:00:00.000Z",
+  });
+  await page.route("**/api/workflow-runs**", async (route) => {
+    const requestEntry = route.request();
+    const requestUrl = new URL(requestEntry.url());
+    const method = requestEntry.method();
+    if (method === "GET" && requestUrl.pathname === "/api/workflow-runs") {
       await route.fulfill({
+        body: JSON.stringify({
+          runs: createPosts > 0 ? [runBody("running")] : [],
+        }),
         contentType: "application/json",
-        json: {
-          paidProviderRequests: 0,
-          persistentQueueReady: true,
-          providerConfigured: true,
-          submissionEnabled: true,
-          textProviderConfigured: true,
-          textSubmissionEnabled: true,
-        },
         status: 200,
       });
       return;
     }
-    if (requestUrl.pathname.endsWith("/preflight") && method === "POST") {
-      const preflightBody = route.request().postDataJSON() as {
-        canvasRevision?: number;
+    if (method === "POST" && requestUrl.pathname === "/api/workflow-runs") {
+      createPosts += 1;
+      const body = requestEntry.postDataJSON() as {
+        clientSemanticFingerprint?: string;
       };
-      await route.fulfill({
-        contentType: "application/json",
-        json: {
-          canEnqueue: true,
-          canSubmit: true,
-          canvasRevision: preflightBody.canvasRevision ?? 0,
-          problems: [],
-        },
-        status: 200,
-      });
+      clientSemanticFingerprint = body.clientSemanticFingerprint ?? "";
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      // Simulate a response lost after the server durably accepted the run.
+      await route.abort("failed");
       return;
     }
     if (
-      requestUrl.pathname === "/api/generation-tasks/by-idempotency" &&
-      method === "GET"
+      method === "POST" &&
+      requestUrl.pathname === `/api/workflow-runs/${runId}/stop`
     ) {
+      stopPosts += 1;
+      stopped = true;
       await route.fulfill({
+        body: JSON.stringify(runBody("stopping")),
         contentType: "application/json",
-        json: { error: "not found" },
-        status: 404,
-      });
-      return;
-    }
-    if (requestUrl.pathname === "/api/generation-tasks" && method === "POST") {
-      const body = route.request().postDataJSON() as {
-        fixtureScopeId: string;
-        generationIdentityVersion: 2;
-        generationInputKey: string;
-        generationOwnershipKey: string;
-        model?: string;
-        modelConfigurationRevision: string;
-        modelInputContractFingerprint: string;
-        modelReleaseRevision: string;
-        nodeId: string;
-        ownPrompt?: string;
-        parameters?: Record<string, ModelParameterValue>;
-        prompt: string;
-        workflowBinding?: {
-          generationInputKey: string;
-          generationOwnershipKey: string;
-          groupId: string;
-          modelConfigurationRevision: string;
-          modelReleaseRevision: string;
-          runId: string;
-        };
-      };
-      if (revisionDriftMode) {
-        revisionDriftFormalPosts += 1;
-        if (revisionDriftFormalPosts <= 2) {
-          await route.fulfill({
-            contentType: "application/json",
-            json: {
-              code: "CANVAS_NOT_SAVED",
-              error: "画布内容还在保存，请等待自动保存完成后再试",
-              revision: 40 + revisionDriftFormalPosts,
-            },
-            status: 409,
-          });
-          return;
-        }
-        captureDriftCanvasPuts = false;
-      }
-      const connectedInputs = contractInputsByNode.get(body.nodeId) ?? [];
-      const contractFingerprint = normalizeModelInputs({
-        connectedInputs,
-        modelReleaseRevision,
-        requestedParameters: body.parameters ?? {},
-        schema: parameterSchema,
-        transitionIntent: "execute",
-      }).contractFingerprint;
-      const standaloneInputKey = generationInputKey({
-        inputs: [],
-        modelId: body.model ?? modelId,
-        modelReleaseRevision,
-        ownPrompt: body.ownPrompt,
-        parameters: body.parameters ?? {},
-        prompt: body.prompt,
-      });
-      const standaloneOwnershipKey = generationOwnershipKey(
-        generationOwnershipEvidence({
-          contractFingerprint,
-          inputs: [],
-          kind: "text",
-          modelId: body.model ?? modelId,
-          modelReleaseRevision,
-          parameters: body.parameters ?? {},
-          prompt: body.ownPrompt ?? body.prompt,
-        }),
-      );
-      taskSequence += 1;
-      const taskId = `fixture-group-lock-task-${taskSequence}-${randomUUID()}`;
-      const task: FakeTask = {
-        attempt: 1,
-        canvasId: project.id,
-        costCurrency: "CNY",
-        createdAt: new Date().toISOString(),
-        fixtureScopeId: body.fixtureScopeId,
-        generationIdentityVersion: body.generationIdentityVersion,
-        id: taskId,
-        kind: "text",
-        model: modelId,
-        modelConfigurationRevision: body.modelConfigurationRevision,
-        modelInputContractFingerprint: body.modelInputContractFingerprint,
-        nodeId: body.nodeId,
-        prompt: body.prompt,
-        updatedAt: new Date().toISOString(),
-        generationInputKey: body.generationInputKey ?? standaloneInputKey,
-        generationOwnershipKey: body.generationOwnershipKey ??
-          standaloneOwnershipKey,
-        modelReleaseRevision: body.modelReleaseRevision ?? modelReleaseRevision,
-        workflowExecutionRunId: body.workflowBinding?.runId,
-        workflowGroupId: body.workflowBinding?.groupId,
-      };
-      tasks.set(taskId, task);
-      taskStates.set(taskId, revisionDriftMode ? "failed" : "running");
-      latestTaskByNode.set(body.nodeId, taskId);
-      taskPostNodes.push(body.nodeId);
-      await route.fulfill({
-        contentType: "application/json",
-        json: taskJson(task),
-        status: 202,
-      });
-      return;
-    }
-    const taskId = requestUrl.pathname.startsWith("/api/generation-tasks/")
-      ? requestUrl.pathname.split("/").at(-1)
-      : undefined;
-    if (taskId && tasks.has(taskId) && method === "GET") {
-      await route.fulfill({
-        contentType: "application/json",
-        json: taskJson(tasks.get(taskId)!),
         status: 200,
       });
       return;
     }
-    if (requestUrl.pathname === "/api/generation-tasks" && method === "GET") {
+    if (method === "GET" && requestUrl.pathname === `/api/workflow-runs/${runId}`) {
+      if (transientStatusFailures === 0) {
+        transientStatusFailures += 1;
+        await route.fulfill({
+          body: JSON.stringify({ error: "temporary status failure" }),
+          contentType: "application/json",
+          status: 503,
+        });
+        return;
+      }
       await route.fulfill({
+        body: JSON.stringify(runBody(stopped ? "cancelled" : "running")),
         contentType: "application/json",
-        json: { tasks: [...tasks.values()].map(taskJson) },
         status: 200,
       });
       return;
     }
-    await route.fulfill({
-      contentType: "application/json",
-      json: { error: "unexpected fake generation task request" },
-      status: 404,
-    });
+    await route.abort("failed");
   });
-
-  const startGroup = async (
-    groupId: string,
-    nodeId: string,
-    expectedNodePostCount: number,
-  ) => {
-    await withDeadline(`${groupId} select`, page
-      .locator(`[data-testid="rf__node-${groupId}"]`)
-      .evaluate((element) => element.dispatchEvent(new MouseEvent("click", {
-        bubbles: true,
-      }))));
-    const execute = page
-      .locator(`[data-testid="rf__node-${groupId}"]`)
-      .getByTestId("group-execute-button");
-    await expect(execute).toBeEnabled();
-    await withDeadline(`${groupId} execute click`, execute.evaluate((element) =>
-      (element as HTMLButtonElement).click()
-    ));
-    await withDeadline(`${groupId} task POST`, expect.poll(() =>
-      taskPostNodes.filter((candidate) => candidate === nodeId).length
-    ).toBe(expectedNodePostCount));
-  };
-  const discardInterruptedCheckpointsForNextScenario = async () => {
-    tasks.clear();
-    taskStates.clear();
-    latestTaskByNode.clear();
-    await page.evaluate(() => {
-      for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
-        const key = window.localStorage.key(index);
-        if (
-          key?.startsWith("unboundry-group-run-checkpoint:v1:") ||
-          key?.startsWith("unboundry:generation-submission:v2:")
-        ) window.localStorage.removeItem(key);
-      }
-    });
-    const response = await request.get(`/api/canvas/${project.id}`);
-    expect(response.ok()).toBeTruthy();
-    const current = await response.json() as {
-      edges: unknown[];
-      loadToken: string;
-      nodes: Array<{ data?: Record<string, unknown>; id: string }>;
-      revision: number;
-    };
-    const saved = await request.put(`/api/canvas/${project.id}`, {
-      data: {
-        edges: current.edges,
-        nodes: current.nodes.map((node) => node.data && node.id.startsWith("run-text-")
-          ? {
-              ...node,
-              data: {
-                ...node.data,
-                groupRunSuccessOwnershipKey: undefined,
-                groupRunSuccessResultKey: undefined,
-                groupRunSuccessTaskId: undefined,
-                textGenerating: false,
-                textGenerationContractFingerprint: undefined,
-                textGenerationInputKey: undefined,
-                textGenerationModelReleaseRevision: undefined,
-                textGenerationOwnershipKey: undefined,
-                textGenerationTaskId: undefined,
-                workflowExecutionRunId: undefined,
-              },
-            }
-          : node),
-        observedLoadToken: current.loadToken,
-        observedRevision: current.revision,
-        revision: current.revision,
-        saveAttemptId: randomUUID(),
-        saveSequence: 1,
-        saveSessionId: randomUUID(),
-        viewport: { x: 0, y: 0, zoom: 1 },
-      },
-    });
-    expect(saved.ok()).toBeTruthy();
-  };
-  const expectTerminalSummaryCount = (
-    groupId: string,
-    status: "cancelled" | "failed" | "success",
-    count: number,
-  ) => expect.poll(() => page.evaluate(({ groupId, status }) =>
-    ((window as typeof window & {
-      __dualRunSummaries?: Array<{ groupId: string; runId: string; status: string }>;
-    }).__dualRunSummaries ?? []).filter((summary) =>
-      summary.groupId === groupId && summary.status === status
-    ).length, { groupId, status }), { timeout: 15_000 }).toBe(count);
-  const installSummaryCapture = () => page.evaluate(() => {
-    const host = window as typeof window & {
-      __dualRunSummaries?: Array<{ groupId: string; runId: string; status: string }>;
-    };
-    host.__dualRunSummaries = [];
-    window.addEventListener("unboundry:group-run-summary", (event) => {
-      const detail = (event as CustomEvent<{
-        groupId: string;
-        runId: string;
-        status: string;
-      }>).detail;
-      host.__dualRunSummaries?.push({
-        groupId: detail.groupId,
-        runId: detail.runId,
-        status: detail.status,
-      });
-    });
-  });
-  const captureTerminalSummaries = async () => {
-    terminalSummaries.push(...await page.evaluate(() =>
-      ((window as typeof window & {
-        __dualRunSummaries?: Array<{ groupId: string; runId: string; status: string }>;
-      }).__dualRunSummaries ?? []).filter((summary) =>
-        ["cancelled", "failed", "success"].includes(summary.status)
-      )
-    ));
-  };
-  const resetGroupPositionsForNextScenario = async () => {
-    const response = await request.get(`/api/canvas/${project.id}`);
-    expect(response.ok()).toBeTruthy();
-    const current = await response.json() as {
-      edges: unknown[];
-      loadToken: string;
-      nodes: Array<{
-        id: string;
-        position: { x: number; y: number };
-        [key: string]: unknown;
-      }>;
-      revision: number;
-    };
-    const saved = await request.put(`/api/canvas/${project.id}`, {
-      data: {
-        edges: current.edges,
-        nodes: current.nodes.map((node) => node.id === "run-group-a"
-          ? { ...node, position: { x: 180, y: 120 } }
-          : node.id === "run-group-b"
-            ? { ...node, position: { x: 760, y: 120 } }
-            : node),
-        observedLoadToken: current.loadToken,
-        observedRevision: current.revision,
-        revision: current.revision,
-        saveAttemptId: randomUUID(),
-        saveSequence: 1,
-        saveSessionId: randomUUID(),
-        viewport: { x: 0, y: 0, zoom: 1 },
-      },
-    });
-    expect(saved.ok()).toBeTruthy();
-    await page.reload();
-    await expect(page.getByTestId("canvas-world")).toHaveAttribute(
-      "data-persistence-ready",
-      "true",
-    );
-    await installSummaryCapture();
-  };
 
   try {
     const saveMetadata = await existingCanvasSaveMetadata(request, project.id);
     const saved = await request.put(`/api/canvas/${project.id}`, {
       data: {
-        edges: [{
-          id: "run-edge-a-next",
-          source: "run-text-a",
-          sourceHandle: "source",
-          target: "run-text-a-next",
-          targetHandle: "target",
-          type: "cuttable",
-        }],
+        edges: [],
         nodes: [{
-          data: { label: "Group", title: "运行中锁定组 A" },
-          id: "run-group-a",
-          position: { x: 180, y: 120 },
-          style: { height: 650, width: 480 },
+          data: { label: "Group", title: "服务端整组" },
+          id: "server-group",
+          position: { x: 100, y: 100 },
+          style: { height: 500, width: 700 },
           type: "group",
           zIndex: 0,
         }, {
@@ -4707,78 +4256,15 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
             label: "Text",
             textModelId: modelId,
             textParameters: {},
-            textPrompt: "生成 A 组运行中测试文案",
+            textPrompt: "生成服务端整组文字",
             textPromptReady: true,
-            title: "运行中子节点 A",
+            title: "服务端文字",
           },
-          id: "run-text-a",
-          parentId: "run-group-a",
-          position: { x: 32, y: 70 },
-          style: { height: 220, width: 300 },
+          id: "server-text",
+          parentId: "server-group",
+          position: { x: 40, y: 80 },
+          style: { height: 240, width: 300 },
           type: "text",
-          zIndex: 1,
-        }, {
-          data: {
-            label: "Text",
-            textModelId: modelId,
-            textParameters: {},
-            textPrompt: "生成 A 组第二层文案",
-            textPromptReady: true,
-            title: "运行中下游子节点 A2",
-          },
-          id: "run-text-a-next",
-          parentId: "run-group-a",
-          position: { x: 32, y: 900 },
-          style: { height: 220, width: 300 },
-          type: "text",
-          zIndex: 1,
-        }, {
-          data: { label: "Group", title: "运行中锁定组 B" },
-          id: "run-group-b",
-          position: { x: 760, y: 120 },
-          style: { height: 420, width: 480 },
-          type: "group",
-          zIndex: 0,
-        }, {
-          data: {
-            label: "Text",
-            textModelId: modelId,
-            textParameters: {},
-            textPrompt: "生成 B 组运行中测试文案",
-            textPromptReady: true,
-            title: "运行中子节点 B",
-          },
-          id: "run-text-b",
-          parentId: "run-group-b",
-          position: { x: 32, y: 70 },
-          style: { height: 220, width: 300 },
-          type: "text",
-          zIndex: 1,
-        }, {
-          data: {
-            label: "Text",
-            textModelId: modelId,
-            textParameters: {},
-            textPrompt: "可在运行期间编辑的无关文案",
-            textPromptReady: true,
-            title: "无关文字节点",
-          },
-          id: "unrelated-text",
-          position: { x: 180, y: 850 },
-          style: { height: 220, width: 300 },
-          type: "text",
-          zIndex: 1,
-        }, {
-          data: {
-            imagePromptReady: false,
-            inputState: "empty",
-            label: "Image",
-            title: "无关图片节点",
-          },
-          id: "unrelated-image",
-          position: { x: 760, y: 850 },
-          style: { height: 250, width: 250 },
-          type: "image",
           zIndex: 1,
         }],
         ...saveMetadata,
@@ -4788,892 +4274,33 @@ test("disjoint group runs isolate success, failure and stop while unrelated edit
     expect(saved.ok()).toBeTruthy();
 
     await page.goto(`/canvas/${project.id}`);
-    const canvas = page.getByTestId("canvas-world");
-    await expect(canvas).toHaveAttribute("data-persistence-ready", "true");
-    await installSummaryCapture();
-
-    await startGroup("run-group-a", "run-text-a", 1);
-    await startGroup("run-group-b", "run-text-b", 1);
-    await expect(canvas).toHaveAttribute("data-workflow-run-active", "true");
-    // A's second layer starts genuinely outside the viewport. Static preflight
-    // must still include it before fit-view can mount it later.
-    await expect(page.locator('[data-testid="rf__node-run-text-a-next"]'))
-      .toHaveCount(0);
-    await expect(canvas).toHaveAttribute("data-node-count", "7");
-    await expect(canvas).toHaveAttribute("data-edge-count", "1");
-
-    // View controls and unrelated graph editing remain live while two runs own
-    // only their exact participants.
-    const zoomBeforeFit = await canvas.getAttribute("data-viewport-zoom");
-    await page.getByTestId("fit-view").click();
-    await expect.poll(() => canvas.getAttribute("data-viewport-zoom"))
-      .not.toBe(zoomBeforeFit);
-    await page.getByTestId("zoom-slider").fill("0.72");
-    await expect(canvas).toHaveAttribute("data-viewport-zoom", "0.72");
-    const unrelatedText = page.locator('[data-testid="rf__node-unrelated-text"]');
-    await unrelatedText.click({ position: { x: 12, y: 12 } });
-    await page.getByTestId("text-creator-prompt")
-      .fill("运行期间仍可编辑的无关文案");
-    await expect(page.getByTestId("text-creator-prompt"))
-      .toHaveValue("运行期间仍可编辑的无关文案");
-    await page.getByTestId("text-creator-prompt").blur();
-    await expect(page.getByTestId("text-creator-prompt")).toBeEnabled();
-    await unrelatedText.evaluate((element) => element.dispatchEvent(
-      new MouseEvent("click", { bubbles: true }),
-    ));
-    const unrelatedBefore = await unrelatedText.boundingBox();
-    await page.mouse.move(
-      unrelatedBefore!.x + unrelatedBefore!.width / 2,
-      unrelatedBefore!.y + unrelatedBefore!.height / 2,
-    );
-    await page.mouse.down();
-    await page.mouse.move(
-      unrelatedBefore!.x + unrelatedBefore!.width / 2 + 28,
-      unrelatedBefore!.y + unrelatedBefore!.height / 2 + 20,
-      { steps: 6 },
-    );
-    await page.mouse.up();
-    const unrelatedAfter = await unrelatedText.boundingBox();
-    expect(unrelatedAfter!.x).toBeGreaterThan(unrelatedBefore!.x);
-    const sourceHandle = unrelatedText.locator(
-      ".react-flow__handle.source .node-handle-hit",
-    );
-    const targetNode = page.locator('[data-testid="rf__node-unrelated-image"]');
-    const sourceBox = await sourceHandle.boundingBox();
-    const targetBox = await targetNode.boundingBox();
-    if (!sourceBox || !targetBox) throw new Error("unrelated connection handles missing");
-    await page.mouse.move(
-      sourceBox.x + sourceBox.width / 2,
-      sourceBox.y + sourceBox.height / 2,
-    );
-    await page.mouse.down();
-    await page.mouse.move(
-      targetBox.x + targetBox.width / 2,
-      targetBox.y + targetBox.height / 2,
-      { steps: 8 },
-    );
-    await page.mouse.up();
-    await expect(canvas).toHaveAttribute("data-edge-count", "2");
-    await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
-    await expect.poll(() => page.evaluate((lockName) =>
-      navigator.locks.request(
-        lockName,
-        { ifAvailable: true },
-        (lock) => Boolean(lock),
-      ),
-    `unboundry-group-run-canvas-admission:${JSON.stringify(project.id)}`))
-      .toBe(true);
-    await targetNode.click();
-    await page.keyboard.press("Backspace");
-    await expect(canvas).toHaveAttribute("data-node-count", "6");
-    await expect(canvas).toHaveAttribute("data-edge-count", "1");
-
-    const groupB = page.locator('[data-testid="rf__node-run-group-b"]');
-    await expect(groupB.getByRole("button", { name: "组合框颜色" })).toBeDisabled();
-    await expect(groupB.getByRole("button", { name: "组合框布局" })).toBeDisabled();
-    await expect(groupB.getByTestId("group-template-button")).toBeDisabled();
-    await expect(groupB.getByRole("button", { name: "解组" })).toBeDisabled();
-    await expect(groupB.getByTestId("group-execute-button")).toHaveText("停止后续");
-
-    const childA = page.locator('[data-testid="rf__node-run-text-a"]');
-    await expect(childA).toHaveCount(1);
-    await expect.poll(() => childA.evaluate((element) => ({
-      ariaLabel: element.getAttribute("aria-label"),
-      className: element.className,
-      pointerEvents: getComputedStyle(element).pointerEvents,
-    }))).toEqual({
-      ariaLabel: "运行中子节点 A，整组执行中，Prompt、模型、参数和输入已锁定",
-      className: expect.stringContaining("workflow-run-locked"),
-      pointerEvents: "none",
-    });
-    await childA.evaluate((element) => element.dispatchEvent(
-      new MouseEvent("click", { bubbles: true }),
-    ));
-    await page.keyboard.press("Backspace");
-    await expect(canvas).toHaveAttribute("data-node-count", "6");
-
-    // A selected running participant cannot be deleted. Copy/paste creates a
-    // disjoint graph, and that unrelated copy can be deleted while both runs
-    // keep their exact task ownership.
-    await page.locator('[data-testid="rf__node-run-group-a"]').click({
-      position: { x: 8, y: 8 },
-    });
-    await page.keyboard.press("Backspace");
-    await expect(canvas).toHaveAttribute("data-node-count", "6");
-    await page.locator('[data-testid="rf__edge-run-edge-a-next"]')
-      .evaluate((element) => element.dispatchEvent(new MouseEvent("click", {
-        bubbles: true,
-      })));
-    await expect(page.getByTestId("cut-edge-run-edge-a-next")).toBeDisabled();
-    await unrelatedText.click({ position: { x: 12, y: 12 } });
-    await page.keyboard.press("Meta+c");
-    await page.keyboard.press("Meta+v");
-    await expect(canvas).toHaveAttribute("data-node-count", "7");
-    await page.keyboard.press("Backspace");
-    await expect(canvas).toHaveAttribute("data-node-count", "6");
-    expect(taskPostNodes).toEqual(["run-text-a", "run-text-b"]);
-
-    await page.getByTestId("tasks").click();
-    await expect(page.getByTestId("tasks-panel")).toBeVisible();
-    await expect(page.getByTestId("tasks-group-summary")).toHaveAttribute(
-      "data-status",
-      "running",
-    );
-
-    await page.locator('[data-testid="rf__node-run-group-a"]').click({
-      position: { x: 8, y: 8 },
-    });
-    const body = page.getByTestId("group-node-run-group-a");
-    const box = await body.boundingBox();
-    if (!box) throw new Error("running group body is not mounted");
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(-800, -500, { steps: 12 });
-    await page.mouse.up();
-
-    await expect(canvas).toHaveAttribute("data-workflow-run-active", "true");
-    await expect(childA).toHaveCount(0);
-    await expect(page.locator('[data-testid="rf__node-run-text-a-next"]'))
-      .toHaveCount(0);
-
-    // Completing A's first layer while the whole group is truly unmounted must
-    // dispatch and apply the second layer without releasing B.
-    setLatestTaskState("run-text-a", "success");
-    await withDeadline("run-text-a-next task POST", expect.poll(() =>
-      taskPostNodes.filter((candidate) => candidate === "run-text-a-next").length
-    ).toBe(1));
-    setLatestTaskState("run-text-a-next", "success");
-    await expectTerminalSummaryCount("run-group-a", "success", 1);
-    await expect(canvas).toHaveAttribute("data-workflow-run-active", "true");
-    await expect.poll(async () => {
-      const savedCanvas = await (await request.get(`/api/canvas/${project.id}`)).json() as {
-        nodes: Array<{ data: { content?: string }; id: string }>;
-      };
-      return savedCanvas.nodes.find((node) => node.id === "run-text-a-next")?.data.content;
-    }).toContain("已完成 run-text-a-next");
-    setLatestTaskState("run-text-b", "failed");
-    await expectTerminalSummaryCount("run-group-b", "failed", 1);
-    await expect(canvas).not.toHaveAttribute("data-workflow-run-active", "true");
-    await captureTerminalSummaries();
-    await discardInterruptedCheckpointsForNextScenario();
-    await resetGroupPositionsForNextScenario();
-
-    // A failed terminal state must likewise leave B running.
-    await startGroup("run-group-a", "run-text-a", 2);
-    await startGroup("run-group-b", "run-text-b", 2);
-    setLatestTaskState("run-text-a", "failed");
-    await expectTerminalSummaryCount("run-group-a", "failed", 1);
-    expect(taskPostNodes.filter((nodeId) => nodeId === "run-text-a-next"))
-      .toHaveLength(1);
-    await expect(canvas).toHaveAttribute("data-workflow-run-active", "true");
-    setLatestTaskState("run-text-b", "success");
-    await expectTerminalSummaryCount("run-group-b", "success", 1);
-    await expect(canvas).not.toHaveAttribute("data-workflow-run-active", "true");
-    await captureTerminalSummaries();
-    await discardInterruptedCheckpointsForNextScenario();
-    await resetGroupPositionsForNextScenario();
-
-    // Stopping A prevents later dispatch for A but does not stop B. The active
-    // A task still reaches a durable terminal result, as promised by the UI.
-    await startGroup("run-group-a", "run-text-a", 3);
-    await startGroup("run-group-b", "run-text-b", 3);
-    await page
-      .locator('[data-testid="rf__node-run-group-a"]')
-      .getByTestId("group-execute-button")
-      .evaluate((element) => (element as HTMLButtonElement).click());
-    setLatestTaskState("run-text-a", "success");
-    await expectTerminalSummaryCount("run-group-a", "cancelled", 1);
-    expect(taskPostNodes.filter((nodeId) => nodeId === "run-text-a-next"))
-      .toHaveLength(1);
-    await expect(canvas).toHaveAttribute("data-workflow-run-active", "true");
-    setLatestTaskState("run-text-b", "success");
-    await expectTerminalSummaryCount("run-group-b", "success", 1);
-    await expect(canvas).not.toHaveAttribute("data-workflow-run-active", "true");
-    await captureTerminalSummaries();
-    expect(taskPostNodes).toEqual([
-      "run-text-a", "run-text-b",
-      "run-text-a-next",
-      "run-text-a", "run-text-b",
-      "run-text-a", "run-text-b",
-    ]);
-    expect(terminalSummaries.filter((summary) =>
-      summary.groupId === "run-group-a" && summary.status === "success"
-    )).toHaveLength(1);
-    expect(terminalSummaries.filter((summary) =>
-      summary.groupId === "run-group-a" && summary.status === "failed"
-    )).toHaveLength(1);
-    expect(terminalSummaries.filter((summary) =>
-      summary.groupId === "run-group-a" && summary.status === "cancelled"
-    )).toHaveLength(1);
-    expect(terminalSummaries.filter((summary) =>
-      summary.groupId === "run-group-b" && summary.status === "success"
-    )).toHaveLength(2);
-    expect(terminalSummaries.filter((summary) =>
-      summary.groupId === "run-group-b" && summary.status === "failed"
-    )).toHaveLength(1);
-    expect(new Set(terminalSummaries.map((summary) => summary.runId)).size)
-      .toBe(6);
-
-    // Release the last active nodes of two groups in the same polling window.
-    // Both terminal summaries remain independently addressable and both
-    // successful checkpoints clear without deleting sibling state.
-    await discardInterruptedCheckpointsForNextScenario();
-    await resetGroupPositionsForNextScenario();
-    const simultaneousAPosts = taskPostNodes.filter((nodeId) =>
-      nodeId === "run-text-a"
-    ).length;
-    const simultaneousBPosts = taskPostNodes.filter((nodeId) =>
-      nodeId === "run-text-b"
-    ).length;
-    const simultaneousDownstreamPosts = taskPostNodes.filter((nodeId) =>
-      nodeId === "run-text-a-next"
-    ).length;
-    await startGroup("run-group-a", "run-text-a", simultaneousAPosts + 1);
-    await startGroup("run-group-b", "run-text-b", simultaneousBPosts + 1);
-    setLatestTaskState("run-text-a", "success");
-    await expect.poll(() => taskPostNodes.filter((nodeId) =>
-      nodeId === "run-text-a-next"
-    ).length).toBe(simultaneousDownstreamPosts + 1);
-    setLatestTaskState("run-text-a-next", "success");
-    setLatestTaskState("run-text-b", "success");
-    await expectTerminalSummaryCount("run-group-a", "success", 1);
-    await expectTerminalSummaryCount("run-group-b", "success", 1);
-    await expect(canvas).not.toHaveAttribute("data-workflow-run-active", "true");
-    await expect.poll(() => page.evaluate(() => {
-      for (let index = 0; index < window.localStorage.length; index += 1) {
-        if (window.localStorage.key(index)?.startsWith(
-          "unboundry-group-run-checkpoint:v1:",
-        )) return false;
-      }
-      return true;
-    })).toBe(true);
-
-    // Both groups now consume the same durable external Text input. Starting
-    // B while A owns that source must identify the exact shared node and keep
-    // B at zero task submissions.
-    await resetGroupPositionsForNextScenario();
-    const overlapResponse = await request.get(`/api/canvas/${project.id}`);
-    expect(overlapResponse.ok()).toBeTruthy();
-    const overlapCanvas = await overlapResponse.json() as {
-      edges: Array<{ id: string; [key: string]: unknown }>;
-      loadToken: string;
-      nodes: Array<{
-        data: Record<string, unknown>;
-        id: string;
-        [key: string]: unknown;
-      }>;
-      revision: number;
-    };
-    const overlapSave = await request.put(`/api/canvas/${project.id}`, {
-      data: {
-        edges: [
-          ...overlapCanvas.edges,
-          {
-            id: "run-edge-shared-a",
-            source: "unrelated-text",
-            sourceHandle: "source",
-            target: "run-text-a",
-            targetHandle: "target",
-            type: "cuttable",
-          },
-          {
-            id: "run-edge-shared-b",
-            source: "unrelated-text",
-            sourceHandle: "source",
-            target: "run-text-b",
-            targetHandle: "target",
-            type: "cuttable",
-          },
-        ],
-        nodes: overlapCanvas.nodes.map((node) => node.id === "unrelated-text"
-          ? {
-              ...node,
-              data: {
-                ...node.data,
-                content: "两个工作流共享的真实输入",
-                contentHtml: "<p>两个工作流共享的真实输入</p>",
-              },
-            }
-          : node),
-        observedLoadToken: overlapCanvas.loadToken,
-        observedRevision: overlapCanvas.revision,
-        revision: overlapCanvas.revision,
-        saveAttemptId: randomUUID(),
-        saveSequence: 1,
-        saveSessionId: randomUUID(),
-        viewport: { x: 0, y: 0, zoom: 1 },
-      },
-    });
-    expect(overlapSave.ok()).toBeTruthy();
-    contractInputsByNode.set("run-text-a", [{
-      kind: "text",
-      order: 1,
-      role: "context-text",
-      semanticId: "run-edge-shared-a",
-    }]);
-    contractInputsByNode.set("run-text-b", [{
-      kind: "text",
-      order: 1,
-      role: "context-text",
-      semanticId: "run-edge-shared-b",
-    }]);
-    await page.reload();
     await expect(page.getByTestId("canvas-world")).toHaveAttribute(
       "data-persistence-ready",
       "true",
     );
-    await installSummaryCapture();
-    const overlapAPosts = taskPostNodes.filter((nodeId) =>
-      nodeId === "run-text-a"
-    ).length;
-    const overlapBPosts = taskPostNodes.filter((nodeId) =>
-      nodeId === "run-text-b"
-    ).length;
-    const overlapDownstreamPosts = taskPostNodes.filter((nodeId) =>
-      nodeId === "run-text-a-next"
-    ).length;
-    await startGroup("run-group-a", "run-text-a", overlapAPosts + 1);
-    const overlapGroupB = page.locator('[data-testid="rf__node-run-group-b"]');
-    await overlapGroupB.evaluate((element) => element.dispatchEvent(
-      new MouseEvent("click", { bubbles: true }),
-    ));
-    await overlapGroupB.getByTestId("group-execute-button")
-      .evaluate((element) => (element as HTMLButtonElement).click());
+    const group = page.locator('[data-testid="rf__node-server-group"]');
+    await group.click({ position: { x: 5, y: 5 } });
+    const execute = group.getByTestId("group-execute-button");
+    await expect(execute).toBeEnabled();
+    await execute.dblclick();
     await expect(page.getByTestId("workflow-run-toast")).toContainText(
-      "另一轮正在使用直接输入“无关文字节点”（节点 unrelated-text），本轮未提交任何生成任务",
+      "整组已由服务端接收",
     );
-    expect(taskPostNodes.filter((nodeId) => nodeId === "run-text-b"))
-      .toHaveLength(overlapBPosts);
-    setLatestTaskState("run-text-a", "success");
-    await expect.poll(() => taskPostNodes.filter((nodeId) =>
-      nodeId === "run-text-a-next"
-    ).length).toBe(overlapDownstreamPosts + 1);
-    setLatestTaskState("run-text-a-next", "success");
-    await expectTerminalSummaryCount("run-group-a", "success", 1);
-
-    const restoreResponse = await request.get(`/api/canvas/${project.id}`);
-    expect(restoreResponse.ok()).toBeTruthy();
-    const restoreCanvas = await restoreResponse.json() as {
-      edges: Array<{ id: string; [key: string]: unknown }>;
-      loadToken: string;
-      nodes: unknown[];
-      revision: number;
-    };
-    const restoreSave = await request.put(`/api/canvas/${project.id}`, {
-      data: {
-        edges: restoreCanvas.edges.filter((edge) =>
-          !["run-edge-shared-a", "run-edge-shared-b"].includes(edge.id)
-        ),
-        nodes: restoreCanvas.nodes,
-        observedLoadToken: restoreCanvas.loadToken,
-        observedRevision: restoreCanvas.revision,
-        revision: restoreCanvas.revision,
-        saveAttemptId: randomUUID(),
-        saveSequence: 1,
-        saveSessionId: randomUUID(),
-        viewport: { x: 0, y: 0, zoom: 1 },
-      },
-    });
-    expect(restoreSave.ok()).toBeTruthy();
-    contractInputsByNode.delete("run-text-a");
-    contractInputsByNode.delete("run-text-b");
-
-    // Two real tabs race the same group. The origin-wide admission lock and
-    // active-task check permit one first-layer POST only.
-    await discardInterruptedCheckpointsForNextScenario();
-    await resetGroupPositionsForNextScenario();
-    await page.reload();
-    await expect(page.getByTestId("canvas-world")).toHaveAttribute(
-      "data-persistence-ready",
-      "true",
+    await expect.poll(() => createPosts).toBe(1);
+    expect(clientSemanticFingerprint).toMatch(/^wf1-[a-z0-9-]+$/);
+    expect(transientStatusFailures).toBe(1);
+    await expect(execute).toHaveText("停止后续");
+    await execute.click();
+    await expect.poll(() => stopPosts).toBe(1);
+    await expect(page.getByTestId("workflow-run-toast")).toContainText(
+      "已停止后续节点",
     );
-    const secondPage = await page.context().newPage();
-    try {
-      await secondPage.goto(`/canvas/${project.id}`);
-      await expect(secondPage.getByTestId("canvas-world")).toHaveAttribute(
-        "data-persistence-ready",
-        "true",
-      );
-      const selectAndStart = async (targetPage: typeof page) => {
-        const group = targetPage.locator('[data-testid="rf__node-run-group-a"]');
-        await group.evaluate((element) => element.dispatchEvent(
-          new MouseEvent("click", { bubbles: true }),
-        ));
-        await group.getByTestId("group-execute-button")
-          .evaluate((element) => (element as HTMLButtonElement).click());
-      };
-      const groupRaceAPosts = taskPostNodes.filter((nodeId) =>
-        nodeId === "run-text-a"
-      ).length;
-      const groupRaceDownstreamPosts = taskPostNodes.filter((nodeId) =>
-        nodeId === "run-text-a-next"
-      ).length;
-      await Promise.all([selectAndStart(page), selectAndStart(secondPage)]);
-      await expect.poll(() => taskPostNodes.filter((nodeId) =>
-        nodeId === "run-text-a"
-      ).length).toBe(groupRaceAPosts + 1);
-      await expect.poll(() => page.evaluate(() => {
-        let leases = 0;
-        for (let index = 0; index < window.localStorage.length; index += 1) {
-          if (window.localStorage.key(index)?.startsWith(
-            "unboundry-group-run-lease:v1:",
-          )) leases += 1;
-        }
-        return leases;
-      })).toBe(1);
-      setLatestTaskState("run-text-a", "success");
-      await expect.poll(() => taskPostNodes.filter((nodeId) =>
-        nodeId === "run-text-a-next"
-      ).length).toBe(groupRaceDownstreamPosts + 1);
-      setLatestTaskState("run-text-a-next", "success");
-      await expect.poll(async () => {
-        try {
-          return await page.evaluate(() => {
-            for (let index = 0; index < window.localStorage.length; index += 1) {
-              if (window.localStorage.key(index)?.startsWith(
-                "unboundry-group-run-lease:v1:",
-              )) return false;
-            }
-            return true;
-          });
-        } catch {
-          return false;
-        }
-      }).toBe(true);
-    } finally {
-      await secondPage.close();
-    }
-
-    // A manual Generate and a group claim use the same origin-wide admission
-    // lock. Whichever enters first may submit, while the loser observes either
-    // the active lease or the accepted task before reaching a second POST.
-    await discardInterruptedCheckpointsForNextScenario();
-    await resetGroupPositionsForNextScenario();
-    await page.reload();
-    await expect(page.getByTestId("canvas-world")).toHaveAttribute(
-      "data-persistence-ready",
-      "true",
-    );
-    const manualRacePage = await page.context().newPage();
-    try {
-      await manualRacePage.goto(`/canvas/${project.id}`);
-      await expect(manualRacePage.getByTestId("canvas-world")).toHaveAttribute(
-        "data-persistence-ready",
-        "true",
-      );
-      const group = page.locator('[data-testid="rf__node-run-group-a"]');
-      await group.evaluate((element) => element.dispatchEvent(
-        new MouseEvent("click", { bubbles: true }),
-      ));
-      const manualNode = manualRacePage.locator(
-        '[data-testid="rf__node-run-text-a"]',
-      );
-      await manualNode.evaluate((element) => element.dispatchEvent(
-        new MouseEvent("click", { bubbles: true }),
-      ));
-      const manualGenerate = manualRacePage
-        .getByTestId("text-creator")
-        .getByRole("button", { name: "Generate" });
-      await expect(manualGenerate).toBeEnabled();
-      const postsBeforeRace = taskPostNodes.filter((nodeId) =>
-        nodeId === "run-text-a"
-      ).length;
-      const downstreamBeforeRace = taskPostNodes.filter((nodeId) =>
-        nodeId === "run-text-a-next"
-      ).length;
-      await Promise.all([
-        group.getByTestId("group-execute-button")
-          .evaluate((element) => (element as HTMLButtonElement).click()),
-        manualGenerate.evaluate((element) => (element as HTMLButtonElement).click()),
-      ]);
-      await expect.poll(() => taskPostNodes.filter((nodeId) =>
-        nodeId === "run-text-a"
-      ).length, { timeout: 15_000 }).toBe(postsBeforeRace + 1);
-      await expect.poll(async () => [
-        await page.locator("body").innerText(),
-        await manualRacePage.locator("body").innerText(),
-      ].some((text) => text.includes("整组"))).toBe(true);
-      const groupWon = await page.evaluate(() => {
-        for (let index = 0; index < window.localStorage.length; index += 1) {
-          if (window.localStorage.key(index)?.startsWith(
-            "unboundry-group-run-lease:v1:",
-          )) return true;
-        }
-        return false;
-      });
-      setLatestTaskState("run-text-a", "success");
-      if (groupWon) {
-        await expect.poll(() => taskPostNodes.filter((nodeId) =>
-          nodeId === "run-text-a-next"
-        ).length).toBe(downstreamBeforeRace + 1);
-        setLatestTaskState("run-text-a-next", "success");
-      } else {
-        await expect.poll(() => taskPostNodes.filter((nodeId) =>
-          nodeId === "run-text-a-next"
-        ).length).toBe(downstreamBeforeRace);
-      }
-      await expect.poll(() => page.evaluate(() => {
-        for (let index = 0; index < window.localStorage.length; index += 1) {
-          if (window.localStorage.key(index)?.startsWith(
-            "unboundry-group-run-lease:v1:",
-          )) return false;
-        }
-        return true;
-      })).toBe(true);
-    } finally {
-      await manualRacePage.close();
-    }
-
-    // A hard refresh converts the active run to an interrupted checkpoint,
-    // releases its page owner, and resumes the exact accepted task without a
-    // duplicate first-layer POST. Reload automatically reconciles only that
-    // accepted task; an unchanged snapshot continues pending work itself.
-    await discardInterruptedCheckpointsForNextScenario();
-    await resetGroupPositionsForNextScenario();
-    const refreshPostsBefore = taskPostNodes.filter((nodeId) =>
-      nodeId === "run-text-a"
-    ).length;
-    const refreshDownstreamBefore = taskPostNodes.filter((nodeId) =>
-      nodeId === "run-text-a-next"
-    ).length;
-    await startGroup(
-      "run-group-a",
-      "run-text-a",
-      refreshPostsBefore + 1,
-    );
-    await expect.poll(() => page.evaluate(() => {
-      for (let index = 0; index < window.localStorage.length; index += 1) {
-        const key = window.localStorage.key(index);
-        if (!key?.startsWith("unboundry-group-run-checkpoint:v1:")) continue;
-        const value = JSON.parse(window.localStorage.getItem(key) ?? "null") as {
-          acceptedTasks?: Record<string, { taskId?: string }>;
-          nodeStates?: Record<string, string>;
-          status?: string;
-        } | null;
-        if (
-          value?.status === "running" &&
-          value.nodeStates?.["run-text-a"] === "running" &&
-          value.acceptedTasks?.["run-text-a"]?.taskId
-        ) return true;
-      }
-      return false;
-    })).toBe(true);
-    await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent(
-      "pagehide",
-    )));
-    await expect.poll(() => page.evaluate(() => {
-      let interrupted = false;
-      let leased = false;
-      for (let index = 0; index < window.localStorage.length; index += 1) {
-        const key = window.localStorage.key(index);
-        if (key?.startsWith("unboundry-group-run-lease:v1:")) leased = true;
-        if (!key?.startsWith("unboundry-group-run-checkpoint:v1:")) continue;
-        const value = JSON.parse(window.localStorage.getItem(key) ?? "null") as {
-          status?: string;
-        } | null;
-        if (value?.status === "interrupted") interrupted = true;
-      }
-      return { interrupted, leased };
-    })).toEqual({ interrupted: true, leased: false });
-
-    const refreshTaskId = latestTaskByNode.get("run-text-a");
-    if (!refreshTaskId) throw new Error("missing accepted refresh task");
-    setLatestTaskState("run-text-a", "success");
-    await page.reload();
-    await expect(page.getByTestId("canvas-world")).toHaveAttribute(
-      "data-persistence-ready",
-      "true",
-    );
-    await expect.poll(() => taskPostNodes.filter((nodeId) =>
-      nodeId === "run-text-a"
-    ).length).toBe(refreshPostsBefore + 1);
-    await expect.poll(() => taskPostNodes.filter((nodeId) =>
-      nodeId === "run-text-a-next"
-    ).length, { timeout: 15_000 }).toBe(refreshDownstreamBefore + 1);
-    await expect.poll(async () => {
-      const savedCanvas = await (await request.get(
-        `/api/canvas/${project.id}`,
-      )).json() as {
-        nodes: Array<{ data: { content?: string }; id: string }>;
-      };
-      return savedCanvas.nodes.find((node) => node.id === "run-text-a")
-        ?.data.content;
-    }).toContain("已完成 run-text-a");
-    setLatestTaskState("run-text-a-next", "success");
-    await expect.poll(() => page.evaluate(() => {
-      for (let index = 0; index < window.localStorage.length; index += 1) {
-        if (window.localStorage.key(index)?.startsWith(
-          "unboundry-group-run-lease:v1:",
-        )) return false;
-      }
-      return true;
-    })).toBe(true);
-
-    // Leaving for a different real canvas uses the same page-exit checkpoint
-    // path. While away, a safe edit changes only the pending downstream prompt.
-    // Returning must recover the accepted task, close the old snapshot, create a
-    // current-graph run and continue without making Tasks a required step.
-    const otherProjectResponse = await request.post("/api/projects", { data: {} });
-    expect(otherProjectResponse.status()).toBe(201);
-    const otherProject = await otherProjectResponse.json() as { id: string };
-    try {
-      await resetGroupPositionsForNextScenario();
-      const switchPostsBefore = taskPostNodes.filter((nodeId) =>
-        nodeId === "run-text-a"
-      ).length;
-      const switchDownstreamBefore = taskPostNodes.filter((nodeId) =>
-        nodeId === "run-text-a-next"
-      ).length;
-      await startGroup(
-        "run-group-a",
-        "run-text-a",
-        switchPostsBefore + 1,
-      );
-      const switchAcceptedTaskId = latestTaskByNode.get("run-text-a");
-      if (!switchAcceptedTaskId || !tasks.has(switchAcceptedTaskId)) {
-        throw new Error("missing exact accepted task for cross-canvas recovery");
-      }
-      await expect.poll(() => page.evaluate(() => {
-        for (let index = 0; index < window.localStorage.length; index += 1) {
-          const key = window.localStorage.key(index);
-          if (!key?.startsWith("unboundry-group-run-checkpoint:v1:")) continue;
-          const value = JSON.parse(window.localStorage.getItem(key) ?? "null") as {
-            acceptedTasks?: Record<string, { taskId?: string }>;
-            nodeStates?: Record<string, string>;
-            status?: string;
-          } | null;
-          if (
-            value?.status === "running" &&
-            value.nodeStates?.["run-text-a"] === "running" &&
-            value.acceptedTasks?.["run-text-a"]?.taskId
-          ) return value.acceptedTasks["run-text-a"].taskId;
-        }
-        return undefined;
-      })).toBe(switchAcceptedTaskId);
-      page.once("dialog", (dialog) => void dialog.accept());
-      await page.goto(`/canvas/${otherProject.id}`);
-      await expect(page.getByTestId("canvas-world")).toHaveAttribute(
-        "data-persistence-ready",
-        "true",
-      );
-      taskStates.set(switchAcceptedTaskId, "success");
-      const changedResponse = await request.get(`/api/canvas/${project.id}`);
-      expect(changedResponse.ok()).toBeTruthy();
-      const changedCanvas = await changedResponse.json() as {
-        edges: unknown[];
-        loadToken: string;
-        nodes: Array<{ data: Record<string, unknown>; id: string }>;
-        revision: number;
-      };
-      const changedSave = await request.put(`/api/canvas/${project.id}`, {
-        data: {
-          edges: changedCanvas.edges,
-          nodes: changedCanvas.nodes.map((node) =>
-            node.id === "run-text-a-next"
-              ? {
-                  ...node,
-                  data: {
-                    ...node.data,
-                    textPrompt: "生成 A 组第二层文案（返回前已安全更新）",
-                  },
-                }
-              : node
-          ),
-          observedLoadToken: changedCanvas.loadToken,
-          observedRevision: changedCanvas.revision,
-          revision: changedCanvas.revision,
-          saveAttemptId: randomUUID(),
-          saveSequence: 1,
-          saveSessionId: randomUUID(),
-          viewport: { x: 0, y: 0, zoom: 1 },
-        },
-      });
-      expect(changedSave.ok()).toBeTruthy();
-      await page.goto(`/canvas/${project.id}`);
-      await expect(page.getByTestId("canvas-world")).toHaveAttribute(
-        "data-persistence-ready",
-        "true",
-      );
-      await expect.poll(() => taskPostNodes.filter((nodeId) =>
-        nodeId === "run-text-a"
-      ).length).toBe(switchPostsBefore + 1);
-      await expect.poll(() => taskPostNodes.filter((nodeId) =>
-        nodeId === "run-text-a-next"
-      ).length, { timeout: 15_000 }).toBe(switchDownstreamBefore + 1);
-      setLatestTaskState("run-text-a-next", "success");
-      await expect.poll(() => page.evaluate(() => {
-        for (let index = 0; index < window.localStorage.length; index += 1) {
-          if (window.localStorage.key(index)?.startsWith(
-            "unboundry-group-run-lease:v1:",
-          )) return false;
-        }
-        return true;
-      })).toBe(true);
-      await page.getByTestId("tasks").click();
-      await expect(page.getByTestId("tasks-group-checkpoint")).toHaveCount(0);
-    } finally {
-      await request.delete(`/api/canvas/${otherProject.id}`);
-      await request.delete(`/api/projects/${otherProject.id}`);
-    }
-
-    await discardInterruptedCheckpointsForNextScenario();
-    const driftBaseline = await existingCanvasSaveMetadata(request, project.id);
-    const driftNodes = [{
-      data: { label: "Group", title: "revision drift group" },
-      id: "drift-browser-group",
-      position: { x: 100, y: 100 },
-      style: { height: 900, width: 900 },
-      type: "group",
-      zIndex: 0,
-    }, ...Array.from({ length: 11 }, (_, index) => ({
-      data: {
-        label: "Text",
-        textModelId: modelId,
-        textParameters: {},
-        textPrompt: `revision drift fixture ${index}`,
-        textPromptReady: true,
-        textGenerationInputKey: `stale-input-${index}`,
-        textGenerationOwnershipKey: `stale-owner-${index}`,
-        textGenerationTaskId: `stale-task-${index}`,
-        textGenerating: true,
-        ...(index === 0
-          ? {
-              textGenerationError: "画布内容还在保存，请等待自动保存完成后再试",
-              textGenerationErrorCode: "CANVAS_NOT_SAVED",
-            }
-          : {}),
-        title: `drift text ${index}`,
-      },
-      id: `drift-browser-text-${index}`,
-      parentId: "drift-browser-group",
-      position: { x: 30 + (index % 3) * 260, y: 60 + Math.floor(index / 3) * 200 },
-      style: { height: 170, width: 230 },
-      type: "text",
-      zIndex: 1,
-    })), ...Array.from({ length: 22 }, (_, index) => ({
-      data: {
-        label: "Text",
-        textGenerationInputKey: `stale-filler-input-${index}`,
-        textGenerationOwnershipKey: `stale-filler-owner-${index}`,
-        textGenerationTaskId: `stale-filler-task-${index}`,
-        textGenerating: true,
-        textModelId: modelId,
-        textParameters: {},
-        textPrompt: `stale filler ${index}`,
-        textPromptReady: true,
-        title: `stale filler ${index}`,
-      },
-      id: `drift-browser-stale-filler-${index}`,
-      position: { x: 20 + (index % 11) * 75, y: 20 + Math.floor(index / 11) * 75 },
-      style: { height: 60, width: 70 },
-      type: "text",
-      zIndex: 1,
-    })), ...Array.from({ length: 19 }, (_, index) => ({
-      data: { label: "Group", title: `filler ${index}` },
-      id: `drift-browser-filler-${index}`,
-      position: { x: 1200 + (index % 8) * 80, y: Math.floor(index / 8) * 80 },
-      style: { height: 50, width: 50 },
-      type: "group",
-      zIndex: 0,
-    }))];
-    const driftEdges = [
-      ...Array.from({ length: 10 }, (_, index) => ({
-        id: `drift-browser-executable-edge-${index}`,
-        source: "drift-browser-text-0",
-        sourceHandle: "source",
-        target: `drift-browser-text-${index + 1}`,
-        targetHandle: "target",
-        type: "cuttable",
-      })),
-      ...Array.from({ length: 88 }, (_, index) => ({
-        id: `drift-browser-filler-edge-${index}`,
-        source: index % 2 === 0
-          ? `drift-browser-stale-filler-${index % 22}`
-          : `drift-browser-filler-${index % 18}`,
-        sourceHandle: "source",
-        target: index % 2 === 0
-          ? `drift-browser-stale-filler-${(index + 1) % 22}`
-          : `drift-browser-filler-${(index % 18) + 1}`,
-        targetHandle: "target",
-        type: "cuttable",
-      })),
-    ];
-    expect(driftNodes).toHaveLength(53);
-    expect(driftEdges).toHaveLength(98);
-    const driftSeed = await request.put(`/api/canvas/${project.id}`, {
-      data: {
-        edges: driftEdges,
-        nodes: driftNodes,
-        ...driftBaseline,
-        viewport: { x: 0, y: 0, zoom: 1 },
-      },
-    });
-    expect(driftSeed.ok()).toBeTruthy();
-    tasks.clear();
-    taskStates.clear();
-    latestTaskByNode.clear();
-    revisionDriftMode = true;
-    revisionDriftFormalPosts = 0;
-    driftCanvasPuts.length = 0;
-    captureDriftCanvasPuts = true;
-    await page.reload();
-    await expect(page.getByTestId("canvas-world")).toHaveAttribute(
-      "data-persistence-ready",
-      "true",
-    );
-    await installSummaryCapture();
-    await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
-    await page.locator('[data-testid="rf__node-drift-browser-group"]')
-      .evaluate((element) => element.dispatchEvent(new MouseEvent("click", {
-        bubbles: true,
-      })));
-    await page.locator('[data-testid="rf__node-drift-browser-group"]')
-      .getByTestId("group-execute-button").evaluate((element) =>
-        (element as HTMLButtonElement).click()
-      );
-    await expectTerminalSummaryCount("drift-browser-group", "failed", 1);
-    await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
-    await page.waitForTimeout(400);
-    captureDriftCanvasPuts = false;
-    const changedFields = driftCanvasPuts.map((put, index) => {
-      const before = index === 0 ? driftNodes : driftCanvasPuts[index - 1].nodes;
-      const beforeById = new Map(before.map((node) => [node.id, node]));
-      return put.nodes.flatMap((node) => {
-        const previous = (beforeById.get(node.id)?.data ?? {}) as Record<
-          string,
-          unknown
-        >;
-        const next = node.data ?? {};
-        const fields = new Set([...Object.keys(previous), ...Object.keys(next)]);
-        const changed = [...fields].filter((field) =>
-          JSON.stringify(previous[field]) !== JSON.stringify(next[field])
-        );
-        return changed.length > 0 ? [{ fields: changed.sort(), nodeId: node.id }] : [];
-      });
-    });
-    expect(revisionDriftFormalPosts).toBe(3);
-    expect(driftCanvasPuts).toHaveLength(34);
-    expect(changedFields).toHaveLength(34);
-    expect(changedFields.slice(0, 33).every((changes) =>
-      changes.length === 1 &&
-      changes[0].fields.includes("textGenerationOwnershipKey") &&
-      changes[0].fields.includes("textGenerationTaskId")
-    )).toBe(true);
-    expect(changedFields[33]).toEqual([{
-      fields: [
-        "textModelConfigurationRevision",
-        "textModelName",
-        "textParameters",
-      ],
-      nodeId: "drift-browser-text-0",
-    }]);
-
+    await expect.poll(() => generationTaskPosts).toBe(0);
   } finally {
     await request.delete(`/api/canvas/${project.id}`);
     await request.delete(`/api/projects/${project.id}`);
   }
 });
-
 test("group run ignores a leftover canvas-save error and still blocks a real model incompatibility", async ({
   page,
   request,
@@ -5824,35 +4451,12 @@ test("group run ignores a leftover canvas-save error and still blocks a real mod
     const execute = page.getByTestId("group-execute-button");
     await expect(execute).toBeEnabled();
     await execute.click();
-    const expectedMessage = "当前模型不支持image类型上游，引用已保留";
     await expect(page.getByTestId("workflow-run-toast")).toContainText(
-      `整组执行已阻止：发现 1 个不兼容节点；首个“商品主图”：${expectedMessage}（未提交任何生成任务）`,
+      "节点 director-text 没有已选择的模型",
     );
     await expect(page.getByTestId("workflow-run-toast")).not.toContainText(
       "画布还在保存",
     );
-    await expect.poll(async () => {
-      const canvas = await (await request.get(`/api/canvas/${project.id}`)).json() as {
-        nodes: Array<{
-          data: {
-            imageGenerationError?: string;
-            textGenerationError?: string;
-            textGenerationErrorCode?: string;
-          };
-          id: string;
-        }>;
-      };
-      const director = canvas.nodes.find((node) => node.id === "director-text")?.data;
-      const target = canvas.nodes.find((node) => node.id === "target-image")?.data;
-      return {
-        directorError: director?.textGenerationError ?? "",
-        targetError: target?.imageGenerationError ?? "",
-      };
-    }).toEqual({
-      directorError: "",
-      targetError: expectedMessage,
-    });
-
     const after = await (await request.get("/api/generation-tasks/status")).json() as {
       paidProviderRequests: number;
     };

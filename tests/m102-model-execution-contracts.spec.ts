@@ -2128,7 +2128,7 @@ test("INC-GEN-018 CLI requires dual hashes and an exact recovery attestation", (
         createHash("sha256").update(databaseBytes).digest("hex"),
       databaseSizeBytes: statSync(databasePath).size,
       purpose,
-      schemaVersion: 41,
+      schemaVersion: 42,
       snapshotId: "inc-gen-018-cli-fixture",
     };
     if (existsSync(markerPath)) chmodSync(markerPath, 0o600);
@@ -2166,7 +2166,7 @@ test("INC-GEN-018 CLI requires dual hashes and an exact recovery attestation", (
       "--expected-attestation-sha256",
       attestationSha,
       "--apply",
-    ])).toThrow(/schema41\/10模型精确基线/);
+    ])).toThrow(/当前schema\/10模型精确基线/);
   } finally {
     rmSync(stagingRoot, { force: true, recursive: true });
   }
@@ -2189,7 +2189,7 @@ test("INC-GEN-018 planner audits the dynamic 10-model denominator and only selec
       missingExpectedModelIds: [],
       paidProviderRequests: 0,
       publishedModelCount: 10,
-      schemaVersion: 41,
+      schemaVersion: 42,
       unexpectedPublishedModelIds: [],
     });
     expect(plan.models.map((model) => model.modelId)).toEqual(
@@ -2344,7 +2344,7 @@ test("INC-GEN-018 blocks near misses, invalid active revisions and an unexpected
       expect(() => fixture.harness.apply(fixture.store, "admin-a", {
         expectedBaselineSnapshotHash: plan.baselineSnapshotHash,
         expectedPlanHash: plan.planHash,
-      })).toThrow(/schema41\/10模型精确基线/);
+      })).toThrow(/当前schema\/10模型精确基线/);
       expect(rawUpgradeMutationSnapshot(fixture.store)).toBe(before);
     } finally {
       closeIncGen018Fixture(fixture);

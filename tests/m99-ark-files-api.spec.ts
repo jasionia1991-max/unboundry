@@ -58,6 +58,7 @@ function fileObject(id: string, status: "active" | "failed" | "processing") {
 
 function completedResponse(text = "识别结果：红色连衣裙") {
   return new Response(JSON.stringify({
+    id: "resp_m99-completed",
     output: [{
       content: [{ text, type: "output_text" }],
       status: "completed",
@@ -836,6 +837,86 @@ test("large PNG text task uses Files and cleanup failure cannot reverse Provider
     });
     expect(JSON.stringify(parsed)).not.toContain("base64");
     expect(cleaned).toEqual(["file-large-1"]);
+    expect(store.get(created.task.id)).toMatchObject({ state: "success" });
+    store.close();
+  } finally {
+    if (previousData === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
+    else process.env.UNBOUNDRY_DATA_DIR = previousData;
+    if (previousFlag === undefined) delete process.env.UNBOUNDRY_ARK_FILES_API;
+    else process.env.UNBOUNDRY_ARK_FILES_API = previousFlag;
+    await rm(directory, { force: true, recursive: true });
+  }
+});
+
+test("workflow text keeps one Provider POST by disabling ancillary Ark Files upload", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-ark-files-workflow-"));
+  const previousData = process.env.UNBOUNDRY_DATA_DIR;
+  const previousFlag = process.env.UNBOUNDRY_ARK_FILES_API;
+  process.env.UNBOUNDRY_DATA_DIR = directory;
+  process.env.UNBOUNDRY_ARK_FILES_API = "1";
+  try {
+    await insertLocalPng(
+      directory,
+      "workflow-large-reference",
+      largePngBytes(10 * 1024 * 1024 + 1),
+    );
+    const store = createGenerationTaskStore(directory);
+    const created = store.create({
+      canvasId: "default",
+      idempotencyKey: "ark-files-workflow-0001",
+      kind: "text",
+      model: "model-text-doubao-seed",
+      modelConfiguration: {
+        workflowBinding: {
+          generationInputKey: "workflow-input-key",
+          generationOwnershipKey: "workflow-ownership-key",
+          groupId: "workflow-group",
+          modelConfigurationRevision: "workflow-model-configuration",
+          modelReleaseRevision: "workflow-model-release",
+          runId: "workflow-run",
+        },
+      },
+      nodeId: "workflow-text-target",
+      ownerId: "__test__",
+      parameters: {
+        inputs: [{
+          assetId: "workflow-large-reference",
+          kind: "image",
+          order: 1,
+          role: "context-image",
+          sourceNodeId: "upstream-image",
+        }],
+      },
+      prompt: "识别工作流参考图",
+      providerModelId: "doubao-seed-2-0-lite-260428",
+      providerProfileId: textProfile.id,
+    });
+    let ancillaryUploadCalls = 0;
+    let mediaUrlCalls = 0;
+    let providerBody = "";
+    await executeTextTaskWithDependencies(created.task.id, {
+      acquireGenerationSnapshot: async () => snapshot,
+      acquireProfile: async () => ({ profile: textProfile, release() {} }),
+      fetcher: async (_input, init) => {
+        providerBody = String(init?.body ?? "");
+        return completedResponse();
+      },
+      mediaUrlForOwner: async () => {
+        mediaUrlCalls += 1;
+        return "data:image/png;base64,aGVsbG8=";
+      },
+      prepareArkImage: async () => {
+        ancillaryUploadCalls += 1;
+        throw new Error("workflow must not upload an Ark File");
+      },
+      store,
+    });
+    expect(ancillaryUploadCalls).toBe(0);
+    expect(mediaUrlCalls).toBe(1);
+    expect(JSON.parse(providerBody).input[0].content).toContainEqual({
+      image_url: "data:image/png;base64,aGVsbG8=",
+      type: "input_image",
+    });
     expect(store.get(created.task.id)).toMatchObject({ state: "success" });
     store.close();
   } finally {
