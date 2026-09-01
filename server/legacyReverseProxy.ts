@@ -111,6 +111,9 @@ export function legacyBridgeMutationBlockCode(
   if (/^\/api\/generation-tasks(?:[/.]|$)/.test(path)) {
     return "BRIDGE_LEGACY_GENERATION_MUTATION_DISABLED" as const;
   }
+  if (/^\/api\/workflow-runs(?:[/.]|$)/.test(path)) {
+    return "BRIDGE_LEGACY_GENERATION_MUTATION_DISABLED" as const;
+  }
   if (/^\/api\/playlist\/export(?:[/.]|$)/.test(path)) {
     return "BRIDGE_LEGACY_MEDIA_MUTATION_DISABLED" as const;
   }

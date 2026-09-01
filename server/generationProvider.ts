@@ -39,6 +39,7 @@ export type TextGenerationRequest = Readonly<{
 }>;
 
 export type TextGenerationResult = Readonly<{
+  providerResponseId?: string;
   providerUsageTokens?: number;
   text: string;
 }>;
@@ -76,6 +77,7 @@ export type TextGenerationProviderRegistration = Readonly<{
 }>;
 
 export type TextGenerationProviderExecution = Readonly<{
+  acceptProviderTaskId?: (providerTaskId: string) => void;
   beforeProviderRequest: () => void;
   fetcher: typeof fetch;
   profile: ProviderProfile;

@@ -133,7 +133,8 @@
     { "domain": "models", "sources": ["server/model*.ts", "server/agentConfiguration.ts"] },
     { "domain": "projects", "sources": ["server/project*.ts"] },
     { "domain": "provider", "sources": ["server/provider*.ts", "server/secureStorageProfiles.ts", "server/storageAdmin.ts"] },
-    { "domain": "templates", "sources": ["server/template*.ts", "server/adminTemplates.ts"] }
+    { "domain": "templates", "sources": ["server/template*.ts", "server/adminTemplates.ts"] },
+    { "domain": "workflow", "sources": ["server/workflow*.ts"] }
   ],
   "sqlExemptSources": [
     "server/backupInspection.ts",
@@ -142,18 +143,20 @@
     "server/legacyReverseProxy.ts",
     "server/legacyRuntimeSupervisor.ts",
     "server/openApi.ts",
-    "server/schemaMigration.ts"
+    "server/schemaMigration.ts",
+    "server/schema41To42Migration.ts"
   ],
   "tableOwners": [
     { "owner": "auth", "tables": ["account_consumption_limits", "account_delete_intents", "account_permissions", "account_provider_credential_epochs", "account_provider_credentials", "sessions", "users"] },
     { "owner": "canvas", "tables": ["asset_history", "canvas_documents", "canvas_save_session_high_water"] },
     { "owner": "generation", "tables": ["generation_admission_events", "generation_provider_attempts", "generation_safety_settings", "generation_task_events", "generation_tasks"] },
     { "owner": "library", "tables": ["library_entries"] },
-    { "owner": "media", "tables": ["media_assets", "media_delete_intents", "media_publication_attempts"] },
+    { "owner": "media", "tables": ["media_assets", "media_capacity_reservations", "media_delete_intents", "media_publication_attempts"] },
     { "owner": "models", "tables": ["model_profiles", "node_model_bindings"] },
     { "owner": "projects", "tables": ["project_metadata"] },
     { "owner": "provider", "tables": ["provider_profile_write_lock", "provider_profiles"] },
-    { "owner": "templates", "tables": ["public_templates", "user_templates"] }
+    { "owner": "templates", "tables": ["public_templates", "user_templates"] },
+    { "owner": "workflow", "tables": ["workflow_run_locks", "workflow_run_nodes", "workflow_runs"] }
   ],
   "baseline": [
     {

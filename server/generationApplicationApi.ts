@@ -7,6 +7,7 @@ import {
   applyEmergencyStopRunningTaskPolicy,
   configureGenerationRuntimeAdapters,
   initializePersistentGenerationTaskWorker,
+  registerGenerationTaskSettlementObserver,
   prepareGenerationRuntimeRoleTeardown,
   registerGenerationRuntimeRoleCoordinator,
   generationTaskApplication,
@@ -14,6 +15,8 @@ import {
 } from "./generationTasks";
 import { generationTasks } from "./generationTasksApi";
 import { generationReadinessQuery } from "./generationReadinessQuery";
+import { workflowRunsApi } from "./workflowRunsApi";
+import { workflowRunApplication } from "./workflowRunService";
 
 configureEmergencyStopRunningTaskPolicy(applyEmergencyStopRunningTaskPolicy);
 
@@ -45,9 +48,22 @@ export const generationApplicationApi = Object.freeze({
     assertGenerationMediaDeletionAllowedInTransaction,
   configureRuntimeAdapters: configureGenerationRuntimeAdapters,
   httpHandler: generationTasks,
+  workflowHttpHandler: workflowRunsApi,
+  workflowRuns: workflowRunApplication,
   imageToolGenerationCapabilityQuery,
-  initializePersistentWorker: initializePersistentGenerationTaskWorker,
-  prepareRuntimeRoleTeardown: prepareGenerationRuntimeRoleTeardown,
+  initializePersistentWorker: async () => {
+    registerGenerationTaskSettlementObserver(() => workflowRunApplication.kick());
+    workflowRunApplication.initialize();
+    const generation = await initializePersistentGenerationTaskWorker();
+    return generation;
+  },
+  prepareRuntimeRoleTeardown: (coordinator: Parameters<
+    typeof prepareGenerationRuntimeRoleTeardown
+  >[0]) => {
+    registerGenerationTaskSettlementObserver(undefined);
+    workflowRunApplication.stopRunner();
+    return prepareGenerationRuntimeRoleTeardown(coordinator);
+  },
   readinessQuery: generationReadinessQuery,
   registerRuntimeRoleCoordinator: registerGenerationRuntimeRoleCoordinator,
   unregisterRuntimeRoleCoordinatorBeforeStartup:

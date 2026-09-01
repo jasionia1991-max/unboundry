@@ -1,4 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
+import { assertWorkflowMediaDeletionAllowedInTransaction } from
+  "./workflowRunLocks";
 
 export function generationProviderAttemptCounts(database: DatabaseSync) {
   const row = database.prepare(`
@@ -76,4 +78,38 @@ export function assertGenerationMediaDeletionAllowedInTransaction(
   if (publishedTask) {
     throw new Error("Published generation results cannot be deleted");
   }
+  assertWorkflowMediaDeletionAllowedInTransaction(database, input);
+}
+
+export function hasActiveGenerationTaskForNodeInTransaction(
+  database: DatabaseSync,
+  input: Readonly<{ canvasId: string; nodeId: string; ownerId: string }>,
+) {
+  return Boolean(database.prepare(`
+    SELECT 1 FROM generation_tasks
+    WHERE owner_id = ? AND canvas_id = ? AND node_id = ?
+      AND state IN ('queued', 'running', 'retrying', 'recovering')
+    LIMIT 1
+  `).get(input.ownerId, input.canvasId, input.nodeId));
+}
+
+/** A workflow run id must never make an unresolved paid outcome look new. */
+export function hasUnresolvedGenerationOutcomeForNodeInTransaction(
+  database: DatabaseSync,
+  input: Readonly<{ canvasId: string; kind: string; nodeId: string; ownerId: string }>,
+) {
+  return Boolean(database.prepare(`
+    SELECT 1
+    FROM generation_tasks AS task
+    LEFT JOIN generation_provider_attempts AS attempt
+      ON attempt.task_id = task.id
+      AND attempt.execution_attempt = task.attempt
+    WHERE task.owner_id = ? AND task.canvas_id = ? AND task.node_id = ?
+      AND task.kind = ? AND task.state = 'failed'
+      AND (
+        task.error_code = 'OUTCOME_UNKNOWN_BILLING_RISK'
+        OR attempt.outcome = 'outcome-unknown'
+      )
+    LIMIT 1
+  `).get(input.ownerId, input.canvasId, input.nodeId, input.kind));
 }

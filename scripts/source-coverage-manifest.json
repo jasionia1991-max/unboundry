@@ -78,14 +78,14 @@
       "scriptSha256": "ee909ea47623b13d23f06b835b764572068ad6eaa74a6c1fdf39e01186762f31",
       "target": "tests/m10-backup.spec.ts",
       "marker": "an encrypted frozen snapshot verifies and restores without plaintext or source writes",
-      "targetSha256": "93410cb6f8e91313b4ab9ceae97f0b01bfa74a2f22112134770254e34cfd1234"
+      "targetSha256": "9adb9aca71f51f02094d167760e2608401657de0c86b0cc009fe8ea7a5b9916b"
     },
     "scripts/backup-final-candidate.mjs": {
       "mode": "behavior-test",
-      "scriptSha256": "a03502caec65f712dcbdb0b9635d4fe6edee0e3cc268eba62f07d330da0983f7",
+      "scriptSha256": "137ba6d9f64f395bfd839a11abaa62f6a5c8ec82bd7f7763ba027a94512bbf8c",
       "target": "tests/m10-backup.spec.ts",
       "marker": "final-candidate exact-v37 chain rehydrates fake OSS offline and validates normal runtime startup",
-      "targetSha256": "93410cb6f8e91313b4ab9ceae97f0b01bfa74a2f22112134770254e34cfd1234"
+      "targetSha256": "9adb9aca71f51f02094d167760e2608401657de0c86b0cc009fe8ea7a5b9916b"
     },
     "scripts/backup-to-oss.mjs": {
       "mode": "frozen",
@@ -106,7 +106,7 @@
       "scriptSha256": "53e92a0e6268f4a7cb1c618aa1293d27507dd207546c0f988c1e06c0cb7ce94c",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "Full snapshot bridge/final fixtures prove the release closure",
-      "targetSha256": "da4ef23db820ba68043f6fb9e606d1fea733db53973c20fb5acfbc194d4f390a"
+      "targetSha256": "db31079a01b3ba34b0d150f553897a7c6442fccbe4042be6591a95ee37f99395"
     },
     "scripts/check-greenfield.mjs": {
       "mode": "behavior-test",
@@ -120,14 +120,14 @@
       "scriptSha256": "9b1807c98cd6e59a288fd8b81d29299bb5b34b67e7bed9a2003c8989c95d01e7",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "scripts/check-restart-persistence.mjs",
-      "targetSha256": "da4ef23db820ba68043f6fb9e606d1fea733db53973c20fb5acfbc194d4f390a"
+      "targetSha256": "db31079a01b3ba34b0d150f553897a7c6442fccbe4042be6591a95ee37f99395"
     },
     "scripts/check-v051-exact-runtime.mjs": {
       "mode": "behavior-test",
-      "scriptSha256": "46f2f3d355c1ece895e649e3dceb8f485aeeeeed2eb3418b98b311d9a827ac08",
+      "scriptSha256": "f492c522b5c4eee75ae74e2e6b3945476ac1872bb1bd8c22c4e9a850bb4bc6e4",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "scripts/check-v051-exact-runtime.mjs",
-      "targetSha256": "da4ef23db820ba68043f6fb9e606d1fea733db53973c20fb5acfbc194d4f390a"
+      "targetSha256": "db31079a01b3ba34b0d150f553897a7c6442fccbe4042be6591a95ee37f99395"
     },
     "scripts/deploy.mjs": {
       "mode": "frozen",
@@ -154,14 +154,21 @@
       "scriptSha256": "5090797ba194569f47454fda4b4ff0fe0a6fd0fbf70aa470fd4c9a8296ca4a9e",
       "target": "tests/m91-schema-migration.spec.ts",
       "marker": "dry-run and CLI validate exact v37 plus logical SHA without source writes",
-      "targetSha256": "e44c7edaef8fae2674080c9866d0a65bf66d546187d437f78f924e16456c5d33"
+      "targetSha256": "822ace5d88160783601dae359d19a64efa8153b33d28379d9c02d9828eecf29d"
     },
     "scripts/migrate-schema40-to41.mjs": {
       "mode": "behavior-test",
       "scriptSha256": "4864b2f6b0e99acbca8efeeddd09b2bc82ec85d0d19f780ec83e8ec35db703d0",
       "target": "tests/m91-schema-migration.spec.ts",
       "marker": "exact schema 40 dry-run and apply migrate only the v41 compliance boundary",
-      "targetSha256": "e44c7edaef8fae2674080c9866d0a65bf66d546187d437f78f924e16456c5d33"
+      "targetSha256": "822ace5d88160783601dae359d19a64efa8153b33d28379d9c02d9828eecf29d"
+    },
+    "scripts/migrate-schema41-to42.mjs": {
+      "mode": "behavior-test",
+      "scriptSha256": "ad99897236fed90b0470f4d13145f70bebb8d8c0f2a74403f7361f48766671d5",
+      "target": "tests/m103-server-authoritative-workflow.spec.ts",
+      "marker": "schema 41 dry-run and apply migrate only the v42 workflow boundary",
+      "targetSha256": "5d394a9851a8f05d5d832ad8f173a11c4fe26122c04b9d031f6f5d36f6c4055f"
     },
     "scripts/node-typescript-runtime.mjs": {
       "mode": "behavior-test",
@@ -202,7 +209,7 @@
       "scriptSha256": "5911ac412144b89b4a774dc4478f3562fd2191bac5da4875e4bccd8b715287b8",
       "target": "tests/m87-media-integrity.spec.ts",
       "marker": "the read-only media report CLI requires a frozen absolute source and leaves it unchanged",
-      "targetSha256": "18375d5fda1047e35c2f3d8a4d7cb615fe1b8a885ca22229959e1f3cebe4fe10"
+      "targetSha256": "5231765de1a51d165d296fea5bdda75fa344ee4a98ba59c553d6ae34bbce78ff"
     },
     "scripts/reset-account-password.mjs": {
       "mode": "behavior-test",
@@ -216,11 +223,11 @@
       "scriptSha256": "dbc1b06fc7ca761b66cde24bf0e1e293951b87de10db2ab959abbf6ac9a20b76",
       "target": "tests/m10-backup.spec.ts",
       "marker": "an encrypted frozen snapshot verifies and restores without plaintext or source writes",
-      "targetSha256": "93410cb6f8e91313b4ab9ceae97f0b01bfa74a2f22112134770254e34cfd1234"
+      "targetSha256": "9adb9aca71f51f02094d167760e2608401657de0c86b0cc009fe8ea7a5b9916b"
     },
     "scripts/run-linux-production-validation.mjs": {
       "mode": "frozen",
-      "scriptSha256": "53b0729040c1c9a915c0b91cfbb4e33a5cbb238d05225bdb5a3a1ed02936c574",
+      "scriptSha256": "1dca47c118ae23c219f4bd8833dcde6a4177a86c0d95b4d87fcbb6cd4442fea7",
       "reason": "Runs immutable production artifacts in a Linux namespace and creates encrypted validation evidence; automatic execution is forbidden.",
       "manualNpmScripts": []
     },
@@ -229,7 +236,7 @@
       "scriptSha256": "891d9c3db99cf458f88248e503c221e1f450f78f16b9f4d15af8d2f36f5c0efd",
       "target": "tests/m10-backup.spec.ts",
       "marker": "an encrypted frozen snapshot verifies and restores without plaintext or source writes",
-      "targetSha256": "93410cb6f8e91313b4ab9ceae97f0b01bfa74a2f22112134770254e34cfd1234"
+      "targetSha256": "9adb9aca71f51f02094d167760e2608401657de0c86b0cc009fe8ea7a5b9916b"
     }
   }
 }

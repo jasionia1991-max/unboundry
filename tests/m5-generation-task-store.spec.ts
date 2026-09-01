@@ -3217,6 +3217,36 @@ test("an initial admission committed before response failure returns 5xx and rem
         tasks.owner_id = '__test__' AND tasks.canvas_id = ?
         AND tasks.idempotency_key = ?
     `).get(canvasId, idempotencyKey)).toEqual({ count: 0 });
+
+    const workflowRunId = crypto.randomUUID();
+    database.prepare(`
+      INSERT INTO workflow_runs (
+        id, owner_id, canvas_id, group_id, graph_revision,
+        semantic_fingerprint, plan_json, state, stop_requested,
+        created_at, updated_at
+      ) VALUES (?, '__test__', ?, 'locked-group', ?, 'locked-fingerprint',
+        '{"version":1}', 'running', 0, ?, ?)
+    `).run(workflowRunId, canvasId, canvasRevision, timestamp, timestamp);
+    database.prepare(`
+      INSERT INTO workflow_run_locks (
+        owner_id, canvas_id, node_id, run_id, created_at
+      ) VALUES ('__test__', ?, ?, ?, ?)
+    `).run(canvasId, nodeId, workflowRunId, timestamp);
+    const lockedSubmission = await request.post("/api/generation-tasks", {
+      data: {
+        ...submissionBody,
+        idempotencyKey: `${idempotencyKey}-locked`,
+      },
+    });
+    expect(lockedSubmission.status()).toBe(409);
+    await expect(lockedSubmission.json()).resolves.toEqual({
+      code: "WORKFLOW_NODE_LOCKED",
+      error: "当前节点正在整组执行中，请等待完成后再单独生成",
+    });
+    expect(database.prepare(`
+      SELECT COUNT(*) AS count FROM generation_tasks
+      WHERE owner_id = '__test__' AND canvas_id = ? AND idempotency_key = ?
+    `).get(canvasId, `${idempotencyKey}-locked`)).toEqual({ count: 0 });
   } finally {
     database.close();
   }

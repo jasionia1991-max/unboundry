@@ -32,6 +32,7 @@ const {
 } = await import("../server/backupInspection.ts");
 const {
   applyPendingSchemaMigrationsInTransaction,
+  currentSchemaManifest,
   currentSchemaVersion,
   databaseMatchesMigrationManifest,
   databaseMatchesSchemaContract,
@@ -546,7 +547,7 @@ async function rehearse(input) {
   if (
     migrated.status !== "complete" || migrated.sourceVersion !== 37 ||
     migrated.targetVersion !== currentSchemaVersion || !migrated.targetLogicalSha256
-  ) fail("one-shot migration did not publish exact schema 41");
+  ) fail("one-shot migration did not publish the exact current schema");
 
   const rollbackBaseline = normalizeCurrentRollbackBaseline(databasePath);
   const beforeRejectedLogicalSha256 = logicalSha(databasePath, input.workRoot);
@@ -576,7 +577,7 @@ async function rehearse(input) {
     rejectedServer = await startOldServer(input.runtimeRoot, dataDirectory, input.port);
     const rejectedVersion = await jsonRequest(rejectedServer.origin, "/api/version");
     if (rejectedVersion.status !== 200 || rejectedVersion.body.version !== "0.5.1") {
-      fail("old binary did not expose its version before opening schema 41");
+      fail("old binary did not expose its version before opening the current schema");
     }
     rejectedRequest = await fetch(
       `${rejectedServer.origin}/api/canvas/${canvasId}`,
@@ -606,10 +607,10 @@ async function rehearse(input) {
     await waitForExit(
       rejectedServer.child,
       5_000,
-      "exact v0.5.1 process did not terminate on schema 41",
+      "exact v0.5.1 process did not terminate on the current schema",
     );
     if (rejectedServer.child.exitCode === 0) {
-      fail("exact v0.5.1 process exited successfully after rejecting schema 41");
+      fail("exact v0.5.1 process exited successfully after rejecting the current schema");
     }
     if (!Buffer.concat(rejectedServer.output).toString("utf8").includes(expectedRejection)) {
       fail("exact v0.5.1 rejection message was not observed");
@@ -654,9 +655,9 @@ async function rehearse(input) {
     JSON.stringify(afterRejectedFingerprint) ===
       JSON.stringify(beforeRejectedFingerprint) ||
     afterRejectedDatabaseSha256 === beforeRejectedDatabaseSha256 ||
-    journalMode !== "wal" || userVersion !== 41 ||
-    latestMigration?.version !== 41 ||
-    latestMigration?.name !== "seedance-character-compliance-precheck" ||
+    journalMode !== "wal" || userVersion !== currentSchemaVersion ||
+    latestMigration?.version !== currentSchemaVersion ||
+    latestMigration?.name !== currentSchemaManifest.at(-1)?.name ||
     integrity !== "ok" || afterRejectedLogicalSha256 !== beforeRejectedLogicalSha256
   ) fail(`exact v0.5.1 current-schema rejection evidence is incomplete: ${
     JSON.stringify({

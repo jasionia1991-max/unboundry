@@ -1062,13 +1062,13 @@ test("a lost relay response remains outcome-unknown across reopen and blocks pai
 
     expect(providerSubmits).toBe(1);
     expect(store.get(created.task.id)).toMatchObject({
-      errorCode: "NETWORK",
+      errorCode: "AUTOMATIC_RESULT_RECOVERY",
       providerTaskId: undefined,
-      state: "failed",
+      state: "recovering",
     });
     expect(store.getProviderAttemptForTask(created.task.id)).toMatchObject({
       executionAttempt: 1,
-      failureCode: "NETWORK",
+      failureCode: "OUTCOME_UNKNOWN_BILLING_RISK",
       outcome: "outcome-unknown",
     });
 
@@ -1076,11 +1076,20 @@ test("a lost relay response remains outcome-unknown across reopen and blocks pai
     store = undefined;
     const reopened = createGenerationTaskStore(directory);
     const failed = reopened.get(created.task.id);
-    expect(reopened.getProviderAttemptForTask(created.task.id)).toMatchObject({
+    expect(failed).toMatchObject({
+      errorCode: "AUTOMATIC_RESULT_RECOVERY",
+      providerTaskId: undefined,
+      state: "recovering",
+    });
+    const reopenedAttempt = reopened.getProviderAttemptForTask(created.task.id);
+    expect(reopenedAttempt).toMatchObject({
       executionAttempt: 1,
-      failureCode: "NETWORK",
+      failureCode: "OUTCOME_UNKNOWN_BILLING_RISK",
       outcome: "outcome-unknown",
     });
+    const unsafePaidRetry = reopened.hasUnsafeProviderAttemptForNewPaidRetry(
+      created.task.id,
+    );
     reopened.close();
     expect(failed).toBeTruthy();
 
@@ -1101,10 +1110,11 @@ test("a lost relay response remains outcome-unknown across reopen and blocks pai
     };
     countsBeforeDecision.close();
 
-    expect(retrySafetyDecision(failed!)).toMatchObject({
-      allowed: false,
-      code: "RETRY_OUTCOME_UNKNOWN",
-    });
+    expect(retrySafetyDecision(failed!, reopenedAttempt, unsafePaidRetry))
+      .toMatchObject({
+        allowed: false,
+        code: "TASK_NOT_FAILED",
+      });
 
     const countsAfterDecision = openAppDatabase(directory);
     try {

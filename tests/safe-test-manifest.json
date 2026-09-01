@@ -114,7 +114,8 @@
     "tests/m94-immutable-release.spec.ts",
     "tests/m95-release-switch.spec.ts",
     "tests/m96-release-ops.spec.ts",
-    "tests/m99-ark-files-api.spec.ts"
+    "tests/m99-ark-files-api.spec.ts",
+    "tests/m103-server-authoritative-workflow.spec.ts"
   ],
   "preview": [
     "tests/fixture-production.spec.ts",

@@ -76,7 +76,7 @@ const reservationMarkerMaximumBytes = 64 * 1024;
 const secretDocumentLockMaximumBytes = 1024 * 1024;
 const backupIncompleteMarker = ".unboundry-backup-incomplete";
 const restoreIncompleteMarker = ".unboundry-restore-incomplete";
-const supportedBackupSchemaVersions = new Set([37, 38, 39, 40, 41]);
+const supportedBackupSchemaVersions = new Set([37, 38, 39, 40, 41, 42]);
 const minimumProviderQuietMilliseconds = 60_000;
 const restorableSecretFiles = new Set([
   "config-master.key",

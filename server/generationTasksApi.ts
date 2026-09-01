@@ -36,6 +36,10 @@ import {
 } from "./incGen017FeatureFlags";
 import { modelConfigurationRevision } from "./modelCatalog";
 import { ModelContractHealthError } from "./activeModelContractHealth";
+import {
+  admitPreparedGenerationTask,
+  GenerationAdmissionPostCommitError,
+} from "./generationAdmissionApplication";
 
 const {
   GenerationProviderAttemptBlockedError,
@@ -47,6 +51,7 @@ const {
   GenerationTaskProviderBoundaryError,
   GenerationTaskRetryFenceError,
   GenerationTaskTransitionError,
+  GenerationTaskWorkflowLockedError,
   ProviderProfileLockBusyError,
   acquireProviderGenerationRequestLease,
   assertPersistedCanvasRevision,
@@ -1515,7 +1520,7 @@ export async function generationTasks(
         });
         return;
       }
-      const created = taskStore().admitOrGet({
+      const generationTaskInput: GenerationTaskInput = {
         canvasId: String(body.canvasId ?? ""),
         credentialRevision: runtime.credentialVersion,
         expectedCanvasRevision: body.canvasRevision,
@@ -1584,12 +1589,28 @@ export async function generationTasks(
         providerModelId: model.provider_model_id,
         providerProfileId: model.provider_profile_id,
         requestIntent,
-      });
+      };
+      let created: ReturnType<typeof admitPreparedGenerationTask>;
       try {
-        injectInitialGenerationPostCommitFailure(request);
-        if (created.created) {
-          launchGenerationTask(created.task.id, body.kind);
-        }
+        created = admitPreparedGenerationTask({
+          afterCommit: () => injectInitialGenerationPostCommitFailure(request),
+          input: generationTaskInput,
+          kind: body.kind,
+        });
+      } catch (error) {
+        if (!(error instanceof GenerationAdmissionPostCommitError)) throw error;
+        // The task row is committed but launch/response handoff did not finish.
+        // The browser reconciles this exact owner-scoped idempotency key and
+        // startup recovery launches the same queued task.
+        try {
+          json(response, 500, {
+            code: "GENERATION_TASK_ACCEPTED_RESPONSE_FAILED",
+            error: "生成任务已提交，响应暂不可用；系统会自动跟进",
+          });
+        } catch {}
+        return;
+      }
+      try {
         json(
           response,
           created.created ? 202 : 200,
@@ -1599,10 +1620,8 @@ export async function generationTasks(
           ),
         );
       } catch {
-        // admitOrGet already committed. A 5xx makes the browser reconcile this
-        // exact owner-scoped idempotency key instead of minting a second paid
-        // task. If the socket itself is gone, the network failure has the same
-        // reconcilable meaning and must not escape into the outer 4xx mapper.
+        // Admission and launch already succeeded. If the response itself is
+        // lost, reconcile the exact committed idempotency key.
         try {
           json(response, 500, {
             code: "GENERATION_TASK_ACCEPTED_RESPONSE_FAILED",
@@ -1617,6 +1636,11 @@ export async function generationTasks(
       } else if (error instanceof GenerationTaskConflictError) {
         json(response, 409, {
           code: "IDEMPOTENCY_CONFLICT",
+          error: error.message,
+        });
+      } else if (error instanceof GenerationTaskWorkflowLockedError) {
+        json(response, 409, {
+          code: error.code,
           error: error.message,
         });
       } else if (error instanceof GenerationTaskOwnerDeletingError) {

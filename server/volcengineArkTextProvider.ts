@@ -20,6 +20,7 @@ export type ArkTextInput = {
 };
 
 export type ArkTextResult = {
+  providerResponseId: string;
   providerUsageTokens?: number;
   text: string;
 };
@@ -264,6 +265,36 @@ function outputText(body: Record<string, unknown>) {
   return text;
 }
 
+function responseId(body: Record<string, unknown>) {
+  const id = typeof body.id === "string" ? body.id.trim() : "";
+  if (!/^resp_[a-z0-9._:-]+$/i.test(id) || id.length > 160) {
+    throw new VolcengineArkTextError(
+      "FORMAT",
+      "方舟没有返回可恢复的文字响应编号",
+    );
+  }
+  return id;
+}
+
+function arkTextResult(body: Record<string, unknown>): ArkTextResult {
+  const id = responseId(body);
+  if (body.status !== "completed") {
+    throw new VolcengineArkTextError("REMOTE", "方舟文字响应尚未完成");
+  }
+  const usage = body.usage && typeof body.usage === "object" &&
+      !Array.isArray(body.usage)
+    ? body.usage as Record<string, unknown>
+    : {};
+  const tokens = Number(usage.total_tokens);
+  return {
+    providerResponseId: id,
+    providerUsageTokens: Number.isSafeInteger(tokens) && tokens >= 0
+      ? tokens
+      : undefined,
+    text: outputText(body),
+  };
+}
+
 export async function createVolcengineArkTextResponse(
   profile: ProviderProfile,
   input: {
@@ -276,6 +307,7 @@ export async function createVolcengineArkTextResponse(
   signal?: AbortSignal,
   beforeProviderRequest?: () => void,
   deadlineOptions?: ProviderRequestDeadlineOverrides,
+  acceptProviderTaskId?: (providerTaskId: string) => void,
 ): Promise<ArkTextResult> {
   const prompt = input.prompt.trim();
   const inputs = normalizeInputs(input.inputs);
@@ -298,6 +330,7 @@ export async function createVolcengineArkTextResponse(
       role: "user",
     }],
     model: input.model,
+    store: true,
     // Ark's public Responses contract exposes an on/off switch. Keep the
     // historical `medium` value as the durable product value for "enabled".
     thinking: { type: thinkingLevel === "minimal" ? "disabled" : "enabled" },
@@ -352,19 +385,9 @@ export async function createVolcengineArkTextResponse(
         );
       }
       const body = await limitedJson(response, deadline);
-      if (body.status !== "completed") {
-        throw new VolcengineArkTextError("FORMAT", "方舟没有返回已完成的文字结果");
-      }
-      const usage = body.usage && typeof body.usage === "object" && !Array.isArray(body.usage)
-        ? body.usage as Record<string, unknown>
-        : {};
-      const tokens = Number(usage.total_tokens);
-      return {
-        providerUsageTokens: Number.isSafeInteger(tokens) && tokens >= 0
-          ? tokens
-          : undefined,
-        text: outputText(body),
-      };
+      const id = responseId(body);
+      acceptProviderTaskId?.(id);
+      return arkTextResult(body);
     });
   } catch (error) {
     if (error instanceof VolcengineArkTextError) throw error;
@@ -372,6 +395,79 @@ export async function createVolcengineArkTextResponse(
       throw new VolcengineArkTextError(
         error.code,
         error.code === "TIMEOUT" ? "文字生成请求超时" : "文字生成已取消",
+      );
+    }
+    if (signal?.aborted) {
+      throw new VolcengineArkTextError("CANCELLED", "文字生成已取消");
+    }
+    throw new VolcengineArkTextError("NETWORK", "无法连接火山方舟");
+  }
+}
+
+export async function retrieveVolcengineArkTextResponse(
+  profile: ProviderProfile,
+  providerResponseId: string,
+  fetcher: typeof fetch = fetch,
+  signal?: AbortSignal,
+  deadlineOptions?: ProviderRequestDeadlineOverrides,
+): Promise<ArkTextResult> {
+  if (
+    profile.driver !== "volcengine-ark" ||
+    !/^resp_[a-z0-9._:-]+$/i.test(providerResponseId) ||
+    providerResponseId.length > 160
+  ) {
+    throw new VolcengineArkTextError("FORMAT", "文字响应恢复参数无效");
+  }
+  if (signal?.aborted) {
+    throw new VolcengineArkTextError("CANCELLED", "文字生成已取消");
+  }
+  try {
+    return await withProviderRequestDeadline({
+      ...deadlineOptions,
+      operation: "poll",
+      signal,
+    }, async (deadline) => {
+      const response = await deadline.race(fetcher(
+        `${profile.baseUrl}/responses/${encodeURIComponent(providerResponseId)}`,
+        {
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${profile.apiKey}`,
+          },
+          method: "GET",
+          redirect: "error",
+          signal: deadline.signal,
+        },
+      ));
+      if (response.status === 401) {
+        if (response.body) void response.body.cancel().catch(() => undefined);
+        throw new VolcengineArkTextError("AUTH", "火山方舟API Key无效或已失效，请由管理员更新平台连接");
+      }
+      if (response.status === 403) {
+        if (response.body) void response.body.cancel().catch(() => undefined);
+        throw new VolcengineArkTextError("PERMISSION", "当前API Key没有所选文字模型权限，请在方舟控制台开通模型服务并更新平台连接");
+      }
+      if (response.status === 429) {
+        if (response.body) void response.body.cancel().catch(() => undefined);
+        throw new VolcengineArkTextError("RATE_LIMIT", "火山方舟正在限流，请稍后再试");
+      }
+      if (!response.ok) {
+        const message = await providerErrorText(response, deadline);
+        throw new VolcengineArkTextError("REMOTE", message || "火山方舟暂时无法恢复文字结果");
+      }
+      const body = await limitedJson(response, deadline);
+      const result = arkTextResult(body);
+      if (result.providerResponseId !== providerResponseId) {
+        throw new VolcengineArkTextError("FORMAT", "方舟文字响应编号不匹配");
+      }
+      return result;
+    });
+  } catch (error) {
+    if (error instanceof VolcengineArkTextError) throw error;
+    if (error instanceof ProviderRequestDeadlineError) {
+      throw new VolcengineArkTextError(
+        error.code,
+        error.code === "TIMEOUT" ? "文字结果恢复超时" : "文字生成已取消",
       );
     }
     if (signal?.aborted) {
@@ -407,10 +503,16 @@ export const volcengineArkTextGenerationProvider: TextGenerationProvider = {
         execution.fetcher,
         execution.signal,
         execution.beforeProviderRequest,
+        undefined,
+        execution.acceptProviderTaskId,
       );
     } catch (error) {
       if (error instanceof VolcengineArkTextError) {
-        throw new TextGenerationProviderError(error.code, error.message);
+        throw new TextGenerationProviderError(
+          error.code,
+          error.message,
+          ["CANCELLED", "FORMAT", "NETWORK", "TIMEOUT"].includes(error.code),
+        );
       }
       throw error;
     }

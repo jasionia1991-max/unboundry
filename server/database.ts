@@ -2560,6 +2560,101 @@ const migrations: readonly Migration[] = [
         );
     `,
   },
+  {
+    version: 42,
+    name: "server-authoritative-workflow-runs",
+    sql: `
+      CREATE TABLE workflow_runs (
+        id TEXT PRIMARY KEY,
+        owner_id TEXT NOT NULL,
+        canvas_id TEXT NOT NULL,
+        group_id TEXT NOT NULL,
+        graph_revision INTEGER NOT NULL CHECK (graph_revision >= 0),
+        semantic_fingerprint TEXT NOT NULL,
+        plan_json TEXT NOT NULL CHECK (
+          json_valid(plan_json) AND json_type(plan_json) = 'object'
+        ),
+        state TEXT NOT NULL CHECK (
+          state IN ('running', 'stopping', 'success', 'failed', 'cancelled')
+        ),
+        stop_requested INTEGER NOT NULL DEFAULT 0 CHECK (stop_requested IN (0, 1)),
+        reservation_id TEXT,
+        error_code TEXT,
+        error_message TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE (id, owner_id)
+      );
+      CREATE INDEX workflow_runs_owner_canvas_updated
+        ON workflow_runs (owner_id, canvas_id, updated_at DESC);
+      CREATE UNIQUE INDEX workflow_runs_active_group
+        ON workflow_runs (owner_id, canvas_id, group_id)
+        WHERE state IN ('running', 'stopping');
+
+      CREATE TABLE workflow_run_nodes (
+        run_id TEXT NOT NULL,
+        owner_id TEXT NOT NULL,
+        node_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('text', 'image', 'video', 'audio')),
+        plan_index INTEGER NOT NULL CHECK (plan_index >= 0),
+        dependencies_json TEXT NOT NULL CHECK (
+          json_valid(dependencies_json) AND json_type(dependencies_json) = 'array'
+        ),
+        semantic_identity TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (
+          state IN ('pending', 'admitting', 'admitted', 'success', 'failed', 'blocked', 'cancelled')
+        ),
+        task_id TEXT,
+        projection_state TEXT NOT NULL DEFAULT 'pending' CHECK (
+          projection_state IN ('pending', 'applied', 'conflict', 'failed')
+        ),
+        error_code TEXT,
+        error_message TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (run_id, node_id),
+        FOREIGN KEY (run_id, owner_id) REFERENCES workflow_runs(id, owner_id)
+          ON DELETE CASCADE,
+        FOREIGN KEY (task_id) REFERENCES generation_tasks(id)
+      );
+      CREATE UNIQUE INDEX workflow_run_nodes_task
+        ON workflow_run_nodes (task_id) WHERE task_id IS NOT NULL;
+      CREATE INDEX workflow_run_nodes_run_state
+        ON workflow_run_nodes (run_id, state, plan_index);
+
+      CREATE TABLE workflow_run_locks (
+        owner_id TEXT NOT NULL,
+        canvas_id TEXT NOT NULL,
+        node_id TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (owner_id, canvas_id, node_id),
+        FOREIGN KEY (run_id, owner_id) REFERENCES workflow_runs(id, owner_id)
+          ON DELETE CASCADE
+      );
+      CREATE INDEX workflow_run_locks_run
+        ON workflow_run_locks (run_id);
+
+      CREATE TABLE media_capacity_reservations (
+        id TEXT PRIMARY KEY,
+        owner_id TEXT NOT NULL,
+        workflow_run_id TEXT NOT NULL,
+        reserved_bytes INTEGER NOT NULL CHECK (reserved_bytes > 0),
+        state TEXT NOT NULL CHECK (state IN ('active', 'released', 'expired')),
+        expires_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        released_at TEXT,
+        FOREIGN KEY (workflow_run_id, owner_id)
+          REFERENCES workflow_runs(id, owner_id) ON DELETE CASCADE,
+        UNIQUE (workflow_run_id)
+      );
+      CREATE INDEX media_capacity_reservations_active_expiry
+        ON media_capacity_reservations (state, expires_at);
+    `,
+  },
 ];
 
 export const currentSchemaManifest = Object.freeze(
@@ -2568,7 +2663,7 @@ export const currentSchemaManifest = Object.freeze(
 
 export const currentSchemaVersion = currentSchemaManifest.at(-1)?.version ?? 0;
 
-// This is the known-safe physical schema that a v41 process can use. Keep the
+// This is the known-safe physical schema that a v42 process can use. Keep the
 // migration ledger as the source of version ordering, and keep the column-name
 // checks order-independent so the finite documented v21 catalog repairs and
 // v31/v32 template repair can each be admitted only by an exact sqlite_schema
@@ -2635,6 +2730,10 @@ export const currentSchemaContract = Object.freeze({
       "checksum_sha256", "storage_status", "duration_seconds",
       "duration_source", "duration_status", "media_width", "media_height",
       "storage_profile_id",
+    ]),
+    media_capacity_reservations: Object.freeze([
+      "id", "owner_id", "workflow_run_id", "reserved_bytes", "state",
+      "expires_at", "created_at", "updated_at", "released_at",
     ]),
     media_delete_intents: Object.freeze([
       "owner_id", "kind", "asset_id", "state", "created_at", "updated_at",
@@ -2729,6 +2828,21 @@ export const currentSchemaContract = Object.freeze({
     users: Object.freeze([
       "id", "login_name", "display_name", "password_hash", "role", "status",
       "created_at", "updated_at", "protected",
+    ]),
+    workflow_run_locks: Object.freeze([
+      "owner_id", "canvas_id", "node_id", "run_id", "created_at",
+    ]),
+    workflow_run_nodes: Object.freeze([
+      "run_id", "owner_id", "node_id", "kind", "plan_index",
+      "dependencies_json", "semantic_identity", "idempotency_key", "state",
+      "task_id", "projection_state", "error_code", "error_message",
+      "created_at", "updated_at",
+    ]),
+    workflow_runs: Object.freeze([
+      "id", "owner_id", "canvas_id", "group_id", "graph_revision",
+      "semantic_fingerprint", "plan_json", "state", "stop_requested",
+      "reservation_id", "error_code", "error_message", "created_at",
+      "updated_at",
     ]),
   }),
   indexes: Object.freeze({
@@ -3018,6 +3132,30 @@ export const currentSchemaContract = Object.freeze({
       sqlHash: "57a909e3331fd64620bb5264305aafa1b16b0b9f91df06889d32bafe0e65b52c",
       table: "users",
     }),
+    media_capacity_reservations_active_expiry: Object.freeze({
+      sqlHash: "1939252d366fee925c3dd4cb740b60394a8435444d991335dc10a91bfdc46330",
+      table: "media_capacity_reservations",
+    }),
+    workflow_run_locks_run: Object.freeze({
+      sqlHash: "19f298dc2505f34e4dfa90e003eb73e643c0cc0b7c93a918b571b986b49ebdee",
+      table: "workflow_run_locks",
+    }),
+    workflow_run_nodes_run_state: Object.freeze({
+      sqlHash: "a4bbf2b6c8a038820f1917f5ed4aee7b08d6ccd7e510fa8d37e1fb35e6c8ce91",
+      table: "workflow_run_nodes",
+    }),
+    workflow_run_nodes_task: Object.freeze({
+      sqlHash: "48ac2fc6a003236ed5674e487cdcc0c2c8ff7d729ccbb2608517f59d7355b069",
+      table: "workflow_run_nodes",
+    }),
+    workflow_runs_active_group: Object.freeze({
+      sqlHash: "90a9a60a5f5be43dc581ed2ac505e7483369e0e51428fc2f2a61faeb7e8e99e1",
+      table: "workflow_runs",
+    }),
+    workflow_runs_owner_canvas_updated: Object.freeze({
+      sqlHash: "40d6abe11f9f06601166e52814d95eca8f52b6a350b714d7d104b9f482b2eecf",
+      table: "workflow_runs",
+    }),
   }),
   // The documented v21 partial-backup repair creates users but did not create
   // this non-unique lookup index. Permit that performance-only omission only
@@ -3080,6 +3218,9 @@ export const currentSchemaContract = Object.freeze({
     media_assets: Object.freeze([
       "cedbe47b7f996d78b4a03b8e9ec75bf08853aa2539932ad1dad657b1c47c115c",
     ]),
+    media_capacity_reservations: Object.freeze([
+      "26a28a643dae4038052ed9fe5d9f69a05fbf17cc66d3a55aa6cd81968f81a48e",
+    ]),
     media_delete_intents: Object.freeze([
       "11ec2869f50bb802e8ee1cfe0cc728a4650b197195c3345a48c638f838ad1cea",
     ]),
@@ -3140,6 +3281,15 @@ export const currentSchemaContract = Object.freeze({
     users: Object.freeze([
       "3f6ff917f5c58dcceafbc36da7286b3c5b3b4ebf17959434d39e75e226a7219d",
       "80159c4cbfb80a7ef8071d04ed65acd127b62d6c434289a1b713a91cc81d7205",
+    ]),
+    workflow_run_locks: Object.freeze([
+      "fafa471aeca3711f8f4f412388504f7e35a9cc9e2bcfceaadc55bb0162902228",
+    ]),
+    workflow_run_nodes: Object.freeze([
+      "0da1ee93f50aea40d9148dff244589f5df55775f557085e9bf4e6a613f303924",
+    ]),
+    workflow_runs: Object.freeze([
+      "7b6542223475af2e7e9d01d67027d57b6a2f76872a2c6d1a27dcc947b21013fc",
     ]),
   }),
   triggers: Object.freeze({
@@ -3238,6 +3388,18 @@ const schema41Tables = new Set([
   "seedance_character_compliance_attempts",
   "seedance_character_compliance_checks",
   "seedance_character_compliance_disclosures",
+]);
+
+const schema42Tables = new Set([
+  "media_capacity_reservations",
+  "workflow_run_locks",
+  "workflow_run_nodes",
+  "workflow_runs",
+]);
+
+const schema40ExcludedTables = new Set([
+  ...schema41Tables,
+  ...schema42Tables,
 ]);
 
 function databaseMatchesSchemaContractExceptTables(
@@ -3399,7 +3561,12 @@ export function databaseMatchesSchemaContract(database: DatabaseSync) {
 
 /** Frozen v40 guard used only by the authorized v40-to-v41 release migration. */
 export function databaseMatchesSchema40Contract(database: DatabaseSync) {
-  return databaseMatchesSchemaContractExceptTables(database, schema41Tables);
+  return databaseMatchesSchemaContractExceptTables(database, schema40ExcludedTables);
+}
+
+/** Frozen v41 guard used only by the authorized v41-to-v42 release migration. */
+export function databaseMatchesSchema41Contract(database: DatabaseSync) {
+  return databaseMatchesSchemaContractExceptTables(database, schema42Tables);
 }
 
 export function appDataDirectory() {

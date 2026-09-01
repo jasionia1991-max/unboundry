@@ -28,6 +28,10 @@ import {
 } from "./projectTransactionCommands";
 import { executeTransactionScopedCommand } from "./transactionCommand";
 import { persistedNodeSchemaRegistry } from "../types/persistedNodeSchemaRegistry";
+import {
+  hasActiveWorkflowRunForCanvas,
+  workflowRunLockedNodeIdsInTransaction,
+} from "./workflowRunLocks";
 
 function inImmediateTransaction<T>(store: DatabaseSync, operation: () => T): T {
   const ownsTransaction = !store.isTransaction;
@@ -98,6 +102,52 @@ const canvasSaveSessionPattern = /^[a-z0-9-]{8,80}$/i;
 const generationProjectionKinds = new Set(["audio", "image", "text", "video"]);
 const generationProjectionValuePattern = /^[\w.:/-]{1,512}$/;
 const generationProjectionInputFingerprintMaxLength = 100_000;
+
+export function workflowLockedGraphChanged(input: {
+  lockedNodeIds: readonly string[];
+  previousEdges: unknown[];
+  previousNodes: unknown[];
+  nextEdges: unknown[];
+  nextNodes: unknown[];
+}) {
+  const lockedIds = new Set(input.lockedNodeIds);
+  if (lockedIds.size === 0) return false;
+  const subgraph = (nodes: unknown[], edges: unknown[]) => ({
+    edges: edges.filter((value) => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+      const edge = value as Record<string, unknown>;
+      return lockedIds.has(String(edge.source ?? "")) ||
+        lockedIds.has(String(edge.target ?? ""));
+    }).sort((left, right) => String((left as Record<string, unknown>).id ?? "")
+      .localeCompare(String((right as Record<string, unknown>).id ?? ""))),
+    nodes: nodes.filter((value) => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+      return lockedIds.has(String((value as Record<string, unknown>).id ?? ""));
+    }).sort((left, right) => String((left as Record<string, unknown>).id ?? "")
+      .localeCompare(String((right as Record<string, unknown>).id ?? ""))),
+  });
+  const previous = subgraph(input.previousNodes, input.previousEdges);
+  const next = subgraph(input.nextNodes, input.nextEdges);
+  return canvasGraphFingerprint(previous) !== canvasGraphFingerprint(next);
+}
+
+export function workflowProjectedResultRegressed(input: {
+  currentNodes: unknown[];
+  incomingNodes: unknown[];
+}) {
+  const incomingById = new Map(input.incomingNodes.flatMap((value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+    const node = value as { data?: Record<string, unknown>; id?: unknown };
+    return typeof node.id === "string" ? [[node.id, node] as const] : [];
+  }));
+  return input.currentNodes.some((value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const current = value as { data?: Record<string, unknown>; id?: unknown };
+    const taskId = current.data?.groupRunSuccessTaskId;
+    if (typeof current.id !== "string" || typeof taskId !== "string") return false;
+    return incomingById.get(current.id)?.data?.groupRunSuccessTaskId !== taskId;
+  });
+}
 let canvasSaveSessionGlobalHighWaterLimitForTests: number | undefined;
 let canvasSaveSessionOwnerHighWaterLimitForTests: number | undefined;
 let beforeCanvasSaveTransactionForTests: CanvasPersistenceBarrier | undefined;
@@ -824,6 +874,19 @@ export async function canvasPersistence(
     const store = db();
     store.exec("BEGIN IMMEDIATE");
     try {
+      if (hasActiveWorkflowRunForCanvas(
+        store,
+        ownerId,
+        id,
+        identity.bypass,
+      )) {
+        store.exec("ROLLBACK");
+        json(response, 409, {
+          code: "WORKFLOW_RUN_ACTIVE",
+          error: "画布仍有整组任务在自动收口，请等待完成后再删除",
+        });
+        return;
+      }
       if (identity.bypass) {
         store.prepare("DELETE FROM canvas_documents WHERE id = ?").run(id);
       } else {
@@ -1020,6 +1083,45 @@ export async function canvasPersistence(
       json(response, 409, {
         code: "CANVAS_LOAD_REQUIRED",
         error: "Canvas must be loaded successfully before saving",
+      });
+      return;
+    }
+
+    const lockedWorkflowNodeIds = row
+      ? workflowRunLockedNodeIdsInTransaction({
+          canvasId: id,
+          database: store,
+          ownerId,
+        })
+      : [];
+    if (row && workflowLockedGraphChanged({
+      lockedNodeIds: lockedWorkflowNodeIds,
+      nextEdges: edges,
+      nextNodes: nodes,
+      previousEdges: JSON.parse(row.edges) as unknown[],
+      previousNodes: JSON.parse(row.nodes) as unknown[],
+    })) {
+      store.exec("ROLLBACK");
+      json(response, 409, {
+        code: "WORKFLOW_GRAPH_LOCKED",
+        error: "整组执行中的相关节点或连线暂不能修改；其他画布内容仍可编辑",
+      });
+      return;
+    }
+
+    if (
+      row &&
+      document.observedRevision !== undefined &&
+      document.observedRevision < row.revision &&
+      workflowProjectedResultRegressed({
+        currentNodes: JSON.parse(row.nodes) as unknown[],
+        incomingNodes: nodes,
+      })
+    ) {
+      store.exec("ROLLBACK");
+      json(response, 409, {
+        code: "CANVAS_WORKFLOW_PROJECTION_STALE",
+        error: "整组结果已由服务端保存；请刷新后再继续编辑",
       });
       return;
     }

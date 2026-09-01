@@ -65,6 +65,7 @@ const sandboxApprovalPath = "/run/unboundry-validation/approval.json";
 const commitPattern = /^[a-f0-9]{40}$/;
 const sha256Pattern = /^[a-f0-9]{64}$/;
 const maximumOutputBytes = 32 * 1024 * 1024;
+const currentProductionSchemaVersion = 42;
 const allowedControllerEnvironment = Object.freeze([
   "HOME",
   "LANG",
@@ -1987,7 +1988,7 @@ function assertRuntimePhase(phase, contract, fixture, pair, linuxSandbox) {
       "Production runtime phase identity or network evidence is incomplete",
     );
   }
-  if (contract.schemaVersion === 41 && (
+  if (contract.schemaVersion === currentProductionSchemaVersion && (
     phase?.accountProviderCredentialsTotal !== 1 ||
     phase?.accountProviderCredentialEpochsTotal !== 1 ||
     phase?.accountProviderCredentialEpochsAligned !== 1 ||
@@ -2001,7 +2002,7 @@ function assertRuntimePhase(phase, contract, fixture, pair, linuxSandbox) {
   )) {
     fail(
       "LINUX_VALIDATION_RECEIPT_INVALID",
-      "Production schema-41 runtime data evidence is incomplete",
+      "Production current-schema runtime data evidence is incomplete",
     );
   }
   if (contract.schemaVersion === 37) {
@@ -2144,19 +2145,21 @@ async function validateProductionReceipt(receipt, fixture, pair) {
   );
   if (
     dryRun?.ok !== true || dryRun?.mode !== "dry-run" || dryRun?.status !== "ready" ||
-    dryRun?.sourceVersion !== 37 || dryRun?.targetVersion !== 41 ||
+    dryRun?.sourceVersion !== 37 ||
+    dryRun?.targetVersion !== currentProductionSchemaVersion ||
     dryRun?.expectedSourceLogicalSha256 !== bridge37Hash ||
     dryRun?.backfilledChecksums !== 0 || dryRun?.backfilledDurations !== 0 ||
     dryRun?.nativeDurationProbes !== 0 || dryRun?.drainMilliseconds !== 60_000 ||
     dryRun?.targetLogicalSha256 !== null ||
     applied?.ok !== true || applied?.mode !== "apply" || applied?.status !== "complete" ||
-    applied?.sourceVersion !== 37 || applied?.targetVersion !== 41 ||
+    applied?.sourceVersion !== 37 ||
+    applied?.targetVersion !== currentProductionSchemaVersion ||
     bridge37Hash !== fixture.expectedLogicalSha256 ||
     applied?.expectedSourceLogicalSha256 !== bridge37Hash ||
     applied?.backfilledChecksums !== 0 || applied?.backfilledDurations !== 1 ||
     applied?.nativeDurationProbes !== 2 || applied?.drainMilliseconds !== 60_000 ||
     !validSha256(applied?.targetLogicalSha256) ||
-    receipt?.migrationInspection?.userVersion !== 41 ||
+    receipt?.migrationInspection?.userVersion !== currentProductionSchemaVersion ||
     receipt?.migrationInspection?.logicalSha256 !== applied.targetLogicalSha256 ||
     receipt?.migrationInspection?.foreignKeyViolations !== 0 ||
     receipt?.migrationInspection?.integrityCheck !== "ok" ||
@@ -2200,17 +2203,17 @@ async function validateProductionReceipt(receipt, fixture, pair) {
 
   const phaseContracts = [
     ["bridgeSchema37", { role: "bridge", schemaVersion: 37 }],
-    ["bridgeSchema39", { role: "bridge", schemaVersion: 41 }],
-    ["finalSchema39", { role: "final", schemaVersion: 41 }],
-    ["bridgeRollback", { role: "bridge", schemaVersion: 41 }],
-    ["finalReswitch", { role: "final", schemaVersion: 41 }],
+    ["bridgeSchema39", { role: "bridge", schemaVersion: currentProductionSchemaVersion }],
+    ["finalSchema39", { role: "final", schemaVersion: currentProductionSchemaVersion }],
+    ["bridgeRollback", { role: "bridge", schemaVersion: currentProductionSchemaVersion }],
+    ["finalReswitch", { role: "final", schemaVersion: currentProductionSchemaVersion }],
   ];
   const expectedSequence = [
     { releaseRole: "bridge", schemaVersion: 37 },
-    { releaseRole: "bridge", schemaVersion: 41 },
-    { releaseRole: "final", schemaVersion: 41 },
-    { operation: "rollback", releaseRole: "bridge", schemaVersion: 41 },
-    { operation: "reswitch", releaseRole: "final", schemaVersion: 41 },
+    { releaseRole: "bridge", schemaVersion: currentProductionSchemaVersion },
+    { releaseRole: "final", schemaVersion: currentProductionSchemaVersion },
+    { operation: "rollback", releaseRole: "bridge", schemaVersion: currentProductionSchemaVersion },
+    { operation: "reswitch", releaseRole: "final", schemaVersion: currentProductionSchemaVersion },
   ];
   if (!sameJson(receipt?.startupValidation?.runtimeSequence, expectedSequence)) {
     fail(
@@ -2305,7 +2308,8 @@ async function inspectMigratedFixture(fixture, targetLogicalSha256) {
         (SELECT COUNT(*) FROM generation_provider_attempts) AS attempts
     `);
     if (
-      userVersion !== 41 || integrity !== "ok" || foreignKeys.length !== 0 ||
+      userVersion !== currentProductionSchemaVersion ||
+      integrity !== "ok" || foreignKeys.length !== 0 ||
       duration?.duration_status !== "ready" ||
       duration?.duration_source !== "server-probe" ||
       !Number.isFinite(Number(duration?.duration_seconds)) ||
@@ -2316,7 +2320,7 @@ async function inspectMigratedFixture(fixture, targetLogicalSha256) {
       Number(ledgers?.tasks) !== 0 || Number(ledgers?.attempts) !== 0 ||
       !validSha256(targetLogicalSha256) ||
       independentInspection.logicalSha256 !== targetLogicalSha256 ||
-      independentInspection.userVersion !== 41 ||
+      independentInspection.userVersion !== currentProductionSchemaVersion ||
       independentInspection.integrityCheck !== "ok" ||
       independentInspection.foreignKeyViolations !== 0
     ) {
@@ -2447,7 +2451,7 @@ async function validateInnerReceiptDocument(
     pair,
   );
   if (
-    document?.migratedFixture?.userVersion !== 41 ||
+    document?.migratedFixture?.userVersion !== currentProductionSchemaVersion ||
     document?.migratedFixture?.logicalSha256 !== validated.targetLogicalSha256 ||
     document?.migratedFixture?.integrityCheck !== "ok" ||
     document?.migratedFixture?.foreignKeyViolations !== 0 ||

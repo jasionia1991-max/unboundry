@@ -54,8 +54,12 @@ function generationIdentityFromSubmission(value: unknown) {
   };
 }
 
-function completedResponse(text = "识别结果：红色连衣裙") {
+function completedResponse(
+  text = "识别结果：红色连衣裙",
+  id = "resp_m33-completed",
+) {
   return new Response(JSON.stringify({
+    id,
     output: [{
       content: [{ text, type: "output_text" }],
       status: "completed",
@@ -136,9 +140,11 @@ test("Ark Responses serializes ordered Text/Image/Video/Audio content with fake 
       role: "user",
     }],
     model: "doubao-seed-2-0-lite-260428",
+    store: true,
     thinking: { type: "enabled" },
   });
   expect(result).toEqual({
+    providerResponseId: "resp_m33-completed",
     providerUsageTokens: 138,
     text: "识别结果：红色连衣裙",
   });
@@ -293,6 +299,79 @@ test("Text Provider registry injects a fake port with zero network and rejects m
       )
     ).toThrow(/中转站请求或响应格式无法安全识别/);
     expect(networkCalls).toBe(0);
+    store.close();
+  } finally {
+    await rm(directory, { force: true, recursive: true });
+  }
+});
+
+test("Ark Text recovers the stored original response by GET without a second paid submit", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-text-stored-recovery-"));
+  try {
+    const store = createGenerationTaskStore(directory);
+    const created = store.create({
+      canvasId: "default",
+      costCurrency: "CNY",
+      estimatedCostMicrounits: 500_000,
+      idempotencyKey: "text-stored-response-recovery-001",
+      kind: "text",
+      model: "model-text-doubao-seed",
+      nodeId: "text-stored-response-target",
+      ownerId: "__test__",
+      parameters: { outputCount: 1, responseFormat: "text" },
+      prompt: "只恢复原始响应",
+      providerModelId: "doubao-seed-2-0-lite-260428",
+      providerProfileId: profile.id,
+    });
+    let submitCalls = 0;
+    const interruptedProvider: TextGenerationProvider = {
+      id: "fake-interrupted-ark-text",
+      registrations: [{ driver: "volcengine-ark", protocol: "native" }],
+      async generate(_request, execution) {
+        submitCalls += 1;
+        execution.beforeProviderRequest();
+        execution.acceptProviderTaskId?.("resp_m33-recovery");
+        throw new Error("simulated crash after durable response id");
+      },
+    };
+    await executeTextTaskWithDependencies(created.task.id, {
+      acquireProfile: async () => ({ profile, release() {} }),
+      fetcher: async () => {
+        throw new Error("initial fake Provider must not use network");
+      },
+      mediaUrlForOwner: async () => "https://unused.example.test",
+      store,
+      textProviderRegistry: new TextProviderRegistry([interruptedProvider]),
+    });
+    expect(store.get(created.task.id)).toMatchObject({
+      attempt: 1,
+      errorCode: "AUTOMATIC_RESULT_RECOVERY",
+      providerTaskId: "resp_m33-recovery",
+      state: "recovering",
+    });
+
+    store.resume(created.task.id);
+    const requests: Array<{ method: string; url: string }> = [];
+    await executeTextTaskWithDependencies(created.task.id, {
+      acquireProfile: async () => ({ profile, release() {} }),
+      fetcher: async (input, init) => {
+        requests.push({ method: init?.method ?? "GET", url: String(input) });
+        return completedResponse("原响应恢复成功", "resp_m33-recovery");
+      },
+      mediaUrlForOwner: async () => "https://unused.example.test",
+      store,
+    });
+    expect(submitCalls).toBe(1);
+    expect(requests).toEqual([{
+      method: "GET",
+      url: "https://ark.cn-beijing.volces.com/api/v3/responses/resp_m33-recovery",
+    }]);
+    expect(store.get(created.task.id)).toMatchObject({
+      attempt: 1,
+      providerTaskId: "resp_m33-recovery",
+      resultText: "原响应恢复成功",
+      state: "success",
+    });
     store.close();
   } finally {
     await rm(directory, { force: true, recursive: true });

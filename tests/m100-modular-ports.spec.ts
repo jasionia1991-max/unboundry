@@ -2061,7 +2061,7 @@ test("composition root wires public module APIs and delegates readiness SQL", as
       sourceVersion: 0,
     });
     trustedDatabase.exec("COMMIT");
-    expect(currentSchemaVersion).toBe(41);
+    expect(currentSchemaVersion).toBe(42);
     expect(databaseMatchesSchemaContract(trustedDatabase)).toBe(true);
     const timestamp = "2026-08-24T10:00:00.000Z";
     trustedDatabase.prepare(`

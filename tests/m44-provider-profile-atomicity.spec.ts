@@ -171,6 +171,20 @@ function restoreDataDirectory(previous: string | undefined) {
 function rollbackMigration39To38(database: DatabaseSync) {
   if (Number((database.prepare("PRAGMA user_version").get() as {
     user_version: number;
+  }).user_version) === 42) {
+    database.exec(`
+      BEGIN IMMEDIATE;
+      DROP TABLE media_capacity_reservations;
+      DROP TABLE workflow_run_locks;
+      DROP TABLE workflow_run_nodes;
+      DROP TABLE workflow_runs;
+      DELETE FROM schema_migrations WHERE version = 42;
+      PRAGMA user_version = 41;
+      COMMIT;
+    `);
+  }
+  if (Number((database.prepare("PRAGMA user_version").get() as {
+    user_version: number;
   }).user_version) === 41) {
     database.exec(`
       BEGIN IMMEDIATE;
@@ -837,6 +851,7 @@ test("an active paid request blocks Provider mutation until its response is sett
     )).toBe(providerConfigurationVersion(profile));
 
     finishFetch(new Response(JSON.stringify({
+      id: "resp_m44-fetch-lease",
       output: [{
         content: [{ text: "已完成", type: "output_text" }],
         status: "completed",

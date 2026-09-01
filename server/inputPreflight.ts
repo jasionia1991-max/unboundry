@@ -31,7 +31,7 @@ const persistedTrustedMediaKeys = [
   "mediaWidth",
 ] as const;
 
-function authoritativeMediaNodes(
+export function authoritativeMediaNodes(
   nodes: readonly PersistedNode[],
   ownerId: string,
 ): PersistedNode[] {
@@ -83,6 +83,42 @@ function authoritativeMediaNodes(
     }
     return { ...node, data };
   });
+}
+
+export function readPersistedCanvasGraph(input: {
+  bypass?: boolean;
+  canvasId: string;
+  ownerId: string;
+}) {
+  const database = openAppDatabase();
+  try {
+    const row = (input.bypass
+      ? database.prepare(`
+          SELECT nodes, edges, graph_revision FROM canvas_documents
+          WHERE id = ? ORDER BY owner_id = '__test__' DESC, owner_id IS NULL DESC
+          LIMIT 1
+        `).get(input.canvasId)
+      : database.prepare(`
+          SELECT nodes, edges, graph_revision FROM canvas_documents
+          WHERE owner_id = ? AND id = ?
+        `).get(input.ownerId, input.canvasId)) as CanvasRow | undefined;
+    if (!row) throw new Error("画布还没有保存，请稍后重试");
+    return Object.freeze({
+      edges: JSON.parse(row.edges) as Array<{
+        data?: Record<string, unknown>;
+        id: string;
+        source: string;
+        target: string;
+      }>,
+      graphRevision: row.graph_revision,
+      nodes: authoritativeMediaNodes(
+        normalizePersistedMediaNodes(JSON.parse(row.nodes) as PersistedNode[]),
+        input.ownerId,
+      ),
+    });
+  } finally {
+    database.close();
+  }
 }
 
 const nodePromptKeys: Record<NodeInputKind, string> = {

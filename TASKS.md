@@ -1,5 +1,19 @@
 # Unboundry 绿地复刻当前任务
 
+## INC-GEN-025 服务端权威整组执行（v0.6.70 GOAL ACTIVE）
+
+- [x] 从实时 `origin/main@74dc9d9307abee9169a2d2aefc4b01add96114c9` 建立隔离工作树与分支；sparse checkout 排除受保护文件。
+- [x] 确认生产 `v0.6.69/schema41` 健康、v0.6.70 未占用、项目/生产 Node 通道和目标 11-node/24-edge 分母。
+- [x] 最新 `/goal` 激活实现、Review、v0.6.70 不可变发布、成对生产迁移/回退及门通过后的唯一真实整组授权。
+- [x] R1～R2：完整刻画浏览器执行、服务端 admission/task/provider/media/runtime/schema 链，并冻结共享语义与恢复等级证据。
+- [x] R3～R5：实现 durable workflow run/node、immutable plan、确定性幂等、容量 reservation、projection 与浏览器薄客户端；完成风险定向故障注入。
+- [x] R6：冻结候选，主线程与唯一独立只读Reviewer覆盖67文件、277 tracked hunks+15 untracked全文及完整调用链；同一Reviewer复审到`P0=0/P1=0/P2=0/GO`。
+- [x] R7：唯一正式 safe full 原始结果永久记录为 `1149/1154`，5 项失败为 m2 时序波动1项、m38/m92候选版本与schema旧断言3项、m57结果不明账本旧断言1项；未运行第二次full。最小关闭结果为m2 `8/8`、m38 `18/18`、m92 `2/2`、m57 `17/17`、共享task store直接依赖m5 `31/31`，失败/重试/跳过/blocked/reportErrors均0，source/snapshot与4173各轮不变。
+- [x] R7增量Review：同一独立Reviewer只读覆盖最终增量11文件（9 tracked 34 hunks+2 untracked全文）及当前整体72文件/299 tracked hunks，结论`P0=0/P1=0/P2=0/GO`；受保护文件未读取、未哈希、未接触。
+- [ ] R8：push/PR/CI/merge/annotated tag/GitHub Release/exact-tag fresh build。
+- [ ] R9：生产冻结备份、迁移/repeat/rollback-forward、旧 runtime 拒绝新 schema、原子切换和零付费门。
+- [ ] R10：容量与预算门通过后，在普通 Chrome 对指定 group 只点击一次；核验 3 图片、1 视频及音轨、刷新保持和费用，最终停在 `USER_RECHECK`。
+
 ## INC-GEN-023 服务端终态解绑（v0.6.69 CANDIDATE REFROZEN / RELEASE AUTHORIZED）
 
 - [x] v0.6.68已发布部署健康；原任务无费用收口为cancelled，整组点击0/1、Provider POST0/11、费用0。

@@ -15,6 +15,10 @@ import {
 } from "./canvasTransactionCommands";
 import { deleteProjectGenerationDataCommand } from "./generationTransactionCommands";
 import { executeTransactionScopedCommand } from "./transactionCommand";
+import {
+  deleteWorkflowRunsForCanvasInTransaction,
+  hasActiveWorkflowRunForCanvas,
+} from "./workflowRunLocks";
 
 const projectIdPattern = /^[a-z0-9._-]+$/i;
 const defaultProjectTitle = "未命名项目";
@@ -447,6 +451,13 @@ export async function projectsApi(
       });
       return;
     }
+    if (hasActiveWorkflowRunForCanvas(store, ownerId, id, identity.bypass)) {
+      json(response, 409, {
+        code: "WORKFLOW_RUN_ACTIVE",
+        error: "项目仍有整组任务在自动收口，请等待完成后再删除",
+      });
+      return;
+    }
     try {
       await cancelCanvasGenerationTasks(id, identity.bypass ? undefined : identity.userId);
     } catch {
@@ -465,6 +476,22 @@ export async function projectsApi(
     const now = Date.now();
     store.exec("BEGIN IMMEDIATE");
     try {
+      if (hasActiveWorkflowRunForCanvas(store, ownerId, id, identity.bypass)) {
+        store.exec("ROLLBACK");
+        json(response, 409, {
+          code: "WORKFLOW_RUN_ACTIVE",
+          error: "项目仍有整组任务在自动收口，请等待完成后再删除",
+        });
+        return;
+      }
+      // Terminal workflow nodes retain task foreign keys. Remove their owning
+      // aggregate before the existing project generation-data command.
+      deleteWorkflowRunsForCanvasInTransaction({
+        bypass: identity.bypass,
+        canvasId: id,
+        database: store,
+        ownerId,
+      });
       deleteProjectRows(store, ownerId, id, now, identity.bypass);
       store.exec("COMMIT");
     } catch (error) {
