@@ -20,10 +20,12 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 20
     env:
-      NPM_CONFIG_CACHE: ${{ runner.temp }}/unboundry-npm-cache
       NPM_CONFIG_REGISTRY: https://registry.npmjs.org/
-      UNBOUNDRY_NPM_CONTENT_CACHE: ${{ runner.temp }}/unboundry-npm-cache/_cacache
     steps:
+      - name: Isolated npm cache
+        run: |
+          echo "NPM_CONFIG_CACHE=$RUNNER_TEMP/unboundry-npm-cache" >> "$GITHUB_ENV"
+          echo "UNBOUNDRY_NPM_CONTENT_CACHE=$RUNNER_TEMP/unboundry-npm-cache/_cacache" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
