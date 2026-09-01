@@ -1,0 +1,273 @@
+{
+  "version": "0.7.0",
+  "schemaVersion": 42,
+  "createdAt": "2026-09-01T19:31:58Z",
+  "status": "PRODUCTION_V0_7_0_DEPLOYED_STABLE",
+  "technicalAcceptance": "ZERO_PAID_RELEASE_GATES_PASS_EXCEPT_IG26_106_EXACT_RUN_PREFLIGHT_NOT_RUN",
+  "userAcceptance": "USER_RECHECK",
+  "source": {
+    "candidateCommit": "20afab1e5276730f5d321336e347a9a9c9d16bc1",
+    "mergeCommit": "2129f2e0b729306f84c1245f43fac8923fea88aa",
+    "tree": "5f95af9c9dbada3386a1d6602e41c7ad1e4cd2a2",
+    "tagObject": "2929ce06bfbdb18f679d9124ba87d7ef94504fcf",
+    "tagPeeledCommit": "2129f2e0b729306f84c1245f43fac8923fea88aa",
+    "archiveSha256": "1bb015d92fab06aed8c9e1c07e8a88efbaaec1cdce93494dbbcfffafcdfed9ea",
+    "archiveBytes": 30663123,
+    "archiveEntries": 904,
+    "protectedPathsExcluded": true
+  },
+  "tests": {
+    "formalSafeFull": {
+      "executions": 1,
+      "specs": 124,
+      "tests": 1167,
+      "passed": 1162,
+      "failed": 5,
+      "exitCode": 1,
+      "rerun": false
+    },
+    "targetedClosure": {
+      "suites": [
+        "m41",
+        "m73",
+        "m81"
+      ],
+      "tests": 112,
+      "passed": 112
+    },
+    "r9VersionAndBackup": {
+      "m81AndM82Tests": 49,
+      "m81AndM82Passed": 49,
+      "m10Tests": 18,
+      "m10Passed": 18,
+      "formalFullRerun": false
+    },
+    "postReleaseGovernance": {
+      "invalidInvocationCount": 1,
+      "invalidInvocation": "node scripts/run-safe-tests.mjs run m38",
+      "invalidInvocationResult": "ARGUMENT_REJECTED_BEFORE_TEST_EXECUTION",
+      "firstTestAttempt": {
+        "tests": 18,
+        "passed": 17,
+        "failed": 1,
+        "failure": "AGENTS.md lacked the exact production runtime marker required by the governance contract"
+      },
+      "secondTestAttempt": {
+        "tests": 18,
+        "passed": 17,
+        "failed": 1,
+        "failure": "three progressive modularization documents retained the previous CURRENT_V0_6_70 marker",
+        "sourceSha256": "1c07c61b18a390b6524ba9607f0a4d10b408d53d9acee47979a4eb56368cac14",
+        "snapshotUnchanged": true
+      },
+      "finalGovernanceOutcome": {
+        "tests": 18,
+        "passed": 18,
+        "failed": 0,
+        "snapshotUnchanged": true,
+        "listener4173Unchanged": true,
+        "sourceSha256Embedded": false,
+        "sourceSha256Policy": "The final source fingerprint is intentionally not embedded in a file that participates in that fingerprint; the committed tree is bound by Git and PR/main CI."
+      },
+      "formalFullRerun": false
+    }
+  },
+  "review": {
+    "files": 77,
+    "trackedHunks": 671,
+    "p0": 0,
+    "p1": 0,
+    "p2": 2,
+    "decision": "GO"
+  },
+  "github": {
+    "pullRequest": 144,
+    "pullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/144",
+    "branchRun": 33542187106,
+    "branchRunConclusion": "success",
+    "mainRun": 33542404276,
+    "mainRunConclusion": "success",
+    "releaseUrl": "https://github.com/jasionia1991-max/unboundry/releases/tag/v0.7.0",
+    "releasePublishedAt": "2026-09-01T18:16:03Z",
+    "releaseDraft": false,
+    "releasePrerelease": false
+  },
+  "build": {
+    "releasePath": "/opt/unboundry/releases/v0.7.0-inc-gen-026-20260902",
+    "releaseTreeDigest": "2e79e2b1e7c31bf8cbc70d839af430235425eef2c765076b87296c759151efc4",
+    "node": "22.23.2",
+    "npm": "10.9.8",
+    "dependencyInstall": "PASS",
+    "typescript": "PASS",
+    "architecture": "PASS",
+    "productionBuild": "PASS",
+    "distFiles": 33,
+    "buildReceiptSha256": "0e8857a30da9d4cfba60594329cb0a98a1250ce27cefacb8cc41541d6274af6e",
+    "sourceIdentitySha256": "f6561c03174295a2c1cc330be46b97ba646a879561d200dd9e5c7bb9ab46f1aa",
+    "opsManifestSha256": "2a219bd143a29153b0e8c47026ae6391e3fd00eb7fb7b76c038747370bfe4f29"
+  },
+  "backup": {
+    "backupId": "bc453c79-f491-4eb5-9dee-3ef758b8a844",
+    "captureMode": "locked-exact",
+    "package": "/var/lib/unboundry-rollbacks/v0.7.0-20260902-backup/bc453c79-f491-4eb5-9dee-3ef758b8a844.ubbackup",
+    "databaseLogicalSha256": "a56811e8c2dc7c7486201673ab4457dff17a2020f63f3f907832229f71608d73",
+    "envelopeSha256": "f9d18fdd56c90d52cbf525115a323401784965110d97efbbf4358cfe74c8a306",
+    "encryptedManifestSha256": "f8e401b27e4a50535a1d72af099918f15a88ea60f1096d7d9c6645628302ad4a",
+    "schemaVersion": 42,
+    "integrityCheck": "ok",
+    "foreignKeyViolations": 0,
+    "mediaFiles": 355,
+    "ossReadOnlyMirrors": 607,
+    "secretFiles": 3,
+    "mediaBackupBlockingIssues": 0,
+    "historicalNonblockingMediaIssues": 97,
+    "verified": true,
+    "freshRestoreVerified": true,
+    "freshRestorePath": "/var/lib/unboundry-restores/v0.7.0-20260902-fresh",
+    "freshRestoreDatabaseLogicalSha256": "a56811e8c2dc7c7486201673ab4457dff17a2020f63f3f907832229f71608d73",
+    "firstRestoreAttempt": "FAILED_BEFORE_RESTORE_ON_PRIVATE_DIRECTORY_POLICY",
+    "secondRestoreAttempt": "PASS",
+    "legacySecretSuffixFiles": {
+      "action": "QUARANTINED_NOT_DELETED",
+      "count": 2,
+      "path": "/var/lib/unboundry-release-quarantine/v0.7.0-20260902-pre-aad-rename"
+    }
+  },
+  "rollbackForward": {
+    "rollbackRelease": "/opt/unboundry/releases/v0.6.70-inc-gen-025-20260901-clean",
+    "rollbackVersion": "0.6.70",
+    "rollbackSchemaVersion": 42,
+    "rollbackReady": true,
+    "forwardRelease": "/opt/unboundry/releases/v0.7.0-inc-gen-026-20260902",
+    "forwardVersion": "0.7.0",
+    "forwardSchemaVersion": 42,
+    "forwardReady": true,
+    "databaseCountsUnchanged": true
+  },
+  "production": {
+    "current": "/opt/unboundry/releases/v0.7.0-inc-gen-026-20260902",
+    "service": "active",
+    "enabled": true,
+    "mainPidAtReceipt": 3403039,
+    "nRestarts": 0,
+    "activeSince": "2026-09-02T03:21:41+08:00",
+    "localVersion": "0.7.0",
+    "publicVersion": "0.7.0",
+    "localLive": true,
+    "localReady": true,
+    "publicLive": true,
+    "publicReady": true,
+    "runtimeMode": "active",
+    "runtimeRole": "active",
+    "schemaVersion": 42,
+    "staticFilesVerified": 33,
+    "staticMismatches": 0,
+    "stableObservationSeconds": 50,
+    "systemdStartLimitNote": "The deliberate forward, rollback, forward and final-start sequence reached the unit start-rate limit before the final application process was launched. reset-failed was applied once; the final v0.7.0 process started normally and remained active with NRestarts=0."
+  },
+  "dataGate": {
+    "before": {
+      "adminAuditEvents": 312,
+      "generationAdmissions": 950,
+      "generationProviderAttempts": 1041,
+      "generationTasks": 1030,
+      "mediaAssets": 961,
+      "mediaPublications": 552,
+      "workflowRuns": 1,
+      "activeTasks": 0,
+      "unknownBillingTasks": 0,
+      "unsettledProviderBoundaries": 0,
+      "activeReservations": 0,
+      "activePublications": 0,
+      "activeWorkflowRuns": 0
+    },
+    "after": {
+      "adminAuditEvents": 313,
+      "generationAdmissions": 950,
+      "generationProviderAttempts": 1041,
+      "generationTasks": 1030,
+      "mediaAssets": 961,
+      "mediaPublications": 552,
+      "workflowRuns": 1,
+      "activeTasks": 0,
+      "unknownBillingTasks": 0,
+      "unsettledProviderBoundaries": 0,
+      "activeReservations": 0,
+      "activePublications": 0,
+      "activeWorkflowRuns": 0
+    },
+    "expectedAuditEventsAdded": 1,
+    "businessRowsChanged": 0,
+    "newGenerationAdmissions": 0,
+    "newGenerationProviderAttempts": 0,
+    "newGenerationTasks": 0,
+    "newProviderPosts": 0,
+    "newOssWrites": 0,
+    "newFeesCnyEquivalent": 0,
+    "lastProviderAttemptAt": "2026-09-01T01:58:50.006Z"
+  },
+  "generationSafety": {
+    "frozenAt": "2026-09-01T18:34:46.210Z",
+    "restoredAt": "2026-09-01T19:21:03.774Z",
+    "globalEnabled": true,
+    "emergencyStop": false,
+    "runningTaskPolicy": "wait",
+    "restoreAuditEventId": 325,
+    "temporaryRecoveryFenceRemoved": true
+  },
+  "zeroPaidProductionGate": {
+    "versionLiveReady": "PASS",
+    "databaseIntegrityAndQuietState": "PASS",
+    "staticAssets": "PASS_33_OF_33",
+    "backupRestoreRollbackForward": "PASS",
+    "exactModelsCapacityRunPreflight": "NOT_RUN",
+    "exactModelsCapacityRunPreflightReason": "v0.7.0 has no complete public read-only workflow-run admission and capacity endpoint. POST /api/workflow-runs creates a real run, and no exact authenticated Canvas/group was authorized. The release therefore records the available zero-paid evidence without claiming IG26-106 PASS.",
+    "providerPosts": 0,
+    "ossWrites": 0,
+    "realCanvasOrGroupClicks": 0
+  },
+  "receiptArtifacts": {
+    "serverRoot": "/var/lib/unboundry-release-receipts/v0.7.0-20260902",
+    "backupResultSha256": "8511e4bcf644fad31b2dc97afd7adb9657391b86bb30ad546a16b3bc962750fe",
+    "backupVerifySha256": "1e9cb9b4ec83485fa4024a7abe3a779c9a066b02fab0d964f7870edb695c5429",
+    "freshRestoreSha256": "1e9cb9b4ec83485fa4024a7abe3a779c9a066b02fab0d964f7870edb695c5429",
+    "postSwitchGateSha256": "651429bd4b430b858edabc2f130077136918aec6dd3b7a2db8b0005ea8aa9b51",
+    "postSwitchGateSignatureSha256": "04a2241d3bf32061348b5a824c2f7ee53949afc0a9756970ac2b4d9a70557411",
+    "generationFreezeSha256": "41d49c9ccb78b9045417acb9dd25ca08e7c564b91704e7860f1cfd7aed342372",
+    "generationRestoreSha256": "1a24216af8bc0c0abb1f0ba07508f60cdb54644b07d75dfbdb31af5af0667c3a",
+    "mediaDiagnosticSha256": "9306f6b005a619110bff7396568b00f8b77a9576e87b5f4a4e221d3b68c6223d",
+    "secretsQuarantineReceiptSha256": "e6a8e6e4162712f6b5cfef00542992f179d1e4c90590327b55b2bb789499e663"
+  },
+  "matrix": {
+    "IG26-096": "AUTO_PASS",
+    "IG26-097": "AUTO_PASS",
+    "IG26-098": "AUTO_PASS",
+    "IG26-104": "AUTO_PASS",
+    "IG26-106": "NOT_RUN",
+    "IG26-107": "AUTO_PASS",
+    "IG26-108": "NO_GO",
+    "IG26-109": "NOT_RUN",
+    "IG26-110": "NOT_RUN",
+    "IG26-111": "USER_RECHECK",
+    "IG26-112": "NO_GO"
+  },
+  "authorization": {
+    "text": "授权上线，版本号v0.7.0",
+    "versionAndReleaseConsumed": true,
+    "historicalTaskApplyAuthorized": false,
+    "realProviderPostAuthorized": false,
+    "realProviderPostExecuted": false,
+    "realOssWriteAuthorized": false,
+    "realOssWriteExecuted": false,
+    "realCanvasOrGroupClickAuthorized": false,
+    "realCanvasOrGroupClickExecuted": false
+  },
+  "protectedFileDiscipline": {
+    "contentReads": 0,
+    "fileStatsOrHashes": 0,
+    "edits": 0,
+    "copiesOrMoves": 0,
+    "stagedOrCommitted": 0,
+    "worktreeWideStatusRun": false
+  }
+}

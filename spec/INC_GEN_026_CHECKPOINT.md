@@ -2,11 +2,11 @@
 
 更新时间：2026-09-02
 
-状态：`R9_V0_7_0_AUTHORIZED_IN_PROGRESS / R0_R8_COMPLETE / FORMAL_FULL_1_OF_1_CONSUMED / TARGETED_CLOSURE_112_OF_112 / PRODUCTION_V0_6_70_UNCHANGED / REAL_PROVIDER_NOT_AUTHORIZED / USER_RECHECK`
+状态：`R9_V0_7_0_DEPLOYED_STABLE / GITHUB_CI_PASS / BACKUP_RESTORE_PASS / ROLLBACK_FORWARD_PASS / IG26_106_EXACT_RUN_PREFLIGHT_NOT_RUN / REAL_PROVIDER_NOT_AUTHORIZED / USER_RECHECK`
 
 ## 当前一句话结论
 
-INC-GEN-026 R0～R8 已在隔离工作树完成。本地候选实现了服务端权威一次点击 workflow、同一任务/结果自动恢复与零第二 Provider create/submit 围栏。唯一 formal safe full 原始结果为 `1162/1167`，5 项失败完整保留；m41 的真实客户端持久化竞态和 m73/m81 的过期夹具已最小关闭为 `112/112 PASS`，没有第二次 full。R0～R8 冻结分母为 61 tracked changed files、640 tracked hunks、13 untracked files，共 74 files；累计独立 Review 为 `P0=0/P1=0/GO`，保留 2 项非阻断 P2。R9 的 v0.7.0 版本差异与 schema42 backup quiet-gate 修正作为独立增量记账，不改写该历史分母。
+INC-GEN-026 v0.7.0 已完成 PR #144、分支/main 双 CI、不可移动 tag/GitHub Release、schema42 locked-exact 备份与全新恢复、原子切换、旧版回退及最终前滚。生产当前运行 v0.7.0/schema42，公网与回环 live/ready、33/33 静态文件、数据库 integrity/FK/静默状态及 50 秒稳定门通过，NRestarts=0；生成 admission/attempt/task 和业务数据不变，Provider POST、OSS 写、真实点击与费用均为 0。v0.7.0 没有完整公开的只读 workflow-run/capacity preflight，且本次未授权 exact Canvas/group，因此 IG26-106 诚实保持 `NOT_RUN`，不能把分项健康检查冒充完整 run preflight。用户实页确认前保持 `USER_RECHECK`。
 
 ## 唯一代码身份
 
@@ -16,13 +16,13 @@ INC-GEN-026 R0～R8 已在隔离工作树完成。本地候选实现了服务端
 - baseline tree：`2101fe347ef02297d9580906b6cadb71603fc45c`
 - baseline origin/main：与 HEAD 相同
 - candidate package/schema：`0.7.0 / 42`
-- current production package/schema：`0.6.70 / 42`
+- current production package/schema：`0.7.0 / 42`
 - safe runner：Node `22.23.1`、npm `10.9.8`、动态 loopback、临时 data、4173 禁止
 - formal full：`1/1`，权限已消费，禁止重跑
 - current complete candidate denominator：`64 tracked changed files / 671 tracked hunks / 13 untracked files / 77 total files`
 - current tracked binary diff SHA-256：`17ae9dbcfa8e594faca782fdb34d329c89dce892d1437d5d23ee5ee57d32e69d`
 
-R9 启动时已实时只读刷新 GitHub 与生产：v0.7.0 tag/Release 未占用；生产 current=`/opt/unboundry/releases/v0.6.70-inc-gen-025-20260901-clean`，service active/enabled、NRestarts=0，公网与回环 version/live/ready 均通过，schema42/integrity ok/FK0，active task=0、unsettled current unknown=0、active publication=0、active workflow run=0。尚无生产写、真实 Provider、真实 OSS 或费用。
+R9 已完成：annotated tag `v0.7.0` 指向 merge `2129f2e0b729306f84c1245f43fac8923fea88aa`；生产 current=`/opt/unboundry/releases/v0.7.0-inc-gen-026-20260902`，service active/enabled、NRestarts=0，公网与回环 version/live/ready 均通过，schema42/integrity ok/FK0，active task=0、unsettled current unknown=0、active publication=0、active workflow run=0。权威回执为 `spec/V0_7_0_PRODUCTION_RECEIPT_2026-09-02.json`。
 
 ## R9 当前授权
 
@@ -95,7 +95,7 @@ INC-GEN-025 文档和更早记录只作历史证据，不能恢复已经消费�
 
 - 新增 m104 真 HTTP→workflow→task→attempt→loopback fake Provider 集成。
 - safe runner inventory 为 `124 specs / 1167 tests`，Node22/source coverage/TypeScript/build/动态端口/4173/credential/egress 门均通过定向运行的共同 preflight。
-- Quality workflow 已接入固定 registry/cache、production build 和 m104 integration；R0～R8 时点真实 GitHub CI 未运行。R9 现已授权，Matrix IG26-096～098 在实际 PR/main runs 成功前保持 NOT_RUN。
+- Quality workflow 已接入固定 registry/cache、production build 和 m104 integration；PR run `33542187106` 与 main run `33542404276` 均为 success，Matrix IG26-096～098=`AUTO_PASS`。
 
 ## 风险定向自动证据
 
@@ -123,6 +123,8 @@ R9 直接相关增量：m81+m82=`49/49 PASS`；backup quiet-gate 最终 m10=`18/
 
 R9 文档治理 m38 首轮 `17/18` 只暴露 `UNBOUNDRY_CURRENT_STATE.md` 的固定机器标记被自由文本替换；恢复 `生产是` 与 `CURRENT_V0_6_70_USER_RECHECK`，并把 R9 状态移到独立发布标记后，最小复验 `18/18 PASS`，source/snapshot=`3a258ff6400276103fd8ba3045cdf559aa5c4c06e99e07e3c0048c23dc575da6`，4173 unchanged。
 
+生产部署后的最终回执治理继续如实保留：一次错误参数调用在执行测试前即被 runner 拒绝；随后 m38 两次 `17/18` 分别只暴露 `AGENTS.md` 缺少精确 `生产运行` 标记、三份渐进模块化文档仍保留 `CURRENT_V0_6_70`。逐项修正并完成全部回执文字后，最终同一 spec 为 `18/18 PASS`、snapshot 与 4173 unchanged；没有重跑 formal full。最终 source 指纹不自写进参与该指纹的文档，提交树改由 Git commit 与 PR/main CI 绑定，避免制造不可能稳定的自引用哈希。
+
 诊断期间曾出现并已关闭的失败必须保留：m104 一次 source-coverage hash 过期、m104 一次缺失 client classifier import、m5 两个夹具/查询问题、m57 一次 fixture FK、m38 首轮 13/18 的五项直接问题；formal full 的 m41 一项真实产品竞态与 m73/m81 四项旧 fixture/expectation 问题也永久保留。每次只修直接根因并重跑最小受影响 spec；formal full 只执行一次。
 
 ## 唯一 formal full 与最小关闭
@@ -149,13 +151,16 @@ R9 文档治理 m38 首轮 `17/18` 只暴露 `UNBOUNDRY_CURRENT_STATE.md` 的固
 - R9 v0.7.0/backup/docs 已冻结为当前完整 `77 files / 671 tracked hunks`，tracked binary diff SHA-256=`17ae9dbcfa8e594faca782fdb34d329c89dce892d1437d5d23ee5ee57d32e69d`；IG26-099=`AUTO_PASS`。同一独立 Reviewer 已在修正文档状态矛盾后完成增量确认，当前完整候选为 `P0=0/P1=0/P2=2/GO`，IG26-100=`AUTO_PASS`。
 - 两项非阻断 P2：数据库已被破坏且跨 owner 错链时 quarantine 可再加 owner/binding 二次校验；OpenRouter/relay-gpt 同步 save exhaustion 仍缺真实 adapter fake-transport seam。正常 API 已有 exact binding，当前 helper/source wiring 与直接行为测试成立，因此不阻断本地候选。
 
-## 下一阶段
+## R9 生产结果与下一阶段
 
-R0～R8 已关闭，R9 v0.7.0 发布与生产切换授权已生效并正在执行。历史数据 apply 与真实 canary 仍是独立 NO-GO，不得夹带执行。
+- v0.7.0 已稳定部署，schema42 backup/verify/fresh restore 与 rollback/forward 均通过；IG26-104/107=`AUTO_PASS`。
+- 可安全执行的 version/live/ready/data/quiet/static 技术门通过；因缺少完整只读 workflow-run/capacity operator preflight，IG26-106 仍为 `NOT_RUN`。
+- 历史数据 apply 与真实 canary 仍是独立 `NO_GO`；IG26-109/110 没有随发布自动通过。
+- 唯一下一步是用户打开生产实页复验；用户明确回复通过前维持 `USER_RECHECK`。
 
 ## 授权与永久红线
 
-允许：R0～R8 候选，以及本次 v0.7.0 commit/GitHub/Release、生产 schema42 备份/切换/rollback/forward、零付费技术核验。
+本次 v0.7.0 commit/GitHub/Release、生产 schema42 备份/切换/rollback/forward 一次性授权已经执行并消费；不得据此再次发布或切换。
 
 禁止：历史生产 data apply、真实 Provider、真实 OSS、费用、真实 Canvas/group 点击。
 

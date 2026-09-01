@@ -1,8 +1,8 @@
 # Unboundry 当前权威状态
 
-> **2026-09-02 最新权威：INC-GEN-026 v0.7.0 R9 已授权并执行中。** 用户原文“授权上线，版本号v0.7.0”已解除本次 commit/GitHub/Release 与生产 schema42 备份/安装/切换/rollback/forward 门；v0.7.0 tag/Release 实时未占用。R0～R8 唯一 formal safe full 原始 `1162/1167`、定向关闭 `112/112` 和最终增量 Review `P0=0/P1=0/GO` 继续有效且禁止第二次 full。生产实时仍为 `v0.6.70/schema42`、active/ready、NRestarts0，活动 task/未收口 unknown/活动 publication/workflow run 均为0。历史生产 apply、真实 Provider/OSS、费用和真实 Canvas/group 点击仍未授权。权威入口为 `spec/INC_GEN_026_CHECKPOINT.md`。
+> **2026-09-02 最新权威：INC-GEN-026 v0.7.0 已部署并稳定运行。** PR #144、分支/main 双 CI、annotated tag/GitHub Release、schema42 locked-exact backup/verify/fresh restore、生产原子切换与 v0.6.70→v0.7.0 rollback/forward 已完成；一次性版本/发布/生产授权已执行并消费。生产 current=`/opt/unboundry/releases/v0.7.0-inc-gen-026-20260902`，active/ready、NRestarts0，公网/回环健康、33/33 静态、数据库 integrity/FK/quiet 与稳定门通过。Provider POST、OSS 写、费用和真实点击均为 0。当前没有完整公开的只读 workflow-run/capacity preflight，IG26-106 保持 `NOT_RUN`；历史 apply、真实 canary 和用户验收仍未执行。权威入口为 `spec/INC_GEN_026_CHECKPOINT.md`，生产回执为 `spec/V0_7_0_PRODUCTION_RECEIPT_2026-09-02.json`。
 
-**生产是 v0.6.70 / schema42；本地候选已升为 v0.7.0，R9 发布执行中，尚未发生生产写或真实 Provider/OSS 请求。**
+**生产是 v0.7.0 / schema42；版本、GitHub 与生产发布授权已消费，真实 Provider/OSS/canary 未执行，等待用户实页复验。**
 
 > **以下 INC-GEN-025 顶部记录是历史声明快照**：它记录当时的 Goal、测试、Review 和发布前状态；v0.6.70 后续已经发布，最终审计推翻了“可直接继续 R8/真实点击”的当前有效性。其历史授权已消费，不得恢复。
 
@@ -12,14 +12,14 @@
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
 当前代码包版本：**v0.7.0**
 本地候选代码版本：**v0.7.0**
-当前生产部署版本：**v0.6.70**
+当前生产部署版本：**v0.7.0**
 本地候选schema：**42**
-当前治理标记：`CURRENT_V0_6_70_USER_RECHECK`
-当前发布执行标记：`INC_GEN_026_R9_V0_7_0_AUTHORIZED_IN_PROGRESS`
-当前本地Goal标记：`INC_GEN_026_R0_R8_COMPLETE / LOCAL_CANDIDATE_TECHNICAL_PASS / PRODUCTION_V0_6_70_UNCHANGED / R9_RELEASE_IN_PROGRESS / REAL_PROVIDER_NOT_AUTHORIZED / USER_RECHECK`
-当前计划标记：`FORMAL_FULL_1_OF_1_CONSUMED_RAW_1162_OF_1167 / TARGETED_CLOSURE_112_OF_112 / R9_V0_7_0_AUTHORIZED_IN_PROGRESS`
+当前治理标记：`CURRENT_V0_7_0_USER_RECHECK`
+当前发布执行标记：`INC_GEN_026_R9_V0_7_0_DEPLOYED_STABLE`
+当前本地Goal标记：`INC_GEN_026_R0_R8_COMPLETE / LOCAL_CANDIDATE_TECHNICAL_PASS / PRODUCTION_V0_7_0_DEPLOYED / IG26_106_NOT_RUN / REAL_PROVIDER_NOT_AUTHORIZED / USER_RECHECK`
+当前计划标记：`FORMAL_FULL_1_OF_1_CONSUMED_RAW_1162_OF_1167 / TARGETED_CLOSURE_112_OF_112 / R9_V0_7_0_DEPLOYED / IG26_106_NOT_RUN`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`V0_7_0_RELEASE_AUTHORIZED / PRODUCTION_SWITCH_AUTHORIZED / HISTORY_APPLY_NO_GO / REAL_PROVIDER_NOT_AUTHORIZED`
+当前发布门：`V0_7_0_RELEASE_AUTHORIZATION_CONSUMED / PRODUCTION_SWITCH_AUTHORIZATION_CONSUMED / HISTORY_APPLY_NO_GO / REAL_PROVIDER_NOT_AUTHORIZED`
 
 ## INC-GEN-023 历史区块（2026-09-01）
 

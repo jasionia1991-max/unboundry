@@ -1,6 +1,6 @@
 # INC-GEN-026 一次点击工作流可靠生成验收矩阵
 
-状态：`R0_R8_COMPLETE / LOCAL_CANDIDATE_TECHNICAL_PASS / FORMAL_FULL_1_OF_1_CONSUMED / TARGETED_CLOSURE_PASS / R9_V0_7_0_AUTHORIZED_IN_PROGRESS / PRODUCTION_V0_6_70_UNCHANGED`
+状态：`R9_V0_7_0_DEPLOYED_STABLE / GITHUB_CI_PASS / SCHEMA42_BACKUP_RESTORE_PASS / ROLLBACK_FORWARD_PASS / IG26_106_EXACT_RUN_PREFLIGHT_NOT_RUN / USER_RECHECK`
 
 本矩阵与 `spec/INC_GEN_026_ONE_CLICK_WORKFLOW_RELIABILITY_FINAL_IMPLEMENTATION_PLAN_2026-09-01.md` 一一对应。
 
@@ -148,9 +148,9 @@
 | IG26-093 | OSS adopt/mismatch test | AUTO_PASS | exact adopt 与 mismatch quarantine 都有 fault injection。 |
 | IG26-094 | backup roundtrip test | AUTO_PASS | schema42 backup/verify/fresh restore 全链执行。 |
 | IG26-095 | UI regression | AUTO_PASS | preparation、failed no-task history、stop、projection、saving、scope 全覆盖。 |
-| IG26-096 | CI build | NOT_RUN | Quality gates 实际执行 npm build，失败即阻断。 |
-| IG26-097 | CI integration | NOT_RUN | CI 实际运行 m104 等高风险集，不把 preflight/--list 叫产品测试。 |
-| IG26-098 | CI 权限与网络分层 | NOT_RUN | contents:read；无 Provider/OSS/生产 secret；依赖安装/audit 只走配置注册表，应用/测试进程除动态 loopback 外 egress=0。 |
+| IG26-096 | CI build | AUTO_PASS | PR run `33542187106` 与 main run `33542404276` 均实际执行 production build 并 success。 |
+| IG26-097 | CI integration | AUTO_PASS | 两个 Quality runs 均执行 m104 真 HTTP/fake-provider integration，不把 discovery 冒充产品测试。 |
+| IG26-098 | CI 权限与网络分层 | AUTO_PASS | 两个 Quality runs 使用 contents:read、固定 registry/cache、无 Provider/OSS/生产 secret；应用/测试进程除动态 loopback 外 egress=0。 |
 | IG26-099 | candidate manifest | AUTO_PASS | baseline HEAD/tree 不变；当前完整候选为 64 tracked changed files、671 tracked hunks、13 untracked files、77 files 总分母，tracked binary diff SHA-256=`17ae9dbcfa8e594faca782fdb34d329c89dce892d1437d5d23ee5ee57d32e69d`。R0～R8 的 74/640 作为历史冻结分母保留。 |
 | IG26-100 | 完整独立 Review | AUTO_PASS | 同一独立 Reviewer 已覆盖 R9 新增/变化文件与 backup/version/release/docs 链，并在修正文档状态矛盾后增量确认当前完整候选：`P0=0/P1=0/P2=2/GO`。 |
 
@@ -158,13 +158,13 @@
 
 | ID | 验收项 | 当前状态 | 通过标准 |
 |---|---|---|---|
-| IG26-101 | 新版本号 | AUTO_PASS | 用户明确选择 v0.7.0；实时核对远端 tag 与 GitHub Release 均未占用。 |
-| IG26-102 | GitHub/Release 授权 | DOC_PASS | 用户原文“授权上线，版本号v0.7.0”按上线规矩授权本次 commit/push/PR/CI/tag/Release。 |
-| IG26-103 | 生产发布授权 | DOC_PASS | 同一原文授权本次精确 v0.7.0 release 的 schema42 备份、安装、切换与 rollback/forward；不包含历史 apply 或真实生成。 |
-| IG26-104 | 生产 schema42 backup | NOT_RUN | 已获本次授权；locked-exact backup+verify+fresh restore receipt 先通过。 |
+| IG26-101 | 新版本号 | AUTO_PASS | 用户明确选择 v0.7.0；annotated tag object=`2929ce06…fcf`，peeled commit=`2129f2e0…8aa`，GitHub Release 已发布。 |
+| IG26-102 | GitHub/Release 授权 | DOC_PASS | 用户原文“授权上线，版本号v0.7.0”已用于 PR #144、双 CI、tag 与 GitHub Release，本次一次性授权已消费。 |
+| IG26-103 | 生产发布授权 | DOC_PASS | 同一原文已用于精确 v0.7.0 release 的 schema42 备份、安装、切换与 rollback/forward；不包含历史 apply 或真实生成，授权已消费。 |
+| IG26-104 | 生产 schema42 backup | AUTO_PASS | backup `bc453c79-f491-4eb5-9dee-3ef758b8a844` 完成 locked-exact backup+verify+fresh restore；schema42/integrity/FK/counts/logical SHA 一致。 |
 | IG26-105 | 历史 task apply | NO_GO | 用户对 exact manifest 和生产数据写单独授权。 |
-| IG26-106 | 零付费生产门 | NOT_RUN | 已获本次授权；version/live/ready/data/models/capacity/run preflight，Provider/OSS=0。 |
-| IG26-107 | schema42 rollback/forward | NOT_RUN | 已获本次授权；上一 schema42 release 可回滚且再次 forward；不把 schema42 交给 schema41 runtime。 |
+| IG26-106 | 零付费生产门 | NOT_RUN | version/live/ready/data/quiet/static 与 Provider POST/OSS 写=0 已有分项证据；但 v0.7.0 没有完整公开的只读 workflow-run/capacity preflight，且未授权 exact Canvas/group，不能把分项证据冒充完整 PASS。 |
+| IG26-107 | schema42 rollback/forward | AUTO_PASS | v0.7.0→v0.6.70/schema42→v0.7.0 成对通过，两个方向 ready/schema/counts 正确，最终 current 为 v0.7.0。 |
 | IG26-108 | exact 真实 canary | NO_GO | 新授权指定 Canvas/group/models/POST/费用/OSS，一次点击。 |
 | IG26-109 | 无人工回收 | NOT_RUN | 普通用户不进入真实 Provider/relay/OSS 管理台，不复制 task id，不手工下载、搬运或重新上传结果。 |
 | IG26-110 | 自动技术证据 | NOT_RUN | run/node/task/attempt/result/projection/refresh 全部自动收口。 |
@@ -174,9 +174,9 @@
 当前汇总：
 
 - `DOC_PASS 12`
-- `AUTO_PASS 87`
-- `NOT_RUN 9`
+- `AUTO_PASS 92`
+- `NOT_RUN 4`
 - `NO_GO 3`
 - `USER_RECHECK 1`
 
-这是 R0～R8 完成并进入 R9 后的当前汇总。唯一 formal safe full 已消费，原始结果为 `1162/1167`；5 项失败由 m41/m73/m81 最小关闭为 `112/112 PASS`，没有第二次 full。CI、生产 backup/切换/rollback-forward 已获授权但尚未完成，因此保持 `NOT_RUN`；timer 安装、历史 apply、真实 Provider/OSS/canary 与用户验收没有随发布授权自动通过。旧 INC-GEN-025 的测试、Review 或 release 证据没有继承为本次修复通过。
+R9 v0.7.0 已完成 PR #144、双 CI、tag/Release、schema42 locked-exact backup/verify/fresh restore、原子切换与成对 rollback/forward；IG26-096～098、104、107 已转 `AUTO_PASS`。唯一 formal safe full 原始 `1162/1167` 与最小关闭 `112/112` 原样保留，没有第二次 full。剩余 4 项 `NOT_RUN` 是 timer contract、完整 models/capacity/run preflight、真实无人工回收和真实自动结果收口；历史 apply、真实 Provider/OSS/canary 与用户验收没有随发布授权自动通过。

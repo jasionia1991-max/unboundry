@@ -1,6 +1,6 @@
 # Unboundry 项目级 Agent 施工守则
 
-> **2026-09-02 INC-GEN-026 当前最高优先级**：用户最新明确说“授权上线，版本号v0.7.0”，R9 的一次性版本、commit/push/PR/CI/tag/GitHub Release、生产 schema42 备份/安装/切换/rollback/forward 授权已经生效。实时门确认 `origin/main=94d77d7618f4c88877b457c2249a824d40dd5633`、v0.7.0 远端 tag/Release 未占用、生产仍为 `v0.6.70/schema42` 且 active/ready、活动 task/未收口 unknown/活动 publication/workflow run 均为 0。本次授权不包括历史 9-task apply、真实 Provider POST、真实 OSS 写、费用或真实 Canvas/group 点击。R0～R8 唯一 formal safe full 原始 `1162/1167` 与最小关闭 `112/112` 永久保留，禁止第二次 full；v0.7.0 版本小差异只跑直接相关 safe spec、build/CI 和增量 Review。唯一工作树仍为 `/Users/mymy/Documents/unboundry-inc-gen-026-workflow-reliability-2026-09-01`，分支 `codex/inc-gen-026-workflow-reliability`。当前恢复入口依次为 `spec/INC_GEN_026_CHECKPOINT.md`、`spec/INC_GEN_026_ONE_CLICK_WORKFLOW_RELIABILITY_FINAL_IMPLEMENTATION_PLAN_2026-09-01.md`、`spec/INC_GEN_026_ACCEPTANCE_MATRIX_2026-09-01.md`、`spec/INC_GEN_026_LOCAL_IMPLEMENTATION_RECEIPT_2026-09-01.md`。
+> **2026-09-02 INC-GEN-026 当前最高优先级**：v0.7.0 已完成 PR #144、分支/main 双 CI、annotated tag/GitHub Release、schema42 locked-exact backup/verify/fresh restore、生产原子切换与 v0.6.70→v0.7.0 rollback/forward；生产运行`v0.7.0/schema42`，current=`/opt/unboundry/releases/v0.7.0-inc-gen-026-20260902`，service active/enabled、NRestarts=0，公网/回环 version/live/ready、33/33 静态、数据库 integrity/FK/quiet 与 50 秒稳定门通过。admission/attempt/task 和业务数据不变，Provider POST、OSS 写、费用、真实 Canvas/group 点击均为 0。当前版本没有完整公开的只读 workflow-run/capacity preflight，IG26-106 必须保持 `NOT_RUN`；不得把分项健康检查冒充完整 run preflight 或 `USER_PASS`。本次 v0.7.0 一次性版本/发布/生产授权已执行并消费，历史 9-task apply、真实 Provider/OSS/canary 仍未授权。权威回执为 `spec/V0_7_0_PRODUCTION_RECEIPT_2026-09-02.json`；用户实页确认前保持 `USER_RECHECK`。
 
 > **以下 INC-GEN-025 段落是历史时点记录，不再是当前授权**：2026-09-01 当时用户 `/goal` 曾激活 INC-GEN-025，并授权 v0.6.70 实现、发布和受控验收。该授权后来已执行并消费；不得据此再次修改、发布或发起真实生成。受保护文件继续永久禁止读取、哈希、修改、暂存、移动或删除。
 
@@ -91,12 +91,12 @@ INC-GEN-026 当前任务按顺序完整阅读：
 ### 默认工具链与生产兼容通道
 
 - 项目普通开发、类型检查、构建和新shell默认使用`.node-version`中的Node `25.9.0`与`packageManager`中的npm `11.12.1`；不得再把`/Users/mymy/.hermes/node/bin`或`/Users/mymy/.local/bin`中的Node 22预置到普通shell PATH。
-- 2026-09-02 R9 只读刷新确认 v0.6.70 生产仍运行 Node `22.23.2` / npm `10.9.8`；本次 v0.7.0 发布保持该运行时，不顺带迁移 Node/npm。
+- 2026-09-02 R9 已确认 v0.7.0 生产继续运行 Node `22.23.2` / npm `10.9.8`；本次没有顺带迁移 Node/npm。
 - `scripts/run-safe-tests.mjs`、源码覆盖门和历史不可变 release builder 继续使用 Node `22.23.1` / npm `10.9.8` 专用兼容通道；它是本地复现通道，不等同于已确认的生产 Node `22.23.2`，也不是项目默认 shell。在完成兼容性审计前不得删除 Node 22 边界。
 
 ## 2. 当前授权边界
 
-- **2026-09-02 INC-GEN-026 当前最高权威**：R0～R8 本地实现、测试、Review、唯一 formal safe full 和文档收口已完成。full 原始 `1162/1167` 与 5 项失败如实保留，m41/m73/m81 最小关闭 `112/112 PASS`，未重复 full；用户最新已授权 v0.7.0 的一次性 commit/push/PR/CI/tag/Release，以及生产 schema42 locked-exact backup、安装、切换和 rollback/forward。历史生产 task apply、真实 Provider、真实 OSS、费用和真实 Canvas/group 点击仍未授权；旧授权一律不得复用；
+- **2026-09-02 INC-GEN-026 当前最高权威**：R0～R8 本地实现、测试、Review、唯一 formal safe full 和文档收口已完成；full 原始 `1162/1167` 与 5 项失败如实保留，m41/m73/m81 最小关闭 `112/112 PASS`，未重复 full。v0.7.0 一次性 commit/push/PR/CI/tag/Release 与生产 schema42 backup/安装/切换/rollback-forward 已执行并消费；生产稳定运行 v0.7.0。IG26-106 因缺少完整只读 workflow-run/capacity preflight 保持 `NOT_RUN`；历史生产 task apply、真实 Provider、真实 OSS、费用和真实 Canvas/group 点击仍未授权，旧授权一律不得复用；
 
 - **2026-09-01 INC-GEN-025 历史授权状态（已执行、已消费）**：当时用户 `/goal` 曾授权该隔离工作树的一次性实现、v0.6.70、Review、GitHub/Release、成对生产迁移/回退及受控真实点击。该段只保留历史过程，不得据此继续 R6、发布、点击或产生费用；
 

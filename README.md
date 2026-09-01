@@ -6,9 +6,9 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 
-## 当前最高优先级：INC-GEN-026 v0.7.0 发布执行中（2026-09-02）
+## 当前最高优先级：INC-GEN-026 v0.7.0 已部署（2026-09-02，USER RECHECK）
 
-用户已明确授权 v0.7.0 上线，本次 GitHub/Release 与生产 schema42 备份/切换/rollback-forward 正在执行。生产暂仍为 `v0.6.70/schema42`。R0～R8 唯一 formal safe full 原始 `1162/1167`、定向关闭 `112/112` 与最终 Review `P0=0/P1=0/GO` 保留且不重跑 full；历史数据 apply、真实 Provider/OSS、费用与真实 Canvas/group 点击仍未授权。入口见 [`INC_GEN_026_CHECKPOINT.md`](spec/INC_GEN_026_CHECKPOINT.md)。
+v0.7.0 已完成 PR #144、双 CI、annotated tag/GitHub Release、schema42 locked-exact backup/verify/fresh restore、生产原子切换与 v0.6.70→v0.7.0 rollback/forward。生产运行 `v0.7.0/schema42`，服务 active/ready、NRestarts=0，公网/回环健康、33/33 静态文件、数据库完整性/静默状态和稳定门通过；Provider POST、OSS 写、费用与真实 Canvas/group 点击均为 0。当前版本没有完整公开的只读 workflow-run/capacity preflight，因此 IG26-106 保持 `NOT_RUN`，不冒充完整 run preflight 或用户验收。入口见 [`INC_GEN_026_CHECKPOINT.md`](spec/INC_GEN_026_CHECKPOINT.md)，生产回执见 [`V0_7_0_PRODUCTION_RECEIPT_2026-09-02.json`](spec/V0_7_0_PRODUCTION_RECEIPT_2026-09-02.json)。
 
 ## 历史候选：INC-GEN-023 v0.6.69服务端终态解绑（2026-09-01）
 

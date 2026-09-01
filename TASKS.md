@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻当前任务
 
-## INC-GEN-026 一次点击工作流可靠生成与结果自动收口（R9 v0.7.0 AUTHORIZED / IN PROGRESS）
+## INC-GEN-026 一次点击工作流可靠生成与结果自动收口（v0.7.0 DEPLOYED STABLE / USER RECHECK）
 
 - [x] 只读确认生产 `v0.6.70/schema42`、远端 main/tag/current checkout tree 一致。
 - [x] 接受最终复核的证据化裁决：当前 workflow admission P0，且 recovery/publication/OSS/UI/backup/CI 仍有 P1 缺口。
@@ -12,11 +12,16 @@
 - [x] R1～R7 实现与风险定向验证完成：schema42 backup、authoritative admission、Provider outcome、publication/OSS、workflow、client 与 CI 合同均已覆盖。
 - [x] 冻结完整候选分母并完成逐文件/逐 hunk 主审、独立完整 Review 与增量复审；最终分母见本地实施回执。
 - [x] 唯一 formal safe full 原始 `1162/1167`；5 项失败由 m41/m73/m81 最小关闭为 `112/112 PASS`，没有第二次 full。
-- [x] 用户明确“授权上线，版本号v0.7.0”；v0.7.0 tag/Release 未占用，本次 GitHub/Release 与 schema42 备份/切换/rollback-forward 授权生效。
-- [ ] 完成 v0.7.0 版本差异 safe 验证、增量 Review、PR/main CI、tag/Release、生产备份/恢复/切换/rollback-forward 与零付费门。
-- [ ] 历史 9-task apply 与真实 Provider/OSS/费用/Canvas 点击仍未授权，不在本次执行。
+- [x] 用户明确“授权上线，版本号v0.7.0”；本次一次性版本、GitHub 与生产发布授权已执行并消费。
+- [x] 完成 v0.7.0 版本差异 safe 验证、增量 Review、PR #144、分支/main 双 CI、annotated tag/GitHub Release。
+- [x] 完成 schema42 locked-exact backup/verify/fresh restore、原子切换和 v0.6.70→v0.7.0 rollback/forward；生产 active/ready、NRestarts0，33/33 静态、integrity/FK/quiet 与稳定门通过。
+- [x] Provider POST、OSS 写、费用、真实 Canvas/group 点击均为 0；admission/attempt/task 与业务数据不变，仅增加 1 条预期安全开关审计。
+- [x] 如实把 IG26-106 保持为 `NOT_RUN`：v0.7.0 没有完整公开的只读 workflow-run/capacity preflight，且本次未授权 exact Canvas/group，不能把分项健康检查冒充完整 run preflight。
+- [x] 历史 9-task apply 与真实 Provider/OSS/费用/Canvas 点击保持未授权、未执行。
+- [x] 最终生产回执治理 m38 两次只暴露文档版本标记残留；逐项修正后最小关闭 `18/18 PASS`，未重跑 formal full。
+- [ ] 用户打开生产实页复验；用户明确回复通过前保持 `USER_RECHECK`。
 
-当前严格为 `R9_V0_7_0_AUTHORIZED_IN_PROGRESS / PRODUCTION_V0_6_70_UNCHANGED / REAL_PROVIDER_NOT_AUTHORIZED / USER_RECHECK`。权威断点：`spec/INC_GEN_026_CHECKPOINT.md`。
+当前严格为 `R9_V0_7_0_DEPLOYED_STABLE / IG26_106_EXACT_RUN_PREFLIGHT_NOT_RUN / REAL_PROVIDER_NOT_AUTHORIZED / USER_RECHECK`。权威断点：`spec/INC_GEN_026_CHECKPOINT.md`；生产回执：`spec/V0_7_0_PRODUCTION_RECEIPT_2026-09-02.json`。
 
 ## INC-GEN-025 服务端权威整组执行（HISTORICAL / v0.6.70 RELEASED / POST-AUDIT NO-GO）
 
