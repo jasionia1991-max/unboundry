@@ -2077,6 +2077,18 @@ async function discover(specs, suiteRoot, sourceRoot, browserRoot) {
   const testRoot = mkdtempSync(join(suiteRoot, "discovery-"));
   const dataDirectory = join(testRoot, "data");
   mkdirSync(dataDirectory, { recursive: true });
+  const discoveryTools = join(testRoot, "discovery-tools");
+  mkdirSync(discoveryTools, { recursive: true, mode: 0o700 });
+  const discoveryFfmpeg = join(discoveryTools, "ffmpeg");
+  writeFileSync(
+    discoveryFfmpeg,
+    `#!/usr/bin/env node
+if (process.env.UNBOUNDRY_TEST_DISCOVERY_ONLY !== "1") process.exit(70);
+process.exit(0);
+`,
+    { encoding: "utf8", mode: 0o500 },
+  );
+  chmodSync(discoveryFfmpeg, 0o500);
   const auditFile = join(testRoot, "network-audit.jsonl");
   const reportFile = join(testRoot, "report.json");
   writeFileSync(auditFile, "", "utf8");
@@ -2094,6 +2106,8 @@ async function discover(specs, suiteRoot, sourceRoot, browserRoot) {
     testRoot,
   });
   env.UNBOUNDRY_TEST_SPEC = "*";
+  env.UNBOUNDRY_TEST_DISCOVERY_ONLY = "1";
+  env.PATH = `${discoveryTools}:${env.PATH}`;
   try {
     const result = await sandboxedPlaywright(sourceRoot, testRoot, env, ["--list"]);
     if (result.status !== 0 || !existsSync(reportFile)) {
