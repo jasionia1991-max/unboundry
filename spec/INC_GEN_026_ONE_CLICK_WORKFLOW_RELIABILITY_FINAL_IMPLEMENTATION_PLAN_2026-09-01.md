@@ -1,12 +1,12 @@
 # INC-GEN-026 一次点击工作流可靠生成与结果自动收口最终实施方案
 
-状态：`PLAN_FROZEN / R0_R8_IMPLEMENTED / LOCAL_CANDIDATE_TECHNICAL_PASS / R9_V0_7_0_AUTHORIZED_IN_PROGRESS / PRODUCTION_V0_6_70_UNCHANGED / USER_RECHECK`
+状态：`PLAN_FROZEN / R0_R8_IMPLEMENTED / R9_V0_7_0_DEPLOYED_STABLE / IG26_106_NOT_RUN / USER_RECHECK`
 
 建立日期：2026-09-01
 
 > **2026-09-02 R9 授权覆盖层**：用户最新原文“授权上线，版本号v0.7.0”已经授权本次 v0.7.0 的版本差异、commit/push/PR/CI、合并后不可移动 tag/GitHub Release，以及生产 schema42 locked-exact backup/verify/fresh restore、安装、切换、上一 schema42 release rollback 和最终 forward。历史 9-task apply、真实 Provider POST、真实 OSS 写删恢复、费用和真实 Canvas/group 点击仍未授权。下文保留的“未授权”段落是 2026-09-01 方案冻结时的历史门，不覆盖本段。
 
-R9 唯一实施身份：worktree=`/Users/mymy/Documents/unboundry-inc-gen-026-workflow-reliability-2026-09-01`，branch=`codex/inc-gen-026-workflow-reliability`，baseline HEAD/origin-main=`94d77d7618f4c88877b457c2249a824d40dd5633`，baseline tree=`2101fe347ef02297d9580906b6cadb71603fc45c`，candidate=`v0.7.0/schema42`，current production=`v0.6.70/schema42`。
+R9 唯一实施身份（发布前冻结）：worktree=`/Users/mymy/Documents/unboundry-inc-gen-026-workflow-reliability-2026-09-01`，branch=`codex/inc-gen-026-workflow-reliability`，baseline HEAD/origin-main=`94d77d7618f4c88877b457c2249a824d40dd5633`，baseline tree=`2101fe347ef02297d9580906b6cadb71603fc45c`，candidate=`v0.7.0/schema42`，切换前 production=`v0.6.70/schema42`；当前 production=`v0.7.0/schema42`。
 
 ## 0. 先用最直白的话说结论
 
@@ -522,4 +522,4 @@ CI 网络必须分层：依赖安装与 `npm audit` 只允许配置好的依赖�
 
 同一独立只读 Reviewer 已覆盖本 Plan、112 项 Matrix、Checkpoint、本地 Goal、当前路由文档和 INC-GEN-025 历史降级头部。首轮如实给出 `DOCUMENT_NO_GO`，指出旧版本路由、branded 入口、OSS identity、eligible-model、CI 网络、relay 条件、历史 fixture、legacy 隔离和分级映射缺口；逐项修正后增量复审结论为 `P0=0 / P1=0 / P2=0 / DOCUMENT_GO`。
 
-上述 `DOCUMENT_GO` 是实施前的方案冻结证据。2026-09-02 的 R0～R8 实施结果以 Matrix、Checkpoint 和本地回执为准：本地候选已技术通过，唯一 formal full 原始 `1162/1167` 与最小关闭 `112/112` 均已记录。R9 的 v0.7.0 GitHub/Release 与 schema42 生产切换现已获一次性授权并正在执行；历史 apply、真实 Provider/OSS、费用、真实 canary 和用户验收仍未授权或未执行。
+上述 `DOCUMENT_GO` 是实施前的方案冻结证据。2026-09-02 的 R0～R8 实施结果以 Matrix、Checkpoint 和本地回执为准：本地候选已技术通过，唯一 formal full 原始 `1162/1167` 与最小关闭 `112/112` 均已记录。R9 的 v0.7.0 PR/双 CI/tag/Release、schema42 locked-exact backup/verify/fresh restore、生产原子切换与 rollback/forward 已完成，生产稳定运行 v0.7.0/schema42。version/live/ready/data/quiet/static 分项零付费证据通过，Provider POST、OSS 写、费用和真实点击均为 0；但当前版本没有完整公开的只读 workflow-run/capacity preflight，IG26-106 继续 `NOT_RUN`，不得冒充技术完成定义第 12 项全部通过。历史 apply、真实 canary 和用户验收仍未授权或未执行。
