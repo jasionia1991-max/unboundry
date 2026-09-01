@@ -1619,6 +1619,9 @@ async function validateFileAndCredentialIsolation(sourceRoot, testRoot, env) {
           operations: ["direct-write"],
           path: creationPath,
         };
+  const gitMetadataRoot = join(repositoryRoot, ".git");
+  const gitMetadataIsDirectory =
+    existsSync(gitMetadataRoot) && lstatSync(gitMetadataRoot).isDirectory();
   const targets = [
     {
       label: "live package manifest",
@@ -1638,11 +1641,21 @@ async function validateFileAndCredentialIsolation(sourceRoot, testRoot, env) {
       join(repositoryRoot, "backups"),
       join(repositoryRoot, "backups"),
     ),
-    protectedExistingOrCreationTarget(
-      "live Git metadata",
-      join(repositoryRoot, ".git"),
-      join(repositoryRoot, ".git"),
-    ),
+    gitMetadataIsDirectory
+      ? {
+          label: "live Git metadata",
+          operations: [
+            "direct-open", "direct-stat", "direct-read", "direct-write",
+            "symlink-stat", "symlink-read",
+          ],
+          path: join(gitMetadataRoot, "HEAD"),
+          writePath: join(gitMetadataRoot, ".unboundry-forbidden-create"),
+        }
+      : protectedExistingOrCreationTarget(
+          "live Git metadata",
+          gitMetadataRoot,
+          gitMetadataRoot,
+        ),
     {
       label: "isolated tracked source",
       operations: ["direct-write", "symlink-write"],
