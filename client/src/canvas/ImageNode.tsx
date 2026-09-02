@@ -122,6 +122,7 @@ import { UpstreamInputCards } from "./UpstreamInputCards";
 import { GenerationAvailabilityNotice } from "./GenerationAvailabilityNotice";
 import {
   fetchTrustedMediaMetadata,
+  hasCompleteTrustedMediaMetadata,
   hasTrustedMediaDimensions,
   mediaUploadState,
   trustedMediaPatch,
@@ -1675,6 +1676,7 @@ function ImageNodeImpl({
   const previewImageRef = useRef<HTMLImageElement>(null);
   const uploadAdmissionPending = useRef(false);
   const uploadInFlight = useRef(false);
+  const metadataHydrationAssetIdRef = useRef<string | undefined>(undefined);
   const uploadBaseline = useRef<ProbeNodeType | undefined>(undefined);
   const uploadOperation = useRef(0);
   const deferredPreviewAutoFit = useRef<{
@@ -2425,14 +2427,19 @@ function ImageNodeImpl({
       isFixture ||
       !data.assetId ||
       !data.imageSrc ||
-      data.mediaMetadataSource === "server" ||
-      data.inputState === "uploading" ||
-      data.inputState === "invalid"
+      hasCompleteTrustedMediaMetadata("image", data) ||
+      metadataHydrationAssetIdRef.current === data.assetId ||
+      data.inputState === "uploading"
     ) return;
+    const requestedAssetId = data.assetId;
+    metadataHydrationAssetIdRef.current = requestedAssetId;
     const controller = new AbortController();
-    void fetchTrustedMediaMetadata("image", data.assetId, controller.signal)
+    let settled = false;
+    void fetchTrustedMediaMetadata("image", requestedAssetId, controller.signal)
       .then((metadata) => {
-        setNodes((nodes) => nodes.map((node) => node.id === id
+        settled = true;
+        setNodes((nodes) => nodes.map((node) =>
+          node.id === id && node.data.assetId === requestedAssetId
           ? {
               ...node,
               data: {
@@ -2444,10 +2451,12 @@ function ImageNodeImpl({
       })
       .catch((error) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
+        settled = true;
         const message = error instanceof Error
           ? error.message
           : "服务端无法确认图片素材信息";
-        setNodes((nodes) => nodes.map((node) => node.id === id
+        setNodes((nodes) => nodes.map((node) =>
+          node.id === id && node.data.assetId === requestedAssetId
           ? {
               ...node,
               data: {
@@ -2457,13 +2466,24 @@ function ImageNodeImpl({
             }
           : node));
       });
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      if (!settled && metadataHydrationAssetIdRef.current === requestedAssetId) {
+        metadataHydrationAssetIdRef.current = undefined;
+      }
+    };
   }, [
     canvasId,
     data.assetId,
     data.imageSrc,
     data.inputState,
+    data.mediaByteSize,
+    data.mediaContentType,
+    data.mediaHeight,
     data.mediaMetadataSource,
+    data.mediaMetadataStatus,
+    data.mediaStorageBackend,
+    data.mediaWidth,
     id,
     persistenceReady,
     setNodes,

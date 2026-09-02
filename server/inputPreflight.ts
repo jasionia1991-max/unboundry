@@ -178,6 +178,7 @@ export function resolvePersistedNodeInputs(input: {
   bypass: boolean;
   canvasId: string;
   expectedRevision?: number;
+  mediaInputPolicy?: "seedance-2";
   modelSchema?: ModelParameterSchema;
   modelReleaseRevision?: string;
   ownerId: string;
@@ -227,6 +228,7 @@ export function resolvePersistedNodeInputs(input: {
     return {
       ...resolveNodeInputs({
         edges,
+        mediaInputPolicy: input.mediaInputPolicy,
         modelSchema: input.modelSchema,
         modelReleaseRevision: input.modelReleaseRevision,
         nodes,

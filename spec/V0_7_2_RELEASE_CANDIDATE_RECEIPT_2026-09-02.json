@@ -1,0 +1,132 @@
+{
+  "version": "0.7.2",
+  "packageVersion": "0.7.2",
+  "schemaVersion": 42,
+  "createdAt": "2026-09-02T09:57:04Z",
+  "status": "LOCAL_RELEASE_CANDIDATE_REVIEW_GO_NOT_DEPLOYED",
+  "source": {
+    "baselineCommit": "f3b2f7142382521762a2b772d2eb494e458b7b3f",
+    "baselineTree": "df8172c201ccee22de59afb8daa69c56223a342f",
+    "originMainAtAuthorization": "f3b2f7142382521762a2b772d2eb494e458b7b3f",
+    "branch": "codex/inc-gen-028-workflow-input-contract",
+    "candidateCommit": null,
+    "mergeCommit": null,
+    "tag": null
+  },
+  "authorization": {
+    "text": "版本号 v0.7.2，授权上线",
+    "versionSelected": true,
+    "releaseAuthorized": true,
+    "authorizationConsumed": false,
+    "postDeployRealCanvasVerificationAuthorized": true
+  },
+  "productionBeforeRelease": {
+    "version": "0.7.1-hotfix.1",
+    "packageVersion": "0.7.1",
+    "schemaVersion": 42,
+    "current": "/opt/unboundry/releases/v0.7.1-hotfix.1-inc-gen-027-20260902",
+    "service": "active",
+    "ready": true,
+    "nRestarts": 0,
+    "databaseIntegrity": "ok",
+    "foreignKeyViolations": 0,
+    "quiet": {
+      "activeTasks": 0,
+      "unknownBillingTasks": 0,
+      "activeReservations": 0,
+      "activePublications": 0,
+      "activeWorkflowRuns": 0
+    },
+    "counts": {
+      "adminAuditEvents": 316,
+      "generationAdmissions": 962,
+      "generationProviderAttempts": 1053,
+      "generationTasks": 1042,
+      "mediaAssets": 968,
+      "mediaPublications": 559,
+      "workflowRuns": 3
+    }
+  },
+  "candidateManifest": {
+    "trackedChangedFiles": 35,
+    "trackedHunks": 153,
+    "untrackedReceipts": 2,
+    "totalFiles": 37,
+    "trackedBinaryDiffSha256": "f2488f8d0877472b5652565893e1d5f11a446c67f2caccf10d73b5a025a5baa3"
+  },
+  "verification": {
+    "incGen028DirectSpecs": 8,
+    "incGen028DirectTests": 76,
+    "incGen028DirectPassed": 76,
+    "postReviewP2Closure": {
+      "affectedSpecs": 4,
+      "affectedTests": 27,
+      "affectedPassed": 27,
+      "m31": "13/13 PASS",
+      "mediaUploadSpecs": "14/14 PASS",
+      "sourceSha256": "3215d11471defe0a603c5ddc22e26e33b73753be48dbf5a536e03fa33e745604",
+      "snapshotUnchanged": true,
+      "listener4173Unchanged": true
+    },
+    "branchCiPortabilityClosure": {
+      "firstRun": 33620785332,
+      "firstRunResult": "FAILED_ONLY_BECAUSE_CI_HOST_HAS_NO_FFMPEG",
+      "productFailure": "NONE_REACHED_BEFORE_FIXTURE_CREATION",
+      "fix": "replace generated PNG fixture with a checked-in valid 1280x720 PNG",
+      "localM104AfterFix": "12/12 PASS",
+      "sourceSha256": "7577da82d1291b3241a89309da47b9b83ee7d681752fd0b711d15e72e4f94f47",
+      "snapshotUnchanged": true,
+      "listener4173Unchanged": true
+    },
+    "versionAndReleaseSpecs": 2,
+    "versionAndReleaseTests": 49,
+    "versionAndReleasePassed": 49,
+    "governanceTests": 18,
+    "governancePassedBeforeVersionFreeze": 18,
+    "governanceAfterVersionFreeze": {
+      "firstAttempt": "17/18; exact AGENTS production marker used extra wording",
+      "finalAttempt": "18/18 PASS",
+      "sourceSha256": "975c73a364688dd6ffd60e24aa6a4904b5617af2ad7d688208707cf5626d3d34",
+      "snapshotUnchanged": true,
+      "listener4173Unchanged": true
+    },
+    "governanceAfterReviewFreeze": {
+      "finalAttempt": "18/18 PASS",
+      "sourceSha256": "4e2967f093c226edd483abfe87535dc123d90aef36de53a3a9396a6a09315a84",
+      "snapshotUnchanged": true,
+      "listener4173Unchanged": true
+    },
+    "typescript": "PASS_VIA_SAFE_RUNNER",
+    "productionBuild": "PASS_VIA_SAFE_RUNNER",
+    "safeInventory": 1175,
+    "formalFullRerun": false,
+    "realProviderPostsFromCandidateTests": 0,
+    "listener4173Unchanged": true
+  },
+  "review": {
+    "preVersionFunctionalCandidate": "P0=0/P1=0/P2=0/GO",
+    "releaseCandidate": {
+      "completeReview": "35/35 tracked files, 150/150 then-current hunks, 2/2 receipts; P0=0/P1=0/P2=1/GO",
+      "p2": "pending/failed legacy media metadata was incorrectly treated as complete",
+      "p2Closure": "bounded pending refresh plus explicit failed terminal state; focused review P0=0/P1=0/P2=0/GO",
+      "final": "P0=0/P1=0/P2=0/GO"
+    }
+  },
+  "release": {
+    "pullRequest": "NOT_RUN",
+    "branchCi": "NOT_RUN",
+    "mainCi": "NOT_RUN",
+    "annotatedTag": "NOT_RUN",
+    "githubRelease": "NOT_RUN",
+    "productionBackup": "NOT_RUN",
+    "productionSwitch": "NOT_RUN",
+    "rollbackForward": "NOT_RUN"
+  },
+  "postDeployRealCanvasVerification": {
+    "canvasId": "bcbb1199-d154-4c1a-a580-6b66d2d10f38",
+    "status": "NOT_RUN_UNTIL_V0_7_2_IS_LIVE",
+    "maxNewSeedanceProviderPosts": 1,
+    "retryIfOutcomeUnknown": false,
+    "qualityJudgementInScope": false
+  }
+}

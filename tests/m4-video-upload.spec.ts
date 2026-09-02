@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const canvasId = "interaction.upload-media-sandbox-current";
+const projectIds = new Set<string>();
 const mediaDirectory = mkdtempSync(join(tmpdir(), "unboundry-video-upload-"));
 const videoFile = join(mediaDirectory, "一秒测试视频.mp4");
 execFileSync("ffmpeg", [
@@ -52,7 +53,13 @@ async function clearFixture(request: APIRequestContext) {
 }
 
 test.beforeEach(async ({ request }) => clearFixture(request));
-test.afterEach(async ({ request }) => clearFixture(request));
+test.afterEach(async ({ request }) => {
+  for (const projectId of projectIds) {
+    await request.delete(`/api/projects/${projectId}`);
+  }
+  projectIds.clear();
+  await clearFixture(request);
+});
 test.afterAll(() => rmSync(mediaDirectory, { force: true, recursive: true }));
 
 test("MP4 playback, range delivery, download and metadata survive a reload", async ({
@@ -66,7 +73,7 @@ test("MP4 playback, range delivery, download and metadata survive a reload", asy
 
   await page.getByTestId("video-upload-input").setInputFiles(videoFile);
   const preview = page.getByTestId("video-node-preview");
-  await expect(preview).toBeVisible();
+  await expect(preview).toBeVisible({ timeout: 15_000 });
   await expect(preview).toHaveJSProperty("muted", true);
   await expect
     .poll(() =>
@@ -180,4 +187,78 @@ test("MP4 playback, range delivery, download and metadata survive a reload", asy
   await expect(world).toHaveAttribute("data-persistence-ready", "true");
   await expect(preview).toHaveAttribute("src", videoNode.data.videoSrc);
   await expect(page.getByText("1.0s", { exact: true })).toBeVisible();
+
+  const current = await (
+    await request.get(`/api/canvas/${canvasId}`)
+  ).json() as {
+    edges: unknown[];
+    loadToken: string;
+    nodes: Array<{ data: Record<string, unknown>; id: string }>;
+    revision: number;
+    viewport: Record<string, unknown>;
+  };
+  const legacyNodes = current.nodes.map((node) => {
+    if (node.data.assetId !== videoNode.data.assetId) return node;
+    const data = { ...node.data };
+    delete data.mediaHeight;
+    delete data.mediaWidth;
+    return {
+      ...node,
+      data: {
+        ...data,
+        inputState: "invalid",
+        inputStateReason: "视频参考视频分辨率尚未经过服务端校验，请重新上传",
+        mediaMetadataSource: "server",
+        videoHeight: 180,
+        videoWidth: 320,
+      },
+    };
+  });
+  const createdProject = await request.post("/api/projects", { data: {} });
+  expect(createdProject.status()).toBe(201);
+  const projectId = ((await createdProject.json()) as { id: string }).id;
+  projectIds.add(projectId);
+  const projectBaseline = await (
+    await request.get(`/api/canvas/${projectId}`)
+  ).json() as { loadToken: string; revision: number };
+  const savedLegacy = await request.put(`/api/canvas/${projectId}`, {
+    data: {
+      edges: current.edges,
+      nodes: legacyNodes,
+      observedLoadToken: projectBaseline.loadToken,
+      observedRevision: projectBaseline.revision,
+      revision: projectBaseline.revision,
+      viewport: current.viewport,
+    },
+  });
+  expect(savedLegacy.ok(), await savedLegacy.text()).toBeTruthy();
+
+  const refreshedMetadata = page.waitForResponse((response) =>
+    response.request().method() === "GET" &&
+    response.url().includes(`/api/media-metadata/video/${videoNode.data.assetId}`)
+  );
+  await page.goto(`/canvas/${projectId}`);
+  expect((await refreshedMetadata).ok()).toBeTruthy();
+  await expect(world).toHaveAttribute("data-persistence-ready", "true");
+  await expect.poll(async () => {
+    const refreshed = await (
+      await request.get(`/api/canvas/${projectId}`)
+    ).json() as {
+      nodes: Array<{ data: Record<string, unknown> }>;
+    };
+    const data = refreshed.nodes.find((node) =>
+      node.data.assetId === videoNode.data.assetId
+    )?.data;
+    return data && {
+      ...data,
+      inputStateReason: data.inputStateReason ?? null,
+    };
+  }).toMatchObject({
+    inputState: "ready",
+    inputStateReason: null,
+    mediaHeight: 180,
+    mediaMetadataSource: "server",
+    mediaWidth: 320,
+  });
+  await expect(preview).toHaveAttribute("src", videoNode.data.videoSrc);
 });

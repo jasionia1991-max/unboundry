@@ -1,0 +1,183 @@
+{
+  "version": "0.7.1-hotfix.1",
+  "packageVersion": "0.7.1",
+  "schemaVersion": 42,
+  "createdAt": "2026-09-02T08:06:03Z",
+  "status": "PRODUCTION_REAL_FLOW_PARTIAL_PASS_WITH_CONFIRMED_INPUT_CONTRACT_DEFECT",
+  "technicalAcceptance": "TEXT_IMAGE_STANDALONE_VIDEO_AND_LOCAL_MEDIA_UPLOAD_PASS_INC_GEN_028_FIX_NOT_DEPLOYED",
+  "userAcceptance": "USER_RECHECK",
+  "source": {
+    "mergeCommit": "f3b2f7142382521762a2b772d2eb494e458b7b3f",
+    "tree": "df8172c201ccee22de59afb8daa69c56223a342f",
+    "tag": "v0.7.1-hotfix.1",
+    "tagPeeledCommit": "f3b2f7142382521762a2b772d2eb494e458b7b3f"
+  },
+  "production": {
+    "current": "/opt/unboundry/releases/v0.7.1-hotfix.1-inc-gen-027-20260902",
+    "service": "active",
+    "ready": true,
+    "schemaVersion": 42
+  },
+  "realWorkflowEvidence": {
+    "group": {
+      "canvasId": "bcbb1199-d154-4c1a-a580-6b66d2d10f38",
+      "runId": "08c2e8a5-89c1-4ebf-a935-632a7f5dc4bc",
+      "textNodesSucceeded": 6,
+      "imageNodesSucceeded": 4,
+      "tasks": 10,
+      "providerAttempts": 10,
+      "resultAssets": 4,
+      "refreshPersistence": "PASS",
+      "duplicateSubmissionObserved": false,
+      "manualProviderOrStorageRecovery": 0
+    },
+    "standaloneSeedance": {
+      "nodeId": "video-1c17ef2a-66b4-468d-8cde-68a27e221937",
+      "taskId": "bb6e194e-c280-438d-8015-727841e23132",
+      "providerTaskId": "cgt-20260902064018-zx296",
+      "resultAssetId": "9fa095c9-bc8c-4d4e-a9a5-b39b8ae60c65.mp4",
+      "state": "success",
+      "admissions": 1,
+      "attempts": 1,
+      "duplicateSubmissionObserved": false,
+      "elapsedSeconds": 5.088,
+      "mediaWidth": 864,
+      "mediaHeight": 496,
+      "storageBackend": "oss",
+      "refreshPersistence": "PASS",
+      "manualProviderOrStorageRecovery": 0
+    }
+  },
+  "realLocalUploadEvidence": {
+    "image": {
+      "state": "ready",
+      "usableAsWorkflowInput": true,
+      "refreshPersistence": "PASS"
+    },
+    "video": {
+      "nodeId": "video-742c84fe-8a5b-483c-b30c-358954d5875b",
+      "assetId": "fc40b521-c02f-4920-a457-d6b1c1ae12c3.mp4",
+      "state": "ready",
+      "durationSeconds": 2,
+      "mediaWidth": 640,
+      "mediaHeight": 360,
+      "storageBackend": "oss",
+      "refreshPersistence": "PASS",
+      "playbackReadyState": 4
+    },
+    "audio": {
+      "nodeId": "audio-1ae46fd9-73bc-48bc-bffa-e9cfd76152b1",
+      "assetId": "d0e77a5f-514e-4451-bfa1-59d1a7c64752.mp3",
+      "state": "ready",
+      "durationSeconds": 2.038,
+      "storageBackend": "oss",
+      "refreshPersistence": "PASS",
+      "playbackReadyState": 4
+    },
+    "saveToastNote": "A transient save-failed toast appeared once, but the authoritative database document and an actual reload both proved the video and audio nodes were persisted. This is recorded separately and is not treated as data loss."
+  },
+  "confirmedDefects": {
+    "workflowInputContract": {
+      "severity": "P1_NEAR_P0",
+      "status": "CONFIRMED_IN_PRODUCTION_SOURCE",
+      "impact": "Strict preflight can normalize legacy Seedance text plus first-frame input to multimodal plus reference-image while the frozen node plan, task parameters, generation input key, ownership key and request intent retain the raw text-mode parameters. Provider execution may still work today because the native adapter primarily reads the normalized input snapshot, but idempotency, recovery, relay and declarative contract identity can disagree.",
+      "productionFixed": false
+    },
+    "legacyMediaMetadataHydration": {
+      "severity": "P1",
+      "status": "CONFIRMED_ON_LEGACY_CANVAS",
+      "affectedNodeId": "video-0b442d39-b187-41e3-bafc-c7b003d5e444",
+      "assetId": "20baba30-a102-4cc1-9f63-873ec64ab58d.mp4",
+      "impact": "A legacy node can carry mediaMetadataSource=server and old videoWidth/videoHeight while missing canonical mediaWidth/mediaHeight. The client previously skipped the server refresh solely because the source flag existed, then blocked the same asset as unverified.",
+      "productionFixed": false
+    },
+    "staleVideoInputError": {
+      "severity": "P2_UI_TRUTHFULNESS",
+      "status": "CONFIRMED_ON_LEGACY_CANVAS",
+      "canvasId": "00712d81-c197-4339-a119-8042b564076b",
+      "nodeId": "video-e14fffb1-ebfd-48c2-b70d-39e620c60bb3",
+      "impact": "A historical local ROLE_CONFLICT message can remain visible even after the current resolver permits submission. It is not evidence of a current Provider failure.",
+      "productionFixed": false
+    }
+  },
+  "incGen028LocalCandidate": {
+    "worktree": "/Users/mymy/Documents/unboundry-inc-gen-028-workflow-input-contract-2026-09-02",
+    "branch": "codex/inc-gen-028-workflow-input-contract",
+    "baselineCommit": "f3b2f7142382521762a2b772d2eb494e458b7b3f",
+    "packageVersion": "0.7.1",
+    "schemaVersion": 42,
+    "status": "LOCAL_CANDIDATE_TECHNICAL_PASS_NOT_DEPLOYED",
+    "candidateManifest": {
+      "trackedChangedFiles": 31,
+      "trackedHunks": 143,
+      "untrackedReceipts": 1,
+      "totalFiles": 32,
+      "trackedBinaryDiffSha256": "2514368e65eaedc0b94abeed5c6cf9e792a45a5390676f39291c4d210f0d7e53"
+    },
+    "fixes": [
+      "Freeze strict-preflight canonical parameters and recompute workflow semantic identity before storing the run plan.",
+      "Use normalized submission parameters for task identity, idempotency, ownership and Provider request intent.",
+      "Apply the same Seedance media-input policy in persisted server preflight, workflow admission and old-task retry compatibility checks.",
+      "Refetch incomplete canonical server metadata for legacy image, video and audio nodes without trusting old client-only dimensions.",
+      "Fence each asynchronous metadata result to the same assetId so a fast replacement cannot receive stale metadata or an old error.",
+      "Clear only unbound historical video role errors after the current resolver proves the node valid."
+    ],
+    "verification": {
+      "safeSpecs": 8,
+      "safeTests": 75,
+      "passed": 75,
+      "failedAfterTargetedClosure": 0,
+      "safeInventory": 1174,
+      "specs": [
+        "m4-video-upload",
+        "m4-image-upload",
+        "m4-audio-upload",
+        "m12-model-catalog",
+        "m30-video-node-inputs",
+        "m31-provider-media-safety",
+        "m38-generation-runtime-incidents",
+        "m104-inc-gen-026-reliability"
+      ],
+      "typescript": "PASS",
+      "diffCheck": "PASS",
+      "safeRunnerNode": "22.23.1",
+      "dynamicLoopbackOnly": true,
+      "listener4173Unchanged": true,
+      "realProviderPostsFromCandidateTests": 0
+    },
+    "independentReview": {
+      "initialCoverage": "28/28 tracked files, 99/99 tracked hunks, 1/1 untracked receipt",
+      "initialCodeDecision": "P0=0/P1=0/GO",
+      "initialGateDecision": "P1=1/NO_GO",
+      "initialGateFinding": "The matrix reused the v0.7.0 candidate denominator and independent-review AUTO_PASS as if they proved INC-GEN-028.",
+      "firstRemediation": "APPLIED",
+      "secondCoverage": "31/31 tracked files, 120/120 tracked hunks, 1/1 untracked receipt",
+      "secondCodeDecision": "P0=0/P1=0/GO",
+      "secondGateDecision": "P1=1/NO_GO",
+      "secondGateFinding": "AGENTS and Current State still routed current recovery through historical INC-GEN-026 authority.",
+      "secondRemediation": "APPLIED",
+      "finalDeltaCoverage": "31/31 tracked files, 143/143 tracked hunks, 1/1 untracked receipt",
+      "finalDeltaDecision": "P0=0/P1=0/P2=0/GO",
+      "finalDeltaReview": "GO"
+    },
+    "newVersionSelected": false,
+    "releaseAuthorized": false,
+    "productionVerifiedAfterFix": false
+  },
+  "matrix": {
+    "IG26-106": "NOT_RUN",
+    "IG26-108": "REAL_PROVIDER_PASS",
+    "IG26-109": "REAL_PROVIDER_PASS",
+    "IG26-110": "NOT_RUN_UNTIL_INC_GEN_028_IS_DEPLOYED_AND_RECHECKED",
+    "IG26-111": "USER_RECHECK",
+    "IG26-112": "NO_GO"
+  },
+  "authorization": {
+    "v0_7_1Hotfix1ReleaseAuthorizationConsumed": true,
+    "realProductionChecksAuthorizedAndExecuted": true,
+    "secondSeedanceProviderPostExecuted": false,
+    "incGen028ImplementationAuthorized": true,
+    "incGen028NewVersionSelected": false,
+    "incGen028ReleaseAuthorized": false
+  }
+}

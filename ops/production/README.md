@@ -1,9 +1,15 @@
 # Production backup contracts
 
-This directory contains source candidates. The 2026-09-02 v0.7.0 authorization
-allows a one-time local schema42 backup/verify/fresh-restore and release
-switch/rollback-forward. It does not authorize timer installation, scheduling,
-real OSS upload/delete/restore, Provider traffic, or historical data apply.
+This directory contains source candidates. Production currently runs
+`v0.7.1-hotfix.1/schema42`; that release authorization has been consumed. The
+INC-GEN-028 workflow-input and legacy-metadata fix is now the authorized
+`v0.7.2` release candidate. Its version gates, frozen manifest and independent
+Review are GO; backup, install, switch and rollback-forward now follow only
+after PR/head and main Quality plus the immutable tag and Release are complete.
+No real Seedance request may run before v0.7.2 is live and technically healthy;
+the authorized post-deploy check is one request with no retry on an unknown
+outcome. Candidate evidence is recorded in
+`spec/V0_7_2_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`.
 
 ## Current schema42 candidate
 

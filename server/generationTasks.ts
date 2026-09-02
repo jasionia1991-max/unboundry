@@ -213,6 +213,7 @@ import {
   CanvasRevisionConflictError,
   resolvePersistedNodeInputs,
 } from "./inputPreflight";
+import { modelMediaInputPolicy } from "./modelConfigurationIdentity";
 import {
   isNodeInputKind,
   resolveNodeInputs,
@@ -1890,6 +1891,7 @@ function resolveModel(kind: NodeInputKind, modelId: string | undefined, ownerId:
 function persistedSubmissionInputs(input: {
   body: NodeInputGenerationRequest;
   bypass: boolean;
+  mediaInputPolicy?: "seedance-2";
   modelSchema: ModelParameterSchema;
   modelReleaseRevision?: string;
   ownerId: string;
@@ -1900,6 +1902,7 @@ function persistedSubmissionInputs(input: {
     bypass: input.bypass,
     canvasId: String(input.body.canvasId ?? ""),
     expectedRevision: input.body.canvasRevision,
+    mediaInputPolicy: input.mediaInputPolicy,
     modelSchema: input.modelSchema,
     modelReleaseRevision: input.modelReleaseRevision,
     ownerId: input.ownerId,
@@ -2156,6 +2159,11 @@ function strictGenerationPreflight(input: {
   const persisted = persistedSubmissionInputs({
     body: input.body,
     bypass: input.bypass,
+    mediaInputPolicy: modelMediaInputPolicy({
+      capability: input.targetKind,
+      providerDriver: input.model.provider_driver,
+      providerModelId: input.model.provider_model_id,
+    }),
     modelSchema: schema,
     modelReleaseRevision: activeModelReleaseRevision?.revisionId,
     ownerId: input.ownerId,
@@ -6375,6 +6383,13 @@ export function retrySnapshotCompatibilityProblem(
       : "";
   const preflight = resolveNodeInputs({
     edges,
+    mediaInputPolicy: model
+      ? modelMediaInputPolicy({
+          capability: task.kind,
+          providerDriver: model.provider_driver,
+          providerModelId: model.provider_model_id,
+        })
+      : undefined,
     modelSchema,
     nodes,
     ownPrompt: compatibilityOwnPrompt,

@@ -72,7 +72,10 @@ import {
 import { assertRegisteredModelExecutionTotality } from
   "./modelExecutionRegistry";
 import { inspectActiveModelContractHealth } from "./activeModelContractHealth";
-import { authoritativeModelConfigurationRevision } from
+import {
+  authoritativeModelConfigurationRevision,
+  modelMediaInputPolicy,
+} from
   "./modelConfigurationIdentity";
 
 type Capability = GenerationCapabilityKind;
@@ -213,11 +216,11 @@ function imageParameters(row: ModelRow) {
 }
 
 function mediaInputPolicy(row: ModelSchemaRow) {
-  return row.capability === "video" &&
-      row.provider_driver === "volcengine-ark" &&
-      /^doubao-seedance-[a-z0-9-]+$/i.test(row.provider_model_id)
-    ? "seedance-2" as const
-    : undefined;
+  return modelMediaInputPolicy({
+    capability: row.capability,
+    providerDriver: row.provider_driver,
+    providerModelId: row.provider_model_id,
+  });
 }
 
 export function modelConfigurationRevision(

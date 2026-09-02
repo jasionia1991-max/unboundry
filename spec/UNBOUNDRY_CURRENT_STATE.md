@@ -1,8 +1,8 @@
 # Unboundry 当前权威状态
 
-> **2026-09-02 最新权威：INC-GEN-026 v0.7.0 已部署并稳定运行。** PR #144、分支/main 双 CI、annotated tag/GitHub Release、schema42 locked-exact backup/verify/fresh restore、生产原子切换与 v0.6.70→v0.7.0 rollback/forward 已完成；一次性版本/发布/生产授权已执行并消费。生产 current=`/opt/unboundry/releases/v0.7.0-inc-gen-026-20260902`，active/ready、NRestarts0，公网/回环健康、33/33 静态、数据库 integrity/FK/quiet 与稳定门通过。Provider POST、OSS 写、费用和真实点击均为 0。当前没有完整公开的只读 workflow-run/capacity preflight，IG26-106 保持 `NOT_RUN`；历史 apply、真实 canary 和用户验收仍未执行。权威入口为 `spec/INC_GEN_026_CHECKPOINT.md`，生产回执为 `spec/V0_7_0_PRODUCTION_RECEIPT_2026-09-02.json`。
+> **2026-09-02 最新权威：生产运行 v0.7.1-hotfix.1/schema42；用户已选择 v0.7.2 并授权上线，候选尚未发布。** 当前生产 tag/merge=`f3b2f7142382521762a2b772d2eb494e458b7b3f`、tree=`df8172c201ccee22de59afb8daa69c56223a342f`、current=`/opt/unboundry/releases/v0.7.1-hotfix.1-inc-gen-027-20260902`。生产真实验证已证明文字/图片整组、独立 Seedance 与图片/视频/音频上传；同时确认组工作流入参合同与旧媒体 metadata 缺陷。INC-GEN-028 已在 v0.7.2 本地候选修复，行为门累计 76/76、版本门 49/49、TypeScript 与 production build 通过；完整候选及 P2 修复增量 Review 均为 `P0/P1/P2=0/0/0/GO`。**生产尚未切换，不能宣称线上已修复。**
 
-**生产是 v0.7.0 / schema42；版本、GitHub 与生产发布授权已消费，真实 Provider/OSS/canary 未执行，等待用户实页复验。**
+**生产是 v0.7.1 / schema42；运行 tag 为 v0.7.1-hotfix.1。v0.7.2 已获版本号和上线授权，当前是 RELEASE_CANDIDATE_REVIEW_GO；PR、tag、Release、生产备份/切换和发布后真实验证均尚未执行。** 候选回执为 `spec/V0_7_2_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`，生产基线回执为 `spec/V0_7_1_HOTFIX_1_PRODUCTION_RECEIPT_2026-09-02.json`。
 
 > **以下 INC-GEN-025 顶部记录是历史声明快照**：它记录当时的 Goal、测试、Review 和发布前状态；v0.6.70 后续已经发布，最终审计推翻了“可直接继续 R8/真实点击”的当前有效性。其历史授权已消费，不得恢复。
 
@@ -10,16 +10,28 @@
 
 更新日期：2026-09-02
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.7.0**
-本地候选代码版本：**v0.7.0**
-当前生产部署版本：**v0.7.0**
+当前代码包版本：**v0.7.2**
+本地候选代码版本：**v0.7.2**
+当前本地候选说明：`INC-GEN-028 v0.7.2 已授权发布候选，尚未发布`
+当前生产部署版本：**v0.7.1-hotfix.1**
 本地候选schema：**42**
-当前治理标记：`CURRENT_V0_7_0_USER_RECHECK`
-当前发布执行标记：`INC_GEN_026_R9_V0_7_0_DEPLOYED_STABLE`
-当前本地Goal标记：`INC_GEN_026_R0_R8_COMPLETE / LOCAL_CANDIDATE_TECHNICAL_PASS / PRODUCTION_V0_7_0_DEPLOYED / IG26_106_NOT_RUN / REAL_PROVIDER_NOT_AUTHORIZED / USER_RECHECK`
-当前计划标记：`FORMAL_FULL_1_OF_1_CONSUMED_RAW_1162_OF_1167 / TARGETED_CLOSURE_112_OF_112 / R9_V0_7_0_DEPLOYED / IG26_106_NOT_RUN`
+当前治理标记：`CURRENT_V0_7_1_USER_RECHECK`
+当前发布执行标记：`PRODUCTION_V0_7_1_HOTFIX_1_STABLE / V0_7_2_RELEASE_AUTHORIZED_NOT_DEPLOYED`
+当前本地Goal标记：`NO_ACTIVE_GOAL / INC_GEN_028_V0_7_2_RELEASE_AUTHORIZED / RELEASE_CANDIDATE_REVIEW_GO / USER_RECHECK`
+当前计划标记：`TARGETED_SAFE_76_OF_76_PASS / VERSION_GATES_49_OF_49_PASS / RELEASE_CANDIDATE_REVIEW_GO`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`V0_7_0_RELEASE_AUTHORIZATION_CONSUMED / PRODUCTION_SWITCH_AUTHORIZATION_CONSUMED / HISTORY_APPLY_NO_GO / REAL_PROVIDER_NOT_AUTHORIZED`
+当前发布门：`V0_7_2_RELEASE_AUTHORIZED / PR_TAG_RELEASE_PRODUCTION_NOT_RUN / NO_SECOND_PROVIDER_POST_BEFORE_V0_7_2_LIVE / USER_RECHECK`
+
+## INC-GEN-028 当前读取顺序
+
+1. 本文件顶部当前区块。
+2. `spec/V0_7_2_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`。
+3. `spec/V0_7_1_HOTFIX_1_PRODUCTION_RECEIPT_2026-09-02.json`（发布前生产基线）。
+4. `spec/INC_GEN_026_CHECKPOINT.md` 顶部 post-hotfix 覆盖层。
+5. `spec/INC_GEN_026_ACCEPTANCE_MATRIX_2026-09-01.md` 顶部覆盖层及 IG26-099～119。
+6. `TASKS.md`、`上线规矩.md`、`README.md` 顶部 INC-GEN-028 区块。
+
+旧 INC-GEN-026 Plan、Goal、本地 receipt 与 v0.7.0 production receipt 都是历史资料，只能查证，不得作为 INC-GEN-028 的候选、Review 或授权依据。
 
 ## INC-GEN-023 历史区块（2026-09-01）
 
@@ -30,7 +42,7 @@
 - 用户已明确确认版本v0.6.69并允许发布；授权尚未消费，独立复审已GO，现执行commit/push/PR/tag/Release/生产切换。真实整组点击仍为0/1，Provider POST0/11，费用0。
 - 权威方案、断点、Matrix分别为`spec/INC_GEN_023_SERVER_TERMINAL_DETACH_PLAN_2026-09-01.md`、`spec/INC_GEN_023_CHECKPOINT.md`、`spec/INC_GEN_023_ACCEPTANCE_MATRIX_2026-09-01.md`。
 
-## INC-GEN-022 当前区块（2026-09-01）
+## INC-GEN-022 历史区块（2026-09-01）
 
 - v0.6.67 已发布并部署；生产服务、版本、schema、静态文件和业务计数门通过。
 - 点击前自动收口发现P0：客户端把浏览器缓存字段 `fixtureScopeId` 纳入 terminal-detach application identity，服务端合同不包含它，合法请求被400拒绝。
@@ -40,7 +52,7 @@
 - 用户已确认并允许发布v0.6.68；commit/push/PR/CI/tag/Release、冻结备份和生产切换进入本次一次性授权。真实整组点击仍须等待部署和自动解绑门通过后才能消费。
 - 权威方案、断点、Matrix分别为`spec/INC_GEN_022_TERMINAL_DETACH_CONTRACT_HOTFIX_PLAN_2026-09-01.md`、`spec/INC_GEN_022_CHECKPOINT.md`、`spec/INC_GEN_022_ACCEPTANCE_MATRIX_2026-09-01.md`。
 
-## INC-GEN-021 当前区块（2026-09-01）
+## INC-GEN-021 历史区块（2026-09-01）
 
 - 用户合同：整组只点一次；Provider 返回的图片、视频、音频先由系统保住并在后台完成保存，用户不重试、不去 Provider 平台捞结果。
 - 当前现网：仍为v0.6.66；截图只有文字成功、图片失败、其余9项未运行，不能写整组或多媒体真实通过。
@@ -50,7 +62,7 @@
 - 当前门：v0.6.67 已确认并允许发布；发布后只在 CNY300、最多11次Provider POST、一次点击、不重试、原任务核对边界内验证实际图片/视频/音频结果。
 - 权威方案、断点、Matrix分别为`spec/INC_GEN_021_CROSS_MEDIA_ONE_CLICK_RELIABILITY_PLAN_2026-09-01.md`、`spec/INC_GEN_021_CHECKPOINT.md`、`spec/INC_GEN_021_ACCEPTANCE_MATRIX_2026-09-01.md`。
 
-## INC-GEN-020 当前区块（2026-09-01）
+## INC-GEN-020 历史区块（2026-09-01）
 
 - 用户核心合同：整组只点一次；系统自己保存或回收结果，不要求用户反复重试，也不要求用户去Provider平台找结果。
 - 发布前原任务`8b6e5b71-c45f-485d-a6a7-7f83dc7be3f1`为image/recovering/attempt1；Provider attempt=`response-received`，provider task id/result asset id均为空。该同步响应没有远端可轮询ID，丢失字节不可再取，所以绝不再发Provider POST。
@@ -63,7 +75,7 @@
 - 授权：v0.6.66一次性版本、GitHub、备份和生产发布授权已消费；新代码、新版本、新发布或新Provider POST需要新授权。回执为`spec/V0_6_66_PRODUCTION_RECEIPT_2026-09-01.json`。
 - 权威方案、断点、Matrix分别为`spec/INC_GEN_020_DURABLE_GPT_IMAGE_RESULT_PLAN_2026-08-31.md`、`spec/INC_GEN_020_CHECKPOINT.md`、`spec/INC_GEN_020_ACCEPTANCE_MATRIX_2026-08-31.md`。
 
-## INC-GEN-019 当前区块（2026-08-31）
+## INC-GEN-019 历史区块（2026-08-31）
 
 - 用户已在本 Session 显式启动一次性 Goal；唯一 checkout 与新分支为`/Users/mymy/Documents/unboundry-inc-gen-016-v0.6.56-2026-08-28`、`codex/inc-gen-019-group-admission-2026-08-31`，HEAD=`origin/main@86685471092941a31c30621233b9238ce6b1c393`，package0.6.64、Node/npm25.9.0/11.12.1。
 - R0生产只读冻结：release v0.6.64/schema41，service active/running/enabled、NRestarts0；tasks1026/admissions946/attempts1037/paid Provider requests1025/active0/current unknown0/media956/publications547；新 task/admission/attempt/POST/OSS/费用0。
@@ -73,7 +85,7 @@
 - R8已完成：candidate=`a4750ea…14e8f`、PR #136、merge=`9a32373…89d5`、final-head/main CI success、annotated tag/GitHub Release v0.6.65、exact tag fresh build、冻结恢复、forward→rollback→final forward、33/33静态和生产零付费门。当前release=`/opt/unboundry/releases/v0.6.65-inc-gen-019-20260831`，active/enabled、MainPID2950523、NRestarts0、schema41；前后tasks1026/admissions946/attempts1037/paidProviderRequests1025/active0/currentUnknown0/media956/publications547不变。目标11节点preflight 11/11 HTTP200，formal POST0。预算保守折算CNY300>CNY100且无可靠实际报价，故真实click0/1未消费并硬停止。回执：`spec/V0_6_65_PRODUCTION_RECEIPT_2026-08-31.json`。
 - 权威方案、Goal、断点、Matrix分别为`spec/INC_GEN_019_GROUP_EXECUTION_SAVE_RACE_AND_ATOMIC_ADMISSION_FINAL_AUDITED_PLAN_2026-08-31.md`、`spec/INC_GEN_019_ONE_SHOT_GOAL_PROMPT_2026-08-31.md`、`spec/INC_GEN_019_CHECKPOINT.md`、`spec/INC_GEN_019_ACCEPTANCE_MATRIX_2026-08-31.md`。
 
-## INC-GEN-018 当前区块（2026-08-31）
+## INC-GEN-018 历史区块（2026-08-31）
 
 - 用户已在本Session完整发送一次性Goal并连续实施；分支`codex/inc-gen-018-contract-health-boundary-2026-08-31`，candidate commit=`790db916…ab618`，PR final head=`7467ad2…0965ae7`，merge/origin-main=`fc046f4…291fe`；package/生产均为v0.6.64/schema41。
 - R0生产只读冻结完成：v0.6.63/schema41、globalEnabled1/emergencyStop0、tasks1026/attempts1037/active0/current-unsettled-unknown0，10/10 published logical models与10/10 exact identities全部入脱敏快照，SHA=`fa6a498a…0457`。仅Seed/TTS缺`$.inputPolicy`，其余8个active/expected schema一致；两份受保护JSON未读取或触碰。
@@ -110,7 +122,7 @@
 
 权威文件：`spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_PLAN_2026-08-30.md`、`spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_CHECKPOINT.md`、`spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_ACCEPTANCE_MATRIX_2026-08-30.md`、`spec/INC_GEN_018_ONE_SHOT_GOAL_PROMPT_2026-08-31.md`。
 
-## INC-GEN-017 当前区块（2026-08-28）
+## INC-GEN-017 历史区块（2026-08-28）
 
 - v0.6.63生产技术收口：PR #132最终head/main CI通过，merge=`55ef9557…de9b3`，annotated tag/Release、fresh tag build、冻结source/restore、原子切换、paired rollback/forward、33/33回环+公网静态字节、schema/integrity/FK与72秒7采样稳定门均通过。退出trap的额外启停曾触发systemd `start-limit-hit`，确认应用forward已ready和current正确后清限流恢复；最终service active/enabled、NRestarts0、journal warning0。稳定样本保持tasks1026/attempts1037/active0/unknownBilling0/media954/publications545/canvases76。当前`PRODUCTION_V0_6_63_TECHNICAL_PASS / REAL_PROVIDER_PASS / USER_RECHECK`；Provider不再POST。
 - 最终治理m38首轮15/16只暴露本文旧production marker，修正后最小复验16/16 PASS；source/snapshot=`7c194edd…56f5a`、库存1125、异常0、4173 unchanged，正式full未重跑。
@@ -314,7 +326,7 @@
 - 六份治理同步后safe m38 `16/16 PASS`，库存1120、source/snapshot`cf053737…3dedf`、异常0、4173 unchanged；随后仅回写治理证据与冻结状态。第十八候选产品/测试树`c4b9bce6…40933`当时已冻结并交原两个审查上下文重新完整只读终审；该历史冻结状态已由本区块更靠前的第十八候选`P0=0/P1=4/P2=3/NO-GO`结论取代。Provider POST/费用、生产/OSS/真实数据写仍为0。
 - 权威方案：`spec/INC_GEN_017_WORKFLOW_SELF_HEALING_AND_MODEL_CONTRACT_ISOLATION_PLAN_2026-08-28.md`；矩阵：`spec/INC_GEN_017_ACCEPTANCE_MATRIX_2026-08-28.md`；断点：`spec/INC_GEN_017_CHECKPOINT.md`；一次性Goal：`spec/INC_GEN_017_ONE_SHOT_GOAL_PROMPT_2026-08-28.md`。
 
-## INC-GEN-016 当前区块（2026-08-28）
+## INC-GEN-016 历史区块（2026-08-28）
 
 - v0.6.56已完成PR #124、PR/main Quality、不可移动tag/GitHub Release、精确tag fresh build、冻结备份恢复演练、原子切换、回滚与生产健康门。merge `7c751d59d9241387dc0cb368f4825b8b09a20af7`，tag tree `7a8721a1fd8a1aa74a2ba859fc5220d0f9bea853`。
 - 新工作树`/Users/mymy/Documents/unboundry-inc-gen-016-v0.6.56-2026-08-28`基于最新`origin/main@86e17db78559a83e781e75ba8c1b1eaa0079ac0e`；v0.6.56未占用。R0生产计数tasks954/attempts964/active0/current unknown billing0/media910/publications501/canvases72/models20/published10/templates50/published48。

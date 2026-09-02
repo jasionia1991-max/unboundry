@@ -1,6 +1,6 @@
 # Unboundry 项目级 Agent 施工守则
 
-> **2026-09-02 INC-GEN-026 当前最高优先级**：v0.7.0 已完成 PR #144、分支/main 双 CI、annotated tag/GitHub Release、schema42 locked-exact backup/verify/fresh restore、生产原子切换与 v0.6.70→v0.7.0 rollback/forward；生产运行`v0.7.0/schema42`，current=`/opt/unboundry/releases/v0.7.0-inc-gen-026-20260902`，service active/enabled、NRestarts=0，公网/回环 version/live/ready、33/33 静态、数据库 integrity/FK/quiet 与 50 秒稳定门通过。admission/attempt/task 和业务数据不变，Provider POST、OSS 写、费用、真实 Canvas/group 点击均为 0。当前版本没有完整公开的只读 workflow-run/capacity preflight，IG26-106 必须保持 `NOT_RUN`；不得把分项健康检查冒充完整 run preflight 或 `USER_PASS`。本次 v0.7.0 一次性版本/发布/生产授权已执行并消费，历史 9-task apply、真实 Provider/OSS/canary 仍未授权。权威回执为 `spec/V0_7_0_PRODUCTION_RECEIPT_2026-09-02.json`；用户实页确认前保持 `USER_RECHECK`。
+> **2026-09-02 INC-GEN-028 当前最高优先级**：生产运行`v0.7.1/schema42`，实际 tag=`v0.7.1-hotfix.1`，current=`/opt/unboundry/releases/v0.7.1-hotfix.1-inc-gen-027-20260902`。入参合同、legacy metadata、assetId 竞态与历史错误清理已经本地修复；累计 8 specs/76 tests 通过，Review 发现的旧媒体 pending/failed P2 也已修复并由直接影响的 4 specs/27 tests 复验。用户现已明确选择 `v0.7.2` 并授权上线；package/lock/runtime allowlist 已升至 0.7.2，版本门 m81+m82 `49/49 PASS`，TypeScript、production build 与 4173 隔离通过。完整候选与 P2 增量均经同一独立 Reviewer 确认 `P0/P1/P2=0/0/0/GO`，**尚未 push、PR、tag、Release 或切换生产**。只有 v0.7.2 生产技术门全部通过后，才可在指定 Canvas 做一次真实 Seedance 验证；结果不明不得重发。当前权威为 `spec/UNBOUNDRY_CURRENT_STATE.md`、`spec/V0_7_2_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`、`spec/INC_GEN_026_CHECKPOINT.md` 顶部覆盖层和 `spec/V0_7_1_HOTFIX_1_PRODUCTION_RECEIPT_2026-09-02.json`。
 
 > **以下 INC-GEN-025 段落是历史时点记录，不再是当前授权**：2026-09-01 当时用户 `/goal` 曾激活 INC-GEN-025，并授权 v0.6.70 实现、发布和受控验收。该授权后来已执行并消费；不得据此再次修改、发布或发起真实生成。受保护文件继续永久禁止读取、哈希、修改、暂存、移动或删除。
 
@@ -34,69 +34,72 @@
 
 ## 1. 每次开始或上下文恢复必读
 
-INC-GEN-026 当前任务按顺序完整阅读：
+INC-GEN-028 当前任务按顺序完整阅读：
 
-1. `上线规矩.md` 顶部当前区块
-2. `spec/INC_GEN_026_CHECKPOINT.md`
-3. `spec/INC_GEN_026_ONE_CLICK_WORKFLOW_RELIABILITY_FINAL_IMPLEMENTATION_PLAN_2026-09-01.md`
-4. `spec/INC_GEN_026_ACCEPTANCE_MATRIX_2026-09-01.md`
-5. `spec/INC_GEN_026_LOCAL_IMPLEMENTATION_GOAL_PROMPT_2026-09-01.md`（只在用户最新消息明确启动 Goal 时生效）
-6. `spec/UNBOUNDRY_CURRENT_STATE.md` 顶部当前区块
-7. `README.md` 顶部当前区块
-8. `TASKS.md` 顶部当前区块
-9. `/Users/mymy/Documents/unboundry/UNBOUNDRY_AUDIT_REPORT_AND_LEDGER_REVIEW_2026-09-01.md`
+1. `spec/UNBOUNDRY_CURRENT_STATE.md` 顶部 INC-GEN-028 当前区块
+2. `spec/V0_7_2_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`
+3. `spec/V0_7_1_HOTFIX_1_PRODUCTION_RECEIPT_2026-09-02.json`（发布前生产基线）
+4. `spec/INC_GEN_026_CHECKPOINT.md` 顶部 post-hotfix 覆盖层
+5. `spec/INC_GEN_026_ACCEPTANCE_MATRIX_2026-09-01.md` 顶部 post-hotfix 覆盖层及 IG26-099～119
+6. `TASKS.md` 顶部 INC-GEN-028 区块
+7. `上线规矩.md` 顶部 INC-GEN-028 区块
+8. `README.md` 顶部 INC-GEN-028 区块
 
 下列旧清单只在查历史事故时按需读取，不得覆盖上面的当前路由或恢复旧授权：
 
-1. `上线规矩.md`
-2. `spec/UNBOUNDRY_CURRENT_STATE.md`
-3. `README.md`
-4. `spec/INC_GEN_025_CHECKPOINT.md`（历史断点；当时 Goal 与一次性授权均已执行并消费）
-5. `spec/INC_GEN_025_SERVER_AUTHORITATIVE_GROUP_RUN_PLAN_2026-09-01.md`
-6. `spec/INC_GEN_025_ACCEPTANCE_MATRIX_2026-09-01.md`
-7. `spec/INC_GEN_025_ONE_SHOT_GOAL_PROMPT_2026-09-01.md`（历史授权已消费；禁止复制或重新激活）
-8. `spec/INC_GEN_024_CHECKPOINT.md`（历史诊断断点；v0.6.70窄候选SUPERSEDED_NO_GO）
-9. `spec/INC_GEN_024_EXPLICIT_TERMINAL_RESTART_PLAN_2026-09-01.md`
-10. `spec/INC_GEN_024_ACCEPTANCE_MATRIX_2026-09-01.md`
-11. `spec/INC_GEN_023_CHECKPOINT.md`（历史生产断点；v0.6.69已部署）
-12. `spec/INC_GEN_023_SERVER_TERMINAL_DETACH_PLAN_2026-09-01.md`
-13. `spec/INC_GEN_023_ACCEPTANCE_MATRIX_2026-09-01.md`
-14. `spec/INC_GEN_022_CHECKPOINT.md`（历史生产断点；v0.6.68已部署）
-15. `spec/INC_GEN_021_CHECKPOINT.md`（历史跨媒体可靠性断点）
-16. `spec/INC_GEN_021_CROSS_MEDIA_ONE_CLICK_RELIABILITY_PLAN_2026-09-01.md`
-17. `spec/INC_GEN_021_ACCEPTANCE_MATRIX_2026-09-01.md`
-18. `spec/INC_GEN_020_CHECKPOINT.md`（历史生产断点；v0.6.66生产技术通过）
-19. `spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_ACCEPTANCE_MATRIX_2026-08-30.md`
-20. `spec/INC_GEN_018_ONE_SHOT_GOAL_PROMPT_2026-08-31.md`（历史授权已消费，不得恢复）
-21. `spec/INC_GEN_017_CHECKPOINT.md`（历史生产断点）
-22. `spec/INC_GEN_017_WORKFLOW_SELF_HEALING_AND_MODEL_CONTRACT_ISOLATION_PLAN_2026-08-28.md`
-23. `spec/INC_GEN_017_ACCEPTANCE_MATRIX_2026-08-28.md`
-24. `spec/INC_GEN_017_ONE_SHOT_GOAL_PROMPT_2026-08-28.md`（历史授权已消费，不得恢复）
-25. `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_CHECKPOINT.md`（历史生产断点）
-26. `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_PLAN_2026-08-27.md`
-27. `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_ACCEPTANCE_MATRIX_2026-08-27.md`
-28. `spec/MODEL_CONTRACT_002_CHECKPOINT.md`（历史发布断点）
-29. `spec/MODEL_CONTRACT_002_IMMUTABLE_REVISION_REMEDIATION_PLAN_2026-08-27.md`
-30. `spec/MODEL_CONTRACT_002_ACCEPTANCE_MATRIX_2026-08-27.md`
-31. `spec/UNBOUNDRY_REMEDIATION_PLAN_2026-08-09.md`
-32. `spec/UNBOUNDRY_REMEDIATION_CHECKPOINT.md`
-33. `spec/UNBOUNDRY_HANDOFF_2026-08-09.md`
-34. `TASKS.md` 当前区块
-35. `spec/INCIDENT_2026-08-20_TEMPLATE_GROUP_FAILURE_AND_QUEUED_TASK_HANDOFF.md`（2026-08-20 事一/事二交接，接手必读）
-36. `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`（事一/事二查证后的全局审计结论、修复设计与验收门）
-37. `spec/UNBOUNDRY_ACCEPTANCE_MATRIX.md` 当前区块
+1. `spec/INC_GEN_026_ONE_CLICK_WORKFLOW_RELIABILITY_FINAL_IMPLEMENTATION_PLAN_2026-09-01.md`
+2. `spec/INC_GEN_026_LOCAL_IMPLEMENTATION_RECEIPT_2026-09-01.md`
+3. `spec/INC_GEN_026_LOCAL_IMPLEMENTATION_GOAL_PROMPT_2026-09-01.md`（历史授权已消费；禁止复制或重新激活）
+4. `spec/V0_7_0_PRODUCTION_RECEIPT_2026-09-02.json`
+5. `/Users/mymy/Documents/unboundry/UNBOUNDRY_AUDIT_REPORT_AND_LEDGER_REVIEW_2026-09-01.md`
+6. `spec/INC_GEN_025_CHECKPOINT.md`（历史断点；当时 Goal 与一次性授权均已执行并消费）
+7. `spec/INC_GEN_025_SERVER_AUTHORITATIVE_GROUP_RUN_PLAN_2026-09-01.md`
+8. `spec/INC_GEN_025_ACCEPTANCE_MATRIX_2026-09-01.md`
+9. `spec/INC_GEN_025_ONE_SHOT_GOAL_PROMPT_2026-09-01.md`（历史授权已消费；禁止复制或重新激活）
+10. `spec/INC_GEN_024_CHECKPOINT.md`（历史诊断断点；v0.6.70窄候选SUPERSEDED_NO_GO）
+11. `spec/INC_GEN_024_EXPLICIT_TERMINAL_RESTART_PLAN_2026-09-01.md`
+12. `spec/INC_GEN_024_ACCEPTANCE_MATRIX_2026-09-01.md`
+13. `spec/INC_GEN_023_CHECKPOINT.md`（历史生产断点；v0.6.69已部署）
+14. `spec/INC_GEN_023_SERVER_TERMINAL_DETACH_PLAN_2026-09-01.md`
+15. `spec/INC_GEN_023_ACCEPTANCE_MATRIX_2026-09-01.md`
+16. `spec/INC_GEN_022_CHECKPOINT.md`（历史生产断点；v0.6.68已部署）
+17. `spec/INC_GEN_021_CHECKPOINT.md`（历史跨媒体可靠性断点）
+18. `spec/INC_GEN_021_CROSS_MEDIA_ONE_CLICK_RELIABILITY_PLAN_2026-09-01.md`
+19. `spec/INC_GEN_021_ACCEPTANCE_MATRIX_2026-09-01.md`
+20. `spec/INC_GEN_020_CHECKPOINT.md`（历史生产断点；v0.6.66生产技术通过）
+21. `spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_ACCEPTANCE_MATRIX_2026-08-30.md`
+22. `spec/INC_GEN_018_ONE_SHOT_GOAL_PROMPT_2026-08-31.md`（历史授权已消费，不得恢复）
+23. `spec/INC_GEN_017_CHECKPOINT.md`（历史生产断点）
+24. `spec/INC_GEN_017_WORKFLOW_SELF_HEALING_AND_MODEL_CONTRACT_ISOLATION_PLAN_2026-08-28.md`
+25. `spec/INC_GEN_017_ACCEPTANCE_MATRIX_2026-08-28.md`
+26. `spec/INC_GEN_017_ONE_SHOT_GOAL_PROMPT_2026-08-28.md`（历史授权已消费，不得恢复）
+27. `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_CHECKPOINT.md`（历史生产断点）
+28. `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_PLAN_2026-08-27.md`
+29. `spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_ACCEPTANCE_MATRIX_2026-08-27.md`
+30. `spec/MODEL_CONTRACT_002_CHECKPOINT.md`（历史发布断点）
+31. `spec/MODEL_CONTRACT_002_IMMUTABLE_REVISION_REMEDIATION_PLAN_2026-08-27.md`
+32. `spec/MODEL_CONTRACT_002_ACCEPTANCE_MATRIX_2026-08-27.md`
+33. `spec/UNBOUNDRY_REMEDIATION_PLAN_2026-08-09.md`
+34. `spec/UNBOUNDRY_REMEDIATION_CHECKPOINT.md`
+35. `spec/UNBOUNDRY_HANDOFF_2026-08-09.md`
+36. `TASKS.md` 当前区块
+37. `spec/INCIDENT_2026-08-20_TEMPLATE_GROUP_FAILURE_AND_QUEUED_TASK_HANDOFF.md`（2026-08-20 事一/事二交接，接手必读）
+38. `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`（事一/事二查证后的全局审计结论、修复设计与验收门）
+39. `spec/UNBOUNDRY_ACCEPTANCE_MATRIX.md` 当前区块
 
 然后只读核对 `pwd`、Git 分支、HEAD、工作树、package 版本和 Node 版本。与施工断点不一致时停止，不得继续施工。
 
 ### 默认工具链与生产兼容通道
 
 - 项目普通开发、类型检查、构建和新shell默认使用`.node-version`中的Node `25.9.0`与`packageManager`中的npm `11.12.1`；不得再把`/Users/mymy/.hermes/node/bin`或`/Users/mymy/.local/bin`中的Node 22预置到普通shell PATH。
-- 2026-09-02 R9 已确认 v0.7.0 生产继续运行 Node `22.23.2` / npm `10.9.8`；本次没有顺带迁移 Node/npm。
+- 2026-09-02 已确认 v0.7.1-hotfix.1 生产继续运行 Node `22.23.2` / npm `10.9.8`；本次没有顺带迁移 Node/npm。
 - `scripts/run-safe-tests.mjs`、源码覆盖门和历史不可变 release builder 继续使用 Node `22.23.1` / npm `10.9.8` 专用兼容通道；它是本地复现通道，不等同于已确认的生产 Node `22.23.2`，也不是项目默认 shell。在完成兼容性审计前不得删除 Node 22 边界。
 
 ## 2. 当前授权边界
 
-- **2026-09-02 INC-GEN-026 当前最高权威**：R0～R8 本地实现、测试、Review、唯一 formal safe full 和文档收口已完成；full 原始 `1162/1167` 与 5 项失败如实保留，m41/m73/m81 最小关闭 `112/112 PASS`，未重复 full。v0.7.0 一次性 commit/push/PR/CI/tag/Release 与生产 schema42 backup/安装/切换/rollback-forward 已执行并消费；生产稳定运行 v0.7.0。IG26-106 因缺少完整只读 workflow-run/capacity preflight 保持 `NOT_RUN`；历史生产 task apply、真实 Provider、真实 OSS、费用和真实 Canvas/group 点击仍未授权，旧授权一律不得复用；
+- **2026-09-02 INC-GEN-028 当前最高权威**：生产稳定运行 v0.7.1-hotfix.1/schema42；真实文字/图片整组、独立 Seedance 与图片/视频/音频上传证据见 v0.7.1-hotfix.1 receipt。用户已选择 v0.7.2 并授权 commit/push/PR/CI/tag/Release、生产备份/切换与发布后指定 Canvas 一次真实验证；当前 v0.7.2 仍在本地冻结，发布动作尚未执行。生产切换前不得发第二次 Seedance Provider POST，结果不明不得重试；
+
+- **2026-09-02 INC-GEN-026/v0.7.0 历史最高权威（已执行、已消费）**：R0～R8 本地实现、测试、Review、唯一 formal safe full 和文档收口已完成；full 原始 `1162/1167` 与 5 项失败如实保留，m41/m73/m81 最小关闭 `112/112 PASS`，未重复 full。v0.7.0 一次性 commit/push/PR/CI/tag/Release 与生产 schema42 backup/安装/切换/rollback-forward 已执行并消费。IG26-106 当时因缺少完整只读 workflow-run/capacity preflight 保持 `NOT_RUN`；该段不得覆盖 INC-GEN-028 当前路由或恢复任何授权；
 
 - **2026-09-01 INC-GEN-025 历史授权状态（已执行、已消费）**：当时用户 `/goal` 曾授权该隔离工作树的一次性实现、v0.6.70、Review、GitHub/Release、成对生产迁移/回退及受控真实点击。该段只保留历史过程，不得据此继续 R6、发布、点击或产生费用；
 

@@ -1,4 +1,9 @@
-import { expect, test, type Page } from "./safe-test";
+import {
+  expect,
+  test,
+  type APIRequestContext,
+  type Page,
+} from "./safe-test";
 import { createHash } from "node:crypto";
 import { request as createHttpRequest } from "node:http";
 import path from "node:path";
@@ -14,6 +19,14 @@ const secondImage = path.resolve(
 const replacementImage = path.resolve(
   "spec/reference/upstream-v2.12.2-dense/03-search-1280x720.png",
 );
+const projectIds = new Set<string>();
+
+async function clearProjects(request: APIRequestContext) {
+  for (const projectId of projectIds) {
+    await request.delete(`/api/projects/${projectId}`);
+  }
+  projectIds.clear();
+}
 
 function postDeclaredOversizedImage(pathname: string) {
   const { port } = safeTestEnvironment();
@@ -111,6 +124,7 @@ test.beforeEach(async ({ request }) => {
 });
 
 test.afterEach(async ({ request }) => {
+  await clearProjects(request);
   for (const id of [canvasId, "default"]) {
     const response = await request.get(`/api/canvas/${id}`);
     if (response.ok()) {
@@ -126,6 +140,104 @@ test.afterEach(async ({ request }) => {
     }
     await request.delete(`/api/canvas/${id}`);
   }
+});
+
+test("legacy image metadata is hydrated once and remains durable after reload", async ({
+  page,
+  request,
+}) => {
+  await page.goto(`/__fixture/${canvasId}`);
+  const world = page.getByTestId("canvas-world");
+  await expect(world).toHaveAttribute("data-persistence-ready", "true");
+  await world.dblclick({ position: { x: 580, y: 360 } });
+  await page.getByTestId("canvas-image-upload-input").setInputFiles(firstImage);
+
+  await expect.poll(async () => {
+    const response = await request.get(`/api/canvas/${canvasId}`);
+    if (!response.ok()) return "";
+    const document = await response.json() as {
+      nodes: Array<{ data: { assetId?: string } }>;
+    };
+    return document.nodes[0]?.data.assetId ?? "";
+  }).not.toBe("");
+  const current = await (
+    await request.get(`/api/canvas/${canvasId}`)
+  ).json() as {
+    edges: unknown[];
+    nodes: Array<{ data: Record<string, unknown>; id: string }>;
+    viewport: Record<string, unknown>;
+  };
+  const imageNode = current.nodes[0];
+  const assetId = String(imageNode.data.assetId);
+  const imageSrc = String(imageNode.data.imageSrc);
+  const legacyNodes = current.nodes.map((node) => {
+    if (node.data.assetId !== assetId) return node;
+    const data = { ...node.data };
+    delete data.mediaHeight;
+    delete data.mediaWidth;
+    return {
+      ...node,
+      data: {
+        ...data,
+        inputState: "invalid",
+        inputStateReason: "图片分辨率尚未经过服务端校验，请重新上传",
+        mediaMetadataSource: "server",
+      },
+    };
+  });
+  const createdProject = await request.post("/api/projects", { data: {} });
+  expect(createdProject.status()).toBe(201);
+  const projectId = ((await createdProject.json()) as { id: string }).id;
+  projectIds.add(projectId);
+  const baseline = await (
+    await request.get(`/api/canvas/${projectId}`)
+  ).json() as { loadToken: string; revision: number };
+  const saved = await request.put(`/api/canvas/${projectId}`, {
+    data: {
+      edges: current.edges,
+      nodes: legacyNodes,
+      observedLoadToken: baseline.loadToken,
+      observedRevision: baseline.revision,
+      revision: baseline.revision,
+      viewport: current.viewport,
+    },
+  });
+  expect(saved.ok(), await saved.text()).toBeTruthy();
+
+  let metadataRequests = 0;
+  page.on("request", (entry) => {
+    if (
+      entry.method() === "GET" &&
+      new URL(entry.url()).pathname === `/api/media-metadata/image/${assetId}`
+    ) metadataRequests += 1;
+  });
+  await page.goto(`/canvas/${projectId}`);
+  await expect(world).toHaveAttribute("data-persistence-ready", "true");
+  await expect.poll(async () => {
+    const refreshed = await (
+      await request.get(`/api/canvas/${projectId}`)
+    ).json() as { nodes: Array<{ data: Record<string, unknown> }> };
+    const data = refreshed.nodes.find((node) => node.data.assetId === assetId)?.data;
+    return data && {
+      ...data,
+      inputStateReason: data.inputStateReason ?? null,
+    };
+  }).toMatchObject({
+    inputState: "ready",
+    inputStateReason: null,
+    mediaHeight: 720,
+    mediaMetadataSource: "server",
+    mediaWidth: 1_280,
+  });
+  expect(metadataRequests).toBe(1);
+  await page.reload();
+  await expect(world).toHaveAttribute("data-persistence-ready", "true");
+  await expect(page.getByTestId("image-node-preview")).toHaveAttribute(
+    "src",
+    imageSrc,
+  );
+  await page.waitForTimeout(500);
+  expect(metadataRequests).toBe(1);
 });
 
 test("canvas upload creates a durable Image node without generation history or menu collisions", async ({
