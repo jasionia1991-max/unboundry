@@ -2897,6 +2897,9 @@ function logGenerationDiagnostic(
       causeCode: typeof rawCauseCode === "string" ? rawCauseCode : null,
       // Never copy Provider bodies, prompts, or signed URLs into logs.
       message: "Generation operation failed",
+      ...(process.env.UNBOUNDRY_SAFE_TEST === "1" && error instanceof Error
+        ? { isolatedTestMessage: error.message.slice(0, 240) }
+        : {}),
     }));
   } catch {
     // Diagnostics must never affect generation.
