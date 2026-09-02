@@ -73,7 +73,26 @@ test("MP4 playback, range delivery, download and metadata survive a reload", asy
 
   await page.getByTestId("video-upload-input").setInputFiles(videoFile);
   const preview = page.getByTestId("video-node-preview");
-  await expect(preview).toBeVisible({ timeout: 15_000 });
+  await expect.poll(async () => {
+    if (await preview.count() !== 1) {
+      return { hasLayout: false, mediaError: null, visible: false };
+    }
+    const layout = await preview.evaluate((video: HTMLVideoElement) => {
+      const bounds = video.getBoundingClientRect();
+      return {
+        hasLayout: bounds.height > 0 && bounds.width > 0,
+        mediaError: video.error?.code ?? null,
+      };
+    });
+    return {
+      ...layout,
+      visible: await preview.isVisible(),
+    };
+  }, { timeout: 15_000 }).toEqual({
+    hasLayout: true,
+    mediaError: null,
+    visible: true,
+  });
   await expect(preview).toHaveJSProperty("muted", true);
   await expect
     .poll(() =>
@@ -187,6 +206,41 @@ test("MP4 playback, range delivery, download and metadata survive a reload", asy
   await expect(world).toHaveAttribute("data-persistence-ready", "true");
   await expect(preview).toHaveAttribute("src", videoNode.data.videoSrc);
   await expect(page.getByText("1.0s", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
+
+  const noopBaseline = await (
+    await request.get(`/api/canvas/${canvasId}`)
+  ).json() as { revision: number };
+  const noopCanvasPuts: string[] = [];
+  const observeCanvasPut = (outgoing: { method(): string; url(): string }) => {
+    if (
+      outgoing.method() === "PUT" &&
+      outgoing.url().includes(`/api/canvas/${canvasId}`)
+    ) noopCanvasPuts.push(outgoing.url());
+  };
+  page.on("request", observeCanvasPut);
+  const metadataEvents = await preview.evaluate((video) => {
+    let observed = 0;
+    const count = () => {
+      observed += 1;
+    };
+    video.addEventListener("loadedmetadata", count);
+    video.dispatchEvent(new Event("loadedmetadata"));
+    video.dispatchEvent(new Event("loadedmetadata"));
+    video.removeEventListener("loadedmetadata", count);
+    return observed;
+  });
+  expect(metadataEvents).toBe(2);
+  // Four debounce windows prove the value-equivalent event stayed quiet;
+  // observing request start avoids confusing a slow response with no write.
+  await page.waitForTimeout(2_000);
+  page.off("request", observeCanvasPut);
+  await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
+  expect(noopCanvasPuts).toHaveLength(0);
+  const noopSettled = await (
+    await request.get(`/api/canvas/${canvasId}`)
+  ).json() as { revision: number };
+  expect(noopSettled.revision).toBe(noopBaseline.revision);
 
   const current = await (
     await request.get(`/api/canvas/${canvasId}`)

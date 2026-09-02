@@ -6,11 +6,11 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 
-## 当前最高优先级：INC-GEN-028 / v0.7.2 发布候选（2026-09-02，已授权、尚未发布）
+## 当前最高优先级：INC-GEN-028 / v0.7.3 已授权发布（2026-09-02）
 
-生产当前运行 `v0.7.1-hotfix.1/schema42`。真实网站已经证明 6 个文字 + 4 个图片节点整组成功、独立 Seedance 视频一次提交成功，以及图片/视频/音频本地上传、保存和刷新恢复正常；这些结果不评价图片好不好看，只验证网站能生成并保存工作流。
+生产当前运行 `v0.7.2/schema42`。PR #148、双 CI、tag/Release、fresh build、schema42 备份恢复、原子切换和 rollback-forward 均通过。指定 Canvas 只真实执行一次：canonical Seedance 入参贯穿 plan、task、幂等、ownership 和请求，只有 1 run/1 task/1 admission/1 Provider attempt，MP4 自动发布、回填、播放并刷新持久化。这些结果不评价图片好不好看，只证明网站能生成并保存工作流。
 
-继续追查旧 Canvas 后确认了一个严重问题：Seedance 的严格预检能把旧 `text + first-frame` 正确归一化为 `multimodal + reference-image`，但组工作流保存的 plan、task 和幂等/ownership 身份仍可能沿用原始 `text` 参数。旧媒体节点还可能因缺 canonical 服务端元数据或停在 pending/failed 状态而被错误拦截。本地修复累计通过 8 specs / 76 tests；Review 发现的 pending/failed P2 已补齐有界重拉和明确终态，直接影响的 4 specs / 27 tests 通过。用户已选择 `v0.7.2` 并授权上线，版本门 m81+m82 `49/49 PASS`，完整候选及增量 Review 均为 `P0/P1/P2=0/0/0/GO`，现可进入 PR/双 CI。生产仍是 v0.7.1-hotfix.1，不能提前宣称线上已修复。当前候选证据见 [`V0_7_2_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`](spec/V0_7_2_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json)，生产基线见 [`V0_7_1_HOTFIX_1_PRODUCTION_RECEIPT_2026-09-02.json`](spec/V0_7_1_HOTFIX_1_PRODUCTION_RECEIPT_2026-09-02.json)。
+真实复核也发现一个独立 UI 问题：视频 metadata 与已保存值完全相同时，系统正确地不重复写服务器，但顶部可能一直显示“保存中”。服务端数据和结果没有丢失。本地补丁已经让相同 metadata 不再制造假更新，并只在当前画布确实已持久化时收起提示；TypeScript、上传事务回归 `39/39`、视频上传回归 `1/1`、文字保存回归 `8/8` 最终通过，独立 Review 为 `P0=0/P1=0/P2=0/GO`。用户已指定 `v0.7.3` 并授权上线，后续版本只按普通 patch 号递增，不使用 `hotfix` 后缀；发布复验不会再次调用生成服务。候选回执见 [`V0_7_3_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`](spec/V0_7_3_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json)。
 
 ## 历史：INC-GEN-026 v0.7.0 已部署（2026-09-02，USER RECHECK）
 

@@ -1,0 +1,116 @@
+{
+  "version": "0.7.3",
+  "packageVersion": "0.7.3",
+  "schemaVersion": 42,
+  "createdAt": "2026-09-02T13:55:13Z",
+  "updatedAt": "2026-09-02T14:29:23Z",
+  "status": "LOCAL_RELEASE_CANDIDATE_REVIEW_GO",
+  "source": {
+    "baselineCommit": "36f491da394506d5889ce3e68d1b16bb67471079",
+    "baselineTree": "be8e561247bc226f62cc77f67fb5f8e287d1fe7f",
+    "originMainAtAuthorization": "36f491da394506d5889ce3e68d1b16bb67471079",
+    "branch": "codex/v0.7.3-save-status",
+    "candidateCommit": null,
+    "mergeCommit": null,
+    "tag": null
+  },
+  "authorization": {
+    "text": "版本号 v0.7.3，授权上线",
+    "versionSelected": true,
+    "releaseAuthorized": true,
+    "authorizationConsumed": false,
+    "versionConvention": "Use ordinary patch increments such as v0.7.3 then v0.7.4; do not add hotfix suffixes.",
+    "newProviderPostAuthorized": false
+  },
+  "productionBeforeRelease": {
+    "version": "0.7.2",
+    "packageVersion": "0.7.2",
+    "schemaVersion": 42,
+    "current": "/opt/unboundry/releases/v0.7.2-inc-gen-028-20260902",
+    "service": "active",
+    "enabled": true,
+    "ready": true,
+    "mutationsAccepted": true,
+    "nRestarts": 0,
+    "databaseIntegrity": "ok",
+    "foreignKeyViolations": 0,
+    "quiet": {
+      "activeTasks": 0,
+      "unknownBillingTasks": 0,
+      "activeReservations": 0,
+      "activePublications": 0,
+      "activeWorkflowRuns": 0
+    },
+    "counts": {
+      "adminAuditEvents": 318,
+      "generationAdmissions": 963,
+      "generationProviderAttempts": 1054,
+      "generationTasks": 1043,
+      "mediaAssets": 969,
+      "mediaPublications": 560,
+      "workflowRuns": 4
+    }
+  },
+  "candidateScope": {
+    "productionDefect": "v0.7.2 can leave the shared label at saving after value-identical video metadata is replayed, even though the Canvas is already durable.",
+    "dataLossObserved": false,
+    "duplicateProviderSubmissionObserved": false,
+    "fix": [
+      "Reject invalid video metadata and avoid value-identical persisted graph writes.",
+      "After mutation settlement, clear the shared save indicator only when the current document fingerprint equals the persisted fingerprint."
+    ],
+    "schemaChange": false,
+    "providerContractChange": false,
+    "providerPostRequiredForVerification": false
+  },
+  "inheritedLocalFixEvidence": {
+    "typescriptNoEmit": "PASS",
+    "safeM37MediaUploadTransactions": "39/39 PASS",
+    "safeM4VideoUpload": "1/1 PASS",
+    "safeM2TextNode": "8/8 PASS",
+    "discoveredTestInventory": 1176,
+    "diffCheck": "PASS",
+    "independentReview": "14/14 TRACKED FILES, 48/48 HUNKS, V0.7.2 PRODUCTION RECEIPT 318/318 LINES; P0=0/P1=0/P2=0/GO",
+    "formalFullRerun": false,
+    "retainedM4VisibilityFailures": 2
+  },
+  "versionGates": {
+    "m81AndM82": "49/49 PASS (m81 42/42 including 0.7.3-hotfix.1 rejection; m82 7/7)",
+    "governanceM38": "initial 17/18 exposed current-marker drift; documentation corrected; targeted rerun 18/18 PASS",
+    "typescript": "PASS (449/449 tracked TypeScript via safe runner)",
+    "productionBuild": "PASS",
+    "listener4173": "UNCHANGED (24c91e579e5f03e4327568db06303d4f094c0250c63228866946f7b8a47b8244)",
+    "finalTargetedRun": "60/60 PASS (m38 18/18, m81 42/42)",
+    "discoveredTestInventory": 1176,
+    "formalFullRerun": false
+  },
+  "candidateManifest": {
+    "trackedChangedFiles": 22,
+    "trackedHunks": 66,
+    "untrackedReceipts": 2,
+    "totalFiles": 24,
+    "trackedBinaryDiffSha256": "bcb987a42fb3652a510bf9700caf966d4d04e78b1c3975cc7b0d65ba2bfe3864"
+  },
+  "review": {
+    "initialReview": "22/22 tracked files, 61/61 hunks, 2/2 receipts; P0=0/P1=1/P2=4/NO-GO; all findings were documentation routing or stale-version wording",
+    "releaseCandidate": "22/22 tracked files, 66/66 hunks, 2/2 receipts; P0=0/P1=0/P2=0/GO"
+  },
+  "release": {
+    "pullRequest": "NOT_RUN",
+    "branchCi": "NOT_RUN",
+    "mainCi": "NOT_RUN",
+    "annotatedTag": "NOT_RUN",
+    "githubRelease": "NOT_RUN",
+    "exactTagFreshBuild": "NOT_RUN",
+    "productionBackup": "NOT_RUN",
+    "productionSwitch": "NOT_RUN",
+    "rollbackForward": "NOT_RUN"
+  },
+  "postDeployVerification": {
+    "canvasId": "bcbb1199-d154-4c1a-a580-6b66d2d10f38",
+    "mode": "EXISTING_RESULT_RELOAD_AND_METADATA_REPLAY_ONLY",
+    "status": "NOT_RUN_UNTIL_V0_7_3_IS_LIVE",
+    "maxNewProviderPosts": 0,
+    "qualityJudgementInScope": false
+  }
+}

@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
   rollbackCanvasNodeAdoption,
+  settleCanvasMutationSaveIndicator,
   tryCommitCanvasNodeAdoption,
 } from "../client/src/canvas/CanvasGraphMutationContext";
 import type { ProbeNodeType } from "../client/src/canvas/ProbeNode";
@@ -554,6 +555,53 @@ async function paidProviderRequests(request: APIRequestContext) {
 }
 
 test.afterAll(() => rmSync(mediaDirectory, { force: true, recursive: true }));
+
+test("value-equivalent Canvas mutation closes saving only after durable convergence", async () => {
+  let currentFingerprint = "same";
+  let persistedFingerprint = "same";
+  let saveSuccesses = 0;
+  let settles = 0;
+
+  await expect(settleCanvasMutationSaveIndicator({
+    currentFingerprint: () => currentFingerprint,
+    onSaveSuccess: () => {
+      saveSuccesses += 1;
+    },
+    persistedFingerprint: () => persistedFingerprint,
+    settle: async () => {
+      settles += 1;
+    },
+  })).resolves.toBe(true);
+  expect(settles).toBe(1);
+  expect(saveSuccesses).toBe(1);
+
+  currentFingerprint = "newer-unsaved-edit";
+  persistedFingerprint = "previous-save";
+  await expect(settleCanvasMutationSaveIndicator({
+    currentFingerprint: () => currentFingerprint,
+    onSaveSuccess: () => {
+      saveSuccesses += 1;
+    },
+    persistedFingerprint: () => persistedFingerprint,
+    settle: async () => {
+      settles += 1;
+    },
+  })).resolves.toBe(false);
+  expect(settles).toBe(2);
+  expect(saveSuccesses).toBe(1);
+
+  await expect(settleCanvasMutationSaveIndicator({
+    currentFingerprint: () => "unreachable",
+    onSaveSuccess: () => {
+      saveSuccesses += 1;
+    },
+    persistedFingerprint: () => "unreachable",
+    settle: async () => {
+      throw new Error("save failed");
+    },
+  })).rejects.toThrow("save failed");
+  expect(saveSuccesses).toBe(1);
+});
 
 test("atomic media adoption rejects a persistence ref closed in the same tick", () => {
   const current = [emptyNode("image", 0)] as unknown as ProbeNodeType[];

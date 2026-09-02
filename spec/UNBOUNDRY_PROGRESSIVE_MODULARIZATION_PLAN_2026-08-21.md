@@ -1,10 +1,10 @@
 # Unboundry 渐进式模块化施工路线图
 
 更新日期：2026-08-26
-状态：`PLAN_FROZEN / FIRST_AND_SECOND_BATCH_PRODUCTION_PUBLISHED / CURRENT_V0_7_1_USER_RECHECK / VIEW_005_AUTO_PASS / CURRENT_GOVERNANCE_HARDENING`
+状态：`PLAN_FROZEN / FIRST_AND_SECOND_BATCH_PRODUCTION_PUBLISHED / CURRENT_V0_7_3_USER_RECHECK / VIEW_005_AUTO_PASS / CURRENT_GOVERNANCE_HARDENING`
 关联审计：`spec/UNBOUNDRY_MODULAR_MONOLITH_AUDIT_2026-08-21.md`
 
-当前收口：第一批同步文字 Provider port 与第二批 Generation/Media 结果提交边界、三媒体模型合同均已发布并持续包含在当前 v0.7.1-hotfix.1；云腾商业 Provider 隔离和真实结果兼容已在 v0.6.29/30 完成，模块化成果随 v0.6.31 进入普通 main-safe 生产路径。v0.6.32的真实图片裁剪功能只在触发点增加可取消存储读取port和可替换客户端resolver；INC-IMGEDIT-003～006按第四批触发原则完成图片工具需要的轻量Dispatcher、Canvas命令端口、UI Host和产品质量边界；v0.6.41按同一原则增加角色合规Port/Application/Store及付费前门，v0.6.42只增加accepted-only恢复租约并复用既有Canvas拖动quiet gate，没有重做整个Canvas。v0.6.47完成项目默认Node25/npm11与生产Node22/npm10分工治理并已发布；v0.6.49/50完成MODEL-CONTRACT-001后端、数据和入口，v0.6.51完成用户复验返工，v0.6.54完成MODEL-CONTRACT-002历史revision解耦，v0.6.55/56完成INC-GEN-016结果恢复与数字task ID真实闭环。`VIEW-005` 已由精确 98/171/200 节点安全定向证据收口为 `AUTO_PASS`。当前没有自动启动的后续批次，路线图只在真实新功能触发边界问题时重新立项。
+当前收口：第一批同步文字 Provider port 与第二批 Generation/Media 结果提交边界、三媒体模型合同均已发布并持续包含在当前 v0.7.3 候选；云腾商业 Provider 隔离和真实结果兼容已在 v0.6.29/30 完成，模块化成果随 v0.6.31 进入普通 main-safe 生产路径。v0.6.32的真实图片裁剪功能只在触发点增加可取消存储读取port和可替换客户端resolver；INC-IMGEDIT-003～006按第四批触发原则完成图片工具需要的轻量Dispatcher、Canvas命令端口、UI Host和产品质量边界；v0.6.41按同一原则增加角色合规Port/Application/Store及付费前门，v0.6.42只增加accepted-only恢复租约并复用既有Canvas拖动quiet gate，没有重做整个Canvas。v0.6.47完成项目默认Node25/npm11与生产Node22/npm10分工治理并已发布；v0.6.49/50完成MODEL-CONTRACT-001后端、数据和入口，v0.6.51完成用户复验返工，v0.6.54完成MODEL-CONTRACT-002历史revision解耦，v0.6.55/56完成INC-GEN-016结果恢复与数字task ID真实闭环。`VIEW-005` 已由精确 98/171/200 节点安全定向证据收口为 `AUTO_PASS`。当前没有自动启动的后续批次，路线图只在真实新功能触发边界问题时重新立项。
 
 ## 1. 目标与非目标
 
@@ -64,13 +64,13 @@ UI
 
 ## 4. 施工策略
 
-路线图分为“已完成批次”和“功能触发批”。第一、第二批均已发布并继续包含在当前 v0.7.1-hotfix.1；后续批次只在对应新功能出现前强制执行，不允许绕过，也不为了架构好看提前翻修稳定代码。
+路线图分为“已完成批次”和“功能触发批”。第一、第二批均已发布并继续包含在当前 v0.7.2 生产版本和 v0.7.3 候选中；后续批次只在对应新功能出现前强制执行，不允许绕过，也不为了架构好看提前翻修稳定代码。
 
 2026-08-22 只读复核没有发现新的P0，也没有批准下一施工批。文字Provider port、Generation结果提交、Media不再写Generation表以及TaskStore/Safety运行时循环均已确认收口；剩余主要风险是Canvas应用层仍依赖React状态、媒体Provider仍直接依赖Storage实现、跨域SQL和节点能力清单重复。本次只同步文档，没有修改产品代码，也没有重跑测试、访问Provider/OSS或生产。
 
 ### 第一批：同步文字Provider port
 
-- 状态：原本地工程为 `LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`；后来随 v0.6.28 发布并持续包含在当前 v0.7.1-hotfix.1。原矩阵未运行真实Provider的证据边界继续保留。
+- 状态：原本地工程为 `LOCAL_ENGINEERING_COMPLETE / AUTO_PASS / USER_REVIEW`；后来随 v0.6.28 发布并持续包含在当前 v0.7.2 生产版本和 v0.7.3 候选中。原矩阵未运行真实Provider的证据边界继续保留。
 - 触发：2026-08-21 Goal已执行完毕；授权随本批结束失效。
 - 目标：让同步文字Provider可由registry/fake替换，通用任务协调器不再按具体driver分支。
 - 精确现有范围：

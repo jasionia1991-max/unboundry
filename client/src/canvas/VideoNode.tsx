@@ -2710,27 +2710,46 @@ function VideoNodeImpl({
     height: number;
     width: number;
   }) => {
+    if (
+      !Number.isFinite(metadata.duration) ||
+      metadata.duration < 0 ||
+      !Number.isFinite(metadata.height) ||
+      metadata.height <= 0 ||
+      !Number.isFinite(metadata.width) ||
+      metadata.width <= 0
+    ) return;
     setNodes((nodes) =>
-      nodes.map((node) =>
-        node.id === id
-          ? {
-              ...node,
-              style: {
-                ...node.style,
-                ...(typeof node.width === "number" ||
-                typeof node.height === "number"
-                  ? {}
-                  : fitVisualMediaSize(metadata.width, metadata.height)),
-              },
-              data: {
-                ...node.data,
-                videoDuration: metadata.duration,
-                videoHeight: metadata.height,
-                videoWidth: metadata.width,
-              },
-            }
-          : node,
-      ),
+      nodes.map((node) => {
+        if (node.id !== id) return node;
+        const hasExplicitSize =
+          typeof node.width === "number" || typeof node.height === "number";
+        const fitted = hasExplicitSize
+          ? undefined
+          : fitVisualMediaSize(metadata.width, metadata.height);
+        if (
+          node.data.videoDuration === metadata.duration &&
+          node.data.videoHeight === metadata.height &&
+          node.data.videoWidth === metadata.width &&
+          (
+            hasExplicitSize ||
+            (node.style?.height === fitted?.height &&
+              node.style?.width === fitted?.width)
+          )
+        ) return node;
+        return {
+          ...node,
+          style: {
+            ...node.style,
+            ...(fitted ?? {}),
+          },
+          data: {
+            ...node.data,
+            videoDuration: metadata.duration,
+            videoHeight: metadata.height,
+            videoWidth: metadata.width,
+          },
+        };
+      }),
     );
   }, [id, setNodes]);
 

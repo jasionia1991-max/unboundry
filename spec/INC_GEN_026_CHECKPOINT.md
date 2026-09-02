@@ -2,9 +2,18 @@
 
 更新时间：2026-09-02
 
-状态：`PRODUCTION_V0_7_1_HOTFIX_1_STABLE / V0_7_2_RELEASE_AUTHORIZED / VERSION_GATES_49_OF_49_PASS / RELEASE_CANDIDATE_REVIEW_GO / USER_RECHECK`
+状态：`PRODUCTION_V0_7_2_WORKFLOW_PASS / V0_7_3_RELEASE_AUTHORIZED_PENDING_GATES / ZERO_NEW_PROVIDER_POST / USER_RECHECK`
 
-## 2026-09-02 post-hotfix 当前覆盖层
+## 2026-09-02 v0.7.3 发布当前覆盖层
+
+- 生产 current=`/opt/unboundry/releases/v0.7.2-inc-gen-028-20260902`，merge=`36f491da394506d5889ce3e68d1b16bb67471079`，tree=`be8e561247bc226f62cc77f67fb5f8e287d1fe7f`，tag/package/schema=`v0.7.2/0.7.2/42`，service active/enabled、NRestarts=0，公网与回环 live/ready、33/33 静态文件逐字节一致。
+- PR #148、分支/main 双 CI、annotated tag/GitHub Release、exact-tag fresh build、schema42 locked-exact backup/verify/fresh restore、原子切换、v0.7.1-hotfix.1 rollback 与最终 forward 全部通过；发布回执为 `spec/V0_7_2_PRODUCTION_RECEIPT_2026-09-02.json`。
+- 指定 Canvas `bcbb1199-d154-4c1a-a580-6b66d2d10f38` 只点击一次整组：run `ac8d6a88-c859-4e7d-8285-dcd6546315af`、task `dce2ebda-bf02-48b1-a28f-ccd9eace3430` 成功，只有 1 admission/1 Provider attempt/1 Provider create；canonical `multimodal + reference-image` 参数贯穿 plan/task/idempotency/ownership/request，MP4 自动发布、回填、播放并刷新持久化，active/unknown=0，没有人工去 Provider/relay/OSS 回收。
+- 真实复核发现生产 `v0.7.2` 的 UI P1：视频 `loadedmetadata` 对相同值仍制造新对象，画布 mutation admission 先显示“保存中”，但 durable fingerprint 相同所以正确地不发 PUT，也没有网络成功回调清掉提示。服务端文档和结果没有丢失；一次正常 viewport 保存后状态恢复。
+- 本地补丁在 `VideoNode.applyVideoMetadata` 对无效值拒绝、对完全相同 metadata/尺寸返回原节点；`runCanvasMutationAdmission` 只在当前指纹已等于持久化指纹时补发 UI success，避免覆盖更新编辑的保存状态。TypeScript、safe m37-media-upload-transactions `39/39`、safe m4-video-upload `1/1`、safe m2-text `8/8` 与 diff-check 最终通过，库存 `1176`；m4 两次因初始上传预览被浏览器标为 hidden 失败，补强可见性/布局/媒体错误诊断后的最小运行通过，原始失败如实保留。
+- 本地补丁独立 Review 已覆盖 14/14 tracked files、48/48 hunks 与 receipt 318/318 行，结论 `P0=0/P1=0/P2=0/GO`。用户已指定 `v0.7.3` 并授权上线，且明确后续只递增普通 patch 版本、不再使用 `hotfix` 后缀；package/lock/runtime allowlist 已升到 0.7.3。当前先完成版本门和候选增量 Review，再执行 GitHub、备份、切换与 rollback-forward；生产复验新增 Provider POST 上限为 0。
+
+> 以下 post-hotfix 内容是 v0.7.2 发布前的历史快照，只保留当时时点证据，不得覆盖上面的生产现状或恢复授权。
 
 - 生产 current=`/opt/unboundry/releases/v0.7.1-hotfix.1-inc-gen-027-20260902`，tag/merge=`f3b2f7142382521762a2b772d2eb494e458b7b3f`，tree=`df8172c201ccee22de59afb8daa69c56223a342f`，package/schema=`0.7.1/42`，active/ready。
 - 真实 Canvas `bcbb1199-d154-4c1a-a580-6b66d2d10f38` 的 run `08c2e8a5-89c1-4ebf-a935-632a7f5dc4bc` 已自动完成 6 个文字节点与 4 个图片节点；10 tasks/10 attempts、4 result assets，刷新后保持，无人工去 Provider/relay/OSS 找结果。

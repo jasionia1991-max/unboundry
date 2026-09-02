@@ -27,6 +27,18 @@ export function tryCommitCanvasNodeAdoption(input: {
   return true;
 }
 
+export async function settleCanvasMutationSaveIndicator(input: {
+  currentFingerprint: () => string;
+  onSaveSuccess: () => void;
+  persistedFingerprint: () => string;
+  settle: () => Promise<void>;
+}) {
+  await input.settle();
+  if (input.currentFingerprint() !== input.persistedFingerprint()) return false;
+  input.onSaveSuccess();
+  return true;
+}
+
 function restoreChangedRecordFields(
   current: Record<string, unknown>,
   before: Record<string, unknown>,

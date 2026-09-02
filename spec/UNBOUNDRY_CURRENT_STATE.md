@@ -1,8 +1,8 @@
 # Unboundry 当前权威状态
 
-> **2026-09-02 最新权威：生产运行 v0.7.1-hotfix.1/schema42；用户已选择 v0.7.2 并授权上线，候选尚未发布。** 当前生产 tag/merge=`f3b2f7142382521762a2b772d2eb494e458b7b3f`、tree=`df8172c201ccee22de59afb8daa69c56223a342f`、current=`/opt/unboundry/releases/v0.7.1-hotfix.1-inc-gen-027-20260902`。生产真实验证已证明文字/图片整组、独立 Seedance 与图片/视频/音频上传；同时确认组工作流入参合同与旧媒体 metadata 缺陷。INC-GEN-028 已在 v0.7.2 本地候选修复，行为门累计 76/76、版本门 49/49、TypeScript 与 production build 通过；完整候选及 P2 修复增量 Review 均为 `P0/P1/P2=0/0/0/GO`。**生产尚未切换，不能宣称线上已修复。**
+> **2026-09-02 最新权威：生产运行 v0.7.2/schema42；v0.7.3 保存提示修复已获发布授权，尚未上线。** 当前生产 merge=`36f491da394506d5889ce3e68d1b16bb67471079`、tree=`be8e561247bc226f62cc77f67fb5f8e287d1fe7f`、tag=`v0.7.2`、current=`/opt/unboundry/releases/v0.7.2-inc-gen-028-20260902`，服务 active/ready、NRestarts0。v0.7.2 核心工作流真实通过；相同视频 metadata 导致顶部误停“保存中”的问题不丢数据。本地补丁定向测试与独立 Review `P0=0/P1=0/P2=0/GO` 已完成。用户已指定 `v0.7.3` 并授权上线，未来只使用普通 patch 递增版本、不再加 `hotfix` 后缀；当前版本门、PR/CI/tag/Release、备份与生产切换尚未执行，生产复验新增 Provider POST=0。
 
-**生产是 v0.7.1 / schema42；运行 tag 为 v0.7.1-hotfix.1。v0.7.2 已获版本号和上线授权，当前是 RELEASE_CANDIDATE_REVIEW_GO；PR、tag、Release、生产备份/切换和发布后真实验证均尚未执行。** 候选回执为 `spec/V0_7_2_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`，生产基线回执为 `spec/V0_7_1_HOTFIX_1_PRODUCTION_RECEIPT_2026-09-02.json`。
+**生产是 v0.7.2 / schema42；v0.7.2 的版本、发布和唯一真实 Provider 授权均已执行并消费。** 当前严格为 `PRODUCTION_V0_7_2_WORKFLOW_PASS / SAVE_STATUS_UI_DEFECT_LOCAL_FIX_NOT_RELEASED / USER_RECHECK`；不得覆盖 tag、重复真实生成或把本地补丁说成已上线。生产回执为 `spec/V0_7_2_PRODUCTION_RECEIPT_2026-09-02.json`，发布前候选与基线回执只作历史查证。
 
 > **以下 INC-GEN-025 顶部记录是历史声明快照**：它记录当时的 Goal、测试、Review 和发布前状态；v0.6.70 后续已经发布，最终审计推翻了“可直接继续 R8/真实点击”的当前有效性。其历史授权已消费，不得恢复。
 
@@ -10,26 +10,28 @@
 
 更新日期：2026-09-02
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.7.2**
-本地候选代码版本：**v0.7.2**
-当前本地候选说明：`INC-GEN-028 v0.7.2 已授权发布候选，尚未发布`
-当前生产部署版本：**v0.7.1-hotfix.1**
+当前代码包版本：**v0.7.3**
+本地候选代码版本：**v0.7.3**
+当前本地候选说明：`v0.7.3 保存状态修复已授权发布，版本门进行中`
+当前生产部署版本：**v0.7.2**
 本地候选schema：**42**
-当前治理标记：`CURRENT_V0_7_1_USER_RECHECK`
-当前发布执行标记：`PRODUCTION_V0_7_1_HOTFIX_1_STABLE / V0_7_2_RELEASE_AUTHORIZED_NOT_DEPLOYED`
-当前本地Goal标记：`NO_ACTIVE_GOAL / INC_GEN_028_V0_7_2_RELEASE_AUTHORIZED / RELEASE_CANDIDATE_REVIEW_GO / USER_RECHECK`
-当前计划标记：`TARGETED_SAFE_76_OF_76_PASS / VERSION_GATES_49_OF_49_PASS / RELEASE_CANDIDATE_REVIEW_GO`
+当前治理标记：`CURRENT_V0_7_3_USER_RECHECK`
+当前发布执行标记：`V0_7_3_RELEASE_AUTHORIZED_PENDING_GATES / V0_7_2_PRODUCTION_BASELINE`
+当前本地Goal标记：`NO_ACTIVE_GOAL / V0_7_3_RELEASE_AUTHORIZED`
+当前计划标记：`V0_7_3_VERSION_GATES_PENDING / ZERO_NEW_PROVIDER_POST`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`V0_7_2_RELEASE_AUTHORIZED / PR_TAG_RELEASE_PRODUCTION_NOT_RUN / NO_SECOND_PROVIDER_POST_BEFORE_V0_7_2_LIVE / USER_RECHECK`
+当前发布门：`V0_7_3_AUTHORIZED_PENDING_GATES / NO_NEW_PROVIDER_POST / USER_RECHECK`
 
 ## INC-GEN-028 当前读取顺序
 
 1. 本文件顶部当前区块。
-2. `spec/V0_7_2_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`。
-3. `spec/V0_7_1_HOTFIX_1_PRODUCTION_RECEIPT_2026-09-02.json`（发布前生产基线）。
-4. `spec/INC_GEN_026_CHECKPOINT.md` 顶部 post-hotfix 覆盖层。
-5. `spec/INC_GEN_026_ACCEPTANCE_MATRIX_2026-09-01.md` 顶部覆盖层及 IG26-099～119。
-6. `TASKS.md`、`上线规矩.md`、`README.md` 顶部 INC-GEN-028 区块。
+2. `spec/V0_7_3_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`。
+3. `spec/V0_7_2_PRODUCTION_RECEIPT_2026-09-02.json`（发布前生产基线）。
+4. `spec/V0_7_2_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`（历史）。
+5. `spec/V0_7_1_HOTFIX_1_PRODUCTION_RECEIPT_2026-09-02.json`（历史）。
+6. `spec/INC_GEN_026_CHECKPOINT.md` 顶部 v0.7.3 覆盖层。
+7. `spec/INC_GEN_026_ACCEPTANCE_MATRIX_2026-09-01.md` 顶部覆盖层及 IG26-099～121。
+8. `TASKS.md`、`上线规矩.md`、`README.md` 顶部 INC-GEN-028 区块。
 
 旧 INC-GEN-026 Plan、Goal、本地 receipt 与 v0.7.0 production receipt 都是历史资料，只能查证，不得作为 INC-GEN-028 的候选、Review 或授权依据。
 

@@ -1,9 +1,9 @@
 # Unboundry 版本发布 Runbook
 
 给人和接手的 AI 看。作用：从「版本号 + 上线授权」到「线上验证 + 文档收口」的每一步照做，避免每次现场拼命令、用错脚本。
-历史基线：v0.6.29（2026-08-21）曾按旧流程发布；其版本号、路径和先打 tag 的命令不再是可执行模板。当前生产身份与发布边界只看 `spec/UNBOUNDRY_CURRENT_STATE.md`、`spec/INC_GEN_026_CHECKPOINT.md` 顶部 post-hotfix 覆盖层和 `上线规矩.md`。
+历史基线：v0.6.29（2026-08-21）曾按旧流程发布；其版本号、路径和先打 tag 的命令不再是可执行模板。当前生产身份与发布边界只看 `spec/UNBOUNDRY_CURRENT_STATE.md`、`spec/INC_GEN_026_CHECKPOINT.md` 顶部当前覆盖层和 `上线规矩.md`。
 
-> **2026-09-02 INC-GEN-028 边界**：生产当前为 `v0.7.1-hotfix.1/schema42`；用户已选择 `v0.7.2` 并明确授权本次发布。v0.7.2 版本门、候选冻结和独立 Review 已 GO；现在依次执行 PR/双 CI、merge 后 annotated tag/Release、exact-tag fresh build、schema42 locked-exact backup、原子切换与 rollback-forward。真实 Seedance 只允许在 v0.7.2 生产技术门全绿后，于指定 Canvas 发起一次；结果不明不得重试。
+> **2026-09-02 INC-GEN-028 边界**：生产当前为 `v0.7.2/schema42`；用户已选择 `v0.7.3` 并明确授权本次发布。版本从此只按普通 patch 号递增（下一版为 `v0.7.4`），不再使用 `hotfix` 后缀；历史版本名保持不变。v0.7.3 发布保存提示修复，依次执行定向版本门、候选冻结和独立 Review、PR/双 CI、merge 后 annotated tag/Release、exact-tag fresh build、schema42 locked-exact backup、原子切换与 rollback-forward。生产复验只复用现有 Canvas 结果，新增 Provider POST 上限为 0。
 
 **适用范围**：本 Runbook 只用于「代码 / 构建产物」变更（bump 版本、改逻辑、重发静态资源）。纯公共模板数据变更（新增/修改模板、预览图、种子）走 `上线规矩.md` 的「加模板轻量路径」，**不需要版本号、不打标签、不跑全量**，直接提交 + 服务器灌库。
 
@@ -31,7 +31,7 @@ grep '"version"' package.json
 
 ## 2. 版本号与发布 commit（本地）
 
-1. `package.json`、`package-lock.json` 精确设为用户本次批准的新版本号；不得复用历史 `0.7.0` 或当前 `v0.7.1-hotfix.1`。
+1. `package.json`、`package-lock.json` 精确设为用户本次批准的新版本号；普通发布只递增 patch 号，不加 `hotfix` 后缀，也不得复用任何历史版本号。
 2. `server/bridgeRuntimeMode.ts` 的 final 角色放行清单加入新版本号。
 3. `tests/m81-deployment-hardening.spec.ts` 加对应断言。
 4. 按需同步 `上线规矩.md`、`TASKS.md`、`spec/UNBOUNDRY_CURRENT_STATE.md` 等记录。
@@ -41,11 +41,11 @@ grep '"version"' package.json
 
 历史 INC-GEN-026/v0.7.0 已经消费唯一 formal full，永久保留原始 `1162/1167` 与最小关闭 `112/112`；不得把它当作 INC-GEN-028 可重跑或已通过的发布门。下一版本只运行本次变更直接相关 safe specs、增量 Review 和项目规定的 PR/main CI build+m104 门，除非新的明确发布规则另有要求。
 
-本次只保留已执行的 m81+m82 版本门、m10 backup 门、共同 preflight/build/source coverage 和冻结后增量 Review；文档冻结后按需执行治理 m38。不要运行 `node scripts/run-safe-tests.mjs full`。
+本次只保留已执行的保存状态直接测试、m81+m82 版本门、共同 preflight/build/source coverage、治理 m38 和冻结后增量 Review；备份能力复用 v0.7.2 已验证且业务代码未改变的当前合同。不要运行 `node scripts/run-safe-tests.mjs full`。
 
 - 需要Node 22.23.x、npm 10.9.8、Playwright浏览器缓存、npm离线缓存，缺了preflight会明说。
 - 测试必须只使用runner新建的临时数据和回环端口；本地4173、`app/data`、`/var/lib/unboundry`、真实媒体和密钥不得触碰。
-- v0.6.29 的 `119 specs / 1034 tests` 与 v0.7.0 的 formal 结果只作历史账本，不是 INC-GEN-028 当前命令或分母。当前证据以 `spec/V0_7_1_HOTFIX_1_PRODUCTION_RECEIPT_2026-09-02.json`、Checkpoint 顶部覆盖层和本次新发布回执为准。
+- v0.6.29 的 `119 specs / 1034 tests` 与 v0.7.0 的 formal 结果只作历史账本，不是 INC-GEN-028 当前命令或分母。当前证据以 `spec/V0_7_2_PRODUCTION_RECEIPT_2026-09-02.json`、`spec/V0_7_3_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`、Checkpoint 顶部覆盖层和本次新发布回执为准。
 - 两份受保护 JSON 不得进入测试快照、archive、commit、tag 或 PR；除此之外，发布候选必须没有范围外脏改动。
 
 候选冻结后按这个顺序执行，不能把 tag 打在 PR 分支头：
