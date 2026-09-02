@@ -198,14 +198,13 @@ function matchingProviderAttempt(
            provider_profile_id
     FROM generation_provider_attempts
     WHERE task_id = ?
-      AND ${input.providerTaskId
-        ? "provider_task_id = ?"
-        : "execution_attempt = ?"}
-    ORDER BY execution_attempt DESC
+      AND execution_attempt = ?
+      ${input.providerTaskId ? "AND provider_task_id = ?" : ""}
     LIMIT 1
   `).get(
     input.taskId,
-    input.providerTaskId ?? input.executionAttempt,
+    input.executionAttempt,
+    ...(input.providerTaskId ? [input.providerTaskId] : []),
   ) as {
     execution_attempt: number;
     kind: string;
@@ -525,9 +524,8 @@ export function commitGenerationMediaOutputSet(input: Readonly<{
         FROM generation_tasks WHERE id = ?
       `).get(input.taskId) as TaskRow | undefined;
       if (
-        !task || !["running", "recovering"].includes(task.state) ||
-        task.owner_id !== input.ownerId || task.kind !== input.kind ||
-        task.attempt !== input.executionAttempt || task.result_asset_id !== null
+        !task || task.owner_id !== input.ownerId || task.kind !== input.kind ||
+        task.attempt !== input.executionAttempt
       ) {
         throw new Error("Generation output set lost task ownership");
       }
@@ -588,6 +586,25 @@ export function commitGenerationMediaOutputSet(input: Readonly<{
           ].includes(providerAttempt.outcome))
       ) {
         throw new Error("Generation output set Provider ownership changed");
+      }
+      if (task.state === "success") {
+        if (
+          task.result_asset_id !== input.assetIds[0] ||
+          providerAttempt && providerAttempt.outcome !== "completed"
+        ) {
+          throw new Error("Generation output set replay does not match task");
+        }
+        return {
+          assetId: input.assetIds[0],
+          state: "success" as const,
+          taskId: input.taskId,
+        };
+      }
+      if (
+        !["running", "recovering"].includes(task.state) ||
+        task.result_asset_id !== null
+      ) {
+        throw new Error("Generation output set lost task ownership");
       }
       const timestamp = new Date().toISOString();
       if (providerAttempt) {

@@ -1095,11 +1095,15 @@ test("one paid task publishes its complete restart-safe ordered output set", asy
     const store = createGenerationTaskStore(directory);
     try {
       const primary = reserveGeneratedImage(store, ownerId, "primary-output");
-      recordProviderAttemptFixture(
-        directory,
+      recordProviderAttemptFixture(directory, primary.task.id);
+      store.setProviderTaskId(
         primary.task.id,
-        "response-received",
+        "m88-provider-task-primary-output",
       );
+      store.markProviderResponseReceived({
+        executionAttempt: 1,
+        taskId: primary.task.id,
+      });
       await publishFixture(directory, primary.reservation);
       expect(publishGenerationMediaCandidate(primary.reservation)).toEqual({
         assetId: primary.reservation.id,
@@ -1158,17 +1162,27 @@ test("one paid task publishes its complete restart-safe ordered output set", asy
         taskId: primary.task.id,
       });
       expect(outputSet).toEqual([primary.reservation.id, alternateId]);
-      expect(commitGenerationMediaOutputSet({
-        assetIds: outputSet,
-        executionAttempt: 1,
-        kind: "image",
-        ownerId,
+      let commitAttempts = 0;
+      expect(await attemptProviderResultSave({
+        backoffMs: [0],
+        save: async () => {
+          const committed = commitGenerationMediaOutputSet({
+            assetIds: outputSet,
+            executionAttempt: 1,
+            kind: "image",
+            ownerId,
+            taskId: primary.task.id,
+          });
+          commitAttempts += 1;
+          if (commitAttempts === 1) {
+            throw new Error("m88 injected lost commit acknowledgement");
+          }
+          return committed;
+        },
+        sleep: async () => undefined,
         taskId: primary.task.id,
-      })).toEqual({
-        assetId: primary.reservation.id,
-        state: "success",
-        taskId: primary.task.id,
-      });
+      })).toBe(true);
+      expect(commitAttempts).toBe(2);
 
       const database = openAppDatabase(directory);
       try {
@@ -1208,6 +1222,52 @@ test("one paid task publishes its complete restart-safe ordered output set", asy
         { assetId: primary.reservation.id, role: "primary" },
         { assetId: alternateId, role: "alternate" },
       ]);
+
+      const mismatchedAttempt = openAppDatabase(directory);
+      try {
+        const inserted = mismatchedAttempt.prepare(`
+          INSERT INTO generation_provider_attempts (
+            task_id, execution_attempt, provider_profile_id, provider_model_id,
+            kind, evidence, created_at, owner_id, credential_revision, outcome,
+            provider_task_id, failure_code, finished_at
+          )
+          SELECT
+            task_id, 2, provider_profile_id, provider_model_id,
+            kind, evidence, created_at, owner_id, credential_revision,
+            'completed', provider_task_id, NULL, finished_at
+          FROM generation_provider_attempts
+          WHERE task_id = ? AND execution_attempt = 1
+        `).run(primary.task.id);
+        expect(inserted.changes).toBe(1);
+        const displaced = mismatchedAttempt.prepare(`
+          UPDATE generation_provider_attempts
+          SET provider_task_id = 'm88-provider-task-wrong-attempt'
+          WHERE task_id = ? AND execution_attempt = 1
+        `).run(primary.task.id);
+        expect(displaced.changes).toBe(1);
+      } finally {
+        mismatchedAttempt.close();
+      }
+      expect(() => commitGenerationMediaOutputSet({
+        assetIds: outputSet,
+        executionAttempt: 1,
+        kind: "image",
+        ownerId,
+        taskId: primary.task.id,
+      })).toThrow("Generation output set has no matching paid attempt");
+      const unchanged = openAppDatabase(directory);
+      try {
+        expect(unchanged.prepare(`
+          SELECT COUNT(*) AS count FROM generation_task_events
+          WHERE task_id = ? AND state = 'success'
+        `).get(primary.task.id)).toEqual({ count: 1 });
+        expect(unchanged.prepare(`
+          SELECT COUNT(*) AS count FROM asset_history
+          WHERE owner_id = ? AND id IN (?, ?)
+        `).get(ownerId, primary.reservation.id, alternateId)).toEqual({ count: 2 });
+      } finally {
+        unchanged.close();
+      }
     } finally {
       store.close();
     }
