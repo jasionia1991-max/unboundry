@@ -1120,18 +1120,76 @@ test("real resolver empty generated Text is waiting during group preflight", () 
     inputs: resolved.inputs,
     problems: resolved.problems,
   })).toMatchObject({ status: "waiting" });
-  for (const code of ["REQUIRED_MISSING", "ROLE_CONFLICT"] as const) {
-    expect(workflowSubmissionPreflightProblem({
-      executableIds,
-      inputs: resolved.inputs,
-      problems: [{ code, message: "等待本轮必需上游输入" }],
-    })).toBeUndefined();
-    expect(workflowRuntimePreflightDisposition({
-      executableIds,
-      inputs: resolved.inputs,
-      problems: [{ code, message: "等待本轮必需上游输入" }],
-    })).toMatchObject({ status: "waiting" });
-  }
+  expect(workflowSubmissionPreflightProblem({
+    executableIds,
+    inputs: resolved.inputs,
+    problems: [{ code: "REQUIRED_MISSING", message: "等待本轮必需上游输入" }],
+  })).toBeUndefined();
+  expect(workflowRuntimePreflightDisposition({
+    executableIds,
+    inputs: resolved.inputs,
+    problems: [{ code: "REQUIRED_MISSING", message: "等待本轮必需上游输入" }],
+  })).toMatchObject({ status: "waiting" });
+  expect(workflowSubmissionPreflightProblem({
+    executableIds,
+    inputs: resolved.inputs,
+    problems: [{ code: "ROLE_CONFLICT", message: "角色冲突" }],
+  })).toMatchObject({ code: "ROLE_CONFLICT" });
+});
+
+test("workflow preflight waits for the exact dynamic first-frame role only", () => {
+  const resolved = resolveNodeInputs({
+    edges: [{
+      data: { inputOrder: 1, inputRole: "first-frame" },
+      id: "image-video",
+      source: "image",
+      target: "video",
+    }],
+    modelSchema: knownModelParameterSchema({
+      capability: "video",
+      providerDriver: "multi-protocol-relay",
+      providerModelId: "grok-video-3",
+    }),
+    nodes: [{
+      data: {
+        imagePrompt: "先生成首帧",
+        imagePromptReady: true,
+        label: "首帧",
+      },
+      id: "image",
+      type: "image",
+    }, {
+      data: { label: "视频" },
+      id: "video",
+      type: "video",
+    }],
+    ownPrompt: "让首帧动起来",
+    parameters: { inputMode: "image" },
+    targetId: "video",
+    targetKind: "video",
+  });
+  const roleProblem = resolved.problems.find(({ code }) => code === "ROLE_CONFLICT");
+  expect(roleProblem).toMatchObject({
+    code: "ROLE_CONFLICT",
+    kind: "image",
+    minimumCount: 1,
+    role: "first-frame",
+  });
+  expect(workflowSubmissionPreflightProblem({
+    executableIds: new Set(["image", "video"]),
+    inputs: resolved.inputs,
+    problems: resolved.problems,
+  })).toBeUndefined();
+  expect(workflowRuntimePreflightDisposition({
+    executableIds: new Set(["image", "video"]),
+    inputs: resolved.inputs,
+    problems: resolved.problems,
+  })).toMatchObject({ status: "waiting" });
+  expect(workflowSubmissionPreflightProblem({
+    executableIds: new Set(["other-image", "video"]),
+    inputs: resolved.inputs,
+    problems: resolved.problems,
+  })).toMatchObject({ code: "EMPTY" });
 });
 
 test("workflow graph starts a ready branch child without waiting for a slow sibling", async () => {
@@ -2258,10 +2316,18 @@ test("workflow execution has no component registration or render-retention depen
   expect(provider).toContain("!preparation.stopRequested\n          ) return");
   expect(provider).toContain("if (!preparation.submitted) {");
   expect(provider).toContain("A failed stop\n              // confirmation is not permission");
-  expect(provider).toContain("return await reattachSubmittedServerWorkflowRun({");
+  expect(provider).toContain("const reattached = await reattachSubmittedServerWorkflowRun({");
   expect(provider).toContain("if (!workflowRunStatusReadIsRetryable(error)) {");
   expect(provider).toContain("preparation.reconciliationBlocked = true");
   expect(provider).toContain("!preparation.reconciliationBlocked &&");
+  expect(provider).toContain("activeServerWorkflowNodeIds(run)");
+  expect(canvas).toContain("withServerWorkflowGenerationActivity(node)");
+  for (const flag of [
+    "audioGenerating",
+    "imageGenerating",
+    "textGenerating",
+    "videoGenerating",
+  ]) expect(canvas).toContain(`${flag}: true`);
   expect(provider).toContain(
     "Server terminal state is authoritative even when the local Canvas",
   );
@@ -2325,6 +2391,21 @@ test("workflow execution has no component registration or render-retention depen
   expect(provider).toContain('resumeMode: "current-graph"');
   expect(provider).toContain("durableRestartCheckpoint = currentGraphRecords[0]");
   expect(provider).toContain("durableRestartCheckpoint ?? {");
+  expect(provider).toContain(
+    "checkpoint: GroupRunCheckpoint | undefined,\n): boolean => checkpoint !== undefined",
+  );
+  const retiredResumeGuard = provider.indexOf(
+    "if (hasLegacyResumeCheckpoint(resumeCheckpoint))",
+  );
+  const serverWorkflowEntry = provider.indexOf(
+    "if (!resumeCheckpoint) {",
+    retiredResumeGuard,
+  );
+  expect(retiredResumeGuard).toBeGreaterThan(-1);
+  expect(serverWorkflowEntry).toBeGreaterThan(retiredResumeGuard);
+  expect(provider.slice(retiredResumeGuard, serverWorkflowEntry)).toContain(
+    "return;",
+  );
   expect(provider).toContain("let terminalErrorPublished = false");
   expect(provider).toContain(
     'errorClass: kind === "error" ? "run-terminal" : errorClass',
@@ -4173,7 +4254,7 @@ test("group run preflights a truly unmounted offscreen Image and persists the re
   }
 });
 
-test("browser creates one server workflow and stop never submits generation tasks itself", async ({
+test("browser workflow breathes only while admitted and retired recovery never resubmits", async ({
   page,
   request,
 }) => {
@@ -4188,15 +4269,63 @@ test("browser creates one server workflow and stop never submits generation task
   let stopPosts = 0;
   let generationTaskPosts = 0;
   let listFailures = 0;
+  let workflowNodeState: "pending" | "admitting" | "admitted" = "pending";
+  const servedWorkflowNodeStates: string[] = [];
   let transientStatusFailures = 0;
   let stopped = false;
   let runCreatedAt = new Date().toISOString();
+  const modelConfigurationRevision = `fixture-${modelId}-revision-1`;
+  const workflowNodes: ProbeNodeType[] = [{
+    data: { label: "Group", title: "服务端整组" },
+    id: "server-group",
+    position: { x: 100, y: 100 },
+    style: { height: 500, width: 700 },
+    type: "group",
+    zIndex: 0,
+  }, {
+    data: {
+      label: "Text",
+      textModelId: modelId,
+      textParameters: {},
+      textPrompt: "生成服务端整组文字",
+      textPromptReady: true,
+      title: "服务端文字",
+    },
+    id: "server-text",
+    parentId: "server-group",
+    position: { x: 40, y: 80 },
+    style: { height: 240, width: 300 },
+    type: "text",
+    zIndex: 1,
+  }];
+  const currentGraphFingerprint = groupRunSnapshotFingerprint({
+    edges: [],
+    executableNodeIds: new Set(["server-text"]),
+    groupId: "server-group",
+    modelConfigurationRevisions: {
+      [`text:${modelId}`]: modelConfigurationRevision,
+    },
+    modelReleaseRevisions: {
+      [`text:${modelId}`]: releaseRevisionId,
+    },
+    nodes: workflowNodes,
+  });
 
-  page.on("request", (entry) => {
+  await page.route("**/api/generation-tasks**", async (route) => {
+    const entry = route.request();
     if (
       entry.method() === "POST" &&
       /\/api\/generation-tasks(?:$|\?)/.test(entry.url())
-    ) generationTaskPosts += 1;
+    ) {
+      generationTaskPosts += 1;
+      await route.fulfill({
+        body: JSON.stringify({ error: "intent gate fixture" }),
+        contentType: "application/json",
+        status: 409,
+      });
+      return;
+    }
+    await route.continue();
   });
   await page.route("**/api/models", async (route) => {
     await route.fulfill({
@@ -4204,7 +4333,7 @@ test("browser creates one server workflow and stop never submits generation task
         generationEnabled: true,
         models: [{
           capability: "text",
-          configurationRevision: `fixture-${modelId}-revision-1`,
+          configurationRevision: modelConfigurationRevision,
           displayName: "服务端整组测试模型",
           generationAvailable: true,
           id: modelId,
@@ -4228,7 +4357,7 @@ test("browser creates one server workflow and stop never submits generation task
       id: "server-text",
       kind: "text",
       projectionState: "pending",
-      state: state === "cancelled" ? "cancelled" : "pending",
+      state: state === "cancelled" ? "cancelled" : workflowNodeState,
     }],
     semanticFingerprint: "wf1-test",
     state,
@@ -4250,7 +4379,9 @@ test("browser creates one server workflow and stop never submits generation task
       }
       await route.fulfill({
         body: JSON.stringify({
-          runs: createPosts > 0 ? [runBody("running")] : [],
+          runs: createPosts > 0
+            ? [runBody(stopped ? "cancelled" : "running")]
+            : [],
         }),
         contentType: "application/json",
         status: 200,
@@ -4292,6 +4423,7 @@ test("browser creates one server workflow and stop never submits generation task
         });
         return;
       }
+      servedWorkflowNodeStates.push(stopped ? "cancelled" : workflowNodeState);
       await route.fulfill({
         body: JSON.stringify(runBody(stopped ? "cancelled" : "running")),
         contentType: "application/json",
@@ -4304,32 +4436,13 @@ test("browser creates one server workflow and stop never submits generation task
 
   try {
     const saveMetadata = await existingCanvasSaveMetadata(request, project.id);
+    const providerBefore = await (
+      await request.get("/api/generation-tasks/status")
+    ).json() as { paidProviderRequests: number };
     const saved = await request.put(`/api/canvas/${project.id}`, {
       data: {
         edges: [],
-        nodes: [{
-          data: { label: "Group", title: "服务端整组" },
-          id: "server-group",
-          position: { x: 100, y: 100 },
-          style: { height: 500, width: 700 },
-          type: "group",
-          zIndex: 0,
-        }, {
-          data: {
-            label: "Text",
-            textModelId: modelId,
-            textParameters: {},
-            textPrompt: "生成服务端整组文字",
-            textPromptReady: true,
-            title: "服务端文字",
-          },
-          id: "server-text",
-          parentId: "server-group",
-          position: { x: 40, y: 80 },
-          style: { height: 240, width: 300 },
-          type: "text",
-          zIndex: 1,
-        }],
+        nodes: workflowNodes,
         ...saveMetadata,
         viewport: { x: 0, y: 0, zoom: 1 },
       },
@@ -4353,6 +4466,17 @@ test("browser creates one server workflow and stop never submits generation task
     await expect.poll(() => createPosts).toBe(1);
     expect(clientSemanticFingerprint).toMatch(/^wf1-[a-z0-9-]+$/);
     expect(transientStatusFailures).toBe(1);
+    await expect(page.getByTestId("text-node-generating")).toHaveCount(0);
+    workflowNodeState = "admitting";
+    await expect.poll(() => servedWorkflowNodeStates.at(-1), {
+      timeout: 5_000,
+    }).toBe("admitting");
+    await expect(page.getByTestId("text-node-generating")).toHaveCount(0);
+    workflowNodeState = "admitted";
+    await expect.poll(() => servedWorkflowNodeStates.at(-1), {
+      timeout: 5_000,
+    }).toBe("admitted");
+    await expect(page.getByTestId("text-node-generating")).toBeVisible();
     await page.reload();
     await expect(page.getByTestId("canvas-world")).toHaveAttribute(
       "data-persistence-ready",
@@ -4361,6 +4485,7 @@ test("browser creates one server workflow and stop never submits generation task
     await expect(page.getByTestId("workflow-run-toast")).toContainText(
       "已找回服务端整组执行",
     );
+    await expect(page.getByTestId("text-node-generating")).toBeVisible();
     await group.click({ position: { x: 5, y: 5 } });
     const recoveredExecute = group.getByTestId("group-execute-button");
     await expect(recoveredExecute).toHaveText("停止后续");
@@ -4372,7 +4497,58 @@ test("browser creates one server workflow and stop never submits generation task
     await expect(page.getByTestId("workflow-run-toast")).toContainText(
       "服务端已确认停止后续节点",
     );
+    await expect(page.getByTestId("text-node-generating")).toHaveCount(0);
     await expect.poll(() => generationTaskPosts).toBe(0);
+    await expect(recoveredExecute).toHaveText("整组执行");
+    await page.evaluate(async ({
+      canvasId,
+      currentGraphFingerprint,
+    }) => {
+      const status = await fetch("/api/auth/status").then((response) =>
+        response.json()
+      ) as { user?: { id?: string } };
+      const accountId = status.user?.id;
+      if (!accountId) throw new Error("missing fixture account");
+      const value = {
+        accountId,
+        canvasId,
+        executableNodeIds: ["server-text"],
+        fixtureScopeId: "",
+        groupId: "server-group",
+        nodeStates: { "server-text": "pending" },
+        resumeMode: "current-graph",
+        runId: "current-graph-awaiting-explicit-intent",
+        snapshotFingerprint: currentGraphFingerprint,
+        startedAt: Date.now() - 1_000,
+        status: "interrupted",
+        successProofs: {},
+        updatedAt: Date.now(),
+        version: 2,
+      };
+      const key = `unboundry-group-run-checkpoint:v1:${JSON.stringify([
+        accountId,
+        canvasId,
+        "",
+      ])}`;
+      const raw = JSON.stringify(value);
+      localStorage.setItem(key, raw);
+      window.dispatchEvent(new StorageEvent("storage", {
+        key,
+        newValue: raw,
+        storageArea: localStorage,
+      }));
+    }, { canvasId: project.id, currentGraphFingerprint });
+    await expect(page.getByTestId("workflow-run-toast")).toContainText(
+      "旧版浏览器整组记录已退出调度",
+      { timeout: 5_000 },
+    );
+    expect(generationTaskPosts).toBe(0);
+    const providerAfter = await (
+      await request.get("/api/generation-tasks/status")
+    ).json() as { paidProviderRequests: number };
+    expect(providerAfter.paidProviderRequests).toBe(
+      providerBefore.paidProviderRequests,
+    );
   } finally {
     await request.delete(`/api/canvas/${project.id}`);
     await request.delete(`/api/projects/${project.id}`);

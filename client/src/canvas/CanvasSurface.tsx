@@ -1823,6 +1823,22 @@ function createProbeEdges(fixtureId?: string): CuttableEdge[] {
   return emptyEdges;
 }
 
+function withServerWorkflowGenerationActivity(node: ProbeNodeType): ProbeNodeType {
+  if (node.type === "text") {
+    return { ...node, data: { ...node.data, textGenerating: true } };
+  }
+  if (node.type === "image") {
+    return { ...node, data: { ...node.data, imageGenerating: true } };
+  }
+  if (node.type === "video") {
+    return { ...node, data: { ...node.data, videoGenerating: true } };
+  }
+  if (node.type === "audio") {
+    return { ...node, data: { ...node.data, audioGenerating: true } };
+  }
+  return node;
+}
+
 export function CanvasSurface({
   accountId,
   agentReferenceMode,
@@ -1919,11 +1935,21 @@ export function CanvasSurface({
   const [workflowRetainedNodeIds, setWorkflowRetainedNodeIds] = useState<
     ReadonlySet<string>
   >(new Set());
+  const [workflowActiveNodeIds, setWorkflowActiveNodeIds] = useState<
+    ReadonlySet<string>
+  >(new Set());
   const renderedNodes = useMemo(
     () => {
-      const workflowNodes = workflowRetainedNodeIds.size === 0
+      const activeNodes = workflowActiveNodeIds.size === 0
         ? nodes
         : nodes.map((node) =>
+            workflowActiveNodeIds.has(node.id)
+              ? withServerWorkflowGenerationActivity(node)
+              : node
+          );
+      const workflowNodes = workflowRetainedNodeIds.size === 0
+        ? activeNodes
+        : activeNodes.map((node) =>
         workflowRetainedNodeIds.has(node.id)
           ? {
               ...node,
@@ -1955,7 +1981,7 @@ export function CanvasSurface({
           : node
       );
     },
-    [imageColorFilter, nodes, workflowRetainedNodeIds],
+    [imageColorFilter, nodes, workflowActiveNodeIds, workflowRetainedNodeIds],
   );
   // viewport 实时状态下沉到画布内部：缩放/平移不再让外壳每帧重渲染。
   const [viewport, setViewport] = useState<Viewport>(() =>
@@ -5379,6 +5405,7 @@ export function CanvasSurface({
         getNodes={readWorkflowNodes}
         nodesSnapshot={nodes}
         notify={showWorkflowToast}
+        onActiveNodeIdsChange={setWorkflowActiveNodeIds}
         onRetainedNodeIdsChange={setWorkflowRetainedNodeIds}
         setNodes={guardedSetNodes}
       >

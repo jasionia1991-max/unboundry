@@ -29,6 +29,7 @@ import {
 } from "../server/mediaLifecycle";
 import { ResourceBudgetError } from "../server/resourceBudget";
 import { ProviderResultMediaError } from "../server/providerResultMedia";
+import { MediaMetadataError } from "../server/mediaMetadata";
 import type { ProviderProfile } from "../server/providerProfiles";
 import { RelayProviderError } from "../server/relayProviderAdapters";
 import { listRelayUsageRecords } from "../server/relayUsageReconcile";
@@ -134,6 +135,12 @@ test("relay save blips are transient while result and local format errors are no
   expect(isTransientProviderResultSaveError(
     new ProviderResultMediaError("FORMAT", "模型结果格式不受支持"),
   )).toBe(false);
+  expect(isTransientProviderResultSaveError(
+    new MediaMetadataError("TEMPORARY", "服务器暂时无法读取素材时长"),
+  )).toBe(true);
+  expect(isTransientProviderResultSaveError(
+    new MediaMetadataError("DEPENDENCY_UNAVAILABLE", "服务器素材读取组件不可用"),
+  )).toBe(false);
   expect(isTransientProviderResultSaveError(new Error("unknown"))).toBe(false);
 
   const transparentPng = Buffer.from(
@@ -185,6 +192,20 @@ test("the shared save gate retries transient errors with a bounded budget and th
     },
   })).rejects.toMatchObject({ code: "FORMAT" });
   expect(formatAttempts).toBe(1);
+
+  let metadataAttempts = 0;
+  await expect(attemptProviderResultSave({
+    backoffMs: [0, 0, 0, 0, 0],
+    taskId: "save-gate-media-metadata",
+    save: () => {
+      metadataAttempts += 1;
+      throw new MediaMetadataError(
+        "DEPENDENCY_UNAVAILABLE",
+        "服务器素材读取组件不可用",
+      );
+    },
+  })).rejects.toMatchObject({ code: "DEPENDENCY_UNAVAILABLE" });
+  expect(metadataAttempts).toBe(1);
 });
 
 test("the shared save gate retries unknown errors with a bounded budget and records the real message", async () => {

@@ -1,0 +1,175 @@
+{
+  "version": "0.7.4",
+  "packageVersion": "0.7.4",
+  "schemaVersion": 42,
+  "createdAt": "2026-09-02T17:16:59Z",
+  "updatedAt": "2026-09-02T20:55:00Z",
+  "status": "BRANCH_CI_PASS_INCREMENTAL_REVIEW_GO_RELEASE_PENDING",
+  "source": {
+    "baselineCommit": "2ab56cb6fa98108a3e861b762aaab400a3d559a8",
+    "baselineTree": "12451397342101704e8248724e4f5e2e35a0deab",
+    "originMainAtAuthorization": "2ab56cb6fa98108a3e861b762aaab400a3d559a8",
+    "branch": "codex/v0.7.4-workflow-admission-ui",
+    "candidateCommit": "afea9351eb700ee0f537c988ec0e7170fabffeb2",
+    "candidateTree": "7d8b15ef782f11715b136f6fbc89beb06aa0addd",
+    "mergeCommit": null,
+    "mergeTree": null,
+    "tag": null,
+    "annotatedTagObject": null
+  },
+  "authorization": {
+    "text": "授权修复并上线 v0.7.4，修复后在这个 Canvas 真实执行一次。",
+    "versionSelected": true,
+    "releaseAuthorized": true,
+    "authorizationConsumed": false,
+    "versionConvention": "Ordinary patch release v0.7.4; no hotfix suffix.",
+    "realCanvasExecutionAuthorized": true,
+    "realCanvasExecutionLimit": 1,
+    "duplicateExecutionOnUnknownOutcomeAuthorized": false,
+    "qualityJudgementInScope": false
+  },
+  "productionBeforeRelease": {
+    "version": "0.7.3",
+    "packageVersion": "0.7.3",
+    "schemaVersion": 42,
+    "current": "/opt/unboundry/releases/v0.7.3-inc-gen-028-20260902",
+    "service": "active",
+    "ready": true,
+    "nRestarts": 0,
+    "failedRequestId": "4666a088-aca9-402b-ba8b-c842023470cb",
+    "failedRequestStatus": 400,
+    "failedRequestDurationMs": 35260,
+    "failedRequestCreatedWorkflowRun": false,
+    "failedRequestCreatedGenerationTask": false,
+    "failedRequestReachedProvider": false,
+    "failedRequestBillingRisk": false
+  },
+  "incident": {
+    "canvasId": "adcb89a5-c1f4-47e4-bbbb-28fff8d81583",
+    "groupId": "group-17ee0cbc-cc81-4b35-9c5e-41040f627033",
+    "executableNodes": 11,
+    "graphNodes": 13,
+    "graphEdges": 24,
+    "graphRevision": 14,
+    "failedPlanIndex": 9,
+    "failedNodeId": "video-da8c8c9f-66b0-4a1b-8511-277081e16828",
+    "failedModel": "Grok Video 3",
+    "error": "当前模式至少需要1个首帧输入",
+    "rootCause": [
+      "Static workflow admission treated an exact first-frame role supplied by an upstream node in the same workflow as permanently missing.",
+      "Workflow creation repeatedly opened and fully inspected the production database for each node, stretching a deterministic 400 past the browser's 30-second request timeout.",
+      "Server workflow node activity was not projected into the existing transient Canvas generation flags, so admitted nodes had no breathing indicator.",
+      "An uncertain create response did not set the no-resubmit reconciliation lock before an abort path.",
+      "Workflow run GET/list used the writer-grade database open path for every status poll. The read-only snapshot removed writer locking and reduced CI GET latency to about 7-42 ms; it was a valid performance and contention fix but did not cause the remaining save failure.",
+      "Diagnostic branch CI 33679773692 proved the admitted video node had already received its fake Provider MP4 but the macOS runner had no ffprobe. The metadata layer erased the process code into a generic duration error, so a permanent local prerequisite failure was retried for 1, 2, 4, 8 and 15 seconds and then polled again indefinitely."
+    ]
+  },
+  "candidateScope": {
+    "fix": [
+      "Defer a role minimum only when the exact kind and role are ready or will be produced by a dependency in this same workflow; re-resolve authoritative inputs before downstream admission.",
+      "Reuse one database connection through graph, model-contract and strict-preflight reads before the final workflow transaction.",
+      "Map only server node state admitted to transient text/image/video/audio generation flags without persisting those flags into Canvas data.",
+      "Set the uncertain-create reconciliation lock before read-only reattach, cap reattach at 90 seconds, retain the lock when still unknown, and never repeat the POST.",
+      "Serve workflow run GET/list from a validated transaction-consistent read-only snapshot that skips the full content digest and never acquires SQLite's writer lock; keep all workflow and media mutations on the existing writer path.",
+      "Make media output-set completion exactly replayable only when task owner, kind, execution attempt, complete ordered published asset set, primary asset, exact Provider execution attempt plus optional Provider task ID, Provider identity and completed Provider outcome all match; return the same success without inserting another task event, history row or Provider request. This remains additional idempotency hardening and is not claimed as the CI failure cause.",
+      "Require CI to install and verify ffprobe before the real image-to-video integration, preserve trusted-media metadata error categories, retry only temporary capacity or timeout failures, and immediately settle dependency, unreadable-media and abort failures instead of looping forever."
+    ],
+    "schemaChange": false,
+    "providerContractChange": false,
+    "protectedFilesTouched": false
+  },
+  "verification": {
+    "safeM22GroupExecution": "45/45 PASS; the real browser route proves pending/admitting are dark, admitted breathes, refresh preserves activity, terminal clears it, one lost create response creates one server run only, and a retired current-graph checkpoint creates zero generation-task or Provider POSTs",
+    "safeM104WorkflowReliability": "13/13 PASS in 7.8 seconds after the metadata prerequisite and error-classification fix; the 250 ms stress polling remains, the dynamic image-to-video workflow terminalizes, and direct assertions prove get/list never enter the writer-open checkpoint",
+    "safeM88MediaPublication": "38/38 PASS; the output-set case uses a non-null Provider task ID, deliberately throws after its first durable commit, then retries through attemptProviderResultSave and returns the same success while preserving exactly one success event and exactly one history row per output asset. A negative fixture places the same Provider ID only on execution attempt 2 while the task remains on attempt 1; replay is rejected and event/history counts remain unchanged.",
+    "directDependentSafeSpecs": "106/106 PASS across m103, text/image/video/audio nodes, video inputs, local image/video/audio uploads, and m81 version hardening",
+    "sharedDatabaseAndWorkflowRegression": "m91 9/9 and m103 11/11 PASS after the read-only snapshot helper was added",
+    "trustedMediaMetadataIncrement": "m57 plus m90 40/40 PASS; permanent metadata dependency/unreadable failures make one save attempt and retain a safe error code, while temporary capacity/timeouts remain retryable",
+    "directBehaviorTests": 211,
+    "governanceM38": "Earlier two retained 17/18 documentation-marker failures were corrected. The latest authority update initially produced 17/18 because AGENTS said production still runs instead of the exact production runs marker; after correcting only that wording, the smallest m38 rerun passed 18/18.",
+    "totalDistinctTargetedIncludingGovernance": 229,
+    "dynamicFirstFrameHttpProof": "1 run, 2 tasks, 2 attempts, exactly 2 expected fake Provider POSTs, first-frame role preserved, terminal success; create admission 186 ms",
+    "typescript": "PASS via safe-runner preflight",
+    "productionBuild": "PASS via safe-runner preflight",
+    "sourceCoverage": "PASS",
+    "listener4173": "UNCHANGED",
+    "discoveredTestInventory": 1178,
+    "formalFullRerun": false,
+    "realProviderPostsBeforeDeploy": 0,
+    "retainedBranchCiFailures": [
+      "GitHub Actions run 33666408795 failed 12/13 with the workflow still nonterminal while the test polled every 25 ms. This failure led to a Date.now deadline, 250 ms stress polling, 45-second terminal deadlines and retained create-under-15-seconds assertion.",
+      "Corrected-head run 33668540380 still failed 12/13 after 45 seconds with workflow state running and node states success/admitted. Logs showed repeated result save/save-retry and no duplicate Provider POST, but did not expose the underlying error. This led to the valid read-path isolation fix.",
+      "Read-path-fix run 33673886179, job 100393814668, still failed 12/13 after 45 seconds. Workflow GETs were mostly 7-42 ms, proving the read path improvement was active, but the run remained running with node states success/admitted. This led to an output-set replay hypothesis and additional exact idempotency hardening; later evidence disproved replay as the failure cause.",
+      "Output-set-replay run 33678592525, job 100409364777, still failed 12/13 with the same terminal timeout. This disproved exact replay as the remaining CI failure cause.",
+      "Diagnostic run 33679773692, job 100413264334, still failed 12/13 but exposed the exact isolated save error on the video task: service could not read media duration. The macOS runner lacked ffprobe and the workflow had no install or prerequisite check."
+    ],
+    "postReadPathFixLocalEvidence": "m104 13/13 PASS in 7.7 seconds; m91+m103 20/20 PASS; TypeScript, production build, source coverage and listener-4173 isolation all PASS/UNCHANGED. Branch CI 33673886179 later proved this read-path fix was necessary but not sufficient.",
+    "postCommitAcknowledgementFixLocalEvidence": "After the independent P1 was closed, one combined safe run passed m104 13/13 in 8.2 seconds and m88 38/38 in 22.6 seconds, 51/51 total. Its preflight passed TypeScript, production build and source coverage; listener 4173 was unchanged. Branch CI 33678592525 later proved this hardening was not the remaining CI root cause.",
+    "postMediaMetadataFixLocalEvidence": "m57+m90 passed 40/40 and a separate full m104 run passed 13/13 in 7.8 seconds. Both safe preflights passed TypeScript, production build and source coverage; listener 4173 remained unchanged. Formal full was not rerun."
+  },
+  "candidateManifest": {
+    "lastReviewedChangedFilesExcludingReceipt": 32,
+    "lastReviewedHunksExcludingReceipt": 174,
+    "reviewedCandidateReceipts": 1,
+    "lastReviewedTotalFiles": 33,
+    "lastReviewedBinaryDiffExcludingReceiptSha256": "ec2020f437bbeeeff3f491a3bd3239d0dd5bc371be04481942446797b02acf0e",
+    "latestIncrementalReview": "b17b9fd..afea935; 14/14 changed files, 42/42 diff hunks including 1/1 candidate receipt",
+    "currentReviewStatus": "P0=0/P1=0/P2=0/GO"
+  },
+  "review": {
+    "initial": {
+      "coverage": "25/25 tracked files, 113/113 then-current hunks, and 1/1 candidate receipt",
+      "result": "NO_GO",
+      "findings": [
+        "P0 alleged that a refresh followed by another manual click after the original run had already reached a confirmed terminal state was a duplicate submission.",
+        "P1 found that a list GET started just before 90 seconds could outlive the claimed reconciliation deadline.",
+        "P2 found that admitted-node breathing had source/helper proof but no real browser-state proof."
+      ]
+    },
+    "remediation": {
+      "p0Evidence": "No automatic create POST exists on refresh; active runs are reattached, concurrent creates coalesce again under BEGIN IMMEDIATE, terminal outcome plus a later manual click is new user intent, and the retired browser checkpoint branch returns before any scheduling. The m22 browser case confirms zero generation-task and Provider POSTs for that retired checkpoint.",
+      "p1": "A single AbortController now owns the whole reconciliation window, aborts an in-flight GET/body at the deadline, and clamps all callers to at most 90000 ms; m104 proves a deliberately hung read is cut off by the overall deadline.",
+      "p2": "m22 now drives real browser server-node states pending to admitting to admitted to terminal, including refresh, and observes the actual Text-node breathing DOM.",
+      "retainedFailedTestEvidence": "One intermediate m22 run was 44/45 because the new safety test incorrectly expected the retired checkpoint to submit after an explicit continue event; inspection confirmed the unconditional retired-checkpoint guard prevents every such submission. The assertion was corrected without a product-code change and the smallest affected m22 rerun passed 45/45."
+    },
+    "priorReleaseCandidate": "25/25 tracked files, 140/140 hunks, 1/1 candidate receipt, including the first CI polling increment; P0=0/P1=0/P2=0/GO. Superseded by the later product read-path change.",
+    "latestNoGo": {
+      "coverage": "28/28 non-receipt files, 155/155 hunks, and 1/1 candidate receipt; binary diff SHA-256 deda612602a032458876b68333d4cf82fb48c2e39271302dfe038d69b0ac5e90",
+      "result": "P0=0/P1=1/P2=0/NO-GO",
+      "finding": "When task.provider_task_id was non-null, matchingProviderAttempt selected by task ID plus Provider task ID but did not also constrain execution_attempt. The database does not make Provider task IDs unique, so anomalous or legacy data could select a different execution attempt.",
+      "remediation": "The query now always constrains task ID and execution attempt and additionally constrains Provider task ID when present. The m88 negative fixture proves the same Provider ID on the wrong attempt is rejected without adding task events or media history; the combined m88+m104 rerun passed 51/51.",
+      "incrementalReview": "The same reviewer accepted the exact task plus execution-attempt plus optional Provider-ID match, the positive lost-ack replay, the wrong-attempt negative fixture and the authority-document delta. Current cumulative result: P0=0/P1=0/P2=0/GO."
+    },
+    "releaseCandidateBeforeLatestFix": "28/28 non-receipt files, 161/161 hunks and 1/1 candidate receipt cumulatively reviewed after the exact output-set replay and Provider execution-attempt remediation; P0=0/P1=0/P2=0/GO",
+    "currentReleaseCandidate": "Previous complete review plus b17b9fd..afea935 incremental review covers the current product candidate: 32/32 non-receipt files, 174/174 hunks and 1/1 candidate receipt; P0=0/P1=0/P2=0/GO"
+  },
+  "release": {
+    "pullRequest": "PR #151 OPEN",
+    "branchCi": "RUN 33681493693 SUCCESS on afea935; macOS runner verified /opt/homebrew/bin/ffprobe version 9.0.1 and m104 13/13. Earlier runs 33666408795, 33668540380, 33673886179, 33678592525 and diagnostic 33679773692 remain retained 12/13 failures.",
+    "mainCi": "NOT_RUN",
+    "annotatedTag": "NOT_RUN",
+    "githubRelease": "NOT_RUN",
+    "exactTagFreshBuild": "NOT_RUN",
+    "productionBackup": "NOT_RUN",
+    "productionSwitch": "NOT_RUN",
+    "rollbackForward": "NOT_RUN",
+    "productionReceipt": "NOT_RUN"
+  },
+  "postDeployVerification": {
+    "canvasId": "adcb89a5-c1f4-47e4-bbbb-28fff8d81583",
+    "groupId": "group-17ee0cbc-cc81-4b35-9c5e-41040f627033",
+    "mode": "ONE_REAL_GROUP_EXECUTION_AFTER_V0_7_4_IS_LIVE",
+    "status": "NOT_RUN_UNTIL_V0_7_4_IS_LIVE_AND_HEALTHY",
+    "maxGroupExecuteClicks": 1,
+    "retryOnUnknownOutcome": false,
+    "qualityJudgementInScope": false,
+    "requiredEvidence": [
+      "exact workflow run and node identities",
+      "admission and Provider attempt counts",
+      "visible admitted-node breathing activity",
+      "automatic result projection and cloud save",
+      "refresh persistence",
+      "terminal active and unknown counts"
+    ]
+  }
+}

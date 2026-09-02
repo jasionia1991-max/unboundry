@@ -1,4 +1,20 @@
-import { runMediaProcess } from "./mediaProcess";
+import { MediaProcessError, runMediaProcess } from "./mediaProcess";
+
+export type MediaMetadataErrorCode =
+  | "ABORTED"
+  | "DEPENDENCY_UNAVAILABLE"
+  | "TEMPORARY"
+  | "UNREADABLE";
+
+export class MediaMetadataError extends Error {
+  constructor(
+    readonly code: MediaMetadataErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = "MediaMetadataError";
+  }
+}
 
 /**
  * Read duration (and video dimensions when a video stream exists) from the
@@ -31,8 +47,23 @@ export async function probeTrustedMediaMetadata(filePath: string) {
       },
     );
     stdout = result.stdout;
-  } catch {
-    throw new Error("服务端无法读取素材时长");
+  } catch (error) {
+    if (error instanceof MediaProcessError) {
+      if (error.code === "SPAWN_FAILED") {
+        throw new MediaMetadataError(
+          "DEPENDENCY_UNAVAILABLE",
+          "服务器素材读取组件不可用",
+        );
+      }
+      if (error.code === "TIMEOUT" || error.code === "PROCESS_QUEUE_FULL") {
+        throw new MediaMetadataError("TEMPORARY", "服务器暂时无法读取素材时长");
+      }
+      if (error.code === "ABORTED") {
+        throw new MediaMetadataError("ABORTED", "素材读取已停止");
+      }
+      throw new MediaMetadataError("UNREADABLE", "服务器无法读取素材时长");
+    }
+    throw new MediaMetadataError("TEMPORARY", "服务器暂时无法读取素材时长");
   }
 
   let parsed: {
@@ -42,7 +73,7 @@ export async function probeTrustedMediaMetadata(filePath: string) {
   try {
     parsed = JSON.parse(stdout) as typeof parsed;
   } catch {
-    throw new Error("服务端无法确认素材信息");
+    throw new MediaMetadataError("UNREADABLE", "服务器无法确认素材信息");
   }
   const durationSeconds = Number(parsed.format?.duration);
   if (
@@ -50,7 +81,7 @@ export async function probeTrustedMediaMetadata(filePath: string) {
     durationSeconds <= 0 ||
     durationSeconds > 7 * 24 * 60 * 60
   ) {
-    throw new Error("服务端无法确认素材时长");
+    throw new MediaMetadataError("UNREADABLE", "服务器无法确认素材时长");
   }
   const stream = parsed.streams?.[0];
   const width = stream && Number.isFinite(Number(stream.width))

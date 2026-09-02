@@ -4394,7 +4394,10 @@ function assertExactCurrentDatabase(database: DatabaseSync) {
   ) throw new Error("Application database is not the exact current schema");
 }
 
-function inspectExistingCurrentDatabase(databasePath: string) {
+function inspectExistingCurrentDatabase(
+  databasePath: string,
+  options: Readonly<{ includeContentDigest?: boolean }> = {},
+) {
   const details = lstatSync(databasePath);
   const owned = typeof process.getuid === "function" &&
     details.uid === process.getuid();
@@ -4439,7 +4442,10 @@ function inspectExistingCurrentDatabase(databasePath: string) {
       databasePath,
     );
     return Object.freeze({
-      contentDigest: exactCurrentContentDigest(inspection),
+      contentDigest: options.includeContentDigest === false
+        ? undefined
+        : exactCurrentContentDigest(inspection),
+      database: inspection,
       details,
       release,
       sidecars,
@@ -5491,7 +5497,10 @@ export function openAppDatabase(
         );
         // Close the read-only-check/writer-open TOCTOU under the write lock.
         assertExactCurrentDatabase(database);
-        if (exactCurrentContentDigest(database) !== inspected.contentDigest) {
+        if (
+          !inspected.contentDigest ||
+          exactCurrentContentDigest(database) !== inspected.contentDigest
+        ) {
           throw new Error("Application database changed while opening");
         }
         assertSameCurrentDatabaseIdentity(databasePath, inspected.details);
@@ -5907,4 +5916,78 @@ export function openAppDatabase(
       }
     }
   }
+}
+
+/**
+ * Run one synchronous query against a validated, transaction-consistent
+ * read-only snapshot. Polling endpoints must not acquire SQLite's writer lock:
+ * doing so can repeatedly interrupt the media-publication writer that their
+ * own status response is waiting for.
+ */
+export function readAppDatabaseSnapshot<T>(
+  operation: (database: DatabaseSync) => T,
+  dataDirectory = appDataDirectory(),
+): T {
+  const databasePath = join(dataDirectory, "unboundry.sqlite");
+  if (!directoryEntryExists(dataDirectory)) {
+    throw new Error("Application data directory is unavailable");
+  }
+  assertApplicationDataDirectory(dataDirectory);
+  for (const marker of [
+    ".unboundry-restore-incomplete",
+    migrationIncompleteMarker,
+  ]) {
+    if (directoryEntryExists(join(dataDirectory, marker))) {
+      throw new Error("Application data maintenance is incomplete");
+    }
+  }
+  if (!directoryEntryExists(databasePath)) {
+    throw new Error("Application database is unavailable");
+  }
+
+  const reservation = acquireCurrentDatabaseOpenReservation(dataDirectory);
+  let inspected: ReturnType<typeof inspectExistingCurrentDatabase> | undefined;
+  let result: T | undefined;
+  let failure: unknown;
+  try {
+    inspected = inspectExistingCurrentDatabase(databasePath, {
+      includeContentDigest: false,
+    });
+    assertCurrentDatabaseOpenReservation(reservation);
+    assertSameCurrentDatabaseIdentity(databasePath, inspected.details);
+    assertCurrentDatabaseSidecarsBeforeWriterOpen(
+      databasePath,
+      inspected.sidecars,
+    );
+    result = operation(inspected.database);
+    if (
+      result &&
+      (typeof result === "object" || typeof result === "function") &&
+      "then" in result && typeof result.then === "function"
+    ) {
+      throw new TypeError("Application database snapshot query must be synchronous");
+    }
+    assertCurrentDatabaseOpenReservation(reservation);
+    assertSameCurrentDatabaseIdentity(databasePath, inspected.details);
+    assertCurrentDatabaseSidecarsBeforeWriterOpen(
+      databasePath,
+      inspected.sidecars,
+    );
+  } catch (error) {
+    failure = error;
+  }
+  if (inspected) {
+    try {
+      inspected.release();
+    } catch (error) {
+      failure ??= error;
+    }
+  }
+  try {
+    releaseCurrentDatabaseOpenReservation(reservation);
+  } catch (error) {
+    failure ??= error;
+  }
+  if (failure) throw failure;
+  return result as T;
 }

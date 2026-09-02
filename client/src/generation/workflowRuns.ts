@@ -191,45 +191,101 @@ export async function listServerWorkflowRuns(
 export async function reattachSubmittedServerWorkflowRun(input: {
   canvasId: string;
   clientSemanticFingerprint: string;
+  deadlineMs?: number;
   groupId: string;
   pollIntervalMs?: number;
   signal?: AbortSignal;
   startedAt: number;
 }) {
-  for (;;) {
+  const reconciliationUnknownError = new Error(
+    "服务端接收结果仍不明确；已保留本次锁定，请刷新页面继续只读核对，系统不会重复提交",
+  );
+  const reconciliationStartedAt = Date.now();
+  const deadlineMs = Math.max(
+    1,
+    Math.min(input.deadlineMs ?? 90_000, 90_000),
+  );
+  const reconciliationController = new AbortController();
+  const relayParentAbort = () => reconciliationController.abort(
+    input.signal?.reason ?? new DOMException("Aborted", "AbortError"),
+  );
+  if (input.signal?.aborted) relayParentAbort();
+  else input.signal?.addEventListener("abort", relayParentAbort, { once: true });
+  const deadlineTimer = setTimeout(
+    () => reconciliationController.abort(reconciliationUnknownError),
+    deadlineMs,
+  );
+  const throwForReconciliationAbort = (error: unknown): never => {
     if (input.signal?.aborted) {
-      throw input.signal.reason ?? new DOMException("Aborted", "AbortError");
+      throw input.signal.reason ?? error;
     }
-    let runs: readonly ServerWorkflowRun[];
-    try {
-      runs = await listServerWorkflowRuns(input.canvasId, input.signal);
-    } catch (error) {
-      if (input.signal?.aborted) throw error;
-      if (!workflowRunStatusReadIsRetryable(error)) throw error;
-      // Once the POST may have reached the server, a failed read is not
-      // evidence that it is safe to submit again. Keep the local lock and use
-      // read-only reconciliation until the exact run becomes visible.
-      await waitForNextPoll(input.signal, input.pollIntervalMs);
-      continue;
+    if (reconciliationController.signal.aborted) {
+      throw reconciliationUnknownError;
     }
-    const matching = runs.find((run) =>
-      run.canvasId === input.canvasId &&
-      run.groupId === input.groupId &&
-      run.clientSemanticFingerprint === input.clientSemanticFingerprint &&
-      Date.parse(run.createdAt) >= input.startedAt - 1_000
-    );
-    if (matching) return matching;
-    const conflicting = runs.find((run) =>
-      run.groupId === input.groupId &&
-      run.clientSemanticFingerprint !== input.clientSemanticFingerprint &&
-      (run.state === "running" || run.state === "stopping")
-    );
-    if (conflicting) {
-      throw new Error(
-        "服务端已有同组整组执行，当前画布身份不同；已阻止重复提交",
+    throw error;
+  };
+  try {
+    for (;;) {
+      if (input.signal?.aborted) {
+        throw input.signal.reason ?? new DOMException("Aborted", "AbortError");
+      }
+      if (
+        reconciliationController.signal.aborted ||
+        Date.now() - reconciliationStartedAt >= deadlineMs
+      ) throwForReconciliationAbort(reconciliationUnknownError);
+      let runs: readonly ServerWorkflowRun[];
+      try {
+        runs = await listServerWorkflowRuns(
+          input.canvasId,
+          reconciliationController.signal,
+        );
+      } catch (error) {
+        if (reconciliationController.signal.aborted) {
+          throwForReconciliationAbort(error);
+        }
+        if (!workflowRunStatusReadIsRetryable(error)) throw error;
+        // Once the POST may have reached the server, a failed read is not
+        // evidence that it is safe to submit again. Keep the local lock and use
+        // read-only reconciliation until the exact run becomes visible.
+        try {
+          await waitForNextPoll(
+            reconciliationController.signal,
+            input.pollIntervalMs,
+          );
+        } catch (pollError) {
+          throwForReconciliationAbort(pollError);
+        }
+        continue;
+      }
+      const matching = runs.find((run) =>
+        run.canvasId === input.canvasId &&
+        run.groupId === input.groupId &&
+        run.clientSemanticFingerprint === input.clientSemanticFingerprint &&
+        Date.parse(run.createdAt) >= input.startedAt - 1_000
       );
+      if (matching) return matching;
+      const conflicting = runs.find((run) =>
+        run.groupId === input.groupId &&
+        run.clientSemanticFingerprint !== input.clientSemanticFingerprint &&
+        (run.state === "running" || run.state === "stopping")
+      );
+      if (conflicting) {
+        throw new Error(
+          "服务端已有同组整组执行，当前画布身份不同；已阻止重复提交",
+        );
+      }
+      try {
+        await waitForNextPoll(
+          reconciliationController.signal,
+          input.pollIntervalMs,
+        );
+      } catch (pollError) {
+        throwForReconciliationAbort(pollError);
+      }
     }
-    await waitForNextPoll(input.signal, input.pollIntervalMs);
+  } finally {
+    clearTimeout(deadlineTimer);
+    input.signal?.removeEventListener("abort", relayParentAbort);
   }
 }
 
@@ -247,6 +303,14 @@ export function mergeServerWorkflowRuns(
   return [...merged.values()].sort((left, right) =>
     Date.parse(right.updatedAt) - Date.parse(left.updatedAt) ||
     right.id.localeCompare(left.id)
+  );
+}
+
+export function activeServerWorkflowNodeIds(run: ServerWorkflowRun) {
+  return new Set(
+    run.nodes
+      .filter(({ state }) => state === "admitted")
+      .map(({ id }) => id),
   );
 }
 
@@ -291,6 +355,7 @@ export async function waitForServerWorkflowRun(
   runId: string,
   signal?: AbortSignal,
   deadlineMs = 24 * 60 * 60_000,
+  onUpdate?: (run: ServerWorkflowRun) => void,
 ) {
   const startedAt = Date.now();
   for (;;) {
@@ -308,6 +373,7 @@ export async function waitForServerWorkflowRun(
       await waitForNextPoll(signal);
       continue;
     }
+    onUpdate?.(run);
     if (["success", "failed", "cancelled"].includes(run.state)) return run;
     await waitForNextPoll(signal);
   }

@@ -84,6 +84,7 @@ import { publishGroupRunNotificationOnce } from "./groupRunNotification";
 import { runExclusiveCanvasSubmit } from "./saveGate";
 import { listGenerationTasks } from "./generationTasks";
 import {
+  activeServerWorkflowNodeIds,
   createServerWorkflowRun,
   listServerWorkflowRuns,
   reattachSubmittedServerWorkflowRun,
@@ -278,6 +279,7 @@ export function WorkflowExecutionProvider({
   getNodes,
   nodesSnapshot,
   notify,
+  onActiveNodeIdsChange,
   onRetainedNodeIdsChange,
   setNodes,
 }: {
@@ -287,6 +289,7 @@ export function WorkflowExecutionProvider({
   getNodes: () => ProbeNodeType[];
   nodesSnapshot: ProbeNodeType[];
   notify: (message: string, kind?: "error" | "info" | "success") => void;
+  onActiveNodeIdsChange: (nodeIds: ReadonlySet<string>) => void;
   onRetainedNodeIdsChange: (nodeIds: ReadonlySet<string>) => void;
   setNodes: Dispatch<SetStateAction<ProbeNodeType[]>>;
 }) {
@@ -341,6 +344,7 @@ export function WorkflowExecutionProvider({
     runId: string;
   }>());
   const serverWorkflowRuns = useRef(new Map<string, {
+    activeNodeIds: ReadonlySet<string>;
     abortController?: AbortController;
     runId: string;
     nodeIds: readonly string[];
@@ -453,10 +457,18 @@ export function WorkflowExecutionProvider({
     for (const run of serverPreparingGroups.current.values()) {
       for (const nodeId of run.nodeIds) nextLocks.add(nodeId);
     }
+    const nextActiveNodeIds = new Set<string>();
+    for (const run of runningGroups.current.values()) {
+      for (const nodeId of run.activeNodeIds) nextActiveNodeIds.add(nodeId);
+    }
+    for (const run of serverWorkflowRuns.current.values()) {
+      for (const nodeId of run.activeNodeIds) nextActiveNodeIds.add(nodeId);
+    }
     setExecutingGroupIds(nextGroups);
     setGroupExecutionPhases(nextPhases);
     setLockedNodeIds(nextLocks);
-  }, []);
+    onActiveNodeIdsChange(nextActiveNodeIds);
+  }, [onActiveNodeIdsChange]);
   useEffect(() => {
     const scope = { accountId, canvasId, fixtureScopeId };
     const refresh = () => {
@@ -544,6 +556,24 @@ export function WorkflowExecutionProvider({
     return () => window.removeEventListener("beforeunload", warnBeforeUnload);
   }, [executingGroupIds]);
 
+  const publishServerRunUpdate = useCallback((run: ServerWorkflowRun) => {
+    window.dispatchEvent(new CustomEvent(SERVER_WORKFLOW_RUN_UPDATED_EVENT, {
+      detail: { accountId, canvasId, fixtureScopeId, run },
+    }));
+  }, [accountId, canvasId, fixtureScopeId]);
+
+  const updateTrackedServerRun = useCallback((run: ServerWorkflowRun) => {
+    if (run.canvasId !== canvasId) {
+      throw new Error("整组执行状态身份与当前画布不一致");
+    }
+    const tracked = serverWorkflowRuns.current.get(run.groupId);
+    if (!tracked || tracked.runId !== run.id) return;
+    tracked.activeNodeIds = activeServerWorkflowNodeIds(run);
+    tracked.state = run.state;
+    publishActiveRunState();
+    publishServerRunUpdate(run);
+  }, [canvasId, publishActiveRunState, publishServerRunUpdate]);
+
   useEffect(() => {
     const scope = { accountId, canvasId, fixtureScopeId };
     const interruptScopedRuns = (reason: string) => {
@@ -598,15 +628,13 @@ export function WorkflowExecutionProvider({
     terminal: ServerWorkflowRun,
     signal?: AbortSignal,
   ) => {
-    window.dispatchEvent(new CustomEvent(SERVER_WORKFLOW_RUN_UPDATED_EVENT, {
-      detail: { accountId, canvasId, fixtureScopeId, run: terminal },
-    }));
+    publishServerRunUpdate(terminal);
     if (
       terminal.state !== "success" ||
       terminal.nodes.some(({ projectionState }) => projectionState !== "applied")
     ) return false;
     return refreshAuthoritativeCanvasDocument(signal);
-  }, [accountId, canvasId, fixtureScopeId, refreshAuthoritativeCanvasDocument]);
+  }, [publishServerRunUpdate, refreshAuthoritativeCanvasDocument]);
 
   useEffect(() => {
     if (isFixture || !persistenceReady) return;
@@ -654,6 +682,7 @@ export function WorkflowExecutionProvider({
       };
       tracked.push(item);
       serverWorkflowRuns.current.set(run.groupId, {
+        activeNodeIds: activeServerWorkflowNodeIds(run),
         nodeIds: item.nodeIds,
         runId: item.runId,
         state: run.state,
@@ -671,7 +700,12 @@ export function WorkflowExecutionProvider({
       }
       if (controller.signal.aborted) return;
       try {
-        const terminal = await waitForServerWorkflowRun(run.id, controller.signal);
+        const terminal = await waitForServerWorkflowRun(
+          run.id,
+          controller.signal,
+          undefined,
+          updateTrackedServerRun,
+        );
         if (
           terminal.canvasId !== canvasId ||
           terminal.groupId !== run.groupId ||
@@ -769,6 +803,7 @@ export function WorkflowExecutionProvider({
     persistenceReady,
     publishActiveRunState,
     publishServerTerminal,
+    updateTrackedServerRun,
   ]);
 
   const cancelGroup = useCallback((groupId: string) => {
@@ -1036,6 +1071,10 @@ export function WorkflowExecutionProvider({
               if (!workflowRunCreateOutcomeIsUncertain(createError)) {
                 throw createError;
               }
+              // The POST may already have reached the server. Retain the
+              // local lock before any read-only reattach attempt, including
+              // page-exit or user-stop aborts during reconciliation.
+              preparation.reconciliationBlocked = true;
               if (!preparation.abortController.signal.aborted) {
                 notify(
                   "服务端接收回执暂时不可见，正在只读找回；不会重复提交",
@@ -1043,20 +1082,19 @@ export function WorkflowExecutionProvider({
                 );
               }
               try {
-                return await reattachSubmittedServerWorkflowRun({
+                const reattached = await reattachSubmittedServerWorkflowRun({
                   canvasId,
                   clientSemanticFingerprint: preview.semanticFingerprint,
                   groupId,
                   signal: preparation.abortController.signal,
                   startedAt: preparation.startedAt,
                 });
+                preparation.reconciliationBlocked = false;
+                return reattached;
               } catch (reattachError) {
-                if (!preparation.abortController.signal.aborted) {
-                  // The create outcome remains unknown. A permanent read or
-                  // identity failure stops the request loop but must retain the
-                  // local lock so another click cannot issue a second POST.
-                  preparation.reconciliationBlocked = true;
-                }
+                // The create outcome remains unknown. A permanent read,
+                // identity failure or abort must retain the local lock so
+                // another click cannot issue a second POST.
                 throw reattachError;
               }
             }
@@ -1082,6 +1120,7 @@ export function WorkflowExecutionProvider({
           }
           pollController = new AbortController();
           serverWorkflowRuns.current.set(groupId, {
+            activeNodeIds: activeServerWorkflowNodeIds(created),
             abortController: pollController,
             nodeIds: preparation.nodeIds,
             runId: created.id,
@@ -1113,7 +1152,12 @@ export function WorkflowExecutionProvider({
           }
           const terminal = ["success", "failed", "cancelled"].includes(created.state)
             ? created
-            : await waitForServerWorkflowRun(created.id, pollController.signal);
+            : await waitForServerWorkflowRun(
+                created.id,
+                pollController.signal,
+                undefined,
+                updateTrackedServerRun,
+              );
           if (
             terminal.canvasId !== canvasId || terminal.groupId !== groupId ||
             terminal.clientSemanticFingerprint !==
@@ -2662,6 +2706,7 @@ export function WorkflowExecutionProvider({
       flushCanvasSave,
       publishServerTerminal,
       registry,
+      updateTrackedServerRun,
       waitForCanvasRevision,
     ],
   );

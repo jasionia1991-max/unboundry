@@ -6,11 +6,17 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 
-## 当前最高优先级：INC-GEN-028 / v0.7.3 已上线（2026-09-02，USER RECHECK）
+## 当前最高优先级：INC-GEN-028 / v0.7.4 发布门已通过（2026-09-03）
 
-生产当前运行 `v0.7.3/schema42`。PR #149、分支/main 双 CI、annotated tag/GitHub Release、exact-tag fresh build、schema42 locked-exact backup/verify/fresh restore、原子切换和 `v0.7.2→v0.7.3→v0.7.2→v0.7.3` rollback-forward 均通过；服务 active/ready、NRestarts=0，公网与回环均返回 0.7.3，公开首页和5个静态资源与 exact release 逐字节一致。
+生产当前仍运行 `v0.7.3/schema42`。用户已明确授权修复并上线普通 patch `v0.7.4`，以及上线后在 Canvas `adcb89a5-c1f4-47e4-bbbb-28fff8d81583` 的指定组真实执行一次；发布和真实点击都还没有执行。
 
-本版修复的是“数据已经保存，但视频 metadata 重放后顶部可能一直显示保存中”。普通 Chrome 已对指定 Canvas 做两次真实加载：文字工作流、3/3 图片和1/1视频都正常，视频 readyState=4、时长5.088秒；顶部最终持续显示“已保存到云端”，15秒内没有继续写入，console error/warn=0。没有点击生成按钮，task/admission/attempt/workflow run 和 Provider POST 全部零新增；这次只验证网站工作流和保存状态，不评价成片审美。一次性 v0.7.3 发布授权已消费，用户明确确认前保持 `USER_RECHECK`；后续版本只按普通 patch 号递增，下一版从 v0.7.4 开始，不使用 `hotfix` 后缀。生产回执见 [`V0_7_3_PRODUCTION_RECEIPT_2026-09-02.json`](spec/V0_7_3_PRODUCTION_RECEIPT_2026-09-02.json)，候选回执见 [`V0_7_3_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`](spec/V0_7_3_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json)。
+原生产故障发生在 Provider 之前：动态 Grok Video 的首帧明明由同组上游图片节点生成，却被静态准入误判为缺失；逐节点重复打开数据库又把确定性400拖到35.260秒，呼吸灯也没有接上服务端状态。v0.7.4已修复这三处。PR后续CI还暴露出独立环境问题：macOS runner没有`ffprobe`，视频结果虽已返回，却无法读取时长并被错误地无限重试。当前候选为CI补齐/检查ffprobe，同时让缺组件或坏媒体立即明确终态，仅临时容量/超时才重试。本地m57+m90 `40/40`、完整图片→视频m104 `13/13`通过；修复head的branch CI `33681493693`已在macOS runner安装并确认ffprobe，m104 `13/13`和总门通过；独立增量Review结论`P0=0/P1=0/P2=0/GO`。生产仍未切换，候选回执见 [`V0_7_4_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`](spec/V0_7_4_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json)。
+
+真实执行只在 v0.7.4 部署并通过健康门之后点击一次；如果结果不明，只核对原 run/task，绝不重复点击。验收只看网站能否生成并自动回填工作流，不评价内容好不好看。
+
+## 历史：INC-GEN-028 / v0.7.3 已上线（2026-09-02，USER RECHECK）
+
+v0.7.3 的生产回执见 [`V0_7_3_PRODUCTION_RECEIPT_2026-09-02.json`](spec/V0_7_3_PRODUCTION_RECEIPT_2026-09-02.json)，候选回执见 [`V0_7_3_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`](spec/V0_7_3_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json)。其一次性发布授权已消费。
 
 ## 历史：INC-GEN-026 v0.7.0 已部署（2026-09-02，USER RECHECK）
 

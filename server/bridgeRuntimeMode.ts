@@ -72,7 +72,7 @@ export function releaseRoleFromEnvironment(
         packageVersion === "0.6.68" || packageVersion === "0.6.69" ||
         packageVersion === "0.6.70" || packageVersion === "0.7.0" ||
         packageVersion === "0.7.1" || packageVersion === "0.7.2" ||
-        packageVersion === "0.7.3"
+        packageVersion === "0.7.3" || packageVersion === "0.7.4"
       ? "final"
       : undefined;
   if (!packageRole) {

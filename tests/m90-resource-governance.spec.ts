@@ -25,6 +25,10 @@ import {
   runMediaProcess,
 } from "../server/mediaProcess";
 import {
+  MediaMetadataError,
+  probeTrustedMediaMetadata,
+} from "../server/mediaMetadata";
+import {
   BoundedConnectionAdmission,
   BoundedTokenBuckets,
   boundedLoginAdmissionKey,
@@ -660,6 +664,18 @@ test("media process timeout kills its owned process group and releases capacity"
     }).toBe("gone");
   } finally {
     await rm(directory, { force: true, recursive: true });
+  }
+  const metadataDirectory = await mkdtemp(join(tmpdir(), "unboundry-m90-metadata-"));
+  try {
+    await expect(probeTrustedMediaMetadata(join(
+      metadataDirectory,
+      "missing.mp4",
+    ))).rejects.toMatchObject({
+      code: "UNREADABLE",
+      name: MediaMetadataError.name,
+    });
+  } finally {
+    await rm(metadataDirectory, { force: true, recursive: true });
   }
 });
 

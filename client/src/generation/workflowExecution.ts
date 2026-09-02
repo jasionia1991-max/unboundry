@@ -1,5 +1,10 @@
 import { shouldIgnoreStaleCanvasSaveProblem } from "./groupRunPersist";
 import type { GroupResultProjection } from "./groupResultProjection";
+import {
+  workflowRoleMinimumCanBeSatisfied,
+  type NodeInputKind,
+  type NodeInputRole,
+} from "../../../types/nodeInputs";
 
 export type WorkflowNodeShape = {
   data: Record<string, unknown>;
@@ -38,7 +43,10 @@ export type WorkflowPreflightPhase = "runtime" | "runtime-final" | "static";
 export type WorkflowInputProblem = {
   code: string;
   edgeId?: string;
+  kind?: NodeInputKind;
   message: string;
+  minimumCount?: number;
+  role?: NodeInputRole;
 };
 
 export type WorkflowModelSelectionProblem = {
@@ -49,7 +57,8 @@ export type WorkflowModelSelectionProblem = {
 export type WorkflowResolvedInput = {
   compatibility: "blocked" | "compatible";
   edgeId: string;
-  kind: "audio" | "image" | "text" | "video";
+  kind: NodeInputKind;
+  role?: NodeInputRole;
   sourceNodeId: string;
   state: "empty" | "invalid" | "missing" | "ready" | "uploading";
 };
@@ -125,11 +134,11 @@ export function workflowSubmissionPreflightProblem<
   for (const problem of input.problems) {
     if (shouldIgnoreStaleCanvasSaveProblem(problem)) continue;
     if (
-      problem.code === "ROLE_CONFLICT" &&
-      !problem.edgeId &&
-      input.inputs.some((candidate) =>
-        candidate.state !== "missing" &&
-        input.executableIds.has(candidate.sourceNodeId))
+      workflowRoleMinimumCanBeSatisfied({
+        dynamicNodeIds: input.executableIds,
+        inputs: input.inputs,
+        problem,
+      })
     ) continue;
     if (submissionInvariantProblemCodes.has(problem.code)) return problem;
     const resolved = problem.edgeId
@@ -187,11 +196,11 @@ export function workflowRuntimePreflightDisposition<
   for (const problem of input.problems) {
     if (shouldIgnoreStaleCanvasSaveProblem(problem)) continue;
     if (
-      problem.code === "ROLE_CONFLICT" &&
-      !problem.edgeId &&
-      input.inputs.some((candidate) =>
-        candidate.state !== "missing" &&
-        input.executableIds.has(candidate.sourceNodeId))
+      workflowRoleMinimumCanBeSatisfied({
+        dynamicNodeIds: input.executableIds,
+        inputs: input.inputs,
+        problem,
+      })
     ) {
       return { problem, status: "waiting" };
     }

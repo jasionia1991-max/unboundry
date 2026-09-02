@@ -3,6 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import {
   appDataDirectory,
   openAppDatabase,
+  readAppDatabaseSnapshot,
 } from "./database";
 import {
   readPersistedCanvasGraph,
@@ -19,6 +20,7 @@ import {
 } from "../types/generationIdentity";
 import {
   resolveNodeInputs,
+  workflowRoleMinimumCanBeSatisfied,
   type NodeInputKind,
 } from "../types/nodeInputs";
 import {
@@ -134,29 +136,23 @@ function summary(database: DatabaseSync, row: Record<string, unknown>): Workflow
 }
 
 export function getWorkflowRun(ownerId: string, runId: string) {
-  const database = openAppDatabase();
-  try {
+  return readAppDatabaseSnapshot((database) => {
     const row = database.prepare(`
       SELECT * FROM workflow_runs WHERE id = ? AND owner_id = ?
     `).get(runId, ownerId) as Record<string, unknown> | undefined;
     return row ? summary(database, row) : undefined;
-  } finally {
-    database.close();
-  }
+  });
 }
 
 export function listWorkflowRuns(ownerId: string, canvasId: string) {
-  const database = openAppDatabase();
-  try {
-    return (database.prepare(`
+  return readAppDatabaseSnapshot((database) =>
+    (database.prepare(`
       SELECT * FROM workflow_runs
       WHERE owner_id = ? AND canvas_id = ?
       ORDER BY updated_at DESC LIMIT 50
     `).all(ownerId, canvasId) as Record<string, unknown>[])
-      .map((row) => summary(database, row));
-  } finally {
-    database.close();
-  }
+      .map((row) => summary(database, row))
+  );
 }
 
 export async function createWorkflowRun(input: {
@@ -165,9 +161,9 @@ export async function createWorkflowRun(input: {
   groupId: string;
   ownerId: string;
 }) {
-  const existingDatabase = openAppDatabase();
+  const database = openAppDatabase();
   try {
-    const existing = existingDatabase.prepare(`
+    const existing = database.prepare(`
       SELECT * FROM workflow_runs
       WHERE owner_id = ? AND canvas_id = ? AND group_id = ?
         AND state IN ('running', 'stopping')
@@ -175,175 +171,180 @@ export async function createWorkflowRun(input: {
     `).get(input.ownerId, input.canvasId, input.groupId) as
       | Record<string, unknown>
       | undefined;
-    if (existing) return summary(existingDatabase, existing);
-  } finally {
-    existingDatabase.close();
-  }
-  const graph = readPersistedCanvasGraph({
-    canvasId: input.canvasId,
-    ownerId: input.ownerId,
-  });
-  const semantic = compileFrozenWorkflowSemanticPlan({
-    edges: graph.edges,
-    groupId: input.groupId,
-    nodes: graph.nodes,
-  });
-  if (semantic.semanticFingerprint !== input.clientSemanticFingerprint) {
-    throw new Error("画布工作流已变化，请确认当前内容后重新点击一次执行");
-  }
-  const activeNodeIds = new Set(
-    generationTaskApplication.taskStore()
-      .listActiveForCanvas(input.canvasId, input.ownerId)
-      .map(({ nodeId }) => nodeId),
-  );
-  const alreadyActive = semantic.executableNodeIds.find((id) => activeNodeIds.has(id));
-  if (alreadyActive) {
-    throw new Error(`节点 ${alreadyActive} 已有原任务在收口；系统不会重复提交`);
-  }
-  const storedNodes: StoredNodePlan[] = [];
-  for (const node of semantic.nodes) {
-    const model = generationTaskApplication.resolveModel(
-      node.kind,
-      node.modelId,
-      input.ownerId,
-    );
-    if (!model) throw new Error(`节点 ${node.id} 的已发布模型不可用`);
-    const schema = generationTaskApplication.generationModelSchema(node.kind, model);
-    const preflight = generationTaskApplication.strictGenerationPreflight({
-      body: {
-        canvasId: input.canvasId,
-        canvasRevision: graph.graphRevision,
-        inputSchemaVersion: 1,
-        kind: node.kind,
-        model: node.modelId,
-        nodeId: node.id,
-        ownPrompt: node.ownPrompt,
-        parameters: node.parameters,
-      },
-      bypass: false,
-      model,
+    if (existing) return summary(database, existing);
+    const graph = readPersistedCanvasGraph({
+      canvasId: input.canvasId,
+      database,
       ownerId: input.ownerId,
-      requireFreshRevision: true,
-      targetKind: node.kind,
     });
-    const dynamicDependencyIds = new Set(node.dependencies);
-    const staticProblem = preflight.problems.find((problem) => {
-      if (
-        ["EMPTY", "UPLOADING", "INVALID", "MISSING"].includes(problem.code) &&
-        problem.edgeId
-      ) {
-        const edge = semantic.edges.find((candidate) => candidate.id === problem.edgeId);
-        return !edge || !dynamicDependencyIds.has(edge.source);
-      }
-      if (problem.code === "REQUIRED_MISSING") {
-        return Object.entries(schema.inputPolicy?.required ?? {}).some(
-          ([kind, required]) =>
-            preflight.inputs.filter((candidate) =>
-              candidate.kind === kind &&
-              (
-                candidate.state === "ready" ||
-                dynamicDependencyIds.has(candidate.sourceNodeId)
-              )
-            ).length < Number(required ?? 0),
-        );
-      }
-      if (problem.code === "PROMPT_MISSING") {
-        const upstreamTextMayReplaceOwn = node.kind !== "text" ||
-          schema.inputPolicy?.promptPolicy === "own-or-upstream-text";
-        return !node.ownPrompt && (
-          !upstreamTextMayReplaceOwn ||
-          !node.dependencies.some((dependencyId) =>
-            semantic.nodes.find(({ id }) => id === dependencyId)?.kind === "text"
-          )
-        );
-      }
-      return true;
+    const semantic = compileFrozenWorkflowSemanticPlan({
+      edges: graph.edges,
+      groupId: input.groupId,
+      nodes: graph.nodes,
     });
-    if (staticProblem) throw new Error(staticProblem.message);
-    const release = preflight.modelReleaseRevision;
-    if (!release || typeof release !== "object") {
-      throw new Error(`节点 ${node.id} 缺少已发布模型合同`);
+    if (semantic.semanticFingerprint !== input.clientSemanticFingerprint) {
+      throw new Error("画布工作流已变化，请确认当前内容后重新点击一次执行");
     }
-    const execution = compileRegisteredModelTaskDecision({
-      capability: node.kind,
-      capabilitySchema: schema,
-      costCurrency: model.cost_currency,
-      providerDriver: model.provider_driver,
-      providerModelId: model.provider_model_id,
-      providerProtocol: model.provider_protocol ?? "native",
-      revisionIdentity: String(
-        (release as Record<string, unknown>).revisionId ?? "",
-      ),
-    });
-    const recovery = workflowRecoveryPolicy(execution.adapterId);
-    if (!recovery.workflowEligible) {
-      throw new Error(`节点 ${node.id} 的模型不具备整组自动恢复资格`);
+    const activeNodeIds = new Set(
+      generationTaskApplication.taskStore()
+        .listActiveForCanvas(input.canvasId, input.ownerId)
+        .map(({ nodeId }) => nodeId),
+    );
+    const alreadyActive = semantic.executableNodeIds.find((id) => activeNodeIds.has(id));
+    if (alreadyActive) {
+      throw new Error(`节点 ${alreadyActive} 已有原任务在收口；系统不会重复提交`);
     }
-    const canonicalParameters = Object.freeze({ ...preflight.parameters });
-    const canonicalSemanticNode = {
-      dependencies: node.dependencies,
-      id: node.id,
-      kind: node.kind,
-      modelId: node.modelId,
-      ownPrompt: node.ownPrompt,
-      parameters: canonicalParameters,
-      planIndex: node.planIndex,
-    };
-    storedNodes.push(Object.freeze({
-      ...canonicalSemanticNode,
-      costCurrency: model.cost_currency,
-      modelConfigurationRevision: modelConfigurationRevision({
-        ...model,
+    const storedNodes: StoredNodePlan[] = [];
+    for (const node of semantic.nodes) {
+      const model = generationTaskApplication.resolveModel(
+        node.kind,
+        node.modelId,
+        input.ownerId,
+        database,
+      );
+      if (!model) throw new Error(`节点 ${node.id} 的已发布模型不可用`);
+      const schema = generationTaskApplication.generationModelSchema(node.kind, model);
+      const preflight = generationTaskApplication.strictGenerationPreflight({
+        body: {
+          canvasId: input.canvasId,
+          canvasRevision: graph.graphRevision,
+          inputSchemaVersion: 1,
+          kind: node.kind,
+          model: node.modelId,
+          nodeId: node.id,
+          ownPrompt: node.ownPrompt,
+          parameters: node.parameters,
+        },
+        bypass: false,
+        database,
+        model,
+        ownerId: input.ownerId,
+        requireFreshRevision: true,
+        targetKind: node.kind,
+      });
+      const dynamicDependencyIds = new Set(node.dependencies);
+      const staticProblem = preflight.problems.find((problem) => {
+        if (
+          ["EMPTY", "UPLOADING", "INVALID", "MISSING"].includes(problem.code) &&
+          problem.edgeId
+        ) {
+          const edge = semantic.edges.find((candidate) => candidate.id === problem.edgeId);
+          return !edge || !dynamicDependencyIds.has(edge.source);
+        }
+        if (problem.code === "REQUIRED_MISSING") {
+          return Object.entries(schema.inputPolicy?.required ?? {}).some(
+            ([kind, required]) =>
+              preflight.inputs.filter((candidate) =>
+                candidate.kind === kind &&
+                (
+                  candidate.state === "ready" ||
+                  dynamicDependencyIds.has(candidate.sourceNodeId)
+                )
+              ).length < Number(required ?? 0),
+          );
+        }
+        if (problem.code === "ROLE_CONFLICT") {
+          return !workflowRoleMinimumCanBeSatisfied({
+            dynamicNodeIds: dynamicDependencyIds,
+            inputs: preflight.inputs,
+            problem,
+          });
+        }
+        if (problem.code === "PROMPT_MISSING") {
+          const upstreamTextMayReplaceOwn = node.kind !== "text" ||
+            schema.inputPolicy?.promptPolicy === "own-or-upstream-text";
+          return !node.ownPrompt && (
+            !upstreamTextMayReplaceOwn ||
+            !node.dependencies.some((dependencyId) =>
+              semantic.nodes.find(({ id }) => id === dependencyId)?.kind === "text"
+            )
+          );
+        }
+        return true;
+      });
+      if (staticProblem) throw new Error(staticProblem.message);
+      const release = preflight.modelReleaseRevision;
+      if (!release || typeof release !== "object") {
+        throw new Error(`节点 ${node.id} 缺少已发布模型合同`);
+      }
+      const execution = compileRegisteredModelTaskDecision({
         capability: node.kind,
-      }),
-      modelReleaseRevision: release,
-      providerDriver: model.provider_driver,
-      providerModelId: model.provider_model_id,
-      providerProtocol: model.provider_protocol ?? "native",
-      providerProfileId: model.provider_profile_id,
-      recoveryEvidence: recovery.evidence,
-      recoveryGrade: recovery.grade,
-      semanticIdentity: workflowSemanticDigest(canonicalSemanticNode),
-    }));
-  }
-  const relevantIds = new Set([
-    ...semantic.executableNodeIds,
-    ...semantic.externalNodes.map(({ id }) => id),
-  ]);
-  const authoritativeFingerprint = workflowSemanticDigest({
-    baseSemanticFingerprint: semantic.semanticFingerprint,
-    nodes: storedNodes.map((node) => ({
-      id: node.id,
-      modelConfigurationRevision: node.modelConfigurationRevision,
-      modelReleaseRevision: node.modelReleaseRevision,
-      recoveryGrade: node.recoveryGrade,
-      semanticIdentity: node.semanticIdentity,
-    })),
-  });
-  const plan = parsePlan({
-    ...semantic,
-    clientSemanticFingerprint: semantic.semanticFingerprint,
-    externalNodes: semantic.externalNodes.map((node) => ({
-      data: {
-        ...(node.assetId ? { assetId: node.assetId } : {}),
-        ...(node.content ? { content: node.content } : {}),
-        ...(node.inputState ? { inputState: node.inputState } : {}),
-      },
-      id: node.id,
-      type: node.kind,
-    })),
-    nodes: storedNodes,
-    semanticFingerprint: authoritativeFingerprint,
-  });
-  const reservationBytes = workflowMediaCapacity.estimate(
-    storedNodes.map(({ kind }) => kind),
-  );
-  const capacityInspection = await workflowMediaCapacity.inspect(reservationBytes);
-  const runId = randomUUID();
-  const now = new Date();
-  const timestamp = now.toISOString();
-  const database = openAppDatabase();
-  try {
+        capabilitySchema: schema,
+        costCurrency: model.cost_currency,
+        providerDriver: model.provider_driver,
+        providerModelId: model.provider_model_id,
+        providerProtocol: model.provider_protocol ?? "native",
+        revisionIdentity: String(
+          (release as Record<string, unknown>).revisionId ?? "",
+        ),
+      });
+      const recovery = workflowRecoveryPolicy(execution.adapterId);
+      if (!recovery.workflowEligible) {
+        throw new Error(`节点 ${node.id} 的模型不具备整组自动恢复资格`);
+      }
+      const canonicalParameters = Object.freeze({ ...preflight.parameters });
+      const canonicalSemanticNode = {
+        dependencies: node.dependencies,
+        id: node.id,
+        kind: node.kind,
+        modelId: node.modelId,
+        ownPrompt: node.ownPrompt,
+        parameters: canonicalParameters,
+        planIndex: node.planIndex,
+      };
+      storedNodes.push(Object.freeze({
+        ...canonicalSemanticNode,
+        costCurrency: model.cost_currency,
+        modelConfigurationRevision: modelConfigurationRevision({
+          ...model,
+          capability: node.kind,
+        }),
+        modelReleaseRevision: release,
+        providerDriver: model.provider_driver,
+        providerModelId: model.provider_model_id,
+        providerProtocol: model.provider_protocol ?? "native",
+        providerProfileId: model.provider_profile_id,
+        recoveryEvidence: recovery.evidence,
+        recoveryGrade: recovery.grade,
+        semanticIdentity: workflowSemanticDigest(canonicalSemanticNode),
+      }));
+    }
+    const relevantIds = new Set([
+      ...semantic.executableNodeIds,
+      ...semantic.externalNodes.map(({ id }) => id),
+    ]);
+    const authoritativeFingerprint = workflowSemanticDigest({
+      baseSemanticFingerprint: semantic.semanticFingerprint,
+      nodes: storedNodes.map((node) => ({
+        id: node.id,
+        modelConfigurationRevision: node.modelConfigurationRevision,
+        modelReleaseRevision: node.modelReleaseRevision,
+        recoveryGrade: node.recoveryGrade,
+        semanticIdentity: node.semanticIdentity,
+      })),
+    });
+    const plan = parsePlan({
+      ...semantic,
+      clientSemanticFingerprint: semantic.semanticFingerprint,
+      externalNodes: semantic.externalNodes.map((node) => ({
+        data: {
+          ...(node.assetId ? { assetId: node.assetId } : {}),
+          ...(node.content ? { content: node.content } : {}),
+          ...(node.inputState ? { inputState: node.inputState } : {}),
+        },
+        id: node.id,
+        type: node.kind,
+      })),
+      nodes: storedNodes,
+      semanticFingerprint: authoritativeFingerprint,
+    });
+    const reservationBytes = workflowMediaCapacity.estimate(
+      storedNodes.map(({ kind }) => kind),
+    );
+    const capacityInspection = await workflowMediaCapacity.inspect(reservationBytes);
+    const runId = randomUUID();
+    const now = new Date();
+    const timestamp = now.toISOString();
     database.exec("BEGIN IMMEDIATE");
     try {
       const existing = database.prepare(`
@@ -696,6 +697,7 @@ async function admitWorkflowNode(input: {
     nodePlan.kind,
     nodePlan.modelId,
     String(input.runRow.owner_id),
+    input.database,
   );
   if (!model) throw new Error("已冻结模型不再可用");
   if (
