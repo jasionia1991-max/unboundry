@@ -1,6 +1,6 @@
 # Unboundry 项目级 Agent 施工守则
 
-> **2026-09-02 INC-GEN-028 当前最高优先级**：生产运行`v0.7.3/schema42`，current=`/opt/unboundry/releases/v0.7.3-inc-gen-028-20260902`。PR #149、分支/main 双 CI、annotated tag/GitHub Release、exact-tag fresh build、locked-exact backup/verify/fresh restore、原子切换及`v0.7.2→v0.7.3→v0.7.2→v0.7.3`成对回退前滚均通过。普通 Chrome 在指定 Canvas 两次加载既有结果，文字工作流、3/3 图片和1/1视频正常，最终持续显示“已保存到云端”、console error/warn=0；没有点击生成，新增 Provider POST=0，admission/attempt/task/workflow 计数不变。v0.7.3 一次性发布授权已消费，用户明确确认前保持`USER_RECHECK`；后续版本只按普通 patch 递增（下一版从`v0.7.4`开始），不使用`hotfix`后缀。当前权威为 `spec/UNBOUNDRY_CURRENT_STATE.md`、`spec/V0_7_3_PRODUCTION_RECEIPT_2026-09-02.json`、`spec/V0_7_3_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json` 和 `spec/INC_GEN_026_CHECKPOINT.md` 顶部覆盖层。
+> **2026-09-03 INC-GEN-028 当前最高优先级**：生产运行`v0.7.3/schema42`，current=`/opt/unboundry/releases/v0.7.3-inc-gen-028-20260902`；`v0.7.4`修复和上线已获最新明确授权，但尚未发布。指定 Canvas `adcb89a5-c1f4-47e4-bbbb-28fff8d81583` 的失败请求在创建 run 前因动态 Grok Video 首帧角色被静态准入误判而 400，逐节点重复打开数据库又把响应拖到35.260秒，超过浏览器30秒上限；因此本次没有 run/task/Provider POST/费用。v0.7.4 候选已改为同一准入连接、精确动态角色等待、服务端`admitted`节点映射原有呼吸灯，并对不确定创建结果只读找回、保留锁且绝不二次 POST；164 项直接相关测试通过，formal full 未重跑。冻结候选独立 Review 已覆盖25/25 tracked files、135/135 hunks和1/1回执，结论`P0=0/P1=0/P2=0/GO`；PR/双 CI、tag/Release、exact-tag fresh build、生产备份/切换/rollback-forward均仍未执行。这些发布门通过后，才允许在该 Canvas/组真实点击一次；结果不明禁止再点，不评价图片或视频审美。当前权威为 `spec/UNBOUNDRY_CURRENT_STATE.md`、`spec/V0_7_4_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`、`spec/V0_7_3_PRODUCTION_RECEIPT_2026-09-02.json` 和 `spec/INC_GEN_026_CHECKPOINT.md` 顶部覆盖层。
 
 > **以下 INC-GEN-025 段落是历史时点记录，不再是当前授权**：2026-09-01 当时用户 `/goal` 曾激活 INC-GEN-025，并授权 v0.6.70 实现、发布和受控验收。该授权后来已执行并消费；不得据此再次修改、发布或发起真实生成。受保护文件继续永久禁止读取、哈希、修改、暂存、移动或删除。
 
@@ -37,14 +37,13 @@
 INC-GEN-028 当前状态按顺序完整阅读：
 
 1. `spec/UNBOUNDRY_CURRENT_STATE.md` 顶部 INC-GEN-028 当前区块
-2. `spec/V0_7_3_PRODUCTION_RECEIPT_2026-09-02.json`
-3. `spec/V0_7_3_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`
-4. `spec/V0_7_2_PRODUCTION_RECEIPT_2026-09-02.json`（发布前生产基线）
-5. `spec/V0_7_2_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`（历史）
-6. `spec/V0_7_1_HOTFIX_1_PRODUCTION_RECEIPT_2026-09-02.json`（历史）
-7. `spec/INC_GEN_026_CHECKPOINT.md` 顶部 v0.7.3 发布覆盖层
-8. `spec/INC_GEN_026_ACCEPTANCE_MATRIX_2026-09-01.md` 顶部覆盖层及 IG26-099～121
-9. `TASKS.md`、`上线规矩.md`、`README.md` 顶部 INC-GEN-028 区块
+2. `spec/V0_7_4_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`
+3. `spec/V0_7_3_PRODUCTION_RECEIPT_2026-09-02.json`（当前生产基线）
+4. `spec/V0_7_3_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`（历史）
+5. `spec/V0_7_2_PRODUCTION_RECEIPT_2026-09-02.json`（历史）
+6. `spec/INC_GEN_026_CHECKPOINT.md` 顶部 v0.7.4 候选覆盖层
+7. `spec/INC_GEN_026_ACCEPTANCE_MATRIX_2026-09-01.md` 顶部 v0.7.4 覆盖层
+8. `TASKS.md`、`上线规矩.md`、`README.md` 顶部 INC-GEN-028 区块
 
 下列旧清单只在查历史事故时按需读取，不得覆盖上面的当前路由或恢复旧授权：
 

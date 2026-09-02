@@ -1,6 +1,24 @@
 # Unboundry 绿地复刻当前任务
 
-## INC-GEN-028 旧工作流入参合同与媒体回填（v0.7.3 PRODUCTION TECHNICAL PASS / USER RECHECK）
+## INC-GEN-028 v0.7.4 工作流准入与生成状态修复（AUTHORIZED / LOCAL CANDIDATE）
+
+- [x] 精确定位生产失败请求 `4666a088-aca9-402b-ba8b-c842023470cb`：35.260秒后HTTP400，未创建 workflow run、generation task、admission、attempt 或 Provider POST，费用风险为0。
+- [x] 在生产数据临时副本定位到 plan index 9 的 Grok Video 3：同组上游图片应提供 `first-frame`，静态准入却报“当前模式至少需要1个首帧输入”。
+- [x] 修复精确动态角色等待；无关动态边不得掩盖真实 `ROLE_CONFLICT`，下游仍在运行时用上游权威结果重新解析。
+- [x] 整组准入复用同一数据库连接，避免11节点逐节点重复完整检查；真HTTP fake-Provider 证据中 create 为186ms。
+- [x] 把服务端节点 `admitted` 状态临时映射到文字/图片/视频/音频原有呼吸灯，不写回 Canvas 持久数据。
+- [x] 创建回执不确定时先保留禁止重提锁，只读找回最长90秒；仍不明确则继续保留锁并提示刷新核对，绝不第二次POST。
+- [x] m22 `45/45`、m104最终`13/13`、直接依赖10 specs `106/106`，共164项通过；TypeScript、production build、source coverage、4173隔离门通过，库存1178，未重跑formal full。
+- [x] 用户明确授权：`授权修复并上线 v0.7.4，修复后在这个 Canvas 真实执行一次。`；版本只用`v0.7.4`，不加hotfix后缀。
+- [x] 冻结完整候选并完成独立逐文件/逐hunk Review：覆盖25/25 tracked files、135/135 hunks和1/1回执，结论`P0=0/P1=0/P2=0/GO`。
+- [ ] 完成commit/push、PR/双CI、merge后annotated tag/GitHub Release、exact-tag fresh build。
+- [ ] 完成schema42 locked-exact backup/verify/fresh restore、v0.7.3→v0.7.4→v0.7.3→v0.7.4 rollback-forward及生产健康门。
+- [ ] 在 Canvas `adcb89a5-c1f4-47e4-bbbb-28fff8d81583` 的组 `group-17ee0cbc-cc81-4b35-9c5e-41040f627033` 真实点击一次；结果不明禁止重试，只核对原run/task。
+- [ ] 验证生成呼吸灯、自动结果回填、云端保存和刷新持久化；不评价生成内容审美，用户确认前保持`USER_RECHECK`。
+
+候选回执：`spec/V0_7_4_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`。当前生产仍是`v0.7.3/schema42`；发布与真实点击尚未执行。
+
+## 历史：INC-GEN-028 旧工作流入参合同与媒体回填（v0.7.3 PRODUCTION TECHNICAL PASS / USER RECHECK）
 
 - [x] 核对生产为 `v0.7.1-hotfix.1/schema42`，tag/merge=`f3b2f714…b7b3f`，current=`/opt/unboundry/releases/v0.7.1-hotfix.1-inc-gen-027-20260902`。
 - [x] 在生产 Canvas 真实验证 6 个文字 + 4 个图片节点整组成功、刷新保持且无需人工找结果。

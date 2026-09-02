@@ -1,38 +1,39 @@
 # Unboundry 当前权威状态
 
-> **2026-09-02 最新权威：生产运行 v0.7.3/schema42，保存提示修复已上线并通过零付费实页复验。** 当前生产 merge=`afc1ceaed77a44430f2a090103a38dd3014d0809`、tree=`b4de4cf8e59a3efeb87211dd704fed147b818ed6`、tag=`v0.7.3`、current=`/opt/unboundry/releases/v0.7.3-inc-gen-028-20260902`，服务 active/ready、NRestarts0。PR #149、双 CI、annotated tag/Release、exact-tag fresh build、locked-exact backup/verify/fresh restore、原子切换及成对 rollback-forward 全部通过。普通 Chrome 对指定 Canvas 两次加载既有结果后，文字工作流、3/3图片与1/1视频正常，顶部持续“已保存到云端”、console error/warn=0；没有点击生成，task/admission/attempt/workflow run/Provider POST 均零新增。
+> **2026-09-03 最新权威：生产仍运行 v0.7.3/schema42；v0.7.4 修复和上线已获授权，当前是独立Review已GO、尚未发布的本地候选。** 指定 Canvas `adcb89a5-c1f4-47e4-bbbb-28fff8d81583` / group `group-17ee0cbc-cc81-4b35-9c5e-41040f627033` 的失败请求 `4666a088-aca9-402b-ba8b-c842023470cb` 在35.260秒后HTTP400；没有创建run/task/admission/attempt，也没有Provider POST或费用。直接根因是动态Grok Video首帧虽然来自同组上游图片，静态准入却把角色最低数误判为永久缺失；逐节点重复打开并检查数据库又令响应超过浏览器30秒上限。服务端节点状态没有映射到原呼吸灯，是呼吸灯消失的独立UI原因。
 
-**生产是 v0.7.3 / schema42；v0.7.3 的版本和发布授权已执行并消费，v0.7.2 的真实工作流结果继续作为业务证据。** 当前严格为 `PRODUCTION_V0_7_3_TECHNICAL_PASS / ZERO_NEW_PROVIDER_POST / USER_RECHECK`；不得覆盖 tag、重复真实生成或把 agent 技术验收冒充用户确认。生产回执为 `spec/V0_7_3_PRODUCTION_RECEIPT_2026-09-02.json`。版本命名只按普通 patch 递增，下一版从`v0.7.4`开始，不加`hotfix`后缀。
+**生产是 v0.7.3 / schema42；v0.7.4候选已完成代码修复、风险定向测试和独立终审，但尚未提交、发布或生产执行。** 修复包括：动态角色只在精确kind+role可由本工作流满足时等待；整组准入复用同一数据库连接；服务端`admitted`节点临时驱动文字/图片/视频/音频原呼吸灯；创建回执不确定时先锁定、最多90秒只读找回，仍不明确则保留锁且禁止第二次POST。m22 `45/45`、m104最终`13/13`、其他直接依赖`106/106`，合计164项通过；真HTTP fake-Provider动态首帧create为186ms，1 run/2 tasks/2预期POST后成功。独立Review覆盖25/25 tracked files、135/135 hunks和1/1回执，结论`P0=0/P1=0/P2=0/GO`；formal full未重跑。
+
+**最新授权**：`授权修复并上线 v0.7.4，修复后在这个 Canvas 真实执行一次。` 只允许普通patch `v0.7.4`；发布技术门全通过后，精确组只点击一次。结果不明只核对原run/task，绝不重发；验收网站工作流、自动回填、保存和刷新，不评价生成内容审美。候选回执为 `spec/V0_7_4_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`，当前生产基线回执为 `spec/V0_7_3_PRODUCTION_RECEIPT_2026-09-02.json`。
 
 > **以下 INC-GEN-025 顶部记录是历史声明快照**：它记录当时的 Goal、测试、Review 和发布前状态；v0.6.70 后续已经发布，最终审计推翻了“可直接继续 R8/真实点击”的当前有效性。其历史授权已消费，不得恢复。
 
 > **以下所有旧 INC 区块均为历史账本**：其中出现的“当前”“等待发布”“授权尚未消费”等文字只代表当时时点，不能覆盖本页第一段，也不能恢复任何旧授权。
 
-更新日期：2026-09-02
+更新日期：2026-09-03
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.7.3**
-本地候选代码版本：**v0.7.3**
-当前本地候选说明：`v0.7.3 已发布；仅有发布回执文档收口`
+当前代码包版本：**v0.7.4**
+本地候选代码版本：**v0.7.4**
+当前本地候选说明：`v0.7.4 工作流准入、创建时延、呼吸灯和不确定回执修复；独立Review已GO，待发布`
 当前生产部署版本：**v0.7.3**
 本地候选schema：**42**
 当前治理标记：`CURRENT_V0_7_3_USER_RECHECK`
-当前发布执行标记：`V0_7_3_RELEASED_AUTHORIZATION_CONSUMED`
-当前本地Goal标记：`NO_ACTIVE_GOAL / V0_7_3_RELEASE_AUTHORIZATION_CONSUMED`
-当前计划标记：`V0_7_3_PRODUCTION_TECHNICAL_PASS / USER_RECHECK`
+当前发布执行标记：`V0_7_4_RELEASE_AUTHORIZED_NOT_CONSUMED`
+当前本地Goal标记：`NO_ACTIVE_GOAL / LATEST_USER_AUTHORIZATION_CONTROLS`
+当前计划标记：`V0_7_4_LOCAL_FIX_PASS / INDEPENDENT_REVIEW_GO / PRODUCTION_NOT_RUN`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`V0_7_3_RELEASED / ZERO_NEW_PROVIDER_POST / USER_RECHECK`
+当前发布门：`V0_7_4_AUTHORIZED / REVIEW_AND_RELEASE_NOT_RUN / ONE_REAL_GROUP_EXECUTION_AFTER_HEALTHY_DEPLOY`
 
 ## INC-GEN-028 当前读取顺序
 
 1. 本文件顶部当前区块。
-2. `spec/V0_7_3_PRODUCTION_RECEIPT_2026-09-02.json`。
-3. `spec/V0_7_3_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`。
-4. `spec/V0_7_2_PRODUCTION_RECEIPT_2026-09-02.json`（发布前生产基线）。
-5. `spec/V0_7_2_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`（历史）。
-6. `spec/V0_7_1_HOTFIX_1_PRODUCTION_RECEIPT_2026-09-02.json`（历史）。
-7. `spec/INC_GEN_026_CHECKPOINT.md` 顶部 v0.7.3 覆盖层。
-8. `spec/INC_GEN_026_ACCEPTANCE_MATRIX_2026-09-01.md` 顶部覆盖层及 IG26-099～121。
-9. `TASKS.md`、`上线规矩.md`、`README.md` 顶部 INC-GEN-028 区块。
+2. `spec/V0_7_4_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`。
+3. `spec/V0_7_3_PRODUCTION_RECEIPT_2026-09-02.json`（当前生产基线）。
+4. `spec/V0_7_3_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`（历史）。
+5. `spec/V0_7_2_PRODUCTION_RECEIPT_2026-09-02.json`（历史）。
+6. `spec/INC_GEN_026_CHECKPOINT.md` 顶部 v0.7.4 候选覆盖层。
+7. `spec/INC_GEN_026_ACCEPTANCE_MATRIX_2026-09-01.md` 顶部 v0.7.4 覆盖层。
+8. `TASKS.md`、`上线规矩.md`、`README.md` 顶部 INC-GEN-028 区块。
 
 旧 INC-GEN-026 Plan、Goal、本地 receipt 与 v0.7.0 production receipt 都是历史资料，只能查证，不得作为 INC-GEN-028 的候选、Review 或授权依据。
 

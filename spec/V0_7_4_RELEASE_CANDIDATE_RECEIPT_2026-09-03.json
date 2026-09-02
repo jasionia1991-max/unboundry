@@ -1,0 +1,146 @@
+{
+  "version": "0.7.4",
+  "packageVersion": "0.7.4",
+  "schemaVersion": 42,
+  "createdAt": "2026-09-02T17:16:59Z",
+  "updatedAt": "2026-09-02T18:13:55Z",
+  "status": "LOCAL_RELEASE_CANDIDATE_REVIEW_GO",
+  "source": {
+    "baselineCommit": "2ab56cb6fa98108a3e861b762aaab400a3d559a8",
+    "baselineTree": "12451397342101704e8248724e4f5e2e35a0deab",
+    "originMainAtAuthorization": "2ab56cb6fa98108a3e861b762aaab400a3d559a8",
+    "branch": "codex/v0.7.4-workflow-admission-ui",
+    "candidateCommit": null,
+    "candidateTree": null,
+    "mergeCommit": null,
+    "mergeTree": null,
+    "tag": null,
+    "annotatedTagObject": null
+  },
+  "authorization": {
+    "text": "授权修复并上线 v0.7.4，修复后在这个 Canvas 真实执行一次。",
+    "versionSelected": true,
+    "releaseAuthorized": true,
+    "authorizationConsumed": false,
+    "versionConvention": "Ordinary patch release v0.7.4; no hotfix suffix.",
+    "realCanvasExecutionAuthorized": true,
+    "realCanvasExecutionLimit": 1,
+    "duplicateExecutionOnUnknownOutcomeAuthorized": false,
+    "qualityJudgementInScope": false
+  },
+  "productionBeforeRelease": {
+    "version": "0.7.3",
+    "packageVersion": "0.7.3",
+    "schemaVersion": 42,
+    "current": "/opt/unboundry/releases/v0.7.3-inc-gen-028-20260902",
+    "service": "active",
+    "ready": true,
+    "nRestarts": 0,
+    "failedRequestId": "4666a088-aca9-402b-ba8b-c842023470cb",
+    "failedRequestStatus": 400,
+    "failedRequestDurationMs": 35260,
+    "failedRequestCreatedWorkflowRun": false,
+    "failedRequestCreatedGenerationTask": false,
+    "failedRequestReachedProvider": false,
+    "failedRequestBillingRisk": false
+  },
+  "incident": {
+    "canvasId": "adcb89a5-c1f4-47e4-bbbb-28fff8d81583",
+    "groupId": "group-17ee0cbc-cc81-4b35-9c5e-41040f627033",
+    "executableNodes": 11,
+    "graphNodes": 13,
+    "graphEdges": 24,
+    "graphRevision": 14,
+    "failedPlanIndex": 9,
+    "failedNodeId": "video-da8c8c9f-66b0-4a1b-8511-277081e16828",
+    "failedModel": "Grok Video 3",
+    "error": "当前模式至少需要1个首帧输入",
+    "rootCause": [
+      "Static workflow admission treated an exact first-frame role supplied by an upstream node in the same workflow as permanently missing.",
+      "Workflow creation repeatedly opened and fully inspected the production database for each node, stretching a deterministic 400 past the browser's 30-second request timeout.",
+      "Server workflow node activity was not projected into the existing transient Canvas generation flags, so admitted nodes had no breathing indicator.",
+      "An uncertain create response did not set the no-resubmit reconciliation lock before an abort path."
+    ]
+  },
+  "candidateScope": {
+    "fix": [
+      "Defer a role minimum only when the exact kind and role are ready or will be produced by a dependency in this same workflow; re-resolve authoritative inputs before downstream admission.",
+      "Reuse one database connection through graph, model-contract and strict-preflight reads before the final workflow transaction.",
+      "Map only server node state admitted to transient text/image/video/audio generation flags without persisting those flags into Canvas data.",
+      "Set the uncertain-create reconciliation lock before read-only reattach, cap reattach at 90 seconds, retain the lock when still unknown, and never repeat the POST."
+    ],
+    "schemaChange": false,
+    "providerContractChange": false,
+    "protectedFilesTouched": false
+  },
+  "verification": {
+    "safeM22GroupExecution": "45/45 PASS; the real browser route proves pending/admitting are dark, admitted breathes, refresh preserves activity, terminal clears it, one lost create response creates one server run only, and a retired current-graph checkpoint creates zero generation-task or Provider POSTs",
+    "safeM104WorkflowReliability": "13/13 PASS after final reconciliation-deadline change",
+    "directDependentSafeSpecs": "106/106 PASS across m103, text/image/video/audio nodes, video inputs, local image/video/audio uploads, and m81 version hardening",
+    "directBehaviorTests": 164,
+    "governanceM38": "two retained 17/18 documentation-marker failures were corrected in sequence; final targeted run 18/18 PASS",
+    "totalDistinctTargetedIncludingGovernance": 182,
+    "dynamicFirstFrameHttpProof": "1 run, 2 tasks, 2 attempts, exactly 2 expected fake Provider POSTs, first-frame role preserved, terminal success; create admission 186 ms",
+    "typescript": "PASS via safe-runner preflight",
+    "productionBuild": "PASS via safe-runner preflight",
+    "sourceCoverage": "PASS",
+    "listener4173": "UNCHANGED",
+    "discoveredTestInventory": 1178,
+    "formalFullRerun": false,
+    "realProviderPostsBeforeDeploy": 0
+  },
+  "candidateManifest": {
+    "trackedChangedFiles": 25,
+    "trackedHunks": 135,
+    "untrackedReceipts": 1,
+    "totalFiles": 26,
+    "trackedBinaryDiffSha256": "6cc12be754e80ac533196f75b7ee902a4477af6beecc918d968df9619ca24d0b"
+  },
+  "review": {
+    "initial": {
+      "coverage": "25/25 tracked files, 113/113 then-current hunks, and 1/1 candidate receipt",
+      "result": "NO_GO",
+      "findings": [
+        "P0 alleged that a refresh followed by another manual click after the original run had already reached a confirmed terminal state was a duplicate submission.",
+        "P1 found that a list GET started just before 90 seconds could outlive the claimed reconciliation deadline.",
+        "P2 found that admitted-node breathing had source/helper proof but no real browser-state proof."
+      ]
+    },
+    "remediation": {
+      "p0Evidence": "No automatic create POST exists on refresh; active runs are reattached, concurrent creates coalesce again under BEGIN IMMEDIATE, terminal outcome plus a later manual click is new user intent, and the retired browser checkpoint branch returns before any scheduling. The m22 browser case confirms zero generation-task and Provider POSTs for that retired checkpoint.",
+      "p1": "A single AbortController now owns the whole reconciliation window, aborts an in-flight GET/body at the deadline, and clamps all callers to at most 90000 ms; m104 proves a deliberately hung read is cut off by the overall deadline.",
+      "p2": "m22 now drives real browser server-node states pending to admitting to admitted to terminal, including refresh, and observes the actual Text-node breathing DOM.",
+      "retainedFailedTestEvidence": "One intermediate m22 run was 44/45 because the new safety test incorrectly expected the retired checkpoint to submit after an explicit continue event; inspection confirmed the unconditional retired-checkpoint guard prevents every such submission. The assertion was corrected without a product-code change and the smallest affected m22 rerun passed 45/45."
+    },
+    "releaseCandidate": "25/25 tracked files, 135/135 hunks, 1/1 candidate receipt; P0=0/P1=0/P2=0/GO"
+  },
+  "release": {
+    "pullRequest": "NOT_RUN",
+    "branchCi": "NOT_RUN",
+    "mainCi": "NOT_RUN",
+    "annotatedTag": "NOT_RUN",
+    "githubRelease": "NOT_RUN",
+    "exactTagFreshBuild": "NOT_RUN",
+    "productionBackup": "NOT_RUN",
+    "productionSwitch": "NOT_RUN",
+    "rollbackForward": "NOT_RUN",
+    "productionReceipt": "NOT_RUN"
+  },
+  "postDeployVerification": {
+    "canvasId": "adcb89a5-c1f4-47e4-bbbb-28fff8d81583",
+    "groupId": "group-17ee0cbc-cc81-4b35-9c5e-41040f627033",
+    "mode": "ONE_REAL_GROUP_EXECUTION_AFTER_V0_7_4_IS_LIVE",
+    "status": "NOT_RUN_UNTIL_V0_7_4_IS_LIVE_AND_HEALTHY",
+    "maxGroupExecuteClicks": 1,
+    "retryOnUnknownOutcome": false,
+    "qualityJudgementInScope": false,
+    "requiredEvidence": [
+      "exact workflow run and node identities",
+      "admission and Provider attempt counts",
+      "visible admitted-node breathing activity",
+      "automatic result projection and cloud save",
+      "refresh persistence",
+      "terminal active and unknown counts"
+    ]
+  }
+}

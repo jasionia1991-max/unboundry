@@ -1,15 +1,18 @@
 # Production backup contracts
 
 This directory contains source candidates. Production currently runs
-`v0.7.1-hotfix.1/schema42`; that release authorization has been consumed. The
-INC-GEN-028 workflow-input and legacy-metadata fix is now the authorized
-`v0.7.2` release candidate. Its version gates, frozen manifest and independent
-Review are GO; backup, install, switch and rollback-forward now follow only
-after PR/head and main Quality plus the immutable tag and Release are complete.
-No real Seedance request may run before v0.7.2 is live and technically healthy;
-the authorized post-deploy check is one request with no retry on an unknown
-outcome. Candidate evidence is recorded in
-`spec/V0_7_2_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`.
+`v0.7.3/schema42`; that release authorization has been consumed. The current
+authorized candidate is ordinary patch `v0.7.4`, covering exact dynamic-role
+workflow admission, admission database reuse, transient server-node activity
+projection, and no-resubmit reconciliation after an uncertain create response.
+Backup, install, switch and rollback-forward may run only after the frozen
+candidate Review, PR/head and main Quality, immutable tag, Release, and exact-tag
+fresh build are complete. After v0.7.4 is live and technically healthy, the
+authorized post-deploy check is exactly one execution of Canvas
+`adcb89a5-c1f4-47e4-bbbb-28fff8d81583`, group
+`group-17ee0cbc-cc81-4b35-9c5e-41040f627033`; an unknown outcome permits only
+read-only reconciliation, never a second POST. Candidate evidence is recorded
+in `spec/V0_7_4_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`.
 
 ## Current schema42 candidate
 

@@ -120,8 +120,52 @@ export type NodeInputProblem = {
     | "ROLE_CONFLICT"
     | "ROLE_UNSUPPORTED";
   edgeId?: string;
+  kind?: NodeInputKind;
   message: string;
+  minimumCount?: number;
+  role?: NodeInputRole;
 };
+
+/**
+ * A role minimum may be deferred only when the exact missing role will be
+ * produced by an earlier node in the same workflow. Ready external inputs
+ * still count, while an unrelated dynamic edge must not mask a real role
+ * contract failure.
+ */
+export function workflowRoleMinimumCanBeSatisfied(input: {
+  dynamicNodeIds: ReadonlySet<string>;
+  inputs: readonly Readonly<{
+    kind: NodeInputKind;
+    role?: NodeInputRole;
+    sourceNodeId: string;
+    state: NodeInputState;
+  }>[];
+  problem: Readonly<{
+    code: string;
+    edgeId?: string;
+    kind?: NodeInputKind;
+    minimumCount?: number;
+    role?: NodeInputRole;
+  }>;
+}) {
+  const { problem } = input;
+  if (
+    problem.code !== "ROLE_CONFLICT" || problem.edgeId !== undefined ||
+    problem.kind === undefined || problem.role === undefined ||
+    !Number.isSafeInteger(problem.minimumCount) ||
+    Number(problem.minimumCount) < 1
+  ) return false;
+  const available = input.inputs.filter((candidate) =>
+    candidate.kind === problem.kind &&
+    candidate.role === problem.role &&
+    candidate.state !== "missing" &&
+    (
+      candidate.state === "ready" ||
+      input.dynamicNodeIds.has(candidate.sourceNodeId)
+    )
+  ).length;
+  return available >= Number(problem.minimumCount);
+}
 
 export type NodeInputPreflight = {
   canSubmit: boolean;
@@ -806,7 +850,10 @@ export function resolveNodeInputs(input: {
     if (readyCount < limit.minCount) {
       problems.push({
         code: "ROLE_CONFLICT",
+        kind: limit.kind,
         message: `当前模式至少需要${limit.minCount}个${nodeInputRoleName(limit.role)}输入`,
+        minimumCount: limit.minCount,
+        role: limit.role as NodeInputRole,
       });
     }
   }

@@ -61,6 +61,7 @@ import { registeredModelExecution } from "../server/modelExecutionRegistry";
 import { knownModelParameterSchema } from "../types/modelParameters";
 import type { ModelReleaseRevision } from "../types/modelReleaseRevisions";
 import {
+  activeServerWorkflowNodeIds,
   createServerWorkflowRun,
   getServerWorkflowRun,
   listServerWorkflowRuns,
@@ -667,8 +668,34 @@ test("INC-GEN-026 browser workflow client validates exact identities and confirm
       new DOMException("status timeout", "TimeoutError"),
       jsonResponse(run("running", { state: "failed" })),
     );
-    await expect(waitForServerWorkflowRun("run-a", undefined, 5_000))
+    const observedStates: string[] = [];
+    await expect(waitForServerWorkflowRun(
+      "run-a",
+      undefined,
+      5_000,
+      (update) => observedStates.push(update.state),
+    ))
       .resolves.toMatchObject({ id: "run-a", state: "failed" });
+    expect(observedStates).toEqual(["failed"]);
+    const activeRun = parseServerWorkflowRunUpdatedEventDetail({
+      accountId: "account-a",
+      canvasId: "canvas-a",
+      fixtureScopeId: "",
+      run: run("running", {
+        nodes: [{
+          id: "node-a",
+          kind: "text",
+          projectionState: "pending",
+          state: "admitted",
+        }, {
+          id: "node-b",
+          kind: "image",
+          projectionState: "pending",
+          state: "pending",
+        }],
+      }),
+    }).run;
+    expect(activeServerWorkflowNodeIds(activeRun)).toEqual(new Set(["node-a"]));
     expect(parseServerWorkflowRunUpdatedEventDetail({
       accountId: "account-a",
       canvasId: "canvas-a",
@@ -721,6 +748,34 @@ test("INC-GEN-026 browser workflow client validates exact identities and confirm
       pollIntervalMs: 1,
       startedAt: Date.parse("2026-09-01T00:00:00.000Z"),
     })).rejects.toThrow("list response identity");
+    const fetchBeforeDeadline = globalThis.fetch;
+    let deadlineReads = 0;
+    try {
+      globalThis.fetch = ((_input, init) => {
+        deadlineReads += 1;
+        return new Promise<Response>((_resolve, reject) => {
+          const signal = init?.signal;
+          const rejectForAbort = () => reject(
+            signal?.reason ?? new DOMException("Aborted", "AbortError"),
+          );
+          if (signal?.aborted) rejectForAbort();
+          else signal?.addEventListener("abort", rejectForAbort, { once: true });
+        });
+      }) as typeof fetch;
+      const deadlineStartedAt = Date.now();
+      await expect(reattachSubmittedServerWorkflowRun({
+        canvasId: "canvas-a",
+        clientSemanticFingerprint: "wf1-client-a",
+        deadlineMs: 10,
+        groupId: "group-a",
+        pollIntervalMs: 1,
+        startedAt: Date.parse("2026-09-01T00:00:00.000Z"),
+      })).rejects.toThrow("服务端接收结果仍不明确");
+      expect(Date.now() - deadlineStartedAt).toBeLessThan(1_000);
+      expect(deadlineReads).toBe(1);
+    } finally {
+      globalThis.fetch = fetchBeforeDeadline;
+    }
     expect(workflowRunCreateOutcomeIsUncertain(
       new TypeError("lost create response"),
     )).toBe(true);
@@ -1228,6 +1283,58 @@ async function createPublishedTtImageModel() {
     body: JSON.stringify({ isDefault: true, status: "published" }),
     method: "PATCH",
   }), "TT Image model publish");
+  const database = openAppDatabase(String(process.env.UNBOUNDRY_DATA_DIR));
+  try {
+    bootstrapPublishedModelContracts(database, "__test__");
+  } finally {
+    database.close();
+  }
+  return model.model.id;
+}
+
+async function createPublishedGrokVideoModel(providerProfileId: string) {
+  const modelResponse = await expectOk(await request("/api/admin/models", {
+    body: JSON.stringify({
+      capability: "video",
+      displayName: "Grok Video 3 dynamic first-frame",
+      isDefault: false,
+      maxCostMicrounits: 0,
+      providerModelId: "grok-video-3",
+      providerProfileId,
+      providerProtocol: "media-generate",
+      sortOrder: 1,
+      status: "draft",
+    }),
+    method: "POST",
+  }), "Grok Video model");
+  const model = (await modelResponse.json()) as { model: { id: string } };
+  const contractResponse = await expectOk(await request(
+    `/api/admin/models/${model.model.id}/contract`,
+  ), "Grok Video model contract");
+  const contract = (await contractResponse.json()) as {
+    suggestedDocument: Record<string, unknown>;
+  };
+  await expectOk(await request(
+    `/api/admin/models/${model.model.id}/contract/draft`,
+    {
+      body: JSON.stringify({
+        document: contract.suggestedDocument,
+        expectedDraftVersion: 0,
+      }),
+      method: "POST",
+    },
+  ), "Grok Video model contract draft");
+  await expectOk(await request(
+    `/api/admin/models/${model.model.id}/contract/publish`,
+    {
+      body: JSON.stringify({ expectedDraftVersion: 1 }),
+      method: "POST",
+    },
+  ), "Grok Video model contract publish");
+  await expectOk(await request(`/api/admin/models/${model.model.id}`, {
+    body: JSON.stringify({ isDefault: true, status: "published" }),
+    method: "PATCH",
+  }), "Grok Video model publish");
   const database = openAppDatabase(String(process.env.UNBOUNDRY_DATA_DIR));
   try {
     bootstrapPublishedModelContracts(database, "__test__");
@@ -2134,6 +2241,295 @@ test("v0.7.1 TT Image workflow submits once, polls the official route and surviv
       taskState: "success",
       tasks: 1,
       terminalTaskId: expect.any(String),
+    });
+  } finally {
+    await app?.close();
+    await close(provider);
+    globalThis.fetch = originalFetch;
+    if (previousRelayMediaFetcher === undefined) {
+      delete process.env.UNBOUNDRY_TEST_RELAY_MEDIA_FETCHER;
+    } else {
+      process.env.UNBOUNDRY_TEST_RELAY_MEDIA_FETCHER = previousRelayMediaFetcher;
+    }
+    if (previousBypass === undefined) {
+      delete process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+    } else {
+      process.env.UNBOUNDRY_TEST_AUTH_BYPASS = previousBypass;
+    }
+  }
+});
+
+test("v0.7.4 dynamic image output satisfies Grok Video first-frame admission", async () => {
+  const previousBypass = process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+  const previousRelayMediaFetcher =
+    process.env.UNBOUNDRY_TEST_RELAY_MEDIA_FETCHER;
+  const originalFetch = globalThis.fetch;
+  const providerRequests: Array<{
+    body: string;
+    method: string;
+    originalUrl: string;
+  }> = [];
+  let app: ViteDevServer | undefined;
+  let provider: Server | undefined;
+  try {
+    const resultVideo = await readFile(new URL(
+      "../client/public/fixtures/video-success.mp4",
+      import.meta.url,
+    ));
+    process.env.UNBOUNDRY_TEST_AUTH_BYPASS = "1";
+    process.env.UNBOUNDRY_TEST_RELAY_MEDIA_FETCHER = "1";
+    provider = createHttpServer(async (incoming, response) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of incoming) chunks.push(Buffer.from(chunk));
+      const url = new URL(incoming.url ?? "/", providerOrigin);
+      response.setHeader("Content-Type", "application/json");
+      if (incoming.method === "GET" && url.pathname === "/v1/skills/models") {
+        response.statusCode = 200;
+        response.end(JSON.stringify({
+          models: [{
+            display_name: "TT Image 2",
+            name: "tt-image-2",
+            output_modalities: ["image"],
+            protocols: ["media-generate"],
+            type: "图片",
+          }, {
+            display_name: "Grok Video 3",
+            name: "grok-video-3",
+            output_modalities: ["video"],
+            protocols: ["media-generate"],
+            type: "视频",
+          }],
+          total: 2,
+          type: "list",
+        }));
+        return;
+      }
+      if (incoming.method === "GET" && url.pathname === "/v1/models") {
+        response.statusCode = 200;
+        response.end(JSON.stringify({
+          data: [{ id: "tt-image-2" }, { id: "grok-video-3" }],
+        }));
+        return;
+      }
+      if (incoming.method === "POST" && url.pathname === "/v1/media/generate") {
+        const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
+          model?: string;
+        };
+        response.statusCode = 200;
+        response.end(JSON.stringify({
+          task_id: body.model === "grok-video-3"
+            ? "grok_video_dynamic_first_frame_once"
+            : "tt_image_dynamic_first_frame_once",
+        }));
+        return;
+      }
+      if (incoming.method === "GET" && url.pathname === "/v1/skills/task-status") {
+        response.statusCode = 404;
+        response.end(JSON.stringify({ error: "official route required" }));
+        return;
+      }
+      if (incoming.method === "GET" && url.pathname === "/v1/media/status") {
+        const video = url.searchParams.get("task_id") ===
+          "grok_video_dynamic_first_frame_once";
+        response.statusCode = 200;
+        response.end(JSON.stringify({
+          is_final: true,
+          result_type: video ? "video" : "image",
+          result_url: video
+            ? "https://api.lk888.test/v1/results/dynamic-first-frame.mp4"
+            : "https://api.lk888.test/v1/results/dynamic-first-frame.png",
+          state: "success",
+        }));
+        return;
+      }
+      if (incoming.method === "GET" && url.pathname === "/v1/results/dynamic-first-frame.png") {
+        response.statusCode = 200;
+        response.setHeader("Content-Length", String(tinyPng.byteLength));
+        response.setHeader("Content-Type", "image/png");
+        response.end(tinyPng);
+        return;
+      }
+      if (incoming.method === "GET" && url.pathname === "/v1/results/dynamic-first-frame.mp4") {
+        response.statusCode = 200;
+        response.setHeader("Content-Length", String(resultVideo.byteLength));
+        response.setHeader("Content-Type", "video/mp4");
+        response.end(resultVideo);
+        return;
+      }
+      response.statusCode = 404;
+      response.end(JSON.stringify({ error: "unknown safe-test route" }));
+    });
+    await listen(provider, providerPort);
+    globalThis.fetch = (async (input, init) => {
+      const originalUrl = input instanceof Request ? input.url : String(input);
+      const url = new URL(originalUrl);
+      if (url.hostname === "api.lk888.test") {
+        providerRequests.push({
+          body: typeof init?.body === "string" ? init.body : "",
+          method: input instanceof Request ? input.method : init?.method ?? "GET",
+          originalUrl,
+        });
+        return originalFetch(
+          new URL(url.pathname + url.search, providerOrigin),
+          init,
+        );
+      }
+      return originalFetch(input, init);
+    }) as typeof fetch;
+
+    app = await createViteServer({
+      configFile: "vite.config.ts",
+      logLevel: "silent",
+      server: {
+        host: "127.0.0.1",
+        hmr: false,
+        port: appPort,
+        strictPort: true,
+        ws: false,
+      },
+    });
+    await app.listen();
+    await waitForReady();
+    await expectOk(await request("/api/admin/generation-safety", {
+      body: JSON.stringify(safetySettings),
+      method: "PUT",
+    }), "generation safety");
+    const imageModelId = await createPublishedTtImageModel();
+    const fixtureDatabase = openAppDatabase(
+      String(process.env.UNBOUNDRY_DATA_DIR),
+    );
+    const providerRow = fixtureDatabase.prepare(`
+      SELECT provider_profile_id AS providerProfileId
+      FROM model_profiles WHERE id = ?
+    `).get(imageModelId) as { providerProfileId: string };
+    fixtureDatabase.close();
+    const videoModelId = await createPublishedGrokVideoModel(
+      providerRow.providerProfileId,
+    );
+    const canvasId = "inc-gen-028-dynamic-first-frame";
+    const groupId = "inc-gen-028-dynamic-first-frame-group";
+    const imageNodeId = "inc-gen-028-dynamic-first-frame-image";
+    const videoNodeId = "inc-gen-028-dynamic-first-frame-video";
+    const graph = {
+      edges: [{
+        data: { inputOrder: 1, inputRole: "first-frame" },
+        id: "inc-gen-028-dynamic-first-frame-edge",
+        source: imageNodeId,
+        target: videoNodeId,
+      }],
+      nodes: [{
+        data: { title: "Dynamic first-frame group" },
+        id: groupId,
+        type: "group",
+      }, {
+        data: {
+          imageModelId,
+          imageParameters: {
+            aspectRatio: "9:16",
+            inputMode: "text",
+            outputCount: 1,
+            quality: "2k",
+          },
+          imagePrompt: "Create the first frame",
+          imagePromptReady: true,
+          title: "Generated first frame",
+        },
+        id: imageNodeId,
+        parentId: groupId,
+        type: "image",
+      }, {
+        data: {
+          title: "Grok video from dynamic first frame",
+          videoModelId,
+          videoParameters: {
+            aspectRatio: "9:16",
+            duration: 6,
+            generateAudio: true,
+            inputMode: "image",
+            outputCount: 1,
+            resolution: "720p",
+          },
+          videoPrompt: "Animate the generated first frame",
+          videoPromptReady: true,
+        },
+        id: videoNodeId,
+        parentId: groupId,
+        type: "video",
+      }],
+    };
+    await expectOk(await request(`/api/canvas/${canvasId}`, {
+      body: JSON.stringify({
+        ...graph,
+        revision: 0,
+        viewport: { x: 0, y: 0, zoom: 1 },
+      }),
+      method: "PUT",
+    }), "dynamic first-frame canvas");
+    const semantic = compileFrozenWorkflowSemanticPlan({ ...graph, groupId });
+    const createStartedAt = Date.now();
+    const createResponse = await expectOk(await request("/api/workflow-runs", {
+      body: JSON.stringify({
+        canvasId,
+        clientSemanticFingerprint: semantic.semanticFingerprint,
+        groupId,
+      }),
+      method: "POST",
+    }), "dynamic first-frame workflow create");
+    expect(createResponse.status).toBe(202);
+    expect(Date.now() - createStartedAt).toBeLessThan(15_000);
+    const created = await createResponse.json() as { id: string };
+    const terminal = await waitForTerminalRun(created.id, 800);
+    const evidenceDatabase = new DatabaseSync(
+      `${process.env.UNBOUNDRY_DATA_DIR}/unboundry.sqlite`,
+      { readOnly: true },
+    );
+    const evidence = evidenceDatabase.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM generation_tasks WHERE canvas_id = ?) AS tasks,
+        (SELECT COUNT(*) FROM generation_provider_attempts AS attempt
+          JOIN generation_tasks AS task ON task.id = attempt.task_id
+          WHERE task.canvas_id = ?) AS attempts,
+        (SELECT COUNT(*) FROM workflow_runs WHERE canvas_id = ?) AS runs
+    `).get(canvasId, canvasId, canvasId) as {
+      attempts: number;
+      runs: number;
+      tasks: number;
+    };
+    const videoTask = evidenceDatabase.prepare(`
+      SELECT parameters FROM generation_tasks
+      WHERE canvas_id = ? AND node_id = ?
+    `).get(canvasId, videoNodeId) as { parameters: string };
+    evidenceDatabase.close();
+    const videoParameters = JSON.parse(videoTask.parameters) as {
+      inputs?: Array<{ kind: string; role: string }>;
+    };
+    const mediaPosts = providerRequests.filter(({ method, originalUrl }) =>
+      method === "POST" &&
+      new URL(originalUrl).pathname === "/v1/media/generate"
+    );
+    expect({
+      attempts: evidence.attempts,
+      providerPosts: mediaPosts.length,
+      runs: evidence.runs,
+      state: terminal.state,
+      tasks: evidence.tasks,
+      videoFirstFrameRole: videoParameters.inputs?.find(({ kind }) =>
+        kind === "image"
+      )?.role,
+    }).toEqual({
+      attempts: 2,
+      providerPosts: 2,
+      runs: 1,
+      state: "success",
+      tasks: 2,
+      videoFirstFrameRole: "first-frame",
+    });
+    const videoPost = mediaPosts.find(({ body }) =>
+      JSON.parse(body).model === "grok-video-3"
+    );
+    expect(JSON.parse(videoPost!.body)).toMatchObject({
+      model: "grok-video-3",
+      params: { images: [expect.any(String)] },
     });
   } finally {
     await app?.close();

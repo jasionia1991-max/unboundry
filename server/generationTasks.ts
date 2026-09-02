@@ -1444,8 +1444,9 @@ type GenerationModelRow = {
 function activeModelContractHealth(
   kind: NodeInputKind,
   model: GenerationModelRow,
+  borrowedDatabase?: DatabaseSync,
 ) {
-  const database = openAppDatabase();
+  const database = borrowedDatabase ?? openAppDatabase();
   try {
     return assertActiveModelContractHealth({
       capability: kind,
@@ -1459,7 +1460,7 @@ function activeModelContractHealth(
       store: database,
     });
   } finally {
-    database.close();
+    if (!borrowedDatabase) database.close();
   }
 }
 
@@ -1799,8 +1800,13 @@ function strictImageGenerationTool(input: {
   };
 }
 
-function resolveModel(kind: NodeInputKind, modelId: string | undefined, ownerId: string) {
-  const database = openAppDatabase();
+function resolveModel(
+  kind: NodeInputKind,
+  modelId: string | undefined,
+  ownerId: string,
+  borrowedDatabase?: DatabaseSync,
+) {
+  const database = borrowedDatabase ?? openAppDatabase();
   try {
     return database.prepare(`
       SELECT
@@ -1884,13 +1890,14 @@ function resolveModel(kind: NodeInputKind, modelId: string | undefined, ownerId:
       | GenerationModelRow
       | undefined;
   } finally {
-    database.close();
+    if (!borrowedDatabase) database.close();
   }
 }
 
 function persistedSubmissionInputs(input: {
   body: NodeInputGenerationRequest;
   bypass: boolean;
+  database?: DatabaseSync;
   mediaInputPolicy?: "seedance-2";
   modelSchema: ModelParameterSchema;
   modelReleaseRevision?: string;
@@ -1901,6 +1908,7 @@ function persistedSubmissionInputs(input: {
   const resolved = resolvePersistedNodeInputs({
     bypass: input.bypass,
     canvasId: String(input.body.canvasId ?? ""),
+    database: input.database,
     expectedRevision: input.body.canvasRevision,
     mediaInputPolicy: input.mediaInputPolicy,
     modelSchema: input.modelSchema,
@@ -2143,6 +2151,7 @@ function missingModelMessage(kind: NodeInputKind) {
 function strictGenerationPreflight(input: {
   body: NodeInputGenerationRequest;
   bypass: boolean;
+  database?: DatabaseSync;
   model: GenerationModelRow;
   ownerId: string;
   requireFreshRevision: boolean;
@@ -2151,6 +2160,7 @@ function strictGenerationPreflight(input: {
   const activeModelReleaseRevision = activeModelContractHealth(
     input.targetKind,
     input.model,
+    input.database,
   );
   const schema = generationModelSchema(input.targetKind, input.model);
   const submittedParameters = { ...(input.body.parameters ?? {}) };
@@ -2159,6 +2169,7 @@ function strictGenerationPreflight(input: {
   const persisted = persistedSubmissionInputs({
     body: input.body,
     bypass: input.bypass,
+    database: input.database,
     mediaInputPolicy: modelMediaInputPolicy({
       capability: input.targetKind,
       providerDriver: input.model.provider_driver,

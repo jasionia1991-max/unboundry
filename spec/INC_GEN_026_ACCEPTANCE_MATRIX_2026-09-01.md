@@ -1,6 +1,6 @@
 # INC-GEN-026 一次点击工作流可靠生成验收矩阵
 
-状态：`PRODUCTION_V0_7_3_TECHNICAL_PASS / ZERO_NEW_PROVIDER_POST / USER_RECHECK`
+状态：`V0_7_4_LOCAL_FIX_PASS / INDEPENDENT_REVIEW_GO / RELEASE_AND_REAL_CANVAS_NOT_RUN`
 
 本矩阵与 `spec/INC_GEN_026_ONE_CLICK_WORKFLOW_RELIABILITY_FINAL_IMPLEMENTATION_PLAN_2026-09-01.md` 一一对应。
 
@@ -16,7 +16,13 @@
 - `REAL_PROVIDER_PASS`：生产真实任务已有 task/attempt/result/persistence 证据且没有人工回收；不等于本地候选已发布，也不等于用户主观验收。
 - `LOCAL_FIX_PASS`：缺陷修复已有本地直接影响证据；不代表已获得版本号、已发布或线上已修复。
 
-## 2026-09-02 v0.7.3 发布当前覆盖层
+## 2026-09-03 v0.7.4 候选当前覆盖层
+
+生产仍运行`v0.7.3/schema42`。v0.7.4已经获得修复、发布和上线后精确Canvas/group执行一次的最新授权；独立Review已覆盖25/25 tracked files、135/135 hunks和1/1回执，结论`P0=0/P1=0/P2=0/GO`，PR/CI/tag/Release、生产切换和真实点击尚未执行。生产失败请求`4666a088-aca9-402b-ba8b-c842023470cb`已证明0 run/task/admission/attempt/Provider POST；直接根因为动态Grok首帧角色被静态准入误判，逐节点数据库重复打开令400拖到35.260秒并被浏览器30秒超时遮蔽，服务端节点状态又未驱动原呼吸灯。
+
+本地候选已完成精确动态角色等待、create准入连接复用、`admitted`节点临时呼吸灯映射和不确定create结果的先锁定/只读找回/禁止重提。m22 `45/45`、m104最终`13/13`、直接依赖`106/106`，共164项PASS；库存1178，TypeScript/build/source coverage/4173隔离通过，formal full未重跑。当前详细门见IG26-122～132和`spec/V0_7_4_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`。
+
+## 2026-09-02 v0.7.3 发布历史覆盖层
 
 生产现为 `v0.7.3/schema42`。PR #149、双 CI、annotated tag/Release、exact-tag fresh build、locked-exact backup/verify/fresh restore、原子切换与 `v0.7.2→v0.7.3→v0.7.2→v0.7.3` rollback-forward 均通过。v0.7.2 在 Canvas `bcbb1199-d154-4c1a-a580-6b66d2d10f38` 的唯一真实整组 run/task 继续证明 canonical Seedance 入参贯穿 plan/task/key/ownership/request，结果自动回填并刷新持久化；v0.7.3 不重复该付费请求。
 
@@ -200,3 +206,19 @@
 | IG26-119 | 用户验收 | USER_RECHECK | 用户在生产实页确认网站工作流符合预期；不评价成片审美。 |
 | IG26-120 | 保存提示修复 | PRODUCTION_AUTO_PASS | 相同 metadata 返回原节点；只有当前 snapshot 已与 durable fingerprint 一致时才收口提示。TypeScript、safe m37 `39/39`、m4 `1/1`、m2-text `8/8` 与 diff-check 通过；普通 Chrome 两次加载最终均为“已保存到云端”，稳定观察15秒无后续写入、console error/warn=0。 |
 | IG26-121 | 保存提示补丁发布 | PRODUCTION_AUTO_PASS | 用户指定 v0.7.3 的一次性授权已消费；PR #149、双CI、tag/Release、exact-tag build、locked-exact backup/verify/fresh restore、生产切换及rollback-forward均通过，新增Provider POST=0。 |
+
+## K. INC-GEN-028 / v0.7.4 动态准入、呼吸灯与真实工作流
+
+| ID | 验收项 | 当前状态 | 通过标准 |
+|---|---|---|---|
+| IG26-122 | 失败请求无计费边界 | DOC_PASS | request `4666a088-aca9-402b-ba8b-c842023470cb`在run创建前400；run/task/admission/attempt/Provider POST均为0。 |
+| IG26-123 | 精确动态角色等待 | AUTO_PASS | 只有同kind+role的ready输入或本工作流动态上游可满足角色最低数；无关动态边不能掩盖真实ROLE_CONFLICT。 |
+| IG26-124 | 下游权威重解析 | AUTO_PASS | 上游成功后，下游以服务端结果重新解析first-frame并只创建一个task/attempt。 |
+| IG26-125 | create准入时延 | AUTO_PASS | 图、模型合同和strict preflight复用一次数据库连接；动态首帧真HTTP fake-Provider测试create为186ms，远低于30秒浏览器上限。 |
+| IG26-126 | 服务端节点呼吸灯 | AUTO_PASS | 仅server node `admitted`临时映射四媒体`*Generating`；pending/admitting/terminal不亮，且不写入Canvas数据。 |
+| IG26-127 | 不确定create禁止重提 | AUTO_PASS | 可能送达服务端时先设置reconciliation lock，只做GET；90秒期限后仍保留锁并明确提示，POST总数不得增加。 |
+| IG26-128 | 风险定向验证 | AUTO_PASS | m22 45/45、m104 13/13、其他直接依赖106/106，共164项；TypeScript/build/source coverage/4173隔离通过，库存1178。 |
+| IG26-129 | 冻结独立Review | AUTO_PASS | 覆盖25/25 tracked files、135/135 hunks和1/1回执；结论`P0=0/P1=0/P2=0/GO`，已写入v0.7.4 candidate receipt。 |
+| IG26-130 | v0.7.4发布 | NOT_RUN | PR/双CI、merge后annotated tag/Release、exact-tag fresh build、schema42 backup/restore、切换和rollback-forward全部通过。 |
+| IG26-131 | 精确Canvas真实执行一次 | NOT_RUN | v0.7.4生产健康后，只点击目标group一次；记录run/node/task/attempt/Provider次数、呼吸灯、自动回填、保存与刷新。结果不明不得重试。 |
+| IG26-132 | 用户最终验收 | USER_RECHECK | 用户确认网站正常生成工作流；不把图片/视频审美纳入本次技术验收。 |

@@ -1,3 +1,4 @@
+import type { DatabaseSync } from "node:sqlite";
 import { openAppDatabase } from "./database";
 import type {
   ModelParameterSchema,
@@ -88,9 +89,10 @@ export function authoritativeMediaNodes(
 export function readPersistedCanvasGraph(input: {
   bypass?: boolean;
   canvasId: string;
+  database?: DatabaseSync;
   ownerId: string;
 }) {
-  const database = openAppDatabase();
+  const database = input.database ?? openAppDatabase();
   try {
     const row = (input.bypass
       ? database.prepare(`
@@ -117,7 +119,7 @@ export function readPersistedCanvasGraph(input: {
       ),
     });
   } finally {
-    database.close();
+    if (!input.database) database.close();
   }
 }
 
@@ -177,6 +179,7 @@ export function assertPersistedCanvasRevision(input: {
 export function resolvePersistedNodeInputs(input: {
   bypass: boolean;
   canvasId: string;
+  database?: DatabaseSync;
   expectedRevision?: number;
   mediaInputPolicy?: "seedance-2";
   modelSchema?: ModelParameterSchema;
@@ -191,7 +194,7 @@ export function resolvePersistedNodeInputs(input: {
   persistedTargetParentId?: string;
   persistedTargetData: Record<string, unknown>;
 } {
-  const database = openAppDatabase();
+  const database = input.database ?? openAppDatabase();
   try {
     const row = (input.bypass
       ? database.prepare(`
@@ -243,6 +246,6 @@ export function resolvePersistedNodeInputs(input: {
       persistedTargetData: { ...(target.data ?? {}) },
     };
   } finally {
-    database.close();
+    if (!input.database) database.close();
   }
 }
