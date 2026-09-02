@@ -12,6 +12,29 @@ export function visibleGenerationError(value: string | undefined) {
   return historicalPreTaskConfigurationErrors.has(message) ? "" : message;
 }
 
+const legacyLocalVideoInputErrorCodes = new Set([
+  "COMBINATION_UNSUPPORTED",
+  "ROLE_CONFLICT",
+  "ROLE_UNSUPPORTED",
+]);
+
+/**
+ * A few old canvases persisted a local input-role rejection without ever
+ * creating or binding a task. Clear only that narrow historical shape after
+ * the current model/input resolver proves the same node is now valid.
+ */
+export function shouldClearStaleVideoInputError(input: Readonly<{
+  canSubmit: boolean;
+  error?: string;
+  errorCode?: string;
+  identityBindings: readonly unknown[];
+}>) {
+  return input.canSubmit &&
+    Boolean(input.error?.trim()) &&
+    legacyLocalVideoInputErrorCodes.has(input.errorCode ?? "") &&
+    input.identityBindings.every((value) => !value);
+}
+
 const providerErrorPatterns: ReadonlyArray<{
   pattern: RegExp;
   summary: string;

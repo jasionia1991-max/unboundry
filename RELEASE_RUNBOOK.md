@@ -1,9 +1,9 @@
 # Unboundry 版本发布 Runbook
 
 给人和接手的 AI 看。作用：从「版本号 + 上线授权」到「线上验证 + 文档收口」的每一步照做，避免每次现场拼命令、用错脚本。
-历史基线：v0.6.29（2026-08-21）曾按旧流程发布；其版本号、路径和先打 tag 的命令不再是可执行模板。当前执行只看下面的 v0.7.0 覆盖层和 `spec/INC_GEN_026_CHECKPOINT.md`。本文不替代 `上线规矩.md` 的授权纪律。
+历史基线：v0.6.29（2026-08-21）曾按旧流程发布；其版本号、路径和先打 tag 的命令不再是可执行模板。当前生产身份与发布边界只看 `spec/UNBOUNDRY_CURRENT_STATE.md`、`spec/INC_GEN_026_CHECKPOINT.md` 顶部 post-hotfix 覆盖层和 `上线规矩.md`。
 
-> **2026-09-02 INC-GEN-026 边界**：用户已明确授权 v0.7.0 的一次性 commit/push/PR/CI/tag/Release 与生产 schema42 备份/安装/切换/rollback-forward。唯一 formal full 已消费且不得重跑；v0.7.0 的版本小差异只跑直接相关 safe spec、build/CI 和增量 Review。历史数据 apply、真实 Provider/OSS、费用和真实 Canvas/group 点击仍未授权。
+> **2026-09-02 INC-GEN-028 边界**：生产当前为 `v0.7.1-hotfix.1/schema42`；用户已选择 `v0.7.2` 并明确授权本次发布。v0.7.2 版本门、候选冻结和独立 Review 已 GO；现在依次执行 PR/双 CI、merge 后 annotated tag/Release、exact-tag fresh build、schema42 locked-exact backup、原子切换与 rollback-forward。真实 Seedance 只允许在 v0.7.2 生产技术门全绿后，于指定 Canvas 发起一次；结果不明不得重试。
 
 **适用范围**：本 Runbook 只用于「代码 / 构建产物」变更（bump 版本、改逻辑、重发静态资源）。纯公共模板数据变更（新增/修改模板、预览图、种子）走 `上线规矩.md` 的「加模板轻量路径」，**不需要版本号、不打标签、不跑全量**，直接提交 + 服务器灌库。
 
@@ -31,7 +31,7 @@ grep '"version"' package.json
 
 ## 2. 版本号与发布 commit（本地）
 
-1. `package.json`、`package-lock.json` 精确设为用户批准的 `0.7.0`。
+1. `package.json`、`package-lock.json` 精确设为用户本次批准的新版本号；不得复用历史 `0.7.0` 或当前 `v0.7.1-hotfix.1`。
 2. `server/bridgeRuntimeMode.ts` 的 final 角色放行清单加入新版本号。
 3. `tests/m81-deployment-hardening.spec.ts` 加对应断言。
 4. 按需同步 `上线规矩.md`、`TASKS.md`、`spec/UNBOUNDRY_CURRENT_STATE.md` 等记录。
@@ -39,14 +39,14 @@ grep '"version"' package.json
 
 ## 3. 发布前定向门与 GitHub（本地 Mac）
 
-INC-GEN-026/v0.7.0 特例：R8 已经消费唯一 formal full，永久保留原始 `1162/1167` 与最小关闭 `112/112`；不得执行下面的第二次 full。版本号、final allowlist、断言和状态文档这一小段只运行直接相关 safe spec 与增量 Review，随后以 PR/main CI 的 build+m104 门补充发布证据。
+历史 INC-GEN-026/v0.7.0 已经消费唯一 formal full，永久保留原始 `1162/1167` 与最小关闭 `112/112`；不得把它当作 INC-GEN-028 可重跑或已通过的发布门。下一版本只运行本次变更直接相关 safe specs、增量 Review 和项目规定的 PR/main CI build+m104 门，除非新的明确发布规则另有要求。
 
 本次只保留已执行的 m81+m82 版本门、m10 backup 门、共同 preflight/build/source coverage 和冻结后增量 Review；文档冻结后按需执行治理 m38。不要运行 `node scripts/run-safe-tests.mjs full`。
 
 - 需要Node 22.23.x、npm 10.9.8、Playwright浏览器缓存、npm离线缓存，缺了preflight会明说。
 - 测试必须只使用runner新建的临时数据和回环端口；本地4173、`app/data`、`/var/lib/unboundry`、真实媒体和密钥不得触碰。
-- v0.6.29 的 `119 specs / 1034 tests` 只作历史账本，不是当前命令或分母。当前 inventory、formal 原始失败、最小关闭和 R9 增量证据只以 INC-GEN-026 Checkpoint/Receipt 为准。
-- 工作树除受保护的未跟踪 `spec/public-templates-director-split-revision.json` 外必须为空；它不得进入测试快照、archive、commit、tag或PR。
+- v0.6.29 的 `119 specs / 1034 tests` 与 v0.7.0 的 formal 结果只作历史账本，不是 INC-GEN-028 当前命令或分母。当前证据以 `spec/V0_7_1_HOTFIX_1_PRODUCTION_RECEIPT_2026-09-02.json`、Checkpoint 顶部覆盖层和本次新发布回执为准。
+- 两份受保护 JSON 不得进入测试快照、archive、commit、tag 或 PR；除此之外，发布候选必须没有范围外脏改动。
 
 候选冻结后按这个顺序执行，不能把 tag 打在 PR 分支头：
 
@@ -55,20 +55,20 @@ git push origin <branch>
 gh pr create --base main --head <branch>
 # 等待 PR Quality gates 成功后合并，再等待 main Quality gates 成功。
 git fetch origin main --tags
-git tag -a v0.7.0 <merged-main-commit> -m "v0.7.0"
-git push origin v0.7.0
-gh release create v0.7.0 --verify-tag --title "v0.7.0"
+git tag -a <new-version> <merged-main-commit> -m "<new-version>"
+git push origin <new-version>
+gh release create <new-version> --verify-tag --title "<new-version>"
 ```
 
 记录 PR 号、final-head run、merge commit、main run、annotated tag object、peeled commit/tree 和 GitHub Release URL。tag、merge 与 release archive 的 tree 必须一致。
 
 ## 4. 服务器准备发布目录（staging）
 
-1. 从不可移动 `v0.7.0` tag 导出 archive，校验其 peeled commit/tree 与已通过 main CI 的合并身份一致，再解包到全新 `/opt/unboundry/staging/unboundry-v0.7.0-<唯一后缀>`；不得同步当前脏工作树或复用旧 dist。
+1. 从不可移动 `<new-version>` tag 导出 archive，校验其 peeled commit/tree 与已通过 main CI 的合并身份一致，再解包到全新 `/opt/unboundry/staging/unboundry-<new-version>-<唯一后缀>`；不得同步当前脏工作树或复用旧 dist。
 2. 在 staging 内 `npm ci`（完整依赖），然后用 **staging 自身源码**重建产物：
 
 ```bash
-cd /opt/unboundry/staging/unboundry-v0.7.0-<唯一后缀>
+cd /opt/unboundry/staging/unboundry-<new-version>-<唯一后缀>
 /opt/node22/bin/node /opt/unboundry/node_modules/typescript/bin/tsc --noEmit
 /opt/node22/bin/node node_modules/vite/bin/vite.js build
 ```
@@ -108,15 +108,15 @@ backup/verify/fresh-restore receipt。`ops/production/backup-data-schema39.mjs` 
 ## 6. 切换上线
 
 ```bash
-sudo mv /opt/unboundry/staging/unboundry-v0.7.0-<唯一后缀> \
-  /opt/unboundry/releases/v0.7.0-inc-gen-026-20260902
-sudo ln -s /opt/unboundry/releases/v0.7.0-inc-gen-026-20260902 /opt/unboundry/current.next
+sudo mv /opt/unboundry/staging/unboundry-<new-version>-<唯一后缀> \
+  /opt/unboundry/releases/<new-version>-<release-id>
+sudo ln -s /opt/unboundry/releases/<new-version>-<release-id> /opt/unboundry/current.next
 sudo mv -T /opt/unboundry/current.next /opt/unboundry/current
 sudo systemctl restart unboundry
 curl -fsS http://127.0.0.1:4173/api/version   # 期望与本次发布版本一致
 ```
 
-切换前记录旧 `current` 精确目标。v0.7.0 首次门通过后，按同一 schema42 数据副本把 `current` 原子切回旧 v0.6.70、启动并验证；再原子 forward 到同一 v0.7.0 release 并验证。每次切换都记录 service、version/live/ready、schema/integrity/FK、关键计数、静态清单和 restart 计数。不得运行历史数据 apply，也不得在 rollback/forward 间调用 Provider 或 OSS。
+切换前记录旧 `current` 精确目标。新版本首次门通过后，按同一 schema42 数据副本把 `current` 原子切回切换前的精确 release、启动并验证；再原子 forward 到同一 `<new-version>` release 并验证。每次切换都记录 service、version/live/ready、schema/integrity/FK、关键计数、静态清单和 restart 计数。不得运行历史数据 apply，也不得在 rollback/forward 间调用 Provider 或 OSS。
 
 ## 7. 发布核验
 
@@ -135,7 +135,7 @@ curl -fsS http://127.0.0.1:4173/api/version   # 期望与本次发布版本一�
 ## 9. 已知坑（本次踩过，先看这里）
 
 - schema39 明文脚本只属于历史证据；current timer 必须绑定不可变 schema42 加密 wrapper 的精确 SHA，不能靠同名路径猜版本。
-- `scripts/build-release.mjs` 及其 bridge/final 双版本工具固定服务旧 v0.5.2/v0.6.0 不可变演练，不是当前 v0.7.0 发布入口；当前版本按精确合并 commit/tag archive fresh build，不得为凑当前版本改写旧工具。
+- `scripts/build-release.mjs` 及其 bridge/final 双版本工具固定服务旧 v0.5.2/v0.6.0 不可变演练，不是下一版本发布入口；新版本按精确合并 commit/tag archive fresh build，不得为凑当前版本改写旧工具。
 - 发布清单 `RELEASE-INVENTORY.sha256` 不含自身行；生成必须排除自身，否则 `sha256sum -c` 永远失败（v0.6.18 也是自包含旧行、发布时以排除自身为准）。
 - `find | xargs sha256sum` 遇 node_modules 里带空格/换行的文件名会断；统一用 `-print0 | sort -z | xargs -0`。
 - staging 的 dist 若与源码来源不明，**重建**后再发布；重算清单在重建之后。

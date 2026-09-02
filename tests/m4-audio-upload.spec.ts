@@ -1,10 +1,11 @@
-import { expect, test } from "./safe-test";
+import { expect, test, type APIRequestContext } from "./safe-test";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const canvasId = "interaction.upload-media-sandbox-current";
+const projectIds = new Set<string>();
 const mediaDirectory = mkdtempSync(join(tmpdir(), "unboundry-audio-test-"));
 const commonAudio = [
   { codec: "libmp3lame", extension: "mp3", mimeType: "audio/mpeg" },
@@ -51,6 +52,13 @@ function wav(seconds = 1, sampleRate = 44_100) {
   return buffer;
 }
 
+async function clearProjects(request: APIRequestContext) {
+  for (const projectId of projectIds) {
+    await request.delete(`/api/projects/${projectId}`);
+  }
+  projectIds.clear();
+}
+
 test.beforeEach(async ({ request }) => {
   const response = await request.get(`/api/canvas/${canvasId}`);
   if (response.ok()) {
@@ -73,6 +81,7 @@ test.beforeEach(async ({ request }) => {
 });
 
 test.afterEach(async ({ request }) => {
+  await clearProjects(request);
   const response = await request.get(`/api/canvas/${canvasId}`);
   if (response.ok()) {
     const document = await response.json() as {
@@ -232,6 +241,105 @@ test("WAV upload, playback controls and waveform survive a reload", async ({
   await expect(media).toHaveAttribute("src", audioNode.data.audioSrc);
   await expect(page.locator(".audio-waveform-bars span")).toHaveCount(64);
   await expect(page.getByText("00:00/00:01")).toBeVisible();
+});
+
+test("legacy audio metadata is hydrated once and remains durable after reload", async ({
+  page,
+  request,
+}) => {
+  await page.goto(`/__fixture/${canvasId}`);
+  const world = page.getByTestId("canvas-world");
+  await expect(world).toHaveAttribute("data-persistence-ready", "true");
+  await page.getByTestId("audio-upload-input").setInputFiles({
+    buffer: wav(),
+    mimeType: "audio/wav",
+    name: "legacy-audio.wav",
+  });
+  await expect.poll(async () => {
+    const response = await request.get(`/api/canvas/${canvasId}`);
+    if (!response.ok()) return "";
+    const document = await response.json() as {
+      nodes: Array<{ data: { assetId?: string; sourceKind?: string } }>;
+    };
+    return document.nodes.find((node) => node.data.sourceKind === "audio")
+      ?.data.assetId ?? "";
+  }).not.toBe("");
+  const current = await (
+    await request.get(`/api/canvas/${canvasId}`)
+  ).json() as {
+    edges: unknown[];
+    nodes: Array<{ data: Record<string, unknown>; id: string }>;
+    viewport: Record<string, unknown>;
+  };
+  const audioNode = current.nodes.find((node) => node.data.sourceKind === "audio")!;
+  const assetId = String(audioNode.data.assetId);
+  const audioSrc = String(audioNode.data.audioSrc);
+  const legacyNodes = current.nodes.map((node) => {
+    if (node.data.assetId !== assetId) return node;
+    const data = { ...node.data };
+    delete data.mediaDurationSeconds;
+    return {
+      ...node,
+      data: {
+        ...data,
+        inputState: "invalid",
+        inputStateReason: "音频时长尚未经过服务端校验，请重新上传",
+        mediaMetadataSource: "server",
+      },
+    };
+  });
+  const createdProject = await request.post("/api/projects", { data: {} });
+  expect(createdProject.status()).toBe(201);
+  const projectId = ((await createdProject.json()) as { id: string }).id;
+  projectIds.add(projectId);
+  const baseline = await (
+    await request.get(`/api/canvas/${projectId}`)
+  ).json() as { loadToken: string; revision: number };
+  const saved = await request.put(`/api/canvas/${projectId}`, {
+    data: {
+      edges: current.edges,
+      nodes: legacyNodes,
+      observedLoadToken: baseline.loadToken,
+      observedRevision: baseline.revision,
+      revision: baseline.revision,
+      viewport: current.viewport,
+    },
+  });
+  expect(saved.ok(), await saved.text()).toBeTruthy();
+
+  let metadataRequests = 0;
+  page.on("request", (entry) => {
+    if (
+      entry.method() === "GET" &&
+      new URL(entry.url()).pathname === `/api/media-metadata/audio/${assetId}`
+    ) metadataRequests += 1;
+  });
+  await page.goto(`/canvas/${projectId}`);
+  await expect(world).toHaveAttribute("data-persistence-ready", "true");
+  await expect.poll(async () => {
+    const refreshed = await (
+      await request.get(`/api/canvas/${projectId}`)
+    ).json() as { nodes: Array<{ data: Record<string, unknown> }> };
+    const data = refreshed.nodes.find((node) => node.data.assetId === assetId)?.data;
+    return data && {
+      ...data,
+      inputStateReason: data.inputStateReason ?? null,
+    };
+  }).toMatchObject({
+    inputState: "ready",
+    inputStateReason: null,
+    mediaDurationSeconds: expect.any(Number),
+    mediaMetadataSource: "server",
+  });
+  expect(metadataRequests).toBe(1);
+  await page.reload();
+  await expect(world).toHaveAttribute("data-persistence-ready", "true");
+  await expect(page.getByTestId("audio-node-media")).toHaveAttribute(
+    "src",
+    audioSrc,
+  );
+  await page.waitForTimeout(500);
+  expect(metadataRequests).toBe(1);
 });
 
 for (const audio of commonAudio) {

@@ -1,18 +1,28 @@
 # INC-GEN-026 一次点击工作流可靠生成验收矩阵
 
-状态：`R9_V0_7_0_DEPLOYED_STABLE / GITHUB_CI_PASS / SCHEMA42_BACKUP_RESTORE_PASS / ROLLBACK_FORWARD_PASS / IG26_106_EXACT_RUN_PREFLIGHT_NOT_RUN / USER_RECHECK`
+状态：`PRODUCTION_V0_7_1_HOTFIX_1_STABLE / V0_7_2_RELEASE_AUTHORIZED / RELEASE_CANDIDATE_REVIEW_GO / USER_RECHECK`
 
 本矩阵与 `spec/INC_GEN_026_ONE_CLICK_WORKFLOW_RELIABILITY_FINAL_IMPLEMENTATION_PLAN_2026-09-01.md` 一一对应。
 
 状态定义：
 
 - `DOC_PASS`：当前事实、边界或方案合同已有直接证据并完成文档确认；不代表代码已修。
+- `PENDING`：当前候选的冻结或 Review 门仍在进行，禁止借用历史通过状态。
 - `NOT_RUN`：尚未执行对应的外部或终审门。
 - `NO_GO`：当前明确禁止进入该动作。
 - `USER_RECHECK`：只能由用户在真实页面主观验收。
 - `AUTO_PASS`：当前本地候选已有可复验自动证据；只代表本地技术项，不代表 GitHub、生产、真实 Provider/OSS 或用户验收。
+- `REAL_PROVIDER_PASS`：生产真实任务已有 task/attempt/result/persistence 证据且没有人工回收；不等于本地候选已发布，也不等于用户主观验收。
 
-证据主路由 `spec/INC_GEN_026_LOCAL_IMPLEMENTATION_RECEIPT_2026-09-01.md` 绑定 HEAD/tree、命令、环境、测试分母、退出码、候选文件/hunk 分母和直接证据。
+## 2026-09-02 post-hotfix 当前覆盖层
+
+生产现为 `v0.7.1-hotfix.1/schema42`。Canvas `bcbb1199-d154-4c1a-a580-6b66d2d10f38` 已有 6 text + 4 image 自动成功证据；独立 Seedance task `bb6e194e-c280-438d-8015-727841e23132` 一次 admission/attempt 成功并刷新保持；图片、视频、音频本地上传均已通过。`IG26-108/109` 因此转为 `REAL_PROVIDER_PASS`。
+
+但组工作流的 normalized Seedance 参数没有贯穿 frozen plan、task、幂等与 ownership 身份，且旧媒体节点 canonical metadata 回填存在缺口。INC-GEN-028 只在本地完成修复和累计 8 specs / 76 tests 定向验证；Review 发现的 pending/failed P2 已闭合并由直接影响的 4 specs / 27 tests 复验，但尚未发布及在原 Canvas 复验，所以 `IG26-110` 继续 `NOT_RUN`、`IG26-111` 继续 `USER_RECHECK`、`IG26-112` 继续 `NO_GO`。生产实测与缺陷回执见 `spec/V0_7_1_HOTFIX_1_PRODUCTION_RECEIPT_2026-09-02.json`。
+
+当前证据主路由为 `spec/V0_7_2_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`、`spec/V0_7_1_HOTFIX_1_PRODUCTION_RECEIPT_2026-09-02.json` 与 `spec/INC_GEN_026_CHECKPOINT.md` 顶部覆盖层。`spec/INC_GEN_026_LOCAL_IMPLEMENTATION_RECEIPT_2026-09-01.md` 只绑定历史 v0.7.0 候选，不得用于证明 INC-GEN-028/v0.7.2 的候选分母或独立 Review。
+
+> A～G 与 H 的 IG26-087～098 保留 INC-GEN-026/v0.7.0 当时的验收账本；其中旧 baseline、旧生产身份与 `AUTO_PASS` 只代表历史候选。当前 INC-GEN-028 的冻结/Review 仅看 IG26-099/100 和顶部新 receipt。
 
 ## A. 权威、范围和审计纪律
 
@@ -151,10 +161,12 @@
 | IG26-096 | CI build | AUTO_PASS | PR run `33542187106` 与 main run `33542404276` 均实际执行 production build 并 success。 |
 | IG26-097 | CI integration | AUTO_PASS | 两个 Quality runs 均执行 m104 真 HTTP/fake-provider integration，不把 discovery 冒充产品测试。 |
 | IG26-098 | CI 权限与网络分层 | AUTO_PASS | 两个 Quality runs 使用 contents:read、固定 registry/cache、无 Provider/OSS/生产 secret；应用/测试进程除动态 loopback 外 egress=0。 |
-| IG26-099 | candidate manifest | AUTO_PASS | baseline HEAD/tree 不变；当前完整候选为 64 tracked changed files、671 tracked hunks、13 untracked files、77 files 总分母，tracked binary diff SHA-256=`17ae9dbcfa8e594faca782fdb34d329c89dce892d1437d5d23ee5ee57d32e69d`。R0～R8 的 74/640 作为历史冻结分母保留。 |
-| IG26-100 | 完整独立 Review | AUTO_PASS | 同一独立 Reviewer 已覆盖 R9 新增/变化文件与 backup/version/release/docs 链，并在修正文档状态矛盾后增量确认当前完整候选：`P0=0/P1=0/P2=2/GO`。 |
+| IG26-099 | INC-GEN-028/v0.7.2 candidate manifest | AUTO_PASS | baseline HEAD/tree=`f3b2f7142382521762a2b772d2eb494e458b7b3f`/`df8172c201ccee22de59afb8daa69c56223a342f`；当前冻结分母为 35 tracked changed files/153 tracked hunks + 2 untracked receipts = 37 files，tracked binary diff SHA-256 见 v0.7.2 candidate receipt。不能复用 pre-version 的 31/143 或 v0.7.0 的 64/671。 |
+| IG26-100 | INC-GEN-028/v0.7.2 完整独立 Review | AUTO_PASS | 同一 Reviewer 先覆盖 35/35 tracked files、当时 150/150 hunks 与 2/2 receipts，发现唯一非阻断 P2；修复后又聚焦覆盖 media metadata、m31、safe-runner 与 coverage manifest 增量，最终 `P0=0/P1=0/P2=0/GO`。 |
 
-## I. 版本、发布、生产和用户验收
+## I. v0.7.0 历史发布与 post-hotfix 当前生产验收
+
+> IG26-101～107 是 v0.7.0 的历史版本、授权与发布回执；IG26-108～112 才是当前 post-hotfix 真实运行与剩余门。历史 `AUTO_PASS` 不表示 INC-GEN-028 已版本化、获授权或发布。
 
 | ID | 验收项 | 当前状态 | 通过标准 |
 |---|---|---|---|
@@ -165,18 +177,22 @@
 | IG26-105 | 历史 task apply | NO_GO | 用户对 exact manifest 和生产数据写单独授权。 |
 | IG26-106 | 零付费生产门 | NOT_RUN | version/live/ready/data/quiet/static 与 Provider POST/OSS 写=0 已有分项证据；但 v0.7.0 没有完整公开的只读 workflow-run/capacity preflight，且未授权 exact Canvas/group，不能把分项证据冒充完整 PASS。 |
 | IG26-107 | schema42 rollback/forward | AUTO_PASS | v0.7.0→v0.6.70/schema42→v0.7.0 成对通过，两个方向 ready/schema/counts 正确，最终 current 为 v0.7.0。 |
-| IG26-108 | exact 真实 canary | NO_GO | 新授权指定 Canvas/group/models/POST/费用/OSS，一次点击。 |
-| IG26-109 | 无人工回收 | NOT_RUN | 普通用户不进入真实 Provider/relay/OSS 管理台，不复制 task id，不手工下载、搬运或重新上传结果。 |
-| IG26-110 | 自动技术证据 | NOT_RUN | run/node/task/attempt/result/projection/refresh 全部自动收口。 |
+| IG26-108 | exact 真实 canary | REAL_PROVIDER_PASS | 生产 Canvas 的 6 text + 4 image run 成功；独立 Seedance 一次 admission/attempt 成功，结果刷新保持且无重复提交。该状态不代表 INC-GEN-028 已发布。 |
+| IG26-109 | 无人工回收 | REAL_PROVIDER_PASS | 本次真实 group 与独立 Seedance 均由网站自动回项目；普通用户没有进入 Provider/relay/OSS 管理台，没有手工下载、搬运或重新上传结果。 |
+| IG26-110 | 自动技术证据 | NOT_RUN | 新流的 run/node/task/attempt/result/projection/refresh 已有真实证据，但旧 Canvas 入参/metadata 修复尚未发布并在原 Canvas 复验，不能整项 PASS。 |
 | IG26-111 | 用户主观验收 | USER_RECHECK | 用户在真实页面看结果并明确回复通过。 |
 | IG26-112 | 最终关闭 | NO_GO | IG26-001～110 按类别通过，IG26-111 由用户确认后才可 USER_PASS。 |
 
-当前汇总：
+当前覆盖层结论：IG26-099/100=`AUTO_PASS`，IG26-108/109=`REAL_PROVIDER_PASS`，IG26-110=`NOT_RUN`，IG26-111=`USER_RECHECK`，IG26-112=`NO_GO`。R9 v0.7.0 的 PR、双 CI、tag/Release、schema42 backup/restore 与 rollback/forward 继续作为历史证据保留，但不计作 INC-GEN-028/v0.7.2 的新发布通过。历史 apply 仍未授权，用户验收没有因自动或真实 Provider 技术证据而自动通过。
 
-- `DOC_PASS 12`
-- `AUTO_PASS 92`
-- `NOT_RUN 4`
-- `NO_GO 3`
-- `USER_RECHECK 1`
+## J. INC-GEN-028 / v0.7.2 当前发布覆盖层
 
-R9 v0.7.0 已完成 PR #144、双 CI、tag/Release、schema42 locked-exact backup/verify/fresh restore、原子切换与成对 rollback/forward；IG26-096～098、104、107 已转 `AUTO_PASS`。唯一 formal safe full 原始 `1162/1167` 与最小关闭 `112/112` 原样保留，没有第二次 full。剩余 4 项 `NOT_RUN` 是 timer contract、完整 models/capacity/run preflight、真实无人工回收和真实自动结果收口；历史 apply、真实 Provider/OSS/canary 与用户验收没有随发布授权自动通过。
+| ID | 验收项 | 当前状态 | 通过标准 |
+|---|---|---|---|
+| IG26-113 | v0.7.2 版本选择 | DOC_PASS | 用户明确原文“版本号 v0.7.2，授权上线”；package、lock、runtime allowlist 与测试断言一致。 |
+| IG26-114 | v0.7.2 发布授权 | DOC_PASS | 本次一次性授权包含 commit/push/PR/双 CI/tag/Release、schema42 备份、生产切换与 rollback-forward；执行后即消费。 |
+| IG26-115 | 版本与构建门 | AUTO_PASS | safe m81+m82 `49/49 PASS`，TypeScript、production build、source coverage、架构与 4173 隔离均通过；不重复 formal full。 |
+| IG26-116 | PR、双 CI、tag 与 Release | NOT_RUN | PR head 和 main Quality 均成功，annotated tag 指向精确 merge commit/tree，Release 非 draft/pre-release。 |
+| IG26-117 | exact-tag build、backup 与切换 | NOT_RUN | fresh archive/build/inventory、schema42 locked-exact backup/verify/fresh restore、原子切换、旧版 rollback 与最终 forward 全部通过。 |
+| IG26-118 | 修复后真实 Canvas 验证 | NOT_RUN | v0.7.2 技术门通过后在 Canvas `bcbb1199-d154-4c1a-a580-6b66d2d10f38` 只执行一次 exact Seedance 输入；plan/task/key/ownership/request 一致，结果自动回填并刷新保持。结果不明不得重发。 |
+| IG26-119 | 用户验收 | USER_RECHECK | 用户在生产实页确认网站工作流符合预期；不评价成片审美。 |

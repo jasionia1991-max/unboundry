@@ -57,7 +57,10 @@ import {
   type NodeGenerationOutcome,
 } from "../generation/workflowExecution";
 import { groupRunResultKey } from "../generation/groupRunCheckpoint";
-import { visibleGenerationError } from "../generation/generationErrors";
+import {
+  shouldClearStaleVideoInputError,
+  visibleGenerationError,
+} from "../generation/generationErrors";
 import {
   generationFailureMessage,
   generationFailureIsDefinitive,
@@ -104,6 +107,7 @@ import { UpstreamInputCards } from "./UpstreamInputCards";
 import { GenerationAvailabilityNotice } from "./GenerationAvailabilityNotice";
 import {
   fetchTrustedMediaMetadata,
+  hasCompleteTrustedMediaMetadata,
   hasTrustedMediaDimensions,
   mediaUploadState,
   trustedMediaPatch,
@@ -590,6 +594,7 @@ function VideoNodeImpl({
   const uploadController = useRef<AbortController | undefined>(undefined);
   const uploadAdmissionPending = useRef(false);
   const uploadInFlight = useRef(false);
+  const metadataHydrationAssetIdRef = useRef<string | undefined>(undefined);
   const uploadOperation = useRef(0);
   const [volume, setVolume] = useState(1);
   const [volumeOpen, setVolumeOpen] = useState(false);
@@ -839,6 +844,65 @@ function VideoNodeImpl({
   const canReconcileVideo = false;
 
   useEffect(() => {
+    if (
+      !persistenceReady ||
+      !shouldClearStaleVideoInputError({
+        canSubmit: inputPreflight.canSubmit && inputProblems.length === 0,
+        error: data.videoGenerationError,
+        errorCode: data.videoGenerationErrorCode,
+        identityBindings: [
+          data.videoGenerationTaskId,
+          data.videoGenerationInputKey,
+          data.videoGenerationOwnershipKey,
+          data.videoGenerationContractFingerprint,
+          data.videoGenerationModelInputContractFingerprint,
+          data.videoInputContractFingerprint,
+          data.videoGenerating,
+        ],
+      })
+    ) return;
+    setNodes((nodes) => nodes.map((node) => {
+      if (node.id !== id || !shouldClearStaleVideoInputError({
+        canSubmit: true,
+        error: node.data.videoGenerationError,
+        errorCode: node.data.videoGenerationErrorCode,
+        identityBindings: [
+          node.data.videoGenerationTaskId,
+          node.data.videoGenerationInputKey,
+          node.data.videoGenerationOwnershipKey,
+          node.data.videoGenerationContractFingerprint,
+          node.data.videoGenerationModelInputContractFingerprint,
+          node.data.videoInputContractFingerprint,
+          node.data.videoGenerating,
+        ],
+      })) return node;
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          videoGenerationError: undefined,
+          videoGenerationErrorCode: undefined,
+        },
+      };
+    }));
+  }, [
+    data.videoGenerating,
+    data.videoGenerationContractFingerprint,
+    data.videoGenerationError,
+    data.videoGenerationErrorCode,
+    data.videoGenerationInputKey,
+    data.videoGenerationModelInputContractFingerprint,
+    data.videoGenerationOwnershipKey,
+    data.videoGenerationTaskId,
+    data.videoInputContractFingerprint,
+    id,
+    inputPreflight.canSubmit,
+    inputProblems.length,
+    persistenceReady,
+    setNodes,
+  ]);
+
+  useEffect(() => {
     setModelSwitchProblem("");
   }, [canvasEdges]);
 
@@ -1066,32 +1130,51 @@ function VideoNodeImpl({
       !persistenceReady ||
       isFixture ||
       !data.assetId ||
-      data.mediaMetadataSource === "server" ||
-      data.inputState === "uploading" ||
-      data.inputState === "invalid"
+      hasCompleteTrustedMediaMetadata("video", data) ||
+      metadataHydrationAssetIdRef.current === data.assetId ||
+      data.inputState === "uploading"
     ) return;
+    const requestedAssetId = data.assetId;
+    metadataHydrationAssetIdRef.current = requestedAssetId;
     const controller = new AbortController();
-    void fetchTrustedMediaMetadata("video", data.assetId, controller.signal)
+    let settled = false;
+    void fetchTrustedMediaMetadata("video", requestedAssetId, controller.signal)
       .then((metadata) => {
-        setNodes((nodes) => nodes.map((node) => node.id === id
+        settled = true;
+        setNodes((nodes) => nodes.map((node) =>
+          node.id === id && node.data.assetId === requestedAssetId
           ? { ...node, data: { ...node.data, ...trustedMediaPatch(metadata) } }
           : node));
       })
       .catch((error) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
+        settled = true;
         const message = error instanceof Error
           ? error.message
           : "服务端无法确认视频素材信息";
-        setNodes((nodes) => nodes.map((node) => node.id === id
+        setNodes((nodes) => nodes.map((node) =>
+          node.id === id && node.data.assetId === requestedAssetId
           ? { ...node, data: { ...node.data, ...mediaUploadState("invalid", message) } }
           : node));
       });
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      if (!settled && metadataHydrationAssetIdRef.current === requestedAssetId) {
+        metadataHydrationAssetIdRef.current = undefined;
+      }
+    };
   }, [
     canvasId,
     data.assetId,
     data.inputState,
+    data.mediaByteSize,
+    data.mediaContentType,
+    data.mediaDurationSeconds,
+    data.mediaHeight,
     data.mediaMetadataSource,
+    data.mediaMetadataStatus,
+    data.mediaStorageBackend,
+    data.mediaWidth,
     id,
     persistenceReady,
     setNodes,

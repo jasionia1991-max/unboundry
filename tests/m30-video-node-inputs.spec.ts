@@ -1322,6 +1322,25 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
   }) => {
     const canvasId = "node.video.empty";
     await request.delete(`/api/canvas/${canvasId}`);
+    const imageMetadata = await (
+      await request.get(`/api/media-metadata/image/${serverImageAssetId}`)
+    ).json() as {
+      byteSize: number;
+      contentType: string;
+      mediaHeight: number;
+      mediaWidth: number;
+      storageBackend: "local" | "oss";
+    };
+    const trustedImageData = {
+      inputState: "ready",
+      mediaByteSize: imageMetadata.byteSize,
+      mediaContentType: imageMetadata.contentType,
+      mediaHeight: imageMetadata.mediaHeight,
+      mediaMetadataSource: "server",
+      mediaMetadataStatus: "ready",
+      mediaStorageBackend: imageMetadata.storageBackend,
+      mediaWidth: imageMetadata.mediaWidth,
+    } as const;
     const before = await (await request.get("/api/generation-tasks/status")).json() as {
       paidProviderRequests: number;
     };
@@ -1359,6 +1378,7 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
             data: {
               assetId: serverImageAssetId,
               imageSrc: `/api/assets/${serverImageAssetId}`,
+              ...trustedImageData,
               title: "已有参考图",
             },
             id: "p3-ui-image-1",
@@ -1370,6 +1390,7 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
             data: {
               assetId: serverImageAssetId,
               imageSrc: `/api/assets/${serverImageAssetId}`,
+              ...trustedImageData,
               title: "新增参考图",
             },
             id: "p3-ui-image-2",
@@ -1380,6 +1401,8 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
           {
             data: {
               title: "Video目标",
+              videoGenerationError: "当前模式至少需要1个尾帧输入",
+              videoGenerationErrorCode: "ROLE_CONFLICT",
               videoModelId: serverModelId,
               videoParameters: { inputMode: "text" },
               videoPrompt: "",
@@ -1413,6 +1436,18 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
     )).toBeGreaterThan(0);
     await expect(creator.getByRole("button", { exact: true, name: "文本" }))
       .toBeEnabled();
+    await expect(page.getByText("当前模式至少需要1个尾帧输入", { exact: true }))
+      .toHaveCount(0);
+    await expect.poll(async () => {
+      const current = await (await request.get(`/api/canvas/${canvasId}`)).json() as {
+        nodes: Array<{
+          data: { videoGenerationError?: string; videoGenerationErrorCode?: string };
+          id: string;
+        }>;
+      };
+      const target = current.nodes.find(({ id }) => id === "p3-ui-video");
+      return [target?.data.videoGenerationError, target?.data.videoGenerationErrorCode];
+    }).toEqual([undefined, undefined]);
 
     await connectNodes(page, "p3-ui-image-2", "p3-ui-video");
     await expect(world).toHaveAttribute("data-edge-count", "3");

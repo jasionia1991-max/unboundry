@@ -1,6 +1,29 @@
 # Unboundry 绿地复刻当前任务
 
-## INC-GEN-026 一次点击工作流可靠生成与结果自动收口（v0.7.0 DEPLOYED STABLE / USER RECHECK）
+## INC-GEN-028 旧工作流入参合同与媒体回填（LOCAL CANDIDATE / NOT DEPLOYED）
+
+- [x] 核对生产为 `v0.7.1-hotfix.1/schema42`，tag/merge=`f3b2f714…b7b3f`，current=`/opt/unboundry/releases/v0.7.1-hotfix.1-inc-gen-027-20260902`。
+- [x] 在生产 Canvas 真实验证 6 个文字 + 4 个图片节点整组成功、刷新保持且无需人工找结果。
+- [x] 在生产真实验证一次独立 Seedance：1 admission/1 attempt、MP4 自动回填、刷新保持、无重复提交。
+- [x] 在生产真实上传图片、视频、音频；三类素材均 ready，视频/音频保存、刷新和播放通过。
+- [x] 确认严重根因：Seedance strict preflight 已规范化参数，但 workflow frozen plan、task、幂等/ownership 身份仍可能保留原始模式，定级 `P1_NEAR_P0`。
+- [x] 确认旧 Canvas canonical 媒体元数据回填缺口，以及无 task/identity 绑定的历史 ROLE_CONFLICT 红字残留。
+- [x] 本地修复 canonical 参数贯穿 plan/task/key/request、服务端 Seedance policy 对齐、旧 image/video/audio 元数据重新验证、窄范围历史错误清理。
+- [x] 直接相关 safe 累计 8 specs / 76 tests 全部通过；新增 Image/Audio legacy hydration E2E、三媒体 assetId 竞态保护、旧 Seedance retry policy，以及 pending/failed metadata 有界重拉与明确终态；库存 1175，P2 后直接影响的 4 specs / 27 tests 通过，TypeScript、diff-check、production build preflight 与 4173 隔离门通过，真实 Provider POST=0。
+- [x] 新增 `spec/V0_7_1_HOTFIX_1_PRODUCTION_RECEIPT_2026-09-02.json`，并更新 Current State、Checkpoint、Matrix 和入口文档；v0.7.0 历史回执不改写。
+- [x] 首轮独立逐文件/逐 hunk Review 覆盖 28/28 tracked files、99/99 hunks、1/1 receipt：代码 `P0=0/P1=0/GO`，文档门禁 `P1=1/NO-GO`。
+- [x] 修正文档错误旧分母/旧 Review AUTO_PASS，并关闭 assetId 竞态、Image/Audio legacy E2E 与旧 Seedance retry policy P2。
+- [x] 第二轮独立 Review 覆盖 31/31 tracked files、120/120 hunks、1/1 receipt：代码 `P0=0/P1=0/GO`；发现当前路由仍指向历史 INC-GEN-026 的文档 P1，现已改为 INC-GEN-028 receipt/checkpoint/matrix/current-state 路由并将旧命令参数化。
+- [x] 冻结最终候选并由同一 Reviewer 完成增量 Review：31/31 tracked files、143/143 tracked hunks、1/1 receipt，`P0=0/P1=0/P2=0/GO`。
+- [x] 用户明确指定 `v0.7.2` 并授权上线；package/lock/runtime allowlist 已升级，m81+m82 `49/49 PASS`。
+- [x] 冻结 v0.7.2 新分母并完成独立完整+聚焦增量 Review；唯一 P2 已闭合，最终 `P0/P1/P2=0/0/0/GO`。
+- [ ] 执行 commit/push/PR/双 CI/tag/Release。
+- [ ] 从 exact tag fresh build，完成 schema42 locked-exact backup/verify/fresh restore、原子切换及 rollback/forward。
+- [ ] 新版上线后，在原 Canvas 对修复后的 exact workflow 真实执行一次并刷新核验；在上线前禁止第二次 Seedance Provider POST。
+
+当前严格为 `PRODUCTION_V0_7_1_HOTFIX_1_STABLE / V0_7_2_RELEASE_AUTHORIZED / VERSION_GATES_49_OF_49_PASS / RELEASE_CANDIDATE_REVIEW_GO / USER_RECHECK`。候选回执：`spec/V0_7_2_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`；生产基线回执：`spec/V0_7_1_HOTFIX_1_PRODUCTION_RECEIPT_2026-09-02.json`。
+
+## INC-GEN-026 历史：一次点击工作流可靠生成与结果自动收口（v0.7.0 DEPLOYED STABLE / USER RECHECK）
 
 - [x] 只读确认生产 `v0.6.70/schema42`、远端 main/tag/current checkout tree 一致。
 - [x] 接受最终复核的证据化裁决：当前 workflow admission P0，且 recovery/publication/OSS/UI/backup/CI 仍有 P1 缺口。

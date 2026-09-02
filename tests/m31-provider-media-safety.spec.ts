@@ -25,7 +25,11 @@ import {
   GenerationRequestError,
   submitVideoGeneration,
 } from "../client/src/generation/generationTasks";
-import { trustedMediaPatch } from "../client/src/canvas/mediaInputMetadata";
+import {
+  fetchTrustedMediaMetadata,
+  hasCompleteTrustedMediaMetadata,
+  trustedMediaPatch,
+} from "../client/src/canvas/mediaInputMetadata";
 
 function media(input: Partial<MediaRecord> = {}): MediaRecord {
   return {
@@ -45,6 +49,134 @@ function media(input: Partial<MediaRecord> = {}): MediaRecord {
     ...input,
   };
 }
+
+test("trusted media completeness rejects partial legacy server metadata for every media kind", () => {
+  const image = trustedMediaPatch({
+    assetId: "trusted-image",
+    byteSize: 1_024,
+    contentType: "image/png",
+    durationSeconds: null,
+    durationStatus: "not-applicable",
+    kind: "image",
+    mediaHeight: 640,
+    mediaWidth: 640,
+    storageBackend: "local",
+  });
+  const video = trustedMediaPatch({
+    assetId: "trusted-video",
+    byteSize: 2_048,
+    contentType: "video/mp4",
+    durationSeconds: 4.5,
+    durationStatus: "ready",
+    kind: "video",
+    mediaHeight: 360,
+    mediaWidth: 640,
+    storageBackend: "oss",
+  });
+  const audio = trustedMediaPatch({
+    assetId: "trusted-audio",
+    byteSize: 512,
+    contentType: "audio/mpeg",
+    durationSeconds: 2.038,
+    durationStatus: "ready",
+    kind: "audio",
+    storageBackend: "oss",
+  });
+  expect(hasCompleteTrustedMediaMetadata("image", image)).toBe(true);
+  expect(hasCompleteTrustedMediaMetadata("video", video)).toBe(true);
+  expect(hasCompleteTrustedMediaMetadata("audio", audio)).toBe(true);
+  expect(hasCompleteTrustedMediaMetadata("video", {
+    ...video,
+    mediaHeight: undefined,
+    mediaWidth: undefined,
+    videoHeight: 360,
+    videoWidth: 640,
+  })).toBe(false);
+  expect(hasCompleteTrustedMediaMetadata("image", {
+    ...image,
+    mediaByteSize: undefined,
+  })).toBe(false);
+  expect(hasCompleteTrustedMediaMetadata("audio", {
+    ...audio,
+    mediaDurationSeconds: undefined,
+  })).toBe(false);
+  for (const mediaMetadataStatus of ["pending", "failed"] as const) {
+    expect(hasCompleteTrustedMediaMetadata("image", {
+      ...image,
+      mediaMetadataStatus,
+    })).toBe(false);
+    expect(hasCompleteTrustedMediaMetadata("video", {
+      ...video,
+      mediaMetadataStatus,
+    })).toBe(false);
+    expect(hasCompleteTrustedMediaMetadata("audio", {
+      ...audio,
+      mediaMetadataStatus,
+    })).toBe(false);
+  }
+  expect(trustedMediaPatch({
+    assetId: "pending-video",
+    byteSize: 2_048,
+    contentType: "video/mp4",
+    durationSeconds: null,
+    durationStatus: "pending",
+    kind: "video",
+    mediaHeight: 360,
+    mediaWidth: 640,
+    storageBackend: "local",
+  })).toMatchObject({
+    inputState: "invalid",
+    inputStateReason: expect.stringContaining("稍后刷新页面重试"),
+    mediaMetadataStatus: "pending",
+  });
+  expect(trustedMediaPatch({
+    assetId: "failed-audio",
+    byteSize: 512,
+    contentType: "audio/mpeg",
+    durationSeconds: null,
+    durationStatus: "failed",
+    kind: "audio",
+    storageBackend: "local",
+  })).toMatchObject({
+    inputState: "invalid",
+    inputStateReason: expect.stringContaining("请重新上传"),
+    mediaMetadataStatus: "failed",
+  });
+});
+
+test("client metadata hydration retries pending duration with a strict bound", async () => {
+  const originalFetch = globalThis.fetch;
+  let requests = 0;
+  globalThis.fetch = async () => {
+    requests += 1;
+    return new Response(JSON.stringify({
+      assetId: "pending-then-ready-video",
+      byteSize: 2_048,
+      contentType: "video/mp4",
+      durationSeconds: requests === 1 ? null : 4.5,
+      durationStatus: requests === 1 ? "pending" : "ready",
+      kind: "video",
+      mediaHeight: 360,
+      mediaWidth: 640,
+      storageBackend: "local",
+    }), {
+      headers: { "Content-Type": "application/json" },
+      status: 200,
+    });
+  };
+  try {
+    await expect(fetchTrustedMediaMetadata(
+      "video",
+      "pending-then-ready-video",
+    )).resolves.toMatchObject({
+      durationSeconds: 4.5,
+      durationStatus: "ready",
+    });
+    expect(requests).toBe(2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
 
 test("Ark paid-video media policy enforces official size, format and trusted duration boundaries", () => {
   expect(arkVideoMediaProblem("video", media({

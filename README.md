@@ -6,7 +6,13 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 
-## 当前最高优先级：INC-GEN-026 v0.7.0 已部署（2026-09-02，USER RECHECK）
+## 当前最高优先级：INC-GEN-028 / v0.7.2 发布候选（2026-09-02，已授权、尚未发布）
+
+生产当前运行 `v0.7.1-hotfix.1/schema42`。真实网站已经证明 6 个文字 + 4 个图片节点整组成功、独立 Seedance 视频一次提交成功，以及图片/视频/音频本地上传、保存和刷新恢复正常；这些结果不评价图片好不好看，只验证网站能生成并保存工作流。
+
+继续追查旧 Canvas 后确认了一个严重问题：Seedance 的严格预检能把旧 `text + first-frame` 正确归一化为 `multimodal + reference-image`，但组工作流保存的 plan、task 和幂等/ownership 身份仍可能沿用原始 `text` 参数。旧媒体节点还可能因缺 canonical 服务端元数据或停在 pending/failed 状态而被错误拦截。本地修复累计通过 8 specs / 76 tests；Review 发现的 pending/failed P2 已补齐有界重拉和明确终态，直接影响的 4 specs / 27 tests 通过。用户已选择 `v0.7.2` 并授权上线，版本门 m81+m82 `49/49 PASS`，完整候选及增量 Review 均为 `P0/P1/P2=0/0/0/GO`，现可进入 PR/双 CI。生产仍是 v0.7.1-hotfix.1，不能提前宣称线上已修复。当前候选证据见 [`V0_7_2_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`](spec/V0_7_2_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json)，生产基线见 [`V0_7_1_HOTFIX_1_PRODUCTION_RECEIPT_2026-09-02.json`](spec/V0_7_1_HOTFIX_1_PRODUCTION_RECEIPT_2026-09-02.json)。
+
+## 历史：INC-GEN-026 v0.7.0 已部署（2026-09-02，USER RECHECK）
 
 v0.7.0 已完成 PR #144、双 CI、annotated tag/GitHub Release、schema42 locked-exact backup/verify/fresh restore、生产原子切换与 v0.6.70→v0.7.0 rollback/forward。生产运行 `v0.7.0/schema42`，服务 active/ready、NRestarts=0，公网/回环健康、33/33 静态文件、数据库完整性/静默状态和稳定门通过；Provider POST、OSS 写、费用与真实 Canvas/group 点击均为 0。当前版本没有完整公开的只读 workflow-run/capacity preflight，因此 IG26-106 保持 `NOT_RUN`，不冒充完整 run preflight 或用户验收。入口见 [`INC_GEN_026_CHECKPOINT.md`](spec/INC_GEN_026_CHECKPOINT.md)，生产回执见 [`V0_7_0_PRODUCTION_RECEIPT_2026-09-02.json`](spec/V0_7_0_PRODUCTION_RECEIPT_2026-09-02.json)。
 

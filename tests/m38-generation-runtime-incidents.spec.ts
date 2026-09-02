@@ -1138,6 +1138,32 @@ test("retry snapshot compatibility uses durable media while preserving structura
     expect(retrySnapshotCompatibilityProblem(incompatible, currentModel))
       .toContain("当前模型不支持");
   }
+  const seedanceModel = model("video");
+  const legacySeedance = task(seedanceModel, "video", {
+    aspectRatio: "16:9",
+    duration: 5,
+    generateAudio: true,
+    inputMode: "text",
+    inputs: [
+      {
+        kind: "text",
+        order: 1,
+        role: "instruction",
+        sourceNodeId: "legacy-video-text-source",
+      },
+      {
+        assetId: "video-reference-image",
+        kind: "image",
+        order: 2,
+        role: "first-frame",
+        sourceNodeId: "legacy-video-image-source",
+      },
+    ],
+    outputCount: 1,
+    resolution: "480p",
+  });
+  expect(retrySnapshotCompatibilityProblem(legacySeedance, seedanceModel))
+    .toContain("为避免改变已冻结语义");
   } finally {
     database.close();
     if (previousDataDirectory === undefined) {

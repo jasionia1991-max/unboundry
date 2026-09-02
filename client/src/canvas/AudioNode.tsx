@@ -99,6 +99,7 @@ import { UpstreamInputCards } from "./UpstreamInputCards";
 import { GenerationAvailabilityNotice } from "./GenerationAvailabilityNotice";
 import {
   fetchTrustedMediaMetadata,
+  hasCompleteTrustedMediaMetadata,
   mediaUploadState,
   trustedMediaPatch,
 } from "./mediaInputMetadata";
@@ -412,6 +413,7 @@ function AudioNodeImpl({
   const uploadController = useRef<AbortController | undefined>(undefined);
   const uploadAdmissionPending = useRef(false);
   const uploadInFlight = useRef(false);
+  const metadataHydrationAssetIdRef = useRef<string | undefined>(undefined);
   const uploadOperation = useRef(0);
   const waveformSourceAttempted = useRef<string | undefined>(undefined);
   const { getNode, getNodes } = useReactFlow<ProbeNodeType>();
@@ -1002,14 +1004,19 @@ function AudioNodeImpl({
       isFixture ||
       !data.assetId ||
       !data.audioSrc ||
-      data.mediaMetadataSource === "server" ||
-      data.inputState === "uploading" ||
-      data.inputState === "invalid"
+      hasCompleteTrustedMediaMetadata("audio", data) ||
+      metadataHydrationAssetIdRef.current === data.assetId ||
+      data.inputState === "uploading"
     ) return;
+    const requestedAssetId = data.assetId;
+    metadataHydrationAssetIdRef.current = requestedAssetId;
     const controller = new AbortController();
-    void fetchTrustedMediaMetadata("audio", data.assetId, controller.signal)
+    let settled = false;
+    void fetchTrustedMediaMetadata("audio", requestedAssetId, controller.signal)
       .then((metadata) => {
-        setNodes((nodes) => nodes.map((node) => node.id === id
+        settled = true;
+        setNodes((nodes) => nodes.map((node) =>
+          node.id === id && node.data.assetId === requestedAssetId
           ? {
               ...node,
               data: {
@@ -1023,10 +1030,12 @@ function AudioNodeImpl({
       })
       .catch((error) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
+        settled = true;
         const message = error instanceof Error
           ? error.message
           : "服务端无法确认音频素材信息";
-        setNodes((nodes) => nodes.map((node) => node.id === id
+        setNodes((nodes) => nodes.map((node) =>
+          node.id === id && node.data.assetId === requestedAssetId
           ? {
               ...node,
               data: {
@@ -1036,13 +1045,23 @@ function AudioNodeImpl({
             }
           : node));
       });
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      if (!settled && metadataHydrationAssetIdRef.current === requestedAssetId) {
+        metadataHydrationAssetIdRef.current = undefined;
+      }
+    };
   }, [
     canvasId,
     data.assetId,
     data.audioSrc,
     data.inputState,
+    data.mediaByteSize,
+    data.mediaContentType,
+    data.mediaDurationSeconds,
     data.mediaMetadataSource,
+    data.mediaMetadataStatus,
+    data.mediaStorageBackend,
     id,
     persistenceReady,
     setNodes,

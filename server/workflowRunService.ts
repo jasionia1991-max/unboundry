@@ -31,6 +31,7 @@ import {
   workflowRecoveryPolicy,
 } from "./modelExecutionRegistry";
 import { modelConfigurationRevision } from "./modelCatalog";
+import { modelMediaInputPolicy } from "./modelConfigurationIdentity";
 import { assertModelReleaseRevisionIntegrity } from
   "./modelReleaseRevisionStore";
 import {
@@ -278,8 +279,18 @@ export async function createWorkflowRun(input: {
     if (!recovery.workflowEligible) {
       throw new Error(`节点 ${node.id} 的模型不具备整组自动恢复资格`);
     }
+    const canonicalParameters = Object.freeze({ ...preflight.parameters });
+    const canonicalSemanticNode = {
+      dependencies: node.dependencies,
+      id: node.id,
+      kind: node.kind,
+      modelId: node.modelId,
+      ownPrompt: node.ownPrompt,
+      parameters: canonicalParameters,
+      planIndex: node.planIndex,
+    };
     storedNodes.push(Object.freeze({
-      ...node,
+      ...canonicalSemanticNode,
       costCurrency: model.cost_currency,
       modelConfigurationRevision: modelConfigurationRevision({
         ...model,
@@ -292,6 +303,7 @@ export async function createWorkflowRun(input: {
       providerProfileId: model.provider_profile_id,
       recoveryEvidence: recovery.evidence,
       recoveryGrade: recovery.grade,
+      semanticIdentity: workflowSemanticDigest(canonicalSemanticNode),
     }));
   }
   const relevantIds = new Set([
@@ -702,7 +714,7 @@ async function admitWorkflowNode(input: {
   ) throw new Error("已冻结模型合同与工作流计划不一致");
   const schema = releaseDocument.capabilitySchema as ModelParameterSchema;
   const normalized = normalizeParameterValues(schema, nodePlan.parameters);
-  const parameters = submissionParameterValues(schema, normalized);
+  let parameters = submissionParameterValues(schema, normalized);
   const nodeRows = input.database.prepare(`
     SELECT node_id, task_id, state FROM workflow_run_nodes WHERE run_id = ?
   `).all(runId) as Array<{ node_id: string; state: string; task_id: string | null }>;
@@ -745,6 +757,11 @@ async function admitWorkflowNode(input: {
       source: edge.source,
       target: edge.target,
     })),
+    mediaInputPolicy: modelMediaInputPolicy({
+      capability: nodePlan.kind,
+      providerDriver: model.provider_driver,
+      providerModelId: model.provider_model_id,
+    }),
     modelReleaseRevision: String(nodePlan.modelReleaseRevision.revisionId ?? ""),
     modelSchema: schema,
     nodes: graphNodes,
@@ -756,6 +773,10 @@ async function admitWorkflowNode(input: {
   if (!preflight.canSubmit || !preflight.contractFingerprint) {
     throw new Error(preflight.problems[0]?.message ?? "冻结工作流输入尚未就绪");
   }
+  parameters = submissionParameterValues(
+    schema,
+    preflight.normalizedParameters ?? parameters,
+  );
   const inputKey = generationInputKey({
     inputs: preflight.inputs,
     modelConfigurationRevision: nodePlan.modelConfigurationRevision,

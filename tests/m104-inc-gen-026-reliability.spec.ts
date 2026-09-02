@@ -10,6 +10,11 @@ import { expect, test } from "./safe-test";
 import { createServer as createViteServer, type ViteDevServer } from "vite";
 import { openAppDatabase } from "../server/database";
 import {
+  generationInputKey,
+  generationOwnershipEvidence,
+  generationOwnershipKey,
+} from "../types/generationIdentity";
+import {
   createGenerationTaskStore,
   GenerationTaskWorkflowLockedError,
 } from "../server/generationTaskStore";
@@ -20,7 +25,10 @@ import {
 } from "../server/generationTasks";
 import { bootstrapPublishedModelContracts } from
   "../server/modelReleaseBootstrap";
-import { compileFrozenWorkflowSemanticPlan } from
+import {
+  compileFrozenWorkflowSemanticPlan,
+  workflowSemanticDigest,
+} from
   "../types/workflowSemanticPlan";
 import {
   parseImmutableWorkflowPlan,
@@ -1229,6 +1237,83 @@ async function createPublishedTtImageModel() {
   return model.model.id;
 }
 
+async function createPublishedSeedanceModel() {
+  const providerResponse = await expectOk(await request(
+    "/api/admin/providers",
+    {
+      body: JSON.stringify({
+        apiKey: "inc-gen-028-fake-ark-video-key",
+        baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+        driver: "volcengine-ark",
+        label: "INC-GEN-028 loopback fake Ark video",
+      }),
+      method: "POST",
+    },
+  ), "Seedance provider");
+  const provider = (await providerResponse.json()) as {
+    profile: { id: string };
+  };
+  await expectOk(await request(
+    `/api/account-credentials/${provider.profile.id}`,
+    {
+      body: JSON.stringify({ apiKey: "inc-gen-028-fake-ark-video-key" }),
+      method: "PUT",
+    },
+  ), "Seedance provider credential");
+  await expectOk(await request(
+    `/api/admin/providers/${provider.profile.id}/test`,
+    { method: "POST" },
+  ), "Seedance provider read-only verification");
+  const modelResponse = await expectOk(await request("/api/admin/models", {
+    body: JSON.stringify({
+      capability: "video",
+      displayName: "INC-GEN-028 Seedance canonical inputs",
+      isDefault: false,
+      maxCostMicrounits: 0,
+      providerModelId: "doubao-seedance-2-0-mini-260615",
+      providerProfileId: provider.profile.id,
+      sortOrder: 1,
+      status: "draft",
+    }),
+    method: "POST",
+  }), "Seedance model");
+  const model = (await modelResponse.json()) as { model: { id: string } };
+  const contractResponse = await expectOk(await request(
+    `/api/admin/models/${model.model.id}/contract`,
+  ), "Seedance model contract");
+  const contract = (await contractResponse.json()) as {
+    suggestedDocument: Record<string, unknown>;
+  };
+  await expectOk(await request(
+    `/api/admin/models/${model.model.id}/contract/draft`,
+    {
+      body: JSON.stringify({
+        document: contract.suggestedDocument,
+        expectedDraftVersion: 0,
+      }),
+      method: "POST",
+    },
+  ), "Seedance model contract draft");
+  await expectOk(await request(
+    `/api/admin/models/${model.model.id}/contract/publish`,
+    {
+      body: JSON.stringify({ expectedDraftVersion: 1 }),
+      method: "POST",
+    },
+  ), "Seedance model contract publish");
+  await expectOk(await request(`/api/admin/models/${model.model.id}`, {
+    body: JSON.stringify({ isDefault: true, status: "published" }),
+    method: "PATCH",
+  }), "Seedance model publish");
+  const database = openAppDatabase(String(process.env.UNBOUNDRY_DATA_DIR));
+  try {
+    bootstrapPublishedModelContracts(database, "__test__");
+  } finally {
+    database.close();
+  }
+  return model.model.id;
+}
+
 async function waitForTerminalRun(runId: string, attempts = 200) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const response = await expectOk(
@@ -1430,6 +1515,337 @@ test("INC-GEN-026 true HTTP workflow admits once and reaches a loopback fake Pro
     } else {
       process.env.UNBOUNDRY_TEST_AUTH_BYPASS = previousBypass;
     }
+  }
+});
+
+test("INC-GEN-028 legacy Seedance inputs stay canonical from frozen plan through Provider submission", async () => {
+  const previousBypass = process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+  const originalFetch = globalThis.fetch;
+  const providerRequests: Array<{
+    body: string;
+    method: string;
+    originalUrl: string;
+  }> = [];
+  const mediaDirectory = await mkdtemp(join(tmpdir(), "unboundry-inc-gen-028-seedance-"));
+  const referencePath = join(mediaDirectory, "reference.png");
+  let app: ViteDevServer | undefined;
+  let provider: Server | undefined;
+  try {
+    await executeFile("ffmpeg", [
+      "-y",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=red:s=640x640",
+      "-frames:v",
+      "1",
+      referencePath,
+    ]);
+    const referencePng = await readFile(referencePath);
+    process.env.UNBOUNDRY_TEST_AUTH_BYPASS = "1";
+    provider = createHttpServer(async (incoming, response) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of incoming) chunks.push(Buffer.from(chunk));
+      const url = new URL(incoming.url ?? "/", providerOrigin);
+      response.statusCode = 200;
+      response.setHeader("Content-Type", "application/json");
+      if (
+        incoming.method === "POST" &&
+        url.pathname === "/api/v3/contents/generations/tasks"
+      ) {
+        response.end(JSON.stringify({ id: "cgt-inc-gen-028-canonical" }));
+        return;
+      }
+      if (
+        incoming.method === "GET" &&
+        url.pathname ===
+          "/api/v3/contents/generations/tasks/cgt-inc-gen-028-canonical"
+      ) {
+        response.end(JSON.stringify({
+          error: { code: "SAFE_FIXTURE_STOP", message: "fixture terminal" },
+          status: "failed",
+        }));
+        return;
+      }
+      response.end(JSON.stringify({ items: [] }));
+    });
+    await listen(provider, providerPort);
+    globalThis.fetch = (async (input, init) => {
+      const originalUrl = input instanceof Request ? input.url : String(input);
+      const url = new URL(originalUrl);
+      if (url.hostname === "ark.cn-beijing.volces.com") {
+        const body = typeof init?.body === "string" ? init.body : "";
+        providerRequests.push({
+          body,
+          method: input instanceof Request
+            ? input.method
+            : init?.method ?? "GET",
+          originalUrl,
+        });
+        const target = new URL(url.pathname + url.search, providerOrigin);
+        return await originalFetch(target, init);
+      }
+      return await originalFetch(input, init);
+    }) as typeof fetch;
+
+    app = await createViteServer({
+      configFile: "vite.config.ts",
+      logLevel: "silent",
+      server: {
+        host: "127.0.0.1",
+        hmr: false,
+        port: appPort,
+        strictPort: true,
+        ws: false,
+      },
+    });
+    await app.listen();
+    await waitForReady();
+    await expectOk(await request("/api/admin/generation-safety", {
+      body: JSON.stringify(safetySettings),
+      method: "PUT",
+    }), "generation safety");
+    const modelId = await createPublishedSeedanceModel();
+    const canvasId = "inc-gen-028-seedance-canonical";
+    const groupId = "inc-gen-028-seedance-group";
+    const referenceAssetId = "inc-gen-028-seedance-reference";
+    await expectOk(await request(`/api/assets/${referenceAssetId}`, {
+      body: referencePng,
+      headers: {
+        "Content-Type": "image/png",
+        "X-File-Name": "reference.png",
+      },
+      method: "POST",
+    }), "Seedance reference upload");
+    const ownPrompt = "生成一段商品展示视频";
+    const graph = {
+      edges: [{
+        data: { inputOrder: 1, inputRole: "instruction" },
+        id: "inc-gen-028-seedance-text-edge",
+        source: "inc-gen-028-seedance-text",
+        target: "inc-gen-028-seedance-video",
+      }, {
+        data: { inputOrder: 2, inputRole: "first-frame" },
+        id: "inc-gen-028-seedance-image-edge",
+        source: "inc-gen-028-seedance-image",
+        target: "inc-gen-028-seedance-video",
+      }],
+      nodes: [
+        { data: { title: "INC-GEN-028 Group" }, id: groupId, type: "group" },
+        {
+          data: { content: "保持服装颜色和主体一致", title: "Legacy Text" },
+          id: "inc-gen-028-seedance-text",
+          type: "text",
+        },
+        {
+          data: {
+            assetId: referenceAssetId,
+            imageSrc: `/api/assets/${referenceAssetId}`,
+            inputState: "ready",
+            title: "Legacy first frame",
+          },
+          id: "inc-gen-028-seedance-image",
+          type: "image",
+        },
+        {
+          data: {
+            title: "Legacy Seedance target",
+            videoModelId: modelId,
+            videoParameters: {
+              aspectRatio: "16:9",
+              duration: 5,
+              generateAudio: true,
+              inputMode: "text",
+              outputCount: 1,
+              resolution: "480p",
+            },
+            videoPrompt: ownPrompt,
+            videoPromptReady: true,
+          },
+          id: "inc-gen-028-seedance-video",
+          parentId: groupId,
+          type: "video",
+        },
+      ],
+    };
+    const canvasResponse = await expectOk(await request(`/api/canvas/${canvasId}`, {
+      body: JSON.stringify({
+        ...graph,
+        revision: 0,
+        viewport: { x: 0, y: 0, zoom: 1 },
+      }),
+      method: "PUT",
+    }), "Seedance legacy canvas");
+    const canvasRevision = (await canvasResponse.json() as { revision: number }).revision;
+    const semantic = compileFrozenWorkflowSemanticPlan({ ...graph, groupId });
+    const createResponse = await expectOk(await request("/api/workflow-runs", {
+      body: JSON.stringify({
+        canvasId,
+        clientSemanticFingerprint: semantic.semanticFingerprint,
+        groupId,
+      }),
+      method: "POST",
+    }), "Seedance canonical workflow create");
+    const created = await createResponse.json() as { id: string };
+    const terminal = await waitForTerminalRun(created.id);
+
+    const resolvedModel = generationTaskApplication.resolveModel(
+      "video",
+      modelId,
+      "__test__",
+    );
+    if (!resolvedModel) throw new Error("Seedance fixture model was not resolved");
+    const expectedPreflight = generationTaskApplication.strictGenerationPreflight({
+      body: {
+        canvasId,
+        canvasRevision,
+        inputSchemaVersion: 1,
+        kind: "video",
+        model: modelId,
+        nodeId: "inc-gen-028-seedance-video",
+        ownPrompt,
+        parameters: graph.nodes[3]!.data.videoParameters,
+      },
+      bypass: true,
+      model: resolvedModel,
+      ownerId: "__test__",
+      requireFreshRevision: true,
+      targetKind: "video",
+    });
+    expect(expectedPreflight.canSubmit).toBe(true);
+    expect(expectedPreflight.parameters).toMatchObject({ inputMode: "multimodal" });
+    expect(expectedPreflight.inputs.find(({ kind }) => kind === "image"))
+      .toMatchObject({ role: "reference-image" });
+    const expectedContractFingerprint = expectedPreflight.contractFingerprint;
+    if (!expectedContractFingerprint) {
+      throw new Error("Seedance canonical preflight contract is missing");
+    }
+
+    const database = new DatabaseSync(
+      `${process.env.UNBOUNDRY_DATA_DIR}/unboundry.sqlite`,
+      { readOnly: true },
+    );
+    const row = database.prepare(`
+      SELECT run.plan_json AS planJson,
+        node.semantic_identity AS storedSemanticIdentity,
+        task.model_configuration AS modelConfiguration,
+        task.parameters AS parameters
+      FROM workflow_runs AS run
+      JOIN workflow_run_nodes AS node ON node.run_id = run.id
+      JOIN generation_tasks AS task ON task.id = node.task_id
+      WHERE run.id = ? AND node.node_id = 'inc-gen-028-seedance-video'
+    `).get(created.id) as {
+      modelConfiguration: string;
+      parameters: string;
+      planJson: string;
+      storedSemanticIdentity: string;
+    };
+    database.close();
+    const plan = JSON.parse(row.planJson) as {
+      nodes: Array<{
+        dependencies: string[];
+        id: string;
+        kind: "video";
+        modelConfigurationRevision: string;
+        modelId: string;
+        ownPrompt: string;
+        parameters: Record<string, unknown>;
+        planIndex: number;
+        semanticIdentity: string;
+      }>;
+    };
+    const planNode = plan.nodes.find(({ id }) =>
+      id === "inc-gen-028-seedance-video"
+    )!;
+    const taskParameters = JSON.parse(row.parameters) as {
+      inputMode?: string;
+      inputs?: Array<{ kind: string; role: string }>;
+    };
+    const modelConfiguration = JSON.parse(row.modelConfiguration) as {
+      generationInputKey: string;
+      generationOwnershipKey: string;
+      modelInputContractFingerprint: string;
+      workflowBinding: {
+        generationInputKey: string;
+        generationOwnershipKey: string;
+      };
+    };
+    expect(planNode.parameters).toMatchObject({ inputMode: "multimodal" });
+    expect(planNode.semanticIdentity).toBe(workflowSemanticDigest({
+      dependencies: planNode.dependencies,
+      id: planNode.id,
+      kind: planNode.kind,
+      modelId: planNode.modelId,
+      ownPrompt: planNode.ownPrompt,
+      parameters: planNode.parameters,
+      planIndex: planNode.planIndex,
+    }));
+    expect(row.storedSemanticIdentity).toBe(planNode.semanticIdentity);
+    expect(taskParameters).toMatchObject({ inputMode: "multimodal" });
+    expect(taskParameters.inputs?.find(({ kind }) => kind === "image"))
+      .toMatchObject({ role: "reference-image" });
+    const expectedInputKey = generationInputKey({
+      inputs: expectedPreflight.inputs,
+      modelConfigurationRevision: planNode.modelConfigurationRevision,
+      modelId,
+      modelReleaseRevision: String(
+        expectedPreflight.modelReleaseRevision?.revisionId ?? "",
+      ),
+      ownPrompt,
+      parameters: expectedPreflight.parameters,
+      prompt: expectedPreflight.finalPrompt,
+    });
+    const expectedOwnershipKey = generationOwnershipKey(
+      generationOwnershipEvidence({
+        contractFingerprint: expectedContractFingerprint,
+        inputs: expectedPreflight.inputs,
+        kind: "video",
+        modelConfigurationRevision: planNode.modelConfigurationRevision,
+        modelId,
+        modelReleaseRevision: String(
+          expectedPreflight.modelReleaseRevision?.revisionId ?? "",
+        ),
+        parameters: expectedPreflight.parameters,
+        prompt: ownPrompt,
+      }),
+    );
+    expect(modelConfiguration).toMatchObject({
+      generationInputKey: expectedInputKey,
+      generationOwnershipKey: expectedOwnershipKey,
+      modelInputContractFingerprint: expectedContractFingerprint,
+      workflowBinding: {
+        generationInputKey: expectedInputKey,
+        generationOwnershipKey: expectedOwnershipKey,
+      },
+    });
+    const providerPosts = providerRequests.filter(({ method, originalUrl }) =>
+      method === "POST" &&
+      new URL(originalUrl).pathname === "/api/v3/contents/generations/tasks"
+    );
+    expect(providerPosts).toHaveLength(1);
+    const providerBody = JSON.parse(providerPosts[0]!.body) as {
+      content: Array<{ role?: string; type: string }>;
+    };
+    expect(providerBody.content).toContainEqual(expect.objectContaining({
+      role: "reference_image",
+      type: "image_url",
+    }));
+    expect(providerBody.content).not.toContainEqual(expect.objectContaining({
+      role: "first_frame",
+    }));
+    expect(terminal.state).toBe("failed");
+  } finally {
+    await app?.close();
+    await close(provider);
+    globalThis.fetch = originalFetch;
+    if (previousBypass === undefined) {
+      delete process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+    } else {
+      process.env.UNBOUNDRY_TEST_AUTH_BYPASS = previousBypass;
+    }
+    await rm(mediaDirectory, { force: true, recursive: true });
   }
 });
 

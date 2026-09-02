@@ -2,13 +2,28 @@
 
 更新时间：2026-09-02
 
-状态：`R9_V0_7_0_DEPLOYED_STABLE / GITHUB_CI_PASS / BACKUP_RESTORE_PASS / ROLLBACK_FORWARD_PASS / IG26_106_EXACT_RUN_PREFLIGHT_NOT_RUN / REAL_PROVIDER_NOT_AUTHORIZED / USER_RECHECK`
+状态：`PRODUCTION_V0_7_1_HOTFIX_1_STABLE / V0_7_2_RELEASE_AUTHORIZED / VERSION_GATES_49_OF_49_PASS / RELEASE_CANDIDATE_REVIEW_GO / USER_RECHECK`
 
-## 当前一句话结论
+## 2026-09-02 post-hotfix 当前覆盖层
+
+- 生产 current=`/opt/unboundry/releases/v0.7.1-hotfix.1-inc-gen-027-20260902`，tag/merge=`f3b2f7142382521762a2b772d2eb494e458b7b3f`，tree=`df8172c201ccee22de59afb8daa69c56223a342f`，package/schema=`0.7.1/42`，active/ready。
+- 真实 Canvas `bcbb1199-d154-4c1a-a580-6b66d2d10f38` 的 run `08c2e8a5-89c1-4ebf-a935-632a7f5dc4bc` 已自动完成 6 个文字节点与 4 个图片节点；10 tasks/10 attempts、4 result assets，刷新后保持，无人工去 Provider/relay/OSS 找结果。
+- 独立 Seedance task `bb6e194e-c280-438d-8015-727841e23132`、Provider task `cgt-20260902064018-zx296` 只 admission/attempt 一次并成功回填 MP4；刷新后保持、无重复提交、无人工回收。
+- 生产本地图片、视频、音频上传均已证明 ready 与刷新保持；视频 asset `fc40b521-c02f-4920-a457-d6b1c1ae12c3.mp4`、音频 asset `d0e77a5f-514e-4451-bfa1-59d1a7c64752.mp3` 均从 OSS 回放 readyState=4。
+- 第二点审计确认是严重入参合同问题：组工作流 strict preflight 会把旧 Seedance `inputMode=text + first-frame` 正确规范化为 `multimodal + reference-image`，但生产源码仍可能把原始参数用于冻结 plan、task、generationInputKey、ownershipKey 与 request intent。当前 Provider 可能因读取 normalized snapshot 而偶然成功，但幂等、恢复、relay 与声明式合同身份会不一致，定级 `P1_NEAR_P0`。
+- 另确认旧 Canvas canonical 媒体元数据回填 bug，以及无任务绑定的历史 ROLE_CONFLICT 红字残留。INC-GEN-028 本地候选已经修复上述三项，并补齐三媒体异步 assetId 竞态保护、旧 Seedance retry policy、pending metadata 最多三次有界重拉和 failed 明确终态；累计 8 个直接相关 safe specs、76 tests 全部通过，当前测试库存 1175，P2 后直接影响的 4 specs/27 tests 通过，TypeScript、source coverage、production build、diff-check 与 4173 隔离门通过，真实 Provider POST=0。
+- 首轮独立逐文件/逐 hunk 复核覆盖当时 28/28 tracked files、99/99 hunks 与 1/1 receipt，代码结论 `P0=0/P1=0/GO`；唯一 P1 是验收矩阵错误复用了 v0.7.0 的 64 files/671 hunks/旧 Review AUTO_PASS。第二轮覆盖 31/31 files、120/120 hunks 与 receipt，再次确认代码 `P0=0/P1=0/GO`，并发现 AGENTS/Current State 仍把旧 INC-GEN-026 路由称作当前的文档 P1。两轮 P1 与 assetId 竞态、三媒体 legacy E2E、retry policy、旧版本命令 P2 均已整改；最终独立增量 Review 覆盖 31/31 tracked files、143/143 hunks 与 1/1 receipt，结论 `P0=0/P1=0/P2=0/GO`。
+- 用户已明确回复“版本号 v0.7.2，授权上线”。package/lock/runtime allowlist 与 m81 断言已经同步，m81+m82 `49/49 PASS`；v0.7.2 完整候选 Review 覆盖 35/35 tracked files、当时 150/150 hunks 与 2/2 receipts，发现唯一非阻断 P2 后已修复；同一 Reviewer 聚焦复核 P2 增量后结论 `P0/P1/P2=0/0/0/GO`。现在执行 PR/双 CI/tag/Release、exact-tag fresh build、schema42 locked-exact backup、生产切换与 rollback-forward；v0.7.2 技术门全绿后才在原 Canvas 做一次真实 Seedance 验证，结果不明不得重发。
+
+v0.7.2 候选回执：`spec/V0_7_2_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`；发布前生产回执：`spec/V0_7_1_HOTFIX_1_PRODUCTION_RECEIPT_2026-09-02.json`。当前本地 worktree=`/Users/mymy/Documents/unboundry-inc-gen-028-workflow-input-contract-2026-09-02`，branch=`codex/inc-gen-028-workflow-input-contract`，baseline=`f3b2f7142382521762a2b772d2eb494e458b7b3f`。
+
+> 以下内容是 v0.7.0/R9 历史快照。原测试、授权与回执继续保留，但不能覆盖上面的生产版本、真实验证结果、INC-GEN-028 缺陷判断或新发布授权状态。
+
+## v0.7.0 历史一句话结论
 
 INC-GEN-026 v0.7.0 已完成 PR #144、分支/main 双 CI、不可移动 tag/GitHub Release、schema42 locked-exact 备份与全新恢复、原子切换、旧版回退及最终前滚。生产当前运行 v0.7.0/schema42，公网与回环 live/ready、33/33 静态文件、数据库 integrity/FK/静默状态及 50 秒稳定门通过，NRestarts=0；生成 admission/attempt/task 和业务数据不变，Provider POST、OSS 写、真实点击与费用均为 0。v0.7.0 没有完整公开的只读 workflow-run/capacity preflight，且本次未授权 exact Canvas/group，因此 IG26-106 诚实保持 `NOT_RUN`，不能把分项健康检查冒充完整 run preflight。用户实页确认前保持 `USER_RECHECK`。
 
-## 唯一代码身份
+## v0.7.0 历史代码身份
 
 - worktree：`/Users/mymy/Documents/unboundry-inc-gen-026-workflow-reliability-2026-09-01`
 - branch：`codex/inc-gen-026-workflow-reliability`
@@ -24,14 +39,14 @@ INC-GEN-026 v0.7.0 已完成 PR #144、分支/main 双 CI、不可移动 tag/Git
 
 R9 已完成：annotated tag `v0.7.0` 指向 merge `2129f2e0b729306f84c1245f43fac8923fea88aa`；生产 current=`/opt/unboundry/releases/v0.7.0-inc-gen-026-20260902`，service active/enabled、NRestarts=0，公网与回环 version/live/ready 均通过，schema42/integrity ok/FK0，active task=0、unsettled current unknown=0、active publication=0、active workflow run=0。权威回执为 `spec/V0_7_0_PRODUCTION_RECEIPT_2026-09-02.json`。
 
-## R9 当前授权
+## R9 历史授权（已消费）
 
 - 用户原文：`授权上线，版本号v0.7.0`。
 - 允许：v0.7.0 版本差异、commit/push/PR/CI/tag/GitHub Release、schema42 locked-exact backup/verify/fresh restore、生产安装/切换、上一 schema42 release rollback 与最终 forward、零付费技术门。
 - 不允许：历史 9-task apply、真实 Provider POST、真实 OSS 写/删/恢复、任何费用、真实 Canvas/group 点击。
 - 唯一 formal full 已消费，禁止重跑；版本差异只运行 m81 等直接相关 safe spec、build/CI 与增量 Review。
 
-## 当前权威读取顺序
+## v0.7.0 历史读取顺序
 
 1. `spec/INC_GEN_026_CHECKPOINT.md`
 2. `spec/INC_GEN_026_ONE_CLICK_WORKFLOW_RELIABILITY_FINAL_IMPLEMENTATION_PLAN_2026-09-01.md`
