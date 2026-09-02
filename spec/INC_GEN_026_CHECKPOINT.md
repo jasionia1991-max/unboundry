@@ -2,7 +2,7 @@
 
 更新时间：2026-09-03
 
-状态：`V0_7_4_LOCAL_FIX_PASS / INCREMENTAL_REVIEW_PENDING / RELEASE_AND_REAL_CANVAS_NOT_RUN`
+状态：`V0_7_4_BRANCH_CI_PASS / INCREMENTAL_REVIEW_GO / RELEASE_AND_REAL_CANVAS_NOT_RUN`
 
 ## 2026-09-03 v0.7.4 候选当前覆盖层
 
@@ -13,7 +13,7 @@
 - CI新增证据：前四次普通branch CI与诊断run `33679773692`均保留12/13失败。诊断head `b17b9fd`把隔离错误明文限于safe-test，首次确认第二个视频任务已取得fake Provider结果，但保存MP4时抛出“服务端无法读取素材时长”。runner为macOS arm64，原workflow没有安装或检查ffmpeg/ffprobe；官方镜像清单与现场均没有ffprobe。该缺失使本地永久错误被当成普通未知错误按1/2/4/8/15秒重试，外层又继续检查同一Provider成功结果，因此run保持`running [success, admitted]`。这不是入参错误，也不是输出集合重放错误。
 - 当前修复：CI在m104前安装ffmpeg并显式检查ffprobe；`probeTrustedMediaMetadata`保留`DEPENDENCY_UNAVAILABLE/TEMPORARY/UNREADABLE/ABORTED`，结果保存只重试TEMPORARY，缺组件、坏媒体和停止立即抛出并让task/workflow终态化。测试诊断明文字段已删除，生产日志仍只写安全错误码。此前writer-free状态快照和严格输出集合重放继续作为独立可靠性加固，但不再冒充本次CI根因。生产已只读确认`/usr/bin/ffprobe`存在并成功探测release测试MP4。
 - 当前证据：既有m22 `45/45`、m104 `13/13`、直接依赖`106/106`、m91 `9/9`、m88 `38/38`仍有效；本次元数据增量m57+m90 `40/40`，随后完整m104图片→视频链路`13/13`。治理m38在权威措辞更新后先保留一次`17/18`，只修精确生产标记后最小复验`18/18`。safe preflight均通过TypeScript、production build、source coverage与4173隔离；库存1178，formal full没有重跑。m104动态链路仍为1 run、2 tasks、2 attempts、恰好2个预期fake Provider POST并终态成功。
-- 当前门禁：旧累计28/28非回执文件、161/161 hunks和1/1回执的`P0=0/P1=0/P2=0/GO`是新增元数据与CI修复之前的历史门，现已失效。PR #151仍打开；先冻结当前候选并完成同一Reviewer增量Review，再要求final branch CI实际安装ffprobe且m104 13/13；之后才可merge/main CI、tag/Release、exact-tag fresh build、backup/switch/rollback-forward。全部通过且v0.7.4生产健康后，精确组只点击一次；结果不明只读核对原run/task，禁止重试。验收不评价内容审美，用户明确确认前保持`USER_RECHECK`。
+- 当前门禁：修复head `afea935` 的branch CI `33681493693`已在macOS runner确认`/opt/homebrew/bin/ffprobe`、ffprobe 9.0.1、m104 `13/13`及总门`SUCCESS`。同一Reviewer对`b17b9fd..afea935`新增14/14文件、42/42 diff hunks（含1份回执）完成增量复核，结论`P0=0/P1=0/P2=0/GO`；结合此前完整候选复核，当前累计产品候选为32/32非回执文件、174/174 hunks和1/1回执。PR #151仍打开；接下来才可merge/main CI、tag/Release、exact-tag fresh build、backup/switch/rollback-forward。全部通过且v0.7.4生产健康后，精确组只点击一次；结果不明只读核对原run/task，禁止重试。验收不评价内容审美，用户明确确认前保持`USER_RECHECK`。
 - 当前候选回执：`spec/V0_7_4_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`。以下v0.7.3及更早内容均为历史时点证据，不得覆盖本层或恢复旧授权。
 
 ## 2026-09-02 v0.7.3 发布当前覆盖层

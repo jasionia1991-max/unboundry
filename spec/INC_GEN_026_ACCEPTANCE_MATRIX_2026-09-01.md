@@ -1,6 +1,6 @@
 # INC-GEN-026 一次点击工作流可靠生成验收矩阵
 
-状态：`V0_7_4_LOCAL_FIX_PASS / INCREMENTAL_REVIEW_PENDING / RELEASE_AND_REAL_CANVAS_NOT_RUN`
+状态：`V0_7_4_BRANCH_CI_PASS / INCREMENTAL_REVIEW_GO / RELEASE_AND_REAL_CANVAS_NOT_RUN`
 
 本矩阵与 `spec/INC_GEN_026_ONE_CLICK_WORKFLOW_RELIABILITY_FINAL_IMPLEMENTATION_PLAN_2026-09-01.md` 一一对应。
 
@@ -18,7 +18,7 @@
 
 ## 2026-09-03 v0.7.4 候选当前覆盖层
 
-生产仍运行`v0.7.3/schema42`。v0.7.4已经获得修复、发布和上线后精确Canvas/group执行一次的最新授权。PR #151已打开；前四次普通branch CI与诊断run `33679773692`均保留12/13失败。诊断run首次确认第二个视频节点已拿到fake Provider MP4，保存时因macOS runner没有`ffprobe`而抛出“服务端无法读取素材时长”；该永久错误被当成未知错误反复退避，workflow因此保持`running [success, admitted]`。所以这次CI失败不是入参逻辑，也不是此前推断的输出集合重放；精确重放继续作为额外幂等加固。当前CI会在m104前安装并检查ffprobe，产品会保留元数据错误类型，只重试资源繁忙/超时，缺组件或不可读媒体立即终态。生产已只读确认`/usr/bin/ffprobe`可探测release测试MP4。新增代码/CI/文档已使旧28/161 Review GO失效，final branch CI、增量Review、tag/Release、生产切换和真实点击尚未执行。原生产失败请求`4666a088-aca9-402b-ba8b-c842023470cb`仍证明0 run/task/admission/attempt/Provider POST；其直接根因为动态Grok首帧角色被静态准入误判，逐节点数据库重复打开令400拖到35.260秒并被浏览器30秒超时遮蔽，服务端节点状态又未驱动原呼吸灯。
+生产仍运行`v0.7.3/schema42`。v0.7.4已经获得修复、发布和上线后精确Canvas/group执行一次的最新授权。PR #151已打开；前四次普通branch CI与诊断run `33679773692`均保留12/13失败。诊断run首次确认第二个视频节点已拿到fake Provider MP4，保存时因macOS runner没有`ffprobe`而抛出“服务端无法读取素材时长”；该永久错误被当成未知错误反复退避，workflow因此保持`running [success, admitted]`。所以这次CI失败不是入参逻辑，也不是此前推断的输出集合重放；精确重放继续作为额外幂等加固。修复head `afea935` 的branch CI `33681493693`已在macOS runner安装并确认ffprobe，m104 `13/13`和总门通过；产品会保留元数据错误类型，只重试资源繁忙/超时，缺组件或不可读媒体立即终态。生产已只读确认`/usr/bin/ffprobe`可探测release测试MP4。同一Reviewer对新增14/14文件、42/42 hunks（含1份回执）完成增量Review，结论`P0=0/P1=0/P2=0/GO`。main CI、tag/Release、生产切换和真实点击尚未执行。原生产失败请求`4666a088-aca9-402b-ba8b-c842023470cb`仍证明0 run/task/admission/attempt/Provider POST；其直接根因为动态Grok首帧角色被静态准入误判，逐节点数据库重复打开令400拖到35.260秒并被浏览器30秒超时遮蔽，服务端节点状态又未驱动原呼吸灯。
 
 本地候选已完成精确动态角色等待、create准入连接复用、`admitted`节点临时呼吸灯映射、不确定create结果的先锁定/只读找回/禁止重提、workflow只读状态查询、媒体输出集合精确幂等重放，以及ffprobe先决件和永久元数据错误立即收口。既有211项直接相关证据继续有效；本次增量m57+m90 `40/40`、完整m104 `13/13`，TypeScript/build/source coverage/4173隔离通过，库存1178，formal full未重跑。当前详细门见IG26-122～132和`spec/V0_7_4_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`。
 

@@ -3,15 +3,15 @@
   "packageVersion": "0.7.4",
   "schemaVersion": 42,
   "createdAt": "2026-09-02T17:16:59Z",
-  "updatedAt": "2026-09-02T20:45:00Z",
-  "status": "LOCAL_FIX_PASS_INCREMENTAL_REVIEW_PENDING",
+  "updatedAt": "2026-09-02T20:55:00Z",
+  "status": "BRANCH_CI_PASS_INCREMENTAL_REVIEW_GO_RELEASE_PENDING",
   "source": {
     "baselineCommit": "2ab56cb6fa98108a3e861b762aaab400a3d559a8",
     "baselineTree": "12451397342101704e8248724e4f5e2e35a0deab",
     "originMainAtAuthorization": "2ab56cb6fa98108a3e861b762aaab400a3d559a8",
     "branch": "codex/v0.7.4-workflow-admission-ui",
-    "candidateCommit": null,
-    "candidateTree": null,
+    "candidateCommit": "afea9351eb700ee0f537c988ec0e7170fabffeb2",
+    "candidateTree": "7d8b15ef782f11715b136f6fbc89beb06aa0addd",
     "mergeCommit": null,
     "mergeTree": null,
     "tag": null,
@@ -108,12 +108,13 @@
     "postMediaMetadataFixLocalEvidence": "m57+m90 passed 40/40 and a separate full m104 run passed 13/13 in 7.8 seconds. Both safe preflights passed TypeScript, production build and source coverage; listener 4173 remained unchanged. Formal full was not rerun."
   },
   "candidateManifest": {
-    "lastReviewedChangedFilesExcludingReceipt": 28,
-    "lastReviewedHunksExcludingReceipt": 161,
+    "lastReviewedChangedFilesExcludingReceipt": 32,
+    "lastReviewedHunksExcludingReceipt": 174,
     "reviewedCandidateReceipts": 1,
-    "lastReviewedTotalFiles": 29,
-    "lastReviewedBinaryDiffExcludingReceiptSha256": "5fd1b56072ed341ea1718a9b6ba3e477b27348cbcc430ea6bf4775a47c7a7436",
-    "currentReviewStatus": "PENDING_AFTER_MEDIA_METADATA_AND_CI_PREREQUISITE_CHANGES"
+    "lastReviewedTotalFiles": 33,
+    "lastReviewedBinaryDiffExcludingReceiptSha256": "ec2020f437bbeeeff3f491a3bd3239d0dd5bc371be04481942446797b02acf0e",
+    "latestIncrementalReview": "b17b9fd..afea935; 14/14 changed files, 42/42 diff hunks including 1/1 candidate receipt",
+    "currentReviewStatus": "P0=0/P1=0/P2=0/GO"
   },
   "review": {
     "initial": {
@@ -140,11 +141,11 @@
       "incrementalReview": "The same reviewer accepted the exact task plus execution-attempt plus optional Provider-ID match, the positive lost-ack replay, the wrong-attempt negative fixture and the authority-document delta. Current cumulative result: P0=0/P1=0/P2=0/GO."
     },
     "releaseCandidateBeforeLatestFix": "28/28 non-receipt files, 161/161 hunks and 1/1 candidate receipt cumulatively reviewed after the exact output-set replay and Provider execution-attempt remediation; P0=0/P1=0/P2=0/GO",
-    "currentReleaseCandidate": "PENDING incremental review because media metadata runtime behavior, two direct tests, the CI prerequisite, and authority documents changed after the previous GO"
+    "currentReleaseCandidate": "Previous complete review plus b17b9fd..afea935 incremental review covers the current product candidate: 32/32 non-receipt files, 174/174 hunks and 1/1 candidate receipt; P0=0/P1=0/P2=0/GO"
   },
   "release": {
     "pullRequest": "PR #151 OPEN",
-    "branchCi": "RUNS 33666408795, 33668540380, 33673886179, 33678592525 AND 33679773692 RETAINED FAILED 12/13; FFPROBE PREREQUISITE FIX HEAD CI NOT_RUN",
+    "branchCi": "RUN 33681493693 SUCCESS on afea935; macOS runner verified /opt/homebrew/bin/ffprobe version 9.0.1 and m104 13/13. Earlier runs 33666408795, 33668540380, 33673886179, 33678592525 and diagnostic 33679773692 remain retained 12/13 failures.",
     "mainCi": "NOT_RUN",
     "annotatedTag": "NOT_RUN",
     "githubRelease": "NOT_RUN",

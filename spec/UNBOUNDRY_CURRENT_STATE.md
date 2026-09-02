@@ -1,8 +1,8 @@
 # Unboundry 当前权威状态
 
-> **2026-09-03 最新权威：生产仍运行 v0.7.3/schema42；v0.7.4 修复和上线已获授权，当前本地修复通过、final branch CI与新增增量Review待执行。** 指定 Canvas `adcb89a5-c1f4-47e4-bbbb-28fff8d81583` / group `group-17ee0cbc-cc81-4b35-9c5e-41040f627033` 的失败请求 `4666a088-aca9-402b-ba8b-c842023470cb` 在35.260秒后HTTP400；没有创建run/task/admission/attempt，也没有Provider POST或费用。直接根因是动态Grok Video首帧虽然来自同组上游图片，静态准入却把角色最低数误判为永久缺失；逐节点重复打开并检查数据库又令响应超过浏览器30秒上限。服务端节点状态没有映射到原呼吸灯，是呼吸灯消失的独立UI原因。
+> **2026-09-03 最新权威：生产仍运行 v0.7.3/schema42；v0.7.4 修复和上线已获授权，当前branch CI通过、独立增量Review GO，尚未merge或部署。** 指定 Canvas `adcb89a5-c1f4-47e4-bbbb-28fff8d81583` / group `group-17ee0cbc-cc81-4b35-9c5e-41040f627033` 的失败请求 `4666a088-aca9-402b-ba8b-c842023470cb` 在35.260秒后HTTP400；没有创建run/task/admission/attempt，也没有Provider POST或费用。直接根因是动态Grok Video首帧虽然来自同组上游图片，静态准入却把角色最低数误判为永久缺失；逐节点重复打开并检查数据库又令响应超过浏览器30秒上限。服务端节点状态没有映射到原呼吸灯，是呼吸灯消失的独立UI原因。
 
-**生产是 v0.7.3 / schema42；PR #151前四次普通branch CI与诊断run `33679773692`均保留12/13失败，最新本地修复尚未推送。** 诊断run首次证明：图片节点已成功，视频节点也已取得fake Provider MP4，但macOS CI runner没有`ffprobe`；保存阶段把缺组件抹成普通“服务端无法读取素材时长”，于是按1/2/4/8/15秒重试并被外层继续轮询，run保持`running [success, admitted]`。这不是入参逻辑问题；此前媒体输出集合精确重放是额外可靠性加固，不是本次CI卡住的根因。当前候选保留原动态角色、准入连接、呼吸灯、不确定create找回、只读状态查询和精确重放修复，并新增两层闭环：CI先安装/检查ffprobe；产品保留元数据错误类型，缺组件或坏媒体立即明确失败，只有资源繁忙/超时才有限重试。生产已只读确认`/usr/bin/ffprobe`存在并可探测release测试MP4；真正目标Canvas仍必须等v0.7.4健康上线后只执行一次。最新本地m57+m90 `40/40`、m104 `13/13`，TypeScript、production build、source coverage与4173隔离均通过，formal full未重跑。新增变更已使旧28/161独立Review GO失效，当前Review为PENDING。
+**生产是 v0.7.3 / schema42；PR #151前四次普通branch CI与诊断run `33679773692`均保留12/13失败，修复head `afea935` 的branch CI `33681493693`已通过。** 诊断run首次证明：图片节点已成功，视频节点也已取得fake Provider MP4，但macOS CI runner没有`ffprobe`；保存阶段把缺组件抹成普通“服务端无法读取素材时长”，于是按1/2/4/8/15秒重试并被外层继续轮询，run保持`running [success, admitted]`。这不是入参逻辑问题；此前媒体输出集合精确重放是额外可靠性加固，不是本次CI卡住的根因。当前候选保留原动态角色、准入连接、呼吸灯、不确定create找回、只读状态查询和精确重放修复，并新增两层闭环：CI先安装/检查ffprobe；产品保留元数据错误类型，缺组件或坏媒体立即明确失败，只有资源繁忙/超时才有限重试。branch CI已在macOS runner确认`/opt/homebrew/bin/ffprobe`、ffprobe 9.0.1、m104 `13/13`与总门`SUCCESS`；生产也已只读确认`/usr/bin/ffprobe`可探测release测试MP4。最新本地m57+m90 `40/40`、m104 `13/13`，TypeScript、production build、source coverage与4173隔离均通过，formal full未重跑。同一Reviewer对新增14/14文件、42/42 hunks（含1份回执）完成增量复核，结论`P0=0/P1=0/P2=0/GO`。真正目标Canvas仍必须等v0.7.4健康上线后只执行一次。
 
 **最新授权**：`授权修复并上线 v0.7.4，修复后在这个 Canvas 真实执行一次。` 只允许普通patch `v0.7.4`；发布技术门全通过后，精确组只点击一次。结果不明只核对原run/task，绝不重发；验收网站工作流、自动回填、保存和刷新，不评价生成内容审美。候选回执为 `spec/V0_7_4_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`，当前生产基线回执为 `spec/V0_7_3_PRODUCTION_RECEIPT_2026-09-02.json`。
 
@@ -14,15 +14,15 @@
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
 当前代码包版本：**v0.7.4**
 本地候选代码版本：**v0.7.4**
-当前本地候选说明：`v0.7.4 工作流准入、创建时延、呼吸灯、不确定create回执、状态查询、精确重放，以及视频元数据组件门与永久错误立即收口；新增增量Review待完成`
+当前本地候选说明：`v0.7.4 工作流准入、创建时延、呼吸灯、不确定create回执、状态查询、精确重放，以及视频元数据组件门与永久错误立即收口；branch CI通过且独立增量Review GO`
 当前生产部署版本：**v0.7.3**
 本地候选schema：**42**
 当前治理标记：`CURRENT_V0_7_3_USER_RECHECK`
 当前发布执行标记：`V0_7_4_RELEASE_AUTHORIZED_NOT_CONSUMED`
 当前本地Goal标记：`NO_ACTIVE_GOAL / LATEST_USER_AUTHORIZATION_CONTROLS`
-当前计划标记：`V0_7_4_LOCAL_FIX_PASS / INCREMENTAL_REVIEW_PENDING / PRODUCTION_NOT_RUN`
+当前计划标记：`V0_7_4_BRANCH_CI_PASS / INCREMENTAL_REVIEW_GO / PRODUCTION_NOT_RUN`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`V0_7_4_AUTHORIZED / REVIEW_GO_AND_RELEASE_NOT_RUN / ONE_REAL_GROUP_EXECUTION_AFTER_HEALTHY_DEPLOY`
+当前发布门：`V0_7_4_AUTHORIZED / BRANCH_CI_PASS_REVIEW_GO / MERGE_AND_RELEASE_NOT_RUN / ONE_REAL_GROUP_EXECUTION_AFTER_HEALTHY_DEPLOY`
 
 ## INC-GEN-028 当前读取顺序
 
