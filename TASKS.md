@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻当前任务
 
-## INC-GEN-028 旧工作流入参合同与媒体回填（v0.7.3 RELEASE AUTHORIZED）
+## INC-GEN-028 旧工作流入参合同与媒体回填（v0.7.3 PRODUCTION TECHNICAL PASS / USER RECHECK）
 
 - [x] 核对生产为 `v0.7.1-hotfix.1/schema42`，tag/merge=`f3b2f714…b7b3f`，current=`/opt/unboundry/releases/v0.7.1-hotfix.1-inc-gen-027-20260902`。
 - [x] 在生产 Canvas 真实验证 6 个文字 + 4 个图片节点整组成功、刷新保持且无需人工找结果。
@@ -24,11 +24,12 @@
 - [x] 本地补丁完成等值 metadata 短路与 durable fingerprint 条件收口；TypeScript、safe m37-media-upload-transactions `39/39`、safe m4-video-upload `1/1`、safe m2-text `8/8`、diff-check 最终通过，库存 `1176`。m4 两次在初始上传预览被浏览器判定为 hidden，补强可见性/布局/媒体错误诊断后最小运行通过；失败记录不抹除。
 - [x] 冻结补丁并完成独立 Review：14/14 tracked files、48/48 hunks、receipt 318/318 行，结论 `P0=0/P1=0/P2=0/GO`。此时只等待用户指定新版本号并授权上线；随后用户已指定并授权 v0.7.3，仍禁止再次 Provider POST。
 - [x] 用户指定 `v0.7.3` 并授权上线，同时明确后续只递增普通 patch 版本、不再添加 `hotfix` 后缀；package/lock/runtime allowlist 已升到 0.7.3。
-- [ ] 完成 v0.7.3 版本门、冻结候选与独立增量 Review。
-- [ ] 完成 commit/push、PR/双 CI、annotated tag/GitHub Release、exact-tag fresh build、生产 locked-exact backup、切换及 rollback-forward。
-- [ ] 在生产只用既有 Canvas 结果做刷新与 metadata 重放复验，新增 Provider POST=0。
+- [x] 完成 v0.7.3 版本门、冻结候选与独立增量 Review：m38+m81最终`60/60`、TypeScript`449/449`、production build通过；22/22 tracked files、66/66 hunks、2/2 receipts，`P0=0/P1=0/P2=0/GO`。
+- [x] 完成 commit/push、PR #149、分支/main 双 CI、annotated tag/GitHub Release、exact-tag fresh build、生产 locked-exact backup/verify/fresh restore、切换及`v0.7.2→v0.7.3→v0.7.2→v0.7.3` rollback-forward。
+- [x] 在生产普通 Chrome 只用既有 Canvas 结果完成两次加载与 metadata 重放：文字工作流、3/3图片、1/1视频正常，保存提示持续为“已保存到云端”，console error/warn=0；新增 task/admission/attempt/workflow run/Provider POST=0。
+- [ ] 用户在生产实页自行确认网站行为；明确回复通过前保持`USER_RECHECK`。
 
-当前严格为 `PRODUCTION_V0_7_2_WORKFLOW_PASS / V0_7_3_RELEASE_AUTHORIZED_PENDING_GATES / ZERO_NEW_PROVIDER_POST / USER_RECHECK`。v0.7.3 候选回执：`spec/V0_7_3_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`；v0.7.2 生产回执为发布前基线。
+当前严格为 `PRODUCTION_V0_7_3_TECHNICAL_PASS / ZERO_NEW_PROVIDER_POST / USER_RECHECK`。v0.7.3 生产回执：`spec/V0_7_3_PRODUCTION_RECEIPT_2026-09-02.json`；候选回执与 v0.7.2 生产回执分别保留发布输入和发布前基线。
 
 ## INC-GEN-026 历史：一次点击工作流可靠生成与结果自动收口（v0.7.0 DEPLOYED STABLE / USER RECHECK）
 

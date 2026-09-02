@@ -1,6 +1,6 @@
 # Unboundry 项目级 Agent 施工守则
 
-> **2026-09-02 INC-GEN-028 当前最高优先级**：生产运行`v0.7.2/schema42`，current=`/opt/unboundry/releases/v0.7.2-inc-gen-028-20260902`。核心工作流真实通过；保存提示本地补丁的 TypeScript、m37 `39/39`、m4 `1/1`、m2-text `8/8` 与独立 Review `P0=0/P1=0/P2=0/GO` 已完成。用户现已明确指定 `v0.7.3` 并授权上线，版本只按普通 patch 号递增、不再使用 `hotfix` 后缀；当前 package/runtime allowlist 已升到 0.7.3，但版本门、PR/CI/tag/Release、生产备份与切换尚未执行。v0.7.3 只发布保存提示修复，生产复验只允许复用现有结果做刷新和 metadata 重放，新增 Provider POST 上限为 0。当前权威为 `spec/UNBOUNDRY_CURRENT_STATE.md`、`spec/V0_7_3_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`、`spec/V0_7_2_PRODUCTION_RECEIPT_2026-09-02.json` 和 `spec/INC_GEN_026_CHECKPOINT.md` 顶部覆盖层。
+> **2026-09-02 INC-GEN-028 当前最高优先级**：生产运行`v0.7.3/schema42`，current=`/opt/unboundry/releases/v0.7.3-inc-gen-028-20260902`。PR #149、分支/main 双 CI、annotated tag/GitHub Release、exact-tag fresh build、locked-exact backup/verify/fresh restore、原子切换及`v0.7.2→v0.7.3→v0.7.2→v0.7.3`成对回退前滚均通过。普通 Chrome 在指定 Canvas 两次加载既有结果，文字工作流、3/3 图片和1/1视频正常，最终持续显示“已保存到云端”、console error/warn=0；没有点击生成，新增 Provider POST=0，admission/attempt/task/workflow 计数不变。v0.7.3 一次性发布授权已消费，用户明确确认前保持`USER_RECHECK`；后续版本只按普通 patch 递增（下一版从`v0.7.4`开始），不使用`hotfix`后缀。当前权威为 `spec/UNBOUNDRY_CURRENT_STATE.md`、`spec/V0_7_3_PRODUCTION_RECEIPT_2026-09-02.json`、`spec/V0_7_3_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json` 和 `spec/INC_GEN_026_CHECKPOINT.md` 顶部覆盖层。
 
 > **以下 INC-GEN-025 段落是历史时点记录，不再是当前授权**：2026-09-01 当时用户 `/goal` 曾激活 INC-GEN-025，并授权 v0.6.70 实现、发布和受控验收。该授权后来已执行并消费；不得据此再次修改、发布或发起真实生成。受保护文件继续永久禁止读取、哈希、修改、暂存、移动或删除。
 
@@ -37,13 +37,14 @@
 INC-GEN-028 当前状态按顺序完整阅读：
 
 1. `spec/UNBOUNDRY_CURRENT_STATE.md` 顶部 INC-GEN-028 当前区块
-2. `spec/V0_7_3_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`
-3. `spec/V0_7_2_PRODUCTION_RECEIPT_2026-09-02.json`（发布前生产基线）
-4. `spec/V0_7_2_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`（历史）
-5. `spec/V0_7_1_HOTFIX_1_PRODUCTION_RECEIPT_2026-09-02.json`（历史）
-6. `spec/INC_GEN_026_CHECKPOINT.md` 顶部 v0.7.3 发布覆盖层
-7. `spec/INC_GEN_026_ACCEPTANCE_MATRIX_2026-09-01.md` 顶部覆盖层及 IG26-099～121
-8. `TASKS.md`、`上线规矩.md`、`README.md` 顶部 INC-GEN-028 区块
+2. `spec/V0_7_3_PRODUCTION_RECEIPT_2026-09-02.json`
+3. `spec/V0_7_3_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`
+4. `spec/V0_7_2_PRODUCTION_RECEIPT_2026-09-02.json`（发布前生产基线）
+5. `spec/V0_7_2_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`（历史）
+6. `spec/V0_7_1_HOTFIX_1_PRODUCTION_RECEIPT_2026-09-02.json`（历史）
+7. `spec/INC_GEN_026_CHECKPOINT.md` 顶部 v0.7.3 发布覆盖层
+8. `spec/INC_GEN_026_ACCEPTANCE_MATRIX_2026-09-01.md` 顶部覆盖层及 IG26-099～121
+9. `TASKS.md`、`上线规矩.md`、`README.md` 顶部 INC-GEN-028 区块
 
 下列旧清单只在查历史事故时按需读取，不得覆盖上面的当前路由或恢复旧授权：
 
@@ -92,14 +93,14 @@ INC-GEN-028 当前状态按顺序完整阅读：
 ### 默认工具链与生产兼容通道
 
 - 项目普通开发、类型检查、构建和新shell默认使用`.node-version`中的Node `25.9.0`与`packageManager`中的npm `11.12.1`；不得再把`/Users/mymy/.hermes/node/bin`或`/Users/mymy/.local/bin`中的Node 22预置到普通shell PATH。
-- 2026-09-02 已确认 v0.7.2 生产继续运行 Node `22.23.2` / npm `10.9.8`；本次没有顺带迁移 Node/npm。
+- 2026-09-02 已确认 v0.7.3 生产继续运行 Node `22.23.2` / npm `10.9.8`；本次没有顺带迁移 Node/npm。
 - `scripts/run-safe-tests.mjs`、源码覆盖门和历史不可变 release builder 继续使用 Node `22.23.1` / npm `10.9.8` 专用兼容通道；它是本地复现通道，不等同于已确认的生产 Node `22.23.2`，也不是项目默认 shell。在完成兼容性审计前不得删除 Node 22 边界。
 
 ## 2. 当前授权边界
 
-- **2026-09-02 INC-GEN-028 当前最高权威**：v0.7.2 已完成 PR #148、双 CI、annotated tag/Release、exact-tag fresh build、schema42 locked-exact backup/verify/fresh restore、生产切换和 rollback-forward。指定 Canvas 的唯一真实整组执行成功，canonical `multimodal + reference-image` 贯穿 plan/task/key/ownership/request，1 admission/1 attempt/1 Provider create，结果自动回填、播放并持久化；同时确认生产存在“数据已保存但顶部误停在保存中”的 UI 状态缺陷，本地补丁已通过直接影响测试但尚未发布。一次性版本、发布与真实提交授权均已消费；任何新版本、新发布或新 Provider POST 都需要新授权，用户确认前保持 `USER_RECHECK`；
+- **2026-09-02 INC-GEN-028 当前最高权威**：v0.7.3 已完成 PR #149、双 CI、annotated tag/Release、exact-tag fresh build、schema42 locked-exact backup/verify/fresh restore、生产切换和 rollback-forward。v0.7.2 的唯一真实整组工作流证据继续成立；v0.7.3 在普通 Chrome 对同一 Canvas 做两次既有结果加载/metadata 重放，文字、3张图片、1段视频均正常，保存提示稳定收口为“已保存到云端”，console error/warn=0。发布复验新增 task/admission/attempt/workflow run/Provider POST 均为0；一次性版本和发布授权已消费，任何新版本、新发布或新 Provider POST 都需要新授权，用户确认前保持 `USER_RECHECK`；
 
-- **2026-09-02 v0.7.3 当前发布授权**：用户已指定 `v0.7.3` 并授权上线保存提示补丁；允许版本升级、提交、PR/CI、annotated tag/Release、备份、生产切换和成对 rollback-forward。此授权不包含新 Provider POST；发布后只用既有 Canvas 结果做零付费复验。版本命名以后只用普通 patch 递增，不再添加 `hotfix` 后缀；
+- **2026-09-02 v0.7.3 历史发布授权（已消费）**：用户指定 `v0.7.3` 并授权上线保存提示补丁；该授权已用于版本升级、提交、PR/CI、annotated tag/Release、备份、生产切换和成对 rollback-forward，并在零新增 Provider POST 的实页复验后消费完毕。版本命名以后只用普通 patch 递增，下一版从`v0.7.4`开始，不再添加`hotfix`后缀；
 
 - **2026-09-02 INC-GEN-026/v0.7.0 历史最高权威（已执行、已消费）**：R0～R8 本地实现、测试、Review、唯一 formal safe full 和文档收口已完成；full 原始 `1162/1167` 与 5 项失败如实保留，m41/m73/m81 最小关闭 `112/112 PASS`，未重复 full。v0.7.0 一次性 commit/push/PR/CI/tag/Release 与生产 schema42 backup/安装/切换/rollback-forward 已执行并消费。IG26-106 当时因缺少完整只读 workflow-run/capacity preflight 保持 `NOT_RUN`；该段不得覆盖 INC-GEN-028 当前路由或恢复任何授权；
 

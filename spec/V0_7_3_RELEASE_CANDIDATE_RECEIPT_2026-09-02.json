@@ -3,22 +3,25 @@
   "packageVersion": "0.7.3",
   "schemaVersion": 42,
   "createdAt": "2026-09-02T13:55:13Z",
-  "updatedAt": "2026-09-02T14:29:23Z",
-  "status": "LOCAL_RELEASE_CANDIDATE_REVIEW_GO",
+  "updatedAt": "2026-09-02T15:09:34Z",
+  "status": "RELEASED_PRODUCTION_TECHNICAL_PASS_USER_RECHECK",
   "source": {
     "baselineCommit": "36f491da394506d5889ce3e68d1b16bb67471079",
     "baselineTree": "be8e561247bc226f62cc77f67fb5f8e287d1fe7f",
     "originMainAtAuthorization": "36f491da394506d5889ce3e68d1b16bb67471079",
     "branch": "codex/v0.7.3-save-status",
-    "candidateCommit": null,
-    "mergeCommit": null,
-    "tag": null
+    "candidateCommit": "b65926c8f3014e7484d5067b5068086e42715c9b",
+    "candidateTree": "b4de4cf8e59a3efeb87211dd704fed147b818ed6",
+    "mergeCommit": "afc1ceaed77a44430f2a090103a38dd3014d0809",
+    "mergeTree": "b4de4cf8e59a3efeb87211dd704fed147b818ed6",
+    "tag": "v0.7.3",
+    "annotatedTagObject": "11c4f228833ba146e89a496d5d9918f2ca2b72de"
   },
   "authorization": {
     "text": "版本号 v0.7.3，授权上线",
     "versionSelected": true,
     "releaseAuthorized": true,
-    "authorizationConsumed": false,
+    "authorizationConsumed": true,
     "versionConvention": "Use ordinary patch increments such as v0.7.3 then v0.7.4; do not add hotfix suffixes.",
     "newProviderPostAuthorized": false
   },
@@ -96,21 +99,29 @@
     "releaseCandidate": "22/22 tracked files, 66/66 hunks, 2/2 receipts; P0=0/P1=0/P2=0/GO"
   },
   "release": {
-    "pullRequest": "NOT_RUN",
-    "branchCi": "NOT_RUN",
-    "mainCi": "NOT_RUN",
-    "annotatedTag": "NOT_RUN",
-    "githubRelease": "NOT_RUN",
-    "exactTagFreshBuild": "NOT_RUN",
-    "productionBackup": "NOT_RUN",
-    "productionSwitch": "NOT_RUN",
-    "rollbackForward": "NOT_RUN"
+    "pullRequest": "#149 MERGED",
+    "branchCi": "33642534626 SUCCESS",
+    "mainCi": "33642825089 SUCCESS",
+    "annotatedTag": "v0.7.3 object 11c4f228833ba146e89a496d5d9918f2ca2b72de peeled to afc1ceaed77a44430f2a090103a38dd3014d0809",
+    "githubRelease": "https://github.com/jasionia1991-max/unboundry/releases/tag/v0.7.3",
+    "exactTagFreshBuild": "PASS; archive b6d1f531f52ecef60a857dd5d6f85b218ec593ec9ffe2c4f63c69d8002ee3907; inventory 8d2f9fe493f44f0ee8bbb5c0df26997cb887720241ad9fd23435d8332ac8b953",
+    "productionBackup": "PASS; locked-exact 19cd1360-5075-439c-80a3-0f38df997c01; verify and fresh restore PASS",
+    "productionSwitch": "PASS; /opt/unboundry/releases/v0.7.3-inc-gen-028-20260902",
+    "rollbackForward": "PASS; v0.7.3 to v0.7.2 to v0.7.3",
+    "productionReceipt": "spec/V0_7_3_PRODUCTION_RECEIPT_2026-09-02.json"
   },
   "postDeployVerification": {
     "canvasId": "bcbb1199-d154-4c1a-a580-6b66d2d10f38",
     "mode": "EXISTING_RESULT_RELOAD_AND_METADATA_REPLAY_ONLY",
-    "status": "NOT_RUN_UNTIL_V0_7_3_IS_LIVE",
+    "status": "PASS",
     "maxNewProviderPosts": 0,
+    "newProviderPosts": 0,
+    "saveStatus": "已保存到云端",
+    "savingStatusStuck": false,
+    "workflowLoaded": true,
+    "imagesLoaded": "3/3",
+    "videoLoaded": "1/1 readyState=4 duration=5.088",
+    "consoleErrorsOrWarnings": 0,
     "qualityJudgementInScope": false
   }
 }

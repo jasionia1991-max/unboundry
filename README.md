@@ -6,11 +6,11 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 
-## 当前最高优先级：INC-GEN-028 / v0.7.3 已授权发布（2026-09-02）
+## 当前最高优先级：INC-GEN-028 / v0.7.3 已上线（2026-09-02，USER RECHECK）
 
-生产当前运行 `v0.7.2/schema42`。PR #148、双 CI、tag/Release、fresh build、schema42 备份恢复、原子切换和 rollback-forward 均通过。指定 Canvas 只真实执行一次：canonical Seedance 入参贯穿 plan、task、幂等、ownership 和请求，只有 1 run/1 task/1 admission/1 Provider attempt，MP4 自动发布、回填、播放并刷新持久化。这些结果不评价图片好不好看，只证明网站能生成并保存工作流。
+生产当前运行 `v0.7.3/schema42`。PR #149、分支/main 双 CI、annotated tag/GitHub Release、exact-tag fresh build、schema42 locked-exact backup/verify/fresh restore、原子切换和 `v0.7.2→v0.7.3→v0.7.2→v0.7.3` rollback-forward 均通过；服务 active/ready、NRestarts=0，公网与回环均返回 0.7.3，公开首页和5个静态资源与 exact release 逐字节一致。
 
-真实复核也发现一个独立 UI 问题：视频 metadata 与已保存值完全相同时，系统正确地不重复写服务器，但顶部可能一直显示“保存中”。服务端数据和结果没有丢失。本地补丁已经让相同 metadata 不再制造假更新，并只在当前画布确实已持久化时收起提示；TypeScript、上传事务回归 `39/39`、视频上传回归 `1/1`、文字保存回归 `8/8` 最终通过，独立 Review 为 `P0=0/P1=0/P2=0/GO`。用户已指定 `v0.7.3` 并授权上线，后续版本只按普通 patch 号递增，不使用 `hotfix` 后缀；发布复验不会再次调用生成服务。候选回执见 [`V0_7_3_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`](spec/V0_7_3_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json)。
+本版修复的是“数据已经保存，但视频 metadata 重放后顶部可能一直显示保存中”。普通 Chrome 已对指定 Canvas 做两次真实加载：文字工作流、3/3 图片和1/1视频都正常，视频 readyState=4、时长5.088秒；顶部最终持续显示“已保存到云端”，15秒内没有继续写入，console error/warn=0。没有点击生成按钮，task/admission/attempt/workflow run 和 Provider POST 全部零新增；这次只验证网站工作流和保存状态，不评价成片审美。一次性 v0.7.3 发布授权已消费，用户明确确认前保持 `USER_RECHECK`；后续版本只按普通 patch 号递增，下一版从 v0.7.4 开始，不使用 `hotfix` 后缀。生产回执见 [`V0_7_3_PRODUCTION_RECEIPT_2026-09-02.json`](spec/V0_7_3_PRODUCTION_RECEIPT_2026-09-02.json)，候选回执见 [`V0_7_3_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`](spec/V0_7_3_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json)。
 
 ## 历史：INC-GEN-026 v0.7.0 已部署（2026-09-02，USER RECHECK）
 
