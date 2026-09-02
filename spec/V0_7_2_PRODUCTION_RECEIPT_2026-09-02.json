@@ -1,0 +1,318 @@
+{
+  "version": "0.7.2",
+  "packageVersion": "0.7.2",
+  "schemaVersion": 42,
+  "createdAt": "2026-09-02T12:11:35Z",
+  "updatedAt": "2026-09-02T13:15:30Z",
+  "status": "PRODUCTION_WORKFLOW_PASS_SAVE_STATUS_UI_DEFECT_LOCAL_FIX_NOT_RELEASED_USER_RECHECK",
+  "source": {
+    "candidateCommit": "7fd19584f831ef8fe66c56e80cbce6d9756b2816",
+    "candidateTree": "be8e561247bc226f62cc77f67fb5f8e287d1fe7f",
+    "pullRequest": {
+      "number": 148,
+      "url": "https://github.com/jasionia1991-max/unboundry/pull/148",
+      "state": "MERGED"
+    },
+    "branchQuality": {
+      "runId": 33621540496,
+      "headSha": "7fd19584f831ef8fe66c56e80cbce6d9756b2816",
+      "conclusion": "success"
+    },
+    "mergeCommit": "36f491da394506d5889ce3e68d1b16bb67471079",
+    "mergeTree": "be8e561247bc226f62cc77f67fb5f8e287d1fe7f",
+    "mainQuality": {
+      "runId": 33621711218,
+      "headSha": "36f491da394506d5889ce3e68d1b16bb67471079",
+      "conclusion": "success"
+    },
+    "tag": "v0.7.2",
+    "annotatedTagObject": "c9a17494f7e12ded32b1a017c440edbf36277377",
+    "tagPeeledCommit": "36f491da394506d5889ce3e68d1b16bb67471079",
+    "githubRelease": "https://github.com/jasionia1991-max/unboundry/releases/tag/v0.7.2",
+    "tagArchive": {
+      "localPath": "/tmp/unboundry-v072-archive.aCZmct/unboundry-v0.7.2.tar",
+      "byteSize": 45281280,
+      "sha256": "fb0a3f3500ab4cf6c8d195a39df86213c85e6358869d012fd6541d3e387ccac7"
+    }
+  },
+  "authorization": {
+    "text": "版本号 v0.7.2，授权上线",
+    "releaseAuthorizationConsumed": true,
+    "postDeployRealCanvasVerificationAuthorized": true,
+    "postDeployRealCanvasVerificationConsumed": true,
+    "maxNewSeedanceProviderPosts": 1,
+    "newSeedanceProviderPostsExecuted": 1,
+    "retryExecuted": false,
+    "qualityJudgementInScope": false
+  },
+  "production": {
+    "current": "/opt/unboundry/releases/v0.7.2-inc-gen-028-20260902",
+    "previous": "/opt/unboundry/releases/v0.7.1-hotfix.1-inc-gen-027-20260902",
+    "runtime": {
+      "node": "22.23.2",
+      "npm": "10.9.8"
+    },
+    "freshBuild": {
+      "npmCiPackages": 185,
+      "npmAuditVulnerabilities": 0,
+      "typescript": "PASS",
+      "viteProductionBuild": "PASS"
+    },
+    "releaseInventory": {
+      "files": 6094,
+      "manifestSha256": "a3731faaf8b5fb99527938d15d517ee8bd50d5a7e2930506094c7a23082bac13"
+    },
+    "staticAssetParity": "33/33 BYTE_IDENTICAL_LOOPBACK_AND_PUBLIC",
+    "service": "active",
+    "enabled": true,
+    "nRestarts": 0,
+    "loopbackVersion": "0.7.2",
+    "publicVersion": "0.7.2",
+    "loopbackLive": true,
+    "publicLive": true,
+    "loopbackReady": true,
+    "publicReady": true,
+    "schemaVersion": 42,
+    "generationEnabledRestoredAt": "2026-09-02T11:18:46.606Z",
+    "finalReadOnlyHealthRecheck": {
+      "checkedAt": "2026-09-02T12:35:30Z",
+      "currentRelease": "/opt/unboundry/releases/v0.7.2-inc-gen-028-20260902",
+      "service": "active",
+      "nRestarts": 0,
+      "publicVersion": "0.7.2",
+      "publicLive": true,
+      "publicReady": true,
+      "runtimeRole": "active",
+      "mutationsAccepted": true,
+      "schemaVersion": 42
+    }
+  },
+  "backupAndRollback": {
+    "generationFreeze": {
+      "enabledBefore": true,
+      "enabledDuringBackup": false,
+      "frozenAt": "2026-09-02T11:05:19.764Z"
+    },
+    "stoppedFrozenDatabase": {
+      "logicalSha256": "5b484a82a6a3df3c8d91c2f397073906e1f06d217ba25d1bc6cf588af2bddf2b",
+      "integrityCheck": "ok",
+      "foreignKeyViolations": 0,
+      "schemaVersion": 42
+    },
+    "lockedExactBackup": {
+      "backupId": "56856328-219c-4576-929f-3ca18a6bdb58",
+      "packageDirectory": "/var/lib/unboundry-rollbacks/v0.7.2-20260902-backup-r3/56856328-219c-4576-929f-3ca18a6bdb58.ubbackup",
+      "captureMode": "locked-exact",
+      "databaseLogicalSha256": "5b484a82a6a3df3c8d91c2f397073906e1f06d217ba25d1bc6cf588af2bddf2b",
+      "schemaVersion": 42,
+      "mediaFiles": 355,
+      "ossMirrors": 614,
+      "secretFiles": 3,
+      "verify": "PASS",
+      "mediaIntegrity": {
+        "clean": false,
+        "issues": 97,
+        "backupBlockingIssues": 0,
+        "sha256": "1bc6b7e2a564665edfbfaaebae563936e7719028b0d4f6be99e7c04a674071f0",
+        "evidenceSha256": "05ebf47ba97a9ab8bfa118d3cfd828a6d539ef7a2e780acf955e5beb65926d24"
+      }
+    },
+    "freshRestore": {
+      "path": "/var/lib/unboundry-v072-restores/fresh",
+      "mode": "0700",
+      "owner": "ubuntu",
+      "files": 975,
+      "databaseLogicalSha256": "5b484a82a6a3df3c8d91c2f397073906e1f06d217ba25d1bc6cf588af2bddf2b",
+      "integrityCheck": "ok",
+      "foreignKeyViolations": 0,
+      "schemaVersion": 42,
+      "result": "PASS"
+    },
+    "rollbackForward": {
+      "forwardToV0_7_2": "PASS",
+      "rollbackToV0_7_1Hotfix1": "PASS",
+      "finalForwardToV0_7_2": "PASS",
+      "finalCurrent": "/opt/unboundry/releases/v0.7.2-inc-gen-028-20260902"
+    },
+    "failedClosedAttemptsRetained": [
+      {
+        "path": "/var/lib/unboundry-rollbacks/v0.7.2-20260902-backup",
+        "reason": "live database changed during capture"
+      },
+      {
+        "path": "/var/lib/unboundry-rollbacks/v0.7.2-20260902-backup-r2",
+        "reason": "required OSS mirror was incomplete"
+      }
+    ]
+  },
+  "realCanvasVerification": {
+    "canvasId": "bcbb1199-d154-4c1a-a580-6b66d2d10f38",
+    "groupId": "group-1788349272459",
+    "groupTitle": "v0.7.2 Seedance 真实闭环",
+    "videoNodeId": "video-ef10275d-85fa-4d22-a6f4-6072e4be526d",
+    "videoNodeTitle": "v0.7.2 真实入参闭环",
+    "referenceImageNodeId": "image-f207df2b-9340-4ea5-b5f8-c89b92f57e4c-copy-b1bc3165-0d41-4c36-8049-c918fcdc7838",
+    "referenceImageAssetId": "d81d2084-7f63-4340-a376-ebe7b3d8d3a2",
+    "edgeId": "edge-image-f207df2b-9340-4ea5-b5f8-c89b92f57e4c-copy-b1bc3165-0d41-4c36-8049-c918fcdc7838-video-ef10275d-85fa-4d22-a6f4-6072e4be526d-21",
+    "edgeRole": "reference-image",
+    "modelId": "897d3dfc-83e4-48e9-a033-ca612338681b",
+    "providerModelId": "doubao-seedance-2-0-mini-260615",
+    "prompt": "以连入的参考图为准，镜头保持稳定，画面轻微自然变化，保持主体外观与颜色不变。",
+    "parameters": {
+      "inputMode": "multimodal",
+      "aspectRatio": "16:9",
+      "resolution": "480p",
+      "duration": 5,
+      "generateAudio": true,
+      "outputCount": 1
+    },
+    "execution": {
+      "groupExecuteClicks": 1,
+      "workflowRunId": "ac8d6a88-c859-4e7d-8285-dcd6546315af",
+      "workflowState": "success",
+      "workflowGraphRevision": 56,
+      "workflowSemanticFingerprint": "wf1-4gw-1s3wtf0-1lqlf8w",
+      "plannedExecutableNodes": 1,
+      "planSemanticIdentity": "wf1-97-1uyzt8r-184aprr",
+      "runNodeState": "success",
+      "runNodeProjectionState": "applied",
+      "runNodeIdempotencyKey": "wf1:wf1-32-7u1dcj-ieghtz",
+      "taskId": "dce2ebda-bf02-48b1-a28f-ccd9eace3430",
+      "taskState": "success",
+      "taskAttempt": 1,
+      "providerTaskId": "cgt-20260902194456-b46dt",
+      "requestFingerprint": "intent-v3:f3e7973670dadc5a01883500d3bb1cd6fa3deb819c2c354c55c6ac319bc10d09",
+      "generationOwnershipKey": "o6-1th21y1-gawwj1",
+      "modelInputContractFingerprint": "mic2:30b0e23f1e968abb",
+      "modelConfigurationRevision": "b24c675a2dd20d590249e9d4",
+      "modelReleaseRevision": "a62f1d76-a416-4e29-a786-9474ead24e0d",
+      "admissions": 1,
+      "providerAttempts": 1,
+      "providerCreatePosts": 1,
+      "duplicateSubmissionObserved": false,
+      "retryExecuted": false,
+      "actualCostMicrounits": 708932,
+      "costCurrency": "CNY",
+      "providerUsageTokens": 50638
+    },
+    "result": {
+      "assetId": "41cdb782-ead5-411d-9ac9-592d823f0d60.mp4",
+      "publicationAttemptId": "28cd7743-f99c-4c79-a0e5-24fe0fc36f41",
+      "publicationState": "published",
+      "publicationRetryCount": 0,
+      "storageBackend": "oss",
+      "objectKey": "objects/2026/09/video/86742298-e0bf-46e6-8175-bf9d8d3dd300.mp4",
+      "byteSize": 5253370,
+      "contentType": "video/mp4",
+      "checksumSha256": "4d385d8f028dc7b93dc123ecf0b62c8b613f09ef833b5a43a3066a6f75662dd9",
+      "durationSeconds": 5.088,
+      "durationSource": "server-probe",
+      "mediaWidth": 864,
+      "mediaHeight": 496,
+      "canvasProjection": "PASS",
+      "manualProviderRelayOrStorageRecovery": 0
+    },
+    "authoritativeCounts": {
+      "before": {
+        "generationAdmissions": 962,
+        "generationProviderAttempts": 1053,
+        "generationTasks": 1042,
+        "mediaAssets": 968,
+        "mediaPublications": 559,
+        "workflowRuns": 3
+      },
+      "after": {
+        "generationAdmissions": 963,
+        "generationProviderAttempts": 1054,
+        "generationTasks": 1043,
+        "mediaAssets": 969,
+        "mediaPublications": 560,
+        "workflowRuns": 4,
+        "activeOrUnknownTasks": 0
+      },
+      "delta": {
+        "generationAdmissions": 1,
+        "generationProviderAttempts": 1,
+        "generationTasks": 1,
+        "mediaAssets": 1,
+        "mediaPublications": 1,
+        "workflowRuns": 1
+      }
+    },
+    "browser": {
+      "resultReturnedToCanvas": true,
+      "playback": "PASS_TO_5.1_SECONDS",
+      "refreshPersistence": "PASS",
+      "finalSaveStatus": "已保存到云端",
+      "finalCanvasLoadState": "ready",
+      "finalPersistenceReady": true,
+      "finalCanvasRevision": 81,
+      "finalGraphRevision": 62,
+      "finalCanvasUpdatedAt": "2026-09-02T12:06:37.901Z",
+      "observation": "After the first playback, the label remained at saving even though three authoritative Canvas PUTs returned 200 and revision 77 was durable. One later reload briefly entered the fail-closed load screen; Retry restored the exact server document. A normal 0.85 to 0.86 viewport save, immediate restore to 0.85, and a final full reload all completed with HTTP 200 and the final label 已保存到云端. No result data was lost and no generation action was repeated."
+    }
+  },
+  "postDeployDefect": {
+    "severity": "P1_UI_STATUS",
+    "productionAffectedVersion": "v0.7.2",
+    "symptom": "After the generated video loads, the top-level status can remain at 保存中... even though the current Canvas document and result are already durable.",
+    "rootCause": "VideoNode applied value-identical loadedmetadata as a new node object. Canvas mutation admission started the shared save indicator, while the persistence coordinator correctly detected an unchanged document fingerprint and sent no PUT; that no-op path had no success callback to clear the indicator.",
+    "dataLossObserved": false,
+    "duplicateProviderSubmissionObserved": false,
+    "productionFixStatus": "NOT_FIXED_IN_V0_7_2",
+    "localFix": {
+      "status": "IMPLEMENTED_AND_TARGETED_TESTED_NOT_RELEASED",
+      "behavior": [
+        "Reject invalid video metadata and return the original node when duration, dimensions and fitted style are already equal.",
+        "After mutation settlement, clear the shared save indicator only when the current Canvas fingerprint equals the persisted fingerprint, so a newer unsaved edit keeps its own state."
+      ],
+      "verification": {
+        "typescriptNoEmit": "PASS",
+        "safeM37MediaUploadTransactions": "39/39 PASS",
+        "safeM4VideoUpload": "1/1 PASS",
+        "safeM2TextNode": "8/8 PASS",
+        "discoveredTestInventory": 1176,
+        "diffCheck": "PASS",
+        "retainedFailures": [
+          "The first safe m4-video-upload run failed before the new no-op assertion because the initial uploaded preview was reported hidden. No product code changed; the smallest rerun passed 1/1.",
+          "After the shared fingerprint helper and direct behavior test were added, safe m4-video-upload again reported the initial uploaded preview hidden. The test was changed only to retain explicit visibility, layout and media-error diagnostics; the next smallest run passed 1/1. Both failures remain part of the record."
+        ]
+      },
+      "independentReview": "P0=0/P1=0/P2=0/GO",
+      "newVersionAndReleaseAuthorizationRequired": true,
+      "providerPostRequiredForFixVerification": false
+    }
+  },
+  "knownOperationalFollowUp": {
+    "severity": "P1_OPERATIONAL_PREEXISTING",
+    "releaseBlocking": false,
+    "issue": "unboundry-backup.service still invokes the retired /opt/unboundry/scripts/backup-to-oss.mjs path and its latest scheduled run failed; unboundry-backup.timer remains enabled and waiting.",
+    "reasonReleaseNotBlocked": "The v0.7.2 cutover used the immutable release backup implementation and completed locked-exact backup, signature/encryption verification and a fresh restore with zero backup-blocking media issues.",
+    "changedByThisRelease": false,
+    "requiresSeparateAuthorization": true
+  },
+  "review": {
+    "releaseCandidateCode": "P0=0/P1=0/P2=0/GO",
+    "productionCloseoutReview": "P0=0/P1=0/P2=0/GO_LOCAL_FIX_NOT_RELEASED",
+    "localFixCoverage": "14/14 TRACKED FILES, 48/48 HUNKS, RECEIPT 318/318 LINES"
+  },
+  "technicalAcceptance": "PRODUCTION_V0_7_2_WORKFLOW_INPUT_CONTRACT_PASS_SAVE_STATUS_UI_DEFECT",
+  "userAcceptance": "USER_RECHECK",
+  "matrix": {
+    "IG26-106": "NOT_RUN_HISTORICAL_V0_7_0_GATE",
+    "IG26-108": "REAL_PROVIDER_PASS",
+    "IG26-109": "REAL_PROVIDER_PASS",
+    "IG26-110": "REAL_PROVIDER_PASS",
+    "IG26-111": "USER_RECHECK",
+    "IG26-112": "NO_GO_UNTIL_USER_CONFIRMATION",
+    "IG26-113": "DOC_PASS",
+    "IG26-114": "DOC_PASS_AUTHORIZATION_CONSUMED",
+    "IG26-115": "AUTO_PASS",
+    "IG26-116": "AUTO_PASS",
+    "IG26-117": "AUTO_PASS",
+    "IG26-118": "REAL_PROVIDER_PASS",
+    "IG26-119": "USER_RECHECK",
+    "IG26-120": "LOCAL_FIX_PASS",
+    "IG26-121": "NO_GO_NEW_VERSION_AND_RELEASE_AUTHORIZATION_REQUIRED"
+  }
+}

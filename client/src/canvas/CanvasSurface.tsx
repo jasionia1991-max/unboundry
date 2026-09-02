@@ -40,6 +40,7 @@ import {
 import {
   CanvasGraphMutationContext,
   rollbackCanvasNodeAdoption,
+  settleCanvasMutationSaveIndicator,
   tryCommitCanvasNodeAdoption,
   useCanvasGraphMutation,
 } from "./CanvasGraphMutationContext";
@@ -5076,7 +5077,14 @@ export function CanvasSurface({
           onSaveStart();
           const result = await work();
           try {
-            await settleCanvasMutationDurablyRef.current();
+            await settleCanvasMutationSaveIndicator({
+              currentFingerprint: () =>
+                canvasSnapshotRef.current().fingerprint,
+              onSaveSuccess,
+              persistedFingerprint: () =>
+                persistedDocumentFingerprint.current,
+              settle: () => settleCanvasMutationDurablyRef.current(),
+            });
           } catch (error) {
             await rollbackAfterDurableFailure?.(result);
             throw error;
@@ -5112,7 +5120,13 @@ export function CanvasSurface({
         return next;
       });
     }
-  }, [canvasMutationScope, onSaveFailure, onSaveStart, showWorkflowToast]);
+  }, [
+    canvasMutationScope,
+    onSaveFailure,
+    onSaveStart,
+    onSaveSuccess,
+    showWorkflowToast,
+  ]);
   const changedNodeIds = useCallback((
     before: readonly ProbeNodeType[],
     after: readonly ProbeNodeType[],
