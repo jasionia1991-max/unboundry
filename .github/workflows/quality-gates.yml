@@ -52,6 +52,11 @@ jobs:
           node-version: 22.23.1
       - name: Production-compatible safety npm
         run: npm install --global npm@10.9.8
+      - name: Trusted media metadata prerequisite
+        run: |
+          brew install ffmpeg
+          command -v ffprobe
+          ffprobe -version | head -n 1
       - name: Safe test inventory (production-compatible runtime)
         run: npm run test:safe:preflight
       - name: Workflow reliability integration (fake Provider, isolated data)

@@ -2,7 +2,7 @@
 
 更新时间：2026-09-03
 
-状态：`V0_7_4_LOCAL_FIX_PASS / INDEPENDENT_REVIEW_GO / RELEASE_AND_REAL_CANVAS_NOT_RUN`
+状态：`V0_7_4_LOCAL_FIX_PASS / INCREMENTAL_REVIEW_PENDING / RELEASE_AND_REAL_CANVAS_NOT_RUN`
 
 ## 2026-09-03 v0.7.4 候选当前覆盖层
 
@@ -10,10 +10,10 @@
 - 精确目标：Canvas `adcb89a5-c1f4-47e4-bbbb-28fff8d81583`，group `group-17ee0cbc-cc81-4b35-9c5e-41040f627033`。失败请求`4666a088-aca9-402b-ba8b-c842023470cb`耗时35.260秒后HTTP400；0 run、0 task、0 admission、0 attempt、0 Provider POST、0费用。
 - 根因一：plan index 9 的 Grok Video 3 需要1个`first-frame`，该角色实际由同组上游图片节点动态产生，但静态准入把动态空值和角色最低数拆开判断，错误拒绝。根因二：11节点准入为每个model/contract/preflight反复打开并完整检查数据库，确定性400因此越过浏览器30秒请求上限。根因三：服务端workflow节点状态未映射到原`*Generating`字段，所以呼吸灯CSS虽在，服务端整组路径不亮。
 - v0.7.4候选原修复：精确kind+role动态等待且运行时权威重解析；一次数据库连接贯穿create准入；只把server node `admitted`临时映射到四媒体呼吸灯，不持久化；创建结果不确定时先保留禁止重提锁，最多90秒只读找回，仍未知则继续锁定并禁止第二次POST。
-- CI新增证据：branch CI `33666408795`、`33668540380`、`33673886179`均保留12/13失败。第三次已包含状态只读快照修复，GET降至约7～42ms，但45秒时run仍为`running [success, admitted]`；同一图片任务已经持久化success，调用方却继续`save/save-retry`，视频未开始。没有发现重复Provider POST；日志只保留通用Error，不能把具体SQLite或close异常写成事实。
-- CI暴露出的两个产品缺陷与当前修复：workflow run GET/list此前走writer-open，现已改为验证后的事务一致只读快照，m104保留250ms压力轮询并断言不进入writer-open checkpoint；第三次CI进一步证明这不是完整根因。媒体输出集合提交此前只接受running/recovering，若数据库提交已成功而调用方没收到成功回执，重试会被已success任务拒绝并持续退避。当前只在task owner/kind/attempt、完整有序published资产、primary asset、Provider身份与completed结果全部一致时返回同一success，不新增事件、历史或Provider POST；任何不匹配仍fail-closed。独立Review发现有Provider task ID时匹配还缺execution attempt约束，现已把task、attempt、Provider ID三者同时锁死。
-- 当前证据：m22 `45/45`、m104 `13/13`、原直接依赖10 specs `106/106`、共享数据库m91 `9/9`，再加媒体输出集合m88 `38/38`，去重后共211项PASS；最新m88+m104合并定向为`51/51`。m88故意丢失第一次成功回执后完成精确重放，并证明success event只有1条、两项asset history仍各1条；随后伪造相同Provider ID只存在于错误execution attempt，提交必须拒绝且上述计数不变。库存1178，TypeScript、production build、source coverage、4173隔离门通过。动态首帧真HTTP fake-Provider链路为1 run/2 tasks/2 attempts/2个预期POST，首帧角色正确并成功，create仍远低于15秒门。formal full没有重跑。
-- 当前门禁：独立累计Review先覆盖当时28/28非回执文件、155/155 hunks和1/1回执，发现Provider execution attempt匹配P1并给出`P0=0/P1=1/P2=0/NO-GO`；代码和负向测试关闭后，同一Reviewer增量复审到当前28/28非回执文件、161/161 hunks和1/1回执，最终`P0=0/P1=0/P2=0/GO`。PR #151仍打开；三次失败CI证据永久保留，新fix head branch CI、main CI、tag/Release/exact-tag fresh build/backup/switch/rollback-forward仍未完成。只有这些发布门全部通过且v0.7.4生产健康后，才允许精确组真实点击一次；结果不明禁止重试，只读核对原run/task。验收不评价内容审美，用户明确确认前保持`USER_RECHECK`。
+- CI新增证据：前四次普通branch CI与诊断run `33679773692`均保留12/13失败。诊断head `b17b9fd`把隔离错误明文限于safe-test，首次确认第二个视频任务已取得fake Provider结果，但保存MP4时抛出“服务端无法读取素材时长”。runner为macOS arm64，原workflow没有安装或检查ffmpeg/ffprobe；官方镜像清单与现场均没有ffprobe。该缺失使本地永久错误被当成普通未知错误按1/2/4/8/15秒重试，外层又继续检查同一Provider成功结果，因此run保持`running [success, admitted]`。这不是入参错误，也不是输出集合重放错误。
+- 当前修复：CI在m104前安装ffmpeg并显式检查ffprobe；`probeTrustedMediaMetadata`保留`DEPENDENCY_UNAVAILABLE/TEMPORARY/UNREADABLE/ABORTED`，结果保存只重试TEMPORARY，缺组件、坏媒体和停止立即抛出并让task/workflow终态化。测试诊断明文字段已删除，生产日志仍只写安全错误码。此前writer-free状态快照和严格输出集合重放继续作为独立可靠性加固，但不再冒充本次CI根因。生产已只读确认`/usr/bin/ffprobe`存在并成功探测release测试MP4。
+- 当前证据：既有m22 `45/45`、m104 `13/13`、直接依赖`106/106`、m91 `9/9`、m88 `38/38`仍有效；本次元数据增量m57+m90 `40/40`，随后完整m104图片→视频链路`13/13`。治理m38在权威措辞更新后先保留一次`17/18`，只修精确生产标记后最小复验`18/18`。safe preflight均通过TypeScript、production build、source coverage与4173隔离；库存1178，formal full没有重跑。m104动态链路仍为1 run、2 tasks、2 attempts、恰好2个预期fake Provider POST并终态成功。
+- 当前门禁：旧累计28/28非回执文件、161/161 hunks和1/1回执的`P0=0/P1=0/P2=0/GO`是新增元数据与CI修复之前的历史门，现已失效。PR #151仍打开；先冻结当前候选并完成同一Reviewer增量Review，再要求final branch CI实际安装ffprobe且m104 13/13；之后才可merge/main CI、tag/Release、exact-tag fresh build、backup/switch/rollback-forward。全部通过且v0.7.4生产健康后，精确组只点击一次；结果不明只读核对原run/task，禁止重试。验收不评价内容审美，用户明确确认前保持`USER_RECHECK`。
 - 当前候选回执：`spec/V0_7_4_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`。以下v0.7.3及更早内容均为历史时点证据，不得覆盖本层或恢复旧授权。
 
 ## 2026-09-02 v0.7.3 发布当前覆盖层

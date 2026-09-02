@@ -1,8 +1,8 @@
 # Unboundry 当前权威状态
 
-> **2026-09-03 最新权威：生产仍运行 v0.7.3/schema42；v0.7.4 修复和上线已获授权，当前是风险定向测试与独立Review均GO、尚未发布的本地候选。** 指定 Canvas `adcb89a5-c1f4-47e4-bbbb-28fff8d81583` / group `group-17ee0cbc-cc81-4b35-9c5e-41040f627033` 的失败请求 `4666a088-aca9-402b-ba8b-c842023470cb` 在35.260秒后HTTP400；没有创建run/task/admission/attempt，也没有Provider POST或费用。直接根因是动态Grok Video首帧虽然来自同组上游图片，静态准入却把角色最低数误判为永久缺失；逐节点重复打开并检查数据库又令响应超过浏览器30秒上限。服务端节点状态没有映射到原呼吸灯，是呼吸灯消失的独立UI原因。
+> **2026-09-03 最新权威：生产仍运行 v0.7.3/schema42；v0.7.4 修复和上线已获授权，当前本地修复通过、final branch CI与新增增量Review待执行。** 指定 Canvas `adcb89a5-c1f4-47e4-bbbb-28fff8d81583` / group `group-17ee0cbc-cc81-4b35-9c5e-41040f627033` 的失败请求 `4666a088-aca9-402b-ba8b-c842023470cb` 在35.260秒后HTTP400；没有创建run/task/admission/attempt，也没有Provider POST或费用。直接根因是动态Grok Video首帧虽然来自同组上游图片，静态准入却把角色最低数误判为永久缺失；逐节点重复打开并检查数据库又令响应超过浏览器30秒上限。服务端节点状态没有映射到原呼吸灯，是呼吸灯消失的独立UI原因。
 
-**生产是 v0.7.3 / schema42；v0.7.4候选已完成第三轮产品修复、风险定向测试和当前独立Review，初始commit/push与PR #151已存在，但尚未完成新head CI、合并、发布或生产执行。** 原修复包括：动态角色只在精确kind+role可由本工作流满足时等待；整组准入复用同一数据库连接；服务端`admitted`节点临时驱动文字/图片/视频/音频原呼吸灯；创建回执不确定时先锁定、最多90秒只读找回，仍不明确则保留锁且禁止第二次POST；workflow GET/list改为不获取writer lock的事务一致只读快照。三次branch CI `33666408795`、`33668540380`、`33673886179`均保留12/13失败；第三次的GET已降至约7～42ms，但45秒时仍停在`running [success, admitted]`。同一图片任务已经持久化success，调用方却继续`save/save-retry`，说明媒体输出集合提交在“数据库已成功、成功回执未抵达调用方”后不能安全重放；后续重试被已success任务拒绝，视频不启动。保留日志没有暴露提交后回执异常的具体类型，未猜测为某个SQLite或close错误。当前修复只在task owner/kind/attempt、完整有序published资产、primary asset、Provider身份和completed结果全部一致时返回同一success，不新增事件、历史或Provider POST。独立累计Review覆盖当时28/28非回执文件、155/155 hunks和1/1回执，发现有Provider task ID时可能选错execution attempt的P1；现已把task、execution attempt和Provider ID同时锁死，并增加相同ID跨轮次的负向门。最新m88+m104合并定向`51/51`通过；与原证据去重后累计211项直接相关测试通过，TypeScript/build/source coverage/4173隔离通过，formal full未重跑。同一Reviewer累计复审到当前28/28非回执文件、161/161 hunks和1/1回执，最终`P0=0/P1=0/P2=0/GO`。
+**生产是 v0.7.3 / schema42；PR #151前四次普通branch CI与诊断run `33679773692`均保留12/13失败，最新本地修复尚未推送。** 诊断run首次证明：图片节点已成功，视频节点也已取得fake Provider MP4，但macOS CI runner没有`ffprobe`；保存阶段把缺组件抹成普通“服务端无法读取素材时长”，于是按1/2/4/8/15秒重试并被外层继续轮询，run保持`running [success, admitted]`。这不是入参逻辑问题；此前媒体输出集合精确重放是额外可靠性加固，不是本次CI卡住的根因。当前候选保留原动态角色、准入连接、呼吸灯、不确定create找回、只读状态查询和精确重放修复，并新增两层闭环：CI先安装/检查ffprobe；产品保留元数据错误类型，缺组件或坏媒体立即明确失败，只有资源繁忙/超时才有限重试。生产已只读确认`/usr/bin/ffprobe`存在并可探测release测试MP4；真正目标Canvas仍必须等v0.7.4健康上线后只执行一次。最新本地m57+m90 `40/40`、m104 `13/13`，TypeScript、production build、source coverage与4173隔离均通过，formal full未重跑。新增变更已使旧28/161独立Review GO失效，当前Review为PENDING。
 
 **最新授权**：`授权修复并上线 v0.7.4，修复后在这个 Canvas 真实执行一次。` 只允许普通patch `v0.7.4`；发布技术门全通过后，精确组只点击一次。结果不明只核对原run/task，绝不重发；验收网站工作流、自动回填、保存和刷新，不评价生成内容审美。候选回执为 `spec/V0_7_4_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`，当前生产基线回执为 `spec/V0_7_3_PRODUCTION_RECEIPT_2026-09-02.json`。
 
@@ -14,13 +14,13 @@
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
 当前代码包版本：**v0.7.4**
 本地候选代码版本：**v0.7.4**
-当前本地候选说明：`v0.7.4 工作流准入、创建时延、呼吸灯、不确定create回执、状态查询写锁干扰、媒体提交成功回执丢失后的精确重放和Provider执行轮次精确匹配；独立Review已GO`
+当前本地候选说明：`v0.7.4 工作流准入、创建时延、呼吸灯、不确定create回执、状态查询、精确重放，以及视频元数据组件门与永久错误立即收口；新增增量Review待完成`
 当前生产部署版本：**v0.7.3**
 本地候选schema：**42**
 当前治理标记：`CURRENT_V0_7_3_USER_RECHECK`
 当前发布执行标记：`V0_7_4_RELEASE_AUTHORIZED_NOT_CONSUMED`
 当前本地Goal标记：`NO_ACTIVE_GOAL / LATEST_USER_AUTHORIZATION_CONTROLS`
-当前计划标记：`V0_7_4_LOCAL_FIX_PASS / INDEPENDENT_REVIEW_GO / PRODUCTION_NOT_RUN`
+当前计划标记：`V0_7_4_LOCAL_FIX_PASS / INCREMENTAL_REVIEW_PENDING / PRODUCTION_NOT_RUN`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
 当前发布门：`V0_7_4_AUTHORIZED / REVIEW_GO_AND_RELEASE_NOT_RUN / ONE_REAL_GROUP_EXECUTION_AFTER_HEALTHY_DEPLOY`
 

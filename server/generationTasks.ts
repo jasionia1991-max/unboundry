@@ -177,6 +177,7 @@ import type {
   NormalizedMediaProviderResult,
 } from "./mediaGenerationProvider";
 import { normalizeProviderImageToPng } from "./providerImageNormalization";
+import { MediaMetadataError } from "./mediaMetadata";
 import {
   listRelayUsageRecords,
   matchRelayUsageRecord,
@@ -2769,6 +2770,7 @@ function isPersistenceBusyError(error: unknown) {
 
 export function isTransientProviderResultSaveError(error: unknown) {
   if (error instanceof ResourceBudgetError) return true;
+  if (error instanceof MediaMetadataError) return error.code === "TEMPORARY";
   if (
     error instanceof MediaPublicationConflictError ||
     error instanceof MediaPublicationStateError
@@ -2783,7 +2785,8 @@ export function isTransientProviderResultSaveError(error: unknown) {
 }
 
 function isDefinitiveProviderResultSaveError(error: unknown) {
-  return error instanceof ProviderResultMediaError ||
+  return error instanceof MediaMetadataError ||
+    error instanceof ProviderResultMediaError ||
     error instanceof RelayProviderError ||
     error instanceof OpenRouterImageError ||
     error instanceof VolcengineArkVideoError ||
@@ -2897,9 +2900,6 @@ function logGenerationDiagnostic(
       causeCode: typeof rawCauseCode === "string" ? rawCauseCode : null,
       // Never copy Provider bodies, prompts, or signed URLs into logs.
       message: "Generation operation failed",
-      ...(process.env.UNBOUNDRY_SAFE_TEST === "1" && error instanceof Error
-        ? { isolatedTestMessage: error.message.slice(0, 240) }
-        : {}),
     }));
   } catch {
     // Diagnostics must never affect generation.

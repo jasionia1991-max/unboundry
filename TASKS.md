@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻当前任务
 
-## INC-GEN-028 v0.7.4 工作流准入与生成状态修复（AUTHORIZED / LOCAL CANDIDATE）
+## INC-GEN-028 v0.7.4 工作流准入与生成状态修复（AUTHORIZED / LOCAL FIX PASS / REVIEW PENDING）
 
 - [x] 精确定位生产失败请求 `4666a088-aca9-402b-ba8b-c842023470cb`：35.260秒后HTTP400，未创建 workflow run、generation task、admission、attempt 或 Provider POST，费用风险为0。
 - [x] 在生产数据临时副本定位到 plan index 9 的 Grok Video 3：同组上游图片应提供 `first-frame`，静态准入却报“当前模式至少需要1个首帧输入”。
@@ -18,6 +18,9 @@
 - [x] 独立累计Review覆盖当时28/28非回执文件、155/155 hunks和1/1回执，发现1个P1：存在Provider task ID时查询没有同时限定execution attempt，异常旧数据可能选错轮次；结论`P0=0/P1=1/P2=0/NO-GO`。
 - [x] 关闭该P1：Provider attempt查询现在同时限定task、execution attempt和Provider task ID；m88增加“相同Provider ID只存在于错误轮次”的负向数据，必须拒绝且event/history不变。
 - [x] 同一Reviewer对P1修复和当前文档/回执完成增量复审；当前累计覆盖28/28非回执文件、161/161 hunks和1/1回执，最终`P0=0/P1=0/P2=0/GO`。这只代表候选Review，不代表branch CI或生产已通过。
+- [x] 后续普通branch CI `33678592525`仍12/13；诊断run `33679773692`首次暴露确切错误：第二个视频节点已经拿到fake Provider结果，但macOS runner缺少`ffprobe`，保存MP4时报“服务端无法读取素材时长”，并按1/2/4/8/15秒错误重试。此前把它归因为输出集合回执丢失不成立；精确重放仅保留为额外加固。
+- [x] CI在m104前安装并检查ffprobe；产品保留元数据错误类别，缺组件/坏媒体立即终态，只有容量/超时才重试。删除临时safe-test错误明文字段。本地m57+m90 `40/40`、完整m104图片→视频`13/13`，TypeScript/build/source coverage/4173隔离通过；治理m38先保留精确措辞失败`17/18`，只修生产标记后`18/18`。
+- [ ] 冻结新增代码/CI/文档并完成独立增量Review；旧28/161 GO已被本次变更取代。
 - [ ] 完成新head branch CI、merge/main CI、annotated tag/GitHub Release、exact-tag fresh build。
 - [ ] 完成schema42 locked-exact backup/verify/fresh restore、v0.7.3→v0.7.4→v0.7.3→v0.7.4 rollback-forward及生产健康门。
 - [ ] 在 Canvas `adcb89a5-c1f4-47e4-bbbb-28fff8d81583` 的组 `group-17ee0cbc-cc81-4b35-9c5e-41040f627033` 真实点击一次；结果不明禁止重试，只核对原run/task。

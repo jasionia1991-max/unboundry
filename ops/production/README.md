@@ -4,7 +4,10 @@ This directory contains source candidates. Production currently runs
 `v0.7.3/schema42`; that release authorization has been consumed. The current
 authorized candidate is ordinary patch `v0.7.4`, covering exact dynamic-role
 workflow admission, admission database reuse, transient server-node activity
-projection, and no-resubmit reconciliation after an uncertain create response.
+projection, no-resubmit reconciliation after an uncertain create response,
+and definitive settlement for missing/unreadable trusted-media metadata. Both
+CI and the exact production release must prove `ffprobe` is executable before
+workflow generation is admitted.
 Backup, install, switch and rollback-forward may run only after the frozen
 candidate Review, PR/head and main Quality, immutable tag, Release, and exact-tag
 fresh build are complete. After v0.7.4 is live and technically healthy, the
