@@ -1,6 +1,6 @@
 # INC-GEN-026 一次点击工作流可靠生成验收矩阵
 
-状态：`PRODUCTION_V0_7_2_WORKFLOW_PASS / V0_7_3_RELEASE_AUTHORIZED_PENDING_GATES / ZERO_NEW_PROVIDER_POST / USER_RECHECK`
+状态：`PRODUCTION_V0_7_3_TECHNICAL_PASS / ZERO_NEW_PROVIDER_POST / USER_RECHECK`
 
 本矩阵与 `spec/INC_GEN_026_ONE_CLICK_WORKFLOW_RELIABILITY_FINAL_IMPLEMENTATION_PLAN_2026-09-01.md` 一一对应。
 
@@ -12,16 +12,17 @@
 - `NO_GO`：当前明确禁止进入该动作。
 - `USER_RECHECK`：只能由用户在真实页面主观验收。
 - `AUTO_PASS`：当前本地候选已有可复验自动证据；只代表本地技术项，不代表 GitHub、生产、真实 Provider/OSS 或用户验收。
+- `PRODUCTION_AUTO_PASS`：当前生产已有可复验技术证据；不代表用户主观验收。
 - `REAL_PROVIDER_PASS`：生产真实任务已有 task/attempt/result/persistence 证据且没有人工回收；不等于本地候选已发布，也不等于用户主观验收。
 - `LOCAL_FIX_PASS`：缺陷修复已有本地直接影响证据；不代表已获得版本号、已发布或线上已修复。
 
 ## 2026-09-02 v0.7.3 发布当前覆盖层
 
-生产现为 `v0.7.2/schema42`。PR #148、双 CI、tag/Release、fresh build、locked-exact backup/verify/fresh restore、原子切换与 rollback-forward 均通过。Canvas `bcbb1199-d154-4c1a-a580-6b66d2d10f38` 的唯一真实整组 run/task 成功；canonical Seedance 入参贯穿 plan/task/key/ownership/request，结果自动回填、播放并刷新持久化，只有 1 admission/1 Provider attempt/1 Provider create，active/unknown=0。`IG26-108～110` 与 `IG26-116～118` 因此按各自证据转为通过。
+生产现为 `v0.7.3/schema42`。PR #149、双 CI、annotated tag/Release、exact-tag fresh build、locked-exact backup/verify/fresh restore、原子切换与 `v0.7.2→v0.7.3→v0.7.2→v0.7.3` rollback-forward 均通过。v0.7.2 在 Canvas `bcbb1199-d154-4c1a-a580-6b66d2d10f38` 的唯一真实整组 run/task 继续证明 canonical Seedance 入参贯穿 plan/task/key/ownership/request，结果自动回填并刷新持久化；v0.7.3 不重复该付费请求。
 
-发布后复核发现一个独立 UI P1：相同视频 metadata 重放时数据已持久化且无需 PUT，但顶部提示可能误停在“保存中”。本地补丁的 TypeScript、m37 `39/39`、m4 `1/1`、m2-text `8/8` 与独立 Review `P0=0/P1=0/P2=0/GO` 已完成；两次 m4 preview-hidden 失败仍保留。用户已指定 `v0.7.3` 并授权上线，普通 patch 版本规则生效，版本门与发布尚未执行；本次新增 Provider POST 上限为 0。`IG26-111/119` 继续 `USER_RECHECK`，`IG26-112` 继续 `NO_GO`，`IG26-120` 保持 `LOCAL_FIX_PASS`，`IG26-121` 转为 `AUTHORIZED_PENDING_GATES`。
+保存提示补丁已在 v0.7.3 上线。普通 Chrome 两次加载同一既有 Canvas：文字工作流、3/3图片和1/1视频正常，顶部持续“已保存到云端”，15秒内后续写入0，console error/warn=0；没有点击生成，task/admission/attempt/workflow run/Provider POST 零新增。`IG26-111/119` 继续 `USER_RECHECK`，`IG26-112` 继续 `NO_GO`，`IG26-120/121` 转为 `PRODUCTION_AUTO_PASS`。v0.7.3 一次性授权已消费；下一版本从普通patch v0.7.4开始，不加hotfix后缀。
 
-当前证据主路由为 `spec/V0_7_3_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`、`spec/V0_7_2_PRODUCTION_RECEIPT_2026-09-02.json`、`spec/INC_GEN_026_CHECKPOINT.md` 顶部覆盖层与本矩阵。
+当前证据主路由为 `spec/V0_7_3_PRODUCTION_RECEIPT_2026-09-02.json`、`spec/V0_7_3_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`、`spec/V0_7_2_PRODUCTION_RECEIPT_2026-09-02.json`、`spec/INC_GEN_026_CHECKPOINT.md` 顶部覆盖层与本矩阵。
 
 > A～G 与 H 的 IG26-087～098 保留 INC-GEN-026/v0.7.0 当时的验收账本；其中旧 baseline、旧生产身份与 `AUTO_PASS` 只代表历史候选。当前 INC-GEN-028 的 v0.7.2 候选证据看 IG26-099/100，发布后保存状态补丁看 IG26-120/121 和顶部 production receipt。
 
@@ -184,9 +185,9 @@
 | IG26-111 | 用户主观验收 | USER_RECHECK | 用户在真实页面看结果并明确回复通过。 |
 | IG26-112 | 最终关闭 | NO_GO | IG26-001～110 按类别通过，IG26-111 由用户确认后才可 USER_PASS。 |
 
-当前覆盖层结论：IG26-099/100=`AUTO_PASS`，IG26-108～110=`REAL_PROVIDER_PASS`，IG26-111=`USER_RECHECK`，IG26-112=`NO_GO`。v0.7.2 核心工作流通过不等于保存提示补丁已上线，也不自动升级用户验收。
+当前覆盖层结论：IG26-099/100=`AUTO_PASS`，IG26-108～110=`REAL_PROVIDER_PASS`，IG26-120/121=`PRODUCTION_AUTO_PASS`，IG26-111/119=`USER_RECHECK`，IG26-112=`NO_GO`。v0.7.3 技术通过不自动升级用户验收。
 
-## J. INC-GEN-028 / v0.7.2 当前发布覆盖层
+## J. INC-GEN-028 / v0.7.2 工作流与 v0.7.3 保存状态发布覆盖层
 
 | ID | 验收项 | 当前状态 | 通过标准 |
 |---|---|---|---|
@@ -197,5 +198,5 @@
 | IG26-117 | exact-tag build、backup 与切换 | AUTO_PASS | fresh archive/build/inventory、schema42 locked-exact backup/verify/fresh restore、原子切换、v0.7.1-hotfix.1 rollback 与最终 forward 全部通过。 |
 | IG26-118 | 修复后真实 Canvas 验证 | REAL_PROVIDER_PASS | Canvas `bcbb1199-d154-4c1a-a580-6b66d2d10f38` 只执行一次 exact Seedance 输入；plan/task/key/ownership/request 一致，结果自动回填、播放并刷新持久化，无重复提交。 |
 | IG26-119 | 用户验收 | USER_RECHECK | 用户在生产实页确认网站工作流符合预期；不评价成片审美。 |
-| IG26-120 | 保存提示本地修复 | LOCAL_FIX_PASS | 相同 metadata 返回原节点；只有当前 snapshot 已与 durable fingerprint 一致时才收口提示。TypeScript、safe m37 `39/39`、m4 `1/1`、m2-text `8/8` 与 diff-check 最终通过；m4 两次 preview-hidden 失败及最终通过均保留；独立 Review `P0=0/P1=0/P2=0/GO`。 |
-| IG26-121 | 保存提示补丁发布 | AUTHORIZED_PENDING_GATES | 用户已指定 v0.7.3 并授权上线；版本门、候选 Review、GitHub、备份、切换与 rollback-forward 仍须逐项通过，生产复验新增 Provider POST=0。 |
+| IG26-120 | 保存提示修复 | PRODUCTION_AUTO_PASS | 相同 metadata 返回原节点；只有当前 snapshot 已与 durable fingerprint 一致时才收口提示。TypeScript、safe m37 `39/39`、m4 `1/1`、m2-text `8/8` 与 diff-check 通过；普通 Chrome 两次加载最终均为“已保存到云端”，稳定观察15秒无后续写入、console error/warn=0。 |
+| IG26-121 | 保存提示补丁发布 | PRODUCTION_AUTO_PASS | 用户指定 v0.7.3 的一次性授权已消费；PR #149、双CI、tag/Release、exact-tag build、locked-exact backup/verify/fresh restore、生产切换及rollback-forward均通过，新增Provider POST=0。 |

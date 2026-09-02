@@ -1,0 +1,305 @@
+{
+  "version": "0.7.3",
+  "packageVersion": "0.7.3",
+  "schemaVersion": 42,
+  "createdAt": "2026-09-02T15:09:34Z",
+  "updatedAt": "2026-09-02T15:09:34Z",
+  "status": "PRODUCTION_V0_7_3_TECHNICAL_PASS_ZERO_NEW_PROVIDER_POST_USER_RECHECK",
+  "source": {
+    "candidateCommit": "b65926c8f3014e7484d5067b5068086e42715c9b",
+    "candidateTree": "b4de4cf8e59a3efeb87211dd704fed147b818ed6",
+    "pullRequest": {
+      "number": 149,
+      "url": "https://github.com/jasionia1991-max/unboundry/pull/149",
+      "state": "MERGED"
+    },
+    "branchQuality": {
+      "runId": 33642534626,
+      "headSha": "b65926c8f3014e7484d5067b5068086e42715c9b",
+      "conclusion": "success"
+    },
+    "mergeCommit": "afc1ceaed77a44430f2a090103a38dd3014d0809",
+    "mergeTree": "b4de4cf8e59a3efeb87211dd704fed147b818ed6",
+    "mainQuality": {
+      "runId": 33642825089,
+      "headSha": "afc1ceaed77a44430f2a090103a38dd3014d0809",
+      "conclusion": "success"
+    },
+    "tag": "v0.7.3",
+    "annotatedTagObject": "11c4f228833ba146e89a496d5d9918f2ca2b72de",
+    "tagPeeledCommit": "afc1ceaed77a44430f2a090103a38dd3014d0809",
+    "githubRelease": "https://github.com/jasionia1991-max/unboundry/releases/tag/v0.7.3",
+    "tagArchive": {
+      "localPath": "/tmp/unboundry-v073-archive.s1wLBu/unboundry-v0.7.3.tar",
+      "byteSize": 45312000,
+      "sha256": "b6d1f531f52ecef60a857dd5d6f85b218ec593ec9ffe2c4f63c69d8002ee3907",
+      "protectedJsonEntries": 0
+    }
+  },
+  "authorization": {
+    "text": "版本号 v0.7.3，授权上线",
+    "releaseAuthorizationConsumed": true,
+    "newProviderPostAuthorized": false,
+    "newProviderPostsExecuted": 0,
+    "realCanvasMode": "EXISTING_RESULT_RELOAD_AND_METADATA_REPLAY_ONLY",
+    "versionConvention": "Use ordinary patch increments such as v0.7.3 then v0.7.4; do not add hotfix suffixes.",
+    "qualityJudgementInScope": false
+  },
+  "candidate": {
+    "trackedChangedFiles": 22,
+    "trackedHunks": 66,
+    "untrackedReceipts": 2,
+    "totalFiles": 24,
+    "trackedBinaryDiffSha256": "bcb987a42fb3652a510bf9700caf966d4d04e78b1c3975cc7b0d65ba2bfe3864",
+    "review": "22/22 tracked files, 66/66 hunks, 2/2 receipts; P0=0/P1=0/P2=0/GO",
+    "versionGates": {
+      "m81AndM82": "49/49 PASS",
+      "governanceM38": "18/18 PASS",
+      "finalM38AndM81": "60/60 PASS",
+      "typescript": "449/449 PASS",
+      "productionBuild": "PASS",
+      "discoveredTestInventory": 1176,
+      "formalFullRerun": false
+    }
+  },
+  "production": {
+    "current": "/opt/unboundry/releases/v0.7.3-inc-gen-028-20260902",
+    "previous": "/opt/unboundry/releases/v0.7.2-inc-gen-028-20260902",
+    "runtime": {
+      "node": "22.23.2",
+      "npm": "10.9.8"
+    },
+    "freshBuild": {
+      "npmCiPackages": 185,
+      "npmAuditVulnerabilities": 0,
+      "typescript": "PASS",
+      "viteProductionBuild": "PASS"
+    },
+    "releaseInventory": {
+      "files": 6096,
+      "manifestSha256": "8d2f9fe493f44f0ee8bbb5c0df26997cb887720241ad9fd23435d8332ac8b953"
+    },
+    "staticAssetParity": {
+      "indexFiles": 1,
+      "assetFiles": 5,
+      "matched": 6,
+      "total": 6,
+      "mismatches": 0,
+      "result": "BYTE_IDENTICAL_PUBLIC_TO_EXACT_RELEASE"
+    },
+    "service": "active",
+    "enabled": true,
+    "nRestarts": 0,
+    "activeSince": "2026-09-02T15:00:41Z",
+    "loopbackVersion": "0.7.3",
+    "publicVersion": "0.7.3",
+    "loopbackLive": true,
+    "publicLive": true,
+    "loopbackReady": true,
+    "publicReady": true,
+    "runtimeRole": "active",
+    "mutationsAccepted": true,
+    "schemaVersion": 42,
+    "journalErrorsSinceFinalForward": 0,
+    "generationEnabledRestoredAt": "2026-09-02T15:05:09.621Z"
+  },
+  "backupAndRollback": {
+    "generationFreeze": {
+      "enabledBefore": true,
+      "enabledDuringBackupAndBrowserVerification": false,
+      "frozenAt": "2026-09-02T14:42:33.620Z",
+      "restoredAt": "2026-09-02T15:05:09.621Z"
+    },
+    "stoppedFrozenDatabase": {
+      "logicalSha256": "27890076a666c3918c87c428fe6e175f76db01f54ef02b19519a4dcf45632e99",
+      "integrityCheck": "ok",
+      "foreignKeyViolations": 0,
+      "schemaVersion": 42,
+      "tables": 35
+    },
+    "ossMirror": {
+      "entryCount": 615,
+      "totalBytes": 1523744357,
+      "databaseLogicalSha256": "27890076a666c3918c87c428fe6e175f76db01f54ef02b19519a4dcf45632e99",
+      "result": "PASS"
+    },
+    "lockedExactBackup": {
+      "backupId": "19cd1360-5075-439c-80a3-0f38df997c01",
+      "packageDirectory": "/var/lib/unboundry-rollbacks/v0.7.3-20260902-backup/19cd1360-5075-439c-80a3-0f38df997c01.ubbackup",
+      "packageBytes": 1844155123,
+      "envelopeSha256": "0a3a42ffbb61cd5594f62f7a38ca1a5abfc1fa5b5ee14167ebb728c06440f0df",
+      "encryptedManifestSha256": "b60967ec9789622f8f5c6684071d252050f1ff6b287ef0a3c2ad2b9e657327cc",
+      "captureMode": "locked-exact",
+      "databaseLogicalSha256": "27890076a666c3918c87c428fe6e175f76db01f54ef02b19519a4dcf45632e99",
+      "schemaVersion": 42,
+      "mediaFiles": 355,
+      "ossMirrors": 615,
+      "secretFiles": 3,
+      "verify": "PASS",
+      "mediaIntegrity": {
+        "clean": false,
+        "issues": 97,
+        "backupBlockingIssues": 0,
+        "sha256": "a9d284bdc1b99fb051d54c19fd042524166ce2547f37690d084981ef73ecb384",
+        "evidenceSha256": "900a0d5f68f9a7f0394d46272921851c910a3eac51984eba471ce4b304839392"
+      }
+    },
+    "freshRestore": {
+      "path": "/var/lib/unboundry-v073-restores/fresh",
+      "mode": "0700",
+      "ownerAfterVerification": "root",
+      "files": 976,
+      "bytes": 1843351709,
+      "databaseLogicalSha256": "27890076a666c3918c87c428fe6e175f76db01f54ef02b19519a4dcf45632e99",
+      "integrityCheck": "ok",
+      "foreignKeyViolations": 0,
+      "schemaVersion": 42,
+      "tables": 35,
+      "result": "PASS"
+    },
+    "rollbackForward": {
+      "initialForwardToV0_7_3": "PASS",
+      "rollbackToV0_7_2": {
+        "startedAt": "2026-09-02T15:00:10.594Z",
+        "readyAt": "2026-09-02T15:00:15.319Z",
+        "result": "PASS"
+      },
+      "finalForwardToV0_7_3": {
+        "startedAt": "2026-09-02T15:00:37.648Z",
+        "readyAt": "2026-09-02T15:00:45.675Z",
+        "result": "PASS"
+      },
+      "finalCurrent": "/opt/unboundry/releases/v0.7.3-inc-gen-028-20260902"
+    },
+    "failedClosedAttemptsRetained": [
+      {
+        "code": "BACKUP_INSPECTION_PATH_OUTSIDE_ROOT",
+        "reason": "The first logical-inspection helper used a live database path outside its declared inspection root; it stopped before mutation."
+      },
+      {
+        "path": "/var/lib/unboundry-backup-mirrors/v0.7.3-20260902",
+        "reason": "The first OSS mirror process ran under root and refused the service-user-owned private storage-secret directory before downloading the mirror."
+      },
+      {
+        "code": "RELEASE_TRAVERSAL_DENIED",
+        "reason": "The service-user mirror invocation could not traverse the freshly staged release root while it was mode 0500; the root was corrected to immutable mode 0555 before build activation."
+      },
+      {
+        "code": "BACKUP_DRIVER_IDENTITY_INVALID",
+        "reason": "One backup-driver invocation supplied an incorrectly copied expected logical SHA and stopped before package creation."
+      },
+      {
+        "code": "BACKUP_DRIVER_MANIFEST_TRUST_INVALID",
+        "reason": "The completed mirror manifest was service-user-owned; the driver required a root-owned mode-0600 manifest and stopped before package creation."
+      },
+      {
+        "code": "BACKUP_DIRECTORY_PERMISSIONS_INVALID",
+        "reason": "The first child backup retained root identity while the source data belongs to the service user; the official backup trust check stopped before package creation. The final driver validated as root and dropped only the child to the exact source-data uid/gid."
+      }
+    ]
+  },
+  "authoritativeData": {
+    "beforeFreeze": {
+      "adminAuditEvents": 318,
+      "generationAdmissions": 963,
+      "generationProviderAttempts": 1054,
+      "generationTasks": 1043,
+      "mediaAssets": 969,
+      "mediaPublications": 560,
+      "workflowRuns": 4
+    },
+    "duringFreezeAndBrowserVerification": {
+      "adminAuditEvents": 319,
+      "generationAdmissions": 963,
+      "generationProviderAttempts": 1054,
+      "generationTasks": 1043,
+      "mediaAssets": 969,
+      "mediaPublications": 560,
+      "workflowRuns": 4
+    },
+    "final": {
+      "adminAuditEvents": 320,
+      "generationAdmissions": 963,
+      "generationProviderAttempts": 1054,
+      "generationTasks": 1043,
+      "mediaAssets": 969,
+      "mediaPublications": 560,
+      "workflowRuns": 4,
+      "activeTasks": 0,
+      "activePublications": 0,
+      "activeWorkflowRuns": 0,
+      "unknownBillingTasks": 0,
+      "integrityCheck": "ok",
+      "foreignKeyViolations": 0
+    },
+    "expectedAuditOnlyDelta": 2,
+    "businessDataDelta": 0,
+    "lastProviderAttemptAt": "2026-09-02T11:44:55.606Z",
+    "newProviderPosts": 0
+  },
+  "realCanvasVerification": {
+    "canvasId": "bcbb1199-d154-4c1a-a580-6b66d2d10f38",
+    "browser": "USER_CHROME_EXISTING_LOGIN",
+    "mode": "EXISTING_RESULT_RELOAD_AND_METADATA_REPLAY_ONLY",
+    "groupExecuteClicks": 0,
+    "generationPosts": 0,
+    "loadedWorkflow": true,
+    "groupExecuteEnabled": true,
+    "textNodesVisible": true,
+    "images": {
+      "count": 3,
+      "allComplete": true,
+      "naturalDimensions": [
+        "1080x1920",
+        "1254x1254",
+        "1080x1920"
+      ]
+    },
+    "video": {
+      "count": 1,
+      "readyState": 4,
+      "durationSeconds": 5.088,
+      "mediaWidth": 864,
+      "mediaHeight": 496,
+      "error": null
+    },
+    "firstLoadSaveStatus": "已保存到云端",
+    "reload": {
+      "requestCount": 44,
+      "canvasPuts": 2,
+      "canvasPutStatuses": [
+        200,
+        200
+      ],
+      "workflowRunPosts": 0,
+      "generationTaskPosts": 0,
+      "finalSaved": true,
+      "finalSaving": false
+    },
+    "stabilityObservationSeconds": 15,
+    "writesAfterSettlement": 0,
+    "consoleErrors": 0,
+    "consoleWarnings": 0,
+    "result": "PASS"
+  },
+  "knownOperationalFollowUp": {
+    "severity": "P1_OPERATIONAL_PREEXISTING",
+    "releaseBlocking": false,
+    "issue": "The retired-path unboundry-backup.service failure recorded by v0.7.2 remains a separate operational repair; this release did not change or claim to repair that timer.",
+    "reasonReleaseNotBlocked": "The v0.7.3 cutover used the exact immutable release backup implementation and completed signed encrypted locked-exact backup, verification and fresh restore with zero backup-blocking media issues.",
+    "changedByThisRelease": false,
+    "requiresSeparateAuthorization": true
+  },
+  "technicalAcceptance": "PRODUCTION_V0_7_3_WORKFLOW_INHERITED_SAVE_STATUS_FIX_PASS_ZERO_NEW_PROVIDER_POST",
+  "userAcceptance": "USER_RECHECK",
+  "matrix": {
+    "IG26-108": "REAL_PROVIDER_PASS_INHERITED_FROM_V0_7_2",
+    "IG26-109": "REAL_PROVIDER_PASS_INHERITED_FROM_V0_7_2",
+    "IG26-110": "REAL_PROVIDER_PASS_INHERITED_FROM_V0_7_2",
+    "IG26-111": "USER_RECHECK",
+    "IG26-112": "NO_GO_UNTIL_USER_CONFIRMATION",
+    "IG26-119": "USER_RECHECK",
+    "IG26-120": "AUTO_PASS_PRODUCTION",
+    "IG26-121": "AUTO_PASS_AUTHORIZATION_CONSUMED"
+  }
+}
