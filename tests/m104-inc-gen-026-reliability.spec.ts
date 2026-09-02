@@ -8,7 +8,10 @@ import { promisify } from "node:util";
 import { DatabaseSync } from "node:sqlite";
 import { expect, test } from "./safe-test";
 import { createServer as createViteServer, type ViteDevServer } from "vite";
-import { openAppDatabase } from "../server/database";
+import {
+  openAppDatabase,
+  setDuringCurrentDatabaseOpenForTests,
+} from "../server/database";
 import {
   generationInputKey,
   generationOwnershipEvidence,
@@ -36,6 +39,8 @@ import {
   WorkflowPlanValidationError,
 } from "../types/workflowRuns";
 import {
+  getWorkflowRun,
+  listWorkflowRuns,
   runFairWorkflowBatch,
   runWorkflowSweep,
   settleWorkflowAdmissionFailureForRuntimeTest,
@@ -1444,8 +1449,8 @@ async function waitForTerminalRun(runId: string, deadlineMs = 30_000) {
     lastState = run.state;
     lastNodeStates = run.nodes.map(({ state }) => state);
     if (["success", "failed", "cancelled"].includes(run.state)) return run;
-    // Match the real client's bounded polling shape closely enough that the
-    // test itself cannot starve the workflow writer on slower CI machines.
+    // Poll four times faster than the real client's 1-second interval so this
+    // path remains a deliberate read/write-isolation stress test on slow CI.
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   throw new Error(
@@ -2488,6 +2493,19 @@ test("v0.7.4 dynamic image output satisfies Grok Video first-frame admission", a
     expect(Date.now() - createStartedAt).toBeLessThan(15_000);
     const created = await createResponse.json() as { id: string };
     const terminal = await waitForTerminalRun(created.id, 45_000);
+    const readCheckpoints: string[] = [];
+    setDuringCurrentDatabaseOpenForTests((checkpoint) => {
+      readCheckpoints.push(checkpoint);
+    });
+    try {
+      expect(getWorkflowRun("__test__", created.id)?.id).toBe(created.id);
+      expect(listWorkflowRuns("__test__", canvasId).map(({ id }) => id))
+        .toContain(created.id);
+    } finally {
+      setDuringCurrentDatabaseOpenForTests(undefined);
+    }
+    expect(readCheckpoints).toContain("inspection-schema-validated");
+    expect(readCheckpoints).not.toContain("before-writer-sidecar-validation");
     const evidenceDatabase = new DatabaseSync(
       `${process.env.UNBOUNDRY_DATA_DIR}/unboundry.sqlite`,
       { readOnly: true },

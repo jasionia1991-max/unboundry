@@ -195,14 +195,14 @@
       "scriptSha256": "03fdfc2b169d0fd9a2a6945e5d0d5cf2dd2c2a065cb44603081f8cc0b9a9051a",
       "target": "tests/m104-inc-gen-026-reliability.spec.ts",
       "marker": "historical terminal settlement is manifest-fenced and repeat apply is a no-op",
-      "targetSha256": "6f16c3076b741f9753c5f1cdf642caddebe5ef7b0b89c7020ebbd4e24f539aa3"
+      "targetSha256": "a57bafef4a952508a994da9b662be51496af8a6f42c748221720b5f0ef6e49af"
     },
     "scripts/apply-inc-gen-026-attempt-settlements.mjs": {
       "mode": "behavior-test",
       "scriptSha256": "90d6f6e0402a794fb20026db37bce0da02e657e6f857646b00bb5830aa3a7e58",
       "target": "tests/m104-inc-gen-026-reliability.spec.ts",
       "marker": "historical terminal settlement is manifest-fenced and repeat apply is a no-op",
-      "targetSha256": "6f16c3076b741f9753c5f1cdf642caddebe5ef7b0b89c7020ebbd4e24f539aa3"
+      "targetSha256": "a57bafef4a952508a994da9b662be51496af8a6f42c748221720b5f0ef6e49af"
     },
     "scripts/node-typescript-runtime.mjs": {
       "mode": "behavior-test",

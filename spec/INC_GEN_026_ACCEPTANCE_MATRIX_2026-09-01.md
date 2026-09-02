@@ -18,9 +18,9 @@
 
 ## 2026-09-03 v0.7.4 候选当前覆盖层
 
-生产仍运行`v0.7.3/schema42`。v0.7.4已经获得修复、发布和上线后精确Canvas/group执行一次的最新授权；冻结候选与CI增量独立Review已覆盖25/25 tracked files、140/140 hunks和1/1回执，结论`P0=0/P1=0/P2=0/GO`。PR #151已打开；首个branch CI `33666408795`因25ms测试高频GET自扰慢runner而12/13失败，失败证据保留；轮询改为250ms，TT Image与动态首帧终态等待上限改为45秒且create小于15秒断言不变，本地m104为13/13，修正head CI、tag/Release、生产切换和真实点击尚未执行。生产失败请求`4666a088-aca9-402b-ba8b-c842023470cb`已证明0 run/task/admission/attempt/Provider POST；直接根因为动态Grok首帧角色被静态准入误判，逐节点数据库重复打开令400拖到35.260秒并被浏览器30秒超时遮蔽，服务端节点状态又未驱动原呼吸灯。
+生产仍运行`v0.7.3/schema42`。v0.7.4已经获得修复、发布和上线后精确Canvas/group执行一次的最新授权。PR #151已打开；首个branch CI `33666408795`在25ms轮询下12/13失败，轮询改为250ms压力门与45秒终态门后，修正head CI `33668540380`仍12/13失败，45秒时run为`running [success, admitted]`且图片结果保存反复`save/save-retry`、视频未开始。没有发现重复Provider POST；保留日志没有暴露具体数据库错误类型。该证据推翻了“只需修测试”的判断：workflow GET/list此前每次都走写入级数据库打开和`BEGIN IMMEDIATE`，会干扰结果保存。当前候选已改成验证后的事务一致只读快照，不获取SQLite writer lock；250ms压力轮询保留。本地m104 `13/13`、m91+m103 `20/20`通过；此前25/140的Review GO已被产品代码变更取代，最终累计Review覆盖26/26非回执文件、151/151 hunks和1/1回执并`P0=0/P1=0/P2=0/GO`。新head CI、tag/Release、生产切换和真实点击尚未执行。生产失败请求`4666a088-aca9-402b-ba8b-c842023470cb`仍证明0 run/task/admission/attempt/Provider POST；其直接根因为动态Grok首帧角色被静态准入误判，逐节点数据库重复打开令400拖到35.260秒并被浏览器30秒超时遮蔽，服务端节点状态又未驱动原呼吸灯。
 
-本地候选已完成精确动态角色等待、create准入连接复用、`admitted`节点临时呼吸灯映射和不确定create结果的先锁定/只读找回/禁止重提。m22 `45/45`、m104最终`13/13`、直接依赖`106/106`，共164项PASS；库存1178，TypeScript/build/source coverage/4173隔离通过，formal full未重跑。当前详细门见IG26-122～132和`spec/V0_7_4_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`。
+本地候选已完成精确动态角色等待、create准入连接复用、`admitted`节点临时呼吸灯映射、不确定create结果的先锁定/只读找回/禁止重提，以及workflow状态查询与writer-open隔离。m22 `45/45`、m104 `13/13`、原直接依赖`106/106`，再加共享数据库m91 `9/9`，去重后共173项PASS；库存1178，TypeScript/build/source coverage/4173隔离通过，formal full未重跑。当前详细门见IG26-122～132和`spec/V0_7_4_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`。
 
 ## 2026-09-02 v0.7.3 发布历史覆盖层
 
@@ -217,8 +217,8 @@
 | IG26-125 | create准入时延 | AUTO_PASS | 图、模型合同和strict preflight复用一次数据库连接；动态首帧真HTTP fake-Provider测试create为186ms，远低于30秒浏览器上限。 |
 | IG26-126 | 服务端节点呼吸灯 | AUTO_PASS | 仅server node `admitted`临时映射四媒体`*Generating`；pending/admitting/terminal不亮，且不写入Canvas数据。 |
 | IG26-127 | 不确定create禁止重提 | AUTO_PASS | 可能送达服务端时先设置reconciliation lock，只做GET；90秒期限后仍保留锁并明确提示，POST总数不得增加。 |
-| IG26-128 | 风险定向验证 | AUTO_PASS | m22 45/45、m104 13/13、其他直接依赖106/106，共164项；TypeScript/build/source coverage/4173隔离通过，库存1178。 |
-| IG26-129 | 冻结独立Review | AUTO_PASS | 完整候选与CI测试轮询增量合计覆盖25/25 tracked files、140/140 hunks和1/1回执；结论`P0=0/P1=0/P2=0/GO`，已写入v0.7.4 candidate receipt。 |
+| IG26-128 | 风险定向验证 | AUTO_PASS | m22 45/45、m104 13/13、原直接依赖106/106，再加共享数据库m91 9/9，去重后共173项；最新复验m104 13/13、m91+m103 20/20；TypeScript/build/source coverage/4173隔离通过，库存1178。 |
+| IG26-129 | 冻结独立Review | AUTO_PASS | 旧25/140 Review GO已被状态读路径产品代码变更取代；最终累计Review覆盖26/26非回执文件、151/151 hunks和1/1回执，结论`P0=0/P1=0/P2=0/GO`。 |
 | IG26-130 | v0.7.4发布 | NOT_RUN | PR/双CI、merge后annotated tag/Release、exact-tag fresh build、schema42 backup/restore、切换和rollback-forward全部通过。 |
 | IG26-131 | 精确Canvas真实执行一次 | NOT_RUN | v0.7.4生产健康后，只点击目标group一次；记录run/node/task/attempt/Provider次数、呼吸灯、自动回填、保存与刷新。结果不明不得重试。 |
 | IG26-132 | 用户最终验收 | USER_RECHECK | 用户确认网站正常生成工作流；不把图片/视频审美纳入本次技术验收。 |

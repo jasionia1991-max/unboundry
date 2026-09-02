@@ -9,9 +9,11 @@
 - 生产仍是`v0.7.3/schema42`、current=`/opt/unboundry/releases/v0.7.3-inc-gen-028-20260902`。最新用户授权为：`授权修复并上线 v0.7.4，修复后在这个 Canvas 真实执行一次。` 发布、生产切换和真实点击均尚未执行。
 - 精确目标：Canvas `adcb89a5-c1f4-47e4-bbbb-28fff8d81583`，group `group-17ee0cbc-cc81-4b35-9c5e-41040f627033`。失败请求`4666a088-aca9-402b-ba8b-c842023470cb`耗时35.260秒后HTTP400；0 run、0 task、0 admission、0 attempt、0 Provider POST、0费用。
 - 根因一：plan index 9 的 Grok Video 3 需要1个`first-frame`，该角色实际由同组上游图片节点动态产生，但静态准入把动态空值和角色最低数拆开判断，错误拒绝。根因二：11节点准入为每个model/contract/preflight反复打开并完整检查数据库，确定性400因此越过浏览器30秒请求上限。根因三：服务端workflow节点状态未映射到原`*Generating`字段，所以呼吸灯CSS虽在，服务端整组路径不亮。
-- v0.7.4候选修复：精确kind+role动态等待且运行时权威重解析；一次数据库连接贯穿create准入；只把server node `admitted`临时映射到四媒体呼吸灯，不持久化；创建结果不确定时先保留禁止重提锁，最多90秒只读找回，仍未知则继续锁定并禁止第二次POST。
-- 当前证据：m22 `45/45`、m104最终`13/13`、直接依赖10 specs `106/106`，共164项PASS；库存1178，TypeScript、production build、source coverage、4173隔离门通过。动态首帧真HTTP fake-Provider链路为1 run/2 tasks/2 attempts/2个预期POST，首帧角色正确并成功，create 186ms。formal full没有重跑。
-- 当前门禁：冻结候选与CI测试轮询增量独立Review合计覆盖25/25 tracked files、140/140 hunks和1/1回执，结论`P0=0/P1=0/P2=0/GO`。PR #151已打开；首个branch CI `33666408795`因25ms测试高频GET自扰慢runner而12/13失败，失败证据保留；轮询改为250ms，TT Image与动态首帧终态等待上限改为45秒且create小于15秒断言不变，本地m104为13/13且增量Review GO；修正head CI、main CI、tag/Release/exact-tag fresh build/backup/switch/rollback-forward仍未完成。只有这些发布门全部通过且v0.7.4生产健康后，才允许精确组真实点击一次；结果不明禁止重试，只读核对原run/task。验收不评价内容审美，用户明确确认前保持`USER_RECHECK`。
+- v0.7.4候选原修复：精确kind+role动态等待且运行时权威重解析；一次数据库连接贯穿create准入；只把server node `admitted`临时映射到四媒体呼吸灯，不持久化；创建结果不确定时先保留禁止重提锁，最多90秒只读找回，仍未知则继续锁定并禁止第二次POST。
+- CI新增证据：首个branch CI `33666408795`在25ms高频轮询下12/13失败；把轮询调整为250ms压力门、终态等待调整为45秒后，修正head CI `33668540380`仍12/13失败。后者45秒时run为`running [success, admitted]`，日志显示图片结果保存反复`save/save-retry`、没有`save-deferred`，视频未开始。没有发现重复Provider POST；日志只保留通用Error，不能把具体SQLite错误码写成事实。
+- CI暴露出的产品缺陷与修复：workflow run GET/list此前每次调用`openAppDatabase`，即便只是状态轮询也会走完整writer-open并执行`BEGIN IMMEDIATE`；当前候选改为验证后的事务一致只读快照，省略全库内容digest且不获取SQLite writer lock，媒体与workflow写路径不变。m104保留250ms（真实客户端1秒的4倍）压力轮询，并直接断言GET/list不进入writer-open checkpoint。
+- 当前证据：m22 `45/45`、m104 `13/13`、原直接依赖10 specs `106/106`，再加共享数据库m91 `9/9`，去重后共173项PASS；最新定向复验为m104 `13/13`与m91+m103 `20/20`。库存1178，TypeScript、production build、source coverage、4173隔离门通过。动态首帧真HTTP fake-Provider链路为1 run/2 tasks/2 attempts/2个预期POST，首帧角色正确并成功，create仍远低于15秒门。formal full没有重跑。
+- 当前门禁：此前25/25 tracked files、140/140 hunks和1/1回执的独立Review GO已被后续产品代码变更取代；包含`server/database.ts`只读快照修复的最终候选已重新冻结，累计独立Review覆盖26/26非回执文件、151/151 hunks和1/1回执，结论`P0=0/P1=0/P2=0/GO`。PR #151仍打开；两次失败CI证据永久保留，新head branch CI、main CI、tag/Release/exact-tag fresh build/backup/switch/rollback-forward仍未完成。只有这些发布门全部通过且v0.7.4生产健康后，才允许精确组真实点击一次；结果不明禁止重试，只读核对原run/task。验收不评价内容审美，用户明确确认前保持`USER_RECHECK`。
 - 当前候选回执：`spec/V0_7_4_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`。以下v0.7.3及更早内容均为历史时点证据，不得覆盖本层或恢复旧授权。
 
 ## 2026-09-02 v0.7.3 发布当前覆盖层

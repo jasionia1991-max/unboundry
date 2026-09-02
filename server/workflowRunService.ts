@@ -3,6 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import {
   appDataDirectory,
   openAppDatabase,
+  readAppDatabaseSnapshot,
 } from "./database";
 import {
   readPersistedCanvasGraph,
@@ -135,29 +136,23 @@ function summary(database: DatabaseSync, row: Record<string, unknown>): Workflow
 }
 
 export function getWorkflowRun(ownerId: string, runId: string) {
-  const database = openAppDatabase();
-  try {
+  return readAppDatabaseSnapshot((database) => {
     const row = database.prepare(`
       SELECT * FROM workflow_runs WHERE id = ? AND owner_id = ?
     `).get(runId, ownerId) as Record<string, unknown> | undefined;
     return row ? summary(database, row) : undefined;
-  } finally {
-    database.close();
-  }
+  });
 }
 
 export function listWorkflowRuns(ownerId: string, canvasId: string) {
-  const database = openAppDatabase();
-  try {
-    return (database.prepare(`
+  return readAppDatabaseSnapshot((database) =>
+    (database.prepare(`
       SELECT * FROM workflow_runs
       WHERE owner_id = ? AND canvas_id = ?
       ORDER BY updated_at DESC LIMIT 50
     `).all(ownerId, canvasId) as Record<string, unknown>[])
-      .map((row) => summary(database, row));
-  } finally {
-    database.close();
-  }
+      .map((row) => summary(database, row))
+  );
 }
 
 export async function createWorkflowRun(input: {

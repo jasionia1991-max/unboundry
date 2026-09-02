@@ -2,7 +2,7 @@
 
 > **2026-09-03 最新权威：生产仍运行 v0.7.3/schema42；v0.7.4 修复和上线已获授权，当前是独立Review已GO、尚未发布的本地候选。** 指定 Canvas `adcb89a5-c1f4-47e4-bbbb-28fff8d81583` / group `group-17ee0cbc-cc81-4b35-9c5e-41040f627033` 的失败请求 `4666a088-aca9-402b-ba8b-c842023470cb` 在35.260秒后HTTP400；没有创建run/task/admission/attempt，也没有Provider POST或费用。直接根因是动态Grok Video首帧虽然来自同组上游图片，静态准入却把角色最低数误判为永久缺失；逐节点重复打开并检查数据库又令响应超过浏览器30秒上限。服务端节点状态没有映射到原呼吸灯，是呼吸灯消失的独立UI原因。
 
-**生产是 v0.7.3 / schema42；v0.7.4候选已完成代码修复、风险定向测试、独立终审、初始commit/push并打开PR #151，但尚未合并、发布或生产执行。** 修复包括：动态角色只在精确kind+role可由本工作流满足时等待；整组准入复用同一数据库连接；服务端`admitted`节点临时驱动文字/图片/视频/音频原呼吸灯；创建回执不确定时先锁定、最多90秒只读找回，仍不明确则保留锁且禁止第二次POST。m22 `45/45`、m104最终`13/13`、其他直接依赖`106/106`，合计164项通过；真HTTP fake-Provider动态首帧create为186ms，1 run/2 tasks/2预期POST后成功。冻结候选与CI增量独立Review覆盖25/25 tracked files、140/140 hunks和1/1回执，结论`P0=0/P1=0/P2=0/GO`；首个branch CI `33666408795`的12/13失败证据保留，测试轮询降至250ms、TT Image与动态首帧终态等待上限改为45秒且create小于15秒断言不变，本地m104重新13/13，修正head CI尚未执行，formal full未重跑。
+**生产是 v0.7.3 / schema42；v0.7.4候选已完成第二轮产品修复、风险定向测试和当前最终Review，初始commit/push与PR #151已存在，但尚未合并、发布或生产执行。** 原修复包括：动态角色只在精确kind+role可由本工作流满足时等待；整组准入复用同一数据库连接；服务端`admitted`节点临时驱动文字/图片/视频/音频原呼吸灯；创建回执不确定时先锁定、最多90秒只读找回，仍不明确则保留锁且禁止第二次POST。首个branch CI `33666408795`在25ms轮询下12/13失败；将轮询改为250ms、终态等待改为45秒后，修正head CI `33668540380`仍12/13失败，run停在`running [success, admitted]`且图片保存反复`save/save-retry`。这证明不能只改测试：workflow GET/list原来每次都走写入级数据库打开和`BEGIN IMMEDIATE`，会在慢runner上干扰结果保存；当前已改为验证后的事务一致只读快照，不获取SQLite writer lock。具体SQLite错误码没有在保留日志中暴露，未作猜测。250ms压力门保留，本地m104 `13/13`、m91+m103 `20/20`通过；与原证据去重后累计173项直接相关测试通过，TypeScript/build/source coverage/4173隔离通过，formal full未重跑。此前25/140的Review GO已被产品代码变更取代；当前累计Review覆盖26/26非回执文件、151/151 hunks和1/1回执，结论`P0=0/P1=0/P2=0/GO`。
 
 **最新授权**：`授权修复并上线 v0.7.4，修复后在这个 Canvas 真实执行一次。` 只允许普通patch `v0.7.4`；发布技术门全通过后，精确组只点击一次。结果不明只核对原run/task，绝不重发；验收网站工作流、自动回填、保存和刷新，不评价生成内容审美。候选回执为 `spec/V0_7_4_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`，当前生产基线回执为 `spec/V0_7_3_PRODUCTION_RECEIPT_2026-09-02.json`。
 
@@ -14,7 +14,7 @@
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
 当前代码包版本：**v0.7.4**
 本地候选代码版本：**v0.7.4**
-当前本地候选说明：`v0.7.4 工作流准入、创建时延、呼吸灯和不确定回执修复；独立Review已GO，待发布`
+当前本地候选说明：`v0.7.4 工作流准入、创建时延、呼吸灯、不确定回执和状态查询写锁干扰修复；独立Review已GO`
 当前生产部署版本：**v0.7.3**
 本地候选schema：**42**
 当前治理标记：`CURRENT_V0_7_3_USER_RECHECK`
@@ -22,7 +22,7 @@
 当前本地Goal标记：`NO_ACTIVE_GOAL / LATEST_USER_AUTHORIZATION_CONTROLS`
 当前计划标记：`V0_7_4_LOCAL_FIX_PASS / INDEPENDENT_REVIEW_GO / PRODUCTION_NOT_RUN`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`V0_7_4_AUTHORIZED / REVIEW_AND_RELEASE_NOT_RUN / ONE_REAL_GROUP_EXECUTION_AFTER_HEALTHY_DEPLOY`
+当前发布门：`V0_7_4_AUTHORIZED / REVIEW_GO_AND_RELEASE_NOT_RUN / ONE_REAL_GROUP_EXECUTION_AFTER_HEALTHY_DEPLOY`
 
 ## INC-GEN-028 当前读取顺序
 

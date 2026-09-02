@@ -3,7 +3,7 @@
   "packageVersion": "0.7.4",
   "schemaVersion": 42,
   "createdAt": "2026-09-02T17:16:59Z",
-  "updatedAt": "2026-09-02T18:31:26Z",
+  "updatedAt": "2026-09-02T19:18:00Z",
   "status": "LOCAL_RELEASE_CANDIDATE_REVIEW_GO",
   "source": {
     "baselineCommit": "2ab56cb6fa98108a3e861b762aaab400a3d559a8",
@@ -59,7 +59,8 @@
       "Static workflow admission treated an exact first-frame role supplied by an upstream node in the same workflow as permanently missing.",
       "Workflow creation repeatedly opened and fully inspected the production database for each node, stretching a deterministic 400 past the browser's 30-second request timeout.",
       "Server workflow node activity was not projected into the existing transient Canvas generation flags, so admitted nodes had no breathing indicator.",
-      "An uncertain create response did not set the no-resubmit reconciliation lock before an abort path."
+      "An uncertain create response did not set the no-resubmit reconciliation lock before an abort path.",
+      "Workflow run GET/list used the writer-grade database open path for every status poll. Corrected-head CI proved this could interfere with result persistence on a slow runner; the exact database exception class was not exposed and is not claimed."
     ]
   },
   "candidateScope": {
@@ -67,7 +68,8 @@
       "Defer a role minimum only when the exact kind and role are ready or will be produced by a dependency in this same workflow; re-resolve authoritative inputs before downstream admission.",
       "Reuse one database connection through graph, model-contract and strict-preflight reads before the final workflow transaction.",
       "Map only server node state admitted to transient text/image/video/audio generation flags without persisting those flags into Canvas data.",
-      "Set the uncertain-create reconciliation lock before read-only reattach, cap reattach at 90 seconds, retain the lock when still unknown, and never repeat the POST."
+      "Set the uncertain-create reconciliation lock before read-only reattach, cap reattach at 90 seconds, retain the lock when still unknown, and never repeat the POST.",
+      "Serve workflow run GET/list from a validated transaction-consistent read-only snapshot that skips the full content digest and never acquires SQLite's writer lock; keep all workflow and media mutations on the existing writer path."
     ],
     "schemaChange": false,
     "providerContractChange": false,
@@ -75,11 +77,12 @@
   },
   "verification": {
     "safeM22GroupExecution": "45/45 PASS; the real browser route proves pending/admitting are dark, admitted breathes, refresh preserves activity, terminal clears it, one lost create response creates one server run only, and a retired current-graph checkpoint creates zero generation-task or Provider POSTs",
-    "safeM104WorkflowReliability": "13/13 PASS after final reconciliation-deadline change",
+    "safeM104WorkflowReliability": "13/13 PASS after the read-only workflow status-query fix; the 250 ms stress polling remains and direct assertions prove get/list never enter the writer-open checkpoint",
     "directDependentSafeSpecs": "106/106 PASS across m103, text/image/video/audio nodes, video inputs, local image/video/audio uploads, and m81 version hardening",
-    "directBehaviorTests": 164,
+    "sharedDatabaseAndWorkflowRegression": "m91 9/9 and m103 11/11 PASS after the read-only snapshot helper was added",
+    "directBehaviorTests": 173,
     "governanceM38": "two retained 17/18 documentation-marker failures were corrected in sequence; final targeted run 18/18 PASS",
-    "totalDistinctTargetedIncludingGovernance": 182,
+    "totalDistinctTargetedIncludingGovernance": 191,
     "dynamicFirstFrameHttpProof": "1 run, 2 tasks, 2 attempts, exactly 2 expected fake Provider POSTs, first-frame role preserved, terminal success; create admission 186 ms",
     "typescript": "PASS via safe-runner preflight",
     "productionBuild": "PASS via safe-runner preflight",
@@ -88,14 +91,18 @@
     "discoveredTestInventory": 1178,
     "formalFullRerun": false,
     "realProviderPostsBeforeDeploy": 0,
-    "retainedBranchCiFailure": "GitHub Actions run 33666408795 failed 12/13 because the test polled workflow GET every 25 ms on the slower runner and repeatedly interfered with result-save progress; no product code failed locally. The helper now uses a Date.now deadline, 250 ms read-only polling and terminal state diagnostics; the TT Image and dynamic-first-frame calls each use a 45-second terminal deadline while preserving the create-under-15-seconds assertion. Local m104 returned to 13/13 and the two-file incremental Review is GO."
+    "retainedBranchCiFailures": [
+      "GitHub Actions run 33666408795 failed 12/13 with the workflow still nonterminal while the test polled every 25 ms. This failure led to a Date.now deadline, 250 ms stress polling, 45-second terminal deadlines and retained create-under-15-seconds assertion.",
+      "Corrected-head run 33668540380 still failed 12/13 after 45 seconds with workflow state running and node states success/admitted. Logs showed repeated image result save/save-retry and no save-deferred while video had not started. No duplicate Provider POST was found; the exact database error was not exposed in the retained logs. This disproved the test-only diagnosis and led to the product read-path fix."
+    ],
+    "postReadPathFixLocalEvidence": "m104 13/13 PASS in 7.7 seconds; m91+m103 20/20 PASS; TypeScript, production build, source coverage and listener-4173 isolation all PASS/UNCHANGED"
   },
   "candidateManifest": {
-    "trackedChangedFiles": 25,
-    "trackedHunks": 140,
-    "untrackedReceipts": 1,
-    "totalFiles": 26,
-    "trackedBinaryDiffSha256": "25bc42d8b906770ec9730a49be18f598ddd099a15aa751e70477087e477a318e"
+    "reviewedChangedFilesExcludingReceipt": 26,
+    "reviewedHunksExcludingReceipt": 151,
+    "reviewedCandidateReceipts": 1,
+    "totalReviewedFiles": 27,
+    "binaryDiffExcludingReceiptSha256": "10d7279c44895dcbb335f6338da59c147e062bfc1c63a449b838f884dd5fc3fb"
   },
   "review": {
     "initial": {
@@ -113,11 +120,12 @@
       "p2": "m22 now drives real browser server-node states pending to admitting to admitted to terminal, including refresh, and observes the actual Text-node breathing DOM.",
       "retainedFailedTestEvidence": "One intermediate m22 run was 44/45 because the new safety test incorrectly expected the retired checkpoint to submit after an explicit continue event; inspection confirmed the unconditional retired-checkpoint guard prevents every such submission. The assertion was corrected without a product-code change and the smallest affected m22 rerun passed 45/45."
     },
-    "releaseCandidate": "25/25 tracked files, 140/140 hunks, 1/1 candidate receipt, including the CI polling increment; P0=0/P1=0/P2=0/GO"
+    "priorReleaseCandidate": "25/25 tracked files, 140/140 hunks, 1/1 candidate receipt, including the first CI polling increment; P0=0/P1=0/P2=0/GO. Superseded by the later product read-path change.",
+    "releaseCandidate": "26/26 non-receipt tracked files, 151/151 hunks, and 1/1 candidate receipt cumulatively reviewed after the workflow status read-path product fix; P0=0/P1=0/P2=0/GO"
   },
   "release": {
     "pullRequest": "PR #151 OPEN",
-    "branchCi": "RUN 33666408795 FAILED 12/13; CORRECTED HEAD CI NOT_RUN",
+    "branchCi": "RUN 33666408795 FAILED 12/13; RUN 33668540380 FAILED 12/13; NEW FIX HEAD CI NOT_RUN",
     "mainCi": "NOT_RUN",
     "annotatedTag": "NOT_RUN",
     "githubRelease": "NOT_RUN",
