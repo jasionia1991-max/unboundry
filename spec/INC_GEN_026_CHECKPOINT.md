@@ -11,7 +11,7 @@
 - 根因一：plan index 9 的 Grok Video 3 需要1个`first-frame`，该角色实际由同组上游图片节点动态产生，但静态准入把动态空值和角色最低数拆开判断，错误拒绝。根因二：11节点准入为每个model/contract/preflight反复打开并完整检查数据库，确定性400因此越过浏览器30秒请求上限。根因三：服务端workflow节点状态未映射到原`*Generating`字段，所以呼吸灯CSS虽在，服务端整组路径不亮。
 - v0.7.4候选修复：精确kind+role动态等待且运行时权威重解析；一次数据库连接贯穿create准入；只把server node `admitted`临时映射到四媒体呼吸灯，不持久化；创建结果不确定时先保留禁止重提锁，最多90秒只读找回，仍未知则继续锁定并禁止第二次POST。
 - 当前证据：m22 `45/45`、m104最终`13/13`、直接依赖10 specs `106/106`，共164项PASS；库存1178，TypeScript、production build、source coverage、4173隔离门通过。动态首帧真HTTP fake-Provider链路为1 run/2 tasks/2 attempts/2个预期POST，首帧角色正确并成功，create 186ms。formal full没有重跑。
-- 当前门禁：冻结候选独立Review已覆盖25/25 tracked files、135/135 hunks和1/1回执，结论`P0=0/P1=0/P2=0/GO`；PR/CI/tag/Release/exact-tag fresh build/backup/switch/rollback-forward均`NOT_RUN`。只有这些发布门全部通过且v0.7.4生产健康后，才允许精确组真实点击一次；结果不明禁止重试，只读核对原run/task。验收不评价内容审美，用户明确确认前保持`USER_RECHECK`。
+- 当前门禁：冻结候选与CI测试轮询增量独立Review合计覆盖25/25 tracked files、140/140 hunks和1/1回执，结论`P0=0/P1=0/P2=0/GO`。PR #151已打开；首个branch CI `33666408795`因25ms测试高频GET自扰慢runner而12/13失败，失败证据保留；轮询改为250ms，TT Image与动态首帧终态等待上限改为45秒且create小于15秒断言不变，本地m104为13/13且增量Review GO；修正head CI、main CI、tag/Release/exact-tag fresh build/backup/switch/rollback-forward仍未完成。只有这些发布门全部通过且v0.7.4生产健康后，才允许精确组真实点击一次；结果不明禁止重试，只读核对原run/task。验收不评价内容审美，用户明确确认前保持`USER_RECHECK`。
 - 当前候选回执：`spec/V0_7_4_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`。以下v0.7.3及更早内容均为历史时点证据，不得覆盖本层或恢复旧授权。
 
 ## 2026-09-02 v0.7.3 发布当前覆盖层

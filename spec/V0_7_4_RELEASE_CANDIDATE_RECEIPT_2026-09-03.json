@@ -3,7 +3,7 @@
   "packageVersion": "0.7.4",
   "schemaVersion": 42,
   "createdAt": "2026-09-02T17:16:59Z",
-  "updatedAt": "2026-09-02T18:13:55Z",
+  "updatedAt": "2026-09-02T18:31:26Z",
   "status": "LOCAL_RELEASE_CANDIDATE_REVIEW_GO",
   "source": {
     "baselineCommit": "2ab56cb6fa98108a3e861b762aaab400a3d559a8",
@@ -87,14 +87,15 @@
     "listener4173": "UNCHANGED",
     "discoveredTestInventory": 1178,
     "formalFullRerun": false,
-    "realProviderPostsBeforeDeploy": 0
+    "realProviderPostsBeforeDeploy": 0,
+    "retainedBranchCiFailure": "GitHub Actions run 33666408795 failed 12/13 because the test polled workflow GET every 25 ms on the slower runner and repeatedly interfered with result-save progress; no product code failed locally. The helper now uses a Date.now deadline, 250 ms read-only polling and terminal state diagnostics; the TT Image and dynamic-first-frame calls each use a 45-second terminal deadline while preserving the create-under-15-seconds assertion. Local m104 returned to 13/13 and the two-file incremental Review is GO."
   },
   "candidateManifest": {
     "trackedChangedFiles": 25,
-    "trackedHunks": 135,
+    "trackedHunks": 140,
     "untrackedReceipts": 1,
     "totalFiles": 26,
-    "trackedBinaryDiffSha256": "6cc12be754e80ac533196f75b7ee902a4477af6beecc918d968df9619ca24d0b"
+    "trackedBinaryDiffSha256": "25bc42d8b906770ec9730a49be18f598ddd099a15aa751e70477087e477a318e"
   },
   "review": {
     "initial": {
@@ -112,11 +113,11 @@
       "p2": "m22 now drives real browser server-node states pending to admitting to admitted to terminal, including refresh, and observes the actual Text-node breathing DOM.",
       "retainedFailedTestEvidence": "One intermediate m22 run was 44/45 because the new safety test incorrectly expected the retired checkpoint to submit after an explicit continue event; inspection confirmed the unconditional retired-checkpoint guard prevents every such submission. The assertion was corrected without a product-code change and the smallest affected m22 rerun passed 45/45."
     },
-    "releaseCandidate": "25/25 tracked files, 135/135 hunks, 1/1 candidate receipt; P0=0/P1=0/P2=0/GO"
+    "releaseCandidate": "25/25 tracked files, 140/140 hunks, 1/1 candidate receipt, including the CI polling increment; P0=0/P1=0/P2=0/GO"
   },
   "release": {
-    "pullRequest": "NOT_RUN",
-    "branchCi": "NOT_RUN",
+    "pullRequest": "PR #151 OPEN",
+    "branchCi": "RUN 33666408795 FAILED 12/13; CORRECTED HEAD CI NOT_RUN",
     "mainCi": "NOT_RUN",
     "annotatedTag": "NOT_RUN",
     "githubRelease": "NOT_RUN",

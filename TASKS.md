@@ -10,8 +10,9 @@
 - [x] 创建回执不确定时先保留禁止重提锁，只读找回最长90秒；仍不明确则继续保留锁并提示刷新核对，绝不第二次POST。
 - [x] m22 `45/45`、m104最终`13/13`、直接依赖10 specs `106/106`，共164项通过；TypeScript、production build、source coverage、4173隔离门通过，库存1178，未重跑formal full。
 - [x] 用户明确授权：`授权修复并上线 v0.7.4，修复后在这个 Canvas 真实执行一次。`；版本只用`v0.7.4`，不加hotfix后缀。
-- [x] 冻结完整候选并完成独立逐文件/逐hunk Review：覆盖25/25 tracked files、135/135 hunks和1/1回执，结论`P0=0/P1=0/P2=0/GO`。
-- [ ] 完成commit/push、PR/双CI、merge后annotated tag/GitHub Release、exact-tag fresh build。
+- [x] 冻结完整候选并完成独立逐文件/逐hunk Review；连同CI测试轮询增量共覆盖25/25 tracked files、140/140 hunks和1/1回执，结论`P0=0/P1=0/P2=0/GO`。
+- [x] 完成初始candidate commit/push并创建PR #151；首个branch CI `33666408795`的12/13失败证据保留，已把测试自身25ms高频GET改为250ms真实时间门，TT Image与动态首帧终态等待上限改为45秒且create小于15秒门不变，本地m104重新13/13且增量Review GO。
+- [ ] 完成修正head branch CI、merge/main CI、annotated tag/GitHub Release、exact-tag fresh build。
 - [ ] 完成schema42 locked-exact backup/verify/fresh restore、v0.7.3→v0.7.4→v0.7.3→v0.7.4 rollback-forward及生产健康门。
 - [ ] 在 Canvas `adcb89a5-c1f4-47e4-bbbb-28fff8d81583` 的组 `group-17ee0cbc-cc81-4b35-9c5e-41040f627033` 真实点击一次；结果不明禁止重试，只核对原run/task。
 - [ ] 验证生成呼吸灯、自动结果回填、云端保存和刷新持久化；不评价生成内容审美，用户确认前保持`USER_RECHECK`。

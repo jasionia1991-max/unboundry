@@ -18,7 +18,7 @@
 
 ## 2026-09-03 v0.7.4 候选当前覆盖层
 
-生产仍运行`v0.7.3/schema42`。v0.7.4已经获得修复、发布和上线后精确Canvas/group执行一次的最新授权；独立Review已覆盖25/25 tracked files、135/135 hunks和1/1回执，结论`P0=0/P1=0/P2=0/GO`，PR/CI/tag/Release、生产切换和真实点击尚未执行。生产失败请求`4666a088-aca9-402b-ba8b-c842023470cb`已证明0 run/task/admission/attempt/Provider POST；直接根因为动态Grok首帧角色被静态准入误判，逐节点数据库重复打开令400拖到35.260秒并被浏览器30秒超时遮蔽，服务端节点状态又未驱动原呼吸灯。
+生产仍运行`v0.7.3/schema42`。v0.7.4已经获得修复、发布和上线后精确Canvas/group执行一次的最新授权；冻结候选与CI增量独立Review已覆盖25/25 tracked files、140/140 hunks和1/1回执，结论`P0=0/P1=0/P2=0/GO`。PR #151已打开；首个branch CI `33666408795`因25ms测试高频GET自扰慢runner而12/13失败，失败证据保留；轮询改为250ms，TT Image与动态首帧终态等待上限改为45秒且create小于15秒断言不变，本地m104为13/13，修正head CI、tag/Release、生产切换和真实点击尚未执行。生产失败请求`4666a088-aca9-402b-ba8b-c842023470cb`已证明0 run/task/admission/attempt/Provider POST；直接根因为动态Grok首帧角色被静态准入误判，逐节点数据库重复打开令400拖到35.260秒并被浏览器30秒超时遮蔽，服务端节点状态又未驱动原呼吸灯。
 
 本地候选已完成精确动态角色等待、create准入连接复用、`admitted`节点临时呼吸灯映射和不确定create结果的先锁定/只读找回/禁止重提。m22 `45/45`、m104最终`13/13`、直接依赖`106/106`，共164项PASS；库存1178，TypeScript/build/source coverage/4173隔离通过，formal full未重跑。当前详细门见IG26-122～132和`spec/V0_7_4_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`。
 
@@ -218,7 +218,7 @@
 | IG26-126 | 服务端节点呼吸灯 | AUTO_PASS | 仅server node `admitted`临时映射四媒体`*Generating`；pending/admitting/terminal不亮，且不写入Canvas数据。 |
 | IG26-127 | 不确定create禁止重提 | AUTO_PASS | 可能送达服务端时先设置reconciliation lock，只做GET；90秒期限后仍保留锁并明确提示，POST总数不得增加。 |
 | IG26-128 | 风险定向验证 | AUTO_PASS | m22 45/45、m104 13/13、其他直接依赖106/106，共164项；TypeScript/build/source coverage/4173隔离通过，库存1178。 |
-| IG26-129 | 冻结独立Review | AUTO_PASS | 覆盖25/25 tracked files、135/135 hunks和1/1回执；结论`P0=0/P1=0/P2=0/GO`，已写入v0.7.4 candidate receipt。 |
+| IG26-129 | 冻结独立Review | AUTO_PASS | 完整候选与CI测试轮询增量合计覆盖25/25 tracked files、140/140 hunks和1/1回执；结论`P0=0/P1=0/P2=0/GO`，已写入v0.7.4 candidate receipt。 |
 | IG26-130 | v0.7.4发布 | NOT_RUN | PR/双CI、merge后annotated tag/Release、exact-tag fresh build、schema42 backup/restore、切换和rollback-forward全部通过。 |
 | IG26-131 | 精确Canvas真实执行一次 | NOT_RUN | v0.7.4生产健康后，只点击目标group一次；记录run/node/task/attempt/Provider次数、呼吸灯、自动回填、保存与刷新。结果不明不得重试。 |
 | IG26-132 | 用户最终验收 | USER_RECHECK | 用户确认网站正常生成工作流；不把图片/视频审美纳入本次技术验收。 |

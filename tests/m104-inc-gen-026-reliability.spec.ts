@@ -1421,8 +1421,11 @@ async function createPublishedSeedanceModel() {
   return model.model.id;
 }
 
-async function waitForTerminalRun(runId: string, attempts = 200) {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
+async function waitForTerminalRun(runId: string, deadlineMs = 30_000) {
+  const deadline = Date.now() + deadlineMs;
+  let lastState = "unknown";
+  let lastNodeStates: string[] = [];
+  while (Date.now() < deadline) {
     const response = await expectOk(
       await request(`/api/workflow-runs/${runId}`),
       "workflow run",
@@ -1438,10 +1441,16 @@ async function waitForTerminalRun(runId: string, attempts = 200) {
       }>;
       state: string;
     };
+    lastState = run.state;
+    lastNodeStates = run.nodes.map(({ state }) => state);
     if (["success", "failed", "cancelled"].includes(run.state)) return run;
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    // Match the real client's bounded polling shape closely enough that the
+    // test itself cannot starve the workflow writer on slower CI machines.
+    await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  throw new Error("INC-GEN-026 workflow run did not become terminal");
+  throw new Error(
+    `INC-GEN-026 workflow run did not become terminal: ${lastState} [${lastNodeStates.join(",")}]`,
+  );
 }
 
 test("INC-GEN-026 true HTTP workflow admits once and reaches a loopback fake Provider", async () => {
@@ -2160,7 +2169,7 @@ test("v0.7.1 TT Image workflow submits once, polls the official route and surviv
       "TT Image duplicate workflow create",
     );
     expect((await duplicateResponse.json() as { id: string }).id).toBe(created.id);
-    const terminal = await waitForTerminalRun(created.id, 800);
+    const terminal = await waitForTerminalRun(created.id, 45_000);
     const refreshedResponse = await expectOk(
       await request(`/api/workflow-runs/${created.id}`),
       "TT Image refreshed workflow",
@@ -2478,7 +2487,7 @@ test("v0.7.4 dynamic image output satisfies Grok Video first-frame admission", a
     expect(createResponse.status).toBe(202);
     expect(Date.now() - createStartedAt).toBeLessThan(15_000);
     const created = await createResponse.json() as { id: string };
-    const terminal = await waitForTerminalRun(created.id, 800);
+    const terminal = await waitForTerminalRun(created.id, 45_000);
     const evidenceDatabase = new DatabaseSync(
       `${process.env.UNBOUNDRY_DATA_DIR}/unboundry.sqlite`,
       { readOnly: true },
