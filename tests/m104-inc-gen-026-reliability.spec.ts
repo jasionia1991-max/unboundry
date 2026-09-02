@@ -1526,24 +1526,13 @@ test("INC-GEN-028 legacy Seedance inputs stay canonical from frozen plan through
     method: string;
     originalUrl: string;
   }> = [];
-  const mediaDirectory = await mkdtemp(join(tmpdir(), "unboundry-inc-gen-028-seedance-"));
-  const referencePath = join(mediaDirectory, "reference.png");
   let app: ViteDevServer | undefined;
   let provider: Server | undefined;
   try {
-    await executeFile("ffmpeg", [
-      "-y",
-      "-loglevel",
-      "error",
-      "-f",
-      "lavfi",
-      "-i",
-      "color=c=red:s=640x640",
-      "-frames:v",
-      "1",
-      referencePath,
-    ]);
-    const referencePng = await readFile(referencePath);
+    const referencePng = await readFile(new URL(
+      "../spec/reference/upstream-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
+      import.meta.url,
+    ));
     process.env.UNBOUNDRY_TEST_AUTH_BYPASS = "1";
     provider = createHttpServer(async (incoming, response) => {
       const chunks: Buffer[] = [];
@@ -1845,7 +1834,6 @@ test("INC-GEN-028 legacy Seedance inputs stay canonical from frozen plan through
     } else {
       process.env.UNBOUNDRY_TEST_AUTH_BYPASS = previousBypass;
     }
-    await rm(mediaDirectory, { force: true, recursive: true });
   }
 });
 

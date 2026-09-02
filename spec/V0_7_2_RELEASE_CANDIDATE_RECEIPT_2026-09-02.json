@@ -52,7 +52,7 @@
     "trackedHunks": 153,
     "untrackedReceipts": 2,
     "totalFiles": 37,
-    "trackedBinaryDiffSha256": "542a858d2226e5c3981b397e5dc8e7b6b64a3e7a4f5ad7a55d4b34ae0cec2252"
+    "trackedBinaryDiffSha256": "f2488f8d0877472b5652565893e1d5f11a446c67f2caccf10d73b5a025a5baa3"
   },
   "verification": {
     "incGen028DirectSpecs": 8,
@@ -65,6 +65,16 @@
       "m31": "13/13 PASS",
       "mediaUploadSpecs": "14/14 PASS",
       "sourceSha256": "3215d11471defe0a603c5ddc22e26e33b73753be48dbf5a536e03fa33e745604",
+      "snapshotUnchanged": true,
+      "listener4173Unchanged": true
+    },
+    "branchCiPortabilityClosure": {
+      "firstRun": 33620785332,
+      "firstRunResult": "FAILED_ONLY_BECAUSE_CI_HOST_HAS_NO_FFMPEG",
+      "productFailure": "NONE_REACHED_BEFORE_FIXTURE_CREATION",
+      "fix": "replace generated PNG fixture with a checked-in valid 1280x720 PNG",
+      "localM104AfterFix": "12/12 PASS",
+      "sourceSha256": "7577da82d1291b3241a89309da47b9b83ee7d681752fd0b711d15e72e4f94f47",
       "snapshotUnchanged": true,
       "listener4173Unchanged": true
     },
