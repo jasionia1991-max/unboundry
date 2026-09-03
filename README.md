@@ -6,11 +6,11 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 
-## 当前最高优先级：INC-GEN-028 / v0.7.5 服务端提交解锁（2026-09-03）
+## 当前最高优先级：v0.7.5 已上线，真实工作流部分失败（2026-09-03）
 
-生产当前运行 `v0.7.4/schema42`，技术健康。v0.7.4上线后的唯一真实点击没有到达服务器：页面停在“准备中”90秒，但新增Canvas PUT、workflow run、task、admission、attempt、Provider POST和费用均为0。原因是服务端workflow提交错误地与旧Canvas/单节点工作共用同一个按Canvas锁，并在权威保存后重复等一次render revision；同一Canvas多标签页时，旧工作可以把真正POST长期挡住。
+生产当前运行 `v0.7.5/schema42`，部署、备份恢复、回滚前进、双CI和公网健康门均通过。指定 Canvas/group 已按授权只点击一次：服务器只创建了1个workflow run，已有10个任务各只有1个admission和1个Provider attempt，没有重复提交。6个文字、3个图片和1个视频任务最终成功，本地上传素材也保持ready；刷新后的新标签页能看到这些结果。
 
-v0.7.5把服务端workflow提交放到独立锁通道，权威保存完成后直接执行服务端的语义、revision、活动任务和workflow锁检查；同时在只读list后与POST前都检查超时。safe m22 `45/45`、m81 `42/42`、m38 `18/18`、TypeScript、production build、source coverage和4173隔离通过；冻结全候选独立Review覆盖19/19 tracked文件、53/53 hunks和2/2回执，结论`P0=0/P1=0/P2=1/GO`。用户已明确授权上线 v0.7.5，并在相同Canvas/group真实执行一次；只点一次，结果不明不重试。候选回执见 [`V0_7_5_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`](spec/V0_7_5_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json)，当前生产回执见 [`V0_7_4_PRODUCTION_RECEIPT_2026-09-03.json`](spec/V0_7_4_PRODUCTION_RECEIPT_2026-09-03.json)。
+真实验收仍为`PARTIAL_NO_GO`：视频Provider已受理但首次结果窗口超时后，workflow服务先把视频节点判为失败、把最后的`P1一致性检查`阻断并结束整组；约92秒后同一个视频任务自动找回并成功，但整组run和最后节点没有重新打开。原标签页还出现保存失败，新标签页加载结果后显示已保存到云端，但发生17次Canvas PUT，需与workflow恢复问题一起修复。v0.7.5发布与唯一真实点击授权均已消费；不得重试或修改不可变tag。生产回执见 [`V0_7_5_PRODUCTION_RECEIPT_2026-09-03.json`](spec/V0_7_5_PRODUCTION_RECEIPT_2026-09-03.json)。
 
 ## 历史：INC-GEN-028 / v0.7.4 已上线但真实 workflow 未提交（2026-09-03）
 

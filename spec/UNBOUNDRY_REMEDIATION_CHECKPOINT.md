@@ -5,6 +5,8 @@
 状态：`HISTORICAL_CHECKPOINT / APPEND_ONLY`
 用途：保留各次施工与发布时点证据，不再充当当前恢复入口。**当前状态、未发布工作区与下一步只看 `UNBOUNDRY_CURRENT_STATE.md`；本文件任何旧命令或旧授权都不可复用。**
 
+2026-09-03当前覆盖说明：生产已运行v0.7.5/schema42，但唯一真实Canvas执行为`PARTIAL_NO_GO`；10个已创建任务最终成功，workflow仍为9 success/1 failed/1 blocked，最后一致性节点未admit，并另有加载时17次Canvas PUT待查。v0.7.5版本、发布和点击授权均已消费；当前证据只看`spec/V0_7_5_PRODUCTION_RECEIPT_2026-09-03.json`与`spec/UNBOUNDRY_CURRENT_STATE.md`，不得从本历史文件恢复旧授权。
+
 2026-08-26新增MODEL-CONTRACT-001未实施任务：用户已确认最终方案，当前严格为`DOCUMENTATION_ONLY / IMPLEMENTATION_NOT_STARTED / RELEASE_NOT_AUTHORIZED`。未来恢复只看`spec/MODEL_CONTRACT_001_CHECKPOINT.md`并从新Goal的R0只读盘点开始；不得从本历史checkpoint复用任何旧授权。
 
 ## 0. INC-UI-011 节点排序菜单层级修复（2026-08-25 v0.6.43发布候选 / USER_PASS）

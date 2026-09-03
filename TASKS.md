@@ -1,9 +1,9 @@
 # Unboundry 绿地复刻当前任务
 
-## INC-GEN-028 v0.7.5 服务端 workflow 提交通道修复（AUTHORIZED / TARGETED PASS / FINAL REVIEW GO）
+## INC-GEN-028 v0.7.5 服务端 workflow 提交通道修复（PRODUCTION TECHNICAL PASS / REAL WORKFLOW PARTIAL NO-GO）
 
-- [x] 确认生产当前为`v0.7.4/schema42`、current=`/opt/unboundry/releases/v0.7.4-inc-gen-028-20260903`，service active/ready、NRestarts0。
-- [x] 保留v0.7.4唯一真实点击原始结果：页面准备90秒，服务器新增Canvas PUT/workflow run/task/admission/attempt/Provider POST均为0，费用风险为0；不重复点击。
+- [x] 发布前基线曾确认生产为`v0.7.4/schema42`、current=`/opt/unboundry/releases/v0.7.4-inc-gen-028-20260903`，service active/ready、NRestarts0；该状态现已被v0.7.5取代。
+- [x] 保留v0.7.4历史唯一真实点击结果：页面准备90秒，服务器新增Canvas PUT/workflow run/task/admission/attempt/Provider POST均为0，费用风险为0；当次点击没有重试。
 - [x] 定位根因：server workflow复用旧`canvas-submit:<canvas>`锁，并在权威保存后重复等待render revision；同一Canvas多标签页的遗留工作可阻断真正workflow POST。
 - [x] 新增独立`server-workflow-submit:<canvas>` Web Lock与独立进程内fallback队列；旧Canvas/单节点锁不再阻塞服务端workflow提交。
 - [x] server workflow先在锁外完成权威Canvas保存，进入独立锁后直接compile/list/create；服务端仍权威核对semantic fingerprint、graph revision、活动任务和workflow锁。
@@ -12,12 +12,15 @@
 - [x] 行为增量独立Review覆盖3/3文件、12/12 hunks，`P0=0/P1=0/P2=1/GO`；P2仅为list返回与第二个abort检查之间没有专门的确定性时序测试，不阻断发布。
 - [x] 用户明确授权：`版本号 v0.7.5，授权上线并在这个 Canvas 真实执行一次。`；版本只用`v0.7.5`，不加hotfix后缀。
 - [x] 完成版本/文档冻结后的全候选独立Review与m81+m38定向门：19/19 tracked文件、53/53 hunks、2/2回执，`P0=0/P1=0/P2=1/GO`；m81 `42/42`、m38最终`18/18`。
-- [ ] 完成commit/push/PR双CI、merge后annotated tag/GitHub Release、exact-tag fresh build。
-- [ ] 完成全新schema42 locked-exact backup/verify/fresh restore、v0.7.4→v0.7.5→v0.7.4→v0.7.5 rollback-forward及生产健康门。
-- [ ] 在 Canvas `adcb89a5-c1f4-47e4-bbbb-28fff8d81583` 的组 `group-17ee0cbc-cc81-4b35-9c5e-41040f627033` 真实点击一次；结果不明禁止重试，只核对原run/task。
-- [ ] 验证服务器收到并执行workflow、生成结果自动回填、云端保存和刷新持久化；不评价内容审美，用户确认前保持`USER_RECHECK`。
+- [x] 完成commit/push、PR #152、分支/main双CI、annotated tag/GitHub Release、exact-tag fresh build；生产精确运行v0.7.5且tag不可移动。
+- [x] 完成全新schema42 locked-exact backup/verify/fresh restore、v0.7.4→v0.7.5→v0.7.4→v0.7.5 rollback-forward及生产健康门。
+- [x] 在 Canvas `adcb89a5-c1f4-47e4-bbbb-28fff8d81583` 的组 `group-17ee0cbc-cc81-4b35-9c5e-41040f627033` 只真实点击一次；服务器收到恰好1个workflow create，未重试。
+- [x] 核对同次执行：10个已创建任务最终全部success（文字6、图片3、视频1），10个admission、10个attempt且每个logical node只有一次；本地上传ready，刷新后十项生成结果可见。
+- [x] 保留真实失败：workflow run在视频任务仍可自动恢复时先以`RESULT_DELAYED`失败，视频workflow node未随同一任务成功而重开，最后`P1一致性检查`被`UPSTREAM_FAILED`阻断且没有创建任务；整组只完成9/11个workflow node，故为`REAL_WORKFLOW_PARTIAL_NO_GO`。
+- [x] 保留保存异常：原标签页在服务端推进Canvas revision后显示保存失败；没有接受可能覆盖状态的刷新提示。新标签页加载结果并显示已保存到云端，但产生17次Canvas PUT，需后续修复并增加定向回归。
+- [ ] 下一版修复workflow对`RESULT_DELAYED`可恢复任务的等待/重开，以及Canvas加载时的多次写回；冻结Review后需用户另行指定普通patch版本并授权上线，才能再做一次真实Canvas验证。
 
-候选回执：`spec/V0_7_5_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`。当前生产回执：`spec/V0_7_4_PRODUCTION_RECEIPT_2026-09-03.json`。
+候选回执：`spec/V0_7_5_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`。当前生产回执：`spec/V0_7_5_PRODUCTION_RECEIPT_2026-09-03.json`。
 
 ## 历史：INC-GEN-028 v0.7.4 工作流准入与生成状态修复（PRODUCTION TECHNICAL PASS / REAL WORKFLOW NO-GO）
 

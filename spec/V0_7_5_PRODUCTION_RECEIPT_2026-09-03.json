@@ -1,0 +1,185 @@
+{
+  "version": "0.7.5",
+  "packageVersion": "0.7.5",
+  "schemaVersion": 42,
+  "createdAt": "2026-09-03T03:36:32Z",
+  "updatedAt": "2026-09-03T03:55:28Z",
+  "status": "PRODUCTION_V0_7_5_TECHNICAL_PASS_REAL_WORKFLOW_PARTIAL_NO_GO_USER_RECHECK",
+  "source": {
+    "pullRequest": 152,
+    "pullRequestState": "MERGED",
+    "branch": "codex/v0.7.5-canvas-workflow-submit",
+    "candidateCommit": "96e2722aa3761ec6a43fc34b459e9c285b4a392e",
+    "branchQualityRun": 33708536398,
+    "mergeCommit": "5340af1e137f83525420a98d3f8ebb87fa5b4b22",
+    "mergeTree": "605bc97ee8fcbbc5ad9b8d0d1fe8b6b75f225576",
+    "mainQualityRun": 33708695322,
+    "tag": "v0.7.5",
+    "annotatedTagObject": "8f05c2332eef8035421604a6647976e873ccdfdf",
+    "tagPeeledCommit": "5340af1e137f83525420a98d3f8ebb87fa5b4b22",
+    "githubRelease": "https://github.com/jasionia1991-max/unboundry/releases/tag/v0.7.5",
+    "releaseInventorySha256": "c55998367cb5774626c4f77fc68120cedc6dff901d56d3abd7079a861a15bc8b"
+  },
+  "authorization": {
+    "text": "版本号 v0.7.5，授权上线并在这个 Canvas 真实执行一次。",
+    "releaseAuthorizationConsumed": true,
+    "realCanvasExecutionAuthorizationConsumed": true,
+    "realCanvasExecutionLimit": 1,
+    "realCanvasExecutionClicks": 1,
+    "duplicateExecutionOnUnknownOutcomeAuthorized": false,
+    "qualityJudgementInScope": false,
+    "nextVersionAuthorized": false,
+    "secondRealExecutionAuthorized": false
+  },
+  "production": {
+    "current": "/opt/unboundry/releases/v0.7.5-inc-gen-028-20260903",
+    "service": "active",
+    "enabled": true,
+    "nRestarts": 0,
+    "runtimeNode": "22.23.2",
+    "publicVersion": "0.7.5",
+    "publicLive": true,
+    "publicReady": true,
+    "runtimeRole": "active",
+    "mutationsAccepted": true,
+    "generationGlobalEnabled": true,
+    "generationEmergencyStop": false,
+    "schemaVersion": 42,
+    "publicAssetsMatchRelease": true
+  },
+  "backupAndRollback": {
+    "lockedExactBackup": {
+      "backupId": "eaae1f85-8422-4b31-81c3-b381ba2a1e0b",
+      "packagePath": "/var/lib/unboundry-rollbacks/v0.7.5-20260903-backup/eaae1f85-8422-4b31-81c3-b381ba2a1e0b.ubbackup",
+      "databaseLogicalSha256": "26dd6c6b4595908d8e9d1b5fdac881c793ff657defa32a232fde99cad7b2426b",
+      "schemaVersion": 42,
+      "mediaFiles": 355,
+      "ossMirrors": 616,
+      "secretFiles": 3,
+      "backupBlockingIssues": 0,
+      "historicalNonBlockingIssues": 97,
+      "verify": "PASS"
+    },
+    "freshRestore": {
+      "path": "/var/lib/unboundry-v075-restores/fresh",
+      "result": "PASS"
+    },
+    "recoveryKeys": "/var/lib/unboundry-backup-keys/v0.7.5-20260903",
+    "rollbackForward": "V0_7_5_FORWARD_THEN_V0_7_4_ROLLBACK_THEN_V0_7_5_FINAL_FORWARD_PASS",
+    "ossUploadDelete": 0
+  },
+  "postDeployRealCanvas": {
+    "canvasId": "adcb89a5-c1f4-47e4-bbbb-28fff8d81583",
+    "ownerId": "02c9dbba-5b72-408b-9045-eaaec20b799a",
+    "groupId": "group-17ee0cbc-cc81-4b35-9c5e-41040f627033",
+    "groupTitle": "服装一键带货｜P1抖音OOTD与短视频",
+    "clickBefore": "2026-09-03T03:28:17.465Z",
+    "clickAfter": "2026-09-03T03:28:18.187Z",
+    "clicks": 1,
+    "workflowCreate": {
+      "requestId": "6a9d6d85-24c8-4b3c-8653-c5672ef576ad",
+      "httpStatus": 202,
+      "receivedAt": "2026-09-03T03:28:23.223Z",
+      "durationMs": 4572,
+      "count": 1
+    },
+    "workflowRun": {
+      "id": "413c33ea-6ca0-4ca6-b096-d84678b4cd76",
+      "semanticFingerprint": "wf1-10o4-y48m7k-eqv1bw",
+      "plannedNodes": 11,
+      "terminalAt": "2026-09-03T03:33:45.527Z",
+      "state": "failed",
+      "errorCode": "RESULT_DELAYED",
+      "workflowNodeStates": {
+        "successApplied": 9,
+        "failedPending": 1,
+        "blockedPending": 1
+      }
+    },
+    "taskLedger": {
+      "tasks": 10,
+      "admissions": 10,
+      "providerAttempts": 10,
+      "distinctAttemptTaskIds": 10,
+      "duplicateProviderAttempts": 0,
+      "terminalActiveRuns": 0,
+      "terminalActiveTasks": 0,
+      "terminalLocks": 0,
+      "outcome": {
+        "textSuccess": 6,
+        "imageSuccess": 3,
+        "videoSuccess": 1
+      }
+    },
+    "videoRecovery": {
+      "providerTaskId": "124686739",
+      "sameTaskAndAttemptResumed": true,
+      "newProviderPost": false,
+      "taskSucceededAt": "2026-09-03T03:35:17.039Z",
+      "assetId": "78c527fa-82d5-44cf-987f-99562ed7f1c4",
+      "mimeType": "video/mp4",
+      "bytes": 1244415,
+      "width": 720,
+      "height": 1280,
+      "durationSeconds": 10.042,
+      "ossReady": true,
+      "workflowRunReopened": false,
+      "workflowNodeReopened": false
+    },
+    "finalConsistencyNode": {
+      "state": "blocked",
+      "errorCode": "UPSTREAM_FAILED",
+      "taskCreated": false
+    },
+    "mediaAndReload": {
+      "localUploadReady": true,
+      "generatedImageAssetsReady": 3,
+      "generatedVideoAssetsReady": 1,
+      "textOutputsVisibleAfterReload": 6,
+      "imageOutputsVisibleAfterReload": 3,
+      "videoOutputsVisibleAfterReload": 1,
+      "videoPlaybackVisible": true,
+      "finalConsistencyOutputVisible": false
+    },
+    "canvasPersistence": {
+      "preExecutionCanvasRevision": 17,
+      "preExecutionGraphRevision": 14,
+      "serverProjectionRevisionBeforeVideoRecovery": 26,
+      "serverProjectedOutputsBeforeVideoRecovery": 9,
+      "originalTab": "SAVE_FAILURE_OBSERVED_AFTER_SERVER_REVISION_ADVANCE; RELOAD_CONFIRMATION_CANCELLED_TO_AVOID_OVERWRITE_RISK",
+      "newTab": "TEN_GENERATED_OUTPUTS_LOADED_AND_CLOUD_SAVED_STATUS_VISIBLE",
+      "newTabSuccessfulCanvasPuts": 17,
+      "finalCanvasRevision": 43,
+      "finalGraphRevision": 31,
+      "saveSessionId": "a9b379a0-0cfa-4e8c-9d84-e59af4b98d6a",
+      "saveSequence": 17,
+      "putChurnStatus": "FOLLOW_UP_REQUIRED"
+    },
+    "result": "REAL_WORKFLOW_PARTIAL_NO_GO",
+    "retryPerformed": false,
+    "userPass": false
+  },
+  "recordVerification": {
+    "gitDiffCheck": "PASS",
+    "jsonParse": "PASS",
+    "initialM38Attempt": "PRETEST_ENVIRONMENT_FAILURE_BEFORE_TEST_EXECUTION: isolated receipt worktree had no node_modules and could not import TypeScript",
+    "environmentCorrection": "Reused the exact v0.7.5 candidate dependency directory for the targeted run and removed the temporary link afterward",
+    "governanceM38": "18/18 PASS on Node 22.23.1 and npm 10.9.8; after the Review P1 authority-route correction, the final affected rerun also passed 18/18",
+    "formalFullRerun": false,
+    "listener4173": "UNCHANGED"
+  },
+  "observedFailure": {
+    "summary": "The workflow service terminalized a recoverable RESULT_DELAYED video node and blocked its downstream final node before the existing Provider task was recovered successfully.",
+    "evidenceBoundedDiagnosis": [
+      "The generation recovery sweep resumed the existing accepted Provider task without a second Provider POST and completed the video task.",
+      "The already failed workflow run and failed or blocked workflow nodes were not reopened after that task success.",
+      "The final downstream consistency node was never admitted, so a visible recovered video does not prove end-to-end workflow completion.",
+      "The original stale tab's save failure and the new tab's 17 successful PUTs are a separate persistence or hydration follow-up until code review proves a shared cause."
+    ],
+    "nextRequiredWork": [
+      "Keep recoverable generation states attached to the workflow until their authoritative recovery outcome, or deterministically reopen the same run and downstream nodes without a new Provider submission.",
+      "Prevent Canvas reload or metadata hydration from emitting redundant write bursts and make stale-tab save conflicts converge without threatening server-projected results.",
+      "Add targeted workflow recovery and Canvas persistence regression tests, freeze the candidate, and complete independent review before any next release."
+    ]
+  }
+}
