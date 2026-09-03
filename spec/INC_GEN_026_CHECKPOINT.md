@@ -2,9 +2,21 @@
 
 更新时间：2026-09-03
 
-状态：`V0_7_5_TARGETED_PASS / FROZEN_REVIEW_GO / RELEASE_AND_REAL_CANVAS_NOT_RUN`
+状态：`V0_7_6_TARGETED_PASS / FROZEN_REVIEW_PENDING / RELEASE_AND_REAL_CANVAS_NOT_RUN`
 
-## 2026-09-03 v0.7.5 候选当前覆盖层
+## 2026-09-03 v0.7.6 候选当前覆盖层
+
+- 生产仍为`v0.7.5/schema42`、current=`/opt/unboundry/releases/v0.7.5-inc-gen-028-20260903`，service active/ready、NRestarts0；v0.7.5 tag/Release不可变。
+- v0.7.5唯一真实run `413c33ea-6ca0-4ca6-b096-d84678b4cd76` 创建10个task/admission/attempt且无重复Provider POST。视频同一Provider task `124686739`随后自动成功，但workflow此前已将其置为`failed / RESULT_DELAYED`并阻断最后节点。新标签页加载十项结果时另产生17次Canvas PUT。
+- v0.7.6修复：native视频慢轮询仍未取到结果时，从`running`进入`recovering / AUTOMATIC_RESULT_RECOVERY`，保留同一task、attempt和providerTaskId；workflow节点保持`admitted`并继续等待，原任务成功后同一run继续下游，不发第二次POST。
+- 服务端结果投影先严格核对input key、ownership key、model configuration revision和model release revision，再一次性写齐5个`groupRunSuccess*`证明字段；视频同时写入`videoWidth/videoHeight`。浏览器刷新后可直接识别服务端成功，不再逐节点重建证明。
+- 定向证据：safe m38 `19/19`；m103最终`11/11`；m22+m86+m104 `141/141`；m81 `42/42`。正式full执行124/124 specs、1178/1179通过，唯一失败为m94旧版本正则不接受0.7.6；只修该测试断言后，最小受影响m94 `4/4`通过。产品测试无失败，未重复full。全部运行均通过TypeScript `449/449`、production build、source coverage、架构和4173隔离门；测试库存1179。
+- 最新授权：`授权修复并上线 v0.7.6，修复后在这个 Canvas 再真实执行一次`。允许普通patch v0.7.6的commit/push/PR/双CI、merge后tag/Release、exact-tag fresh build、全新schema42 locked-exact backup/verify/fresh restore、原子切换、v0.7.5 rollback和最终forward，以及健康后同一精确Canvas/group只点击一次。结果不明仅核对原run/task，禁止第二次POST；不评价内容审美。
+- 最终冻结独立Review：覆盖20/20 tracked文件、62/62 hunks与1/1回执，结论`P0=0/P1=0/P2=0/GO`。
+- 当前待办：正式release门、GitHub与生产；完成后才可消费唯一真实点击。
+- 当前候选回执：`spec/V0_7_6_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`。以下v0.7.5候选及更早内容均为历史时点证据，不得覆盖本层或恢复已消费授权。
+
+## 历史：2026-09-03 v0.7.5 候选覆盖层
 
 - 生产当前为`v0.7.4/schema42`、current=`/opt/unboundry/releases/v0.7.4-inc-gen-028-20260903`，service active/ready、NRestarts0。v0.7.4的PR #151、双CI、annotated tag/Release、exact-tag fresh build、schema42 backup/verify/fresh restore、切换和rollback-forward均完成；回执为`spec/V0_7_4_PRODUCTION_RECEIPT_2026-09-03.json`。
 - v0.7.4唯一真实点击在`2026-09-02T21:37:50.720Z`开始，页面停留“准备中”直至90秒期限；服务器同期0 Canvas PUT、0 workflow create/run、0 generation task、0 admission、0 attempt、0 Provider POST，费用风险0。该点击授权已消费，未重试。

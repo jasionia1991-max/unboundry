@@ -507,7 +507,7 @@ test("tracked source snapshot pins registry inputs without claiming a Git HEAD o
     .filter(([path]) => path.startsWith("node_modules/"));
   expect(packageDocument).toMatchObject({
     name: "unboundry-private-replica",
-    version: expect.stringMatching(/^0\.(?:5\.2|6\.\d+)$/),
+    version: expect.stringMatching(/^0\.(?:5\.2|[67]\.\d+)$/),
   });
   expect(packageLock.version).toBe(packageDocument.version);
   expect(packageLock.packages[""]?.version).toBe(packageDocument.version);

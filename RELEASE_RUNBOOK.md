@@ -3,7 +3,7 @@
 给人和接手的 AI 看。作用：从「版本号 + 上线授权」到「线上验证 + 文档收口」的每一步照做，避免每次现场拼命令、用错脚本。
 历史基线：v0.6.29（2026-08-21）曾按旧流程发布；其版本号、路径和先打 tag 的命令不再是可执行模板。当前生产身份与发布边界只看 `spec/UNBOUNDRY_CURRENT_STATE.md`、`spec/INC_GEN_026_CHECKPOINT.md` 顶部当前覆盖层和 `上线规矩.md`。
 
-> **2026-09-03 INC-GEN-028 边界**：生产当前为 `v0.7.4/schema42`；用户已选择普通 patch `v0.7.5` 并明确授权本次发布。v0.7.4技术发布成功，但其唯一真实点击在客户端准备阶段耗尽90秒，服务器没有收到Canvas PUT、workflow create或任何run/task/admission/attempt/Provider POST。v0.7.5用独立server-workflow提交锁隔离旧Canvas/单节点工作，先完成权威保存，移除冗余render revision等待，并在list后与POST前检查abort。依次执行定向门、候选冻结和独立Review、PR/双CI、merge后annotated tag/Release、exact-tag fresh build、全新schema42 locked-exact backup、原子切换与rollback-forward。技术健康后，允许在精确Canvas/group真实执行一次；只点一次，结果不明只读核对原run/task，禁止第二次POST。版本不得使用`hotfix`后缀。
+> **2026-09-03 INC-GEN-028 边界**：生产当前为`v0.7.5/schema42`；用户已选择普通patch `v0.7.6`并明确授权本次发布及同一精确Canvas/group再真实执行一次。v0.7.5真实run中，延迟视频底层同一Provider task最终成功，但workflow先以`RESULT_DELAYED`失败并阻断最后节点；新标签页加载又因服务端结果缺少完整成功证明而产生17次Canvas PUT。v0.7.6将仍可找回的视频保持为`recovering`并让workflow继续等待，同时让服务端投影一次性写齐5个成功证明字段与视频宽高。定向门与最终冻结独立Review已通过（20/20 tracked文件、62/62 hunks、1/1回执，`P0=0/P1=0/P2=0/GO`）；继续执行PR/双CI、merge后annotated tag/Release、exact-tag fresh build、全新schema42 locked-exact backup、原子切换与rollback-forward。技术健康后只点击一次；结果不明只读核对原run/task，禁止第二次POST。版本不得使用`hotfix`后缀。
 
 **适用范围**：本 Runbook 只用于「代码 / 构建产物」变更（bump 版本、改逻辑、重发静态资源）。纯公共模板数据变更（新增/修改模板、预览图、种子）走 `上线规矩.md` 的「加模板轻量路径」，**不需要版本号、不打标签、不跑全量**，直接提交 + 服务器灌库。
 
@@ -123,7 +123,7 @@ curl -fsS http://127.0.0.1:4173/api/version   # 期望与本次发布版本一�
 1. 服务：`systemctl is-active unboundry` = active，`NRestarts` = 0。
 2. 数据门（只读）：当前 schema42、integrity ok、FK0、tasks/attempts/templates/active 与本次 schema42 locked-exact 备份基准**完全一致**。旧 schema39 仅属于历史灾难恢复流程，不得用于当前发布核验。
 3. 公网：`https://canvas.mymy.ltd/api/version` 与本次发布版本一致；首页引用的 `assets/*.js/css` 逐个 `sha256sum`，与 release `dist/client/assets/*` **逐字节一致**。
-4. 外部影响：发布基础设施与rollback-forward期间真实Provider/付费生成/OSS写入必须为0；v0.7.5生产健康后，最新用户授权另允许精确Canvas/group真实执行一次，必须单独记录run/task/attempt/Provider次数，结果不明禁止重试。
+4. 外部影响：发布基础设施与rollback-forward期间真实Provider/付费生成/OSS写入必须为0；v0.7.6生产健康后，最新用户授权另允许精确Canvas/group真实执行一次，必须单独记录run/task/admission/attempt/Provider次数，结果不明禁止重试。
 
 ## 8. 文档收口
 

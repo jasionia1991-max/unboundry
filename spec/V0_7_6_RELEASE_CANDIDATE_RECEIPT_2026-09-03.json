@@ -1,0 +1,147 @@
+{
+  "version": "0.7.6",
+  "packageVersion": "0.7.6",
+  "schemaVersion": 42,
+  "createdAt": "2026-09-03T04:39:14Z",
+  "updatedAt": "2026-09-03T05:39:33Z",
+  "status": "LOCAL_CANDIDATE_TEST_CLOSURE_PASS_FROZEN_REVIEW_GO_RELEASE_NOT_RUN",
+  "source": {
+    "baselineCommit": "efab0b164bfd8741b556b0070eda7a2a094afb97",
+    "baselineTree": "f808a68299260d01b0139af48cd6bf4ea56fa1eb",
+    "originMainAtAuthorization": "efab0b164bfd8741b556b0070eda7a2a094afb97",
+    "branch": "codex/v0.7.6-workflow-recovery",
+    "candidateCommit": null,
+    "candidateTree": null,
+    "mergeCommit": null,
+    "mergeTree": null,
+    "tag": null,
+    "annotatedTagObject": null
+  },
+  "authorization": {
+    "text": "授权修复并上线 v0.7.6，修复后在这个 Canvas 再真实执行一次。",
+    "versionSelected": true,
+    "releaseAuthorized": true,
+    "authorizationConsumed": false,
+    "versionConvention": "Ordinary patch release v0.7.6; no hotfix suffix.",
+    "realCanvasExecutionAuthorized": true,
+    "realCanvasExecutionLimit": 1,
+    "realCanvasExecutionClicks": 0,
+    "duplicateExecutionOnUnknownOutcomeAuthorized": false,
+    "qualityJudgementInScope": false
+  },
+  "productionBeforeRelease": {
+    "version": "0.7.5",
+    "packageVersion": "0.7.5",
+    "schemaVersion": 42,
+    "current": "/opt/unboundry/releases/v0.7.5-inc-gen-028-20260903",
+    "service": "active",
+    "ready": true,
+    "nRestarts": 0,
+    "runtimeNode": "22.23.2",
+    "realWorkflowRun": "413c33ea-6ca0-4ca6-b096-d84678b4cd76",
+    "realWorkflowOutcome": "PARTIAL_NO_GO",
+    "duplicateProviderAttempts": 0,
+    "newTabCanvasPuts": 17
+  },
+  "incident": {
+    "canvasId": "adcb89a5-c1f4-47e4-bbbb-28fff8d81583",
+    "ownerId": "02c9dbba-5b72-408b-9045-eaaec20b799a",
+    "groupId": "group-17ee0cbc-cc81-4b35-9c5e-41040f627033",
+    "workflowRunId": "413c33ea-6ca0-4ca6-b096-d84678b4cd76",
+    "nativeVideoProviderTaskId": "124686739",
+    "rootCause": [
+      "The bounded native-video continuation terminalized a still-recoverable accepted Provider task as failed/RESULT_DELAYED.",
+      "The workflow service treated that premature task failure as decisive, blocked the downstream consistency node, and released the run before the same Provider task succeeded.",
+      "Authoritative server projection omitted the five durable group-run success proof fields required by browser recovery.",
+      "Authoritative video projection omitted videoWidth and videoHeight, allowing metadata hydration to create another avoidable save."
+    ]
+  },
+  "candidateScope": {
+    "fix": [
+      "Transition a delayed accepted native video to recovering/AUTOMATIC_RESULT_RECOVERY while preserving task, attempt and providerTaskId.",
+      "Keep the workflow node admitted and the run locked while the original generation task remains recoverable; settle the same run after that task succeeds.",
+      "Validate task input, ownership, model-configuration and model-release identities before authoritative projection.",
+      "Write all five groupRunSuccess proof fields, a browser-compatible result fingerprint, and video dimensions in the server projection."
+    ],
+    "schemaChange": false,
+    "providerSubmissionContractChange": false,
+    "newProviderRetry": false,
+    "protectedFilesTouched": false
+  },
+  "verification": {
+    "safeM38GenerationRuntime": "19/19 PASS; delayed native video remains recovering on original task/attempt/providerTaskId and the Provider attempt ledger is unchanged.",
+    "safeM103ServerWorkflow": "Final 11/11 PASS; recovering task keeps run/lock/reservation active, then same task success completes the run and releases resources; authoritative success proof is complete.",
+    "safeM22M86M104": "141/141 PASS; browser breathing/recovery, Canvas load/save safety, true HTTP workflow and model input paths remain green.",
+    "safeM81DeploymentHardening": "42/42 PASS; v0.7.6 is an exact final release identity and v0.7.6-hotfix.1 is rejected.",
+    "typescript": "449/449 PASS through safe-runner preflight",
+    "productionBuild": "PASS through safe-runner preflight",
+    "sourceCoverage": "PASS",
+    "listener4173": "UNCHANGED",
+    "frozenTestInventory": 1179,
+    "formalFull": "124/124 specs executed; 1178/1179 PASS. The sole failure was m94's stale package-version regex, which accepted 0.5.2 and 0.6.x but not 0.7.6; every product test passed.",
+    "formalFullSourceSha256": "a950c0c4d9646445e0937c208422dba8dbe89054ea9b64989a4f726e64977524",
+    "formalFullOperationalBuilder": "PASS; attempts 1, builderInvocations 5, failures 0",
+    "postFullAffectedFix": "Expanded only the m94 release-snapshot version assertion to the established 0.7.x line; targeted m94 rerun 4/4 PASS, failed/skipped/retries/blocked/reportErrors all 0.",
+    "postFullAffectedSourceSha256": "9a8c418420212f22ec04965e27950cd1e15b84ca10623838753aeaad225155ac",
+    "fullRerun": false,
+    "testClosure": "PASS_BY_FORMAL_FULL_PLUS_SMALLEST_AFFECTED_RERUN",
+    "retainedIntermediateEvidence": "The first expanded m103 fixture run was 10/11 because the synthetic recovering task was created before singleton startup recovery and was correctly treated as abandoned. The fixture was corrected to initialize the runtime store first; product code did not change for that fixture-only failure. The formal full result and its one stale test assertion remain recorded; the full suite was not repeated after the test-only correction."
+  },
+  "candidateManifest": {
+    "trackedChangedFiles": 20,
+    "trackedHunks": 62,
+    "untrackedReceipts": 1,
+    "trackedBinaryDiffSha256ExcludingReceipt": "90e921fdfa5be1d88ec23eee77d3948c03a0378640f85e20fc277393bb395c1a",
+    "frozenReviewStatus": "GO_FINAL"
+  },
+  "review": {
+    "frozenCandidate": "GO",
+    "requiredCoverage": "Every changed file and diff hunk; delayed-video recovery through workflow settlement; full proof-field/result-key compatibility; release identity and safety boundaries.",
+    "blockingThreshold": "P0=0 and P1=0",
+    "firstFrozenPassCoverage": "20/20 tracked files, 63/63 tracked diff hunks and 1/1 candidate receipt",
+    "firstFrozenPassFindings": {
+      "p0": 0,
+      "p1": 0,
+      "p2": 0
+    },
+    "firstFrozenPassVerdict": "GO",
+    "reviewer": "independent gpt-5.6-luna/max subagent",
+    "postReviewGovernanceDelta": "Only current-state documentation and this receipt were updated to record the independent GO and align the final 62-hunk denominator.",
+    "finalCandidateCoverage": "20/20 tracked files, 62/62 tracked diff hunks and 1/1 candidate receipt",
+    "finalFindings": {
+      "p0": 0,
+      "p1": 0,
+      "p2": 0
+    },
+    "finalVerdict": "GO_FINAL"
+  },
+  "release": {
+    "pullRequest": "NOT_RUN",
+    "branchCi": "NOT_RUN",
+    "mainCi": "NOT_RUN",
+    "annotatedTag": "NOT_RUN",
+    "githubRelease": "NOT_RUN",
+    "exactTagFreshBuild": "NOT_RUN",
+    "productionBackup": "NOT_RUN",
+    "productionSwitch": "NOT_RUN",
+    "rollbackForward": "NOT_RUN",
+    "productionReceipt": "NOT_RUN"
+  },
+  "postDeployVerification": {
+    "canvasId": "adcb89a5-c1f4-47e4-bbbb-28fff8d81583",
+    "groupId": "group-17ee0cbc-cc81-4b35-9c5e-41040f627033",
+    "mode": "ONE_REAL_GROUP_EXECUTION_AFTER_V0_7_6_IS_LIVE",
+    "status": "NOT_RUN_UNTIL_V0_7_6_IS_LIVE_AND_HEALTHY",
+    "maxGroupExecuteClicks": 1,
+    "retryOnUnknownOutcome": false,
+    "qualityJudgementInScope": false,
+    "requiredEvidence": [
+      "one visible user click and one authoritative workflow create",
+      "one task/admission/attempt per actually submitted logical node and no duplicate Provider POST",
+      "recovering video keeps its breathing state and original Provider task if delayed",
+      "the workflow reaches terminal success including the final consistency node",
+      "all generated outputs are projected and saved automatically",
+      "a clean reload produces no redundant Canvas PUT after the observation window"
+    ]
+  }
+}

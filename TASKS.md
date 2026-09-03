@@ -1,6 +1,22 @@
 # Unboundry 绿地复刻当前任务
 
-## INC-GEN-028 v0.7.5 服务端 workflow 提交通道修复（PRODUCTION TECHNICAL PASS / REAL WORKFLOW PARTIAL NO-GO）
+## INC-GEN-028 v0.7.6 工作流恢复与刷新写回修复（TARGETED PASS / RELEASE AUTHORIZED）
+
+- [x] 以v0.7.5生产真实run `413c33ea-6ca0-4ca6-b096-d84678b4cd76`为故障基线：视频原Provider task最终成功，但workflow提前`RESULT_DELAYED`失败并阻断最后节点；新标签页加载另产生17次Canvas PUT。
+- [x] 修复延迟视频收口：后台慢轮询耗尽时转入`recovering / AUTOMATIC_RESULT_RECOVERY`，保留同一task、attempt和providerTaskId，不把workflow节点判死，不发第二次Provider POST。
+- [x] 修复服务端结果投影：成功写回先核对input、ownership、model configuration和model release身份，再一次性写入5个成功证明字段；视频同时写入宽高。
+- [x] 增加直接回归：延迟视频保持原attempt与Provider任务；workflow在recovering期间保持running，原任务成功后同一run继续并释放锁/容量；服务端成功证明与结果hash完整。
+- [x] 定向safe证据：m38 `19/19`、m103最终`11/11`、m22+m86+m104 `141/141`、m81 `42/42`；TypeScript 449/449、production build、source coverage与4173隔离均通过。
+- [x] 正式full执行124/124 specs：1178/1179通过，唯一失败是m94旧版本正则不接受0.7.6；只扩展该测试断言后，最小受影响m94 `4/4`通过。产品测试无失败，未重复跑full。
+- [x] 用户授权：`授权修复并上线 v0.7.6，修复后在这个 Canvas 再真实执行一次`；版本仅为`v0.7.6`，不加hotfix后缀。
+- [x] 冻结全候选并完成独立逐文件/逐hunk Review：最终20/20 tracked文件、62/62 hunks、1/1回执，`P0=0/P1=0/P2=0/GO`。
+- [ ] 完成commit/push、PR/双CI、merge后annotated tag/GitHub Release、exact-tag fresh build。
+- [ ] 完成全新schema42 locked-exact backup/verify/fresh restore、v0.7.5→v0.7.6→v0.7.5→v0.7.6 rollback-forward及生产健康门。
+- [ ] 在精确Canvas `adcb89a5-c1f4-47e4-bbbb-28fff8d81583` / group `group-17ee0cbc-cc81-4b35-9c5e-41040f627033` 只点击一次；核对唯一run、每节点task/admission/attempt/Provider边界、最终节点、自动保存和刷新后0冗余PUT。结果不明禁止重试。
+
+候选回执：`spec/V0_7_6_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`。生产与故障基线：`spec/V0_7_5_PRODUCTION_RECEIPT_2026-09-03.json`。
+
+## 历史：INC-GEN-028 v0.7.5 服务端 workflow 提交通道修复（PRODUCTION TECHNICAL PASS / REAL WORKFLOW PARTIAL NO-GO）
 
 - [x] 发布前基线曾确认生产为`v0.7.4/schema42`、current=`/opt/unboundry/releases/v0.7.4-inc-gen-028-20260903`，service active/ready、NRestarts0；该状态现已被v0.7.5取代。
 - [x] 保留v0.7.4历史唯一真实点击结果：页面准备90秒，服务器新增Canvas PUT/workflow run/task/admission/attempt/Provider POST均为0，费用风险为0；当次点击没有重试。

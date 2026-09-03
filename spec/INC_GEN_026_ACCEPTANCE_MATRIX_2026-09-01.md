@@ -1,6 +1,6 @@
 # INC-GEN-026 一次点击工作流可靠生成验收矩阵
 
-状态：`V0_7_5_TARGETED_PASS / FROZEN_REVIEW_GO / RELEASE_AND_REAL_CANVAS_NOT_RUN`
+状态：`V0_7_6_TARGETED_PASS / FROZEN_REVIEW_GO / RELEASE_AND_REAL_CANVAS_NOT_RUN`
 
 本矩阵与 `spec/INC_GEN_026_ONE_CLICK_WORKFLOW_RELIABILITY_FINAL_IMPLEMENTATION_PLAN_2026-09-01.md` 一一对应。
 
@@ -16,7 +16,13 @@
 - `REAL_PROVIDER_PASS`：生产真实任务已有 task/attempt/result/persistence 证据且没有人工回收；不等于本地候选已发布，也不等于用户主观验收。
 - `LOCAL_FIX_PASS`：缺陷修复已有本地直接影响证据；不代表已获得版本号、已发布或线上已修复。
 
-## 2026-09-03 v0.7.5 候选当前覆盖层
+## 2026-09-03 v0.7.6 候选当前覆盖层
+
+生产运行`v0.7.5/schema42`且技术健康，但其唯一真实run在原视频Provider task仍可恢复时提前以`RESULT_DELAYED`失败，最后节点被阻断；底层视频随后成功也未重开run。新标签页从服务器加载十项成功结果时又产生17次Canvas PUT。用户已授权普通patch v0.7.6修复、发布，并在同一精确Canvas/group再真实执行一次。
+
+本地候选让延迟native视频转入同一task/attempt/providerTaskId的`recovering`状态，workflow继续等待而不重复POST；服务端成功投影核对完整身份后一次性写齐5个成功证明字段和视频宽高。safe m38 `19/19`、m103最终`11/11`、m22+m86+m104 `141/141`、m81 `42/42`通过；TypeScript 449/449、build/source coverage/架构/4173隔离通过，库存1179。最终冻结独立Review覆盖20/20 tracked文件、62/62 hunks和1/1回执，结论`P0=0/P1=0/P2=0/GO`；GitHub、tag、生产和真实点击尚未执行。详细门见IG26-140～147和`spec/V0_7_6_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`。
+
+## 历史：2026-09-03 v0.7.5 候选覆盖层
 
 生产运行`v0.7.4/schema42`且技术健康，但v0.7.4授权的唯一真实点击在客户端“准备中”耗尽90秒，服务器新增Canvas PUT/workflow run/task/admission/attempt/Provider POST均为0。根因是server workflow与旧Canvas/单节点共用按Canvas提交锁，并在权威保存后重复等待render revision；多标签页遗留工作可以让真正workflow POST完全不到服务器。v0.7.5已获得版本、发布及同一Canvas/group真实执行一次授权。
 
@@ -240,3 +246,16 @@
 | IG26-137 | v0.7.5版本与冻结Review | AUTO_PASS | package/lock/runtime allowlist/m81、权威文档和候选回执一致；m81 `42/42`、m38最终`18/18`；独立Reviewer覆盖19/19 tracked文件、53/53 hunks和2/2回执，P0/P1均为0。 |
 | IG26-138 | v0.7.5发布 | NOT_RUN | PR/双CI、merge后annotated tag/Release、exact-tag fresh build、全新schema42 backup/verify/fresh restore、切换和rollback-forward全部通过。 |
 | IG26-139 | 精确Canvas真实执行与保存 | NOT_RUN | v0.7.5健康后只点击一次；服务器产生唯一workflow提交并按原run/task收口，结果自动回填、云端保存并在刷新后保持。结果不明禁止重试。 |
+
+## M. INC-GEN-028 / v0.7.6 工作流恢复与服务端完整投影
+
+| ID | 验收项 | 当前状态 | 通过标准 |
+|---|---|---|---|
+| IG26-140 | v0.7.5真实失败边界 | DOC_PASS | 唯一run、10个task/admission/attempt无重复；视频原Provider task最终成功但workflow先失败，最后节点未admit；刷新加载17次PUT。 |
+| IG26-141 | 延迟视频保持可恢复 | AUTO_PASS | 慢轮询耗尽只转`recovering / AUTOMATIC_RESULT_RECOVERY`；task、attempt、providerTaskId与accepted ledger不变，不创建新Provider请求。 |
+| IG26-142 | workflow等待原任务 | AUTO_PASS | generation task处于recovering时workflow node保持admitted、run保持running、锁和容量保留；同一task成功后节点/run继续收口并释放资源。 |
+| IG26-143 | 服务端成功证明完整 | AUTO_PASS | 投影先核对input/ownership/config/release身份，再写齐5个`groupRunSuccess*`字段；result key与浏览器算法一致。 |
+| IG26-144 | 视频刷新字段完整 | AUTO_PASS | 服务端视频投影含可信`videoWidth/videoHeight`及通用媒体元数据，加载无需再写回尺寸。 |
+| IG26-145 | 风险验证 | AUTO_PASS | m38 19/19、m103最终11/11、m22+m86+m104 141/141、m81 42/42；正式full执行124/124 specs、1178/1179通过，唯一失败为m94旧版本正则不接受0.7.6；只修该测试断言后m94 4/4通过且未重复full。产品测试无失败；TypeScript/build/source coverage/架构/4173隔离通过，库存1179。 |
+| IG26-146 | v0.7.6冻结Review与发布 | PENDING | 独立逐文件/逐hunk Review P0/P1=0后，PR/双CI、tag/Release、exact-tag build、schema42 backup/restore、切换与rollback-forward全部通过。 |
+| IG26-147 | 精确Canvas真实执行与保存 | NOT_RUN | v0.7.6健康后只点击一次；唯一run自然到success并运行最终节点，task/admission/attempt无重复，结果自动保存，刷新后无冗余Canvas PUT。结果不明禁止重试。 |

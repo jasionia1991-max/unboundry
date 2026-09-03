@@ -5516,10 +5516,32 @@ async function recoverNativeVideoAfterPoll(
     }
     await wait(10_000, controller.signal);
   }
-  taskStore().transition(taskId, "failed", {
-    code: "RESULT_DELAYED",
-    message: "平台还在处理，结果出来后系统会自动核对",
+  transitionNativeVideoToAutomaticRecovery(taskStore(), taskId);
+}
+
+function transitionNativeVideoToAutomaticRecovery(
+  store: ReturnType<typeof createGenerationTaskStore>,
+  taskId: string,
+) {
+  const current = store.get(taskId);
+  if (
+    !current || current.kind !== "video" || current.state !== "running" ||
+    !current.providerTaskId
+  ) return undefined;
+  return store.transition(taskId, "recovering", {
+    code: "AUTOMATIC_RESULT_RECOVERY",
+    message: "平台还在处理；系统会继续核对原任务且不会重新提交",
   });
+}
+
+export function transitionNativeVideoToAutomaticRecoveryForRuntimeTest(
+  store: ReturnType<typeof createGenerationTaskStore>,
+  taskId: string,
+) {
+  if (process.env.UNBOUNDRY_SAFE_TEST !== "1") {
+    throw new Error("Native video recovery test seam is unavailable");
+  }
+  return transitionNativeVideoToAutomaticRecovery(store, taskId);
 }
 
 const arkVideoMediaRoles = new Set<ArkVideoMediaInput["role"]>([

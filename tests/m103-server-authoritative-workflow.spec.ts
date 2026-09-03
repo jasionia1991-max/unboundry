@@ -16,6 +16,7 @@ import {
 import {
   compileFrozenWorkflowSemanticPlan,
 } from "../types/workflowSemanticPlan";
+import { stableValueFingerprint } from "../types/canvasFingerprint";
 import {
   workflowLockedGraphChanged,
   workflowProjectedResultRegressed,
@@ -905,6 +906,7 @@ test("server sweep projects authoritative success and stop releases only future 
   const directory = mkdtempSync(join(tmpdir(), "unboundry-workflow-sweep-"));
   chmodSync(directory, 0o700);
   const previousDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  let taskStoreForCleanup: ReturnType<typeof createGenerationTaskStore> | undefined;
   process.env.UNBOUNDRY_DATA_DIR = directory;
   try {
     const database = openAppDatabase(directory);
@@ -929,13 +931,30 @@ test("server sweep projects authoritative success and stop releases only future 
     }]), timestamp);
     database.close();
 
-    const taskStore = createGenerationTaskStore(directory);
+    const generation = await import("../server/generationTasks");
+    const taskStore = generation.generationTaskApplication.taskStore();
+    taskStoreForCleanup = taskStore;
+    const successRelease = workflowReleaseFixture({
+      index: 101,
+      kind: "text",
+      modelId: "text-model",
+      providerDriver: "volcengine-ark",
+      providerModelId: "doubao-seed-2-0-lite-260428",
+      providerProfileId: "provider-profile",
+      providerProtocol: "native",
+    });
     const task = taskStore.create({
       canvasId: "canvas",
       idempotencyKey: "workflow-sweep-task",
       kind: "text",
       model: "text-model",
-      modelConfiguration: { generationOwnershipKey: "workflow-owner-key" },
+      modelConfiguration: {
+        generationIdentityVersion: 2,
+        generationInputKey: "workflow-input-key",
+        generationOwnershipKey: "workflow-owner-key",
+        modelConfigurationRevision: "model-revision",
+        modelReleaseRevision: successRelease,
+      },
       nodeId: "text-node",
       ownerId: "__test__",
       prompt: "authoritative prompt",
@@ -965,7 +984,38 @@ test("server sweep projects authoritative success and stop releases only future 
       code: "AUTOMATIC_RESULT_RECOVERY",
       message: "fenced unknown",
     });
-    taskStore.close();
+    const recoveringRelease = workflowReleaseFixture({
+      index: 104,
+      kind: "text",
+      modelId: "recovering-text-model",
+      providerDriver: "volcengine-ark",
+      providerModelId: "doubao-seed-2-0-lite-260428",
+      providerProfileId: "provider-profile",
+      providerProtocol: "native",
+    });
+    const recoveringTask = taskStore.create({
+      canvasId: "canvas",
+      idempotencyKey: "workflow-recovering-task",
+      kind: "text",
+      model: "recovering-text-model",
+      modelConfiguration: {
+        generationIdentityVersion: 2,
+        generationInputKey: "recovering-input-key",
+        generationOwnershipKey: "recovering-owner-key",
+        modelConfigurationRevision: "recovering-model-revision",
+        modelReleaseRevision: recoveringRelease,
+      },
+      nodeId: "recovering-node",
+      ownerId: "__test__",
+      prompt: "recover the original task",
+      providerModelId: "doubao-seed-2-0-lite-260428",
+      providerProfileId: "provider-profile",
+    }).task;
+    taskStore.transition(recoveringTask.id, "running");
+    taskStore.transition(recoveringTask.id, "recovering", {
+      code: "AUTOMATIC_RESULT_RECOVERY",
+      message: "continue the original task",
+    });
 
     const plan = JSON.stringify({
       clientSemanticFingerprint: "semantic-run-client",
@@ -980,15 +1030,7 @@ test("server sweep projects authoritative success and stop releases only future 
         kind: "text",
         modelConfigurationRevision: "model-revision",
         modelId: "text-model",
-        modelReleaseRevision: workflowReleaseFixture({
-          index: 101,
-          kind: "text",
-          modelId: "text-model",
-          providerDriver: "volcengine-ark",
-          providerModelId: "doubao-seed-2-0-lite-260428",
-          providerProfileId: "provider-profile",
-          providerProtocol: "native",
-        }),
+        modelReleaseRevision: successRelease,
         ownPrompt: "authoritative prompt",
         parameters: {},
         planIndex: 0,
@@ -1004,6 +1046,34 @@ test("server sweep projects authoritative success and stop releases only future 
       version: 1,
     });
     const store = openAppDatabase(directory);
+    const recoveringPlan = JSON.stringify({
+      clientSemanticFingerprint: "recovering-semantic-run-client",
+      edges: [],
+      executableNodeIds: ["recovering-node"],
+      externalNodes: [],
+      groupId: "recovering-group",
+      nodes: [{
+        costCurrency: "CNY",
+        dependencies: [],
+        id: "recovering-node",
+        kind: "text",
+        modelConfigurationRevision: "recovering-model-revision",
+        modelId: "recovering-text-model",
+        modelReleaseRevision: recoveringRelease,
+        ownPrompt: "recover the original task",
+        parameters: {},
+        planIndex: 0,
+        providerDriver: "volcengine-ark",
+        providerModelId: "doubao-seed-2-0-lite-260428",
+        providerProfileId: "provider-profile",
+        providerProtocol: "native",
+        recoveryEvidence: "stored response",
+        recoveryGrade: "STORED_RESPONSE_OR_FENCED_UNKNOWN",
+        semanticIdentity: "recovering-semantic-node",
+      }],
+      semanticFingerprint: "recovering-semantic-run",
+      version: 1,
+    });
     const unknownPlan = JSON.stringify({
       clientSemanticFingerprint: "unknown-semantic-run-client",
       edges: [],
@@ -1078,6 +1148,7 @@ test("server sweep projects authoritative success and stop releases only future 
         semanticFingerprint: "stop-semantic",
         version: 1,
       })],
+      ["recovering-run", "recovering-group", recoveringPlan],
       ["unknown-run", "unknown-group", unknownPlan],
     ] as const) {
       store.prepare(`
@@ -1101,7 +1172,9 @@ test("server sweep projects authoritative success and stop releases only future 
       `).run(
         runId === "success-run"
           ? "text-node"
-          : runId === "unknown-run" ? "unknown-node" : "future-node",
+          : runId === "unknown-run"
+            ? "unknown-node"
+            : runId === "recovering-run" ? "recovering-node" : "future-node",
         runId,
         timestamp,
       );
@@ -1151,6 +1224,17 @@ test("server sweep projects authoritative success and stop releases only future 
         'pending', ?, ?
       )
     `).run(unknownTask.id, timestamp, timestamp);
+    store.prepare(`
+      INSERT INTO workflow_run_nodes (
+        run_id, owner_id, node_id, kind, plan_index, dependencies_json,
+        semantic_identity, idempotency_key, state, task_id,
+        projection_state, created_at, updated_at
+      ) VALUES (
+        'recovering-run', '__test__', 'recovering-node', 'text', 0, '[]',
+        'recovering-semantic-node', 'recovering-idempotency', 'admitted', ?,
+        'pending', ?, ?
+      )
+    `).run(recoveringTask.id, timestamp, timestamp);
     store.close();
 
     const workflow = await import("../server/workflowRunService");
@@ -1163,6 +1247,7 @@ test("server sweep projects authoritative success and stop releases only future 
       { state: "failed" },
       { state: "success" },
       { state: "cancelled" },
+      { state: "running" },
     ]);
     expect(after.prepare(`
       SELECT run_id, state, projection_state, error_code
@@ -1186,12 +1271,19 @@ test("server sweep projects authoritative success and stop releases only future 
         run_id: "stop-run",
         state: "cancelled",
       },
+      {
+        error_code: null,
+        projection_state: "pending",
+        run_id: "recovering-run",
+        state: "admitted",
+      },
     ]);
     expect(after.prepare("SELECT COUNT(*) AS count FROM workflow_run_locks").get())
-      .toEqual({ count: 0 });
+      .toEqual({ count: 1 });
     expect(after.prepare(`
       SELECT state FROM media_capacity_reservations ORDER BY id
     `).all()).toEqual([
+      { state: "active" },
       { state: "released" },
       { state: "released" },
       { state: "released" },
@@ -1206,6 +1298,14 @@ test("server sweep projects authoritative success and stop releases only future 
       .toMatchObject({
         content: "<b>authoritative & result</b>",
         contentHtml: "<p>&lt;b&gt;authoritative &amp; result&lt;/b&gt;</p>",
+        groupRunSuccessInputFingerprint: "workflow-input-key",
+        groupRunSuccessModelConfigurationRevision: "model-revision",
+        groupRunSuccessModelReleaseRevision: successRelease.revisionId,
+        groupRunSuccessOwnershipKey: "workflow-owner-key",
+        groupRunSuccessResultKey: stableValueFingerprint({
+          content: "<b>authoritative & result</b>",
+          contentHtml: "<p>&lt;b&gt;authoritative &amp; result&lt;/b&gt;</p>",
+        }),
         groupRunSuccessTaskId: task.id,
         textGenerationTaskId: task.id,
       });
@@ -1222,6 +1322,14 @@ test("server sweep projects authoritative success and stop releases only future 
       WHERE run_id = 'success-run' AND node_id = 'text-node'
     `).run();
     after.close();
+    expect(taskStore.resume(recoveringTask.id)).toMatchObject({
+      attempt: 1,
+      state: "running",
+    });
+    taskStore.complete(recoveringTask.id, {
+      actualCostMicrounits: 0,
+      resultText: "recovered original result",
+    });
     await workflow.runWorkflowSweep();
     const retried = openAppDatabase(directory);
     expect(retried.prepare(`
@@ -1233,10 +1341,24 @@ test("server sweep projects authoritative success and stop releases only future 
     `).get() as { nodes: string };
     expect((JSON.parse(retriedCanvas.nodes) as Array<{ data: Record<string, unknown> }>)[0]
       ?.data.content).toBe("<b>authoritative & result</b>");
+    expect(retried.prepare(`
+      SELECT state FROM workflow_runs WHERE id = 'recovering-run'
+    `).get()).toEqual({ state: "success" });
+    expect(retried.prepare(`
+      SELECT state, projection_state FROM workflow_run_nodes
+      WHERE run_id = 'recovering-run' AND node_id = 'recovering-node'
+    `).get()).toEqual({ projection_state: "conflict", state: "success" });
+    expect(retried.prepare(`
+      SELECT state FROM media_capacity_reservations
+      WHERE id = 'recovering-run-reservation'
+    `).get()).toEqual({ state: "released" });
+    expect(retried.prepare(`
+      SELECT COUNT(*) AS count FROM workflow_run_locks
+      WHERE run_id = 'recovering-run'
+    `).get()).toEqual({ count: 0 });
     retried.close();
-    const generation = await import("../server/generationTasks");
-    generation.generationTaskApplication.taskStore().close();
   } finally {
+    taskStoreForCleanup?.close();
     if (previousDirectory === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
     else process.env.UNBOUNDRY_DATA_DIR = previousDirectory;
     rmSync(directory, { force: true, recursive: true });
