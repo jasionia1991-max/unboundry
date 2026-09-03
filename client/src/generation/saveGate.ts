@@ -3,6 +3,8 @@ import type { NodeRunResult } from "./workflowExecution";
 
 const canvasSubmitTails = new Map<string, Promise<unknown>>();
 
+type CanvasSubmitLane = "generation" | "server-workflow";
+
 function throwIfAborted(signal?: AbortSignal) {
   if (signal?.aborted) {
     throw signal.reason ?? new DOMException("Aborted", "AbortError");
@@ -49,16 +51,21 @@ function runInProcessCanvasSubmit<T>(
  * section. Provider work must stay outside this helper so sibling nodes still
  * generate in parallel. Failures release the queue so the next submit runs.
  */
-export function runExclusiveCanvasSubmit<T>(
+function runExclusiveCanvasSubmitLane<T>(
   canvasId: string,
   work: () => Promise<T>,
+  lane: CanvasSubmitLane,
   signal?: AbortSignal,
 ): Promise<T> {
-  const key = canvasId.trim() || "__missing-canvas__";
+  const canvasKey = canvasId.trim() || "__missing-canvas__";
+  const key = `${lane}:${canvasKey}`;
   throwIfAborted(signal);
   if (typeof navigator !== "undefined" && navigator.locks) {
+    const lockName = lane === "generation"
+      ? `unboundry:canvas-submit:${encodeURIComponent(canvasKey)}`
+      : `unboundry:server-workflow-submit:${encodeURIComponent(canvasKey)}`;
     return navigator.locks.request(
-      `unboundry:canvas-submit:${encodeURIComponent(key)}`,
+      lockName,
       { mode: "exclusive", signal },
       async () => {
         throwIfAborted(signal);
@@ -67,6 +74,32 @@ export function runExclusiveCanvasSubmit<T>(
     );
   }
   return runInProcessCanvasSubmit(key, work, signal);
+}
+
+export function runExclusiveCanvasSubmit<T>(
+  canvasId: string,
+  work: () => Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  return runExclusiveCanvasSubmitLane(canvasId, work, "generation", signal);
+}
+
+/**
+ * Server-owned workflows have their own short create lane. They must not wait
+ * behind legacy/single-node browser admissions: the server transaction is the
+ * authoritative graph, active-task, overlap and idempotency fence.
+ */
+export function runExclusiveServerWorkflowSubmit<T>(
+  canvasId: string,
+  work: () => Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  return runExclusiveCanvasSubmitLane(
+    canvasId,
+    work,
+    "server-workflow",
+    signal,
+  );
 }
 
 export function createSaveGateRun(

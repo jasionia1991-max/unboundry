@@ -2,9 +2,21 @@
 
 更新时间：2026-09-03
 
-状态：`V0_7_4_BRANCH_CI_PASS / INCREMENTAL_REVIEW_GO / RELEASE_AND_REAL_CANVAS_NOT_RUN`
+状态：`V0_7_5_TARGETED_PASS / FROZEN_REVIEW_GO / RELEASE_AND_REAL_CANVAS_NOT_RUN`
 
-## 2026-09-03 v0.7.4 候选当前覆盖层
+## 2026-09-03 v0.7.5 候选当前覆盖层
+
+- 生产当前为`v0.7.4/schema42`、current=`/opt/unboundry/releases/v0.7.4-inc-gen-028-20260903`，service active/ready、NRestarts0。v0.7.4的PR #151、双CI、annotated tag/Release、exact-tag fresh build、schema42 backup/verify/fresh restore、切换和rollback-forward均完成；回执为`spec/V0_7_4_PRODUCTION_RECEIPT_2026-09-03.json`。
+- v0.7.4唯一真实点击在`2026-09-02T21:37:50.720Z`开始，页面停留“准备中”直至90秒期限；服务器同期0 Canvas PUT、0 workflow create/run、0 generation task、0 admission、0 attempt、0 Provider POST，费用风险0。该点击授权已消费，未重试。
+- 当前根因：服务端workflow提交与旧Canvas/单节点提交共享`unboundry:canvas-submit:<canvas>`锁，并在权威保存后重复等待render-derived revision；同一Canvas的另一个标签页可用遗留工作挡住真正workflow POST。另有极窄竞态允许list返回后先收到abort、再设置submitted。
+- v0.7.5修复：新增独立`unboundry:server-workflow-submit:<canvas>` Web Lock和独立进程内fallback队列；`flushCanvasSave`先在锁外完成，独立通道内直接compile/list/create，去掉server workflow的冗余render revision等待。服务端的semantic fingerprint、graph revision、active/unresolved task和DB workflow lock仍为最终权威门。
+- abort在活动run list返回后检查一次，并在设置submitted、发workflow POST前再检查一次。90秒锁等待超时时UI恢复“整组执行”，0 Canvas PUT、0 workflow POST、0 generation-task POST，pending lock清零。
+- 定向证据：safe m22 `45/45`、m81 `42/42`、m38最终`18/18`，TypeScript `449/449`、production build、source coverage、架构和4173隔离均通过；source SHA=`153daf5124c104e24ee210db2c73dbbaf01456c989be06f965dd555b351ea5c0`。冻结全候选独立Review覆盖19/19 tracked文件、53/53 hunks和2/2回执，结论`P0=0/P1=0/P2=1/GO`；P2只是不另写list返回到第二abort检查之间的确定性时序测试，代码双检查已关闭风险，不阻断发布。
+- 最新授权：`版本号 v0.7.5，授权上线并在这个 Canvas 真实执行一次。` 允许普通patch v0.7.5的commit/push/PR/双CI、merge后tag/Release、exact-tag fresh build、全新schema42 locked-exact backup/verify/fresh restore、原子切换、v0.7.4 rollback和最终forward，以及健康后同一精确Canvas/group只点击一次。结果不明仅核对原run/task，禁止第二次POST。
+- 当前待办：定向门与冻结全候选Review已GO，接下来进入GitHub、tag、生产备份/切换。真实点击必须最后执行，只验收workflow创建与执行、自动回填、保存和刷新，不评价内容审美。
+- 当前候选回执：`spec/V0_7_5_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`。以下v0.7.4候选及更早内容均为历史时点证据，不得覆盖本层或恢复已消费授权。
+
+## 历史：2026-09-03 v0.7.4 候选覆盖层
 
 - 生产仍是`v0.7.3/schema42`、current=`/opt/unboundry/releases/v0.7.3-inc-gen-028-20260902`。最新用户授权为：`授权修复并上线 v0.7.4，修复后在这个 Canvas 真实执行一次。` 发布、生产切换和真实点击均尚未执行。
 - 精确目标：Canvas `adcb89a5-c1f4-47e4-bbbb-28fff8d81583`，group `group-17ee0cbc-cc81-4b35-9c5e-41040f627033`。失败请求`4666a088-aca9-402b-ba8b-c842023470cb`耗时35.260秒后HTTP400；0 run、0 task、0 admission、0 attempt、0 Provider POST、0费用。

@@ -81,7 +81,10 @@ import {
 } from "./groupRunCheckpoint";
 import { reconstructGroupRecoveryDecision } from "./groupRunRecovery";
 import { publishGroupRunNotificationOnce } from "./groupRunNotification";
-import { runExclusiveCanvasSubmit } from "./saveGate";
+import {
+  runExclusiveCanvasSubmit,
+  runExclusiveServerWorkflowSubmit,
+} from "./saveGate";
 import { listGenerationTasks } from "./generationTasks";
 import {
   activeServerWorkflowNodeIds,
@@ -1012,18 +1015,15 @@ export function WorkflowExecutionProvider({
           // One user click owns the ordinary auto-save wait. Do not ask the
           // user to click again merely because the browser graph was ahead of
           // the durable Canvas document by one debounce window.
-          created = await runExclusiveCanvasSubmit(canvasId, async () => {
-            if (preparation.abortController.signal.aborted) {
-              throw preparation.abortController.signal.reason;
-            }
-            await flushCanvasSave(preparation.abortController.signal);
-            if (preparation.abortController.signal.aborted) {
-              throw preparation.abortController.signal.reason;
-            }
-            await waitForCanvasRevision(
-              30_000,
-              preparation.abortController.signal,
-            );
+          // Finish this tab's ordinary save first, but do not wait for the
+          // render-derived revision gate used by legacy/single-node submits.
+          // The workflow POST compiles and validates the authoritative server
+          // Canvas fingerprint before it can reserve or submit any work.
+          await flushCanvasSave(preparation.abortController.signal);
+          if (preparation.abortController.signal.aborted) {
+            throw preparation.abortController.signal.reason;
+          }
+          created = await runExclusiveServerWorkflowSubmit(canvasId, async () => {
             if (preparation.abortController.signal.aborted) {
               throw preparation.abortController.signal.reason;
             }
@@ -1046,6 +1046,9 @@ export function WorkflowExecutionProvider({
               run.groupId === groupId &&
               (run.state === "running" || run.state === "stopping")
             );
+            if (preparation.abortController.signal.aborted) {
+              throw preparation.abortController.signal.reason;
+            }
             const matchingActive = activeForGroup.find((run) =>
               run.canvasId === canvasId &&
               run.clientSemanticFingerprint === preview.semanticFingerprint
@@ -1058,6 +1061,9 @@ export function WorkflowExecutionProvider({
               throw new Error(
                 "服务端已有同组整组执行，当前画布身份不同；已阻止重复提交",
               );
+            }
+            if (preparation.abortController.signal.aborted) {
+              throw preparation.abortController.signal.reason;
             }
             preparation.submitted = true;
             try {

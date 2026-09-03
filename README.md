@@ -6,9 +6,15 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 
-## 当前最高优先级：INC-GEN-028 / v0.7.4 发布门已通过（2026-09-03）
+## 当前最高优先级：INC-GEN-028 / v0.7.5 服务端提交解锁（2026-09-03）
 
-生产当前仍运行 `v0.7.3/schema42`。用户已明确授权修复并上线普通 patch `v0.7.4`，以及上线后在 Canvas `adcb89a5-c1f4-47e4-bbbb-28fff8d81583` 的指定组真实执行一次；发布和真实点击都还没有执行。
+生产当前运行 `v0.7.4/schema42`，技术健康。v0.7.4上线后的唯一真实点击没有到达服务器：页面停在“准备中”90秒，但新增Canvas PUT、workflow run、task、admission、attempt、Provider POST和费用均为0。原因是服务端workflow提交错误地与旧Canvas/单节点工作共用同一个按Canvas锁，并在权威保存后重复等一次render revision；同一Canvas多标签页时，旧工作可以把真正POST长期挡住。
+
+v0.7.5把服务端workflow提交放到独立锁通道，权威保存完成后直接执行服务端的语义、revision、活动任务和workflow锁检查；同时在只读list后与POST前都检查超时。safe m22 `45/45`、m81 `42/42`、m38 `18/18`、TypeScript、production build、source coverage和4173隔离通过；冻结全候选独立Review覆盖19/19 tracked文件、53/53 hunks和2/2回执，结论`P0=0/P1=0/P2=1/GO`。用户已明确授权上线 v0.7.5，并在相同Canvas/group真实执行一次；只点一次，结果不明不重试。候选回执见 [`V0_7_5_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`](spec/V0_7_5_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json)，当前生产回执见 [`V0_7_4_PRODUCTION_RECEIPT_2026-09-03.json`](spec/V0_7_4_PRODUCTION_RECEIPT_2026-09-03.json)。
+
+## 历史：INC-GEN-028 / v0.7.4 已上线但真实 workflow 未提交（2026-09-03）
+
+以下段落保留 v0.7.4 发布前的历史候选事实；其发布和一次真实点击授权后来均已执行并消费，不能作为当前授权。
 
 原生产故障发生在 Provider 之前：动态 Grok Video 的首帧明明由同组上游图片节点生成，却被静态准入误判为缺失；逐节点重复打开数据库又把确定性400拖到35.260秒，呼吸灯也没有接上服务端状态。v0.7.4已修复这三处。PR后续CI还暴露出独立环境问题：macOS runner没有`ffprobe`，视频结果虽已返回，却无法读取时长并被错误地无限重试。当前候选为CI补齐/检查ffprobe，同时让缺组件或坏媒体立即明确终态，仅临时容量/超时才重试。本地m57+m90 `40/40`、完整图片→视频m104 `13/13`通过；修复head的branch CI `33681493693`已在macOS runner安装并确认ffprobe，m104 `13/13`和总门通过；独立增量Review结论`P0=0/P1=0/P2=0/GO`。生产仍未切换，候选回执见 [`V0_7_4_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`](spec/V0_7_4_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json)。
 
