@@ -923,8 +923,13 @@ test("server sweep projects authoritative success and stop releases only future 
     `).run(JSON.stringify([{
       data: {
         content: "old",
+        textGenerating: true,
+        textGenerationInputKey: "workflow-input-key",
+        textGenerationOwnershipKey: "workflow-owner-key",
+        textGenerationTaskId: "stale-task-id",
         textModelId: "text-model",
         textPrompt: "authoritative prompt",
+        workflowExecutionRunId: "success-run",
       },
       id: "text-node",
       type: "text",
@@ -1309,6 +1314,13 @@ test("server sweep projects authoritative success and stop releases only future 
         groupRunSuccessTaskId: task.id,
         textGenerationTaskId: task.id,
       });
+    const projectedTextData = (JSON.parse(canvas.nodes) as Array<{
+      data: Record<string, unknown>;
+    }>)[0]!.data;
+    expect(projectedTextData.textGenerating).toBe(false);
+    expect(projectedTextData.textGenerationInputKey).toBeUndefined();
+    expect(projectedTextData.textGenerationOwnershipKey).toBeUndefined();
+    expect(projectedTextData.workflowExecutionRunId).toBeUndefined();
     const retryNodes = JSON.parse(canvas.nodes) as Array<{
       data: Record<string, unknown>;
     }>;

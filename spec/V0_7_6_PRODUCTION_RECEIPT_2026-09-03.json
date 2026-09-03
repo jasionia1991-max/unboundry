@@ -1,0 +1,133 @@
+{
+  "version": "0.7.6",
+  "packageVersion": "0.7.6",
+  "schemaVersion": 42,
+  "createdAt": "2026-09-03T07:59:11Z",
+  "status": "PRODUCTION_V0_7_6_REAL_WORKFLOW_SUCCESS_CANVAS_CONVERGENCE_NO_GO",
+  "source": {
+    "pullRequest": 154,
+    "pullRequestState": "MERGED",
+    "branch": "codex/v0.7.6-workflow-recovery",
+    "candidateCommit": "a6e77a0d321eba0c799441356ed3339b9ffcfe23",
+    "branchQualityRun": 33719892749,
+    "mergeCommit": "9a669a3b313658a9056b5cc62994c9748eb41b73",
+    "mergeTree": "b013707b9c5583b5916e24930dc3855a8ffe4016",
+    "mainQualityRun": 33720060807,
+    "tag": "v0.7.6",
+    "annotatedTagObject": "690e1b7cb7b7c339806cc78e458303cfccfda00e",
+    "tagPeeledCommit": "9a669a3b313658a9056b5cc62994c9748eb41b73",
+    "githubRelease": "https://github.com/jasionia1991-max/unboundry/releases/tag/v0.7.6",
+    "releaseInventorySha256": "849684a24c09aaede172cd62de89f5b163dbcd24ac9607ed5089a9296eddd9c7"
+  },
+  "authorization": {
+    "text": "授权修复并上线 v0.7.6，修复后在这个 Canvas 再真实执行一次。",
+    "releaseAuthorizationConsumed": true,
+    "realCanvasExecutionAuthorizationConsumed": true,
+    "realCanvasExecutionLimit": 1,
+    "realCanvasExecutionClicks": 1,
+    "duplicateExecutionOnUnknownOutcomeAuthorized": false,
+    "qualityJudgementInScope": false,
+    "nextVersionAuthorized": false,
+    "secondRealExecutionAuthorized": false
+  },
+  "production": {
+    "current": "/opt/unboundry/releases/v0.7.6-inc-gen-028-20260903",
+    "service": "active",
+    "enabled": true,
+    "nRestarts": 0,
+    "runtimeNode": "22.23.2",
+    "publicVersion": "0.7.6",
+    "publicLive": true,
+    "publicReady": true,
+    "runtimeRole": "active",
+    "mutationsAccepted": true,
+    "schemaVersion": 42,
+    "publicAssetsMatchRelease": true
+  },
+  "backupAndRollback": {
+    "lockedExactBackup": {
+      "backupId": "39b4f26c-ffa3-413b-9b6b-6c1fcd7959e4",
+      "packagePath": "/var/lib/unboundry-rollbacks/v0.7.6-20260903-backup/39b4f26c-ffa3-413b-9b6b-6c1fcd7959e4.ubbackup",
+      "databaseLogicalSha256": "3572e7a07f130904023d34a4dc200a0a534446e9d6e39c4b5e8969e15c327e3b",
+      "schemaVersion": 42,
+      "verify": "PASS"
+    },
+    "freshRestore": {
+      "path": "/var/lib/unboundry-v076-restores/fresh-final",
+      "result": "PASS"
+    },
+    "recoveryKeys": "/var/lib/unboundry-backup-keys/v0.7.6-20260903",
+    "rollbackForward": "V0_7_6_FORWARD_THEN_V0_7_5_ROLLBACK_THEN_V0_7_6_FINAL_FORWARD_PASS",
+    "ossUploadDelete": 0
+  },
+  "postDeployRealCanvas": {
+    "canvasId": "adcb89a5-c1f4-47e4-bbbb-28fff8d81583",
+    "ownerId": "02c9dbba-5b72-408b-9045-eaaec20b799a",
+    "groupId": "group-17ee0cbc-cc81-4b35-9c5e-41040f627033",
+    "groupTitle": "服装一键带货｜P1抖音OOTD与短视频",
+    "clickedAt": "2026-09-03T06:28:44.901Z",
+    "clicks": 1,
+    "workflowCreate": {
+      "httpStatus": 202,
+      "count": 1
+    },
+    "workflowRun": {
+      "id": "af090f9a-a3d9-40f2-9c73-1ed0ad47c20a",
+      "state": "success",
+      "plannedNodes": 11,
+      "workflowNodeStates": {
+        "successApplied": 11,
+        "failed": 0,
+        "blocked": 0
+      }
+    },
+    "taskLedger": {
+      "tasks": 11,
+      "admissions": 11,
+      "providerAttempts": 11,
+      "distinctTaskIds": 11,
+      "duplicateTaskIds": 0,
+      "duplicateProviderAttempts": 0,
+      "outcome": {
+        "textSuccess": 7,
+        "imageSuccess": 3,
+        "videoSuccess": 1
+      }
+    },
+    "video": {
+      "taskId": "f22545ab-2ac9-47bd-9f32-d1d30448ae6f",
+      "providerTaskId": "124893597",
+      "assetId": "78f8ad9d-607f-4dae-99ef-34cd804a723f.mp4",
+      "bytes": 9739629,
+      "durationSeconds": 10.042,
+      "width": 720,
+      "height": 1280,
+      "state": "success"
+    },
+    "browser": {
+      "workflowBreathingAnimationsObserved": true,
+      "resultsVisible": true,
+      "qualityJudgementInScope": false,
+      "refreshSuccessfulCanvasPuts": 7,
+      "refreshRevisionBefore": 64,
+      "refreshRevisionAfter": 71,
+      "refreshGraphRevisionBefore": 39,
+      "refreshGraphRevisionAfter": 46,
+      "canvasConflictResponsesDuringRun": 1,
+      "canvasConflictStatus": 409,
+      "misleadingTaskReadAlertObserved": true,
+      "misleadingTaskReadAlert": "任务状态查询失败，点击重试重新检查"
+    },
+    "result": "WORKFLOW_GENERATION_PASS_BUT_CANVAS_REFRESH_AND_STALE_RECOVERY_RACE_NO_GO",
+    "retryPerformed": false,
+    "userPass": false
+  },
+  "followUp": {
+    "rootCause": [
+      "Server text-success projection retained stale textGenerationInputKey and textGenerationOwnershipKey, so seven successful text nodes restarted old-task recovery after refresh and each saved once.",
+      "Text, image, video and audio node recovery effects did not stop on the authoritative server workflow lock before workflowExecutionRunId reached the Canvas, allowing an old poll to race the workflow projection and cause a 409 plus a false task-read warning."
+    ],
+    "nextVersion": "0.7.7",
+    "requiredAcceptance": "Refresh first with zero redundant Canvas PUT, then execute the group once with no false warning, no 409 and no duplicate submission."
+  }
+}

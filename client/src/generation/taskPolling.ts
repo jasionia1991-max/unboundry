@@ -6,6 +6,13 @@ import {
 
 export const POLLING_PAUSED_MESSAGE = "任务状态查询失败，点击重试重新检查";
 
+export function workflowBlocksSingleNodeRecovery(input: {
+  locked: boolean;
+  workflowExecutionRunId?: unknown;
+}) {
+  return input.locked || Boolean(input.workflowExecutionRunId);
+}
+
 function isPollingAbortError(error: unknown): boolean {
   return Boolean(
     error &&

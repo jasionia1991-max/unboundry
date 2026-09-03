@@ -1,21 +1,25 @@
 # Production backup contracts
 
 This directory contains source candidates. Production currently runs
-`v0.7.5/schema42`; that release and its one-click verification authorization
-have been consumed. The current authorized candidate is ordinary patch
-`v0.7.6`. It keeps a delayed native video on the same recoverable Provider
-task instead of terminalizing the workflow, and writes the complete durable
-success proof plus video dimensions in the authoritative server projection.
-The final frozen candidate Review is GO with 20/20 tracked files, 62/62 hunks and
-1/1 receipt covered, with P0/P1/P2 all zero. Backup, install, switch and
-rollback-forward may run only after PR/head and main Quality, immutable tag,
-Release, and exact-tag fresh build are complete. After v0.7.6 is live and technically healthy, the
-authorized post-deploy check is exactly one execution of Canvas
-`adcb89a5-c1f4-47e4-bbbb-28fff8d81583`, group
-`group-17ee0cbc-cc81-4b35-9c5e-41040f627033`; an unknown outcome permits only
-read-only reconciliation, never a second POST. Candidate evidence is recorded
-in `spec/V0_7_6_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`; the current
-production baseline is `spec/V0_7_5_PRODUCTION_RECEIPT_2026-09-03.json`.
+`v0.7.6/schema42`; that release and its one-click verification authorization
+have been consumed. Its real workflow reached 11/11 success without duplicate
+tasks, admissions, or Provider attempts, but refresh produced seven redundant
+Canvas PUTs and one stale-recovery race produced a Canvas 409 plus a false task
+read warning. The current authorized candidate is ordinary patch `v0.7.7`.
+It clears the two stale standalone-recovery keys in authoritative text-success
+projection and stops in-flight text, image, video, and audio recovery when a
+server workflow lock or run binding takes ownership. Targeted m103, m41 and m81
+and governance m38 are green. The frozen Review covered 26/26 tracked files,
+65/65 hunks and 2/2 receipts with P0/P1/P2 all zero and a GO verdict. Backup,
+install, switch and rollback-forward may run only after PR/head and
+main Quality, immutable tag, Release, and exact-tag fresh build are complete.
+After v0.7.7 is live and technically healthy, first refresh Canvas
+`adcb89a5-c1f4-47e4-bbbb-28fff8d81583` and prove zero redundant PUT, zero 409,
+zero false warning and zero submission. Only then execute group
+`group-17ee0cbc-cc81-4b35-9c5e-41040f627033` exactly once. An unknown outcome
+permits only read-only reconciliation, never a second POST. Candidate evidence
+is recorded in `spec/V0_7_7_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`; the
+production baseline is `spec/V0_7_6_PRODUCTION_RECEIPT_2026-09-03.json`.
 
 ## Current schema42 candidate
 

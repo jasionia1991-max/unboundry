@@ -58,6 +58,7 @@ import {
   isTransientPollingError,
   POLLING_PAUSED_MESSAGE,
   waitForGenerationTaskWithPause,
+  workflowBlocksSingleNodeRecovery,
 } from "../generation/taskPolling";
 import {
   type NodeGenerationOutcome,
@@ -1313,7 +1314,14 @@ function TextNodeImpl({
   };
 
   useEffect(() => {
-    if (!persistenceReady || isFixture || data.workflowExecutionRunId) return;
+    if (
+      !persistenceReady ||
+      isFixture ||
+      workflowBlocksSingleNodeRecovery({
+        locked: lockedNodeIds.has(id),
+        workflowExecutionRunId: data.workflowExecutionRunId,
+      })
+    ) return;
     const persistedTaskId = data.textGenerationTaskId;
     const persistedInputKey = data.textGenerationInputKey;
     const persistedOwnershipKey = data.textGenerationOwnershipKey;
@@ -1717,6 +1725,7 @@ function TextNodeImpl({
     retryWakeEpoch,
     rawGenerationInputFingerprint,
     legacyRecoveryCatalogKey,
+    lockedNodeIds,
     setNodes,
     textGenerationRevocationKey,
     textMutationScopeKey,

@@ -989,6 +989,8 @@ function projectionPatch(nodePlan: StoredNodePlan, task: ReturnType<ReturnType<t
       ...common,
       content,
       contentHtml: htmlForPlainText(content),
+      textGenerationInputKey: undefined,
+      textGenerationOwnershipKey: undefined,
       textGenerationTaskId: task.id,
     };
   }

@@ -1,6 +1,6 @@
 # INC-GEN-026 一次点击工作流可靠生成验收矩阵
 
-状态：`V0_7_6_TARGETED_PASS / FROZEN_REVIEW_GO / RELEASE_AND_REAL_CANVAS_NOT_RUN`
+状态：`V0_7_7_TARGETED_PASS / FINAL_REVIEW_GO / RELEASE_AND_ORDERED_REAL_CANVAS_VERIFICATION_NOT_RUN`
 
 本矩阵与 `spec/INC_GEN_026_ONE_CLICK_WORKFLOW_RELIABILITY_FINAL_IMPLEMENTATION_PLAN_2026-09-01.md` 一一对应。
 
@@ -16,7 +16,13 @@
 - `REAL_PROVIDER_PASS`：生产真实任务已有 task/attempt/result/persistence 证据且没有人工回收；不等于本地候选已发布，也不等于用户主观验收。
 - `LOCAL_FIX_PASS`：缺陷修复已有本地直接影响证据；不代表已获得版本号、已发布或线上已修复。
 
-## 2026-09-03 v0.7.6 候选当前覆盖层
+## 2026-09-03 v0.7.7 候选当前覆盖层
+
+生产运行`v0.7.6/schema42`。其唯一真实run已11/11 success/applied，11个task/admission/Provider attempt无重复；但刷新目标Canvas产生7次多余PUT，运行中旧节点恢复与服务端workflow投影竞争，出现1次409和“任务状态查询失败”误报。用户已授权普通patch v0.7.7发布，并要求上线后先刷新证明0多余保存，再只真实执行目标group一次，验证无误报、无409、无重复提交。
+
+本地候选让服务端文字success清除两个旧单节点恢复键，并让四类节点在`lockedNodeIds`命中或已有`workflowExecutionRunId`时停止旧恢复；锁中途到达时abort且拒绝迟到结果。safe m103 `11/11`、m41 `59/59`、m81 `42/42`、治理m38最终`19/19`，TypeScript 449/449、build/source coverage/架构/4173隔离通过，库存1184；formal full按风险门不重复。最终冻结Review覆盖26/26 tracked文件、65/65 hunks和2/2回执，`P0=0/P1=0/P2=0/GO`；GitHub、生产和真实验收尚未执行。详细门见IG26-148～154和`spec/V0_7_7_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`。
+
+## 历史：2026-09-03 v0.7.6 候选覆盖层
 
 生产运行`v0.7.5/schema42`且技术健康，但其唯一真实run在原视频Provider task仍可恢复时提前以`RESULT_DELAYED`失败，最后节点被阻断；底层视频随后成功也未重开run。新标签页从服务器加载十项成功结果时又产生17次Canvas PUT。用户已授权普通patch v0.7.6修复、发布，并在同一精确Canvas/group再真实执行一次。
 
@@ -247,7 +253,7 @@
 | IG26-138 | v0.7.5发布 | NOT_RUN | PR/双CI、merge后annotated tag/Release、exact-tag fresh build、全新schema42 backup/verify/fresh restore、切换和rollback-forward全部通过。 |
 | IG26-139 | 精确Canvas真实执行与保存 | NOT_RUN | v0.7.5健康后只点击一次；服务器产生唯一workflow提交并按原run/task收口，结果自动回填、云端保存并在刷新后保持。结果不明禁止重试。 |
 
-## M. INC-GEN-028 / v0.7.6 工作流恢复与服务端完整投影
+## M. 历史：INC-GEN-028 / v0.7.6 工作流恢复与服务端完整投影
 
 | ID | 验收项 | 当前状态 | 通过标准 |
 |---|---|---|---|
@@ -259,3 +265,15 @@
 | IG26-145 | 风险验证 | AUTO_PASS | m38 19/19、m103最终11/11、m22+m86+m104 141/141、m81 42/42；正式full执行124/124 specs、1178/1179通过，唯一失败为m94旧版本正则不接受0.7.6；只修该测试断言后m94 4/4通过且未重复full。产品测试无失败；TypeScript/build/source coverage/架构/4173隔离通过，库存1179。 |
 | IG26-146 | v0.7.6冻结Review与发布 | PENDING | 独立逐文件/逐hunk Review P0/P1=0后，PR/双CI、tag/Release、exact-tag build、schema42 backup/restore、切换与rollback-forward全部通过。 |
 | IG26-147 | 精确Canvas真实执行与保存 | NOT_RUN | v0.7.6健康后只点击一次；唯一run自然到success并运行最终节点，task/admission/attempt无重复，结果自动保存，刷新后无冗余Canvas PUT。结果不明禁止重试。 |
+
+## N. INC-GEN-028 / v0.7.7 Canvas 收敛与旧恢复隔离
+
+| ID | 验收项 | 当前状态 | 通过标准 |
+|---|---|---|---|
+| IG26-148 | v0.7.6真实基线 | DOC_PASS | 唯一run 11/11 success/applied；11个task/admission/attempt无重复；刷新7次多余PUT，运行中1次409和1次误报。 |
+| IG26-149 | 文字成功投影收口 | AUTO_PASS | 服务端文字success清除`textGenerationInputKey`和`textGenerationOwnershipKey`，同时保留任务身份和完整workflow成功证明；m103 11/11。 |
+| IG26-150 | 四模态workflow锁隔离 | AUTO_PASS | `lockedNodeIds`命中或`workflowExecutionRunId`任一存在都阻断旧单节点恢复；锁中途到达会abort，迟到结果不能写回。 |
+| IG26-151 | 动态竞态回归 | AUTO_PASS | m41 59/59；文字/图片/视频/音频四种忽略abort的迟到成功均为0 Canvas PUT、0 task POST、0 Provider请求、0误报。 |
+| IG26-152 | 版本与冻结Review | AUTO_PASS | package/lock/runtime allowlist/m81均为0.7.7，m81 42/42；治理m38通过；冻结独立Review覆盖26/26 tracked文件、65/65 hunks和2/2回执，P0/P1/P2均为0，结论GO。 |
+| IG26-153 | v0.7.7发布 | NOT_RUN | PR/双CI、merge后annotated tag/Release、exact-tag build、全新schema42 backup/verify/fresh restore、切换及v0.7.6 rollback-forward全部通过。 |
+| IG26-154 | 分序生产验收 | NOT_RUN | 先刷新精确Canvas并在观察窗内证明0多余PUT、0 409、0误报、0提交；通过后只点击目标group一次，证明唯一workflow create、节点task/admission/attempt无重复、11/11成功和最终刷新0多余PUT。结果不明禁止重试。 |

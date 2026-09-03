@@ -66,6 +66,7 @@ import {
   isTransientPollingError,
   POLLING_PAUSED_MESSAGE,
   waitForGenerationTaskWithPause,
+  workflowBlocksSingleNodeRecovery,
 } from "../generation/taskPolling";
 import {
   type NodeGenerationOutcome,
@@ -3391,7 +3392,10 @@ function ImageNodeImpl({
       !persistenceReady ||
       isFixture ||
       generationRunRef.current ||
-      data.workflowExecutionRunId
+      workflowBlocksSingleNodeRecovery({
+        locked: lockedNodeIds.has(id),
+        workflowExecutionRunId: data.workflowExecutionRunId,
+      })
     ) return;
     const persistedTaskId = data.imageGenerationTaskId;
     const persistedInputKey = data.imageGenerationInputKey;
@@ -3772,6 +3776,7 @@ function ImageNodeImpl({
     recoveryEpoch,
     retryWakeEpoch,
     legacyRecoveryCatalogKey,
+    lockedNodeIds,
   ]);
 
   useEffect(() => {
