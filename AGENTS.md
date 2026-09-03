@@ -1,6 +1,6 @@
 # Unboundry 项目级 Agent 施工守则
 
-> **2026-09-03 INC-GEN-028 当前最高优先级**：生产运行`v0.7.6/schema42`且v0.7.6 tag/Release不可变。其真实workflow已11/11成功，文字/图片/视频/本地上传均正常，但刷新仍有7次多余Canvas PUT；运行中旧节点恢复还与服务端workflow写回竞争，出现1次409和“任务状态查询失败”误报。用户已明确授权普通patch `v0.7.7`上线：服务端文字成功投影清掉两个旧单节点恢复键，四类节点在服务端workflow锁到达时立即停止旧恢复。上线后必须先刷新精确Canvas `adcb89a5-c1f4-47e4-bbbb-28fff8d81583` 验证0次多余保存，再对group `group-17ee0cbc-cc81-4b35-9c5e-41040f627033`真实执行一次，验证无误报、无409、无重复提交。结果不明只读核对原run/task，禁止第二次点击或新Provider POST。当前权威为 `spec/UNBOUNDRY_CURRENT_STATE.md`、`spec/V0_7_7_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json` 与 `spec/V0_7_6_PRODUCTION_RECEIPT_2026-09-03.json`。
+> **2026-09-03 INC-GEN-028 当前最高优先级**：生产运行`v0.7.7/schema42`且v0.7.7 tag/Release不可变；PR #155、双CI、exact-tag build、locked-exact backup/restore、切换与rollback-forward已通过。上线后按用户顺序先刷新精确Canvas `adcb89a5-c1f4-47e4-bbbb-28fff8d81583`，服务器版本页出现4次成功但多余的Canvas PUT，revision 71→75、graph revision 46→50；因此严格停在刷新门，group `group-17ee0cbc-cc81-4b35-9c5e-41040f627033`点击0次，workflow/task/Provider提交0次。根因是`ImageNode`加载图片时忽略已保存style尺寸并再次自动适配，持久化style变化触发保存。v0.7.7发布授权已消费；下一版本、代码修复、发布和真实点击均未授权。当前权威为 `spec/UNBOUNDRY_CURRENT_STATE.md` 与 `spec/V0_7_7_PRODUCTION_RECEIPT_2026-09-03.json`。
 
 > **以下 v0.7.6 候选及发布授权是历史记录**：其发布和唯一真实点击均已执行并消费；11节点工作流成功，但刷新写抖动、409和误报使Canvas收敛验收未通过。不得据此再次发布v0.7.6或重复点击。
 
@@ -41,10 +41,10 @@
 INC-GEN-028 当前状态按顺序完整阅读：
 
 1. `spec/UNBOUNDRY_CURRENT_STATE.md` 顶部 INC-GEN-028 当前区块
-2. `spec/V0_7_7_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`
-3. `spec/V0_7_6_PRODUCTION_RECEIPT_2026-09-03.json`（当前生产与事故基线）
-4. `spec/V0_7_6_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`（历史候选证据）
-5. `spec/INC_GEN_026_CHECKPOINT.md` 与对应Matrix顶部v0.7.7覆盖层
+2. `spec/V0_7_7_PRODUCTION_RECEIPT_2026-09-03.json`
+3. `spec/V0_7_7_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`（历史候选证据）
+4. `spec/V0_7_6_PRODUCTION_RECEIPT_2026-09-03.json`（历史真实workflow与事故基线）
+5. `spec/INC_GEN_026_CHECKPOINT.md` 与对应Matrix顶部v0.7.7生产覆盖层
 6. `TASKS.md`、`上线规矩.md`、`README.md` 顶部 INC-GEN-028 区块
 
 下列旧清单只在查历史事故时按需读取，不得覆盖上面的当前路由或恢复旧授权：
@@ -94,12 +94,12 @@ INC-GEN-028 当前状态按顺序完整阅读：
 ### 默认工具链与生产兼容通道
 
 - 项目普通开发、类型检查、构建和新shell默认使用`.node-version`中的Node `25.9.0`与`packageManager`中的npm `11.12.1`；不得再把`/Users/mymy/.hermes/node/bin`或`/Users/mymy/.local/bin`中的Node 22预置到普通shell PATH。
-- 2026-09-03 已确认 v0.7.6 生产继续运行 Node `22.23.2` / npm `10.9.8`；本次没有顺带迁移 Node/npm。
+- 2026-09-03 已确认 v0.7.7 生产继续运行 Node `22.23.2` / npm `10.9.8`；本次没有顺带迁移 Node/npm。
 - `scripts/run-safe-tests.mjs`、源码覆盖门和历史不可变 release builder 继续使用 Node `22.23.1` / npm `10.9.8` 专用兼容通道；它是本地复现通道，不等同于已确认的生产 Node `22.23.2`，也不是项目默认 shell。在完成兼容性审计前不得删除 Node 22 边界。
 
 ## 2. 当前授权边界
 
-- **2026-09-03 INC-GEN-028 当前最高权威**：生产为v0.7.6/schema42；唯一真实执行已经11/11成功且11个task/admission/attempt均无重复，但刷新后有7次多余PUT，运行中出现1次Canvas 409和“任务状态查询失败”误报。用户已授权普通patch v0.7.7发布，并要求上线后先刷新验证0次多余保存，再只点击同一精确Canvas/group一次，验证无误报、无409、无重复提交。结果不明只读核对原run/task，禁止第二次POST；冻结Review已覆盖26/26 tracked文件、65/65 hunks和2/2回执，`P0=0/P1=0/P2=0/GO`，GitHub、tag/Release、备份切换和本次验收尚未完成；
+- **2026-09-03 INC-GEN-028 当前最高权威**：生产为v0.7.7/schema42且发布链、备份恢复和rollback-forward已通过。按顺序先刷新目标Canvas后出现4次图片卡片高度PUT，revision 71→75、graph revision 46→50；所以0保存门NO-GO，真实group点击0、workflow/task/Provider提交0。v0.7.7发布授权已消费，下一版本和真实点击未授权；当前根因与证据只看`spec/V0_7_7_PRODUCTION_RECEIPT_2026-09-03.json`；
 
 - **2026-09-02 v0.7.3 历史发布授权（已消费）**：用户指定 `v0.7.3` 并授权上线保存提示补丁；该授权已用于版本升级、提交、PR/CI、annotated tag/Release、备份、生产切换和成对 rollback-forward，并在零新增 Provider POST 的实页复验后消费完毕。当时约定后续只用普通patch递增、不再添加`hotfix`后缀；v0.7.4与v0.7.5现已先后发布，该历史句不是下一版本授权；
 

@@ -1,6 +1,6 @@
 # Unboundry 绿地复刻当前任务
 
-## INC-GEN-028 v0.7.7 Canvas 零多余保存与恢复竞态修复（TARGETED PASS / REVIEW GO / RELEASE AUTHORIZED）
+## INC-GEN-028 v0.7.7 Canvas 零多余保存与恢复竞态修复（RELEASE PASS / REFRESH GATE NO-GO / REAL RUN NOT EXECUTED）
 
 - [x] 冻结v0.7.6生产事实：目标workflow run `af090f9a-a3d9-40f2-9c73-1ed0ad47c20a` 11/11成功，11个task/admission/Provider attempt无重复；刷新却产生7次多余Canvas PUT，运行中有1次409和“任务状态查询失败”误报。
 - [x] 修复文字投影：服务端文字成功写回清掉旧`textGenerationInputKey`和`textGenerationOwnershipKey`，保留task身份与完整workflow成功证明，刷新不再把7个成功文字节点当成待恢复任务。
@@ -10,11 +10,13 @@
 - [x] 用户授权：普通patch `v0.7.7`上线；上线后先刷新目标Canvas验证0次多余保存，再真实执行目标group一次，验证无误报、无409、无重复提交；结果不明禁止第二次点击。
 - [x] 治理m38最终`19/19`通过；前两次各`18/19`只暴露当前权威版本标记漂移，精确修正文档后关闭，产品代码未变。
 - [x] 完成冻结全候选独立逐文件/逐hunk Review：26/26 tracked文件、65/65 hunks、2/2回执，`P0=0/P1=0/P2=0/GO`。
-- [ ] 完成commit/push、PR/双CI、merge后annotated tag/GitHub Release、exact-tag fresh build。
-- [ ] 完成全新schema42 locked-exact backup/verify/fresh restore、v0.7.6→v0.7.7→v0.7.6→v0.7.7 rollback-forward及生产健康门。
-- [ ] 登录普通Chrome先刷新Canvas `adcb89a5-c1f4-47e4-bbbb-28fff8d81583`并证明0 Canvas PUT、0 409、0误报、0提交；通过后才对group `group-17ee0cbc-cc81-4b35-9c5e-41040f627033`点击一次并证明无重复提交。
+- [x] 完成commit/push、PR #155/双CI、merge后annotated tag/GitHub Release、exact-tag fresh build。
+- [x] 完成全新schema42 locked-exact backup/verify/fresh restore、v0.7.6→v0.7.7→v0.7.6→v0.7.7 rollback-forward及生产健康门。
+- [x] 登录普通Chrome先刷新精确Canvas；服务器版本页0次409、0误报、0生成提交，但产生4次200 Canvas PUT，revision 71→75、graph revision 46→50，因此严格NO-GO并停在group点击0次。
+- [x] 定位剩余根因：`ImageNode`加载时没有把已保存style尺寸当作现成尺寸，异步onLoad/deferred hydration改动3个图片节点卡片高度并进入持久化指纹；内容、连线和viewport没有变化。
+- [ ] 下一版取得新版本号与修复/上线授权后，保留持久化图片尺寸并新增真实reload零PUT回归；上线后仍须先0 PUT，再只真实执行一次。当前不得擅自改代码、发版或点击生成。
 
-候选回执：`spec/V0_7_7_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`。当前生产与故障基线：`spec/V0_7_6_PRODUCTION_RECEIPT_2026-09-03.json`。
+当前生产回执：`spec/V0_7_7_PRODUCTION_RECEIPT_2026-09-03.json`。候选回执与v0.7.6生产回执仅作历史证据。
 
 ## 历史：INC-GEN-028 v0.7.6 工作流恢复与刷新写回修复（WORKFLOW 11/11 PASS / CANVAS CONVERGENCE NO-GO）
 

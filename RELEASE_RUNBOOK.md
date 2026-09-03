@@ -3,7 +3,7 @@
 给人和接手的 AI 看。作用：从「版本号 + 上线授权」到「线上验证 + 文档收口」的每一步照做，避免每次现场拼命令、用错脚本。
 历史基线：v0.6.29（2026-08-21）曾按旧流程发布；其版本号、路径和先打 tag 的命令不再是可执行模板。当前生产身份与发布边界只看 `spec/UNBOUNDRY_CURRENT_STATE.md`、`spec/INC_GEN_026_CHECKPOINT.md` 顶部当前覆盖层和 `上线规矩.md`。
 
-> **2026-09-03 INC-GEN-028 边界**：生产当前为`v0.7.6/schema42`；其真实run已11/11成功且无重复task/admission/Provider attempt，但刷新产生7次多余Canvas PUT，运行中出现1次409和“任务状态查询失败”误报。用户已选择普通patch `v0.7.7`并授权发布。v0.7.7清除文字成功投影的两个旧恢复键，并让四类节点在服务端workflow锁或已有run绑定时停止旧恢复、拒绝迟到结果。当前m103 11/11、m41 59/59、m81 42/42、m38最终19/19和共同preflight通过；冻结独立Review覆盖26/26 tracked文件、65/65 hunks和2/2回执，`P0=0/P1=0/P2=0/GO`。发布须依次通过PR/双CI、merge后annotated tag/Release、exact-tag fresh build、全新schema42 locked-exact backup、原子切换与rollback-forward。技术健康后先刷新目标Canvas证明0多余保存、0次409、0误报和0提交；只有该门通过才点击目标group一次。结果不明只读核对原run/task，禁止第二次POST。版本不得使用`hotfix`后缀。
+> **2026-09-03 INC-GEN-028 边界**：生产当前为`v0.7.7/schema42`；PR #155、双CI、不可移动tag/Release、exact-tag fresh build、schema42 locked-exact backup/restore、原子切换与rollback-forward已通过。上线后先刷新目标Canvas时产生4次多余200 PUT，revision 71→75、graph revision 46→50；根因是`ImageNode`加载自动适配忽略已保存style尺寸并写回布局。因此前置0保存门NO-GO，group点击0、workflow/task/Provider提交0。v0.7.7发布授权已消费；下一普通patch版本尚未授权，禁止复用v0.7.7授权、移动tag、擅自修复发布或真实点击。版本不得使用`hotfix`后缀。
 
 **适用范围**：本 Runbook 只用于「代码 / 构建产物」变更（bump 版本、改逻辑、重发静态资源）。纯公共模板数据变更（新增/修改模板、预览图、种子）走 `上线规矩.md` 的「加模板轻量路径」，**不需要版本号、不打标签、不跑全量**，直接提交 + 服务器灌库。
 
@@ -45,7 +45,7 @@ grep '"version"' package.json
 
 - 需要Node 22.23.x、npm 10.9.8、Playwright浏览器缓存、npm离线缓存，缺了preflight会明说。
 - 测试必须只使用runner新建的临时数据和回环端口；本地4173、`app/data`、`/var/lib/unboundry`、真实媒体和密钥不得触碰。
-- v0.6.29 的 `119 specs / 1034 tests` 与 v0.7.0 的 formal 结果只作历史账本，不是 INC-GEN-028 当前命令或分母。当前证据以 `spec/V0_7_6_PRODUCTION_RECEIPT_2026-09-03.json`、`spec/V0_7_7_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`和Checkpoint顶部覆盖层为准。
+- v0.6.29 的 `119 specs / 1034 tests` 与 v0.7.0 的 formal 结果只作历史账本，不是 INC-GEN-028 当前命令或分母。当前证据以 `spec/V0_7_7_PRODUCTION_RECEIPT_2026-09-03.json`、历史候选回执和Checkpoint顶部覆盖层为准。
 - 两份受保护 JSON 不得进入测试快照、archive、commit、tag 或 PR；除此之外，发布候选必须没有范围外脏改动。
 
 候选冻结后按这个顺序执行，不能把 tag 打在 PR 分支头：

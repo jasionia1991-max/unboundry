@@ -6,11 +6,11 @@ TapNow 风格 AI 画布（本地优先，已发布到生产服务器 `canvas.mym
 
 干活和上线怎么拍板，看 [`上线规矩.md`](上线规矩.md)。没分别确认版本号和允许发布，不能推、不能上线。
 
-## 当前最高优先级：v0.7.7 Canvas 收敛修复并获上线授权（2026-09-03）
+## 当前最高优先级：v0.7.7 已上线，刷新门未通过（2026-09-03）
 
-生产是`v0.7.6/schema42`。它已经在指定Canvas把11个节点全部跑成功，11个task/admission/Provider attempt均无重复；但刷新仍多保存7次，运行中还有1次Canvas 409，并把保存竞争误报成“任务状态查询失败”。v0.7.7候选把原因直接关掉：服务端文字成功时清除旧单节点恢复键；文字、图片、视频、音频节点一旦收到服务端workflow锁，就终止旧任务恢复并丢弃晚到结果。当前m103 `11/11`、m41 `59/59`、m81 `42/42`及TypeScript/build/source coverage/4173隔离通过；冻结独立Review覆盖26/26 tracked文件、65/65 hunks和2/2回执，`P0=0/P1=0/P2=0/GO`。发布尚未执行。
+生产是`v0.7.7/schema42`。PR #155、双CI、不可移动tag/Release、exact-tag build、locked-exact backup/restore、生产切换和rollback-forward均通过，服务active/ready。v0.7.7已消除此前7个文字节点的旧恢复写回；本次刷新没有409、旧任务读取误报或任何生成提交。
 
-用户已授权普通patch `v0.7.7`上线。上线后先刷新目标Canvas验证0次多余保存；只有该门通过才真实执行目标group一次，验证无误报、无409、无重复提交。结果不明只读核对原run/task，绝不二次点击；只验证网站能否正常生成和保存工作流，不评价图片审美。候选证据见 [`V0_7_7_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`](spec/V0_7_7_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json)，当前生产基线见 [`V0_7_6_PRODUCTION_RECEIPT_2026-09-03.json`](spec/V0_7_6_PRODUCTION_RECEIPT_2026-09-03.json)。
+但用户要求的第一个硬门没有通过：目标Canvas服务器版本页产生4次200 PUT，revision 71→75、graph revision 46→50，只改了3个图片节点的卡片高度。根因是图片加载自动适配忽略已保存style尺寸，又把布局写回Canvas。按“先0次保存、后真实执行”的顺序，group点击保持0次，workflow/task/Provider提交均零新增；本版不能写成完整验收通过。v0.7.7发布授权已消费，下一版本尚未授权。生产证据见 [`V0_7_7_PRODUCTION_RECEIPT_2026-09-03.json`](spec/V0_7_7_PRODUCTION_RECEIPT_2026-09-03.json)。
 
 ## 历史：v0.7.6 已上线，工作流成功但 Canvas 收敛未通过（2026-09-03）
 

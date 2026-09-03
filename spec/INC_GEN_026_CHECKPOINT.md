@@ -2,20 +2,19 @@
 
 更新时间：2026-09-03
 
-状态：`V0_7_7_TARGETED_PASS / FINAL_REVIEW_GO / RELEASE_AND_ORDERED_REAL_CANVAS_VERIFICATION_NOT_RUN`
+状态：`V0_7_7_PRODUCTION_RELEASE_PASS / REFRESH_GATE_NO_GO / REAL_WORKFLOW_NOT_RUN`
 
-## 2026-09-03 v0.7.7 候选当前覆盖层
+## 2026-09-03 v0.7.7 生产当前覆盖层
 
-- 生产为`v0.7.6/schema42`、current=`/opt/unboundry/releases/v0.7.6-inc-gen-028-20260903`，service active/ready、NRestarts0；v0.7.6 tag/Release不可变。
-- v0.7.6唯一真实run `af090f9a-a3d9-40f2-9c73-1ed0ad47c20a` 已11/11 success/applied，7文字、3图片、1视频和本地上传节点均正常；11个task/admission/Provider attempt各一次，无重复提交。
-- 未通过的生产边界：刷新该Canvas产生7次多余Canvas PUT，revision 64→71、graph revision 39→46；运行中旧节点恢复与服务端workflow投影竞争，出现1次Canvas 409和“任务状态查询失败，点击重试重新检查”误报。任务GET和Provider没有对应失败。
-- v0.7.7修复：服务端文字success投影清除`textGenerationInputKey`与`textGenerationOwnershipKey`，保留task身份及完整workflow成功证明；文字/图片/视频/音频节点把服务端`lockedNodeIds`命中或已有`workflowExecutionRunId`均视为旧单节点恢复硬停止，锁中途到达时abort并用生命周期围栏丢弃迟到结果。
-- 定向证据：safe m103 `11/11`；safe m41 `59/59`，其中四个动态浏览器案例分别证明四类节点在锁到达后即使旧task响应忽略abort并晚到，也不会Canvas PUT、task POST、Provider请求或误报；safe m81 `42/42`。全部通过TypeScript `449/449`、production build、source coverage、架构和4173隔离；测试库存1184。按风险驱动门不重复formal full。
-- 最新授权：`版本号 v0.7.7，授权上线；上线后先刷新这个 Canvas 验证 0 次多余保存，再真实执行一次，验证无误报、无 409、无重复提交。` 允许普通patch v0.7.7的commit/push/PR/双CI、merge后tag/Release、exact-tag fresh build、全新schema42 locked-exact backup/verify/fresh restore、原子切换、v0.7.6 rollback和最终forward。部署健康后先刷新目标Canvas证明0多余保存，只有该门通过才点击目标group一次；结果不明只读核对原run/task，禁止第二次点击或POST；不评价内容审美。
-- 治理m38最终`19/19`通过；前两次各`18/19`只暴露当前权威版本标记漂移，精确修正文档后关闭，产品代码未变。
-- 最终冻结独立Review覆盖26/26 tracked文件、65/65 hunks与2/2回执，结论`P0=0/P1=0/P2=0/GO`。
-- 当前待办：GitHub与生产发布；之后严格按“先刷新、后唯一真实执行”顺序验收。
-- 当前候选回执：`spec/V0_7_7_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`；生产基线：`spec/V0_7_6_PRODUCTION_RECEIPT_2026-09-03.json`。以下v0.7.6候选及更早内容均为历史时点证据，不得恢复已消费授权。
+- 生产为`v0.7.7/schema42`、current=`/opt/unboundry/releases/v0.7.7-inc-gen-029-20260903`，service active/enabled/ready、NRestarts0；v0.7.7 tag/Release不可变。
+- PR #155、分支CI `33734453366`、merge `1b10f81e…5315`、main CI `33734680195`、annotated tag/GitHub Release、exact-tag fresh build、locked-exact backup/verify/fresh restore与v0.7.6 rollback-forward全部通过；33/33静态资源与release一致。
+- 生产刷新门未通过：服务器版本页产生4次Canvas PUT且均为200，revision 71→75、graph revision 46→50。它们只改3个图片节点的卡片高度，内容、连线和viewport未变；其后静默窗没有新增写入。
+- 生成安全账本保持tasks 1064、admissions 984、attempts 1075、workflow runs 6、paidProviderRequests 1063；group点击0次、workflow create 0、generation task POST 0、409为0、旧“任务状态查询失败”误报为0。
+- 根因是`ImageNode`即时/延迟图片加载自动适配没有把已保存的`style.width/height`视为现成尺寸，图片加载后又用`setNodes`改持久化style；style进入Canvas fingerprint，因此异步加载形成真实PUT。`measured`的被动增删不是主因。
+- v0.7.7确实关闭了7个文字恢复写回和旧恢复竞态，但没有覆盖这个独立的图片布局hydration写路径。用户要求刷新先达到0次保存，所以未进入付费真实执行，不能宣称本版通过运行级无误报/无409/无重复提交。
+- v0.7.7发布授权已消费；真实点击未消费但被失败前置门阻断，不能跨版本挪用。下一版尚未授权，不得擅自修改代码、发版或点击生成。
+- 当前待办：取得新的普通patch版本号与修复/上线授权后，保留持久化图片尺寸，补真实reload零PUT回归；新版本上线仍必须先0 PUT，再只点击一次。
+- 当前生产回执：`spec/V0_7_7_PRODUCTION_RECEIPT_2026-09-03.json`；候选回执仅作历史证据。以下v0.7.6及更早内容均为历史时点证据，不得恢复已消费授权。
 
 ## 历史：2026-09-03 v0.7.6 候选覆盖层
 

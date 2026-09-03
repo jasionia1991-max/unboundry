@@ -1,6 +1,6 @@
 # INC-GEN-026 一次点击工作流可靠生成验收矩阵
 
-状态：`V0_7_7_TARGETED_PASS / FINAL_REVIEW_GO / RELEASE_AND_ORDERED_REAL_CANVAS_VERIFICATION_NOT_RUN`
+状态：`V0_7_7_PRODUCTION_RELEASE_PASS / REFRESH_GATE_NO_GO / REAL_WORKFLOW_NOT_RUN`
 
 本矩阵与 `spec/INC_GEN_026_ONE_CLICK_WORKFLOW_RELIABILITY_FINAL_IMPLEMENTATION_PLAN_2026-09-01.md` 一一对应。
 
@@ -16,11 +16,11 @@
 - `REAL_PROVIDER_PASS`：生产真实任务已有 task/attempt/result/persistence 证据且没有人工回收；不等于本地候选已发布，也不等于用户主观验收。
 - `LOCAL_FIX_PASS`：缺陷修复已有本地直接影响证据；不代表已获得版本号、已发布或线上已修复。
 
-## 2026-09-03 v0.7.7 候选当前覆盖层
+## 2026-09-03 v0.7.7 生产当前覆盖层
 
-生产运行`v0.7.6/schema42`。其唯一真实run已11/11 success/applied，11个task/admission/Provider attempt无重复；但刷新目标Canvas产生7次多余PUT，运行中旧节点恢复与服务端workflow投影竞争，出现1次409和“任务状态查询失败”误报。用户已授权普通patch v0.7.7发布，并要求上线后先刷新证明0多余保存，再只真实执行目标group一次，验证无误报、无409、无重复提交。
+生产运行`v0.7.7/schema42`。PR #155、双CI、不可移动tag/Release、exact-tag fresh build、locked-exact backup/verify/fresh restore、原子切换及rollback-forward已通过，服务健康。上线后按顺序先开目标Canvas服务器版本，观察到4次成功但多余的Canvas PUT，revision 71→75、graph revision 46→50；因此0保存前置门失败，真实group点击保持0次。
 
-本地候选让服务端文字success清除两个旧单节点恢复键，并让四类节点在`lockedNodeIds`命中或已有`workflowExecutionRunId`时停止旧恢复；锁中途到达时abort且拒绝迟到结果。safe m103 `11/11`、m41 `59/59`、m81 `42/42`、治理m38最终`19/19`，TypeScript 449/449、build/source coverage/架构/4173隔离通过，库存1184；formal full按风险门不重复。最终冻结Review覆盖26/26 tracked文件、65/65 hunks和2/2回执，`P0=0/P1=0/P2=0/GO`；GitHub、生产和真实验收尚未执行。详细门见IG26-148～154和`spec/V0_7_7_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`。
+v0.7.7已关闭此前7个文字恢复写回；本次刷新0次409、0次旧任务读取误报、0 workflow/task/Provider提交，tasks/admissions/attempts/workflow runs/paidProviderRequests均不变。但`ImageNode`加载图片时没有把持久化style尺寸当作现成尺寸，异步onLoad/deferred hydration又改style，形成4次真实PUT；内容、连线和viewport未变。详细证据见IG26-148～155和`spec/V0_7_7_PRODUCTION_RECEIPT_2026-09-03.json`。发布授权已消费；下一版本尚未授权。
 
 ## 历史：2026-09-03 v0.7.6 候选覆盖层
 
@@ -275,5 +275,6 @@
 | IG26-150 | 四模态workflow锁隔离 | AUTO_PASS | `lockedNodeIds`命中或`workflowExecutionRunId`任一存在都阻断旧单节点恢复；锁中途到达会abort，迟到结果不能写回。 |
 | IG26-151 | 动态竞态回归 | AUTO_PASS | m41 59/59；文字/图片/视频/音频四种忽略abort的迟到成功均为0 Canvas PUT、0 task POST、0 Provider请求、0误报。 |
 | IG26-152 | 版本与冻结Review | AUTO_PASS | package/lock/runtime allowlist/m81均为0.7.7，m81 42/42；治理m38通过；冻结独立Review覆盖26/26 tracked文件、65/65 hunks和2/2回执，P0/P1/P2均为0，结论GO。 |
-| IG26-153 | v0.7.7发布 | NOT_RUN | PR/双CI、merge后annotated tag/Release、exact-tag build、全新schema42 backup/verify/fresh restore、切换及v0.7.6 rollback-forward全部通过。 |
-| IG26-154 | 分序生产验收 | NOT_RUN | 先刷新精确Canvas并在观察窗内证明0多余PUT、0 409、0误报、0提交；通过后只点击目标group一次，证明唯一workflow create、节点task/admission/attempt无重复、11/11成功和最终刷新0多余PUT。结果不明禁止重试。 |
+| IG26-153 | v0.7.7发布 | PRODUCTION_AUTO_PASS | PR #155、branch/main CI、merge后annotated tag/Release、exact-tag build、全新schema42 backup/verify/fresh restore、切换及v0.7.6 rollback-forward全部通过；生产v0.7.7 active/ready、NRestarts0。 |
+| IG26-154 | 分序生产验收 | NO_GO | 刷新精确Canvas出现4次200 PUT，revision 71→75、graph revision 46→50，因此没有进入真实执行；group点击0、workflow/task/Provider POST 0、409 0、误报0。运行级验收未执行，不能借用刷新分项结果写成通过。 |
+| IG26-155 | 图片布局hydration根因 | DOC_PASS | `ImageNode`即时/延迟图片加载没有识别已保存style尺寸，onLoad又改持久化style并触发Canvas fingerprint；三节点高度写回共4次。下一版须保留持久化尺寸并以真实reload 0 PUT作为点击前硬门。 |

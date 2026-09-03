@@ -1,14 +1,14 @@
 # Unboundry 当前权威状态
 
-> **2026-09-03 最新权威：生产运行 v0.7.6/schema42；v0.7.7 已获发布和同一 Canvas 分序验收授权。** v0.7.6 唯一真实执行已经11/11成功，11个task/admission/Provider attempt无重复；但刷新仍有7次多余Canvas PUT，运行中有1次409，并把Canvas写竞争误报成“任务状态查询失败”。v0.7.7本地候选清除文字成功节点遗留的两个单节点恢复键，并让文字、图片、视频、音频节点在服务端workflow锁到达时立即终止旧恢复、拒绝迟到结果。m103 `11/11`、m41 `59/59`、m81 `42/42`、m38最终`19/19`及TypeScript/build/source coverage/4173隔离通过；冻结独立Review覆盖26/26 tracked文件、65/65 hunks和2/2回执，`P0=0/P1=0/P2=0/GO`。GitHub和生产尚未执行。
+> **2026-09-03 最新权威：生产运行 v0.7.7/schema42；发布成功，但“刷新 0 次多余保存”门未通过，真实工作流没有执行。** v0.7.7 已完成 PR #155、双 CI、不可移动 tag/Release、exact-tag fresh build、locked-exact backup/verify/fresh restore、原子切换和 v0.7.6 rollback-forward，服务 active/ready、NRestarts0。登录普通 Chrome 打开目标 Canvas 的服务器版本后出现4次成功但多余的 Canvas PUT，revision 71→75、graph revision 46→50；因此严格停在刷新门，group点击0次，workflow/task/admission/Provider attempt和`paidProviderRequests`均零新增。
 
-**生产是 v0.7.6 / schema42。** 能正常工作的部分：目标run `af090f9a-a3d9-40f2-9c73-1ed0ad47c20a` 的7个文字、3个图片、1个视频节点全部success/applied；本地上传图保持ready，10.042秒、720×1280的MP4自动回填。11个task/admission/attempt各一次，没有重复提交，工作流本身已跑到底。
+**生产是 v0.7.7 / schema42。** 代码、静态资源、数据库恢复、回滚前进和服务健康门均通过。v0.7.7 已消除此前7个文字节点的旧恢复写回；本次刷新没有出现409或“任务状态查询失败”误报，也没有任何生成提交。
 
-**仍未通过的部分**：完成后刷新该Canvas，revision 64→71、graph revision 39→46，对应7次成功但多余的Canvas PUT；运行中旧节点恢复与服务端workflow投影还发生过1次409，并显示“任务状态查询失败，点击重试重新检查”。任务GET和Provider本身没有失败，这是一条误报。因用户要求网站稳定生成和保存，当前仍不是`USER_PASS`。
+**仍未通过的部分**：目标明确要求先刷新得到0次多余保存，但服务器版本页在约1.4秒内写了4次200 PUT。它们只修改3个图片节点的卡片高度，没有改内容、连线或视口；Canvas revision 71→75、graph revision 46→50。刷新门失败后没有点击“整组执行”，所以不能宣称本版已通过真实运行中的“无误报、无409、无重复提交”。
 
-**v0.7.7修复**：服务端文字成功投影把`textGenerationInputKey`和`textGenerationOwnershipKey`置空，同时保留任务ID和完整成功证明；四类节点把`lockedNodeIds`命中与`workflowExecutionRunId`同等视为旧恢复硬停止，并在锁中途到达时abort和生命周期隔离。四类动态浏览器测试已证明忽略abort的迟到旧结果也不能保存、提交、触达Provider或显示误报。
+**当前根因**：`ImageNode` 图片加载与延迟 hydration 自动适配只检查运行时 `node.width/height`，没有把已经保存的 `style.width/height` 当作现成尺寸；图片像素加载后又调用 `setNodes` 改持久化 `style`。`measured` 本身不进持久化指纹，但 `style` 会，因此异步图片加载被拆成4次真实保存。最小修复必须让立即与延迟两条图片加载路径都保留已保存尺寸，并增加真实 reload 零 PUT 回归。
 
-**授权状态**：v0.7.6版本、发布和唯一真实点击授权均已消费，tag/Release保持不可变。用户最新明确授权：`版本号 v0.7.7，授权上线；上线后先刷新这个 Canvas 验证 0 次多余保存，再真实执行一次，验证无误报、无 409、无重复提交。` 本次允许普通patch v0.7.7的commit/push/PR/双CI、merge后annotated tag/Release、exact-tag fresh build、全新schema42 locked-exact backup/verify/fresh restore、原子切换、v0.7.6 rollback与最终forward。上线后必须先刷新验证0次多余保存，通过后才可点击目标group一次；结果不明只读核对原run/task，禁止第二次点击或Provider POST。
+**授权状态**：v0.7.7 的版本与发布授权已消费，tag/Release不可移动。真实点击因前置刷新门失败而保持0次且被阻断，不能跨版本挪用；下一版尚未获得版本号、修复或发布授权。生产失败回执为`spec/V0_7_7_PRODUCTION_RECEIPT_2026-09-03.json`。
 
 > **以下 INC-GEN-025 顶部记录是历史声明快照**：它记录当时的 Goal、测试、Review 和发布前状态；v0.6.70 后续已经发布，最终审计推翻了“可直接继续 R8/真实点击”的当前有效性。其历史授权已消费，不得恢复。
 
@@ -18,24 +18,24 @@
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
 当前代码包版本：**v0.7.7**
 本地候选代码版本：**v0.7.7**
-当前本地候选说明：`v0.7.7 已完成直接风险定向测试、治理m38和冻结独立Review GO；等待发布`
-当前生产部署版本：**v0.7.6**
+当前本地候选说明：`无下一版代码候选；仅记录 v0.7.7 生产刷新门 NO-GO`
+当前生产部署版本：**v0.7.7**
 本地候选schema：**42**
-当前治理标记：`CURRENT_V0_7_6_USER_REJECTED_CANVAS_CONVERGENCE`
-当前业务标记：`V0_7_7_LOCAL_TARGETED_PASS / ZERO_REDUNDANT_SAVE_AND_STALE_RECOVERY_RACE_FIX`
-当前发布执行标记：`V0_7_7_RELEASE_AND_ORDERED_REAL_CANVAS_VERIFICATION_AUTHORIZED_NOT_CONSUMED`
+当前治理标记：`CURRENT_V0_7_7_USER_REJECTED_CANVAS_CONVERGENCE`
+当前业务标记：`V0_7_7_RELEASE_PASS / REFRESH_GATE_NO_GO / REAL_WORKFLOW_NOT_RUN`
+当前发布执行标记：`V0_7_7_RELEASE_AUTHORIZATION_CONSUMED / REAL_CLICK_BLOCKED_AT_ZERO`
 当前本地Goal标记：`NO_ACTIVE_GOAL / LATEST_USER_RELEASE_AUTHORIZATION_CONTROLS`
-当前计划标记：`V0_7_7_TARGETED_PASS / FINAL_REVIEW_GO / RELEASE_NOT_RUN / REAL_CANVAS_NOT_RUN`
+当前计划标记：`V0_7_7_PRODUCTION_HEALTHY / FOUR_REDUNDANT_IMAGE_LAYOUT_PUTS / NEXT_VERSION_NOT_AUTHORIZED`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`V0_7_6_IMMUTABLE / V0_7_7_AUTHORIZED / REFRESH_ZERO_PUT_BEFORE_EXACTLY_ONE_REAL_EXECUTION`
+当前发布门：`V0_7_7_IMMUTABLE / NEXT_VERSION_NOT_AUTHORIZED / REFRESH_ZERO_PUT_REQUIRED_BEFORE_ANY_REAL_EXECUTION`
 
 ## INC-GEN-028 当前读取顺序
 
 1. 本文件顶部当前区块。
-2. `spec/V0_7_7_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`。
-3. `spec/V0_7_6_PRODUCTION_RECEIPT_2026-09-03.json`（当前生产与事故基线）。
-4. `spec/V0_7_6_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`（历史候选证据）。
-5. `spec/INC_GEN_026_CHECKPOINT.md` 与对应Matrix顶部v0.7.7覆盖层。
+2. `spec/V0_7_7_PRODUCTION_RECEIPT_2026-09-03.json`。
+3. `spec/V0_7_7_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`（历史候选证据）。
+4. `spec/V0_7_6_PRODUCTION_RECEIPT_2026-09-03.json`（历史真实workflow与事故基线）。
+5. `spec/INC_GEN_026_CHECKPOINT.md` 与对应Matrix顶部v0.7.7生产覆盖层。
 6. `TASKS.md`、`上线规矩.md`、`README.md` 顶部 INC-GEN-028 区块。
 
 旧 INC-GEN-026 Plan、Goal、本地 receipt 与 v0.7.0 production receipt 都是历史资料，只能查证，不得作为 INC-GEN-028 的候选、Review 或授权依据。
