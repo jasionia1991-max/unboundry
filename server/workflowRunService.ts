@@ -53,6 +53,7 @@ import {
   type StoredWorkflowPlan,
   type WorkflowRunSummary,
 } from "../types/workflowRuns";
+import { stableValueFingerprint } from "../types/canvasFingerprint";
 
 const activeRunStates = ["running", "stopping"] as const;
 const terminalNodeStates = ["success", "failed", "blocked", "cancelled"] as const;
@@ -931,6 +932,40 @@ function htmlForPlainText(value: string) {
 
 function projectionPatch(nodePlan: StoredNodePlan, task: ReturnType<ReturnType<typeof generationTaskApplication.taskStore>["get"]>) {
   if (!task) return undefined;
+  const generationInputKey = task.modelConfiguration.generationInputKey;
+  const generationOwnershipKey = task.modelConfiguration.generationOwnershipKey;
+  const taskModelConfigurationRevision =
+    task.modelConfiguration.modelConfigurationRevision;
+  const taskModelReleaseRevision = task.modelConfiguration.modelReleaseRevision;
+  const taskModelReleaseRevisionId = taskModelReleaseRevision &&
+      typeof taskModelReleaseRevision === "object" &&
+      !Array.isArray(taskModelReleaseRevision)
+    ? (taskModelReleaseRevision as Record<string, unknown>).revisionId
+    : undefined;
+  if (
+    typeof generationInputKey !== "string" || !generationInputKey ||
+    typeof generationOwnershipKey !== "string" || !generationOwnershipKey ||
+    taskModelConfigurationRevision !== nodePlan.modelConfigurationRevision ||
+    taskModelReleaseRevisionId !== nodePlan.modelReleaseRevision.revisionId
+  ) return undefined;
+  const result = nodePlan.kind === "text"
+    ? (() => {
+        const content = task.resultText?.trim() ?? "";
+        return { content, contentHtml: htmlForPlainText(content) };
+      })()
+    : task.resultAssetId && task.ownerId
+      ? (authoritativeMediaSourceData(
+          task.ownerId,
+          nodePlan.kind,
+          task.resultAssetId,
+        ) as Record<string, unknown>)[`${nodePlan.kind}Src`]
+      : undefined;
+  if (
+    nodePlan.kind === "text"
+      ? typeof (result as { content?: unknown }).content !== "string" ||
+        !(result as { content: string }).content
+      : typeof result !== "string" || !result
+  ) return undefined;
   const common = {
     [`${nodePlan.kind}Generating`]: false,
     [`${nodePlan.kind}GenerationError`]: undefined,
@@ -938,6 +973,13 @@ function projectionPatch(nodePlan: StoredNodePlan, task: ReturnType<ReturnType<t
     [`${nodePlan.kind}GenerationRetryAllowed`]: undefined,
     [`${nodePlan.kind}GenerationRetryBlockCode`]: undefined,
     [`${nodePlan.kind}GenerationRetryBlockReason`]: undefined,
+    groupRunSuccessInputFingerprint: generationInputKey,
+    groupRunSuccessModelConfigurationRevision:
+      nodePlan.modelConfigurationRevision,
+    groupRunSuccessModelReleaseRevision:
+      nodePlan.modelReleaseRevision.revisionId,
+    groupRunSuccessOwnershipKey: generationOwnershipKey,
+    groupRunSuccessResultKey: stableValueFingerprint(result),
     groupRunSuccessTaskId: task.id,
     workflowExecutionRunId: undefined,
   };
@@ -982,7 +1024,9 @@ function projectionPatch(nodePlan: StoredNodePlan, task: ReturnType<ReturnType<t
     videoCreatedAt: new Date(task.updatedAt).toLocaleDateString("zh-CN"),
     videoDuration: media.mediaDurationSeconds,
     videoFileSize: media.mediaByteSize,
+    videoHeight: media.mediaHeight,
     videoPrompt: nodePlan.ownPrompt,
+    videoWidth: media.mediaWidth,
   };
 }
 

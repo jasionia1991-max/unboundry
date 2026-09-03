@@ -1,6 +1,6 @@
 # Unboundry 项目级 Agent 施工守则
 
-> **2026-09-03 INC-GEN-028 当前最高优先级**：生产运行`v0.7.5/schema42`，current=`/opt/unboundry/releases/v0.7.5-inc-gen-028-20260903`，service active/ready、NRestarts0。PR #152、双CI、annotated tag/Release、exact-tag fresh build、全新schema42 locked-exact backup/restore、原子切换与rollback-forward均通过。指定Canvas/group已按授权只点击一次：唯一workflow create成功，10个已创建task/admission/attempt一一对应，文字6、图片3、视频1最终success且无重复Provider POST；但workflow把可恢复的`RESULT_DELAYED`视频先判为失败并阻断最后一致性节点，原视频任务后来自动成功也未重开run，故真实验收为`PARTIAL_NO_GO`。原标签页另有保存失败，新标签页虽载入十项结果并显示云端已保存，但发生17次Canvas PUT，需单独修复。v0.7.5版本、发布和唯一点击授权均已消费；禁止重复执行、移动tag或覆盖Release。下一版仍只用普通patch号，v0.7.6和任何第二次真实执行尚未授权。当前权威为 `spec/UNBOUNDRY_CURRENT_STATE.md` 与 `spec/V0_7_5_PRODUCTION_RECEIPT_2026-09-03.json`。
+> **2026-09-03 INC-GEN-028 当前最高优先级**：生产运行`v0.7.5/schema42`且v0.7.5 tag/Release不可变。用户已明确授权普通patch `v0.7.6`修复、上线，并在精确Canvas `adcb89a5-c1f4-47e4-bbbb-28fff8d81583` / group `group-17ee0cbc-cc81-4b35-9c5e-41040f627033` 再真实执行一次。候选把原先会提前失败的延迟视频改为沿用同一Provider task的自动恢复状态，workflow保持等待；服务端成功写回补齐5个浏览器成功证明字段和视频宽高，阻止刷新时逐节点补写。当前定向safe证据和正式full后的唯一受影响测试复验已闭环；最终冻结独立Review覆盖20/20 tracked文件、62/62 hunks和1/1回执，结论`P0=0/P1=0/P2=0/GO`。GitHub、发布、生产切换和本次唯一真实执行均未完成。未知结果只读核对原run/task，禁止再次点击或新Provider POST。当前权威为 `spec/UNBOUNDRY_CURRENT_STATE.md`、`spec/V0_7_6_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json` 与 `spec/V0_7_5_PRODUCTION_RECEIPT_2026-09-03.json`。
 
 > **以下 v0.7.4 候选段落是历史时点记录，不再是当前授权或生产状态**：其代码随后已合并、发布并部署；其真实点击授权也已消费，但没有产生服务端workflow提交。不得据此再次发布v0.7.4或重复点击。
 
@@ -39,12 +39,11 @@
 INC-GEN-028 当前状态按顺序完整阅读：
 
 1. `spec/UNBOUNDRY_CURRENT_STATE.md` 顶部 INC-GEN-028 当前区块
-2. `spec/V0_7_5_PRODUCTION_RECEIPT_2026-09-03.json`
-3. `spec/V0_7_5_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`（历史候选证据）
-4. `spec/V0_7_4_PRODUCTION_RECEIPT_2026-09-03.json`（历史生产基线）
-5. `spec/V0_7_4_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`（历史）
-6. `spec/INC_GEN_026_CHECKPOINT.md` 与对应Matrix顶部v0.7.5候选覆盖层（历史候选状态）
-7. `TASKS.md`、`上线规矩.md`、`README.md` 顶部 INC-GEN-028 区块
+2. `spec/V0_7_6_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`
+3. `spec/V0_7_5_PRODUCTION_RECEIPT_2026-09-03.json`（当前生产与事故基线）
+4. `spec/V0_7_5_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`（历史候选证据）
+5. `spec/INC_GEN_026_CHECKPOINT.md` 与对应Matrix顶部v0.7.6覆盖层
+6. `TASKS.md`、`上线规矩.md`、`README.md` 顶部 INC-GEN-028 区块
 
 下列旧清单只在查历史事故时按需读取，不得覆盖上面的当前路由或恢复旧授权：
 
@@ -98,7 +97,7 @@ INC-GEN-028 当前状态按顺序完整阅读：
 
 ## 2. 当前授权边界
 
-- **2026-09-03 INC-GEN-028 当前最高权威**：v0.7.5 已完成 PR #152、双 CI、annotated tag/Release、exact-tag fresh build、schema42 locked-exact backup/verify/fresh restore、生产切换和 rollback-forward。唯一真实点击只创建1个workflow run；10个已创建task/admission/Provider attempt一一对应，文字6、图片3、视频1最终success且无重复POST，但workflow在视频`RESULT_DELAYED`后提前失败，最后一致性节点被阻断。原标签页保存失败，新标签页载入十项结果但发生17次Canvas PUT。当前严格为`PRODUCTION_V0_7_5_TECHNICAL_PASS / REAL_WORKFLOW_PARTIAL_NO_GO / USER_RECHECK`；v0.7.5版本、发布和唯一点击授权均已消费，v0.7.6、新发布、新Provider POST和第二次真实执行均未授权；
+- **2026-09-03 INC-GEN-028 当前最高权威**：生产仍为v0.7.5/schema42；其唯一真实执行暴露“可恢复视频使workflow提前失败”和“刷新后17次Canvas PUT”两个直接问题。用户已授权普通patch v0.7.6修复、发布，并在同一精确Canvas/group再真实执行一次。候选只允许沿用原Provider task恢复、不得重复POST；发布后只点击一次，结果不明只读核对。冻结Review、GitHub、tag/Release、备份切换和真实执行尚未完成；
 
 - **2026-09-02 v0.7.3 历史发布授权（已消费）**：用户指定 `v0.7.3` 并授权上线保存提示补丁；该授权已用于版本升级、提交、PR/CI、annotated tag/Release、备份、生产切换和成对 rollback-forward，并在零新增 Provider POST 的实页复验后消费完毕。当时约定后续只用普通patch递增、不再添加`hotfix`后缀；v0.7.4与v0.7.5现已先后发布，该历史句不是下一版本授权；
 

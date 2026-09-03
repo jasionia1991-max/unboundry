@@ -1,21 +1,21 @@
 # Production backup contracts
 
 This directory contains source candidates. Production currently runs
-`v0.7.4/schema42`; that release and its one-click verification authorization
+`v0.7.5/schema42`; that release and its one-click verification authorization
 have been consumed. The current authorized candidate is ordinary patch
-`v0.7.5`. It isolates server-workflow submission from the legacy per-Canvas
-save/single-node lock, completes the authoritative Canvas save before entering
-the new submission lane, removes the redundant render-revision wait, and
-checks abort both after the active-run list and immediately before POST.
-Backup, install, switch and rollback-forward may run only after the frozen
-candidate Review, PR/head and main Quality, immutable tag, Release, and exact-tag
-fresh build are complete. After v0.7.5 is live and technically healthy, the
+`v0.7.6`. It keeps a delayed native video on the same recoverable Provider
+task instead of terminalizing the workflow, and writes the complete durable
+success proof plus video dimensions in the authoritative server projection.
+The final frozen candidate Review is GO with 20/20 tracked files, 62/62 hunks and
+1/1 receipt covered, with P0/P1/P2 all zero. Backup, install, switch and
+rollback-forward may run only after PR/head and main Quality, immutable tag,
+Release, and exact-tag fresh build are complete. After v0.7.6 is live and technically healthy, the
 authorized post-deploy check is exactly one execution of Canvas
 `adcb89a5-c1f4-47e4-bbbb-28fff8d81583`, group
 `group-17ee0cbc-cc81-4b35-9c5e-41040f627033`; an unknown outcome permits only
 read-only reconciliation, never a second POST. Candidate evidence is recorded
-in `spec/V0_7_5_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`; the current
-production baseline is `spec/V0_7_4_PRODUCTION_RECEIPT_2026-09-03.json`.
+in `spec/V0_7_6_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`; the current
+production baseline is `spec/V0_7_5_PRODUCTION_RECEIPT_2026-09-03.json`.
 
 ## Current schema42 candidate
 

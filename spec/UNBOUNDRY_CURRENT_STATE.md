@@ -1,6 +1,6 @@
 # Unboundry 当前权威状态
 
-> **2026-09-03 最新权威：生产运行 v0.7.5/schema42；技术发布通过，但唯一真实工作流验收为 `PARTIAL_NO_GO`。** 指定 Canvas `adcb89a5-c1f4-47e4-bbbb-28fff8d81583` / group `group-17ee0cbc-cc81-4b35-9c5e-41040f627033` 已只点击一次。服务器收到唯一workflow create（request `6a9d6d85-24c8-4b3c-8653-c5672ef576ad`，HTTP202），run为`413c33ea-6ca0-4ca6-b096-d84678b4cd76`；10个已创建任务、10个admission、10个Provider attempt一一对应，没有重试或重复提交。
+> **2026-09-03 最新权威：生产仍运行 v0.7.5/schema42；v0.7.6 已获修复、发布和同一 Canvas 再真实执行一次的授权。** v0.7.5 唯一真实执行证明10个已创建task/admission/attempt无重复，但workflow把仍可恢复的视频任务提前判死，阻断最后节点；新标签页加载又产生17次Canvas PUT。v0.7.6本地候选把延迟视频保留在同一原Provider任务的`recovering`通道，workflow继续等待；服务端成功写回同时落齐浏览器识别所需的5个成功证明字段和视频宽高，避免刷新时逐节点补写。定向验证已闭环，最终冻结独立Review覆盖20/20 tracked文件、62/62 hunks和1/1回执并以`P0=0/P1=0/P2=0/GO`通过；尚未发布、尚未消费本次真实点击。
 
 **生产是 v0.7.5 / schema42。** 能正常工作的部分：6个文字、3个图片和1个视频任务最终全部success；视频沿用原Provider task `124686739`自动找回，未第二次POST。3张生成图、10.042秒MP4、本地上传图均ready，刷新后的新标签页可见并能播放，说明文字、图片、视频和本地上传节点本身能够工作。
 
@@ -8,7 +8,7 @@
 
 **保存证据**：原标签页在服务器已推进Canvas revision后显示保存失败，未接受浏览器可能覆盖状态的刷新确认；新标签页从服务器加载出十项生成结果并显示“已保存到云端”。新标签页加载期间发生17次成功Canvas PUT、graph revision 14→31，属于待修复的写回抖动，不能用“最终看得到”掩盖。
 
-**授权状态**：v0.7.5版本、发布和唯一真实点击授权均已消费；不得重复执行、移动tag或覆盖Release。v0.7.6及任何下一次真实生成尚未授权。当前只允许保留证据、做本地诊断/方案和文档收口；新代码发布与再次真实Canvas验证必须取得新的普通patch版本和明确授权。权威回执为 `spec/V0_7_5_PRODUCTION_RECEIPT_2026-09-03.json`。
+**授权状态**：v0.7.5版本、发布和唯一真实点击授权均已消费，tag/Release保持不可变。用户最新明确授权：`授权修复并上线 v0.7.6，修复后在这个 Canvas 再真实执行一次`。本次允许普通patch v0.7.6的commit/push/PR/双CI、merge后annotated tag/Release、exact-tag fresh build、全新schema42 locked-exact backup/verify/fresh restore、原子切换、v0.7.5 rollback与最终forward，以及部署健康后同一精确Canvas/group只点击一次；结果不明只读核对原run/task，禁止第二次POST。
 
 > **以下 INC-GEN-025 顶部记录是历史声明快照**：它记录当时的 Goal、测试、Review 和发布前状态；v0.6.70 后续已经发布，最终审计推翻了“可直接继续 R8/真实点击”的当前有效性。其历史授权已消费，不得恢复。
 
@@ -16,26 +16,26 @@
 
 更新日期：2026-09-03
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.7.5**
-本地候选代码版本：**v0.7.5**
-当前本地候选说明：`v0.7.5 已冻结并发布；下一版代码尚未获版本与发布授权`
+当前代码包版本：**v0.7.6**
+本地候选代码版本：**v0.7.6**
+当前本地候选说明：`v0.7.6 已完成定向测试、正式full后的唯一受影响测试闭环与冻结独立Review GO；等待发布门`
 当前生产部署版本：**v0.7.5**
 本地候选schema：**42**
 当前治理标记：`CURRENT_V0_7_5_USER_RECHECK`
-当前业务标记：`REAL_WORKFLOW_PARTIAL_NO_GO / RECOVERED_VIDEO_TASK_NOT_REJOINED_TO_RUN / FINAL_NODE_NOT_ADMITTED`
-当前发布执行标记：`V0_7_5_RELEASE_AND_REAL_CLICK_AUTHORIZATION_CONSUMED`
-当前本地Goal标记：`NO_ACTIVE_GOAL / LATEST_USER_AUTHORIZATION_CONTROLS`
-当前计划标记：`V0_7_5_PRODUCTION_TECHNICAL_PASS / REAL_CANVAS_PARTIAL_NO_GO / NEXT_FIX_NOT_AUTHORIZED`
+当前业务标记：`V0_7_6_LOCAL_TARGETED_PASS / RECOVERABLE_VIDEO_STAYS_ATTACHED / COMPLETE_SERVER_PROJECTION_PROOF`
+当前发布执行标记：`V0_7_6_RELEASE_AND_ONE_REAL_CLICK_AUTHORIZED_NOT_CONSUMED`
+当前本地Goal标记：`ACTIVE_V0_7_6_RELEASE_AND_REAL_CANVAS_GOAL / LATEST_USER_AUTHORIZATION_CONTROLS`
+当前计划标记：`V0_7_6_TARGETED_PASS / FROZEN_REVIEW_GO / RELEASE_NOT_RUN / REAL_CANVAS_NOT_RUN`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`V0_7_5_IMMUTABLE / NO_V0_7_6_AUTHORIZATION / NO_SECOND_REAL_EXECUTION`
+当前发布门：`V0_7_5_IMMUTABLE / V0_7_6_AUTHORIZED / EXACTLY_ONE_POST_DEPLOY_REAL_EXECUTION`
 
 ## INC-GEN-028 当前读取顺序
 
 1. 本文件顶部当前区块。
-2. `spec/V0_7_5_PRODUCTION_RECEIPT_2026-09-03.json`。
-3. `spec/V0_7_5_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`（历史候选证据）。
-4. `spec/V0_7_4_PRODUCTION_RECEIPT_2026-09-03.json`（历史生产基线）。
-5. `spec/INC_GEN_026_CHECKPOINT.md` 与对应Matrix顶部v0.7.5候选覆盖层（历史候选状态）。
+2. `spec/V0_7_6_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`。
+3. `spec/V0_7_5_PRODUCTION_RECEIPT_2026-09-03.json`（当前生产与事故基线）。
+4. `spec/V0_7_5_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`（历史候选证据）。
+5. `spec/INC_GEN_026_CHECKPOINT.md` 与对应Matrix顶部v0.7.6覆盖层。
 6. `TASKS.md`、`上线规矩.md`、`README.md` 顶部 INC-GEN-028 区块。
 
 旧 INC-GEN-026 Plan、Goal、本地 receipt 与 v0.7.0 production receipt 都是历史资料，只能查证，不得作为 INC-GEN-028 的候选、Review 或授权依据。

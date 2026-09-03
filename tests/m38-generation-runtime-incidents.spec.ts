@@ -30,6 +30,7 @@ import {
   retrySnapshotCompatibilityProblem,
   runGenerationRecoverySweep,
   settleDetachedGenerationExecution,
+  transitionNativeVideoToAutomaticRecoveryForRuntimeTest,
 } from "../server/generationTasks";
 import { settleSynchronousResultSaveExhaustion } from
   "../server/generationResultCommit";
@@ -2484,6 +2485,51 @@ test("provider result save treats SQLite lock contention as bounded transient fa
     taskId: "save-definitive-task",
   })).rejects.toMatchObject({ code: "FORMAT" });
   expect(definitiveAttempts).toBe(1);
+});
+
+test("native video delayed result remains recoverable on the original Provider task", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-native-video-recovery-"));
+  const store = createGenerationTaskStore(dataDirectory);
+  try {
+    const created = store.create({
+      canvasId: "native-video-recovery-canvas",
+      idempotencyKey: "native-video-recovery-0001",
+      kind: "video",
+      modelConfiguration: { providerProtocol: "native" },
+      nodeId: "native-video-recovery-node",
+      ownerId: "__test__",
+      prompt: "keep the accepted video task alive",
+      providerModelId: "doubao-seedance-2-0-mini-260615",
+      providerProfileId: "native-video-provider",
+    });
+    const running = store.transition(created.task.id, "running")!;
+    store.recordProviderAttempt(running.id);
+    store.setProviderTaskId(running.id, "124686739");
+    const beforeDatabase = openAppDatabase(dataDirectory);
+    const before = generationProviderAttemptCounts(beforeDatabase);
+    beforeDatabase.close();
+
+    const recovering =
+      transitionNativeVideoToAutomaticRecoveryForRuntimeTest(store, running.id);
+
+    expect(recovering).toMatchObject({
+      attempt: 1,
+      errorCode: "AUTOMATIC_RESULT_RECOVERY",
+      providerTaskId: "124686739",
+      state: "recovering",
+    });
+    const verify = openAppDatabase(dataDirectory);
+    expect(generationProviderAttemptCounts(verify)).toEqual(before);
+    verify.close();
+    expect(store.getProviderAttemptForTask(running.id)).toMatchObject({
+      executionAttempt: 1,
+      outcome: "accepted",
+      providerTaskId: "124686739",
+    });
+  } finally {
+    store.close();
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
 });
 
 test("server recovery sweep auto-resumes a failed task that still holds a Provider task id", async () => {
