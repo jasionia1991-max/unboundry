@@ -21,6 +21,7 @@ import { workflowRecoveryPlan } from "../client/src/generation/workflowGeneratio
 import {
   createSaveGateRun,
   runExclusiveCanvasSubmit,
+  runExclusiveServerWorkflowSubmit,
 } from "../client/src/generation/saveGate";
 import {
   isCanvasNotSavedMessage,
@@ -3272,6 +3273,22 @@ test("save gate waits for a durable canvas revision before running the node", as
     "after-abort-start",
   ]);
 
+  let releaseLegacyLane!: () => void;
+  const legacyLaneHold = new Promise<void>((resolve) => {
+    releaseLegacyLane = resolve;
+  });
+  const legacyLane = runExclusiveCanvasSubmit(
+    "canvas-lanes",
+    async () => legacyLaneHold,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await expect(runExclusiveServerWorkflowSubmit(
+    "canvas-lanes",
+    async () => "server-workflow-created",
+  )).resolves.toBe("server-workflow-created");
+  releaseLegacyLane();
+  await legacyLane;
+
   let revision = 14;
   const seen: number[] = [];
   await Promise.all([
@@ -4265,6 +4282,7 @@ test("browser workflow breathes only while admitted and retired recovery never r
   expect(created.status()).toBe(201);
   const project = await created.json() as { id: string };
   let createPosts = 0;
+  let canvasPuts = 0;
   let clientSemanticFingerprint = "";
   let stopPosts = 0;
   let generationTaskPosts = 0;
@@ -4310,6 +4328,15 @@ test("browser workflow breathes only while admitted and retired recovery never r
     },
     nodes: workflowNodes,
   });
+
+  page.on("request", (entry) => {
+    const url = new URL(entry.url());
+    if (
+      entry.method() === "PUT" &&
+      url.pathname === `/api/canvas/${project.id}`
+    ) canvasPuts += 1;
+  });
+  await page.clock.install();
 
   await page.route("**/api/generation-tasks**", async (route) => {
     const entry = route.request();
@@ -4459,6 +4486,75 @@ test("browser workflow breathes only while admitted and retired recovery never r
     await group.click({ position: { x: 5, y: 5 } });
     const execute = group.getByTestId("group-execute-button");
     await expect(execute).toBeEnabled();
+    await page.evaluate(async (canvasId) => {
+      let releaseServerSubmit!: () => void;
+      const holdServerSubmit = new Promise<void>((resolve) => {
+        releaseServerSubmit = resolve;
+      });
+      (window as typeof window & {
+        __releaseServerWorkflowSubmit?: () => void;
+      }).__releaseServerWorkflowSubmit = releaseServerSubmit;
+      void navigator.locks.request(
+        `unboundry:server-workflow-submit:${encodeURIComponent(canvasId)}`,
+        async () => holdServerSubmit,
+      );
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const locks = await navigator.locks.query();
+        if (locks.held?.some(({ name }) =>
+          name ===
+            `unboundry:server-workflow-submit:${encodeURIComponent(canvasId)}`
+        )) return;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      throw new Error("server workflow submit lock was not acquired");
+    }, project.id);
+    const canvasPutsBeforeTimeout = canvasPuts;
+    await execute.click();
+    await expect(execute).toHaveText("停止准备");
+    await page.clock.fastForward(90_100);
+    await expect(page.getByTestId("workflow-run-toast")).toContainText(
+      "整组准备超时，本次尚未提交生成任务",
+    );
+    await expect(execute).toHaveText("整组执行");
+    expect(canvasPuts).toBe(canvasPutsBeforeTimeout);
+    expect(createPosts).toBe(0);
+    expect(generationTaskPosts).toBe(0);
+    await expect.poll(() => page.evaluate(async (canvasId) => {
+      const lockName =
+        `unboundry:server-workflow-submit:${encodeURIComponent(canvasId)}`;
+      const locks = await navigator.locks.query();
+      return locks.pending?.filter(({ name }) => name === lockName).length ?? 0;
+    }, project.id)).toBe(0);
+    await page.evaluate(() => {
+      const state = window as typeof window & {
+        __releaseServerWorkflowSubmit?: () => void;
+      };
+      state.__releaseServerWorkflowSubmit?.();
+      delete state.__releaseServerWorkflowSubmit;
+    });
+    await page.clock.setSystemTime(new Date());
+    await page.clock.resume();
+    await page.evaluate(async (canvasId) => {
+      let releaseLegacySubmit!: () => void;
+      const holdLegacySubmit = new Promise<void>((resolve) => {
+        releaseLegacySubmit = resolve;
+      });
+      (window as typeof window & {
+        __releaseLegacyCanvasSubmit?: () => void;
+      }).__releaseLegacyCanvasSubmit = releaseLegacySubmit;
+      void navigator.locks.request(
+        `unboundry:canvas-submit:${encodeURIComponent(canvasId)}`,
+        async () => holdLegacySubmit,
+      );
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const locks = await navigator.locks.query();
+        if (locks.held?.some(({ name }) =>
+          name === `unboundry:canvas-submit:${encodeURIComponent(canvasId)}`
+        )) return;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      throw new Error("legacy Canvas submit lock was not acquired");
+    }, project.id);
     await execute.dblclick();
     await expect(page.getByTestId("workflow-run-toast")).toContainText(
       "整组已由服务端接收",

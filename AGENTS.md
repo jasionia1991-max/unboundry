@@ -1,6 +1,8 @@
 # Unboundry 项目级 Agent 施工守则
 
-> **2026-09-03 INC-GEN-028 当前最高优先级**：生产运行`v0.7.3/schema42`，current=`/opt/unboundry/releases/v0.7.3-inc-gen-028-20260902`；`v0.7.4`修复、上线及健康上线后精确 Canvas/group 真实执行一次均已授权，但尚未发布或点击。原生产失败请求在创建run前由动态Grok首帧静态误判、35.260秒准入和呼吸灯未映射共同造成，0 run/task/Provider POST/费用。PR #151前四次普通branch CI均为12/13；诊断head `b17b9fd` 的run `33679773692`首次给出确切原因：第二个视频节点已拿到fake Provider结果，保存MP4时macOS runner找不到`ffprobe`，被抹成“服务端无法读取素材时长”并按1/2/4/8/15秒反复重试，workflow因此停在`running [success, admitted]`。这不是入参错误，也不是媒体输出集合重放错误；此前输出集合精确重放保留为额外幂等加固，不再写成CI根因。当前候选在CI安装并显式检查ffprobe，生产也已只读确认`/usr/bin/ffprobe`可探测release MP4；产品代码保留素材元数据错误类别，缺组件/坏媒体立即终止一次，只有容量/超时才重试，避免无限轮询。最新本地m57+m90 `40/40`、m104真实图片→视频fake-Provider链路`13/13`，TypeScript/build/source coverage/4173隔离均通过；修复head `afea935` 的branch CI `33681493693`已在macOS runner确认`/opt/homebrew/bin/ffprobe`、m104 `13/13`和总门`SUCCESS`。同一Reviewer对新增14/14文件、42/42 hunks（含1份回执）完成增量复核，结论`P0=0/P1=0/P2=0/GO`。只有main CI、tag/Release、exact-tag fresh build、备份/切换/rollback-forward全部通过后，才允许精确组只点击一次；结果不明禁止再点，只验收网站工作流、自动回填、保存和刷新，不评价内容审美。当前权威为 `spec/UNBOUNDRY_CURRENT_STATE.md`、`spec/V0_7_4_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`、`spec/V0_7_3_PRODUCTION_RECEIPT_2026-09-02.json` 和 `spec/INC_GEN_026_CHECKPOINT.md` 顶部覆盖层。
+> **2026-09-03 INC-GEN-028 当前最高优先级**：生产运行`v0.7.4/schema42`，current=`/opt/unboundry/releases/v0.7.4-inc-gen-028-20260903`，service active/ready、NRestarts0。v0.7.4发布技术门已通过，但其授权真实点击在UI停留“准备中”90秒，服务器同期没有收到Canvas PUT、workflow create、run、task、admission、attempt或Provider POST，费用风险为0。根因是服务端workflow提交与旧Canvas/单节点提交共用同一`canvas-submit`锁，又在权威保存后重复等待render revision；同一Canvas多标签页的旧工作会把真正workflow POST挡在服务器之外。`v0.7.5`已获版本、上线和同一精确Canvas/group真实执行一次授权：server workflow使用独立锁通道，先完成权威保存，移除冗余revision等待，并在list后及POST前各做abort检查。safe m22 `45/45`、m81 `42/42`、m38 `18/18`及TypeScript/build/source coverage/4173隔离通过；冻结全候选独立Review覆盖19/19 tracked文件、53/53 hunks和2/2回执，结论`P0=0/P1=0/P2=1/GO`。PR/双CI、tag/Release、exact-tag fresh build、全新schema42 locked-exact backup、切换与rollback-forward仍必须完成。上线健康后只点击一次；结果不明禁止再点，只核对原run/task。验收网站能否真正生成、自动回填、保存和刷新，不评价内容审美。当前权威为 `spec/UNBOUNDRY_CURRENT_STATE.md`、`spec/V0_7_5_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`、`spec/V0_7_4_PRODUCTION_RECEIPT_2026-09-03.json` 和 `spec/INC_GEN_026_CHECKPOINT.md` 顶部覆盖层。
+
+> **以下 v0.7.4 候选段落是历史时点记录，不再是当前授权或生产状态**：其代码随后已合并、发布并部署；其真实点击授权也已消费，但没有产生服务端workflow提交。不得据此再次发布v0.7.4或重复点击。
 
 > **以下 INC-GEN-025 段落是历史时点记录，不再是当前授权**：2026-09-01 当时用户 `/goal` 曾激活 INC-GEN-025，并授权 v0.6.70 实现、发布和受控验收。该授权后来已执行并消费；不得据此再次修改、发布或发起真实生成。受保护文件继续永久禁止读取、哈希、修改、暂存、移动或删除。
 
@@ -37,12 +39,12 @@
 INC-GEN-028 当前状态按顺序完整阅读：
 
 1. `spec/UNBOUNDRY_CURRENT_STATE.md` 顶部 INC-GEN-028 当前区块
-2. `spec/V0_7_4_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`
-3. `spec/V0_7_3_PRODUCTION_RECEIPT_2026-09-02.json`（当前生产基线）
-4. `spec/V0_7_3_RELEASE_CANDIDATE_RECEIPT_2026-09-02.json`（历史）
-5. `spec/V0_7_2_PRODUCTION_RECEIPT_2026-09-02.json`（历史）
-6. `spec/INC_GEN_026_CHECKPOINT.md` 顶部 v0.7.4 候选覆盖层
-7. `spec/INC_GEN_026_ACCEPTANCE_MATRIX_2026-09-01.md` 顶部 v0.7.4 覆盖层
+2. `spec/V0_7_5_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`
+3. `spec/V0_7_4_PRODUCTION_RECEIPT_2026-09-03.json`（当前生产基线）
+4. `spec/V0_7_4_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`（历史）
+5. `spec/V0_7_3_PRODUCTION_RECEIPT_2026-09-02.json`（历史）
+6. `spec/INC_GEN_026_CHECKPOINT.md` 顶部 v0.7.5 候选覆盖层
+7. `spec/INC_GEN_026_ACCEPTANCE_MATRIX_2026-09-01.md` 顶部 v0.7.5 覆盖层
 8. `TASKS.md`、`上线规矩.md`、`README.md` 顶部 INC-GEN-028 区块
 
 下列旧清单只在查历史事故时按需读取，不得覆盖上面的当前路由或恢复旧授权：

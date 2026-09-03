@@ -1,6 +1,25 @@
 # Unboundry 绿地复刻当前任务
 
-## INC-GEN-028 v0.7.4 工作流准入与生成状态修复（AUTHORIZED / BRANCH CI PASS / REVIEW GO）
+## INC-GEN-028 v0.7.5 服务端 workflow 提交通道修复（AUTHORIZED / TARGETED PASS / FINAL REVIEW GO）
+
+- [x] 确认生产当前为`v0.7.4/schema42`、current=`/opt/unboundry/releases/v0.7.4-inc-gen-028-20260903`，service active/ready、NRestarts0。
+- [x] 保留v0.7.4唯一真实点击原始结果：页面准备90秒，服务器新增Canvas PUT/workflow run/task/admission/attempt/Provider POST均为0，费用风险为0；不重复点击。
+- [x] 定位根因：server workflow复用旧`canvas-submit:<canvas>`锁，并在权威保存后重复等待render revision；同一Canvas多标签页的遗留工作可阻断真正workflow POST。
+- [x] 新增独立`server-workflow-submit:<canvas>` Web Lock与独立进程内fallback队列；旧Canvas/单节点锁不再阻塞服务端workflow提交。
+- [x] server workflow先在锁外完成权威Canvas保存，进入独立锁后直接compile/list/create；服务端仍权威核对semantic fingerprint、graph revision、活动任务和workflow锁。
+- [x] 在活动run list返回后和真正POST前分别检查abort，关闭“没有POST但准备态不退出”的极窄竞态。
+- [x] safe m22 `45/45`通过：持有旧锁仍只POST一次；持有新锁快进90秒时0 Canvas PUT、0 workflow POST、0 generation-task POST，UI回到“整组执行”且pending lock清零。TypeScript 449/449、production build、source coverage和4173隔离通过。
+- [x] 行为增量独立Review覆盖3/3文件、12/12 hunks，`P0=0/P1=0/P2=1/GO`；P2仅为list返回与第二个abort检查之间没有专门的确定性时序测试，不阻断发布。
+- [x] 用户明确授权：`版本号 v0.7.5，授权上线并在这个 Canvas 真实执行一次。`；版本只用`v0.7.5`，不加hotfix后缀。
+- [x] 完成版本/文档冻结后的全候选独立Review与m81+m38定向门：19/19 tracked文件、53/53 hunks、2/2回执，`P0=0/P1=0/P2=1/GO`；m81 `42/42`、m38最终`18/18`。
+- [ ] 完成commit/push/PR双CI、merge后annotated tag/GitHub Release、exact-tag fresh build。
+- [ ] 完成全新schema42 locked-exact backup/verify/fresh restore、v0.7.4→v0.7.5→v0.7.4→v0.7.5 rollback-forward及生产健康门。
+- [ ] 在 Canvas `adcb89a5-c1f4-47e4-bbbb-28fff8d81583` 的组 `group-17ee0cbc-cc81-4b35-9c5e-41040f627033` 真实点击一次；结果不明禁止重试，只核对原run/task。
+- [ ] 验证服务器收到并执行workflow、生成结果自动回填、云端保存和刷新持久化；不评价内容审美，用户确认前保持`USER_RECHECK`。
+
+候选回执：`spec/V0_7_5_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`。当前生产回执：`spec/V0_7_4_PRODUCTION_RECEIPT_2026-09-03.json`。
+
+## 历史：INC-GEN-028 v0.7.4 工作流准入与生成状态修复（PRODUCTION TECHNICAL PASS / REAL WORKFLOW NO-GO）
 
 - [x] 精确定位生产失败请求 `4666a088-aca9-402b-ba8b-c842023470cb`：35.260秒后HTTP400，未创建 workflow run、generation task、admission、attempt 或 Provider POST，费用风险为0。
 - [x] 在生产数据临时副本定位到 plan index 9 的 Grok Video 3：同组上游图片应提供 `first-frame`，静态准入却报“当前模式至少需要1个首帧输入”。

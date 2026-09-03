@@ -1,0 +1,130 @@
+{
+  "version": "0.7.5",
+  "packageVersion": "0.7.5",
+  "schemaVersion": 42,
+  "createdAt": "2026-09-03T02:18:50Z",
+  "updatedAt": "2026-09-03T02:36:14Z",
+  "status": "LOCAL_CANDIDATE_TARGETED_TEST_PASS_FINAL_REVIEW_GO_RELEASE_NOT_RUN",
+  "source": {
+    "baselineCommit": "b5e5ac10e611d590154572841e6f388bf8a4550a",
+    "baselineTree": "eb148cd41c8902251b0361895206293c7a5625aa",
+    "originMainAtAuthorization": "b5e5ac10e611d590154572841e6f388bf8a4550a",
+    "branch": "codex/v0.7.5-canvas-workflow-submit",
+    "candidateCommit": null,
+    "candidateTree": null,
+    "mergeCommit": null,
+    "mergeTree": null,
+    "tag": null,
+    "annotatedTagObject": null
+  },
+  "authorization": {
+    "text": "版本号 v0.7.5，授权上线并在这个 Canvas 真实执行一次。",
+    "versionSelected": true,
+    "releaseAuthorized": true,
+    "authorizationConsumed": false,
+    "versionConvention": "Ordinary patch release v0.7.5; no hotfix suffix.",
+    "realCanvasExecutionAuthorized": true,
+    "realCanvasExecutionLimit": 1,
+    "duplicateExecutionOnUnknownOutcomeAuthorized": false,
+    "qualityJudgementInScope": false
+  },
+  "productionBeforeRelease": {
+    "version": "0.7.4",
+    "packageVersion": "0.7.4",
+    "schemaVersion": 42,
+    "current": "/opt/unboundry/releases/v0.7.4-inc-gen-028-20260903",
+    "service": "active",
+    "ready": true,
+    "nRestarts": 0,
+    "runtimeNode": "22.23.2",
+    "realWorkflowSubmitOutcome": "NO_SERVER_SUBMISSION",
+    "newCanvasPuts": 0,
+    "newWorkflowRuns": 0,
+    "newGenerationTasks": 0,
+    "newAdmissions": 0,
+    "newProviderAttempts": 0,
+    "newProviderPosts": 0,
+    "billingRisk": false
+  },
+  "incident": {
+    "canvasId": "adcb89a5-c1f4-47e4-bbbb-28fff8d81583",
+    "groupId": "group-17ee0cbc-cc81-4b35-9c5e-41040f627033",
+    "observedAt": "2026-09-02T21:37:50.720Z",
+    "symptom": "The group UI stayed at preparing until its 90-second deadline, while the server received no Canvas save or workflow create request.",
+    "rootCause": [
+      "Server workflow submission reused the legacy per-Canvas submission lock that is also used by tab-local Canvas and single-node work.",
+      "The server workflow path also waited for a redundant render-derived Canvas revision after the authoritative save, allowing another tab's stale work to block the only workflow create.",
+      "An abort could occur after the workflow-run list returned but before submitted was set, leaving a narrow no-POST preparation race."
+    ],
+    "assetRedirectWasRootCause": false
+  },
+  "candidateScope": {
+    "fix": [
+      "Give server workflow create its own per-Canvas Web Lock and in-process fallback lane, isolated from legacy Canvas and single-node submissions.",
+      "Complete the authoritative Canvas save before entering the server-workflow submission lane and remove its redundant render-derived revision wait.",
+      "Keep server-side semantic fingerprint, graph revision, active-task and workflow-lock checks authoritative before create.",
+      "Check abort after the active-run list and again immediately before marking the request submitted and issuing the POST."
+    ],
+    "schemaChange": false,
+    "providerContractChange": false,
+    "protectedFilesTouched": false
+  },
+  "verification": {
+    "safeM22GroupExecution": "45/45 PASS; legacy lock held while server-workflow submit completes once; server-workflow lock held through a 90-second fast-forward produces no Canvas PUT, workflow POST or generation-task POST, returns the UI to the execute state and clears the pending lock.",
+    "safeM81DeploymentHardening": "42/42 PASS; v0.7.5 is an exact final release identity and v0.7.5-hotfix.1 is rejected.",
+    "governanceM38": "Final targeted rerun 18/18 PASS. Two retained earlier documentation-only failures first required the exact CURRENT_V0_7_4_USER_RECHECK marker and then the same CURRENT_V0_7_4 prefix in the three progressive-modularization documents; only those authority markers were corrected before the smallest affected rerun.",
+    "typescript": "449/449 PASS via safe-runner preflight",
+    "productionBuild": "PASS via safe-runner preflight",
+    "sourceCoverage": "PASS",
+    "listener4173": "UNCHANGED",
+    "sourceSha256": "153daf5124c104e24ee210db2c73dbbaf01456c989be06f965dd555b351ea5c0",
+    "preVersionBehaviorDiffSha256": "afe9ec92970e6018ca92e9f22cbf875f5bb9764dcfb74916837e6687d72da0e1",
+    "formalFullRerun": false,
+    "retainedFailedTestEvidence": "One intermediate m22 run failed only because the browser clock remained 90 seconds ahead while the fake run timestamp came from Node time. The test reset browser time after the timeout case; the product code did not change for that test-only mismatch."
+  },
+  "candidateManifest": {
+    "trackedChangedFiles": 19,
+    "trackedHunks": 53,
+    "untrackedReceipts": 2,
+    "totalFiles": 21,
+    "trackedBinaryDiffSha256ExcludingReceipts": "f1eeb1f4a4c6a34a42910ed46c90eb97baf4a4df4504aecc253a93e2e6588044",
+    "frozenReviewStatus": "P0=0/P1=0/P2=1/GO"
+  },
+  "review": {
+    "behaviorIncrement": {
+      "coverage": "3/3 files and 12/12 hunks",
+      "result": "P0=0/P1=0/P2=1/GO",
+      "p2": "No deterministic test targets the extremely narrow list-return-to-second-abort-check interleaving; both production abort checks are present, so this does not block release."
+    },
+    "frozenCandidate": "19/19 tracked files, 53/53 tracked hunks, and 2/2 untracked receipts; P0=0/P1=0/P2=1/GO"
+  },
+  "release": {
+    "pullRequest": "NOT_RUN",
+    "branchCi": "NOT_RUN",
+    "mainCi": "NOT_RUN",
+    "annotatedTag": "NOT_RUN",
+    "githubRelease": "NOT_RUN",
+    "exactTagFreshBuild": "NOT_RUN",
+    "productionBackup": "NOT_RUN",
+    "productionSwitch": "NOT_RUN",
+    "rollbackForward": "NOT_RUN",
+    "productionReceipt": "NOT_RUN"
+  },
+  "postDeployVerification": {
+    "canvasId": "adcb89a5-c1f4-47e4-bbbb-28fff8d81583",
+    "groupId": "group-17ee0cbc-cc81-4b35-9c5e-41040f627033",
+    "mode": "ONE_REAL_GROUP_EXECUTION_AFTER_V0_7_5_IS_LIVE",
+    "status": "NOT_RUN_UNTIL_V0_7_5_IS_LIVE_AND_HEALTHY",
+    "maxGroupExecuteClicks": 1,
+    "retryOnUnknownOutcome": false,
+    "qualityJudgementInScope": false,
+    "requiredEvidence": [
+      "one visible user click",
+      "one authoritative workflow create or a proven fail-closed result",
+      "run, node, task, admission, attempt and Provider identities",
+      "automatic result projection and cloud save",
+      "refresh persistence",
+      "terminal active and unknown-billing counts"
+    ]
+  }
+}

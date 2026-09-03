@@ -1,6 +1,6 @@
 # INC-GEN-026 一次点击工作流可靠生成验收矩阵
 
-状态：`V0_7_4_BRANCH_CI_PASS / INCREMENTAL_REVIEW_GO / RELEASE_AND_REAL_CANVAS_NOT_RUN`
+状态：`V0_7_5_TARGETED_PASS / FROZEN_REVIEW_GO / RELEASE_AND_REAL_CANVAS_NOT_RUN`
 
 本矩阵与 `spec/INC_GEN_026_ONE_CLICK_WORKFLOW_RELIABILITY_FINAL_IMPLEMENTATION_PLAN_2026-09-01.md` 一一对应。
 
@@ -16,7 +16,13 @@
 - `REAL_PROVIDER_PASS`：生产真实任务已有 task/attempt/result/persistence 证据且没有人工回收；不等于本地候选已发布，也不等于用户主观验收。
 - `LOCAL_FIX_PASS`：缺陷修复已有本地直接影响证据；不代表已获得版本号、已发布或线上已修复。
 
-## 2026-09-03 v0.7.4 候选当前覆盖层
+## 2026-09-03 v0.7.5 候选当前覆盖层
+
+生产运行`v0.7.4/schema42`且技术健康，但v0.7.4授权的唯一真实点击在客户端“准备中”耗尽90秒，服务器新增Canvas PUT/workflow run/task/admission/attempt/Provider POST均为0。根因是server workflow与旧Canvas/单节点共用按Canvas提交锁，并在权威保存后重复等待render revision；多标签页遗留工作可以让真正workflow POST完全不到服务器。v0.7.5已获得版本、发布及同一Canvas/group真实执行一次授权。
+
+本地候选为server workflow建立独立Web Lock和fallback队列，先完成权威Canvas保存，再进入独立通道compile/list/create；服务端语义、graph revision、活动任务和workflow锁围栏保持不变。list后和POST前各检查abort。safe m22 `45/45`、m81 `42/42`、m38最终`18/18`、TypeScript 449/449、build/source coverage/4173隔离通过；冻结全候选Review覆盖19/19 tracked文件、53/53 hunks和2/2回执，结论`P0=0/P1=0/P2=1/GO`。GitHub、tag、生产和真实点击仍未执行。详细门见IG26-133～139和`spec/V0_7_5_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`。
+
+## 历史：2026-09-03 v0.7.4 候选覆盖层
 
 生产仍运行`v0.7.3/schema42`。v0.7.4已经获得修复、发布和上线后精确Canvas/group执行一次的最新授权。PR #151已打开；前四次普通branch CI与诊断run `33679773692`均保留12/13失败。诊断run首次确认第二个视频节点已拿到fake Provider MP4，保存时因macOS runner没有`ffprobe`而抛出“服务端无法读取素材时长”；该永久错误被当成未知错误反复退避，workflow因此保持`running [success, admitted]`。所以这次CI失败不是入参逻辑，也不是此前推断的输出集合重放；精确重放继续作为额外幂等加固。修复head `afea935` 的branch CI `33681493693`已在macOS runner安装并确认ffprobe，m104 `13/13`和总门通过；产品会保留元数据错误类型，只重试资源繁忙/超时，缺组件或不可读媒体立即终态。生产已只读确认`/usr/bin/ffprobe`可探测release测试MP4。同一Reviewer对新增14/14文件、42/42 hunks（含1份回执）完成增量Review，结论`P0=0/P1=0/P2=0/GO`。main CI、tag/Release、生产切换和真实点击尚未执行。原生产失败请求`4666a088-aca9-402b-ba8b-c842023470cb`仍证明0 run/task/admission/attempt/Provider POST；其直接根因为动态Grok首帧角色被静态准入误判，逐节点数据库重复打开令400拖到35.260秒并被浏览器30秒超时遮蔽，服务端节点状态又未驱动原呼吸灯。
 
@@ -222,3 +228,15 @@
 | IG26-130 | v0.7.4发布 | NOT_RUN | PR/双CI、merge后annotated tag/Release、exact-tag fresh build、schema42 backup/restore、切换和rollback-forward全部通过。 |
 | IG26-131 | 精确Canvas真实执行一次 | NOT_RUN | v0.7.4生产健康后，只点击目标group一次；记录run/node/task/attempt/Provider次数、呼吸灯、自动回填、保存与刷新。结果不明不得重试。 |
 | IG26-132 | 用户最终验收 | USER_RECHECK | 用户确认网站正常生成工作流；不把图片/视频审美纳入本次技术验收。 |
+
+## L. INC-GEN-028 / v0.7.5 服务端 workflow 提交通道
+
+| ID | 验收项 | 当前状态 | 通过标准 |
+|---|---|---|---|
+| IG26-133 | v0.7.4真实点击原始边界 | DOC_PASS | 精确Canvas/group只点击一次，客户端90秒准备超时；服务器0 Canvas PUT、0 workflow run/task/admission/attempt/Provider POST，未重试、费用风险0。 |
+| IG26-134 | 独立server workflow锁 | AUTO_PASS | 持有旧`canvas-submit`锁时，server workflow仍从独立锁通道精确POST一次；旧Canvas/单节点工作不能阻断它。 |
+| IG26-135 | 保存与revision边界 | AUTO_PASS | 权威Canvas保存先完成；server workflow不再重复等待render-derived revision，服务端仍核对semantic fingerprint、graph revision、活动任务和workflow锁。 |
+| IG26-136 | 超时与abort收口 | AUTO_PASS | 持有新server-workflow锁并快进90秒时，0 Canvas PUT、0 workflow/generation-task POST，UI恢复、pending lock清零；list后及POST前双abort检查。 |
+| IG26-137 | v0.7.5版本与冻结Review | AUTO_PASS | package/lock/runtime allowlist/m81、权威文档和候选回执一致；m81 `42/42`、m38最终`18/18`；独立Reviewer覆盖19/19 tracked文件、53/53 hunks和2/2回执，P0/P1均为0。 |
+| IG26-138 | v0.7.5发布 | NOT_RUN | PR/双CI、merge后annotated tag/Release、exact-tag fresh build、全新schema42 backup/verify/fresh restore、切换和rollback-forward全部通过。 |
+| IG26-139 | 精确Canvas真实执行与保存 | NOT_RUN | v0.7.5健康后只点击一次；服务器产生唯一workflow提交并按原run/task收口，结果自动回填、云端保存并在刷新后保持。结果不明禁止重试。 |

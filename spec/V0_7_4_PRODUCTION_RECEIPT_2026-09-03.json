@@ -1,0 +1,78 @@
+{
+  "version": "0.7.4",
+  "packageVersion": "0.7.4",
+  "schemaVersion": 42,
+  "createdAt": "2026-09-03T02:18:50Z",
+  "updatedAt": "2026-09-03T02:18:50Z",
+  "status": "PRODUCTION_V0_7_4_TECHNICAL_PASS_POST_DEPLOY_WORKFLOW_NO_SERVER_SUBMISSION_SUPERSEDED_BY_V0_7_5",
+  "source": {
+    "pullRequest": 151,
+    "pullRequestState": "MERGED",
+    "branchQualityRun": 33682365619,
+    "mergeCommit": "b5e5ac10e611d590154572841e6f388bf8a4550a",
+    "mergeTree": "eb148cd41c8902251b0361895206293c7a5625aa",
+    "mainQualityRun": 33682545155,
+    "tag": "v0.7.4",
+    "annotatedTagObject": "42d9ffe0f4ddff25034d159075805cac8bd181cc",
+    "tagPeeledCommit": "b5e5ac10e611d590154572841e6f388bf8a4550a",
+    "githubRelease": "https://github.com/jasionia1991-max/unboundry/releases/tag/v0.7.4"
+  },
+  "authorization": {
+    "text": "授权修复并上线 v0.7.4，修复后在这个 Canvas 真实执行一次。",
+    "releaseAuthorizationConsumed": true,
+    "realCanvasExecutionAuthorizationConsumed": true,
+    "duplicateExecutionOnUnknownOutcomeAuthorized": false,
+    "qualityJudgementInScope": false
+  },
+  "production": {
+    "current": "/opt/unboundry/releases/v0.7.4-inc-gen-028-20260903",
+    "service": "active",
+    "enabled": true,
+    "nRestarts": 0,
+    "runtimeNode": "22.23.2",
+    "publicVersion": "0.7.4",
+    "publicLive": true,
+    "publicReady": true,
+    "runtimeRole": "active",
+    "mutationsAccepted": true,
+    "schemaVersion": 42,
+    "ffprobe": "AVAILABLE_AND_RELEASE_MP4_PROBE_PASS"
+  },
+  "backupAndRollback": {
+    "lockedExactBackup": {
+      "backupId": "3d65d6e6-e3f2-49c7-a427-21875a180779",
+      "packageDirectory": "/var/lib/unboundry-rollbacks/v0.7.4-20260903-backup/3d65d6e6-e3f2-49c7-a427-21875a180779.ubbackup",
+      "databaseLogicalSha256": "b9b6dd408889351fb2ea878f89b853b134572af707543d50eac49594971535ba",
+      "schemaVersion": 42,
+      "mediaFiles": 355,
+      "ossMirrors": 616,
+      "secretFiles": 3,
+      "backupBlockingIssues": 0,
+      "verify": "PASS"
+    },
+    "freshRestore": {
+      "path": "/var/lib/unboundry-v074-restores/fresh",
+      "result": "PASS"
+    },
+    "recoveryKeys": "/var/lib/unboundry-backup-keys/v0.7.4-20260903",
+    "rollbackForward": "V0_7_4_FORWARD_THEN_V0_7_3_ROLLBACK_THEN_V0_7_4_FINAL_FORWARD_PASS",
+    "ossUploadDelete": 0
+  },
+  "postDeployRealCanvas": {
+    "canvasId": "adcb89a5-c1f4-47e4-bbbb-28fff8d81583",
+    "groupId": "group-17ee0cbc-cc81-4b35-9c5e-41040f627033",
+    "startedAt": "2026-09-02T21:37:50.720Z",
+    "clicks": 1,
+    "uiOutcome": "PREPARING_UNTIL_90_SECOND_DEADLINE",
+    "serverOutcome": "NO_SUBMISSION_RECEIVED",
+    "newCanvasPuts": 0,
+    "newWorkflowRuns": 0,
+    "newGenerationTasks": 0,
+    "newAdmissions": 0,
+    "newProviderAttempts": 0,
+    "newProviderPosts": 0,
+    "billingRisk": false,
+    "result": "PRODUCTION_RELEASE_PASS_BUT_REAL_WORKFLOW_NO_GO",
+    "retryPerformed": false
+  }
+}
