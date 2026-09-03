@@ -1,27 +1,21 @@
 # Production backup contracts
 
-This directory contains source candidates. Production currently runs
-`v0.7.6/schema42`; that release and its one-click verification authorization
-have been consumed. Its real workflow reached 11/11 success without duplicate
-tasks, admissions, or Provider attempts, but refresh produced seven redundant
-Canvas PUTs and one stale-recovery race produced a Canvas 409 plus a false task
-read warning. The current authorized candidate is ordinary patch `v0.7.7`.
-It clears the two stale standalone-recovery keys in authoritative text-success
-projection and stops in-flight text, image, video, and audio recovery when a
-server workflow lock or run binding takes ownership. Targeted m103, m41 and m81
-and governance m38 are green. The frozen Review covered 26/26 tracked files,
-65/65 hunks and 2/2 receipts with P0/P1/P2 all zero and a GO verdict. Backup,
-install, switch and rollback-forward may run only after PR/head and
-main Quality, immutable tag, Release, and exact-tag fresh build are complete.
-After v0.7.7 is live and technically healthy, first refresh Canvas
-`adcb89a5-c1f4-47e4-bbbb-28fff8d81583` and prove zero redundant PUT, zero 409,
-zero false warning and zero submission. Only then execute group
-`group-17ee0cbc-cc81-4b35-9c5e-41040f627033` exactly once. An unknown outcome
-permits only read-only reconciliation, never a second POST. Candidate evidence
-is recorded in `spec/V0_7_7_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`; the
-production baseline is `spec/V0_7_6_PRODUCTION_RECEIPT_2026-09-03.json`.
+This directory contains production operation sources. Production currently runs
+`v0.7.7/schema42`; PR #155, branch/main Quality, immutable tag/Release,
+exact-tag build, locked-exact backup/restore, switch and rollback-forward all
+passed. The v0.7.7 release authorization is consumed. Its ordered post-deploy
+refresh gate did not pass: the server Canvas produced four redundant successful
+PUTs that changed only three image-card heights. There was no 409, false task
+read warning or generation submission during refresh, but the required zero-save
+condition failed, so group `group-17ee0cbc-cc81-4b35-9c5e-41040f627033` was not
+clicked and no real workflow was executed. The root cause is the image preview
+hydration path rewriting persisted style dimensions after load. There is no
+authorized next-version candidate; code repair, release and real execution need
+new authorization. Current evidence is recorded in
+`spec/V0_7_7_PRODUCTION_RECEIPT_2026-09-03.json`; candidate and v0.7.6 receipts
+are historical evidence only.
 
-## Current schema42 candidate
+## Current schema42 production contract
 
 `backup-to-oss-retention.mjs` calls the signed, encrypted
 `scripts/backup-data.mjs` contract. It requires explicit absolute source,
@@ -51,9 +45,9 @@ Before any future installation, freeze an immutable release and record:
 - systemd service/timer unit hashes and the next scheduled time;
 - backup, verify, fresh-restore, fake-OSS, and zero-egress receipts.
 
-The current one-time release switching authorization is recorded in the
-INC-GEN-026 Checkpoint. Timer installation and real OSS upload/delete/restore
-still require separate user authorization.
+The consumed v0.7.7 release authorization and failed refresh gate are recorded
+in the INC-GEN-026 Checkpoint. Every future release switch, timer installation,
+and real OSS upload/delete/restore still requires separate user authorization.
 
 ## Historical schema39 artifact
 

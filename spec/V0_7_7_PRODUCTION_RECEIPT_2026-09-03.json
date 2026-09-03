@@ -1,0 +1,180 @@
+{
+  "version": "0.7.7",
+  "packageVersion": "0.7.7",
+  "schemaVersion": 42,
+  "createdAt": "2026-09-03T09:12:00Z",
+  "status": "PRODUCTION_V0_7_7_RELEASE_PASS_REFRESH_GATE_NO_GO_REAL_WORKFLOW_NOT_RUN",
+  "source": {
+    "pullRequest": 155,
+    "pullRequestState": "MERGED",
+    "pullRequestUrl": "https://github.com/jasionia1991-max/unboundry/pull/155",
+    "branch": "codex/post-v076-canvas-convergence",
+    "candidateCommit": "e1893936fe9e3a44e49766e08bcaefd20500b964",
+    "candidateTree": "4eb9908d432bb54aa644ae3e4231f9e724992f2a",
+    "branchQualityRun": 33734453366,
+    "mergeCommit": "1b10f81eb6889dabf586c4e3908231ba3d8d5315",
+    "mergeTree": "4eb9908d432bb54aa644ae3e4231f9e724992f2a",
+    "mainQualityRun": 33734680195,
+    "tag": "v0.7.7",
+    "annotatedTagObject": "edd9c8cd0d52ed2dc6d22fa8e311de32fe979fa0",
+    "tagPeeledCommit": "1b10f81eb6889dabf586c4e3908231ba3d8d5315",
+    "githubRelease": "https://github.com/jasionia1991-max/unboundry/releases/tag/v0.7.7",
+    "releaseArchiveSha256": "2ef13dba2987c7e103b544beac5466a6e4fbfc313255c43eb4071f3209b7e672",
+    "releaseInventorySha256": "6a41db24f9aa05b30985e0567ec46b08bd0e1b50372de23e13ce98d7e0b166dd",
+    "publicAssetsAggregateSha256": "f4cd372272c0c96048054c0084c0affd242ffb11b9abfac8b652aaf6aa5091fe"
+  },
+  "authorization": {
+    "text": "版本号 v0.7.7，授权上线；上线后先刷新这个 Canvas 验证 0 次多余保存，再真实执行一次，验证无误报、无 409、无重复提交。",
+    "releaseAuthorizationConsumed": true,
+    "realCanvasExecutionAuthorizationConsumed": false,
+    "realCanvasExecutionBlockedByFailedRefreshGate": true,
+    "realCanvasExecutionLimit": 1,
+    "realCanvasExecutionClicks": 0,
+    "duplicateExecutionOnUnknownOutcomeAuthorized": false,
+    "nextVersionAuthorized": false,
+    "qualityJudgementInScope": false
+  },
+  "production": {
+    "current": "/opt/unboundry/releases/v0.7.7-inc-gen-029-20260903",
+    "service": "active",
+    "enabled": true,
+    "nRestarts": 0,
+    "runtimeNode": "22.23.2",
+    "publicVersion": "0.7.7",
+    "publicLive": true,
+    "publicReady": true,
+    "runtimeRole": "active",
+    "mutationsAccepted": true,
+    "schemaVersion": 42,
+    "publicAssetsMatchRelease": true
+  },
+  "backupAndRollback": {
+    "lockedExactBackup": {
+      "backupId": "71103876-7a75-4342-802a-1fb1c1871b84",
+      "packagePath": "/var/lib/unboundry-rollbacks/v0.7.7-20260903-backup/71103876-7a75-4342-802a-1fb1c1871b84.ubbackup",
+      "databaseLogicalSha256": "5c24e047edfad551347c7822203f613b2bbc183d11e1fdd0622c8e889110af46",
+      "schemaVersion": 42,
+      "verify": "PASS"
+    },
+    "freshRestore": {
+      "path": "/var/lib/unboundry-v077-restores/fresh",
+      "result": "PASS",
+      "integrity": "ok",
+      "foreignKeyViolations": 0,
+      "tableCountMatches": "34/34"
+    },
+    "recoveryKeys": "/var/lib/unboundry-backup-keys/v0.7.7-20260903",
+    "rollbackForward": "V0_7_7_FORWARD_THEN_V0_7_6_ROLLBACK_THEN_V0_7_7_FINAL_FORWARD_PASS",
+    "ossUploadDelete": 0
+  },
+  "postDeployRefreshGate": {
+    "canvasId": "adcb89a5-c1f4-47e4-bbbb-28fff8d81583",
+    "ownerId": "02c9dbba-5b72-408b-9045-eaaec20b799a",
+    "groupId": "group-17ee0cbc-cc81-4b35-9c5e-41040f627033",
+    "groupTitle": "服装一键带货｜P1抖音OOTD与短视频",
+    "existingTabLocalRecoveryGate": "A prior unconfirmed local save snapshot differed from the server copy; the page correctly preserved both and did not write. The server-version action opened a separate tab without overwriting either copy.",
+    "serverVersionTab": {
+      "persistenceReady": true,
+      "savedIndicator": true,
+      "falseTaskReadAlertObserved": false,
+      "canvas409Responses": 0,
+      "workflowCreatePosts": 0,
+      "generationTaskPosts": 0,
+      "successfulCanvasPuts": 4,
+      "canvasRevisionBefore": 71,
+      "canvasRevisionAfter": 75,
+      "graphRevisionBefore": 46,
+      "graphRevisionAfter": 50,
+      "saveSessionId": "4e0c4e8b-f109-4f27-992b-23e7cceec965",
+      "saveSequenceAfter": 4,
+      "requestIds": [
+        "4fbe54c6-2839-4890-8d60-c3ef83dfd5ba",
+        "e702f9f5-3791-4652-a82a-6aa791495ff8",
+        "b2a73dc2-ba86-4a12-97da-6c4172aea7cc",
+        "8dff0369-1fc2-4107-b898-cc3441283335"
+      ],
+      "requestStatuses": [200, 200, 200, 200]
+    },
+    "ledgerBefore": {
+      "generationTasks": 1064,
+      "generationAdmissions": 984,
+      "providerAttempts": 1075,
+      "workflowRuns": 6,
+      "mediaAssets": 978,
+      "mediaPublications": 569,
+      "paidProviderRequests": 1063
+    },
+    "ledgerAfter": {
+      "generationTasks": 1064,
+      "generationAdmissions": 984,
+      "providerAttempts": 1075,
+      "workflowRuns": 6,
+      "mediaAssets": 978,
+      "mediaPublications": 569,
+      "paidProviderRequests": 1063
+    },
+    "nodeLayoutWrites": [
+      {
+        "sequence": 1,
+        "nodeId": "image-82c86b57-23a2-42ff-bb8f-9982a0de9974",
+        "title": "短视频动作封面组",
+        "styleHeightBefore": 250,
+        "styleHeightAfter": 441
+      },
+      {
+        "sequence": 2,
+        "nodeId": "image-07b2cd59-e041-42d7-b9f2-b3c215e50df0",
+        "title": "服装主体标准化",
+        "styleHeightBefore": 333,
+        "styleHeightAfter": 250
+      },
+      {
+        "sequence": 3,
+        "nodeId": "image-62ca56f6-3905-4590-9e1c-cafe629c9951",
+        "title": "OOTD种草图",
+        "styleHeightBefore": 333,
+        "styleHeightAfter": 250
+      },
+      {
+        "sequence": 4,
+        "nodeId": "image-82c86b57-23a2-42ff-bb8f-9982a0de9974",
+        "title": "短视频动作封面组",
+        "styleHeightBefore": 441,
+        "styleHeightAfter": 250
+      }
+    ],
+    "contentDataChanged": false,
+    "edgeDataChanged": false,
+    "viewportChanged": false,
+    "quietFollowUpWrites": 0,
+    "result": "NO_GO_ZERO_REDUNDANT_SAVE_GATE_FAILED",
+    "realWorkflowExecuted": false,
+    "retryPerformed": false,
+    "userPass": false
+  },
+  "rootCause": {
+    "classification": "CLIENT_IMAGE_PREVIEW_HYDRATION_LAYOUT_WRITE",
+    "summary": "Image preview load and deferred-hydration auto-fit paths treat persisted style dimensions as if the node had no explicit size. They call setNodes, rewrite durable style height and therefore change the Canvas fingerprint. Independently timed image loads can enqueue separate Canvas PUTs; ReactFlow measured changes alone are non-durable.",
+    "codeEvidence": [
+      "client/src/canvas/ImageNode.tsx:4810-4840",
+      "client/src/canvas/ImageNode.tsx:5853-5891",
+      "types/canvasFingerprint.ts:40-50",
+      "client/src/canvas/canvasPersistenceFacade.ts:1197-1238,1523-1555,1990-2002"
+    ],
+    "v077FixAssessment": "The v0.7.7 stale text-recovery and workflow-lock race fix removed the seven text recovery writes and no refresh 409 or false task-read alert was observed. The strict zero-save gate exposed this separate pre-existing image layout hydration write path.",
+    "realGenerationRisk": "No real workflow click or Provider submission was made after the failed gate, so the requested run-level no-409/no-false-alert/no-duplicate acceptance was not executed and cannot be claimed."
+  },
+  "documentationClosure": {
+    "receiptJson": "PASS",
+    "diffCheck": "PASS",
+    "safeM38": "19/19 PASS with TypeScript 449/449, production build, source coverage, architecture and listener-4173 isolation on the documentation-only tree",
+    "initialAttempt": "Preflight passed but execution stopped before product tests because this worktree had no node_modules. Dependencies were prepared with the pinned Node 22.23.1/npm 10.9.8 offline cache; the next run passed."
+  },
+  "followUp": {
+    "suggestedVersion": "0.7.8",
+    "versionAuthorized": false,
+    "releaseAuthorized": false,
+    "requiredFix": "Preserve existing persisted style/measured/runtime dimensions in both immediate and deferred image preview auto-fit paths; image load must not mutate a hydrated Canvas solely because pixels became available.",
+    "requiredAcceptance": "After a separately authorized release, refresh the exact server Canvas and observe zero Canvas PUT before consuming exactly one real group execution click."
+  }
+}
