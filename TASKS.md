@@ -1,6 +1,22 @@
 # Unboundry 绿地复刻当前任务
 
-## INC-GEN-028 v0.7.6 工作流恢复与刷新写回修复（TARGETED PASS / RELEASE AUTHORIZED）
+## INC-GEN-028 v0.7.7 Canvas 零多余保存与恢复竞态修复（TARGETED PASS / REVIEW GO / RELEASE AUTHORIZED）
+
+- [x] 冻结v0.7.6生产事实：目标workflow run `af090f9a-a3d9-40f2-9c73-1ed0ad47c20a` 11/11成功，11个task/admission/Provider attempt无重复；刷新却产生7次多余Canvas PUT，运行中有1次409和“任务状态查询失败”误报。
+- [x] 修复文字投影：服务端文字成功写回清掉旧`textGenerationInputKey`和`textGenerationOwnershipKey`，保留task身份与完整workflow成功证明，刷新不再把7个成功文字节点当成待恢复任务。
+- [x] 修复四类节点竞态：服务端workflow锁或`workflowExecutionRunId`任一存在即阻断旧单节点恢复；锁在恢复中到达时abort并用生命周期围栏拒绝迟到结果。
+- [x] 增加文字/图片/视频/音频四类动态浏览器回归；迟到且忽略abort的旧task成功也不能Canvas PUT、不能提交task、不能触达Provider、不能显示误报。
+- [x] 定向safe证据：m103 `11/11`、m41 `59/59`、m81 `42/42`；TypeScript 449/449、production build、source coverage、架构和4173隔离通过；库存1184。按风险门不重复正式full。
+- [x] 用户授权：普通patch `v0.7.7`上线；上线后先刷新目标Canvas验证0次多余保存，再真实执行目标group一次，验证无误报、无409、无重复提交；结果不明禁止第二次点击。
+- [x] 治理m38最终`19/19`通过；前两次各`18/19`只暴露当前权威版本标记漂移，精确修正文档后关闭，产品代码未变。
+- [x] 完成冻结全候选独立逐文件/逐hunk Review：26/26 tracked文件、65/65 hunks、2/2回执，`P0=0/P1=0/P2=0/GO`。
+- [ ] 完成commit/push、PR/双CI、merge后annotated tag/GitHub Release、exact-tag fresh build。
+- [ ] 完成全新schema42 locked-exact backup/verify/fresh restore、v0.7.6→v0.7.7→v0.7.6→v0.7.7 rollback-forward及生产健康门。
+- [ ] 登录普通Chrome先刷新Canvas `adcb89a5-c1f4-47e4-bbbb-28fff8d81583`并证明0 Canvas PUT、0 409、0误报、0提交；通过后才对group `group-17ee0cbc-cc81-4b35-9c5e-41040f627033`点击一次并证明无重复提交。
+
+候选回执：`spec/V0_7_7_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`。当前生产与故障基线：`spec/V0_7_6_PRODUCTION_RECEIPT_2026-09-03.json`。
+
+## 历史：INC-GEN-028 v0.7.6 工作流恢复与刷新写回修复（WORKFLOW 11/11 PASS / CANVAS CONVERGENCE NO-GO）
 
 - [x] 以v0.7.5生产真实run `413c33ea-6ca0-4ca6-b096-d84678b4cd76`为故障基线：视频原Provider task最终成功，但workflow提前`RESULT_DELAYED`失败并阻断最后节点；新标签页加载另产生17次Canvas PUT。
 - [x] 修复延迟视频收口：后台慢轮询耗尽时转入`recovering / AUTOMATIC_RESULT_RECOVERY`，保留同一task、attempt和providerTaskId，不把workflow节点判死，不发第二次Provider POST。
@@ -10,11 +26,11 @@
 - [x] 正式full执行124/124 specs：1178/1179通过，唯一失败是m94旧版本正则不接受0.7.6；只扩展该测试断言后，最小受影响m94 `4/4`通过。产品测试无失败，未重复跑full。
 - [x] 用户授权：`授权修复并上线 v0.7.6，修复后在这个 Canvas 再真实执行一次`；版本仅为`v0.7.6`，不加hotfix后缀。
 - [x] 冻结全候选并完成独立逐文件/逐hunk Review：最终20/20 tracked文件、62/62 hunks、1/1回执，`P0=0/P1=0/P2=0/GO`。
-- [ ] 完成commit/push、PR/双CI、merge后annotated tag/GitHub Release、exact-tag fresh build。
-- [ ] 完成全新schema42 locked-exact backup/verify/fresh restore、v0.7.5→v0.7.6→v0.7.5→v0.7.6 rollback-forward及生产健康门。
-- [ ] 在精确Canvas `adcb89a5-c1f4-47e4-bbbb-28fff8d81583` / group `group-17ee0cbc-cc81-4b35-9c5e-41040f627033` 只点击一次；核对唯一run、每节点task/admission/attempt/Provider边界、最终节点、自动保存和刷新后0冗余PUT。结果不明禁止重试。
+- [x] 完成commit/push、PR #154、双CI、merge后annotated tag/GitHub Release、exact-tag fresh build。
+- [x] 完成全新schema42 locked-exact backup/verify/fresh restore、v0.7.5→v0.7.6→v0.7.5→v0.7.6 rollback-forward及生产健康门。
+- [x] 在精确Canvas/group只点击一次；唯一run和11个节点全部success，task/admission/attempt无重复，结果自动保存。刷新后仍有7次冗余PUT，运行中有1次409和误报，因此Canvas收敛项NO-GO且没有重试。
 
-候选回执：`spec/V0_7_6_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`。生产与故障基线：`spec/V0_7_5_PRODUCTION_RECEIPT_2026-09-03.json`。
+生产回执：`spec/V0_7_6_PRODUCTION_RECEIPT_2026-09-03.json`。历史候选回执：`spec/V0_7_6_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`。
 
 ## 历史：INC-GEN-028 v0.7.5 服务端 workflow 提交通道修复（PRODUCTION TECHNICAL PASS / REAL WORKFLOW PARTIAL NO-GO）
 

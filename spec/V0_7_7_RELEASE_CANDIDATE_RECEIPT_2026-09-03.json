@@ -1,0 +1,120 @@
+{
+  "version": "0.7.7",
+  "packageVersion": "0.7.7",
+  "schemaVersion": 42,
+  "createdAt": "2026-09-03T07:59:11Z",
+  "updatedAt": "2026-09-03T08:27:49Z",
+  "status": "LOCAL_TARGETED_GOVERNANCE_AND_FINAL_REVIEW_GO_RELEASE_NOT_RUN",
+  "source": {
+    "baselineCommit": "9a669a3b313658a9056b5cc62994c9748eb41b73",
+    "baselineTree": "b013707b9c5583b5916e24930dc3855a8ffe4016",
+    "originMainAtAuthorization": "9a669a3b313658a9056b5cc62994c9748eb41b73",
+    "branch": "codex/post-v076-canvas-convergence",
+    "candidateCommit": null,
+    "candidateTree": null,
+    "mergeCommit": null,
+    "mergeTree": null,
+    "tag": null,
+    "annotatedTagObject": null
+  },
+  "authorization": {
+    "text": "版本号 v0.7.7，授权上线；上线后先刷新这个 Canvas 验证 0 次多余保存，再真实执行一次，验证无误报、无 409、无重复提交。",
+    "versionSelected": true,
+    "releaseAuthorized": true,
+    "authorizationConsumed": false,
+    "versionConvention": "Ordinary patch release v0.7.7; no hotfix suffix.",
+    "realCanvasExecutionAuthorized": true,
+    "realCanvasExecutionLimit": 1,
+    "realCanvasExecutionClicks": 0,
+    "refreshBeforeExecutionRequired": true,
+    "duplicateExecutionOnUnknownOutcomeAuthorized": false,
+    "qualityJudgementInScope": false
+  },
+  "productionBeforeRelease": {
+    "version": "0.7.6",
+    "packageVersion": "0.7.6",
+    "schemaVersion": 42,
+    "current": "/opt/unboundry/releases/v0.7.6-inc-gen-028-20260903",
+    "service": "active",
+    "ready": true,
+    "nRestarts": 0,
+    "successfulWorkflowRun": "af090f9a-a3d9-40f2-9c73-1ed0ad47c20a",
+    "successfulWorkflowNodes": 11,
+    "refreshRedundantCanvasPuts": 7,
+    "canvas409DuringRun": 1,
+    "misleadingTaskReadAlertObserved": true
+  },
+  "incident": {
+    "canvasId": "adcb89a5-c1f4-47e4-bbbb-28fff8d81583",
+    "ownerId": "02c9dbba-5b72-408b-9045-eaaec20b799a",
+    "groupId": "group-17ee0cbc-cc81-4b35-9c5e-41040f627033",
+    "rootCause": [
+      "Authoritative text success left stale standalone-recovery input and ownership keys on seven text nodes, causing one unnecessary Canvas PUT per text node after refresh.",
+      "All four node recovery effects could continue while the server workflow had already locked the node but before workflowExecutionRunId was projected, so a late old-task result could race the workflow save, return 409 and show a false read-failure alert."
+    ]
+  },
+  "candidateScope": {
+    "fix": [
+      "Clear textGenerationInputKey and textGenerationOwnershipKey in authoritative text-success projection while retaining task identity and complete workflow success proof.",
+      "Treat either an authoritative server workflow lock or an existing workflowExecutionRunId as a hard stop for stale single-node recovery.",
+      "Abort and lifecycle-fence in-flight stale recovery for text, image, video and audio when that workflow lock arrives."
+    ],
+    "schemaChange": false,
+    "providerSubmissionContractChange": false,
+    "newProviderRetry": false,
+    "protectedFilesTouched": false
+  },
+  "verification": {
+    "safeM103ServerWorkflow": "11/11 PASS on the unchanged v0.7.7 server projection change; text success clears both stale standalone-recovery keys and retains task/proof fields.",
+    "safeM41GenerationRetryUi": "59/59 PASS; four dynamic browser cases prove a late abort-ignoring old-task success cannot save, submit, contact a Provider or show the false polling warning after the server workflow lock arrives.",
+    "safeM81DeploymentHardening": "42/42 PASS; v0.7.7 is an exact final release identity and v0.7.7-hotfix.1 is rejected.",
+    "typescript": "449/449 PASS through safe-runner preflight",
+    "productionBuild": "PASS through safe-runner preflight",
+    "sourceCoverage": "PASS",
+    "listener4173": "UNCHANGED",
+    "frozenTestInventory": 1184,
+    "formalFull": "NOT_REPEATED; risk-driven targeted evidence only, because this patch changes the Canvas recovery/projection seam and the release identity, not the broader application contract.",
+    "governanceM38": "Final 19/19 PASS. The first two runs each passed 18/19 and exposed only current-authority marker drift; the exact documentation markers were corrected, then the affected spec passed without product-code changes."
+  },
+  "candidateManifest": {
+    "trackedChangedFiles": 26,
+    "trackedHunks": 65,
+    "untrackedReceipts": 2,
+    "trackedBinaryDiffSha256ExcludingUntrackedReceipts": "2820b524f844606abacbd2257028b03bbd6a35eae9433adb9da3f47138b99885",
+    "v076ProductionReceiptSha256": "bae8d33edf94126db5a6d4de48358e498aedc1f3c6f78ef717d62909549f9bfe"
+  },
+  "review": {
+    "requiredCoverage": "Every changed file and diff hunk; text success projection, all four recovery effects, dynamic lock-arrival race, version identity, current authority documents and both receipts.",
+    "blockingThreshold": "P0=0 and P1=0",
+    "status": "GO_FINAL",
+    "finalCoverage": "26/26 tracked changed files, 65/65 tracked diff hunks and 2/2 untracked receipts; text projection, all four recovery effects, dynamic race tests, version identity, runner inventory, source-coverage manifest, current authority documents and receipts were reviewed read-only.",
+    "finalFindings": "P0=0, P1=0, P2=0",
+    "finalVerdict": "GO"
+  },
+  "release": {
+    "pullRequest": "NOT_RUN",
+    "branchCi": "NOT_RUN",
+    "mainCi": "NOT_RUN",
+    "annotatedTag": "NOT_RUN",
+    "githubRelease": "NOT_RUN",
+    "exactTagFreshBuild": "NOT_RUN",
+    "productionBackup": "NOT_RUN",
+    "productionSwitch": "NOT_RUN",
+    "rollbackForward": "NOT_RUN",
+    "productionReceipt": "NOT_RUN"
+  },
+  "postDeployVerification": {
+    "canvasId": "adcb89a5-c1f4-47e4-bbbb-28fff8d81583",
+    "groupId": "group-17ee0cbc-cc81-4b35-9c5e-41040f627033",
+    "orderedGates": [
+      "Instrument the logged-in Chrome tab, refresh once, and observe zero Canvas PUT, zero 409, zero workflow or task POST and no false task-read alert.",
+      "Only after the refresh gate passes, click the exact group execute control once.",
+      "Prove exactly one workflow create and at most one task, admission and Provider attempt per logical node, with no duplicate submission.",
+      "Prove all 11 workflow nodes settle successfully, results remain visible and a final clean refresh produces zero redundant Canvas PUT."
+    ],
+    "status": "NOT_RUN_UNTIL_V0_7_7_IS_LIVE_AND_HEALTHY",
+    "maxGroupExecuteClicks": 1,
+    "retryOnUnknownOutcome": false,
+    "qualityJudgementInScope": false
+  }
+}

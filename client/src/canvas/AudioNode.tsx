@@ -46,6 +46,7 @@ import {
   isTransientPollingError,
   POLLING_PAUSED_MESSAGE,
   waitForGenerationTaskWithPause,
+  workflowBlocksSingleNodeRecovery,
 } from "../generation/taskPolling";
 import {
   type NodeGenerationOutcome,
@@ -1790,7 +1791,10 @@ function AudioNodeImpl({
       !persistenceReady ||
       isFixture ||
       generationPollingRunRef.current ||
-      data.workflowExecutionRunId
+      workflowBlocksSingleNodeRecovery({
+        locked: lockedNodeIds.has(id),
+        workflowExecutionRunId: data.workflowExecutionRunId,
+      })
     ) return;
     const persistedTaskId = data.audioGenerationTaskId;
     const persistedInputKey = data.audioGenerationInputKey;
@@ -2144,6 +2148,7 @@ function AudioNodeImpl({
     retryWakeEpoch,
     rawGenerationInputFingerprint,
     legacyRecoveryCatalogKey,
+    lockedNodeIds,
   ]);
 
   useEffect(() => {

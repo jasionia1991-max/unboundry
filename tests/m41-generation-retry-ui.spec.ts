@@ -8,8 +8,11 @@ import {
 } from "../types/modelParameters";
 import { generationInputKey } from
   "../client/src/generation/generationRetry";
-import { waitForGenerationTaskWithPause } from
-  "../client/src/generation/taskPolling";
+import {
+  POLLING_PAUSED_MESSAGE,
+  waitForGenerationTaskWithPause,
+  workflowBlocksSingleNodeRecovery,
+} from "../client/src/generation/taskPolling";
 import { resolveNodeInputs } from "../types/nodeInputs";
 import { currentWorkflowGenerationBinding } from
   "../client/src/generation/workflowNodeExecutors";
@@ -47,6 +50,19 @@ const modelInputs = {
 
 const kinds = ["text", "image", "video", "audio"] as const;
 type Kind = (typeof kinds)[number];
+
+test("an active server workflow blocks stale single-node recovery before its run id is projected", () => {
+  expect(workflowBlocksSingleNodeRecovery({
+    locked: true,
+  })).toBe(true);
+  expect(workflowBlocksSingleNodeRecovery({
+    locked: false,
+    workflowExecutionRunId: "server-run",
+  })).toBe(true);
+  expect(workflowBlocksSingleNodeRecovery({
+    locked: false,
+  })).toBe(false);
+});
 
 type SubmittedGenerationIdentity = {
   fixtureScopeId?: string;
@@ -823,6 +839,266 @@ async function changePrompt(page: Page, kind: Kind) {
     : page.getByTestId(`${kind}-creator-prompt`);
   await prompt.fill(`${kind} 已修改提示词`);
   await prompt.blur();
+}
+
+for (const kind of kinds) {
+  test(`${kind} aborts stale recovery when a server workflow lock arrives`, async ({
+    page,
+    request,
+  }) => {
+    const taskId = `m41-workflow-lock-old-task-${kind}`;
+    const runId = `m41-workflow-lock-run-${kind}`;
+    const identity = currentStandaloneIdentity(kind);
+    const resultAssetId = `m41-workflow-lock-result-${kind}`;
+    const successTask = {
+      ...identity,
+      attempt: 1,
+      canvasId: "default",
+      costCurrency: "CNY",
+      createdAt: "2026-09-03T00:00:00.000Z",
+      generationInputKey: identity.generationInputKey,
+      generationOwnershipKey: identity.generationOwnershipKey,
+      id: taskId,
+      kind,
+      model: modelInputs[kind].id,
+      nodeId: nodeId(kind),
+      prompt: `${kind} 原始提示词`,
+      ...(kind === "text"
+        ? { resultText: "late stale text result" }
+        : {
+            resultAssetId,
+            resultMedia: {
+              byteSize: 768,
+              contentType: kind === "image"
+                ? "image/png"
+                : kind === "video"
+                  ? "video/mp4"
+                  : "audio/mpeg",
+              durationSeconds: kind === "image" ? null : 5,
+              durationStatus: kind === "image" ? "not-applicable" : "ready",
+              storageBackend: "local",
+            },
+            resultUrl: mediaAssetUrl(kind, resultAssetId),
+          }),
+      state: "success",
+      updatedAt: "2026-09-03T00:00:01.000Z",
+    };
+    await page.addInitScript(({ successTask, taskId }) => {
+      const state: {
+        activeRunEvents: number;
+        releaseTask?: () => void;
+        taskGets: number;
+      } = { activeRunEvents: 0, taskGets: 0 };
+      const controlledWindow = window as typeof window & {
+        __m41WorkflowLock?: typeof state;
+      };
+      controlledWindow.__m41WorkflowLock = state;
+      window.addEventListener("unboundry:server-workflow-run-updated", () => {
+        state.activeRunEvents += 1;
+      });
+      const originalFetch = window.fetch.bind(window);
+      window.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+        const raw = typeof input === "string" || input instanceof URL
+          ? String(input)
+          : input.url;
+        const url = new URL(raw, window.location.href);
+        const method = (init?.method ??
+          (input instanceof Request ? input.method : "GET")).toUpperCase();
+        if (
+          method === "GET" &&
+          url.pathname === `/api/generation-tasks/${taskId}`
+        ) {
+          state.taskGets += 1;
+          return new Promise<Response>((resolve) => {
+            // Deliberately ignore AbortSignal. The node's workflow lock and
+            // lifecycle fence must reject this late old-task result.
+            state.releaseTask = () => resolve(new Response(
+              JSON.stringify(successTask),
+              {
+                headers: { "Content-Type": "application/json" },
+                status: 200,
+              },
+            ));
+          });
+        }
+        return originalFetch(input, init);
+      }) as typeof window.fetch;
+    }, { successTask, taskId });
+
+    let canvasPuts = 0;
+    let listReads = 0;
+    let providerRequests = 0;
+    let releaseWorkflowList!: () => void;
+    let statusReads = 0;
+    let taskSubmissions = 0;
+    const workflowListGate = new Promise<void>((resolve) => {
+      releaseWorkflowList = resolve;
+    });
+    const activeRun = {
+      canvasId: "default",
+      clientSemanticFingerprint: `m41-workflow-lock-client-${kind}`,
+      createdAt: "2026-09-03T00:00:02.000Z",
+      groupId: `m41-workflow-lock-group-${kind}`,
+      id: runId,
+      lockedNodeIds: [nodeId(kind)],
+      nodes: [{
+        id: nodeId(kind),
+        kind,
+        projectionState: "pending",
+        state: "admitted",
+      }],
+      semanticFingerprint: `m41-workflow-lock-server-${kind}`,
+      state: "running",
+      updatedAt: "2026-09-03T00:00:03.000Z",
+    };
+    page.on("request", (entry) => {
+      const url = new URL(entry.url());
+      if (/volces|openrouter|mureka/i.test(entry.url())) providerRequests += 1;
+      if (
+        entry.method() === "PUT" &&
+        url.pathname === "/api/canvas/default"
+      ) canvasPuts += 1;
+    });
+    await page.route("**/api/models", async (route) => route.fulfill({
+      contentType: "application/json",
+      json: {
+        generationEnabled: true,
+        models: [{
+          capability: kind,
+          displayName: `Workflow lock ${kind}`,
+          generationAvailable: true,
+          generationUnavailableReason: "",
+          generationUnavailableReasonCode: null,
+          ...modelInputs[kind],
+          isDefault: true,
+          parameterSchema: schemas[kind],
+        }],
+      },
+      status: 200,
+    }));
+    await page.route("**/api/generation-tasks**", async (route) => {
+      const inbound = route.request();
+      const url = new URL(inbound.url());
+      if (url.pathname.endsWith("/status")) {
+        await route.fulfill({
+          json: {
+            paidProviderRequests: 0,
+            persistentQueueReady: true,
+            providerConfigured: true,
+            submissionEnabled: true,
+          },
+          status: 200,
+        });
+        return;
+      }
+      if (url.pathname.endsWith("/by-idempotency")) {
+        await route.fulfill({ json: { error: "not found" }, status: 404 });
+        return;
+      }
+      if (url.pathname === "/api/generation-tasks" && inbound.method() === "GET") {
+        await route.fulfill({ json: { tasks: [] }, status: 200 });
+        return;
+      }
+      if (url.pathname === "/api/generation-tasks" && inbound.method() === "POST") {
+        taskSubmissions += 1;
+      }
+      await route.fulfill({ json: { error: "unexpected" }, status: 404 });
+    });
+    await page.route("**/api/workflow-runs**", async (route) => {
+      const inbound = route.request();
+      const url = new URL(inbound.url());
+      if (inbound.method() === "GET" && url.pathname === "/api/workflow-runs") {
+        listReads += 1;
+        await workflowListGate;
+        await route.fulfill({ json: { runs: [activeRun] }, status: 200 });
+        return;
+      }
+      if (
+        inbound.method() === "GET" &&
+        url.pathname === `/api/workflow-runs/${runId}`
+      ) {
+        statusReads += 1;
+        await route.fulfill({ json: activeRun, status: 200 });
+        return;
+      }
+      await route.fulfill({ json: { error: "unexpected" }, status: 404 });
+    });
+
+    await request.delete("/api/canvas/default");
+    const [baseNode] = canvasNodes(kind);
+    expect((await request.put("/api/canvas/default", {
+      data: {
+        edges: [],
+        nodes: [{
+          ...baseNode,
+          data: {
+            ...baseNode.data,
+            ...generationNodeIdentityData(kind, identity),
+            [`${kind}Generating`]: true,
+            [`${kind}GenerationTaskId`]: taskId,
+            ...(kind === "text"
+              ? {
+                  content: "old text result",
+                  contentHtml: "<p>old text result</p>",
+                }
+              : {}),
+          },
+        }],
+        revision: 0,
+        viewport: { x: 0, y: 0, zoom: 0.75 },
+      },
+    })).ok()).toBeTruthy();
+
+    try {
+      await page.goto("/canvas", { waitUntil: "domcontentloaded" });
+      await expect(page.getByTestId("canvas-world"))
+        .toHaveAttribute("data-persistence-ready", "true");
+      await expect.poll(() => page.evaluate(() =>
+        (window as typeof window & {
+          __m41WorkflowLock?: { taskGets: number };
+        }).__m41WorkflowLock?.taskGets ?? 0
+      )).toBe(1);
+      await expect.poll(() => listReads).toBeGreaterThanOrEqual(1);
+      releaseWorkflowList();
+      await expect.poll(() => page.evaluate(() =>
+        (window as typeof window & {
+          __m41WorkflowLock?: { activeRunEvents: number };
+        }).__m41WorkflowLock?.activeRunEvents ?? 0
+      )).toBeGreaterThanOrEqual(1);
+      await expect.poll(() => statusReads).toBeGreaterThanOrEqual(1);
+      await page.waitForTimeout(600);
+      const putsAfterLock = canvasPuts;
+      const lockedCanvas = await (
+        await request.get("/api/canvas/default")
+      ).json() as {
+        nodes: Array<{ data: Record<string, unknown>; id: string }>;
+      };
+      expect(lockedCanvas.nodes[0]?.data.workflowExecutionRunId).toBeUndefined();
+      await page.evaluate(() => {
+        const state = (window as typeof window & {
+          __m41WorkflowLock?: { releaseTask?: () => void };
+        }).__m41WorkflowLock;
+        if (!state?.releaseTask) throw new Error("Missing held task request");
+        state.releaseTask();
+      });
+      await flushBrowserTasks(page);
+      await flushBrowserTasks(page);
+      await page.waitForTimeout(1_600);
+      expect(canvasPuts).toBe(putsAfterLock);
+      expect(taskSubmissions).toBe(0);
+      expect(providerRequests).toBe(0);
+      await expect(page.getByText(POLLING_PAUSED_MESSAGE, { exact: false }))
+        .toHaveCount(0);
+    } finally {
+      releaseWorkflowList();
+      await page.evaluate(() => {
+        (window as typeof window & {
+          __m41WorkflowLock?: { releaseTask?: () => void };
+        }).__m41WorkflowLock?.releaseTask?.();
+      }).catch(() => undefined);
+      await request.delete("/api/canvas/default");
+    }
+  });
 }
 
 test("an aborted task poll exits without showing a transient polling pause", async () => {

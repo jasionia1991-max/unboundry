@@ -52,6 +52,7 @@ import {
   isTransientPollingError,
   POLLING_PAUSED_MESSAGE,
   waitForGenerationTaskWithPause,
+  workflowBlocksSingleNodeRecovery,
 } from "../generation/taskPolling";
 import {
   type NodeGenerationOutcome,
@@ -2124,7 +2125,10 @@ function VideoNodeImpl({
       !persistenceReady ||
       isFixture ||
       generationPollingRunRef.current ||
-      data.workflowExecutionRunId
+      workflowBlocksSingleNodeRecovery({
+        locked: lockedNodeIds.has(id),
+        workflowExecutionRunId: data.workflowExecutionRunId,
+      })
     ) return;
     const persistedTaskId = data.videoGenerationTaskId;
     const persistedInputKey = data.videoGenerationInputKey;
@@ -2473,6 +2477,7 @@ function VideoNodeImpl({
     retryWakeEpoch,
     rawGenerationInputFingerprint,
     legacyRecoveryCatalogKey,
+    lockedNodeIds,
   ]);
 
   useEffect(() => {

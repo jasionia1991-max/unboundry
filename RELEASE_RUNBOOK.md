@@ -3,7 +3,7 @@
 给人和接手的 AI 看。作用：从「版本号 + 上线授权」到「线上验证 + 文档收口」的每一步照做，避免每次现场拼命令、用错脚本。
 历史基线：v0.6.29（2026-08-21）曾按旧流程发布；其版本号、路径和先打 tag 的命令不再是可执行模板。当前生产身份与发布边界只看 `spec/UNBOUNDRY_CURRENT_STATE.md`、`spec/INC_GEN_026_CHECKPOINT.md` 顶部当前覆盖层和 `上线规矩.md`。
 
-> **2026-09-03 INC-GEN-028 边界**：生产当前为`v0.7.5/schema42`；用户已选择普通patch `v0.7.6`并明确授权本次发布及同一精确Canvas/group再真实执行一次。v0.7.5真实run中，延迟视频底层同一Provider task最终成功，但workflow先以`RESULT_DELAYED`失败并阻断最后节点；新标签页加载又因服务端结果缺少完整成功证明而产生17次Canvas PUT。v0.7.6将仍可找回的视频保持为`recovering`并让workflow继续等待，同时让服务端投影一次性写齐5个成功证明字段与视频宽高。定向门与最终冻结独立Review已通过（20/20 tracked文件、62/62 hunks、1/1回执，`P0=0/P1=0/P2=0/GO`）；继续执行PR/双CI、merge后annotated tag/Release、exact-tag fresh build、全新schema42 locked-exact backup、原子切换与rollback-forward。技术健康后只点击一次；结果不明只读核对原run/task，禁止第二次POST。版本不得使用`hotfix`后缀。
+> **2026-09-03 INC-GEN-028 边界**：生产当前为`v0.7.6/schema42`；其真实run已11/11成功且无重复task/admission/Provider attempt，但刷新产生7次多余Canvas PUT，运行中出现1次409和“任务状态查询失败”误报。用户已选择普通patch `v0.7.7`并授权发布。v0.7.7清除文字成功投影的两个旧恢复键，并让四类节点在服务端workflow锁或已有run绑定时停止旧恢复、拒绝迟到结果。当前m103 11/11、m41 59/59、m81 42/42、m38最终19/19和共同preflight通过；冻结独立Review覆盖26/26 tracked文件、65/65 hunks和2/2回执，`P0=0/P1=0/P2=0/GO`。发布须依次通过PR/双CI、merge后annotated tag/Release、exact-tag fresh build、全新schema42 locked-exact backup、原子切换与rollback-forward。技术健康后先刷新目标Canvas证明0多余保存、0次409、0误报和0提交；只有该门通过才点击目标group一次。结果不明只读核对原run/task，禁止第二次POST。版本不得使用`hotfix`后缀。
 
 **适用范围**：本 Runbook 只用于「代码 / 构建产物」变更（bump 版本、改逻辑、重发静态资源）。纯公共模板数据变更（新增/修改模板、预览图、种子）走 `上线规矩.md` 的「加模板轻量路径」，**不需要版本号、不打标签、不跑全量**，直接提交 + 服务器灌库。
 
@@ -41,11 +41,11 @@ grep '"version"' package.json
 
 历史 INC-GEN-026/v0.7.0 已经消费唯一 formal full，永久保留原始 `1162/1167` 与最小关闭 `112/112`；不得把它当作 INC-GEN-028 可重跑或已通过的发布门。下一版本只运行本次变更直接相关 safe specs、增量 Review 和项目规定的 PR/main CI build+m104 门，除非新的明确发布规则另有要求。
 
-本次保留m22、m104、直接依赖节点/上传/工作流spec、m81版本门、共同preflight/build/source coverage、治理m38和冻结后独立Review；备份能力复用v0.7.3已验证且schema未改变的当前合同。不要运行 `node scripts/run-safe-tests.mjs full`。
+本次保留直接相关m103、m41、m81、共同preflight/build/source coverage、治理m38和冻结后独立Review；备份能力复用schema未改变的当前合同。不要运行 `node scripts/run-safe-tests.mjs full`。
 
 - 需要Node 22.23.x、npm 10.9.8、Playwright浏览器缓存、npm离线缓存，缺了preflight会明说。
 - 测试必须只使用runner新建的临时数据和回环端口；本地4173、`app/data`、`/var/lib/unboundry`、真实媒体和密钥不得触碰。
-- v0.6.29 的 `119 specs / 1034 tests` 与 v0.7.0 的 formal 结果只作历史账本，不是 INC-GEN-028 当前命令或分母。当前证据以 `spec/V0_7_3_PRODUCTION_RECEIPT_2026-09-02.json`、`spec/V0_7_4_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`、Checkpoint 顶部覆盖层和本次新发布回执为准。
+- v0.6.29 的 `119 specs / 1034 tests` 与 v0.7.0 的 formal 结果只作历史账本，不是 INC-GEN-028 当前命令或分母。当前证据以 `spec/V0_7_6_PRODUCTION_RECEIPT_2026-09-03.json`、`spec/V0_7_7_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`和Checkpoint顶部覆盖层为准。
 - 两份受保护 JSON 不得进入测试快照、archive、commit、tag 或 PR；除此之外，发布候选必须没有范围外脏改动。
 
 候选冻结后按这个顺序执行，不能把 tag 打在 PR 分支头：
@@ -123,7 +123,7 @@ curl -fsS http://127.0.0.1:4173/api/version   # 期望与本次发布版本一�
 1. 服务：`systemctl is-active unboundry` = active，`NRestarts` = 0。
 2. 数据门（只读）：当前 schema42、integrity ok、FK0、tasks/attempts/templates/active 与本次 schema42 locked-exact 备份基准**完全一致**。旧 schema39 仅属于历史灾难恢复流程，不得用于当前发布核验。
 3. 公网：`https://canvas.mymy.ltd/api/version` 与本次发布版本一致；首页引用的 `assets/*.js/css` 逐个 `sha256sum`，与 release `dist/client/assets/*` **逐字节一致**。
-4. 外部影响：发布基础设施与rollback-forward期间真实Provider/付费生成/OSS写入必须为0；v0.7.6生产健康后，最新用户授权另允许精确Canvas/group真实执行一次，必须单独记录run/task/admission/attempt/Provider次数，结果不明禁止重试。
+4. 外部影响：发布基础设施与rollback-forward期间真实Provider/付费生成/OSS写入必须为0。v0.7.7生产健康后先在已登录普通Chrome刷新精确Canvas，记录观察窗内Canvas PUT、409、误报、workflow/task POST且均应为0；仅在该门通过后点击精确group一次，单独记录run/task/admission/attempt/Provider次数并证明无重复。结果不明禁止重试。
 
 ## 8. 文档收口
 
