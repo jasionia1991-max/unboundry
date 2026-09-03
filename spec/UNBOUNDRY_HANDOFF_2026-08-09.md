@@ -4,13 +4,15 @@
 
 ## 先读当前快照
 
-新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`。那一页是2026-08-26的权威现状、产品合同和用户验收边界。下面各节是历史增量，出现「当前」时只代表该时点。
+新会话、压缩恢复、换人：先读 `spec/UNBOUNDRY_CURRENT_STATE.md`，再读 `spec/V0_7_5_PRODUCTION_RECEIPT_2026-09-03.json`。这两份是当前权威；下面各节均为历史增量，其中“当前”“已授权”等文字只代表各自时点。
 
-2026-08-26当前接手事实：生产为v0.6.47/schema41，用户已明确回复`v0.6.47 验收通过`，状态`PRODUCTION_V0_6_47_USER_PASS / USER_PASS`；`origin/main = 7b475416…658c`，tree`eb0882df…dbc`，tag/Release v0.6.47不可移动。生产release`/opt/unboundry/releases/v0.6.47-governance-node25-20260826`，备份`/var/lib/unboundry-rollbacks/v0.6.47-cutover-final2-20j2R3`，原技术回执`spec/V0_6_47_PRODUCTION_RECEIPT_2026-08-26.json`保留生成时状态。项目普通shell默认Node `25.9.0` / npm `11.12.1`，线上运行时仍为Node `22.23.2` / npm `10.9.8`。旧`/Users/mymy/Documents/unboundry/app`仍不得施工或自动清理。
+2026-09-03接手事实：生产精确运行v0.7.5/schema42，PR #152、双CI、annotated tag/Release、exact-tag fresh build、schema42备份恢复、原子切换和rollback-forward均通过。v0.7.5的版本、发布和唯一真实点击授权已经消费，tag/Release不可移动；v0.7.6和第二次真实执行均未获授权。
 
-v0.6.47一次性授权已执行并消费；候选唯一full、GitHub、备份恢复、fresh build、原子切换、生产技术门和用户验收均已收口。真实Provider/Generation/OSS/费用0；后续新代码、Provider或发布需要新授权。
+同一真实点击创建run `413c33ea-6ca0-4ca6-b096-d84678b4cd76`。10个已创建任务最终success（文字6、图片3、视频1），无重复attempt，且刷新后结果可见；但workflow在视频`RESULT_DELAYED`后提前失败，视频后来沿用原Provider task自动恢复也没有重开run，最后一致性节点被阻断且从未admit。原标签页另有保存失败，新标签页加载时17次Canvas PUT。当前为`PRODUCTION_V0_7_5_TECHNICAL_PASS / REAL_WORKFLOW_PARTIAL_NO_GO / USER_RECHECK`，不是整组通过。
 
-当前未实施任务为MODEL-CONTRACT-001。用户已确认最终方案，四份权威文档为主方案、独立验收矩阵、实时checkpoint和未来Goal。状态严格为`D0_DOCUMENTATION_COMPLETE / USER_CONFIRMED / IMPLEMENTATION_NOT_STARTED / RELEASE_NOT_AUTHORIZED`；本轮只改文档，没有修复GK-video-3。接手先读`spec/MODEL_CONTRACT_001_CHECKPOINT.md`，未来只有用户明确启动新Goal后，才从R0全量只读盘点与官方合同核验开始。
+下一项应在本地修复workflow可恢复终态与Canvas加载写回抖动，并做定向测试和冻结Review；在用户重新指定普通patch版本并授权前，不得push/PR/tag/Release/生产切换或再次点击真实生成。
+
+以下从v0.6.47开始的旧接手说明全部保留为历史，不能覆盖上述当前快照。
 
 ## 历史发布候选：INC-UI-011 节点排序菜单层级修复（v0.6.43 / 本地USER_PASS）
 

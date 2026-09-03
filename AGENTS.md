@@ -1,6 +1,6 @@
 # Unboundry 项目级 Agent 施工守则
 
-> **2026-09-03 INC-GEN-028 当前最高优先级**：生产运行`v0.7.4/schema42`，current=`/opt/unboundry/releases/v0.7.4-inc-gen-028-20260903`，service active/ready、NRestarts0。v0.7.4发布技术门已通过，但其授权真实点击在UI停留“准备中”90秒，服务器同期没有收到Canvas PUT、workflow create、run、task、admission、attempt或Provider POST，费用风险为0。根因是服务端workflow提交与旧Canvas/单节点提交共用同一`canvas-submit`锁，又在权威保存后重复等待render revision；同一Canvas多标签页的旧工作会把真正workflow POST挡在服务器之外。`v0.7.5`已获版本、上线和同一精确Canvas/group真实执行一次授权：server workflow使用独立锁通道，先完成权威保存，移除冗余revision等待，并在list后及POST前各做abort检查。safe m22 `45/45`、m81 `42/42`、m38 `18/18`及TypeScript/build/source coverage/4173隔离通过；冻结全候选独立Review覆盖19/19 tracked文件、53/53 hunks和2/2回执，结论`P0=0/P1=0/P2=1/GO`。PR/双CI、tag/Release、exact-tag fresh build、全新schema42 locked-exact backup、切换与rollback-forward仍必须完成。上线健康后只点击一次；结果不明禁止再点，只核对原run/task。验收网站能否真正生成、自动回填、保存和刷新，不评价内容审美。当前权威为 `spec/UNBOUNDRY_CURRENT_STATE.md`、`spec/V0_7_5_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`、`spec/V0_7_4_PRODUCTION_RECEIPT_2026-09-03.json` 和 `spec/INC_GEN_026_CHECKPOINT.md` 顶部覆盖层。
+> **2026-09-03 INC-GEN-028 当前最高优先级**：生产运行`v0.7.5/schema42`，current=`/opt/unboundry/releases/v0.7.5-inc-gen-028-20260903`，service active/ready、NRestarts0。PR #152、双CI、annotated tag/Release、exact-tag fresh build、全新schema42 locked-exact backup/restore、原子切换与rollback-forward均通过。指定Canvas/group已按授权只点击一次：唯一workflow create成功，10个已创建task/admission/attempt一一对应，文字6、图片3、视频1最终success且无重复Provider POST；但workflow把可恢复的`RESULT_DELAYED`视频先判为失败并阻断最后一致性节点，原视频任务后来自动成功也未重开run，故真实验收为`PARTIAL_NO_GO`。原标签页另有保存失败，新标签页虽载入十项结果并显示云端已保存，但发生17次Canvas PUT，需单独修复。v0.7.5版本、发布和唯一点击授权均已消费；禁止重复执行、移动tag或覆盖Release。下一版仍只用普通patch号，v0.7.6和任何第二次真实执行尚未授权。当前权威为 `spec/UNBOUNDRY_CURRENT_STATE.md` 与 `spec/V0_7_5_PRODUCTION_RECEIPT_2026-09-03.json`。
 
 > **以下 v0.7.4 候选段落是历史时点记录，不再是当前授权或生产状态**：其代码随后已合并、发布并部署；其真实点击授权也已消费，但没有产生服务端workflow提交。不得据此再次发布v0.7.4或重复点击。
 
@@ -39,13 +39,12 @@
 INC-GEN-028 当前状态按顺序完整阅读：
 
 1. `spec/UNBOUNDRY_CURRENT_STATE.md` 顶部 INC-GEN-028 当前区块
-2. `spec/V0_7_5_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`
-3. `spec/V0_7_4_PRODUCTION_RECEIPT_2026-09-03.json`（当前生产基线）
-4. `spec/V0_7_4_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`（历史）
-5. `spec/V0_7_3_PRODUCTION_RECEIPT_2026-09-02.json`（历史）
-6. `spec/INC_GEN_026_CHECKPOINT.md` 顶部 v0.7.5 候选覆盖层
-7. `spec/INC_GEN_026_ACCEPTANCE_MATRIX_2026-09-01.md` 顶部 v0.7.5 覆盖层
-8. `TASKS.md`、`上线规矩.md`、`README.md` 顶部 INC-GEN-028 区块
+2. `spec/V0_7_5_PRODUCTION_RECEIPT_2026-09-03.json`
+3. `spec/V0_7_5_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`（历史候选证据）
+4. `spec/V0_7_4_PRODUCTION_RECEIPT_2026-09-03.json`（历史生产基线）
+5. `spec/V0_7_4_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`（历史）
+6. `spec/INC_GEN_026_CHECKPOINT.md` 与对应Matrix顶部v0.7.5候选覆盖层（历史候选状态）
+7. `TASKS.md`、`上线规矩.md`、`README.md` 顶部 INC-GEN-028 区块
 
 下列旧清单只在查历史事故时按需读取，不得覆盖上面的当前路由或恢复旧授权：
 
@@ -94,14 +93,14 @@ INC-GEN-028 当前状态按顺序完整阅读：
 ### 默认工具链与生产兼容通道
 
 - 项目普通开发、类型检查、构建和新shell默认使用`.node-version`中的Node `25.9.0`与`packageManager`中的npm `11.12.1`；不得再把`/Users/mymy/.hermes/node/bin`或`/Users/mymy/.local/bin`中的Node 22预置到普通shell PATH。
-- 2026-09-02 已确认 v0.7.3 生产继续运行 Node `22.23.2` / npm `10.9.8`；本次没有顺带迁移 Node/npm。
+- 2026-09-03 已确认 v0.7.5 生产继续运行 Node `22.23.2` / npm `10.9.8`；本次没有顺带迁移 Node/npm。
 - `scripts/run-safe-tests.mjs`、源码覆盖门和历史不可变 release builder 继续使用 Node `22.23.1` / npm `10.9.8` 专用兼容通道；它是本地复现通道，不等同于已确认的生产 Node `22.23.2`，也不是项目默认 shell。在完成兼容性审计前不得删除 Node 22 边界。
 
 ## 2. 当前授权边界
 
-- **2026-09-02 INC-GEN-028 当前最高权威**：v0.7.3 已完成 PR #149、双 CI、annotated tag/Release、exact-tag fresh build、schema42 locked-exact backup/verify/fresh restore、生产切换和 rollback-forward。v0.7.2 的唯一真实整组工作流证据继续成立；v0.7.3 在普通 Chrome 对同一 Canvas 做两次既有结果加载/metadata 重放，文字、3张图片、1段视频均正常，保存提示稳定收口为“已保存到云端”，console error/warn=0。发布复验新增 task/admission/attempt/workflow run/Provider POST 均为0；一次性版本和发布授权已消费，任何新版本、新发布或新 Provider POST 都需要新授权，用户确认前保持 `USER_RECHECK`；
+- **2026-09-03 INC-GEN-028 当前最高权威**：v0.7.5 已完成 PR #152、双 CI、annotated tag/Release、exact-tag fresh build、schema42 locked-exact backup/verify/fresh restore、生产切换和 rollback-forward。唯一真实点击只创建1个workflow run；10个已创建task/admission/Provider attempt一一对应，文字6、图片3、视频1最终success且无重复POST，但workflow在视频`RESULT_DELAYED`后提前失败，最后一致性节点被阻断。原标签页保存失败，新标签页载入十项结果但发生17次Canvas PUT。当前严格为`PRODUCTION_V0_7_5_TECHNICAL_PASS / REAL_WORKFLOW_PARTIAL_NO_GO / USER_RECHECK`；v0.7.5版本、发布和唯一点击授权均已消费，v0.7.6、新发布、新Provider POST和第二次真实执行均未授权；
 
-- **2026-09-02 v0.7.3 历史发布授权（已消费）**：用户指定 `v0.7.3` 并授权上线保存提示补丁；该授权已用于版本升级、提交、PR/CI、annotated tag/Release、备份、生产切换和成对 rollback-forward，并在零新增 Provider POST 的实页复验后消费完毕。版本命名以后只用普通 patch 递增，下一版从`v0.7.4`开始，不再添加`hotfix`后缀；
+- **2026-09-02 v0.7.3 历史发布授权（已消费）**：用户指定 `v0.7.3` 并授权上线保存提示补丁；该授权已用于版本升级、提交、PR/CI、annotated tag/Release、备份、生产切换和成对 rollback-forward，并在零新增 Provider POST 的实页复验后消费完毕。当时约定后续只用普通patch递增、不再添加`hotfix`后缀；v0.7.4与v0.7.5现已先后发布，该历史句不是下一版本授权；
 
 - **2026-09-02 INC-GEN-026/v0.7.0 历史最高权威（已执行、已消费）**：R0～R8 本地实现、测试、Review、唯一 formal safe full 和文档收口已完成；full 原始 `1162/1167` 与 5 项失败如实保留，m41/m73/m81 最小关闭 `112/112 PASS`，未重复 full。v0.7.0 一次性 commit/push/PR/CI/tag/Release 与生产 schema42 backup/安装/切换/rollback-forward 已执行并消费。IG26-106 当时因缺少完整只读 workflow-run/capacity preflight 保持 `NOT_RUN`；该段不得覆盖 INC-GEN-028 当前路由或恢复任何授权；
 

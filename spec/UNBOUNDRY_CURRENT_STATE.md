@@ -1,10 +1,14 @@
 # Unboundry 当前权威状态
 
-> **2026-09-03 最新权威：生产运行 v0.7.4/schema42；v0.7.5 修复和上线已获授权，本地定向门与冻结全候选Review通过，GitHub和生产尚未执行。** v0.7.4技术发布成功，但指定 Canvas `adcb89a5-c1f4-47e4-bbbb-28fff8d81583` / group `group-17ee0cbc-cc81-4b35-9c5e-41040f627033` 的唯一真实点击只在客户端停留“准备中”90秒，服务器新增Canvas PUT、workflow run、generation task、admission、attempt和Provider POST均为0，费用风险为0。该点击授权已消费，不得重复。
+> **2026-09-03 最新权威：生产运行 v0.7.5/schema42；技术发布通过，但唯一真实工作流验收为 `PARTIAL_NO_GO`。** 指定 Canvas `adcb89a5-c1f4-47e4-bbbb-28fff8d81583` / group `group-17ee0cbc-cc81-4b35-9c5e-41040f627033` 已只点击一次。服务器收到唯一workflow create（request `6a9d6d85-24c8-4b3c-8653-c5672ef576ad`，HTTP202），run为`413c33ea-6ca0-4ca6-b096-d84678b4cd76`；10个已创建任务、10个admission、10个Provider attempt一一对应，没有重试或重复提交。
 
-**生产是 v0.7.4 / schema42。** 本次直接根因不是Provider、模型入参或素材读取，而是server workflow错误复用旧`unboundry:canvas-submit:<canvas>`锁，且在权威Canvas保存后又等待一次render-derived revision。同一Canvas存在多个浏览器标签页时，另一个标签页的遗留Canvas/单节点工作会把真正workflow create挡在服务器之外。v0.7.5改为独立`unboundry:server-workflow-submit:<canvas>`锁和独立fallback队列；权威保存先完成，独立通道内直接compile/list/create，服务端仍权威核对semantic fingerprint、graph revision、活动任务和workflow锁。list返回后和POST前各做一次abort检查，避免超时后无POST却持续准备。
+**生产是 v0.7.5 / schema42。** 能正常工作的部分：6个文字、3个图片和1个视频任务最终全部success；视频沿用原Provider task `124686739`自动找回，未第二次POST。3张生成图、10.042秒MP4、本地上传图均ready，刷新后的新标签页可见并能播放，说明文字、图片、视频和本地上传节点本身能够工作。
 
-**最新授权**：`版本号 v0.7.5，授权上线并在这个 Canvas 真实执行一次。` 只允许普通patch `v0.7.5`；发布技术门全通过后，精确组只点击一次。结果不明只核对原run/task，绝不重发；验收网站工作流、自动回填、保存和刷新，不评价生成内容审美。safe m22 `45/45`、m81 `42/42`、m38最终`18/18`、TypeScript 449/449、production build、source coverage和4173隔离通过；冻结全候选独立Review覆盖19/19 tracked文件、53/53 hunks和2/2回执，结论`P0=0/P1=0/P2=1/GO`。候选回执为 `spec/V0_7_5_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`，当前生产基线回执为 `spec/V0_7_4_PRODUCTION_RECEIPT_2026-09-03.json`。
+**没有跑到底的部分**：视频首次结果窗口超时后，workflow服务先把其节点置为`failed / RESULT_DELAYED`，立即把最后`P1一致性检查`置为`blocked / UPSTREAM_FAILED`并结束run。约92秒后底层视频任务自动恢复为success，但workflow run、视频workflow node和被阻断的最后节点没有重开；最终server workflow为9 success、1 failed、1 blocked，最后节点从未admit。因此这不是“整组成功”，也不是`USER_PASS`。
+
+**保存证据**：原标签页在服务器已推进Canvas revision后显示保存失败，未接受浏览器可能覆盖状态的刷新确认；新标签页从服务器加载出十项生成结果并显示“已保存到云端”。新标签页加载期间发生17次成功Canvas PUT、graph revision 14→31，属于待修复的写回抖动，不能用“最终看得到”掩盖。
+
+**授权状态**：v0.7.5版本、发布和唯一真实点击授权均已消费；不得重复执行、移动tag或覆盖Release。v0.7.6及任何下一次真实生成尚未授权。当前只允许保留证据、做本地诊断/方案和文档收口；新代码发布与再次真实Canvas验证必须取得新的普通patch版本和明确授权。权威回执为 `spec/V0_7_5_PRODUCTION_RECEIPT_2026-09-03.json`。
 
 > **以下 INC-GEN-025 顶部记录是历史声明快照**：它记录当时的 Goal、测试、Review 和发布前状态；v0.6.70 后续已经发布，最终审计推翻了“可直接继续 R8/真实点击”的当前有效性。其历史授权已消费，不得恢复。
 
@@ -14,27 +18,25 @@
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
 当前代码包版本：**v0.7.5**
 本地候选代码版本：**v0.7.5**
-当前本地候选说明：`v0.7.5 server workflow独立提交锁、冗余revision等待移除，以及list后和POST前双abort检查；定向门和冻结全候选Review GO`
-当前生产部署版本：**v0.7.4**
+当前本地候选说明：`v0.7.5 已冻结并发布；下一版代码尚未获版本与发布授权`
+当前生产部署版本：**v0.7.5**
 本地候选schema：**42**
-当前治理标记：`CURRENT_V0_7_4_USER_RECHECK`
-当前业务标记：`REAL_WORKFLOW_NO_SERVER_SUBMISSION / V0_7_5_FIX_PENDING_RELEASE`
-当前发布执行标记：`V0_7_5_RELEASE_AUTHORIZED_NOT_CONSUMED`
+当前治理标记：`CURRENT_V0_7_5_USER_RECHECK`
+当前业务标记：`REAL_WORKFLOW_PARTIAL_NO_GO / RECOVERED_VIDEO_TASK_NOT_REJOINED_TO_RUN / FINAL_NODE_NOT_ADMITTED`
+当前发布执行标记：`V0_7_5_RELEASE_AND_REAL_CLICK_AUTHORIZATION_CONSUMED`
 当前本地Goal标记：`NO_ACTIVE_GOAL / LATEST_USER_AUTHORIZATION_CONTROLS`
-当前计划标记：`V0_7_5_TARGETED_PASS / FROZEN_REVIEW_GO / PRODUCTION_NOT_RUN`
+当前计划标记：`V0_7_5_PRODUCTION_TECHNICAL_PASS / REAL_CANVAS_PARTIAL_NO_GO / NEXT_FIX_NOT_AUTHORIZED`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`V0_7_5_AUTHORIZED / TARGETED_PASS_REVIEW_GO / RELEASE_NOT_RUN / ONE_REAL_GROUP_EXECUTION_AFTER_HEALTHY_DEPLOY`
+当前发布门：`V0_7_5_IMMUTABLE / NO_V0_7_6_AUTHORIZATION / NO_SECOND_REAL_EXECUTION`
 
 ## INC-GEN-028 当前读取顺序
 
 1. 本文件顶部当前区块。
-2. `spec/V0_7_5_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`。
-3. `spec/V0_7_4_PRODUCTION_RECEIPT_2026-09-03.json`（当前生产基线）。
-4. `spec/V0_7_4_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`（历史）。
-5. `spec/V0_7_3_PRODUCTION_RECEIPT_2026-09-02.json`（历史）。
-6. `spec/INC_GEN_026_CHECKPOINT.md` 顶部 v0.7.5 候选覆盖层。
-7. `spec/INC_GEN_026_ACCEPTANCE_MATRIX_2026-09-01.md` 顶部 v0.7.5 覆盖层。
-8. `TASKS.md`、`上线规矩.md`、`README.md` 顶部 INC-GEN-028 区块。
+2. `spec/V0_7_5_PRODUCTION_RECEIPT_2026-09-03.json`。
+3. `spec/V0_7_5_RELEASE_CANDIDATE_RECEIPT_2026-09-03.json`（历史候选证据）。
+4. `spec/V0_7_4_PRODUCTION_RECEIPT_2026-09-03.json`（历史生产基线）。
+5. `spec/INC_GEN_026_CHECKPOINT.md` 与对应Matrix顶部v0.7.5候选覆盖层（历史候选状态）。
+6. `TASKS.md`、`上线规矩.md`、`README.md` 顶部 INC-GEN-028 区块。
 
 旧 INC-GEN-026 Plan、Goal、本地 receipt 与 v0.7.0 production receipt 都是历史资料，只能查证，不得作为 INC-GEN-028 的候选、Review 或授权依据。
 
