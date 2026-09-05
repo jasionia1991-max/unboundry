@@ -14,14 +14,14 @@ import {
 } from "./backupInspection";
 import {
   applyPendingSchemaMigrationsInTransaction,
-  currentSchemaVersion,
   databaseMatchesMigrationManifest,
   databaseMatchesSchema41Contract,
-  databaseMatchesSchemaContract,
+  databaseMatchesSchema42Contract,
 } from "./database";
 import { createRuntimeRoleCoordinator } from "./runtimeRole";
 
 const sourceSchemaVersion = 41;
+const targetSchemaVersion = 42;
 const sha256Pattern = /^[a-f0-9]{64}$/;
 
 export class Schema41To42MigrationError extends Error {
@@ -105,12 +105,11 @@ function assertExactSource(
 function migrateLocked(database: DatabaseSync) {
   applyPendingSchemaMigrationsInTransaction(database, {
     sourceVersion: sourceSchemaVersion,
-    targetVersion: currentSchemaVersion,
+    targetVersion: targetSchemaVersion,
   });
   if (
-    currentSchemaVersion !== 42 ||
-    !databaseMatchesMigrationManifest(database) ||
-    !databaseMatchesSchemaContract(database) ||
+    !databaseMatchesMigrationManifest(database, targetSchemaVersion) ||
+    !databaseMatchesSchema42Contract(database) ||
     database.prepare("PRAGMA foreign_key_check").all().length !== 0
   ) fail("SCHEMA_MIGRATION_TARGET_INVALID", "Migrated database is not exact schema 42");
 }
@@ -182,7 +181,7 @@ export async function migrateSchema41To42(options: Schema41To42MigrationOptions)
           sourceVersion: sourceSchemaVersion,
           status: "verified" as const,
           targetLogicalSha256: after.logicalSha256,
-          targetVersion: currentSchemaVersion,
+          targetVersion: targetSchemaVersion,
         });
       }
       migrateLocked(source);
@@ -195,7 +194,7 @@ export async function migrateSchema41To42(options: Schema41To42MigrationOptions)
         sourceVersion: sourceSchemaVersion,
         status: "complete" as const,
         targetLogicalSha256: after.logicalSha256,
-        targetVersion: currentSchemaVersion,
+        targetVersion: targetSchemaVersion,
       });
     } catch (error) {
       if (sourceTransaction && source.isTransaction) source.exec("ROLLBACK");

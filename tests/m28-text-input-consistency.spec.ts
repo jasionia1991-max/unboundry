@@ -161,15 +161,15 @@ test("loading accepts the first Image measurement without hiding the first title
   await gateNodeResizeObserverAfterFirstBatch(page);
   await holdCanvasGetUntilReleased(page, canvasId);
 
-  let canvasPuts = 0;
+  let canvasCommands = 0;
   let generationPosts = 0;
   page.on("request", (entry) => {
     const url = new URL(entry.url());
     if (
-      entry.method() === "PUT" &&
-      url.pathname === `/api/canvas/${canvasId}`
+      entry.method() === "POST" &&
+      url.pathname === `/api/canvases/${canvasId}/commands`
     ) {
-      canvasPuts += 1;
+      canvasCommands += 1;
     }
     if (
       entry.method() === "POST" &&
@@ -231,13 +231,14 @@ test("loading accepts the first Image measurement without hiding the first title
   await flushBrowserTasks(page);
   await page.clock.runFor(600);
   await flushBrowserTasks(page);
-  expect(canvasPuts).toBe(0);
+  expect(canvasCommands).toBe(0);
   expect(generationPosts).toBe(0);
   await page.clock.resume();
 
   const node = page.locator(
     '.react-flow__node-image[data-id="image-primary"]',
   );
+  await node.click({ position: { x: 12, y: 12 } });
   const title = page.getByTestId("image-node-title-input");
   await expect(node).toHaveCSS("visibility", "visible");
   await expect(title).toBeVisible();
@@ -268,7 +269,7 @@ test("loading accepts the first Image measurement without hiding the first title
   await flushBrowserTasks(page);
   await page.clock.runFor(600);
   await flushBrowserTasks(page);
-  await expect.poll(() => canvasPuts).toBe(1);
+  await expect.poll(() => canvasCommands).toBe(1);
   expect(generationPosts).toBe(0);
   await page.clock.resume();
 });

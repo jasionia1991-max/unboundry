@@ -68,6 +68,14 @@ import {
   settleSynchronousResultSaveExhaustion,
 } from "./generationResultCommit";
 import {
+  retrySingleNodeCanvasProjections,
+  singleNodeCanvasProjectionCandidateCount,
+} from "./generationCanvasProjectionService";
+import {
+  inspectSingleNodeGenerationCanvasState,
+  type SingleNodeGenerationCanvasState,
+} from "./generationCanvasProjection";
+import {
   generateOpenRouterImage,
   OpenRouterImageError,
 } from "./openRouterImageProvider";
@@ -229,8 +237,13 @@ import {
 } from "../types/relayProtocols";
 import {
   imageToolMaximums,
+  isImageGenerationToolOperation,
+  storedImageGenerationTool,
   type ImageGenerationToolInput,
+  type ImageMultiAngleParameters,
 } from "../types/imageTools";
+import { imageGenerationToolOwnershipEvidence } from
+  "../types/generationIdentity";
 import type { RuntimeRoleCoordinator } from "./runtimeRole";
 import { resolveSeedanceTrustedVideoReferences } from "./seedanceTrustedVideoReferences";
 import { resolveSeedanceCharacterReferences } from "./seedanceCharacterReferences";
@@ -724,6 +737,27 @@ function taskStore(launchOptions?: GenerationLaunchOptions) {
   return store;
 }
 
+/** Release the process singleton between isolated safe-runner data roots. */
+export function resetGenerationTaskStoreForRuntimeTest() {
+  if (process.env.UNBOUNDRY_SAFE_TEST !== "1") {
+    throw new Error("Generation task store reset test seam is unavailable");
+  }
+  if (
+    launchedGenerationTasks.size !== 0 || runningImageRequests.size !== 0 ||
+    runningVideoRequests.size !== 0 || runningAudioRequests.size !== 0 ||
+    runningTextRequests.size !== 0 || pendingGenerationRelaunches.size !== 0
+  ) {
+    throw new Error("Generation task store reset still has active executions");
+  }
+  clearGenerationRecoverySweepTimers();
+  store?.close();
+  store = undefined;
+  storeDataDirectory = undefined;
+  persistentGenerationWorkerStartup = undefined;
+  persistentGenerationWorkerCoordinator = undefined;
+  persistentGenerationWorkerDataDirectory = undefined;
+}
+
 function quarantineMalformedWorkflowTaskLinks(taskIds: readonly string[]) {
   // This command deliberately does not initialize the normal task worker:
   // worker initialization launches every queued task, which would race the
@@ -892,6 +926,14 @@ export async function runGenerationRecoverySweep(options?: {
     } catch {
       // A temporary OSS/storage failure remains a durable pending publication.
       // The next sweep retries the same bytes and never reaches Provider submit.
+    }
+  }
+  if (!options?.store) {
+    try {
+      retrySingleNodeCanvasProjections();
+    } catch {
+      // A Canvas-only projection failure retains the successful task/result.
+      // The next bounded sweep retries the same canonical projection identity.
     }
   }
   let publicationTaskIds: ReadonlySet<string> | undefined;
@@ -1270,6 +1312,7 @@ async function recheckWorkflowCapacityBeforePaidRequest(task: GenerationTask) {
 function taskSummary(
   task: GenerationTask,
   retryBinding?: GenerationTaskCanvasRetryBinding,
+  canvasState?: SingleNodeGenerationCanvasState,
 ) {
   const workflowBinding = durableWorkflowBinding(task);
   const publishedResultAssetId = task.state === "success"
@@ -1312,12 +1355,17 @@ function taskSummary(
         reason: resumeSnapshotProblem,
       }
     : retryDecision;
-  const bindingMatches = Boolean(
+  const legacyBindingMatches = Boolean(
     retryBinding &&
     retryBinding.taskId === task.id &&
     retryBinding.kind === task.kind &&
     retryBinding.nodeId === task.nodeId,
   );
+  const modernSingleNodeTask =
+    task.modelConfiguration.generationIdentityVersion === 2 && !workflowBinding;
+  const bindingMatches = modernSingleNodeTask
+    ? canvasState?.bindingMatches === true
+    : legacyBindingMatches;
   const retry = snapshotRetry.allowed && !bindingMatches
     ? {
         allowed: false as const,
@@ -1329,7 +1377,15 @@ function taskSummary(
     abandonAllowed: taskAbandonAllowed(task, providerAttempt),
     actualCostMicrounits: task.actualCostMicrounits,
     attempt: task.attempt,
-    canvasRevision: bindingMatches ? retryBinding?.canvasRevision : undefined,
+    canvasProjectionDocumentRevision: canvasState?.projectionDocumentRevision,
+    canvasProjectionOperationId: canvasState?.operationId,
+    canvasProjectionOriginalRequestId: canvasState?.originalRequestId,
+    canvasProjectionState: canvasState?.projectionState,
+    canvasRevision: modernSingleNodeTask
+      ? canvasState?.canvasRevision
+      : bindingMatches
+        ? retryBinding?.canvasRevision
+        : undefined,
     canvasId: task.canvasId,
     createdAt: task.createdAt,
     errorCode: task.errorCode,
@@ -1422,7 +1478,28 @@ function taskSummaryForOwner(task: GenerationTask, ownerId?: string) {
   const binding = taskStore()
     .retryBindingsForCanvas(task.canvasId, ownerId)
     .get(task.id);
-  return taskSummary(task, binding);
+  const effectiveOwnerId = ownerId ?? task.ownerId;
+  let canvasState: SingleNodeGenerationCanvasState | undefined;
+  if (
+    effectiveOwnerId && task.modelConfiguration.generationIdentityVersion === 2 &&
+    !durableWorkflowBinding(task)
+  ) {
+    const database = openAppDatabase();
+    try {
+      database.exec("BEGIN");
+      canvasState = inspectSingleNodeGenerationCanvasState({
+        database,
+        ownerId: effectiveOwnerId,
+        taskId: task.id,
+      });
+      database.exec("COMMIT");
+    } catch {
+      if (database.isTransaction) database.exec("ROLLBACK");
+    } finally {
+      database.close();
+    }
+  }
+  return taskSummary(task, binding, canvasState);
 }
 
 type GenerationModelRow = {
@@ -1565,103 +1642,6 @@ function imageReferences(value: unknown): ImageReference[] {
   });
 }
 
-const generationImageToolOperations = new Set<ImageGenerationToolInput["operation"]>([
-  "enhance-creative",
-  "erase",
-  "multi-angle",
-  "outpaint",
-  "redraw",
-  "remove-background",
-]);
-
-function storedImageGenerationTool(value: unknown): ImageGenerationToolInput | undefined {
-  if (value === undefined) return undefined;
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("Invalid image tool snapshot");
-  }
-  const item = value as Partial<ImageGenerationToolInput>;
-  if (
-    !item.operation ||
-    !generationImageToolOperations.has(item.operation) ||
-    typeof item.operationId !== "string" ||
-    !/^[a-z0-9._-]{1,160}$/i.test(item.operationId) ||
-    typeof item.sourceAssetId !== "string" ||
-    !/^[a-z0-9._-]{1,160}$/i.test(item.sourceAssetId) ||
-    typeof item.sourceNodeId !== "string" ||
-    !/^[a-z0-9._-]{1,160}$/i.test(item.sourceNodeId)
-  ) throw new Error("Invalid image tool snapshot");
-  const requiresMask = item.operation === "redraw" || item.operation === "erase" ||
-    item.operation === "outpaint";
-  if (
-    (item.operation === "remove-background" &&
-      item.outputBackground !== "transparent") ||
-    (item.operation !== "remove-background" && item.outputBackground !== undefined)
-  ) throw new Error("Invalid image tool output background snapshot");
-  if (!item.mask) {
-    if (requiresMask) throw new Error("Invalid image tool mask snapshot");
-    if (item.preparedInput !== undefined || item.outpaint !== undefined) {
-      throw new Error("Invalid image tool outpaint snapshot");
-    }
-    const outputBackground = item.outputBackground;
-    return {
-      operation: item.operation,
-      operationId: item.operationId,
-      ...(outputBackground ? { outputBackground } : {}),
-      sourceAssetId: item.sourceAssetId,
-      sourceNodeId: item.sourceNodeId,
-    };
-  }
-  const mask = item.mask;
-  if (
-    !requiresMask ||
-    typeof mask.assetId !== "string" ||
-    !/^[a-z0-9._-]{1,160}$/i.test(mask.assetId) ||
-    mask.version !== 1 ||
-    !Number.isSafeInteger(mask.width) || mask.width < 1 || mask.width > 8_192 ||
-    !Number.isSafeInteger(mask.height) || mask.height < 1 || mask.height > 8_192 ||
-    !Number.isSafeInteger(mask.featherPixels) ||
-    mask.featherPixels < 0 || mask.featherPixels > 64
-  ) throw new Error("Invalid image tool mask snapshot");
-  const outpaint = item.outpaint;
-  const preparedInput = item.preparedInput;
-  if (item.operation === "outpaint") {
-    if (!outpaint || !preparedInput || outpaint.version !== 1 ||
-        preparedInput.version !== 1 ||
-        !/^[a-z0-9._-]{1,160}$/i.test(preparedInput.assetId) ||
-        !Number.isSafeInteger(preparedInput.width) ||
-        !Number.isSafeInteger(preparedInput.height) ||
-        preparedInput.width !== mask.width || preparedInput.height !== mask.height ||
-        outpaint.outputWidth !== mask.width || outpaint.outputHeight !== mask.height ||
-        !Number.isSafeInteger(outpaint.sourceX) || outpaint.sourceX < 0 ||
-        !Number.isSafeInteger(outpaint.sourceY) || outpaint.sourceY < 0 ||
-        !Number.isSafeInteger(outpaint.sourceWidth) || outpaint.sourceWidth < 1 ||
-        !Number.isSafeInteger(outpaint.sourceHeight) || outpaint.sourceHeight < 1 ||
-        outpaint.sourceX + outpaint.sourceWidth > outpaint.outputWidth ||
-        outpaint.sourceY + outpaint.sourceHeight > outpaint.outputHeight ||
-        (outpaint.sourceWidth === outpaint.outputWidth &&
-          outpaint.sourceHeight === outpaint.outputHeight)) {
-      throw new Error("Invalid image tool outpaint snapshot");
-    }
-  } else if (outpaint !== undefined || preparedInput !== undefined) {
-    throw new Error("Invalid image tool outpaint snapshot");
-  }
-  return {
-    mask: {
-      assetId: mask.assetId,
-      featherPixels: mask.featherPixels,
-      height: mask.height,
-      version: 1,
-      width: mask.width,
-    },
-    ...(outpaint ? { outpaint } : {}),
-    ...(preparedInput ? { preparedInput } : {}),
-    operation: item.operation,
-    operationId: item.operationId,
-    sourceAssetId: item.sourceAssetId,
-    sourceNodeId: item.sourceNodeId,
-  };
-}
-
 function strictImageGenerationTool(input: {
   ownerId: string;
   persistedTargetData: Record<string, unknown>;
@@ -1673,15 +1653,19 @@ function strictImageGenerationTool(input: {
     return undefined;
   }
   const submitted = input.submitted;
+  const absentOrEqual = (field: string, value: unknown) => {
+    const persisted = input.persistedTargetData[field];
+    return persisted === undefined || JSON.stringify(persisted) === JSON.stringify(value);
+  };
   if (
     !submitted ||
-    !generationImageToolOperations.has(submitted.operation) ||
+    !isImageGenerationToolOperation(submitted.operation) ||
     !/^[a-z0-9._-]{1,160}$/i.test(submitted.operationId) ||
     !/^[a-z0-9._-]{1,160}$/i.test(submitted.sourceAssetId) ||
     !/^[a-z0-9._-]{1,160}$/i.test(submitted.sourceNodeId) ||
-    persistedOperation !== submitted.operation ||
-    input.persistedTargetData.imageToolOperationId !== submitted.operationId ||
-    input.persistedTargetData.imageToolSourceAssetId !== submitted.sourceAssetId
+    !absentOrEqual("imageToolOperation", submitted.operation) ||
+    !absentOrEqual("imageToolOperationId", submitted.operationId) ||
+    !absentOrEqual("imageToolSourceAssetId", submitted.sourceAssetId)
   ) {
     throw new Error("图片工具任务身份与已保存画布不一致");
   }
@@ -1702,7 +1686,7 @@ function strictImageGenerationTool(input: {
   if (
     (submitted.operation === "remove-background" &&
       (submitted.outputBackground !== "transparent" ||
-        input.persistedTargetData.imageToolOutputBackground !== "transparent")) ||
+        !absentOrEqual("imageToolOutputBackground", "transparent"))) ||
     (submitted.operation !== "remove-background" &&
       (submitted.outputBackground !== undefined ||
         input.persistedTargetData.imageToolOutputBackground !== undefined))
@@ -1732,10 +1716,10 @@ function strictImageGenerationTool(input: {
     !Number.isSafeInteger(mask.height) || mask.height < 1 || mask.height > 8_192 ||
     !Number.isSafeInteger(mask.featherPixels) ||
     mask.featherPixels < 0 || mask.featherPixels > 64 ||
-    input.persistedTargetData.imageToolMaskAssetId !== mask.assetId ||
-    input.persistedTargetData.imageToolMaskVersion !== 1 ||
-    input.persistedTargetData.imageToolMaskWidth !== mask.width ||
-    input.persistedTargetData.imageToolMaskHeight !== mask.height ||
+    !absentOrEqual("imageToolMaskAssetId", mask.assetId) ||
+    !absentOrEqual("imageToolMaskVersion", 1) ||
+    !absentOrEqual("imageToolMaskWidth", mask.width) ||
+    !absentOrEqual("imageToolMaskHeight", mask.height) ||
     input.persistedTargetData.imageToolMaskFeatherPixels !== mask.featherPixels
   ) {
     throw new Error("图片工具遮罩身份或尺寸与已保存画布不一致");
@@ -1748,10 +1732,10 @@ function strictImageGenerationTool(input: {
   if (isOutpaint) {
     if (!outpaint || !preparedInput || outpaint.version !== 1 ||
         preparedInput.version !== 1 ||
-        input.persistedTargetData.imageToolPreparedAssetId !== preparedInput.assetId ||
-        input.persistedTargetData.imageToolPreparedVersion !== 1 ||
-        input.persistedTargetData.imageToolPreparedWidth !== preparedInput.width ||
-        input.persistedTargetData.imageToolPreparedHeight !== preparedInput.height ||
+        !absentOrEqual("imageToolPreparedAssetId", preparedInput.assetId) ||
+        !absentOrEqual("imageToolPreparedVersion", 1) ||
+        !absentOrEqual("imageToolPreparedWidth", preparedInput.width) ||
+        !absentOrEqual("imageToolPreparedHeight", preparedInput.height) ||
         JSON.stringify(persistedOutpaint) !== JSON.stringify(outpaint) ||
         preparedInput.width !== mask.width || preparedInput.height !== mask.height ||
         outpaint.outputWidth !== mask.width || outpaint.outputHeight !== mask.height ||
@@ -1798,6 +1782,35 @@ function strictImageGenerationTool(input: {
     operationId: submitted.operationId,
     sourceAssetId: submitted.sourceAssetId,
     sourceNodeId: submitted.sourceNodeId,
+  };
+}
+
+function strictImageMultiAngleParameters(
+  value: unknown,
+): ImageMultiAngleParameters {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("多角度参数与已保存画布不一致");
+  }
+  const item = value as Record<string, unknown>;
+  if (
+    Object.keys(item).sort().join("\n") !==
+      ["distance", "horizontalDegrees", "verticalDegrees", "wideAngle"]
+        .sort().join("\n") ||
+    !Number.isFinite(item.distance) || Number(item.distance) < -100 ||
+    Number(item.distance) > 100 ||
+    !Number.isFinite(item.horizontalDegrees) ||
+    Number(item.horizontalDegrees) < -180 ||
+    Number(item.horizontalDegrees) > 180 ||
+    !Number.isFinite(item.verticalDegrees) ||
+    Number(item.verticalDegrees) < -90 ||
+    Number(item.verticalDegrees) > 90 ||
+    typeof item.wideAngle !== "boolean"
+  ) throw new Error("多角度参数与已保存画布不一致");
+  return {
+    distance: Number(item.distance),
+    horizontalDegrees: Number(item.horizontalDegrees),
+    verticalDegrees: Number(item.verticalDegrees),
+    wideAngle: item.wideAngle,
   };
 }
 
@@ -1954,6 +1967,9 @@ const mediaContentTypes = {
 type StrictGenerationPreflight = NodeInputPreflight & {
   canvasRevision: number;
   imageTool?: ImageGenerationToolInput;
+  imageToolOwnershipEvidence?: ReturnType<
+    typeof imageGenerationToolOwnershipEvidence
+  >;
   modelReleaseRevision?: ModelReleaseRevision;
   parameters: Record<string, ModelParameterValue>;
   persistedTargetParentId?: string;
@@ -2158,6 +2174,9 @@ function strictGenerationPreflight(input: {
   requireFreshRevision: boolean;
   targetKind: NodeInputKind;
 }): StrictGenerationPreflight {
+  if (input.body.imageTool !== undefined && input.targetKind !== "image") {
+    throw new Error("图片工具身份不能用于非图片任务");
+  }
   const activeModelReleaseRevision = activeModelContractHealth(
     input.targetKind,
     input.model,
@@ -2193,6 +2212,9 @@ function strictGenerationPreflight(input: {
         submitted: input.body.imageTool,
       })
     : undefined;
+  if (imageTool && input.body.workflowBinding !== undefined) {
+    throw new Error("图片工具任务不能绑定整组工作流");
+  }
   const referenceMediaRules = schema.referenceMediaRules ?? arkVideoMediaRules;
   if (
     input.requireFreshRevision &&
@@ -2506,9 +2528,33 @@ function strictGenerationPreflight(input: {
     : [];
   const { persistedTargetData: _persistedTargetData, ...publicPersisted } =
     persisted;
+  const imageToolOwnershipEvidence = imageTool
+    ? imageGenerationToolOwnershipEvidence({
+        accountId: input.ownerId,
+        aspectRatio: typeof semanticParameters.aspectRatio === "string"
+          ? semanticParameters.aspectRatio
+          : undefined,
+        canvasId: String(input.body.canvasId ?? ""),
+        imageTool,
+        modelId: input.model.id,
+        modelParameters: semanticParameters,
+        ...(imageTool.operation === "multi-angle"
+          ? {
+              multiAngleParameters: strictImageMultiAngleParameters(
+                persisted.persistedTargetData.imageMultiAngleParameters,
+              ),
+            }
+          : {}),
+        prompt: String(input.body.ownPrompt ?? ""),
+        quality: typeof semanticParameters.quality === "string"
+          ? semanticParameters.quality
+          : undefined,
+      })
+    : undefined;
   return {
     ...publicPersisted,
     imageTool,
+    imageToolOwnershipEvidence,
     modelReleaseRevision: activeModelReleaseRevision,
     parameters: semanticParameters,
     references,
@@ -3255,13 +3301,17 @@ export function initializePersistentGenerationTaskWorker() {
       );
     }
     const activeTaskCount = committedActiveGenerationTaskCount();
+    const projectionCandidateCount = singleNodeCanvasProjectionCandidateCount();
     const terminalDetachSweepEnabled =
       allowlistedLegacyTerminalDetachSweepEnabled();
-    if (activeTaskCount === 0 && !terminalDetachSweepEnabled) {
-      return { activeTaskCount, writerOpened: false };
+    if (
+      activeTaskCount === 0 && projectionCandidateCount === 0 &&
+      !terminalDetachSweepEnabled
+    ) {
+      return { activeTaskCount, projectionCandidateCount, writerOpened: false };
     }
     if (!incGen017GenerationEnabled()) {
-      return { activeTaskCount, writerOpened: false };
+      return { activeTaskCount, projectionCandidateCount, writerOpened: false };
     }
     if (
       process.env.UNBOUNDRY_SAFE_TEST === "1" &&
@@ -3278,8 +3328,19 @@ export function initializePersistentGenerationTaskWorker() {
         // opens the generation task worker or reaches a Provider submission.
       }
     }
+    if (projectionCandidateCount > 0) {
+      try {
+        retrySingleNodeCanvasProjections();
+      } catch {
+        // The result is already durable and no Provider retry is permitted.
+      }
+    }
     if (activeTaskCount === 0) {
-      return { activeTaskCount, writerOpened: false };
+      return {
+        activeTaskCount,
+        projectionCandidateCount,
+        writerOpened: projectionCandidateCount > 0,
+      };
     }
     if (activeTaskCount > 0) failInterruptedRetryingGenerationTasks();
     const providerFetcher = startupWorkerTestProviderFetcher();
@@ -3296,7 +3357,7 @@ export function initializePersistentGenerationTaskWorker() {
       launchGenerationTask(task.id, task.kind, launchOptions);
     }
     if (settledExecutions) await Promise.all(settledExecutions);
-    return { activeTaskCount, writerOpened: true };
+    return { activeTaskCount, projectionCandidateCount, writerOpened: true };
   };
   persistentGenerationWorkerCoordinator = runtimeRoleCoordinator;
   persistentGenerationWorkerDataDirectory = dataDirectory;

@@ -10,17 +10,33 @@ import {
   currentSchemaVersion,
   databaseMatchesMigrationManifest,
   databaseMatchesSchema41Contract,
+  databaseMatchesSchema42Contract,
   databaseMatchesSchemaContract,
   openAppDatabase,
 } from "../server/database";
 import {
   compileFrozenWorkflowSemanticPlan,
 } from "../types/workflowSemanticPlan";
-import { stableValueFingerprint } from "../types/canvasFingerprint";
+import {
+  sha256Hex,
+  stableSha256,
+  stableValueFingerprint,
+} from "../types/canvasFingerprint";
+import {
+  generationInputKey,
+  generationOwnershipEvidence,
+  generationOwnershipKey,
+} from "../types/generationIdentity";
 import {
   workflowLockedGraphChanged,
   workflowProjectedResultRegressed,
 } from "../server/canvasPersistence";
+import { projectWorkflowResultInTransaction } from
+  "../server/canvasWorkflowProjection";
+import { setGenerationProjectionReceiptFaultForTests } from
+  "../server/canvasMutationGateway";
+import { buildCanvasProjectionIdentity } from
+  "../server/generationCanvasProjection";
 import {
   createGenerationTaskStore,
   GenerationTaskWorkflowLockedError,
@@ -32,6 +48,7 @@ import {
 } from "../server/mediaCapacityReservations";
 import { inspectLockedBackupDatabase } from "../server/backupInspection";
 import { migrateSchema41To42 } from "../server/schema41To42Migration";
+import { migrateSchema42To43 } from "../server/schema42To43Migration";
 import {
   workflowRecoveryPolicy,
   type ModelExecutionAdapterId,
@@ -56,9 +73,17 @@ import {
 import { defaultModelReleaseDocument } from "../server/modelReleaseDefaults";
 import { inspectModelReleaseDocument } from
   "../server/modelReleaseRevisionStore";
-import { knownModelParameterSchema } from "../types/modelParameters";
+import {
+  knownModelParameterSchema,
+  submissionParameterValues,
+} from "../types/modelParameters";
+import { resolveNodeInputs } from "../types/nodeInputs";
 import type { ModelReleaseRevision } from "../types/modelReleaseRevisions";
 import type { ProviderProtocol } from "../types/relayProtocols";
+import {
+  resetCanvasObservabilityForTests,
+  snapshotCanvasObservabilityForTests,
+} from "../server/canvasObservability";
 
 const executeFile = promisify(execFile);
 
@@ -202,14 +227,14 @@ test("INC-GEN-025 semantic compiler rejects cyclic executable DAGs", () => {
   expect(() => compileFrozenWorkflowSemanticPlan(graph)).toThrow("循环依赖");
 });
 
-test("schema 42 is exact and a schema 41 database is refused without mutation", () => {
+test("schema 43 is exact and a schema 42 database is refused without mutation", () => {
   const current = migrateMemory();
-  expect(currentSchemaVersion).toBe(42);
+  expect(currentSchemaVersion).toBe(43);
   expect(databaseMatchesMigrationManifest(current)).toBe(true);
   expect(databaseMatchesSchemaContract(current)).toBe(true);
   current.close();
 
-  const directory = mkdtempSync(join(tmpdir(), "unboundry-schema41-refusal-"));
+  const directory = mkdtempSync(join(tmpdir(), "unboundry-schema42-refusal-"));
   chmodSync(directory, 0o700);
   const path = join(directory, "unboundry.sqlite");
   const legacy = new DatabaseSync(path);
@@ -223,16 +248,16 @@ test("schema 42 is exact and a schema 41 database is refused without mutation", 
   `);
   applyPendingSchemaMigrationsInTransaction(legacy, {
     sourceVersion: 0,
-    targetVersion: 41,
+    targetVersion: 42,
   });
   legacy.exec("COMMIT");
-  expect(databaseMatchesSchema41Contract(legacy)).toBe(true);
+  expect(databaseMatchesSchema42Contract(legacy)).toBe(true);
   legacy.close();
   chmodSync(path, 0o600);
   expect(() => openAppDatabase(directory)).toThrow();
   const after = new DatabaseSync(path, { readOnly: true });
   expect((after.prepare("PRAGMA user_version").get() as { user_version: number }).user_version)
-    .toBe(41);
+    .toBe(42);
   after.close();
   rmSync(directory, { force: true, recursive: true });
 });
@@ -316,8 +341,140 @@ test("schema 41 dry-run and apply migrate only the v42 workflow boundary", async
       targetVersion: 42,
     });
     const migrated = new DatabaseSync(databasePath, { readOnly: true });
-    expect(databaseMatchesMigrationManifest(migrated)).toBe(true);
+    expect(databaseMatchesMigrationManifest(migrated, 42)).toBe(true);
+    expect(databaseMatchesSchema42Contract(migrated)).toBe(true);
+    migrated.close();
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test("schema 42 dry-run and apply migrate exactly to durable receipt schema 43", async () => {
+  const root = mkdtempSync(join(tmpdir(), "unboundry-schema42-to43-"));
+  chmodSync(root, 0o700);
+  const dataDirectory = join(root, "data");
+  const runtimeDirectory = join(root, "runtime");
+  const inspectionRoot = join(root, "inspection");
+  mkdirSync(dataDirectory, { mode: 0o700 });
+  mkdirSync(runtimeDirectory, { mode: 0o700 });
+  mkdirSync(inspectionRoot, { mode: 0o700 });
+  const databasePath = join(dataDirectory, "unboundry.sqlite");
+  try {
+    const source = new DatabaseSync(databasePath);
+    source.exec(
+      "PRAGMA foreign_keys = ON;" +
+        "CREATE TABLE schema_migrations (\n" +
+        "      version INTEGER PRIMARY KEY,\n" +
+        "      name TEXT NOT NULL,\n" +
+        "      applied_at TEXT NOT NULL\n" +
+        "    );" +
+        "BEGIN IMMEDIATE;",
+    );
+    applyPendingSchemaMigrationsInTransaction(source, {
+      sourceVersion: 0,
+      targetVersion: 42,
+    });
+    source.exec("COMMIT; PRAGMA journal_mode = DELETE; BEGIN IMMEDIATE");
+    const sourceSha = inspectLockedBackupDatabase(source, inspectionRoot)
+      .logicalSha256;
+    source.exec("ROLLBACK");
+    source.close();
+    chmodSync(databasePath, 0o600);
+
+    const dryRun = await migrateSchema42To43({
+      dataDirectory,
+      expectedSourceLogicalSha256: sourceSha,
+      mode: "dry-run",
+      runtimeDirectory,
+      scratchRoot: root,
+    });
+    expect(dryRun).toMatchObject({
+      sourceVersion: 42,
+      status: "verified",
+      targetVersion: 43,
+    });
+    const unchanged = new DatabaseSync(databasePath, { readOnly: true });
+    expect(databaseMatchesMigrationManifest(unchanged, 42)).toBe(true);
+    expect(databaseMatchesSchema42Contract(unchanged)).toBe(true);
+    unchanged.close();
+
+    const cli = await executeFile(process.execPath, [
+      join(process.cwd(), "scripts/migrate-schema42-to43.mjs"),
+      "--dry-run",
+      "--data-dir",
+      dataDirectory,
+      "--runtime-dir",
+      runtimeDirectory,
+      "--scratch-root",
+      root,
+      "--expected-logical-sha256",
+      sourceSha,
+    ], { cwd: process.cwd(), env: process.env });
+    expect(JSON.parse(cli.stdout)).toMatchObject({
+      ok: true,
+      sourceVersion: 42,
+      targetVersion: 43,
+    });
+
+    const applied = await migrateSchema42To43({
+      dataDirectory,
+      expectedSourceLogicalSha256: sourceSha,
+      mode: "apply",
+      runtimeDirectory,
+      scratchRoot: root,
+    });
+    expect(applied).toMatchObject({
+      sourceVersion: 42,
+      status: "complete",
+      targetVersion: 43,
+    });
+    const migrated = new DatabaseSync(databasePath);
+    migrated.exec("PRAGMA foreign_keys = ON");
+    expect(databaseMatchesMigrationManifest(migrated, 43)).toBe(true);
     expect(databaseMatchesSchemaContract(migrated)).toBe(true);
+    const timestamp = new Date().toISOString();
+    migrated.prepare(`
+      INSERT INTO users (
+        id, login_name, display_name, password_hash, role, status,
+        created_at, updated_at
+      ) VALUES ('receipt-owner', 'receipt-owner', 'Owner', 'test', 'user',
+        'active', ?, ?)
+    `).run(timestamp, timestamp);
+    migrated.prepare(`
+      INSERT INTO canvas_documents (
+        owner_id, id, revision, graph_revision, nodes, edges, viewport,
+        updated_at, save_session_id, save_sequence
+      ) VALUES ('receipt-owner', 'receipt-canvas', 0, 0, '[]', '[]', '{}',
+        ?, NULL, 0)
+    `).run(timestamp);
+    expect(() => migrated.prepare(`
+      INSERT INTO canvas_operation_receipts (
+        owner_id, canvas_id, operation_id, payload_sha256, command_type,
+        actor_type, save_session_id, save_sequence, baseline_kind,
+        base_document_revision, base_input_revision,
+        baseline_load_token_sha256, baseline_epoch, outcome, conflict_code,
+        http_status, original_request_id, result_document_revision,
+        result_input_revision, result_document_sha256, result_input_sha256,
+        affected_subgraph_sha256, changed_paths, created_at, settled_at
+      ) VALUES (
+        'receipt-owner', 'receipt-canvas', 'receipt-operation',
+        ?, 'canvas.create', 'browser', 'session-01', 1, 'create',
+        NULL, NULL, NULL, NULL, 'APPLIED', NULL, 200, 'request-01',
+        0, 0, ?, ?, NULL, '[]', ?, ?
+      )
+    `).run("a".repeat(64), "b".repeat(64), "c".repeat(64), timestamp, timestamp))
+      .not.toThrow();
+    expect(() => migrated.prepare(`
+      UPDATE canvas_operation_receipts SET http_status = 409
+      WHERE owner_id = 'receipt-owner' AND canvas_id = 'receipt-canvas'
+    `).run()).toThrow();
+    migrated.prepare(`
+      DELETE FROM canvas_documents
+      WHERE owner_id = 'receipt-owner' AND id = 'receipt-canvas'
+    `).run();
+    expect(migrated.prepare(`
+      SELECT COUNT(*) AS count FROM canvas_operation_receipts
+    `).get()).toEqual({ count: 0 });
     migrated.close();
   } finally {
     rmSync(root, { force: true, recursive: true });
@@ -911,6 +1068,68 @@ test("server sweep projects authoritative success and stop releases only future 
   try {
     const database = openAppDatabase(directory);
     const timestamp = new Date().toISOString();
+    const successRelease = workflowReleaseFixture({
+      index: 101,
+      kind: "text",
+      modelId: "text-model",
+      providerDriver: "volcengine-ark",
+      providerModelId: "doubao-seed-2-0-lite-260428",
+      providerProfileId: "provider-profile",
+      providerProtocol: "native",
+    });
+    const successSchema = knownModelParameterSchema({
+      capability: "text",
+      providerDriver: "volcengine-ark",
+      providerModelId: "doubao-seed-2-0-lite-260428",
+    });
+    const successPreflight = resolveNodeInputs({
+      edges: [],
+      modelReleaseRevision: successRelease.revisionId,
+      modelSchema: successSchema,
+      nodes: [{
+        data: {
+          content: "old",
+          textModelConfigurationRevision: "model-revision",
+          textModelId: "text-model",
+          textPrompt: "authoritative prompt",
+          textPromptReady: true,
+        },
+        id: "text-node",
+        type: "text",
+      }],
+      ownPrompt: "authoritative prompt",
+      parameters: {},
+      targetId: "text-node",
+      targetKind: "text",
+    });
+    if (!successPreflight.contractFingerprint) {
+      throw new Error("workflow projection fixture has no input contract");
+    }
+    const successParameters = submissionParameterValues(
+      successSchema,
+      successPreflight.normalizedParameters ?? {},
+    );
+    const successInputKey = generationInputKey({
+      inputs: successPreflight.inputs,
+      modelConfigurationRevision: "model-revision",
+      modelId: "text-model",
+      modelReleaseRevision: successRelease.revisionId,
+      ownPrompt: "authoritative prompt",
+      parameters: successParameters,
+      prompt: successPreflight.finalPrompt,
+    });
+    const successOwnershipKey = generationOwnershipKey(
+      generationOwnershipEvidence({
+        contractFingerprint: successPreflight.contractFingerprint,
+        inputs: successPreflight.inputs,
+        kind: "text",
+        modelConfigurationRevision: "model-revision",
+        modelId: "text-model",
+        modelReleaseRevision: successRelease.revisionId,
+        parameters: successParameters,
+        prompt: "authoritative prompt",
+      }),
+    );
     database.prepare(`
       INSERT INTO users (id, login_name, display_name, password_hash, role, status, created_at, updated_at)
       VALUES ('__test__', 'workflow-test', 'Workflow Test', 'test', 'user', 'active', ?, ?)
@@ -919,16 +1138,20 @@ test("server sweep projects authoritative success and stop releases only future 
       INSERT INTO canvas_documents (
         owner_id, id, revision, graph_revision, nodes, edges, viewport,
         updated_at, save_session_id, save_sequence
-      ) VALUES ('__test__', 'canvas', 1, 1, ?, '[]', '{}', ?, NULL, 0)
+      ) VALUES ('__test__', 'canvas', 1, 1, ?, '[]',
+        '{"x":0,"y":0,"zoom":1}', ?, NULL, 0)
     `).run(JSON.stringify([{
       data: {
         content: "old",
         textGenerating: true,
-        textGenerationInputKey: "workflow-input-key",
-        textGenerationOwnershipKey: "workflow-owner-key",
+        textGenerationInputKey: successInputKey,
+        textGenerationOwnershipKey: successOwnershipKey,
         textGenerationTaskId: "stale-task-id",
+        textModelConfigurationRevision: "model-revision",
         textModelId: "text-model",
+        textParameters: successParameters,
         textPrompt: "authoritative prompt",
+        textPromptReady: true,
         workflowExecutionRunId: "success-run",
       },
       id: "text-node",
@@ -939,15 +1162,6 @@ test("server sweep projects authoritative success and stop releases only future 
     const generation = await import("../server/generationTasks");
     const taskStore = generation.generationTaskApplication.taskStore();
     taskStoreForCleanup = taskStore;
-    const successRelease = workflowReleaseFixture({
-      index: 101,
-      kind: "text",
-      modelId: "text-model",
-      providerDriver: "volcengine-ark",
-      providerModelId: "doubao-seed-2-0-lite-260428",
-      providerProfileId: "provider-profile",
-      providerProtocol: "native",
-    });
     const task = taskStore.create({
       canvasId: "canvas",
       idempotencyKey: "workflow-sweep-task",
@@ -955,10 +1169,23 @@ test("server sweep projects authoritative success and stop releases only future 
       model: "text-model",
       modelConfiguration: {
         generationIdentityVersion: 2,
-        generationInputKey: "workflow-input-key",
-        generationOwnershipKey: "workflow-owner-key",
+        generationInputKey: successInputKey,
+        generationOwnershipKey: successOwnershipKey,
+        modelCapability: "text",
         modelConfigurationRevision: "model-revision",
+        modelId: "text-model",
+        modelInputContractFingerprint: successPreflight.contractFingerprint,
         modelReleaseRevision: successRelease,
+        parameterSchema: successSchema,
+        workflowBinding: {
+          generationInputKey: successInputKey,
+          generationOwnershipKey: successOwnershipKey,
+          groupId: "success-group",
+          modelConfigurationRevision: "model-revision",
+          modelReleaseRevision: successRelease.revisionId,
+          reservationId: "success-run-reservation",
+          runId: "success-run",
+        },
       },
       nodeId: "text-node",
       ownerId: "__test__",
@@ -966,6 +1193,20 @@ test("server sweep projects authoritative success and stop releases only future 
       providerModelId: "provider-text-model",
       providerProfileId: "provider-profile",
     }).task;
+    const boundCanvas = openAppDatabase(directory);
+    const boundCanvasRow = boundCanvas.prepare(`
+      SELECT nodes FROM canvas_documents
+      WHERE owner_id = '__test__' AND id = 'canvas'
+    `).get() as { nodes: string };
+    const boundNodes = JSON.parse(boundCanvasRow.nodes) as Array<{
+      data: Record<string, unknown>;
+    }>;
+    boundNodes[0]!.data.textGenerationTaskId = task.id;
+    boundCanvas.prepare(`
+      UPDATE canvas_documents SET nodes = ?
+      WHERE owner_id = '__test__' AND id = 'canvas'
+    `).run(JSON.stringify(boundNodes));
+    boundCanvas.close();
     taskStore.transition(task.id, "running");
     taskStore.complete(task.id, {
       actualCostMicrounits: 0,
@@ -1007,8 +1248,21 @@ test("server sweep projects authoritative success and stop releases only future 
         generationIdentityVersion: 2,
         generationInputKey: "recovering-input-key",
         generationOwnershipKey: "recovering-owner-key",
+        modelCapability: "text",
         modelConfigurationRevision: "recovering-model-revision",
+        modelId: "recovering-text-model",
+        modelInputContractFingerprint: "recovering-contract",
         modelReleaseRevision: recoveringRelease,
+        parameterSchema: successSchema,
+        workflowBinding: {
+          generationInputKey: "recovering-input-key",
+          generationOwnershipKey: "recovering-owner-key",
+          groupId: "recovering-group",
+          modelConfigurationRevision: "recovering-model-revision",
+          modelReleaseRevision: recoveringRelease.revisionId,
+          reservationId: "recovering-run-reservation",
+          runId: "recovering-run",
+        },
       },
       nodeId: "recovering-node",
       ownerId: "__test__",
@@ -1242,8 +1496,97 @@ test("server sweep projects authoritative success and stop releases only future 
     `).run(recoveringTask.id, timestamp, timestamp);
     store.close();
 
+    const projectionProbe = openAppDatabase(directory);
+    let projectionBuild: ReturnType<typeof buildCanvasProjectionIdentity>;
+    let projectionProbeResult: ReturnType<typeof projectWorkflowResultInTransaction>;
+    projectionProbe.exec("BEGIN IMMEDIATE");
+    try {
+      projectionBuild = buildCanvasProjectionIdentity({
+        canvasId: "canvas",
+        database: projectionProbe,
+        kind: "text",
+        nodeId: "text-node",
+        ownerId: "__test__",
+        runId: "success-run",
+        taskId: task.id,
+      });
+      projectionProbeResult = projectWorkflowResultInTransaction({
+        canvasId: "canvas",
+        database: projectionProbe,
+        kind: "text",
+        nodeId: "text-node",
+        ownerId: "__test__",
+        runId: "success-run",
+        taskId: task.id,
+      });
+    } finally {
+      if (projectionProbe.isTransaction) projectionProbe.exec("ROLLBACK");
+      projectionProbe.close();
+    }
+    expect(projectionBuild!).toMatchObject({ status: "ready" });
+    expect(projectionProbeResult!).toBe("applied");
+
     const workflow = await import("../server/workflowRunService");
-    workflow.stopWorkflowRun("__test__", "stop-run");
+    const faultStore = openAppDatabase(directory);
+    const canvasBeforeProjectionFault = faultStore.prepare(`
+      SELECT revision, graph_revision, nodes, edges, viewport, updated_at
+      FROM canvas_documents WHERE owner_id = '__test__' AND id = 'canvas'
+    `).get();
+    faultStore.prepare(`
+      UPDATE workflow_runs
+      SET stop_requested = 1, state = 'stopping', updated_at = ?
+      WHERE id = 'stop-run' AND state = 'running'
+    `).run(new Date().toISOString());
+    faultStore.close();
+    resetCanvasObservabilityForTests();
+    setGenerationProjectionReceiptFaultForTests((projection) => {
+      if (projection.scope === "workflow" && projection.taskId === task.id) {
+        throw new Error("m103 projection fault");
+      }
+    });
+    try {
+      await workflow.runWorkflowSweep();
+    } finally {
+      setGenerationProjectionReceiptFaultForTests(undefined);
+    }
+    const failedProjection = openAppDatabase(directory);
+    expect(failedProjection.prepare(`
+      SELECT state FROM workflow_runs WHERE id = 'success-run'
+    `).get()).toEqual({ state: "success" });
+    expect(failedProjection.prepare(`
+      SELECT state, projection_state, error_code
+      FROM workflow_run_nodes
+      WHERE run_id = 'success-run' AND node_id = 'text-node'
+    `).get()).toEqual({
+      error_code: null,
+      projection_state: "failed",
+      state: "success",
+    });
+    expect(failedProjection.prepare(`
+      SELECT revision, graph_revision, nodes, edges, viewport, updated_at
+      FROM canvas_documents WHERE owner_id = '__test__' AND id = 'canvas'
+    `).get()).toEqual(canvasBeforeProjectionFault);
+    expect(failedProjection.prepare(`
+      SELECT COUNT(*) AS count FROM canvas_operation_receipts
+      WHERE actor_type = 'server' AND command_type = 'server.projection'
+    `).get()).toEqual({ count: 0 });
+    failedProjection.close();
+    const projectionFailureEvents = snapshotCanvasObservabilityForTests().events
+      .filter((event) => event.outcome === "projection.failed" && (
+        ("taskId" in event && event.taskId === task.id) ||
+        ("operationId" in event &&
+          event.operationId === `server-projection-unresolved:${task.id}`)
+      ));
+    expect(projectionFailureEvents.map((event) => event.event).sort()).toEqual([
+      "command",
+      "generation-lifecycle",
+      "route",
+    ]);
+    expect(snapshotCanvasObservabilityForTests().events.some((event) =>
+      event.outcome === "projection.applied" &&
+      "taskId" in event && event.taskId === task.id
+    )).toBe(false);
+
     await workflow.runWorkflowSweep();
     const after = openAppDatabase(directory);
     expect(after.prepare(`
@@ -1296,6 +1639,18 @@ test("server sweep projects authoritative success and stop releases only future 
     expect(after.prepare(`
       SELECT state FROM generation_tasks WHERE id = ?
     `).get(unknownTask.id)).toEqual({ state: "recovering" });
+    expect(after.prepare(`
+      SELECT COUNT(*) AS count FROM canvas_operation_receipts
+      WHERE actor_type = 'server' AND command_type = 'server.projection'
+        AND operation_id LIKE 'server-projection:%'
+    `).get()).toEqual({ count: 1 });
+    const projectionAppliedEvents = snapshotCanvasObservabilityForTests().events
+      .filter((event) => event.outcome === "projection.applied" &&
+        "taskId" in event && event.taskId === task.id);
+    expect(projectionAppliedEvents.map((event) => event.event).sort()).toEqual([
+      "generation-lifecycle",
+      "route",
+    ]);
     const canvas = after.prepare(`
       SELECT nodes FROM canvas_documents WHERE owner_id = '__test__' AND id = 'canvas'
     `).get() as { nodes: string };
@@ -1303,13 +1658,12 @@ test("server sweep projects authoritative success and stop releases only future 
       .toMatchObject({
         content: "<b>authoritative & result</b>",
         contentHtml: "<p>&lt;b&gt;authoritative &amp; result&lt;/b&gt;</p>",
-        groupRunSuccessInputFingerprint: "workflow-input-key",
+        groupRunSuccessInputFingerprint: successInputKey,
         groupRunSuccessModelConfigurationRevision: "model-revision",
         groupRunSuccessModelReleaseRevision: successRelease.revisionId,
-        groupRunSuccessOwnershipKey: "workflow-owner-key",
-        groupRunSuccessResultKey: stableValueFingerprint({
-          content: "<b>authoritative & result</b>",
-          contentHtml: "<p>&lt;b&gt;authoritative &amp; result&lt;/b&gt;</p>",
+        groupRunSuccessOwnershipKey: successOwnershipKey,
+        groupRunSuccessResultKey: stableSha256({
+          textSha256: sha256Hex("<b>authoritative & result</b>"),
         }),
         groupRunSuccessTaskId: task.id,
         textGenerationTaskId: task.id,
@@ -1351,8 +1705,10 @@ test("server sweep projects authoritative success and stop releases only future 
     const retriedCanvas = retried.prepare(`
       SELECT nodes FROM canvas_documents WHERE owner_id = '__test__' AND id = 'canvas'
     `).get() as { nodes: string };
+    // Receipt replay proves the original projection was already committed; a
+    // later durable user edit must never be overwritten by a recovery sweep.
     expect((JSON.parse(retriedCanvas.nodes) as Array<{ data: Record<string, unknown> }>)[0]
-      ?.data.content).toBe("<b>authoritative & result</b>");
+      ?.data.content).toBe("temporarily stale projection");
     expect(retried.prepare(`
       SELECT state FROM workflow_runs WHERE id = 'recovering-run'
     `).get()).toEqual({ state: "success" });

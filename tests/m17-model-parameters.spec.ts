@@ -726,6 +726,7 @@ test("text node shows connected multimodal inputs, removes only the selected edg
     type: "cuttable",
   }));
   const saved = await page.request.put("/api/canvas/default", {
+    headers: { "X-Unboundry-Safe-Fixture-Seed": "default" },
     data: { edges, nodes, revision: 0, viewport: { x: 0, y: 0, zoom: 0.7 } },
   });
   expect(saved.ok()).toBeTruthy();
@@ -1313,7 +1314,8 @@ test("text, image, video and audio nodes render admin-defined parameters and per
   });
   await videoParameters.click();
   const save = page.waitForResponse((response) =>
-    response.request().method() === "PUT" && /\/api\/canvas\/default$/.test(response.url()),
+    response.request().method() === "POST" &&
+    /\/api\/canvases\/default\/commands$/.test(response.url()),
   );
   await page.getByRole("dialog", { name: "模型参数" })
     .getByRole("button", { name: "480p" }).click();

@@ -56,7 +56,23 @@ function encryptedDocument(
   });
 }
 
+function rollbackMigration43To42(database: DatabaseSync) {
+  if (Number((database.prepare("PRAGMA user_version").get() as {
+    user_version: number;
+  }).user_version) !== 43) return;
+  database.exec(`
+    BEGIN IMMEDIATE;
+    DROP TABLE generation_canvas_projection_states;
+    DROP TABLE canvas_operation_receipts;
+    DROP TABLE media_image_metadata;
+    DELETE FROM schema_migrations WHERE version = 43;
+    PRAGMA user_version = 42;
+    COMMIT;
+  `);
+}
+
 function rollbackMigration39To38(database: DatabaseSync) {
+  rollbackMigration43To42(database);
   if (Number((database.prepare("PRAGMA user_version").get() as {
     user_version: number;
   }).user_version) === 42) {
@@ -1216,6 +1232,7 @@ test("the read-only media report CLI requires a frozen absolute source and leave
           updatedAt: frozenAt,
         },
       }), frozenAt);
+      rollbackMigration43To42(frozenDatabase);
       frozenDatabase.exec("PRAGMA wal_checkpoint(TRUNCATE)");
     } finally {
       frozenDatabase.close();
@@ -1271,6 +1288,7 @@ test("the read-only media report CLI requires a frozen absolute source and leave
       "scripts/report-media-integrity.mjs",
       "--data-dir",
       fixture.dataDirectory,
+      "--historical-recovery",
       "--scratch-root",
       scratchRoot,
       "--source-frozen",
@@ -1287,7 +1305,7 @@ test("the read-only media report CLI requires a frozen absolute source and leave
     expect(lockedReport).toMatchObject({
       captureMode: "locked-exact",
       clean: true,
-      finalCandidate: true,
+      finalCandidate: false,
       schemaVersion: 42,
       version: 1,
     });

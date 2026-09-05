@@ -93,7 +93,7 @@ function GroupNodeImpl({
   const singleNodeChrome = useSingleNodeChrome(selected, dragging);
   const checkpoint = useCanvasCheckpoint();
   const { getEdges, getNodes } = useReactFlow<ProbeNodeType>();
-  const { setNodes } = useCanvasGraphMutation();
+  const { mutateGraph } = useCanvasGraphMutation();
   const { accountId, canvasId, fixtureScopeId, isFixture, notify } =
     useGenerationCanvas();
   const groupRunScope = createGroupRunSummaryScope(
@@ -181,13 +181,14 @@ function GroupNodeImpl({
   const titleControl = useCompositionSafeText({
     onCommit: (title) => {
       if (executing) return;
-      setNodes((nodes) =>
-        nodes.map((node) =>
+      void mutateGraph(({ edges, nodes }) => ({
+        edges,
+        nodes: nodes.map((node) =>
           node.id === id
             ? { ...node, data: { ...node.data, title } }
             : node,
         ),
-      );
+      }));
     },
     onEditSessionStart: checkpoint,
     value: data.title ?? "新建组",
@@ -270,45 +271,47 @@ function GroupNodeImpl({
 
   const updateData = (patch: Partial<ProbeNodeType["data"]>) => {
     if (executing) return;
-    setNodes((nodes) =>
-      nodes.map((node) =>
+    void mutateGraph(({ edges, nodes }) => ({
+      edges,
+      nodes: nodes.map((node) =>
         node.id === id
           ? { ...node, data: { ...node.data, ...patch } }
           : node,
       ),
-    );
+    }));
   };
   const ungroup = () => {
     if (executing) return;
-    checkpoint();
-    setNodes((nodes) => {
+    void mutateGraph(({ edges, nodes }) => {
       const group = nodes.find((node) => node.id === id);
-      if (!group) return nodes;
-      return nodes
-        .filter((node) => node.id !== id)
-        .map((node) =>
-          node.parentId === id
-            ? {
-                ...node,
-                parentId: undefined,
-                position: {
-                  x: group.position.x + node.position.x,
-                  y: group.position.y + node.position.y,
-                },
-                selected: true,
-                zIndex: 0,
-              }
-            : node,
-        );
+      if (!group) return { edges, nodes };
+      return {
+        edges,
+        nodes: nodes
+          .filter((node) => node.id !== id)
+          .map((node) =>
+            node.parentId === id
+              ? {
+                  ...node,
+                  parentId: undefined,
+                  position: {
+                    x: group.position.x + node.position.x,
+                    y: group.position.y + node.position.y,
+                  },
+                  selected: true,
+                  zIndex: 0,
+                }
+              : node,
+          ),
+      };
     });
   };
 
   const layout = (mode: "grid" | "horizontal") => {
     if (executing) return;
-    checkpoint();
-    setNodes((nodes) => {
+    void mutateGraph(({ edges, nodes }) => {
       const children = nodes.filter((node) => node.parentId === id);
-      if (!children.length) return nodes;
+      if (!children.length) return { edges, nodes };
       const sizes = children.map(nodeSize);
       const gap = 20;
       const padding = 20;
@@ -326,7 +329,7 @@ function GroupNodeImpl({
           },
         ]),
       );
-      return nodes.map((node) => {
+      return { edges, nodes: nodes.map((node) => {
         if (node.id === id) {
           return {
             ...node,
@@ -342,7 +345,7 @@ function GroupNodeImpl({
         }
         const position = positions.get(node.id);
         return position ? { ...node, position } : node;
-      });
+      }) };
     });
     setLayoutMenu(false);
   };
@@ -524,7 +527,6 @@ function GroupNodeImpl({
         isVisible={singleNodeChrome && !executing}
         minHeight={147}
         minWidth={312}
-        onResizeStart={() => checkpoint()}
       />
       {singleNodeChrome && !executing && (
         <GenerationDurationHint

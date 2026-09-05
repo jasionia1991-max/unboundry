@@ -441,7 +441,7 @@ function PlaylistNodeImpl({
   const zoomValue = useRef(1);
   const { getNode, getViewport, screenToFlowPosition } =
     useReactFlow<ProbeNodeType>();
-  const { mutateGraph, setNodes } = useCanvasGraphMutation();
+  const { applyViewUpdate, mutateGraph } = useCanvasGraphMutation();
   const { accountId, canvasId, persistenceReady } = useGenerationCanvas();
   const mediaAdoptionScopeRef = useRef(`${accountId}\u0000${canvasId}`);
   mediaAdoptionScopeRef.current = `${accountId}\u0000${canvasId}`;
@@ -457,6 +457,10 @@ function PlaylistNodeImpl({
   const [exportMenu, setExportMenu] = useState(false);
   const [exportState, setExportState] = useState("");
   const [hoverTime, setHoverTime] = useState<number | null>(null);
+  const [nodeMovePreview, setNodeMovePreview] = useState<{
+    x: number;
+    y: number;
+  }>();
   const [playerOpen, setPlayerOpen] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [sortPreview, setSortPreview] = useState<PlaylistClip[]>();
@@ -482,14 +486,16 @@ function PlaylistNodeImpl({
   }, []);
   const titleControl = useCompositionSafeText({
     onCommit: (nextTitle) => {
-      setTitle(nextTitle);
-      setNodes((nodes) =>
-        nodes.map((node) =>
+      void mutateGraph(({ edges, nodes }) => ({
+        edges,
+        nodes: nodes.map((node) =>
           node.id === id
             ? { ...node, data: { ...node.data, title: nextTitle } }
             : node,
         ),
-      );
+      })).then((applied) => {
+        if (applied) setTitle(nextTitle);
+      });
     },
     onEditSessionStart: checkpoint,
     value: title,
@@ -548,18 +554,24 @@ function PlaylistNodeImpl({
     [],
   );
 
-  const updateData = (patch: Partial<ProbeNodeType["data"]>) => {
-    setNodes((nodes) =>
-      nodes.map((node) =>
+  const updateDurableData = (
+    patch: Partial<ProbeNodeType["data"]>,
+    options?: Readonly<{ checkpoint?: boolean }>,
+  ) => {
+    void mutateGraph(({ edges, nodes }) => ({
+      edges,
+      nodes: nodes.map((node) =>
         node.id === id
           ? { ...node, data: { ...node.data, ...patch } }
           : node,
       ),
-    );
+    }), options);
   };
 
   const startPicking = () => {
-    updateData({ playlistPicking: true });
+    applyViewUpdate((nodes) => nodes.map((node) => node.id === id
+      ? { ...node, data: { ...node.data, playlistPicking: true } }
+      : node));
   };
 
   const pointerTime = (clientX: number) => {
@@ -678,7 +690,6 @@ function PlaylistNodeImpl({
       side,
       start: originStart,
     });
-    checkpoint();
     const apply = () => {
       frame = undefined;
       if (!pending) return;
@@ -727,7 +738,7 @@ function PlaylistNodeImpl({
       setTrimPreview(undefined);
       setHoverTime(null);
       if (next) {
-        updateData({
+        updateDurableData({
           playlistClips: clips.map((item, clipIndex) =>
             clipIndex === index ? next : item,
           ),
@@ -748,7 +759,7 @@ function PlaylistNodeImpl({
     event.preventDefault();
     event.stopPropagation();
     setActiveClipId(clip.id);
-    setNodes((nodes) =>
+    applyViewUpdate((nodes) =>
       nodes.map((item) => ({ ...item, selected: item.id === id })),
     );
     segmentGesture.current = {
@@ -769,24 +780,14 @@ function PlaylistNodeImpl({
         if (Math.hypot(deltaX, deltaY) < 5) return;
         gesture.mode =
           Math.abs(deltaX) > Math.abs(deltaY) ? "sort" : "move";
-        checkpoint();
       }
       pointerEvent.preventDefault();
       const canvasZoom = getViewport().zoom || 1;
       if (gesture.mode === "move") {
-        setNodes((nodes) =>
-          nodes.map((item) =>
-            item.id === id
-              ? {
-                  ...item,
-                  position: {
-                    x: gesture.nodeX + deltaX / canvasZoom,
-                    y: gesture.nodeY + deltaY / canvasZoom,
-                  },
-                }
-              : item,
-          ),
-        );
+        setNodeMovePreview({
+          x: deltaX / canvasZoom,
+          y: deltaY / canvasZoom,
+        });
         return;
       }
 
@@ -821,11 +822,28 @@ function PlaylistNodeImpl({
       window.removeEventListener("pointerup", end);
       segmentGesture.current = undefined;
       setDragVisual(undefined);
+      setNodeMovePreview(undefined);
       setSortPreview(undefined);
       if (!gesture?.mode) {
         setCurrentTime(pointerTime(pointerEvent.clientX));
       } else if (gesture.mode === "sort") {
-        updateData({ playlistClips: gesture.preview });
+        updateDurableData({ playlistClips: gesture.preview });
+      } else {
+        const canvasZoom = getViewport().zoom || 1;
+        const deltaX = (pointerEvent.clientX - gesture.startX) / canvasZoom;
+        const deltaY = (pointerEvent.clientY - gesture.startY) / canvasZoom;
+        void mutateGraph(({ edges, nodes }) => ({
+          edges,
+          nodes: nodes.map((item) => item.id === id
+            ? {
+                ...item,
+                position: {
+                  x: gesture.nodeX + deltaX,
+                  y: gesture.nodeY + deltaY,
+                },
+              }
+            : item),
+        }));
       }
     };
 
@@ -861,8 +879,7 @@ function PlaylistNodeImpl({
     const stamp = Date.now();
     const leftId = `${editPoint.clip.id}-a-${stamp}`;
     const rightId = `${editPoint.clip.id}-b-${stamp}`;
-    checkpoint();
-    updateData({
+    updateDurableData({
       playlistClips: [
         ...clips.slice(0, editPoint.index),
         {
@@ -883,24 +900,28 @@ function PlaylistNodeImpl({
 
   const trimLeft = () => {
     if (!editPoint || editPoint.left < 0.1) return;
-    checkpoint();
-    updateData({
-      playlistClips: clips.map((clip, index) =>
-        index === editPoint.index
-          ? { ...clip, start: editPoint.split }
-          : clip,
-      ),
+    updateDurableData({
+      playlistClips: editPoint.right < 0.1
+        ? clips.filter((_clip, index) => index !== editPoint.index)
+        : clips.map((clip, index) =>
+            index === editPoint.index
+              ? { ...clip, start: editPoint.split }
+              : clip,
+          ),
     });
     setCurrentTime(editPoint.cursor);
   };
 
   const trimRight = () => {
     if (!editPoint || editPoint.right < 0.1) return;
-    checkpoint();
-    updateData({
-      playlistClips: clips.map((clip, index) =>
-        index === editPoint.index ? { ...clip, end: editPoint.split } : clip,
-      ),
+    updateDurableData({
+      playlistClips: editPoint.left < 0.1
+        ? clips.filter((_clip, index) => index !== editPoint.index)
+        : clips.map((clip, index) =>
+            index === editPoint.index
+              ? { ...clip, end: editPoint.split }
+              : clip,
+          ),
     });
   };
 
@@ -953,8 +974,7 @@ function PlaylistNodeImpl({
       ) {
         event.preventDefault();
         event.stopImmediatePropagation();
-        checkpoint();
-        updateData({
+        updateDurableData({
           playlistClips: clips.filter((clip) => clip.id !== activeClipId),
         });
         setActiveClipId(undefined);
@@ -999,13 +1019,15 @@ function PlaylistNodeImpl({
         isVisible={singleNodeChrome}
         minHeight={104}
         minWidth={250}
-        onResizeStart={() => checkpoint()}
       />
       <Handle id="target" position={Position.Left} type="target" />
 
       <div
         className="playlist-node"
         data-picking={data.playlistPicking || undefined}
+        style={nodeMovePreview
+          ? { transform: `translate(${nodeMovePreview.x}px, ${nodeMovePreview.y}px)` }
+          : undefined}
       >
         {singleNodeChrome && hasClips && (
           <div
@@ -1115,6 +1137,9 @@ function PlaylistNodeImpl({
                           x: window.innerWidth / 2 - 222,
                           y: window.innerHeight / 2 - 125,
                         });
+                        const videoCreatedAt = new Intl.DateTimeFormat(
+                          "zh-CN",
+                        ).format(new Date());
                         const adopted = await mutateGraph(({ edges, nodes }) => {
                           if (!nodes.some((node) => node.id === id)) {
                             return { edges, nodes };
@@ -1134,9 +1159,7 @@ function PlaylistNodeImpl({
                                 sourceKind: "video",
                                 title: title || "Playlist",
                                 videoAudioEnabled: true,
-                                videoCreatedAt: new Intl.DateTimeFormat(
-                                  "zh-CN",
-                                ).format(new Date()),
+                                videoCreatedAt,
                                 videoDuration:
                                   trustedMetadata.durationSeconds ?? total,
                                 videoFileSize: trustedMetadata.byteSize,

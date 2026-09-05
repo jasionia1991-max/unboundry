@@ -26,6 +26,46 @@ const origin = `http://127.0.0.1:${port}`;
 {
   const runtime = await import("../server/database.ts");
   const database = runtime.openAppDatabase(dataDir);
+  const timestamp = "2026-09-04T00:00:00.000Z";
+  database.prepare(`
+    INSERT OR IGNORE INTO users (
+      id, login_name, display_name, password_hash, role, status,
+      created_at, updated_at
+    ) VALUES ('__test__', '__test__', 'Restart fixture', 'test-only',
+      'admin', 'active', ?, ?)
+  `).run(timestamp, timestamp);
+  const insertMedia = database.prepare(`
+    INSERT INTO media_assets (
+      kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
+      storage_backend, object_key, content_type, checksum_sha256,
+      storage_status, duration_seconds, duration_source, duration_status,
+      media_width, media_height
+    ) VALUES (?, ?, '__test__', ?, 16, ?, ?, 'local', ?, ?, ?, 'ready',
+      ?, ?, ?, ?, ?)
+  `);
+  for (const fixture of [
+    { id: "asset-p1-garment-photo", kind: "image", type: "image/png" },
+    { id: "asset-p3-reference-image", kind: "image", type: "image/png" },
+    { id: "asset-p3-reference-video", kind: "video", type: "video/mp4" },
+    { id: "asset-p3-reference-audio", kind: "audio", type: "audio/mpeg" },
+  ]) {
+    const timed = fixture.kind !== "image";
+    insertMedia.run(
+      fixture.kind,
+      fixture.id,
+      `${fixture.id}.fixture`,
+      timestamp,
+      timestamp,
+      `${fixture.id}.fixture`,
+      fixture.type,
+      "a".repeat(64),
+      timed ? 10 : null,
+      timed ? "server-probe" : null,
+      timed ? "ready" : "not-applicable",
+      fixture.kind === "audio" ? null : 1280,
+      fixture.kind === "audio" ? null : 720,
+    );
+  }
   database.close();
 }
 
@@ -149,13 +189,15 @@ function assertP1Graph(document, expected) {
     "A durable asset ID must hydrate to its stable internal media route",
   );
   assert.deepEqual(
-    document.edges.map((edge) => ({
-      id: edge.id,
-      inputOrder: edge.data.inputOrder,
-      inputRole: edge.data.inputRole,
-      source: edge.source,
-      target: edge.target,
-    })),
+    document.edges
+      .map((edge) => ({
+        id: edge.id,
+        inputOrder: edge.data.inputOrder,
+        inputRole: edge.data.inputRole,
+        source: edge.source,
+        target: edge.target,
+      }))
+      .sort((left, right) => left.inputOrder - right.inputOrder),
     [
       {
         id: "p1-restart-text-to-image",
@@ -254,13 +296,15 @@ function assertP3VideoGraph(document, expected) {
   }
 
   assert.deepEqual(
-    document.edges.map((edge) => ({
-      id: edge.id,
-      inputOrder: edge.data.inputOrder,
-      inputRole: edge.data.inputRole,
-      source: edge.source,
-      target: edge.target,
-    })),
+    document.edges
+      .map((edge) => ({
+        id: edge.id,
+        inputOrder: edge.data.inputOrder,
+        inputRole: edge.data.inputRole,
+        source: edge.source,
+        target: edge.target,
+      }))
+      .sort((left, right) => left.inputOrder - right.inputOrder),
     [
       {
         id: "p3-restart-text-to-video",
@@ -314,7 +358,7 @@ function assertP3VideoGraph(document, expected) {
       role: edge.data.inputRole,
       sourceNodeId: edge.source,
     };
-  });
+  }).sort((left, right) => left.order - right.order);
   assert.deepEqual(snapshot, [
     {
       kind: "text",
@@ -408,18 +452,41 @@ const canvas = {
   ],
 };
 
-const persistedCanvas = {
-  ...canvas,
-  nodes: canvas.nodes.map((node) => node.id === "p1-restart-source-image"
-    ? {
+function authoritativeFixtureDocument(document) {
+  return {
+    ...document,
+    edges: [...document.edges].sort((left, right) => left.id.localeCompare(right.id)),
+    nodes: document.nodes.map((node) => {
+      const assetId = node.data?.assetId;
+      if (typeof assetId !== "string") return node;
+      const kind = node.type;
+      const timed = kind !== "image";
+      const route = kind === "image" ? "assets" : `${kind}-assets`;
+      return {
         ...node,
         data: {
           ...node.data,
-          imageSrc: "/api/assets/asset-p1-garment-photo",
+          [`${kind}Src`]: `/api/${route}/${assetId}`,
+          inputState: "ready",
+          mediaByteSize: 16,
+          mediaContentType: kind === "image"
+            ? "image/png"
+            : kind === "video" ? "video/mp4" : "audio/mpeg",
+          ...(timed ? { mediaDurationSeconds: 10 } : {}),
+          ...(kind === "audio" ? {} : { mediaHeight: 720 }),
+          mediaMetadataSource: "server",
+          mediaMetadataStatus: "ready",
+          mediaStorageBackend: "local",
+          ...(kind === "audio" ? {} : { mediaWidth: 1280 }),
+          ...(kind === "image" ? { imageAssetOrigin: "local-upload" } : {}),
+          ...(kind === "video" ? { videoCreatedAt: "2026-09-04T00:00:00.000Z" } : {}),
         },
-      }
-    : node),
-};
+      };
+    }).sort((left, right) => left.id.localeCompare(right.id)),
+  };
+}
+
+const persistedCanvas = authoritativeFixtureDocument(canvas);
 
 const undoCanvasId = "restart-p1-text-delete-undo";
 const undoRestoredCanvas = {
@@ -437,18 +504,7 @@ const undoRestoredCanvas = {
       }
     : edge),
 };
-const undoRestoredExpected = {
-  ...undoRestoredCanvas,
-  nodes: undoRestoredCanvas.nodes.map((node) => node.id === "p1-restart-source-image"
-    ? {
-        ...node,
-        data: {
-          ...node.data,
-          imageSrc: "/api/assets/asset-p1-garment-photo",
-        },
-      }
-    : node),
-};
+const undoRestoredExpected = authoritativeFixtureDocument(undoRestoredCanvas);
 
 const p3CanvasId = "restart-p3-video-multimodal-input";
 const p3Canvas = {
@@ -623,7 +679,7 @@ try {
   assert.equal(p3Saved.revision, 1);
   const p3BeforeRestart = await jsonRequest(`/api/canvas/${p3CanvasId}`);
   assert.equal(p3BeforeRestart.revision, 1);
-  assertP3VideoGraph(p3BeforeRestart, p3Canvas);
+  assertP3VideoGraph(p3BeforeRestart, authoritativeFixtureDocument(p3Canvas));
   await generationStatus();
   assert.deepEqual(databaseGenerationCounts(), {
     events: 0,
@@ -647,7 +703,7 @@ try {
     assertP1UndoGraph(undoAfterRestart, undoRestoredExpected);
     const p3Restored = await jsonRequest(`/api/canvas/${p3CanvasId}`);
     assert.equal(p3Restored.revision, 1, `P3 revision changed after restart ${restartNumber}`);
-    assertP3VideoGraph(p3Restored, p3Canvas);
+    assertP3VideoGraph(p3Restored, authoritativeFixtureDocument(p3Canvas));
     await generationStatus();
     assert.deepEqual(databaseGenerationCounts(), {
       events: 0,

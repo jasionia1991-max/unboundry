@@ -90,6 +90,10 @@ const runtimeSourceFiles = Object.freeze([
 ]);
 const bridgeMigrationSourceFiles = Object.freeze([
   "scripts/migrate-schema37-to39.mjs",
+  "scripts/migrate-schema39-to40.mjs",
+  "scripts/migrate-schema40-to41.mjs",
+  "scripts/migrate-schema41-to42.mjs",
+  "scripts/migrate-schema42-to43.mjs",
   "scripts/node-typescript-runtime.mjs",
 ]);
 const repositoryRoot = await realpath(resolve(
@@ -2261,12 +2265,12 @@ async function main() {
     });
     const databaseCompatibility = options.releaseRole === "bridge"
       ? Object.freeze({
-          activeSchemaVersions: Object.freeze([37, 39]),
+          activeSchemaVersions: Object.freeze([37, 43]),
           migrationMode: "external-one-shot-only",
-          rollbackTargetForSchemaVersion: 39,
+          rollbackTargetForSchemaVersion: 43,
         })
       : Object.freeze({
-          activeSchemaVersions: Object.freeze([39]),
+          activeSchemaVersions: Object.freeze([43]),
           migrationMode: "forbidden-from-final-runtime",
           standbySchemaVersions: Object.freeze([37]),
         });

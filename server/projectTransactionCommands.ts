@@ -1,5 +1,23 @@
 import type { TransactionScopedCommand } from "./transactionCommand";
 
+export const readCanvasProjectScopeCommand: TransactionScopedCommand<Readonly<{
+  canvasId: string;
+  ownerId: string;
+}>, Readonly<{ otherOwner: boolean; tombstoned: boolean }>> = {
+  execute(scope, input) {
+    const tombstoned = Boolean(scope.prepare(`
+      SELECT 1 FROM project_metadata
+      WHERE owner_id = ? AND id = ? AND deleted_at IS NOT NULL
+    `).get(input.ownerId, input.canvasId));
+    const otherOwner = input.canvasId === "default" ? false : Boolean(scope.prepare(`
+      SELECT 1 FROM project_metadata
+      WHERE id = ? AND is_project = 1 AND deleted_at IS NULL AND owner_id != ?
+      LIMIT 1
+    `).get(input.canvasId, input.ownerId));
+    return Object.freeze({ otherOwner, tombstoned });
+  },
+};
+
 export const touchProjectUpdatedAtCommand: TransactionScopedCommand<Readonly<{
   bypass: boolean;
   canvasId: string;

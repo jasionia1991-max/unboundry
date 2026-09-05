@@ -9,6 +9,15 @@ const SAVE_EPOCH_B = "v1.bbbbbbbbbbbbbbbbbbbbbb";
 const SAVE_SESSION_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const SAVE_SESSION_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const SAVE_ATTEMPT_A = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+
+test.beforeEach(async ({ context }) => {
+  await context.addInitScript(() => {
+    (window as Window & {
+      __UNBOUNDRY_M86_LEGACY_CANVAS_PUTS__?: boolean;
+    }).__UNBOUNDRY_M86_LEGACY_CANVAS_PUTS__ = true;
+  });
+});
+
 const emptyFence: {
   currentWriterSequence: number;
   currentWriterSessionId: string | null;

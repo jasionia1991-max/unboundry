@@ -1,6 +1,8 @@
 import type { ImageGenerationToolInput, ImageToolCapability } from
   "../../../types/imageTools";
 import { NODE_DEFAULT_SIZES } from "../canvas/mediaGeometry";
+import { imageGenerationToolOwnershipEvidence } from
+  "../../../types/generationIdentity";
 import type { ProbeNodeType } from "../canvas/ProbeNode";
 import type {
   CanvasGraphCommand,
@@ -20,7 +22,26 @@ export function promptGenerationOwnershipEvidence(input: Readonly<{
   modelParameters?: ProbeNodeType["data"]["imageParameters"];
   operation: PromptGenerationOperation; operationId: string; prompt: string;
   quality?: string; sourceAssetId: string; sourceNodeId: string;
-}>) { return { ...input } as const; }
+}>) {
+  return imageGenerationToolOwnershipEvidence({
+    accountId: input.accountId,
+    aspectRatio: input.aspectRatio,
+    canvasId: input.canvasId,
+    imageTool: {
+      operation: input.operation,
+      operationId: input.operationId,
+      ...(input.operation === "remove-background"
+        ? { outputBackground: "transparent" as const }
+        : {}),
+      sourceAssetId: input.sourceAssetId,
+      sourceNodeId: input.sourceNodeId,
+    },
+    modelId: input.modelId,
+    modelParameters: input.modelParameters,
+    prompt: input.prompt,
+    quality: input.quality,
+  });
+}
 
 export type PromptGenerationPlan = Readonly<{
   aspectRatio?: string; inputKey: string; modelId: string; modelName: string;

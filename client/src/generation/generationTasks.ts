@@ -28,6 +28,11 @@ export type GenerationTaskSummary = {
   abandonAllowed?: boolean;
   costCurrency: "CNY" | "USD";
   attempt: number;
+  canvasProjectionDocumentRevision?: number;
+  canvasProjectionOperationId?: string;
+  canvasProjectionOriginalRequestId?: string;
+  canvasProjectionState?: "applied" | "conflict" | "failed" |
+    "not-applicable" | "pending";
   canvasRevision?: number;
   canvasId: string;
   createdAt: string;
@@ -135,12 +140,7 @@ export function runWithSingleNodeGenerationAdmission<T>(
 ): Promise<T> {
   return runWithGroupRunCanvasAdmission(scope.canvasId, async () => {
     await assertNoConflictingGroupRun(scope, nodeId);
-    const key = JSON.stringify([
-      scope.accountId,
-      scope.canvasId,
-      scope.fixtureScopeId,
-      nodeId,
-    ]);
+    const key = canvasNodeMutationAdmissionKey(scope, nodeId);
     locallyAdmittedCanvasMutationNodes.add(key);
     try {
       return await work();
@@ -152,16 +152,30 @@ export function runWithSingleNodeGenerationAdmission<T>(
 
 const locallyAdmittedCanvasMutationNodes = new Set<string>();
 
-export function canvasNodeMutationAdmissionHeldLocally(
+function canvasNodeMutationAdmissionKey(
   scope: GroupRunSummaryScope,
   nodeId: string,
 ) {
-  return locallyAdmittedCanvasMutationNodes.has(JSON.stringify([
+  return JSON.stringify([
     scope.accountId,
     scope.canvasId,
     scope.fixtureScopeId,
     nodeId,
-  ]));
+  ]);
+}
+
+/**
+ * Re-entrant mutations started by effects of an already admitted local edit
+ * must join that admission instead of waiting on the same non-reentrant
+ * cross-tab lock. The marker never bypasses the lock for another tab/process.
+ */
+export function canvasNodeMutationAdmissionHeldLocally(
+  scope: GroupRunSummaryScope,
+  nodeId: string,
+) {
+  return locallyAdmittedCanvasMutationNodes.has(
+    canvasNodeMutationAdmissionKey(scope, nodeId),
+  );
 }
 
 /**
@@ -179,12 +193,9 @@ export function runWithCanvasGraphMutationAdmission<T>(
     for (const nodeId of affectedNodeIds) {
       await assertNoConflictingGroupRun(scope, nodeId);
     }
-    const localKeys = affectedNodeIds.map((nodeId) => JSON.stringify([
-      scope.accountId,
-      scope.canvasId,
-      scope.fixtureScopeId,
-      nodeId,
-    ]));
+    const localKeys = affectedNodeIds.map((nodeId) =>
+      canvasNodeMutationAdmissionKey(scope, nodeId)
+    );
     for (const key of localKeys) locallyAdmittedCanvasMutationNodes.add(key);
     try {
       return await work();

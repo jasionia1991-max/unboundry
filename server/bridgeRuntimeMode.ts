@@ -74,7 +74,7 @@ export function releaseRoleFromEnvironment(
         packageVersion === "0.7.1" || packageVersion === "0.7.2" ||
         packageVersion === "0.7.3" || packageVersion === "0.7.4" ||
         packageVersion === "0.7.5" || packageVersion === "0.7.6" ||
-        packageVersion === "0.7.7"
+        packageVersion === "0.7.7" || packageVersion === "0.7.8"
       ? "final"
       : undefined;
   if (!packageRole) {

@@ -38,7 +38,13 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from "react";
 import {
+  authoritativeCanvasNodeDataPatchAllowed,
+  type CanvasAuthoritativeNodeDataAdoption,
+  type CanvasUploadedAssetAdoption,
+  canvasEdgeViewUpdateAllowed,
+  canvasUploadedAssetAdoptionAllowed,
   CanvasGraphMutationContext,
+  canvasViewUpdateAllowed,
   rollbackCanvasNodeAdoption,
   settleCanvasMutationSaveIndicator,
   tryCommitCanvasNodeAdoption,
@@ -83,11 +89,22 @@ export {
 } from "./canvasPersistenceFacade";
 export type { CanvasLoadState } from "./canvasPersistenceFacade";
 import { fitVisualMediaSize, NODE_DEFAULT_SIZES } from "./mediaGeometry";
-import { trustedMediaPatch } from "./mediaInputMetadata";
 import {
-  canvasDocumentFingerprint,
+  effectiveMediaInputState,
+  fetchTrustedMediaMetadata,
+  trustedMediaPatch,
+} from "./mediaInputMetadata";
+import {
   canvasGraphFingerprint,
+  canvasUserDocumentFingerprint,
 } from "./canvasDocumentFingerprint";
+import {
+  canvasEdgeDataFieldDescriptors,
+  canvasEdgeTopLevelFieldDescriptors,
+  canvasNodeDataFieldDescriptors,
+  canvasNodeTopLevelFieldDescriptors,
+  type CanvasFieldDescriptor,
+} from "../../../types/canvasFingerprint";
 import { zoomViewportAtScreenPoint } from "./viewportMath";
 import {
   connectedEdgeFlowDirections,
@@ -147,6 +164,53 @@ import type { TemplateNodeKind } from "../../../types/nodeVocabulary";
 
 const emptyNodes: ProbeNodeType[] = [];
 
+export function scrubDuplicatedGenerationState(
+  node: ProbeNodeType,
+): ProbeNodeType {
+  return {
+    ...node,
+    data: {
+      ...node.data,
+      audioGenerationError: undefined,
+      audioGenerationErrorCode: undefined,
+      audioGenerationInputKey: undefined,
+      audioGenerationOwnershipKey: undefined,
+      audioGenerationRetryAllowed: undefined,
+      audioGenerationRetryBlockCode: undefined,
+      audioGenerationRetryBlockReason: undefined,
+      audioGenerationTaskId: undefined,
+      audioGenerating: false,
+      imageGenerationError: undefined,
+      imageGenerationErrorCode: undefined,
+      imageGenerationInputKey: undefined,
+      imageGenerationOwnershipKey: undefined,
+      imageGenerationRetryAllowed: undefined,
+      imageGenerationRetryBlockCode: undefined,
+      imageGenerationRetryBlockReason: undefined,
+      imageGenerationTaskId: undefined,
+      imageGenerating: false,
+      textGenerationError: undefined,
+      textGenerationErrorCode: undefined,
+      textGenerationInputKey: undefined,
+      textGenerationOwnershipKey: undefined,
+      textGenerationRetryAllowed: undefined,
+      textGenerationRetryBlockCode: undefined,
+      textGenerationRetryBlockReason: undefined,
+      textGenerationTaskId: undefined,
+      textGenerating: false,
+      videoGenerationError: undefined,
+      videoGenerationErrorCode: undefined,
+      videoGenerationInputKey: undefined,
+      videoGenerationOwnershipKey: undefined,
+      videoGenerationRetryAllowed: undefined,
+      videoGenerationRetryBlockCode: undefined,
+      videoGenerationRetryBlockReason: undefined,
+      videoGenerationTaskId: undefined,
+      videoGenerating: false,
+    },
+  };
+}
+
 function throwIfCanvasWaitAborted(signal?: AbortSignal) {
   if (signal?.aborted) {
     throw signal.reason ?? new DOMException("Aborted", "AbortError");
@@ -181,6 +245,52 @@ export function normalizeCanvasParentLinks<T extends { id: string; parentId?: st
   return nodes.map((node) =>
     node.parentId === node.id ? { ...node, parentId: undefined } : node,
   );
+}
+
+/**
+ * A server refresh replaces durable fields, but React Flow's measured geometry
+ * and interaction flags belong to the mounted view. Dropping those fields from
+ * an already rendered node makes React Flow hide it until another measurement
+ * happens, so retain only the explicitly classified top-level view fields for
+ * an unchanged node identity/type.
+ */
+export function mergeAuthoritativeNodesWithViewState(
+  currentNodes: readonly ProbeNodeType[],
+  authoritativeNodes: readonly ProbeNodeType[],
+): ProbeNodeType[] {
+  const currentById = new Map(currentNodes.map((node) => [node.id, node]));
+  return authoritativeNodes.map((authoritative) => {
+    const current = currentById.get(authoritative.id);
+    if (!current || current.type !== authoritative.type) return authoritative;
+    const merged = { ...authoritative } as Record<string, unknown>;
+    const currentRecord = current as unknown as Record<string, unknown>;
+    for (const [field, descriptor] of Object.entries(
+      canvasNodeTopLevelFieldDescriptors,
+    )) {
+      if (descriptor.owner !== "ephemeral-view") continue;
+      if (Object.prototype.hasOwnProperty.call(currentRecord, field)) {
+        merged[field] = currentRecord[field];
+      } else {
+        delete merged[field];
+      }
+    }
+    const authoritativeData = authoritative.data as Record<string, unknown>;
+    const currentData = current.data as Record<string, unknown>;
+    const mergedData = { ...authoritativeData };
+    for (const [field, descriptor] of Object.entries(
+      canvasNodeDataFieldDescriptors,
+    )) {
+      if (
+        descriptor.owner !== "ephemeral-view" ||
+        Object.prototype.hasOwnProperty.call(authoritativeData, field)
+      ) continue;
+      if (Object.prototype.hasOwnProperty.call(currentData, field)) {
+        mergedData[field] = currentData[field];
+      }
+    }
+    merged.data = mergedData;
+    return merged as unknown as ProbeNodeType;
+  });
 }
 
 export function initialCanvasViewport(fixtureId?: string): Viewport {
@@ -219,6 +329,111 @@ type HistoryEntry =
       kind: "snapshot";
       nodes: ProbeNodeType[];
     };
+
+function restoreOwnedCanvasRecord(
+  current: Record<string, unknown>,
+  historical: Record<string, unknown>,
+  descriptors: Readonly<Record<string, CanvasFieldDescriptor>>,
+  includeEphemeral = false,
+) {
+  const restored = { ...current };
+  for (const [field, descriptor] of Object.entries(descriptors)) {
+    if (
+      descriptor.owner !== "durable-user" &&
+      !(includeEphemeral && descriptor.owner === "ephemeral-view")
+    ) continue;
+    if (Object.prototype.hasOwnProperty.call(historical, field)) {
+      restored[field] = historical[field];
+    } else {
+      delete restored[field];
+    }
+  }
+  return restored;
+}
+
+const historyAssetAdoptionFields = Object.freeze([
+  "assetId",
+  "audioSrc",
+  "imageSrc",
+  "videoSrc",
+  "mediaByteSize",
+  "mediaContentType",
+  "mediaDurationSeconds",
+  "mediaHeight",
+  "mediaMetadataSource",
+  "mediaMetadataStatus",
+  "mediaStorageBackend",
+  "mediaWidth",
+] as const);
+
+function newHistoryNode(historical: ProbeNodeType): ProbeNodeType {
+  const topLevel = restoreOwnedCanvasRecord(
+    {},
+    historical as unknown as Record<string, unknown>,
+    canvasNodeTopLevelFieldDescriptors,
+    true,
+  );
+  const data = restoreOwnedCanvasRecord(
+    {},
+    historical.data as Record<string, unknown>,
+    canvasNodeDataFieldDescriptors,
+    true,
+  );
+  for (const field of historyAssetAdoptionFields) {
+    if (Object.prototype.hasOwnProperty.call(historical.data, field)) {
+      data[field] = historical.data[field];
+    }
+  }
+  return { ...topLevel, data } as unknown as ProbeNodeType;
+}
+
+export function restoreCanvasHistorySnapshot(input: Readonly<{
+  currentEdges: readonly CuttableEdge[];
+  currentNodes: readonly ProbeNodeType[];
+  historicalEdges: readonly CuttableEdge[];
+  historicalNodes: readonly ProbeNodeType[];
+}>) {
+  const currentNodes = new Map(input.currentNodes.map((node) => [node.id, node]));
+  const nodes = input.historicalNodes.map((historical) => {
+    const current = currentNodes.get(historical.id);
+    if (!current || current.type !== historical.type) return newHistoryNode(historical);
+    const topLevel = restoreOwnedCanvasRecord(
+      current as unknown as Record<string, unknown>,
+      historical as unknown as Record<string, unknown>,
+      canvasNodeTopLevelFieldDescriptors,
+      true,
+    );
+    const data = restoreOwnedCanvasRecord(
+      current.data as Record<string, unknown>,
+      historical.data as Record<string, unknown>,
+      canvasNodeDataFieldDescriptors,
+      true,
+    );
+    return { ...topLevel, data } as unknown as ProbeNodeType;
+  });
+
+  const currentEdges = new Map(input.currentEdges.map((edge) => [edge.id, edge]));
+  const edges = input.historicalEdges.map((historical) => {
+    const current = currentEdges.get(historical.id);
+    const topLevel = restoreOwnedCanvasRecord(
+      (current ?? {}) as unknown as Record<string, unknown>,
+      historical as unknown as Record<string, unknown>,
+      canvasEdgeTopLevelFieldDescriptors,
+      true,
+    );
+    const data = restoreOwnedCanvasRecord(
+      (current?.data ?? {}) as Record<string, unknown>,
+      (historical.data ?? {}) as Record<string, unknown>,
+      canvasEdgeDataFieldDescriptors,
+      true,
+    );
+    return {
+      ...topLevel,
+      ...(Object.keys(data).length > 0 ? { data } : {}),
+    } as unknown as CuttableEdge;
+  });
+  return { edges, nodes };
+}
 type BatchConnectionDrag = {
   cursor: { x: number; y: number };
   pointerId: number;
@@ -483,9 +698,8 @@ const CuttableEdge = memo(function CuttableEdge({
   targetX,
   targetY,
 }: EdgeProps<CuttableEdge>) {
-  const { setEdges } = useCanvasGraphMutation();
+  const { applyEdgeViewUpdate, mutateGraph } = useCanvasGraphMutation();
   const { lockedNodeIds } = useWorkflowExecution();
-  const checkpoint = useCanvasCheckpoint();
   const [path, labelX, labelY] = getBezierPath({
     sourcePosition,
     sourceX,
@@ -526,11 +740,13 @@ const CuttableEdge = memo(function CuttableEdge({
             disabled={lockedNodeIds.has(source) || lockedNodeIds.has(target)}
             onClick={(event) => {
               event.stopPropagation();
-              checkpoint();
-              setEdges((current) => current.filter((edge) => edge.id !== id));
+              void mutateGraph(({ edges, nodes }) => ({
+                edges: edges.filter((edge) => edge.id !== id),
+                nodes,
+              }));
             }}
             onMouseLeave={() => {
-              setEdges((current) =>
+              applyEdgeViewUpdate((current) =>
                 current.map((edge) =>
                   edge.id === id && edge.data?.cutIndicator === "hover"
                     ? {
@@ -1213,7 +1429,6 @@ function createProbeNodes(fixtureId?: string): ProbeNodeType[] {
           label: "Video",
           sourceKind: "video",
           title: "Video",
-          videoGenerating: generating,
           videoAudioEnabled: success,
           videoCreatedAt: success ? "2026/07/27" : undefined,
           videoDuration: success ? 5.088 : undefined,
@@ -1898,8 +2113,8 @@ export function CanvasSurface({
   viewportRequest?: { sequence: number; x?: number; y?: number; zoom: number };
 }) {
   const persistenceFacade = useMemo(
-    () => createBrowserCanvasPersistenceFacade(),
-    [],
+    () => createBrowserCanvasPersistenceFacade(fixtureId),
+    [fixtureId],
   );
   const workflowFixture = fixtureId === "workflow.text-to-video.created";
   const persistenceId = projectId ?? fixtureId ?? "default";
@@ -1931,18 +2146,49 @@ export function CanvasSurface({
       : emptyNodes,
   }));
   const { edges, nodes } = graphState;
+  type LayoutPreviewPatch = Readonly<{
+    dragging?: boolean;
+    height?: number;
+    position?: ProbeNodeType["position"];
+    style?: ProbeNodeType["style"];
+    width?: number;
+  }>;
+  const layoutPreviewByNodeId = useRef(new Map<string, LayoutPreviewPatch>());
+  const [layoutPreviewVersion, setLayoutPreviewVersion] = useState(0);
   const [imageColorFilter, setImageColorFilter] = useState<string>();
   const [workflowRetainedNodeIds, setWorkflowRetainedNodeIds] = useState<
     ReadonlySet<string>
   >(new Set());
   const [workflowActiveNodeIds, setWorkflowActiveNodeIds] = useState<
     ReadonlySet<string>
-  >(new Set());
+  >(() => fixtureId === "node.video.generating"
+    ? new Set(["video-primary"])
+    : new Set());
   const renderedNodes = useMemo(
     () => {
-      const activeNodes = workflowActiveNodeIds.size === 0
+      const previewNodes = layoutPreviewByNodeId.current.size === 0
         ? nodes
-        : nodes.map((node) =>
+        : nodes.map((node) => {
+            const preview = layoutPreviewByNodeId.current.get(node.id);
+            if (!preview) return node;
+            return {
+              ...node,
+              ...(preview.dragging !== undefined
+                ? { dragging: preview.dragging }
+                : {}),
+              ...(preview.height !== undefined ? { height: preview.height } : {}),
+              ...(preview.position
+                ? { position: { ...preview.position } }
+                : {}),
+              ...(preview.style
+                ? { style: { ...node.style, ...preview.style } }
+                : {}),
+              ...(preview.width !== undefined ? { width: preview.width } : {}),
+            };
+          });
+      const activeNodes = workflowActiveNodeIds.size === 0
+        ? previewNodes
+        : previewNodes.map((node) =>
             workflowActiveNodeIds.has(node.id)
               ? withServerWorkflowGenerationActivity(node)
               : node
@@ -1981,7 +2227,13 @@ export function CanvasSurface({
           : node
       );
     },
-    [imageColorFilter, nodes, workflowActiveNodeIds, workflowRetainedNodeIds],
+    [
+      imageColorFilter,
+      layoutPreviewVersion,
+      nodes,
+      workflowActiveNodeIds,
+      workflowRetainedNodeIds,
+    ],
   );
   // viewport 实时状态下沉到画布内部：缩放/平移不再让外壳每帧重渲染。
   const [viewport, setViewport] = useState<Viewport>(() =>
@@ -2006,6 +2258,7 @@ export function CanvasSurface({
     useState<NodeContextMenu>();
   const [uploadError, setUploadError] = useState("");
   const [uploading, setUploading] = useState(false);
+  const imageUploadsInFlight = useRef(0);
   const [playlistToast, setPlaylistToast] = useState("");
   const [workflowToast, setWorkflowToast] = useState<{
     kind: "error" | "info" | "success";
@@ -2151,7 +2404,11 @@ export function CanvasSurface({
         new Error("Canvas save sequence is not strictly increasing"),
       );
     }
-    const payload = createPayload(saveSequence);
+    const unpreparedPayload = createPayload(saveSequence);
+    const payload = persistenceFacade.transport.preparePayload?.({
+      canvasId: persistenceId,
+      payload: unpreparedPayload,
+    }) ?? unpreparedPayload;
     if (new Blob([payload]).size > PERSIST_SAVE_JOURNAL_MAX_BYTES) {
       throw new CanvasSaveSessionStorageError(
         new Error("Canvas save journal exceeds its safe limit"),
@@ -2185,6 +2442,7 @@ export function CanvasSurface({
     applyCanvasSaveSession,
     assertCanvasSaveSessionCurrent,
     persistenceFacade,
+    persistenceId,
     persistenceScopeId,
   ]);
   const raiseCanvasSaveSequenceFloor = useCallback((candidate: number) => {
@@ -2240,6 +2498,9 @@ export function CanvasSurface({
   const persistedGraphFingerprint = useRef("");
   const persistenceInFlightFingerprint = useRef<string | undefined>(undefined);
   const persistenceHydrationTimer = useRef<number | undefined>(undefined);
+  const persistenceScheduledDocument = useRef<
+    CanvasPersistenceSnapshot | undefined
+  >(undefined);
   const persistenceSaveTimer = useRef<number | undefined>(undefined);
   const persistenceSaveController = useRef<AbortController | undefined>(
     undefined,
@@ -2355,7 +2616,15 @@ export function CanvasSurface({
   const pendingWheelViewport = useRef<Viewport | undefined>(undefined);
   const wheelViewportFrame = useRef<number | undefined>(undefined);
   const consumedFocusNodeSequence = useRef(0);
-  const nodeDragging = useRef(false);
+  const layoutGestureSequence = useRef(0);
+  const layoutGestureRef = useRef<Readonly<{
+    affectedNodeIds: Set<string>;
+    epoch: number;
+    gestureId: number;
+    kind: "drag" | "resize";
+    phase: "preview" | "committing";
+    scopeId: string;
+  }> | undefined>(undefined);
   const restoreSequence = useRef(0);
   const clipboardPasteSequence = useRef(0);
   const setNodes = useCallback<Dispatch<SetStateAction<ProbeNodeType[]>>>(
@@ -2396,15 +2665,21 @@ export function CanvasSurface({
     pendingGuardedNodes.current = next.nodes;
     setGraphState(next);
   }, []);
-  const onNodesChange = useCallback(
+  const applyPassiveNodeChanges = useCallback(
     (changes: NodeChange<ProbeNodeType>[]) => {
-      setNodes((current) => applyNodeChanges(changes, current));
+      setNodes((current) => {
+        const changed = applyNodeChanges(changes, current);
+        return canvasViewUpdateAllowed(current, changed) ? changed : current;
+      });
     },
     [setNodes],
   );
-  const onEdgesChange = useCallback(
+  const applyPassiveEdgeChanges = useCallback(
     (changes: EdgeChange<CuttableEdge>[]) => {
-      setEdges((current) => applyEdgeChanges(changes, current));
+      setEdges((current) => {
+        const changed = applyEdgeChanges(changes, current);
+        return canvasEdgeViewUpdateAllowed(current, changed) ? changed : current;
+      });
     },
     [setEdges],
   );
@@ -2468,28 +2743,6 @@ export function CanvasSurface({
     }, VIEWPORT_QUIET_MS);
   }, []);
 
-  const finishNodeDrag = useCallback(() => {
-    if (!nodeDragging.current) return;
-    nodeDragging.current = false;
-    markCanvasInteraction();
-  }, [markCanvasInteraction]);
-
-  useEffect(() => {
-    const finishForPointerCancel = () => finishNodeDrag();
-    const finishForEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") finishNodeDrag();
-    };
-    window.addEventListener("pointercancel", finishForPointerCancel);
-    window.addEventListener("blur", finishForPointerCancel);
-    window.addEventListener("keydown", finishForEscape);
-    return () => {
-      finishNodeDrag();
-      window.removeEventListener("pointercancel", finishForPointerCancel);
-      window.removeEventListener("blur", finishForPointerCancel);
-      window.removeEventListener("keydown", finishForEscape);
-    };
-  }, [finishNodeDrag, persistenceId]);
-
   const applyViewport = useCallback((next: Viewport) => {
     // Open the viewport-interaction gate before React Flow receives the
     // command. setViewport can synchronously reconcile mounted group nodes;
@@ -2528,7 +2781,7 @@ export function CanvasSurface({
   const keepLastNonCollidingPositions = (
     changes: NodeChange<ProbeNodeType>[],
   ) => {
-    if (!snapEnabled || !nodeDragging.current) return changes;
+    if (!snapEnabled || layoutGestureRef.current?.kind !== "drag") return changes;
 
     const positionChanges = changes.filter(
       (change): change is NodePositionChange =>
@@ -2537,14 +2790,27 @@ export function CanvasSurface({
     if (!positionChanges.length) return changes;
 
     const currentById = new Map(
-      nodesRef.current.map((node) => [node.id, node]),
+      nodesRef.current.map((node) => {
+        const preview = layoutPreviewByNodeId.current.get(node.id);
+        return [node.id, preview
+          ? {
+              ...node,
+              ...(preview.position
+                ? { position: { ...preview.position } }
+                : {}),
+              ...(preview.style
+                ? { style: { ...node.style, ...preview.style } }
+                : {}),
+            }
+          : node] as const;
+      }),
     );
     const movingIds = new Set(positionChanges.map((change) => change.id));
     const blocked = positionChanges.some((change) => {
       const moving = currentById.get(change.id);
       if (!moving || !change.position || !collisionNode(moving)) return false;
 
-      return nodesRef.current.some((stationary) => {
+      return [...currentById.values()].some((stationary) => {
         if (
           movingIds.has(stationary.id) ||
           !collisionNode(stationary)
@@ -2749,7 +3015,7 @@ export function CanvasSurface({
       internalNode?.internals.positionAbsolute ?? node.position;
     const bounds = worldRef.current.getBoundingClientRect();
     const zoom = Math.max(0.85, Math.min(1, viewportRef.current.zoom));
-    setNodes((current) =>
+    applyViewUpdate((current) =>
       current.map((candidate) => ({
         ...candidate,
         selected: candidate.id === node.id,
@@ -2761,14 +3027,30 @@ export function CanvasSurface({
       y: bounds.height / 2 - (position.y + size.height / 2) * zoom,
       zoom,
     });
-  }, [applyViewport, focusNodeRequest, persistenceReady, setNodes]);
+  }, [applyViewport, focusNodeRequest, persistenceReady]);
 
   const pushHistory = useCallback((entry: HistoryEntry) => {
     redoHistory.current = [];
+    const previous = history.current.at(-1);
+    if (entry.kind === "snapshot" && previous?.kind === "snapshot") {
+      const historyViewport = { x: 0, y: 0, zoom: 1 } as const;
+      if (
+        canvasUserDocumentFingerprint({
+          edges: entry.edges,
+          nodes: entry.nodes,
+          viewport: historyViewport,
+        }) === canvasUserDocumentFingerprint({
+          edges: previous.edges,
+          nodes: previous.nodes,
+          viewport: historyViewport,
+        })
+      ) return false;
+    }
     history.current.push(entry);
     if (history.current.length > 50) {
       history.current.shift();
     }
+    return true;
   }, []);
   const cloneNodes = useCallback((current: ProbeNodeType[]) =>
     current.map((node) => ({
@@ -2782,51 +3064,6 @@ export function CanvasSurface({
       style: node.style ? { ...node.style } : undefined,
     })), []);
 
-  const scrubDuplicatedGenerationState = useCallback(
-    (node: ProbeNodeType): ProbeNodeType => ({
-      ...node,
-      data: {
-        ...node.data,
-        audioGenerationError: undefined,
-        audioGenerationErrorCode: undefined,
-        audioGenerationInputKey: undefined,
-        audioGenerationOwnershipKey: undefined,
-        audioGenerationRetryAllowed: undefined,
-        audioGenerationRetryBlockCode: undefined,
-        audioGenerationRetryBlockReason: undefined,
-        audioGenerationTaskId: undefined,
-        audioGenerating: false,
-        imageGenerationError: undefined,
-        imageGenerationErrorCode: undefined,
-        imageGenerationInputKey: undefined,
-        imageGenerationOwnershipKey: undefined,
-        imageGenerationRetryAllowed: undefined,
-        imageGenerationRetryBlockCode: undefined,
-        imageGenerationRetryBlockReason: undefined,
-        imageGenerationTaskId: undefined,
-        imageGenerating: false,
-        textGenerationError: undefined,
-        textGenerationErrorCode: undefined,
-        textGenerationInputKey: undefined,
-        textGenerationOwnershipKey: undefined,
-        textGenerationRetryAllowed: undefined,
-        textGenerationRetryBlockCode: undefined,
-        textGenerationRetryBlockReason: undefined,
-        textGenerationTaskId: undefined,
-        textGenerating: false,
-        videoGenerationError: undefined,
-        videoGenerationErrorCode: undefined,
-        videoGenerationInputKey: undefined,
-        videoGenerationOwnershipKey: undefined,
-        videoGenerationRetryAllowed: undefined,
-        videoGenerationRetryBlockCode: undefined,
-        videoGenerationRetryBlockReason: undefined,
-        videoGenerationTaskId: undefined,
-        videoGenerating: false,
-      },
-    }),
-    [],
-  );
   const cloneEdges = useCallback((current: CuttableEdge[]) =>
     current.map((edge) => ({
       ...edge,
@@ -2845,7 +3082,7 @@ export function CanvasSurface({
     };
     return {
       ...document,
-      fingerprint: canvasDocumentFingerprint(document),
+      fingerprint: canvasUserDocumentFingerprint(document),
       graphFingerprint: canvasGraphFingerprint(document),
     };
   }, [cloneEdges, cloneNodes]);
@@ -2874,6 +3111,7 @@ export function CanvasSurface({
       }),
     );
     const currentNodes = (pendingGuardedNodes.current ?? nodesRef.current).map((node) => {
+      const layoutPreview = layoutPreviewByNodeId.current.get(node.id);
       const title = titleValues.get(node.id);
       const textContent = textContentValues.get(node.id);
       const storedText = node.data.content ?? "";
@@ -2886,12 +3124,19 @@ export function CanvasSurface({
       );
       if (
         (title === undefined || title === node.data.title) &&
-        !bodyChanged
+        !bodyChanged &&
+        !layoutPreview
       ) {
         return node;
       }
       return {
         ...node,
+        ...(layoutPreview?.position
+          ? { position: { ...layoutPreview.position } }
+          : {}),
+        ...(layoutPreview?.style
+          ? { style: { ...node.style, ...layoutPreview.style } }
+          : {}),
         data: {
           ...node.data,
           ...(bodyChanged
@@ -2910,11 +3155,25 @@ export function CanvasSurface({
       viewportRef.current,
     );
   }, [canvasSnapshot]);
+  const confirmedLiveEditorSaveCoversCurrentSnapshot = useCallback(() => {
+    const confirmedSequence = persistenceConfirmedFingerprintSequence.current;
+    const confirmed = confirmedSequence === undefined
+      ? undefined
+      : persistenceSentFingerprints.current.get(confirmedSequence);
+    if (
+      !confirmed?.liveEditors ||
+      confirmed.document !== persistedDocumentFingerprint.current ||
+      confirmed.graph !== persistedGraphFingerprint.current
+    ) return false;
+    const latest = canvasSnapshotWithLiveEditors();
+    return latest.fingerprint === confirmed.document &&
+      latest.graphFingerprint === confirmed.graph;
+  }, [canvasSnapshotWithLiveEditors]);
   const canvasSnapshotRef = useRef(canvasSnapshot);
   canvasSnapshotRef.current = canvasSnapshot;
   const templateFitBlocksPersistence = useCallback(() =>
     templateViewportAnimating.current &&
-    performance.now() < templateFitDeadline.current, []);
+      performance.now() < templateFitDeadline.current, []);
   const cancelTemplateFit = useCallback(() => {
     templateViewportAnimating.current = false;
     templateFitDeadline.current = 0;
@@ -2988,12 +3247,20 @@ export function CanvasSurface({
     [],
   );
   const checkpoint = useCallback((includeHistory = true) => {
-    if (!includeHistory) return;
-    pushHistory({
+    if (!includeHistory) return () => undefined;
+    const entry: HistoryEntry = {
       edges: cloneEdges(pendingGuardedEdges.current ?? edgesRef.current),
       kind: "snapshot",
       nodes: cloneNodes(pendingGuardedNodes.current ?? nodesRef.current),
-    });
+    };
+    if (!pushHistory(entry)) return () => undefined;
+    let active = true;
+    return () => {
+      if (!active) return;
+      active = false;
+      const index = history.current.indexOf(entry);
+      if (index >= 0) history.current.splice(index, 1);
+    };
   }, [cloneEdges, cloneNodes, pushHistory]);
 
   useEffect(() => {
@@ -3183,12 +3450,13 @@ export function CanvasSurface({
     // 模板只保存 assetId，不保存短时/结果地址；落画布时立即重建
     // durable src（与文档 hydration 同一规则），否则要等刷新才显示素材。
     const hydratedNodes = normalizePersistedMediaNodes(preparedNodes);
-    checkpoint();
-    setNodes((current) => [
-      ...current.map((node) => ({ ...node, selected: false })),
-      ...hydratedNodes,
-    ]);
-    setEdges((current) => [...current, ...appliedEdges]);
+    void mutateGraph(({ edges, nodes }) => ({
+      edges: [...edges, ...appliedEdges],
+      nodes: [
+        ...nodes.map((node) => ({ ...node, selected: false })),
+        ...hydratedNodes,
+      ],
+    }));
     if (groupNode) setPrimaryId(groupNode.id);
     window.requestAnimationFrame(() => {
       window.setTimeout(() => {
@@ -3205,7 +3473,10 @@ export function CanvasSurface({
           // rAF 被节流/暂停时保存调度 effect 可能不再触发；
           // 直接在硬性期限后补一次保存，避免“保存中”卡死。
           const latest = canvasSnapshot();
-          if (latest.fingerprint !== persistedDocumentFingerprint.current) {
+          if (
+            latest.fingerprint !== persistedDocumentFingerprint.current ||
+            latest.graphFingerprint !== persistedGraphFingerprint.current
+          ) {
             persistenceQueued.current = latest;
             persistenceDirty.current = true;
             void drainPersistenceQueueRef.current();
@@ -3405,15 +3676,16 @@ export function CanvasSurface({
   const applyDuplicatedGraph = (
     duplicated: NonNullable<ReturnType<typeof duplicateGraph>>,
   ) => {
-    checkpoint();
-    setNodes((current) => [
-      ...current.map((node) => ({ ...node, selected: false })),
-      ...duplicated.nodes.map((node) => ({
-        ...node,
-        selected: duplicated.rootIds.has(node.id),
-      })),
-    ]);
-    setEdges((current) => [...current, ...duplicated.edges]);
+    void mutateGraph(({ edges, nodes }) => ({
+      edges: [...edges, ...duplicated.edges],
+      nodes: [
+        ...nodes.map((node) => ({ ...node, selected: false })),
+        ...duplicated.nodes.map((node) => ({
+          ...node,
+          selected: duplicated.rootIds.has(node.id),
+        })),
+      ],
+    }));
     const firstRoot = duplicated.nodes.find((node) =>
       duplicated.rootIds.has(node.id),
     );
@@ -3574,11 +3846,13 @@ export function CanvasSurface({
       text: "Text",
       video: "Video",
     } as const;
-    checkpoint();
-    setNodes((current) => [
-      ...current.map((node) => ({ ...node, selected: false })),
-      {
-        id: `${type}-${crypto.randomUUID()}`,
+    const nodeId = `${type}-${crypto.randomUUID()}`;
+    void mutateGraph(({ edges, nodes }) => ({
+      edges,
+      nodes: [
+        ...nodes.map((node) => ({ ...node, selected: false })),
+        {
+        id: nodeId,
         type,
         position: createMenu.flow,
         selected: true,
@@ -3595,11 +3869,12 @@ export function CanvasSurface({
           videoPromptReady: type === "video" || undefined,
         },
         style: { ...NODE_DEFAULT_SIZES[type] },
-      },
-    ]);
+        },
+      ],
+    }));
     setCreateMenu(undefined);
   };
-  const addDroppedLibraryAsset = (
+  const addDroppedLibraryAsset = async (
     asset: CanvasLibraryAsset,
     screen: { x: number; y: number },
   ) => {
@@ -3616,11 +3891,30 @@ export function CanvasSurface({
         (screen.y - bounds.top - viewportRef.current.y) /
         viewportRef.current.zoom,
     };
-    checkpoint();
-    setNodes((current) => [
-      ...current.map((node) => ({ ...node, selected: false })),
-      {
-        id: `${asset.kind}-${crypto.randomUUID()}`,
+    const nodeId = `${asset.kind}-${crypto.randomUUID()}`;
+    const loadIdentity = persistenceLoadIdentity.current;
+    let metadata: Awaited<ReturnType<typeof fetchTrustedMediaMetadata>>;
+    try {
+      metadata = await fetchTrustedMediaMetadata(asset.kind, asset.id);
+    } catch (error) {
+      const message = error instanceof Error
+        ? error.message
+        : "服务端无法确认素材信息";
+      setUploadError(message);
+      showWorkflowToast(message, "error");
+      return;
+    }
+    if (
+      persistenceLoadIdentity.current !== loadIdentity ||
+      !persistenceReadyRef.current || metadata.assetId !== asset.id ||
+      metadata.kind !== asset.kind
+    ) return;
+    void mutateGraph(({ edges, nodes }) => ({
+      edges,
+      nodes: [
+        ...nodes.map((node) => ({ ...node, selected: false })),
+        {
+        id: nodeId,
         type: asset.kind,
         position,
         selected: true,
@@ -3638,6 +3932,7 @@ export function CanvasSurface({
                 : "Video",
           sourceKind: asset.kind,
           title: asset.label,
+          ...trustedMediaPatch(metadata),
           videoPromptReady: asset.kind === "video" || undefined,
           videoSrc: asset.kind === "video" ? asset.src : undefined,
         },
@@ -3647,8 +3942,9 @@ export function CanvasSurface({
             : asset.kind === "video"
               ? { ...NODE_DEFAULT_SIZES.video }
               : { ...NODE_DEFAULT_SIZES.audio },
-      },
-    ]);
+        },
+      ],
+    }));
   };
   useEffect(() => {
     if (
@@ -3662,7 +3958,7 @@ export function CanvasSurface({
     if (!bounds) return;
     consumedHistoryAssetSequence.current = historyAssetRequest.sequence;
     const size = NODE_DEFAULT_SIZES[historyAssetRequest.asset.kind];
-    addDroppedLibraryAsset(historyAssetRequest.asset, {
+    void addDroppedLibraryAsset(historyAssetRequest.asset, {
       x:
         bounds.left +
         bounds.width / 2 -
@@ -3691,13 +3987,13 @@ export function CanvasSurface({
         }
       : createMenu?.flow;
     if (
-      !persistenceReadyRef.current || !file ||
-      !targetPosition ||
-      uploading
+      !persistenceReadyRef.current || persistenceConflict.current || !file ||
+      !targetPosition
     ) {
       return;
     }
     setUploadError("");
+    imageUploadsInFlight.current += 1;
     setUploading(true);
     const loadIdentity = { ...persistenceLoadIdentity.current };
     let createdAssetId: string | undefined;
@@ -3707,6 +4003,7 @@ export function CanvasSurface({
       createdAssetId = asset.assetId;
       if (
         !persistenceReadyRef.current ||
+        persistenceConflict.current ||
         persistenceLoadIdentity.current.epoch !== loadIdentity.epoch ||
         persistenceLoadIdentity.current.scopeId !== loadIdentity.scopeId
       ) {
@@ -3714,11 +4011,13 @@ export function CanvasSurface({
         createdAssetId = undefined;
         return;
       }
-      checkpoint();
-      adopted = trySetNodes((current) => [
-        ...current.map((node) => ({ ...node, selected: false })),
-        {
-          id: `image-${crypto.randomUUID()}`,
+      const nodeId = `image-${crypto.randomUUID()}`;
+      adopted = await mutateGraph(({ edges, nodes }) => ({
+        edges,
+        nodes: [
+          ...nodes.map((node) => ({ ...node, selected: false })),
+          {
+          id: nodeId,
           type: "image",
           position: targetPosition,
           selected: true,
@@ -3745,8 +4044,9 @@ export function CanvasSurface({
           style: {
             ...fitVisualMediaSize(asset.width, asset.height),
           },
-        },
-      ]);
+          },
+        ],
+      }));
       if (!adopted) {
         await discardImageAsset(asset.assetId);
         createdAssetId = undefined;
@@ -3761,7 +4061,11 @@ export function CanvasSurface({
         error instanceof Error ? error.message : "图片上传失败",
       );
     } finally {
-      setUploading(false);
+      imageUploadsInFlight.current = Math.max(
+        0,
+        imageUploadsInFlight.current - 1,
+      );
+      setUploading(imageUploadsInFlight.current > 0);
     }
   };
   const isConnectionAllowed = (
@@ -3805,13 +4109,15 @@ export function CanvasSurface({
         const source = beforeNodes.find((node) => node.id === edge.source);
         return source?.type === "image" && Boolean(source.data.assetId) &&
           Boolean(source.data.imageSrc) &&
-          (source.data.inputState === undefined || source.data.inputState === "ready");
+          (effectiveMediaInputState(source.data) === undefined ||
+            effectiveMediaInputState(source.data) === "ready");
       });
       const addsReadyImage = addedSourceIds.some((sourceId) => {
         const source = beforeNodes.find((node) => node.id === sourceId);
         return source?.type === "image" && Boolean(source.data.assetId) &&
           Boolean(source.data.imageSrc) &&
-          (source.data.inputState === undefined || source.data.inputState === "ready");
+          (effectiveMediaInputState(source.data) === undefined ||
+            effectiveMediaInputState(source.data) === "ready");
       });
       if (!alreadyHasReadyImageInput && addsReadyImage) {
         nextNodes = beforeNodes.map((node) => node.id === targetId
@@ -3979,7 +4285,7 @@ export function CanvasSurface({
     });
   };
   const clearCutIndicators = () =>
-    setEdges((current) =>
+    applyEdgeViewUpdate((current) =>
       current.map((edge) =>
         edge.data?.cutIndicator
           ? { ...edge, data: { ...edge.data, cutIndicator: undefined } }
@@ -3989,14 +4295,21 @@ export function CanvasSurface({
 
   useEffect(() => {
     if (textVideoStarted && persistenceReady) {
-      setNodes(createProbeNodes("workflow.text-to-video.created"));
-      setEdges(createProbeEdges("workflow.text-to-video.created"));
+      void mutateGraph(() => ({
+        edges: createProbeEdges("workflow.text-to-video.created"),
+        nodes: createProbeNodes("workflow.text-to-video.created"),
+      }));
     }
-  }, [persistenceReady, setEdges, setNodes, textVideoStarted]);
+  }, [persistenceReady, textVideoStarted]);
 
   useEffect(() => {
     const epoch = persistenceLoadIdentity.current.epoch + 1;
     persistenceLoadIdentity.current = { epoch, scopeId: persistenceScopeId };
+    layoutGestureRef.current = undefined;
+    if (layoutPreviewByNodeId.current.size > 0) {
+      layoutPreviewByNodeId.current.clear();
+      setLayoutPreviewVersion((version) => version + 1);
+    }
     persistencePendingAttempt.current = undefined;
     if (persistenceFixture) {
       try {
@@ -4069,6 +4382,8 @@ export function CanvasSurface({
     persistenceExternalRevision.current = undefined;
     window.clearTimeout(persistenceHydrationTimer.current);
     window.clearTimeout(persistenceSaveTimer.current);
+    persistenceSaveTimer.current = undefined;
+    persistenceScheduledDocument.current = undefined;
     cancelTemplateFit();
 
     const controller = new AbortController();
@@ -4170,7 +4485,22 @@ export function CanvasSurface({
         persistenceDirty.current = false;
         persistedDocumentFingerprint.current = result.fingerprint;
         persistedGraphFingerprint.current = result.graphFingerprint;
-        setNodes(document.nodes);
+        setNodes((current) => mergeAuthoritativeNodesWithViewState(
+          current,
+          document.nodes,
+        ).map((node) => {
+          if (
+            node.measured?.width !== undefined &&
+              node.measured.height !== undefined ||
+            node.width !== undefined && node.height !== undefined ||
+            node.initialWidth !== undefined && node.initialHeight !== undefined
+          ) return node;
+          const width = node.style?.width;
+          const height = node.style?.height;
+          return typeof width === "number" && typeof height === "number"
+            ? { ...node, initialHeight: height, initialWidth: width }
+            : node;
+        }));
         setEdges(document.edges);
         applyViewport(document.viewport);
         window.clearTimeout(persistenceHydrationTimer.current);
@@ -4261,6 +4591,7 @@ export function CanvasSurface({
     persistenceRevision,
     persistenceSaveController,
     persistenceSaveRun,
+    persistenceScheduledDocument,
     persistenceSaveTimer,
     persistenceSaving,
     persistenceScopeId,
@@ -4326,6 +4657,7 @@ export function CanvasSurface({
     persistenceReadyRef,
     persistenceRetryDelay,
     persistenceRevision,
+    persistenceScheduledDocument,
     persistenceSaveTimer,
     persistenceSaving,
     persistenceScopeId,
@@ -4349,7 +4681,7 @@ export function CanvasSurface({
       if (!persistenceReadyRef.current) return;
       if (event.key === "Escape") {
         setBatchDrag(undefined);
-        setNodes((current) =>
+        applyViewUpdate((current) =>
           current.map((node) =>
             node.data.playlistPicking
               ? {
@@ -4386,7 +4718,7 @@ export function CanvasSurface({
           event.preventDefault();
           event.stopPropagation();
           window.getSelection()?.removeAllRanges();
-          setNodes((current) =>
+          applyViewUpdate((current) =>
             current.map((node) => ({
               ...node,
               selected: selectableIds.has(node.id),
@@ -4424,13 +4756,22 @@ export function CanvasSurface({
         }
         event.preventDefault();
         event.stopPropagation();
-        history.current.push({
+        const undoSnapshot = {
           edges: cloneEdges(edgesRef.current),
           kind: "snapshot",
           nodes: cloneNodes(nodesRef.current),
+        } as const;
+        history.current.push(undoSnapshot);
+        void mutateGraph(({ edges, nodes }) => restoreCanvasHistorySnapshot({
+          currentEdges: edges,
+          currentNodes: nodes,
+          historicalEdges: cloneEdges(redo.edges).map(stripSelectionFlowMarkers),
+          historicalNodes: cloneNodes(redo.nodes),
+        }), { checkpoint: false }).then((applied) => {
+          if (applied) return;
+          if (history.current.at(-1) === undoSnapshot) history.current.pop();
+          redoHistory.current.push(redo);
         });
-        setNodes(cloneNodes(redo.nodes));
-        setEdges(cloneEdges(redo.edges).map(stripSelectionFlowMarkers));
         return;
       }
 
@@ -4441,14 +4782,23 @@ export function CanvasSurface({
 
       event.preventDefault();
       event.stopPropagation();
-      redoHistory.current.push({
+      const redoSnapshot = {
         edges: cloneEdges(edgesRef.current),
         kind: "snapshot",
         nodes: cloneNodes(nodesRef.current),
-      });
+      } as const;
+      redoHistory.current.push(redoSnapshot);
       if (entry.kind === "snapshot") {
-        setNodes(cloneNodes(entry.nodes));
-        setEdges(cloneEdges(entry.edges).map(stripSelectionFlowMarkers));
+        void mutateGraph(({ edges, nodes }) => restoreCanvasHistorySnapshot({
+          currentEdges: edges,
+          currentNodes: nodes,
+          historicalEdges: cloneEdges(entry.edges).map(stripSelectionFlowMarkers),
+          historicalNodes: cloneNodes(entry.nodes),
+        }), { checkpoint: false }).then((applied) => {
+          if (applied) return;
+          if (redoHistory.current.at(-1) === redoSnapshot) redoHistory.current.pop();
+          history.current.push(entry);
+        });
         return;
       }
 
@@ -4462,26 +4812,28 @@ export function CanvasSurface({
           `${node.id}-restored-${sequence}`,
         ]),
       );
-      setNodes((current) => [
-        ...current,
-        ...deletedNodes.map((node) => ({
+      const restoredNodes = deletedNodes.map((node) => newHistoryNode({
           ...node,
           id: restoredIds.get(node.id)!,
           parentId: node.parentId
             ? (restoredIds.get(node.parentId) ?? node.parentId)
             : undefined,
-        })),
-      ]);
-      setEdges((current) => [
-        ...current,
-        ...entry.edges.map((edge, index) => ({
+        } as ProbeNodeType));
+      const restoredEdges = entry.edges.map((edge, index) => ({
           ...stripSelectionFlowMarkers(edge),
           id: `${edge.id}-restored-${sequence}-${index}`,
           selected: false,
           source: restoredIds.get(edge.source) ?? edge.source,
           target: restoredIds.get(edge.target) ?? edge.target,
-        })),
-      ]);
+        }));
+      void mutateGraph(({ edges, nodes }) => ({
+        edges: [...edges, ...restoredEdges],
+        nodes: [...nodes, ...restoredNodes],
+      }), { checkpoint: false }).then((applied) => {
+        if (applied) return;
+        if (redoHistory.current.at(-1) === redoSnapshot) redoHistory.current.pop();
+        history.current.push(entry);
+      });
     };
 
     window.addEventListener("keydown", cancelBatchConnection, true);
@@ -4489,7 +4841,7 @@ export function CanvasSurface({
       window.clearTimeout(cutTimer.current);
       window.removeEventListener("keydown", cancelBatchConnection, true);
     };
-  }, [persistenceReady, primaryId, setEdges, setNodes, workflowRetainedNodeIds]);
+  }, [persistenceReady, primaryId, workflowRetainedNodeIds]);
 
   const selectedNodes = nodes.filter((node) => node.selected);
   const selectedNodeIds = new Set(selectedNodes.map((node) => node.id));
@@ -4640,9 +4992,10 @@ export function CanvasSurface({
     const groupId = `group-${Date.now()}`;
     const position = { x: bounds.left - 20, y: bounds.top - 20 };
     const childIds = new Set(groupCandidates.map((node) => node.id));
-    checkpoint();
-    setNodes((current) => [
-      {
+    void mutateGraph(({ edges, nodes }) => ({
+      edges,
+      nodes: [
+        {
         id: groupId,
         type: "group",
         position,
@@ -4654,7 +5007,7 @@ export function CanvasSurface({
         },
         zIndex: 0,
       },
-      ...current.map((node) =>
+        ...nodes.map((node) =>
         childIds.has(node.id)
           ? {
               ...node,
@@ -4668,7 +5021,8 @@ export function CanvasSurface({
             }
           : { ...node, selected: false },
       ),
-    ]);
+      ],
+    }));
     setPrimaryId(groupId);
   };
   const sourceMenuNode = sourceConnectMenu
@@ -4737,7 +5091,11 @@ export function CanvasSurface({
     };
     assertSafePersistence();
     const latest = canvasSnapshotRef.current();
-    if (latest.fingerprint !== persistedDocumentFingerprint.current) {
+    if (
+      !confirmedLiveEditorSaveCoversCurrentSnapshot() &&
+      (latest.fingerprint !== persistedDocumentFingerprint.current ||
+        latest.graphFingerprint !== persistedGraphFingerprint.current)
+    ) {
       persistenceQueued.current = latest;
       persistenceDirty.current = true;
     }
@@ -4753,7 +5111,7 @@ export function CanvasSurface({
       await waitForCanvasState(60, signal);
     }
     assertSafePersistence();
-  }, [persistenceFixture]);
+  }, [confirmedLiveEditorSaveCoversCurrentSnapshot, persistenceFixture]);
   const waitForCanvasRevision = useCallback(async (
     timeoutMs = 30_000,
     signal?: AbortSignal,
@@ -4774,7 +5132,11 @@ export function CanvasSurface({
     };
     assertSafePersistence();
     const latest = canvasSnapshotRef.current();
-    if (latest.fingerprint !== persistedDocumentFingerprint.current) {
+    if (
+      !confirmedLiveEditorSaveCoversCurrentSnapshot() &&
+      (latest.fingerprint !== persistedDocumentFingerprint.current ||
+        latest.graphFingerprint !== persistedGraphFingerprint.current)
+    ) {
       persistenceQueued.current = latest;
       persistenceDirty.current = true;
     }
@@ -4805,7 +5167,7 @@ export function CanvasSurface({
       await waitForCanvasState(60, signal);
     }
     throw new Error("画布保存超时，请稍后再试");
-  }, [persistenceFixture]);
+  }, [confirmedLiveEditorSaveCoversCurrentSnapshot, persistenceFixture]);
   const readAuthoritativeCanvasRevision = useCallback(async () => {
     if (!persistenceFixture) {
       const revision = generationCanvasRevisionRef.current;
@@ -4837,6 +5199,11 @@ export function CanvasSurface({
     signal?: AbortSignal,
   ) => {
     if (!persistenceFixture) return false;
+    layoutGestureRef.current = undefined;
+    if (layoutPreviewByNodeId.current.size > 0) {
+      layoutPreviewByNodeId.current.clear();
+      setLayoutPreviewVersion((version) => version + 1);
+    }
     const scopeId = persistenceScopeId;
     await flushCanvasSave(signal);
     if (signal?.aborted) return false;
@@ -4900,11 +5267,14 @@ export function CanvasSurface({
         persistenceExternalRevision.current !== undefined &&
         persistenceExternalRevision.current <= document.revision
       ) persistenceExternalRevision.current = undefined;
-      persistedDocumentFingerprint.current = canvasDocumentFingerprint(document);
+      persistedDocumentFingerprint.current = canvasUserDocumentFingerprint(document);
       persistedGraphFingerprint.current = canvasGraphFingerprint(document);
       setConfirmedPersistenceRevision(document.revision);
       setConfirmedGraphRevision(graphRevision);
-      setNodes(document.nodes);
+      setNodes((current) => mergeAuthoritativeNodesWithViewState(
+        current,
+        document.nodes,
+      ));
       setEdges(document.edges);
       applyViewport(document.viewport);
       return true;
@@ -4930,8 +5300,9 @@ export function CanvasSurface({
       await waitForCanvasRevision();
       const latest = canvasSnapshotRef.current();
       if (
-        latest.fingerprint === persistedDocumentFingerprint.current &&
-        latest.graphFingerprint === persistedGraphFingerprint.current
+        (latest.fingerprint === persistedDocumentFingerprint.current &&
+          latest.graphFingerprint === persistedGraphFingerprint.current) ||
+        confirmedLiveEditorSaveCoversCurrentSnapshot()
       ) return;
     }
   };
@@ -4966,11 +5337,19 @@ export function CanvasSurface({
         )
       ),
     };
+    if (
+      persistenceFacade.transport.adoptAuthoritativeDocument &&
+      !persistenceFacade.transport.adoptAuthoritativeDocument({
+        canvasId: persistenceId,
+        document: normalizedDocument,
+        loadToken: mutation.document.loadToken,
+      })
+    ) return false;
     persistenceRevision.current = mutation.document.revision;
     persistenceGraphRevision.current = mutation.document.graphRevision;
     persistenceObservedRevision.current = mutation.document.revision;
     persistenceObservedLoadToken.current = mutation.document.loadToken;
-    persistedDocumentFingerprint.current = canvasDocumentFingerprint(
+    persistedDocumentFingerprint.current = canvasUserDocumentFingerprint(
       normalizedDocument,
     );
     persistedGraphFingerprint.current = canvasGraphFingerprint(
@@ -4978,26 +5357,14 @@ export function CanvasSurface({
     );
     setConfirmedPersistenceRevision(mutation.document.revision);
     setConfirmedGraphRevision(mutation.document.graphRevision);
-    setNodes((current) => current.map((node) => {
-      if (node.id !== mutation.expected.nodeId || node.type !== mutation.expected.kind) {
-        return node;
-      }
-      const data = node.data as Record<string, unknown>;
-      if (
-        data.workflowExecutionRunId !== mutation.expected.runId ||
-        data[`${mutation.expected.kind}GenerationTaskId`] !==
-          mutation.expected.taskId ||
-        data[`${mutation.expected.kind}GenerationOwnershipKey`] !==
-          mutation.expected.ownershipKey ||
-        data[`${mutation.expected.kind}GenerationInputKey`] !==
-          mutation.expected.inputFingerprint
-      ) return node;
-      const nextData = { ...data, ...mutation.dataPatch };
-      for (const field of mutation.clearedFields ?? []) delete nextData[field];
-      return { ...node, data: nextData as ProbeNodeType["data"] };
-    }));
+    setNodes((current) => mergeAuthoritativeNodesWithViewState(
+      current,
+      normalizedDocument.nodes,
+    ));
+    setEdges(normalizedDocument.edges);
+    applyViewport(normalizedDocument.viewport);
     return true;
-  }, [setNodes]);
+  }, [applyViewport, persistenceFacade, persistenceId, setEdges, setNodes]);
   useEffect(() => {
     if (!onGenerationRetryGateChange) return;
     const scopeId = persistenceScopeId;
@@ -5067,6 +5434,12 @@ export function CanvasSurface({
     useState<ReadonlySet<string>>(new Set());
   const canvasMutationPendingNodeCountsRef = useRef(new Map<string, number>());
   const canvasMutationVersionsRef = useRef(new Map<string, number>());
+  const readCanvasNode = useCallback(
+    (nodeId: string) =>
+      (pendingGuardedNodes.current ?? nodesRef.current)
+        .find((node) => node.id === nodeId),
+    [],
+  );
   const readCanvasMutationVersion = useCallback(
     (nodeId: string) => canvasMutationVersionsRef.current.get(nodeId) ?? 0,
     [],
@@ -5081,6 +5454,10 @@ export function CanvasSurface({
     work: () => Promise<T> | T,
     rollbackAfterDurableFailure?: (result: T) => Promise<void> | void,
   ): Promise<T | undefined> => {
+    if (!persistenceReadyRef.current || persistenceConflict.current) {
+      showWorkflowToast("画布保存边界不可用，请刷新后重试", "error");
+      return undefined;
+    }
     const affected = [...new Set(nodeIds.filter(Boolean))];
     let saveStarted = false;
     for (const nodeId of affected) {
@@ -5099,6 +5476,9 @@ export function CanvasSurface({
         canvasMutationScope,
         affected,
         async () => {
+          if (!persistenceReadyRef.current || persistenceConflict.current) {
+            throw new Error("画布保存边界不可用，请刷新后重试");
+          }
           saveStarted = true;
           onSaveStart();
           const result = await work();
@@ -5184,64 +5564,16 @@ export function CanvasSurface({
     }
     return [...nodeIds];
   }, []);
-  const admittedSetNodes = useCallback<Dispatch<SetStateAction<ProbeNodeType[]>>>(
-    (update) => {
-      if (!persistenceReadyRef.current) return;
-      const previewBase = pendingGuardedNodes.current ?? nodesRef.current;
-      const preview = typeof update === "function" ? update(previewBase) : update;
-      const plannedNodeIds = changedNodeIds(previewBase, preview);
-      if (plannedNodeIds.length === 0) return;
-      if (plannedNodeIds.every((nodeId) =>
-        canvasNodeMutationAdmissionHeldLocally(canvasMutationScope, nodeId)
-      )) {
-        setNodes(preview);
-        return;
-      }
-      void runCanvasMutationAdmission(plannedNodeIds, () => {
-        const current = pendingGuardedNodes.current ?? nodesRef.current;
-        const next = typeof update === "function" ? update(current) : update;
-        const actualNodeIds = changedNodeIds(current, next);
-        if (actualNodeIds.some((nodeId) => !plannedNodeIds.includes(nodeId))) {
-          throw new Error("画布已在等待期间变化，本次修改未应用");
-        }
-        setNodes(next);
-      });
-    },
-    [canvasMutationScope, changedNodeIds, runCanvasMutationAdmission, setNodes],
-  );
-  const admittedSetEdges = useCallback<Dispatch<SetStateAction<CuttableEdge[]>>>(
-    (update) => {
-      if (!persistenceReadyRef.current) return;
-      const previewBase = pendingGuardedEdges.current ?? edgesRef.current;
-      const preview = typeof update === "function" ? update(previewBase) : update;
-      const plannedNodeIds = changedEdgeEndpointIds(previewBase, preview);
-      if (plannedNodeIds.length === 0) return;
-      if (plannedNodeIds.every((nodeId) =>
-        canvasNodeMutationAdmissionHeldLocally(canvasMutationScope, nodeId)
-      )) {
-        setEdges(preview);
-        return;
-      }
-      void runCanvasMutationAdmission(plannedNodeIds, () => {
-        const current = pendingGuardedEdges.current ?? edgesRef.current;
-        const next = typeof update === "function" ? update(current) : update;
-        const actualNodeIds = changedEdgeEndpointIds(current, next);
-        if (actualNodeIds.some((nodeId) => !plannedNodeIds.includes(nodeId))) {
-          throw new Error("画布连线已在等待期间变化，本次修改未应用");
-        }
-        setEdges(next);
-      });
-    },
-    [canvasMutationScope, changedEdgeEndpointIds, runCanvasMutationAdmission, setEdges],
-  );
   const mutateGraph = useCallback(async (update: (current: Readonly<{
     edges: CuttableEdge[];
     nodes: ProbeNodeType[];
   }>) => Readonly<{
     edges: CuttableEdge[];
     nodes: ProbeNodeType[];
-  }>): Promise<boolean> => {
-    if (!persistenceReadyRef.current) return false;
+  }>, options?: Readonly<{ checkpoint?: boolean }>): Promise<boolean> => {
+    if (!persistenceReadyRef.current || persistenceConflict.current) {
+      return false;
+    }
     const previewCurrent = {
       edges: pendingGuardedEdges.current ?? edgesRef.current,
       nodes: pendingGuardedNodes.current ?? nodesRef.current,
@@ -5266,7 +5598,7 @@ export function CanvasSurface({
         throw new Error("画布已在等待期间变化，本次修改未应用");
       }
       if (actualNodeIds.length === 0) return false;
-      checkpoint();
+      if (options?.checkpoint !== false) checkpoint();
       commitCanvasGraphAtomic({ edges: next.edges, nodes: next.nodes });
       return true;
     };
@@ -5286,9 +5618,278 @@ export function CanvasSurface({
     commitCanvasGraphAtomic,
     runCanvasMutationAdmission,
   ]);
-  const trySetNodes = useCallback((update: SetStateAction<ProbeNodeType[]>) => {
-    if (!persistenceReadyRef.current) return false;
-    setNodes(update);
+  const applyDurableLayoutChanges = useCallback((
+    current: ProbeNodeType[],
+    changes: NodeChange<ProbeNodeType>[],
+  ) => {
+    const explicitResizes = new Map(changes.flatMap((change) =>
+      change.type === "dimensions" && change.dimensions
+        ? [[change.id, change.dimensions] as const]
+        : []
+    ));
+    const changed = applyNodeChanges(changes, current);
+    if (explicitResizes.size === 0) return changed;
+    return changed.map((node) => {
+      const dimensions = explicitResizes.get(node.id);
+      return dimensions
+        ? {
+            ...node,
+            style: {
+              ...node.style,
+              height: dimensions.height,
+              width: dimensions.width,
+            },
+          }
+        : node;
+    });
+  }, []);
+  const clearLayoutPreview = useCallback((gestureId?: number) => {
+    if (
+      gestureId !== undefined &&
+      layoutGestureRef.current?.gestureId !== gestureId
+    ) return;
+    layoutGestureRef.current = undefined;
+    if (layoutPreviewByNodeId.current.size === 0) return;
+    layoutPreviewByNodeId.current.clear();
+    setLayoutPreviewVersion((version) => version + 1);
+  }, []);
+  const beginLayoutGesture = useCallback((kind: "drag" | "resize") => {
+    const current = layoutGestureRef.current;
+    if (current) return current.kind === kind && current.phase === "preview"
+      ? current
+      : undefined;
+    if (!persistenceReadyRef.current || persistenceConflict.current) {
+      return undefined;
+    }
+    const gesture = {
+      affectedNodeIds: new Set<string>(),
+      epoch: persistenceLoadIdentity.current.epoch,
+      gestureId: layoutGestureSequence.current + 1,
+      kind,
+      phase: "preview" as const,
+      scopeId: persistenceLoadIdentity.current.scopeId,
+    };
+    layoutGestureSequence.current = gesture.gestureId;
+    layoutGestureRef.current = gesture;
+    return gesture;
+  }, []);
+  const updateLayoutPreview = useCallback((
+    kind: "drag" | "resize",
+    changes: NodeChange<ProbeNodeType>[],
+  ) => {
+    const gesture = beginLayoutGesture(kind);
+    if (!gesture || gesture.phase !== "preview") return false;
+    let changed = false;
+    for (const change of changes) {
+      if (!("id" in change)) continue;
+      const currentNode = nodesRef.current.find((node) => node.id === change.id);
+      if (!currentNode) continue;
+      const previous = layoutPreviewByNodeId.current.get(change.id) ?? {};
+      if (change.type === "position") {
+        if (!change.position && change.dragging === undefined) continue;
+        layoutPreviewByNodeId.current.set(change.id, {
+          ...previous,
+          ...(change.dragging !== undefined
+            ? { dragging: change.dragging }
+            : {}),
+          ...(change.position
+            ? { position: { ...change.position } }
+            : {}),
+        });
+        gesture.affectedNodeIds.add(change.id);
+        changed = true;
+      } else if (change.type === "dimensions" && change.dimensions) {
+        layoutPreviewByNodeId.current.set(change.id, {
+          ...previous,
+          height: change.dimensions.height,
+          style: {
+            ...previous.style,
+            height: change.dimensions.height,
+            width: change.dimensions.width,
+          },
+          width: change.dimensions.width,
+        });
+        gesture.affectedNodeIds.add(change.id);
+        changed = true;
+      }
+    }
+    if (changed) {
+      // If an older normal save is superseded while this gesture is still a
+      // view-only preview, conflict recovery must sample that live preview
+      // before deciding that the page is clean and reloadable. Merely marking
+      // the fingerprint does not enqueue or transmit the layout mutation.
+      const pendingAttempt = persistencePendingAttempt.current;
+      const sent = pendingAttempt
+        ? persistenceSentFingerprints.current.get(pendingAttempt.saveSequence)
+        : undefined;
+      if (pendingAttempt && sent && !sent.liveEditors) {
+        persistenceSentFingerprints.current.set(pendingAttempt.saveSequence, {
+          ...sent,
+          liveEditors: true,
+        });
+      }
+      setLayoutPreviewVersion((version) => version + 1);
+    }
+    return changed;
+  }, [beginLayoutGesture]);
+  const finishLayoutGesture = useCallback(async (kind: "drag" | "resize") => {
+    const gesture = layoutGestureRef.current;
+    if (!gesture || gesture.kind !== kind || gesture.phase !== "preview") return;
+    const gestureId = gesture.gestureId;
+    const fenced = !persistenceConflict.current &&
+      persistenceLoadIdentity.current.scopeId === gesture.scopeId &&
+      persistenceLoadIdentity.current.epoch === gesture.epoch;
+    if (!fenced) {
+      clearLayoutPreview(gestureId);
+      return;
+    }
+    const patches = new Map(layoutPreviewByNodeId.current);
+    const applyPatches = (current: ProbeNodeType[]) => current.map((node) => {
+      const preview = patches.get(node.id);
+      if (!preview) return node;
+      const nextPosition = preview.position ?? node.position;
+      const nextWidth = preview.style?.width ?? node.style?.width;
+      const nextHeight = preview.style?.height ?? node.style?.height;
+      const positionChanged = nextPosition.x !== node.position.x ||
+        nextPosition.y !== node.position.y;
+      const sizeChanged = nextWidth !== node.style?.width ||
+        nextHeight !== node.style?.height;
+      if (!positionChanged && !sizeChanged) return node;
+      return {
+        ...node,
+        position: { ...nextPosition },
+        ...(sizeChanged
+          ? {
+              style: {
+                ...node.style,
+                height: nextHeight,
+                width: nextWidth,
+              },
+            }
+          : {}),
+      };
+    });
+    const previewCurrent = pendingGuardedNodes.current ?? nodesRef.current;
+    const committedPreview = applyPatches(previewCurrent);
+    if (changedNodeIds(previewCurrent, committedPreview).length === 0) {
+      clearLayoutPreview(gestureId);
+      return;
+    }
+    if (!persistenceReadyRef.current) {
+      // A superseded in-flight save temporarily closes the ready gate while
+      // its authoritative baseline GET rebases a live drag/resize draft. The
+      // recovery journal already owns that exact preview snapshot, so commit
+      // the same snapshot locally instead of dropping it at pointer-up. Other
+      // not-ready states remain fail-closed.
+      if (!persistenceSaving.current || !persistenceDirty.current) {
+        clearLayoutPreview(gestureId);
+        return;
+      }
+      checkpoint();
+      commitCanvasGraphAtomic({
+        edges: pendingGuardedEdges.current ?? edgesRef.current,
+        nodes: committedPreview,
+      });
+      clearLayoutPreview(gestureId);
+      return;
+    }
+    layoutGestureRef.current = { ...gesture, phase: "committing" };
+    // Start the persistence quiet window at gesture completion. The preview is
+    // local-only, so without this fence a large command diff can begin while
+    // the user's next pan or zoom is already in progress.
+    markCanvasInteraction();
+    checkpoint();
+    try {
+      await mutateGraph(({ edges, nodes }) => ({
+        edges,
+        nodes: applyPatches(nodes),
+      }), { checkpoint: false });
+    } finally {
+      clearLayoutPreview(gestureId);
+    }
+  }, [
+    changedNodeIds,
+    checkpoint,
+    clearLayoutPreview,
+    commitCanvasGraphAtomic,
+    markCanvasInteraction,
+    mutateGraph,
+  ]);
+  useEffect(() => {
+    const finishResize = () => {
+      if (
+        layoutGestureRef.current?.kind === "resize" &&
+        layoutGestureRef.current.phase === "preview"
+      ) {
+        void finishLayoutGesture("resize").catch(() => undefined);
+      }
+    };
+    window.addEventListener("pointerup", finishResize);
+    return () => window.removeEventListener("pointerup", finishResize);
+  }, [finishLayoutGesture]);
+  useEffect(() => {
+    const cancelPreview = () => {
+      if (layoutGestureRef.current?.phase === "preview") clearLayoutPreview();
+    };
+    const cancelForEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") cancelPreview();
+    };
+    window.addEventListener("pointercancel", cancelPreview);
+    window.addEventListener("blur", cancelPreview);
+    window.addEventListener("keydown", cancelForEscape);
+    return () => {
+      layoutGestureRef.current = undefined;
+      layoutPreviewByNodeId.current.clear();
+      window.removeEventListener("pointercancel", cancelPreview);
+      window.removeEventListener("blur", cancelPreview);
+      window.removeEventListener("keydown", cancelForEscape);
+    };
+  }, [clearLayoutPreview, persistenceId]);
+  const applyViewUpdate = useCallback((
+    update: SetStateAction<ProbeNodeType[]>,
+  ) => {
+    if (!persistenceReadyRef.current || persistenceConflict.current) return false;
+    const current = pendingGuardedNodes.current ?? nodesRef.current;
+    const next = typeof update === "function" ? update(current) : update;
+    if (!canvasViewUpdateAllowed(current, next)) return false;
+    setNodes(next);
+    return true;
+  }, [setNodes]);
+  const applyEdgeViewUpdate = useCallback((
+    update: SetStateAction<CuttableEdge[]>,
+  ) => {
+    if (!persistenceReadyRef.current || persistenceConflict.current) return false;
+    const current = pendingGuardedEdges.current ?? edgesRef.current;
+    const next = typeof update === "function" ? update(current) : update;
+    if (!canvasEdgeViewUpdateAllowed(current, next)) return false;
+    setEdges(next);
+    return true;
+  }, [setEdges]);
+  const adoptAuthoritativeNodeData = useCallback((
+    adoption: CanvasAuthoritativeNodeDataAdoption,
+  ) => {
+    if (
+      !persistenceReadyRef.current || persistenceConflict.current ||
+      !authoritativeCanvasNodeDataPatchAllowed(
+        adoption.patch as Readonly<Record<string, unknown>>,
+      )
+    ) return false;
+    const current = pendingGuardedNodes.current ?? nodesRef.current;
+    const target = current.find((node) => node.id === adoption.nodeId);
+    if (!target) return false;
+    if (
+      adoption.expectedAssetId !== undefined &&
+      target.data.assetId !== adoption.expectedAssetId
+    ) return false;
+    if (adoption.expectedTask) {
+      const taskId = (target.data as Record<string, unknown>)[
+        `${adoption.expectedTask.kind}GenerationTaskId`
+      ];
+      if (taskId !== adoption.expectedTask.taskId) return false;
+    }
+    setNodes(current.map((node) => node.id === adoption.nodeId
+      ? { ...node, data: { ...node.data, ...adoption.patch } }
+      : node));
     return true;
   }, [setNodes]);
   const tryAdoptNodes = useCallback(async (
@@ -5344,16 +5945,120 @@ export function CanvasSurface({
       }));
     })) === true;
   }, [changedNodeIds, checkpoint, runCanvasMutationAdmission, setNodes]);
+  const adoptUploadedAsset = useCallback(async (
+    adoption: CanvasUploadedAssetAdoption,
+    options?: Readonly<{ checkpoint?: boolean }>,
+  ) => {
+    const restoreUploadViewBaseline = () => {
+      const baseline = adoption.rollbackTarget;
+      if (
+        !baseline || baseline.id !== adoption.targetNodeId ||
+        baseline.type !== adoption.mediaKind
+      ) return;
+      const fields = [
+        "inputViewState",
+        "inputViewStateReason",
+        `${adoption.mediaKind}GenerationError`,
+        `${adoption.mediaKind}GenerationErrorCode`,
+      ];
+      applyViewUpdate((current) => current.map((node) => {
+        if (node.id !== adoption.targetNodeId) return node;
+        const data = { ...node.data } as Record<string, unknown>;
+        const baselineData = baseline.data as Record<string, unknown>;
+        for (const field of fields) {
+          if (Object.prototype.hasOwnProperty.call(baselineData, field)) {
+            data[field] = baselineData[field];
+          } else {
+            delete data[field];
+          }
+        }
+        return { ...node, data: data as ProbeNodeType["data"] };
+      }));
+    };
+    if (!persistenceReadyRef.current || persistenceConflict.current) {
+      restoreUploadViewBaseline();
+      return false;
+    }
+    const previewBase = pendingGuardedNodes.current ?? nodesRef.current;
+    const preview = typeof adoption.update === "function"
+      ? adoption.update(previewBase)
+      : adoption.update;
+    if (!canvasUploadedAssetAdoptionAllowed(previewBase, preview, adoption)) {
+      restoreUploadViewBaseline();
+      return false;
+    }
+    const plannedNodeIds = changedNodeIds(previewBase, preview);
+    let beforeById: Map<string, ProbeNodeType> | undefined;
+    let committedById: Map<string, ProbeNodeType> | undefined;
+    const adopted = (await runCanvasMutationAdmission(plannedNodeIds, () => {
+      const current = pendingGuardedNodes.current ?? nodesRef.current;
+      const next = typeof adoption.update === "function"
+        ? adoption.update(current)
+        : adoption.update;
+      if (!canvasUploadedAssetAdoptionAllowed(current, next, adoption)) {
+        return false;
+      }
+      const actualNodeIds = changedNodeIds(current, next);
+      if (actualNodeIds.some((nodeId) => !plannedNodeIds.includes(nodeId))) {
+        throw new Error("画布已在等待期间变化，上传素材未接管");
+      }
+      if (options?.checkpoint) checkpoint();
+      beforeById = new Map(actualNodeIds.flatMap((nodeId) => {
+        const rollbackTarget = adoption.rollbackTarget;
+        const node = nodeId === adoption.targetNodeId &&
+            rollbackTarget?.id === adoption.targetNodeId &&
+            rollbackTarget.type === adoption.mediaKind
+          ? rollbackTarget
+          : current.find((candidate) => candidate.id === nodeId);
+        return node ? [[nodeId, node] as const] : [];
+      }));
+      committedById = new Map(actualNodeIds.flatMap((nodeId) => {
+        const node = next.find((candidate) => candidate.id === nodeId);
+        return node ? [[nodeId, node] as const] : [];
+      }));
+      setNodes(next);
+      if (persistenceFixture) {
+        // Replacing one uploaded asset with another may change only
+        // server-owned media fields, which are intentionally excluded from
+        // the browser user-dirty fingerprint. Explicit asset adoption still
+        // has to enqueue its typed durable command.
+        persistenceQueued.current = canvasSnapshot(next);
+        persistenceDirty.current = true;
+      }
+      return true;
+    }, (committed) => {
+      if (!committed || !beforeById || !committedById) return;
+      const rollbackBeforeById = beforeById;
+      const rollbackCommittedById = committedById;
+      setNodes((current) => rollbackCanvasNodeAdoption({
+        beforeById: rollbackBeforeById,
+        committedById: rollbackCommittedById,
+        current,
+      }));
+    })) === true;
+    if (!adopted) restoreUploadViewBaseline();
+    return adopted;
+  }, [
+    applyViewUpdate,
+    canvasSnapshot,
+    changedNodeIds,
+    checkpoint,
+    persistenceFixture,
+    runCanvasMutationAdmission,
+    setNodes,
+  ]);
   const workflowGraphPort = useMemo(() => createCanvasGraphCommandPort({
     commit: commitCanvasGraphAtomic,
+    commitView: (nextNodes) => setNodes([...nextNodes]),
     persistenceReady: () =>
       persistenceReadyRef.current && !persistenceConflict.current,
+    refreshAuthoritativeDocument: refreshAuthoritativeCanvasDocument,
     snapshot: () => ({
       edges: pendingGuardedEdges.current ?? edgesRef.current,
       nodes: pendingGuardedNodes.current ?? nodesRef.current,
       revision: generationCanvasRevisionRef.current,
     }),
-  }), [commitCanvasGraphAtomic]);
+  }), [commitCanvasGraphAtomic, refreshAuthoritativeCanvasDocument, setNodes]);
   const modelTransitionPort = useMemo(() => createCanvasModelTransitionPort({
     checkpoint,
     commitAtomic: commitCanvasGraphAtomic,
@@ -5394,12 +6099,12 @@ export function CanvasSurface({
     () => pendingGuardedNodes.current ?? nodesRef.current,
     [],
   );
-
   return (
     <GenerationCanvasContext.Provider
       value={generationCanvasContextValue}
     >
       <WorkflowExecutionProvider
+        applyViewUpdate={applyViewUpdate}
         graph={workflowGraphPort}
         getEdges={readWorkflowEdges}
         getNodes={readWorkflowNodes}
@@ -5407,21 +6112,22 @@ export function CanvasSurface({
         notify={showWorkflowToast}
         onActiveNodeIdsChange={setWorkflowActiveNodeIds}
         onRetainedNodeIdsChange={setWorkflowRetainedNodeIds}
-        setNodes={guardedSetNodes}
       >
       <CanvasGraphMutationContext.Provider
         value={{
+          adoptUploadedAsset,
+          adoptAuthoritativeNodeData,
+          applyEdgeViewUpdate,
           applyModelTransition: modelTransitionPort.apply,
+          applyViewUpdate,
           canvasMutationPendingNodeIds,
           graphCommandPort: workflowGraphPort,
           imageColorFilter,
           mutateGraph,
+          readCanvasNode,
           readCanvasMutationVersion,
           setImageColorFilter,
-          setEdges: admittedSetEdges,
-          setNodes: admittedSetNodes,
           tryAdoptNodes,
-          trySetNodes,
         }}
       >
       <CanvasCheckpointContext.Provider value={checkpoint}>
@@ -5489,7 +6195,7 @@ export function CanvasSurface({
             ) {
               return;
             }
-            addDroppedLibraryAsset(asset, {
+            void addDroppedLibraryAsset(asset, {
               x: event.clientX,
               y: event.clientY,
             });
@@ -5627,7 +6333,7 @@ export function CanvasSurface({
           if (!persistenceReady) return;
           window.clearTimeout(cutTimer.current);
           cutTimer.current = window.setTimeout(() => {
-            setEdges((current) =>
+            applyEdgeViewUpdate((current) =>
               current.map((candidate) =>
                 candidate.id === edge.id &&
                 candidate.data?.cutIndicator !== "click"
@@ -5652,7 +6358,7 @@ export function CanvasSurface({
             return;
           }
 
-          setEdges((current) =>
+          applyEdgeViewUpdate((current) =>
             current.map((candidate) =>
               candidate.id === edge.id &&
               candidate.data?.cutIndicator === "hover"
@@ -5670,7 +6376,7 @@ export function CanvasSurface({
         onEdgeClick={(_, edge) => {
           if (!persistenceReady) return;
           window.clearTimeout(cutTimer.current);
-          setEdges((current) =>
+          applyEdgeViewUpdate((current) =>
             current.map((candidate) => ({
               ...candidate,
               data: {
@@ -5684,7 +6390,7 @@ export function CanvasSurface({
         onEdgesChange={(changes) => {
           if (!persistenceReady) return;
           const passive = changes.filter((change) => change.type === "select");
-          if (passive.length > 0) onEdgesChange(passive);
+          if (passive.length > 0) applyPassiveEdgeChanges(passive);
           const structural = changes.filter((change) => change.type !== "select");
           if (structural.length === 0) return;
           const previewEdges = pendingGuardedEdges.current ?? edgesRef.current;
@@ -5811,8 +6517,7 @@ export function CanvasSurface({
                 (change) =>
                   change.type === "dimensions" &&
                   change.dimensions !== undefined &&
-                  change.resizing === undefined &&
-                  change.setAttributes === undefined,
+                  change.resizing !== true,
               );
           const requestedRemovals = acceptedChanges.filter((change) =>
             change.type === "remove"
@@ -5862,63 +6567,93 @@ export function CanvasSurface({
             });
           }
           if (acceptedChanges.length === 0) return;
-          if (!persistenceReady) {
-            onNodesChange(acceptedChanges);
-            return;
-          }
           const now = performance.now();
           const viewportInteracting =
             lastViewportInteractionAt.current > 0 &&
             now - lastViewportInteractionAt.current < VIEWPORT_QUIET_MS;
-          const activelyDraggingNode =
-            nodeDragging.current ||
+          const activelyEditingLayout =
+            layoutGestureRef.current?.phase === "preview" ||
             acceptedChanges.some(
               (change) =>
-                change.type === "position" && change.dragging === true,
+                change.type === "position" && change.dragging === true ||
+                change.type === "dimensions" &&
+                  (change.resizing === true || change.setAttributes !== undefined),
             );
-          if (viewportInteracting && !activelyDraggingNode) {
+          if (viewportInteracting && !activelyEditingLayout) {
             // Zoom/pan may mount, unmount or re-measure a parent group. React
-            // Flow can report passive reconciliation changes. A camera-only
-            // action is not graph editing, so retain passive measurements and
-            // selections while still honoring an explicit keyboard deletion;
-            // reject camera-induced structural/coordinate mutation noise.
+            // Flow already owns those measurements in its internal view store.
+            // Mirroring them back through the controlled document causes a
+            // second full reconciliation for every camera frame. A camera-only
+            // action is not graph editing, so retain selection while rejecting
+            // camera-induced measurement/structural/coordinate mutation noise.
             acceptedChanges = acceptedChanges.filter(
               (change) =>
-                change.type === "dimensions" ||
-                change.type === "select" ||
-                change.type === "remove",
+                change.type === "select" || change.type === "remove",
             );
             if (acceptedChanges.length === 0) return;
           }
-          if (
-            nodeDragging.current &&
-            acceptedChanges.some((change) => change.type === "position")
-          ) {
-            markCanvasInteraction();
+          const passiveChanges = acceptedChanges.filter((change) =>
+            change.type === "select" ||
+            change.type === "dimensions" &&
+              (!persistenceReady ||
+                change.resizing === undefined &&
+                  change.setAttributes === undefined)
+          );
+          if (passiveChanges.length > 0) {
+            applyPassiveNodeChanges(passiveChanges);
           }
-          if (
-            !nodeDragging.current &&
-            acceptedChanges.some((change) => change.type === "position")
-          ) {
-            checkpoint();
+          if (!persistenceReady) return;
+          const committingLayoutGesture =
+            layoutGestureRef.current?.phase === "committing";
+          let activeLayoutKind = layoutGestureRef.current?.phase === "preview"
+            ? layoutGestureRef.current.kind
+            : undefined;
+          if (!activeLayoutKind && acceptedChanges.some((change) =>
+            change.type === "dimensions" && change.resizing === true
+          )) {
+            activeLayoutKind = beginLayoutGesture("resize")?.kind;
           }
-          onNodesChange(keepLastNonCollidingPositions(acceptedChanges));
+          if (!activeLayoutKind && acceptedChanges.some((change) =>
+            change.type === "position" && change.dragging === true
+          )) {
+            activeLayoutKind = beginLayoutGesture("drag")?.kind;
+          }
+          const layoutChanges = keepLastNonCollidingPositions(
+            acceptedChanges.filter((change) =>
+              change.type === "position" ||
+              change.type === "dimensions" &&
+                (change.resizing !== undefined ||
+                  change.setAttributes !== undefined)
+            ),
+          );
+          if (layoutChanges.length === 0) return;
+          // React Flow emits one last controlled position/dimension echo after
+          // onNodeDragStop/pointerup. The gesture snapshot is already being
+          // admitted at that point; starting a second mutation would create a
+          // duplicate history entry and could race the first durable commit.
+          if (committingLayoutGesture) return;
+          if (activeLayoutKind) {
+            updateLayoutPreview(activeLayoutKind, layoutChanges);
+            return;
+          }
+          void mutateGraph(({ edges, nodes }) => ({
+            edges,
+            nodes: applyDurableLayoutChanges(nodes, layoutChanges),
+          })).catch(() => undefined);
         }}
         onNodeDragStart={() => {
           if (!persistenceReady) return;
-          nodeDragging.current = true;
-          checkpoint();
-          markCanvasInteraction();
+          beginLayoutGesture("drag");
         }}
         onNodeDragStop={() => {
           if (!persistenceReady) return;
-          finishNodeDrag();
+          void finishLayoutGesture("drag").catch(() => undefined);
         }}
         onNodeClick={(_, node) => {
           if (!persistenceReady) return;
           setNodeContextMenu(undefined);
           if (agentReferenceMode) {
-            setNodes((current) =>
+            applyViewUpdate((current) =>
               current.map((candidate) => ({
                 ...candidate,
                 selected: false,
@@ -5951,9 +6686,14 @@ export function CanvasSurface({
                   ? node.data.playlistClips ?? []
                   : [];
             if (sourceClips.length) {
-              checkpoint();
-              setNodes((current) =>
-                current.map((candidate) =>
+              const adoptionTimestamp = Date.now();
+              const adoptedClips = sourceClips.map((clip, index) => ({
+                ...clip,
+                id: `${clip.id}-${adoptionTimestamp}-${index}`,
+              }));
+              void mutateGraph(({ edges, nodes }) => ({
+                edges,
+                nodes: nodes.map((candidate) =>
                   candidate.id === activePlaylist.id
                     ? {
                         ...candidate,
@@ -5962,16 +6702,13 @@ export function CanvasSurface({
                           ...candidate.data,
                           playlistClips: [
                             ...(candidate.data.playlistClips ?? []),
-                            ...sourceClips.map((clip, index) => ({
-                              ...clip,
-                              id: `${clip.id}-${Date.now()}-${index}`,
-                            })),
+                            ...adoptedClips,
                           ],
                         },
                       }
                     : { ...candidate, selected: false },
                 ),
-              );
+              }));
               setPlaylistToast("已添加到播放列表");
               window.setTimeout(() => setPlaylistToast(""), 1_200);
             }
@@ -5997,7 +6734,7 @@ export function CanvasSurface({
             8,
             Math.min(event.clientY - bounds.top, bounds.height - 471),
           );
-          setNodes((current) =>
+          applyViewUpdate((current) =>
             current.map((candidate) => ({
               ...candidate,
               selected: candidate.id === node.id,
@@ -6070,7 +6807,7 @@ export function CanvasSurface({
               const allowedIds = new Set(
                 allowedSelectedNodes.map((node) => node.id),
               );
-              setNodes((current) =>
+              applyViewUpdate((current) =>
                 current.map((node) =>
                   workflowRetainedNodeIds.has(node.id) &&
                   !allowedIds.has(node.id)
@@ -6109,7 +6846,7 @@ export function CanvasSurface({
             }
           }
           if (partiallySelectedGroupIds.size === 0) return;
-          setNodes((current) => current.map((node) =>
+          applyViewUpdate((current) => current.map((node) =>
             partiallySelectedGroupIds.has(node.id)
               ? { ...node, selected: false }
               : node
@@ -6708,7 +7445,7 @@ export function CanvasSurface({
           <span>选择以添加到播放列表</span>
           <button
             onClick={() =>
-              setNodes((current) =>
+              applyViewUpdate((current) =>
                 current.map((node) =>
                   node.id === activePlaylist.id
                     ? {

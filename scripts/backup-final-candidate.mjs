@@ -69,7 +69,7 @@ const maximumBuildArtifactNameBytes = 255;
 const maximumBuildArtifactPathBytes = 16 * 1024;
 const maximumBuildArtifactInventoryPathBytes = 16 * 1024 * 1024;
 const maximumRestoredStateBytes = 1024 * 1024 * 1024 * 1024;
-const currentStartupSchemaVersion = 42;
+const currentStartupSchemaVersion = 43;
 const startupShutdownDiagnosticMarkers = Object.freeze([
   "LEGACY_CHILD_GUARDIAN_LOST",
   "LEGACY_RUNTIME_DRAIN_TIMEOUT",
@@ -572,7 +572,7 @@ function isLinuxMigrationSandboxEvidence(nativeSandboxEvidence) {
     nativeSandboxEvidence?.selfTestDenied === true &&
     nativeSandboxEvidence?.selfTestSocketAttempts === 1 &&
     nativeSandboxEvidence?.processTreeEnforced === true &&
-    nativeSandboxEvidence?.migrationChildren === 2 &&
+    nativeSandboxEvidence?.migrationChildren === 10 &&
     nativeSandboxEvidence?.linuxSandbox?.contract ===
       "unboundry-linux-validation-sandbox-v1" &&
     nativeSandboxEvidence?.linuxSandbox?.processTreeEnforced === true &&
@@ -652,7 +652,7 @@ async function verifySafeDurationProbeAudit(
     nativeSandboxEvidence?.denyNetwork !== true ||
     nativeSandboxEvidence?.selfTestDenied !== true ||
     nativeSandboxEvidence?.processTreeEnforced !== true ||
-    nativeSandboxEvidence?.migrationChildren !== 2 ||
+    nativeSandboxEvidence?.migrationChildren !== 10 ||
     (!inheritedSandboxEvidence && !explicitSandboxEvidence &&
       !linuxSandboxEvidence)
   ) {
@@ -951,7 +951,27 @@ async function runJsonScript(scriptName, arguments_, options = {}) {
   });
 }
 
-async function runReleaseMigrationScript(release, mode, arguments_, options = {}) {
+const releaseMigrationScripts = new Set([
+  "migrate-schema37-to39.mjs",
+  "migrate-schema39-to40.mjs",
+  "migrate-schema40-to41.mjs",
+  "migrate-schema41-to42.mjs",
+  "migrate-schema42-to43.mjs",
+]);
+
+async function runReleaseMigrationScript(
+  release,
+  scriptName,
+  mode,
+  arguments_,
+  options = {},
+) {
+  if (!releaseMigrationScripts.has(scriptName)) {
+    fail(
+      "FINAL_BACKUP_CHILD_PROTOCOL_INVALID",
+      "Release-bound migration script is not fixed",
+    );
+  }
   if (!new Set(["apply", "dry-run"]).has(mode)) {
     fail(
       "FINAL_BACKUP_CHILD_PROTOCOL_INVALID",
@@ -960,7 +980,7 @@ async function runReleaseMigrationScript(release, mode, arguments_, options = {}
   }
   const executable = options.wrapper?.executable ?? release.runtimeCommand;
   const releaseArguments = [
-    "scripts/migrate-schema37-to39.mjs",
+    `scripts/${scriptName}`,
     `--${mode}`,
     ...arguments_,
   ];
@@ -969,7 +989,7 @@ async function runReleaseMigrationScript(release, mode, arguments_, options = {}
     : releaseArguments;
   return runJsonChild({
     arguments_: childArguments,
-    childStage: `migration-${mode}`,
+    childStage: `migration-${scriptName}-${mode}`,
     cwd: release.directory,
     env: options.env ?? process.env,
     errorProtocol: Object.freeze({
@@ -978,7 +998,7 @@ async function runReleaseMigrationScript(release, mode, arguments_, options = {}
       envelope: "ok-code-error",
     }),
     executable,
-    label: `Release-bound migration ${mode} child process`,
+    label: `Release-bound ${scriptName} ${mode} child process`,
   });
 }
 
@@ -1078,7 +1098,7 @@ function migrationNativeSandboxEvidence(
           linuxSandboxIdentityBound: true,
         }
       : {}),
-    migrationChildren: 2,
+    migrationChildren: 10,
     processTreeEnforced: true,
     profileApplied: enforcementMode === "explicit",
     profileSha256,
@@ -4094,6 +4114,8 @@ try {
   let migrationNativeAudit;
   let migrationDryRun;
   let migrationApplied;
+  let migrationFinalApplied;
+  const migrationStages = [];
   try {
     migrationRuntimeDirectory = await mkdtemp(resolve(
       scratchRoot,
@@ -4112,50 +4134,119 @@ try {
           wrapper: migrationNativeSandbox.wrapper,
         }
       : { wrapper: migrationNativeSandbox.wrapper };
-    const migrationCommon = [
-      "--data-dir",
-      targetDirectory,
-      "--expected-logical-sha256",
-      postBridge37LogicalSha256,
-      "--runtime-dir",
-      migrationRuntimeDirectory,
-      ...scratch,
-      ...(durationProbeFixture
-        ? [
-            "--test-duration-probe-audit",
-            durationProbeFixture.auditPath,
-            "--test-duration-probe-executable",
-            durationProbeFixture.executable,
-          ]
-        : []),
-    ];
-    migrationDryRun = await runReleaseMigrationScript(
-      releases.bridge,
-      "dry-run",
-      migrationCommon,
-      migrationChildOptions,
-    );
-    if (
-      migrationDryRun?.ok !== true ||
-      migrationDryRun?.mode !== "dry-run" ||
-      migrationDryRun?.status !== "ready" ||
-      migrationDryRun?.sourceVersion !== 37 ||
-      migrationDryRun?.targetVersion !== currentStartupSchemaVersion ||
-      migrationDryRun?.expectedSourceLogicalSha256 !== postBridge37LogicalSha256 ||
-      migrationDryRun?.nativeDurationProbes !== 0 ||
-      linuxValidationSandbox && migrationDryRun?.drainMilliseconds !== 60_000
-    ) {
-      fail(
-        "FINAL_BACKUP_MIGRATION_DRY_RUN_MISMATCH",
-        "Restored exact-v37 migration dry-run did not match its source contract",
+    const stageDefinitions = Object.freeze([
+      Object.freeze({
+        scriptName: "migrate-schema37-to39.mjs",
+        sourceVersion: 37,
+        targetVersion: 39,
+      }),
+      Object.freeze({
+        scriptName: "migrate-schema39-to40.mjs",
+        sourceVersion: 39,
+        targetVersion: 40,
+      }),
+      Object.freeze({
+        scriptName: "migrate-schema40-to41.mjs",
+        sourceVersion: 40,
+        targetVersion: 41,
+      }),
+      Object.freeze({
+        scriptName: "migrate-schema41-to42.mjs",
+        sourceVersion: 41,
+        targetVersion: 42,
+      }),
+      Object.freeze({
+        scriptName: "migrate-schema42-to43.mjs",
+        sourceVersion: 42,
+        targetVersion: 43,
+      }),
+    ]);
+    let expectedStageSourceSha256 = postBridge37LogicalSha256;
+    for (const [stageIndex, definition] of stageDefinitions.entries()) {
+      const stageArguments = [
+        "--data-dir",
+        targetDirectory,
+        "--expected-logical-sha256",
+        expectedStageSourceSha256,
+        "--runtime-dir",
+        migrationRuntimeDirectory,
+        ...scratch,
+        ...(stageIndex === 0 && durationProbeFixture
+          ? [
+              "--test-duration-probe-audit",
+              durationProbeFixture.auditPath,
+              "--test-duration-probe-executable",
+              durationProbeFixture.executable,
+            ]
+          : []),
+      ];
+      const dryRun = await runReleaseMigrationScript(
+        releases.bridge,
+        definition.scriptName,
+        "dry-run",
+        stageArguments,
+        migrationChildOptions,
       );
+      const dryRunSourceSha256 = dryRun?.expectedSourceLogicalSha256 ??
+        dryRun?.sourceLogicalSha256;
+      if (
+        dryRun?.ok !== true ||
+        dryRun?.mode !== "dry-run" ||
+        dryRun?.status !== (stageIndex === 0 ? "ready" : "verified") ||
+        dryRun?.sourceVersion !== definition.sourceVersion ||
+        dryRun?.targetVersion !== definition.targetVersion ||
+        dryRunSourceSha256 !== expectedStageSourceSha256 ||
+        (stageIndex === 0 && (
+          dryRun?.nativeDurationProbes !== 0 ||
+          linuxValidationSandbox && dryRun?.drainMilliseconds !== 60_000
+        ))
+      ) {
+        fail(
+          "FINAL_BACKUP_MIGRATION_DRY_RUN_MISMATCH",
+          `Release migration ${definition.sourceVersion} to ` +
+            `${definition.targetVersion} dry-run did not match its source contract`,
+        );
+      }
+      const applied = await runReleaseMigrationScript(
+        releases.bridge,
+        definition.scriptName,
+        "apply",
+        stageArguments,
+        migrationChildOptions,
+      );
+      const appliedSourceSha256 = applied?.expectedSourceLogicalSha256 ??
+        applied?.sourceLogicalSha256;
+      if (
+        applied?.ok !== true ||
+        applied?.mode !== "apply" ||
+        applied?.status !== "complete" ||
+        applied?.sourceVersion !== definition.sourceVersion ||
+        applied?.targetVersion !== definition.targetVersion ||
+        appliedSourceSha256 !== expectedStageSourceSha256 ||
+        !/^[a-f0-9]{64}$/.test(String(applied?.targetLogicalSha256 ?? ""))
+      ) {
+        fail(
+          "FINAL_BACKUP_MIGRATION_APPLY_MISMATCH",
+          `Release migration ${definition.sourceVersion} to ` +
+            `${definition.targetVersion} did not match its source contract`,
+        );
+      }
+      if (stageIndex === 0) {
+        migrationDryRun = dryRun;
+        migrationApplied = applied;
+      }
+      migrationFinalApplied = applied;
+      migrationStages.push(Object.freeze({
+        applied,
+        dryRun,
+        scriptName: definition.scriptName,
+        sourceLogicalSha256: expectedStageSourceSha256,
+        sourceVersion: definition.sourceVersion,
+        targetLogicalSha256: applied.targetLogicalSha256,
+        targetVersion: definition.targetVersion,
+      }));
+      expectedStageSourceSha256 = applied.targetLogicalSha256;
     }
-    migrationApplied = await runReleaseMigrationScript(
-      releases.bridge,
-      "apply",
-      migrationCommon,
-      migrationChildOptions,
-    );
     migrationNativeAudit = linuxValidationSandbox
       ? verifyProductionDurationProbeEvidence(
           migrationApplied,
@@ -4182,7 +4273,7 @@ try {
     migrationApplied?.mode !== "apply" ||
     migrationApplied?.status !== "complete" ||
     migrationApplied?.sourceVersion !== 37 ||
-    migrationApplied?.targetVersion !== currentStartupSchemaVersion ||
+    migrationApplied?.targetVersion !== 39 ||
     migrationApplied?.expectedSourceLogicalSha256 !== postBridge37LogicalSha256 ||
     migrationApplied?.backfilledDurations !== 1 ||
     linuxValidationSandbox && migrationApplied?.drainMilliseconds !== 60_000 ||
@@ -4200,7 +4291,7 @@ try {
   ) {
     fail(
       "FINAL_BACKUP_MIGRATION_APPLY_MISMATCH",
-      "Restored exact-v37 one-shot migration did not match its source contract",
+      "Restored exact-v37 first migration stage did not match its source contract",
     );
   }
   await revalidateRelease(releases.bridge, "bridge", runnerReleaseAttestation);
@@ -4211,15 +4302,16 @@ try {
   );
   if (
     migrationInspection.userVersion !== currentStartupSchemaVersion ||
-    typeof migrationApplied?.targetLogicalSha256 !== "string" ||
-    migrationApplied.targetLogicalSha256 !== migrationInspection.logicalSha256
+    migrationFinalApplied?.targetVersion !== currentStartupSchemaVersion ||
+    typeof migrationFinalApplied?.targetLogicalSha256 !== "string" ||
+    migrationFinalApplied.targetLogicalSha256 !== migrationInspection.logicalSha256
   ) {
     fail(
       "FINAL_BACKUP_STARTUP_SCHEMA_MISMATCH",
       "Migrated restore is not exact current schema for normal startup",
     );
   }
-  const bridgeSchema39 = await validateReleaseStartup({
+  const bridgeSchema43 = await validateReleaseStartup({
     expected: Object.freeze({
       mode: "active",
       mutationsAccepted: true,
@@ -4314,9 +4406,9 @@ try {
     ...startupRuntime,
     bridgeRollback,
     bridgeSchema37,
-    bridgeSchema39,
+    bridgeSchema43,
     finalReswitch,
-    finalSchema39: startupRuntime,
+    finalSchema43: startupRuntime,
     postBridge37LogicalSha256,
     runtimeSequence: Object.freeze([
       Object.freeze({ releaseRole: "bridge", schemaVersion: 37 }),
@@ -4363,8 +4455,10 @@ try {
     fakeOssRecovery,
     migrationApplied,
     migrationDryRun,
+    migrationFinalApplied,
     migrationInspection,
     migrationNativeAudit,
+    migrationStages,
     releaseEvidence: admittedReleaseEvidence,
     releaseRelationship: admittedReleaseRelationship,
     report,

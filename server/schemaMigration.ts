@@ -25,10 +25,9 @@ import {
 import {
   applyPendingSchemaMigrationsInTransaction,
   backfillLegacyMediaStrict,
-  currentSchemaVersion,
   databaseHasCompleteLegacyMediaMetadata,
   databaseMatchesMigrationManifest,
-  databaseMatchesSchemaContract,
+  databaseMatchesSchema39Contract,
   migrationIncompleteMarker,
   revalidateLegacyMediaBackfillEvidence,
   verifyCommittedMigrationMediaStrict,
@@ -47,6 +46,7 @@ import {
 } from "./legacyChildGuardian.ts";
 
 const sourceSchemaVersion = 37;
+const targetSchemaVersion = 39;
 const requiredDrainMilliseconds = 60_000;
 const markerContract = "unboundry-schema37-to39-v1";
 const sha256Pattern = /^[a-f0-9]{64}$/;
@@ -62,7 +62,7 @@ type MigrationMarker = Readonly<{
   expectedSourceLogicalSha256: string;
   operationId: string;
   sourceVersion: typeof sourceSchemaVersion;
-  targetVersion: number;
+  targetVersion: typeof targetSchemaVersion;
 }>;
 
 type OwnedDataDirectory = Readonly<{
@@ -99,9 +99,6 @@ type UnexpectedMigrationStage =
   | "preflight"
   | "schema-38-apply"
   | "schema-39-apply"
-  | "schema-40-apply"
-  | "schema-41-apply"
-  | "schema-42-apply"
   | "target-logical-inspection"
   | "target-validation";
 
@@ -110,9 +107,6 @@ export type SchemaMigrationCheckpoint =
   | "drain-complete"
   | "schema-38-applied"
   | "schema-39-applied"
-  | "schema-40-applied"
-  | "schema-41-applied"
-  | "schema-42-applied"
   | "schema-committed"
   | "duration-probe-complete"
   | "backfill-row"
@@ -130,7 +124,7 @@ export type SchemaMigrationResult = Readonly<{
   sourceVersion: typeof sourceSchemaVersion;
   status: "complete" | "ready";
   targetLogicalSha256: string | null;
-  targetVersion: number;
+  targetVersion: typeof targetSchemaVersion;
 }>;
 
 export type SchemaMigrationOptions = Readonly<{
@@ -217,21 +211,6 @@ function failUnexpectedMigration(stage: UnexpectedMigrationStage): never {
       fail(
         "SCHEMA_MIGRATION_FAILED_SCHEMA39_APPLY",
         "Schema 39 migration application failed",
-      );
-    case "schema-40-apply":
-      fail(
-        "SCHEMA_MIGRATION_FAILED_SCHEMA40_APPLY",
-        "Schema 40 migration application failed",
-      );
-    case "schema-41-apply":
-      fail(
-        "SCHEMA_MIGRATION_FAILED_SCHEMA41_APPLY",
-        "Schema 41 migration application failed",
-      );
-    case "schema-42-apply":
-      fail(
-        "SCHEMA_MIGRATION_FAILED_SCHEMA42_APPLY",
-        "Schema 42 migration application failed",
       );
     case "target-logical-inspection":
       fail(
@@ -491,7 +470,7 @@ function markerDocument(
     expectedSourceLogicalSha256,
     operationId,
     sourceVersion: sourceSchemaVersion,
-    targetVersion: currentSchemaVersion,
+    targetVersion: targetSchemaVersion,
   });
 }
 
@@ -590,7 +569,7 @@ function readMarker(markerPath: string): PinnedMigrationMarker | undefined {
     if (
       parsed.contract !== markerContract ||
       parsed.sourceVersion !== sourceSchemaVersion ||
-      parsed.targetVersion !== currentSchemaVersion ||
+      parsed.targetVersion !== targetSchemaVersion ||
       typeof parsed.databaseDev !== "string" || !/^\d+$/.test(parsed.databaseDev) ||
       typeof parsed.databaseIno !== "string" || !/^\d+$/.test(parsed.databaseIno) ||
       typeof parsed.expectedSourceLogicalSha256 !== "string" ||
@@ -777,10 +756,10 @@ function assertFrozenSourceDrain(database: DatabaseSync) {
 
 function assertExactCurrent(database: DatabaseSync) {
   if (
-    !databaseMatchesMigrationManifest(database) ||
-    !databaseMatchesSchemaContract(database) ||
+    !databaseMatchesMigrationManifest(database, targetSchemaVersion) ||
+    !databaseMatchesSchema39Contract(database) ||
     database.prepare("PRAGMA foreign_key_check").all().length !== 0
-  ) fail("SCHEMA_MIGRATION_TARGET_INVALID", "Migrated database is not exact current schema");
+  ) fail("SCHEMA_MIGRATION_TARGET_INVALID", "Migrated database is not exact schema 39");
 }
 
 function safeTestClockAllowed(dataDirectory: string) {
@@ -1293,7 +1272,7 @@ export async function migrateSchema37To39(
       evidence: Object.freeze([]),
     });
     let recoveryEvidence = Object.freeze([]) as LegacyMediaBackfillSummary["evidence"];
-    if (version === currentSchemaVersion) {
+    if (version === targetSchemaVersion) {
       if (!existingMarker || options.mode === "dry-run") {
         fail(
           existingMarker
@@ -1315,6 +1294,7 @@ export async function migrateSchema37To39(
         database,
         dataDirectory,
         {
+          targetVersion: targetSchemaVersion,
           durationProbe: stagedDurationProbe(
             "media-full-verify",
             "media-full-verify-probe",
@@ -1352,7 +1332,7 @@ export async function migrateSchema37To39(
           sourceVersion: sourceSchemaVersion,
           status: "ready",
           targetLogicalSha256: null,
-          targetVersion: currentSchemaVersion,
+          targetVersion: targetSchemaVersion,
         });
       }
 
@@ -1385,6 +1365,7 @@ export async function migrateSchema37To39(
       unexpectedStage = "schema-38-apply";
       applyPendingSchemaMigrationsInTransaction(database, {
         sourceVersion: sourceSchemaVersion,
+        targetVersion: targetSchemaVersion,
         onMigrationApplied: ({ version: migratedVersion }) => {
           if (migratedVersion === 38) {
             emitCheckpoint("schema-38-applied");
@@ -1392,17 +1373,7 @@ export async function migrateSchema37To39(
           }
           if (migratedVersion === 39) {
             emitCheckpoint("schema-39-applied");
-            unexpectedStage = "schema-40-apply";
           }
-          if (migratedVersion === 40) {
-            emitCheckpoint("schema-40-applied");
-            unexpectedStage = "schema-41-apply";
-          }
-          if (migratedVersion === 41) {
-            emitCheckpoint("schema-41-applied");
-            unexpectedStage = "schema-42-apply";
-          }
-          if (migratedVersion === 42) emitCheckpoint("schema-42-applied");
           assertPinnedPaths();
           assertPinnedMarker();
         },
@@ -1414,6 +1385,7 @@ export async function migrateSchema37To39(
     unexpectedStage = "media-backfill";
     backfill = backfillLegacyMediaStrict(database, dataDirectory, {
       callerOwnsTransaction: true,
+      targetVersion: targetSchemaVersion,
       durationProbe: stagedDurationProbe(
         "media-backfill",
         "media-backfill-probe",
@@ -1430,6 +1402,7 @@ export async function migrateSchema37To39(
       database,
       dataDirectory,
       {
+        targetVersion: targetSchemaVersion,
         durationProbe: stagedDurationProbe(
           "media-full-verify",
           "media-full-verify-probe",
@@ -1443,10 +1416,10 @@ export async function migrateSchema37To39(
     ]);
     unexpectedStage = "target-validation";
     if (
-      !databaseMatchesMigrationManifest(database) ||
-      !databaseMatchesSchemaContract(database) ||
+      !databaseMatchesMigrationManifest(database, targetSchemaVersion) ||
+      !databaseMatchesSchema39Contract(database) ||
       database.prepare("PRAGMA foreign_key_check").all().length !== 0
-    ) fail("SCHEMA_MIGRATION_TARGET_INVALID", "Migrated database is not exact current schema");
+    ) fail("SCHEMA_MIGRATION_TARGET_INVALID", "Migrated database is not exact schema 39");
     if (!databaseHasCompleteLegacyMediaMetadata(database)) {
       fail(
         "SCHEMA_MIGRATION_BACKFILL_INCOMPLETE",
@@ -1520,11 +1493,11 @@ export async function migrateSchema37To39(
       expectedSourceLogicalSha256: options.expectedSourceLogicalSha256,
       mode: "apply",
       ...durationProbe.summary(),
-      recovered: Boolean(existingMarker) || schemaCommitted && version === currentSchemaVersion,
+      recovered: Boolean(existingMarker) || schemaCommitted && version === targetSchemaVersion,
       sourceVersion: sourceSchemaVersion,
       status: "complete",
       targetLogicalSha256,
-      targetVersion: currentSchemaVersion,
+      targetVersion: targetSchemaVersion,
     });
   } catch (error) {
     if (transactionOpen && database?.isTransaction) {

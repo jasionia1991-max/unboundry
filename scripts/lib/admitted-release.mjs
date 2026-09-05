@@ -64,6 +64,14 @@ const exactLegacyPeeledCommit = "7f7d6177a564056a6f41ff83dfb7ba913b21603b";
 const exactLegacyCommitTree = "0990690bd9828757b82f59861f950ce6ff9ed4f8";
 const exactLegacyTrackedFiles = 371;
 
+const exactMigrationScriptPaths = Object.freeze([
+  "scripts/migrate-schema37-to39.mjs",
+  "scripts/migrate-schema39-to40.mjs",
+  "scripts/migrate-schema40-to41.mjs",
+  "scripts/migrate-schema41-to42.mjs",
+  "scripts/migrate-schema42-to43.mjs",
+]);
+
 const exactMigrationArguments = Object.freeze([
   "scripts/migrate-schema37-to39.mjs",
   "--apply",
@@ -482,7 +490,7 @@ function validateRoleClosure(manifest, inventory, releaseRole, artifactClass) {
     "package-lock.json",
     "package.json",
     ...(releaseRole === "bridge"
-      ? ["scripts/migrate-schema37-to39.mjs", "scripts/node-typescript-runtime.mjs"]
+      ? [...exactMigrationScriptPaths, "scripts/node-typescript-runtime.mjs"]
       : []),
     "server",
     "spec/unboundry-state-fixtures.json",
@@ -505,8 +513,10 @@ function validateRoleClosure(manifest, inventory, releaseRole, artifactClass) {
 
   let migrationArtifactSha256;
   if (releaseRole === "bridge") {
-    const migrationEntry = inventory.find((entry) =>
-      entry.type === "file" && entry.path === "scripts/migrate-schema37-to39.mjs");
+    const migrationEntries = exactMigrationScriptPaths.map((path) =>
+      inventory.find((entry) => entry.type === "file" && entry.path === path)
+    );
+    const migrationEntry = migrationEntries[0];
     if (
       manifest.migration?.command !== manifest.runtime.command ||
       JSON.stringify(manifest.migration?.arguments) !==
@@ -515,7 +525,7 @@ function validateRoleClosure(manifest, inventory, releaseRole, artifactClass) {
       manifest.migration?.permittedReleaseRole !== "bridge" ||
       JSON.stringify(manifest.migration?.placeholders) !==
         JSON.stringify(exactMigrationPlaceholders) ||
-      !migrationEntry?.sha256
+      migrationEntries.some((entry) => !entry?.sha256)
     ) fail("ADMITTED_RELEASE_INVALID", "Bridge migration is not artifact-bound");
     migrationArtifactSha256 = migrationEntry.sha256;
 
@@ -659,12 +669,12 @@ export async function validateAdmittedRelease({
   ) fail("ADMITTED_RELEASE_INVALID", "Release expectation is invalid");
   const compatibility = expectedRole === "bridge"
     ? {
-        activeSchemaVersions: [37, 39],
+        activeSchemaVersions: [37, 43],
         migrationMode: "external-one-shot-only",
-        rollbackTargetForSchemaVersion: 39,
+        rollbackTargetForSchemaVersion: 43,
       }
     : {
-        activeSchemaVersions: [39],
+        activeSchemaVersions: [43],
         migrationMode: "forbidden-from-final-runtime",
         standbySchemaVersions: [37],
       };

@@ -319,6 +319,7 @@ test("an empty Text reference explains whether to edit or run the upstream node"
 
 type CanvasDocument = {
   edges: Array<Record<string, unknown>>;
+  loadToken: string;
   nodes: Array<Record<string, unknown>>;
   revision: number;
   viewport: { x: number; y: number; zoom: number };
@@ -473,14 +474,20 @@ function rootNodes() {
 
 async function saveRootCanvas(request: APIRequestContext) {
   const current = await request.get(`/api/canvas/${rootCanvasId}`);
-  const revision = current.ok()
-    ? ((await current.json() as CanvasDocument).revision)
-    : 0;
+  const currentDocument = current.ok()
+    ? await current.json() as CanvasDocument
+    : undefined;
   const saved = await request.put(`/api/canvas/${rootCanvasId}`, {
     data: {
       edges: fourInputEdges(),
       nodes: rootNodes(),
-      revision,
+      ...(currentDocument
+        ? {
+            observedLoadToken: currentDocument.loadToken,
+            observedRevision: currentDocument.revision,
+          }
+        : {}),
+      revision: currentDocument?.revision ?? 0,
       viewport: { x: 20, y: -40, zoom: 0.68 },
     },
   });
@@ -539,6 +546,8 @@ test.describe.serial("P2 Text integration stays on the saved root canvas", () =>
         data: {
           edges: originalRoot.edges,
           nodes: originalRoot.nodes,
+          observedLoadToken: current.loadToken,
+          observedRevision: current.revision,
           revision: current.revision,
           viewport: originalRoot.viewport,
         },
@@ -574,6 +583,9 @@ test.describe.serial("P2 Text integration stays on the saved root canvas", () =>
     const world = page.getByTestId("canvas-world");
     await expect(world).toHaveAttribute("data-persistence-ready", "true");
     await expect(world).toHaveAttribute("data-edge-count", "4");
+    await page.locator('.react-flow__node[data-id="p2-target-text"]').click({
+      position: { x: 12, y: 12 },
+    });
     const cards = page.getByTestId("text-upstream-inputs");
     await expect(cards.locator("[data-input-kind]")).toHaveCount(4);
     for (const kind of ["text", "image", "video", "audio"] as const) {
@@ -619,12 +631,12 @@ test.describe.serial("P2 Text integration stays on the saved root canvas", () =>
       return document.edges.map((edge) => ({
         id: edge.id,
         order: (edge.data as { inputOrder?: number }).inputOrder,
-      }));
+      })).sort((left, right) => Number(left.order) - Number(right.order));
     }).toEqual([
       { id: "p2-edge-text", order: 1 },
       { id: "p2-edge-image", order: 2 },
-      { id: "p2-edge-video", order: 4 },
       { id: "p2-edge-audio", order: 3 },
+      { id: "p2-edge-video", order: 4 },
     ]);
     await page.reload();
     await expect(world).toHaveAttribute("data-persistence-ready", "true");
@@ -639,7 +651,9 @@ test.describe.serial("P2 Text integration stays on the saved root canvas", () =>
     await expect.poll(async () => {
       const response = await request.get(`/api/canvas/${rootCanvasId}`);
       const document = await response.json() as CanvasDocument;
-      return document.edges.map((edge) => (edge.data as { inputOrder?: number }).inputOrder);
+      return document.edges
+        .map((edge) => (edge.data as { inputOrder?: number }).inputOrder)
+        .sort((left, right) => Number(left) - Number(right));
     }).toEqual([1, 2, 3, 4]);
     await audioDetails.getByRole("button", { name: "向前移动 上游音频" }).click();
     await page.keyboard.press("Meta+z");
@@ -648,7 +662,9 @@ test.describe.serial("P2 Text integration stays on the saved root canvas", () =>
     await expect.poll(async () => {
       const response = await request.get(`/api/canvas/${rootCanvasId}`);
       const document = await response.json() as CanvasDocument;
-      return document.edges.map((edge) => (edge.data as { inputOrder?: number }).inputOrder);
+      return document.edges
+        .map((edge) => (edge.data as { inputOrder?: number }).inputOrder)
+        .sort((left, right) => Number(left) - Number(right));
     }).toEqual([1, 2, 3, 4]);
     await audioDetails.getByRole("button", { name: "关闭 上游音频引用详情" }).click();
 
@@ -690,13 +706,16 @@ test.describe.serial("P2 Text integration stays on the saved root canvas", () =>
     await page.reload();
     await expect(world).toHaveAttribute("data-persistence-ready", "true");
     await expect(world).toHaveAttribute("data-edge-count", "4");
+    await page.locator('.react-flow__node[data-id="p2-target-text"]').click();
     await expect(page.getByTestId("text-upstream-inputs").locator("[data-input-kind]"))
       .toHaveCount(4);
     await expect(page.getByTestId("text-model-control").getByRole("combobox"))
       .toContainText(incompatibleModelName);
     const persisted = await (await request.get(`/api/canvas/${rootCanvasId}`))
       .json() as CanvasDocument;
-    expect(persisted.edges.map((edge) => (edge.data as { inputOrder: number }).inputOrder))
+    expect(persisted.edges
+      .map((edge) => (edge.data as { inputOrder: number }).inputOrder)
+      .sort((left, right) => left - right))
       .toEqual([1, 2, 3, 4]);
     expect(new Set(persisted.edges.map((edge) => edge.id)).size).toBe(4);
     expect(taskPosts).toEqual([]);

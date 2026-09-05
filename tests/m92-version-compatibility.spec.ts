@@ -30,13 +30,161 @@ import {
 import {
   isCanvasSaveSuccess,
   isLoadedCanvasDocument,
+  mergeAuthoritativeNodesWithViewState,
+  restoreCanvasHistorySnapshot,
 } from "../client/src/canvas/CanvasSurface";
+import type { ProbeNodeType } from "../client/src/canvas/ProbeNode";
+import type { CuttableEdge } from "../client/src/canvas/canvasTypes";
 import { expect, test } from "./safe-test";
 // @ts-expect-error Operational release verification is intentionally shared
 // with the Node-only release scripts rather than reimplemented in this test.
 import { validateAdmittedRelease } from "../scripts/lib/admitted-release.mjs";
 // @ts-expect-error The safe runner is the sole issuer of this MJS attestation.
 import { readReleaseAttestation } from "../scripts/lib/release-attestation.mjs";
+
+test("undo and redo restore user state without resurrecting obsolete server proof", () => {
+  const historicalExisting = {
+    data: {
+      assetId: "obsolete-asset",
+      groupRunSuccessTaskId: "obsolete-task",
+      imageGenerationTaskId: "obsolete-generation",
+      imagePrompt: "historical prompt",
+      inputState: "invalid",
+      title: "historical title",
+    },
+    id: "existing-image",
+    position: { x: 10, y: 20 },
+    selected: true,
+    type: "image",
+  } as unknown as ProbeNodeType;
+  const currentExisting = {
+    data: {
+      assetId: "authoritative-asset",
+      groupRunSuccessTaskId: "authoritative-task",
+      imageGenerationTaskId: "authoritative-generation",
+      imagePrompt: "current prompt",
+      inputState: "ready",
+      title: "current title",
+    },
+    id: "existing-image",
+    height: 290,
+    measured: { height: 290, width: 310 },
+    position: { x: 90, y: 80 },
+    resizing: true,
+    selected: false,
+    width: 310,
+    type: "image",
+  } as unknown as ProbeNodeType;
+  const historicalDeleted = {
+    data: {
+      assetId: "restorable-upload",
+      groupRunSuccessResultKey: "obsolete-result",
+      groupRunSuccessTaskId: "obsolete-deleted-task",
+      imageGeneratedSuccess: true,
+      imageGenerationTaskId: "obsolete-deleted-generation",
+      imagePrompt: "restored upload prompt",
+      imageSrc: "/api/assets/restorable-upload",
+      inputState: "ready",
+      mediaByteSize: 123,
+      mediaContentType: "image/png",
+      mediaHeight: 10,
+      mediaMetadataSource: "server",
+      mediaMetadataStatus: "ready",
+      mediaStorageBackend: "local",
+      mediaWidth: 20,
+      title: "restored upload",
+    },
+    id: "deleted-image",
+    position: { x: 30, y: 40 },
+    type: "image",
+  } as unknown as ProbeNodeType;
+  const historicalEdge = {
+    data: { cutIndicator: true, inputOrder: 2 },
+    id: "edge-1",
+    selected: true,
+    source: "existing-image",
+    target: "deleted-image",
+    type: "cuttable",
+  } as unknown as CuttableEdge;
+
+  const restored = restoreCanvasHistorySnapshot({
+    currentEdges: [],
+    currentNodes: [currentExisting],
+    historicalEdges: [historicalEdge],
+    historicalNodes: [historicalExisting, historicalDeleted],
+  });
+
+  expect(restored.nodes[0]?.position).toEqual({ x: 10, y: 20 });
+  expect(restored.nodes[0]?.selected).toBe(true);
+  expect(restored.nodes[0]?.height).toBeUndefined();
+  expect(restored.nodes[0]?.measured).toBeUndefined();
+  expect(restored.nodes[0]?.resizing).toBeUndefined();
+  expect(restored.nodes[0]?.width).toBeUndefined();
+  expect(restored.nodes[0]?.data.title).toBe("historical title");
+  expect(restored.nodes[0]?.data.imagePrompt).toBe("historical prompt");
+  expect(restored.nodes[0]?.data.inputState).toBe("ready");
+  expect(restored.nodes[0]?.data.assetId).toBe("authoritative-asset");
+  expect(restored.nodes[0]?.data.groupRunSuccessTaskId).toBe(
+    "authoritative-task",
+  );
+  expect(restored.nodes[0]?.data.imageGenerationTaskId).toBe(
+    "authoritative-generation",
+  );
+
+  expect(restored.nodes[1]?.data.assetId).toBe("restorable-upload");
+  expect(restored.nodes[1]?.data.imageSrc).toBe(
+    "/api/assets/restorable-upload",
+  );
+  expect(restored.nodes[1]?.data.mediaByteSize).toBe(123);
+  expect(restored.nodes[1]?.data.groupRunSuccessResultKey).toBeUndefined();
+  expect(restored.nodes[1]?.data.groupRunSuccessTaskId).toBeUndefined();
+  expect(restored.nodes[1]?.data.imageGeneratedSuccess).toBeUndefined();
+  expect(restored.nodes[1]?.data.imageGenerationTaskId).toBeUndefined();
+  expect(restored.edges[0]?.data?.inputOrder).toBe(2);
+  expect(restored.edges[0]?.data?.cutIndicator).toBe(true);
+});
+
+test("authoritative refresh preserves only omitted view state for an unchanged node", () => {
+  const current = [{
+    data: {
+      imageGenerating: true,
+      imageGenerationError: "正在等待",
+      imageGenerationTaskId: "task-current",
+      imagePrompt: "old prompt",
+      unknownViewField: "must-not-cross",
+    },
+    dragging: true,
+    id: "image-current",
+    measured: { height: 250, width: 250 },
+    position: { x: 5, y: 6 },
+    selected: true,
+    type: "image",
+  }] as unknown as ProbeNodeType[];
+  const authoritative = [{
+    data: {
+      imageGenerationError: undefined,
+      imageGenerationTaskId: "task-server",
+      imagePrompt: "server prompt",
+    },
+    id: "image-current",
+    position: { x: 20, y: 30 },
+    type: "image",
+  }] as unknown as ProbeNodeType[];
+
+  const [merged] = mergeAuthoritativeNodesWithViewState(
+    current,
+    authoritative,
+  );
+  expect(merged.position).toEqual({ x: 20, y: 30 });
+  expect(merged.dragging).toBe(true);
+  expect(merged.measured).toEqual({ height: 250, width: 250 });
+  expect(merged.selected).toBe(true);
+  expect(merged.data.imagePrompt).toBe("server prompt");
+  expect(merged.data.imageGenerationTaskId).toBe("task-server");
+  expect(merged.data.imageGenerating).toBe(true);
+  expect(merged.data.imageGenerationError).toBeUndefined();
+  expect((merged.data as Record<string, unknown>).unknownViewField).toBeUndefined();
+});
 
 type V051Contract = Readonly<{
   annotatedTagObject: string;
@@ -145,7 +293,7 @@ type V051RunnerAttestation = Readonly<{
       integrityCheck: "ok";
       journalModeAfter: "wal";
       journalModeBefore: "delete";
-      latestMigration: Readonly<{ name: string; version: 42 }>;
+      latestMigration: Readonly<{ name: string; version: 43 }>;
       logicalRowsUnchanged: true;
       migrationJournalModeBeforeNormalization: "wal";
       processExitCode: number;
@@ -160,7 +308,7 @@ type V051RunnerAttestation = Readonly<{
       sidecarsAfterExit: readonly (
         "unboundry.sqlite-shm" | "unboundry.sqlite-wal"
       )[];
-      userVersion: 42;
+      userVersion: 43;
       versionEndpointBeforeDatabaseOpen: true;
     }>;
   }>;
@@ -520,8 +668,8 @@ async function readRunnerAttestation(contract: V051Contract) {
         journalModeAfter: "wal",
         journalModeBefore: "delete",
         latestMigration: {
-          name: "server-authoritative-workflow-runs",
-          version: 42,
+          name: "durable-canvas-operation-receipts",
+          version: 43,
         },
         logicalRowsUnchanged: contract.schema39ExactTagRuntime
           .logicalRowsUnchanged,
@@ -537,7 +685,7 @@ async function readRunnerAttestation(contract: V051Contract) {
           log: 0,
         },
         sidecarsAfterExit,
-        userVersion: 42,
+        userVersion: 43,
         versionEndpointBeforeDatabaseOpen: contract.schema39ExactTagRuntime
           .versionEndpointReturns200BeforeDatabaseOpen,
       },
@@ -1091,7 +1239,7 @@ async function runBridgeMigration(
     UNBOUNDRY_MIGRATION_SCRATCH_ROOT: scratchRoot,
     UNBOUNDRY_RUNTIME_DIR: runtimeDirectory,
   });
-  const arguments_ = migration.arguments.map((argument) => {
+  const schema37Arguments = migration.arguments.map((argument) => {
     const match = /^\$\{([A-Z0-9_]+)\}$/.exec(argument);
     if (!match) return argument;
     const replacement = replacements[match[1]];
@@ -1108,32 +1256,91 @@ async function runBridgeMigration(
     UNBOUNDRY_SCHEMA_MIGRATION_TEST_CLOCK: "1",
     UNBOUNDRY_SCHEMA_MIGRATION_TEST_CLOCK_MS: "0",
   };
-  const output: Buffer[] = [];
-  const child = spawn(migration.command, arguments_, {
-    cwd: bridge.directory,
-    env: environment,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  child.stdout?.on("data", (chunk) => output.push(Buffer.from(chunk)));
-  child.stderr?.on("data", (chunk) => output.push(Buffer.from(chunk)));
-  const exit = await new Promise<Readonly<{
-    code: number | null;
-    signal: NodeJS.Signals | null;
-  }>>((resolveExit, rejectExit) => {
-    child.once("error", rejectExit);
-    child.once("exit", (code, signal) => resolveExit({ code, signal }));
-  });
-  const text = Buffer.concat(output).toString("utf8");
-  if (exit.code !== 0 || exit.signal !== null) {
-    throw new Error(`M92 attested bridge migration failed\n${text.slice(-64 * 1_024)}`);
+  const stages = Object.freeze([
+    Object.freeze({
+      arguments: schema37Arguments,
+      sourceVersion: 37,
+      targetVersion: 39,
+    }),
+    ...[
+      ["migrate-schema39-to40.mjs", 39, 40],
+      ["migrate-schema40-to41.mjs", 40, 41],
+      ["migrate-schema41-to42.mjs", 41, 42],
+      ["migrate-schema42-to43.mjs", 42, 43],
+    ].map(([scriptName, sourceVersion, targetVersion]) => Object.freeze({
+      scriptName: String(scriptName),
+      sourceVersion: Number(sourceVersion),
+      targetVersion: Number(targetVersion),
+    })),
+  ]);
+  let expectedStageSourceSha256 = expectedSourceLogicalSha256;
+  let finalResult: Record<string, unknown> | undefined;
+  for (const stage of stages) {
+    const arguments_ = "arguments" in stage
+      ? stage.arguments
+      : [
+          `scripts/${stage.scriptName}`,
+          "--apply",
+          "--data-dir",
+          dataDirectory,
+          "--runtime-dir",
+          runtimeDirectory,
+          "--expected-logical-sha256",
+          expectedStageSourceSha256,
+          "--scratch-root",
+          scratchRoot,
+        ];
+    const output: Buffer[] = [];
+    const child = spawn(migration.command, arguments_, {
+      cwd: bridge.directory,
+      env: environment,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    child.stdout?.on("data", (chunk) => output.push(Buffer.from(chunk)));
+    child.stderr?.on("data", (chunk) => output.push(Buffer.from(chunk)));
+    const exit = await new Promise<Readonly<{
+      code: number | null;
+      signal: NodeJS.Signals | null;
+    }>>((resolveExit, rejectExit) => {
+      child.once("error", rejectExit);
+      child.once("exit", (code, signal) => resolveExit({ code, signal }));
+    });
+    const text = Buffer.concat(output).toString("utf8");
+    if (exit.code !== 0 || exit.signal !== null) {
+      throw new Error(
+        `M92 attested bridge migration ${stage.sourceVersion} to ` +
+          `${stage.targetVersion} failed\n${text.slice(-64 * 1_024)}`,
+      );
+    }
+    const resultLine = text.trim().split("\n").at(-1);
+    if (!resultLine) {
+      throw new Error("M92 attested bridge migration returned no result");
+    }
+    const result = JSON.parse(resultLine) as Record<string, unknown>;
+    const sourceSha256 = result.expectedSourceLogicalSha256 ??
+      result.sourceLogicalSha256;
+    if (
+      result.ok !== true || result.mode !== "apply" ||
+      result.status !== "complete" ||
+      result.sourceVersion !== stage.sourceVersion ||
+      result.targetVersion !== stage.targetVersion ||
+      sourceSha256 !== expectedStageSourceSha256 ||
+      !/^[a-f0-9]{64}$/.test(String(result.targetLogicalSha256 ?? ""))
+    ) {
+      throw new Error(
+        `M92 attested bridge migration ${stage.sourceVersion} to ` +
+          `${stage.targetVersion} returned invalid evidence`,
+      );
+    }
+    expectedStageSourceSha256 = String(result.targetLogicalSha256);
+    finalResult = result;
   }
-  const resultLine = text.trim().split("\n").at(-1);
-  if (!resultLine) throw new Error("M92 attested bridge migration returned no result");
-  const result = JSON.parse(resultLine) as Record<string, unknown>;
-  if (result.ok !== true) {
-    throw new Error("M92 attested bridge migration did not report success");
-  }
-  return result;
+  if (!finalResult) throw new Error("M92 migration chain was empty");
+  return Object.freeze({
+    ...finalResult,
+    sourceVersion: 37,
+    targetVersion: 43,
+  });
 }
 
 async function jsonRequest(
@@ -1562,6 +1769,13 @@ test("runner-attested exact tag precedes attested bridge, migration, and final r
       ...preservedRichNode,
       data: { ...preservedRichNode.data, prompt: "m92 schema37 bridge write" },
     };
+    const currentBridgeExpectedNode = {
+      ...currentBridgeRichNode,
+      data: {
+        ...currentBridgeRichNode.data,
+        prompt: "m92 schema37 bridge write",
+      },
+    };
     const schema37Write = await jsonRequest(`/api/canvas/${canvasId}`, {
       body: JSON.stringify({
         edges: [],
@@ -1691,7 +1905,7 @@ test("runner-attested exact tag precedes attested bridge, migration, and final r
       mode: "apply",
       sourceVersion: 37,
       status: "complete",
-      targetVersion: 42,
+      targetVersion: 43,
     });
 
     runtime = await startReleaseRuntime(
@@ -1705,7 +1919,7 @@ test("runner-attested exact tag precedes attested bridge, migration, and final r
       body: {
         mode: "active",
         mutationsAccepted: true,
-        schemaVersion: 42,
+        schemaVersion: 43,
         status: "ready",
       },
       status: 200,
@@ -1791,14 +2005,14 @@ test("runner-attested exact tag precedes attested bridge, migration, and final r
       method: "PUT",
     });
     expect(currentWireSave).toMatchObject({
-      body: { graphRevision: 9, revision: 9 },
+      body: { graphRevision: 8, revision: 9 },
       status: 200,
     });
     const afterCurrentWire = await jsonRequest(`/api/canvas/${canvasId}`, {
       cookie: currentCookie,
     });
     expect(afterCurrentWire).toMatchObject({
-      body: { nodes: [currentBridgeRichNode], revision: 9 },
+      body: { graphRevision: 8, nodes: [currentBridgeExpectedNode], revision: 9 },
       status: 200,
     });
 
@@ -1909,21 +2123,21 @@ test("runner-attested exact tag precedes attested bridge, migration, and final r
     const finalDatabase = new DatabaseSync(databasePath, { readOnly: true });
     try {
       expect(finalDatabase.prepare("PRAGMA user_version").get()).toEqual({
-        user_version: 42,
+        user_version: 43,
       });
       expect(finalDatabase.prepare(`
         SELECT version, name FROM schema_migrations
         ORDER BY version DESC LIMIT 1
       `).get()).toEqual({
-        name: "server-authoritative-workflow-runs",
-        version: 42,
+        name: "durable-canvas-operation-receipts",
+        version: 43,
       });
       expect(finalDatabase.prepare(`
       SELECT revision, graph_revision, nodes
         FROM canvas_documents WHERE owner_id = ? AND id = ?
       `).get(ownerId, canvasId)).toEqual({
-        graph_revision: 9,
-        nodes: JSON.stringify([currentBridgeRichNode]),
+        graph_revision: 8,
+        nodes: JSON.stringify([currentBridgeExpectedNode]),
         revision: 9,
       });
       expect(finalDatabase.prepare(`

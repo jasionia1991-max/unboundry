@@ -302,6 +302,9 @@ function syntheticResponse() {
   const headers = new Map<string, string>();
   const response = Object.assign(new EventEmitter(), {
     statusCode: 200,
+    getHeader(name: string) {
+      return headers.get(name.toLowerCase());
+    },
     setHeader(name: string, value: number | string | readonly string[]) {
       headers.set(name.toLowerCase(), String(value));
       return response;
@@ -458,13 +461,13 @@ test("current schema grants exactly one reservation before either same-ID conten
   await withDataDirectory("reservation-races", async (directory) => {
     addOwner(directory, "m88-owner-a");
     addOwner(directory, "m88-owner-b");
-    expect(currentSchemaVersion).toBe(42);
+    expect(currentSchemaVersion).toBe(43);
     const schema = openAppDatabase(directory);
     try {
       expect(
         (schema.prepare("PRAGMA user_version").get() as { user_version: number })
           .user_version,
-      ).toBe(42);
+      ).toBe(43);
     } finally {
       schema.close();
     }
@@ -1488,7 +1491,7 @@ test("startup compensates an active local upload and removes only its exact obje
   });
 });
 
-test("canvas PUT durably adopts uploads while recovery and delete tombstones reject late saves", async () => {
+test("legacy canvas PUT adopts only user-owned uploads while recovery and delete tombstones reject late saves", async () => {
   await withDataDirectory("upload-canvas-adoption", async (directory) => {
     await authorizedRequest("/bootstrap");
     const publish = async (id: string) => {
@@ -1613,19 +1616,36 @@ test("canvas PUT durably adopts uploads while recovery and delete tombstones rej
         SELECT state, adopted_canvas_id
         FROM media_publication_attempts WHERE attempt_id = ?
       `).get(redrawMask.attemptId)).toEqual({
-        adopted_canvas_id: "m88-redraw-mask-adoption-canvas",
+        adopted_canvas_id: null,
         state: "published",
       });
       expect(redrawAdoptionState.prepare(`
         SELECT state, adopted_canvas_id
         FROM media_publication_attempts WHERE attempt_id = ?
       `).get(outpaintPrepared.attemptId)).toEqual({
-        adopted_canvas_id: "m88-redraw-mask-adoption-canvas",
+        adopted_canvas_id: null,
         state: "published",
       });
+      const redrawCanvas = redrawAdoptionState.prepare(`
+        SELECT nodes FROM canvas_documents
+        WHERE owner_id = '__test__' AND id = 'm88-redraw-mask-adoption-canvas'
+      `).get() as { nodes: string };
+      const redrawData = (JSON.parse(redrawCanvas.nodes) as Array<{
+        data?: Record<string, unknown>;
+        id?: string;
+      }>).find(({ id }) => id === "redraw-placeholder")?.data;
+      expect(redrawData).not.toHaveProperty("imageToolMaskAssetId");
+      expect(redrawData).not.toHaveProperty("imageToolPreparedAssetId");
+      expect(redrawData).not.toHaveProperty("imageToolSourceAssetId");
     } finally {
       redrawAdoptionState.close();
     }
+    expect((await recoverPendingUploadMediaPublications({
+      updatedBefore: "9999-12-31T23:59:59.999Z",
+    })).sort((left, right) => left.assetId.localeCompare(right.assetId))).toEqual([
+      { action: "failed", assetId: outpaintPrepared.id },
+      { action: "failed", assetId: redrawMask.id },
+    ].sort((left, right) => left.assetId.localeCompare(right.assetId)));
 
     const deleteRequest = await authorizedRequest(`/${adopted.id}`, "DELETE");
     const deletion = beginMediaDeletion(

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { requestIdentity } from "./auth";
 import {
@@ -43,6 +44,8 @@ import {
 } from "./generationAdmissionApplication";
 import { buildAuthoritativeGenerationModelConfiguration } from
   "./authoritativeGenerationModelConfiguration";
+import { CanvasGenerationBindingConflictError } from
+  "./canvasMutationGateway";
 
 const {
   GenerationProviderAttemptBlockedError,
@@ -177,16 +180,16 @@ function strictWorkflowIdentity(input: {
       prompt: input.strict.finalPrompt,
     }),
     generationOwnershipKey: generationOwnershipKey(
-      generationOwnershipEvidence({
-        contractFingerprint: input.strict.contractFingerprint ?? "",
-        inputs: input.strict.inputs,
-        kind: input.body.kind!,
-        modelConfigurationRevision: input.modelConfigurationRevision,
-        modelId: input.modelId,
-        modelReleaseRevision: modelReleaseRevision ?? "",
-        parameters: input.strict.parameters,
-        prompt: String(input.body.ownPrompt ?? ""),
-      }),
+      input.strict.imageToolOwnershipEvidence ?? generationOwnershipEvidence({
+          contractFingerprint: input.strict.contractFingerprint ?? "",
+          inputs: input.strict.inputs,
+          kind: input.body.kind!,
+          modelConfigurationRevision: input.modelConfigurationRevision,
+          modelId: input.modelId,
+          modelReleaseRevision: modelReleaseRevision ?? "",
+          parameters: input.strict.parameters,
+          prompt: String(input.body.ownPrompt ?? ""),
+        }),
     ),
     modelConfigurationRevision: input.modelConfigurationRevision,
     modelInputContractFingerprint: input.strict.contractFingerprint ?? "",
@@ -1263,8 +1266,12 @@ export async function generationTasks(
         ownerId: identity.bypass ? "__test__" : identity.userId,
       });
       const { providerProfile: _providerProfile, ...availability } = runtime;
+      const {
+        imageToolOwnershipEvidence: _imageToolOwnershipEvidence,
+        ...publicPreflight
+      } = preflight;
       json(response, 200, {
-        ...preflight,
+        ...publicPreflight,
         ...availability,
         modelId: model.id,
         providerRequests: 0,
@@ -1376,7 +1383,10 @@ export async function generationTasks(
           body,
           expected: expectedWorkflowIdentity,
         });
-        requestIntent = generationRequestIntent(body, body.kind);
+        requestIntent = generationRequestIntent({
+          ...body,
+          imageTool: strictInput.imageTool,
+        }, body.kind);
         workflowBinding = validatedWorkflowBinding({
           activeConfigurationRevision,
           activeRevisionId: strictInput.modelReleaseRevision?.revisionId,
@@ -1598,7 +1608,11 @@ export async function generationTasks(
       try {
         created = admitPreparedGenerationTask({
           afterCommit: () => injectInitialGenerationPostCommitFailure(request),
+          imageTool,
           input: generationTaskInput,
+          requestId: String(
+            response.getHeader("X-Request-ID") ?? randomUUID(),
+          ),
         });
       } catch (error) {
         if (!(error instanceof GenerationAdmissionPostCommitError)) throw error;
@@ -1655,6 +1669,11 @@ export async function generationTasks(
         json(response, 409, {
           code: error.code,
           error: error.message,
+        });
+      } else if (error instanceof CanvasGenerationBindingConflictError) {
+        json(response, 409, {
+          code: error.code,
+          error: "画布输入或生成归属已变化，请刷新后重新提交",
         });
       } else if (error instanceof GenerationProviderAttemptBlockedError) {
         json(response, 409, {

@@ -228,7 +228,7 @@ async function terminalEvidence(evidencePath, source) {
     evidence.database.path !== source.databasePath ||
     evidence.database.device !== source.databaseDevice ||
     evidence.database.inode !== source.databaseInode ||
-    evidence.database.schemaVersion !== 42 ||
+    evidence.database.schemaVersion !== 43 ||
     !Array.isArray(evidence.sourceReports) || evidence.sourceReports.length < 1 ||
     evidence.sourceReports.length > 20 ||
     !Array.isArray(evidence.observations) || evidence.observations.length > 500
@@ -302,8 +302,8 @@ async function inspectDataDirectory(dataDirectory, evidencePath) {
     const schemaVersion = Number(database.prepare(
       "SELECT MAX(version) AS version FROM schema_migrations",
     ).get()?.version);
-    if (schemaVersion !== 42) {
-      fail("IG26_INSPECT_SCHEMA_UNSUPPORTED", "Attempt settlement requires exact schema42");
+    if (schemaVersion !== 43) {
+      fail("IG26_INSPECT_SCHEMA_UNSUPPORTED", "Attempt settlement requires exact schema43");
     }
     const rows = database.prepare(`
       SELECT
@@ -418,7 +418,7 @@ async function inspectDataDirectory(dataDirectory, evidencePath) {
         evidencePath: attestation.evidencePath,
         evidenceSha256: attestation.evidenceSha256,
         sourceReports: attestation.evidence.sourceReports,
-        type: "schema42-snapshot",
+        type: "schema43-snapshot",
       },
     };
   } finally {

@@ -1,33 +1,33 @@
 # Unboundry 当前权威状态
 
-> **2026-09-03 最新权威：生产运行 v0.7.7/schema42；发布成功，但“刷新 0 次多余保存”门未通过，真实工作流没有执行。** v0.7.7 已完成 PR #155、双 CI、不可移动 tag/Release、exact-tag fresh build、locked-exact backup/verify/fresh restore、原子切换和 v0.7.6 rollback-forward，服务 active/ready、NRestarts0。登录普通 Chrome 打开目标 Canvas 的服务器版本后出现4次成功但多余的 Canvas PUT，revision 71→75、graph revision 46→50；因此严格停在刷新门，group点击0次，workflow/task/admission/Provider attempt和`paidProviderRequests`均零新增。
+> **2026-09-05 最新权威：生产仍运行 v0.7.7/schema42；本地 v0.7.8/schema43 Canvas 写入边界最终正式 full 已取得 1227/1227 passed、0 failed、0 skipped、exit 0，最终独立 Review 为 P0/P1/P2=0/GO。R9 已通过，当前进入 R10 发布与生产验收；尚未发布或消费真实费用。** 当前 Goal 按 Canvas Document Write Boundary Plan R0-R10 与 Matrix CWB-001-CWB-194 执行；生产、真实 Provider、OSS 和付费写入均保持零新增。
 
 **生产是 v0.7.7 / schema42。** 代码、静态资源、数据库恢复、回滚前进和服务健康门均通过。v0.7.7 已消除此前7个文字节点的旧恢复写回；本次刷新没有出现409或“任务状态查询失败”误报，也没有任何生成提交。
 
-**仍未通过的部分**：目标明确要求先刷新得到0次多余保存，但服务器版本页在约1.4秒内写了4次200 PUT。它们只修改3个图片节点的卡片高度，没有改内容、连线或视口；Canvas revision 71→75、graph revision 46→50。刷新门失败后没有点击“整组执行”，所以不能宣称本版已通过真实运行中的“无误报、无409、无重复提交”。
+**本地候选状态**：v0.7.8 已建立 typed Canvas command、字段 ownership、document/input 双 fingerprint、revision 状态机、operation receipt、服务端结果投影和兼容窗口治理。历史 full 失败均已保留并闭环；最后一次 mandatory formal full 在冻结源码 `70ac7cd827e2442cfe91d4a39639328b267218864b1fff2102791cf8914ca6da` 上取得 `1227/1227 PASS`。最后一次测试 delta 仅为 Playwright 对 `ECONNRESET` 的内置有限重试，不放宽业务断言。
 
-**当前根因**：`ImageNode` 图片加载与延迟 hydration 自动适配只检查运行时 `node.width/height`，没有把已经保存的 `style.width/height` 当作现成尺寸；图片像素加载后又调用 `setNodes` 改持久化 `style`。`measured` 本身不进持久化指纹，但 `style` 会，因此异步图片加载被拆成4次真实保存。最小修复必须让立即与延迟两条图片加载路径都保留已保存尺寸，并增加真实 reload 零 PUT 回归。
+**生产遗留事实**：v0.7.7 登录普通 Chrome 打开目标 Canvas 后曾出现4次多余 Canvas PUT，revision 71→75、graph revision 46→50；前置刷新门失败后没有点击整组执行。该事实是 v0.7.8 的修复基线，不能把本地测试当作生产已通过。
 
-**授权状态**：v0.7.7 的版本与发布授权已消费，tag/Release不可移动。真实点击因前置刷新门失败而保持0次且被阻断，不能跨版本挪用；下一版尚未获得版本号、修复或发布授权。生产失败回执为`spec/V0_7_7_PRODUCTION_RECEIPT_2026-09-03.json`。
+**授权状态**：用户已在当前 Goal 明确授权 v0.7.8 的实施、Review、一次正式全量、GitHub 发布、备份/恢复/部署和受预算约束的真实验收；授权尚未消费到发布或付费阶段。v0.7.7 tag/Release仍不可移动，既有生产数据不得删除或覆盖。
 
 > **以下 INC-GEN-025 顶部记录是历史声明快照**：它记录当时的 Goal、测试、Review 和发布前状态；v0.6.70 后续已经发布，最终审计推翻了“可直接继续 R8/真实点击”的当前有效性。其历史授权已消费，不得恢复。
 
 > **以下所有旧 INC 区块均为历史账本**：其中出现的“当前”“等待发布”“授权尚未消费”等文字只代表当时时点，不能覆盖本页第一段，也不能恢复任何旧授权。
 
-更新日期：2026-09-03
+更新日期：2026-09-05
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.7.7**
-本地候选代码版本：**v0.7.7**
-当前本地候选说明：`无下一版代码候选；仅记录 v0.7.7 生产刷新门 NO-GO`
+当前代码包版本：**v0.7.8**
+本地候选代码版本：**v0.7.8**
+当前本地候选说明：`Canvas Document Write Boundary 最终 formal full 1227/1227 PASS；最终独立 Review GO；进入 R10`
 当前生产部署版本：**v0.7.7**
-本地候选schema：**42**
-当前治理标记：`CURRENT_V0_7_7_USER_REJECTED_CANVAS_CONVERGENCE`
-当前业务标记：`V0_7_7_RELEASE_PASS / REFRESH_GATE_NO_GO / REAL_WORKFLOW_NOT_RUN`
-当前发布执行标记：`V0_7_7_RELEASE_AUTHORIZATION_CONSUMED / REAL_CLICK_BLOCKED_AT_ZERO`
-当前本地Goal标记：`NO_ACTIVE_GOAL / LATEST_USER_RELEASE_AUTHORIZATION_CONTROLS`
-当前计划标记：`V0_7_7_PRODUCTION_HEALTHY / FOUR_REDUNDANT_IMAGE_LAYOUT_PUTS / NEXT_VERSION_NOT_AUTHORIZED`
+本地候选schema：**43**
+当前治理标记：`CURRENT_V0_7_8_USER_RECHECK`
+当前业务标记：`V0_7_8_R9_PASS / FINAL_REVIEW_P0_P1_P2_ZERO_GO / REAL_WORKFLOW_NOT_RUN`
+当前发布执行标记：`V0_7_8_RELEASE_AUTHORIZED_NOT_CONSUMED / FINAL_FORMAL_FULL_1227_OF_1227_PASS / REAL_CLICK_0_OF_1`
+当前本地Goal标记：`ACTIVE_CANVAS_DOCUMENT_WRITE_BOUNDARY_GOAL / PLAN_R0_R10 / MATRIX_CWB_001_CWB_194`
+当前计划标记：`V0_7_8_R9_PASS / R10_IN_PROGRESS / PRODUCTION_UNCHANGED`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`V0_7_7_IMMUTABLE / NEXT_VERSION_NOT_AUTHORIZED / REFRESH_ZERO_PUT_REQUIRED_BEFORE_ANY_REAL_EXECUTION`
+当前发布门：`V0_7_7_IMMUTABLE / V0_7_8_FINAL_FORMAL_FULL_PASS / FINAL_REVIEW_GO / R10_AUTHORIZED`
 
 ## INC-GEN-028 当前读取顺序
 

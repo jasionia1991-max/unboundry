@@ -141,6 +141,7 @@ test("delete + undo does not leak highlight markers into restored edges", async 
   await page.getByTestId("probe-node-probe-b").click();
   await expect(highlighted).toHaveCount(1);
   await page.keyboard.press("Backspace");
+  await expect(page.getByTestId("probe-node-probe-b")).toHaveCount(0);
   await page.keyboard.press("Meta+z");
   await expect(page.locator('[data-id^="probe-b-restored"]')).toHaveCount(1);
   await expect(highlighted).toHaveCount(1);

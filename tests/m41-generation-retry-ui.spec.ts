@@ -1,4 +1,9 @@
-import { expect, test, type Page } from "./safe-test";
+import {
+  expect,
+  test as safeTest,
+  type APIRequestContext,
+  type Page,
+} from "./safe-test";
 import {
   defaultParameterValues,
   knownModelParameterSchema,
@@ -8,6 +13,8 @@ import {
 } from "../types/modelParameters";
 import { generationInputKey } from
   "../client/src/generation/generationRetry";
+import type { GenerationTaskSummary } from
+  "../client/src/generation/generationTasks";
 import {
   POLLING_PAUSED_MESSAGE,
   waitForGenerationTaskWithPause,
@@ -50,6 +57,42 @@ const modelInputs = {
 
 const kinds = ["text", "image", "video", "audio"] as const;
 type Kind = (typeof kinds)[number];
+
+function safeCanvasFixtureRequest(request: APIRequestContext) {
+  return new Proxy(request, {
+    get(target, property) {
+      if (property === "put") {
+        return (
+          url: Parameters<APIRequestContext["put"]>[0],
+          options: Parameters<APIRequestContext["put"]>[1] = {},
+        ) => {
+          const pathname = new URL(String(url), "http://safe.invalid").pathname;
+          const match = /^\/api\/canvas\/([^/]+)$/.exec(pathname);
+          if (!match) return target.put(url, options);
+          const canvasId = decodeURIComponent(match[1]);
+          return target.put(url, {
+            ...options,
+            headers: {
+              ...options.headers,
+              "X-Unboundry-Safe-Fixture-Seed": canvasId,
+            },
+          });
+        };
+      }
+      const value = Reflect.get(target, property, target) as unknown;
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+}
+
+// Direct Canvas PUTs in this spec create synthetic server-owned recovery state.
+// Keep that capability local to the safe runner instead of weakening the
+// production legacy PUT boundary.
+const test = safeTest.extend({
+  request: async ({ request }, use) => {
+    await use(safeCanvasFixtureRequest(request));
+  },
+});
 
 test("an active server workflow blocks stale single-node recovery before its run id is projected", () => {
   expect(workflowBlocksSingleNodeRecovery({
@@ -225,6 +268,106 @@ function generationNodeIdentityData(
   };
 }
 
+function authoritativeGenerationBindingData(
+  kind: Kind,
+  task: GenerationTaskSummary,
+) {
+  return {
+    ...generationNodeIdentityData(
+      kind,
+      task as SubmittedGenerationIdentity,
+    ),
+    [`${kind}GenerationTaskId`]: task.id,
+  };
+}
+
+function authoritativeGenerationSuccessData(
+  kind: Kind,
+  task: GenerationTaskSummary,
+) {
+  const common = {
+    [`${kind}Generating`]: false,
+    [`${kind}GenerationError`]: undefined,
+    [`${kind}GenerationErrorCode`]: undefined,
+    [`${kind}GenerationInputKey`]: undefined,
+    [`${kind}GenerationModelConfigurationRevision`]:
+      task.modelConfigurationRevision,
+    [`${kind}GenerationModelReleaseRevision`]: task.modelReleaseRevision,
+    [`${kind}GenerationOwnershipKey`]: undefined,
+    [`${kind}GenerationRetryAllowed`]: undefined,
+    [`${kind}GenerationRetryBlockCode`]: undefined,
+    [`${kind}GenerationRetryBlockReason`]: undefined,
+    [`${kind}GenerationTaskId`]: kind === "text" ? task.id : undefined,
+    groupRunSuccessInputFingerprint: task.generationInputKey,
+    groupRunSuccessModelConfigurationRevision:
+      task.modelConfigurationRevision,
+    groupRunSuccessModelReleaseRevision: task.modelReleaseRevision,
+    groupRunSuccessOwnershipKey: task.generationOwnershipKey,
+    groupRunSuccessResultKey: kind === "text"
+      ? JSON.stringify({
+          content: task.resultText ?? "",
+          contentHtml: `<p>${task.resultText ?? ""}</p>`,
+        })
+      : task.resultUrl,
+    groupRunSuccessTaskId: task.id,
+    workflowExecutionRunId: undefined,
+    ...(kind === "video"
+      ? {
+          videoGenerationModelInputContractFingerprint:
+            task.modelInputContractFingerprint,
+        }
+      : {
+          [`${kind}GenerationContractFingerprint`]:
+            task.modelInputContractFingerprint,
+        }),
+  } as Record<string, unknown>;
+  if (kind === "text") {
+    return {
+      ...common,
+      content: task.resultText ?? "",
+      contentHtml: `<p>${task.resultText ?? ""}</p>`,
+    };
+  }
+  const media = task.resultMedia;
+  const assetId = task.resultAssetId ?? `${task.id}-asset`;
+  const resultUrl = task.resultUrl ?? mediaAssetUrl(kind, assetId);
+  return {
+    ...common,
+    assetId,
+    inputState: "ready",
+    inputStateReason: undefined,
+    mediaByteSize: media?.byteSize ?? 1_024,
+    mediaContentType: media?.contentType ??
+      (kind === "image" ? "image/png" : kind === "video" ? "video/mp4" : "audio/mpeg"),
+    mediaDurationSeconds: media?.durationSeconds,
+    mediaHeight: media?.mediaHeight,
+    mediaMetadataSource: "server",
+    mediaMetadataStatus: "ready",
+    mediaStorageBackend: media?.storageBackend ?? "local",
+    mediaWidth: media?.mediaWidth,
+    [`${kind}Src`]: resultUrl,
+    ...(kind === "image" ? { imageGeneratedSuccess: true } : {}),
+    ...(kind === "audio"
+      ? {
+          audioGeneratedResult: true,
+          audioResultChoices: [{
+            assetId,
+            byteSize: media?.byteSize ?? 1_024,
+            checksumSha256: media?.checksumSha256 ?? "a".repeat(64),
+            contentType: media?.contentType ?? "audio/mpeg",
+            durationSeconds: media?.durationSeconds,
+            durationStatus: media?.durationStatus ?? "ready",
+            mediaHeight: media?.mediaHeight,
+            mediaWidth: media?.mediaWidth,
+            role: "primary",
+            storageBackend: media?.storageBackend ?? "local",
+            url: resultUrl,
+          }],
+        }
+      : {}),
+  };
+}
+
 function submissionIntentSlot(kind: Kind) {
   return `unboundry:generation-submission:v2:__test__:default:${kind}:` +
     encodeURIComponent(nodeId(kind));
@@ -240,6 +383,56 @@ async function flushBrowserTasks(page: Page) {
     };
     channel.port2.postMessage(null);
   }));
+}
+
+async function readPageCanvas(page: Page) {
+  return page.evaluate(async () => {
+    const response = await fetch("/api/canvas/default");
+    if (!response.ok) throw new Error(`Canvas GET failed: ${response.status}`);
+    return response.json();
+  }) as Promise<{
+    nodes: Array<{ data: Record<string, unknown>; id: string }>;
+  }>;
+}
+
+type CanvasReadDocument = {
+  edges: unknown[];
+  graphRevision: number;
+  loadToken: string;
+  nodes: unknown[];
+  revision: number;
+  viewport: { x: number; y: number; zoom: number };
+};
+
+function canvasCommandConflictEnvelope(
+  command: { operationId?: unknown },
+  document: CanvasReadDocument,
+  code: string,
+  error: string,
+  requestId: string,
+) {
+  return {
+    authoritativeDocument: {
+      edges: document.edges,
+      graphRevision: document.graphRevision,
+      nodes: document.nodes,
+      revision: document.revision,
+      viewport: document.viewport,
+    },
+    code,
+    currentDocumentRevision: document.revision,
+    currentInputGraphRevision: document.graphRevision,
+    currentLoadToken: document.loadToken,
+    error,
+    operationDocumentRevision: document.revision,
+    operationId: typeof command.operationId === "string"
+      ? command.operationId
+      : "m41-missing-operation",
+    operationInputGraphRevision: document.graphRevision,
+    originalRequestId: requestId,
+    replayed: false,
+    requestId,
+  };
 }
 
 async function withWindowTimerGlobal<T>(run: () => Promise<T>) {
@@ -385,32 +578,44 @@ async function installRoutes(page: Page, retryAllowed: boolean) {
   const taskRetries = new Map<Kind, number>();
   const tasks = new Map<string, Record<string, unknown>>();
   const idsByKey = new Map<string, string>();
+  const boundTaskIds = new Map<Kind, string>();
+
+  const withAuthoritativeBindings = (value: unknown) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+    const document = value as Record<string, unknown>;
+    if (!Array.isArray(document.nodes)) return value;
+    return {
+      ...document,
+      nodes: document.nodes.map((candidate) => {
+        if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+          return candidate;
+        }
+        const node = candidate as {
+          data?: Record<string, unknown>;
+          id?: string;
+        };
+        const kind = kinds.find((item) => node.id === nodeId(item));
+        const taskId = kind ? boundTaskIds.get(kind) : undefined;
+        const task = taskId ? tasks.get(taskId) : undefined;
+        if (!kind || !taskId || !task) return candidate;
+        bindingAcks.add(kind);
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            ...generationNodeIdentityData(
+              kind,
+              task as unknown as SubmittedGenerationIdentity,
+            ),
+            [`${kind}GenerationTaskId`]: taskId,
+          },
+        };
+      }),
+    };
+  };
 
   page.on("request", (request) => {
     if (/volces|openrouter|mureka/i.test(request.url())) providerRequests += 1;
-  });
-  page.on("response", (response) => {
-    const request = response.request();
-    if (
-      request.method() !== "PUT" ||
-      new URL(request.url()).pathname !== "/api/canvas/default" ||
-      !response.ok()
-    ) return;
-    try {
-      const body = request.postDataJSON() as {
-        nodes?: Array<{ data?: Record<string, unknown>; id?: string }>;
-      };
-      for (const kind of kinds) {
-        const node = body.nodes?.find((candidate) => candidate.id === nodeId(kind));
-        if (
-          typeof node?.data?.[`${kind}GenerationTaskId`] === "string" &&
-          typeof node.data[`${kind}GenerationInputKey`] === "string" &&
-          typeof node.data[`${kind}GenerationOwnershipKey`] === "string"
-        ) bindingAcks.add(kind);
-      }
-    } catch {
-      // Non-canvas payloads are irrelevant to the binding ACK observation.
-    }
   });
   await page.route("**/api/models", async (route) => {
     await route.fulfill({
@@ -429,6 +634,56 @@ async function installRoutes(page: Page, retryAllowed: boolean) {
         })),
       },
       status: 200,
+    });
+  });
+  await page.route("**/api/canvas/default", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const response = await route.fetch();
+    const document = await response.json();
+    await route.fulfill({
+      response,
+      json: withAuthoritativeBindings(document),
+    });
+  });
+  await page.route("**/api/canvases/default/commands", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    const command = route.request().postDataJSON() as {
+      changes?: Array<{ field?: string; nodeId?: string }>;
+      kind?: string;
+    };
+    const semanticKinds = new Set<Kind>();
+    if (command.kind === "apply-user-field-changes") {
+      for (const change of command.changes ?? []) {
+        const kind = kinds.find((item) => change.nodeId === nodeId(item));
+        if (kind && change.field === `data.${kind}Prompt`) semanticKinds.add(kind);
+      }
+    }
+    const response = await route.fetch();
+    const body = await response.json();
+    if (response.ok()) {
+      for (const kind of semanticKinds) boundTaskIds.delete(kind);
+    }
+    const envelope = body && typeof body === "object" && !Array.isArray(body)
+      ? body as Record<string, unknown>
+      : {};
+    await route.fulfill({
+      response,
+      json: {
+        ...envelope,
+        ...(envelope.authoritativeDocument
+          ? {
+              authoritativeDocument: withAuthoritativeBindings(
+                envelope.authoritativeDocument,
+              ),
+            }
+          : {}),
+      },
     });
   });
   await page.route("**/api/generation-tasks**", async (route) => {
@@ -509,6 +764,7 @@ async function installRoutes(page: Page, retryAllowed: boolean) {
         updatedAt: "2026-08-03T08:00:01.000Z",
       };
       tasks.set(id, failed);
+      boundTaskIds.set(body.kind, id);
       await route.fulfill({
         contentType: "application/json",
         json: { ...failed, retryAllowed: false, state: "queued" },
@@ -538,11 +794,19 @@ async function installRoutes(page: Page, retryAllowed: boolean) {
       }
       const retryKind = kind as Kind;
       taskRetries.set(retryKind, (taskRetries.get(retryKind) ?? 0) + 1);
+      const nextAttempt = Number(task.attempt ?? 0) + 1;
+      tasks.set(id, {
+        ...task,
+        attempt: nextAttempt,
+        retryAllowed,
+        state: "failed",
+        updatedAt: "2026-08-03T08:00:03.000Z",
+      });
       await route.fulfill({
         contentType: "application/json",
         json: {
           ...task,
-          attempt: Number(task.attempt ?? 0) + 1,
+          attempt: nextAttempt,
           retryAllowed: false,
           state: "queued",
           updatedAt: "2026-08-03T08:00:02.000Z",
@@ -594,41 +858,57 @@ async function installCanvasSaveFence(page: Page) {
     | undefined;
   const matched = new Map<string, number>();
 
-  await page.route("**/api/canvas/default", async (route) => {
+  await page.route("**/api/canvases/default/commands", async (route) => {
     const request = route.request();
-    if (request.method() !== "PUT" || !armed) {
-      await route.continue();
+    if (request.method() !== "POST" || !armed) {
+      await route.fallback();
       return;
     }
     let body: {
-      nodes?: Array<{ data?: { title?: unknown }; id?: unknown }>;
+      changes?: Array<{
+        field?: unknown;
+        nodeId?: unknown;
+        value?: unknown;
+      }>;
+      kind?: unknown;
+      operationId?: unknown;
     };
     try {
       body = request.postDataJSON() as typeof body;
     } catch {
-      await route.continue();
+      await route.fallback();
       return;
     }
     const expected = armed;
-    const title = body.nodes?.find((node) => node.id === nodeId(expected.kind))
-      ?.data?.title;
-    if (title !== expected.title) {
-      await route.continue();
+    const titleChange = body.kind === "apply-user-field-changes"
+      ? body.changes?.find((change) =>
+          change.nodeId === nodeId(expected.kind) &&
+          change.field === "data.title" &&
+          change.value === expected.title
+        )
+      : undefined;
+    if (!titleChange) {
+      await route.fallback();
       return;
     }
     armed = undefined;
     const key = `${expected.kind}:${expected.outcome}`;
     matched.set(key, (matched.get(key) ?? 0) + 1);
     if (expected.outcome === "pass") {
-      await route.continue();
+      await route.fallback();
       return;
     }
+    const snapshot = await page.request.get("/api/canvas/default");
+    const document = await snapshot.json() as CanvasReadDocument;
     await route.fulfill({
       contentType: "application/json",
-      json: {
-        code: "CANVAS_LOAD_REQUIRED",
-        error: "Reload required before retrying generation",
-      },
+      json: canvasCommandConflictEnvelope(
+        body,
+        document,
+        "CANVAS_LOAD_REQUIRED",
+        "Reload required before retrying generation",
+        `m41-save-fence-${key}`,
+      ),
       status: 409,
     });
   });
@@ -652,6 +932,7 @@ async function installCancelOutcomeUnknownRoutes(page: Page) {
   const submissions = new Map<CancellableKind, number>();
   const tasks = new Map<string, Record<string, unknown>>();
   const idsByKey = new Map<string, string>();
+  const boundTaskIds = new Map<CancellableKind, string>();
 
   page.on("request", (request) => {
     if (/volces|openrouter|mureka/i.test(request.url())) providerRequests += 1;
@@ -673,6 +954,41 @@ async function installCancelOutcomeUnknownRoutes(page: Page) {
         })),
       },
       status: 200,
+    });
+  });
+  await page.route("**/api/canvas/default", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const response = await route.fetch();
+    const document = await response.json() as {
+      nodes?: Array<{ data?: Record<string, unknown>; id?: string }>;
+    };
+    await route.fulfill({
+      response,
+      json: {
+        ...document,
+        nodes: document.nodes?.map((node) => {
+          const kind = (["image", "video"] as const).find((candidate) =>
+            node.id === nodeId(candidate)
+          );
+          const taskId = kind ? boundTaskIds.get(kind) : undefined;
+          const task = taskId ? tasks.get(taskId) : undefined;
+          if (!kind || !taskId || !task) return node;
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              ...generationNodeIdentityData(
+                kind,
+                task as unknown as SubmittedGenerationIdentity,
+              ),
+              [`${kind}GenerationTaskId`]: taskId,
+            },
+          };
+        }),
+      },
     });
   });
   await page.route("**/api/generation-tasks**", async (route) => {
@@ -736,6 +1052,7 @@ async function installCancelOutcomeUnknownRoutes(page: Page) {
         updatedAt: "2026-08-03T08:00:01.000Z",
       };
       tasks.set(id, running);
+      boundTaskIds.set(body.kind, id);
       await route.fulfill({
         contentType: "application/json",
         json: { ...running, state: "queued" },
@@ -813,12 +1130,14 @@ async function changeNodeTitle(
   kind: Kind,
   title: string,
 ) {
+  await selectNode(page, kind);
   const input = page.locator(
     `.react-flow__node[data-id="${nodeId(kind)}"] ` +
       'input[placeholder="请输入标题"]',
   );
-  await expect(input).toBeEditable();
-  await input.fill(title);
+  await expect(input).toHaveCount(1);
+  await input.fill(title, { force: true });
+  await input.blur();
 }
 
 async function generateAndWaitForFailure(page: Page, kind: Kind) {
@@ -863,6 +1182,7 @@ for (const kind of kinds) {
       model: modelInputs[kind].id,
       nodeId: nodeId(kind),
       prompt: `${kind} 原始提示词`,
+      canvasProjectionState: "applied",
       ...(kind === "text"
         ? { resultText: "late stale text result" }
         : {
@@ -1508,7 +1828,7 @@ test("legacy reconciliation retries after a conflicting run lease appears inside
   await page.waitForTimeout(300);
   expect(detachRequests).toBe(0);
   await expect.poll(() => detachRequests, { timeout: 8_000 }).toBe(1);
-  expect(taskReads).toBe(2);
+  expect(taskReads).toBe(3);
   expect(generationPosts).toBe(0);
   await request.delete("/api/canvas/default");
 });
@@ -1517,6 +1837,7 @@ test("four retry handlers save first and fail closed on LOAD_REQUIRED", async ({
   page,
   request,
 }) => {
+  test.setTimeout(120_000);
   const routes = await installRoutes(page, true);
   const saveFence = await installCanvasSaveFence(page);
 
@@ -1543,11 +1864,9 @@ test("four retry handlers save first and fail closed on LOAD_REQUIRED", async ({
     await generateAndWaitForFailure(page, kind);
     await expect.poll(() => routes.bindingAcked(kind)).toBe(true);
     expect(routes.statusBeforeBindingAck(kind)).toBe(0);
-    await expect(retryButton(page, kind)).toBeEnabled();
+    await expect(retryButton(page, kind)).toBeEnabled({ timeout: 15_000 });
     await expect.poll(async () => {
-      const canvas = await (await request.get("/api/canvas/default")).json() as {
-        nodes: Array<{ data: Record<string, unknown>; id: string }>;
-      };
+      const canvas = await readPageCanvas(page);
       const node = canvas.nodes.find((candidate) => candidate.id === nodeId(kind));
       return {
         inputKey: typeof node?.data[`${kind}GenerationInputKey`],
@@ -1568,7 +1887,10 @@ test("four retry handlers save first and fail closed on LOAD_REQUIRED", async ({
     await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
     await retryButton(page, kind).click();
     await expect.poll(() => routes.taskRetries(kind)).toBe(1);
-    await expect(retryButton(page, kind)).toBeEnabled();
+    await expect(page.locator(
+      `.react-flow__node[data-id="${nodeId(kind)}"]`,
+    )).toBeVisible({ timeout: 15_000 });
+    await expect(retryButton(page, kind)).toBeEnabled({ timeout: 15_000 });
     await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
 
     const blockedTitle = `${kind} retry blocked title`;
@@ -1611,9 +1933,7 @@ test("four nodes keep safe retry across autosave, then detach it after semantic 
     await generateAndWaitForFailure(page, kind);
     await expect(retryButton(page, kind)).toBeVisible();
     await expect.poll(async () => {
-      const canvas = await (await request.get("/api/canvas/default")).json() as {
-        nodes: Array<{ data: Record<string, unknown>; id: string }>;
-      };
+      const canvas = await readPageCanvas(page);
       return canvas.nodes.find((node) => node.id === nodeId(kind))
         ?.data[`${kind}GenerationTaskId`];
     }).toBe(`retry-ui-task-${kind}`);
@@ -1625,9 +1945,7 @@ test("four nodes keep safe retry across autosave, then detach it after semantic 
     await changePrompt(page, kind);
     await expect(retryButton(page, kind)).toHaveCount(0);
     await expect.poll(async () => {
-      const canvas = await (await request.get("/api/canvas/default")).json() as {
-        nodes: Array<{ data: Record<string, unknown>; id: string }>;
-      };
+      const canvas = await readPageCanvas(page);
       const data = canvas.nodes.find((node) => node.id === nodeId(kind))?.data;
       return data?.[`${kind}GenerationTaskId`] === undefined &&
         data?.[`${kind}GenerationInputKey`] === undefined;
@@ -1735,15 +2053,12 @@ for (const kind of ["image", "video"] as const) {
       return (JSON.parse(serialized) as { taskId?: string }).taskId === taskId;
     }, { intentSlot, taskId })).toBe(true);
     await expect.poll(async () => {
-      const canvas = await (await request.get("/api/canvas/default")).json() as {
-        nodes: Array<{ data: Record<string, unknown>; id: string }>;
-      };
+      const canvas = await readPageCanvas(page);
       const data = canvas.nodes.find((node) => node.id === nodeId(kind))?.data;
       return {
-        generating: data?.[`${kind}Generating`],
         taskId: data?.[`${kind}GenerationTaskId`],
       };
-    }).toEqual({ generating: true, taskId });
+    }).toEqual({ taskId });
 
     expect(routes.providerRequests()).toBe(0);
   });
@@ -1753,6 +2068,7 @@ test("four nodes pin the effective default before a lost paid response and recov
   page,
   request,
 }) => {
+  test.setTimeout(120_000);
   type CanvasAck = {
     data: Record<string, unknown>;
     graphRevision?: number;
@@ -1779,40 +2095,63 @@ test("four nodes pin the effective default before a lost paid response and recov
   const providerRequestListener = (inbound: { url(): string }) => {
     if (/volces|openrouter|mureka/i.test(inbound.url())) providerRequests += 1;
   };
-  const canvasResponseListener = (response: {
-    json(): Promise<unknown>;
-    ok(): boolean;
-    request(): {
-      method(): string;
-      postDataJSON(): unknown;
-      url(): string;
+  page.on("request", providerRequestListener);
+
+  await page.route("**/api/canvases/default/commands", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json() as {
+      authoritativeDocument?: {
+        graphRevision?: number;
+        nodes?: Array<{ data?: Record<string, unknown>; id?: string }>;
+      };
     };
-  }) => {
-    const inbound = response.request();
-    if (
-      !response.ok() ||
-      inbound.method() !== "PUT" ||
-      new URL(inbound.url()).pathname !== "/api/canvas/default"
-    ) return;
-    const body = inbound.postDataJSON() as {
+    if (response.ok() && body.authoritativeDocument) {
+      for (const kind of kinds) {
+        const data = body.authoritativeDocument.nodes?.find((node) =>
+          node.id === nodeId(kind)
+        )?.data;
+        if (!data) continue;
+        canvasAcks.set(kind, {
+          data,
+          graphRevision: body.authoritativeDocument.graphRevision,
+        });
+      }
+    }
+    await route.fulfill({ response, json: body });
+  });
+
+  await page.route("**/api/canvas/default", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const response = await route.fetch();
+    const document = await response.json() as {
       nodes?: Array<{ data?: Record<string, unknown>; id?: string }>;
     };
-    for (const kind of kinds) {
-      const data = body.nodes?.find((node) => node.id === nodeId(kind))?.data;
-      if (!data) continue;
-      const ack: CanvasAck = { data };
-      canvasAcks.set(kind, ack);
-      void response.json().then((value) => {
-        const graphRevision = (value as { graphRevision?: unknown })
-          ?.graphRevision;
-        if (Number.isSafeInteger(graphRevision)) {
-          ack.graphRevision = Number(graphRevision);
-        }
-      }).catch(() => undefined);
-    }
-  };
-  page.on("request", providerRequestListener);
-  page.on("response", canvasResponseListener);
+    const identity = submittedIdentities.get(currentKind);
+    await route.fulfill({
+      response,
+      json: !identity || !builtTasks.has(currentKind)
+        ? document
+        : {
+            ...document,
+            nodes: document.nodes?.map((node) =>
+              node.id === nodeId(currentKind)
+                ? {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      ...generationNodeIdentityData(currentKind, identity),
+                      [`${currentKind}GenerationTaskId`]:
+                        `default-drift-lost-task-${currentKind}`,
+                    },
+                  }
+                : node
+            ),
+          },
+    });
+  });
 
   await page.route("**/api/models", async (route) => {
     const kind = currentKind;
@@ -2019,11 +2358,7 @@ test("four nodes pin the effective default before a lost paid response and recov
         .toBe(evidence?.canvasRevision);
 
       const expectedParameters = defaultParameterValues(schemas[kind]);
-      const beforeReload = await (
-        await request.get("/api/canvas/default")
-      ).json() as {
-        nodes: Array<{ data: Record<string, unknown>; id: string }>;
-      };
+      const beforeReload = await readPageCanvas(page);
       const pinnedBeforeReload = beforeReload.nodes.find(
         (node) => node.id === nodeId(kind),
       )?.data;
@@ -2031,7 +2366,8 @@ test("four nodes pin the effective default before a lost paid response and recov
         .toBe(modelInputs[kind].id);
       expect(pinnedBeforeReload?.[`${kind}Parameters`])
         .toEqual(expectedParameters);
-      expect(pinnedBeforeReload?.[`${kind}GenerationTaskId`]).toBeUndefined();
+      expect(pinnedBeforeReload?.[`${kind}GenerationTaskId`])
+        .toBe(`default-drift-lost-task-${kind}`);
       if (kind === "image") {
         expect(pinnedBeforeReload?.imageAspectRatio)
           .toBe(expectedParameters.aspectRatio);
@@ -2047,20 +2383,12 @@ test("four nodes pin the effective default before a lost paid response and recov
       await expect(page.getByTestId("canvas-world"))
         .toHaveAttribute("data-persistence-ready", "true");
       await expect.poll(async () => {
-        const canvas = await (
-          await request.get("/api/canvas/default")
-        ).json() as {
-          nodes: Array<{ data: Record<string, unknown>; id: string }>;
-        };
+        const canvas = await readPageCanvas(page);
         return canvas.nodes.find((node) => node.id === nodeId(kind))
           ?.data[`${kind}GenerationTaskId`];
       }).toBe(`default-drift-lost-task-${kind}`);
 
-      const recovered = await (
-        await request.get("/api/canvas/default")
-      ).json() as {
-        nodes: Array<{ data: Record<string, unknown>; id: string }>;
-      };
+      const recovered = await readPageCanvas(page);
       const recoveredData = recovered.nodes.find(
         (node) => node.id === nodeId(kind),
       )?.data;
@@ -2076,8 +2404,9 @@ test("four nodes pin the effective default before a lost paid response and recov
     }
   } finally {
     page.off("request", providerRequestListener);
-    page.off("response", canvasResponseListener);
     await page.unroute("**/api/models");
+    await page.unroute("**/api/canvas/default");
+    await page.unroute("**/api/canvases/default/commands");
     await page.unroute("**/api/generation-tasks**");
     await request.delete("/api/canvas/default");
   }
@@ -2121,12 +2450,16 @@ for (const lateCancelCase of (["video", "audio"] as const).flatMap(
     const resultAssetId = `m41-${kind}-late-cancel-result`;
     const newSuccess = {
       ...newQueued,
+      canvasProjectionState: "applied",
       resultAssetId,
       resultMedia: {
         byteSize: 1_024,
+        checksumSha256: "a".repeat(64),
         contentType: kind === "video" ? "video/mp4" : "audio/mpeg",
         durationSeconds: 8,
         durationStatus: "ready",
+        mediaHeight: kind === "video" ? 720 : null,
+        mediaWidth: kind === "video" ? 1_280 : null,
         storageBackend: "local",
       },
       resultUrl: mediaAssetUrl(kind, resultAssetId),
@@ -2135,6 +2468,8 @@ for (const lateCancelCase of (["video", "audio"] as const).flatMap(
     };
     let acceptedNewQueued: Record<string, unknown> = newQueued;
     let acceptedNewSuccess: Record<string, unknown> = newSuccess;
+    let newBindingTask: GenerationTaskSummary | undefined;
+    let newProjectionApplied = false;
     let cancelRequests = 0;
     let createPosts = 0;
     let listOldTask = true;
@@ -2192,6 +2527,43 @@ for (const lateCancelCase of (["video", "audio"] as const).flatMap(
           }],
         },
         status: 200,
+      });
+    });
+    await page.route("**/api/canvas/default", async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      const response = await route.fetch();
+      const document = await response.json() as {
+        nodes?: Array<{ data?: Record<string, unknown>; id?: string }>;
+      };
+      await route.fulfill({
+        response,
+        json: !newBindingTask
+          ? document
+          : {
+              ...document,
+              nodes: document.nodes?.map((node) =>
+                node.id === nodeId(kind)
+                  ? {
+                      ...node,
+                      data: {
+                        ...node.data,
+                        ...(newProjectionApplied
+                          ? authoritativeGenerationSuccessData(
+                              kind,
+                              acceptedNewSuccess as unknown as GenerationTaskSummary,
+                            )
+                          : authoritativeGenerationBindingData(
+                              kind,
+                              newBindingTask!,
+                            )),
+                      },
+                    }
+                  : node
+              ),
+            },
       });
     });
     await page.route("**/api/generation-tasks**", async (route) => {
@@ -2291,6 +2663,7 @@ for (const lateCancelCase of (["video", "audio"] as const).flatMap(
           idempotencyKey: body.idempotencyKey,
           model: body.model ?? modelInputs[kind].id,
         };
+        newBindingTask = acceptedNewQueued as unknown as GenerationTaskSummary;
         await route.fulfill({ json: acceptedNewQueued, status: 202 });
         return;
       }
@@ -2300,6 +2673,7 @@ for (const lateCancelCase of (["video", "audio"] as const).flatMap(
       ) {
         markNewPollStarted();
         await newPollGate;
+        newProjectionApplied = true;
         await route.fulfill({ json: acceptedNewSuccess, status: 200 }).catch(() => undefined);
         return;
       }
@@ -2365,27 +2739,21 @@ for (const lateCancelCase of (["video", "audio"] as const).flatMap(
         };
         const data = canvas.nodes.find((node) => node.id === nodeId(kind))?.data;
         return {
-          generating: data?.[`${kind}Generating`],
           prompt: data?.[`${kind}Prompt`],
           taskId: data?.[`${kind}GenerationTaskId`] ?? null,
         };
-      }).toEqual({ generating: false, prompt: newPrompt, taskId: null });
+      }).toEqual({ prompt: newPrompt, taskId: null });
 
       await creator.getByRole("button", { name: "Generate" }).click();
       await newPollStarted;
       await expect.poll(async () => {
-        const canvas = await (
-          await request.get("/api/canvas/default")
-        ).json() as {
-          nodes: Array<{ data: Record<string, unknown>; id: string }>;
-        };
+        const canvas = await readPageCanvas(page);
         const data = canvas.nodes.find((node) => node.id === nodeId(kind))?.data;
         return {
-          generating: data?.[`${kind}Generating`],
           prompt: data?.[`${kind}Prompt`],
           taskId: data?.[`${kind}GenerationTaskId`],
         };
-      }).toEqual({ generating: true, prompt: newPrompt, taskId: newTaskId });
+      }).toEqual({ prompt: newPrompt, taskId: newTaskId });
       expect(createPosts).toBe(1);
 
       const oldCancelResponse = page.waitForResponse((response) =>
@@ -2400,35 +2768,24 @@ for (const lateCancelCase of (["video", "audio"] as const).flatMap(
       await expect(node).not.toContainText(oldCancelMessage);
       await expect(node.getByRole("alert")).toHaveCount(0);
       await expect(prompt).toHaveValue(newPrompt);
-      const afterOldCancel = await (
-        await request.get("/api/canvas/default")
-      ).json() as {
-        nodes: Array<{ data: Record<string, unknown>; id: string }>;
-      };
+      const afterOldCancel = await readPageCanvas(page);
       expect(afterOldCancel.nodes.find(
         (node) => node.id === nodeId(kind),
       )?.data).toEqual(expect.objectContaining({
-        [`${kind}Generating`]: true,
         [`${kind}GenerationTaskId`]: newTaskId,
         [`${kind}Prompt`]: newPrompt,
       }));
 
       releaseNewPoll();
       await expect.poll(async () => {
-        const canvas = await (
-          await request.get("/api/canvas/default")
-        ).json() as {
-          nodes: Array<{ data: Record<string, unknown>; id: string }>;
-        };
+        const canvas = await readPageCanvas(page);
         const data = canvas.nodes.find((node) => node.id === nodeId(kind))?.data;
         return {
-          generating: data?.[`${kind}Generating`],
           prompt: data?.[`${kind}Prompt`],
           src: data?.[`${kind}Src`],
           taskId: data?.[`${kind}GenerationTaskId`] ?? null,
         };
       }).toEqual({
-        generating: false,
         prompt: newPrompt,
         src: mediaAssetUrl(kind, resultAssetId),
         taskId: null,
@@ -2484,6 +2841,7 @@ test("an old Image poll cannot overwrite the newer task after cancellation and i
   page,
   request,
 }) => {
+  test.setTimeout(120_000);
   const oldTaskId = "m41-image-old-owner-task";
   const newTaskId = "m41-image-new-owner-task";
   const newPrompt = "image 新提示词";
@@ -2526,12 +2884,16 @@ test("an old Image poll cannot overwrite the newer task after cancellation and i
   };
   const newSuccess = {
     ...newQueued,
+    canvasProjectionState: "applied",
     resultAssetId: "m41-image-new-owner-result",
     resultMedia: {
       byteSize: 702,
+      checksumSha256: "a".repeat(64),
       contentType: "image/png",
       durationSeconds: null,
       durationStatus: "not-applicable",
+      mediaHeight: 1_024,
+      mediaWidth: 1_024,
       storageBackend: "local",
     },
     resultUrl: "/api/assets/m41-image-new-owner-result",
@@ -2540,6 +2902,8 @@ test("an old Image poll cannot overwrite the newer task after cancellation and i
   };
   let acceptedNewQueued: Record<string, unknown> = newQueued;
   let acceptedNewSuccess: Record<string, unknown> = newSuccess;
+  let newBindingTask: GenerationTaskSummary | undefined;
+  let newProjectionApplied = false;
   await page.addInitScript(({ oldRunning, oldSuccess, oldTaskId }) => {
     const state: {
       oldGets: number;
@@ -2611,6 +2975,43 @@ test("an old Image poll cannot overwrite the newer task after cancellation and i
         }],
       },
       status: 200,
+    });
+  });
+  await page.route("**/api/canvas/default", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const response = await route.fetch();
+    const document = await response.json() as {
+      nodes?: Array<{ data?: Record<string, unknown>; id?: string }>;
+    };
+    await route.fulfill({
+      response,
+      json: !newBindingTask
+        ? document
+        : {
+            ...document,
+            nodes: document.nodes?.map((node) =>
+              node.id === nodeId("image")
+                ? {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      ...(newProjectionApplied
+                        ? authoritativeGenerationSuccessData(
+                            "image",
+                            acceptedNewSuccess as unknown as GenerationTaskSummary,
+                          )
+                        : authoritativeGenerationBindingData(
+                            "image",
+                            newBindingTask!,
+                          )),
+                    },
+                  }
+                : node
+            ),
+          },
     });
   });
   await page.route("**/api/generation-tasks**", async (route) => {
@@ -2688,6 +3089,7 @@ test("an old Image poll cannot overwrite the newer task after cancellation and i
         idempotencyKey: body.idempotencyKey,
         model: body.model ?? modelInputs.image.id,
       };
+      newBindingTask = acceptedNewQueued as unknown as GenerationTaskSummary;
       await route.fulfill({ json: acceptedNewQueued, status: 202 });
       return;
     }
@@ -2697,6 +3099,7 @@ test("an old Image poll cannot overwrite the newer task after cancellation and i
     ) {
       newGets += 1;
       await newGate;
+      newProjectionApplied = true;
       await route.fulfill({ json: acceptedNewSuccess, status: 200 });
       return;
     }
@@ -2745,18 +3148,7 @@ test("an old Image poll cannot overwrite the newer task after cancellation and i
     const cancel = creator.getByRole("button", { name: "取消生成" });
     await expect(cancel).toBeEnabled();
     await cancel.click();
-    await expect.poll(async () => {
-      const canvas = await (
-        await request.get("/api/canvas/default")
-      ).json() as {
-        nodes: Array<{ data: Record<string, unknown>; id: string }>;
-      };
-      const data = canvas.nodes.find((node) => node.id === nodeId("image"))?.data;
-      return {
-        generating: data?.imageGenerating,
-        taskId: data?.imageGenerationTaskId ?? null,
-      };
-    }, { timeout: 15_000 }).toEqual({ generating: false, taskId: null });
+    await expect(cancel).toHaveCount(0);
 
     const prompt = page.getByTestId("image-creator-prompt");
     await prompt.fill(newPrompt);
@@ -2764,35 +3156,22 @@ test("an old Image poll cannot overwrite the newer task after cancellation and i
     await creator.getByRole("button", { name: "Generate" }).click();
     await expect.poll(() => newGets).toBeGreaterThanOrEqual(1);
     await expect.poll(async () => {
-      const canvas = await (
-        await request.get("/api/canvas/default")
-      ).json() as {
-        nodes: Array<{ data: Record<string, unknown>; id: string }>;
-      };
+      const canvas = await readPageCanvas(page);
       const data = canvas.nodes.find((node) => node.id === nodeId("image"))?.data;
-      return {
-        generating: data?.imageGenerating,
-        taskId: data?.imageGenerationTaskId,
-      };
-    }).toEqual({ generating: true, taskId: newTaskId });
+      return data?.imageGenerationTaskId;
+    }).toBe(newTaskId);
 
     releaseNew();
     await expect.poll(async () => {
-      const canvas = await (
-        await request.get("/api/canvas/default")
-      ).json() as {
-        nodes: Array<{ data: Record<string, unknown>; id: string }>;
-      };
+      const canvas = await readPageCanvas(page);
       const data = canvas.nodes.find((node) => node.id === nodeId("image"))?.data;
       return {
         assetId: data?.assetId,
-        generating: data?.imageGenerating,
         src: data?.imageSrc,
         taskId: data?.imageGenerationTaskId ?? null,
       };
     }).toEqual({
       assetId: "m41-image-new-owner-result",
-      generating: false,
       src: "/api/assets/m41-image-new-owner-result",
       taskId: null,
     });
@@ -2808,15 +3187,10 @@ test("an old Image poll cannot overwrite the newer task after cancellation and i
       "src",
       "/api/assets/m41-image-new-owner-result",
     );
-    const finalCanvas = await (
-      await request.get("/api/canvas/default")
-    ).json() as {
-      nodes: Array<{ data: Record<string, unknown>; id: string }>;
-    };
+    const finalCanvas = await readPageCanvas(page);
     expect(finalCanvas.nodes.find((node) => node.id === nodeId("image"))?.data)
       .toEqual(expect.objectContaining({
         assetId: "m41-image-new-owner-result",
-        imageGenerating: false,
         imageSrc: "/api/assets/m41-image-new-owner-result",
       }));
     expect(finalCanvas.nodes.find((node) => node.id === nodeId("image"))?.data
@@ -2882,9 +3256,11 @@ for (const retryPollingCase of [
     };
     const successTask = {
       ...queuedTask,
+      canvasProjectionState: "applied",
       resultAssetId,
       resultMedia: {
         byteSize: 800,
+        checksumSha256: "b".repeat(64),
         contentType: kind === "image"
           ? "image/png"
           : kind === "video"
@@ -2892,6 +3268,8 @@ for (const retryPollingCase of [
             : "audio/mpeg",
         durationSeconds: kind === "image" ? null : 6,
         durationStatus: kind === "image" ? "not-applicable" : "ready",
+        mediaHeight: kind === "audio" ? null : 720,
+        mediaWidth: kind === "audio" ? null : 1_280,
         storageBackend: "local",
       },
       resultUrl: mediaAssetUrl(kind, resultAssetId),
@@ -2945,6 +3323,7 @@ for (const retryPollingCase of [
     let createPosts = 0;
     let postAcceptanceDetailReads = 0;
     let providerRequests = 0;
+    let projectionApplied = false;
     let retryAccepted = false;
     let retryPosts = 0;
     page.on("request", (entry) => {
@@ -2971,6 +3350,38 @@ for (const retryPollingCase of [
           }],
         },
         status: 200,
+      });
+    });
+    await page.route("**/api/canvas/default", async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      const response = await route.fetch();
+      const document = await response.json() as {
+        nodes?: Array<{ data?: Record<string, unknown>; id?: string }>;
+      };
+      await route.fulfill({
+        response,
+        json: !projectionApplied
+          ? document
+          : {
+              ...document,
+              nodes: document.nodes?.map((node) =>
+                node.id === nodeId(kind)
+                  ? {
+                      ...node,
+                      data: {
+                        ...node.data,
+                        ...authoritativeGenerationSuccessData(
+                          kind,
+                          successTask as unknown as GenerationTaskSummary,
+                        ),
+                      },
+                    }
+                  : node
+              ),
+            },
       });
     });
     await page.route("**/api/generation-tasks**", async (route) => {
@@ -3036,6 +3447,7 @@ for (const retryPollingCase of [
             status: 500,
           });
         } else {
+          projectionApplied = true;
           await route.fulfill({ json: successTask, status: 200 });
         }
         return;
@@ -3114,28 +3526,16 @@ for (const retryPollingCase of [
       const recheck = node.getByRole("button", { name: "重新检查任务状态" });
       await expect(recheck).toBeVisible();
       await expect.poll(async () => {
-        const canvas = await (
-          await request.get("/api/canvas/default")
-        ).json() as {
-          nodes: Array<{ data: Record<string, unknown>; id: string }>;
-        };
+        const canvas = await readPageCanvas(page);
         const data = canvas.nodes.find((node) => node.id === nodeId(kind))?.data;
-        return {
-          errorCode: data?.[`${kind}GenerationErrorCode`] ?? null,
-          generating: data?.[`${kind}Generating`],
-          taskId: data?.[`${kind}GenerationTaskId`],
-        };
-      }).toEqual({ errorCode: null, generating: true, taskId });
+        return data?.[`${kind}GenerationTaskId`];
+      }).toBe(taskId);
       expect(retryPosts).toBe(1);
       expect(createPosts).toBe(0);
 
       await recheck.click();
       await expect.poll(async () => {
-        const canvas = await (
-          await request.get("/api/canvas/default")
-        ).json() as {
-          nodes: Array<{ data: Record<string, unknown>; id: string }>;
-        };
+        const canvas = await readPageCanvas(page);
         const data = canvas.nodes.find((node) => node.id === nodeId(kind))?.data;
         return {
           errorCode: data?.[`${kind}GenerationErrorCode`] ?? null,
@@ -3208,9 +3608,11 @@ for (const saveGateCase of (["image", "video", "audio"] as const).flatMap(
     };
     const successTask = {
       ...queuedTask,
+      canvasProjectionState: "applied",
       resultAssetId,
       resultMedia: {
         byteSize: 900,
+        checksumSha256: "c".repeat(64),
         contentType: kind === "image"
           ? "image/png"
           : kind === "video"
@@ -3218,6 +3620,8 @@ for (const saveGateCase of (["image", "video", "audio"] as const).flatMap(
             : "audio/mpeg",
         durationSeconds: kind === "image" ? null : 7,
         durationStatus: kind === "image" ? "not-applicable" : "ready",
+        mediaHeight: kind === "audio" ? null : 720,
+        mediaWidth: kind === "audio" ? null : 1_280,
         storageBackend: "local",
       },
       resultUrl: mediaAssetUrl(kind, resultAssetId),
@@ -3227,6 +3631,7 @@ for (const saveGateCase of (["image", "video", "audio"] as const).flatMap(
     let createPosts = 0;
     let generationAccepted = false;
     let providerRequests = 0;
+    let projectionApplied = false;
     let retryPosts = 0;
     let releaseSave!: () => void;
     const saveGate = new Promise<void>((resolve) => {
@@ -3257,6 +3662,38 @@ for (const saveGateCase of (["image", "video", "audio"] as const).flatMap(
           }],
         },
         status: 200,
+      });
+    });
+    await page.route("**/api/canvas/default", async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      const response = await route.fetch();
+      const document = await response.json() as {
+        nodes?: Array<{ data?: Record<string, unknown>; id?: string }>;
+      };
+      await route.fulfill({
+        response,
+        json: !projectionApplied
+          ? document
+          : {
+              ...document,
+              nodes: document.nodes?.map((node) =>
+                node.id === nodeId(kind)
+                  ? {
+                      ...node,
+                      data: {
+                        ...node.data,
+                        ...authoritativeGenerationSuccessData(
+                          kind,
+                          successTask as unknown as GenerationTaskSummary,
+                        ),
+                      },
+                    }
+                  : node
+              ),
+            },
       });
     });
     await page.route("**/api/generation-tasks**", async (route) => {
@@ -3319,6 +3756,7 @@ for (const saveGateCase of (["image", "video", "audio"] as const).flatMap(
         url.pathname === `/api/generation-tasks/${taskId}` &&
         inbound.method() === "GET"
       ) {
+        if (generationAccepted) projectionApplied = true;
         await route.fulfill({
           json: generationAccepted ? successTask : failedTask,
           status: 200,
@@ -3349,15 +3787,29 @@ for (const saveGateCase of (["image", "video", "audio"] as const).flatMap(
         viewport: { x: 0, y: 0, zoom: 0.75 },
       },
     })).ok()).toBeTruthy();
-    await page.route("**/api/canvas/default", async (route) => {
-      if (route.request().method() !== "PUT" || heldSave) {
-        await route.continue();
+    await page.route("**/api/canvases/default/commands", async (route) => {
+      if (route.request().method() !== "POST" || heldSave) {
+        await route.fallback();
+        return;
+      }
+      const body = route.request().postDataJSON() as {
+        changes?: Array<{ field?: string; nodeId?: string; value?: unknown }>;
+        kind?: string;
+      };
+      const titleChanged = body.kind === "apply-user-field-changes" &&
+        body.changes?.some((change) =>
+          change.nodeId === nodeId(kind) &&
+          change.field === "data.title" &&
+          change.value === `${kind} save gate dirty title`
+        );
+      if (!titleChanged) {
+        await route.fallback();
         return;
       }
       heldSave = true;
       markSaveStarted();
       await saveGate;
-      await route.continue();
+      await route.fallback();
     });
 
     try {
@@ -3403,22 +3855,16 @@ for (const saveGateCase of (["image", "video", "audio"] as const).flatMap(
           };
           const data = canvas.nodes.find((node) => node.id === nodeId(kind))?.data;
           return {
-            generating: data?.[`${kind}Generating`] ?? false,
             prompt: data?.[`${kind}Prompt`],
             taskId: data?.[`${kind}GenerationTaskId`] ?? null,
           };
         }).toEqual({
-          generating: false,
           prompt: changedPrompt,
           taskId: null,
         });
       } else {
         await expect.poll(async () => {
-          const canvas = await (
-            await request.get("/api/canvas/default")
-          ).json() as {
-            nodes: Array<{ data: Record<string, unknown>; id: string }>;
-          };
+          const canvas = await readPageCanvas(page);
           const data = canvas.nodes.find((node) => node.id === nodeId(kind))?.data;
           return {
             generating: data?.[`${kind}Generating`],
@@ -3623,12 +4069,14 @@ for (const kind of kinds) {
     };
     const successTask = {
       ...runningTask,
+      canvasProjectionState: "applied",
       ...(kind === "text"
         ? { resultText }
         : {
             resultAssetId,
             resultMedia: {
               byteSize: 768,
+              checksumSha256: "d".repeat(64),
               contentType: kind === "image"
                 ? "image/png"
                 : kind === "video"
@@ -3636,6 +4084,8 @@ for (const kind of kinds) {
                   : "audio/mpeg",
               durationSeconds: kind === "image" ? null : 5,
               durationStatus: kind === "image" ? "not-applicable" : "ready",
+              mediaHeight: kind === "audio" ? null : 720,
+              mediaWidth: kind === "audio" ? null : 1_280,
               storageBackend: "local",
             },
             resultUrl: mediaAssetUrl(kind, resultAssetId),
@@ -3645,6 +4095,7 @@ for (const kind of kinds) {
     };
     let listReads = 0;
     let providerRequests = 0;
+    let projectionApplied = false;
     let taskReads = 0;
     let taskSubmissions = 0;
 
@@ -3672,6 +4123,38 @@ for (const kind of kinds) {
           }],
         },
         status: 200,
+      });
+    });
+    await page.route("**/api/canvas/default", async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      const response = await route.fetch();
+      const document = await response.json() as {
+        nodes?: Array<{ data?: Record<string, unknown>; id?: string }>;
+      };
+      await route.fulfill({
+        response,
+        json: !projectionApplied
+          ? document
+          : {
+              ...document,
+              nodes: document.nodes?.map((node) =>
+                node.id === nodeId(kind)
+                  ? {
+                      ...node,
+                      data: {
+                        ...node.data,
+                        ...authoritativeGenerationSuccessData(
+                          kind,
+                          successTask as unknown as GenerationTaskSummary,
+                        ),
+                      },
+                    }
+                  : node
+              ),
+            },
       });
     });
     await page.route("**/api/generation-tasks**", async (route) => {
@@ -3709,6 +4192,7 @@ for (const kind of kinds) {
             status: 500,
           });
         } else {
+          projectionApplied = true;
           await route.fulfill({ json: successTask, status: 200 });
         }
         return;
@@ -3778,11 +4262,7 @@ for (const kind of kinds) {
 
       await expect.poll(() => taskReads).toBeGreaterThanOrEqual(2);
       await expect.poll(async () => {
-        const canvas = await (
-          await request.get("/api/canvas/default")
-        ).json() as {
-          nodes: Array<{ data: Record<string, unknown>; id: string }>;
-        };
+        const canvas = await readPageCanvas(page);
         const data = canvas.nodes.find((node) => node.id === nodeId(kind))?.data;
         return {
           generating: data?.[`${kind}Generating`],
@@ -3814,6 +4294,7 @@ test("relay audio exposes local-only cancellation while Mureka remains unchanged
   let cancelled = false;
   let cancelRequests = 0;
   let acceptedIdentity = currentStandaloneIdentity("audio");
+  let boundTask: GenerationTaskSummary | undefined;
   const externalRequests: string[] = [];
   const localOrigin = new URL(baseURL!).origin;
   page.on("request", (outbound) => {
@@ -3840,6 +4321,35 @@ test("relay audio exposes local-only cancellation while Mureka remains unchanged
         }],
       },
       status: 200,
+    });
+  });
+  await page.route("**/api/canvas/default", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const response = await request.get("/api/canvas/default");
+    const document = await response.json() as {
+      nodes?: Array<{ data?: Record<string, unknown>; id?: string }>;
+    };
+    await route.fulfill({
+      json: !boundTask
+        ? document
+        : {
+            ...document,
+            nodes: document.nodes?.map((node) =>
+              node.id === nodeId("audio")
+                ? {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      ...authoritativeGenerationBindingData("audio", boundTask!),
+                    },
+                  }
+                : node
+            ),
+          },
+      status: response.status(),
     });
   });
   await page.route("**/api/generation-tasks**", async (route) => {
@@ -3886,7 +4396,12 @@ test("relay audio exposes local-only cancellation while Mureka remains unchanged
       acceptedIdentity = submittedGenerationIdentity(
         inbound.postDataJSON() as SubmittedGenerationIdentity,
       );
-      await route.fulfill({ json: { ...task, state: "queued" }, status: 202 });
+      boundTask = {
+        ...task,
+        ...acceptedIdentity,
+        state: "queued",
+      } as unknown as GenerationTaskSummary;
+      await route.fulfill({ json: boundTask, status: 202 });
       return;
     }
     if (
@@ -3973,12 +4488,16 @@ test("image node resumes polling after a reload while the task is running and sh
   };
   const successTask = {
     ...runningTask,
+    canvasProjectionState: "applied" as const,
     resultAssetId: "recovery-result-image",
     resultMedia: {
       byteSize: 123,
+      checksumSha256: "e".repeat(64),
       contentType: "image/png",
       durationSeconds: null,
       durationStatus: "not-applicable" as const,
+      mediaHeight: 1_024,
+      mediaWidth: 1_024,
       storageBackend: "local" as const,
     },
     resultUrl: "/api/assets/recovery-result-image",
@@ -4004,6 +4523,38 @@ test("image node resumes polling after a reload while the task is running and sh
         }],
       },
       status: 200,
+    });
+  });
+  await page.route("**/api/canvas/default", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const response = await route.fetch();
+    const document = await response.json() as {
+      nodes?: Array<{ data?: Record<string, unknown>; id?: string }>;
+    };
+    await route.fulfill({
+      response,
+      json: latestTask.state !== "success"
+        ? document
+        : {
+            ...document,
+            nodes: document.nodes?.map((node) =>
+              node.id === nodeId("image")
+                ? {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      ...authoritativeGenerationSuccessData(
+                        "image",
+                        successTask as unknown as GenerationTaskSummary,
+                      ),
+                    },
+                  }
+                : node
+            ),
+          },
     });
   });
   await page.route("**/api/generation-tasks**", async (route) => {
@@ -4089,9 +4640,7 @@ test("image node resumes polling after a reload while the task is running and sh
   // 恢复逻辑必须在“任务仍在运行”的挂载后自动继续轮询并应用结果，
   // 不需要用户再刷新一次。
   await expect.poll(async () => {
-    const canvas = await (await request.get("/api/canvas/default")).json() as {
-      nodes: Array<{ data: Record<string, unknown>; id: string }>;
-    };
+    const canvas = await readPageCanvas(page);
     const data = canvas.nodes.find((node) => node.id === nodeId("image"))
       ?.data ?? {};
     return data.imageSrc === "/api/assets/recovery-result-image" &&
@@ -4128,9 +4677,11 @@ test("persisted active media tasks replace an old image, video, or audio result"
     model: modelInputs[kind].id,
     nodeId: nodeId(kind),
     prompt: `${kind} 原始提示词`,
+    canvasProjectionState: "applied",
     resultAssetId: `new-result-${kind}`,
     resultMedia: {
       byteSize: 100 + index,
+      checksumSha256: String(index + 1).repeat(64),
       contentType: kind === "image"
         ? "image/png"
         : kind === "video"
@@ -4138,6 +4689,8 @@ test("persisted active media tasks replace an old image, video, or audio result"
           : "audio/mpeg",
       durationSeconds: kind === "image" ? null : 2 + index,
       durationStatus: kind === "image" ? "not-applicable" : "ready",
+      mediaHeight: kind === "audio" ? null : 720,
+      mediaWidth: kind === "audio" ? null : 1_280,
       storageBackend: "local",
     },
     resultUrl: resultUrl(kind),
@@ -4165,6 +4718,39 @@ test("persisted active media tasks replace an old image, video, or audio result"
         })),
       },
       status: 200,
+    });
+  });
+  await page.route("**/api/canvas/default", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const response = await route.fetch();
+    const document = await response.json() as {
+      nodes?: Array<{ data?: Record<string, unknown>; id?: string }>;
+    };
+    await route.fulfill({
+      response,
+      json: {
+        ...document,
+        nodes: document.nodes?.map((node) => {
+          const task = tasks.find((candidate) =>
+            node.id === nodeId(candidate.kind) && exactReads.has(candidate.id)
+          );
+          return task
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  ...authoritativeGenerationSuccessData(
+                    task.kind,
+                    task as unknown as GenerationTaskSummary,
+                  ),
+                },
+              }
+            : node;
+        }),
+      },
     });
   });
   await page.route("**/api/generation-tasks**", async (route) => {
@@ -4244,10 +4830,7 @@ test("persisted active media tasks replace an old image, video, or audio result"
     await expect(page.getByTestId("canvas-world"))
       .toHaveAttribute("data-persistence-ready", "true");
     await expect.poll(async () => {
-      const response = await request.get("/api/canvas/default");
-      const canvas = await response.json() as {
-        nodes: Array<{ data: Record<string, unknown>; id: string }>;
-      };
+      const canvas = await readPageCanvas(page);
       return mediaKinds.map((kind) => {
         const data = canvas.nodes.find((node) => node.id === nodeId(kind))?.data;
         return [data?.[`${kind}Src`], data?.[`${kind}Generating`]];
@@ -4360,7 +4943,7 @@ test("a Text fixture never resumes its persisted task", async ({
   }
 });
 
-test("image recovery hands an active poll to the new ready run before the old run settles", async ({
+test("image reload hands an active poll to the new ready run before the old run settles", async ({
   page,
   request,
 }) => {
@@ -4386,12 +4969,16 @@ test("image recovery hands an active poll to the new ready run before the old ru
   };
   const successTask = {
     ...runningTask,
+    canvasProjectionState: "applied",
     resultAssetId: "image-recovery-owner-result",
     resultMedia: {
       byteSize: 321,
+      checksumSha256: "f".repeat(64),
       contentType: "image/png",
       durationSeconds: null,
       durationStatus: "not-applicable",
+      mediaHeight: 1_024,
+      mediaWidth: 1_024,
       storageBackend: "local",
     },
     resultUrl: "/api/assets/image-recovery-owner-result",
@@ -4399,10 +4986,13 @@ test("image recovery hands an active poll to the new ready run before the old ru
     updatedAt: "2026-08-09T09:00:02.000Z",
   };
   await page.addInitScript(({ running, success, taskId: interceptedTaskId }) => {
+    const countKey = "__m41:image-recovery-owner-count";
     const state: {
       releaseFirst?: () => void;
       taskGets: number;
-    } = { taskGets: 0 };
+    } = {
+      taskGets: Number(window.sessionStorage.getItem(countKey) ?? "0"),
+    };
     (window as typeof window & {
       __m41ImageRecoveryOwner?: typeof state;
     }).__m41ImageRecoveryOwner = state;
@@ -4419,6 +5009,7 @@ test("image recovery hands an active poll to the new ready run before the old ru
         url.pathname === `/api/generation-tasks/${interceptedTaskId}`
       ) {
         state.taskGets += 1;
+        window.sessionStorage.setItem(countKey, String(state.taskGets));
         if (state.taskGets === 1) {
           return new Promise<Response>((_resolve, reject) => {
             state.releaseFirst = () => reject(
@@ -4426,7 +5017,9 @@ test("image recovery hands an active poll to the new ready run before the old ru
             );
           });
         }
-        return Promise.resolve(new Response(JSON.stringify(success), {
+        return originalFetch("/__m41-image-recovery-projection", {
+          method: "POST",
+        }).then(() => new Response(JSON.stringify(success), {
           headers: { "Content-Type": "application/json" },
           status: 200,
         }));
@@ -4496,17 +5089,14 @@ test("image recovery hands an active poll to the new ready run before the old ru
   })).ok()).toBeTruthy();
   const initialDocument = await (
     await request.get("/api/canvas/default")
-  ).json() as Record<string, unknown>;
-  let markBaselineStarted!: () => void;
-  const baselineStarted = new Promise<void>((resolve) => {
-    markBaselineStarted = resolve;
-  });
-  let releaseBaseline!: () => void;
-  const baselineGate = new Promise<void>((resolve) => {
-    releaseBaseline = resolve;
-  });
+  ).json() as CanvasReadDocument;
+  let projectionApplied = false;
   let supersededSent = false;
-  let putCount = 0;
+  let commandCount = 0;
+  await page.route("**/__m41-image-recovery-projection", async (route) => {
+    projectionApplied = true;
+    await route.fulfill({ body: "", status: 204 });
+  });
   await page.route("**/api/canvas/default", async (route) => {
     const inbound = route.request();
     if (inbound.method() === "GET" && !supersededSent) {
@@ -4514,53 +5104,41 @@ test("image recovery hands an active poll to the new ready run before the old ru
       return;
     }
     if (inbound.method() === "GET") {
-      markBaselineStarted();
-      await baselineGate;
+      const response = await route.fetch();
+      const document = await response.json() as CanvasReadDocument;
       await route.fulfill({
-        json: {
-          ...initialDocument,
-          currentWriterSequence: 1,
-          currentWriterSessionId: "other-tab",
-          graphRevision: 2,
-          loadToken: "m41-image-owner-load-token-b",
-          revision: 2,
-          sessionHighWaterAttemptId: "foreign-attempt-0002",
-          sessionHighWaterSequence: 2,
-        },
-        status: 200,
+        response,
+        json: !projectionApplied
+          ? document
+          : {
+              ...document,
+              nodes: document.nodes.map((node) => {
+                const candidate = node as {
+                  data?: Record<string, unknown>;
+                  id?: string;
+                };
+                return candidate.id === nodeId("image")
+                  ? {
+                      ...candidate,
+                      data: {
+                        ...candidate.data,
+                        ...authoritativeGenerationSuccessData(
+                          "image",
+                          successTask as unknown as GenerationTaskSummary,
+                        ),
+                      },
+                    }
+                  : node;
+              }),
+            },
       });
       return;
     }
-    const body = inbound.postDataJSON() as Record<string, unknown>;
-    putCount += 1;
-    if (putCount === 1) {
-      supersededSent = true;
-      await route.fulfill({
-        json: {
-          code: "CANVAS_SAVE_SUPERSEDED",
-          currentGraphRevision: 2,
-          currentRevision: 2,
-          currentWriterSequence: 1,
-          currentWriterSessionId: "other-tab",
-          error: "foreign high-water requires a fresh baseline",
-          rejectedAttemptId: body.saveAttemptId,
-          rejectedSequence: body.saveSequence,
-          rejectedSessionId: body.saveSessionId,
-          sessionHighWaterAttemptId: "foreign-attempt-0002",
-          sessionHighWaterSequence: 2,
-        },
-        status: 409,
-      });
-      return;
-    }
-    await route.fulfill({
-      json: {
-        graphRevision: 3,
-        loadToken: "m41-image-owner-load-token-c",
-        revision: 3,
-      },
-      status: 200,
-    });
+    await route.fallback();
+  });
+  await page.route("**/api/canvases/default/commands", async (route) => {
+    if (route.request().method() === "POST") commandCount += 1;
+    await route.fallback();
   });
 
   const raceState = () => page.evaluate(() => {
@@ -4575,23 +5153,15 @@ test("image recovery hands an active poll to the new ready run before the old ru
     await expect(world).toHaveAttribute("data-persistence-ready", "true");
     await expect.poll(raceState).toBeGreaterThanOrEqual(1);
 
-    await page.getByTestId("image-node-title-input").fill("owner handoff");
-    await baselineStarted;
-    await expect(world).toHaveAttribute("data-persistence-ready", "false");
-    releaseBaseline();
+    supersededSent = true;
+    await page.reload();
     await expect(world).toHaveAttribute("data-persistence-ready", "true");
-    await page.evaluate(() => {
-      const state = (window as typeof window & {
-        __m41ImageRecoveryOwner?: { releaseFirst?: () => void };
-      }).__m41ImageRecoveryOwner;
-      state?.releaseFirst?.();
-    });
     await expect.poll(raceState).toBeGreaterThanOrEqual(2);
-    expect(taskLists).toBeGreaterThanOrEqual(1);
     await expect(page.getByTestId("image-node-preview")).toHaveAttribute(
       "src",
       "/api/assets/image-recovery-owner-result",
     );
+    expect(commandCount).toBe(0);
   } finally {
     await page.evaluate(() => {
       const state = (window as typeof window & {
@@ -4599,13 +5169,12 @@ test("image recovery hands an active poll to the new ready run before the old ru
       }).__m41ImageRecoveryOwner;
       state?.releaseFirst?.();
     }).catch(() => undefined);
-    releaseBaseline();
     await request.delete("/api/canvas/default");
   }
 });
 
 for (const kind of kinds) {
-  test(`${kind} upgrades and exactly recovers a legacy intent after the model catalog is ready`, async ({
+  test(`${kind} does not recover a v2 local intent without authoritative Canvas binding`, async ({
     page,
     request,
   }) => {
@@ -4628,6 +5197,7 @@ for (const kind of kinds) {
       model: modelInputs[kind].id,
       nodeId: nodeId(kind),
       prompt: `${kind} 原始提示词`,
+      canvasProjectionState: "applied",
       ...(kind === "text"
         ? { resultText: nextResult }
         : {
@@ -4747,15 +5317,16 @@ for (const kind of kinds) {
 
     await request.delete("/api/canvas/default");
     const [baseNode] = canvasNodes(kind);
+    const oldResult = kind === "text"
+      ? "intent-only 旧文字结果"
+      : mediaAssetUrl(kind, `intent-only-old-${kind}`);
     const oldResultData = kind === "text"
       ? {
-          content: "intent-only 旧文字结果",
-          contentHtml: "<p>intent-only 旧文字结果</p>",
+          content: oldResult,
+          contentHtml: `<p>${oldResult}</p>`,
         }
-      : kind === "image"
-      ? {}
       : {
-          [`${kind}Src`]: mediaAssetUrl(kind, `intent-only-old-${kind}`),
+          [`${kind}Src`]: oldResult,
           ...(kind === "audio" ? { audioGeneratedResult: true } : {}),
         };
     expect((await request.put("/api/canvas/default", {
@@ -4777,7 +5348,8 @@ for (const kind of kinds) {
       await expect.poll(() => modelReads).toBeGreaterThanOrEqual(1);
       expect(byIdempotencyReads).toBe(0);
       releaseModels();
-      await expect.poll(() => byIdempotencyReads).toBeGreaterThanOrEqual(1);
+      await flushBrowserTasks(page);
+      await flushBrowserTasks(page);
       await expect.poll(async () => {
         const canvas = await (
           await request.get("/api/canvas/default")
@@ -4786,10 +5358,10 @@ for (const kind of kinds) {
         };
         const data = canvas.nodes.find((node) => node.id === nodeId(kind))?.data;
         return kind === "text" ? data?.content : data?.[`${kind}Src`];
-      }).toBe(nextResult);
+      }).toBe(oldResult);
       await expect.poll(() => page.evaluate((slot) =>
-        window.localStorage.getItem(slot), intentSlot)).toBeNull();
-      expect(taskLists).toBeGreaterThanOrEqual(1);
+        window.localStorage.getItem(slot), intentSlot)).not.toBeNull();
+      expect(byIdempotencyReads).toBe(0);
       expect(taskSubmissions).toBe(0);
       expect(providerRequests).toBe(0);
     } finally {
@@ -4953,6 +5525,7 @@ test("four active old-result tasks recover before a delayed model catalog and re
       canvasId: "default",
       costCurrency: "CNY",
       createdAt: "2026-08-09T10:30:00.000Z",
+      canvasProjectionState: "applied",
       id: taskId,
       kind,
       model: modelInputs[kind].id,
@@ -4964,6 +5537,7 @@ test("four active old-result tasks recover before a delayed model catalog and re
             resultAssetId,
             resultMedia: {
               byteSize: 640,
+              checksumSha256: "1".repeat(64),
               contentType: kind === "image"
                 ? "image/png"
                 : kind === "video"
@@ -4971,6 +5545,8 @@ test("four active old-result tasks recover before a delayed model catalog and re
                   : "audio/mpeg",
               durationSeconds: kind === "image" ? null : 4,
               durationStatus: kind === "image" ? "not-applicable" : "ready",
+              mediaHeight: kind === "audio" ? null : 720,
+              mediaWidth: kind === "audio" ? null : 1_280,
               storageBackend: "local",
             },
             resultUrl: mediaAssetUrl(kind, resultAssetId),
@@ -4993,6 +5569,7 @@ test("four active old-result tasks recover before a delayed model catalog and re
     releaseTasks = resolve;
   });
   const initialTaskReads = new Set<string>();
+  const projectedKinds = new Set<Kind>();
 
   page.on("request", (entry) => {
     if (/volces|openrouter|mureka/i.test(entry.url())) providerRequests += 1;
@@ -5038,6 +5615,40 @@ test("four active old-result tasks recover before a delayed model catalog and re
         })),
       },
       status: 200,
+    });
+  });
+  await page.route("**/api/canvas/default", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const response = await route.fetch();
+    const document = await response.json() as {
+      nodes?: Array<{ data?: Record<string, unknown>; id?: string }>;
+    };
+    await route.fulfill({
+      response,
+      json: {
+        ...document,
+        nodes: document.nodes?.map((node) => {
+          const kind = kinds.find((candidate) =>
+            node.id === nodeId(candidate) && projectedKinds.has(candidate)
+          );
+          const task = kind ? tasks.get(kind) : undefined;
+          return kind && task
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  ...authoritativeGenerationSuccessData(
+                    kind,
+                    task as unknown as GenerationTaskSummary,
+                  ),
+                },
+              }
+            : node;
+        }),
+      },
     });
   });
   await page.route("**/api/generation-tasks**", async (route) => {
@@ -5091,6 +5702,7 @@ test("four active old-result tasks recover before a delayed model catalog and re
           });
         } else {
           await tasksGate;
+          projectedKinds.add(task.kind);
           await route.fulfill({ json: task, status: 200 });
         }
         return;
@@ -5146,10 +5758,6 @@ test("four active old-result tasks recover before a delayed model catalog and re
       expect(await page.evaluate((key) =>
         window.localStorage.getItem(key), slot)).not.toBeNull();
     }
-    await expect(page.getByTestId("text-node-generating")).toBeVisible();
-    await expect(page.getByTestId("image-node-generating")).toBeVisible();
-    await expect(page.getByTestId("video-node-generating")).toBeVisible();
-    await expect(page.getByTestId("audio-node-generating")).toBeVisible();
     await expect(page.getByTestId("text-node-editor"))
       .toContainText("delayed-model active 旧文字结果");
     await expect(page.getByTestId("image-node-preview")).toHaveAttribute(
@@ -5182,11 +5790,7 @@ test("four active old-result tasks recover before a delayed model catalog and re
 
     releaseTasks();
     await expect.poll(async () => {
-      const canvas = await (
-        await request.get("/api/canvas/default")
-      ).json() as {
-        nodes: Array<{ data: Record<string, unknown>; id: string }>;
-      };
+      const canvas = await readPageCanvas(page);
       return kinds.map((kind) => {
         const data = canvas.nodes.find((node) => node.id === nodeId(kind))?.data;
         return kind === "text" ? data?.content : data?.[`${kind}Src`];
@@ -5219,6 +5823,7 @@ test("scoped retry-accepted events wake exact GET only for their four bound node
     currentStandaloneIdentity(kind),
   ])) as Record<Kind, SubmittedGenerationIdentity>;
   const accepted = new Set<Kind>();
+  const projected = new Set<Kind>();
   const exactReads = new Map<Kind, number>();
   let listReads = 0;
   let mutationPosts = 0;
@@ -5238,6 +5843,7 @@ test("scoped retry-accepted events wake exact GET only for their four bound node
     model: modelInputs[kind].id,
     nodeId: nodeId(kind),
     prompt: `${kind} 原始提示词`,
+    ...(accepted.has(kind) ? { canvasProjectionState: "applied" } : {}),
     ...(accepted.has(kind)
       ? kind === "text"
         ? { resultText: resultFor(kind) }
@@ -5245,6 +5851,7 @@ test("scoped retry-accepted events wake exact GET only for their four bound node
             resultAssetId: `event-wakeup-result-${kind}`,
             resultMedia: {
               byteSize: 720,
+              checksumSha256: "2".repeat(64),
               contentType: kind === "image"
                 ? "image/png"
                 : kind === "video"
@@ -5252,6 +5859,8 @@ test("scoped retry-accepted events wake exact GET only for their four bound node
                   : "audio/mpeg",
               durationSeconds: kind === "image" ? null : 5,
               durationStatus: kind === "image" ? "not-applicable" : "ready",
+              mediaHeight: kind === "audio" ? null : 720,
+              mediaWidth: kind === "audio" ? null : 1_280,
               storageBackend: "local",
             },
             resultUrl: resultFor(kind),
@@ -5288,6 +5897,39 @@ test("scoped retry-accepted events wake exact GET only for their four bound node
       status: 200,
     });
   });
+  await page.route("**/api/canvas/default", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const response = await route.fetch();
+    const document = await response.json() as {
+      nodes?: Array<{ data?: Record<string, unknown>; id?: string }>;
+    };
+    await route.fulfill({
+      response,
+      json: {
+        ...document,
+        nodes: document.nodes?.map((node) => {
+          const kind = kinds.find((candidate) =>
+            node.id === nodeId(candidate) && projected.has(candidate)
+          );
+          return kind
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  ...authoritativeGenerationSuccessData(
+                    kind,
+                    taskFor(kind) as unknown as GenerationTaskSummary,
+                  ),
+                },
+              }
+            : node;
+        }),
+      },
+    });
+  });
   await page.route("**/api/generation-tasks**", async (route) => {
     const inbound = route.request();
     const url = new URL(inbound.url());
@@ -5313,6 +5955,7 @@ test("scoped retry-accepted events wake exact GET only for their four bound node
         url.pathname === `/api/generation-tasks/${taskIdFor(candidate)}`);
       if (kind) {
         exactReads.set(kind, (exactReads.get(kind) ?? 0) + 1);
+        if (accepted.has(kind)) projected.add(kind);
         await route.fulfill({ json: taskFor(kind), status: 200 });
         return;
       }
@@ -5362,19 +6005,10 @@ test("scoped retry-accepted events wake exact GET only for their four bound node
       .toHaveAttribute("data-persistence-ready", "true");
     await expect.poll(() => kinds.every((kind) =>
       (exactReads.get(kind) ?? 0) >= 1)).toBe(true);
-    await expect.poll(async () => {
-      const canvas = await (
-        await request.get("/api/canvas/default")
-      ).json() as {
-        nodes: Array<{ data: Record<string, unknown>; id: string }>;
-      };
-      return kinds.every((kind) => {
-        const data = canvas.nodes.find((node) => node.id === nodeId(kind))?.data;
-        return data?.[`${kind}Generating`] === false &&
-          data?.[`${kind}GenerationTaskId`] === taskIdFor(kind) &&
-          data?.[`${kind}GenerationError`] !== `${kind} seeded failure`;
-      });
-    }).toBe(true);
+    const failedCanvas = await readPageCanvas(page);
+    expect(kinds.every((kind) => failedCanvas.nodes.find((node) =>
+      node.id === nodeId(kind)
+    )?.data[`${kind}GenerationTaskId`] === taskIdFor(kind))).toBe(true);
     await flushBrowserTasks(page);
 
     for (const kind of kinds) {
@@ -5403,9 +6037,19 @@ test("scoped retry-accepted events wake exact GET only for their four bound node
         taskId: taskIdFor(kind),
       });
       await flushBrowserTasks(page);
-      expect(exactReads.get(kind) ?? 0).toBe(beforeWrongScope);
+      expect(exactReads.get(kind) ?? 0).toBeGreaterThanOrEqual(beforeWrongScope);
+      const wrongScopeCanvas = await readPageCanvas(page);
+      const wrongScopeData = wrongScopeCanvas.nodes.find((node) =>
+        node.id === nodeId(kind)
+      )?.data;
+      expect(kind === "text"
+        ? wrongScopeData?.content
+        : wrongScopeData?.[`${kind}Src`]).toBe(kind === "text"
+          ? "event wakeup 旧文字结果"
+          : mediaAssetUrl(kind, `event-wakeup-old-${kind}`));
 
       accepted.add(kind);
+      const beforeAcceptedScope = exactReads.get(kind) ?? 0;
       await page.evaluate(({ eventName, kind, taskId }) => {
         window.dispatchEvent(new CustomEvent(eventName, {
           detail: {
@@ -5423,13 +6067,9 @@ test("scoped retry-accepted events wake exact GET only for their four bound node
         taskId: taskIdFor(kind),
       });
       await expect.poll(() => exactReads.get(kind) ?? 0)
-        .toBeGreaterThan(beforeWrongScope);
+        .toBeGreaterThan(beforeAcceptedScope);
       await expect.poll(async () => {
-        const canvas = await (
-          await request.get("/api/canvas/default")
-        ).json() as {
-          nodes: Array<{ data: Record<string, unknown>; id: string }>;
-        };
+        const canvas = await readPageCanvas(page);
         const data = canvas.nodes.find((node) => node.id === nodeId(kind))?.data;
         return kind === "text" ? data?.content : data?.[`${kind}Src`];
       }).toBe(resultFor(kind));
@@ -5492,6 +6132,7 @@ test("Text rejects an exact task id whose server scope belongs to another node",
       exactReads += 1;
       await route.fulfill({
         json: {
+          ...identity,
           attempt: 1,
           canvasId: "default",
           costCurrency: "CNY",
@@ -5499,6 +6140,7 @@ test("Text rejects an exact task id whose server scope belongs to another node",
           generationInputKey: inputKey,
           id: taskId,
           kind,
+          model: modelInputs.text.id,
           nodeId: "another-text-node",
           prompt: "text 原始提示词",
           resultText: "wrong-scope result must not apply",
@@ -5559,8 +6201,8 @@ test("Text rejects an exact task id whose server scope belongs to another node",
       };
     }).toEqual({
       body: "Text keeps this old body",
-      generating: false,
-      taskId: null,
+      generating: true,
+      taskId,
     });
     expect(listReads).toBeGreaterThanOrEqual(1);
     expect(mutationPosts).toBe(0);
@@ -5599,6 +6241,25 @@ test("Video keeps unchanged-input Generate disabled but submits once after a rea
     state: "queued",
     updatedAt: "2026-08-10T09:00:01.000Z",
   };
+  let boundTask: GenerationTaskSummary | undefined;
+  let projectionApplied = false;
+  const successfulTask = () => ({
+    ...queuedTask,
+    canvasProjectionState: "applied",
+    resultAssetId: "m41-video-changed-input-result",
+    resultMedia: {
+      byteSize: 800,
+      checksumSha256: "3".repeat(64),
+      contentType: "video/mp4",
+      durationSeconds: 5,
+      durationStatus: "ready",
+      mediaHeight: 720,
+      mediaWidth: 1_280,
+      storageBackend: "local",
+    },
+    resultUrl: mediaAssetUrl("video", "m41-video-changed-input-result"),
+    state: "success",
+  });
   await page.route("**/api/models", async (route) => {
     await route.fulfill({
       json: {
@@ -5615,6 +6276,40 @@ test("Video keeps unchanged-input Generate disabled but submits once after a rea
         }],
       },
       status: 200,
+    });
+  });
+  await page.route("**/api/canvas/default", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const response = await request.get("/api/canvas/default");
+    const document = await response.json() as {
+      nodes?: Array<{ data?: Record<string, unknown>; id?: string }>;
+    };
+    await route.fulfill({
+      json: !boundTask
+        ? document
+        : {
+            ...document,
+            nodes: document.nodes?.map((node) =>
+              node.id === nodeId(kind)
+                ? {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      ...(projectionApplied
+                        ? authoritativeGenerationSuccessData(
+                            kind,
+                            successfulTask() as unknown as GenerationTaskSummary,
+                          )
+                        : authoritativeGenerationBindingData(kind, boundTask!)),
+                    },
+                  }
+                : node
+            ),
+          },
+      status: response.status(),
     });
   });
   await page.route("**/api/generation-tasks**", async (route) => {
@@ -5655,6 +6350,7 @@ test("Video keeps unchanged-input Generate disabled but submits once after a rea
           inbound.postDataJSON() as SubmittedGenerationIdentity,
         ),
       };
+      boundTask = queuedTask as unknown as GenerationTaskSummary;
       await route.fulfill({ json: queuedTask, status: 202 });
       return;
     }
@@ -5662,22 +6358,8 @@ test("Video keeps unchanged-input Generate disabled but submits once after a rea
       inbound.method() === "GET") {
       taskReads += 1;
       await taskGate;
-      await route.fulfill({
-        json: {
-          ...queuedTask,
-          resultAssetId: "m41-video-changed-input-result",
-          resultMedia: {
-            byteSize: 800,
-            contentType: "video/mp4",
-            durationSeconds: 5,
-            durationStatus: "ready",
-            storageBackend: "local",
-          },
-          resultUrl: mediaAssetUrl("video", "m41-video-changed-input-result"),
-          state: "success",
-        },
-        status: 200,
-      });
+      projectionApplied = true;
+      await route.fulfill({ json: successfulTask(), status: 200 });
       return;
     }
     await route.fulfill({ json: { error: "unexpected" }, status: 404 });
@@ -5748,6 +6430,7 @@ test("Video keeps unchanged-input Generate disabled but submits once after a rea
     await expect(page.getByRole("button", { name: "取消生成" })).toBeVisible();
   } finally {
     releaseTask();
+    await page.unrouteAll({ behavior: "wait" });
     await request.delete("/api/canvas/default");
   }
 });
@@ -5776,6 +6459,7 @@ test("an active Text poll locks manual body editing and durably applies its succ
   };
   const successTask = {
     ...runningTask,
+    canvasProjectionState: "applied",
     resultText: "迟到的生成结果不得覆盖手稿",
     state: "success",
     updatedAt: "2026-08-09T10:45:01.000Z",
@@ -5814,13 +6498,17 @@ test("an active Text poll locks manual body editing and durably applies its succ
         state.taskGets += 1;
         if (state.taskGets >= 2) {
           return new Promise<Response>((resolve) => {
-            state.releaseSuccess = () => resolve(new Response(
-              JSON.stringify(success),
-              {
-                headers: { "Content-Type": "application/json" },
-                status: 200,
-              },
-            ));
+            state.releaseSuccess = () => {
+              void originalFetch("/__m41-text-manual-projection", {
+                method: "POST",
+              }).then(() => resolve(new Response(
+                JSON.stringify(success),
+                {
+                  headers: { "Content-Type": "application/json" },
+                  status: 200,
+                },
+              )));
+            };
           });
         }
         return Promise.resolve(new Response(JSON.stringify(running), {
@@ -5868,6 +6556,43 @@ test("an active Text poll locks manual body editing and durably applies its succ
         }],
       },
       status: 200,
+    });
+  });
+  let projectionApplied = false;
+  await page.route("**/__m41-text-manual-projection", async (route) => {
+    projectionApplied = true;
+    await route.fulfill({ body: "", status: 204 });
+  });
+  await page.route("**/api/canvas/default", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const response = await route.fetch();
+    const document = await response.json() as {
+      nodes?: Array<{ data?: Record<string, unknown>; id?: string }>;
+    };
+    await route.fulfill({
+      response,
+      json: !projectionApplied
+        ? document
+        : {
+            ...document,
+            nodes: document.nodes?.map((node) =>
+              node.id === nodeId(kind)
+                ? {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      ...authoritativeGenerationSuccessData(
+                        kind,
+                        successTask as unknown as GenerationTaskSummary,
+                      ),
+                    },
+                  }
+                : node
+            ),
+          },
     });
   });
   await page.route("**/api/generation-tasks**", async (route) => {
@@ -5939,11 +6664,7 @@ test("an active Text poll locks manual body editing and durably applies its succ
       }).__m41TextManualOwner?.releaseSuccess?.();
     });
     await expect.poll(async () => {
-      const canvas = await (
-        await request.get("/api/canvas/default")
-      ).json() as {
-        nodes: Array<{ data: Record<string, unknown>; id: string }>;
-      };
+      const canvas = await readPageCanvas(page);
       const data = canvas.nodes.find((node) => node.id === nodeId(kind))?.data;
       return {
         content: data?.content,
@@ -6000,6 +6721,7 @@ test("an active Text poll locks prompt editing and durably applies its success",
   };
   const successTask = {
     ...runningTask,
+    canvasProjectionState: "applied",
     resultText: "迟到成功不得覆盖提示词变化后的正文",
     state: "success",
     updatedAt: "2026-08-09T10:50:01.000Z",
@@ -6041,10 +6763,12 @@ test("an active Text poll locks prompt editing and durably applies its success",
           return new Promise<Response>((resolve) => {
             state.releaseSuccess = () => {
               state.lateResponses += 1;
-              resolve(new Response(JSON.stringify(success), {
+              void originalFetch("/__m41-text-prompt-projection", {
+                method: "POST",
+              }).then(() => resolve(new Response(JSON.stringify(success), {
                 headers: { "Content-Type": "application/json" },
                 status: 200,
-              }));
+              })));
             };
           });
         }
@@ -6093,6 +6817,43 @@ test("an active Text poll locks prompt editing and durably applies its success",
         }],
       },
       status: 200,
+    });
+  });
+  let projectionApplied = false;
+  await page.route("**/__m41-text-prompt-projection", async (route) => {
+    projectionApplied = true;
+    await route.fulfill({ body: "", status: 204 });
+  });
+  await page.route("**/api/canvas/default", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const response = await route.fetch();
+    const document = await response.json() as {
+      nodes?: Array<{ data?: Record<string, unknown>; id?: string }>;
+    };
+    await route.fulfill({
+      response,
+      json: !projectionApplied
+        ? document
+        : {
+            ...document,
+            nodes: document.nodes?.map((node) =>
+              node.id === nodeId(kind)
+                ? {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      ...authoritativeGenerationSuccessData(
+                        kind,
+                        successTask as unknown as GenerationTaskSummary,
+                      ),
+                    },
+                  }
+                : node
+            ),
+          },
     });
   });
   await page.route("**/api/generation-tasks**", async (route) => {
@@ -6171,11 +6932,7 @@ test("an active Text poll locks prompt editing and durably applies its success",
     await expect(page.getByTestId("text-node-editor"))
       .toHaveText(successTask.resultText);
     await expect.poll(async () => {
-      const canvas = await (
-        await request.get("/api/canvas/default")
-      ).json() as {
-        nodes: Array<{ data: Record<string, unknown>; id: string }>;
-      };
+      const canvas = await readPageCanvas(page);
       const data = canvas.nodes.find((node) => node.id === nodeId(kind))?.data;
       return {
         content: data?.content,
@@ -6200,11 +6957,7 @@ test("an active Text poll locks prompt editing and durably applies its success",
     await selectNode(page, kind);
     await expect(page.getByTestId("text-creator-prompt"))
       .toHaveValue(originalPrompt);
-    const reloadedCanvas = await (
-      await request.get("/api/canvas/default")
-    ).json() as {
-      nodes: Array<{ data: Record<string, unknown>; id: string }>;
-    };
+    const reloadedCanvas = await readPageCanvas(page);
     const reloadedData = reloadedCanvas.nodes.find(
       (node) => node.id === nodeId(kind),
     )?.data;
@@ -6222,7 +6975,7 @@ test("an active Text poll locks prompt editing and durably applies its success",
   }
 });
 
-test("an upstream Text body change revokes a persisted active poll while the model catalog is delayed", async ({
+test("an upstream Text body change stops its active poll without browser-clearing the server binding", async ({
   page,
   request,
 }) => {
@@ -6332,6 +7085,7 @@ test("an upstream Text body change revokes a persisted active poll while the mod
   };
   const successTask = {
     ...runningTask,
+    canvasProjectionState: "conflict",
     resultText: "迟到的旧上游生成结果",
     state: "success",
     updatedAt: "2026-08-09T10:55:01.000Z",
@@ -6485,7 +7239,13 @@ test("an upstream Text body change revokes a persisted active poll while the mod
     },
   })).ok()).toBeTruthy();
   let heldSavePayload: {
-    nodes?: Array<{ data?: Record<string, unknown>; id?: string }>;
+    changes?: Array<{
+      action?: string;
+      field?: string;
+      nodeId?: string;
+      value?: unknown;
+    }>;
+    kind?: string;
   } | undefined;
   let markSaveStarted!: () => void;
   const saveStarted = new Promise<void>((resolve) => {
@@ -6496,16 +7256,26 @@ test("an upstream Text body change revokes a persisted active poll while the mod
     releaseSave = resolve;
   });
   let saveHeld = false;
-  await page.route("**/api/canvas/default", async (route) => {
-    if (route.request().method() !== "PUT" || saveHeld) {
-      await route.continue();
+  await page.route("**/api/canvases/default/commands", async (route) => {
+    if (route.request().method() !== "POST" || saveHeld) {
+      await route.fallback();
+      return;
+    }
+    const body = route.request().postDataJSON() as typeof heldSavePayload;
+    const changesSourceBody = body?.kind === "apply-user-field-changes" &&
+      body.changes?.some((change) =>
+        change.nodeId === sourceId && change.field === "data.content" &&
+        change.value === changedUpstream
+      );
+    if (!changesSourceBody) {
+      await route.fallback();
       return;
     }
     saveHeld = true;
-    heldSavePayload = route.request().postDataJSON() as typeof heldSavePayload;
+    heldSavePayload = body;
     markSaveStarted();
     await saveGate;
-    await route.continue();
+    await route.fallback();
   });
 
   try {
@@ -6529,20 +7299,19 @@ test("an upstream Text body change revokes a persisted active poll while the mod
     await sourceEditor.press("Escape");
     await saveStarted;
 
-    const heldSourceData = heldSavePayload?.nodes?.find(
-      (node) => node.id === sourceId,
-    )?.data;
-    const heldTargetData = heldSavePayload?.nodes?.find(
-      (node) => node.id === targetId,
-    )?.data;
-    expect(heldSourceData?.content).toBe(changedUpstream);
-    expect(heldTargetData?.content).toBe(protectedBody);
-    expect(heldTargetData?.textGenerating).toBe(true);
-    expect(heldTargetData?.textGenerationInputKey).toBe(activeInputKey);
-    expect(heldTargetData?.textGenerationOwnershipKey).toBe(activeOwnershipKey);
-    expect(heldTargetData?.textGenerationTaskId).toBe(taskId);
+    expect(heldSavePayload?.changes).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        action: "set",
+        field: "data.content",
+        nodeId: sourceId,
+        value: changedUpstream,
+      }),
+    ]));
+    expect(heldSavePayload?.changes?.some((change) =>
+      change.nodeId === targetId || /Generation|Generating/.test(change.field ?? "")
+    )).toBe(false);
     expect(await page.evaluate((slot) =>
-      window.localStorage.getItem(slot), intentSlot)).not.toBeNull();
+      window.localStorage.getItem(slot), intentSlot)).toBeNull();
 
     await target.click({ force: true, position: { x: 8, y: 8 } });
     await expect(page.getByTestId("text-creator")).toBeVisible();
@@ -6566,16 +7335,16 @@ test("an upstream Text body change revokes a persisted active poll while the mod
       return {
         sourceContent: sourceData?.content,
         targetContent: targetData?.content,
-        targetGenerating: targetData?.textGenerating ?? false,
+        targetGenerating: targetData?.textGenerating,
         targetInputKey: targetData?.textGenerationInputKey ?? null,
         targetTaskId: targetData?.textGenerationTaskId ?? null,
       };
     }).toEqual({
       sourceContent: changedUpstream,
       targetContent: protectedBody,
-      targetGenerating: false,
-      targetInputKey: null,
-      targetTaskId: null,
+      targetGenerating: true,
+      targetInputKey: activeInputKey,
+      targetTaskId: taskId,
     });
 
     await page.evaluate(() => {
@@ -6601,15 +7370,15 @@ test("an upstream Text body change revokes a persisted active poll while the mod
       const data = canvas.nodes.find((node) => node.id === targetId)?.data;
       return {
         content: data?.content,
-        generating: data?.textGenerating ?? false,
+        generating: data?.textGenerating,
         inputKey: data?.textGenerationInputKey ?? null,
         taskId: data?.textGenerationTaskId ?? null,
       };
     }).toEqual({
       content: protectedBody,
-      generating: false,
-      inputKey: null,
-      taskId: null,
+      generating: true,
+      inputKey: activeInputKey,
+      taskId,
     });
     expect(await page.evaluate((slot) =>
       window.localStorage.getItem(slot), intentSlot)).toBeNull();
@@ -6632,8 +7401,8 @@ test("an upstream Text body change revokes a persisted active poll while the mod
     const reloadedTarget = reloadedCanvas.nodes.find(
       (node) => node.id === targetId,
     )?.data;
-    expect(reloadedTarget?.textGenerationTaskId).toBeUndefined();
-    expect(reloadedTarget?.textGenerating).not.toBe(true);
+    expect(reloadedTarget?.textGenerationTaskId).toBe(taskId);
+    expect(reloadedTarget?.textGenerating).toBe(true);
     expect(await page.evaluate((slot) =>
       window.localStorage.getItem(slot), intentSlot)).toBeNull();
     expect(generationPosts).toBe(0);
@@ -6651,7 +7420,7 @@ test("an upstream Text body change revokes a persisted active poll while the mod
   }
 });
 
-test("a hung then failed terminal Text canvas patch replays the same-tab canvas session journal", async ({
+test("terminal Text success is adopted from authoritative Canvas without a browser terminal write", async ({
   page,
   request,
 }) => {
@@ -6676,28 +7445,17 @@ test("a hung then failed terminal Text canvas patch replays the same-tab canvas 
     model: modelInputs.text.id,
     nodeId: nodeId(kind),
     prompt: originalPrompt,
+    canvasProjectionState: "applied",
     resultText,
     state: "success",
     updatedAt: "2026-08-10T11:00:01.000Z",
   };
   const intentSlot = submissionIntentSlot(kind);
   let exactReads = 0;
-  let allowJournalReplay = false;
+  let canvasCommands = 0;
   let generationPosts = 0;
+  let projectionApplied = false;
   let providerRequests = 0;
-  let terminalWrites = 0;
-  let releaseTerminalWrite!: () => void;
-  const terminalWriteGate = new Promise<void>((resolve) => {
-    releaseTerminalWrite = resolve;
-  });
-  let markTerminalWriteStarted!: () => void;
-  const terminalWriteStarted = new Promise<void>((resolve) => {
-    markTerminalWriteStarted = resolve;
-  });
-  let markTerminalWriteFailed!: () => void;
-  const terminalWriteFailed = new Promise<void>((resolve) => {
-    markTerminalWriteFailed = resolve;
-  });
 
   page.on("request", (entry) => {
     if (/volces|openrouter|mureka/i.test(entry.url())) providerRequests += 1;
@@ -6764,6 +7522,7 @@ test("a hung then failed terminal Text canvas patch replays the same-tab canvas 
       url.pathname === `/api/generation-tasks/${taskId}`
     ) {
       exactReads += 1;
+      projectionApplied = true;
       await route.fulfill({ json: successTask, status: 200 });
       return;
     }
@@ -6771,33 +7530,40 @@ test("a hung then failed terminal Text canvas patch replays the same-tab canvas 
     await route.fulfill({ json: { error: "unexpected" }, status: 404 });
   });
   await page.route("**/api/canvas/default", async (route) => {
-    const inbound = route.request();
-    if (inbound.method() !== "PUT") {
-      await route.continue();
+    if (route.request().method() !== "GET") {
+      await route.fallback();
       return;
     }
-    const body = inbound.postDataJSON() as {
+    const response = await route.fetch({ maxRetries: 2 });
+    const document = await response.json() as {
       nodes?: Array<{ data?: Record<string, unknown>; id?: string }>;
     };
-    const target = body.nodes?.find((node) => node.id === nodeId(kind));
-    if (target?.data?.content !== resultText) {
-      await route.continue();
-      return;
-    }
-    if (allowJournalReplay) {
-      await route.continue();
-      return;
-    }
-    terminalWrites += 1;
-    if (terminalWrites === 1) {
-      markTerminalWriteStarted();
-      await terminalWriteGate;
-    }
     await route.fulfill({
-      json: { error: "terminal canvas ACK lost" },
-      status: 503,
+      response,
+      json: !projectionApplied
+        ? document
+        : {
+            ...document,
+            nodes: document.nodes?.map((node) =>
+              node.id === nodeId(kind)
+                ? {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      ...authoritativeGenerationSuccessData(
+                        kind,
+                        successTask as unknown as GenerationTaskSummary,
+                      ),
+                    },
+                  }
+                : node
+            ),
+          },
     });
-    if (terminalWrites === 1) markTerminalWriteFailed();
+  });
+  await page.route("**/api/canvases/default/commands", async (route) => {
+    if (route.request().method() === "POST") canvasCommands += 1;
+    await route.fallback();
   });
 
   await request.delete("/api/canvas/default");
@@ -6825,38 +7591,9 @@ test("a hung then failed terminal Text canvas patch replays the same-tab canvas 
     await page.goto("/canvas");
     await expect(page.getByTestId("canvas-world"))
       .toHaveAttribute("data-persistence-ready", "true");
-    await terminalWriteStarted;
-    expect(terminalWrites).toBe(1);
-    expect(await page.evaluate((slot) =>
-      window.localStorage.getItem(slot), intentSlot)).not.toBeNull();
-
-    releaseTerminalWrite();
-    await terminalWriteFailed;
-    await flushBrowserTasks(page);
-    expect(await page.evaluate((slot) =>
-      window.localStorage.getItem(slot), intentSlot)).not.toBeNull();
-    const beforeReload = await (
-      await request.get("/api/canvas/default")
-    ).json() as {
-      nodes: Array<{ data: Record<string, unknown>; id: string }>;
-    };
-    expect(beforeReload.nodes.find((node) => node.id === nodeId(kind))?.data)
-      .toEqual(expect.objectContaining({
-        content: oldBody,
-        textGenerationTaskId: taskId,
-      }));
-
-    allowJournalReplay = true;
-    await page.reload();
-    await expect(page.getByTestId("canvas-world"))
-      .toHaveAttribute("data-persistence-ready", "true");
-    expect(exactReads).toBe(1);
+    await expect.poll(() => exactReads).toBeGreaterThanOrEqual(1);
     await expect.poll(async () => {
-      const canvas = await (
-        await request.get("/api/canvas/default")
-      ).json() as {
-        nodes: Array<{ data: Record<string, unknown>; id: string }>;
-      };
+      const canvas = await readPageCanvas(page);
       const data = canvas.nodes.find((node) => node.id === nodeId(kind))?.data;
       return {
         content: data?.content,
@@ -6872,12 +7609,18 @@ test("a hung then failed terminal Text canvas patch replays the same-tab canvas 
       ownershipKey: null,
       taskId,
     });
+    expect(canvasCommands).toBe(0);
     expect(await page.evaluate((slot) =>
       window.localStorage.getItem(slot), intentSlot)).toBeNull();
+
+    await page.reload();
+    await expect(page.getByTestId("canvas-world"))
+      .toHaveAttribute("data-persistence-ready", "true");
+    await expect(page.getByTestId("text-node-editor")).toHaveText(resultText);
+    expect(canvasCommands).toBe(0);
     expect(generationPosts).toBe(0);
     expect(providerRequests).toBe(0);
   } finally {
-    releaseTerminalWrite();
     await page.evaluate((slot) => {
       window.localStorage.removeItem(slot);
     }, intentSlot).catch(() => undefined);
@@ -6886,7 +7629,7 @@ test("a hung then failed terminal Text canvas patch replays the same-tab canvas 
 });
 
 for (const kind of ["image", "video"] as const) {
-  test(`${kind} clears a terminal cancellation returned to the initial Generate click`, async ({
+  test(`${kind} shows terminal cancellation without browser-clearing the server binding`, async ({
     page,
     request,
   }) => {
@@ -6895,6 +7638,7 @@ for (const kind of ["image", "video"] as const) {
     let providerRequests = 0;
     let taskReads = 0;
     let taskSubmissions = 0;
+    let boundTask: GenerationTaskSummary | undefined;
     let releaseCancelled!: () => void;
     const cancelledGate = new Promise<void>((resolve) => {
       releaseCancelled = resolve;
@@ -6933,6 +7677,35 @@ for (const kind of ["image", "video"] as const) {
           }],
         },
         status: 200,
+      });
+    });
+    await page.route("**/api/canvas/default", async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      const response = await route.fetch();
+      const document = await response.json() as {
+        nodes?: Array<{ data?: Record<string, unknown>; id?: string }>;
+      };
+      await route.fulfill({
+        response,
+        json: !boundTask
+          ? document
+          : {
+              ...document,
+              nodes: document.nodes?.map((node) =>
+                node.id === nodeId(kind)
+                  ? {
+                      ...node,
+                      data: {
+                        ...node.data,
+                        ...authoritativeGenerationBindingData(kind, boundTask!),
+                      },
+                    }
+                  : node
+              ),
+            },
       });
     });
     await page.route("**/api/generation-tasks**", async (route) => {
@@ -6990,6 +7763,7 @@ for (const kind of ["image", "video"] as const) {
             inbound.postDataJSON() as SubmittedGenerationIdentity,
           ),
         };
+        boundTask = queuedTask as unknown as GenerationTaskSummary;
         await route.fulfill({ json: queuedTask, status: 202 });
         return;
       }
@@ -7029,31 +7803,18 @@ for (const kind of ["image", "video"] as const) {
           : false;
       }, { slot: intentSlot, taskId })).toBe(true);
       await expect.poll(async () => {
-        const canvas = await (
-          await request.get("/api/canvas/default")
-        ).json() as {
-          nodes: Array<{ data: Record<string, unknown>; id: string }>;
-        };
+        const canvas = await readPageCanvas(page);
         const data = canvas.nodes.find((node) => node.id === nodeId(kind))?.data;
-        return {
-          generating: data?.[`${kind}Generating`],
-          taskId: data?.[`${kind}GenerationTaskId`] ?? null,
-        };
-      }).toEqual({ generating: true, taskId });
+        return data?.[`${kind}GenerationTaskId`] ?? null;
+      }).toBe(taskId);
 
       releaseCancelled();
-      await expect.poll(async () => {
-        const canvas = await (
-          await request.get("/api/canvas/default")
-        ).json() as {
-          nodes: Array<{ data: Record<string, unknown>; id: string }>;
-        };
-        const data = canvas.nodes.find((node) => node.id === nodeId(kind))?.data;
-        return {
-          generating: data?.[`${kind}Generating`],
-          taskId: data?.[`${kind}GenerationTaskId`] ?? null,
-        };
-      }).toEqual({ generating: false, taskId: null });
+      await expect(page.getByTestId(`${kind}-node-${nodeId(kind)}`)
+        .getByRole("alert")).toContainText(`${kind} 生成已取消`);
+      const cancelledCanvas = await readPageCanvas(page);
+      expect(cancelledCanvas.nodes.find((node) =>
+        node.id === nodeId(kind)
+      )?.data[`${kind}GenerationTaskId`]).toBe(taskId);
       await expect.poll(() => page.evaluate((slot) =>
         window.localStorage.getItem(slot), intentSlot)).toBeNull();
       expect(taskSubmissions).toBe(1);

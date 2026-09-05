@@ -2655,6 +2655,183 @@ const migrations: readonly Migration[] = [
         ON media_capacity_reservations (state, expires_at);
     `,
   },
+  {
+    version: 43,
+    name: "durable-canvas-operation-receipts",
+    sql: `
+      CREATE TABLE canvas_operation_receipts (
+        owner_id TEXT NOT NULL,
+        canvas_id TEXT NOT NULL,
+        operation_id TEXT NOT NULL,
+        payload_sha256 TEXT NOT NULL CHECK (
+          length(payload_sha256) = 64
+          AND payload_sha256 NOT GLOB '*[^0-9a-f]*'
+        ),
+        command_type TEXT NOT NULL CHECK (command_type IN (
+          'canvas.create',
+          'node.user-field.change',
+          'topology.change',
+          'layout.change',
+          'upload.adopt',
+          'edited-result.adopt',
+          'server.projection',
+          'legacy.put',
+          'legacy.terminal-detach',
+          'document.migration'
+        )),
+        actor_type TEXT NOT NULL CHECK (actor_type IN ('browser', 'server', 'legacy')),
+        save_session_id TEXT CHECK (
+          save_session_id IS NULL OR length(save_session_id) BETWEEN 8 AND 80
+        ),
+        save_sequence INTEGER CHECK (save_sequence IS NULL OR save_sequence > 0),
+        baseline_kind TEXT NOT NULL CHECK (baseline_kind IN ('create', 'existing')),
+        base_document_revision INTEGER CHECK (
+          base_document_revision IS NULL OR base_document_revision >= 0
+        ),
+        base_input_revision INTEGER CHECK (
+          base_input_revision IS NULL OR base_input_revision >= 0
+        ),
+        baseline_load_token_sha256 TEXT CHECK (
+          baseline_load_token_sha256 IS NULL OR (
+            length(baseline_load_token_sha256) = 64
+            AND baseline_load_token_sha256 NOT GLOB '*[^0-9a-f]*'
+          )
+        ),
+        baseline_epoch TEXT CHECK (
+          baseline_epoch IS NULL OR length(baseline_epoch) BETWEEN 1 AND 128
+        ),
+        outcome TEXT NOT NULL CHECK (
+          outcome IN ('APPLIED', 'NO_OP', 'REJECTED_CONFLICT')
+        ),
+        conflict_code TEXT CHECK (
+          conflict_code IS NULL OR length(conflict_code) BETWEEN 1 AND 100
+        ),
+        http_status INTEGER NOT NULL CHECK (http_status IN (200, 409)),
+        original_request_id TEXT NOT NULL CHECK (
+          length(original_request_id) BETWEEN 8 AND 128
+        ),
+        result_document_revision INTEGER NOT NULL CHECK (result_document_revision >= 0),
+        result_input_revision INTEGER NOT NULL CHECK (result_input_revision >= 0),
+        result_document_sha256 TEXT NOT NULL CHECK (
+          length(result_document_sha256) = 64
+          AND result_document_sha256 NOT GLOB '*[^0-9a-f]*'
+        ),
+        result_input_sha256 TEXT NOT NULL CHECK (
+          length(result_input_sha256) = 64
+          AND result_input_sha256 NOT GLOB '*[^0-9a-f]*'
+        ),
+        affected_subgraph_sha256 TEXT CHECK (
+          affected_subgraph_sha256 IS NULL OR (
+            length(affected_subgraph_sha256) = 64
+            AND affected_subgraph_sha256 NOT GLOB '*[^0-9a-f]*'
+          )
+        ),
+        changed_paths TEXT NOT NULL DEFAULT '[]' CHECK (
+          length(changed_paths) <= 32768
+          AND json_valid(changed_paths) AND json_type(changed_paths) = 'array'
+        ),
+        created_at TEXT NOT NULL CHECK (length(created_at) BETWEEN 20 AND 40),
+        settled_at TEXT NOT NULL CHECK (length(settled_at) BETWEEN 20 AND 40),
+        CHECK (length(canvas_id) BETWEEN 1 AND 200),
+        CHECK (length(operation_id) BETWEEN 8 AND 200),
+        CHECK (
+          (actor_type = 'browser' AND save_session_id IS NOT NULL AND save_sequence IS NOT NULL)
+          OR (actor_type = 'server' AND save_session_id IS NULL AND save_sequence IS NULL)
+          OR (actor_type = 'legacy' AND (
+            (save_session_id IS NULL AND save_sequence IS NULL)
+            OR (save_session_id IS NOT NULL AND save_sequence IS NOT NULL)
+          ))
+        ),
+        CHECK (
+          (command_type = 'canvas.create'
+            AND actor_type = 'browser' AND baseline_kind = 'create')
+          OR (command_type IN (
+              'node.user-field.change', 'topology.change', 'layout.change',
+              'upload.adopt', 'edited-result.adopt'
+            ) AND actor_type = 'browser' AND baseline_kind = 'existing')
+          OR (command_type IN ('server.projection', 'document.migration')
+            AND actor_type = 'server' AND baseline_kind = 'existing')
+          OR (command_type = 'legacy.put'
+            AND actor_type = 'legacy' AND baseline_kind = 'existing'
+            AND save_session_id IS NOT NULL AND save_sequence IS NOT NULL
+            AND operation_id GLOB 'legacy-save:*')
+          OR (command_type = 'legacy.terminal-detach'
+            AND actor_type = 'legacy' AND baseline_kind = 'existing')
+        ),
+        CHECK (
+          (baseline_kind = 'create'
+            AND base_document_revision IS NULL
+            AND base_input_revision IS NULL
+            AND baseline_load_token_sha256 IS NULL
+            AND baseline_epoch IS NULL)
+          OR (baseline_kind = 'existing'
+            AND base_document_revision IS NOT NULL
+            AND base_input_revision IS NOT NULL
+            AND baseline_load_token_sha256 IS NOT NULL
+            AND baseline_epoch IS NOT NULL)
+        ),
+        CHECK (
+          (outcome IN ('APPLIED', 'NO_OP')
+            AND http_status = 200 AND conflict_code IS NULL)
+          OR (outcome = 'REJECTED_CONFLICT'
+            AND http_status = 409 AND conflict_code IS NOT NULL)
+        ),
+        PRIMARY KEY (owner_id, canvas_id, operation_id),
+        FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (owner_id, canvas_id)
+          REFERENCES canvas_documents(owner_id, id) ON DELETE CASCADE
+      ) WITHOUT ROWID;
+
+      CREATE INDEX canvas_operation_receipts_owner_created
+        ON canvas_operation_receipts (owner_id, canvas_id, created_at DESC);
+
+      CREATE TABLE generation_canvas_projection_states (
+        task_id TEXT PRIMARY KEY,
+        owner_id TEXT NOT NULL,
+        canvas_id TEXT NOT NULL,
+        operation_id TEXT CHECK (
+          operation_id IS NULL OR length(operation_id) BETWEEN 8 AND 200
+        ),
+        state TEXT NOT NULL DEFAULT 'pending' CHECK (
+          state IN ('pending', 'applied', 'conflict', 'failed')
+        ),
+        failure_count INTEGER NOT NULL DEFAULT 0 CHECK (failure_count >= 0),
+        last_error_class TEXT CHECK (
+          last_error_class IS NULL OR last_error_class IN ('B', 'D')
+        ),
+        created_at TEXT NOT NULL CHECK (length(created_at) BETWEEN 20 AND 40),
+        updated_at TEXT NOT NULL CHECK (length(updated_at) BETWEEN 20 AND 40),
+        CHECK (
+          (state = 'failed' AND failure_count > 0 AND last_error_class IS NOT NULL)
+          OR (state IN ('pending', 'applied', 'conflict')
+            AND last_error_class IS NULL)
+        ),
+        CHECK (state IN ('pending', 'failed') OR operation_id IS NOT NULL),
+        FOREIGN KEY (task_id) REFERENCES generation_tasks(id) ON DELETE CASCADE,
+        FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (owner_id, canvas_id)
+          REFERENCES canvas_documents(owner_id, id) ON DELETE CASCADE
+      ) WITHOUT ROWID;
+
+      CREATE INDEX generation_canvas_projection_states_owner_state
+        ON generation_canvas_projection_states (
+          owner_id, state, updated_at DESC
+        );
+
+      CREATE TABLE media_image_metadata (
+        owner_id TEXT NOT NULL,
+        kind TEXT NOT NULL DEFAULT 'image' CHECK (kind = 'image'),
+        asset_id TEXT NOT NULL,
+        has_transparency INTEGER NOT NULL CHECK (has_transparency IN (0, 1)),
+        created_at TEXT NOT NULL CHECK (length(created_at) BETWEEN 20 AND 40),
+        updated_at TEXT NOT NULL CHECK (length(updated_at) BETWEEN 20 AND 40),
+        PRIMARY KEY (owner_id, asset_id),
+        FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (owner_id, kind, asset_id)
+          REFERENCES media_assets(owner_id, kind, id) ON DELETE CASCADE
+      ) WITHOUT ROWID;
+    `,
+  },
 ];
 
 export const currentSchemaManifest = Object.freeze(
@@ -2663,7 +2840,7 @@ export const currentSchemaManifest = Object.freeze(
 
 export const currentSchemaVersion = currentSchemaManifest.at(-1)?.version ?? 0;
 
-// This is the known-safe physical schema that a v42 process can use. Keep the
+// This is the known-safe physical schema that a v43 process can use. Keep the
 // migration ledger as the source of version ordering, and keep the column-name
 // checks order-independent so the finite documented v21 catalog repairs and
 // v31/v32 template repair can each be admitted only by an exact sqlite_schema
@@ -2696,9 +2873,23 @@ export const currentSchemaContract = Object.freeze({
       "owner_id", "id", "revision", "nodes", "edges", "viewport",
       "updated_at", "save_session_id", "save_sequence", "graph_revision",
     ]),
+    canvas_operation_receipts: Object.freeze([
+      "owner_id", "canvas_id", "operation_id", "payload_sha256",
+      "command_type", "actor_type", "save_session_id", "save_sequence",
+      "baseline_kind", "base_document_revision", "base_input_revision",
+      "baseline_load_token_sha256", "baseline_epoch", "outcome",
+      "conflict_code", "http_status", "original_request_id",
+      "result_document_revision", "result_input_revision",
+      "result_document_sha256", "result_input_sha256",
+      "affected_subgraph_sha256", "changed_paths", "created_at", "settled_at",
+    ]),
     generation_admission_events: Object.freeze([
       "id", "task_id", "execution_attempt", "owner_id", "kind",
       "admission_type", "created_at",
+    ]),
+    generation_canvas_projection_states: Object.freeze([
+      "task_id", "owner_id", "canvas_id", "operation_id", "state",
+      "failure_count", "last_error_class", "created_at", "updated_at",
     ]),
     generation_provider_attempts: Object.freeze([
       "id", "task_id", "execution_attempt", "provider_profile_id",
@@ -2730,6 +2921,10 @@ export const currentSchemaContract = Object.freeze({
       "checksum_sha256", "storage_status", "duration_seconds",
       "duration_source", "duration_status", "media_width", "media_height",
       "storage_profile_id",
+    ]),
+    media_image_metadata: Object.freeze([
+      "owner_id", "kind", "asset_id", "has_transparency", "created_at",
+      "updated_at",
     ]),
     media_capacity_reservations: Object.freeze([
       "id", "owner_id", "workflow_run_id", "reserved_bytes", "state",
@@ -2948,6 +3143,10 @@ export const currentSchemaContract = Object.freeze({
       sqlHash: "96af96d20bc9bd30cd0edee0c9d6f065b4de5241893891c5b31dfe5723d60669",
       table: "admin_audit_events",
     }),
+    canvas_operation_receipts_owner_created: Object.freeze({
+      sqlHash: "396c2cf1b89f3cea435c7a8542854dae7e0c7b31b9c698df55e5bee3f497451e",
+      table: "canvas_operation_receipts",
+    }),
     asset_history_owner_created: Object.freeze({
       sqlHash: "8530ea7ce975418d08fb4ad4c8ef50bae408641ca5748b84bd5df7502d56e5d2",
       table: "asset_history",
@@ -2963,6 +3162,10 @@ export const currentSchemaContract = Object.freeze({
     generation_admission_events_owner_created: Object.freeze({
       sqlHash: "0e72c7320ba2fdff1e09b88392ef2de1c2389357b98534cce4f60d54ff662e38",
       table: "generation_admission_events",
+    }),
+    generation_canvas_projection_states_owner_state: Object.freeze({
+      sqlHash: "87624e6a6c2c48711f452a09e6db42f25be2970a37debc281a46dc9ed73fadac",
+      table: "generation_canvas_projection_states",
     }),
     generation_provider_attempts_circuit: Object.freeze({
       sqlHash: "288d95b6e8e6beb8f46cfeb385725d5c45084886bba1f3afba8ae190139cec0e",
@@ -3200,8 +3403,14 @@ export const currentSchemaContract = Object.freeze({
     canvas_documents: Object.freeze([
       "c1513fd4d7a98acd1826e952f442877b40f8395a8052b15e85479559da0cefdf",
     ]),
+    canvas_operation_receipts: Object.freeze([
+      "0ff0c594147ec64aa89bca8c03c5b4149f737cdca76a09d9c603535757523e7b",
+    ]),
     generation_admission_events: Object.freeze([
       "8362b1eb7fc4f3c513b74e51f3d29423382efaaac1eca8f3da8053de3553d86f",
+    ]),
+    generation_canvas_projection_states: Object.freeze([
+      "2b6c5fe1c241437cd26e61d137bc18b1db8dc2c93e1415a3865bb056f0ea2f0e",
     ]),
     generation_provider_attempts: Object.freeze([
       "ffd55e9a53fa99988acd831f01c34455af42ef4b9a4132597412718ff581af25",
@@ -3217,6 +3426,9 @@ export const currentSchemaContract = Object.freeze({
     ]),
     media_assets: Object.freeze([
       "cedbe47b7f996d78b4a03b8e9ec75bf08853aa2539932ad1dad657b1c47c115c",
+    ]),
+    media_image_metadata: Object.freeze([
+      "80a2c464489ab1c5c6a274db98b869947274d1981b5739044f762b91af559688",
     ]),
     media_capacity_reservations: Object.freeze([
       "26a28a643dae4038052ed9fe5d9f69a05fbf17cc66d3a55aa6cd81968f81a48e",
@@ -3390,6 +3602,12 @@ const schema41Tables = new Set([
   "seedance_character_compliance_disclosures",
 ]);
 
+const schema40Tables = new Set([
+  "seedance_asset_bindings",
+  "seedance_authorization_sessions",
+  "seedance_identity_groups",
+]);
+
 const schema42Tables = new Set([
   "media_capacity_reservations",
   "workflow_run_locks",
@@ -3397,14 +3615,36 @@ const schema42Tables = new Set([
   "workflow_runs",
 ]);
 
+const schema43Tables = new Set([
+  "canvas_operation_receipts",
+  "generation_canvas_projection_states",
+  "media_image_metadata",
+]);
+
+const schema41ExcludedTables = new Set([
+  ...schema42Tables,
+  ...schema43Tables,
+]);
+
 const schema40ExcludedTables = new Set([
   ...schema41Tables,
   ...schema42Tables,
+  ...schema43Tables,
+]);
+
+const schema39ExcludedTables = new Set([
+  ...schema40Tables,
+  ...schema40ExcludedTables,
+]);
+
+const schema39ExcludedExplicitIndexes = new Set([
+  "media_assets_owner_kind_id",
 ]);
 
 function databaseMatchesSchemaContractExceptTables(
   database: DatabaseSync,
   excludedTables: ReadonlySet<string>,
+  excludedExplicitIndexes: ReadonlySet<string> = new Set(),
 ) {
   const expectedTables = Object.keys(currentSchemaContract.tables)
     .filter((tableName) => !excludedTables.has(tableName))
@@ -3440,10 +3680,13 @@ function databaseMatchesSchemaContractExceptTables(
 
   const expectedExplicitIndexNames = Object.keys(
     currentSchemaContract.explicitIndexes,
-  ).filter((indexName) => !excludedTables.has(
-    currentSchemaContract.explicitIndexes[
-      indexName as keyof typeof currentSchemaContract.explicitIndexes
-    ].table,
+  ).filter((indexName) => (
+    !excludedExplicitIndexes.has(indexName) &&
+    !excludedTables.has(
+      currentSchemaContract.explicitIndexes[
+        indexName as keyof typeof currentSchemaContract.explicitIndexes
+      ].table,
+    )
   )).sort();
   const optionalExplicitIndexNames = new Set<string>();
   for (const [indexName, condition] of Object.entries(
@@ -3486,6 +3729,7 @@ function databaseMatchesSchemaContractExceptTables(
   for (const [indexName, expected] of Object.entries(
     currentSchemaContract.indexes,
   )) {
+    if (excludedExplicitIndexes.has(indexName)) continue;
     if (excludedTables.has(expected.table)) continue;
     if (
       !/^[a-z][a-z0-9_]*$/.test(indexName) ||
@@ -3559,6 +3803,15 @@ export function databaseMatchesSchemaContract(database: DatabaseSync) {
   return databaseMatchesSchemaContractExceptTables(database, new Set());
 }
 
+/** Frozen v39 guard used only by the authorized v39-to-v40 release migration. */
+export function databaseMatchesSchema39Contract(database: DatabaseSync) {
+  return databaseMatchesSchemaContractExceptTables(
+    database,
+    schema39ExcludedTables,
+    schema39ExcludedExplicitIndexes,
+  );
+}
+
 /** Frozen v40 guard used only by the authorized v40-to-v41 release migration. */
 export function databaseMatchesSchema40Contract(database: DatabaseSync) {
   return databaseMatchesSchemaContractExceptTables(database, schema40ExcludedTables);
@@ -3566,7 +3819,12 @@ export function databaseMatchesSchema40Contract(database: DatabaseSync) {
 
 /** Frozen v41 guard used only by the authorized v41-to-v42 release migration. */
 export function databaseMatchesSchema41Contract(database: DatabaseSync) {
-  return databaseMatchesSchemaContractExceptTables(database, schema42Tables);
+  return databaseMatchesSchemaContractExceptTables(database, schema41ExcludedTables);
+}
+
+/** Frozen v42 guard used only by the authorized v42-to-v43 release migration. */
+export function databaseMatchesSchema42Contract(database: DatabaseSync) {
+  return databaseMatchesSchemaContractExceptTables(database, schema43Tables);
 }
 
 export function appDataDirectory() {
@@ -3921,6 +4179,16 @@ export function revalidateLegacyMediaBackfillEvidence(
   }
 }
 
+function databaseMatchesLegacyMediaBackfillContract(
+  database: DatabaseSync,
+  targetVersion: number,
+) {
+  if (!databaseMatchesMigrationManifest(database, targetVersion)) return false;
+  if (targetVersion === 39) return databaseMatchesSchema39Contract(database);
+  return targetVersion === currentSchemaVersion &&
+    databaseMatchesSchemaContract(database);
+}
+
 /**
  * A committed migration marker can outlive the transaction that populated
  * legacy media metadata. Rebuild physical evidence from every ready local
@@ -3932,14 +4200,15 @@ export function verifyCommittedMigrationMediaStrict(
   dataDirectory: string,
   options: Readonly<{
     durationProbe?: LegacyMediaDurationProbe;
+    targetVersion?: number;
   }> = {},
 ) {
+  const targetVersion = options.targetVersion ?? currentSchemaVersion;
   if (
     !database.isTransaction ||
-    !databaseMatchesMigrationManifest(database) ||
-    !databaseMatchesSchemaContract(database) ||
+    !databaseMatchesLegacyMediaBackfillContract(database, targetVersion) ||
     !databaseHasCompleteLegacyMediaMetadata(database)
-  ) throw new Error("Committed migration media verification requires an exact current transaction");
+  ) throw new Error("Committed migration media verification requires an exact target transaction");
   const rows = database.prepare(`
     SELECT
       byte_size, checksum_sha256, duration_seconds, duration_source,
@@ -4027,12 +4296,13 @@ export function backfillLegacyMediaStrict(
     durationProbe?: LegacyMediaDurationProbe;
     now?: () => string;
     onRow?: (kind: "checksum" | "duration", id: string) => void;
+    targetVersion?: number;
   }> = {},
 ): LegacyMediaBackfillSummary {
-  if (
-    !databaseMatchesMigrationManifest(database) ||
-    !databaseMatchesSchemaContract(database)
-  ) throw new Error("Legacy media backfill requires the exact current schema");
+  const targetVersion = options.targetVersion ?? currentSchemaVersion;
+  if (!databaseMatchesLegacyMediaBackfillContract(database, targetVersion)) {
+    throw new Error("Legacy media backfill requires the exact target schema");
+  }
   const now = options.now ?? (() => new Date().toISOString());
   const canonicalDataDirectory = realpathSync(dataDirectory);
   const mediaDirectory = join(canonicalDataDirectory, "media");
@@ -5259,8 +5529,20 @@ function exactCurrentContentDigest(database: DatabaseSync) {
       throw new Error("Application database table name is unsafe");
     }
     hash.update(`table:${tableName}\n`);
+    const primaryKeyColumns = (database.prepare(
+      `PRAGMA table_info("${tableName}")`,
+    ).all() as Array<{ name?: unknown; pk?: unknown }>)
+      .filter((column) => Number(column.pk) > 0)
+      .sort((left, right) => Number(left.pk) - Number(right.pk))
+      .map((column) => String(column.name));
+    if (primaryKeyColumns.some((column) =>
+      !/^[A-Za-z_][A-Za-z0-9_]*$/.test(column)
+    )) throw new Error("Application database column name is unsafe");
+    const stableOrder = primaryKeyColumns.length > 0
+      ? primaryKeyColumns.map((column) => `"${column}"`).join(", ")
+      : "rowid";
     const rows = database.prepare(
-      `SELECT * FROM "${tableName}" ORDER BY rowid`,
+      `SELECT * FROM "${tableName}" ORDER BY ${stableOrder}`,
     );
     rows.setReturnArrays(true);
     for (const row of rows.iterate() as Iterable<unknown[]>) {

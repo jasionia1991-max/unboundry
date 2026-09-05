@@ -1,5 +1,7 @@
 import type { ProbeNodeType } from "./ProbeNode";
 import type { CuttableEdge } from "./canvasTypes";
+import { canvasNodeDataFieldDescriptor } from
+  "../../../types/canvasFingerprint";
 
 export type CanvasGenerationKind = "audio" | "image" | "text" | "video";
 
@@ -44,8 +46,17 @@ export type CanvasGraphCommand = Readonly<{
 }>;
 
 export type CanvasGraphCommandResult = Readonly<{
-  reason?: "fence-rejected" | "persistence-unavailable";
+  reason?: "fence-rejected" | "persistence-unavailable" |
+    "view-field-rejected";
   status: "applied" | "rejected";
+}>;
+
+export type CanvasGenerationViewPatch = Readonly<{
+  kind: CanvasGenerationKind;
+  nodeId: string;
+  ownershipKey: string;
+  patch: Readonly<Record<string, unknown>>;
+  taskId: string;
 }>;
 
 export type CanvasGraphCommandCommit = (
@@ -55,6 +66,10 @@ export type CanvasGraphCommandCommit = (
 /** React state, in-memory graphs and future persistence adapters implement this. */
 export interface CanvasGraphCommandPort {
   apply(command: CanvasGraphCommand): CanvasGraphCommandResult;
+  applyViewPatch?(
+    patch: CanvasGenerationViewPatch,
+  ): CanvasGraphCommandResult;
+  refreshAuthoritativeDocument?(signal?: AbortSignal): Promise<boolean>;
   snapshot(): CanvasGraphSnapshot;
 }
 
@@ -143,7 +158,9 @@ function commandFenceMatches(
 /** Framework-neutral adapter used by React state and in-memory replacement tests. */
 export function createCanvasGraphCommandPort(input: {
   commit: (snapshot: CanvasGraphSnapshot) => void;
+  commitView?: (nodes: readonly ProbeNodeType[]) => void;
   persistenceReady: () => boolean;
+  refreshAuthoritativeDocument?: (signal?: AbortSignal) => Promise<boolean>;
   snapshot: () => CanvasGraphSnapshot;
 }): CanvasGraphCommandPort {
   let pendingCommand:
@@ -189,6 +206,46 @@ export function createCanvasGraphCommandPort(input: {
       };
       return { status: "applied" };
     },
+    ...(input.commitView
+      ? {
+          applyViewPatch(viewPatch: CanvasGenerationViewPatch) {
+            const observed = input.snapshot();
+            const node = observed.nodes.find(
+              (candidate) => candidate.id === viewPatch.nodeId,
+            );
+            if (!node || node.type !== viewPatch.kind) {
+              return { reason: "fence-rejected", status: "rejected" } as const;
+            }
+            const currentOwnershipKey =
+              node.data[`${viewPatch.kind}GenerationOwnershipKey`] ??
+              node.data.groupRunSuccessOwnershipKey;
+            const currentTaskId =
+              node.data[`${viewPatch.kind}GenerationTaskId`] ??
+              node.data.groupRunSuccessTaskId;
+            if (
+              currentOwnershipKey !== viewPatch.ownershipKey ||
+              currentTaskId !== viewPatch.taskId ||
+              Object.keys(viewPatch.patch).some((field) =>
+                canvasNodeDataFieldDescriptor(field)?.owner !== "ephemeral-view"
+              )
+            ) {
+              return { reason: "view-field-rejected", status: "rejected" } as const;
+            }
+            input.commitView!(observed.nodes.map((candidate) =>
+              candidate.id === viewPatch.nodeId
+                ? {
+                    ...candidate,
+                    data: { ...candidate.data, ...viewPatch.patch },
+                  } as ProbeNodeType
+                : candidate
+            ));
+            return { status: "applied" } as const;
+          },
+        }
+      : {}),
+    ...(input.refreshAuthoritativeDocument
+      ? { refreshAuthoritativeDocument: input.refreshAuthoritativeDocument }
+      : {}),
     snapshot: input.snapshot,
   };
 }

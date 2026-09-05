@@ -193,12 +193,26 @@ function richGroupDocument() {
         zIndex: 1,
       });
     }
-    for (let edgeIndex = 0; edgeIndex < 24; edgeIndex += 1) {
+    const forwardPairs: Array<readonly [string, string]> = [];
+    for (let gap = 1; gap < childIds.length && forwardPairs.length < 24; gap += 1) {
+      for (
+        let sourceIndex = 0;
+        sourceIndex + gap < childIds.length && forwardPairs.length < 24;
+        sourceIndex += 1
+      ) {
+        forwardPairs.push([
+          childIds[sourceIndex],
+          childIds[sourceIndex + gap],
+        ]);
+      }
+    }
+    for (let edgeIndex = 0; edgeIndex < forwardPairs.length; edgeIndex += 1) {
+      const [source, target] = forwardPairs[edgeIndex];
       edges.push({
         id: `${groupId}-edge-${edgeIndex + 1}`,
-        source: childIds[edgeIndex % childIds.length],
+        source,
         sourceHandle: "source",
-        target: childIds[(edgeIndex + (edgeIndex < 12 ? 1 : 5)) % childIds.length],
+        target,
         targetHandle: "target",
         type: "cuttable",
       });
@@ -315,7 +329,8 @@ async function runRichGroupDragScenario(
 
     let captureCanvasWrites = false;
     let pointerDown = false;
-    const canvasPuts: string[] = [];
+    const canvasCommandPosts: string[] = [];
+    const canvasLegacyPuts: string[] = [];
     const mediaRequests: string[] = [];
     const requestListener = (browserRequest: import("@playwright/test").Request) => {
       const url = new URL(browserRequest.url());
@@ -323,7 +338,12 @@ async function runRichGroupDragScenario(
         captureCanvasWrites &&
         browserRequest.method() === "PUT" &&
         url.pathname === `/api/canvas/${projectId}`
-      ) canvasPuts.push(`${browserRequest.method()} ${url.pathname}`);
+      ) canvasLegacyPuts.push(`${browserRequest.method()} ${url.pathname}`);
+      if (
+        captureCanvasWrites &&
+        browserRequest.method() === "POST" &&
+        url.pathname === `/api/canvases/${projectId}/commands`
+      ) canvasCommandPosts.push(`${browserRequest.method()} ${url.pathname}`);
       if (pointerDown && /\/(assets|audio-assets|video-assets|media|oss|upload)(\/|$)/.test(
         url.pathname,
       )) mediaRequests.push(`${browserRequest.method()} ${url.pathname}`);
@@ -340,7 +360,8 @@ async function runRichGroupDragScenario(
       await page.mouse.move(point.x + step * 2, point.y + step, { steps: 1 });
       await page.waitForTimeout(8);
     }
-    expect(canvasPuts).toEqual([]);
+    expect(canvasCommandPosts).toEqual([]);
+    expect(canvasLegacyPuts).toEqual([]);
     expect(mediaRequests).toEqual([]);
     await page.mouse.up();
     pointerDown = false;
@@ -356,7 +377,8 @@ async function runRichGroupDragScenario(
     await page.waitForTimeout(200);
     captureCanvasWrites = false;
     page.off("request", requestListener);
-    expect(canvasPuts).toHaveLength(1);
+    expect(canvasCommandPosts).toHaveLength(1);
+    expect(canvasLegacyPuts).toEqual([]);
 
     const meters = summarizeMeters(await readMeters(page));
     expect(meters.phases.drag.frameCount).toBeGreaterThan(20);
@@ -413,7 +435,9 @@ async function runRichGroupDragScenario(
     await expect(world).toHaveAttribute("data-selected-node-count", "2");
 
     const metrics = {
-      canvasPutsFromDragStartThroughSettlement: canvasPuts.length,
+      canvasCommandPostsFromDragStartThroughSettlement:
+        canvasCommandPosts.length,
+      canvasLegacyPutsFromDragStartThroughSettlement: canvasLegacyPuts.length,
       childCountPerGroup: 12,
       edgeCount: 73,
       groupCount: 3,

@@ -1,5 +1,6 @@
 import {
   cancelGenerationTask,
+  clearGenerationSubmissionIntent,
   ensureGenerationTask,
   getGenerationTask,
   reconcileGenerationTask,
@@ -65,6 +66,26 @@ function revisionGate(context: SingleNodeTaskOperationContext) {
   };
 }
 
+function clearTerminalSubmissionIntent(
+  task: GenerationTaskSummary,
+  accountId: string,
+  fixtureScopeId: string,
+) {
+  if (
+    task.state !== "cancelled" &&
+    task.state !== "failed" &&
+    task.state !== "success"
+  ) return;
+  clearGenerationSubmissionIntent(
+    task.kind,
+    task.canvasId,
+    task.nodeId,
+    task.id,
+    accountId,
+    fixtureScopeId,
+  );
+}
+
 /** Browser HTTP adapter. The lifecycle remains framework- and transport-free. */
 export function createBrowserSingleNodeGenerationTaskPort(input: {
   accountId: string;
@@ -96,6 +117,11 @@ export function createBrowserSingleNodeGenerationTaskPort(input: {
         context.signal,
         input.fixtureScopeId,
       );
+      clearTerminalSubmissionIntent(
+        cancelled,
+        input.accountId,
+        input.fixtureScopeId,
+      );
       return cancelled.state === "cancelled" ? cancelled : undefined;
     },
     async ensure(plan, context) {
@@ -116,6 +142,11 @@ export function createBrowserSingleNodeGenerationTaskPort(input: {
         },
       );
       input.onTaskObserved?.(ensured.task);
+      clearTerminalSubmissionIntent(
+        ensured.task,
+        input.accountId,
+        input.fixtureScopeId,
+      );
       return ensured;
     },
     async reconcile(task, plan, context) {
@@ -126,6 +157,11 @@ export function createBrowserSingleNodeGenerationTaskPort(input: {
         context.signal,
       );
       input.onTaskObserved?.(result.task);
+      clearTerminalSubmissionIntent(
+        result.task,
+        input.accountId,
+        input.fixtureScopeId,
+      );
       return result;
     },
     async recover(plan, context) {
@@ -147,7 +183,14 @@ export function createBrowserSingleNodeGenerationTaskPort(input: {
           fixtureScopeId: input.fixtureScopeId,
         },
       );
-      if (task) input.onTaskObserved?.(task);
+      if (task) {
+        input.onTaskObserved?.(task);
+        clearTerminalSubmissionIntent(
+          task,
+          input.accountId,
+          input.fixtureScopeId,
+        );
+      }
       return task;
     },
     async retry(task, plan, context) {
@@ -158,15 +201,26 @@ export function createBrowserSingleNodeGenerationTaskPort(input: {
         context.assertCurrent,
       );
       input.onTaskObserved?.(retried);
+      clearTerminalSubmissionIntent(
+        retried,
+        input.accountId,
+        input.fixtureScopeId,
+      );
       return retried;
     },
-    watch(task, context) {
-      return waitForGenerationTaskWithPause(
+    async watch(task, context) {
+      const watched = await waitForGenerationTaskWithPause(
         task.id,
         () => input.onPollingPaused?.(task.id),
         context.signal,
         input.fixtureScopeId,
       );
+      clearTerminalSubmissionIntent(
+        watched,
+        input.accountId,
+        input.fixtureScopeId,
+      );
+      return watched;
     },
     withSubmissionAdmission(plan, work) {
       const payload = recoverableInput(plan);

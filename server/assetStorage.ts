@@ -310,6 +310,20 @@ export function validateTransparentPng(bytes: Buffer) {
   throw new Error("PNG image does not contain transparent pixels");
 }
 
+export function pngHasTransparency(bytes: Buffer) {
+  try {
+    validateTransparentPng(bytes);
+    return true;
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      (error.message === "PNG image does not contain transparent pixels" ||
+        error.message === "PNG image does not contain supported transparency")
+    ) return false;
+    throw error;
+  }
+}
+
 export async function saveGeneratedPng(input: {
   bytes: Buffer;
   label: string;
@@ -372,6 +386,7 @@ export async function saveGeneratedPng(input: {
       byteSize: input.bytes.length,
       checksumSha256,
       contentType: "image/png",
+      hasTransparency: pngHasTransparency(input.bytes),
       mediaHeight: dimensions.height,
       mediaWidth: dimensions.width,
     });
@@ -633,6 +648,7 @@ export async function assetStorage(
     profile = routing.profile;
     const bytes = await readImage(request);
     const { height, width } = validatePng(bytes);
+    const hasTransparency = pngHasTransparency(bytes);
     const checksumSha256 = createHash("sha256").update(bytes).digest("hex");
 
     await mkdir(path.directory, { recursive: true });
@@ -641,6 +657,7 @@ export async function assetStorage(
       byteSize: bytes.length,
       checksumSha256,
       contentType: "image/png",
+      hasTransparency,
       mediaHeight: height,
       mediaWidth: width,
     });
@@ -666,6 +683,7 @@ export async function assetStorage(
       byteSize: bytes.length,
       contentType: "image/png",
       fileName,
+      hasTransparency,
       height,
       mediaHeight: height,
       mediaWidth: width,

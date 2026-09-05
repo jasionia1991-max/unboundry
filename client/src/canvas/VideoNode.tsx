@@ -11,7 +11,10 @@ import {
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useCanvasCheckpoint } from "./CanvasHistory";
-import { useCanvasGraphMutation } from "./CanvasGraphMutationContext";
+import {
+  canvasUploadTargetStillCurrent,
+  useCanvasGraphMutation,
+} from "./CanvasGraphMutationContext";
 import {
   canvasModelTransitionExpectedBefore,
   type CanvasModelTransitionRequest,
@@ -23,7 +26,6 @@ import {
   MediaLoadFallback,
   useMediaLoadRecovery,
 } from "./MediaLoadFallback";
-import { fitVisualMediaSize } from "./mediaGeometry";
 import { NodeModelControl } from "./NodeModelControl";
 import { NodeParameterControl } from "./NodeParameterControl";
 import { EmptyMediaUploadToolbar } from "./EmptyMediaUploadToolbar";
@@ -74,7 +76,6 @@ import {
   GENERATION_TASK_RETRY_ACCEPTED_EVENT,
   GenerationRequestError,
   getGenerationTask,
-  recoverPendingGenerationTask,
   reconcileOutcomeMessage,
   runWithSingleNodeGenerationAdmission,
   waitForGenerationTask,
@@ -106,7 +107,10 @@ import {
 } from "../../../types/nodeInputs";
 import { UpstreamInputCards } from "./UpstreamInputCards";
 import { GenerationAvailabilityNotice } from "./GenerationAvailabilityNotice";
+import type { CuttableEdge } from "./canvasTypes";
 import {
+  effectiveMediaInputState,
+  effectiveMediaInputStateReason,
   fetchTrustedMediaMetadata,
   hasCompleteTrustedMediaMetadata,
   hasTrustedMediaDimensions,
@@ -120,6 +124,22 @@ type VideoPollingRun = {
   taskId: string;
   token: symbol;
 };
+
+type VideoGenerationRevocationIdentity = {
+  inputKey?: string;
+  ownershipKey?: string;
+  taskId?: string;
+};
+
+function videoGenerationRevocationIdentity(
+  data: ProbeNodeType["data"],
+): VideoGenerationRevocationIdentity {
+  return {
+    inputKey: data.videoGenerationInputKey,
+    ownershipKey: data.videoGenerationOwnershipKey,
+    taskId: data.videoGenerationTaskId,
+  };
+}
 
 function createVideoGenerationAdapter(input: {
   bindingOwnershipKey?: string;
@@ -333,39 +353,9 @@ function hasReadyVideoMedia(node?: ProbeNodeType) {
   return Boolean(
     node?.data.assetId &&
     node.data.videoSrc &&
-    (node.data.inputState === undefined || node.data.inputState === "ready"),
+    (effectiveMediaInputState(node.data) === undefined ||
+      effectiveMediaInputState(node.data) === "ready"),
   );
-}
-
-function restoreVideoUploadBaseline(
-  node: ProbeNodeType,
-  baseline: ProbeNodeType,
-) {
-  return {
-    ...node,
-    data: {
-      ...node.data,
-      assetId: baseline.data.assetId,
-      inputState: baseline.data.inputState ?? "ready",
-      inputStateReason: baseline.data.inputStateReason,
-      mediaByteSize: baseline.data.mediaByteSize,
-      mediaContentType: baseline.data.mediaContentType,
-      mediaDurationSeconds: baseline.data.mediaDurationSeconds,
-      mediaMetadataSource: baseline.data.mediaMetadataSource,
-      mediaMetadataStatus: baseline.data.mediaMetadataStatus,
-      mediaStorageBackend: baseline.data.mediaStorageBackend,
-      videoAudioEnabled: baseline.data.videoAudioEnabled,
-      videoCreatedAt: baseline.data.videoCreatedAt,
-      videoDuration: baseline.data.videoDuration,
-      videoFileSize: baseline.data.videoFileSize,
-      videoGenerationError: baseline.data.videoGenerationError,
-      videoHeight: baseline.data.videoHeight,
-      videoModel: baseline.data.videoModel,
-      videoPrompt: baseline.data.videoPrompt,
-      videoSrc: baseline.data.videoSrc,
-      videoWidth: baseline.data.videoWidth,
-    },
-  };
 }
 
 async function discardUnadoptedVideoAsset(assetId: string) {
@@ -447,22 +437,18 @@ function VideoNodeImpl({
   const inputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const fullscreenVideoRef = useRef<HTMLVideoElement>(null);
-  const deferredVideoMetadata = useRef<{
-    duration: number;
-    height: number;
-    width: number;
-  } | undefined>(undefined);
-  const { getNode, getNodes } = useReactFlow<ProbeNodeType>();
+  const { getNodes } = useReactFlow<ProbeNodeType>();
   const {
+    adoptUploadedAsset,
+    adoptAuthoritativeNodeData,
+    applyViewUpdate,
     applyModelTransition,
     canvasMutationPendingNodeIds,
     graphCommandPort,
     mutateGraph,
+    readCanvasNode,
     readCanvasMutationVersion,
-    setEdges,
-    setNodes,
     tryAdoptNodes,
-    trySetNodes,
   } =
     useCanvasGraphMutation();
   const canvasMutationPending = canvasMutationPendingNodeIds.has(id);
@@ -553,6 +539,12 @@ function VideoNodeImpl({
   const [retrying, setRetrying] = useState(false);
   const [savingCanvas, setSavingCanvas] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
+  const [viewVideoMetadata, setViewVideoMetadata] = useState<{
+    duration: number;
+    height: number;
+    source: string;
+    width: number;
+  }>();
   const [fullscreen, setFullscreen] = useState(false);
   const [muted, setMuted] = useState(true);
   const [modelSwitchProblem, setModelSwitchProblem] = useState("");
@@ -581,6 +573,10 @@ function VideoNodeImpl({
   const videoRecoveryControllerRef = useRef<AbortController | undefined>(
     undefined,
   );
+  useEffect(() => () => {
+    videoRecoveryControllerRef.current?.abort("video-node-unmounted");
+    videoRecoveryControllerRef.current = undefined;
+  }, []);
   const videoRecoveryLifecycleRef = useRef<ReturnType<
     typeof createSingleNodeGenerationLifecycle
   > | undefined>(undefined);
@@ -599,6 +595,15 @@ function VideoNodeImpl({
   const uploadOperation = useRef(0);
   const [volume, setVolume] = useState(1);
   const [volumeOpen, setVolumeOpen] = useState(false);
+  const videoDataMutationVersionRef = useRef(0);
+  const videoMutationScopeKey = JSON.stringify([
+    accountId,
+    canvasId,
+    fixtureScopeId,
+    id,
+  ]);
+  const liveVideoMutationScopeKeyRef = useRef(videoMutationScopeKey);
+  liveVideoMutationScopeKeyRef.current = videoMutationScopeKey;
   const clearVideoGenerationForSemanticChange = (
     current: ProbeNodeType["data"],
   ): ProbeNodeType["data"] => ({
@@ -616,7 +621,28 @@ function VideoNodeImpl({
     videoGenerationRetryBlockReason: undefined,
     videoGenerationTaskId: undefined,
   });
-  const revokeVideoTaskForGenerationInputChange = () => {
+  const revokeVideoTaskForGenerationInputChange = (expectedTaskId?: string) => {
+    const currentRun = generationPollingRunRef.current;
+    if (
+      currentRun &&
+      (expectedTaskId === undefined || currentRun.taskId !== expectedTaskId)
+    ) {
+      if (expectedTaskId) {
+        clearGenerationSubmissionIntent(
+          "video",
+          canvasId,
+          id,
+          expectedTaskId,
+          accountId,
+          fixtureScopeId,
+        );
+      }
+      return;
+    }
+    videoRecoveryControllerRef.current?.abort("video-generation-input-changed");
+    videoRecoveryControllerRef.current = undefined;
+    videoRecoveryLifecycleRef.current?.abort("video-generation-input-changed");
+    videoRetryLifecycleRef.current?.abort("video-generation-input-changed");
     generationPollingRunRef.current = undefined;
     setActiveTaskId(undefined);
     pollingPausedTaskIdRef.current = undefined;
@@ -628,22 +654,92 @@ function VideoNodeImpl({
       "video",
       canvasId,
       id,
-      undefined,
+      expectedTaskId,
       accountId,
       fixtureScopeId,
     );
   };
+  const finishVideoGenerationInputRevocation = (
+    identity: VideoGenerationRevocationIdentity,
+    expectedScopeKey: string,
+  ) => {
+    const currentRun = generationPollingRunRef.current;
+    const replacementClaimed = identity.taskId === undefined
+      ? Boolean(currentRun)
+      : Boolean(
+          currentRun && (
+            currentRun.taskId !== identity.taskId ||
+            (identity.inputKey !== undefined &&
+              currentRun.inputKey !== identity.inputKey) ||
+            (identity.ownershipKey !== undefined &&
+              currentRun.ownershipKey !== identity.ownershipKey)
+          ),
+        );
+    if (
+      liveVideoMutationScopeKeyRef.current !== expectedScopeKey ||
+      replacementClaimed
+    ) {
+      if (identity.taskId) {
+        clearGenerationSubmissionIntent(
+          "video",
+          canvasId,
+          id,
+          identity.taskId,
+          accountId,
+          fixtureScopeId,
+        );
+      }
+      return;
+    }
+    revokeVideoTaskForGenerationInputChange(identity.taskId);
+  };
   const commitVideoDataMutation = (
     update: (current: ProbeNodeType["data"]) => ProbeNodeType["data"],
-    afterApplied: () => void = revokeVideoTaskForGenerationInputChange,
+    afterApplied?: (identity: VideoGenerationRevocationIdentity) => void,
   ) => {
+    const mutationVersion = videoDataMutationVersionRef.current + 1;
+    videoDataMutationVersionRef.current = mutationVersion;
+    const expectedScopeKey = videoMutationScopeKey;
+    let identity: VideoGenerationRevocationIdentity | undefined;
     void mutateGraph(({ edges, nodes }) => ({
       edges,
-      nodes: nodes.map((node) => node.id === id
-        ? { ...node, data: update(node.data) }
-        : node),
+      nodes: nodes.map((node) => {
+        if (node.id !== id) return node;
+        identity = videoGenerationRevocationIdentity(node.data);
+        return { ...node, data: update(node.data) };
+      }),
     })).then((applied) => {
-      if (applied) afterApplied();
+      if (
+        !applied ||
+        !identity ||
+        videoDataMutationVersionRef.current !== mutationVersion ||
+        liveVideoMutationScopeKeyRef.current !== expectedScopeKey
+      ) return;
+      if (afterApplied) afterApplied(identity);
+      else finishVideoGenerationInputRevocation(identity, expectedScopeKey);
+    });
+  };
+  const commitVideoInputEdgesMutation = (
+    updateEdges: (edges: CuttableEdge[]) => CuttableEdge[],
+  ) => {
+    const mutationVersion = videoDataMutationVersionRef.current + 1;
+    videoDataMutationVersionRef.current = mutationVersion;
+    const expectedScopeKey = videoMutationScopeKey;
+    let identity: VideoGenerationRevocationIdentity | undefined;
+    void mutateGraph(({ edges, nodes }) => {
+      const target = nodes.find((node) => node.id === id);
+      identity = target
+        ? videoGenerationRevocationIdentity(target.data)
+        : undefined;
+      return { edges: updateEdges(edges), nodes };
+    }).then((applied) => {
+      if (
+        !applied ||
+        !identity ||
+        videoDataMutationVersionRef.current !== mutationVersion ||
+        liveVideoMutationScopeKeyRef.current !== expectedScopeKey
+      ) return;
+      finishVideoGenerationInputRevocation(identity, expectedScopeKey);
     });
   };
   const beginGenerationPollingRun = (
@@ -651,6 +747,7 @@ function VideoNodeImpl({
     inputKey?: string,
     ownershipKey?: string,
   ): VideoPollingRun => {
+    videoDataMutationVersionRef.current += 1;
     videoRecoveryLifecycleRef.current?.abort("video-recovery-superseded");
     const run = { inputKey, ownershipKey, taskId, token: Symbol(taskId) };
     generationPollingRunRef.current = run;
@@ -683,14 +780,17 @@ function VideoNodeImpl({
         kind: "video",
         nodeId: id,
       });
+      videoRecoveryControllerRef.current?.abort("video-input-edited");
+      videoRecoveryControllerRef.current = undefined;
+      videoRecoveryLifecycleRef.current?.abort("video-input-edited");
       videoRetryLifecycleRef.current?.abort("video-input-edited");
       promptSemanticVersionRef.current += 1;
       commitVideoDataMutation((current) => ({
         ...clearVideoGenerationForSemanticChange(current),
         videoPrompt: nextPrompt,
-      }), () => {
+      }), (identity) => {
         setPrompt(nextPrompt);
-        revokeVideoTaskForGenerationInputChange();
+        finishVideoGenerationInputRevocation(identity, videoMutationScopeKey);
       });
     },
     onEditSessionStart: checkpoint,
@@ -698,20 +798,25 @@ function VideoNodeImpl({
   });
   const titleControl = useCompositionSafeText({
     onCommit: (nextTitle) => {
-      setTitle(nextTitle);
-      setNodes((nodes) =>
-        nodes.map((node) =>
-          node.id === id
-            ? { ...node, data: { ...node.data, title: nextTitle } }
-            : node,
-        ),
+      commitVideoDataMutation(
+        (current) => ({ ...current, title: nextTitle }),
+        () => setTitle(nextTitle),
       );
     },
     onEditSessionStart: checkpoint,
     value: title,
   });
-  const duration = data.videoDuration ?? 0;
-  const uploading = data.inputState === "uploading";
+  const activeViewVideoMetadata =
+    viewVideoMetadata?.source === data.videoSrc ? viewVideoMetadata : undefined;
+  const duration = activeViewVideoMetadata?.duration ?? data.videoDuration ??
+    data.mediaDurationSeconds ?? 0;
+  const displayVideoHeight = activeViewVideoMetadata?.height ??
+    data.videoHeight ?? data.mediaHeight ?? 0;
+  const displayVideoWidth = activeViewVideoMetadata?.width ?? data.videoWidth ??
+    data.mediaWidth ?? 0;
+  const effectiveInputState = effectiveMediaInputState(data);
+  const effectiveInputStateReason = effectiveMediaInputStateReason(data);
+  const uploading = effectiveInputState === "uploading";
   const inputPreflight = resolveNodeInputs({
     edges: canvasEdges,
     mediaInputPolicy: selectedVideoModel?.mediaInputPolicy,
@@ -862,7 +967,7 @@ function VideoNodeImpl({
         ],
       })
     ) return;
-    setNodes((nodes) => nodes.map((node) => {
+    applyViewUpdate((nodes) => nodes.map((node) => {
       if (node.id !== id || !shouldClearStaleVideoInputError({
         canSubmit: true,
         error: node.data.videoGenerationError,
@@ -900,7 +1005,7 @@ function VideoNodeImpl({
     inputPreflight.canSubmit,
     inputProblems.length,
     persistenceReady,
-    setNodes,
+    applyViewUpdate,
   ]);
 
   useEffect(() => {
@@ -961,6 +1066,16 @@ function VideoNodeImpl({
       !data.videoGenerationInputKey &&
       !data.videoGenerationOwnershipKey
     ) return;
+    if (persistedMismatch) {
+      clearGenerationSubmissionIntent(
+        "video",
+        canvasId,
+        id,
+        data.videoGenerationTaskId,
+        accountId,
+        fixtureScopeId,
+      );
+    }
     commitVideoDataMutation(clearVideoGenerationForSemanticChange);
   }, [
     accountId,
@@ -973,7 +1088,6 @@ function VideoNodeImpl({
     id,
     persistenceReady,
     rawGenerationInputFingerprint,
-    setNodes,
   ]);
 
   const persistVideoGenerationFailure = async (
@@ -983,9 +1097,9 @@ function VideoNodeImpl({
     retryAllowed: boolean,
     retryBlockCode?: string,
     retryBlockReason?: string,
-    generationInputKey?: string,
-    generationOwnershipKey?: string,
-    contractFingerprint?: string,
+    _generationInputKey?: string,
+    _generationOwnershipKey?: string,
+    _contractFingerprint?: string,
   ) => {
     const visibleMessage = generationFailureMessage(
       message,
@@ -993,23 +1107,17 @@ function VideoNodeImpl({
       errorCode,
       "video",
     );
-    const applied = await tryAdoptNodes(id, (nodes) => nodes.map((node) => node.id === id
+    const applied = applyViewUpdate((nodes) => nodes.map((node) => node.id === id
       ? {
           ...node,
           data: {
             ...node.data,
             videoGenerationError: visibleMessage,
             videoGenerationErrorCode: errorCode,
-            videoGenerationContractFingerprint: contractFingerprint,
-            videoGenerationInputKey:
-              generationInputKey ?? node.data.videoGenerationInputKey,
-            videoGenerationOwnershipKey:
-              generationOwnershipKey ?? node.data.videoGenerationOwnershipKey,
             videoGenerating: false,
             videoGenerationRetryAllowed: retryAllowed,
             videoGenerationRetryBlockCode: retryBlockCode,
             videoGenerationRetryBlockReason: retryBlockReason,
-            videoGenerationTaskId: taskId,
           },
       }
       : node));
@@ -1031,20 +1139,17 @@ function VideoNodeImpl({
     taskId: string,
     message: string,
   ) => {
-    const applied = await tryAdoptNodes(id, (nodes) => nodes.map((node) => node.id === id
+    const applied = applyViewUpdate((nodes) => nodes.map((node) => node.id === id
       ? {
           ...node,
           data: {
             ...node.data,
             videoGenerationError: message,
             videoGenerationErrorCode: undefined,
-            videoGenerationInputKey: undefined,
-            videoGenerationOwnershipKey: undefined,
             videoGenerating: false,
             videoGenerationRetryAllowed: undefined,
             videoGenerationRetryBlockCode: undefined,
             videoGenerationRetryBlockReason: undefined,
-            videoGenerationTaskId: undefined,
           },
       }
       : node));
@@ -1067,16 +1172,16 @@ function VideoNodeImpl({
   useEffect(() => {
     if (pollingPausedTaskIdRef.current) return;
     setUploadError(
-      data.inputState === "invalid"
-        ? data.inputStateReason ?? data.videoGenerationError ?? "视频不可用"
+      effectiveInputState === "invalid"
+        ? effectiveInputStateReason ?? data.videoGenerationError ?? "视频不可用"
         : visibleGenerationError(data.videoGenerationError),
-      data.inputState === "invalid"
+      effectiveInputState === "invalid"
         ? "INPUT_INVALID"
         : data.videoGenerationErrorCode,
     );
   }, [
-    data.inputState,
-    data.inputStateReason,
+    effectiveInputState,
+    effectiveInputStateReason,
     data.videoGenerationError,
     data.videoGenerationErrorCode,
   ]);
@@ -1084,20 +1189,20 @@ function VideoNodeImpl({
   useEffect(() => {
     if (
       !persistenceReady ||
-      data.inputState !== "uploading" ||
+      effectiveInputState !== "uploading" ||
       uploadInFlight.current
     ) return;
     const message = "视频上传已中断，请重新上传";
-    setNodes((nodes) => nodes.map((node) => node.id === id
+    applyViewUpdate((nodes) => nodes.map((node) => node.id === id
       ? { ...node, data: { ...node.data, ...mediaUploadState("invalid", message) } }
       : node));
-  }, [data.inputState, id, persistenceReady, setNodes]);
+  }, [applyViewUpdate, effectiveInputState, id, persistenceReady]);
 
   useEffect(() => {
     if (
       !uploadInFlight.current ||
       uploadAdmissionPending.current ||
-      getNode(id)?.data.inputState === "uploading"
+      effectiveMediaInputState(readCanvasNode(id)?.data ?? {}) === "uploading"
     ) return;
     uploadOperation.current += 1;
     uploadAdmissionPending.current = false;
@@ -1105,7 +1210,7 @@ function VideoNodeImpl({
     uploadController.current = undefined;
     uploadInFlight.current = false;
     uploadBaseline.current = undefined;
-  }, [data.inputState, getNode, id]);
+  }, [effectiveInputState, id, readCanvasNode]);
 
   useEffect(() => {
     if (persistenceReady || !uploadInFlight.current) return;
@@ -1133,7 +1238,7 @@ function VideoNodeImpl({
       !data.assetId ||
       hasCompleteTrustedMediaMetadata("video", data) ||
       metadataHydrationAssetIdRef.current === data.assetId ||
-      data.inputState === "uploading"
+      effectiveInputState === "uploading"
     ) return;
     const requestedAssetId = data.assetId;
     metadataHydrationAssetIdRef.current = requestedAssetId;
@@ -1142,10 +1247,11 @@ function VideoNodeImpl({
     void fetchTrustedMediaMetadata("video", requestedAssetId, controller.signal)
       .then((metadata) => {
         settled = true;
-        setNodes((nodes) => nodes.map((node) =>
-          node.id === id && node.data.assetId === requestedAssetId
-          ? { ...node, data: { ...node.data, ...trustedMediaPatch(metadata) } }
-          : node));
+        adoptAuthoritativeNodeData({
+          expectedAssetId: requestedAssetId,
+          nodeId: id,
+          patch: trustedMediaPatch(metadata),
+        });
       })
       .catch((error) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
@@ -1153,7 +1259,7 @@ function VideoNodeImpl({
         const message = error instanceof Error
           ? error.message
           : "服务端无法确认视频素材信息";
-        setNodes((nodes) => nodes.map((node) =>
+        applyViewUpdate((nodes) => nodes.map((node) =>
           node.id === id && node.data.assetId === requestedAssetId
           ? { ...node, data: { ...node.data, ...mediaUploadState("invalid", message) } }
           : node));
@@ -1167,7 +1273,7 @@ function VideoNodeImpl({
   }, [
     canvasId,
     data.assetId,
-    data.inputState,
+    effectiveInputState,
     data.mediaByteSize,
     data.mediaContentType,
     data.mediaDurationSeconds,
@@ -1178,15 +1284,18 @@ function VideoNodeImpl({
     data.mediaWidth,
     id,
     persistenceReady,
-    setNodes,
+    adoptAuthoritativeNodeData,
+    applyViewUpdate,
   ]);
 
   const applyGeneratedVideo = async (
     task: GenerationTaskSummary,
     cleanPrompt: string,
     run: VideoPollingRun,
+    signal: AbortSignal,
   ) => {
     if (
+      signal?.aborted ||
       !ownsGenerationPollingRun(run) ||
       !videoTaskMatchesNode(task, canvasId, id, run.taskId, fixtureScopeId)
     ) return false;
@@ -1203,6 +1312,62 @@ function VideoNodeImpl({
     }
     if (task.state !== "success" || !task.resultAssetId || !task.resultUrl) {
       throw new Error("视频结果不完整");
+    }
+    if (task.generationIdentityVersion === 2) {
+      const projectionState = task.canvasProjectionState;
+      const projectionMessage = projectionState === "conflict"
+        ? "结果已生成，但节点输入已变化，未覆盖当前画布"
+        : projectionState === "failed"
+          ? "结果已生成，画布同步暂时失败，系统会继续重试"
+          : projectionState === "applied"
+            ? undefined
+            : "结果已生成，画布正在同步";
+      if (projectionState === "applied") {
+        try {
+          if (
+            !await graphCommandPort?.refreshAuthoritativeDocument?.(signal) ||
+            signal?.aborted ||
+            !ownsGenerationPollingRun(run)
+          ) return false;
+        } catch {
+          return false;
+        }
+        clearGenerationSubmissionIntent(
+          "video",
+          canvasId,
+          id,
+          task.id,
+          accountId,
+          fixtureScopeId,
+        );
+        return true;
+      }
+      const patched = graphCommandPort?.applyViewPatch?.({
+        kind: "video",
+        nodeId: id,
+        ownershipKey: run.ownershipKey ?? "",
+        patch: {
+          videoGenerating: false,
+          videoGenerationError: projectionMessage,
+          videoGenerationErrorCode: projectionState === "conflict"
+            ? "CANVAS_SERVER_OWNERSHIP_CONFLICT"
+            : projectionState === "failed"
+              ? "CANVAS_PROJECTION_FAILED"
+              : "CANVAS_PROJECTION_PENDING",
+        },
+        taskId: task.id,
+      });
+      if (patched?.status !== "applied") return false;
+      if (signal?.aborted || !ownsGenerationPollingRun(run)) return false;
+      clearGenerationSubmissionIntent(
+        "video",
+        canvasId,
+        id,
+        task.id,
+        accountId,
+        fixtureScopeId,
+      );
+      return true;
     }
     const metadataPatch = task.resultMedia
       ? trustedMediaPatch({
@@ -1256,7 +1421,9 @@ function VideoNodeImpl({
           : node,
       ),
     );
-    if (!applied) return false;
+    if (signal?.aborted || !ownsGenerationPollingRun(run) || !applied) {
+      return false;
+    }
     clearGenerationSubmissionIntent("video", canvasId, id, task.id, accountId, fixtureScopeId);
     return true;
   };
@@ -1281,6 +1448,7 @@ function VideoNodeImpl({
       !graphCommandPort ||
       selectedVideoModel.generationAvailable === false
     ) return { status: "skipped" };
+    videoDataMutationVersionRef.current += 1;
     const transitionExpectedBefore = canvasModelTransitionExpectedBefore(
       graphCommandPort.snapshot(),
       id,
@@ -1476,6 +1644,10 @@ function VideoNodeImpl({
         }),
         graph: graphCommandPort,
         nodeId: id,
+        onBindingCommitted() {
+          setSavingCanvas(false);
+          setSubmitting(false);
+        },
         prepareSubmissionAdapter: async () => {
           const currentModel = liveVideoModelsRef.current?.find(
             (model) => model.id === requestedModelId,
@@ -1614,15 +1786,13 @@ function VideoNodeImpl({
           error instanceof GenerationRequestError &&
           admittedContractFingerprint
         ) {
-          setNodes((nodes) => nodes.map((node) => node.id === id
+          applyViewUpdate((nodes) => nodes.map((node) => node.id === id
             ? {
                 ...node,
                 data: {
                   ...node.data,
                   videoGenerationError: friendly,
                   videoGenerationErrorCode: error.code,
-                  videoGenerationContractFingerprint:
-                    admittedContractFingerprint,
                 },
               }
             : node));
@@ -1645,6 +1815,7 @@ function VideoNodeImpl({
       generating ||
       submitting
     ) return;
+    videoDataMutationVersionRef.current += 1;
     videoRecoveryControllerRef.current?.abort("video-recovery-superseded");
     const taskId = retryTaskId;
     const requestedPrompt = promptControl.readCommittedValue();
@@ -1811,6 +1982,8 @@ function VideoNodeImpl({
     const taskId = pollingPausedTaskIdRef.current;
     if (!taskId) return;
     videoRecoveryControllerRef.current?.abort("video-recovery-superseded");
+    const controller = new AbortController();
+    videoRecoveryControllerRef.current = controller;
     pollingPausedTaskIdRef.current = undefined;
     setPollingPausedTaskId(undefined);
     setUploadError("");
@@ -1820,14 +1993,19 @@ function VideoNodeImpl({
       data.videoGenerationOwnershipKey ?? rawGenerationInputFingerprint,
     );
     try {
-      await flushCanvasSave();
+      await flushCanvasSave(controller.signal);
+      if (controller.signal.aborted || !ownsGenerationPollingRun(pollingRun)) {
+        return;
+      }
       const task = await waitForGenerationTaskWithPause(taskId, () => {
         if (!ownsGenerationPollingRun(pollingRun)) return;
         pollingPausedTaskIdRef.current = taskId;
         setPollingPausedTaskId(taskId);
         setUploadError(POLLING_PAUSED_MESSAGE);
-      }, undefined, fixtureScopeId);
-      if (!ownsGenerationPollingRun(pollingRun)) return;
+      }, controller.signal, fixtureScopeId);
+      if (controller.signal.aborted || !ownsGenerationPollingRun(pollingRun)) {
+        return;
+      }
       if (task.state === "cancelled") {
         const applied = await persistVideoGenerationCancellation(
           task.id,
@@ -1860,6 +2038,7 @@ function VideoNodeImpl({
         task,
         promptControl.committedValue.trim(),
         pollingRun,
+        controller.signal,
       );
       if (!applied) {
         pollingPausedTaskIdRef.current = taskId;
@@ -1869,6 +2048,7 @@ function VideoNodeImpl({
       }
       setRetryTaskId(undefined);
     } catch (error) {
+      if (controller.signal.aborted) return;
       if (!ownsGenerationPollingRun(pollingRun)) return;
       if (pollingPausedTaskIdRef.current === taskId) return;
       if (isTransientPollingError(error)) {
@@ -1882,6 +2062,9 @@ function VideoNodeImpl({
         error instanceof GenerationRequestError ? error.code : undefined,
       );
     } finally {
+      if (videoRecoveryControllerRef.current === controller) {
+        videoRecoveryControllerRef.current = undefined;
+      }
       endGenerationPollingRun(pollingRun);
     }
   };
@@ -2149,15 +2332,23 @@ function VideoNodeImpl({
           persistedOwnershipKey &&
           persistedOwnershipKey !== rawGenerationInputFingerprint
         ) {
+          clearGenerationSubmissionIntent(
+            "video",
+            canvasId,
+            id,
+            persistedTaskId,
+            accountId,
+            fixtureScopeId,
+          );
           commitVideoDataMutation(
             (current) => current.videoGenerationTaskId === persistedTaskId
               ? clearVideoGenerationForSemanticChange(current)
               : current,
-            () => {
+            (identity) => {
               setUnverifiedRecoveryTaskId((current) =>
                 current === persistedTaskId ? undefined : current
               );
-              revokeVideoTaskForGenerationInputChange();
+              finishVideoGenerationInputRevocation(identity, videoMutationScopeKey);
             },
           );
           return;
@@ -2169,11 +2360,11 @@ function VideoNodeImpl({
               (current) => current.videoGenerationTaskId === persistedTaskId
                 ? clearVideoGenerationForSemanticChange(current)
                 : current,
-              () => {
+              (identity) => {
                 setUnverifiedRecoveryTaskId((current) =>
                   current === persistedTaskId ? undefined : current
                 );
-                revokeVideoTaskForGenerationInputChange();
+                finishVideoGenerationInputRevocation(identity, videoMutationScopeKey);
               },
             );
             return;
@@ -2186,31 +2377,7 @@ function VideoNodeImpl({
           fixtureScopeId,
         );
         persistedTaskReadPending = false;
-      } else {
-        task = await recoverPendingGenerationTask(
-          "video",
-          canvasId,
-          id,
-          controller.signal,
-          selectedVideoModel ? videoGenerationRequestInput : undefined,
-          accountId,
-          {
-            generationInputKey: persistedInputKey ?? videoGenerationInputKey,
-            generationOwnershipKey: rawGenerationInputFingerprint,
-            fixtureScopeId,
-            modelInputContractFingerprint:
-              data.videoGenerationModelInputContractFingerprint ??
-              inputPreflight.contractFingerprint,
-            modelConfigurationRevision:
-              data.videoGenerationModelConfigurationRevision ??
-              selectedVideoModel?.configurationRevision,
-            modelReleaseRevision:
-              data.videoGenerationModelReleaseRevision ??
-              selectedVideoModel?.releaseRevisionId,
-          },
-        );
-        recoveredIntent = Boolean(task);
-      }
+      } else return;
       if (controller.signal.aborted || !task) return;
       const recoveredOwnershipKey = persistedOwnershipKey ??
         task.generationOwnershipKey;
@@ -2265,11 +2432,11 @@ function VideoNodeImpl({
             (current) => current.videoGenerationTaskId === persistedTaskId
               ? clearVideoGenerationForSemanticChange(current)
               : current,
-            () => {
+            (identity) => {
               setUnverifiedRecoveryTaskId((current) =>
                 current === persistedTaskId ? undefined : current
               );
-              revokeVideoTaskForGenerationInputChange();
+              finishVideoGenerationInputRevocation(identity, videoMutationScopeKey);
             },
           );
         }
@@ -2497,14 +2664,15 @@ function VideoNodeImpl({
       uploadInFlight.current
     ) return;
 
-    const baseline = uploadBaseline.current ?? getNode(id);
+    const baseline = uploadBaseline.current ?? readCanvasNode(id);
     const operation = uploadOperation.current + 1;
     const scope = mediaAdoptionScopeRef.current;
     uploadOperation.current = operation;
     uploadAdmissionPending.current = true;
     uploadInFlight.current = true;
     let admittedBaseline = baseline;
-    const prepared = await tryAdoptNodes(id, (nodes) =>
+    const releaseUploadCheckpoint = checkpoint();
+    const prepared = applyViewUpdate((nodes) =>
       nodes.map((node) => {
         if (node.id !== id) return node;
         admittedBaseline = uploadBaseline.current ?? node;
@@ -2516,12 +2684,12 @@ function VideoNodeImpl({
           },
         };
       }),
-      { checkpoint: true },
     );
     if (operation === uploadOperation.current) {
       uploadAdmissionPending.current = false;
     }
     if (!prepared) {
+      releaseUploadCheckpoint();
       if (operation === uploadOperation.current) {
         uploadAdmissionPending.current = false;
         uploadInFlight.current = false;
@@ -2565,9 +2733,10 @@ function VideoNodeImpl({
       if (
         operation !== uploadOperation.current ||
         scope !== mediaAdoptionScopeRef.current ||
+        !canvasUploadTargetStillCurrent(admittedBaseline, readCanvasNode(id)) ||
         !persistenceReadyLive.current ||
         controller.signal.aborted ||
-        getNode(id)?.data.inputState !== "uploading"
+        effectiveMediaInputState(readCanvasNode(id)?.data ?? {}) !== "uploading"
       ) return;
 
       requestedAssetId = `${crypto.randomUUID()}.mp4`;
@@ -2628,9 +2797,10 @@ function VideoNodeImpl({
       if (
         operation !== uploadOperation.current ||
         scope !== mediaAdoptionScopeRef.current ||
+        !canvasUploadTargetStillCurrent(admittedBaseline, readCanvasNode(id)) ||
         !persistenceReadyLive.current ||
         controller.signal.aborted ||
-        getNode(id)?.data.inputState !== "uploading"
+        effectiveMediaInputState(readCanvasNode(id)?.data ?? {}) !== "uploading"
       ) {
         await discardUnadoptedVideoAsset(requestedAssetId);
         requestedAssetId = undefined;
@@ -2639,42 +2809,76 @@ function VideoNodeImpl({
 
       setCurrentTime(0);
       setPlaying(false);
-      adopted = await tryAdoptNodes(id, (nodes) =>
-        nodes.map((node) =>
+      // Keep the upload-only undo checkpoint until the remote response is
+      // fully validated, then retire it before the authoritative adoption is
+      // allowed to render.
+      releaseUploadCheckpoint();
+      uploadAdmissionPending.current = true;
+      try {
+        adopted = await adoptUploadedAsset({
+          asset: {
+            assetId: asset.assetId,
+            byteSize: asset.byteSize,
+            contentType: asset.contentType,
+            durationSeconds: asset.durationSeconds,
+            height: trustedMetadata.mediaHeight,
+            src: asset.url,
+            storageBackend: asset.storageBackend,
+            width: trustedMetadata.mediaWidth,
+          },
+          mediaKind: "video",
+          rollbackTarget: admittedBaseline,
+          targetNodeId: id,
+          update: (nodes) => nodes.map((node) =>
           node.id === id
             ? {
                 ...node,
                 height: undefined,
                 measured: undefined,
-                style: {
-                  ...node.style,
-                  ...fitVisualMediaSize(
-                    trustedMetadata.mediaWidth,
-                    trustedMetadata.mediaHeight,
-                  ),
-                },
                 width: undefined,
                 data: {
                   ...node.data,
                   ...trustedMediaPatch(trustedMetadata),
                   assetId: asset.assetId,
                   videoAudioEnabled: true,
-                  videoCreatedAt: new Intl.DateTimeFormat("zh-CN").format(
-                    new Date(),
-                  ),
                   videoDuration: asset.durationSeconds,
                   videoFileSize: asset.byteSize,
+                  videoGenerationContractFingerprint: undefined,
                   videoGenerationError: undefined,
+                  videoGenerationErrorCode: undefined,
+                  videoGenerationInputKey: undefined,
+                  videoGenerationModelConfigurationRevision: undefined,
+                  videoGenerationModelInputContractFingerprint: undefined,
+                  videoGenerationModelReleaseRevision: undefined,
+                  videoGenerationOwnershipKey: undefined,
+                  videoGenerationRetryAllowed: undefined,
+                  videoGenerationRetryBlockCode: undefined,
+                  videoGenerationRetryBlockReason: undefined,
+                  videoGenerationTaskId: undefined,
+                  videoGenerating: undefined,
+                  videoInputContractFingerprint: undefined,
                   videoHeight: trustedMetadata.mediaHeight,
                   videoModel: "本地上传",
                   videoPrompt: "",
                   videoSrc: asset.url,
                   videoWidth: trustedMetadata.mediaWidth,
+                  groupRunSuccessInputFingerprint: undefined,
+                  groupRunSuccessModelConfigurationRevision: undefined,
+                  groupRunSuccessModelReleaseRevision: undefined,
+                  groupRunSuccessOwnershipKey: undefined,
+                  groupRunSuccessResultKey: undefined,
+                  groupRunSuccessTaskId: undefined,
+                  workflowExecutionRunId: undefined,
                 },
               }
             : node,
-        ),
-      );
+          ),
+        });
+      } finally {
+        if (operation === uploadOperation.current) {
+          uploadAdmissionPending.current = false;
+        }
+      }
       if (!adopted) {
         await discardUnadoptedVideoAsset(requestedAssetId);
         requestedAssetId = undefined;
@@ -2689,18 +2893,26 @@ function VideoNodeImpl({
       if (operation !== uploadOperation.current) return;
       const message = error instanceof Error ? error.message : "视频上传失败";
       if (baseline && hasReadyVideoMedia(baseline)) {
-        trySetNodes((nodes) => nodes.map((node) => node.id === id
-          ? restoreVideoUploadBaseline(node, baseline)
+        applyViewUpdate((nodes) => nodes.map((node) => node.id === id
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                inputViewState: baseline.data.inputViewState,
+                inputViewStateReason: baseline.data.inputViewStateReason,
+              },
+            }
           : node));
         setTransientUploadError(message);
       } else {
         setUploadError(message, "INPUT_INVALID");
-        trySetNodes((nodes) => nodes.map((node) => node.id === id
+        applyViewUpdate((nodes) => nodes.map((node) => node.id === id
           ? { ...node, data: { ...node.data, ...mediaUploadState("invalid", message) } }
           : node));
       }
     } finally {
       URL.revokeObjectURL(localUrl);
+      releaseUploadCheckpoint();
       if (operation === uploadOperation.current) {
         uploadAdmissionPending.current = false;
         uploadController.current = undefined;
@@ -2710,11 +2922,15 @@ function VideoNodeImpl({
     }
   };
 
-  const applyVideoMetadata = useCallback((metadata: {
-    duration: number;
-    height: number;
-    width: number;
-  }) => {
+  const captureMetadata = (video: HTMLVideoElement) => {
+    const source = data.videoSrc;
+    if (!source) return;
+    const metadata = {
+      duration: video.duration,
+      height: video.videoHeight,
+      source,
+      width: video.videoWidth,
+    };
     if (
       !Number.isFinite(metadata.duration) ||
       metadata.duration < 0 ||
@@ -2723,61 +2939,8 @@ function VideoNodeImpl({
       !Number.isFinite(metadata.width) ||
       metadata.width <= 0
     ) return;
-    setNodes((nodes) =>
-      nodes.map((node) => {
-        if (node.id !== id) return node;
-        const hasExplicitSize =
-          typeof node.width === "number" || typeof node.height === "number";
-        const fitted = hasExplicitSize
-          ? undefined
-          : fitVisualMediaSize(metadata.width, metadata.height);
-        if (
-          node.data.videoDuration === metadata.duration &&
-          node.data.videoHeight === metadata.height &&
-          node.data.videoWidth === metadata.width &&
-          (
-            hasExplicitSize ||
-            (node.style?.height === fitted?.height &&
-              node.style?.width === fitted?.width)
-          )
-        ) return node;
-        return {
-          ...node,
-          style: {
-            ...node.style,
-            ...(fitted ?? {}),
-          },
-          data: {
-            ...node.data,
-            videoDuration: metadata.duration,
-            videoHeight: metadata.height,
-            videoWidth: metadata.width,
-          },
-        };
-      }),
-    );
-  }, [id, setNodes]);
-
-  const captureMetadata = (video: HTMLVideoElement) => {
-    const metadata = {
-      duration: video.duration,
-      height: video.videoHeight,
-      width: video.videoWidth,
-    };
-    if (!persistenceReady) {
-      deferredVideoMetadata.current = metadata;
-      return;
-    }
-    deferredVideoMetadata.current = undefined;
-    applyVideoMetadata(metadata);
+    setViewVideoMetadata(metadata);
   };
-
-  useEffect(() => {
-    if (!persistenceReady || !deferredVideoMetadata.current) return;
-    const metadata = deferredVideoMetadata.current;
-    deferredVideoMetadata.current = undefined;
-    applyVideoMetadata(metadata);
-  }, [applyVideoMetadata, persistenceReady]);
 
   const togglePlayback = async (video?: HTMLVideoElement | null) => {
     if (!video) return;
@@ -2835,7 +2998,6 @@ function VideoNodeImpl({
         isVisible={singleNodeChrome}
         minHeight={135}
         minWidth={240}
-        onResizeStart={() => checkpoint()}
       />
       <EmptyMediaUploadToolbar
         disabled={uploadControlBlocked}
@@ -2938,36 +3100,21 @@ function VideoNodeImpl({
           disabled={semanticEditBlocked}
           inputs={inputPreflight.inputs}
           onMove={(edgeId, direction) => {
-            void mutateGraph(({ edges, nodes }) => ({
-              edges: moveNodeInputEdge(edges, id, edgeId, direction),
-              nodes: nodes.map((node) => node.id === id
-                ? { ...node, data: clearVideoGenerationForSemanticChange(node.data) }
-                : node),
-            })).then((applied) => {
-              if (applied) revokeVideoTaskForGenerationInputChange();
-            });
+            commitVideoInputEdgesMutation((edges) =>
+              moveNodeInputEdge(edges, id, edgeId, direction)
+            );
           }}
           onRemove={(edgeId) => {
-            void mutateGraph(({ edges, nodes }) => ({
-              edges: edges.filter((edge) => edge.id !== edgeId),
-              nodes: nodes.map((node) => node.id === id
-                ? { ...node, data: clearVideoGenerationForSemanticChange(node.data) }
-                : node),
-            })).then((applied) => {
-              if (applied) revokeVideoTaskForGenerationInputChange();
-            });
+            commitVideoInputEdgesMutation((edges) =>
+              edges.filter((edge) => edge.id !== edgeId)
+            );
           }}
           onRoleChange={(edgeId, role) => {
-            void mutateGraph(({ edges, nodes }) => ({
-              edges: edges.map((edge) => edge.id === edgeId
+            commitVideoInputEdgesMutation((edges) =>
+              edges.map((edge) => edge.id === edgeId
                 ? { ...edge, data: { ...edge.data, inputRole: role } }
-                : edge),
-              nodes: nodes.map((node) => node.id === id
-                ? { ...node, data: clearVideoGenerationForSemanticChange(node.data) }
-                : node),
-            })).then((applied) => {
-              if (applied) revokeVideoTaskForGenerationInputChange();
-            });
+                : edge)
+            );
           }}
           problems={inputProblems}
           roleOptions={(input) => availableNodeInputRoles({
@@ -3041,6 +3188,12 @@ function VideoNodeImpl({
                 setModelSwitchProblem("模型未切换：模型合同或画布事务尚未就绪");
                 return;
               }
+              const revocationIdentity = videoGenerationRevocationIdentity(
+                getNodes().find((node) => node.id === id)?.data ?? data,
+              );
+              const revocationScopeKey = videoMutationScopeKey;
+              const mutationVersion = videoDataMutationVersionRef.current + 1;
+              videoDataMutationVersionRef.current = mutationVersion;
               void applyInteractiveModelTransition({
                 intent: "model-switch",
                 model: {
@@ -3053,10 +3206,17 @@ function VideoNodeImpl({
                 nodeId: id,
                 requestedParameters: defaultParameterValues(nextModel.parameterSchema),
               }).then((result) => {
+                if (
+                  videoDataMutationVersionRef.current !== mutationVersion ||
+                  liveVideoMutationScopeKeyRef.current !== revocationScopeKey
+                ) return;
                 if (result.status === "applied") {
                   setModelSwitchProblem("");
                   setServerInputProblems([]);
-                  revokeVideoTaskForGenerationInputChange();
+                  finishVideoGenerationInputRevocation(
+                    revocationIdentity,
+                    revocationScopeKey,
+                  );
                   return;
                 }
                 setModelSwitchProblem(
@@ -3083,6 +3243,12 @@ function VideoNodeImpl({
                     setModelSwitchProblem("输入模式未切换：模型合同或画布事务尚未就绪");
                     return;
                   }
+                  const revocationIdentity = videoGenerationRevocationIdentity(
+                    getNodes().find((node) => node.id === id)?.data ?? data,
+                  );
+                  const revocationScopeKey = videoMutationScopeKey;
+                  const mutationVersion = videoDataMutationVersionRef.current + 1;
+                  videoDataMutationVersionRef.current = mutationVersion;
                   void applyInteractiveModelTransition({
                     intent: "mode-switch",
                     model: {
@@ -3095,10 +3261,17 @@ function VideoNodeImpl({
                     nodeId: id,
                     requestedParameters: { ...videoParameters, [key]: value },
                   }).then((result) => {
+                    if (
+                      videoDataMutationVersionRef.current !== mutationVersion ||
+                      liveVideoMutationScopeKeyRef.current !== revocationScopeKey
+                    ) return;
                     if (result.status === "applied") {
                       setModelSwitchProblem("");
                       setServerInputProblems([]);
-                      revokeVideoTaskForGenerationInputChange();
+                      finishVideoGenerationInputRevocation(
+                        revocationIdentity,
+                        revocationScopeKey,
+                      );
                       return;
                     }
                     setModelSwitchProblem(
@@ -3569,13 +3742,13 @@ function VideoNodeImpl({
                     <div>
                       <dt>质量:</dt>
                       <dd>
-                        {data.videoWidth || 0} x {data.videoHeight || 0}
+                        {displayVideoWidth} x {displayVideoHeight}
                       </dd>
                     </div>
                     <div>
                       <dt>宽高比:</dt>
                       <dd>
-                        {ratioLabel(data.videoWidth, data.videoHeight)}
+                        {ratioLabel(displayVideoWidth, displayVideoHeight)}
                       </dd>
                     </div>
                     <div>

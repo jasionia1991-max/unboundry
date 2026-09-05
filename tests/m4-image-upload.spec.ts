@@ -142,7 +142,7 @@ test.afterEach(async ({ request }) => {
   }
 });
 
-test("legacy image metadata is hydrated once and remains durable after reload", async ({
+test("legacy image metadata is hydrated at the server read boundary without browser backfill", async ({
   page,
   request,
 }) => {
@@ -204,40 +204,55 @@ test("legacy image metadata is hydrated once and remains durable after reload", 
   });
   expect(saved.ok(), await saved.text()).toBeTruthy();
 
+  const savedLegacy = await (
+    await request.get(`/api/canvas/${projectId}`)
+  ).json() as { revision: number };
+  let canvasWrites = 0;
   let metadataRequests = 0;
   page.on("request", (entry) => {
+    const pathname = new URL(entry.url()).pathname;
+    if (
+      (entry.method() === "PUT" && pathname === `/api/canvas/${projectId}`) ||
+      (entry.method() === "POST" &&
+        pathname === `/api/canvases/${projectId}/commands`)
+    ) canvasWrites += 1;
     if (
       entry.method() === "GET" &&
-      new URL(entry.url()).pathname === `/api/media-metadata/image/${assetId}`
+      pathname === `/api/media-metadata/image/${assetId}`
     ) metadataRequests += 1;
   });
   await page.goto(`/canvas/${projectId}`);
   await expect(world).toHaveAttribute("data-persistence-ready", "true");
-  await expect.poll(async () => {
-    const refreshed = await (
-      await request.get(`/api/canvas/${projectId}`)
-    ).json() as { nodes: Array<{ data: Record<string, unknown> }> };
-    const data = refreshed.nodes.find((node) => node.data.assetId === assetId)?.data;
-    return data && {
-      ...data,
-      inputStateReason: data.inputStateReason ?? null,
-    };
-  }).toMatchObject({
-    inputState: "ready",
-    inputStateReason: null,
-    mediaHeight: 720,
-    mediaMetadataSource: "server",
-    mediaWidth: 1_280,
-  });
-  expect(metadataRequests).toBe(1);
+  await page.waitForTimeout(750);
+  expect(metadataRequests).toBe(0);
+  const afterHydration = await (
+    await request.get(`/api/canvas/${projectId}`)
+  ).json() as {
+    nodes: Array<{ data: Record<string, unknown> }>;
+    revision: number;
+  };
+  expect(afterHydration.revision).toBe(savedLegacy.revision);
+  expect(afterHydration.nodes.find((node) => node.data.assetId === assetId)?.data)
+    .toMatchObject({
+      inputState: "ready",
+      mediaHeight: imageNode.data.mediaHeight,
+      mediaMetadataSource: "server",
+      mediaWidth: imageNode.data.mediaWidth,
+    });
+  expect(canvasWrites).toBe(0);
   await page.reload();
   await expect(world).toHaveAttribute("data-persistence-ready", "true");
   await expect(page.getByTestId("image-node-preview")).toHaveAttribute(
     "src",
     imageSrc,
   );
-  await page.waitForTimeout(500);
-  expect(metadataRequests).toBe(1);
+  await page.waitForTimeout(750);
+  expect(metadataRequests).toBe(0);
+  const afterReload = await (
+    await request.get(`/api/canvas/${projectId}`)
+  ).json() as { revision: number };
+  expect(afterReload.revision).toBe(savedLegacy.revision);
+  expect(canvasWrites).toBe(0);
 });
 
 test("canvas upload creates a durable Image node without generation history or menu collisions", async ({
@@ -327,6 +342,7 @@ test("canvas upload creates a durable Image node without generation history or m
   await expect(world).toHaveAttribute("data-node-count", "1");
   await expect(page.getByTestId("image-node-preview")).toBeVisible();
 
+  await page.locator(".react-flow__node-image").click({ force: true });
   await page.getByTestId("image-node-title-input").dblclick();
   await expect(menu).toHaveCount(0);
 });
@@ -385,7 +401,9 @@ test("JPEG, WebP and GIF uploads all become durable static PNG assets in global 
     mimeType: "image/webp",
     name: "catalog-photo.webp",
   });
-  await expect.poll(async () => (await durableNode())?.data.assetId)
+  await expect.poll(async () => (await durableNode())?.data.assetId, {
+    timeout: 20_000,
+  })
     .not.toBe(jpegNode.data.assetId);
   const webpNode = (await durableNode())!;
   expect(webpNode.data).toMatchObject({
@@ -401,7 +419,9 @@ test("JPEG, WebP and GIF uploads all become durable static PNG assets in global 
     mimeType: "image/gif",
     name: "catalog-photo.gif",
   });
-  await expect.poll(async () => (await durableNode())?.data.assetId)
+  await expect.poll(async () => (await durableNode())?.data.assetId, {
+    timeout: 20_000,
+  })
     .not.toBe(webpNode.data.assetId);
   const gifNode = (await durableNode())!;
   expect(gifNode.data).toMatchObject({

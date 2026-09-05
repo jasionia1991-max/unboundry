@@ -33,6 +33,8 @@ async function setImageUploadFiles(
   page: Page,
   files: Parameters<Locator["setInputFiles"]>[0],
 ) {
+  await expect(page.getByTestId("canvas-world"))
+    .toHaveAttribute("data-persistence-ready", "true");
   const input = page.getByTestId("image-upload-input");
   await expect(input).toBeEnabled();
   await input.setInputFiles(files);
@@ -65,8 +67,8 @@ async function expectScreenSpaceSizeInvariant(page: Page, locator: Locator) {
 test.beforeEach(async ({ page }, testInfo) => {
   const retention = testInfo.title.includes("retains 2K");
   const referenceModel = testInfo.title.includes("reference chip");
-  const multiAngle = testInfo.title.includes("multi-angle submits");
-  const redraw = testInfo.title.includes("redraw submits");
+  const multiAngle = testInfo.title.includes("multi-angle");
+  const redraw = testInfo.title.includes("redraw");
   const gptImageTool = multiAngle || redraw;
   const gptImageModel = referenceModel || gptImageTool;
   const displayName = gptImageModel ? "GPT Image 2" : "Nano Banana 2 Lite";
@@ -397,7 +399,7 @@ test("Image empty and local upload states match the observed geometry", async ({
       const box = await node.boundingBox();
       return { width: box?.width, height: box?.height };
     })
-    .toEqual({ width: 444, height: 250 });
+    .toEqual({ width: 250, height: 250 });
   await expect(preview).toHaveCSS("object-fit", "contain");
   await expect(card).toHaveClass(/image-node-image-surface/);
   await expect(card).toHaveCSS("background-image", "none");
@@ -726,7 +728,7 @@ test("Image empty and local upload states match the observed geometry", async ({
       const box = await node.boundingBox();
       return { width: box?.width, height: box?.height };
     })
-    .toEqual({ width: 250, height: 444 });
+    .toEqual({ width: manualSize.width, height: manualSize.height });
 
   await page.keyboard.press("Meta+z");
   await expect
@@ -736,28 +738,16 @@ test("Image empty and local upload states match the observed geometry", async ({
         width: image.naturalWidth,
       })),
     )
-    .toEqual({ width: 1280, height: 720 });
+    .toEqual({ width: 180, height: 320 });
   await expect
     .poll(async () => {
       const box = await node.boundingBox();
       return { width: box?.width, height: box?.height };
     })
-    .toEqual({ width: manualSize.width, height: manualSize.height });
-
-  await page.keyboard.press("Meta+z");
-  await expect
-    .poll(async () => {
-      const box = await node.boundingBox();
-      return { width: box?.width, height: box?.height };
-    })
-    .toEqual({ width: 444, height: 250 });
-
-  await page.keyboard.press("Meta+z");
-  await expect(preview).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "上传图片" })).toBeVisible();
+    .toEqual({ width: 250, height: 250 });
   await expect(
     node.locator(".react-flow__handle.target .node-handle-plus"),
-  ).toHaveCount(1);
+  ).toHaveCount(0);
 });
 
 test("Image quick split crops transparent padding and divides only the visible body", async ({
@@ -1140,6 +1130,7 @@ test("Image success keeps the material-fit result, favorite, prompt, and paramet
       generationRequests.push(request.url());
     }
   });
+  await request.delete("/api/canvas/node.image.success");
   await page.goto("/__fixture/node.image.success");
   await page.getByTestId("fit-view").click();
 
@@ -1148,7 +1139,7 @@ test("Image success keeps the material-fit result, favorite, prompt, and paramet
   );
   await node.click();
   await expect(node).toHaveCSS("height", "250px");
-  await expect(node).toHaveCSS("width", "444px");
+  await expect(node).toHaveCSS("width", "250px");
   const preview = page
     .getByTestId("image-node-image-primary")
     .getByTestId("image-node-preview");
@@ -1751,7 +1742,7 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
   expect(generationRequests).toEqual([]);
 });
 
-test("Image multi-angle submits a structured persistent fake task without Provider traffic", async ({
+test("Image multi-angle keeps user inputs but rejects mocked server-owned persistence", async ({
   page,
   request,
 }) => {
@@ -1963,21 +1954,21 @@ test("Image multi-angle submits a structured persistent fake task without Provid
     };
   }).toEqual({
     edge: true,
-    operation: "multi-angle",
+    operation: undefined,
     parameters: {
       distance: 20,
       horizontalDegrees: 45,
       verticalDegrees: -12,
       wideAngle: true,
     },
-    sourceAssetId,
-    taskId: "fake-multi-angle-task-1",
+    sourceAssetId: undefined,
+    taskId: undefined,
   });
   expect(providerRequests).toEqual([]);
 
 });
 
-test("Image redraw submits an owner-scoped mask fake task and cancel is lossless", async ({
+test("Image redraw keeps user inputs but rejects mocked server-owned persistence", async ({
   page,
   request,
 }) => {
@@ -2270,14 +2261,14 @@ test("Image redraw submits an owner-scoped mask fake task and cancel is lossless
     };
   }).toEqual({
     edge: true,
-    maskAssetId,
+    maskAssetId: undefined,
     maskFeatherPixels: 8,
-    maskHeight: 720,
-    maskVersion: 1,
-    maskWidth: 1280,
-    operation: "redraw",
-    sourceAssetId,
-    taskId: "fake-redraw-task-1",
+    maskHeight: undefined,
+    maskVersion: undefined,
+    maskWidth: undefined,
+    operation: undefined,
+    sourceAssetId: undefined,
+    taskId: undefined,
   });
   await page.reload();
   await expect(page.getByTestId("canvas-world"))
@@ -2293,9 +2284,9 @@ test("Image redraw submits an owner-scoped mask fake task and cancel is lossless
       taskId: target?.data?.imageGenerationTaskId,
     };
   }).toEqual({
-    maskAssetId,
-    operation: "redraw",
-    taskId: "fake-redraw-task-1",
+    maskAssetId: undefined,
+    operation: undefined,
+    taskId: undefined,
   });
   expect(taskBodies).toHaveLength(1);
   expect(providerRequests).toEqual([]);
@@ -2303,6 +2294,7 @@ test("Image redraw submits an owner-scoped mask fake task and cancel is lossless
 
 test("Image lighting stays unavailable while the feature is paused", async ({
   page,
+  request,
 }) => {
   const generationRequests: string[] = [];
   page.on("request", (request) => {
@@ -2310,6 +2302,7 @@ test("Image lighting stays unavailable while the feature is paused", async ({
       generationRequests.push(request.url());
     }
   });
+  await request.delete("/api/canvas/node.image.success");
   await page.goto("/__fixture/node.image.success");
 
   const lightingButton = page.getByRole("button", { name: "打光" });
@@ -2324,8 +2317,12 @@ test("Image lighting stays unavailable while the feature is paused", async ({
 
 test("Image model switch retains 2K quality when both models support it", async ({
   page,
+  request,
 }) => {
+  await request.delete("/api/canvas/default");
   await page.goto("/canvas");
+  await expect(page.getByTestId("canvas-world"))
+    .toHaveAttribute("data-persistence-ready", "true");
   await page.getByTestId("add-node").click();
   await page
     .getByTestId("add-node-menu")

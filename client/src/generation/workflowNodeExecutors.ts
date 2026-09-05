@@ -537,6 +537,7 @@ export function workflowResultOwnerMatches(
 
 function isGenerating(node: ProbeNodeType, kind: WorkflowExecutorKind) {
   return node.data[`${kind}Generating`] === true ||
+    node.data.inputViewState === "uploading" ||
     node.data.inputState === "uploading";
 }
 
@@ -575,70 +576,16 @@ async function applyFencedNodeUpdate(input: {
   });
 }
 
-async function persistExecutionContract(
+async function recheckExecutionContract(
   context: NodeExecutorContext,
   plan: ExecutionPlan,
 ): Promise<ExecutionPlan | NodeRunResult> {
-  const roleByEdge = new Map(plan.inputs.map((item) => [item.edgeId, item.role]));
-  let snapshot = context.graph.snapshot();
-  const node = snapshot.nodes.find((candidate) => candidate.id === plan.node.id);
-  if (!node || node.type !== plan.kind) {
-    return { message: "节点已变化，未保存输入合同", status: "failed" };
-  }
-  const nodeChanged = Object.entries(plan.modelPatch).some(([key, value]) =>
-    JSON.stringify((node.data as Record<string, unknown>)[key]) !== JSON.stringify(value)
-  );
-  const edgeChanged = snapshot.edges.some((edge) =>
-    roleByEdge.has(edge.id) && roleByEdge.get(edge.id) !== edge.data?.inputRole
-  );
-  if (!nodeChanged && !edgeChanged) return plan;
-  if (snapshot.revision === undefined) {
-    const receipt = await context.save.waitForRevision();
-    snapshot = context.graph.snapshot();
-    if (snapshot.revision !== receipt.revision) {
-      return { message: "画布版本已变化，未保存输入合同", status: "failed" };
-    }
-  }
-  const applied = context.graph.apply({
-    fence: {
-      expectedRevision: snapshot.revision,
-      kind: plan.kind,
-      nodeId: plan.node.id,
-      ownershipKey: nodeOwnershipKey(
-        plan.node,
-        plan.kind,
-        plan.currentOwnershipKey,
-      ),
-      runId: context.runId,
-      taskId: taskIdFor(plan.node, plan.kind),
-    },
-    scope: "generation",
-    update: (current) => ({
-      ...current,
-      edges: current.edges.map((edge) => {
-        const role = roleByEdge.get(edge.id);
-        return role !== undefined && role !== edge.data?.inputRole
-          ? { ...edge, data: { ...edge.data, inputRole: role } }
-          : edge;
-      }),
-      nodes: current.nodes.map((candidate) => candidate.id === plan.node.id
-        ? {
-            ...candidate,
-            data: { ...candidate.data, ...plan.modelPatch },
-          } as ProbeNodeType
-        : candidate),
-    }),
-  });
-  if (applied.status !== "applied") {
-    return { message: "画布已变化，未保存输入合同", status: "failed" };
-  }
-  await context.save.flush();
-  await context.save.waitForRevision();
   const current = createExecutionPlan(plan.kind, plan.node.id, context);
   if (!isPlan(current) ||
     current.inputKey !== plan.inputKey ||
-    current.effectiveOwnershipKey !== plan.effectiveOwnershipKey) {
-    return { message: "输入合同保存后发生变化，未提交生成任务", status: "failed" };
+    current.effectiveOwnershipKey !== plan.effectiveOwnershipKey ||
+    current.inputContractFingerprint !== plan.inputContractFingerprint) {
+    return { message: "输入合同已发生变化，未提交生成任务", status: "failed" };
   }
   return current;
 }
@@ -1270,7 +1217,7 @@ function createExecutor(kind: WorkflowExecutorKind): NodeExecutor {
           ? persistInputFailure(context, plan, problem)
           : { message: "生成指令为空", status: "skipped" };
       }
-      const persistedPlan = await persistExecutionContract(context, plan);
+      const persistedPlan = await recheckExecutionContract(context, plan);
       if (!isPlan(persistedPlan)) return persistedPlan;
       plan = persistedPlan;
       let admittedTask: GenerationTaskSummary;

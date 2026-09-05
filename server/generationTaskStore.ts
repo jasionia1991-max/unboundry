@@ -39,6 +39,11 @@ import {
   generationOutcomeAdapterId,
   type GenerationOutcomeAdapterId,
 } from "./generationProviderOutcome";
+import {
+  discardDeferredCanvasObservability,
+  flushDeferredCanvasObservability,
+  recordGenerationLifecycleEvent,
+} from "./canvasObservability";
 
 export const generationTaskKinds: readonly GenerationCapabilityKind[] =
   generationCapabilityRegistry.kinds();
@@ -1444,7 +1449,13 @@ export function createGenerationTaskStore(
      */
     admitAuthoritativeOrGet(
       input: AuthoritativeGenerationTaskInput,
-      options: { now?: Date } = {},
+      options: {
+        beforeCommit?: (context: Readonly<{
+          database: DatabaseSync;
+          task: GenerationTask;
+        }>) => void;
+        now?: Date;
+      } = {},
     ) {
       assertAuthoritativeGenerationModelConfiguration(input.modelConfiguration);
       return api.admitOrGet(input, options);
@@ -1456,7 +1467,13 @@ export function createGenerationTaskStore(
      */
     admitOrGet(
       input: GenerationTaskInput,
-      options: { now?: Date } = {},
+      options: {
+        beforeCommit?: (context: Readonly<{
+          database: DatabaseSync;
+          task: GenerationTask;
+        }>) => void;
+        now?: Date;
+      } = {},
     ) {
       let authoritativeInputConfiguration:
         | AuthoritativeGenerationModelConfiguration
@@ -1504,7 +1521,16 @@ export function createGenerationTaskStore(
           // Once COMMIT returns, the HTTP layer must treat every later failure
           // as an unknown accepted outcome rather than a deterministic 4xx.
           const task = toTask(row);
+          if (options.beforeCommit) {
+            if (!authoritativeInputConfiguration) {
+              throw new Error(
+                "Generation admission callback requires authoritative input",
+              );
+            }
+            options.beforeCommit({ database, task });
+          }
           database.exec("COMMIT");
+          flushDeferredCanvasObservability(database);
           return { created, task };
         }
 
@@ -1861,11 +1887,21 @@ export function createGenerationTaskStore(
         // boundary. The caller can then reliably classify all failures after
         // admitOrGet returns as a committed outcome.
         const task = toTask(row);
+        if (options.beforeCommit) {
+          if (!authoritativeInputConfiguration) {
+            throw new Error(
+              "Generation admission callback requires authoritative input",
+            );
+          }
+          options.beforeCommit({ database, task });
+        }
         created = true;
         database.exec("COMMIT");
+        flushDeferredCanvasObservability(database);
         return { created, task };
       } catch (error) {
-        database.exec("ROLLBACK");
+        if (database.isTransaction) database.exec("ROLLBACK");
+        discardDeferredCanvasObservability(database);
         throw error;
       }
     },
@@ -2977,9 +3013,23 @@ export function createGenerationTaskStore(
      * permits only one provider+kind probe attempt.
      */
     recordProviderAttempt(id: string) {
+      let observedTask: GenerationTaskRow | undefined;
+      const lifecycleRunId = (task: GenerationTaskRow) => {
+        try {
+          const configuration = JSON.parse(task.model_configuration) as
+            Record<string, unknown>;
+          const binding = configuration.workflowBinding;
+          return recordValue(binding) && typeof binding.runId === "string"
+            ? binding.runId
+            : null;
+        } catch {
+          return null;
+        }
+      };
       database.exec("BEGIN IMMEDIATE");
       try {
         const current = readById.get(id) as GenerationTaskRow | undefined;
+        observedTask = current;
         if (
           !current ||
           current.state !== "running" ||
@@ -3239,9 +3289,34 @@ export function createGenerationTaskStore(
           createdAt,
         );
         database.exec("COMMIT");
+        recordGenerationLifecycleEvent({
+          kind: current.kind,
+          operation: "provider-boundary-claim",
+          outcome: "provider-attempt.boundary-claimed",
+          projectionState: "pending",
+          requestId: randomUUID(),
+          runId: lifecycleRunId(current),
+          taskId: current.id,
+          taskState: "running",
+        });
         return { createdAt, executionAttempt: current.attempt };
       } catch (error) {
-        database.exec("ROLLBACK");
+        if (database.isTransaction) database.exec("ROLLBACK");
+        if (
+          error instanceof GenerationProviderAttemptBlockedError &&
+          error.code === "PROVIDER_ATTEMPT_ALREADY_RECORDED" && observedTask
+        ) {
+          recordGenerationLifecycleEvent({
+            kind: observedTask.kind,
+            operation: "provider-boundary-claim",
+            outcome: "provider-attempt.duplicate",
+            projectionState: "pending",
+            requestId: randomUUID(),
+            runId: lifecycleRunId(observedTask),
+            taskId: observedTask.id,
+            taskState: observedTask.state,
+          });
+        }
         throw error;
       }
     },

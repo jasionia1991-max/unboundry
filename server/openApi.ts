@@ -1,6 +1,31 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { currentSchemaVersion } from "./database";
 
+const requestIdResponseHeader = Object.freeze({
+  description: "Correlation identifier; equals requestId in the response body when the body contract includes it.",
+  schema: { type: "string", format: "uuid" },
+});
+
+const canvasCommandResponseHeaders = Object.freeze({
+  "X-Unboundry-Canvas-Write-Contract": {
+    schema: { type: "string", const: "command-v1" },
+  },
+  "X-Request-ID": requestIdResponseHeader,
+});
+
+const legacyCanvasPutResponseHeaders = Object.freeze({
+  "X-Unboundry-Canvas-Write-Contract": {
+    description:
+      "Present as legacy-put-v1 for capability responses; omitted for an uncapable historical request.",
+    schema: { type: "string", const: "legacy-put-v1" },
+  },
+  "X-Request-ID": requestIdResponseHeader,
+});
+
+const requestIdResponseHeaders = Object.freeze({
+  "X-Request-ID": requestIdResponseHeader,
+});
+
 export const openApiDocument = {
   openapi: "3.1.0",
   info: {
@@ -58,10 +83,20 @@ export const openApiDocument = {
                     databaseProbe: { type: "string", const: "read-only" },
                     mode: {
                       type: "string",
-                      enum: ["active", "maintenance-api-blocked"],
+                      enum: [
+                        "active",
+                        "maintenance-api-blocked",
+                        "schema37-bridge-active",
+                        "schema37-health-only-standby",
+                      ],
                     },
+                    activeLeaseHeld: { type: "boolean" },
                     mutationsAccepted: { type: "boolean" },
                     requestId: { type: "string", format: "uuid" },
+                    runtimeRole: {
+                      type: "string",
+                      enum: ["active", "maintenance", "read-only", "standby"],
+                    },
                     schemaVersion: {
                       type: "integer",
                       const: currentSchemaVersion,
@@ -202,16 +237,23 @@ export const openApiDocument = {
         },
       },
       put: {
+        deprecated: true,
         operationId: "saveCanvas",
         summary: "Save one owner-scoped canvas with same-session ordering",
         description:
-          "Older saves from the same browser session are rejected; different sessions keep the DATA-005 last-successful-save-wins contract.",
+          "Legacy compatibility boundary. Candidate clients send X-Unboundry-Canvas-Write-Contract: legacy-put-v1; clients without the capability header retain the historical response shape and must migrate to typed commands.",
         parameters: [
           {
             in: "path",
             name: "canvasId",
             required: true,
             schema: { type: "string", pattern: "^[a-zA-Z0-9._-]+$" },
+          },
+          {
+            in: "header",
+            name: "X-Unboundry-Canvas-Write-Contract",
+            required: false,
+            schema: { type: "string", const: "legacy-put-v1" },
           },
         ],
         requestBody: {
@@ -225,15 +267,25 @@ export const openApiDocument = {
         responses: {
           "200": {
             description: "Saved document and graph revisions",
+            headers: legacyCanvasPutResponseHeaders,
             content: {
               "application/json": {
-                schema: { $ref: "#/components/schemas/CanvasSaveResult" },
+                schema: { $ref: "#/components/schemas/CanvasLegacyPutSuccess" },
               },
             },
           },
-          "400": { description: "Invalid canvas document" },
+          "400": {
+            description: "Invalid canvas document, identity or capability",
+            headers: legacyCanvasPutResponseHeaders,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/CanvasLegacyPutError" },
+              },
+            },
+          },
           "401": {
             description: "Sign-in required",
+            headers: legacyCanvasPutResponseHeaders,
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/CanvasAccessError" },
@@ -242,6 +294,7 @@ export const openApiDocument = {
           },
           "403": {
             description: "Mutation origin is not allowed",
+            headers: legacyCanvasPutResponseHeaders,
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/CanvasAccessError" },
@@ -250,17 +303,114 @@ export const openApiDocument = {
           },
           "409": {
             description: "Superseded save, missing load baseline, or unavailable project",
+            headers: legacyCanvasPutResponseHeaders,
             content: {
               "application/json": {
-                schema: { $ref: "#/components/schemas/CanvasSaveConflict" },
+                schema: { $ref: "#/components/schemas/CanvasLegacyPutConflict" },
               },
             },
           },
           "503": {
             description: "Per-session ordering capacity is unavailable",
+            headers: legacyCanvasPutResponseHeaders,
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/CanvasSaveUnavailable" },
+              },
+            },
+          },
+        },
+      },
+    },
+    "/api/canvases/{canvasId}/commands": {
+      post: {
+        operationId: "applyCanvasCommand",
+        summary: "Apply one typed, idempotent Canvas command",
+        description:
+          "The command is owner-scoped, fenced by authoritative revisions and a current load token, and settled atomically with an immutable operation receipt. Exact retries reuse the same operationId and payload.",
+        parameters: [
+          {
+            in: "path",
+            name: "canvasId",
+            required: true,
+            schema: { type: "string", pattern: "^[a-zA-Z0-9._-]+$" },
+          },
+          {
+            in: "header",
+            name: "X-Unboundry-Canvas-Write-Contract",
+            required: true,
+            schema: { type: "string", const: "command-v1" },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/CanvasUserCommand" },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Command applied or exact prior outcome replayed",
+            headers: canvasCommandResponseHeaders,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/CanvasCommandSuccess" },
+              },
+            },
+          },
+          "400": {
+            description: "Unsupported contract or invalid command body",
+            headers: canvasCommandResponseHeaders,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/CanvasCommandError" },
+              },
+            },
+          },
+          "401": {
+            description: "Sign-in required",
+            headers: canvasCommandResponseHeaders,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/CanvasCommandError" },
+              },
+            },
+          },
+          "404": {
+            description: "Owner-scoped Canvas or route not found",
+            headers: canvasCommandResponseHeaders,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/CanvasCommandError" },
+              },
+            },
+          },
+          "405": {
+            description: "Only POST is accepted",
+            headers: canvasCommandResponseHeaders,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/CanvasCommandError" },
+              },
+            },
+          },
+          "409": {
+            description: "Immutable replay, revision, topology, ownership or lock conflict",
+            headers: canvasCommandResponseHeaders,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/CanvasCommandConflict" },
+              },
+            },
+          },
+          "503": {
+            description: "Receipt capacity or writer boundary unavailable",
+            headers: canvasCommandResponseHeaders,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/CanvasCommandError" },
               },
             },
           },
@@ -375,6 +525,7 @@ export const openApiDocument = {
         responses: {
           "200": {
             description: "Binding detached or already detached idempotently",
+            headers: requestIdResponseHeaders,
             content: {
               "application/json": {
                 schema: {
@@ -383,12 +534,47 @@ export const openApiDocument = {
               },
             },
           },
-          "400": { description: "Invalid exact binding request" },
-          "401": { description: "Sign-in required" },
-          "404": { description: "Owner-scoped canvas not found" },
+          "400": {
+            description: "Invalid exact binding request",
+            headers: requestIdResponseHeaders,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/LegacyTerminalDetachError" },
+              },
+            },
+          },
+          "401": {
+            description: "Sign-in required",
+            headers: requestIdResponseHeaders,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/LegacyTerminalDetachError" },
+              },
+            },
+          },
+          "404": {
+            description: "Owner-scoped canvas not found",
+            headers: requestIdResponseHeaders,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/LegacyTerminalDetachError" },
+              },
+            },
+          },
           "409": {
             description:
               "Rollout write disabled, task non-terminal, binding changed, or success proof conflicts",
+            headers: requestIdResponseHeaders,
+            content: {
+              "application/json": {
+                schema: {
+                  oneOf: [
+                    { $ref: "#/components/schemas/LegacyTerminalDetachConflict" },
+                    { $ref: "#/components/schemas/LegacyTerminalDetachWriteDisabled" },
+                  ],
+                },
+              },
+            },
           },
         },
       },
@@ -2435,6 +2621,7 @@ export const openApiDocument = {
           "saveEpoch",
           "sessionHighWaterSequence",
           "sessionHighWaterAttemptId",
+          "sessionHighWaterOperationId",
           "currentWriterSessionId",
           "currentWriterSequence",
           "nodes",
@@ -2443,9 +2630,6 @@ export const openApiDocument = {
         ],
         properties: {
           revision: { type: "integer", minimum: 0 },
-          generationProjection: {
-            $ref: "#/components/schemas/GenerationProjectionCommit",
-          },
           graphRevision: { type: "integer", minimum: 0 },
           loadToken: {
             type: "string",
@@ -2463,6 +2647,7 @@ export const openApiDocument = {
           },
           sessionHighWaterSequence: { type: "integer", minimum: 0 },
           sessionHighWaterAttemptId: { type: ["string", "null"] },
+          sessionHighWaterOperationId: { type: ["string", "null"] },
           currentWriterSessionId: { type: ["string", "null"] },
           currentWriterSequence: { type: "integer", minimum: 0 },
           nodes: {
@@ -2587,17 +2772,104 @@ export const openApiDocument = {
       },
       LegacyTerminalDetachResult: {
         type: "object",
-        required: ["clearedFields", "dataPatch", "document", "status"],
+        required: [
+          "clearedFields",
+          "dataPatch",
+          "document",
+          "operationGraphRevision",
+          "operationId",
+          "operationRevision",
+          "originalRequestId",
+          "replayed",
+          "requestId",
+          "status",
+        ],
         properties: {
           clearedFields: { type: "array", items: { type: "string" } },
           dataPatch: { type: "object", additionalProperties: true },
           document: {
             $ref: "#/components/schemas/LegacyTerminalCanvasDocument",
           },
+          operationGraphRevision: { type: "integer", minimum: 0 },
+          operationId: { type: "string", minLength: 8, maxLength: 200 },
+          operationRevision: { type: "integer", minimum: 0 },
+          originalRequestId: { type: "string", format: "uuid" },
+          replayed: { type: "boolean" },
+          requestId: { type: "string", format: "uuid" },
           status: {
             type: "string",
             enum: ["already-detached", "detached"],
           },
+        },
+        additionalProperties: false,
+      },
+      LegacyTerminalDetachConflict: {
+        type: "object",
+        required: [
+          "authoritativeDocument",
+          "code",
+          "currentGraphRevision",
+          "currentLoadToken",
+          "currentRevision",
+          "error",
+          "operationGraphRevision",
+          "operationId",
+          "operationRevision",
+          "originalRequestId",
+          "replayed",
+          "requestId",
+          "requiresAuthoritativeGet",
+        ],
+        properties: {
+          authoritativeDocument: {
+            $ref: "#/components/schemas/LegacyTerminalCanvasDocument",
+          },
+          code: {
+            type: "string",
+            enum: [
+              "CANVAS_OPERATION_REUSED",
+              "CANVAS_TOPOLOGY_CONFLICT",
+              "GENERATION_TERMINAL_BINDING_CONFLICT",
+              "GENERATION_TERMINAL_PROOF_CONFLICT",
+              "GENERATION_TERMINAL_STATE_CONFLICT",
+              "GENERATION_TERMINAL_TASK_CONFLICT",
+            ],
+          },
+          currentGraphRevision: { type: "integer", minimum: 0 },
+          currentLoadToken: { type: "string", minLength: 1, maxLength: 256 },
+          currentRevision: { type: "integer", minimum: 0 },
+          error: { type: "string" },
+          operationGraphRevision: { type: "integer", minimum: 0 },
+          operationId: { type: "string", minLength: 8, maxLength: 200 },
+          operationRevision: { type: "integer", minimum: 0 },
+          originalRequestId: { type: "string", format: "uuid" },
+          replayed: { type: "boolean" },
+          requestId: { type: "string", format: "uuid" },
+          requiresAuthoritativeGet: { type: "boolean", const: true },
+        },
+        additionalProperties: false,
+      },
+      LegacyTerminalDetachWriteDisabled: {
+        type: "object",
+        required: ["code", "error", "requestId"],
+        properties: {
+          code: {
+            type: "string",
+            const: "LEGACY_RECONCILIATION_WRITE_DISABLED",
+          },
+          error: { type: "string" },
+          requestId: { type: "string", format: "uuid" },
+        },
+        additionalProperties: false,
+      },
+      LegacyTerminalDetachError: {
+        type: "object",
+        required: ["code", "error", "requestId"],
+        properties: {
+          code: { type: "string" },
+          error: { type: "string" },
+          operationId: { type: ["string", "null"] },
+          requestId: { type: "string", format: "uuid" },
         },
         additionalProperties: false,
       },
@@ -2609,6 +2881,7 @@ export const openApiDocument = {
           "saveEpoch",
           "sessionHighWaterSequence",
           "sessionHighWaterAttemptId",
+          "sessionHighWaterOperationId",
           "currentWriterSessionId",
           "currentWriterSequence",
         ],
@@ -2618,6 +2891,7 @@ export const openApiDocument = {
           saveEpoch: { type: "string", minLength: 1, maxLength: 128 },
           sessionHighWaterSequence: { type: "integer", minimum: 0 },
           sessionHighWaterAttemptId: { type: ["string", "null"] },
+          sessionHighWaterOperationId: { type: ["string", "null"] },
           currentWriterSessionId: { type: ["string", "null"] },
           currentWriterSequence: { type: "integer", minimum: 0 },
         },
@@ -2638,6 +2912,7 @@ export const openApiDocument = {
         properties: {
           code: { type: "string", const: "CANVAS_ID_INVALID" },
           error: { type: "string" },
+          requestId: { type: "string", format: "uuid" },
         },
         additionalProperties: false,
       },
@@ -2645,7 +2920,493 @@ export const openApiDocument = {
         type: "object",
         required: ["error"],
         properties: {
+          code: { type: "string" },
           error: { type: "string" },
+          operationId: { type: ["string", "null"] },
+          requestId: { type: "string", format: "uuid" },
+        },
+        additionalProperties: false,
+      },
+      CanvasCommandBase: {
+        type: "object",
+        required: ["operationId", "saveSessionId", "saveSequence"],
+        properties: {
+          operationId: {
+            type: "string",
+            pattern: "^[a-zA-Z0-9][a-zA-Z0-9._:-]{7,199}$",
+          },
+          saveSessionId: {
+            type: "string",
+            pattern: "^[a-zA-Z0-9][a-zA-Z0-9._:-]{7,79}$",
+          },
+          saveSequence: { type: "integer", minimum: 1 },
+        },
+      },
+      ExistingCanvasCommandBase: {
+        allOf: [
+          { $ref: "#/components/schemas/CanvasCommandBase" },
+          {
+            type: "object",
+            required: [
+              "baseDocumentRevision",
+              "baseInputGraphRevision",
+              "observedLoadToken",
+            ],
+            properties: {
+              baseDocumentRevision: { type: "integer", minimum: 0 },
+              baseInputGraphRevision: { type: "integer", minimum: 0 },
+              observedLoadToken: { type: "string", minLength: 1, maxLength: 256 },
+            },
+          },
+        ],
+      },
+      CanvasUserFieldChange: {
+        type: "object",
+        required: ["nodeId", "field", "action", "baseValueDigest"],
+        properties: {
+          action: { type: "string", enum: ["delete", "set"] },
+          baseValueDigest: { type: "string", pattern: "^[0-9a-f]{64}$" },
+          field: { type: "string", pattern: "^data\\.[^.]+$" },
+          nodeId: { type: "string", minLength: 1, maxLength: 200 },
+          value: {},
+        },
+        additionalProperties: false,
+      },
+      CanvasTopologyOperation: {
+        oneOf: [
+          {
+            type: "object",
+            required: ["intent", "node"],
+            properties: {
+              intent: { type: "string", const: "create-node" },
+              node: { type: "object", additionalProperties: true },
+            },
+            additionalProperties: false,
+          },
+          {
+            type: "object",
+            required: ["intent", "nodeIds", "edgeIds"],
+            properties: {
+              intent: { type: "string", const: "delete-subgraph" },
+              nodeIds: { type: "array", maxItems: 5_000, items: { type: "string" } },
+              edgeIds: { type: "array", maxItems: 10_000, items: { type: "string" } },
+            },
+            additionalProperties: false,
+          },
+          {
+            type: "object",
+            required: ["intent", "edge"],
+            properties: {
+              intent: { type: "string", const: "connect-edge" },
+              edge: { type: "object", additionalProperties: true },
+            },
+            additionalProperties: false,
+          },
+          {
+            type: "object",
+            required: ["intent", "edgeId"],
+            properties: {
+              intent: { type: "string", const: "disconnect-edge" },
+              edgeId: { type: "string", minLength: 1, maxLength: 200 },
+            },
+            additionalProperties: false,
+          },
+          {
+            type: "object",
+            required: ["intent", "edge"],
+            properties: {
+              intent: { type: "string", const: "replace-edge" },
+              edge: { type: "object", additionalProperties: true },
+            },
+            additionalProperties: false,
+          },
+          {
+            type: "object",
+            required: ["intent", "groupNode", "memberNodeIds"],
+            properties: {
+              intent: { type: "string", const: "group-members" },
+              groupNode: { type: "object", additionalProperties: true },
+              memberNodeIds: {
+                type: "array",
+                maxItems: 5_000,
+                items: { type: "string" },
+              },
+            },
+            additionalProperties: false,
+          },
+          {
+            type: "object",
+            required: ["intent", "groupNodeId", "memberNodeIds"],
+            properties: {
+              intent: { type: "string", const: "ungroup" },
+              groupNodeId: { type: "string", minLength: 1, maxLength: 200 },
+              memberNodeIds: {
+                type: "array",
+                maxItems: 5_000,
+                items: { type: "string" },
+              },
+            },
+            additionalProperties: false,
+          },
+          {
+            type: "object",
+            required: ["intent", "nodes", "edges"],
+            properties: {
+              intent: { type: "string", const: "paste-subgraph" },
+              nodes: { type: "array", maxItems: 5_000, items: { type: "object" } },
+              edges: { type: "array", maxItems: 10_000, items: { type: "object" } },
+            },
+            additionalProperties: false,
+          },
+          {
+            type: "object",
+            required: ["intent", "nodeId", "clipIds"],
+            properties: {
+              intent: { type: "string", const: "replace-playlist-order" },
+              nodeId: { type: "string", minLength: 1, maxLength: 200 },
+              clipIds: { type: "array", maxItems: 10_000, items: { type: "string" } },
+            },
+            additionalProperties: false,
+          },
+        ],
+        discriminator: { propertyName: "intent" },
+      },
+      CanvasAdoptedAsset: {
+        type: "object",
+        required: ["assetId", "byteSize", "contentType", "src", "storageBackend"],
+        properties: {
+          assetId: { type: "string", minLength: 1, maxLength: 200 },
+          byteSize: { type: "integer", minimum: 0 },
+          contentType: { type: "string", minLength: 1, maxLength: 200 },
+          durationSeconds: { type: ["number", "null"], minimum: 0 },
+          height: { type: ["number", "null"], minimum: 0 },
+          src: { type: "string", pattern: "^/api/" },
+          storageBackend: { type: "string", enum: ["local", "oss"] },
+          width: { type: ["number", "null"], minimum: 0 },
+        },
+        additionalProperties: false,
+      },
+      CanvasTopologyMediaAdoption: {
+        oneOf: [
+          {
+            type: "object",
+            required: ["kind", "mediaKind", "nodeId", "asset"],
+            properties: {
+              kind: { type: "string", const: "adopt-uploaded-asset" },
+              mediaKind: { type: "string", enum: ["audio", "image", "video"] },
+              nodeId: { type: "string", minLength: 1, maxLength: 200 },
+              asset: { $ref: "#/components/schemas/CanvasAdoptedAsset" },
+            },
+            additionalProperties: false,
+          },
+          {
+            type: "object",
+            required: [
+              "kind",
+              "nodeId",
+              "sourceAssetId",
+              "toolOperation",
+              "toolOperationId",
+              "asset",
+            ],
+            properties: {
+              kind: {
+                type: "string",
+                const: "edit-result-and-invalidate-proof",
+              },
+              nodeId: { type: "string", minLength: 1, maxLength: 200 },
+              sourceAssetId: { type: "string", minLength: 1, maxLength: 200 },
+              toolOperation: { type: "string", minLength: 1, maxLength: 100 },
+              toolOperationId: {
+                type: "string",
+                pattern: "^[a-zA-Z0-9][a-zA-Z0-9._:-]{7,199}$",
+              },
+              outputBackground: { type: "string", maxLength: 100 },
+              asset: { $ref: "#/components/schemas/CanvasAdoptedAsset" },
+            },
+            additionalProperties: false,
+          },
+        ],
+        discriminator: { propertyName: "kind" },
+      },
+      CreateCanvasDocumentCommand: {
+        allOf: [
+          { $ref: "#/components/schemas/CanvasCommandBase" },
+          {
+            type: "object",
+            required: [
+              "kind",
+              "baseDocumentRevision",
+              "baseInputGraphRevision",
+              "observedLoadToken",
+              "initialDocument",
+            ],
+            properties: {
+              kind: { type: "string", const: "create-canvas-document" },
+              baseDocumentRevision: { type: "null" },
+              baseInputGraphRevision: { type: "null" },
+              observedLoadToken: { type: "null" },
+              initialDocument: {
+                type: "object",
+                required: ["nodes", "edges", "viewport"],
+                properties: {
+                  nodes: { type: "array", maxItems: 5_000, items: { type: "object" } },
+                  edges: { type: "array", maxItems: 10_000, items: { type: "object" } },
+                  viewport: { $ref: "#/components/schemas/Viewport" },
+                },
+                additionalProperties: false,
+              },
+            },
+          },
+        ],
+        unevaluatedProperties: false,
+      },
+      ApplyUserFieldChangesCommand: {
+        allOf: [
+          { $ref: "#/components/schemas/ExistingCanvasCommandBase" },
+          {
+            type: "object",
+            required: ["kind", "changes"],
+            properties: {
+              kind: { type: "string", const: "apply-user-field-changes" },
+              changes: {
+                type: "array",
+                minItems: 1,
+                maxItems: 100,
+                items: { $ref: "#/components/schemas/CanvasUserFieldChange" },
+              },
+            },
+          },
+        ],
+        unevaluatedProperties: false,
+      },
+      ApplyTopologyCommand: {
+        allOf: [
+          { $ref: "#/components/schemas/ExistingCanvasCommandBase" },
+          {
+            type: "object",
+            required: ["kind", "topologyOperation", "affectedTopologyDigest"],
+            properties: {
+              kind: { type: "string", const: "apply-topology" },
+              topologyOperation: { $ref: "#/components/schemas/CanvasTopologyOperation" },
+              affectedTopologyDigest: { type: "string", pattern: "^[0-9a-f]{64}$" },
+              mediaAdoptions: {
+                type: "array",
+                minItems: 1,
+                maxItems: 5_000,
+                items: {
+                  $ref: "#/components/schemas/CanvasTopologyMediaAdoption",
+                },
+              },
+            },
+          },
+        ],
+        unevaluatedProperties: false,
+      },
+      CommitUserLayoutCommand: {
+        allOf: [
+          { $ref: "#/components/schemas/ExistingCanvasCommandBase" },
+          {
+            type: "object",
+            required: ["kind"],
+            properties: {
+              kind: { type: "string", const: "commit-user-layout" },
+              nodes: {
+                type: "array",
+                minItems: 1,
+                maxItems: 5_000,
+                items: {
+                  type: "object",
+                  required: ["nodeId"],
+                  properties: {
+                    nodeId: { type: "string", minLength: 1, maxLength: 200 },
+                    position: {
+                      type: "object",
+                      required: ["x", "y"],
+                      properties: { x: { type: "number" }, y: { type: "number" } },
+                      additionalProperties: false,
+                    },
+                    style: {
+                      type: "object",
+                      properties: {
+                        height: { type: "number", exclusiveMinimum: 0 },
+                        width: { type: "number", exclusiveMinimum: 0 },
+                      },
+                      additionalProperties: false,
+                    },
+                    zIndex: { type: "integer" },
+                  },
+                  additionalProperties: false,
+                },
+              },
+              viewport: { $ref: "#/components/schemas/Viewport" },
+            },
+          },
+        ],
+        unevaluatedProperties: false,
+      },
+      AdoptUploadedAssetCommand: {
+        allOf: [
+          { $ref: "#/components/schemas/ExistingCanvasCommandBase" },
+          {
+            type: "object",
+            required: ["kind", "mediaKind", "nodeId", "asset"],
+            properties: {
+              kind: { type: "string", const: "adopt-uploaded-asset" },
+              mediaKind: { type: "string", enum: ["audio", "image", "video"] },
+              nodeId: { type: "string", minLength: 1, maxLength: 200 },
+              asset: { $ref: "#/components/schemas/CanvasAdoptedAsset" },
+            },
+          },
+        ],
+        unevaluatedProperties: false,
+      },
+      EditResultAndInvalidateProofCommand: {
+        allOf: [
+          { $ref: "#/components/schemas/ExistingCanvasCommandBase" },
+          {
+            type: "object",
+            required: [
+              "kind",
+              "nodeId",
+              "sourceAssetId",
+              "toolOperation",
+              "toolOperationId",
+              "asset",
+            ],
+            properties: {
+              kind: { type: "string", const: "edit-result-and-invalidate-proof" },
+              nodeId: { type: "string", minLength: 1, maxLength: 200 },
+              sourceAssetId: { type: "string", minLength: 1, maxLength: 200 },
+              toolOperation: { type: "string", minLength: 1, maxLength: 100 },
+              toolOperationId: {
+                type: "string",
+                pattern: "^[a-zA-Z0-9][a-zA-Z0-9._:-]{7,199}$",
+              },
+              outputBackground: { type: "string", maxLength: 100 },
+              asset: { $ref: "#/components/schemas/CanvasAdoptedAsset" },
+            },
+          },
+        ],
+        unevaluatedProperties: false,
+      },
+      CanvasUserCommand: {
+        oneOf: [
+          { $ref: "#/components/schemas/CreateCanvasDocumentCommand" },
+          { $ref: "#/components/schemas/ApplyUserFieldChangesCommand" },
+          { $ref: "#/components/schemas/ApplyTopologyCommand" },
+          { $ref: "#/components/schemas/CommitUserLayoutCommand" },
+          { $ref: "#/components/schemas/AdoptUploadedAssetCommand" },
+          { $ref: "#/components/schemas/EditResultAndInvalidateProofCommand" },
+        ],
+        discriminator: {
+          propertyName: "kind",
+          mapping: {
+            "create-canvas-document": "#/components/schemas/CreateCanvasDocumentCommand",
+            "apply-user-field-changes": "#/components/schemas/ApplyUserFieldChangesCommand",
+            "apply-topology": "#/components/schemas/ApplyTopologyCommand",
+            "commit-user-layout": "#/components/schemas/CommitUserLayoutCommand",
+            "adopt-uploaded-asset": "#/components/schemas/AdoptUploadedAssetCommand",
+            "edit-result-and-invalidate-proof":
+              "#/components/schemas/EditResultAndInvalidateProofCommand",
+          },
+        },
+      },
+      CanvasCommandAuthoritativeDocument: {
+        type: "object",
+        required: ["revision", "graphRevision", "nodes", "edges", "viewport"],
+        properties: {
+          revision: { type: "integer", minimum: 0 },
+          graphRevision: { type: "integer", minimum: 0 },
+          nodes: { type: "array", maxItems: 5_000, items: { type: "object" } },
+          edges: { type: "array", maxItems: 10_000, items: { type: "object" } },
+          viewport: { $ref: "#/components/schemas/Viewport" },
+        },
+        additionalProperties: false,
+      },
+      CanvasCommandResponseBase: {
+        type: "object",
+        required: [
+          "authoritativeDocument",
+          "currentDocumentRevision",
+          "currentInputGraphRevision",
+          "currentLoadToken",
+          "operationId",
+          "operationDocumentRevision",
+          "operationInputGraphRevision",
+          "originalRequestId",
+          "requestId",
+          "replayed",
+        ],
+        properties: {
+          authoritativeDocument: {
+            $ref: "#/components/schemas/CanvasCommandAuthoritativeDocument",
+          },
+          currentDocumentRevision: { type: "integer", minimum: 0 },
+          currentInputGraphRevision: { type: "integer", minimum: 0 },
+          currentLoadToken: { type: "string", minLength: 1, maxLength: 256 },
+          operationId: { type: "string", minLength: 8, maxLength: 200 },
+          operationDocumentRevision: { type: "integer", minimum: 0 },
+          operationInputGraphRevision: { type: "integer", minimum: 0 },
+          originalRequestId: { type: "string", format: "uuid" },
+          requestId: { type: "string", format: "uuid" },
+          replayed: { type: "boolean" },
+        },
+      },
+      CanvasCommandSuccess: {
+        allOf: [
+          { $ref: "#/components/schemas/CanvasCommandResponseBase" },
+          {
+            type: "object",
+            required: ["originalStatus", "status"],
+            properties: {
+              originalStatus: {
+                type: "string",
+                enum: ["applied", "already-applied"],
+              },
+              status: { type: "string", enum: ["applied", "already-applied"] },
+            },
+          },
+        ],
+        unevaluatedProperties: false,
+      },
+      CanvasCommandConflict: {
+        allOf: [
+          { $ref: "#/components/schemas/CanvasCommandResponseBase" },
+          {
+            type: "object",
+            required: ["code", "error"],
+            properties: {
+              code: {
+                type: "string",
+                enum: [
+                  "CANVAS_ALREADY_EXISTS",
+                  "CANVAS_LEGACY_RECONCILE_REQUIRED",
+                  "CANVAS_LOAD_REQUIRED",
+                  "CANVAS_MEDIA_UNAVAILABLE",
+                  "CANVAS_OPERATION_REUSED",
+                  "CANVAS_PROJECT_DELETED",
+                  "CANVAS_PROJECT_NOT_OWNED",
+                  "CANVAS_SAVE_SUPERSEDED",
+                  "CANVAS_SERVER_OWNERSHIP_CONFLICT",
+                  "CANVAS_TOPOLOGY_CONFLICT",
+                  "WORKFLOW_GRAPH_LOCKED",
+                ],
+              },
+              error: { type: "string" },
+            },
+          },
+        ],
+        unevaluatedProperties: false,
+      },
+      CanvasCommandError: {
+        type: "object",
+        required: ["code", "error", "requestId"],
+        properties: {
+          code: { type: "string" },
+          error: { type: "string" },
+          operationId: { type: ["string", "null"] },
+          requestId: { type: "string", format: "uuid" },
         },
         additionalProperties: false,
       },
@@ -2687,6 +3448,14 @@ export const openApiDocument = {
               "Candidate-client logical attempt identity. Exact retries reuse it; legacy session saves may omit it.",
           },
           saveSequence: { type: "integer", minimum: 1 },
+          generationProjection: {
+            deprecated: true,
+            description:
+              "Time-bounded legacy PUT transport only. A current server ignores client result fields, re-reads authoritative task/publication/media evidence, and projects through the server gateway. It is never returned by Canvas reads or accepted by command-v1.",
+            allOf: [
+              { $ref: "#/components/schemas/GenerationProjectionCommit" },
+            ],
+          },
           nodes: {
             type: "array",
             maxItems: 5_000,
@@ -2715,11 +3484,156 @@ export const openApiDocument = {
         },
         additionalProperties: false,
       },
+      CanvasLegacyPutSuccess: {
+        oneOf: [
+          { $ref: "#/components/schemas/CanvasSaveResult" },
+          { $ref: "#/components/schemas/LegacyCanvasSaveResult" },
+        ],
+      },
+      LegacyCanvasSaveResult: {
+        type: "object",
+        required: [
+          "authoritativeDocument",
+          "currentGraphRevision",
+          "currentLoadToken",
+          "currentRevision",
+          "graphRevision",
+          "loadToken",
+          "operationGraphRevision",
+          "operationId",
+          "operationRevision",
+          "originalRequestId",
+          "originalSaveStatus",
+          "replayed",
+          "requestId",
+          "requiresAuthoritativeGet",
+          "revision",
+          "saveAttemptId",
+          "saveSequence",
+          "saveSessionId",
+          "saveStatus",
+        ],
+        properties: {
+          authoritativeDocument: {
+            $ref: "#/components/schemas/CanvasCommandAuthoritativeDocument",
+          },
+          currentGraphRevision: { type: "integer", minimum: 0 },
+          currentLoadToken: { type: "string", minLength: 1, maxLength: 256 },
+          currentRevision: { type: "integer", minimum: 0 },
+          graphRevision: { type: "integer", minimum: 0 },
+          loadToken: { type: "string", minLength: 1, maxLength: 256 },
+          operationGraphRevision: { type: "integer", minimum: 0 },
+          operationId: { type: "string", minLength: 8, maxLength: 200 },
+          operationRevision: { type: "integer", minimum: 0 },
+          originalRequestId: { type: "string", format: "uuid" },
+          originalSaveStatus: {
+            type: "string",
+            enum: ["applied", "already-applied"],
+          },
+          replayed: { type: "boolean" },
+          requestId: { type: "string", format: "uuid" },
+          requiresAuthoritativeGet: { type: "boolean", const: false },
+          revision: { type: "integer", minimum: 0 },
+          saveAttemptId: { type: "string", pattern: "^[a-zA-Z0-9-]{8,80}$" },
+          saveSequence: { type: "integer", minimum: 1 },
+          saveSessionId: { type: "string", pattern: "^[a-zA-Z0-9-]{8,80}$" },
+          saveStatus: {
+            type: "string",
+            enum: ["applied", "already-applied"],
+          },
+        },
+        additionalProperties: false,
+      },
       CanvasSaveConflict: {
         oneOf: [
           { $ref: "#/components/schemas/CanvasSaveSupersededConflict" },
           { $ref: "#/components/schemas/CanvasSaveTerminalConflict" },
         ],
+      },
+      CanvasLegacyPutConflict: {
+        oneOf: [
+          { $ref: "#/components/schemas/CanvasSaveConflict" },
+          { $ref: "#/components/schemas/LegacyCanvasSaveReconcileRequired" },
+        ],
+      },
+      LegacyCanvasSaveReconcileRequired: {
+        type: "object",
+        required: [
+          "authoritativeDocument",
+          "code",
+          "currentGraphRevision",
+          "currentLoadToken",
+          "currentRevision",
+          "error",
+          "graphRevision",
+          "loadToken",
+          "operationGraphRevision",
+          "operationId",
+          "operationRevision",
+          "originalRequestId",
+          "rejectedAttemptId",
+          "rejectedSequence",
+          "rejectedSessionId",
+          "replayed",
+          "requestId",
+          "requiresAuthoritativeGet",
+          "revision",
+          "saveAttemptId",
+          "saveSequence",
+          "saveSessionId",
+        ],
+        properties: {
+          authoritativeDocument: {
+            $ref: "#/components/schemas/CanvasCommandAuthoritativeDocument",
+          },
+          code: {
+            type: "string",
+            enum: [
+              "CANVAS_LEGACY_RECONCILE_REQUIRED",
+              "CANVAS_LOAD_REQUIRED",
+              "CANVAS_MEDIA_UNAVAILABLE",
+              "CANVAS_OPERATION_REUSED",
+              "CANVAS_PROJECT_DELETED",
+              "CANVAS_PROJECT_NOT_OWNED",
+              "CANVAS_SAVE_SUPERSEDED",
+              "CANVAS_SERVER_OWNERSHIP_CONFLICT",
+              "CANVAS_TOPOLOGY_CONFLICT",
+              "WORKFLOW_GRAPH_LOCKED",
+            ],
+          },
+          currentGraphRevision: { type: "integer", minimum: 0 },
+          currentLoadToken: { type: "string", minLength: 1, maxLength: 256 },
+          currentRevision: { type: "integer", minimum: 0 },
+          error: { type: "string" },
+          graphRevision: { type: "integer", minimum: 0 },
+          loadToken: { type: "string", minLength: 1, maxLength: 256 },
+          operationGraphRevision: { type: "integer", minimum: 0 },
+          operationId: { type: "string", minLength: 8, maxLength: 200 },
+          operationRevision: { type: "integer", minimum: 0 },
+          originalRequestId: { type: "string", format: "uuid" },
+          rejectedAttemptId: { type: ["string", "null"] },
+          rejectedSequence: { type: ["integer", "null"], minimum: 1 },
+          rejectedSessionId: { type: ["string", "null"] },
+          replayed: { type: "boolean" },
+          requestId: { type: "string", format: "uuid" },
+          requiresAuthoritativeGet: { type: "boolean", const: true },
+          revision: { type: "integer", minimum: 0 },
+          saveAttemptId: { type: "string", pattern: "^[a-zA-Z0-9-]{8,80}$" },
+          saveSequence: { type: "integer", minimum: 1 },
+          saveSessionId: { type: "string", pattern: "^[a-zA-Z0-9-]{8,80}$" },
+        },
+        additionalProperties: false,
+      },
+      CanvasLegacyPutError: {
+        type: "object",
+        required: ["code", "error"],
+        properties: {
+          code: { type: "string" },
+          error: { type: "string" },
+          operationId: { type: ["string", "null"] },
+          requestId: { type: "string", format: "uuid" },
+        },
+        additionalProperties: false,
       },
       CanvasSaveSupersededConflict: {
         type: "object",
@@ -2772,8 +3686,17 @@ export const openApiDocument = {
         type: "object",
         required: ["code", "error"],
         properties: {
-          code: { type: "string", enum: ["CANVAS_SAVE_SESSION_CAPACITY"] },
+          code: {
+            type: "string",
+            enum: [
+              "CANVAS_COMMAND_RECEIPT_UNAVAILABLE",
+              "CANVAS_OPERATION_RECEIPT_CAPACITY",
+              "CANVAS_SAVE_SESSION_CAPACITY",
+            ],
+          },
           error: { type: "string" },
+          operationId: { type: ["string", "null"] },
+          requestId: { type: "string", format: "uuid" },
         },
         additionalProperties: false,
       },
@@ -2832,6 +3755,58 @@ export const openApiDocument = {
         type: "object",
         properties: {
           title: { type: "string", maxLength: 120 },
+        },
+        additionalProperties: false,
+      },
+      TemplateCatalogCard: {
+        type: "object",
+        required: ["categories", "cover", "createdAt", "id", "title", "updatedAt"],
+        properties: {
+          archivedAt: { type: "string" },
+          categories: { type: "array", items: { type: "string" } },
+          compatibility: { type: "object", additionalProperties: true },
+          cover: {
+            oneOf: [
+              { type: "null" },
+              {
+                type: "object",
+                required: ["assetId", "kind"],
+                properties: {
+                  assetId: { type: "string", minLength: 1 },
+                  kind: { type: "string", enum: ["image", "video"] },
+                },
+                additionalProperties: false,
+              },
+            ],
+          },
+          createdAt: { type: "string" },
+          description: { type: "string" },
+          graph: {
+            type: "object",
+            required: ["edges", "nodes", "version"],
+            properties: {
+              edges: {
+                type: "array",
+                maxItems: 1_000,
+                items: { type: "object", additionalProperties: true },
+              },
+              nodes: {
+                type: "array",
+                maxItems: 500,
+                items: { type: "object", additionalProperties: true },
+              },
+              version: { type: "integer", const: 1 },
+            },
+            additionalProperties: false,
+          },
+          id: { type: "string" },
+          previewImage: { type: "string" },
+          status: {
+            type: "string",
+            enum: ["archived", "draft", "published"],
+          },
+          title: { type: "string" },
+          updatedAt: { type: "string" },
         },
         additionalProperties: false,
       },

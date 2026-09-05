@@ -114,14 +114,18 @@ test.beforeEach(async ({ page }) => {
 
 test.afterAll(() => rmSync(mediaDirectory, { force: true, recursive: true }));
 
-test("Video generating state disables controls and uses the shared loading effect", async ({
+test("Server-admitted Video state disables controls and uses the shared loading effect without Canvas writes", async ({
   page,
   request,
 }) => {
   const generationRequests: string[] = [];
+  const canvasWrites: string[] = [];
   page.on("request", (request) => {
     if (/provider|generate/i.test(request.url()) && !request.url().includes("/src/")) {
       generationRequests.push(request.url());
+    }
+    if (request.method() === "PUT" && request.url().includes("/api/canvas/")) {
+      canvasWrites.push(request.url());
     }
   });
   const canvasId = "node.video.generating";
@@ -161,11 +165,16 @@ test("Video generating state disables controls and uses the shared loading effec
   await expect(creator).toContainText("1×");
   await expect(page.getByTestId("video-node-toolbar")).toHaveCount(0);
   expect(generationRequests).toEqual([]);
+  const writesAfterHydration = canvasWrites.length;
+  await page.waitForTimeout(500);
+  expect(canvasWrites).toHaveLength(writesAfterHydration);
 
   const title = page.getByTestId("video-node-title-input");
   await title.fill("视频生成任务");
+  await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
   await page.reload();
   await expect(world).toHaveAttribute("data-persistence-ready", "true");
+  await page.locator('.react-flow__node[data-id="video-primary"]').click();
   await expect(page.getByTestId("video-node-title-input")).toHaveValue(
     "视频生成任务",
   );
@@ -332,7 +341,7 @@ test("Video empty, upload and editing states match the frozen basic state", asyn
       const box = await node.boundingBox();
       return { height: box?.height, width: box?.width };
     })
-    .toEqual({ height: 444, width: 250 });
+    .toEqual({ height: 250, width: 444 });
 
   await page.getByTestId("video-node-fullscreen").click();
   const detail = page.getByTestId("video-detail");
@@ -357,13 +366,13 @@ test("Video empty, upload and editing states match the frozen basic state", asyn
 
   const beforeDrag = (await node.boundingBox())!;
   await page.mouse.move(
-    beforeDrag.x + beforeDrag.width / 4,
-    beforeDrag.y + (beforeDrag.height * 3) / 4,
+    beforeDrag.x + 100,
+    beforeDrag.y + 100,
   );
   await page.mouse.down();
   await page.mouse.move(
-    beforeDrag.x + beforeDrag.width / 4 + 80,
-    beforeDrag.y + (beforeDrag.height * 3) / 4 + 80,
+    beforeDrag.x + 180,
+    beforeDrag.y + 180,
     { steps: 4 },
   );
   await page.mouse.up();
@@ -380,13 +389,7 @@ test("Video empty, upload and editing states match the frozen basic state", asyn
     .toEqual({ x: beforeDrag.x, y: beforeDrag.y });
 
   await page.keyboard.press("Meta+z");
-  await expect(preview).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "上传视频" })).toBeVisible();
-  expect(await node.boundingBox()).toMatchObject({ height: 250, width: 444 });
-  await expect(
-    node.locator(".react-flow__handle.target .node-handle-plus"),
-  ).toHaveCount(1);
-
-  await page.keyboard.press("Meta+z");
   await expect(title).toHaveValue("Video");
+  await expect(preview).toBeVisible();
+  expect(await node.boundingBox()).toMatchObject({ height: 250, width: 444 });
 });

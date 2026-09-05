@@ -169,6 +169,7 @@ const storageProfileModule = join(
 const backupArguments = [
   backupScript,
   "--source-frozen",
+  "--historical-recovery",
   "--data-dir", dataDirectory,
   "--backup-root", backupRoot,
   "--scratch-root", scratchRoot,
@@ -192,7 +193,7 @@ const backupOutput = execFileSync(process.execPath, backupArguments, {
 });
 const backup = JSON.parse(backupOutput.trim());
 if (
-  backup?.captureMode !== "locked-exact" || backup?.finalCandidate !== true ||
+  backup?.captureMode !== "locked-exact" || backup?.finalCandidate !== false ||
   backup?.schemaVersion !== 42 ||
   backup?.databaseLogicalSha256 !== expectedDatabaseLogicalSha256 ||
   typeof backup?.packageDirectory !== "string"

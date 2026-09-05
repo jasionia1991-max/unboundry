@@ -54,9 +54,27 @@ export function mediaUploadState(
   inputStateReason: string,
 ) {
   return {
-    inputState,
-    inputStateReason,
+    inputViewState: inputState,
+    inputViewStateReason: inputStateReason,
   } as const;
+}
+
+export function effectiveMediaInputState(
+  data: Readonly<{
+    inputState?: NodeInputState;
+    inputViewState?: NodeInputState;
+  }>,
+) {
+  return data.inputViewState ?? data.inputState;
+}
+
+export function effectiveMediaInputStateReason(
+  data: Readonly<{
+    inputStateReason?: string;
+    inputViewStateReason?: string;
+  }>,
+) {
+  return data.inputViewStateReason ?? data.inputStateReason;
 }
 
 export function trustedMediaPatch(metadata: TrustedMediaMetadata) {
@@ -75,6 +93,8 @@ export function trustedMediaPatch(metadata: TrustedMediaMetadata) {
   return {
     inputState,
     inputStateReason,
+    inputViewState: undefined,
+    inputViewStateReason: undefined,
     mediaByteSize: metadata.byteSize,
     mediaContentType: metadata.contentType,
     mediaDurationSeconds: metadata.durationSeconds ?? undefined,

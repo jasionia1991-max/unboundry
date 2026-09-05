@@ -182,6 +182,7 @@ test("release role and bridge-mode selection are exact and fail closed", () => {
   expect(releaseRoleFromEnvironment("0.7.5", {})).toBe("final");
   expect(releaseRoleFromEnvironment("0.7.6", {})).toBe("final");
   expect(releaseRoleFromEnvironment("0.7.7", {})).toBe("final");
+  expect(releaseRoleFromEnvironment("0.7.8", {})).toBe("final");
   expect(() => releaseRoleFromEnvironment("0.7.7-hotfix.1", {})).toThrow(
     /UNBOUNDRY_RELEASE_VERSION_INVALID/,
   );
@@ -2156,6 +2157,19 @@ async function writeOldLocalUploadCandidate(
 function rollbackMigration39To38(database: DatabaseSync) {
   if (Number((database.prepare("PRAGMA user_version").get() as {
     user_version: number;
+  }).user_version) === 43) {
+    database.exec(`
+      BEGIN IMMEDIATE;
+      DROP TABLE generation_canvas_projection_states;
+      DROP TABLE canvas_operation_receipts;
+      DROP TABLE media_image_metadata;
+      DELETE FROM schema_migrations WHERE version = 43;
+      PRAGMA user_version = 42;
+      COMMIT;
+    `);
+  }
+  if (Number((database.prepare("PRAGMA user_version").get() as {
+    user_version: number;
   }).user_version) === 42) {
     database.exec(`
       BEGIN IMMEDIATE;
@@ -3787,8 +3801,8 @@ test("bridge schema-37 routing and exact schema-38 startup never run implicit mi
       expect(migrated38.prepare(`
         SELECT version, name FROM schema_migrations ORDER BY version DESC LIMIT 1
       `).get()).toEqual({
-        name: "server-authoritative-workflow-runs",
-        version: 42,
+        name: "durable-canvas-operation-receipts",
+        version: 43,
       });
       expect(migrated38.prepare(`
         SELECT credential_revision FROM account_provider_credential_epochs
@@ -4579,6 +4593,14 @@ test("listening installs allowlisted terminal detach when no generation task is 
       `).run(timestamp);
       database.prepare(`
         UPDATE generation_tasks
+        SET model_configuration = json_remove(
+          model_configuration,
+          '$.generationIdentityVersion'
+        )
+        WHERE id = ?
+      `).run(fixture.taskId);
+      database.prepare(`
+        UPDATE generation_tasks
         SET canvas_id = 'm81-unrelated-outcome-unknown-canvas',
             provider_task_id = NULL,
             error_code = 'OUTCOME_UNKNOWN_BILLING_RISK',
@@ -4609,7 +4631,9 @@ test("listening installs allowlisted terminal detach when no generation task is 
         INSERT INTO canvas_documents (
           owner_id, id, revision, graph_revision, nodes, edges, viewport,
           updated_at, save_session_id, save_sequence
-        ) VALUES (?, ?, 1, 1, ?, '[]', '{}', ?, NULL, 0)
+        ) VALUES (
+          ?, ?, 1, 1, ?, '[]', '{"x":0,"y":0,"zoom":1}', ?, NULL, 0
+        )
       `).run(
         fixture.ownerId,
         task.canvas_id,
@@ -4672,7 +4696,7 @@ test("listening installs allowlisted terminal detach when no generation task is 
       }
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
-    expect(detached).toMatchObject({ graph_revision: 2, revision: 2 });
+    expect(detached).toMatchObject({ graph_revision: 1, revision: 2 });
     await expectMissing(providerLog);
     const preserved = new DatabaseSync(databasePath, { readOnly: true });
     try {

@@ -1,10 +1,109 @@
-import { expect, test, type Locator } from "./safe-test";
+import {
+  expect,
+  test,
+  type APIRequestContext,
+  type Locator,
+} from "./safe-test";
+import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   CanvasSaveSessionStorageError,
   createCanvasPersistenceFacade,
   createCanvasSaveJournalPort,
   type CanvasPersistenceTransport,
 } from "../client/src/canvas/canvasPersistenceFacade";
+
+async function seedLegacyMediaPersistenceFixture(request: APIRequestContext) {
+  const image =
+    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1600' height='900'%3E%3Crect width='1600' height='900' fill='%23545f6c'/%3E%3Cpath d='M0 700 500 300l380 280 260-210 460 330v200H0Z' fill='%23849caf'/%3E%3C/svg%3E";
+  const canvasId = "persistence.nodes-assets-viewport";
+  const seeded = await request.put(`/api/canvas/${canvasId}`, {
+    headers: { "X-Unboundry-Safe-Fixture-Seed": canvasId },
+    data: {
+      edges: [{
+        id: "persistent-edge-text-image",
+        source: "persistent-text",
+        sourceHandle: "source",
+        target: "persistent-image-1",
+        targetHandle: "target",
+        type: "cuttable",
+      }],
+      nodes: [
+        {
+          id: "persistent-text",
+          type: "text",
+          position: { x: 80, y: 100 },
+          data: {
+            content: "刷新页面后，这些内容仍然存在。",
+            label: "Text",
+            title: "持久化文字",
+          },
+          style: { height: 250, width: 250 },
+        },
+        ...[380, 870].map((x, index) => ({
+          id: `persistent-image-${index + 1}`,
+          type: "image",
+          position: { x, y: 100 },
+          data: {
+            assetId: "asset-shared-landscape",
+            imageSrc: image,
+            label: "Image",
+            sourceKind: "image",
+            title: `共享素材 ${index + 1}`,
+          },
+          style: { height: 250, width: 444 },
+        })),
+        {
+          id: "persistent-audio",
+          type: "audio",
+          position: { x: 80, y: 480 },
+          data: {
+            assetId: "asset-audio-184",
+            audioDuration: 184,
+            audioSrc: "data:audio/wav;base64,AAAA",
+            audioWaveform: Array.from(
+              { length: 64 },
+              (_, index) => 12 + (index % 8) * 5,
+            ),
+            label: "Audio",
+            sourceKind: "audio",
+            title: "03:04 音频",
+          },
+          style: { height: 250, width: 444 },
+        },
+        {
+          id: "persistent-video",
+          type: "video",
+          position: { x: 580, y: 480 },
+          data: {
+            assetId: "asset-video-demo",
+            label: "Video",
+            sourceKind: "video",
+            title: "持久化视频",
+            videoDuration: 12,
+            videoHeight: 900,
+            videoSrc: "data:video/mp4;base64,AAAA",
+            videoWidth: 1600,
+          },
+          style: { height: 250, width: 444 },
+        },
+        {
+          id: "persistent-playlist",
+          type: "playlist",
+          position: { x: 80, y: 840 },
+          data: { label: "Playlist", title: "持久化播放列表" },
+          style: { height: 104, width: 960 },
+        },
+      ],
+      revision: 0,
+      saveSequence: 1,
+      saveSessionId: randomUUID(),
+      viewport: { x: 120, y: 110, zoom: 0.72 },
+    },
+  });
+  expect(seeded.ok()).toBe(true);
+}
 
 test("in-memory persistence facade replaces browser transport and journal", async () => {
   const values = new Map<string, string>();
@@ -140,6 +239,7 @@ test("nodes, asset references and viewport survive a reload", async ({
   request,
 }) => {
   await request.delete("/api/canvas/persistence.nodes-assets-viewport");
+  await seedLegacyMediaPersistenceFixture(request);
   await page.goto("/__fixture/persistence.nodes-assets-viewport");
 
   const world = page.getByTestId("canvas-world");
@@ -196,11 +296,34 @@ test("media nodes keep material-fit defaults and preserve manual resize", async 
 }) => {
   const canvasId = "persistence.nodes-assets-viewport";
   await request.delete(`/api/canvas/${canvasId}`);
+  await seedLegacyMediaPersistenceFixture(request);
+  const durableWrites: Array<{
+    body: unknown;
+    method: string;
+    pathname: string;
+  }> = [];
+  page.on("request", (outgoing) => {
+    const url = new URL(outgoing.url());
+    if (
+      (outgoing.method() === "PUT" && url.pathname === `/api/canvas/${canvasId}`) ||
+      (outgoing.method() === "POST" &&
+        url.pathname === `/api/canvases/${canvasId}/commands`)
+    ) {
+      durableWrites.push({
+        body: outgoing.postDataJSON(),
+        method: outgoing.method(),
+        pathname: url.pathname,
+      });
+    }
+  });
   await page.goto(`/__fixture/${canvasId}`);
 
   const world = page.getByTestId("canvas-world");
   await expect(world).toHaveAttribute("data-persistence-ready", "true");
   await page.getByTestId("fit-view").click();
+  await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
+  await page.waitForTimeout(900);
+  durableWrites.length = 0;
 
   const resized = new Map<string, { height: number; width: number }>();
   for (const id of [
@@ -217,6 +340,7 @@ test("media nodes keep material-fit defaults and preserve manual resize", async 
       ".react-flow__resize-control.handle.bottom.right",
     );
     const handleBox = (await handle.boundingBox())!;
+    const writesBeforeGesture = durableWrites.length;
     await page.mouse.move(
       handleBox.x + handleBox.width / 2,
       handleBox.y + handleBox.height / 2,
@@ -225,11 +349,21 @@ test("media nodes keep material-fit defaults and preserve manual resize", async 
     await page.mouse.move(
       handleBox.x + handleBox.width / 2 + 36,
       handleBox.y + handleBox.height / 2 + 24,
+      { steps: 8 },
     );
     await page.evaluate(
       () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
     );
+    await page.waitForTimeout(900);
+    expect(durableWrites).toHaveLength(writesBeforeGesture);
     await page.mouse.up();
+
+    await expect.poll(() => durableWrites.length).toBe(writesBeforeGesture + 1);
+    expect(durableWrites.at(-1)).toMatchObject({
+      body: { kind: "commit-user-layout" },
+      method: "POST",
+      pathname: `/api/canvases/${canvasId}/commands`,
+    });
 
     const after = (await node.boundingBox())!;
     expect(after.width).toBeGreaterThan(before.width + 20);
@@ -250,12 +384,168 @@ test("media nodes keep material-fit defaults and preserve manual resize", async 
   }
 });
 
+test("passive media hydration performs zero durable Canvas writes", async ({
+  page,
+  request,
+}) => {
+  const canvasId = "persistence.nodes-assets-viewport";
+  await request.delete(`/api/canvas/${canvasId}`);
+  const landscape =
+    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1600' height='900'%3E%3Crect width='1600' height='900' fill='%23545f6c'/%3E%3C/svg%3E";
+  const portrait =
+    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='900' height='1600'%3E%3Crect width='900' height='1600' fill='%234a6171'/%3E%3C/svg%3E";
+  const nodes = [
+    {
+      id: "passive-media-group",
+      type: "group",
+      position: { x: 120, y: 120 },
+      data: { groupColor: "rgba(255, 255, 255, 0.04)", label: "Group", title: "生产形态组" },
+      style: { height: 820, width: 1420 },
+      zIndex: 0,
+    },
+    ...[
+      ["passive-image-landscape", landscape, 20, 20],
+      ["passive-image-portrait", portrait, 340, 20],
+    ].map(([id, imageSrc, x, y]) => ({
+      id,
+      type: "image",
+      parentId: "passive-media-group",
+      position: { x, y },
+      data: {
+        assetId: `local-${id}`,
+        imageAssetOrigin: "upload",
+        imageSrc,
+        label: "Image",
+        mediaStorageBackend: "local",
+        sourceKind: "image",
+        title: id,
+      },
+      style: { height: 250, width: 250 },
+      zIndex: 1,
+    })),
+    {
+      id: "passive-video-landscape",
+      type: "video",
+      parentId: "passive-media-group",
+      position: { x: 660, y: 20 },
+      data: {
+        assetId: "local-passive-video-landscape",
+        label: "Video",
+        mediaStorageBackend: "local",
+        sourceKind: "video",
+        title: "本地横版视频",
+        videoSrc: "/fixtures/video-success.mp4",
+      },
+      style: { height: 250, width: 250 },
+      zIndex: 1,
+    },
+    {
+      id: "passive-video-portrait",
+      type: "video",
+      parentId: "passive-media-group",
+      position: { x: 980, y: 20 },
+      data: {
+        assetId: "result-passive-video-portrait",
+        label: "Video",
+        mediaStorageBackend: "local",
+        sourceKind: "video",
+        title: "生成结果竖版视频",
+        videoSrc: "/fixtures/playlist-portrait.mp4",
+      },
+      style: { height: 250, width: 250 },
+      zIndex: 1,
+    },
+    {
+      id: "passive-audio",
+      type: "audio",
+      parentId: "passive-media-group",
+      position: { x: 20, y: 400 },
+      data: {
+        assetId: "local-passive-audio",
+        audioSrc: "/fixtures/audio-success.mp3",
+        label: "Audio",
+        mediaStorageBackend: "local",
+        sourceKind: "audio",
+        title: "本地音频",
+      },
+      style: { height: 250, width: 444 },
+      zIndex: 1,
+    },
+  ];
+  const seeded = await request.put(`/api/canvas/${canvasId}`, {
+    headers: { "X-Unboundry-Safe-Fixture-Seed": canvasId },
+    data: {
+      edges: [],
+      nodes,
+      revision: 0,
+      saveSequence: 1,
+      saveSessionId: randomUUID(),
+      viewport: { x: 0, y: 0, zoom: 0.7 },
+    },
+  });
+  expect(seeded.ok()).toBe(true);
+  const before = await (await request.get(`/api/canvas/${canvasId}`)).json() as {
+    graphRevision: number;
+    nodes: unknown[];
+    revision: number;
+    updatedAt?: string;
+  };
+
+  const durableWrites: Array<{ method: string; pathname: string }> = [];
+  page.on("request", (outgoing) => {
+    const url = new URL(outgoing.url());
+    if (
+      (outgoing.method() === "PUT" && url.pathname === `/api/canvas/${canvasId}`) ||
+      (outgoing.method() === "POST" &&
+        url.pathname === `/api/canvases/${canvasId}/commands`)
+    ) {
+      durableWrites.push({ method: outgoing.method(), pathname: url.pathname });
+    }
+  });
+
+  await page.goto(`/__fixture/${canvasId}`);
+  const world = page.getByTestId("canvas-world");
+  await expect(world).toHaveAttribute("data-persistence-ready", "true");
+  await expect(world).toHaveAttribute("data-node-count", String(nodes.length));
+  await expect.poll(async () => page.locator("img").evaluateAll((images) =>
+    images.filter((image) => (image as HTMLImageElement).complete).length
+  )).toBeGreaterThanOrEqual(2);
+  await page.waitForTimeout(1_200);
+
+  const after = await (await request.get(`/api/canvas/${canvasId}`)).json() as {
+    graphRevision: number;
+    nodes: unknown[];
+    revision: number;
+    updatedAt?: string;
+  };
+  expect(durableWrites).toEqual([]);
+  expect(after.revision).toBe(before.revision);
+  expect(after.graphRevision).toBe(before.graphRevision);
+  expect(after.nodes).toEqual(before.nodes);
+  expect(after.updatedAt).toBe(before.updatedAt);
+});
+
+test("passive media callbacks do not call the durable Canvas node setter", () => {
+  const image = readFileSync(resolve("client/src/canvas/ImageNode.tsx"), "utf8");
+  const video = readFileSync(resolve("client/src/canvas/VideoNode.tsx"), "utf8");
+  const audio = readFileSync(resolve("client/src/canvas/AudioNode.tsx"), "utf8");
+
+  expect(image).not.toContain("deferredPreviewAutoFit");
+  expect(image).not.toContain("applyPreviewAutoFit");
+  expect(video).not.toContain("deferredVideoMetadata");
+  expect(video).not.toContain("applyVideoMetadata");
+  expect(video).not.toMatch(/captureMetadata[\s\S]{0,800}\bsetNodes\s*\(/);
+  expect(audio).not.toMatch(/decodeAudioData[\s\S]{0,800}\bsetNodes\s*\(/);
+  expect(audio).not.toMatch(/applyLoadedAudioDuration[\s\S]{0,500}\bsetNodes\s*\(/);
+});
+
 test("pagehide rolls every unfinished title composition back to its last commit", async ({
   page,
   request,
 }) => {
   const canvasId = "persistence.nodes-assets-viewport";
   await request.delete(`/api/canvas/${canvasId}`);
+  await seedLegacyMediaPersistenceFixture(request);
   await page.goto(`/__fixture/${canvasId}`);
   const world = page.getByTestId("canvas-world");
   await expect(world).toHaveAttribute("data-persistence-ready", "true");
@@ -292,6 +582,7 @@ test("slow typing keeps every editable node title saved after the first key", as
 }) => {
   const canvasId = "persistence.nodes-assets-viewport";
   await request.delete(`/api/canvas/${canvasId}`);
+  await seedLegacyMediaPersistenceFixture(request);
   await page.goto(`/__fixture/${canvasId}`);
   const world = page.getByTestId("canvas-world");
   await expect(world).toHaveAttribute("data-persistence-ready", "true");

@@ -865,8 +865,9 @@ test("admin can publish a canvas group to public templates without private media
   const created = await request.post("/api/projects", { data: {} });
   expect(created.status()).toBe(201);
   const project = (await created.json()) as { id: string };
-  const saveMetadata = await existingCanvasSaveMetadata(request, project.id);
+  await request.delete(`/api/canvas/${project.id}`);
   const saved = await request.put(`/api/canvas/${project.id}`, {
+    headers: { "X-Unboundry-Safe-Fixture-Seed": project.id },
     data: {
       edges: [
         {
@@ -919,7 +920,7 @@ test("admin can publish a canvas group to public templates without private media
           zIndex: 1,
         },
       ],
-      ...saveMetadata,
+      revision: 0,
       viewport: { x: 0, y: 0, zoom: 1 },
     },
   });
@@ -1183,7 +1184,10 @@ test("dragging a real canvas node saves after drag stop, not during the drag", a
 }) => {
   const writes: string[] = [];
   page.on("request", (event) => {
-    if (event.method() === "PUT" && /\/api\/canvas\//.test(event.url())) {
+    if (
+      event.method() === "POST" &&
+      /\/api\/canvases\/[^/]+\/commands$/.test(event.url())
+    ) {
       writes.push(event.url());
     }
   });

@@ -12,10 +12,19 @@ import {
   type CanvasSavePort,
 } from "../client/src/canvas/canvasPorts";
 import {
+  authoritativeCanvasNodeDataPatchAllowed,
+  canvasEdgeViewUpdateAllowed,
+  canvasUploadedAssetAdoptionAllowed,
+  canvasViewUpdateAllowed,
+} from "../client/src/canvas/CanvasGraphMutationContext";
+import { planCanvasCommandIntents } from
+  "../client/src/canvas/canvasCommandJournal";
+import {
   CanvasNodeRegistry,
   canvasNodeRegistry,
 } from "../client/src/canvas/canvasNodeRegistry";
 import type { ProbeNodeType } from "../client/src/canvas/ProbeNode";
+import type { CuttableEdge } from "../client/src/canvas/canvasTypes";
 import {
   createSingleNodeGenerationLifecycle,
   type SingleNodeGenerationLifecycle,
@@ -65,7 +74,11 @@ import {
   mediaEditSource,
 } from "../server/mediaEditSource";
 import type { MediaRecord } from "../server/mediaRegistry";
-import { validatePng, validateTransparentPng } from "../server/assetStorage";
+import {
+  pngHasTransparency,
+  validatePng,
+  validateTransparentPng,
+} from "../server/assetStorage";
 import type { ProviderProfile } from "../server/providerProfiles";
 import {
   createSeedanceTrustedAssetStore,
@@ -1207,6 +1220,267 @@ class InMemoryCanvasPorts implements CanvasGraphCommandPort, CanvasSavePort {
   }
 }
 
+test("Canvas view and authoritative-adoption ports reject cross-owner writes", () => {
+  const before: ProbeNodeType[] = [{
+    data: {
+      assetId: "asset-1",
+      label: "Image",
+      title: "Original",
+    },
+    id: "node-1",
+    position: { x: 0, y: 0 },
+    selected: false,
+    type: "image",
+  }];
+  expect(canvasViewUpdateAllowed(before, [{
+    ...before[0],
+    data: {
+      ...before[0].data,
+      imageGenerationError: "view-only",
+      inputViewState: "invalid",
+    },
+    selected: true,
+  }])).toBe(true);
+  expect(canvasViewUpdateAllowed(before, [{
+    ...before[0],
+    data: { ...before[0].data, title: "Durable edit" },
+  }])).toBe(false);
+  expect(canvasViewUpdateAllowed(before, [{
+    ...before[0],
+    data: { ...before[0].data, mediaByteSize: 42 },
+  }])).toBe(false);
+  expect(canvasViewUpdateAllowed(before, [{
+    ...before[0],
+    position: { x: 1, y: 0 },
+  }])).toBe(false);
+  expect(authoritativeCanvasNodeDataPatchAllowed({
+    imageGenerationError: undefined,
+    mediaByteSize: 42,
+    mediaMetadataSource: "server",
+  })).toBe(true);
+  expect(authoritativeCanvasNodeDataPatchAllowed({ title: "browser" })).toBe(false);
+  expect(authoritativeCanvasNodeDataPatchAllowed({ unknownField: true })).toBe(false);
+
+  const edge: CuttableEdge = {
+    data: { inputOrder: 1 },
+    id: "edge-1",
+    source: "node-1",
+    target: "node-2",
+    type: "cuttable",
+  };
+  expect(canvasEdgeViewUpdateAllowed([edge], [{
+    ...edge,
+    data: { ...edge.data, cutIndicator: "hover" as const },
+  }])).toBe(true);
+  expect(canvasEdgeViewUpdateAllowed([edge], [{
+    ...edge,
+    data: { ...edge.data, inputOrder: 2 },
+  }])).toBe(false);
+});
+
+test("uploaded asset adoption is fail-closed around server identity and layout", () => {
+  const before: ProbeNodeType[] = [{
+    data: { label: "Image", title: "Upload target" },
+    id: "image-upload-target",
+    position: { x: 10, y: 20 },
+    selected: false,
+    style: { height: 250, width: 250 },
+    type: "image",
+  }];
+  const adoption = {
+    asset: {
+      assetId: "uploaded-image-1",
+      byteSize: 321,
+      contentType: "image/png",
+      durationSeconds: null,
+      hasTransparency: true,
+      height: 720,
+      src: "/api/assets/uploaded-image-1",
+      storageBackend: "local" as const,
+      width: 1280,
+    },
+    mediaKind: "image" as const,
+    targetNodeId: "image-upload-target",
+  };
+  const adopted: ProbeNodeType[] = [{
+    ...before[0],
+    data: {
+      ...before[0].data,
+      assetId: adoption.asset.assetId,
+      imageAssetOrigin: "local-upload",
+      imageHasTransparency: true,
+      imageSrc: adoption.asset.src,
+      mediaByteSize: adoption.asset.byteSize,
+      mediaContentType: adoption.asset.contentType,
+      mediaHeight: adoption.asset.height,
+      mediaMetadataSource: "server",
+      mediaMetadataStatus: "ready",
+      mediaStorageBackend: adoption.asset.storageBackend,
+      mediaWidth: adoption.asset.width,
+    },
+    selected: true,
+  }];
+  expect(canvasUploadedAssetAdoptionAllowed(before, adopted, adoption)).toBe(true);
+  expect(canvasUploadedAssetAdoptionAllowed(adopted, adopted, adoption)).toBe(false);
+  expect(canvasUploadedAssetAdoptionAllowed(before, [
+    { ...adopted[0], type: "video" },
+  ], adoption)).toBe(false);
+  expect(canvasUploadedAssetAdoptionAllowed(before, [
+    ...adopted,
+    {
+      data: { label: "Unexpected" },
+      id: "unexpected-node",
+      position: { x: 0, y: 0 },
+      type: "text",
+    },
+  ], adoption)).toBe(false);
+  expect(canvasUploadedAssetAdoptionAllowed(before, [{
+    ...adopted[0],
+    data: { ...adopted[0].data, imageHasTransparency: false },
+  }], adoption)).toBe(false);
+  expect(canvasUploadedAssetAdoptionAllowed(before, [{
+    ...adopted[0],
+    style: { height: 180, width: 320 },
+  }], adoption)).toBe(false);
+});
+
+test("choosing an existing generated audio result plans one authoritative asset adoption", () => {
+  const primary = {
+    assetId: "audio-primary",
+    byteSize: 101,
+    contentType: "audio/mpeg",
+    durationSeconds: 4,
+    durationStatus: "ready" as const,
+    mediaHeight: null,
+    mediaWidth: null,
+    role: "primary" as const,
+    storageBackend: "local" as const,
+    url: "/api/audio-assets/audio-primary",
+  };
+  const alternate = {
+    ...primary,
+    assetId: "audio-alternate",
+    byteSize: 202,
+    role: "alternate" as const,
+    url: "/api/audio-assets/audio-alternate",
+  };
+  const before = {
+    edges: [],
+    graphRevision: 7,
+    nodes: [{
+      data: {
+        assetId: primary.assetId,
+        audioGenerationTaskId: "task-generated",
+        audioResultChoices: [primary, alternate],
+        audioSrc: primary.url,
+        groupRunSuccessTaskId: "task-generated",
+        label: "Audio",
+        mediaByteSize: primary.byteSize,
+        mediaContentType: primary.contentType,
+        mediaDurationSeconds: primary.durationSeconds,
+        mediaMetadataSource: "server",
+        mediaMetadataStatus: "ready",
+        mediaStorageBackend: primary.storageBackend,
+      },
+      id: "audio-node",
+      position: { x: 0, y: 0 },
+      type: "audio",
+    }],
+    revision: 9,
+    viewport: { x: 0, y: 0, zoom: 1 },
+  };
+  const selected = {
+    edges: [],
+    nodes: [{
+      ...before.nodes[0],
+      data: {
+        ...before.nodes[0].data,
+        assetId: alternate.assetId,
+        audioSrc: alternate.url,
+        mediaByteSize: alternate.byteSize,
+      },
+    }],
+    viewport: { x: 0, y: 0, zoom: 1 },
+  };
+  const intents = planCanvasCommandIntents(before, selected);
+  expect(intents.map(({ entry }) => entry.kind)).toEqual([
+    "adopt-uploaded-asset",
+  ]);
+  expect(intents[0]?.entry).toMatchObject({
+    kind: "adopt-uploaded-asset",
+    mediaKind: "audio",
+    nodeId: "audio-node",
+  });
+
+  const unlisted = {
+    ...selected,
+    nodes: [{
+      ...selected.nodes[0],
+      data: {
+        ...selected.nodes[0].data,
+        assetId: "audio-unlisted",
+        audioSrc: "/api/audio-assets/audio-unlisted",
+      },
+    }],
+  };
+  expect(planCanvasCommandIntents(before, unlisted)).toHaveLength(0);
+});
+
+test("replacing a generated result with a local upload plans only bounded user commands", () => {
+  const before = {
+    edges: [],
+    graphRevision: 4,
+    nodes: [{
+      data: {
+        assetId: "generated-audio",
+        audioGenerationOwnershipKey: "ownership-generated",
+        audioGenerationTaskId: "task-generated",
+        audioSrc: "/api/audio-assets/generated-audio",
+        groupRunSuccessTaskId: "task-generated",
+        label: "Audio",
+        mediaByteSize: 100,
+        mediaContentType: "audio/mpeg",
+        mediaDurationSeconds: 3,
+        mediaMetadataSource: "server",
+        mediaMetadataStatus: "ready",
+        mediaStorageBackend: "local",
+        workflowExecutionRunId: "run-generated",
+      },
+      id: "audio-upload-replacement",
+      position: { x: 0, y: 0 },
+      type: "audio",
+    }],
+    revision: 5,
+    viewport: { x: 0, y: 0, zoom: 1 },
+  };
+  const target = {
+    edges: [],
+    nodes: [{
+      ...before.nodes[0],
+      data: {
+        assetId: "local-audio",
+        audioSrc: "/api/audio-assets/local-audio",
+        label: "Audio",
+        mediaByteSize: 200,
+        mediaContentType: "audio/mpeg",
+        mediaDurationSeconds: 6,
+        mediaMetadataSource: "server",
+        mediaMetadataStatus: "ready",
+        mediaStorageBackend: "local",
+      },
+    }],
+    viewport: { x: 0, y: 0, zoom: 1 },
+  };
+  const entries = planCanvasCommandIntents(before, target).map(({ entry }) => entry);
+  expect(entries).toHaveLength(1);
+  expect(entries[0]).toMatchObject({
+    kind: "adopt-uploaded-asset",
+    mediaKind: "audio",
+    nodeId: "audio-upload-replacement",
+  });
+  expect(JSON.stringify(entries)).not.toMatch(/GenerationTaskId|OwnershipKey|workflowExecutionRunId/);
+});
+
 test("Canvas graph/save ports are independently replaceable and preserve write fences", async () => {
   const port = new InMemoryCanvasPorts({
     edges: [],
@@ -1766,6 +2040,8 @@ test("Canvas graph/save ports are independently replaceable and preserve write f
   );
   expect(validateTransparentPng(transparentPng)).toEqual({ height: 1, width: 1 });
   expect(() => validateTransparentPng(opaqueAlphaPng)).toThrow(/transparent pixels/);
+  expect(pngHasTransparency(transparentPng)).toBe(true);
+  expect(pngHasTransparency(opaqueAlphaPng)).toBe(false);
   expect(redrawCanvasPoint({
     canvasHeight: 720,
     canvasWidth: 1280,
@@ -2061,7 +2337,7 @@ test("composition root wires public module APIs and delegates readiness SQL", as
       sourceVersion: 0,
     });
     trustedDatabase.exec("COMMIT");
-    expect(currentSchemaVersion).toBe(42);
+    expect(currentSchemaVersion).toBe(43);
     expect(databaseMatchesSchemaContract(trustedDatabase)).toBe(true);
     const timestamp = "2026-08-24T10:00:00.000Z";
     trustedDatabase.prepare(`
@@ -3194,4 +3470,262 @@ test("single-node lifecycle replaces React with fenced graph save and task ports
       operation: "multi-angle",
       taskId: "task-1",
     });
+});
+
+test("modern single-node terminal state adopts the server document without a browser result write", async () => {
+  let revision = 0;
+  let durableGraphCommits = 0;
+  let viewCommits = 0;
+  let saveFlushes = 0;
+  let refreshes = 0;
+  let terminalAdapterCalls = 0;
+  let bindingCommittedCalls = 0;
+  let suppressAuthoritativeBinding = false;
+  let replaceBeforeTerminal = false;
+  let snapshot: CanvasGraphSnapshot = {
+    edges: [],
+    nodes: [{
+      data: {
+        content: "before",
+        label: "Modern text node",
+        textPrompt: "draw a moon",
+      },
+      id: "text-modern",
+      position: { x: 0, y: 0 },
+      type: "text",
+    }],
+    revision,
+  };
+  const graph = createCanvasGraphCommandPort({
+    commit(next) {
+      durableGraphCommits += 1;
+      snapshot = { ...next, revision: undefined };
+    },
+    commitView(nodes) {
+      viewCommits += 1;
+      snapshot = { ...snapshot, nodes };
+    },
+    persistenceReady: () => true,
+    async refreshAuthoritativeDocument() {
+      refreshes += 1;
+      if (suppressAuthoritativeBinding) return true;
+      snapshot = {
+        ...snapshot,
+        nodes: snapshot.nodes.map((node) => node.id === "text-modern"
+          ? {
+              ...node,
+              data: refreshes === 1
+                ? {
+                    ...node.data,
+                    textGenerationContractFingerprint: "mic2:modern",
+                    textGenerationInputKey: "input-modern",
+                    textGenerationModelConfigurationRevision:
+                      "configuration-modern",
+                    textGenerationModelReleaseRevision:
+                      "00000000-0000-4000-8000-000000000200",
+                    textGenerationOwnershipKey: "ownership-modern",
+                    textGenerationTaskId: "task-modern",
+                  }
+                : {
+                    ...node.data,
+                    content: "server result",
+                    groupRunSuccessOwnershipKey: "ownership-modern",
+                    groupRunSuccessTaskId: "task-modern",
+                    textGenerating: false,
+                    textGenerationInputKey: undefined,
+                    textGenerationOwnershipKey: undefined,
+                    textGenerationTaskId: "task-modern",
+                  },
+            }
+          : node),
+        revision: refreshes === 1 ? 2 : 3,
+      };
+      return true;
+    },
+    snapshot: () => snapshot,
+  });
+  const task = (
+    state: GenerationTaskSummary["state"],
+  ): GenerationTaskSummary => ({
+    attempt: 1,
+    canvasId: "canvas-modern",
+    canvasProjectionState: state === "success" ? "applied" : "not-applicable",
+    costCurrency: "CNY",
+    createdAt: "2026-09-03T00:00:00.000Z",
+    generationIdentityVersion: 2,
+    generationInputKey: "input-modern",
+    generationOwnershipKey: "ownership-modern",
+    id: "task-modern",
+    kind: "text",
+    modelConfigurationRevision: "configuration-modern",
+    modelInputContractFingerprint: "mic2:modern",
+    modelReleaseRevision: "00000000-0000-4000-8000-000000000200",
+    nodeId: "text-modern",
+    prompt: "draw a moon",
+    resultText: state === "success" ? "server result" : undefined,
+    state,
+    updatedAt: "2026-09-03T00:00:01.000Z",
+  });
+  const lifecycle = createSingleNodeGenerationLifecycle({
+    adapter: {
+      applyBinding(node, boundTask, plan) {
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            textGenerating: true,
+            textGenerationInputKey: plan.inputKey,
+            textGenerationOwnershipKey: plan.ownershipKey,
+            textGenerationTaskId: boundTask.id,
+          },
+        };
+      },
+      applyTerminal(node) {
+        terminalAdapterCalls += 1;
+        return { ...node, data: { ...node.data, content: "browser result" } };
+      },
+      kind: "text",
+      readPlan() {
+        return {
+          contractFingerprint: "mic2:modern",
+          inputKey: "input-modern",
+          kind: "text",
+          modelConfigurationRevision: "configuration-modern",
+          modelReleaseRevision: "00000000-0000-4000-8000-000000000200",
+          nodeId: "text-modern",
+          ownershipKey: "ownership-modern",
+          payload: { prompt: "draw a moon" },
+        };
+      },
+    },
+    graph,
+    nodeId: "text-modern",
+    onBindingCommitted(boundTask) {
+      expect(boundTask.id).toBe("task-modern");
+      expect(snapshot.nodes[0]?.data).toMatchObject({
+        textGenerationOwnershipKey: "ownership-modern",
+        textGenerationTaskId: "task-modern",
+      });
+      bindingCommittedCalls += 1;
+    },
+    randomUUID: () => "run-modern",
+    save: {
+      async flush() { saveFlushes += 1; },
+      async waitForRevision() {
+        revision += 1;
+        snapshot = { ...snapshot, revision };
+        return { revision };
+      },
+    },
+    tasks: {
+      async cancel() { return task("cancelled"); },
+      async ensure() {
+        return {
+          generationOwnershipKey: "ownership-modern",
+          idempotencyKey: "idem-modern",
+          recovered: false,
+          task: task("running"),
+        };
+      },
+      async reconcile() { return { outcome: "recovered", task: task("success") }; },
+      async recover() { return task("running"); },
+      async retry() { return task("running"); },
+      async watch() {
+        if (replaceBeforeTerminal) {
+          snapshot = {
+            ...snapshot,
+            nodes: snapshot.nodes.map((node) => node.id === "text-modern"
+              ? {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    textGenerationOwnershipKey: undefined,
+                    textGenerationTaskId: undefined,
+                  },
+                }
+              : node),
+          };
+        }
+        return task("success");
+      },
+    },
+  });
+
+  await expect(lifecycle.generate()).resolves.toMatchObject({ status: "success" });
+  expect({
+    bindingCommittedCalls,
+    durableGraphCommits,
+    refreshes,
+    saveFlushes,
+    terminalAdapterCalls,
+    viewCommits,
+  }).toEqual({
+    bindingCommittedCalls: 1,
+    durableGraphCommits: 0,
+    refreshes: 2,
+    saveFlushes: 1,
+    terminalAdapterCalls: 0,
+    viewCommits: 1,
+  });
+  expect(snapshot.nodes[0]?.data).toMatchObject({
+    content: "server result",
+    groupRunSuccessTaskId: "task-modern",
+    textGenerating: false,
+  });
+  expect(graph.applyViewPatch?.({
+    kind: "text",
+    nodeId: "text-modern",
+    ownershipKey: "ownership-modern",
+    patch: { content: "forbidden browser result" },
+    taskId: "task-modern",
+  })).toEqual({ reason: "view-field-rejected", status: "rejected" });
+  expect(snapshot.nodes[0]?.data.content).toBe("server result");
+
+  suppressAuthoritativeBinding = true;
+  revision = 0;
+  snapshot = {
+    edges: [],
+    nodes: [{
+      data: {
+        content: "before missing binding",
+        label: "Modern text node",
+        textPrompt: "draw a moon",
+      },
+      id: "text-modern",
+      position: { x: 0, y: 0 },
+      type: "text",
+    }],
+    revision,
+  };
+  await expect(lifecycle.generate()).resolves.toEqual({
+    reason: "stale",
+    status: "stale",
+  });
+  expect(snapshot.nodes[0]?.data.content).toBe("before missing binding");
+  expect(bindingCommittedCalls).toBe(1);
+
+  suppressAuthoritativeBinding = false;
+  replaceBeforeTerminal = true;
+  refreshes = 0;
+  revision = 0;
+  snapshot = {
+    edges: [],
+    nodes: [{
+      data: {
+        content: "before replacement",
+        label: "Modern text node",
+        textPrompt: "draw a moon",
+      },
+      id: "text-modern",
+      position: { x: 0, y: 0 },
+      type: "text",
+    }],
+    revision,
+  };
+  await expect(lifecycle.generate()).resolves.toEqual({
+    reason: "stale",
+    status: "stale",
+  });
+  expect(refreshes).toBe(1);
+  expect(snapshot.nodes[0]?.data.content).toBe("before replacement");
 });

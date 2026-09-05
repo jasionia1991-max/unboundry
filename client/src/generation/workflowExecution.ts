@@ -291,6 +291,7 @@ export function isWorkflowNodeGenerating(node: WorkflowNodeShape): boolean {
     data.textGenerating === true ||
     data.videoGenerating === true ||
     data.audioGenerating === true ||
+    data.inputViewState === "uploading" ||
     data.inputState === "uploading";
 }
 

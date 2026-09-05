@@ -365,13 +365,12 @@ test("Playlist supports pick, reorder, cut, undo and real mp4 export", async ({
       ),
   ).toEqual(framesBeforeTrim);
   await page.mouse.up();
-  const trimmedStart = Number(
+  await expect.poll(async () => Number(
     await page
       .getByTestId("playlist-segment")
       .first()
       .getAttribute("data-clip-start"),
-  );
-  expect(trimmedStart).toBeGreaterThan(0);
+  )).toBeGreaterThan(0);
   const restoredHandle = page.getByRole("button", {
     name: "裁剪片段左侧",
   });
@@ -411,8 +410,8 @@ test("Playlist supports pick, reorder, cut, undo and real mp4 export", async ({
     { steps: 5 },
   );
   await page.mouse.up();
-  const afterPlaylistDrag = (await playlist.boundingBox())!;
-  expect(afterPlaylistDrag.y).toBeGreaterThan(beforePlaylistDrag.y + 25);
+  await expect.poll(async () => (await playlist.boundingBox())!.y)
+    .toBeGreaterThan(beforePlaylistDrag.y + 25);
 
   const segments = page.getByTestId("playlist-segment");
   const firstBox = (await segments.first().boundingBox())!;
@@ -461,19 +460,22 @@ test("Playlist supports pick, reorder, cut, undo and real mp4 export", async ({
   await expect(segments).toHaveCount(2);
 
   const originalDuration = Number(await card.getAttribute("data-total-duration"));
+  const saveStatus = page.getByTestId("save-status");
   await page.keyboard.press("q");
-  expect(Number(await card.getAttribute("data-total-duration"))).toBeLessThan(
-    originalDuration,
-  );
+  await expect.poll(async () =>
+    Number(await card.getAttribute("data-total-duration"))
+  ).toBeLessThan(originalDuration);
   await page.keyboard.press("Meta+z");
   await expect(card).toHaveAttribute(
     "data-total-duration",
     originalDuration.toFixed(3),
   );
+  await expect(saveStatus).toHaveText("已保存到云端");
   await page.keyboard.press("e");
-  expect(Number(await card.getAttribute("data-total-duration"))).toBeLessThan(
-    originalDuration,
-  );
+  await expect.poll(async () =>
+    Number(await card.getAttribute("data-total-duration"))
+  ).toBeLessThan(originalDuration);
+  await expect(saveStatus).toHaveText("已保存到云端");
   await page.keyboard.press("Meta+z");
   await expect(card).toHaveAttribute(
     "data-total-duration",

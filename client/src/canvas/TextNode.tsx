@@ -13,6 +13,7 @@ import { createPortal } from "react-dom";
 import { useCanvasCheckpoint } from "./CanvasHistory";
 import { useCanvasGraphMutation } from "./CanvasGraphMutationContext";
 import { useSingleNodeChrome } from "./CanvasSelectionContext";
+import type { CuttableEdge } from "./canvasTypes";
 import {
   useCompositionSafeRichText,
   useCompositionSafeText,
@@ -74,7 +75,6 @@ import {
   GENERATION_TASK_RETRY_ACCEPTED_EVENT,
   GenerationRequestError,
   getGenerationTask,
-  recoverPendingGenerationTask,
   waitForGenerationTask,
   type GenerationTaskRetryAcceptedDetail,
   type GenerationTaskSummary,
@@ -120,6 +120,16 @@ type TextGenerationRevocationIdentity = {
   ownershipKey?: string;
   taskId?: string;
 };
+
+function textGenerationRevocationIdentity(
+  data: ProbeNodeType["data"],
+): TextGenerationRevocationIdentity {
+  return {
+    inputKey: data.textGenerationInputKey,
+    ownershipKey: data.textGenerationOwnershipKey,
+    taskId: data.textGenerationTaskId,
+  };
+}
 
 function createTextGenerationAdapter(input: {
   contractFingerprint: string;
@@ -291,6 +301,18 @@ function clearFailedTextGeneration(data: ProbeNodeType["data"]) {
     textGenerationRetryBlockReason: undefined,
     textGenerating: false,
     textGenerationTaskId: undefined,
+  };
+}
+
+function clearFailedTextGenerationView(data: ProbeNodeType["data"]) {
+  return {
+    ...data,
+    textGenerationError: undefined,
+    textGenerationErrorCode: undefined,
+    textGenerationRetryAllowed: undefined,
+    textGenerationRetryBlockCode: undefined,
+    textGenerationRetryBlockReason: undefined,
+    textGenerating: false,
   };
 }
 
@@ -524,17 +546,26 @@ function TextNodeImpl({
   const textTaskOwnerRef = useRef<TextTaskOwner | undefined>(undefined);
   const textTerminalPatchPendingTaskRef = useRef<string | undefined>(undefined);
   const textManualEditVersionRef = useRef(0);
+  const textBodyMutationVersionRef = useRef(0);
   const recoveryTaskRef = useRef<{
     controller: AbortController;
     owner: TextTaskOwner;
     taskId: string;
   } | null>(null);
+  useEffect(() => () => {
+    const recovery = recoveryTaskRef.current;
+    recovery?.controller.abort("text-node-unmounted");
+    if (recovery && textTaskOwnerRef.current === recovery.owner) {
+      textTaskOwnerRef.current = undefined;
+      if (activeTaskRef.current === recovery.taskId) activeTaskRef.current = null;
+    }
+    recoveryTaskRef.current = null;
+  }, []);
   const {
+    applyViewUpdate,
     canvasMutationPendingNodeIds,
     graphCommandPort,
     mutateGraph,
-    setEdges,
-    setNodes,
     tryAdoptNodes,
   } = useCanvasGraphMutation();
   const canvasMutationPending = canvasMutationPendingNodeIds.has(id);
@@ -571,6 +602,7 @@ function TextNodeImpl({
     generationOwnershipKey?: string,
     generationInputKey?: string,
   ): TextTaskOwner => {
+    textDataMutationVersionRef.current += 1;
     const owner = {
       generationInputKey,
       generationOwnershipKey,
@@ -717,14 +749,34 @@ function TextNodeImpl({
       }
     });
   };
+  const commitTextInputEdgesMutation = (
+    updateEdges: (edges: CuttableEdge[]) => CuttableEdge[],
+  ) => {
+    const mutationVersion = textDataMutationVersionRef.current + 1;
+    textDataMutationVersionRef.current = mutationVersion;
+    const expectedScopeKey = textMutationScopeKey;
+    let identity: TextGenerationRevocationIdentity | undefined;
+    void mutateGraph(({ edges, nodes }) => {
+      const target = nodes.find((node) => node.id === id);
+      identity = target
+        ? textGenerationRevocationIdentity(target.data)
+        : undefined;
+      return { edges: updateEdges(edges), nodes };
+    }).then((applied) => {
+      if (
+        !applied ||
+        !identity ||
+        textDataMutationVersionRef.current !== mutationVersion ||
+        liveTextMutationScopeKeyRef.current !== expectedScopeKey
+      ) return;
+      finishTextGenerationInputRevocation(identity, expectedScopeKey);
+    });
+  };
   const titleControl = useCompositionSafeText({
     onCommit: (nextTitle) => {
-      setNodes((nodes) =>
-        nodes.map((node) =>
-          node.id === id
-            ? { ...node, data: { ...node.data, title: nextTitle } }
-            : node,
-        ),
+      commitTextDataMutation(
+        (current) => ({ ...current, title: nextTitle }),
+        () => undefined,
       );
     },
     onEditSessionStart: checkpoint,
@@ -742,23 +794,37 @@ function TextNodeImpl({
   });
   const bodyControl = useCompositionSafeRichText({
     onCommit: (nextValue) => {
-      commitTextDataMutation((current) => ({
-        ...current,
-        content: nextValue.text,
-        contentHtml: nextValue.html,
-        textGenerationError: undefined,
-        textGenerationErrorCode: undefined,
-        textGenerationInputKey: undefined,
-        textGenerationOwnershipKey: undefined,
-        textGenerationRetryAllowed: undefined,
-        textGenerationRetryBlockCode: undefined,
-        textGenerationRetryBlockReason: undefined,
-        textGenerating: false,
-        textGenerationTaskId: undefined,
-      }), () => {
-        setBodyValue(nextValue);
-        revokeTextTaskForManualBodyEdit();
-      });
+      // Keep the editor's committed value in local state immediately. The
+      // durable graph mutation may wait behind another Canvas admission; a
+      // late completion from an earlier edit must not overwrite text entered
+      // during that wait.
+      setBodyValue(nextValue);
+      bodyLocalValue.current = nextValue;
+      setEmpty(!nextValue.text.trim());
+      const bodyMutationVersion = textBodyMutationVersionRef.current + 1;
+      textBodyMutationVersionRef.current = bodyMutationVersion;
+      commitTextDataMutation(
+        (current) =>
+          bodyMutationVersion !== textBodyMutationVersionRef.current
+            ? current
+            : {
+                ...current,
+                content: nextValue.text,
+                contentHtml: nextValue.html,
+                textGenerationError: undefined,
+                textGenerationErrorCode: undefined,
+                textGenerationInputKey: undefined,
+                textGenerationOwnershipKey: undefined,
+                textGenerationRetryAllowed: undefined,
+                textGenerationRetryBlockCode: undefined,
+                textGenerationRetryBlockReason: undefined,
+                textGenerating: false,
+                textGenerationTaskId: undefined,
+              },
+        () => {
+          revokeTextTaskForManualBodyEdit();
+        },
+      );
     },
     onEditSessionStart: checkpoint,
     value: bodyValue,
@@ -1005,6 +1071,16 @@ function TextNodeImpl({
       !data.textGenerationInputKey &&
       !data.textGenerationOwnershipKey
     ) return;
+    if (persistedMismatch) {
+      clearGenerationSubmissionIntent(
+        "text",
+        canvasId,
+        id,
+        data.textGenerationTaskId,
+        accountId,
+        fixtureScopeId,
+      );
+    }
     const identity = {
       inputKey: data.textGenerationInputKey,
       ownershipKey: data.textGenerationOwnershipKey,
@@ -1024,7 +1100,6 @@ function TextNodeImpl({
     id,
     persistenceReady,
     rawGenerationInputFingerprint,
-    setNodes,
     textGenerationRevocationKey,
     textMutationScopeKey,
   ]);
@@ -1051,6 +1126,16 @@ function TextNodeImpl({
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
+    if (
+      bodyEditing &&
+      bodyLocalValue.current.text === bodyValue.text &&
+      bodyLocalValue.current.html === bodyValue.html
+    ) {
+      // The focused contenteditable already owns this local commit. Writing
+      // the same React value back during a native fill/input sequence can move
+      // its selection and truncate the remaining edit.
+      return;
+    }
     applyRichTextValue(editor, bodyValue);
     bodyLocalValue.current = bodyValue;
     setEmpty(!bodyValue.text.trim());
@@ -1081,11 +1166,12 @@ function TextNodeImpl({
   };
 
   const copyTextContent = (liveEditor = false) => {
+    const committedBody = bodyControl.readCommittedValue().text;
     const bodyText = liveEditor
-      ? (editorRef.current?.innerText ?? bodyControl.committedValue.text)
-      : bodyControl.committedValue.text;
+      ? (editorRef.current?.innerText ?? committedBody)
+      : committedBody;
     void navigator.clipboard
-      .writeText(`${titleControl.committedValue}\n${bodyText}`)
+      .writeText(`${titleControl.readCommittedValue()}\n${bodyText}`)
       .catch(() => undefined);
   };
 
@@ -1122,8 +1208,10 @@ function TextNodeImpl({
   const applyGeneratedText = async (
     task: GenerationTaskSummary,
     owner: TextTaskOwner,
+    signal?: AbortSignal,
   ) => {
     if (
+      signal?.aborted ||
       !ownsTextTask(owner) ||
       !textTaskMatchesNode(task, canvasId, id, owner.taskId, fixtureScopeId)
     ) return false;
@@ -1141,6 +1229,82 @@ function TextNodeImpl({
     if (!resultText) throw new Error("文字结果不完整");
     textTerminalPatchPendingTaskRef.current = task.id;
     const nextValue = storedRichTextValue(resultText, plainTextHtml(resultText));
+    if (task.generationIdentityVersion === 2) {
+      const projectionState = task.canvasProjectionState;
+      const projectionMessage = projectionState === "conflict"
+        ? "结果已生成，但节点输入已变化，未覆盖当前画布"
+        : projectionState === "failed"
+          ? "结果已生成，画布同步暂时失败，系统会继续重试"
+          : projectionState === "applied"
+            ? undefined
+            : "结果已生成，画布正在同步";
+      if (projectionState === "applied") {
+        try {
+          if (
+            !await graphCommandPort?.refreshAuthoritativeDocument?.(signal) ||
+            signal?.aborted ||
+            !ownsTextTask(owner)
+          ) {
+            textTerminalPatchPendingTaskRef.current = undefined;
+            return false;
+          }
+        } catch {
+          textTerminalPatchPendingTaskRef.current = undefined;
+          return false;
+        }
+        setBodyValue(nextValue);
+        bodyLocalValue.current = nextValue;
+        setEmpty(false);
+        setGenerationError("");
+        clearGenerationSubmissionIntent(
+          "text",
+          canvasId,
+          id,
+          task.id,
+          accountId,
+          fixtureScopeId,
+        );
+        textTerminalPatchPendingTaskRef.current = undefined;
+        return true;
+      }
+      const patched = graphCommandPort?.applyViewPatch?.({
+        kind: "text",
+        nodeId: id,
+        ownershipKey: owner.generationOwnershipKey ?? "",
+        patch: {
+          textGenerating: false,
+          textGenerationError: projectionMessage,
+          textGenerationErrorCode: projectionState === "conflict"
+            ? "CANVAS_SERVER_OWNERSHIP_CONFLICT"
+            : projectionState === "failed"
+              ? "CANVAS_PROJECTION_FAILED"
+              : "CANVAS_PROJECTION_PENDING",
+        },
+        taskId: task.id,
+      });
+      if (patched?.status !== "applied") {
+        textTerminalPatchPendingTaskRef.current = undefined;
+        return false;
+      }
+      if (signal?.aborted || !ownsTextTask(owner)) {
+        textTerminalPatchPendingTaskRef.current = undefined;
+        return false;
+      }
+      setBodyValue(nextValue);
+      bodyLocalValue.current = nextValue;
+      setEmpty(false);
+      setGenerationError(projectionMessage ?? "");
+      clearGenerationSubmissionIntent(
+        "text",
+        canvasId,
+        id,
+        task.id,
+        accountId,
+        fixtureScopeId,
+      );
+      textTerminalPatchPendingTaskRef.current = undefined;
+      return true;
+    }
     const applied = await tryAdoptNodes(id, (nodes) => nodes.map((node) => node.id === id
       ? {
           ...node,
@@ -1166,7 +1330,7 @@ function TextNodeImpl({
           },
         }
       : node));
-    if (!applied) {
+    if (signal?.aborted || !ownsTextTask(owner) || !applied) {
       if (textTerminalPatchPendingTaskRef.current === task.id) {
         textTerminalPatchPendingTaskRef.current = undefined;
       }
@@ -1199,20 +1363,17 @@ function TextNodeImpl({
       errorCode,
       "text",
     );
-    const applied = await tryAdoptNodes(id, (nodes) => nodes.map((node) => node.id === id
+    const applied = applyViewUpdate((nodes) => nodes.map((node) => node.id === id
       ? {
           ...node,
           data: {
             ...node.data,
             textGenerationError: visibleMessage,
             textGenerationErrorCode: errorCode,
-            textGenerationInputKey:
-              owner.generationInputKey ?? data.textGenerationInputKey,
             textGenerationRetryAllowed: retryAllowed,
             textGenerationRetryBlockCode: retryBlockCode,
             textGenerationRetryBlockReason: retryBlockReason,
             textGenerating: false,
-            textGenerationTaskId: taskId,
           },
       }
       : node));
@@ -1235,20 +1396,17 @@ function TextNodeImpl({
     message: string,
   ) => {
     if (!ownsTextTask(owner) || taskId !== owner.taskId) return false;
-    const applied = await tryAdoptNodes(id, (nodes) => nodes.map((node) => node.id === id
+    const applied = applyViewUpdate((nodes) => nodes.map((node) => node.id === id
       ? {
           ...node,
           data: {
             ...node.data,
             textGenerationError: message,
             textGenerationErrorCode: undefined,
-            textGenerationInputKey: undefined,
-            textGenerationOwnershipKey: undefined,
             textGenerationRetryAllowed: undefined,
             textGenerationRetryBlockCode: undefined,
             textGenerationRetryBlockReason: undefined,
             textGenerating: false,
-            textGenerationTaskId: undefined,
           },
       }
       : node));
@@ -1268,40 +1426,42 @@ function TextNodeImpl({
   const finishTextTask = async (
     taskId: string,
     owner: TextTaskOwner,
-    signal?: AbortSignal,
+    signal: AbortSignal,
   ) => {
-    if (!ownsTextTask(owner) || taskId !== owner.taskId) return;
+    if (signal.aborted || !ownsTextTask(owner) || taskId !== owner.taskId) return;
     let task: Awaited<ReturnType<typeof waitForGenerationTask>>;
     try {
       task = await waitForGenerationTaskWithPause(taskId, () => {
-        if (!ownsTextTask(owner)) return;
+        if (signal.aborted || !ownsTextTask(owner)) return;
         pollingPausedTaskIdRef.current = taskId;
         setPollingPausedTaskId(taskId);
         setGenerationError(POLLING_PAUSED_MESSAGE);
       }, signal, fixtureScopeId);
     } catch (error) {
-      if (!ownsTextTask(owner)) return;
+      if (signal.aborted || !ownsTextTask(owner)) return;
       if (pollingPausedTaskIdRef.current === taskId) return;
       throw error;
     }
-    if (!ownsTextTask(owner)) return;
+    if (signal.aborted || !ownsTextTask(owner)) return;
     if (!textTaskMatchesNode(task, canvasId, id, taskId, fixtureScopeId)) {
       throw new Error("文字任务关联不一致，已停止恢复");
     }
     if (task.state === "success") {
-      const applied = await applyGeneratedText(task, owner);
+      const applied = await applyGeneratedText(task, owner, signal);
       if (!applied) return false;
       pollingPausedTaskIdRef.current = undefined;
       setPollingPausedTaskId(undefined);
       return true;
     }
     if (task.state === "cancelled") {
+      if (signal.aborted || !ownsTextTask(owner)) return false;
       return await persistTextGenerationCancellation(
         taskId,
         owner,
         task.errorMessage ?? "文字生成已取消",
       );
     }
+    if (signal.aborted || !ownsTextTask(owner)) return false;
     return await persistTextGenerationFailure(
       taskId,
       owner,
@@ -1374,6 +1534,14 @@ function TextNodeImpl({
           persistedOwnershipKey &&
           persistedOwnershipKey !== rawGenerationInputFingerprint
         ) {
+          clearGenerationSubmissionIntent(
+            "text",
+            canvasId,
+            id,
+            persistedTaskId,
+            accountId,
+            fixtureScopeId,
+          );
           const identity = {
             inputKey: persistedInputKey,
             ownershipKey: persistedOwnershipKey,
@@ -1409,30 +1577,7 @@ function TextNodeImpl({
           fixtureScopeId,
         );
         persistedTaskReadPending = false;
-      } else {
-        task = await recoverPendingGenerationTask(
-          "text",
-          canvasId,
-          id,
-          controller.signal,
-          selectedTextModel ? textGenerationRequestInput : undefined,
-          accountId,
-          {
-            generationInputKey: persistedInputKey ?? generationInputKey,
-            generationOwnershipKey: rawGenerationInputFingerprint,
-            fixtureScopeId,
-            modelInputContractFingerprint:
-              data.textGenerationContractFingerprint ??
-              inputPreflight.contractFingerprint,
-            modelConfigurationRevision:
-              data.textGenerationModelConfigurationRevision ??
-              selectedTextModel?.configurationRevision,
-            modelReleaseRevision:
-              data.textGenerationModelReleaseRevision ??
-              selectedTextModel?.releaseRevisionId,
-          },
-        );
-      }
+      } else return;
       if (
         controller.signal.aborted ||
         textManualEditVersionRef.current !== manualEditVersion ||
@@ -1458,11 +1603,22 @@ function TextNodeImpl({
           fixtureScopeId,
         );
         if (persistedTaskId) {
-          setNodes((nodes) => nodes.map((node) =>
+          applyViewUpdate((nodes) => nodes.map((node) =>
             node.id === id && node.data.textGenerationTaskId === persistedTaskId
-              ? { ...node, data: clearFailedTextGeneration(node.data) }
+              ? { ...node, data: clearFailedTextGenerationView(node.data) }
               : node
           ));
+          try {
+            await graphCommandPort?.refreshAuthoritativeDocument?.(
+              controller.signal,
+            );
+          } catch {
+            // A later recovery pass will retry the authoritative refresh.
+          }
+          if (
+            controller.signal.aborted ||
+            textManualEditVersionRef.current !== manualEditVersion
+          ) return;
         }
         return;
       }
@@ -1484,11 +1640,22 @@ function TextNodeImpl({
             fixtureScopeId,
           );
           if (persistedTaskId) {
-            setNodes((nodes) => nodes.map((node) =>
+            applyViewUpdate((nodes) => nodes.map((node) =>
               node.id === id && node.data.textGenerationTaskId === persistedTaskId
-                ? { ...node, data: clearFailedTextGeneration(node.data) }
+                ? { ...node, data: clearFailedTextGenerationView(node.data) }
                 : node
             ));
+            try {
+              await graphCommandPort?.refreshAuthoritativeDocument?.(
+                controller.signal,
+              );
+            } catch {
+              // A later recovery pass will retry the authoritative refresh.
+            }
+            if (
+              controller.signal.aborted ||
+              textManualEditVersionRef.current !== manualEditVersion
+            ) return;
           }
           return;
         }
@@ -1512,11 +1679,22 @@ function TextNodeImpl({
             accountId,
             fixtureScopeId,
           );
-          setNodes((nodes) => nodes.map((node) =>
+          applyViewUpdate((nodes) => nodes.map((node) =>
             node.id === id && node.data.textGenerationTaskId === persistedTaskId
-              ? { ...node, data: clearFailedTextGeneration(node.data) }
+              ? { ...node, data: clearFailedTextGenerationView(node.data) }
               : node
           ));
+          try {
+            await graphCommandPort?.refreshAuthoritativeDocument?.(
+              controller.signal,
+            );
+          } catch {
+            // A later recovery pass will retry the authoritative refresh.
+          }
+          if (
+            controller.signal.aborted ||
+            textManualEditVersionRef.current !== manualEditVersion
+          ) return;
         }
         return;
       }
@@ -1640,7 +1818,10 @@ function TextNodeImpl({
       if (textTerminalPatchPendingTaskRef.current === result.task.id) {
         textTerminalPatchPendingTaskRef.current = undefined;
       }
-      if (!ownsTextTask(owner)) return;
+      const serverProjectedSuccess = result.status === "success" &&
+        result.task.generationIdentityVersion === 2 &&
+        result.task.canvasProjectionState === "applied";
+      if (!ownsTextTask(owner) && !serverProjectedSuccess) return;
       pollingPausedTaskIdRef.current = undefined;
       setPollingPausedTaskId(undefined);
       if (result.status === "success") {
@@ -1726,7 +1907,7 @@ function TextNodeImpl({
     rawGenerationInputFingerprint,
     legacyRecoveryCatalogKey,
     lockedNodeIds,
-    setNodes,
+    applyViewUpdate,
     textGenerationRevocationKey,
     textMutationScopeKey,
   ]);
@@ -1743,6 +1924,7 @@ function TextNodeImpl({
       isFixture ||
       canvasRevision === undefined
     ) return { status: "skipped" };
+    textDataMutationVersionRef.current += 1;
     setSubmitting(true);
     setGenerationError("");
     setServerInputProblems([]);
@@ -1756,7 +1938,6 @@ function TextNodeImpl({
     const requestedParameters = { ...textParameters };
     try {
       if (!graphCommandPort) return { status: "skipped" };
-      checkpoint();
       const lifecycle = createSingleNodeGenerationLifecycle({
         adapter: createTextGenerationAdapter({
           contractFingerprint: inputPreflight.contractFingerprint ?? "",
@@ -1781,6 +1962,9 @@ function TextNodeImpl({
         }),
         graph: graphCommandPort,
         nodeId: id,
+        onBindingCommitted() {
+          setSubmitting(false);
+        },
         save: {
           flush: async () => undefined,
           async waitForRevision() {
@@ -1984,6 +2168,7 @@ function TextNodeImpl({
   const resumeTextPolling = async () => {
     const taskId = pollingPausedTaskIdRef.current;
     if (!taskId) return;
+    recoveryTaskRef.current?.controller.abort("text-recovery-superseded");
     pollingPausedTaskIdRef.current = undefined;
     setPollingPausedTaskId(undefined);
     setGenerationError("");
@@ -1992,9 +2177,13 @@ function TextNodeImpl({
       data.textGenerationOwnershipKey ?? rawGenerationInputFingerprint,
       data.textGenerationInputKey,
     );
+    const controller = new AbortController();
+    const recovery = { controller, owner, taskId };
+    recoveryTaskRef.current = recovery;
     try {
-      await flushCanvasSave();
-      const applied = await finishTextTask(taskId, owner);
+      await flushCanvasSave(controller.signal);
+      if (controller.signal.aborted || !ownsTextTask(owner)) return;
+      const applied = await finishTextTask(taskId, owner, controller.signal);
       if (applied === false) {
         pollingPausedTaskIdRef.current = taskId;
         setPollingPausedTaskId(taskId);
@@ -2006,6 +2195,7 @@ function TextNodeImpl({
         setGenerationError(finished.data.textGenerationError);
       }
     } catch (error) {
+      if (controller.signal.aborted) return;
       if (!ownsTextTask(owner)) return;
       if (isTransientPollingError(error)) {
         pollingPausedTaskIdRef.current = taskId;
@@ -2017,6 +2207,9 @@ function TextNodeImpl({
         error instanceof Error ? error.message : "文字生成失败，请稍后再试",
       );
     } finally {
+      if (recoveryTaskRef.current === recovery) {
+        recoveryTaskRef.current = null;
+      }
       releaseTextTask(owner);
     }
   };
@@ -2110,36 +2303,21 @@ function TextNodeImpl({
           )}
           inputs={inputPreflight.inputs}
           onMove={(edgeId, direction) => {
-            void mutateGraph(({ edges, nodes }) => ({
-              edges: moveNodeInputEdge(edges, id, edgeId, direction),
-              nodes: nodes.map((node) => node.id === id
-                ? { ...node, data: clearFailedTextGeneration(node.data) }
-                : node),
-            })).then((applied) => {
-              if (applied) revokeTextTaskForGenerationInputChange();
-            });
+            commitTextInputEdgesMutation((edges) =>
+              moveNodeInputEdge(edges, id, edgeId, direction)
+            );
           }}
           onRemove={(edgeId) => {
-            void mutateGraph(({ edges, nodes }) => ({
-              edges: edges.filter((edge) => edge.id !== edgeId),
-              nodes: nodes.map((node) => node.id === id
-                ? { ...node, data: clearFailedTextGeneration(node.data) }
-                : node),
-            })).then((applied) => {
-              if (applied) revokeTextTaskForGenerationInputChange();
-            });
+            commitTextInputEdgesMutation((edges) =>
+              edges.filter((edge) => edge.id !== edgeId)
+            );
           }}
           onRoleChange={(edgeId, role) => {
-            void mutateGraph(({ edges, nodes }) => ({
-              edges: edges.map((edge) => edge.id === edgeId
+            commitTextInputEdgesMutation((edges) => edges.map((edge) =>
+              edge.id === edgeId
                 ? { ...edge, data: { ...edge.data, inputRole: role } }
-                : edge),
-              nodes: nodes.map((node) => node.id === id
-                ? { ...node, data: clearFailedTextGeneration(node.data) }
-                : node),
-            })).then((applied) => {
-              if (applied) revokeTextTaskForGenerationInputChange();
-            });
+                : edge
+            ));
           }}
           problems={inputProblems}
           roleOptions={(input) => availableNodeInputRoles({
@@ -2344,7 +2522,6 @@ function TextNodeImpl({
         isVisible={singleNodeChrome}
         minHeight={250}
         minWidth={250}
-        onResizeStart={() => checkpoint()}
       />
       <Handle id="target" position={Position.Left} type="target">
         <span className="node-handle-hit node-handle-hit-left">
