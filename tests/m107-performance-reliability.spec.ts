@@ -12,7 +12,7 @@ import { createHistoryImagePreview } from "../server/providerImageNormalization"
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { renameSync, writeFileSync } from "node:fs";
+import { existsSync, renameSync, writeFileSync } from "node:fs";
 import { expect, test } from "./safe-test";
 import {
   migrationIncompleteMarker,
@@ -81,6 +81,48 @@ test("runtime transaction lane reuses its validated connection and rolls back fa
     expect(readAppDatabaseSnapshot((db) => db.prepare(
       "SELECT count(*) AS n FROM project_metadata WHERE id IN ('first','second')",
     ).get())).toEqual({ n: 2 });
+  });
+});
+
+test("runtime transaction lane preserves DELETE journal mode across committed and rolled-back writes", async () => {
+  await temporaryDatabase(async (directory) => {
+    const path = join(directory, "unboundry.sqlite");
+    const setup = new DatabaseSync(path);
+    expect(setup.prepare("PRAGMA journal_mode=DELETE").get()).toEqual({ journal_mode: "delete" });
+    setup.close();
+    const lane = createRuntimeDatabaseTransactionRunner();
+    for (const id of ["delete-first", "delete-second"]) {
+      lane.run((db) => {
+        db.prepare("INSERT INTO project_metadata (owner_id,id,title,updated_at) VALUES(NULL,?,'synthetic',1)").run(id);
+        expect(existsSync(`${path}-journal`)).toBe(true);
+      });
+      expect(existsSync(`${path}-journal`)).toBe(false);
+    }
+    expect(() => lane.run((db) => {
+      db.exec("DELETE FROM project_metadata WHERE id='delete-first'");
+      throw new Error("synthetic DELETE rollback");
+    })).toThrow("synthetic DELETE rollback");
+    const verify = new DatabaseSync(path, { readOnly: true });
+    try {
+      expect(verify.prepare("PRAGMA journal_mode").get()).toEqual({ journal_mode: "delete" });
+      expect(verify.prepare("SELECT count(*) AS n FROM project_metadata WHERE id IN ('delete-first','delete-second')").get()).toEqual({ n: 2 });
+    } finally { verify.close(); }
+  });
+});
+
+test("runtime DELETE lane still rejects a journal that predates its transaction", async () => {
+  await temporaryDatabase(async (directory) => {
+    const path = join(directory, "unboundry.sqlite");
+    const setup = new DatabaseSync(path);
+    setup.exec("PRAGMA journal_mode=DELETE"); setup.close();
+    const lane = createRuntimeDatabaseTransactionRunner();
+    lane.run(() => 1);
+    writeFileSync(`${path}-journal`, "unexpected journal", { mode: 0o600 });
+    let entered = false;
+    try {
+      expect(() => lane.run(() => { entered = true; })).toThrow("sidecars are incomplete");
+      expect(entered).toBe(false);
+    } finally { await rm(`${path}-journal`, { force: true }); }
   });
 });
 

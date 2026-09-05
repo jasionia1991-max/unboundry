@@ -1,0 +1,42 @@
+{
+  "version": "0.7.13",
+  "status": "AUTHORIZED_RELEASE_CANDIDATE",
+  "baseline": "a54c97c1a2b33c0b265f98badcc8ce7dfcb5c576",
+  "productionBefore": "0.7.11/schema43",
+  "restoreCheckpoint": "39c6385427d3f62d1e4f8231046bb5159ee55ecd",
+  "cause": "DELETE rollback journal rejected by WAL-only commit guard",
+  "databaseSourceSha256": "5e5189fcc15be693cf7fa7c3eb91acb8f68bd9eddf09464d914a27d2ddf43263",
+  "verification": {
+    "deleteAndCanvasGateway": {
+      "passed": 29,
+      "failed": 0,
+      "sourceSnapshot": "adf1f9481c0663ab47a1ca080164d9d061bbf1b8dfc40ee1ea400fab48ab56fd"
+    },
+    "uploadAndManifestReused": 40,
+    "linuxDeleteWrite": "PASS_OFFLINE_RESTORED_COPY",
+    "versionAttempt1": "NO_BUSINESS_TESTS_SPEC_NAME_MISMATCH",
+    "versionAttempt2": {
+      "passed": 60,
+      "failed": 1,
+      "failure": "documentation package version marker stale; corrected; m38 closure19/19 PASS"
+    },
+    "full1266": "NOT_RUN_RISK_DRIVEN_TARGETED_VERIFICATION",
+    "independentProductReview": "GO_P0_P1_P2_ZERO",
+    "releaseDeltaReview": "PENDING",
+    "versionClosure": {
+      "passed": 19,
+      "failed": 0,
+      "sourceSnapshot": "b64a4741f4a6580bcbab9f7e9215aac042b65a0350f8ef47608522bb7372b5ac",
+      "scope": "m38 only; m81 42/42 retained"
+    }
+  },
+  "restrictions": {
+    "paidGeneration": 0,
+    "migration": false,
+    "currentDataReplacement": false,
+    "historicalCleanup": false
+  },
+  "automaticBackup": "FAILED_UNCHANGED_SEPARATE_SCOPE",
+  "manualLatestBackup": "PENDING_NEW_FROZEN_BACKUP_VERIFY_AND_FRESH_RESTORE",
+  "productionAcceptance": "PENDING"
+}

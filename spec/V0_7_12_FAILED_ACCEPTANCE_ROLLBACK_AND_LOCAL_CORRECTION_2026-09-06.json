@@ -1,0 +1,184 @@
+{
+  "status": "V0712_PRODUCTION_ACCEPTANCE_FAILED_ROLLED_BACK_V0711_LOCAL_FIX_REVIEW_GO",
+  "production": {
+    "version": "0.7.11",
+    "schema": 43,
+    "pid": 649309,
+    "restartCount": 0,
+    "current": "/opt/unboundry/releases/v0.7.11-canonical-generation-boundaries-20260905",
+    "commit": "7af5fcab8123c32a487a7d0119b3517b5dd71574",
+    "rollbackCompletedAt": "2026-09-06T05:28:11+08:00",
+    "databaseReplaced": false,
+    "generationSafetyRestored": true,
+    "finalReadyVerified": true,
+    "diskUsePercent": 18,
+    "diskFreeGiB": 94
+  },
+  "failedRelease": {
+    "version": "0.7.12",
+    "tagCommit": "a54c97c1a2b33c0b265f98badcc8ce7dfcb5c576",
+    "pr": 161,
+    "tagMoved": false,
+    "releaseMarkedRolledBack": true,
+    "requestId": "42b441c4-6c1b-4e33-ac94-726f3c94e22c",
+    "uploadHTTP": 201,
+    "saveHTTP": 500,
+    "rootCause": "Runtime transaction pre-COMMIT guard treated its own legitimate DELETE rollback journal as unexpected WAL sidecar topology."
+  },
+  "recoveryCheckpoint": {
+    "branch": "codex/restore-v0.7.11-before-performance-20260906",
+    "commit": "39c6385427d3f62d1e4f8231046bb5159ee55ecd",
+    "unchanged": true
+  },
+  "backup": {
+    "id": "23f19bd4-fa50-4236-8447-b192fc72b225",
+    "schema": 43,
+    "captureMode": "locked-exact",
+    "logicalSha256": "07cf2ea0b935198e9ed6275fe557a4dd7fc22e59a1527f2132fbd2120401aee1",
+    "signedEncrypted": true,
+    "verified": true,
+    "independentRestoreVerified": true,
+    "ossUploadGetVerify": "PASS",
+    "automaticTimer": "STILL_FAILED_NO_GO",
+    "uploadedFiles": 996,
+    "uploadedBytes": 1917404524,
+    "manifestGetVerified": true,
+    "privateACLOnEveryPut": true,
+    "completedAt": "2026-09-06T05:48:21+08:00"
+  },
+  "localCorrection": {
+    "branch": "codex/performance-delete-journal-save-fix",
+    "committed": false,
+    "published": false,
+    "version": "next version unassigned",
+    "changedBehavior": "Mode-aware pre-COMMIT sidecar guard and pre-SQLite-read journal inspection; no journal mode change or migration.",
+    "independentReview": {
+      "result": "GO",
+      "P0": 0,
+      "P1": 0,
+      "P2": 0
+    },
+    "linux22_23_2": {
+      "originalReproduced": true,
+      "correctedWritePass": true,
+      "networkDisabled": true,
+      "currentDataMounted": false,
+      "productSha256": "5e5189fcc15be693cf7fa7c3eb91acb8f68bd9eddf09464d914a27d2ddf43263"
+    }
+  },
+  "tests": {
+    "finalTargeted": {
+      "specs": [
+        "tests/m107-performance-reliability.spec.ts",
+        "tests/m104-canvas-command-gateway.spec.ts"
+      ],
+      "passed": 29,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0,
+      "snapshotSha256": "adf1f9481c0663ab47a1ca080164d9d061bbf1b8dfc40ee1ea400fab48ab56fd"
+    },
+    "reusedDirectCoverage": {
+      "specs": [
+        "tests/m37-media-upload-transactions.spec.ts",
+        "tests/m105-canvas-writer-manifest.spec.ts"
+      ],
+      "passed": 40
+    },
+    "priorAttempts": [
+      {
+        "name": "delete-journal-targeted-attempt1",
+        "result": "inventory gate: added tests not yet counted; business 0"
+      },
+      {
+        "name": "delete-journal-targeted-attempt2",
+        "passed": 67,
+        "failed": 2
+      },
+      {
+        "name": "delete-journal-targeted-closure",
+        "passed": 28,
+        "failed": 1
+      }
+    ],
+    "newFullSuiteRun": false,
+    "scope": "targeted regression only, not 1266/1266 full pass"
+  },
+  "rollbackBrowser": {
+    "canvasId": "077342b5-1090-46a7-b366-6f3370f931ac",
+    "syntheticImageAssetId": "56f84816-1493-4add-956f-2411d346a3e2",
+    "uploadHTTP": 201,
+    "saveHTTP": 200,
+    "reloadImageDimensions": [
+      1024,
+      768
+    ],
+    "extraWritesOnReload": 0,
+    "paidGeneration": 0,
+    "publicBundleHashes": {
+      "passed": 5,
+      "total": 5,
+      "bytes": 1752655
+    }
+  },
+  "unchangedProviderEvidence": {
+    "providerAttempts": true,
+    "workflowRuns": true,
+    "workflowNodes": true,
+    "note": "One pre-existing failed 2026-08-19 task automatic result recovery updated timestamp and events after rollback; no new Provider attempt. Do not claim all generation table hashes unchanged throughout the session."
+  },
+  "performanceSamples": {
+    "coldCanvasGETms": 1311,
+    "coldCanvasShellTransferMs": 2529,
+    "warmCanvasGETms": 19,
+    "newProjectPOSTms": 1212,
+    "sampleLimit": "single cold/warm samples during encrypted backup upload; not clean comparative benchmarking or Tapnow parity"
+  },
+  "cleanup": {
+    "ownedTemporaryBytesRemoved": 4065756679,
+    "oldReleasesAndHistoricalBackupsDeleted": 0,
+    "currentDataTouched": false,
+    "evidenceCopiedLocally": true
+  },
+  "pending": [
+    "user confirmation of next version and release before GitHub/deploy",
+    "new-version release gates and full zero-paid browser acceptance after corrected release",
+    "automatic backup entry remains a separate unfinished item",
+    "real paid/progressive production generation and subjective acceptance not executed"
+  ],
+  "evidenceDirectory": "/Users/mymy/Documents/unboundry/performance-release-ops-20260906",
+  "productHash": "5e5189fcc15be693cf7fa7c3eb91acb8f68bd9eddf09464d914a27d2ddf43263",
+  "operationalFailureLedger": [
+    {
+      "operation": "backup uploader first start",
+      "result": "permission denial before upload: root600 latest receipt not readable by ubuntu",
+      "closure": "Only non-secret receipt group ubuntu/mode640; restart completed, 996 files plus manifest GET verified."
+    },
+    {
+      "operation": "first new static verifier",
+      "result": "incorrect dist/assets path produced zero-file result; NOT accepted as pass",
+      "closure": "correct dist/client/assets with nonzero assertion, 5/5 exact hashes"
+    },
+    {
+      "operation": "rollback attempt1",
+      "result": "temporary case group traversal masked by UMask077; failed before freeze",
+      "closure": "explicit case0710"
+    },
+    {
+      "operation": "rollback attempt2",
+      "result": "controller freeze execution receipt collided with data-op freeze.json",
+      "closure": "independent compensation restored safety; execution receipts renamed"
+    },
+    {
+      "operation": "rollback attempt3",
+      "result": "PASS: code-only v0711 with CURRENT rows/schema/media preserved"
+    },
+    {
+      "operation": "rollback 33-file public static sweep",
+      "result": "180 second timeout, NOT_PASS; no full static verification claimed",
+      "closure": "actual browser upload/save/reload and directly loaded 5/5 JS/CSS exact hash verification passed"
+    }
+  ]
+}
