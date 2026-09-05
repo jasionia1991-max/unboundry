@@ -127,7 +127,7 @@
       "scriptSha256": "edb54c2e10695c12f290f8507e0e96ce692e76dd2416f667237e1dcb0b344f00",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "Full snapshot bridge/final fixtures prove the release closure",
-      "targetSha256": "3d0d5fd9d5f0a292f489bb139a4668ccc83293e05c90b451d2e091c471b41ccb"
+      "targetSha256": "d561b2c96fd5ebb302a65d34f1531555d6e85e8b236bdb4bebc2d3193c34627a"
     },
     "scripts/check-greenfield.mjs": {
       "mode": "behavior-test",
@@ -141,14 +141,14 @@
       "scriptSha256": "c13a839154006e47341942ceee5e82ef553b975bac9c0ad1708d07844bcbd24a",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "scripts/check-restart-persistence.mjs",
-      "targetSha256": "3d0d5fd9d5f0a292f489bb139a4668ccc83293e05c90b451d2e091c471b41ccb"
+      "targetSha256": "d561b2c96fd5ebb302a65d34f1531555d6e85e8b236bdb4bebc2d3193c34627a"
     },
     "scripts/check-v051-exact-runtime.mjs": {
       "mode": "behavior-test",
       "scriptSha256": "53797d2e3046840249fb7be60a8ace95111bc62f6f86ce957ae50500d29be7f6",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "scripts/check-v051-exact-runtime.mjs",
-      "targetSha256": "3d0d5fd9d5f0a292f489bb139a4668ccc83293e05c90b451d2e091c471b41ccb"
+      "targetSha256": "d561b2c96fd5ebb302a65d34f1531555d6e85e8b236bdb4bebc2d3193c34627a"
     },
     "scripts/deploy.mjs": {
       "mode": "frozen",
@@ -175,21 +175,21 @@
       "scriptSha256": "5090797ba194569f47454fda4b4ff0fe0a6fd0fbf70aa470fd4c9a8296ca4a9e",
       "target": "tests/m91-schema-migration.spec.ts",
       "marker": "dry-run and CLI validate exact v37 plus logical SHA without source writes",
-      "targetSha256": "1c020c7e96bea03ad7247b5e5e5ad801948ab44645319fc8eac94d33f1e78e8e"
+      "targetSha256": "10f9a61cae328ff96e86eb0d3e5bbb0d46f8c36311a18712e3fd5193f71ffe94"
     },
     "scripts/migrate-schema39-to40.mjs": {
       "mode": "behavior-test",
       "scriptSha256": "963cf9ba03417ea5593d9e53d782b24f75d0e6d274dc002c0bed1cd56cea556a",
       "target": "tests/m91-schema-migration.spec.ts",
       "marker": "exact schema 39 dry-run and apply migrate only the v40 trusted-asset boundary",
-      "targetSha256": "1c020c7e96bea03ad7247b5e5e5ad801948ab44645319fc8eac94d33f1e78e8e"
+      "targetSha256": "10f9a61cae328ff96e86eb0d3e5bbb0d46f8c36311a18712e3fd5193f71ffe94"
     },
     "scripts/migrate-schema40-to41.mjs": {
       "mode": "behavior-test",
       "scriptSha256": "4864b2f6b0e99acbca8efeeddd09b2bc82ec85d0d19f780ec83e8ec35db703d0",
       "target": "tests/m91-schema-migration.spec.ts",
       "marker": "exact schema 40 dry-run and apply migrate only the v41 compliance boundary",
-      "targetSha256": "1c020c7e96bea03ad7247b5e5e5ad801948ab44645319fc8eac94d33f1e78e8e"
+      "targetSha256": "10f9a61cae328ff96e86eb0d3e5bbb0d46f8c36311a18712e3fd5193f71ffe94"
     },
     "scripts/migrate-schema41-to42.mjs": {
       "mode": "behavior-test",

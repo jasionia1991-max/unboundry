@@ -1,6 +1,6 @@
 # Unboundry Canvas Document Write Boundary 实施 Checkpoint
 
-状态：`R0_R9_PASS / R10_IN_PROGRESS / R1_5_SCHEMA43_IMPLEMENTED / TARGET_VERSION_V0_7_8_LOCKED / RELEASE_AND_REAL_PROVIDER_AUTHORIZED`
+状态：`V0_7_8_PUBLISHED_NOT_DEPLOYED / V0_7_9_FROZEN / R9_PASS / R10_READY / RELEASE_AND_REAL_PROVIDER_AUTHORIZED`
 
 更新日期：2026-09-05
 
@@ -13,7 +13,7 @@ Writer manifest：`spec/UNBOUNDRY_CANVAS_DOCUMENT_WRITE_BOUNDARY_WRITER_MANIFEST
 ## 1. 最新授权
 
 - 用户通过当前 `/goal` 明确授权完成 R0-R10、CWB-001..194、代码/测试/文档/必要 schema migration、GitHub 发布、生产备份/恢复/回滚、普通 Chrome 验证、真实 Provider/OSS 与费用。
-- 首选版本固定为 `v0.7.8`；发布前若已占用，选择大于 `v0.7.7` 的最小未占用 `v0.7.N`，不得覆盖已有 tag、Release 或 release 目录。
+- `v0.7.8` 已发布且因生产迁移 preflight 缺陷保持不可变；按 Goal 的失败递增规则，当前修复版本固定为 `v0.7.9`，不得覆盖既有 tag、Release 或 release 目录。
 - 只允许操作本 Goal 新建的验收对象；既有用户 Canvas、媒体、任务、账单证据和历史数据不得删除、覆盖或清理。
 - 目标 Canvas：`adcb89a5-c1f4-47e4-bbbb-28fff8d81583`；目标 group：`group-17ee0cbc-cc81-4b35-9c5e-41040f627033`。真实点击前必须先通过冷/暖刷新零写硬门。
 
@@ -34,8 +34,8 @@ Writer manifest：`spec/UNBOUNDRY_CANVAS_DOCUMENT_WRITE_BOUNDARY_WRITER_MANIFEST
 - 唯一实施 Git root：`/Users/mymy/Documents/unboundry-post-v076-canvas-convergence-2026-09-03`
 - baseline branch：`codex/v0.7.7-production-receipt`
 - baseline HEAD：`a401016607f1b01b2c266caa786d61734d64b545`
-- implementation branch：`codex/v0.7.8-canvas-write-boundary`
-- target package version：`0.7.8`（local/remote tag 与 branch 占用核对后锁定）
+- implementation branch：`codex/v0.7.9-schema43-terminal-history`
+- target package version：`0.7.9`（v0.7.8 已发布但未部署；按 Goal 顺序递增）
 - origin：`https://github.com/jasionia1991-max/unboundry.git`
 - baseline package：`0.7.7`
 - default Node/npm：`25.9.0 / 11.12.1`
@@ -83,17 +83,17 @@ Writer manifest：`spec/UNBOUNDRY_CANVAS_DOCUMENT_WRITE_BOUNDARY_WRITER_MANIFEST
 | R6 passive media | `TARGETED_PASS` | Image/Video/Audio passive event 0 durable write；长延迟、缓存/错误、measurement 路径定向层通过 | 独立 Review |
 | R7 generation/legacy exit | `TARGETED_PASS` | single/group/fake Provider/slow/lost/restart/terminal projection、呼吸灯与 modern route 定向层通过 | 独立 Review |
 | R8 faults/observability/E2E | `TARGETED_PASS` | writer/static/source coverage、409/timeout/replay/schema/release/observability 定向层通过；`m79 3/3` | 独立 Review |
-| R9 freeze/full Review/formal full | `PASS` | mandatory formal full `1227/1227`、0 skipped、exit 0；最终独立 Review `P0/P1/P2=0/GO` | 已放行 R10 |
-| R10 release/production/canary | `IN_PROGRESS` | 当前 `/goal` 已授权版本、GitHub、生产、Provider/OSS 与费用；v0.7.8 tag/Release 当前空闲 | 逐序执行，不再重复 full |
+| R9 freeze/full Review/formal full | `PASS` | v0.7.9 migration delta 定向 `67/67`；独立 Review `P0/P1/P2=0/GO`；变更后 formal full `1229/1229 PASS` | 不得重复 full |
+| R10 release/production/canary | `READY` | v0.7.8 已发布并 fresh build，但 preflight 后未部署；生产仍为 v0.7.7/schema42 | 发布 v0.7.9 后执行 locked-exact 迁移与生产验收 |
 
 ## 6. 测试与副作用账本
 
 - 正式 full 历史执行：`2` 次；首轮 `1192/1226 passed, 30 failed, 4 skipped`，第二轮 `1224/1227 passed, 3 failed, 0 skipped`，均 exit `1`；不得改写为通过。
-- 当前冻结候选 mandatory formal full：`1/1 PASS`；`127` specs、`1227/1227`、0 failed、0 skipped、exit `0`。
+- v0.7.8 历史冻结候选 mandatory formal full：`1/1 PASS`；`127` specs、`1227/1227`、0 failed、0 skipped、exit `0`。v0.7.9 变更后 formal full：`127` specs、`1229/1229 PASS`、0 failed、0 skipped、0 retries/blocked/reportErrors、exit `0`；不得重复。
 - 真实目标 group 点击：`0/1`。
 - 本 Goal 新 Provider POST：`0`。
 - 本 Goal 新 OSS 写：`0`。
-- 生产写/服务启停/部署：`0`。
+- v0.7.8 exact-tag release 目录已在服务器 fresh build，但未切 `current`、未停启生产服务、未迁移生产 DB；生产仍为 v0.7.7/schema42。
 - 自动化必须使用本轮新建临时目录、动态 loopback 且端口不得为 `4173`；真实 Provider/OSS/生产数据不得进入自动化测试。
 
 ### 6.1 冻结前最近定向证据
@@ -198,3 +198,15 @@ Writer manifest：`spec/UNBOUNDRY_CANVAS_DOCUMENT_WRITE_BOUNDARY_WRITER_MANIFEST
 - 最后一次 mandatory formal full：`127` specs、`1227/1227 PASS`、0 failed、0 skipped、exit `0`；Node/npm `22.23.1/10.9.8`；source/snapshot SHA-256 `70ac7cd827e2442cfe91d4a39639328b267218864b1fff2102791cf8914ca6da`；4173 listener hash `24c91e579e5f03e4327568db06303d4f094c0250c63228866946f7b8a47b8244` unchanged。
 - 当前冻结 identity：允许范围 `155` files（tracked `134`、untracked `21`）、`1934` hunks；排除 Plan/Matrix/Checkpoint 后 payload `152` files，SHA-256 `8e7a00c6b11b3410fed749e72cebc4856c4cdf84bf90b6c7f3d91e2045c70567`；writer manifest `295/256/200/95/0`。
 - 同一 Reviewer 已对该单一 test-only delta 与最终 identity 完成只读收口：`155/155` files、`1934/1934` hunks、保护文件访问 0，`P0=0 / P1=0 / P2=0 / GO`。R9=`PASS`，进入 R10；禁止再次运行 formal full。
+
+### 7.6 v0.7.8 生产 preflight 与 v0.7.9 再冻结
+
+- v0.7.8 已完成 PR #157、双 CI、annotated tag、GitHub Release 与 exact-tag fresh build；该 release 保持不可变且未部署。生产 `current`、服务与数据库均未切换，仍为 v0.7.7/schema42。
+- 上线前只读 census 证明 active task/run/publication/capacity 全 0，同时存在 23 条绑定 failed/cancelled 终态 task 的 Provider boundary 历史证据。v0.7.8 one-shot 错把这些永久计费/恢复证据当作活跃执行并拒绝迁移；生产 DB 未修改，Provider/OSS/费用新增均为 0。
+- v0.7.9 仅修正 42→43 quiescence 判定：保留 active task/run/publication/capacity 与 generation freeze 门；terminal task 的 accepted、response-received、outcome-unknown 行逐字段保留，不 settlement、不删除、不重发 Provider，也不重新准入终态 task。
+- production-shaped migration 回归覆盖 failed/cancelled task 的 accepted、response-received、outcome-unknown；dry-run 保持 source schema42 不变，apply 后 schema43 且三行全部字段相同。
+- 首轮独立增量 Review 覆盖 `17/17` files、`55/55` hunks，产品逻辑 `P0=0 / P1=0`，但因 attempt 全字段/terminal 组合和 schema42 五个静默负向门缺少直接回归而给出 `P2=2 / NO_GO`。
+- 两项 P2 已补测：三类 historical outcome 现在覆盖 failed/cancelled task 并对 `generation_provider_attempts` 全部字段逐项比较；active task/run/publication/capacity 与 generation-unfrozen 均验证精确错误、source bytes 不变和 schema42 不变。
+- 定向 safe runner 结果：m91 `12/12`、m81+m103 `54/54`、m105 `1/1`，合计 `67/67`，全部 exit `0`；测试库存 `1229`。writer manifest 为 `295` source、`256` raw、`200` product、`95` exceptions、`0` violations，source tree hash `7f7942be29d4e342ec079439468d1136dd2fc2f2de5d4771a64cd944020330bb`。
+- 补测后同一 Reviewer 确认原两项测试 P2 与后一项文档同步 P2 全部关闭；最终覆盖 `17/17` files、`55/55` hunks，`P0=0 / P1=0 / P2=0 / GO`，保护文件访问 0。当前只允许执行一次变更后 formal full；在其通过前 R10、生产、浏览器与真实 Provider/OSS 继续阻断。
+- 变更后 formal full 已通过：`127` specs、`1229/1229 PASS`、0 failed、0 skipped、0 retries/blocked/reportErrors，exit `0`；Node/npm `22.23.1/10.9.8`，source/snapshot SHA-256 `3b1fcd369e292c272183e3db7ee8316a38f700b96847f83e0370d2a0ebcbb9ea`，4173 listener hash `24c91e579e5f03e4327568db06303d4f094c0250c63228866946f7b8a47b8244` unchanged。post-receipt m38 `19/19 PASS`，source/snapshot `f547b946a5ed7b2d3e1318f9aaff9e9e6c81fbeaddca64923bbc06dcd66137a1`、4173 unchanged；同一 Reviewer 对当前 `17/17` files、`56/56` hunks完成只读收口，保护文件访问 0，`P0/P1/P2=0/0/0 / GO`。R9=`PASS`、R10=`READY`；禁止再次运行 full。
