@@ -2123,8 +2123,8 @@ process.exit(0);
         })}`,
       );
     }
-    if (discovery.tests !== 1263) {
-      fail(`the frozen 1263-test inventory changed to ${discovery.tests}`);
+    if (discovery.tests !== 1266) {
+      fail(`the frozen 1266-test inventory changed to ${discovery.tests}`);
     }
     const idsByFile = {};
     const { entries } = collectReportEntries(reportFile, sourceRoot);

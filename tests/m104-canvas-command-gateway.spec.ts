@@ -17,7 +17,7 @@ import {
   applyCanvasUserCommand,
   canvasTopologyAffectedDigest,
 } from "../server/canvasTransactionCommands";
-import { openAppDatabase } from "../server/database";
+import { closeRuntimeDatabaseTransactions, openAppDatabase } from "../server/database";
 import { admitPreparedGenerationTask, GenerationAdmissionPostCommitError } from
   "../server/generationAdmissionApplication";
 import {
@@ -1274,6 +1274,57 @@ async function stopServer(server: Server) {
     server.close((error) => error ? reject(error) : resolve());
   });
 }
+
+test("production command HTTP lane saves and replays with restored DELETE journal mode", async () => {
+  await withDatabase("m104-delete-http", async (database, directory, canvasId) => {
+    const previousBypass = process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+    const previousDirectory = process.env.UNBOUNDRY_DATA_DIR;
+    process.env.UNBOUNDRY_TEST_AUTH_BYPASS = "1";
+    process.env.UNBOUNDRY_DATA_DIR = directory;
+    database.prepare(`INSERT INTO users
+      (id,login_name,display_name,password_hash,role,status,created_at,updated_at)
+      VALUES ('__test__','__test__','Synthetic HTTP','test-only','admin','active','2026-09-06','2026-09-06')`).run();
+    database.prepare("UPDATE project_metadata SET owner_id='__test__' WHERE id=?").run(canvasId);
+    database.exec("PRAGMA journal_mode=DELETE");
+    const handler = createCanvasCommandsApi(); // Exercise the real cached lane, no injected DB.
+    const server = createServer((request, response) => {
+      request.url = (request.url ?? "/").slice("/api/canvases".length) || "/";
+      authGate(request, response, () => {
+        void handler(request, response).catch((error) => {
+          response.statusCode = 500;
+          response.end(JSON.stringify({ error: String(error) }));
+        });
+      });
+    });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        server.once("error", reject); server.listen(0, "127.0.0.1", resolve);
+      });
+      const address = server.address();
+      if (!address || typeof address === "string") throw new Error("No test port");
+      const send = async (command: CanvasUserCommand) => {
+        const response = await fetch(`http://127.0.0.1:${address.port}/api/canvases/${canvasId}/commands`, {
+          method: "POST", headers: { "Content-Type": "application/json", "X-Unboundry-Canvas-Write-Contract": "command-v1" },
+          body: JSON.stringify(command),
+        });
+        return { status: response.status, body: await response.json() };
+      };
+      const command = createCommand();
+      const first = await send(command);
+      expect(first.status).toBe(200); expect(first.body.status).toBe("applied");
+      const replay = await send(command);
+      expect(replay.status).toBe(200); expect(replay.body.status).toBe("already-applied");
+      expect(database.prepare("SELECT revision FROM canvas_documents WHERE owner_id='__test__' AND id=?").get(canvasId)).toEqual({ revision: 1 });
+      expect(database.prepare("PRAGMA journal_mode").get()).toEqual({ journal_mode: "delete" });
+    } finally {
+      await stopServer(server); closeRuntimeDatabaseTransactions();
+      if (previousBypass === undefined) delete process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+      else process.env.UNBOUNDRY_TEST_AUTH_BYPASS = previousBypass;
+      if (previousDirectory === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
+      else process.env.UNBOUNDRY_DATA_DIR = previousDirectory;
+    }
+  });
+});
 
 test("command HTTP route is path-bound, fail-closed and returns replay metadata", async () => {
   await withDatabase("m104-http", async (database, _directory, canvasId) => {

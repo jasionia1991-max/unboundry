@@ -4632,6 +4632,31 @@ function assertCurrentDatabaseSidecarsAfterWriterLock(
   }
 }
 
+/** The runtime owns BEGIN IMMEDIATE here; DELETE creates its journal on first write. */
+function assertRuntimeDatabaseSidecarsBeforeCommit(
+  database: DatabaseSync,
+  databasePath: string,
+  expected: CurrentDatabaseSidecarSnapshot,
+  journalMode: string,
+) {
+  const currentMode = database.prepare("PRAGMA journal_mode").get() as { journal_mode: string };
+  if (!database.isTransaction || currentMode.journal_mode !== journalMode) {
+    throw new Error("Runtime database journal mode or transaction changed");
+  }
+  if (journalMode === "wal") {
+    assertCurrentDatabaseSidecarsAfterWriterLock(databasePath, expected);
+    return;
+  }
+  // No journal may predate this transaction. A new private rollback journal
+  // is legitimate only for DELETE mode while this connection owns the writer
+  // lock. collectCurrentDatabaseSidecars retains ownership/link/mode checks.
+  const actual = collectCurrentDatabaseSidecars(databasePath);
+  if (journalMode !== "delete" || expected.journal || expected.wal || expected.shm ||
+      actual.wal || actual.shm) {
+    throw new Error("Runtime database sidecars changed during write");
+  }
+}
+
 export function databaseHasCompleteLegacyMediaMetadata(database: DatabaseSync) {
   const unresolved = database.prepare(`
     SELECT 1
@@ -6354,11 +6379,14 @@ export function createRuntimeDatabaseTransactionRunner() {
       active = true;
       let committed = false;
       try {
-        validateIdentity(entry);
+        // Inspect names before any SQLite read: even PRAGMA schema_version can
+        // recover/remove a pre-existing rollback journal on a reused handle.
         const sidecars = captureCurrentDatabaseSidecars(join(directory, "unboundry.sqlite"));
+        validateIdentity(entry);
         entry.database.exec("BEGIN IMMEDIATE");
         validateIdentity(entry);
         assertCurrentDatabaseSidecarsAfterWriterLock(join(directory, "unboundry.sqlite"), sidecars);
+        const journalMode = (entry.database.prepare("PRAGMA journal_mode").get() as { journal_mode: string }).journal_mode;
         const validatedDataVersion = pragma(entry.database, "data_version");
         if (validatedDataVersion !== entry.dataVersion) {
           assertExactCurrentDatabase(entry.database);
@@ -6372,7 +6400,8 @@ export function createRuntimeDatabaseTransactionRunner() {
           throw new Error("Runtime database transaction ownership changed");
         }
         validateIdentity(entry);
-        assertCurrentDatabaseSidecarsAfterWriterLock(join(directory, "unboundry.sqlite"), sidecars);
+        assertRuntimeDatabaseSidecarsBeforeCommit(entry.database,
+          join(directory, "unboundry.sqlite"), sidecars, journalMode);
         entry.database.exec("COMMIT");
         committed = true;
         entry.dataVersion = validatedDataVersion;
