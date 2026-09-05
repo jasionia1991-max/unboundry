@@ -1,0 +1,228 @@
+{
+  "targetVersion": "0.7.10",
+  "packageVersion": "0.7.10",
+  "status": "FROZEN_CODE_REVIEW_FORMAL_FULL_AND_DOCS_DELTA_PASS_RELEASE_IN_PROGRESS",
+  "date": "2026-09-05",
+  "branch": "codex/v0.7.10-canvas-read-deadline",
+  "baseHead": "b73f402ef27b616e041eb5088fd2937b227ab4ca",
+  "versionAvailability": {
+    "localTag": "absent",
+    "remoteTag": "absent",
+    "githubReleaseHttp": 404,
+    "immutableVersions": [
+      "0.7.8",
+      "0.7.9"
+    ]
+  },
+  "documentReview": {
+    "scope": "Plan R10 read-deadline addendum",
+    "P0": 0,
+    "P1": 0,
+    "P2": 0,
+    "verdict": "DOCUMENT_GO"
+  },
+  "versionDeltaDesignReview": {
+    "scope": "Exact 0.7.10 final-role registration, no schema or bridge expansion",
+    "P0": 0,
+    "P1": 0,
+    "P2": 0,
+    "verdict": "DOCUMENT_GO",
+    "note": "Initial reviewer NO_GO conflated unimplemented product P1 with design review; clarified design GO before implementation. Not final candidate review."
+  },
+  "implementation": {
+    "files": [
+      "client/src/canvas/canvasPersistenceFacade.ts",
+      "client/src/canvas/CanvasSurface.tsx",
+      "server/bridgeRuntimeMode.ts"
+    ],
+    "readDeadlineMs": 30000,
+    "saveDeadlineMs": 6000,
+    "paths": [
+      "hydrate",
+      "admission authoritative read",
+      "workflow result refresh",
+      "external baseline"
+    ],
+    "properties": [
+      "single bounded request through headers and body",
+      "caller cancellation and ignored-abort transport settle without retries",
+      "late body rejected before authoritative cache update",
+      "journal and save boundaries preserved"
+    ]
+  },
+  "verification": {
+    "toolchain": {
+      "node": "22.23.1",
+      "npm": "10.9.8"
+    },
+    "preProductStops": [
+      {
+        "command": "/Users/mymy/.hermes/node/bin/node scripts/run-safe-tests.mjs run --spec tests/m38-generation-runtime-incidents.spec.ts",
+        "reason": "After package 0.7.10 bump, restart-persistence startup rejected UNBOUNDRY_RELEASE_VERSION_INVALID; exact final-version allowlist ended at 0.7.9",
+        "productTests": 0,
+        "exit": 1,
+        "sourceSha256": "dbb4e57158f472adc75b4ac9dd16ae7d35c8d5aee217039f4eed7a28af52f534",
+        "listener4173": "unchanged"
+      },
+      {
+        "reason": "test inventory 1229 to 1239",
+        "productTests": 0
+      },
+      {
+        "reason": "safe-runner target hash required refresh",
+        "productTests": 0
+      }
+    ],
+    "initialTargeted": {
+      "command": "/Users/mymy/.hermes/node/bin/node scripts/run-safe-tests.mjs run --spec tests/m3-persistence.spec.ts --spec tests/m86-canvas-load-safety.spec.ts",
+      "tests": 101,
+      "passed": 98,
+      "failed": 3,
+      "exit": 1,
+      "sourceSha256": "2460065b262db940af47ffa27b6f097be39f126cb0f9d4a65266e6885ee5b639",
+      "m3Passed": 14,
+      "failures": [
+        "two new external-read tests incorrectly used clean reload instead of dirty external baseline",
+        "existing hung-GET test still expected failure within 5 seconds"
+      ]
+    },
+    "minimalRecheck": {
+      "command": "/Users/mymy/.hermes/node/bin/node scripts/run-safe-tests.mjs run --spec tests/m86-canvas-load-safety.spec.ts",
+      "tests": 87,
+      "passed": 87,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0,
+      "exit": 0,
+      "sourceSha256": "9c843282947df405458df1d319fcd8566504cef72829529429682381023a7661"
+    },
+    "workflowAndWriterRecheck": {
+      "command": "/Users/mymy/.hermes/node/bin/node scripts/run-safe-tests.mjs run --spec tests/m22-group-execution.spec.ts --spec tests/m105-canvas-writer-manifest.spec.ts",
+      "tests": 46,
+      "passed": 46,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0,
+      "exit": 0,
+      "sourceSha256": "4398cd959dc5c4390514bb94d58b32f7c2844ce78903da82a85e8e52f3e1a8cb"
+    },
+    "versionAndGovernanceRecheck": {
+      "command": "/Users/mymy/.hermes/node/bin/node scripts/run-safe-tests.mjs run --spec tests/m81-deployment-hardening.spec.ts --spec tests/m38-generation-runtime-incidents.spec.ts",
+      "tests": 61,
+      "passed": 61,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0,
+      "exit": 0,
+      "m81": 42,
+      "m38": 19,
+      "sourceSha256": "9ee02c0b43423af892317421793cc157f2914685ba4e9eb5d8bcce4126f4f44f",
+      "listener4173": "unchanged"
+    },
+    "validTargetedTotal": 208,
+    "m3EvidenceReused": "Only m86 test fixture/timing changed after m3 passed; product code and m3 unchanged.",
+    "formalFull": {
+      "command": "/Users/mymy/.hermes/node/bin/node scripts/run-safe-tests.mjs full",
+      "sessionId": 37186,
+      "specs": 127,
+      "tests": 1239,
+      "passed": 1239,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0,
+      "exit": 0,
+      "sourceSha256": "676ea9bc69eb4051a64b7abe32235c5cbd38f1ae9481370964a53ac5ece6e37b",
+      "snapshotSha256": "676ea9bc69eb4051a64b7abe32235c5cbd38f1ae9481370964a53ac5ece6e37b",
+      "snapshot": "unchanged",
+      "listener4173": "unchanged",
+      "suiteCleaned": true,
+      "rawArtifactRoot": "/tmp/unboundry-v079-runtime-drill.YqH6MK",
+      "rawCaptureLimit": "Some early tool-output chunks were truncated; final aggregate complete",
+      "repeatForDocsOnly": false
+    },
+    "inventory": {
+      "specs": 127,
+      "tests": 1239
+    },
+    "writer": {
+      "entries": 256,
+      "violations": 0,
+      "sourceTreeHash": "9e45a1532e39d36a13b6ef8a0ce259f11e96555bfebbe536da8703f1cb9d040f"
+    }
+  },
+  "frozenCandidateReview": {
+    "reviewer": "independent_candidate_review",
+    "files": 158,
+    "hunks": 1969,
+    "deltaFilesSinceBase": 21,
+    "deltaHunksSinceBase": 231,
+    "writerEntries": 256,
+    "cwb": 194,
+    "publishedModels": 10,
+    "modelIdentities": 12,
+    "adapters": 6,
+    "unchangedPriorCoverageExplicitlyReused": true,
+    "inventorySha256": "1bebe69e48ad23aed4fca023b813fdec51df5a77b69622d62dcf6b1f017aa88a",
+    "P0": 0,
+    "P1": 0,
+    "P2": 0,
+    "omissions": 0,
+    "postFullPreDocsHashDrift": 0,
+    "verdict": "CANDIDATE_CODE_GO",
+    "postFullDocsDeltaReview": {"files":7,"allAfterHashesMatched":true,"productOrTestsChanged":0,"P0":0,"P1":0,"P2":0,"verdict":"DOCUMENT_GO","reviewStateOnlyBackfillAllowed":true}
+  },
+  "production": {
+    "version": "0.7.9",
+    "schema": 43,
+    "service": "active",
+    "mainPid": 395702,
+    "nRestarts": 0,
+    "readinessRequestId": "9ee38d4a-3e80-40f7-81ca-cfc3348e78b4",
+    "refresh": "NO_GO",
+    "groupClicks": 0,
+    "liveCodeChanged": false,
+    "liveDataWritesByThisTurn": 0
+  },
+  "rollbackGap": {
+    "freshCopyFullProcessRollbackForward": "PASS_079_43_TO_077_42_TO_079_43",
+    "liveServiceRollbackForward": "NOT_RUN",
+    "operationalPlan": "/tmp/unboundry-v079-runtime-drill.YqH6MK/LIVE_SERVICE_ROLLBACK_FORWARD_PLAN.md",
+    "operationalRunbook": "/tmp/unboundry-v079-runtime-drill.YqH6MK/V0_7_10_RELEASE_AND_MAINTENANCE_RUNBOOK.md",
+    "operationalPlanDesignReview": {"revision":4,"P0":0,"P1":0,"P2":0,"verdict":"DESIGN_GO_CONDITIONAL_ON_EXECUTION_GATES","notProductionPass":true},
+    "executionGate": "Final exact commands, tag identity, stopped-writer zero-candidate checks, newest locked-exact43 backup and operational review required before service actions",
+    "availableIsolation": [
+      "/usr/bin/bwrap",
+      "/usr/bin/unshare"
+    ],
+    "installedReleaseManifest": "absent; deployed identity uses RELEASE-INVENTORY.sha256 and exact-tag receipt, not build-release manifest",
+    "liveCommand": "/opt/node22/bin/node /opt/unboundry/current/node_modules/vite/bin/vite.js preview --configLoader runner --host 127.0.0.1 --port 4173 --strictPort",
+    "constraint": "Do not overwrite schema43 new writes with schema42; use independent restored copies under real Linux network isolation for recoverability proof."
+  },
+  "remaining": [
+    "commit/push/PR/CI/merge/tag/Release/exact-tag fresh build",
+    "latest locked-exact43 backup/verify/fresh restore and reviewed actual service rollback-forward preserving every live43 write",
+    "fresh full cold/warm browser/server/database evidence",
+    "single target group run; audio and image/video/audio own uploads; post-result refresh",
+    "final full production evidence review"
+  ],
+  "ownUploadFixtures": {
+    "status": "LOCAL_READY_NOT_UPLOADED",
+    "manifest": "/tmp/unboundry-v0710-acceptance-fixtures.Ipz2dv/manifest.json",
+    "image": {"format":"PNG","width":640,"height":360,"sha256":"3fc0e4ee70ee5c291688adb8482d63aed2a47c24538eaefc84e33338530000b0"},
+    "video": {"format":"MP4 H264 yuv420p","width":640,"height":360,"durationSeconds":2,"sha256":"f491d6908caad6ca1e8b03c2f6c8c8ba05dcb943f8cfc22859712c4be1757a91"},
+    "audio": {"format":"WAV PCM16 mono44100","durationSeconds":2,"sha256":"f72440d5af7823f45cfac297696d10d01a7eae936a7200a299e115712b29d63c"},
+    "ffprobeAndFullDecodeExit": 0,
+    "providerRequests": 0,
+    "uploads": 0
+  },
+  "goalComplete": false,
+  "userAcceptance": "USER_RECHECK"
+}

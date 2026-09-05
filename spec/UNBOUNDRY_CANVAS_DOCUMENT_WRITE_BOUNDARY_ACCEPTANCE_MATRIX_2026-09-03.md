@@ -1,10 +1,20 @@
 # Unboundry Canvas 文档写入边界解耦验收矩阵
 
-状态：`V0_7_8_PUBLISHED_NOT_DEPLOYED / TARGET_VERSION_V0_7_9 / RELEASE_AND_REAL_PROVIDER_AUTHORIZED / R9_PASS / R10_READY`
+状态：`V0_7_9_DEPLOYED_SCHEMA43 / RELEASE_AND_REAL_PROVIDER_AUTHORIZED / R9_PASS / R10_REFRESH_NO_GO`
 
 日期：2026-09-03
 
+正式full后7/7文件文档增量独立复核已完成，after-SHA全部匹配，产品/测试变化0，P0/P1/P2=0/DOCUMENT_GO；CWB-176回填AUTO_PASS。维护方案revision4设计GO，精确执行命令和实际生产门仍待完成。
+
+最新候选证据：v0.7.10冻结代码独立Review覆盖158/158files、1969/1969hunks、256writers、194CWB，P0/P1/P2=0；唯一正式full127specs、1239/1239PASS、异常0、exit0，source=`676ea9bc69eb4051a64b7abe32235c5cbd38f1ae9481370964a53ac5ece6e37b`。当前文档only增量待复核，因此CWB-176暂记PENDING；业务full不重复。CWB-181..183中的079证据保留为历史，新0710发布/备份/部署未执行。CWB-192三份恢复副本真实进程已PASS，但live service维护回滚未执行，整体PENDING。CWB-185仍生产NO_GO，group真实点击0。
+
+以下定向/未冻结状态段为本最新候选证据之前的历史断点。
+
+最新定向补证：必要的0.7.10精确版本登记及非法版本拒绝已通过safe m81 42/42+m38 19/19；现有有效定向208项。CWB-185仍为生产NO_GO，CWB-192完整进程恢复证据仍未完成；不得把此启动修复或定向测试升级为生产通过。
+
 配套方案：`spec/UNBOUNDRY_CANVAS_DOCUMENT_WRITE_BOUNDARY_DECOUPLING_PLAN_2026-09-03.md`
+
+本地读取补丁进展：四入口统一30秒deadline及迟到缓存围栏已实现；safe m3 14/14与m86 87/87为有效定向证据，详见`spec/V0_7_10_LOCAL_IMPLEMENTATION_RECEIPT_2026-09-05.json`。仍未冻结或发布新版本；本地测试不升级CWB-185生产NO_GO或CWB-192未完成状态。
 
 ## 0. 这份矩阵怎么用
 
@@ -309,23 +319,23 @@ RESIDUAL_RISK:
 | CWB-173 | P0 | 调用链 Review | client event→command→gateway→DB→projection→Canvas 的关键分支逐链检查。 | call-chain checklist | `AUTO_PASS` |
 | CWB-174 | P0 | Provider 分支 Review | 各 Provider/model/media 分支不改变 boundary、billing、settlement 不变量。 | provider matrix review | `AUTO_PASS` |
 | CWB-175 | P0 | 独立 Review | 独立 reviewer P0=0、P1=0；P2 有 owner/处置。 | signed review report | `AUTO_PASS` |
-| CWB-176 | P0 | 文档与实现一致 | Plan、Matrix、OpenAPI、types、receipt 不夸大、不互相矛盾。 | docs review | `AUTO_PASS` |
+| CWB-176 | P0 | 文档与实现一致 | Plan、Matrix、OpenAPI、types、receipt 不夸大、不互相矛盾。 | 冻结候选Review GO；formal后7/7文件文档增量P0/P1/P2=0/DOCUMENT_GO | `AUTO_PASS` |
 | CWB-177 | P0 | 实现授权 | 用户明确授权按本方案实施后方可改产品代码。 | 最新用户指令 | `DOC_PASS` |
 | CWB-178 | P0 | 版本授权 | 用户明确给出下一版本号；不使用 hotfix 后缀、不自行递增。 | 最新用户指令 | `DOC_PASS` |
 | CWB-179 | P0 | 上线授权 | 用户明确授权该冻结候选上线；实现授权不等于上线授权。 | 最新用户指令 | `DOC_PASS` |
 | CWB-180 | P0 | 真实生成授权 | 用户明确授权真实 Provider/OSS 请求；上线授权不自动等于费用授权。 | 最新用户指令 | `DOC_PASS` |
-| CWB-181 | P0 | GitHub release 顺序 | commit/push/PR/tag/release 只在相应授权后按 release 规则执行。 | Git/GitHub receipt | `NOT_RUN` |
-| CWB-182 | P0 | exact backup/restore | 部署前 locked-exact backup、verify、fresh restore 全绿。 | deployment receipt | `NOT_RUN` |
-| CWB-183 | P0 | 原子部署 | release 目录完整、依赖/构建完成后原子切换，不在 live 目录拼装。 | deploy trace | `NOT_RUN` |
+| CWB-181 | P0 | GitHub release 顺序 | commit/push/PR/tag/release 只在相应授权后按 release 规则执行。 | 079 PR158/merge/tag/Release历史PASS；0710待执行 | `PENDING` |
+| CWB-182 | P0 | exact backup/restore | 部署前 locked-exact backup、verify、fresh restore 全绿。 | 079双schema验签恢复历史PASS、97非阻断media issues保留；0710最新43备份待执行 | `PENDING` |
+| CWB-183 | P0 | 原子部署 | release 目录完整、依赖/构建完成后原子切换，不在 live 目录拼装。 | 079切换/schema43/33静态文件历史PASS；0710待部署 | `PENDING` |
 | CWB-184 | P0 | health 不越权 | health/ready 只证明进程/数据库探测，不写成工作流通过。 | receipt wording review | `NOT_RUN` |
-| CWB-185 | P0 | 生产 clean refresh | 指定 Canvas 冷缓存硬刷新+暖缓存普通刷新各一次；媒体/hydration settle 后 30 秒静默、总上限120秒；Canvas write/409/workflow/task/Provider/OSS均0。 | DevTools/server/DB 三方计数 | `NOT_RUN` |
-| CWB-186 | P0 | refresh 门先行 | CWB-185 未通过时真实 group 点击必须保持 0。 | action count receipt | `NOT_RUN` |
+| CWB-185 | P0 | 生产 clean refresh | 指定 Canvas 冷缓存硬刷新+暖缓存普通刷新各一次；媒体/hydration settle 后30秒静默、总上限120秒；Canvas write/409/workflow/task create/刷新触发的Provider生成与OSS写入均0；用户2026-09-05明确允许已有素材只读加载，其GET/Range计数单列。 | v0.7.9 receipt：冷刷新5个既有素材OSS GET允许；暖刷新Canvas GET3秒abort/加载失败，仍NO_GO | `NO_GO` |
+| CWB-186 | P0 | refresh 门先行 | CWB-185 未通过时真实 group 点击必须保持 0。 | v0.7.9 receipt：group click0、新run/task/admission/attempt0 | `AUTO_PASS` |
 | CWB-187 | P0 | 唯一真实点击 | refresh 门通过且获授权后，对指定 group 只点击一次。 | video/network/request IDs | `NOT_RUN` |
 | CWB-188 | P0 | 无重复提交 | 一次真实点击仅一个 workflow run；每节点最多一次 boundary/Provider attempt。 | DB/provider trace | `NOT_RUN` |
 | CWB-189 | P0 | 无 409/误报 | 真实执行期间无 Canvas 保存 409、无重复 save、无错误成功/失败 toast。 | browser/server trace | `NOT_RUN` |
 | CWB-190 | P0 | 当前真实 DAG 结果 | 指定 Canvas 实际 7 text+3 image+1 video 按 DAG 正常 settlement/projection；不得冒充 audio/local-upload 生产证明。 | task/result/Canvas evidence | `NOT_RUN` |
 | CWB-191 | P0 | 刷新后保持 | 真实执行完成后刷新，结果仍由 server document 正确呈现且 0 多余保存。 | before/after snapshot | `NOT_RUN` |
-| CWB-192 | P0 | 回滚演练 | forward→previous→forward 能恢复服务与数据读取；不执行反向破坏性数据脚本。 | rollback receipt | `NOT_RUN` |
+| CWB-192 | P0 | 回滚演练 | forward→previous→forward 能恢复服务与数据读取；不执行反向破坏性数据脚本。 | 三新恢复副本实际进程079/43→077/42→079/43 PASS；实际service维护回滚尚未执行，见079receipt补充 | `PENDING` |
 | CWB-193 | P0 | 生产结论分层 | release、refresh、workflow、Provider、Canvas projection、用户验收分别报告。 | final receipt | `NOT_RUN` |
 | CWB-194 | P1 | 用户复核 | 技术通过后由用户确认网站正常生成工作流；不评价图片审美。 | 用户明确回复 | `NOT_RUN` |
 

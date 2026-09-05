@@ -542,6 +542,84 @@ async function runNormalHighWaterFieldRace({
   await expect(editor).toHaveValue("A3");
 }
 
+for (const phase of ["initial", "external"] as const) {
+  for (const delayedPart of ["headers", "body"] as const) {
+    test(`six-second ${phase} Canvas ${delayedPart} read succeeds without extra writes or retries`, async ({ page }) => {
+      const canvasId = "node.text.empty";
+      await page.clock.install();
+      await installControllableBroadcastChannel(page);
+      await page.addInitScript(({ canvasId, initial, later, phase, delayedPart }) => {
+        const state = { delayed: phase === "initial", gets: 0, waits: 0, writes: 0, saved: [] as Array<Record<string, unknown>> };
+        (window as typeof window & { __m86SlowRead: typeof state }).__m86SlowRead = state;
+        const originalFetch = window.fetch.bind(window);
+        window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+          const url = new URL(input instanceof Request ? input.url : String(input), location.href);
+          const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+          if (method !== "GET" && /^\/api\/(canvas|canvases|workflow-runs|generation-tasks)(\/|$)/.test(url.pathname)) {
+            state.writes += 1;
+          }
+          if (url.pathname === `/api/canvas/${canvasId}` && method === "PUT" && phase === "external") {
+            state.saved.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+            return new Response(JSON.stringify({ graphRevision: 3, loadToken: "33333333-3333-4333-8333-333333333333", revision: 3 }), {
+              headers: { "Content-Type": "application/json" }, status: 200,
+            });
+          }
+          if (url.pathname !== `/api/canvas/${canvasId}` || method !== "GET") return originalFetch(input, init);
+          state.gets += 1;
+          const delayed = state.delayed;
+          const body = phase === "external" && delayed ? later : initial;
+          const wait = () => new Promise<void>((resolve) => setTimeout(resolve, 6_000));
+          if (delayed) state.waits += 1;
+          if (delayed && delayedPart === "headers") await wait();
+          const response = new Response(JSON.stringify(body), {
+            headers: { "Content-Type": "application/json" }, status: 200,
+          });
+          if (delayed && delayedPart === "body") {
+            Object.defineProperty(response, "json", { value: async () => { await wait(); return body; } });
+          }
+          return response;
+        }) as typeof window.fetch;
+      }, { canvasId, initial: textDocument("A1", 1), later: textDocument("B1", 2, LOAD_TOKEN_B), phase, delayedPart });
+      await page.goto(`/__fixture/${canvasId}`);
+      const world = page.getByTestId("canvas-world");
+      if (phase === "external") {
+        await expect(world).toHaveAttribute("data-persistence-state", "ready");
+        await page.locator('.react-flow__node[data-id="text-primary"]').click();
+        await pauseBrowserClock(page);
+        await page.getByTestId("canvas-node-title").fill("A2");
+        await page.getByTestId("canvas-node-title").press("Enter");
+        await flushBrowserTasks(page);
+        await page.evaluate(() => { (window as typeof window & { __m86SlowRead: { delayed: boolean } }).__m86SlowRead.delayed = true; });
+        expect(await emitExternalCanvasSave(page, 2)).toBeGreaterThan(0);
+      }
+      await expect.poll(() => page.evaluate(() =>
+        (window as typeof window & { __m86SlowRead: { waits: number } }).__m86SlowRead.waits)).toBeGreaterThan(0);
+      await flushBrowserTasks(page);
+      await page.clock.fastForward(3_100);
+      await expect(world).toHaveAttribute("data-persistence-state", "loading");
+      expect(await page.evaluate(() =>
+        (window as typeof window & { __m86SlowRead: { writes: number } }).__m86SlowRead.writes)).toBe(0);
+      const getsBeforeReady = await page.evaluate(() =>
+        (window as typeof window & { __m86SlowRead: { gets: number } }).__m86SlowRead.gets);
+      await page.clock.fastForward(3_100);
+      await expect(world).toHaveAttribute("data-persistence-state", "ready");
+      await page.clock.fastForward(30_100);
+      await expect(world).toHaveAttribute("data-persistence-state", "ready");
+      const counts = await page.evaluate(() =>
+        (window as typeof window & { __m86SlowRead: { gets: number; writes: number; saved: Array<Record<string, unknown>> } }).__m86SlowRead);
+      expect(counts.gets).toBe(getsBeforeReady);
+      expect(counts.writes).toBe(phase === "initial" ? 0 : 1);
+      if (phase === "external") {
+        expect(counts.saved).toHaveLength(1);
+        expect(counts.saved[0].observedRevision).toBe(2);
+        expect(counts.saved[0].nodes).toEqual(expect.arrayContaining([
+          expect.objectContaining({ id: "text-primary", data: expect.objectContaining({ title: "A2" }) }),
+        ]));
+      }
+    });
+  }
+}
+
 test("GET 500 stays fail-closed with zero canvas PUT and zero generation", async ({
   page,
 }) => {
@@ -1183,6 +1261,7 @@ for (const corruption of ["empty-index", "empty-scope"] as const) {
 test("hung GET times out, retry starts with GET, and revision zero is observed", async ({
   page,
 }) => {
+  await page.clock.install();
   await page.addInitScript(({ document, loadToken }) => {
     const state = {
       allowSuccess: false,
@@ -1239,6 +1318,9 @@ test("hung GET times out, retry starts with GET, and revision zero is observed",
 
   await page.goto("/__fixture/persistence.final-clean-canvas");
   const world = page.getByTestId("canvas-world");
+  await expect.poll(() => page.evaluate(() =>
+    (window as typeof window & { __m86Load: { methods: string[] } }).__m86Load.methods.length)).toBeGreaterThan(0);
+  await page.clock.fastForward(30_100);
   await expect(world).toHaveAttribute("data-persistence-state", "failed", {
     timeout: 5_000,
   });
@@ -5220,7 +5302,7 @@ for (const externalBaselineFailure of ["GET 500", "hung timeout"] as const) {
         __m86PreDebounceExternal?: { externalGets: number };
       }).__m86PreDebounceExternal?.externalGets ?? 0)).toBe(1);
     if (externalBaselineFailure === "hung timeout") {
-      await page.clock.fastForward(3_100);
+      await page.clock.fastForward(30_100);
     }
     await expect(world).toHaveAttribute("data-persistence-ready", "false");
     await expect(page.getByTestId("canvas-load-state")).toBeVisible();
@@ -5376,7 +5458,7 @@ test("initial GET headers with an abort-ignoring body hit the hard load deadline
     (window as typeof window & {
       __m86InitialHungBody: { bodyReads: number };
     }).__m86InitialHungBody.bodyReads);
-  await page.clock.fastForward(3_100);
+  await page.clock.fastForward(30_100);
   await expect(world).toHaveAttribute("data-persistence-state", "failed");
   const beforeRelease = await readCanvasSaveSession(page, canvasId);
   expect(beforeRelease?.confirmedSequence).toBe(0);
@@ -5521,7 +5603,7 @@ test("external baseline headers with an abort-ignoring body keep the pre-debounc
     (window as typeof window & {
       __m86ExternalHungBody?: { bodyReads: number };
     }).__m86ExternalHungBody?.bodyReads ?? 0)).toBe(1);
-  await page.clock.fastForward(3_100);
+  await page.clock.fastForward(30_100);
   await expect(world).toHaveAttribute("data-persistence-state", "failed");
   await expect(world).toHaveAttribute("data-persistence-ready", "false");
   await expect(title).toHaveValue("A2");
