@@ -1,6 +1,16 @@
 # Unboundry Canvas 文档写入边界解耦验收矩阵
 
-状态：`V0_7_9_DEPLOYED_SCHEMA43 / RELEASE_AND_REAL_PROVIDER_AUTHORIZED / R9_PASS / R10_REFRESH_NO_GO`
+> **当前0711正式全测1243通过（14:32 UTC）**：代码独立终审161/1241/257/194及模型10/identities12/adapters6、P0/P1/P2=0；补证session95805正式127specs/1243PASS、exit0、异常0、源码无漂移。原48203因基础设施/证据中断无法确认终态，保留NOT_PASS；累计调用2、可确认完成1，不再重复成功full或255定向。CWB-171..175代码审查继续有效；176及R9已获post-full文档6/6增量GO（155文件不变、P0/P1/P2=0）。0711 release/backup/deploy/refresh/rollback仍PENDING，原组HISTORICAL_AUTO_PASS不重跑，音频/上传/结果刷新未通过。下方较早实施覆盖均是历史时点。
+
+状态：`V0_7_11_CODE_REVIEW_GO / TARGETED_255_PASS / FORMAL_1243_PASS / POST_FULL_DOC_REVIEW_GO / AUDIO_AND_REFRESH_PRODUCTION_NO_GO / REAL_CLICK_1_OF_1`
+
+最新窄修证据：Text刷新89/89、参数与源输入32/32、四节点恢复59/59、TTS browser→actual API→fake Provider完整链路14/14通过。v0.7.11未占用核验与版本登记已完成，m81部署42/42、m38最小文档复验19/19 PASS，完整命令/源码hash/历次失败见0711本地回执。首次冻结独立Review覆盖161/161文件、1241/1241 hunks、257/257 writers、194/194 CWB，产品无新增finding；治理P1=1/P2=1，本轮文档修正后待增量复核，尚非最终GO。CWB-171..176及0711发布/备份/部署/刷新/回退门保持PENDING；原组窗口仅HISTORICAL_AUTO_PASS且禁止重跑。新formal full和真实音频/三上传/结果刷新/最终生产Review均未完成，不以fake或旧版证据替代。
+
+10:20 UTC最新：目标run11/11真实成功、每节点单attempt、终态回填/呼吸灯通过，CWB-187..190记目标组AUTO_PASS；独立音频preflight200但创建前409（task/Provider0）仍NO_GO。完成后刷新出现6字段contentHtml派生journal重放并加载失败，CWB-191=NO_GO，DB结果95/58完整不变。不能因组成功或前置冷暖通过标整体/最终生产Review通过。完整汇总v0710-real-production-outcomes.json及0710receipt。
+
+2026-09-05 10:04 UTC当前覆盖：CWB-182/183/185/192已有0710实际证据AUTO_PASS；唯一目标组10:02:20Z点击，run `10e1664e-32dc-4e67-8573-34b95e8336a0`正在执行，不再点击。音频/自有上传/下游、结果后刷新和最终生产Review未完成。以下发布准备及NO_GO段为历史，不能覆盖此状态；详细证据见0710生产receipt/Checkpoint最新顶部，不重跑1239项full。
+
+最新发布准备证据：0710 PR159/merge/tag/Release/双CI已通过，CWB-181=AUTO_PASS；exact-tag构建及未激活安装903源码/6129文件/33静态已验证，但182最新43备份、183实际切换、192实际service回滚均PENDING。previous42新恢复与625/625镜像通过不替代这些门。停服preflight两项操作finding已独立关闭，P0/P1/P2=0；actual stopped gate、维护controller和真实验收仍未执行。权威回执`spec/V0_7_10_PRODUCTION_RECEIPT_2026-09-05.json`；下方尚未发布为历史时点，不重复formal full。
 
 日期：2026-09-03
 
@@ -292,7 +302,7 @@ RESIDUAL_RISK:
 | CWB-156 | P1 | 资源/内存 | observer、object URL、poll timer、request queue 无明显泄漏或重复订阅。 | leak test/profile | `NOT_RUN` |
 | CWB-157 | P1 | 性能预算 | 拖动/resize 高频 view update 不引起网络/数据库放大。 | event vs write metrics | `NOT_RUN` |
 | CWB-158 | P0 | 测试不重复 | 未有相关代码变化时不重复全套；失败先最小复现和最小子集。 | test ledger | `AUTO_PASS` |
-| CWB-159 | P0 | 唯一 formal full | 候选冻结、定向层全绿后只执行一次项目规定的正式全套。 | full command/exit/identity | `AUTO_PASS` |
+| CWB-159 | P0 | 正式 full 与异常补证 | 候选冻结、定向层全绿后执行项目规定正式全套；已成功full不得重复，不可恢复中断必须保留原记录并说明补证原因。 | 0711原48203终态不可恢复NOT_PASS；冻结无变化下补证95805，127specs/1243PASS、exit0、异常0，完整log SHA245472e0586c78b6a44fee678ee5229d22dc1145a81108f6f73b254f84288008；总调用2、确认完成1 | `AUTO_PASS` |
 | CWB-160 | P0 | full 失败处理 | formal full 失败先归因并修最小范围；代码变更后按 gate 决定是否需新候选。 | failure closure record | `AUTO_PASS` |
 
 ## 13. K 组：可观测性、错误语义与用户体验
@@ -314,28 +324,28 @@ RESIDUAL_RISK:
 
 | ID | 级别 | 验收行为 | 通过标准 | 必需证据 | 当前状态 |
 |---|---:|---|---|---|---|
-| CWB-171 | P0 | 候选冻结 | 所有计划内实现完成，diff/HEAD/生成物冻结，之后 Review 不与写入并行。 | candidate identity | `AUTO_PASS` |
-| CWB-172 | P0 | 文件级 Review 分母 | 每个改动文件和每个 diff hunk 均被 Review，无抽样表述。 | reviewed files/hunks count | `AUTO_PASS` |
-| CWB-173 | P0 | 调用链 Review | client event→command→gateway→DB→projection→Canvas 的关键分支逐链检查。 | call-chain checklist | `AUTO_PASS` |
-| CWB-174 | P0 | Provider 分支 Review | 各 Provider/model/media 分支不改变 boundary、billing、settlement 不变量。 | provider matrix review | `AUTO_PASS` |
-| CWB-175 | P0 | 独立 Review | 独立 reviewer P0=0、P1=0；P2 有 owner/处置。 | signed review report | `AUTO_PASS` |
-| CWB-176 | P0 | 文档与实现一致 | Plan、Matrix、OpenAPI、types、receipt 不夸大、不互相矛盾。 | 冻结候选Review GO；formal后7/7文件文档增量P0/P1/P2=0/DOCUMENT_GO | `AUTO_PASS` |
+| CWB-171 | P0 | 候选冻结 | 所有计划内实现完成，diff/HEAD/生成物冻结，之后 Review 不与写入并行。 | v0.7.11首次完整Review161/161文件、1241/1241hunks、257/257writers；随后5/5文档增量复核、156文件不变，原P1/P2 CLOSED，最终P0/P1/P2=0/GO；代码审查证据继续有效；现正式95805全测1243PASS、post-full文档6/6增量GO（155文件不变、P0/P1/P2=0），生产门单独判定 | `AUTO_PASS` |
+| CWB-172 | P0 | 文件级 Review 分母 | 每个改动文件和每个 diff hunk 均被 Review，无抽样表述。 | v0.7.11首次完整Review161/161文件、1241/1241hunks、257/257writers；随后5/5文档增量复核、156文件不变，原P1/P2 CLOSED，最终P0/P1/P2=0/GO；代码审查证据继续有效；现正式95805全测1243PASS，后续文档增量与生产门单独判定 | `AUTO_PASS` |
+| CWB-173 | P0 | 调用链 Review | client event→command→gateway→DB→projection→Canvas 的关键分支逐链检查。 | v0.7.11首次完整Review161/161文件、1241/1241hunks、257/257writers；随后5/5文档增量复核、156文件不变，原P1/P2 CLOSED，最终P0/P1/P2=0/GO；代码审查证据继续有效；现正式95805全测1243PASS，后续文档增量与生产门单独判定 | `AUTO_PASS` |
+| CWB-174 | P0 | Provider 分支 Review | 各 Provider/model/media 分支不改变 boundary、billing、settlement 不变量。 | v0.7.11首次完整Review161/161文件、1241/1241hunks、257/257writers；随后5/5文档增量复核、156文件不变，原P1/P2 CLOSED，最终P0/P1/P2=0/GO；代码审查证据继续有效；现正式95805全测1243PASS，后续文档增量与生产门单独判定 | `AUTO_PASS` |
+| CWB-175 | P0 | 独立 Review | 当前Goal要求独立 reviewer P0=0、P1=0、P2=0，所有发现关闭后才放行。 | v0.7.11首次完整Review161/161文件、1241/1241hunks、257/257writers；随后5/5文档增量复核、156文件不变，原P1/P2 CLOSED，最终P0/P1/P2=0/GO；代码审查证据继续有效；现正式95805全测1243PASS，后续文档增量与生产门单独判定 | `AUTO_PASS` |
+| CWB-176 | P0 | 文档与实现一致 | Plan、Matrix、OpenAPI、types、receipt 不夸大、不互相矛盾。 | v0.7.11首次完整Review161/161文件、1241/1241hunks、257/257writers；随后5/5文档增量复核、156文件不变，原P1/P2 CLOSED，最终P0/P1/P2=0/GO；代码审查证据继续有效；现正式95805全测1243PASS，后续文档增量与生产门单独判定 | `AUTO_PASS` |
 | CWB-177 | P0 | 实现授权 | 用户明确授权按本方案实施后方可改产品代码。 | 最新用户指令 | `DOC_PASS` |
-| CWB-178 | P0 | 版本授权 | 用户明确给出下一版本号；不使用 hotfix 后缀、不自行递增。 | 最新用户指令 | `DOC_PASS` |
+| CWB-178 | P0 | 版本授权 | 当前Goal明确授权从v0.7.8起自动选择最小未占用普通v0.7.N；每次核对占用，不复用已发布版本或后缀。 | 最新用户指令 | `DOC_PASS` |
 | CWB-179 | P0 | 上线授权 | 用户明确授权该冻结候选上线；实现授权不等于上线授权。 | 最新用户指令 | `DOC_PASS` |
 | CWB-180 | P0 | 真实生成授权 | 用户明确授权真实 Provider/OSS 请求；上线授权不自动等于费用授权。 | 最新用户指令 | `DOC_PASS` |
-| CWB-181 | P0 | GitHub release 顺序 | commit/push/PR/tag/release 只在相应授权后按 release 规则执行。 | 079 PR158/merge/tag/Release历史PASS；0710待执行 | `PENDING` |
-| CWB-182 | P0 | exact backup/restore | 部署前 locked-exact backup、verify、fresh restore 全绿。 | 079双schema验签恢复历史PASS、97非阻断media issues保留；0710最新43备份待执行 | `PENDING` |
-| CWB-183 | P0 | 原子部署 | release 目录完整、依赖/构建完成后原子切换，不在 live 目录拼装。 | 079切换/schema43/33静态文件历史PASS；0710待部署 | `PENDING` |
+| CWB-181 | P0 | GitHub release 顺序 | commit/push/PR/tag/release 只在相应授权后按 release 规则执行。 |0710 PR159/merge364f049/tag object9166295/Release、branch33953248012/main33953350904双CI成功，见0710receipt；以上为v0.7.10历史证据，不属于v0.7.11候选；0711本项尚未执行 | `PENDING` |
+| CWB-182 | P0 | exact backup/restore | 部署前 locked-exact backup、verify、fresh restore 全绿。 |0710 attempt2 locked-exact43 backup5178b05f、官方verify/fresh restore PASS；97非阻断历史问题逐条保留，见0710receipt；以上为v0.7.10历史证据，不属于v0.7.11候选；0711本项尚未执行 | `PENDING` |
+| CWB-183 | P0 | 原子部署 | release 目录完整、依赖/构建完成后原子切换，不在 live 目录拼装。 |exact-tag903源码/6129库存完整，attempt2 current原子切换0710/schema43/PID468648，33/33静态公网匹配；以上为v0.7.10历史证据，不属于v0.7.11候选；0711本项尚未执行 | `PENDING` |
 | CWB-184 | P0 | health 不越权 | health/ready 只证明进程/数据库探测，不写成工作流通过。 | receipt wording review | `NOT_RUN` |
-| CWB-185 | P0 | 生产 clean refresh | 指定 Canvas 冷缓存硬刷新+暖缓存普通刷新各一次；媒体/hydration settle 后30秒静默、总上限120秒；Canvas write/409/workflow/task create/刷新触发的Provider生成与OSS写入均0；用户2026-09-05明确允许已有素材只读加载，其GET/Range计数单列。 | v0.7.9 receipt：冷刷新5个既有素材OSS GET允许；暖刷新Canvas GET3秒abort/加载失败，仍NO_GO | `NO_GO` |
-| CWB-186 | P0 | refresh 门先行 | CWB-185 未通过时真实 group 点击必须保持 0。 | v0.7.9 receipt：group click0、新run/task/admission/attempt0 | `AUTO_PASS` |
-| CWB-187 | P0 | 唯一真实点击 | refresh 门通过且获授权后，对指定 group 只点击一次。 | video/network/request IDs | `NOT_RUN` |
-| CWB-188 | P0 | 无重复提交 | 一次真实点击仅一个 workflow run；每节点最多一次 boundary/Provider attempt。 | DB/provider trace | `NOT_RUN` |
-| CWB-189 | P0 | 无 409/误报 | 真实执行期间无 Canvas 保存 409、无重复 save、无错误成功/失败 toast。 | browser/server trace | `NOT_RUN` |
-| CWB-190 | P0 | 当前真实 DAG 结果 | 指定 Canvas 实际 7 text+3 image+1 video 按 DAG 正常 settlement/projection；不得冒充 audio/local-upload 生产证明。 | task/result/Canvas evidence | `NOT_RUN` |
-| CWB-191 | P0 | 刷新后保持 | 真实执行完成后刷新，结果仍由 server document 正确呈现且 0 多余保存。 | before/after snapshot | `NOT_RUN` |
-| CWB-192 | P0 | 回滚演练 | forward→previous→forward 能恢复服务与数据读取；不执行反向破坏性数据脚本。 | 三新恢复副本实际进程079/43→077/42→079/43 PASS；实际service维护回滚尚未执行，见079receipt补充 | `PENDING` |
+| CWB-185 | P0 | 生产 clean refresh | 指定 Canvas 冷缓存硬刷新+暖缓存普通刷新各一次；媒体/hydration settle 后30秒静默、总上限120秒；Canvas write/409/workflow/task create/刷新触发的Provider生成与OSS写入均0；用户2026-09-05明确允许已有素材只读加载，其GET/Range计数单列。 |0710冷2 113736ms/暖34338ms，完整浏览器+日志+DB均零多余写/409/新增任务attempt，84/58不变；各5个允许OSS GET；账本refresh0710-browser-ledger.json；以上为v0.7.10历史证据，不属于v0.7.11候选；0711本项尚未执行 | `PENDING` |
+| CWB-186 | P0 | refresh 门先行 | CWB-185 未通过时真实 group 点击必须保持 0。 |v0.7.9 receipt：group click0、新run/task/admission/attempt0；仅证明原版本唯一目标组窗口，不是0711新生产通过；唯一点击已消费，不得重跑 | `HISTORICAL_AUTO_PASS` |
+| CWB-187 | P0 | 唯一真实点击 | refresh 门通过且获授权后，对指定 group 只点击一次。 |10:02:20Z普通Chrome点击1，submit055ea313 HTTP202，run10e1664e，前置冷暖PASS；仅证明原版本唯一目标组窗口，不是0711新生产通过；唯一点击已消费，不得重跑 | `HISTORICAL_AUTO_PASS` |
+| CWB-188 | P0 | 无重复提交 | 一次真实点击仅一个 workflow run；每节点最多一次 boundary/Provider attempt。 |run1/task11/admission11/attempt11(1101..1111)，每节点attempt1/completed，全量11节点对应；仅证明原版本唯一目标组窗口，不是0711新生产通过；唯一点击已消费，不得重跑 | `HISTORICAL_AUTO_PASS` |
+| CWB-189 | P0 | 无 409/误报 | 真实执行期间无 Canvas 保存 409、无重复 save、无错误成功/失败 toast。 |仅目标组运行窗口network955events，POST workflow1/Canvas写0/4090/终态alert0；不覆盖后续audio409和刷新失败；仅证明原版本唯一目标组窗口，不是0711新生产通过；唯一点击已消费，不得重跑 | `HISTORICAL_AUTO_PASS` |
+| CWB-190 | P0 | 当前真实 DAG 结果 | 指定 Canvas 实际 7 text+3 image+1 video 按 DAG 正常 settlement/projection；不得冒充 audio/local-upload 生产证明。 |11/11success/applied，7文3图1视频，4publication，84→95/input58；0710 real outcomes，audio/upload未通过；仅证明原版本唯一目标组窗口，不是0711新生产通过；唯一点击已消费，不得重跑 | `HISTORICAL_AUTO_PASS` |
+| CWB-191 | P0 | 刷新后保持 | 真实执行完成后刷新，结果仍由 server document 正确呈现且 0 多余保存。 | 10:14 CanvasGET200，但6个派生contentHtml字段pagehide journal重放POST、6秒abort/加载失败；DB95/58完整未变 | `NO_GO` |
+| CWB-192 | P0 | 回滚演练 | forward→previous→forward 能恢复服务与数据读取；不执行反向破坏性数据脚本。 |attempt2实际service停止079→077隔离42实际进程ready及30秒→0710 CURRENT43前进；37表及媒体/secret树零变化，无DB恢复覆盖，0710receipt；以上为v0.7.10历史证据，不属于v0.7.11候选；0711本项尚未执行 | `PENDING` |
 | CWB-193 | P0 | 生产结论分层 | release、refresh、workflow、Provider、Canvas projection、用户验收分别报告。 | final receipt | `NOT_RUN` |
 | CWB-194 | P1 | 用户复核 | 技术通过后由用户确认网站正常生成工作流；不评价图片审美。 | 用户明确回复 | `NOT_RUN` |
 
@@ -353,7 +363,7 @@ RESIDUAL_RISK:
 | R6 被动媒体事件 | CWB-071~078 | R4、R5 | image/video/audio 被动事件 0 durable write | `TARGETED_PASS` |
 | R7 生成链/浏览器旧 writer 退出 | CWB-101~102、CWB-117、CWB-120~122、CWB-128、CWB-130、CWB-132 | R3、R6 | modern browser projection/detach 为0且无双写 | `TARGETED_PASS` |
 | R8 故障/可观测性 | CWB-141~170 | R7 | 静态、故障、E2E、日志/指标通过 | `TARGETED_PASS` |
-| R9 冻结/Review/full | CWB-171~176 | R8 | mandatory formal full 1227/1227、0 skipped、exit 0；最终独立 Review P0/P1/P2=0/GO | `PASS` |
+| R9 冻结/Review/full | CWB-171~176 | R8 | v0.7.11代码终审P0/P1/P2=0、127specs/1243PASS已取得；post-full文档6/6增量GO、155文件不变、P0/P1/P2=0；旧版1227/1229/1239不替代 | `AUTO_PASS` |
 | R10 版本/上线/canary | CWB-177~194 | R9；当前 Goal 已给齐权限 | 按顺序完成 release、刷新门、唯一真实点击与用户复核 | `IN_PROGRESS` |
 
 每个 CWB row 只有上表一个主阶段；依赖阶段可以复用证据，但不能重复认领 owner。共享失败首先归属于主阶段，再阻断所有下游阶段。
@@ -373,11 +383,11 @@ RESIDUAL_RISK:
 - “图片不好看/好看”，因为本验收只判断工作流与系统行为，不判断提示词审美；
 - “以前授权过 v0.7.x”，因为旧授权不能复用到新版本、上线或真实费用。
 
-## 17. 当前文档结论
+## 17. 早期文档结论（历史，不代表v0.7.11）
 
 方案合同与早期冻结实现候选均已完成独立只读 Review。第二次 formal full 原始结果为 `1224 passed / 3 failed / 0 skipped`；3 条失败现已通过最小修复及定向复验关闭，并形成新的冻结候选。上一轮 Review GO 已被这些后续产品/测试变更失效，CWB-171..176 必须重新确认；发布、生产及 CWB-181..194 尚未执行。
 
-本矩阵当前文档状态为：
+本矩阵在该早期时点的历史文档状态为；当前0711状态只以上方最新区块及L组/R9/R10表为准：
 
 `IMPLEMENTATION_CANDIDATE / TARGET_VERSION_V0_7_8 / RELEASE_AND_REAL_PROVIDER_AUTHORIZED / R9_FORMAL_FULL_FAILED_TARGETED_CLOSURE_PASS_REVIEW_PENDING`
 

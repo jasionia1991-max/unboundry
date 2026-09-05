@@ -1,3 +1,4 @@
+import { boundGenerationParameterProof, boundGenerationSourceProof } from "../../../types/generationIdentity";
 import {
   Handle,
   NodeResizer,
@@ -390,7 +391,7 @@ function sanitizeRichTextHtml(html: string, fallbackText: string) {
   return output.innerHTML || plainTextHtml(fallbackText);
 }
 
-function storedRichTextValue(
+export function storedRichTextValue(
   text: string,
   html: string | undefined,
 ): CompositionSafeRichTextValue {
@@ -912,11 +913,36 @@ function TextNodeImpl({
     modelConfigurationRevision: selectedTextModel?.configurationRevision,
     modelId: selectedTextModelId,
     modelReleaseRevision: selectedTextModel?.releaseRevisionId,
-    parameters: selectedTextModel ? textParameters : data.textParameters,
+    parameters: selectedTextModel ? textSubmissionParameters : data.textParameters,
     prompt: promptControl.committedValue,
     upstream: generationOwnershipUpstream,
   });
-  const rawGenerationInputFingerprint = generationOwnershipKey({
+  const boundParameterProof = boundGenerationParameterProof({
+    kind: "text",
+    frozen: {
+      inputKey: data.textGenerationInputKey,
+      ownershipKey: data.textGenerationOwnershipKey,
+      modelId: data.textModelId,
+      modelConfigurationRevision: data.textGenerationModelConfigurationRevision,
+      modelReleaseRevision: data.textGenerationModelReleaseRevision,
+      contractFingerprint: data.textGenerationContractFingerprint,
+    },
+    current: selectedTextModel ? {
+      capability: selectedTextModel.capability,
+      modelId: selectedTextModel.id,
+      modelConfigurationRevision: selectedTextModel.configurationRevision,
+      modelReleaseRevision: selectedTextModel.releaseRevisionId,
+      contractFingerprint: inputPreflight.contractFingerprint,
+      parameterSchema: selectedTextModel.parameterSchema,
+      parameters: data.textParameters,
+    } : undefined,
+  });
+  const boundParameterProofRef = useRef(boundParameterProof);
+  boundParameterProofRef.current = boundParameterProof;
+  const boundSourceProof = boundGenerationSourceProof(data.textGenerationInputKey, generationInputKey);
+  const boundSourceProofRef = useRef(boundSourceProof);
+  boundSourceProofRef.current = boundSourceProof;
+  const rawGenerationInputFingerprint = data.textGenerationOwnershipKey ?? generationOwnershipKey({
     contractFingerprint: data.textGenerationOwnershipKey
       ? data.textGenerationContractFingerprint
       : inputPreflight.contractFingerprint,
@@ -935,7 +961,7 @@ function TextNodeImpl({
     parameters: data.textGenerationOwnershipKey
       ? data.textParameters
       : selectedTextModel
-        ? textParameters
+        ? textSubmissionParameters
         : data.textParameters,
     prompt: promptControl.committedValue,
     // Only durable source/edge semantics belong here. Compatibility, resolver
@@ -969,6 +995,7 @@ function TextNodeImpl({
     : "";
   const retryableTask = Boolean(
     data.textGenerationTaskId &&
+    (!data.textGenerationOwnershipKey || boundParameterProof.state === "valid") &&
     data.textGenerationError &&
     data.textGenerationInputKey === generationInputKey &&
     (!data.textGenerationOwnershipKey ||
@@ -1049,7 +1076,7 @@ function TextNodeImpl({
       stableRawGenerationInputFingerprint.current = undefined;
       return;
     }
-    if (data.workflowExecutionRunId) {
+    if (data.workflowExecutionRunId || data.textGenerationOwnershipKey) {
       stableRawGenerationInputFingerprint.current = rawGenerationInputFingerprint;
       return;
     }
@@ -1252,9 +1279,12 @@ function TextNodeImpl({
           textTerminalPatchPendingTaskRef.current = undefined;
           return false;
         }
-        setBodyValue(nextValue);
-        bodyLocalValue.current = nextValue;
-        setEmpty(false);
+        const currentData = getNodes().find((node) => node.id === id)?.data;
+        if (!currentData) return false;
+        const authoritativeValue = storedRichTextValue(currentData.content ?? "", currentData.contentHtml);
+        setBodyValue(authoritativeValue);
+        bodyLocalValue.current = authoritativeValue;
+        setEmpty(!authoritativeValue.text);
         setGenerationError("");
         clearGenerationSubmissionIntent(
           "text",
@@ -1290,18 +1320,7 @@ function TextNodeImpl({
         textTerminalPatchPendingTaskRef.current = undefined;
         return false;
       }
-      setBodyValue(nextValue);
-      bodyLocalValue.current = nextValue;
-      setEmpty(false);
       setGenerationError(projectionMessage ?? "");
-      clearGenerationSubmissionIntent(
-        "text",
-        canvasId,
-        id,
-        task.id,
-        accountId,
-        fixtureScopeId,
-      );
       textTerminalPatchPendingTaskRef.current = undefined;
       return true;
     }
@@ -1583,6 +1602,14 @@ function TextNodeImpl({
         textManualEditVersionRef.current !== manualEditVersion ||
         !task
       ) return;
+      if (persistedOwnershipKey && (
+        boundParameterProofRef.current.state === "changed" ||
+        boundSourceProofRef.current === "changed" ||
+        (boundParameterProofRef.current.state === "unknown" &&
+          (task.generationIdentityVersion !== 2 || !graphCommandPort?.refreshAuthoritativeDocument)) ||
+        (boundParameterProofRef.current.state === "valid" &&
+          persistedInputKey !== liveGenerationInputKeyRef.current)
+      )) return;
       const recoveredOwnershipKey = persistedOwnershipKey ??
         task.generationOwnershipKey;
       if (
@@ -1752,7 +1779,15 @@ function TextNodeImpl({
           if (
             !owner ||
             !ownsTextTask(owner) ||
-            textManualEditVersionRef.current !== manualEditVersion
+            textManualEditVersionRef.current !== manualEditVersion ||
+            (persistedOwnershipKey && (
+             boundParameterProofRef.current.state === "changed" ||
+              boundSourceProofRef.current === "changed" ||
+              (boundParameterProofRef.current.state === "unknown" &&
+                (task!.generationIdentityVersion !== 2 || !graphCommandPort?.refreshAuthoritativeDocument)) ||
+              (boundParameterProofRef.current.state === "valid" &&
+                persistedInputKey !== liveGenerationInputKeyRef.current)
+            ))
           ) {
             return {
               message: "生成输入已修改，已停止本次恢复",
@@ -1805,6 +1840,21 @@ function TextNodeImpl({
         throw error;
       }
       if (!result.task || result.status === "stale") {
+        return;
+      }
+      if (result.status === "success" && result.task.generationIdentityVersion === 2) {
+        textTerminalPatchPendingTaskRef.current = undefined;
+        if (result.task.canvasProjectionState !== "applied") return;
+        // The lifecycle refreshed the authoritative document. Never paint the
+        // task payload over a newer user edit or a rejected server projection.
+        const currentData = getNodes().find((node) => node.id === id)?.data;
+        if (!currentData) return;
+        const value = storedRichTextValue(currentData.content ?? "", currentData.contentHtml);
+        setBodyValue(value);
+        bodyLocalValue.current = value;
+        setEmpty(!value.text);
+        setGenerationError("");
+        clearGenerationSubmissionIntent("text", canvasId, id, result.task.id, accountId, fixtureScopeId);
         return;
       }
       clearGenerationSubmissionIntent(
@@ -1904,6 +1954,8 @@ function TextNodeImpl({
     persistenceReady,
     recoveryEpoch,
     retryWakeEpoch,
+    boundParameterProof.state,
+    boundSourceProof,
     rawGenerationInputFingerprint,
     legacyRecoveryCatalogKey,
     lockedNodeIds,
@@ -1954,6 +2006,7 @@ function TextNodeImpl({
           readBlock() {
             if (
               textManualEditVersionRef.current !== manualEditVersion ||
+              boundGenerationSourceProof(requestedGenerationInputKey, liveGenerationInputKeyRef.current) === "changed" ||
               liveGenerationOwnershipKeyRef.current !== requestedGenerationOwnershipKey
             ) {
               return { message: "生成输入已修改，已停止本次生成", status: "blocked" };
@@ -1992,6 +2045,13 @@ function TextNodeImpl({
       if (!result.task) {
         return { message: "生成输入已修改，已停止本次生成", status: "failed" };
       }
+      if (result.status === "stale") return { message: "生成输入已修改，已停止本次生成", status: "failed" };
+      if (result.status === "success" && result.task.generationIdentityVersion === 2 &&
+        result.task.canvasProjectionState !== "applied") {
+        const message = "结果已生成但尚未写入当前画布，原任务已保留";
+        setGenerationError(message);
+        return { message, status: "failed" };
+      }
       clearGenerationSubmissionIntent("text", canvasId, id, result.task.id, accountId, fixtureScopeId);
       if (result.status !== "success") {
         const message = result.task.errorMessage ?? "文字生成失败，请稍后再试";
@@ -2003,8 +2063,11 @@ function TextNodeImpl({
         ));
         return { message, status: "failed" };
       }
-      const resultText = result.task.resultText?.trim() ?? "";
-      const nextValue = storedRichTextValue(resultText, plainTextHtml(resultText));
+      const currentData = result.task.generationIdentityVersion === 2
+        ? getNodes().find((node) => node.id === id)?.data : undefined;
+      const resultText = result.task.generationIdentityVersion === 2
+        ? currentData?.content ?? "" : result.task.resultText?.trim() ?? "";
+      const nextValue = storedRichTextValue(resultText, currentData?.contentHtml ?? plainTextHtml(resultText));
       setBodyValue(nextValue);
       bodyLocalValue.current = nextValue;
       setEmpty(false);
@@ -2113,10 +2176,15 @@ function TextNodeImpl({
       });
       const result = await lifecycle.retry({ id: taskId });
       if (!result.task || result.status === "stale") return;
+      if (result.status === "success" && result.task.generationIdentityVersion === 2 &&
+        result.task.canvasProjectionState !== "applied") return;
       clearGenerationSubmissionIntent("text", canvasId, id, taskId, accountId, fixtureScopeId);
       if (result.status === "success") {
-        const resultText = result.task.resultText?.trim() ?? "";
-        const nextValue = storedRichTextValue(resultText, plainTextHtml(resultText));
+        const currentData = result.task.generationIdentityVersion === 2
+          ? getNodes().find((node) => node.id === id)?.data : undefined;
+        const resultText = result.task.generationIdentityVersion === 2
+          ? currentData?.content ?? "" : result.task.resultText?.trim() ?? "";
+        const nextValue = storedRichTextValue(resultText, currentData?.contentHtml ?? plainTextHtml(resultText));
         setBodyValue(nextValue);
         bodyLocalValue.current = nextValue;
         setEmpty(false);

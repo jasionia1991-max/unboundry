@@ -25,6 +25,7 @@ import { NodeModelControl } from "./NodeModelControl";
 import { NodeParameterControl } from "./NodeParameterControl";
 import { EmptyMediaUploadToolbar } from "./EmptyMediaUploadToolbar";
 import { generationOwnershipKey, type ProbeNodeType } from "./ProbeNode";
+import { boundGenerationParameterProof, boundGenerationSourceProof } from "../../../types/generationIdentity";
 import {
   usePublishedModelSelection,
 } from "../models/ModelCatalog";
@@ -826,11 +827,36 @@ function AudioNodeImpl({
     modelConfigurationRevision: selectedAudioModel?.configurationRevision,
     modelId: selectedAudioModelId,
     modelReleaseRevision: selectedAudioModel?.releaseRevisionId,
-    parameters: selectedAudioModel ? audioParameters : data.audioParameters,
+    parameters: selectedAudioModel ? audioSubmissionParameters : data.audioParameters,
     prompt: promptControl.committedValue,
     upstream: generationOwnershipUpstream,
   });
-  const rawGenerationInputFingerprint = generationOwnershipKey({
+  const boundParameterProof = boundGenerationParameterProof({
+    kind: "audio",
+    frozen: {
+      inputKey: data.audioGenerationInputKey,
+      ownershipKey: data.audioGenerationOwnershipKey,
+      modelId: data.audioModelId,
+      modelConfigurationRevision: data.audioGenerationModelConfigurationRevision,
+      modelReleaseRevision: data.audioGenerationModelReleaseRevision,
+      contractFingerprint: data.audioGenerationContractFingerprint,
+    },
+    current: selectedAudioModel ? {
+      capability: selectedAudioModel.capability,
+      modelId: selectedAudioModel.id,
+      modelConfigurationRevision: selectedAudioModel.configurationRevision,
+      modelReleaseRevision: selectedAudioModel.releaseRevisionId,
+      contractFingerprint: inputPreflight.contractFingerprint,
+      parameterSchema: selectedAudioModel.parameterSchema,
+      parameters: data.audioParameters,
+    } : undefined,
+  });
+  const boundParameterProofRef = useRef(boundParameterProof);
+  boundParameterProofRef.current = boundParameterProof;
+  const boundSourceProof = boundGenerationSourceProof(data.audioGenerationInputKey, audioGenerationInputKey);
+  const boundSourceProofRef = useRef(boundSourceProof);
+  boundSourceProofRef.current = boundSourceProof;
+  const rawGenerationInputFingerprint = data.audioGenerationOwnershipKey ?? generationOwnershipKey({
     contractFingerprint: data.audioGenerationOwnershipKey
       ? data.audioGenerationContractFingerprint
       : inputPreflight.contractFingerprint,
@@ -849,7 +875,7 @@ function AudioNodeImpl({
     parameters: data.audioGenerationOwnershipKey
       ? data.audioParameters
       : selectedAudioModel
-        ? audioParameters
+        ? audioSubmissionParameters
         : data.audioParameters,
     prompt: promptControl.committedValue,
     // Only durable source/edge semantics belong here. Compatibility, resolver
@@ -877,6 +903,7 @@ function AudioNodeImpl({
     : `${audioModelSelection.status}:${selectedAudioModelId ?? ""}:${audioGenerationInputKey}`;
   const retryAvailable = Boolean(
     retryTaskId &&
+    (!data.audioGenerationOwnershipKey || boundParameterProof.state === "valid") &&
     data.audioGenerationInputKey === audioGenerationInputKey &&
     (!data.audioGenerationOwnershipKey ||
       data.audioGenerationOwnershipKey === rawGenerationInputFingerprint) &&
@@ -938,7 +965,7 @@ function AudioNodeImpl({
       stableRawGenerationInputFingerprint.current = undefined;
       return;
     }
-    if (data.workflowExecutionRunId) {
+    if (data.workflowExecutionRunId || data.audioGenerationOwnershipKey) {
       stableRawGenerationInputFingerprint.current = rawGenerationInputFingerprint;
       return;
     }
@@ -2047,6 +2074,16 @@ function AudioNodeImpl({
         persistedTaskReadPending = false;
       } else return;
       if (controller.signal.aborted || !task) return;
+      // Reading the original task does not need a live catalog. Legacy client
+      // result writes do; modern server projection keeps its own full fence.
+      if (persistedOwnershipKey && (
+        boundParameterProofRef.current.state === "changed" ||
+        boundSourceProofRef.current === "changed" ||
+        (boundParameterProofRef.current.state === "unknown" &&
+          (task.generationIdentityVersion !== 2 || !graphCommandPort?.refreshAuthoritativeDocument)) ||
+        (boundParameterProofRef.current.state === "valid" &&
+          persistedInputKey !== liveGenerationInputKeyRef.current)
+      )) return;
       const recoveredOwnershipKey = persistedOwnershipKey ??
         task.generationOwnershipKey;
       if (
@@ -2172,7 +2209,15 @@ function AudioNodeImpl({
           preserveBindingOwnership: true,
           prompt: data.audioPrompt ?? promptControl.committedValue.trim(),
           readBlock() {
-            if (!pollingRun || !ownsGenerationPollingRun(pollingRun)) {
+            if (!pollingRun || !ownsGenerationPollingRun(pollingRun) ||
+              (persistedOwnershipKey && (
+               boundParameterProofRef.current.state === "changed" ||
+                boundSourceProofRef.current === "changed" ||
+                (boundParameterProofRef.current.state === "unknown" &&
+                  (task!.generationIdentityVersion !== 2 || !graphCommandPort?.refreshAuthoritativeDocument)) ||
+                (boundParameterProofRef.current.state === "valid" &&
+                  persistedInputKey !== liveGenerationInputKeyRef.current)
+              ))) {
               return {
                 message: "生成输入已修改，已停止本次恢复",
                 status: "blocked",
@@ -2315,6 +2360,8 @@ function AudioNodeImpl({
     persistenceReady,
     recoveryEpoch,
     retryWakeEpoch,
+    boundParameterProof.state,
+    boundSourceProof,
     rawGenerationInputFingerprint,
     legacyRecoveryCatalogKey,
     lockedNodeIds,

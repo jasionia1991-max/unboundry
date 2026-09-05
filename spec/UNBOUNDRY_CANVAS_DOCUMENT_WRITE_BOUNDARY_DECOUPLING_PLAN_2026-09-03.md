@@ -1,14 +1,37 @@
 # Unboundry Canvas 文档写入边界解耦详细行动方案
 
-状态：`DOCUMENT_GO / V0_7_9_DEPLOYED_SCHEMA43 / RELEASE_AND_REAL_PROVIDER_AUTHORIZED / R9_PASS / R10_REFRESH_NO_GO`
+> **当前0711正式全测已通过（14:32 UTC）**：独立代码终审161文件/1241hunks/257writers/194CWB、10模型/12identities/6adapters，P0/P1/P2=0；session95805正式127specs/1243PASS、exit0、异常0，source/snapshot deb4575d5dd84a276db0a3ce6b292927a4890080e1d615c8ff38de9f0b643b7c且161文件无漂移。原48203在模型容量压缩错误后终态不可恢复，保留为NOT_PASS；仅为取得可恢复正式证据补跑一次，不把两次调用写成一次。成功full/255定向不再重复。post-full文档增量6/6已GO（155文件不变、P0/P1/P2=0），现在进入发布及全部生产门；0711尚未发布，原11成功组不得重跑。下方早期实施段落全部为历史时点。
+
+状态：`V0_7_11_CODE_REVIEW_GO / TARGETED_255_PASS / FORMAL_1243_PASS / POST_FULL_DOC_REVIEW_GO / RELEASE_NOT_RUN / PRODUCTION_ACCEPTANCE_NO_GO`
+
+最新实施覆盖：Text刷新m86 89/89、参数与源输入m102 32/32、四节点恢复m41 59/59、TTS实际API专项m104 14/14、版本m81 42/42及最小文档复验m38 19/19 PASS，有效定向255项，历次失败保留。v0.7.11已登记；首次冻结独立全量Review覆盖161/161文件、1241/1241 hunks、257/257 writers、194/194 CWB，产品无新增finding，但治理P1=1/P2=1，当前仅修正文档状态后做增量复核，未取得最终GO。L组旧版release/backup/deploy/refresh/rollback证据不能继承为0711通过；原组11/11真实成功只保留历史唯一窗口，不得重跑。新formal full、发布、真实音频/三上传/结果刷新及最终生产Review均仍待完成；不是生产PASS。
+
+10:20 UTC补充：唯一run已11/11真实成功，CWB-187..190目标组技术证据通过；但独立audio在task创建前409与结果后刷新6个派生contentHtml误写使整体仍NO_GO。保留所有新结果与CURRENT live43；不得回灌旧备份、重跑原group或改0710发布物。窄修候选：复用TextNode安全HTML规范化对比DOM与stored baseline，避免仅实体编码变化进入pagehide journal，同时保留真实format-only/手工/IME编辑；音频完整identity规范化正在独立只读定因。设计和code-only rollback增量通过独立Review后才能实施，不以延长deadline代替边界修复。0710正式1239不重跑；下一个实际代码候选需自身正式验收。
+
+2026-09-05 10:04 UTC最新覆盖：0710最新43备份/官方verify/fresh restore、实际service隔离077回滚→0710 CURRENT43前进、37表及媒体/secret树无损、33公网静态均PASS；CWB-182/183/192=AUTO_PASS。冷2/暖刷新完整三方零多余写及各5个允许OSS只读GET通过，CWB-185=AUTO_PASS。10:02:20Z唯一group点击已消耗，run `10e1664e-32dc-4e67-8573-34b95e8336a0`运行中，只跟踪原任务；音频/三上传/结果刷新/最终生产Review仍未完成。详见0710生产receipt及Checkpoint顶部。下方INACTIVE/刷新NO_GO/点击0均为历史时点，formal1239不得重跑。
 
 日期：2026-09-03
+
+### R10 后置失败窄修设计草案（2026-09-05，实施前独立 Review 中）
+
+1. **确定性证据**：0710目标组11/11真实成功，不再重复；audio default emotion=auto时客户端ownership使用完整UI参数含隐藏emotionScale=4，服务端strict/submission已移除该键，复算client=`c5-ec9ydu-w88o7q`、server=`bo-1w7oguz-c47zlz`，exact published revisions/contract一致，属代码而非配置/Provider错误。结果后refresh的6个text HTML实体编码差异也已有GET/command/DB三方证据，不是30秒读取截止问题。
+2. **无损退出失败版本**：使用已存在exact079/schema43-compatible code fallback，CURRENT live43保留成功的11任务/4素材和新验收Canvas。077/schema42只能隔离恢复验证，绝不用于live43。独立审查新增`post0710-code-rollback.mjs`/`post0710-rollback-preflight.mjs`：原UI审计冻结等待60秒，stop后writer census/quiet/startup候选0；新增stopped SQLite backup保存当时完整DB，37表和媒体/secret树前后逐项不变；仅原子current code pointer切回079，不改unit/环境/数据。失败只恢复0710代码和当时live43，保留新backup，不恢复覆盖旧数据。恢复原生成设置后报告code rollback不等于079修复或验收通过。
+3. **下一版本身份**：v0.7.11本地tag空、remote tag空、GitHub Release not found（10:25 UTC前后核对）；版本化前再次核对身份与未占用状态，不移动0710或更早tag/Release/release目录。新分支保留当前全部未提交证据文档。
+4. **Text修复范围**：`TextNode`的现有safe HTML canonicalization只复用于`CanvasSurface.canvasSnapshotWithLiveEditors`的DOM与stored baseline比较。只编码/安全序列化差异视为无用户变更，不能为此改server authoritative bytes、fingerprint、revision或生成结果字段。真实加粗等format-only编辑、文字输入、pagehide未落库编辑、IME回退仍必须保存/保留。遗留journal不能全局清除；若需处理当前已确认派生journal，必须保持真实用户编辑和原operation证据，不盲删本地存储。
+5. **单节点参数身份一致性（独立复核已纠正server误判）**：server `strictGenerationPreflight`两分支均经过`validateParameterValues`，后者最终按`submittableParameterFields`返回，故不新增server identityParameters或TaskSummary.parameterSchema。四节点effective/raw未绑定key使用各自现有canonical submission函数，与POST/inputKey/server strict一致；完整UI参数含暂隐藏值继续保留。generic已绑定任务的opaque ownership proof不再由当前catalog重算；共享纯函数严格解析冻结GenerationInputKey的primitive参数record与model/config/release等tuple，不以仅key集合匹配当证明。仅当前model精确匹配saved model/capability/config/release/contract且schema存在时，严格校验冻结参数本身确为submission projection，再逐值逐类型比较当前durable参数经同一schema的strict submission。证明一致为valid；冻结proof有效但当前submission变更为changed；冻结证据缺失/非法、catalog延迟/漂移或identity冲突为unknown。changed/unknown都保留原task/intent/计费证据，禁止自动恢复重投、自动retry与旧客户端结果写；unknown不得阻断原taskId GET及既有server projection GET/adopt，其完整身份围栏仍生效。changed不永久禁止用户新生成：明确用户编辑仍由既有user command原子撤销binding，随后按active/unknown billing围栏建立合法新operation。valid只是参数证明，完整结果仍检查prompt/upstream/inputKey/task/ownership。Image保留maxReferenceImages修正后的input schema及独立imageTools ownership；legacy缺ownership任务继续原围栏、无法证明不自动清除。检查workflow bound恢复的直接依赖，不无据扩大Provider或server重构。
+6. **最小定向验证**：m86覆盖生产形状server HTML实体引号/单引号/换行/敏感字符在hydrate→pagehide→reload全程0命令，并保留既有format-only/IME/data保留用例。音频测试使用真实公开Doubao TTS参数合同、own prompt、无输入、emotion auto，断言隐藏emotionScale不进入identity/POST、服务端identity一致、绑定/结果恢复/刷新不会撤销原任务、单Provider POST。扩至直接共享参数helper消费者/conditional参数catalog drift与明确用户参数变化；任何失败只重跑最小受影响spec。
+7. **发布门**：设计Review P0/P1/P2=0后实施；候选冻结后独立逐文件/hunk/writer/模型Provider分支复核，无变化的0710证据按分母明确复用，遗漏0。新候选只有一次最终formal full，不能重复0710full求安心；新tag fresh build/最新backup/恢复/部署/rollback-forward仍按规则，不复用旧备份冒充当前数据。
+8. **生产门**：修复版本重新冷/暖零多余写；已成功原run不再点。验证已有11结果后刷新、在Goal专用新版本标记Canvas继续音频及三类自有上传/保存/刷新/下游输入，确认原音频拒绝无task/计费风险后才允许新明确operation；全部技术项和最终独立生产Review通过才完成Goal，USER_RECHECK独立。
+
+本节是设计草案，不是实现或已执行回滚；当前产品修改0、生产仍0710，原run不重试。
 
 配套验收矩阵：`spec/UNBOUNDRY_CANVAS_DOCUMENT_WRITE_BOUNDARY_ACCEPTANCE_MATRIX_2026-09-03.md`
 
 ## 0. 一句话结论
 
 ### 最新执行证据（2026-09-05）
+
+最新优先覆盖：0710已完成PR159/双CI/tag/Release和exact-tag fresh build，903源码/6129库存文件/33静态验证通过，已独占安装INACTIVE但未切换服务；CWB-181发布链已PASS，182/183/192仍PENDING。新previous42恢复与625镜像核验通过。停服legacy复查和unknown配置fail-closed经2文件增量独立复核P0/P1/P2=0；latest43备份和逐行数据保留controller仍待操作审查/执行。见新0710生产准备receipt。生产079及刷新NO_GO/点击0未变，不重跑formal1239。
 
 正式full后7/7文件文档增量已获同一独立Reviewer P0/P1/P2=0/DOCUMENT_GO，产品/测试变化0；维护方案revision4也获设计GO（实际执行仍须精确命令、最新freeze与备份门）。以下待审文字是本回填之前的历史时点。进入0710 GitHub发布流程，不重复业务full。
 

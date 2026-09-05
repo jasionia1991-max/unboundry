@@ -60,7 +60,7 @@ import { discardImageAsset, uploadImageAsset } from "./imageAsset";
 import { withImageReferenceInputMode } from "./imageReferenceMode";
 import type { ProbeNodeType } from "./ProbeNode";
 import { hasInteractionProbeNodes } from "./probeFixtures";
-import { plainTextHtml } from "./TextNode";
+import { storedRichTextValue } from "./TextNode";
 import type { CuttableEdge } from "./canvasTypes";
 import { createCanvasGraphCommandPort } from "./canvasPorts";
 import {
@@ -3119,9 +3119,11 @@ export function CanvasSurface({
       const bodyChanged = textContent !== undefined && !(
         textContent.content === storedText &&
         (textContent.contentHtml === undefined ||
-          textContent.contentHtml === node.data.contentHtml ||
-          (node.data.contentHtml === undefined &&
-            textContent.contentHtml === plainTextHtml(storedText)))
+          // Compare with the same safe DOM serialization used by TextNode.
+          // Entity normalization is display-only; retain authoritative bytes
+          // unless the user actually changed the text or its formatting.
+          textContent.contentHtml ===
+            storedRichTextValue(storedText, node.data.contentHtml).html)
       );
       if (
         (title === undefined || title === node.data.title) &&

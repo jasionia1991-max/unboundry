@@ -1,0 +1,21 @@
+{
+  "status": "CODE_079_CURRENT_LIVE43_ROLLBACK_PASS",
+  "observedAt": "2026-09-05T11:00:30.079Z",
+  "reason": "0710 post-result refresh and standalone audio contract production failures; does not claim 079 fixes these defects",
+  "from": "/opt/unboundry/releases/v0.7.10-canvas-read-deadline-20260905",
+  "current": "/opt/unboundry/releases/v0.7.9-canvas-write-boundary-20260905",
+  "runtime": { "version": "0.7.9", "schema": 43, "mainPid": 489226, "node": "22.23.2", "readyRequestId": "f72dd113-ccc8-4790-b1cc-08c83e09a420" },
+  "reviewedControllerSha256": "b836fcc702fc39505818e73be56adaf213029d2387f719cf82dbcb255db6ad98",
+  "reviewedPreflightSha256": "61673d1dca8f5a3e075200bd208ea2222ae8dbe0262599a5568dc17ac577240f",
+  "inventoryVerification": { "v0710": { "files": 6129, "exitStatus": 0 }, "v079": { "files": 6126, "exitStatus": 0 }, "protectedFilesExcludedBeforeChecking": true },
+  "frozenBaselineSha256": "40bc5e7a596ca1da159e7bcb610815b27385e57b195f0abdfd2275c73c8225ce",
+  "freeze": { "updatedAt": "2026-09-05T10:58:24.480Z", "globalEnabled": true, "emergencyStop": true, "runningTaskPolicy": "wait", "minimumSettledSeconds": 60 },
+  "execution": { "session": 19803, "exitStatus": 0, "originalUnitAndEnvironmentPreserved": true, "replacedLiveDatabase": false, "changedOnlyCodePointer": true },
+  "backup": { "path": "/var/lib/unboundry-v0710-maintenance-20260905/evidence/post0710-before-code-rollback.sqlite", "bytes": 37064704, "sha256": "ca8f16e5ba8376b2dfdc81ef0ae71af48865531741663ff148831b4213b25bc4", "schema": 43, "integrityCheck": "ok", "source": "new stopped current database including successful group and acceptance Canvas", "restoredOverLive": false },
+  "preservation": { "status": "EXACT_ROW_PRESERVATION_PASS", "tables": 37, "removed": 0, "added": 0, "modified": 0, "fileTreeChanges": 0, "allowedExceptions": 0, "beforeSha256": "897f4682fb01e59e3a93ef4664d94b95dbe33420e6b2b361f8740ec4e8f52172", "afterSha256": "3b577a8ff7a21752d286145f0cb5c5bfc8185ba21f357cbbc4c43b4fd4d9aebf" },
+  "restoredSafety": { "updatedAt": "2026-09-05T11:00:30.079Z", "globalEnabled": true, "emergencyStop": false, "runningTaskPolicy": "wait", "source": "ordinary Chrome admin UI followed by read-only database verification" },
+  "targetCanvas": { "id": "adcb89a5-c1f4-47e4-bbbb-28fff8d81583", "revision": 95, "inputGraphRevision": 58, "successfulGroupReexecuted": false },
+  "evidenceRoot": "/var/lib/unboundry-v0710-maintenance-20260905/evidence",
+  "remoteReceipts": ["post0710-rollback-complete.json", "post0710-rollback-database-backup.json", "post0710-rollback-frozen-baseline.json", "post0710-rollback-before-snapshot.json", "post0710-rollback-after-snapshot.json"],
+  "remaining": ["next patch implementation and verification", "new immutable release and deployment", "refresh zero writes with preserved successful results", "real audio success", "three own uploads and downstream validation", "final independent production review"]
+}

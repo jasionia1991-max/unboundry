@@ -2123,8 +2123,8 @@ process.exit(0);
         })}`,
       );
     }
-    if (discovery.tests !== 1239) {
-      fail(`the frozen 1239-test inventory changed to ${discovery.tests}`);
+    if (discovery.tests !== 1243) {
+      fail(`the frozen 1243-test inventory changed to ${discovery.tests}`);
     }
     const idsByFile = {};
     const { entries } = collectReportEntries(reportFile, sourceRoot);
@@ -3741,7 +3741,9 @@ function selectedSpecsRequireBrowser(specs) {
     join(repositoryRoot, "tests/safe-test-manifest.json"),
     "utf8",
   ));
-  const browserModes = ["dev", "hybrid", "preview"];
+  // Self-managed server specs can also use page/context (auth, templates,
+  // and the actual-API generation flow). They need the same guarded browser.
+  const browserModes = ["dev", "hybrid", "preview", "self"];
   return browserModes.some((mode) =>
     Array.isArray(manifest[mode]) &&
     manifest[mode].some((spec) => specs.includes(spec))

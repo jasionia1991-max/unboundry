@@ -1,6 +1,105 @@
 # Unboundry Canvas Document Write Boundary 实施 Checkpoint
 
-状态：`V0_7_9_DEPLOYED_SCHEMA43 / R9_PASS / R10_REFRESH_NO_GO / REAL_CLICK_0_OF_1 / RELEASE_AND_REAL_PROVIDER_AUTHORIZED`
+## v0.7.11 正式全测1243通过，发布前文档增量6/6复核GO（2026-09-05 14:32 UTC）
+
+- session95805：127 specs、1243/1243 PASS，exit0，failed/skipped/retries/blocked/reportErrors全部0；Node22.23.1/npm10.9.8，14:04:22–14:32:15Z。source/snapshot均为deb4575d5dd84a276db0a3ce6b292927a4890080e1d615c8ff38de9f0b643b7c，snapshot/4173 unchanged，结束后161冻结文件漂移0。完整日志与终态已落盘，摘要/tmp/unboundry-v0711-candidate.JEYZZf/formal-full-final.json；日志SHA245472e0586c78b6a44fee678ee5229d22dc1145a81108f6f73b254f84288008。
+- 原session48203最后观测13:28:50Z；原任务随后遇到model-capacity compaction错误。现无原进程/session或残留summary，不能标PASS，也不认定产品失败。冻结161文件未变，在记录该不可恢复基础设施/证据中断后只补跑上述一次，累计invocations2、可确认完整终态1；原RUNNING记录作为历史保留。禁止因下面文档/运维修改重跑已成功full或255定向。
+- 独立代码全审仍为161文件/1241hunks/257writers/194CWB/10模型/12identities/6adapters、P0/P1/P2=0。当前只同步full结果与明确当前状态，post-full文档增量6/6 Review已GO，155文件不变、P0/P1/P2=0，仅机械回填结论后commit/push/PR/CI/merge/tag/Release。
+- 14:17Z线上只读核验079/schema43/PID489226/NRestarts0；active task/run/publication/current unknown均0、startup写候选0。目标revision95/input58、task1075/attempt1086/run8/asset983/receipt17不变，原11/11结果保留且不得重跑。容量helper的原P1/P2已关闭为条件设计GO；新mirror/maintenance脚本还在有界复核，均未执行。新0711发布、备份恢复/回滚部署、刷新、真实音频/三上传和最终生产复核仍待完成。
+
+以下区块保留此前时点，不再代表全测正在运行或当前阻塞。
+
+## v0.7.11 冻结终审GO，进入唯一正式全测（2026-09-05）
+
+- 原Reviewer已完成5/5文档增量复核，其余156文件hash不变；首轮治理P1/P2全部CLOSED，最终P0=0/P1=0/P2=0/GO。完整分母161/161文件、1241/1241 hunks（unified=3）、257/257 writers、194/194 CWB、10模型/12 identities/6 adapters、遗漏0、保护文件访问0。doc-v2 entriesSha256 d3a3d4279c14929aebff3576191e654898f6bdec239c02f5036d4b48d5a271de；HEAD增量25文件/173hunks。
+- Reviewer明确允许仅回填本次审查结论后执行唯一mandatory formal full。本轮只做该结论回填，产品/测试/运行时不变。下一命令 /Users/mymy/.hermes/node/bin/node scripts/run-safe-tests.mjs full，127specs/1243库存；结果尚待取得，不能提前标全测或R9通过，不重跑255项定向求安心。
+- 当前审查与运行证据保存在/tmp/unboundry-v0711-candidate.JEYZZf；正式运行期间候选不改动。0711生产发布/备份恢复/回退/刷新/音频/三上传与最终生产Review仍未执行，原11成功组不重跑。下面首次NO_GO是已关闭的历史过程，原证据保留。
+
+## v0.7.11 首次冻结Review返回，文档增量修正（2026-09-05）
+
+- 上个交互只是状态汇报，NO_PROGRESS；本轮独立Review已返回：161/161文件、1241/1241 hunks（unified=3）、257/257 writers、194/194 CWB、10模型/12 identities/6 adapters，遗漏0，保护文件访问0。134个未变文件明确复用，27个变化文件逐项复核；产品无新增finding，但治理P1=1/P2=1，原结论NO_GO，未启动formal full。
+- P1是Matrix错误继承旧候选/0710生产AUTO_PASS；本轮将0711候选171..176、release/backup/deploy/refresh/rollback门置PENDING，R9重置当前1243库存待验。原组186..190明确HISTORICAL_AUTO_PASS，只证明既有唯一执行窗口，不得重跑。P2是Plan/Matrix m38仍待验，已更正最终19/19。175按当前Goal要求P0/P1/P2全0，178明确本Goal已授权最小未占用普通patch；原历史结论不再冒充当前。
+- 产品/测试/运行时版本未再改变，不重复已通过255项业务测试；当前只重新冻结这5份文档并交原Reviewer增量复核。新formal full、发布及完整生产技术门仍未执行。外部只读备份准备见/tmp/unboundry-v0711-candidate.JEYZZf/release-gates.md：629素材、95/58原11结果保留，磁盘顺序峰值需独立操作审查和停服前再核，不能据估算停服。
+
+## v0.7.11 版本门通过，进入冻结候选独立Review（2026-09-05）
+
+- 本轮PROGRESS：版本登记及反例测试完成；safe session22103原始60/61保留，其中m81 42/42 PASS（35.4s），仅m38的AGENTS生产标记失败。修正文档后仅复验m38，session49793 exit0 19/19（4.1s），failed/skipped/retries/blocked/reportErrors0，source/snapshot 87fefd52eff2c89a4ce5efd43d3080905a84ede2023f59edd99d48c9c11381dd，906文件、127specs/1243库存、snapshot及4173不变。没有重跑已通过m81或89/91/14业务测试。
+- 有效定向覆盖255项（89+32+59+14+42+19），不是formal full；writer257/0violations，hash90b850d28d1f82b05725c2738b889bd56d86b985c14043cd134d21369fd1ee06。冻结清单准备于/tmp/unboundry-v0711-candidate.JEYZZf，包含原Goal基线至当前每个文件/hunk及当前HEAD增量，禁止访问两份受保护JSON。
+- 后续只读独立全量Review，候选期间不修改工作树；通过后唯一新formal full，再执行完整不可变发布及最新数据备份/恢复/回退/上线/真实音频/三上传/刷新/最终生产Review。生产079 active，原11成功组不重跑；Goal active，未达到完成条件。
+
+## v0.7.11 版本登记（2026-09-05 12:40 UTC）
+
+- 上一个交互为状态答复，NO_PROGRESS；本轮已推进 package/lock、exact final 运行时版本和反例测试。当前分支 codex/v0.7.11-canonical-generation-boundaries，HEAD 1443d69a40db666b5b932f4769e53e46b9ea4173，工作树保留全部本地修复及回执。
+- v0.7.8/9/10 已占用；0711 本地tag/远端tag均不存在，GitHub Release 返回 release not found。新增0711明确final/拒绝bridge、0712及版本后缀拒绝测试；仅跑直接相关safe m81/m38，已有89/91/14业务证据不为版本登记重复运行。
+- 用户再次明确允许已有素材只读加载；刷新仍要求新增生成、上传、Canvas写入为0。生产只读确认仍079 active；无新生产写入，原11/11成功组唯一点击已消费，禁止重跑。候选冻结/独立全量Review、新正式full及剩余完整生产门尚待完成。
+
+## 当前本地修复断点：Text 89/89、参数与源输入32/32、四节点恢复59/59、TTS实际HTTP14/14；候选Review/正式全测与生产门待完成
+
+- TTS browser→actual API→loopback fake Provider→真实本地publication/projection→reload已PASS，safe session37965 exit0，m104 14/14、failed/skipped/retries/blocked/reportErrors0，17.8s；127specs/1243库存中执行1spec，906文件source/snapshot 2ea0dc91d64b7224665e0426bd22afedfc745db53826bd87b29609905c46beb3，snapshot/4173不变。精确默认mp3/emotion auto/speaker/speech_rate payload无隐藏UI键，一次task/ProviderPOST/attempt1，DB provider_task_id/result_asset_id对应Canvas asset/groupRunSuccessTaskId；refresh节点/revision不变/API写0/4090。
+- 新TTS测试的79282类型错误0-run、68543无project元数据13/14、90558 seed缺observed pair13/14、17944 fake缺task_id导致recovering及后续上下文干扰9/14均保留于回执。17944两次api.lk888.test意外fetch被guard拦截，真实外网0；同一Reviewer指出mock async合同错误，主代理以真实cleanMediaRequest核对并修正，不把providerProtocol误加wire payload。正确的task_id→skills404→media-status→audio链复验14/14后全部关闭。
+- self模式已有浏览器用例，runner仅将self加入既有受控browser复制条件；网络/文件隔离未放宽。writer257/0violations，sourceTreeHash e47b1492bc6cc0b4d23c63342d1ebde674d77afa67131d6f2c9a9864727f412a。下一动作：未占用版本核验与候选冻结、独立全量Review、新正式full、不可变发布及完整生产门；真实音频/三上传/最终生产Review仍未通过。以下“TTS待验”为本轮早期时点。
+
+- 上一Goal turn仅状态答复，NO_PROGRESS；本轮实际修复并完成隔离复验，PROGRESS。先前m41 session64030为58/59（源码b3006b46…d028），保留真实P1：catalog延迟时上游已编辑，projection conflict旧Text结果仍覆盖当前body。未放宽此断言。
+- 新增共享catalog-independent source/edge/order/ownPrompt变化围栏，四节点bound恢复接入；不重算opaque ownership，不自动清task/intent/server binding。Text现代结果仅显示已读取的权威Canvas，conflict/pending不得从task.resultText写显示。参数未知仍允许原任务GET及既有服务端投影读取。
+- safe session11332 terminal exit0：m102 32/32、m41 59/59，合计91/91，failed/skipped/retries/blocked/reportErrors0，Node22.23.1/npm10.9.8，127specs/1242库存中执行2spec；m41动态42160/49169。906文件source/snapshot SHA均8749ab2c90d485cfc60f5c1340f8cd2c6e800eaac5ff1f0a18bb5e9ab6e22c46，snapshot及4173不变，无真实Provider/OSS。完整命令及历次失败见0711本地回执sourceFenceVerification。
+- writer 257条/0violations，sourceTreeHash 937647558c9cf5f42987090ac8b9a654c3f6b948b13365d46f8df03ad90334a0。不是最终Review/formal/生产PASS。下一步真实公开TTS schema的browser→actual API→fake Provider创建/结果/刷新，随后完整冻结Review、formal、发布和生产全门；原11成功组不重跑。以下56/59为保留的早期验证记录。
+
+- 新分支`codex/v0.7.11-canonical-generation-boundaries`，HEAD仍1443d69；0711本地/远端tag为空、Release not found，package尚未版本化。原有文档变更保留。
+- 独立Reviewer确认Text窄修设计GO。已复用`storedRichTextValue`规范化stored baseline进行比较，不改server bytes/清journal；新增modern command-v1与legacy各一条生产编码形状hydrate→pagehide→reload零写用例，保留格式编辑和IME路径。
+- safe m86 session81450因新增测试类型错误在产品用例前退出，已修；96286因一次managed-timeout负向门kill EPERM退出，无匹配进程残留，不改安全门。相同源码9747 terminal exit0，89/89、failed/skipped/retries/blocked/reportErrors0，127specs发现库存1241但仅执行1spec；临时数据/dynamic55674/59324，source/snapshot=`8c1dd7d82159989455514669b201902b3b7e28d8a3a27ba7ae3f1f3627220cf3`，4173不变。不是formal full，不重跑已通过专项求安心。
+- writer manifest257条/0violations（新增1条m86 commands route test double，纠正此前“事件producer”表述，无新产品writer）。当前sourceTreeHash `aefb8f5e5b02e60554202df126dfa21d56bf4fe102ba8ba617d74d2a0951b64a`；最终冻结Review未运行。
+- 同一Reviewer已撤回server误判并确认Plan R10 item5 DOCUMENT_GO/P0/P1/P2=0。已实现共享boundGenerationParameterProof及四节点canonical unbound/opaque bound初版；不新增server字段、不改变Provider协议、不清旧浏览器journal。
+- safe m102 session64943 terminal exit0：32/32，失败/跳过/重试/阻断/报告错误0；906文件源码SHA `e31396d2c6e9b447eb3c3a6fa175a88da7551e2bc52c9c7427d639328a2926e0`。证明共享参数三态规则，不证明完整TTS创建链。
+- safe m41 session17332 terminal exit1：56/59，3失败、其余异常计数0，临时端口56485/44850，源码SHA `bb5e2e2a8b52b32ebe6e9139e8cbe8de4eacf9de4c5f3618bcf1042ef511994f`；snapshot及4173不变。失败：1912初始Canvas读取ECONNRESET；2840 Image取消→改prompt→Generate超时（恢复了旧generating视图）；6978上游Text编辑后本地intent保留而旧断言期望清除。前两条trace/context已保留`/tmp/unboundry-v0711-m41-failure.LaPKqb`；同一Reviewer只读诊断后两项语义问题，不是最终Review。
+- 本轮由状态答复no progress转为实施与验证PROGRESS。下一动作：关闭上述失败（只最小复验），补catalog就绪后的恢复依赖，完成真实TTS合同的浏览器→实际API→fake Provider创建/结果/刷新用例。随后候选冻结Review、唯一formal、不可变发布和生产门，完整Goal不缩减。生产未改、已成功组不重跑。
+
+## 11:00 UTC 当前断点：已无损回退代码，进入下一补丁
+
+- 上一Goal turn仅汇报状态，判定no progress；本turn已实际完成已审回滚，不重复业务测试。远端v2数据核对helpers精确SHA匹配，0710/079逐文件inventory分别6129/6126项exit0。
+- 普通Chrome管理员10:58:24.480Z临时冻结新生成，等待60秒；controller session19803 terminal exit0，停服writer/quiet门通过，新增当前schema43数据库备份（37064704 bytes，SHA `ca8f16e5ba8376b2dfdc81ef0ae71af48865531741663ff148831b4213b25bc4`），只切code pointer至079，不恢复覆盖DB。37表added/removed/modified=0，媒体/secret文件树变化0，原unit/环境保留。
+- 当前生产079/schema43/PID489226，ready request `f72dd113-ccc8-4790-b1cc-08c83e09a420`；11:00:30.079Z经原UI恢复global1/emergency0/wait并只读核对，目标95/input58不变，成功组不重跑。079是schema43兼容code fallback，不是缺陷已解决或生产验收通过。
+- 权威新增回执 `spec/V0_7_10_POST_FAILURE_CODE_ROLLBACK_RECEIPT_2026-09-05.json`。下一动作是0711文本规范化比较及四类单节点canonical参数identity窄修，保持已绑定任务/旧journal，独立设计复核后实施；音频/三上传/结果刷新/最终Review尚未完成。
+
+下方10:20及更早段落为保留的历史时点，不代表当前运行版本。
+
+## 10:20 UTC 当前断点：真实组成功，音频与结果后刷新 NO_GO
+
+- run `10e1664e-32dc-4e67-8573-34b95e8336a0` 10:10:49.670Z成功：11/11 nodes/task/admission/providerAttempt，全部attempt1/completed/projection applied；7text/3image/1video、4媒体publication、revision84→95/input58不变。网络955 events/321 request events/317 IDs/4 redirects：GET320/POST1、200315/2021/2061、失败0/Canvas写0/4090/truncated0。终态UI四图complete/video4/status0/alert0。唯一点击已消费，禁止重跑。
+- 自有验收Canvas `4349f70d-34f9-4bef-869c-9d40965e030e` 标记`v0.7.10 CWB 生产技术验收 2026-09-05`；音频node `audio-0c448916-c3e0-4556-86bb-3d95baa48e7b` Doubao TTS2.0单击，preflight200，submit `49684a29-d377-4056-bd17-fc4cc62749d4` 409/WORKFLOW_BINDING_MISMATCH。精确idempotency `637d34ad-cd39-4bd0-ac9d-e10b12d28f35`；DB该Canvas tasks0，未进入Provider、未重试。独立Reviewer只读检查音频identity规范化直接链，尚未最终生产Review。
+- 10:13:59.812Z结果后暖刷新NO_GO：CanvasGET `69635.666` / `a4135952-865e-470c-917c-a3770e131630` 71.84ms成功，后续`69635.673` commands不是读取超时，而是pagehide journal重放6个text `data.contentHtml`；6003ms abort、hydrate failed。服务器HTML含`&quot;`/`&#39;`，TextNode DOM sanitize序列化为原字符，CanvasSurface:3090–3146原始HTML比较将显示差异认作用户编辑；没有实际用户正文编辑。必须修事件/比较边界，不得继续加大读取deadline掩盖。
+- 结果刷新前后DB95/input58/nodesSHA `5afe24fdc6654a41ba6e40122d3648caaecf9c220974dd7ec16b0ea4e7788c6f`完全不变；tasks1075/admissions995/attempt1086/run8/media983/publication574/receipt17不变。10:20只读preflight确认active/unknown/unsettled/run/publication/deletion/unadopted-upload/projection candidates均0。尚未操作生产回滚、安全设置或修改已发布产品。
+- 完整汇总`/tmp/unboundry-v079-runtime-drill.YqH6MK/v0710-real-production-outcomes.json`，原网络在CUA captures，远端`group-run-2026-09-05T10-11-52-472Z.json`与`result-refresh-before/after-database.json`/`result-refresh-structured-journal.json`。任务结果、音频拒绝、浏览器journal和失败不清理。
+- 下一安全动作：取得音频明确cause，冻结R10窄修设计及schema43无损code-only回滚操作增量，独立设计GO后执行回滚/修复；下一未占用patch严格重走候选/定向/Review/唯一formalfull/发布/生产门。079是已审schema43-compatible fallback，不声称其解决刷新；077不能打开43也不能回灌旧42。若code rollback无法保持全部新数据则不执行破坏性回滚。音频/三上传/结果刷新/最终生产Review仍未通过，Goal active。
+
+以下10:04运行中状态是历史；实际整组已成功，整体生产验收仍NO_GO。
+
+## 10:04 UTC 当前执行断点：0710上线、刷新通过、唯一整组执行中
+
+- 当前生产`/opt/unboundry/releases/v0.7.10-canvas-read-deadline-20260905`，schema43/PID468648/NRestarts0。已发布产品未变，formal1239/1239与158文件独立Review有效，不重跑。
+- attempt2操作增量3/3文件独立GO/P0/P1/P2=0；UI audit346于09:37:58.941Z冻结，controller唯一执行exit0，实际079停止→最新43备份→077隔离42实际service回滚→0710 CURRENT43前进。原unit/dropins/env哈希恢复，临时99配置移除并保留证据；09:42:22.796Z恢复global1/emergency0/wait。
+- 最新locked-exact43 backupId=`5178b05f-7d1b-4eee-94a4-853d6ea09b81`，logicalSHA=`dc6c325bc59c3961b77acf298b27cdaef5ed65f94cb858ebe653daf629788ba4`，官方verify/fresh restore成功；355媒体/3secret/625OSS，原97个非阻断历史问题逐条不变。37表removed/added/modified均0，media/secret树变化0，无DB恢复覆盖。33/33本地与公网静态匹配。证据根`/var/lib/unboundry-v0710-maintenance-20260905/evidence/`，核心`attempt2-latest43-complete.json`、`attempt2-live-maintenance-complete.json`、`public-static0710.json`。
+- 冷1早期网络buffer截断明确NOT_PASS并保留；修复采集后同版本冷2（09:46:40.958–09:48:34.694Z，113736ms）及暖（09:50:36.055–09:51:10.393Z，34338ms）均有完整network+structured journal+DB证据，settle后30秒，4图complete/视频ready4，无alert/误报。每次5个允许的OSS GET/Range，Canvas写/409/workflow/task/admission/attempt变化均0，revision84/input58保持。冷2初期DOM探针不支持performance导致的25次采集错误明确保留；移除该探针后同次刷新完成，不冒充应用错误。暖缓存启用且有revalidation，不声称disk-cache命中。全账本`/tmp/unboundry-v079-runtime-drill.YqH6MK/refresh0710-browser-ledger.json`。
+- **唯一点击已消耗**：10:02:20.299Z普通Chrome目标组点击一次，浏览器`69635.332` POST `/api/workflow-runs`返回202；run=`10e1664e-32dc-4e67-8573-34b95e8336a0`（创建10:02:22.054Z），11执行节点。10:04:07样本首文字task=`040437fb-d200-47a0-8375-09eca1c2e552`/attempt1101 completed且projection applied；首图task=`1b00cf84-8b0f-4362-9d11-e52cfee80332`/attempt1102 response-received/Provider127328822正在运行。仅跟踪原run/task，绝不因慢/未知再次提交。Canvas85/input58为首个合法服务端结果投影，不是刷新保存。
+- 下一动作：持续核对原11节点run、每节点单attempt及自动投影/呼吸灯终态，再做结果后刷新。随后独立版本标记验收Canvas完成真实音频、三类自有fixture上传和下游输入，最后冻结生产证据交原独立Reviewer全量复核。Goal仍active，不能提前完成。
+
+以下状态与断点均为此前历史时点，不再表示当前生产版本或允许再次点击。
+
+> **09:27 UTC 最新事实**：第一次维护已实际执行：UI audit344冻结、停079、官方backup在产出任何package前报`BACKUP_MEDIA_WARNING_NOT_ALLOWED`；未进入old077或0710。fallback已恢复079/current live43，原unit配置恢复，PID463401/NRestarts0、公网ready43、任务1064/attempt1075/run7/media979/receipt2及目标84/58不变。控制器Type=simple启动后立即查/proc遇到exec过渡期而误报identity，稍后已实证exact079 cwd/Node22 exe。UI audit345于09:27:33.900Z恢复global1/emergency0/wait。未恢复覆盖任何DB快照，真实生成/上传0；最新43备份和实际回退前进整体仍未通过。根因是维护caller误传warning-only可选参数，97个历史nonblocking issue含56个severity error；下一attempt2只使用官方default backupComplete硬门并逐条固定这97项，不清理历史。新增独占attempt2 helper/evidence及5秒exec过渡观察进入有界独立复核，原helper/失败证据全部保留。下方“未停服”仅为此次维护前历史时点，formal1239不重复。
+
+状态：`V0_7_10_DEPLOYED_SCHEMA43 / REAL_GROUP_11_OF_11_SUCCESS / AUDIO_CONTRACT_409_AND_POST_RESULT_REFRESH_NO_GO / REAL_CLICK_1_OF_1`
+
+## 最新执行断点：0710发布与未激活安装完成（2026-09-05）
+
+- 后续准备实证：新case根已从初始ubuntu0700加固为root:ubuntu0710，evidence root:root0700，工作子目录仍ubuntu0700；没有改旧数据/keys。backup controller首次审查P1目录替换/P2容量旧常数已修复，独立rev2覆盖2/2文件、P0/P1/P2=0/GO。目录dev/ino+O_NOFOLLOW稳定FD绑定核验实际通过，UID1000/GID1001、6个inode匹配，根/evidence不可写，live/key挂载0、文件创建0。08:37动态空间预算含1GiB余量需8,771,689,052B，free9,359,241,216B；执行准备时再次CAPACITY_PASS，freeze后仍须重验。五个已审helper已独占安装root0600；service controller已绑定已审backup SHA并进入最后3文件独立复核，未执行。当前079/PID395702、任务1064/attempt1075/run7未变，quiet0。新before-ui-freeze基线SHA为8ed4c77a05389f0aef222f91c84ff4d127149adae533b65a4fca83cfc8a73b00。普通Chrome管理员页已确认总开关开启/紧停关闭/等待完成；未点击任何安全设置或生成按钮。
+
+- 本turn有实际进展；前一个向用户汇报状态的交互不算实施进展。当前HEAD=`1443d69a40db666b5b932f4769e53e46b9ea4173`，PR159已merge=`364f049fceeabec58df85d39bcade82794b94d37`，branch/main CI33953248012/33953350904均success；tag object=`9166295f559db3f8da33d8f9fde4254a7dc5b5e6`精确peel merge，Release已发布，禁止重建/移动。
+- 新exact-tag build已安装INACTIVE到`/opt/unboundry/releases/v0.7.10-canvas-read-deadline-20260905`；Node22.23.2/npm10.9.8，903源码零漂移，inventory6129文件SHA=`113a159f33e6b0eb6ec67498028af9a2a653f7647c81a02ebbbdd6a94c9483c5`，安装后全部校验通过，33静态及12内部symlink有效。当前release079/PID395702/NRestarts0未变，未停服或写生产业务库。
+- 新维护case=`/var/lib/unboundry-v0710-maintenance-20260905`，0700/UID1000/GID1001。previous42已官方verify/fresh restore，backupId=`0d07c396-7313-476b-9001-d50cafcecd68`，logical=`9dbd83d52726baa9796595185ce7f889090bc20268ffafa579ada625dc443864`，receipt SHA=`a7fd8a025340c71a59b0167834737012b9a1fdb253649ab627c28589cefedc59`；生产data未挂载、网络隔离。625/625最新ready OSS元数据及保留字节匹配，额外GET0/上传0，仍须stop后复验。
+- 操作review原P1 stopped-writer legacy门和P2 unknown mode问题已在新`maintenance-preflight.mjs`补齐；同一Reviewer复核2/2文件，P0/P1/P2=0/DESIGN_GO。08:04:30Z active只读样本quiet0、legacy潜在绑定0、业务计数不变；不冒充STOPPED_PRESTART_GATE_PASS。新的latest43-backup-controller与严格逐表主键/行hash comparator已编写、语法检查通过，正在有界独立复核；service切换controller尚未准备完毕，不进入维护窗口。
+- 新回执：`spec/V0_7_10_PRODUCTION_RECEIPT_2026-09-05.json`。操作脚本与原始证据在`/tmp/unboundry-v079-runtime-drill.YqH6MK`。本地新增仅操作脚本/文档，不改变已发布产品或测试，不重跑formal full。
+- **下一动作**：关闭backup/comparator review，冻结精确维护controller；通过最新freeze/停服/locked-exact43 backup→verify→fresh restore后执行真正service077隔离42回滚→0710 CURRENT43前进及无损比对。完整cold/warm零多余写、唯一目标组、真实音频/三上传/下游/结果刷新和最终生产复核仍全部必须完成。Goal active，不把构建安装当上线或真实验收通过。
+
+以下“进入commit/PR/尚未发布”是此前时点；无需重复已完成步骤。
 
 ## 最新完成：v0.7.10 冻结候选正式全测（2026-09-05）
 

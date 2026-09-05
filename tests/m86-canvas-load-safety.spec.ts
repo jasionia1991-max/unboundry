@@ -10,12 +10,12 @@ const SAVE_SESSION_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const SAVE_SESSION_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const SAVE_ATTEMPT_A = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 
-test.beforeEach(async ({ context }) => {
-  await context.addInitScript(() => {
+test.beforeEach(async ({ context }, testInfo) => {
+  await context.addInitScript((legacyWrites) => {
     (window as Window & {
       __UNBOUNDRY_M86_LEGACY_CANVAS_PUTS__?: boolean;
-    }).__UNBOUNDRY_M86_LEGACY_CANVAS_PUTS__ = true;
-  });
+    }).__UNBOUNDRY_M86_LEGACY_CANVAS_PUTS__ = legacyWrites;
+  }, !testInfo.tags.includes("@command-v1"));
 });
 
 const emptyFence: {
@@ -2216,6 +2216,65 @@ test("a delayed normal 2xx cannot roll back a newer pagehide 2xx", async ({
   expect(serverDocument.sessionHighWaterSequence).toBe(3);
   expect(generationPosts()).toBe(0);
 });
+
+for (const modernCommands of [false, true]) {
+  test(`server text HTML normalization stays read-only through pagehide and reload (${modernCommands ? "commands" : "legacy"})`, {
+    tag: modernCommands ? "@command-v1" : "@legacy-put",
+  }, async ({ page }) => {
+    await page.clock.install();
+    const content = '他说："保留原文"，it\'s & <安全>。\n第二行';
+    const contentHtml = '<p>他说：&quot;保留原文&quot;，it&#39;s &amp; &lt;安全&gt;。<br>第二行</p>';
+    const loaded = textDocumentWithData("Server result", 95, {
+      content,
+      contentHtml,
+    });
+    loaded.graphRevision = 58;
+    const originalBytes = JSON.stringify(loaded);
+    const writes: string[] = [];
+    let gets = 0;
+    const generationPosts = generationPostCount(page);
+    await page.route("**/api/canvas/node.text.empty", async (route) => {
+      if (route.request().method() === "GET") {
+        gets += 1;
+        await route.fulfill({ body: originalBytes, contentType: "application/json" });
+      } else {
+        writes.push(`legacy:${route.request().method()}`);
+        await route.fulfill({ status: 500, body: "Unexpected derived write" });
+      }
+    });
+    await page.route("**/api/canvases/node.text.empty/commands", async (route) => {
+      writes.push(`command:${route.request().method()}`);
+      await route.fulfill({ status: 500, body: "Unexpected derived command" });
+    });
+
+    await page.goto("/__fixture/node.text.empty");
+    await expect(page.getByTestId("canvas-world")).toHaveAttribute("data-persistence-state", "ready");
+    const editor = page.getByTestId("text-node-editor");
+    await expect.poll(() => editor.evaluate((element) => (element as HTMLElement).innerText)).toBe(content);
+    // Reproduce server-escaped quotes being reserialized as literal quotes by
+    // the safe editor, without input, blur, or a formatting action from a user.
+    await expect(editor).toHaveAttribute("data-committed-rich-html", '<p>他说："保留原文"，it\'s &amp; &lt;安全&gt;。<br>第二行</p>');
+    await page.clock.fastForward(30_000);
+    await flushBrowserTasks(page);
+    expect(writes).toEqual([]);
+    await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true })));
+    await flushBrowserTasks(page);
+    expect(writes).toEqual([]);
+
+    const getsBeforeReload = gets;
+    await page.reload();
+    await expect(page.getByTestId("canvas-world")).toHaveAttribute("data-persistence-state", "ready");
+    await expect.poll(() => gets).toBeGreaterThan(getsBeforeReload);
+    await expect.poll(() => editor.evaluate((element) => (element as HTMLElement).innerText)).toBe(content);
+    await page.clock.fastForward(30_000);
+    await flushBrowserTasks(page);
+    expect(writes).toEqual([]);
+    expect(generationPosts()).toBe(0);
+    expect(JSON.stringify(loaded)).toBe(originalBytes);
+    expect(loaded.revision).toBe(95);
+    expect(loaded.graphRevision).toBe(58);
+  });
+}
 
 test("pagehide keeps a format-only Text body change while ignoring derived plain HTML", async ({
   page,

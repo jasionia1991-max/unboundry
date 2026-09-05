@@ -1,3 +1,4 @@
+import { boundGenerationParameterProof, boundGenerationSourceProof } from "../../../types/generationIdentity";
 import {
   Handle,
   NodeResizer,
@@ -2304,20 +2305,51 @@ function ImageNodeImpl({
           }))
       : undefined;
   const effectiveGenerationInputFingerprint = generationOwnershipKey({
-    aspectRatio: selectedImageModel ? aspectRatio : data.imageAspectRatio,
+    aspectRatio: selectedImageModel ? imageSubmissionParameterValues.aspectRatio : data.imageAspectRatio,
     contractFingerprint: inputPreflight.contractFingerprint,
     modelConfigurationRevision: selectedImageModel?.configurationRevision,
     modelId: selectedImageModelId,
     modelReleaseRevision: selectedImageModel?.releaseRevisionId,
     parameters: selectedImageModel
-      ? effectiveImageParameters
+      ? imageSubmissionParameterValues
       : data.imageParameters,
     prompt: promptControl.committedValue,
-    quality: selectedImageModel ? quality : data.imageQuality,
+    quality: selectedImageModel ? imageSubmissionParameterValues.quality : data.imageQuality,
     upstream: generationOwnershipUpstream,
   });
-  const rawGenerationInputFingerprint = imageToolGenerationOwnershipKey ??
-    generationOwnershipKey({
+  const genericBoundOwnershipKey = data.imageToolOperation
+    ? undefined : data.imageGenerationOwnershipKey;
+  const boundParameterProof = boundGenerationParameterProof({
+    kind: "image",
+    frozen: {
+      inputKey: data.imageGenerationInputKey,
+      ownershipKey: genericBoundOwnershipKey,
+      modelId: data.imageModelId,
+      modelConfigurationRevision: data.imageGenerationModelConfigurationRevision,
+      modelReleaseRevision: data.imageGenerationModelReleaseRevision,
+      contractFingerprint: data.imageGenerationContractFingerprint,
+    },
+    current: selectedImageModel ? {
+      capability: selectedImageModel.capability,
+      modelId: selectedImageModel.id,
+      modelConfigurationRevision: selectedImageModel.configurationRevision,
+      modelReleaseRevision: selectedImageModel.releaseRevisionId,
+      contractFingerprint: inputPreflight.contractFingerprint,
+      parameterSchema: selectedImageModel.parameterSchema,
+      parameters: {
+        ...data.imageParameters,
+        ...(data.imageAspectRatio ? { aspectRatio: data.imageAspectRatio } : {}),
+        ...(data.imageQuality ? { quality: data.imageQuality } : {}),
+      },
+    } : undefined,
+  });
+  const boundParameterProofRef = useRef(boundParameterProof);
+  boundParameterProofRef.current = boundParameterProof;
+  const boundSourceProof = boundGenerationSourceProof(data.imageGenerationInputKey, imageGenerationInputKey);
+  const boundSourceProofRef = useRef(boundSourceProof);
+  boundSourceProofRef.current = boundSourceProof;
+  const rawGenerationInputFingerprint = imageToolGenerationOwnershipKey ?? genericBoundOwnershipKey ??
+    (!data.imageToolOperation ? effectiveGenerationInputFingerprint : generationOwnershipKey({
     // Once a task is ownership-bound, catalog changes must not reinterpret its
     // saved full model snapshot. Before admission, use the effective values
     // materialized and ACKed on the canvas below.
@@ -2352,7 +2384,7 @@ function ImageNodeImpl({
     // Only durable source/edge semantics belong here. Compatibility, resolver
     // reasons, and resolved roles can drift with the model catalog.
     upstream: generationOwnershipUpstream,
-    });
+    }));
   liveGenerationInputKeyRef.current = imageGenerationInputKey;
   liveGenerationOwnershipKeyRef.current = rawGenerationInputFingerprint;
   const beginImageGenerationRun = (
@@ -2439,7 +2471,7 @@ function ImageNodeImpl({
       stableRawGenerationInputFingerprint.current = undefined;
       return;
     }
-    if (data.workflowExecutionRunId) {
+    if (data.workflowExecutionRunId || genericBoundOwnershipKey) {
       stableRawGenerationInputFingerprint.current = rawGenerationInputFingerprint;
       return;
     }
@@ -2677,6 +2709,7 @@ function ImageNodeImpl({
   };
   const retryAvailable = Boolean(
     retryTaskId &&
+    (!genericBoundOwnershipKey || boundParameterProof.state === "valid") &&
     data.imageGenerationInputKey === imageGenerationInputKey &&
     (!data.imageGenerationOwnershipKey ||
       data.imageGenerationOwnershipKey === rawGenerationInputFingerprint) &&
@@ -3646,6 +3679,14 @@ function ImageNodeImpl({
         persistedTaskReadPending = false;
       } else return;
       if (controller.signal.aborted || !task) return;
+      if (genericBoundOwnershipKey && (
+        boundParameterProofRef.current.state === "changed" ||
+        boundSourceProofRef.current === "changed" ||
+        (boundParameterProofRef.current.state === "unknown" &&
+          (task.generationIdentityVersion !== 2 || !graphCommandPort?.refreshAuthoritativeDocument)) ||
+        (boundParameterProofRef.current.state === "valid" &&
+          persistedInputKey !== liveGenerationInputKeyRef.current)
+      )) return;
       const recoveredOwnershipKey = persistedOwnershipKey ??
         task.generationOwnershipKey;
       if (
@@ -3785,7 +3826,15 @@ function ImageNodeImpl({
               !ownsImageGenerationRun(generationRun) ||
               (pollingOwner &&
                 recoveredImagePollingTasks.get(pollingOwner.taskId) !==
-                  pollingOwner.token)
+                  pollingOwner.token) ||
+              (genericBoundOwnershipKey && (
+               boundParameterProofRef.current.state === "changed" ||
+                boundSourceProofRef.current === "changed" ||
+                (boundParameterProofRef.current.state === "unknown" &&
+                  (task!.generationIdentityVersion !== 2 || !graphCommandPort?.refreshAuthoritativeDocument)) ||
+                (boundParameterProofRef.current.state === "valid" &&
+                  persistedInputKey !== liveGenerationInputKeyRef.current)
+              ))
             ) {
               return {
                 message: "生成输入已修改，已停止本次恢复",
@@ -3939,6 +3988,8 @@ function ImageNodeImpl({
     rawGenerationInputFingerprint,
     recoveryEpoch,
     retryWakeEpoch,
+    boundParameterProof.state,
+    boundSourceProof,
     legacyRecoveryCatalogKey,
     lockedNodeIds,
   ]);

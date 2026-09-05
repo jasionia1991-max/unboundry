@@ -106,6 +106,92 @@ import {
   incGen017GenerationEnabled,
 } from "../server/incGen017FeatureFlags";
 import type { ProviderProtocol } from "../types/relayProtocols";
+import {
+  boundGenerationParameterProof,
+  boundGenerationSourceProof,
+  generationInputKey,
+} from "../types/generationIdentity";
+
+test("bound parameter proof preserves opaque tasks and strictly separates valid changed and unknown", () => {
+  const schema = knownModelParameterSchema({
+    capability: "audio", providerDriver: "multi-protocol-relay", providerModelId: "doubao-tts-2.0",
+  });
+  const parameters = defaultParameterValues(schema);
+  expect(parameters.emotion).toBe("auto");
+  expect(parameters.emotionScale).toBe(4);
+  const submitted = validateParameterValues(schema, parameters);
+  expect(submitted.emotionScale).toBeUndefined();
+  const identity = {
+    modelId: "test-tts", modelConfigurationRevision: "config-a",
+    modelReleaseRevision: "release-a", contractFingerprint: "mic2:test-a",
+  };
+  const key = (values: Record<string, ModelParameterValue>) => generationInputKey({
+    ...identity, inputs: [], ownPrompt: "验收音频", prompt: "验收音频", parameters: values,
+  });
+  const frozen = { ...identity, inputKey: key(submitted), ownershipKey: "opaque-saved-proof" };
+  const current = { ...identity, capability: "audio" as const, parameterSchema: schema, parameters };
+  const before = JSON.stringify({ frozen, current });
+  const prove = (overrides: Partial<Parameters<typeof boundGenerationParameterProof>[0]> = {}) =>
+    boundGenerationParameterProof({ kind: "audio", frozen, current, ...overrides });
+  expect(prove()).toEqual({ state: "valid", parameters: submitted });
+  expect(prove({ current: { ...current, parameters: { ...parameters, emotionScale: 5 } } }).state)
+    .toBe("valid"); // Hidden UI values are retained, not generation semantics.
+  const activeEmotion = schema.fields.find((field) => field.key === "emotion")!
+    .options.find((option) => option.value !== "auto")!.value;
+  expect(prove({ current: { ...current, parameters: { ...parameters, emotion: activeEmotion } } }).state)
+    .toBe("changed");
+  expect(prove({ current: undefined }).state).toBe("unknown");
+  expect(prove({ current: { ...current, parameterSchema: undefined } }).state).toBe("unknown");
+  expect(prove({ current: { ...current, capability: "video" } }).state).toBe("unknown");
+  for (const field of ["modelId", "modelConfigurationRevision", "modelReleaseRevision", "contractFingerprint"] as const) {
+    expect(prove({ current: { ...current, [field]: "drift" } }).state).toBe("unknown");
+    expect(prove({ frozen: { ...frozen, [field]: undefined } }).state).toBe("unknown");
+  }
+  for (const inputKey of [undefined, "not-json", "[]", "{}", key(parameters),
+    key({ ...submitted, speechRate: 0 }), key({ ...submitted, unexpected: true }),
+    key({ ...submitted, format: "unsupported" }),
+    frozen.inputKey.replace('"modelId":"test-tts"', '"modelId":"different-model"'),
+    frozen.inputKey.replace('"parameters":', '"parameters":{},"parameters":'),
+    frozen.inputKey.replace('"parameters":{', '"parameters":{"nested":{},'),
+  ]) {
+    expect(prove({ frozen: { ...frozen, inputKey } }).state).toBe("unknown");
+  }
+  expect(prove({ frozen: { ...frozen, ownershipKey: undefined } }).state).toBe("unknown");
+  for (const invalid of [{ ...parameters, speechRate: 0 }, { ...parameters, unknown: true },
+    { ...parameters, emotionScale: Number.NaN }, { ...parameters, format: "invalid" },
+    [], null, { ...parameters, nested: {} }]) {
+    expect(prove({ current: { ...current, parameters: invalid } }).state).toBe("unknown");
+  }
+  // Identical property names do not prove identical typed values.
+  const changedParameters = { ...submitted, speechRate: "25" };
+  expect(Object.keys(changedParameters)).toEqual(Object.keys(submitted));
+  expect(prove({ current: { ...current, parameters: changedParameters } }).state).toBe("changed");
+  expect(JSON.stringify({ frozen, current })).toBe(before);
+  const source = {
+    edgeId: "edge", sourceNodeId: "source", kind: "text" as const, order: 1,
+    role: "context-text" as const, state: "ready" as const,
+    compatibility: "compatible" as const, text: "original", summary: "", title: "",
+  };
+  const sourceKey = (overrides: Partial<Parameters<typeof generationInputKey>[0]> = {}) =>
+    generationInputKey({
+      ...identity, inputs: [source], ownPrompt: "prompt", prompt: "combined",
+      parameters: submitted, ...overrides,
+    });
+  expect(boundGenerationSourceProof(sourceKey(), sourceKey({
+    modelId: undefined, modelConfigurationRevision: undefined, modelReleaseRevision: undefined,
+    parameters: {}, prompt: "catalog fallback",
+    inputs: [{ ...source, role: "instruction", state: "invalid" }],
+  }))).toBe("same");
+  for (const inputs of [[], [{ ...source, text: "edited" }], [{ ...source, edgeId: "new-edge" }],
+    [{ ...source, sourceNodeId: "new-source" }], [{ ...source, order: 2 }],
+    [{ ...source, kind: "image" as const, assetId: "new-asset" }]]) {
+    expect(boundGenerationSourceProof(sourceKey(), sourceKey({ inputs }))).toBe("changed");
+  }
+  expect(boundGenerationSourceProof(sourceKey(), sourceKey({ ownPrompt: "edited" }))).toBe("changed");
+  for (const invalid of [undefined, "{}", "not-json", '["invalid"]']) {
+    expect(boundGenerationSourceProof(invalid, sourceKey())).toBe("unknown");
+  }
+});
 
 const gkContract = {
   connectorFamily: "generic-async-media",

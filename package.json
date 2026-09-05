@@ -1,6 +1,6 @@
 {
   "name": "unboundry-private-replica",
-  "version": "0.7.10",
+  "version": "0.7.11",
   "private": true,
   "type": "module",
   "packageManager": "npm@11.12.1",

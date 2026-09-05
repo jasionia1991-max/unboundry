@@ -63,7 +63,7 @@ import { defaultModelReleaseDocument } from "../server/modelReleaseDefaults";
 import { inspectModelReleaseDocument } from
   "../server/modelReleaseRevisionStore";
 import { registeredModelExecution } from "../server/modelExecutionRegistry";
-import { knownModelParameterSchema } from "../types/modelParameters";
+import { defaultParameterValues, knownModelParameterSchema } from "../types/modelParameters";
 import type { ModelReleaseRevision } from "../types/modelReleaseRevisions";
 import {
   activeServerWorkflowNodeIds,
@@ -1206,7 +1206,7 @@ async function createPublishedTextModel() {
   return model.model.id;
 }
 
-async function createPublishedTtImageModel() {
+async function createPublishedRelayModel(capability: "image" | "audio" = "image") {
   const providerResponse = await expectOk(await request(
     "/api/admin/providers",
     {
@@ -1248,11 +1248,11 @@ async function createPublishedTtImageModel() {
   }
   const modelResponse = await expectOk(await request("/api/admin/models", {
     body: JSON.stringify({
-      capability: "image",
-      displayName: "TT Image 2 · 异步可恢复",
+      capability,
+      displayName: capability === "image" ? "TT Image 2 · 异步可恢复" : "Doubao TTS · CWB 验收",
       isDefault: false,
       maxCostMicrounits: 0,
-      providerModelId: "tt-image-2",
+      providerModelId: capability === "image" ? "tt-image-2" : "doubao-tts-2.0",
       providerProfileId: provider.profile.id,
       providerProtocol: "media-generate",
       sortOrder: 1,
@@ -1457,6 +1457,193 @@ async function waitForTerminalRun(runId: string, deadlineMs = 30_000) {
     `INC-GEN-026 workflow run did not become terminal: ${lastState} [${lastNodeStates.join(",")}]`,
   );
 }
+
+test("CWB Doubao TTS browser submission uses canonical parameters and restores one authoritative audio result", async ({ page }) => {
+  test.setTimeout(120_000);
+  const previousBypass = process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+  const previousFetcher = process.env.UNBOUNDRY_TEST_RELAY_MEDIA_FETCHER;
+  const originalFetch = globalThis.fetch;
+  const submissions: Array<Record<string, unknown>> = [];
+  const browserWrites: Array<{ path: string; method: string }> = [];
+  const browserConflicts: string[] = [];
+  let releaseResult!: () => void;
+  const resultGate = new Promise<void>((resolve) => { releaseResult = resolve; });
+  let app: ViteDevServer | undefined;
+  let provider: Server | undefined;
+  const audio = await readFile(join(process.cwd(), "client/public/fixtures/audio-success.mp3"));
+  const providerTaskId = "cwb_tts_provider_once";
+  const providerReads: string[] = [];
+  let canvasId = "";
+  const nodeId = "cwb-tts-audio";
+  try {
+    process.env.UNBOUNDRY_TEST_AUTH_BYPASS = "1";
+    process.env.UNBOUNDRY_TEST_RELAY_MEDIA_FETCHER = "1";
+    provider = createHttpServer(async (incoming, response) => {
+      const url = new URL(incoming.url ?? "/", providerOrigin);
+      if (incoming.method === "POST" && incoming.url === "/v1/media/generate") {
+        const chunks: Buffer[] = [];
+        for await (const chunk of incoming) chunks.push(Buffer.from(chunk));
+        submissions.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+        response.setHeader("Content-Type", "application/json");
+        response.end(JSON.stringify({ task_id: providerTaskId }));
+        return;
+      }
+      if (incoming.method === "GET") providerReads.push(url.pathname);
+      if (incoming.method === "GET" && url.pathname === "/v1/skills/task-status") {
+        response.statusCode = 404;
+        response.setHeader("Content-Type", "application/json");
+        response.end(JSON.stringify({ error: "Use media status" }));
+        return;
+      }
+      if (incoming.method === "GET" && url.pathname === "/v1/media/status" &&
+        url.searchParams.get("task_id") === providerTaskId) {
+        await resultGate;
+        response.setHeader("Content-Type", "application/json");
+        response.end(JSON.stringify({
+          is_final: true, state: "success", result_type: "audio",
+          result_url: "https://api.lk888.test/v1/results/cwb-tts.mp3",
+        }));
+        return;
+      }
+      if (incoming.method === "GET" && incoming.url === "/v1/results/cwb-tts.mp3") {
+        response.setHeader("Content-Type", "audio/mpeg");
+        response.setHeader("Content-Length", String(audio.length));
+        response.end(audio);
+        return;
+      }
+      response.statusCode = 404;
+      response.end("Unknown loopback fixture route");
+    });
+    await listen(provider, providerPort);
+    globalThis.fetch = (async (input, init) => {
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      if (url.hostname === "api.lk888.test") {
+        return originalFetch(new URL(url.pathname + url.search, providerOrigin), init);
+      }
+      return originalFetch(input, init);
+    }) as typeof fetch;
+    app = await createViteServer({
+      configFile: "vite.config.ts", logLevel: "silent",
+      server: { host: "127.0.0.1", hmr: false, port: appPort, strictPort: true, ws: false },
+    });
+    await app.listen();
+    await waitForReady();
+    await expectOk(await request("/api/admin/generation-safety", {
+      method: "PUT", body: JSON.stringify(safetySettings),
+    }), "TTS generation safety");
+    const modelId = await createPublishedRelayModel("audio");
+    const project = await (await expectOk(await request("/api/projects", {
+      method: "POST", body: JSON.stringify({ title: "CWB TTS browser canonical" }),
+    }), "TTS project")).json() as { id: string };
+    canvasId = project.id;
+    const emptyCanvas = await (await request(`/api/canvas/${canvasId}`)).json();
+    const schema = knownModelParameterSchema({
+      capability: "audio", providerDriver: "multi-protocol-relay", providerModelId: "doubao-tts-2.0",
+    });
+    const parameters = defaultParameterValues(schema);
+    expect(parameters.emotion).toBe("auto");
+    expect(parameters.emotionScale).toBe(4);
+    expect(parameters.format).toBe("mp3");
+    await expectOk(await request(`/api/canvas/${canvasId}`, {
+      method: "PUT",
+      headers: { "X-Unboundry-Safe-Fixture-Seed": canvasId },
+      body: JSON.stringify({
+        revision: emptyCanvas.revision, edges: [], viewport: { x: 0, y: 0, zoom: 1 },
+        observedRevision: emptyCanvas.revision, observedLoadToken: emptyCanvas.loadToken,
+        nodes: [{
+          id: nodeId, type: "audio", position: { x: 240, y: 180 },
+          style: { width: 320, height: 240 },
+          data: { title: "CWB TTS 验收", audioModelId: modelId, audioParameters: parameters,
+            audioPrompt: "这是无隐私的本地音频验收。", audioPromptReady: true },
+        }],
+      }),
+    }), "TTS canvas fixture");
+    page.on("request", (entry) => {
+      const path = new URL(entry.url()).pathname;
+      if (entry.method() !== "GET" && path.startsWith("/api/")) {
+        browserWrites.push({ path, method: entry.method() });
+      }
+    });
+    page.on("response", (entry) => {
+      if (entry.status() === 409) browserConflicts.push(new URL(entry.url()).pathname);
+    });
+    await page.goto(`${appOrigin}/canvas/${canvasId}`);
+    await expect(page.getByTestId("canvas-world")).toHaveAttribute("data-persistence-ready", "true");
+    const node = page.locator(`.react-flow__node[data-id="${nodeId}"]`);
+    await node.click({ position: { x: 8, y: 8 } });
+    const generate = page.getByTestId("audio-creator").getByRole("button", { name: "Generate", exact: true });
+    await expect(generate).toBeEnabled();
+    await generate.click();
+    await expect.poll(() => submissions.length).toBe(1);
+    const database = openAppDatabase(String(process.env.UNBOUNDRY_DATA_DIR));
+    let taskId: string;
+    try {
+      const rows = database.prepare("SELECT id FROM generation_tasks WHERE canvas_id = ? AND node_id = ?")
+        .all(canvasId, nodeId) as Array<{ id: string }>;
+      expect(rows).toHaveLength(1);
+      taskId = rows[0].id;
+    } finally { database.close(); }
+    const running = await (await expectOk(await request(`/api/generation-tasks/${taskId}`), "TTS task")).json();
+    expect(running.generationIdentityVersion).toBe(2);
+    expect(JSON.parse(running.generationInputKey).parameters.emotionScale).toBeUndefined();
+    expect(submissions[0]).toEqual({
+      model: "doubao-tts-2.0", prompt: "这是无隐私的本地音频验收。",
+      params: { emotion: "auto", format: "mp3", speaker: "zh_female_vv_uranus_bigtts", speech_rate: "0" },
+    });
+    releaseResult();
+    await expect.poll(async () => {
+      const task = await (await request(`/api/generation-tasks/${taskId}`)).json();
+      return { state: task.state, projection: task.canvasProjectionState, attempt: task.attempt };
+    }, { timeout: 60_000 }).toEqual({ state: "success", projection: "applied", attempt: 1 });
+    await expect(node.getByTestId("audio-node-media")).toHaveAttribute("src", /\/api\/(?:media|audio-assets)\//);
+    const before = await (await request(`/api/canvas/${canvasId}`)).json();
+    const result = before.nodes.find((item: { id: string }) => item.id === nodeId).data;
+    expect(result.assetId).toBeTruthy();
+    expect(result.audioGenerationTaskId).toBeUndefined();
+    expect(result.groupRunSuccessTaskId).toBe(taskId);
+    expect(result.audioGeneratedResult).toBe(true);
+    expect(result.audioGenerating).not.toBe(true);
+    expect(result.audioParameters.emotionScale).toBe(4);
+    const writesBeforeRefresh = browserWrites.length;
+    await page.reload();
+    await expect(page.getByTestId("canvas-world")).toHaveAttribute("data-persistence-ready", "true");
+    await expect(node.getByTestId("audio-node-media")).toHaveAttribute("src", /\/api\/(?:media|audio-assets)\//);
+    await expect.poll(() => node.getByTestId("audio-node-media").evaluate(
+      (element) => (element as HTMLAudioElement).readyState,
+    )).toBeGreaterThanOrEqual(1);
+    await page.waitForTimeout(1500);
+    const after = await (await request(`/api/canvas/${canvasId}`)).json();
+    expect(after.revision).toBe(before.revision);
+    expect(after.nodes).toEqual(before.nodes);
+    expect(browserWrites.slice(writesBeforeRefresh)).toEqual([]);
+    expect(browserConflicts).toEqual([]);
+    expect(submissions).toHaveLength(1);
+    expect(providerReads).toContain("/v1/skills/task-status");
+    expect(providerReads).toContain("/v1/media/status");
+    const terminal = await (await request(`/api/generation-tasks/${taskId}`)).json();
+    expect(terminal.resultAssetId).toBe(result.assetId);
+    const finalDatabase = openAppDatabase(String(process.env.UNBOUNDRY_DATA_DIR));
+    try {
+      const task = finalDatabase.prepare("SELECT provider_task_id AS providerTaskId, result_asset_id AS resultAssetId FROM generation_tasks WHERE id = ?")
+        .get(taskId);
+      expect(task).toEqual({ providerTaskId, resultAssetId: result.assetId });
+      expect(finalDatabase.prepare("SELECT COUNT(*) AS count FROM generation_tasks WHERE canvas_id = ? AND node_id = ?")
+        .get(canvasId, nodeId)).toEqual({ count: 1 });
+    } finally { finalDatabase.close(); }
+    expect(browserWrites.filter((entry) => entry.path === "/api/generation-tasks" && entry.method === "POST"))
+      .toHaveLength(1);
+  } finally {
+    releaseResult();
+    await page.close();
+    await app?.close();
+    await close(provider);
+    globalThis.fetch = originalFetch;
+    if (previousBypass === undefined) delete process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+    else process.env.UNBOUNDRY_TEST_AUTH_BYPASS = previousBypass;
+    if (previousFetcher === undefined) delete process.env.UNBOUNDRY_TEST_RELAY_MEDIA_FETCHER;
+    else process.env.UNBOUNDRY_TEST_RELAY_MEDIA_FETCHER = previousFetcher;
+  }
+});
 
 test("INC-GEN-026 true HTTP workflow admits once and reaches a loopback fake Provider", async () => {
   const previousBypass = process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
@@ -2082,7 +2269,7 @@ test("v0.7.1 TT Image workflow submits once, polls the official route and surviv
       body: JSON.stringify(safetySettings),
       method: "PUT",
     }), "generation safety");
-    const modelId = await createPublishedTtImageModel();
+    const modelId = await createPublishedRelayModel();
     const canvasId = "inc-gen-027-tt-image-http";
     const groupId = "inc-gen-027-tt-image-group";
     const referenceAssetId = "inc-gen-027-tt-image-reference";
@@ -2408,7 +2595,7 @@ test("v0.7.4 dynamic image output satisfies Grok Video first-frame admission", a
       body: JSON.stringify(safetySettings),
       method: "PUT",
     }), "generation safety");
-    const imageModelId = await createPublishedTtImageModel();
+    const imageModelId = await createPublishedRelayModel();
     const fixtureDatabase = openAppDatabase(
       String(process.env.UNBOUNDRY_DATA_DIR),
     );

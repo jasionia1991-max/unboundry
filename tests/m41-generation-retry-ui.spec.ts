@@ -641,7 +641,9 @@ async function installRoutes(page: Page, retryAllowed: boolean) {
       await route.fallback();
       return;
     }
-    const response = await route.fetch();
+    // This fixture forwards a read through a pooled connection. Retry only a
+    // transport reset; HTTP errors and all application writes remain visible.
+    const response = await route.fetch({ maxRetries: 1 });
     const document = await response.json();
     await route.fulfill({
       response,
@@ -2906,9 +2908,11 @@ test("an old Image poll cannot overwrite the newer task after cancellation and i
   let newProjectionApplied = false;
   await page.addInitScript(({ oldRunning, oldSuccess, oldTaskId }) => {
     const state: {
+      cancelled: boolean;
+      delayedPollIssued: boolean;
       oldGets: number;
       releaseOld?: () => void;
-    } = { oldGets: 0 };
+    } = { cancelled: false, delayedPollIssued: false, oldGets: 0 };
     (window as typeof window & {
       __m41ImageOldOwner?: typeof state;
     }).__m41ImageOldOwner = state;
@@ -2920,17 +2924,26 @@ test("an old Image poll cannot overwrite the newer task after cancellation and i
       const url = new URL(raw, window.location.href);
       const method = (init?.method ??
         (input instanceof Request ? input.method : "GET")).toUpperCase();
+      if (method === "DELETE" && url.pathname === `/api/generation-tasks/${oldTaskId}`) {
+        return originalFetch(input, init).then((response) => {
+          if (response.ok) state.cancelled = true;
+          return response;
+        });
+      }
       if (
         method === "GET" &&
         url.pathname === `/api/generation-tasks/${oldTaskId}`
       ) {
         state.oldGets += 1;
-        if (state.oldGets !== 2) {
-          return Promise.resolve(new Response(JSON.stringify(oldRunning), {
+        if (state.cancelled || state.delayedPollIssued || state.oldGets === 1) {
+          return Promise.resolve(new Response(JSON.stringify(state.cancelled
+            ? { ...oldRunning, state: "cancelled", errorMessage: "用户取消旧图片任务" }
+            : oldRunning), {
             headers: { "Content-Type": "application/json" },
             status: 200,
           }));
         }
+        state.delayedPollIssued = true;
         return new Promise<Response>((resolve) => {
           // Intentionally ignore the recovery effect's abort. Ownership, not
           // transport cooperation, must reject this late success.
@@ -7290,6 +7303,11 @@ test("an upstream Text body change stops its active poll without browser-clearin
 
     const source = page.locator(`.react-flow__node[data-id="${sourceId}"]`);
     const target = page.locator(`.react-flow__node[data-id="${targetId}"]`);
+    const retainedTargetIntent = await page.evaluate((slot) =>
+      window.localStorage.getItem(slot), intentSlot);
+    expect(JSON.parse(retainedTargetIntent ?? "null")).toMatchObject({
+      nodeId: targetId, taskId, generationInputKey: activeInputKey,
+    });
     await source.click({ force: true });
     await source.getByTestId("canvas-node-text-content")
       .dispatchEvent("dblclick");
@@ -7310,8 +7328,10 @@ test("an upstream Text body change stops its active poll without browser-clearin
     expect(heldSavePayload?.changes?.some((change) =>
       change.nodeId === targetId || /Generation|Generating/.test(change.field ?? "")
     )).toBe(false);
+    // Editing the source does not discard the target's accepted-task evidence.
+    // Its frozen input/result fence, not intent deletion, blocks stale results.
     expect(await page.evaluate((slot) =>
-      window.localStorage.getItem(slot), intentSlot)).toBeNull();
+      window.localStorage.getItem(slot), intentSlot)).toBe(retainedTargetIntent);
 
     await target.click({ force: true, position: { x: 8, y: 8 } });
     await expect(page.getByTestId("text-creator")).toBeVisible();
@@ -7381,7 +7401,7 @@ test("an upstream Text body change stops its active poll without browser-clearin
       taskId,
     });
     expect(await page.evaluate((slot) =>
-      window.localStorage.getItem(slot), intentSlot)).toBeNull();
+      window.localStorage.getItem(slot), intentSlot)).toBe(retainedTargetIntent);
 
     await page.reload();
     await expect(page.getByTestId("canvas-world"))
@@ -7404,7 +7424,7 @@ test("an upstream Text body change stops its active poll without browser-clearin
     expect(reloadedTarget?.textGenerationTaskId).toBe(taskId);
     expect(reloadedTarget?.textGenerating).toBe(true);
     expect(await page.evaluate((slot) =>
-      window.localStorage.getItem(slot), intentSlot)).toBeNull();
+      window.localStorage.getItem(slot), intentSlot)).toBe(retainedTargetIntent);
     expect(generationPosts).toBe(0);
     expect(providerRequests).toBe(0);
   } finally {
