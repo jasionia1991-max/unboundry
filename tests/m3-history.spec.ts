@@ -75,6 +75,12 @@ test("deleting a canvas node does not delete account history", async ({
     } finally {
       store.close();
     }
+    // These registry rows intentionally contain no real source files. Supply
+    // only the card preview; history identity and original links stay real.
+    await page.route("**/api/image-edit-sources/*?preview=320-v1", (route) => route.fulfill({
+      contentType: "image/png",
+      body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=", "base64"),
+    }));
     await page.goto("/__fixture/panel.history.final");
 
     const world = page.getByTestId("canvas-world");
@@ -94,6 +100,9 @@ test("deleting a canvas node does not delete account history", async ({
       },
     });
     expect(generatedHistory.ok()).toBeTruthy();
+    const originalHistory = await (await request.get("/api/history/fixture-account")).json();
+    expect(originalHistory.items.find((item: { id: string }) => item.id === "generated-history-image").preview)
+      .toBe("/api/assets/generated-history-image");
     const historyButton = page.getByTestId("history");
     await historyButton.click();
     await historyButton.click();
@@ -101,7 +110,7 @@ test("deleting a canvas node does not delete account history", async ({
     await expect(generatedCard).toBeVisible();
     await expect(generatedCard.locator("img")).toHaveAttribute(
       "src",
-      "/api/assets/generated-history-image",
+      "/api/image-edit-sources/generated-history-image?preview=320-v1",
     );
     await expect(
       page.getByTestId("history-count-image"),

@@ -141,8 +141,14 @@ test("user template API saves, pages, searches and deletes private templates", a
   expect(publicBody.items.some((item) => item.id === first.id)).toBeFalsy();
   expect(publicBody.items.some((item) => item.id === second.id)).toBeFalsy();
 
+  const detail = await request.get(`/api/templates/${first.id}?space=mine&updatedAt=${encodeURIComponent(first.updatedAt)}`);
+  expect(detail.status()).toBe(200);
+  expect((await detail.json()).template.graph.nodes).toHaveLength(2);
+  expect((await request.get(`/api/templates/${first.id}?space=mine&updatedAt=stale`)).status()).toBe(409);
+  expect((await request.get(`/api/templates/${first.id}?space=public`)).status()).toBe(404);
   const deleted = await request.delete(`/api/templates/${first.id}`);
   expect(deleted.status()).toBe(200);
+  expect((await request.get(`/api/templates/${first.id}?space=mine`)).status()).toBe(404);
   const missing = await request.delete(`/api/templates/${first.id}`);
   expect(missing.status()).toBe(404);
   const afterDelete = await request.get(

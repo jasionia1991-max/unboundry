@@ -1235,6 +1235,7 @@ const surfaceViewEdgeSymbols = new Set([
   "applyEdgeViewUpdate",
 ]);
 const surfaceServerNodeSymbols = new Set([
+  "receiveWorkflowResults",
   "load",
   "refreshAuthoritativeCanvasDocument",
   "adoptAuthoritativeGenerationMutation",

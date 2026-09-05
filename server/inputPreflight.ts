@@ -1,5 +1,5 @@
+import { readAppDatabaseSnapshot } from "./database";
 import type { DatabaseSync } from "node:sqlite";
-import { openAppDatabase } from "./database";
 import type {
   ModelParameterSchema,
   ModelParameterValue,
@@ -101,8 +101,7 @@ export function readPersistedCanvasGraph(input: {
   database?: DatabaseSync;
   ownerId: string;
 }) {
-  const database = input.database ?? openAppDatabase();
-  try {
+  const read = (database: DatabaseSync) => {
     const row = (input.bypass
       ? database.prepare(`
           SELECT nodes, edges, graph_revision FROM canvas_documents
@@ -128,9 +127,8 @@ export function readPersistedCanvasGraph(input: {
         database,
       ),
     });
-  } finally {
-    if (!input.database) database.close();
-  }
+  };
+  return input.database ? read(input.database) : readAppDatabaseSnapshot(read);
 }
 
 const nodePromptKeys: Record<NodeInputKind, string> = {
@@ -164,8 +162,7 @@ export function assertPersistedCanvasRevision(input: {
   expectedRevision: number;
   ownerId: string;
 }) {
-  const database = openAppDatabase();
-  try {
+  return readAppDatabaseSnapshot((database) => {
     const row = (input.bypass
       ? database.prepare(`
           SELECT graph_revision FROM canvas_documents
@@ -181,9 +178,7 @@ export function assertPersistedCanvasRevision(input: {
     if (!row || row.graph_revision !== input.expectedRevision) {
       throw new CanvasRevisionConflictError(row?.graph_revision ?? -1);
     }
-  } finally {
-    database.close();
-  }
+  });
 }
 
 export function resolvePersistedNodeInputs(input: {
@@ -204,8 +199,7 @@ export function resolvePersistedNodeInputs(input: {
   persistedTargetParentId?: string;
   persistedTargetData: Record<string, unknown>;
 } {
-  const database = input.database ?? openAppDatabase();
-  try {
+  const read = (database: DatabaseSync) => {
     const row = (input.bypass
       ? database.prepare(`
           SELECT nodes, edges, graph_revision FROM canvas_documents
@@ -256,7 +250,6 @@ export function resolvePersistedNodeInputs(input: {
       persistedTargetParentId: target.parentId,
       persistedTargetData: { ...(target.data ?? {}) },
     };
-  } finally {
-    if (!input.database) database.close();
-  }
+  };
+  return input.database ? read(input.database) : readAppDatabaseSnapshot(read);
 }

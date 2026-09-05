@@ -1,3 +1,4 @@
+import type { WorkflowRunSummary } from "../../../types/workflowRuns";
 import type {
   AdoptedCanvasAsset,
   ApplyTopologyCommand,
@@ -817,4 +818,75 @@ export function commandOperationId(input: Readonly<{
 
 export function commandSessionId(baseSessionId: string, lane: string) {
   return `cmd-${stableSha256({ baseSessionId, lane }).slice(0, 48)}`;
+}
+
+/** Apply only task-bound server result fields. The baseline receives the same
+ * patch, so generated text is never mistaken for a new user command. Local
+ * topology, input edits and view state retain their existing authority. */
+export function mergeWorkflowResultNodes(input: {
+  baseline: readonly unknown[];
+  current: readonly unknown[];
+  incoming: readonly unknown[];
+  run: WorkflowRunSummary;
+}) {
+  const baseline = byId(input.baseline);
+  const incoming = byId(input.incoming);
+  const proofs = new Map(input.run.nodes.filter((node) =>
+    node.state === "success" && node.projectionState === "applied" && node.taskId
+  ).map((node) => [node.id, node]));
+  const patches = new Map<string, Record<string, unknown>>();
+  const conflicts: string[] = [];
+  const resultFields = Object.entries(canvasNodeDataFieldDescriptors)
+    .filter(([, field]) => field.owner === "durable-server")
+    .map(([field]) => field);
+  const nodes = input.current.map((value) => {
+    const id = idOf(value);
+    const proof = proofs.get(id);
+    if (!proof) return value;
+    const local = record(value)!;
+    const before = record(baseline.get(id));
+    const remote = record(incoming.get(id));
+    const currentData = record(local.data);
+    const beforeData = record(before?.data);
+    const remoteData = record(remote?.data);
+    if (!before || !beforeData || !remoteData || !currentData ||
+        local.type !== proof.kind || before.type !== proof.kind || remote?.type !== proof.kind ||
+        remoteData.groupRunSuccessTaskId !== proof.taskId ||
+        !remoteData.groupRunSuccessOwnershipKey || !remoteData.groupRunSuccessResultKey ||
+        (currentData.groupRunSuccessTaskId !== beforeData.groupRunSuccessTaskId &&
+          currentData.groupRunSuccessTaskId !== proof.taskId)) return value;
+    // Deletion/replacement/input changes invalidate the old target. Workflow
+    // locks separately prohibit semantic edits to a currently executing node.
+    const inputChanged = Object.entries(canvasNodeDataFieldDescriptors).some(([key, field]) =>
+      field.owner === "durable-user" && field.input && key !== "content" && key !== "contentHtml" &&
+      stableSha256(currentData[key] ?? null) !== stableSha256(beforeData[key] ?? null)
+    );
+    if (inputChanged) return value;
+    const fields = [...resultFields, `${proof.kind}Generating`,
+      `${proof.kind}GenerationError`, `${proof.kind}GenerationErrorCode`,
+      `${proof.kind}GenerationRetryAllowed`, `${proof.kind}GenerationRetryBlockCode`,
+      `${proof.kind}GenerationRetryBlockReason`];
+    if (proof.kind === "text") fields.push("content", "contentHtml");
+    const patch = Object.fromEntries(fields.map((field) => [field, remoteData[field]]));
+    patches.set(id, patch);
+    const textConflict = proof.kind === "text" && ["content", "contentHtml"].some((field) =>
+      stableSha256(currentData[field] ?? null) !== stableSha256(beforeData[field] ?? null) &&
+      stableSha256(currentData[field] ?? null) !== stableSha256(remoteData[field] ?? null)
+    );
+    if (textConflict) {
+      conflicts.push(id);
+      return value;
+    }
+    return { ...local, data: { ...currentData, ...patch } };
+  });
+  return {
+    baseline: input.baseline.map((value) => {
+      const patch = patches.get(idOf(value));
+      const node = record(value);
+      return patch && node ? { ...node, data: { ...record(node.data), ...patch } } : value;
+    }),
+    conflicts,
+    nodes,
+    received: [...patches.keys()],
+  };
 }

@@ -242,6 +242,8 @@ test("canvas writer manifest scanner is exhaustive and fail-closed on fixtures",
       .toEqual([expect.objectContaining({ stateClass: "Ephemeral View" })]);
     expect(entriesFor("load", "raw-node-setter"))
       .toEqual([expect.objectContaining({ stateClass: "Durable Server" })]);
+    expect(entriesFor("receiveWorkflowResults", "raw-node-setter"))
+      .toEqual([expect.objectContaining({ stateClass: "Durable Server", violation: false })]);
     expect(entriesFor("guardedSetNodes", "raw-node-setter"))
       .toEqual([expect.objectContaining({ stateClass: "control-only" })]);
     expect(entriesFor("tryAdoptNodes", "raw-node-setter"))

@@ -1,3 +1,5 @@
+> 2026-09-06 当前治理引用：`CURRENT_V0_7_11_USER_RECHECK`，性能本地修复以 `PERFORMANCE_REMEDIATION_CHECKPOINT_2026-09-06.md` 为准。模块化仍只在真实新功能触发，下方版本为历史记录。
+
 # Unboundry 渐进式模块化 Checkpoint
 
 更新日期：2026-09-03

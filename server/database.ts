@@ -6273,3 +6273,122 @@ export function readAppDatabaseSnapshot<T>(
   if (failure) throw failure;
   return result as T;
 }
+
+const runtimeTransactionClosers = new Set<() => void>();
+
+/** Release idle hot-path connections before handing the active runtime over. */
+export function closeRuntimeDatabaseTransactions() {
+  for (const close of [...runtimeTransactionClosers]) close();
+}
+
+/**
+ * A synchronous, non-reentrant transaction lane. Only the initial open uses
+ * the complete open/restore guard. Reuse never skips the pinned identity,
+ * maintenance or schema fences, and foreign-connection changes are validated
+ * under the writer lock. No handle is leased across an await or given to HTTP
+ * callers. Other database users retain their existing ownership semantics.
+ */
+export function createRuntimeDatabaseTransactionRunner() {
+  let cached: {
+    database: DatabaseSync;
+    directory: string;
+    directoryIdentity: NonNullable<ReturnType<typeof lstatSync>>;
+    identity: NonNullable<ReturnType<typeof lstatSync>>;
+    schemaVersion: number;
+    dataVersion: number;
+  } | undefined;
+  let active = false;
+  const pragma = (database: DatabaseSync, name: "schema_version" | "data_version") =>
+    Number((database.prepare(`PRAGMA ${name}`).get() as Record<string, unknown>)[name]);
+  const close = () => {
+    if (active) throw new Error("Runtime database transaction is still active");
+    const previous = cached;
+    cached = undefined;
+    runtimeTransactionClosers.delete(close);
+    previous?.database.close();
+  };
+  const validateIdentity = (entry: NonNullable<typeof cached>) => {
+    assertApplicationDataDirectory(entry.directory);
+    const directory = lstatSync(entry.directory);
+    if (directory.dev !== entry.directoryIdentity.dev ||
+        directory.ino !== entry.directoryIdentity.ino ||
+        directory.uid !== entry.directoryIdentity.uid ||
+        directory.mode !== entry.directoryIdentity.mode) {
+      throw new Error("Runtime database directory identity changed");
+    }
+    for (const marker of [".unboundry-restore-incomplete", migrationIncompleteMarker]) {
+      if (directoryEntryExists(join(entry.directory, marker))) {
+        throw new Error("Application data maintenance is incomplete");
+      }
+    }
+    assertSameCurrentDatabaseIdentity(join(entry.directory, "unboundry.sqlite"), entry.identity);
+    if (pragma(entry.database, "schema_version") !== entry.schemaVersion) {
+      throw new Error("Runtime database schema changed");
+    }
+  };
+  return Object.freeze({
+    close,
+    run<T>(
+      operation: (database: DatabaseSync) => T,
+      afterCommit?: (database: DatabaseSync) => void,
+      directory = appDataDirectory(),
+    ): T {
+      if (active) throw new Error("Runtime database transactions cannot be nested");
+      if (cached?.directory !== directory) close();
+      if (!cached) {
+        // Missing files are not silently initialized by a runtime write.
+        const identity = lstatSync(join(directory, "unboundry.sqlite"));
+        const directoryIdentity = lstatSync(directory);
+        const database = openAppDatabase(directory);
+        try {
+          cached = { database, directory, directoryIdentity, identity,
+            schemaVersion: pragma(database, "schema_version"),
+            dataVersion: pragma(database, "data_version") };
+          runtimeTransactionClosers.add(close);
+        } catch (error) {
+          database.close();
+          throw error;
+        }
+      }
+      const entry = cached;
+      active = true;
+      let committed = false;
+      try {
+        validateIdentity(entry);
+        const sidecars = captureCurrentDatabaseSidecars(join(directory, "unboundry.sqlite"));
+        entry.database.exec("BEGIN IMMEDIATE");
+        validateIdentity(entry);
+        assertCurrentDatabaseSidecarsAfterWriterLock(join(directory, "unboundry.sqlite"), sidecars);
+        const validatedDataVersion = pragma(entry.database, "data_version");
+        if (validatedDataVersion !== entry.dataVersion) {
+          assertExactCurrentDatabase(entry.database);
+        }
+        const result = operation(entry.database);
+        if (result && (typeof result === "object" || typeof result === "function") &&
+            "then" in result && typeof result.then === "function") {
+          throw new TypeError("Runtime database transaction must be synchronous");
+        }
+        if (!entry.database.isTransaction) {
+          throw new Error("Runtime database transaction ownership changed");
+        }
+        validateIdentity(entry);
+        assertCurrentDatabaseSidecarsAfterWriterLock(join(directory, "unboundry.sqlite"), sidecars);
+        entry.database.exec("COMMIT");
+        committed = true;
+        entry.dataVersion = validatedDataVersion;
+        afterCommit?.(entry.database);
+        return result;
+      } catch (error) {
+        try {
+          if (!committed && entry.database.isTransaction) entry.database.exec("ROLLBACK");
+        } finally {
+          active = false;
+          close();
+        }
+        throw error;
+      } finally {
+        active = false;
+      }
+    },
+  });
+}

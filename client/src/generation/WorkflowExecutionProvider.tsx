@@ -304,7 +304,7 @@ export function WorkflowExecutionProvider({
     isFixture,
     persistenceReady,
     readAuthoritativeCanvasRevision,
-    refreshAuthoritativeCanvasDocument,
+    receiveWorkflowResults,
     waitForCanvasRevision,
   } = useGenerationCanvas();
   const save = useMemo<CanvasSavePort>(() => ({
@@ -558,7 +558,49 @@ export function WorkflowExecutionProvider({
     return () => window.removeEventListener("beforeunload", warnBeforeUnload);
   }, [executingGroupIds]);
 
+  const resultReads = useRef(new Map<string, { run: ServerWorkflowRun; key: string;
+    attempts: number; nextAt: number }>());
+  const receivedResults = useRef(new Map<string, string>());
+  useEffect(() => {
+    const controller = new AbortController();
+    let busy = false;
+    const timer = window.setInterval(() => {
+      if (busy || controller.signal.aborted) return;
+      const item = [...resultReads.current.values()].find((value) => value.nextAt <= Date.now());
+      if (!item) return;
+      busy = true;
+      void receiveWorkflowResults(item.run, controller.signal).catch(() => false).then((received) => {
+        if (controller.signal.aborted || resultReads.current.get(item.run.groupId) !== item) return;
+        if (received) {
+          receivedResults.current.set(item.run.groupId, item.key);
+          resultReads.current.delete(item.run.groupId);
+        } else {
+          item.attempts += 1;
+          item.nextAt = Date.now() + Math.min(8_000, 1_000 * 2 ** Math.min(item.attempts, 3));
+        }
+      }).finally(() => { busy = false; });
+    }, 500);
+    return () => {
+      controller.abort("workflow-result-scope-changed");
+      window.clearInterval(timer);
+      resultReads.current.clear();
+      receivedResults.current.clear();
+    };
+  }, [accountId, canvasId, fixtureScopeId, receiveWorkflowResults]);
+
   const publishServerRunUpdate = useCallback((run: ServerWorkflowRun) => {
+    const completed = run.nodes.filter((node) => node.state === "success" &&
+      node.projectionState === "applied" && node.taskId);
+    const key = `${run.id}:${completed.map((node) => `${node.id}:${node.taskId}`).sort().join(",")}`;
+    const queued = resultReads.current.get(run.groupId);
+    if (queued?.key === key) {
+      // Terminal state can change without adding another successful task.
+      // Retain backoff, but let obsolete/deleted targets finish reconciliation.
+      queued.run = run;
+    } else if (completed.length && receivedResults.current.get(run.groupId) !== key) {
+      resultReads.current.set(run.groupId, { run, key, attempts: 0, nextAt: Date.now() });
+    }
+
     window.dispatchEvent(new CustomEvent(SERVER_WORKFLOW_RUN_UPDATED_EVENT, {
       detail: { accountId, canvasId, fixtureScopeId, run },
     }));
@@ -631,12 +673,10 @@ export function WorkflowExecutionProvider({
     signal?: AbortSignal,
   ) => {
     publishServerRunUpdate(terminal);
-    if (
-      terminal.state !== "success" ||
-      terminal.nodes.some(({ projectionState }) => projectionState !== "applied")
-    ) return false;
-    return refreshAuthoritativeCanvasDocument(signal);
-  }, [publishServerRunUpdate, refreshAuthoritativeCanvasDocument]);
+    if (signal?.aborted) return false;
+    // The queue also keeps successful partial results when another node fails.
+    return terminal.nodes.some((node) => node.state === "success" && node.projectionState === "applied");
+  }, [publishServerRunUpdate]);
 
   useEffect(() => {
     if (isFixture || !persistenceReady) return;

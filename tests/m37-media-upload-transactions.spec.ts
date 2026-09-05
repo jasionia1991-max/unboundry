@@ -744,7 +744,7 @@ test("Image, Video and Audio adoption failure leaves no durable uploading state"
         .toHaveCount(0);
       await expect.poll(async () =>
         (await request.get(uploadedAssetPath)).status()
-      ).toBe(404);
+      ).toBe(kind === "image" ? 200 : 404);
       await expect.poll(async () =>
         (await persistedNodes(request, canvasId))[0]?.data.assetId ?? null
       ).toBeNull();
@@ -769,6 +769,7 @@ test("Image, Video and Audio adoption failure leaves no durable uploading state"
     await page.unroute(`**/api/canvas/${canvasId}`);
     await page.unroute(`**/api/canvases/${canvasId}/commands`);
     await request.delete(`/api/canvas/${canvasId}`);
+    for (const url of uploadPosts) await request.delete(new URL(url).pathname);
   }
 });
 
@@ -990,7 +991,7 @@ test("Image, Video and Audio serialize replacements behind the active upload", a
 });
 
 for (const kind of ["image", "video", "audio"] as const) {
-  test(`${kind} upload deletes its fresh asset when persistence becomes unavailable before adoption`, async ({
+  test(`${kind} upload ${kind === "image" ? "retains its asset for server recovery" : "deletes its fresh asset"} when persistence rejects adoption`, async ({
     page,
     request,
   }) => {
@@ -1004,6 +1005,7 @@ for (const kind of ["image", "video", "audio"] as const) {
     const before = await paidProviderRequests(request);
     const taskPosts = monitorProviderRequests(page);
     const deletedPaths = monitorAssetDeletes(page);
+    let uploadedAssetId: string | undefined;
 
     try {
       await saveCanvas(request, canvasId, [emptyNode(kind, 0)]);
@@ -1017,6 +1019,7 @@ for (const kind of ["image", "video", "audio"] as const) {
       await node.getByTestId(uploadConfig[kind].inputTestId)
         .setInputFiles(uploadConfig[kind].file);
       const asset = await uploadGate.created[0];
+      uploadedAssetId = asset.assetId;
       uploadGate.release(0);
       await persistenceGate.created;
       persistenceGate.release();
@@ -1024,10 +1027,13 @@ for (const kind of ["image", "video", "audio"] as const) {
 
       await expect.poll(async () => (
         await request.get(`${uploadConfig[kind].endpoint}${asset.assetId}`)
-      ).status()).toBe(404);
-      expect(deletedPaths).toContain(
-        `${uploadConfig[kind].endpoint}${encodeURIComponent(asset.assetId)}`,
-      );
+      ).status()).toBe(kind === "image" ? 200 : 404);
+      const assetPath = `${uploadConfig[kind].endpoint}${encodeURIComponent(asset.assetId)}`;
+      // The Image boolean adoption API does not expose the server's rejection
+      // proof. Keep uncertain assets for orphan recovery; lost-ACK safety is
+      // covered by the real committed-command test in m2.
+      if (kind === "image") expect(deletedPaths).not.toContain(assetPath);
+      else expect(deletedPaths).toContain(assetPath);
       await expect.poll(async () =>
         node.locator("[data-asset-id]").evaluateAll(
           (elements, expectedAssetId) => elements.some((element) =>
@@ -1043,6 +1049,7 @@ for (const kind of ["image", "video", "audio"] as const) {
       persistenceGate.release();
       uploadGate.releaseAll();
       await request.delete(`/api/canvas/${canvasId}`);
+      if (uploadedAssetId) await request.delete(`${uploadConfig[kind].endpoint}${uploadedAssetId}`);
     }
   });
 }

@@ -970,3 +970,25 @@ for (const nodeCount of nodeCounts) {
     if (nodeCount === 98) await runRichGroupDragScenario(page, context);
   });
 }
+
+test("PERF built blank canvas cold and warm navigation does not fetch hidden template graphs", async ({ page, context }) => {
+  test.setTimeout(90_000);
+  const created = await context.request.post("/api/projects", { data: {} });
+  expect(created.status()).toBe(201);
+  const project = await created.json() as { id: string };
+  const templateReads: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/api/templates")) templateReads.push(request.url());
+  });
+  const times: number[] = [];
+  for (let i = 0; i < 20; i += 1) {
+    const started = performance.now();
+    await page.goto(`/canvas/${project.id}`);
+    await expect(page.getByTestId("canvas-world")).toHaveAttribute("data-persistence-ready", "true");
+    times.push(performance.now() - started);
+  }
+  expect(templateReads).toEqual([]);
+  const warm = times.slice(1).sort((a, b) => a - b);
+  console.log(JSON.stringify({ performanceEvidence: "built-blank-navigation", coldMs: times[0],
+    warmP95Ms: warm[Math.ceil(warm.length * .95) - 1], samples: times, network: "local-loopback" }));
+});

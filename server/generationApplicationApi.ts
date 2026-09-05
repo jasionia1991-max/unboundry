@@ -21,10 +21,7 @@ import { workflowRunApplication } from "./workflowRunService";
 configureEmergencyStopRunningTaskPolicy(applyEmergencyStopRunningTaskPolicy);
 
 async function imageToolGenerationCapabilityQuery(ownerId: string) {
-  const [availability, model] = await Promise.all([
-    generationTaskApplication.generationAvailability(ownerId),
-    Promise.resolve(generationTaskApplication.resolveModel("image", undefined, ownerId)),
-  ]);
+  const { availability, model } = await generationTaskApplication.imageToolAvailability(ownerId);
   const safety = generationTaskApplication.generationSafetyStatus();
   return {
     configured: availability.imageProviderConfigured,

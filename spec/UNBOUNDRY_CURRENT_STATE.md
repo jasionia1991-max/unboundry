@@ -1,4 +1,11 @@
+> **2026-09-06 v0.7.12 发布当前状态**：用户已先确认上线/回退方案，再明确同意按 v0.7.12 发布；本次授权包含候选提交、PR/CI、不可移动标签/Release、最新备份与独立恢复验证、生产切换及零付费验收。保留 v0.7.11 恢复分支和当前数据；不触发真实付费生成，不删除历史备份/素材，不迁移schema43。生产运行`v0.7.11/schema43`，当前断点 `spec/PERFORMANCE_REMEDIATION_CHECKPOINT_2026-09-06.md`。20产品文件已审证据复用，新增仅版本登记及必要发布增量，版本定向验证待执行。自动备份旧入口缺少动态冻结证据，保持安装NO_GO；最新手动备份独立作为应用发布前置门。下面未授权/待版本确认是历史时点。
+
 # Unboundry 当前权威状态
+
+> **2026-09-06 性能修复当前状态**：最近核对生产运行`v0.7.11/schema43`（本轮未新查生产）。用户已授权仅本地实施、测试和审查；生产/付费生成不操作。唯一断点为 `spec/PERFORMANCE_REMEDIATION_CHECKPOINT_2026-09-06.md`，实施分支 `codex/performance-remediation-from-v0.7.11`，基线 `39c6385`（与已发布 v0.7.11 同源码树）。恢复分支保留不动。本地正式全测1258/1263，5失败已最小60/60关闭，产品审查GO、发布 NO_GO，下面 v0.7.11 发布前及更早状态均为历史记录，不可继承其授权或 PASS。
+
+**生产是 v0.7.11 / schema43。** 这是性能诊断阶段最后已核对的生产身份，本轮仅本地实施，未修改线上；恢复分支39c6385与其源码树一致。下面9月5日发布前说明保留为历史。
+
 
 > **2026-09-05 14:32 UTC 当前权威**：v0.7.11独立全量代码Review P0/P1/P2=0，正式全测127 specs、1243/1243 PASS、exit0、异常0，完整日志已落盘；原48203终态丢失未标PASS，在冻结无漂移下补证95805成功。255定向和成功full不重复。post-full文档增量6/6已审查GO（155文件不变、P0/P1/P2=0），当前进入发布，0711尚未commit/发布/部署。线上079/schema43，原11/11真实结果保留且禁止重跑；刷新、真实音频/三上传及最终生产复核尚未通过。下面所有较早覆盖段落为历史时点，以本段、下面统一当前字段和Checkpoint最新段为准。
 
@@ -46,15 +53,15 @@
 
 更新日期：2026-09-05
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.7.11**
-本地候选代码版本：**v0.7.11**
-当前本地候选说明：`v0.7.11 targeted255 / independent full Review GO / formal127specs-1243PASS；post-full文档增量6/6 GO，尚未发布；production079/schema43，原group11/11成功不重跑，后置刷新与真实音频/三上传未通过`
-当前生产部署版本：**v0.7.9/schema43**
+当前代码包版本：**v0.7.12**
+本地候选代码版本：**v0.7.12**
+当前本地候选说明：`性能修复A-G本地实现；独立审查问题已关闭；正式full1258/1263，5失败最小60/60已关闭；未提交/发布`
+当前生产部署版本：**v0.7.11/schema43**（最近诊断核对；本轮不重新操作生产）
 本地候选schema：**43**
 当前治理标记：`CURRENT_V0_7_11_USER_RECHECK`
-当前业务标记：`V0_7_9_CODE_ROLLBACK_CURRENT43 / ORIGINAL_GROUP_11_OF_11_PASS / REFRESH_AND_AUDIO_PRODUCTION_NO_GO / UPLOADS_NOT_RUN`
-当前发布执行标记：`V0_7_11_TARGETED_255_PASS / FULL_REVIEW_GO / FORMAL_1243_PASS / POST_FULL_DOC_REVIEW_GO / RELEASE_NOT_RUN / REAL_CLICK_1_OF_1`
-当前本地Goal标记：`CANVAS_DOCUMENT_WRITE_BOUNDARY_CONTINUATION / PLAN_R0_R10 / MATRIX_CWB_001_CWB_194 / USER_REQUESTED_CONTINUE`
+当前业务标记：`USER_CONFIRMED_GENERATION_WORKS / PERFORMANCE_USER_RECHECK`
+当前发布执行标记：`LOCAL_ONLY / RELEASE_NO_GO / PAID_GENERATION_FORBIDDEN`
+当前本地Goal标记：`NO_ACTIVE_GOAL / USER_AUTHORIZED_LOCAL_IMPLEMENTATION`
 当前计划标记：`V0_7_11_CODE_REVIEW_AND_FORMAL_PASS / POST_FULL_DOC_REVIEW_GO / R10_PENDING / REAL_CLICK_1_OF_1`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
 当前发布门：`V0_7_9_PRODUCTION / V0_7_11_NOT_RELEASED / CURRENT_DATA_BACKUP_AND_PRODUCTION_ACCEPTANCE_PENDING`

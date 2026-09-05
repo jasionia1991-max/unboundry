@@ -1659,7 +1659,15 @@ function ImageNodeImpl({
     : Boolean(data.imageGenerating);
   const legacySubmissionBlocked = legacyState === "DETECTING" ||
     legacyState === "ACTIVE_CONFIRMED" || legacyState === "UNKNOWN_BLOCKED";
-  const mediaLoad = useMediaLoadRecovery(data.imageSrc);
+  // Preview is component state only: never a persisted asset or model input.
+  const [uploadPreview, setUploadPreview] = useState<string>();
+  const uploadPreviewUrl = useRef<string | undefined>(undefined);
+  const clearUploadPreview = useCallback(() => {
+    if (uploadPreviewUrl.current) URL.revokeObjectURL(uploadPreviewUrl.current);
+    uploadPreviewUrl.current = undefined;
+    setUploadPreview(undefined);
+  }, []);
+  const mediaLoad = useMediaLoadRecovery(uploadPreview ?? data.imageSrc);
   const imageShowsTransparency = data.imageHasTransparency === true ||
     data.imageToolOutputBackground === "transparent";
   const previewFrameStyle = (() => {
@@ -1981,7 +1989,7 @@ function ImageNodeImpl({
     : {};
   const generatedSuccess = Boolean(data.imageGeneratedSuccess);
   const generating = Boolean(data.imageGenerating);
-  const preview = data.imageSrc;
+  const preview = uploadPreview ?? data.imageSrc;
   const [activeTaskId, setActiveTaskId] = useState<string>();
   // 页面刷新或组件重挂后 activeTaskId 会丢失，但持久化任务号还在；
   // 取消按钮用它兜底，保证“生成中一定能取消”。
@@ -2546,25 +2554,28 @@ function ImageNodeImpl({
       effectiveMediaInputState(readCanvasNode(id)?.data ?? {}) === "uploading"
     ) return;
     uploadOperation.current += 1;
+    clearUploadPreview();
     uploadAdmissionPending.current = false;
     uploadInFlight.current = false;
     uploadBaseline.current = undefined;
-  }, [effectiveInputState, id, readCanvasNode]);
+  }, [clearUploadPreview, effectiveInputState, id, readCanvasNode]);
 
   useEffect(() => {
     if (persistenceReady || !uploadInFlight.current) return;
     uploadOperation.current += 1;
+    clearUploadPreview();
     uploadAdmissionPending.current = false;
     uploadInFlight.current = false;
     uploadBaseline.current = undefined;
-  }, [persistenceReady]);
+  }, [clearUploadPreview, persistenceReady]);
 
   useEffect(() => () => {
     uploadOperation.current += 1;
+    clearUploadPreview();
     uploadAdmissionPending.current = false;
     uploadInFlight.current = false;
     uploadBaseline.current = undefined;
-  }, []);
+  }, [accountId, canvasId, id, clearUploadPreview]);
 
   useEffect(() => {
     if (
@@ -4061,7 +4072,18 @@ function ImageNodeImpl({
 
     let createdAssetId: string | undefined;
     try {
-      const asset = await uploadImageAsset(file);
+      const asset = await uploadImageAsset(file, (normalized) => {
+        if (operation !== uploadOperation.current ||
+            scope !== mediaAdoptionScopeRef.current ||
+            !canvasUploadTargetStillCurrent(admittedBaseline, readCanvasNode(id)) ||
+            !persistenceReadyLive.current) return;
+        clearUploadPreview();
+        try {
+          const url = URL.createObjectURL(normalized);
+          uploadPreviewUrl.current = url;
+          setUploadPreview(url);
+        } catch { /* A preview allocation failure must not cancel the upload. */ }
+      });
       createdAssetId = asset.assetId;
       if (
         operation !== uploadOperation.current ||
@@ -4114,6 +4136,9 @@ function ImageNodeImpl({
       releaseUploadCheckpoint();
       uploadAdmissionPending.current = true;
       let adopted = false;
+      // From this boundary the server may adopt the asset even when its ACK is
+      // lost. Only server orphan recovery can safely decide to delete it.
+      createdAssetId = undefined;
       try {
         adopted = await adoptUploadedAsset({
           asset: {
@@ -4221,11 +4246,7 @@ function ImageNodeImpl({
           uploadAdmissionPending.current = false;
         }
       }
-      if (!adopted) {
-        await discardImageAsset(asset.assetId);
-        createdAssetId = undefined;
-        return;
-      }
+      if (!adopted) return;
       createdAssetId = undefined;
       setTransientUploadError("");
     } catch (error) {
@@ -4260,6 +4281,7 @@ function ImageNodeImpl({
     } finally {
       releaseUploadCheckpoint();
       if (operation === uploadOperation.current) {
+        clearUploadPreview();
         uploadAdmissionPending.current = false;
         uploadInFlight.current = false;
         uploadBaseline.current = undefined;

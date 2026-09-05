@@ -1,3 +1,4 @@
+import type { WorkflowRunSummary } from "../../../types/workflowRuns";
 import {
   addEdge,
   applyEdgeChanges,
@@ -5194,6 +5195,80 @@ export function CanvasSurface({
       return response.body.graphRevision ?? response.body.revision;
     }
   }, [persistenceFacade, persistenceFixture, persistenceId]);
+  const workflowResultRead = useRef(false);
+  const receiveWorkflowResults = useCallback(async (run: WorkflowRunSummary, signal?: AbortSignal) => {
+    const scopeId = persistenceScopeId;
+    const available = () => persistenceLoadIdentity.current.scopeId === scopeId &&
+      persistenceReadyRef.current && !persistenceConflict.current &&
+      !persistenceSaving.current && !persistencePendingAttempt.current &&
+      !persistencePendingPagehide.current && !signal?.aborted &&
+      (persistenceExternalRevision.current === undefined ||
+        persistenceExternalRevision.current <= (persistenceObservedRevision.current ?? -1));
+    if (run.canvasId !== persistenceId || !available() || workflowResultRead.current) return false;
+    workflowResultRead.current = true;
+    const controller = new AbortController();
+    const abort = () => controller.abort(signal?.reason);
+    signal?.addEventListener("abort", abort, { once: true });
+    try {
+      const response = await loadCanvasPersistenceWithDeadline({
+        adopt: false, canvasId: persistenceId, controller,
+        saveSessionId: persistenceSessionId.current,
+        timeoutReason: "workflow-results-timeout", transport: persistenceFacade.transport,
+      });
+      if (!available() || !response.ok || !persistenceFacade.isLoadedDocument(response.body) ||
+          response.body.revision < persistenceRevision.current ||
+          response.body.saveEpoch !== persistenceServerEpoch.current) return false;
+      const document = response.body;
+      const live = canvasSnapshotWithLiveEditors();
+      const adoption = persistenceFacade.transport.prepareWorkflowResultAdoption?.({
+        canvasId: persistenceId, current: live.nodes, document, run,
+      });
+      if (!adoption) return false;
+      // A newer edit/run may have removed the old task proof. It must not be
+      // restored, and terminal obsolete targets do not need endless reads.
+      if (!adoption.received.length) return !["running", "stopping"].includes(run.state);
+      // Do not materialize an IME editor into React state mid-composition.
+      if (globalThis.document.querySelector('.react-flow__node [data-composition-active="true"]')) return false;
+      assertCanvasSaveSessionCurrent();
+      const previousFloor = persistenceSequenceFloor.current;
+      try {
+        persistenceSequenceFloor.current = Math.max(previousFloor, document.sessionHighWaterSequence);
+        persistCanvasSaveSession();
+      } catch (error) {
+        persistenceSequenceFloor.current = previousFloor;
+        throw error;
+      }
+      if (!adoption.commit()) return false;
+      for (const entry of [...history.current, ...redoHistory.current]) {
+        if (entry.kind === "snapshot") entry.nodes = adoption.mergeHistory(entry.nodes) as ProbeNodeType[];
+      }
+      const nextNodes = adoption.nodes as ProbeNodeType[];
+      persistenceRevision.current = document.revision;
+      persistenceGraphRevision.current = document.graphRevision ?? document.revision;
+      persistenceObservedRevision.current = document.revision;
+      persistenceObservedLoadToken.current = document.loadToken;
+      persistedDocumentFingerprint.current = canvasUserDocumentFingerprint(adoption.baseline);
+      persistedGraphFingerprint.current = canvasGraphFingerprint(adoption.baseline);
+      if (persistenceExternalRevision.current !== undefined &&
+          persistenceExternalRevision.current <= document.revision) persistenceExternalRevision.current = undefined;
+      const nextSnapshot = canvasSnapshot(nextNodes);
+      if (persistenceQueued.current) persistenceQueued.current = nextSnapshot;
+      if (persistenceScheduledDocument.current) persistenceScheduledDocument.current = nextSnapshot;
+      pendingGuardedNodes.current = nextNodes;
+      nodesRef.current = nextNodes;
+      setNodes(nextNodes);
+      setConfirmedPersistenceRevision(document.revision);
+      setConfirmedGraphRevision(document.graphRevision ?? document.revision);
+      if (adoption.conflicts.length) showWorkflowToast("生成结果已保留在历史中；正在编辑的文字保持不变", "error");
+      return true;
+    } finally {
+      workflowResultRead.current = false;
+      signal?.removeEventListener("abort", abort);
+    }
+  }, [assertCanvasSaveSessionCurrent, canvasSnapshot, canvasSnapshotWithLiveEditors,
+    persistenceFacade, persistenceId, persistenceScopeId, persistCanvasSaveSession,
+    setNodes, showWorkflowToast]);
+
   const refreshAuthoritativeCanvasDocument = useCallback(async (
     signal?: AbortSignal,
   ) => {
@@ -5391,6 +5466,7 @@ export function CanvasSurface({
       notify: showWorkflowToast,
       persistenceReady,
       readAuthoritativeCanvasRevision,
+      receiveWorkflowResults,
       refreshAuthoritativeCanvasDocument,
       retryGenerationEnabled,
       waitForCanvasRevision,
@@ -5404,6 +5480,7 @@ export function CanvasSurface({
       persistenceReady,
       persistenceId,
       readAuthoritativeCanvasRevision,
+      receiveWorkflowResults,
       refreshAuthoritativeCanvasDocument,
       retryGenerationEnabled,
       showWorkflowToast,

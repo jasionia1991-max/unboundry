@@ -5651,3 +5651,101 @@ test("logical fingerprints cover every table and sqlite_sequence independent of 
     await rm(root, { force: true, recursive: true });
   }
 });
+
+test("PERF schema43 OSS wrapper prepares locally and its package restores exactly without remote upload", async () => {
+  const root = await mkdtemp(join(tmpdir(), "unboundry-perf-schema43-backup-"));
+  let fixture: Fixture | undefined;
+  try {
+    fixture = await createBackupFixture(root);
+    const generationFrozenAt = "2026-01-01T00:02:00.000Z";
+    fixture.database.prepare(`
+      UPDATE generation_tasks
+      SET state = 'failed', error_code = 'AUTH',
+        error_message = 'schema43 frozen fixture', updated_at = ?
+      WHERE id = 'backup-task'
+    `).run(generationFrozenAt);
+    fixture.database.prepare(`
+      INSERT INTO generation_task_events (
+        task_id, state, error_code, error_message, created_at
+      ) VALUES (
+        'backup-task', 'failed', 'AUTH', 'schema43 frozen fixture', ?
+      )
+    `).run(generationFrozenAt);
+    fixture.database.prepare(`
+      UPDATE generation_safety_settings
+      SET global_enabled = 0, emergency_stop = 1, updated_at = ?
+      WHERE id = 1
+    `).run(generationFrozenAt);
+    fixture.database.prepare(`
+      INSERT INTO admin_audit_events (
+        actor_user_id, action, details, created_at
+      ) VALUES ('backup-user', 'generation_safety.update', ?, ?)
+    `).run(JSON.stringify({
+      after: {
+        emergencyStop: true,
+        globalEnabled: false,
+        updatedAt: generationFrozenAt,
+      },
+    }), generationFrozenAt);
+    fixture.database.exec("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode = DELETE");
+    const sourceInspection = inspectBackupDatabase(
+      join(fixture.dataDirectory, "unboundry.sqlite"),
+      fixture.dataDirectory,
+    );
+    expect(sourceInspection.userVersion).toBe(43);
+    const before = await treeFingerprint(fixture.dataDirectory);
+    const wrapperScript = join(process.cwd(), "ops/production/backup-to-oss-retention.mjs");
+    const wrapperArguments = [
+      wrapperScript,
+      "--data-dir",
+      fixture.dataDirectory,
+      "--backup-root",
+      fixture.backupRoot,
+      "--scratch-root",
+      fixture.scratchRoot,
+      "--recovery-public-key",
+      fixture.paths.recoveryPublic,
+      "--signing-private-key",
+      fixture.paths.signingPrivate,
+      "--expected-database-logical-sha256",
+      sourceInspection.logicalSha256,
+      "--expected-schema-version",
+      "43",
+      "--generation-frozen-at",
+      generationFrozenAt,
+      "--last-provider-admission-at",
+      "none",
+      "--profile-id",
+      "storage-one",
+      "--allow-media-warning",
+      "MEDIA_INTEGRITY_LOCAL_FILE_ORPHAN",
+      "--oss-mirror",
+      JSON.stringify({
+        filePath: fixture.mirrorPath,
+        objectKey: fixture.objectKey,
+        versionId: "fake-version-schema43-wrapper",
+      }),
+    ];
+    const result = await execute(process.execPath, wrapperArguments, { cwd: process.cwd() });
+    const receipt = JSON.parse(result.stdout.trim());
+    expect(receipt).toMatchObject({ applyUpload: false, applyRetention: false, schemaVersion: 43 });
+    expect(receipt.manifestObjectKey).toContain("unboundry-schema43/");
+    const packageDirectory = join(fixture.backupRoot, receipt.backupId);
+    await execute(process.execPath, ["scripts/verify-backup.mjs", "--backup-dir", packageDirectory,
+      "--scratch-root", fixture.scratchRoot, "--recovery-private-key", fixture.paths.recoveryPrivate,
+      "--trusted-signing-public-key", fixture.paths.signingPublic], { cwd: process.cwd() });
+    const target = join(root, "single-restore-rehearsal");
+    await execute(process.execPath, ["scripts/restore-backup.mjs", "--backup-dir", packageDirectory,
+      "--target-data-dir", target, "--scratch-root", fixture.scratchRoot,
+      "--recovery-private-key", fixture.paths.recoveryPrivate,
+      "--trusted-signing-public-key", fixture.paths.signingPublic], { cwd: process.cwd() });
+    expect(inspectBackupDatabase(join(target, "unboundry.sqlite"), target)).toMatchObject({
+      userVersion: 43, logicalSha256: sourceInspection.logicalSha256,
+      foreignKeyViolations: 0, integrityCheck: "ok",
+    });
+    expect(await treeFingerprint(fixture.dataDirectory)).toBe(before);
+  } finally {
+    fixture?.database.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});

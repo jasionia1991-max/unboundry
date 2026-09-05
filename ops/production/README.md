@@ -1,3 +1,7 @@
+> **2026-09-06 v0.7.12 发布当前状态**：用户已先确认上线/回退方案，再明确同意按 v0.7.12 发布；本次授权包含候选提交、PR/CI、不可移动标签/Release、最新备份与独立恢复验证、生产切换及零付费验收。保留 v0.7.11 恢复分支和当前数据；不触发真实付费生成，不删除历史备份/素材，不迁移schema43。生产运行`v0.7.11/schema43`，当前断点 `spec/PERFORMANCE_REMEDIATION_CHECKPOINT_2026-09-06.md`。20产品文件已审证据复用，新增仅版本登记及必要发布增量，版本定向验证待执行。自动备份旧入口缺少动态冻结证据，保持安装NO_GO；最新手动备份独立作为应用发布前置门。下面未授权/待版本确认是历史时点。
+
+> 2026-09-06 当前本地工作已转入 `spec/PERFORMANCE_REMEDIATION_CHECKPOINT_2026-09-06.md`。下面发布记录是历史事实；本轮仅本地性能修复，不授权线上/付费操作。
+
 # Production backup contracts
 
 This directory contains production operation sources. Production currently runs
@@ -15,12 +19,12 @@ new authorization. Current evidence is recorded in
 `spec/V0_7_7_PRODUCTION_RECEIPT_2026-09-03.json`; candidate and v0.7.6 receipts
 are historical evidence only.
 
-## Current schema42 production contract
+## Local candidate schema42/schema43 backup contract
 
 `backup-to-oss-retention.mjs` calls the signed, encrypted
 `scripts/backup-data.mjs` contract. It requires explicit absolute source,
 backup, scratch, key, profile, schema, logical-SHA, freeze, and last-admission
-arguments. Schema must be exactly 42. With no `--apply-upload` it creates only
+arguments. Schema must be explicitly 42 (historical recovery) or 43 (current-schema final candidate). With no `--apply-upload` it creates only
 the local encrypted package and prints a dry-run inventory; it performs no OSS
 write. `--apply-upload` is a separate production side effect and is not
 authorized by this repository state. Retention deletion remains fail-closed
@@ -40,7 +44,7 @@ Before any future installation, freeze an immutable release and record:
 
 - release commit/tree and wrapper SHA-256;
 - installed absolute paths and owner/mode;
-- exact schema42 database logical SHA and freeze evidence;
+- exact selected-schema database logical SHA and freeze evidence;
 - signing trust anchor and recovery-key identities, never private key bytes;
 - systemd service/timer unit hashes and the next scheduled time;
 - backup, verify, fresh-restore, fake-OSS, and zero-egress receipts.

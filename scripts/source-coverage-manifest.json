@@ -25,15 +25,15 @@
       "scriptSha256": "1f44bc5650369220fab1854a2d7b549f311c8d4469481f25b9569e15e80e3c94",
       "target": "tests/m10-backup.spec.ts",
       "marker": "HISTORICAL_SCHEMA39_BACKUP_DISABLED",
-      "targetSha256": "cc872af09bb4ea732e78970e23a7629723389eb7c664787a87ca454d3ddcb00b",
+      "targetSha256": "a0b97aae41455d6ed22073a3832474cba41b249c98c414bbaa440f19124b260d",
       "manualNpmScripts": []
     },
     "ops/production/backup-to-oss-retention.mjs": {
       "mode": "behavior-test",
-      "scriptSha256": "58d84d2cb59ad462f0632c2e1ed911485674ad479b932e4a951365b1e162223a",
+      "scriptSha256": "695bfa261b80cb89439e64d8af33fc8ec9033e078b9e5c348f1ebb3ff2fbdd05",
       "target": "tests/m10-backup.spec.ts",
       "marker": "locked schema42 backup verifies and restores into a fresh private directory",
-      "targetSha256": "cc872af09bb4ea732e78970e23a7629723389eb7c664787a87ca454d3ddcb00b",
+      "targetSha256": "a0b97aae41455d6ed22073a3832474cba41b249c98c414bbaa440f19124b260d",
       "manualNpmScripts": [
         "data:backup:oss"
       ]
@@ -101,14 +101,14 @@
       "scriptSha256": "8375ab064372eacf0a1a7a3c201040b90a1d5b2f85f6459b3fff87d37ec8b52f",
       "target": "tests/m10-backup.spec.ts",
       "marker": "locked schema42 backup verifies and restores into a fresh private directory",
-      "targetSha256": "cc872af09bb4ea732e78970e23a7629723389eb7c664787a87ca454d3ddcb00b"
+      "targetSha256": "a0b97aae41455d6ed22073a3832474cba41b249c98c414bbaa440f19124b260d"
     },
     "scripts/backup-final-candidate.mjs": {
       "mode": "behavior-test",
       "scriptSha256": "18679a42eaec6432021f463aad34a01a39e9aaecaeb32f3918a7aabf8a474ad8",
       "target": "tests/m10-backup.spec.ts",
       "marker": "historical exact-v37 recovery chain rehydrates fake OSS offline and validates normal runtime startup",
-      "targetSha256": "cc872af09bb4ea732e78970e23a7629723389eb7c664787a87ca454d3ddcb00b"
+      "targetSha256": "a0b97aae41455d6ed22073a3832474cba41b249c98c414bbaa440f19124b260d"
     },
     "scripts/backup-to-oss.mjs": {
       "mode": "frozen",
@@ -127,7 +127,7 @@
       "scriptSha256": "edb54c2e10695c12f290f8507e0e96ce692e76dd2416f667237e1dcb0b344f00",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "Full snapshot bridge/final fixtures prove the release closure",
-      "targetSha256": "0cc21ee8e31578d96c4ef53f64de33d7ff6d47086eb98d4381be97532814b88c"
+      "targetSha256": "50b64c232bccdcfc71f952b44a7137e9f7bf35da00ad232a6eb9b0a8e8f37edc"
     },
     "scripts/check-greenfield.mjs": {
       "mode": "behavior-test",
@@ -141,14 +141,14 @@
       "scriptSha256": "c13a839154006e47341942ceee5e82ef553b975bac9c0ad1708d07844bcbd24a",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "scripts/check-restart-persistence.mjs",
-      "targetSha256": "0cc21ee8e31578d96c4ef53f64de33d7ff6d47086eb98d4381be97532814b88c"
+      "targetSha256": "50b64c232bccdcfc71f952b44a7137e9f7bf35da00ad232a6eb9b0a8e8f37edc"
     },
     "scripts/check-v051-exact-runtime.mjs": {
       "mode": "behavior-test",
       "scriptSha256": "53797d2e3046840249fb7be60a8ace95111bc62f6f86ce957ae50500d29be7f6",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "scripts/check-v051-exact-runtime.mjs",
-      "targetSha256": "0cc21ee8e31578d96c4ef53f64de33d7ff6d47086eb98d4381be97532814b88c"
+      "targetSha256": "50b64c232bccdcfc71f952b44a7137e9f7bf35da00ad232a6eb9b0a8e8f37edc"
     },
     "scripts/deploy.mjs": {
       "mode": "frozen",
@@ -210,14 +210,14 @@
       "scriptSha256": "885b3c2059f45db416f2648991e8b578dfdbeada95499e0acfa1b3418ee95da7",
       "target": "tests/m104-inc-gen-026-reliability.spec.ts",
       "marker": "historical terminal settlement is manifest-fenced and repeat apply is a no-op",
-      "targetSha256": "29566102ec81423fb098932bdffb903c93851a680e0aa1b2a716e6789c12589b"
+      "targetSha256": "cee5925b195d5a7b73befd32fa36ea18a47ff8c1b364f0363d2f0ef3154ec161"
     },
     "scripts/apply-inc-gen-026-attempt-settlements.mjs": {
       "mode": "behavior-test",
       "scriptSha256": "5c34223ee1a3409e53eb20125c7e1e71df9016a0458d1c7ed9b16d67e15ca70b",
       "target": "tests/m104-inc-gen-026-reliability.spec.ts",
       "marker": "historical terminal settlement is manifest-fenced and repeat apply is a no-op",
-      "targetSha256": "29566102ec81423fb098932bdffb903c93851a680e0aa1b2a716e6789c12589b"
+      "targetSha256": "cee5925b195d5a7b73befd32fa36ea18a47ff8c1b364f0363d2f0ef3154ec161"
     },
     "scripts/node-typescript-runtime.mjs": {
       "mode": "behavior-test",
@@ -272,7 +272,7 @@
       "scriptSha256": "dbc1b06fc7ca761b66cde24bf0e1e293951b87de10db2ab959abbf6ac9a20b76",
       "target": "tests/m10-backup.spec.ts",
       "marker": "locked schema42 backup verifies and restores into a fresh private directory",
-      "targetSha256": "cc872af09bb4ea732e78970e23a7629723389eb7c664787a87ca454d3ddcb00b"
+      "targetSha256": "a0b97aae41455d6ed22073a3832474cba41b249c98c414bbaa440f19124b260d"
     },
     "scripts/run-linux-production-validation.mjs": {
       "mode": "frozen",
@@ -285,7 +285,7 @@
       "scriptSha256": "891d9c3db99cf458f88248e503c221e1f450f78f16b9f4d15af8d2f36f5c0efd",
       "target": "tests/m10-backup.spec.ts",
       "marker": "locked schema42 backup verifies and restores into a fresh private directory",
-      "targetSha256": "cc872af09bb4ea732e78970e23a7629723389eb7c664787a87ca454d3ddcb00b"
+      "targetSha256": "a0b97aae41455d6ed22073a3832474cba41b249c98c414bbaa440f19124b260d"
     }
   }
 }

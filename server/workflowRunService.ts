@@ -1249,7 +1249,35 @@ export function settleWorkflowAdmissionFailureForRuntimeTest(input: {
   settleWorkflowAdmissionFailure(input);
 }
 
+function workflowRunNeedsMutation(runId: string) {
+  return readAppDatabaseSnapshot((database) => {
+    const run = database.prepare("SELECT * FROM workflow_runs WHERE id = ?").get(runId);
+    if (!run || !activeRunStates.includes(run.state as never)) return false;
+    try { parsePlan(run.plan_json); } catch { return true; }
+    const nodes = database.prepare(`
+      SELECT node_id, state, dependencies_json, error_code, task_id
+      FROM workflow_run_nodes WHERE run_id = ?
+    `).all(runId);
+    const states = new Map(nodes.map((node) => [String(node.node_id), String(node.state)]));
+    if (nodes.every((node) => !["pending", "admitting", "admitted"].includes(String(node.state)))) return true;
+    return nodes.some((node) => {
+      if (node.state === "admitting") return true;
+      if (node.state === "admitted" && ["success", "failed", "cancelled", "recovering"].includes(
+          String(generationTaskApplication.taskStore().get(String(node.task_id))?.state))) return true;
+      if (node.error_code && !run.error_code) return true;
+      if (node.state !== "pending") return false;
+      if (Number(run.stop_requested) === 1) return true;
+      try {
+        const dependencies = JSON.parse(String(node.dependencies_json)) as string[];
+        return dependencies.every((id) => states.get(id) === "success") ||
+          dependencies.some((id) => ["failed", "blocked", "cancelled"].includes(states.get(id) ?? ""));
+      } catch { return true; }
+    });
+  });
+}
+
 async function processWorkflowRun(runId: string) {
+  if (!workflowRunNeedsMutation(runId)) return;
   const database = openAppDatabase();
   try {
     const run = database.prepare("SELECT * FROM workflow_runs WHERE id = ?")
@@ -1495,15 +1523,12 @@ function createWorkflowSweepCoordinator(pass: () => Promise<void>) {
 }
 
 async function runWorkflowSweepPass() {
-  const database = openAppDatabase();
-  let ids: string[];
-  let projectionRetryIds: string[];
-  try {
-    ids = (database.prepare(`
+  const { ids, projectionRetryIds } = readAppDatabaseSnapshot((database) => {
+    const ids = (database.prepare(`
       SELECT id FROM workflow_runs WHERE state IN ('running', 'stopping')
       ORDER BY updated_at, created_at, id
     `).all() as Array<{ id: string }>).map(({ id }) => id);
-    projectionRetryIds = (database.prepare(`
+    const projectionRetryIds = (database.prepare(`
       SELECT DISTINCT run.id
       FROM workflow_runs AS run
       JOIN workflow_run_nodes AS node ON node.run_id = run.id
@@ -1511,9 +1536,8 @@ async function runWorkflowSweepPass() {
         AND node.state = 'success' AND node.projection_state = 'failed'
       ORDER BY run.updated_at LIMIT 50
     `).all() as Array<{ id: string }>).map(({ id }) => id);
-  } finally {
-    database.close();
-  }
+    return { ids, projectionRetryIds };
+  });
   await runFairWorkflowBatch(ids, processWorkflowRun);
   for (const id of projectionRetryIds) {
     try {
@@ -1564,16 +1588,13 @@ export function stopWorkflowRunner() {
 }
 
 export function activeWorkflowRunCount() {
-  const database = openAppDatabase();
-  try {
+  return readAppDatabaseSnapshot((database) => {
     const row = database.prepare(`
       SELECT COUNT(*) AS count FROM workflow_runs
       WHERE state IN ('running', 'stopping')
     `).get() as { count?: unknown } | undefined;
     return Number(row?.count ?? 0);
-  } finally {
-    database.close();
-  }
+  });
 }
 
 export const workflowRunApplication = Object.freeze({

@@ -1,0 +1,59 @@
+{
+  "version": "0.7.12",
+  "status": "LOCAL_CANDIDATE_REVIEW_GO_PRODUCTION_PENDING",
+  "baseline": "39c6385427d3f62d1e4f8231046bb5159ee55ecd",
+  "restoreBranch": "codex/restore-v0.7.11-before-performance-20260906",
+  "originalFull": {
+    "passed": 1258,
+    "failed": 5,
+    "total": 1263
+  },
+  "failureClosure": {
+    "passed": 60,
+    "failed": 0
+  },
+  "productReview": {
+    "files": 20,
+    "hunks": 116,
+    "openP0": 0,
+    "openP1": 0,
+    "openP2": 0
+  },
+  "versionDeltaReview": "GO by independent performance_final_review; exact 0.7.12 final and invalid/bridge cases retained",
+  "versionTargeted": {
+    "command": "node scripts/run-safe-tests.mjs run --spec tests/m81-deployment-hardening.spec.ts --spec tests/m38-generation-runtime-incidents.spec.ts",
+    "passed": 61,
+    "failed": 0,
+    "skipped": 0,
+    "blocked": 0,
+    "retries": 0,
+    "reportErrors": 0,
+    "sourceSha256": "2c3dc047b641fb94bc6abd4c828213ea0016298513c3c992f38bea8e6a078a86"
+  },
+  "infrastructureAttempts": "First two failed before product tests due stdout/stderr redirected into home denied by sandbox; pipe tee fixed logging without modifying sandbox or product. Both failures retained.",
+  "production": "v0.7.11/schema43 remains active; new release not deployed",
+  "automaticBackup": "Old standalone entrypoint still fails. Installation NO_GO until a fresh-evidence job is designed/tested; latest manual verified backup independently required.",
+  "paidGeneration": "FORBIDDEN",
+  "productSha256": {
+    "client/src/canvas/CanvasShell.tsx": "289094b1e6d142863e13e3460ceef22a6701c73909453c0713ef5c901c7a4b3b",
+    "client/src/canvas/CanvasSurface.tsx": "b9afebf1b94b6cfe36864966c08f435a2d4ec3038470e4f0060ed967f62b6370",
+    "client/src/canvas/ImageNode.tsx": "78dcea624f6e695970f36644fd9f639ae67e27bfcb51d11eab3f906a3413e0c5",
+    "client/src/canvas/canvasCommandJournal.ts": "b213ee47c05042175f0088d6016aec1fa3885fa957b7d0e15379fd90b1511bbb",
+    "client/src/canvas/canvasPersistenceFacade.ts": "865f86badc11091a14a8c2204825d045db621324c8c963c38a5bd4cb3b657b86",
+    "client/src/canvas/imageAsset.ts": "4028678778ee0480064d72cd67680a875836cd20957ec0810e08c92781f4f327",
+    "client/src/generation/GenerationCanvasContext.tsx": "7dbb689193f98ceb317e61628e9a96b1f54d9522625c5f64d390e242f17223ea",
+    "client/src/generation/WorkflowExecutionProvider.tsx": "19c8343f55360d9a05e5c89693e5ce140e58537ee9fe507b37c331e62e654df4",
+    "ops/production/backup-to-oss-retention.mjs": "695bfa261b80cb89439e64d8af33fc8ec9033e078b9e5c348f1ebb3ff2fbdd05",
+    "server/canvasCommandsApi.ts": "0a83df7e566d57b85a40b186a26ec96afaa56b80ac8322421671cbb472e5e8ad",
+    "server/database.ts": "843b25eb883241a8b9b982bc2cb463857306382f51ba57911cd1922dbb3d3043",
+    "server/generationApplicationApi.ts": "c6375020c95f26cb07786a013da46f0788764e5cd8381c9530ad83533b8fb75b",
+    "server/generationCanvasProjectionService.ts": "0feb0247d1014bbf392d6b0a27ad5dcdb311e7c241ed3a16c29c1e5fc6eff35e",
+    "server/generationTasks.ts": "cf515a73806a91c8470699f33fa44acb1a137b0415a0de7f26d1d7913dec7a01",
+    "server/inputPreflight.ts": "1306bdeb720a074b90c3d9f17da95241e8200431b0321011bca545dacef86f0d",
+    "server/mediaEditSource.ts": "f4e6589e58f06c84cee48febdf4b8553038ff615a10c477d98e63f0d9ef6ce76",
+    "server/mediaLifecycle.ts": "a450eaa9bbf2b738a1611d40e1af965cd75f64d1cecc47ddd1e49112f30da785",
+    "server/providerImageNormalization.ts": "a4c9d72cd98ba2c2e50684ab6a47b9e0a5c48f0cccfd7a259a8605777d4e3a18",
+    "server/templateCatalog.ts": "413c341392d5c2917d6280a434b5272d5b6d69fe341ea13c998f35d286501639",
+    "server/workflowRunService.ts": "ab280e0339f51e8462e1852e841adc2a98e21e0ceec94fed366f58853a9b9458"
+  }
+}

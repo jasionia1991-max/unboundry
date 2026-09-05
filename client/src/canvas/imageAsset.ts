@@ -211,6 +211,11 @@ export async function discardImageAsset(assetId: string) {
   }
 }
 
-export async function uploadImageAsset(file: File): Promise<ImageAsset> {
-  return uploadPngAsset(await normalizeImageToPng(file));
+export async function uploadImageAsset(
+  file: File,
+  onNormalized?: (file: File) => void,
+): Promise<ImageAsset> {
+  const normalized = await normalizeImageToPng(file);
+  onNormalized?.(normalized);
+  return uploadPngAsset(normalized);
 }

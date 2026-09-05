@@ -1,3 +1,4 @@
+import type { WorkflowRunSummary } from "../../../types/workflowRuns";
 import { createContext, useContext } from "react";
 import type { CuttableEdge } from "../canvas/canvasTypes";
 import type { ProbeNodeType } from "../canvas/ProbeNode";
@@ -44,6 +45,7 @@ export type GenerationCanvasState = {
   /** Read the current durable server graph revision while holding Canvas admission. */
   readAuthoritativeCanvasRevision: () => Promise<number>;
   /** Reload a newer authoritative Canvas document after server-side projection. */
+  receiveWorkflowResults: (run: WorkflowRunSummary, signal?: AbortSignal) => Promise<boolean>;
   refreshAuthoritativeCanvasDocument: (signal?: AbortSignal) => Promise<boolean>;
   adoptAuthoritativeGenerationMutation: (
     mutation: AuthoritativeGenerationCanvasMutation,
@@ -71,6 +73,7 @@ export const GenerationCanvasContext = createContext<GenerationCanvasState>({
   persistenceReady: true,
   retryGenerationEnabled: false,
   readAuthoritativeCanvasRevision: async () => -1,
+  receiveWorkflowResults: async () => false,
   refreshAuthoritativeCanvasDocument: async () => false,
   flushCanvasSave: async () => {},
   waitForCanvasRevision: async () => -1,

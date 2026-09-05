@@ -1,3 +1,4 @@
+import { readAppDatabaseSnapshot } from "./database";
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, realpathSync } from "node:fs";
 import { link, lstat, mkdir, open, rm, stat } from "node:fs/promises";
@@ -519,7 +520,7 @@ export async function publishLocalMediaPublication(
     if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) {
       throw error;
     }
-    const attempt = withDatabase((database) => readAttempt(database, reservation));
+    const attempt = readAppDatabaseSnapshot((database) => readAttempt(database, reservation));
     if (!attempt?.checksum_sha256 || attempt.byte_size < 1) throw error;
     const info = await stat(mediaPublicationFinalPath(reservation));
     if (
@@ -773,7 +774,7 @@ async function removeExternal(
     }
     await deleteExternalObject(reservation.objectKey, credentials);
   } else {
-    const attempt = withDatabase((database) => readAttempt(database, reservation));
+    const attempt = readAppDatabaseSnapshot((database) => readAttempt(database, reservation));
     if (
       attempt?.checksum_sha256 &&
       attempt.byte_size > 0 &&
@@ -852,7 +853,7 @@ export function pendingGeneratedPublicationTaskIds() {
 }
 
 export function hasPendingGeneratedMediaPublications() {
-  return withDatabase((database) => Boolean(database.prepare(`
+  return readAppDatabaseSnapshot((database) => Boolean(database.prepare(`
     SELECT 1 FROM media_publication_attempts
     WHERE source = 'generation'
       AND state IN ('reserved', 'staged', 'external-ready', 'compensating')
@@ -862,7 +863,7 @@ export function hasPendingGeneratedMediaPublications() {
 
 export function hasPendingMediaDeletions(input?: { updatedBefore?: string }) {
   const updatedBefore = input?.updatedBefore ?? processStartupUploadRecoveryCutoff;
-  return withDatabase((database) => Boolean(database.prepare(`
+  return readAppDatabaseSnapshot((database) => Boolean(database.prepare(`
     SELECT 1
     FROM media_delete_intents AS deletion
     JOIN media_assets AS media
@@ -897,7 +898,7 @@ type PendingMediaDeletion = Readonly<{
 }>;
 
 function pendingMediaDeletions(updatedBefore: string) {
-  return withDatabase((database) => database.prepare(`
+  return readAppDatabaseSnapshot((database) => database.prepare(`
     SELECT
       deletion.owner_id, deletion.kind, deletion.asset_id,
       deletion.state AS intent_state,
@@ -1068,7 +1069,7 @@ export function hasPendingUploadMediaPublications(input?: {
 }) {
   const updatedBefore = input?.updatedBefore ?? input?.createdBefore ??
     processStartupUploadRecoveryCutoff;
-  return withDatabase((database) => Boolean(database.prepare(`
+  return readAppDatabaseSnapshot((database) => Boolean(database.prepare(`
     SELECT 1 FROM media_publication_attempts
     WHERE source = 'upload'
       AND adopted_at IS NULL
@@ -1087,7 +1088,7 @@ export function hasPendingUploadMediaPublications(input?: {
 }
 
 function pendingUploadAttempts(updatedBefore: string) {
-  return withDatabase((database) => database.prepare(`
+  return readAppDatabaseSnapshot((database) => database.prepare(`
     SELECT * FROM media_publication_attempts
     WHERE source = 'upload'
       AND adopted_at IS NULL
@@ -1195,7 +1196,7 @@ function claimUploadRecovery(
 }
 
 export function pendingGeneratedMediaPublications() {
-  return withDatabase((database) => database.prepare(`
+  return readAppDatabaseSnapshot((database) => database.prepare(`
     SELECT publication.*, media.storage_status AS media_storage_status
     FROM media_publication_attempts AS publication
     LEFT JOIN media_assets AS media
@@ -1699,7 +1700,7 @@ export async function recoverMediaLifecycleAtProcessStartup() {
 
 export function publicationReservationForAttempt(attemptId: string) {
   if (!identifierPattern.test(attemptId) || attemptId.length > 120) return undefined;
-  return withDatabase((database) => {
+  return readAppDatabaseSnapshot((database) => {
     const row = database.prepare(`
       SELECT * FROM media_publication_attempts WHERE attempt_id = ?
     `).get(attemptId) as AttemptRow | undefined;
