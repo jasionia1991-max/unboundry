@@ -3,6 +3,8 @@ import type {
   ImageToolCapability,
 } from "../../../types/imageTools";
 import { imageToolMaximums } from "../../../types/imageTools";
+import { imageGenerationToolOwnershipEvidence } from
+  "../../../types/generationIdentity";
 import { NODE_DEFAULT_SIZES } from "../canvas/mediaGeometry";
 import type { ProbeNodeType } from "../canvas/ProbeNode";
 import type {
@@ -64,26 +66,28 @@ export type RedrawOwnershipEvidenceInput = Readonly<{
 }>;
 
 export function redrawOwnershipEvidence(input: RedrawOwnershipEvidenceInput) {
-  return {
+  return imageGenerationToolOwnershipEvidence({
     accountId: input.accountId,
     aspectRatio: input.aspectRatio,
     canvasId: input.canvasId,
-    mask: {
-      assetId: input.maskAssetId,
-      featherPixels: input.maskFeatherPixels,
-      height: input.maskHeight,
-      version: 1,
-      width: input.maskWidth,
+    imageTool: {
+      mask: {
+        assetId: input.maskAssetId,
+        featherPixels: input.maskFeatherPixels,
+        height: input.maskHeight,
+        version: 1,
+        width: input.maskWidth,
+      },
+      operation: "redraw",
+      operationId: input.operationId,
+      sourceAssetId: input.sourceAssetId,
+      sourceNodeId: input.sourceNodeId,
     },
     modelId: input.modelId,
     modelParameters: input.modelParameters,
-    operation: "redraw",
-    operationId: input.operationId,
     prompt: input.prompt,
     quality: input.quality,
-    sourceAssetId: input.sourceAssetId,
-    sourceNodeId: input.sourceNodeId,
-  } as const;
+  });
 }
 
 export function createRedrawImageToolUseCase(input: Readonly<{

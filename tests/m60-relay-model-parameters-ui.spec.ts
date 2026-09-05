@@ -21,15 +21,19 @@ async function routeFixtureCanvas(
   canvasId: string,
   document?: Record<string, unknown>,
 ) {
-  const loadToken = "m60-fixture-load-token";
+  let currentDocument = document;
+  let revision = Number(document?.revision ?? 0);
+  let graphRevision = Number(document?.graphRevision ?? revision);
+  let loadToken = "m60-fixture-load-token";
   const saveEpoch = "v1.m60-fixture-save-epoch";
   await page.route(`**/api/canvas/${canvasId}`, async (route) => {
     if (route.request().method() === "GET") {
-      await route.fulfill(document
+      await route.fulfill(currentDocument
         ? {
             contentType: "application/json",
             json: {
-              ...document,
+              ...currentDocument,
+              graphRevision,
               currentWriterSequence: 0,
               currentWriterSessionId: null,
               loadToken,
@@ -43,13 +47,75 @@ async function routeFixtureCanvas(
       return;
     }
     const input = route.request().postDataJSON() as { revision?: number };
-    const revision = Number(input.revision ?? 0) + 1;
+    revision = Number(input.revision ?? revision) + 1;
+    graphRevision = revision;
+    loadToken = `m60-fixture-load-token-${revision}`;
+    currentDocument = currentDocument
+      ? { ...currentDocument, graphRevision, revision }
+      : currentDocument;
     await route.fulfill({
       contentType: "application/json",
       json: {
         graphRevision: revision,
-        loadToken: `m60-fixture-load-token-${revision}`,
+        loadToken,
         revision,
+      },
+      status: 200,
+    });
+  });
+  await page.route(`**/api/canvases/${canvasId}/commands`, async (route) => {
+    const command = route.request().postDataJSON() as {
+      changes?: Array<{
+        action: "delete" | "set";
+        field: string;
+        nodeId: string;
+        value?: unknown;
+      }>;
+      kind: string;
+      operationId: string;
+    };
+    const nodes = Array.isArray(currentDocument?.nodes)
+      ? structuredClone(currentDocument.nodes) as Array<{
+          data?: Record<string, unknown>;
+          id?: string;
+        }>
+      : [];
+    if (command.kind === "apply-user-field-changes") {
+      for (const change of command.changes ?? []) {
+        const node = nodes.find((candidate) => candidate.id === change.nodeId);
+        if (!node || !change.field.startsWith("data.")) continue;
+        node.data ??= {};
+        const key = change.field.slice("data.".length);
+        if (change.action === "delete") delete node.data[key];
+        else node.data[key] = change.value;
+      }
+    }
+    revision += 1;
+    graphRevision += 1;
+    loadToken = `m60-fixture-load-token-${revision}`;
+    currentDocument = {
+      ...(currentDocument ?? {}),
+      edges: Array.isArray(currentDocument?.edges) ? currentDocument.edges : [],
+      graphRevision,
+      nodes,
+      revision,
+      viewport: currentDocument?.viewport ?? { x: 0, y: 0, zoom: 1 },
+    };
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        authoritativeDocument: currentDocument,
+        currentDocumentRevision: revision,
+        currentInputGraphRevision: graphRevision,
+        currentLoadToken: loadToken,
+        operationDocumentRevision: revision,
+        operationId: command.operationId,
+        operationInputGraphRevision: graphRevision,
+        originalRequestId: `m60-request-${revision}`,
+        originalStatus: "applied",
+        replayed: false,
+        requestId: `m60-request-${revision}`,
+        status: "applied",
       },
       status: 200,
     });

@@ -113,6 +113,7 @@ export async function persistGroupCanvasAfterNode(input: {
  * rejection stays in the same intent and retries only inside one deadline.
  */
 export async function runGroupNodeWithPersist(input: {
+  allowLegacyBrowserProjection?: boolean;
   admissionDeadlineMs?: number;
   isCancelled?: () => boolean;
   now?: () => number;
@@ -165,7 +166,7 @@ export async function runGroupNodeWithPersist(input: {
   }
   const persistError = await input.persist();
   if (persistError && result.status === "success") {
-    if (result.projection) {
+    if (result.projection && input.allowLegacyBrowserProjection === true) {
       if (input.project) input.project(result.projection);
       else void enqueueGroupResultProjection(result.projection);
       return { ...result, projectionState: "pending" };

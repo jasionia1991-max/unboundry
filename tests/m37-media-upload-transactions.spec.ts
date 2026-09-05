@@ -92,7 +92,7 @@ const clientUploadBranches = [
 
 type ClientUploadBranch = (typeof clientUploadBranches)[number];
 
-test("Image, Video and Audio upload start states require durable Canvas admission", () => {
+test("Image, Video and Audio upload start states stay view-only until server asset adoption", () => {
   for (const kind of ["Image", "Video", "Audio"] as const) {
     const source = readFileSync(
       resolve(process.cwd(), `client/src/canvas/${kind}Node.tsx`),
@@ -108,8 +108,11 @@ test("Image, Video and Audio upload start states require durable Canvas admissio
     expect(loadEnd, kind).toBeGreaterThan(loadStart);
     expect(loadFile, kind).toContain("semanticEditBlocked ||");
     expect(loadFile, kind).toContain("uploadInFlight.current");
-    expect(loadFile, kind).toContain("const prepared = await tryAdoptNodes(id");
+    expect(loadFile, kind).toContain("const prepared = applyViewUpdate(");
     expect(loadFile, kind).toContain("if (!prepared)");
+    expect(loadFile, kind).toContain("adoptUploadedAsset({");
+    expect(loadFile.indexOf("adoptUploadedAsset({"), kind)
+      .toBeGreaterThan(loadFile.indexOf("const response = await fetch("));
     expect(source, kind).toContain("disabled={uploadControlBlocked}");
     expect(source, kind).toContain("replaceDisabled={uploadControlBlocked}");
   }
@@ -480,7 +483,7 @@ async function expectClientUploadFailureSettled(
   await expect(feedback).not.toHaveText("");
 }
 
-function persistenceLossGate(page: Page, canvasId: string, skipPuts = 0) {
+function persistenceLossGate(page: Page, canvasId: string, skipWrites = 0) {
   let resolveCreated!: () => void;
   let resolveRelease!: () => void;
   const created = new Promise<void>((resolve) => {
@@ -489,55 +492,55 @@ function persistenceLossGate(page: Page, canvasId: string, skipPuts = 0) {
   const release = new Promise<void>((resolve) => {
     resolveRelease = resolve;
   });
-  let rejectExternalBaseline = false;
   let intercepted = false;
-  void page.route(`**/api/canvas/${canvasId}`, async (route) => {
-    if (route.request().method() === "GET" && rejectExternalBaseline) {
-      rejectExternalBaseline = false;
-      await route.fulfill({
-        body: JSON.stringify({ error: "External baseline unavailable" }),
-        contentType: "application/json",
-        status: 500,
-      });
-      return;
-    }
-    if (route.request().method() !== "PUT" || intercepted) {
+  void page.route(`**/api/canvases/${canvasId}/commands`, async (route) => {
+    if (route.request().method() !== "POST" || intercepted) {
       await route.continue();
       return;
     }
-    if (skipPuts > 0) {
-      skipPuts -= 1;
+    if (skipWrites > 0) {
+      skipWrites -= 1;
       await route.continue();
       return;
     }
     intercepted = true;
     const payload = route.request().postDataJSON() as {
-      observedRevision?: number;
-      saveAttemptId: string;
-      saveSequence: number;
-      saveSessionId: string;
+      operationId: string;
     };
     resolveCreated();
     await release;
-    const currentRevision = Math.max(0, Number(payload.observedRevision ?? 0)) + 1;
-    const sessionHighWaterSequence = Number(payload.saveSequence) + 1;
-    rejectExternalBaseline = true;
+    const currentResponse = await page.request.get(`/api/canvas/${canvasId}`);
+    const current = await currentResponse.json() as {
+      edges: unknown[];
+      graphRevision: number;
+      loadToken: string;
+      nodes: unknown[];
+      revision: number;
+      viewport: { x: number; y: number; zoom: number };
+    };
     await route.fulfill({
       body: JSON.stringify({
-        code: "CANVAS_SAVE_SUPERSEDED",
-        currentGraphRevision: currentRevision,
-        currentRevision,
-        currentWriterSequence: sessionHighWaterSequence,
-        currentWriterSessionId: "m37-foreign-writer",
-        error: "A foreign revision invalidated the upload adoption scope",
-        rejectedAttemptId: payload.saveAttemptId,
-        rejectedSequence: payload.saveSequence,
-        rejectedSessionId: payload.saveSessionId,
-        sessionHighWaterAttemptId:
-          "77777777-7777-4777-8777-777777777777",
-        sessionHighWaterSequence,
+        authoritativeDocument: {
+          edges: current.edges,
+          graphRevision: current.graphRevision,
+          nodes: current.nodes,
+          revision: current.revision,
+          viewport: current.viewport,
+        },
+        code: "CANVAS_TOPOLOGY_CONFLICT",
+        currentDocumentRevision: current.revision,
+        currentInputGraphRevision: current.graphRevision,
+        currentLoadToken: current.loadToken,
+        error: "The Canvas changed before asset adoption",
+        operationDocumentRevision: current.revision,
+        operationId: payload.operationId,
+        operationInputGraphRevision: current.graphRevision,
+        originalRequestId: "m37-original-persistence-loss",
+        replayed: false,
+        requestId: "m37-current-persistence-loss",
       }),
       contentType: "application/json",
+      headers: { "X-Unboundry-Canvas-Write-Contract": "command-v1" },
       status: 409,
     });
   });
@@ -702,7 +705,7 @@ test("failed media adoption rolls back only unchanged fields and preserves concu
   });
 });
 
-test("Image, Video and Audio upload start save failure leaves no uploading state", async ({
+test("Image, Video and Audio adoption failure leaves no durable uploading state", async ({
   page,
   request,
 }) => {
@@ -726,29 +729,45 @@ test("Image, Video and Audio upload start save failure leaves no uploading state
       const node = page.locator(
         `.react-flow__node[data-id="${kind}-transaction"]`,
       );
+      const uploadPostIndex = uploadPosts.length;
       const selection = node.getByTestId(uploadConfig[kind].inputTestId)
         .setInputFiles(uploadConfig[kind].file);
       await gate.created;
-      await expect(node.getByLabel(`${kind === "image" ? "图片" : kind === "video" ? "视频" : "音频"}上传中`))
-        .toBeVisible();
+      expect(uploadPosts).toHaveLength(uploadPostIndex + 1);
+      const uploadedAssetPath = new URL(uploadPosts[uploadPostIndex]).pathname;
+      expect((await persistedNodes(request, canvasId))[0]?.data.inputState)
+        .toBeUndefined();
       gate.release();
       await selection;
+      await expect(page.getByTestId("save-status")).toHaveText("保存失败");
       await expect(node.getByLabel(`${kind === "image" ? "图片" : kind === "video" ? "视频" : "音频"}上传中`))
         .toHaveCount(0);
       await expect.poll(async () =>
-        (await persistedNodes(request, canvasId))[0]?.data.inputState ?? null
+        (await request.get(uploadedAssetPath)).status()
+      ).toBe(404);
+      await expect.poll(async () =>
+        (await persistedNodes(request, canvasId))[0]?.data.assetId ?? null
       ).toBeNull();
-      await page.unroute(`**/api/canvas/${canvasId}`);
+      await page.unroute(`**/api/canvases/${canvasId}/commands`);
+      await page.evaluate(() => {
+        for (const key of Object.keys(window.sessionStorage)) {
+          if (key.startsWith("unboundry:canvas-save-session:v2:")) {
+            window.sessionStorage.removeItem(key);
+          }
+        }
+      });
       await page.reload();
       await expect(page.getByTestId("canvas-world"))
         .toHaveAttribute("data-persistence-ready", "true");
-      await expect(page.locator(
-        `.react-flow__node[data-id="${kind}-transaction"]`,
-      ).getByTestId(uploadConfig[kind].inputTestId)).toBeEnabled();
     }
-    expect(uploadPosts).toEqual([]);
+    expect(uploadPosts).toHaveLength(3);
+    expect(kinds.every((kind) =>
+      uploadPosts.filter((url) => url.includes(uploadConfig[kind].endpoint))
+        .length === 1
+    )).toBe(true);
   } finally {
     await page.unroute(`**/api/canvas/${canvasId}`);
+    await page.unroute(`**/api/canvases/${canvasId}/commands`);
     await request.delete(`/api/canvas/${canvasId}`);
   }
 });
@@ -877,6 +896,7 @@ test("undo or node removal invalidates held Image, Video and Audio responses and
         await page.keyboard.press("Meta+z");
         await expect(world).toHaveAttribute("data-node-count", "3");
       } else {
+        await node.click();
         await page.keyboard.press("Meta+z");
       }
       gates[kind].release(0);
@@ -980,7 +1000,7 @@ for (const kind of ["image", "video", "audio"] as const) {
       `**${uploadConfig[kind].endpoint}*`,
       1,
     );
-    const persistenceGate = persistenceLossGate(page, canvasId, 1);
+    const persistenceGate = persistenceLossGate(page, canvasId);
     const before = await paidProviderRequests(request);
     const taskPosts = monitorProviderRequests(page);
     const deletedPaths = monitorAssetDeletes(page);
@@ -1000,7 +1020,7 @@ for (const kind of ["image", "video", "audio"] as const) {
       uploadGate.release(0);
       await persistenceGate.created;
       persistenceGate.release();
-      await expect(world).toHaveAttribute("data-persistence-ready", "false");
+      await expect(page.getByTestId("save-status")).toHaveText("保存失败");
 
       await expect.poll(async () => (
         await request.get(`${uploadConfig[kind].endpoint}${asset.assetId}`)
@@ -1121,28 +1141,36 @@ test("canvas create-menu upload deletes a completed asset when persistence close
 }) => {
   const canvasId = "interaction.upload-image";
   const uploadGate = responseGate(page, "**/api/assets/*", 1);
-  const persistenceGate = persistenceLossGate(page, canvasId);
+  let persistenceGate: ReturnType<typeof persistenceLossGate> | undefined;
   const before = await paidProviderRequests(request);
   const taskPosts = monitorProviderRequests(page);
   const deletedPaths = monitorAssetDeletes(page);
 
   try {
-    await saveCanvas(request, canvasId, []);
+    await saveCanvas(request, canvasId, [{
+      data: { label: "Text", title: "Text" },
+      id: "text-persistence-fence",
+      position: { x: 300, y: 260 },
+      style: { height: 250, width: 320 },
+      type: "text",
+    }]);
     await page.goto(`/__fixture/${canvasId}`);
     const world = page.getByTestId("canvas-world");
     await expect(world).toHaveAttribute("data-persistence-ready", "true");
 
-    await world.dblclick({ position: { x: 300, y: 260 } });
-    await page.getByTestId("add-node-menu")
-      .getByRole("menuitem", { name: "文本", exact: true })
-      .click();
-    await persistenceGate.created;
+    persistenceGate = persistenceLossGate(page, canvasId);
     await world.dblclick({ position: { x: 760, y: 300 } });
     await page.getByTestId("canvas-image-upload-input").setInputFiles(imageFile);
     const asset = await uploadGate.created[0];
 
+    const textNode = page.locator(".react-flow__node-text");
+    await textNode.click();
+    const title = textNode.getByTestId("canvas-node-title");
+    await title.fill("persistence fence");
+    await title.evaluate((input: HTMLInputElement) => input.blur());
+    await persistenceGate.created;
     persistenceGate.release();
-    await expect(world).toHaveAttribute("data-persistence-ready", "false");
+    await expect(page.getByTestId("save-status")).toHaveText("保存失败");
     uploadGate.release(0);
 
     await expect.poll(async () => (
@@ -1158,7 +1186,7 @@ test("canvas create-menu upload deletes a completed asset when persistence close
     expect(await paidProviderRequests(request)).toBe(before);
     expect(taskPosts).toEqual([]);
   } finally {
-    persistenceGate.release();
+    persistenceGate?.release();
     uploadGate.releaseAll();
     await request.delete(`/api/canvas/${canvasId}`);
   }
@@ -1197,7 +1225,7 @@ test("Playlist export deletes its completed video when persistence closes before
     await title.evaluate((input: HTMLInputElement) => input.blur());
     await persistenceGate.created;
     persistenceGate.release();
-    await expect(world).toHaveAttribute("data-persistence-ready", "false");
+    await expect(page.getByTestId("save-status")).toHaveText("保存失败");
     uploadGate.release(0);
 
     await expect.poll(async () => (

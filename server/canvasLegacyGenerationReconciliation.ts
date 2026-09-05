@@ -1,14 +1,31 @@
+import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { appDataDirectory, openAppDatabase } from "./database";
 import { requestIdentity } from "./auth";
-import { decodedRequestPath, readJsonBody } from "./httpRequest";
+import {
+  decodedRequestPath,
+  HttpRequestError,
+  readJsonBody,
+} from "./httpRequest";
 import {
   listFailedCancelledGenerationTaskBindingsCommand,
+  readCanvasRouteGenerationEvidenceCommand,
   readTerminalGenerationTaskBindingCommand,
 } from "./generationTransactionCommands";
 import { executeTransactionScopedCommand } from "./transactionCommand";
-import { canvasLoadTokenForApplication } from "./canvasPersistence";
+import {
+  canvasLoadTokenEpochForApplication,
+  canvasLoadTokenForApplication,
+} from "./canvasPersistence";
+import { detachLegacyTerminalInTransaction } from "./canvasMutationGateway";
 import { stableValueFingerprint } from "../types/canvasFingerprint";
+import {
+  canvasClientBuildFromHeader,
+  discardDeferredCanvasObservability,
+  flushDeferredCanvasObservability,
+  recordCanvasRouteEvent,
+  type CanvasServerClass,
+} from "./canvasObservability";
 
 type GenerationKind = "audio" | "image" | "text" | "video";
 type RolloutMode = "off" | "detect" | "allowlist" | "on";
@@ -55,6 +72,7 @@ export function legacyTerminalDetachApplicationIdForBinding(input: Pick<
   | "kind"
   | "nodeDataFingerprint"
   | "nodeId"
+  | "observedTerminalState"
   | "ownershipKey"
   | "resultKey"
   | "runId"
@@ -67,6 +85,7 @@ export function legacyTerminalDetachApplicationIdForBinding(input: Pick<
     kind: input.kind,
     nodeDataFingerprint: input.nodeDataFingerprint,
     nodeId: input.nodeId,
+    observedTerminalState: input.observedTerminalState,
     ownershipKey: input.ownershipKey,
     resultKey: input.resultKey,
     runId: input.runId,
@@ -79,9 +98,11 @@ export function legacyTerminalNodeDataFingerprint(data: unknown) {
 }
 
 function json(response: ServerResponse, status: number, body: unknown) {
+  const requestId = String(response.getHeader("X-Request-Id") ?? randomUUID());
   response.statusCode = status;
   response.setHeader("Cache-Control", "no-store");
   response.setHeader("Content-Type", "application/json; charset=utf-8");
+  response.setHeader("X-Request-Id", requestId);
   response.end(JSON.stringify(body));
 }
 
@@ -122,6 +143,55 @@ function rolloutPolicy(accountId: string, canvasId: string) {
         entry.accountId === accountId && entry.canvasId === canvasId
       )),
   } as const;
+}
+
+function legacyDetachCapability(
+  policy: ReturnType<typeof rolloutPolicy>,
+  accountId: string,
+  canvasId: string,
+) {
+  if (!policy.writeEnabled) return "legacy-detach-disabled";
+  return allowlistEntries().some((entry) =>
+      entry.accountId === accountId && entry.canvasId === canvasId
+    )
+    ? "legacy-detach-allowlisted"
+    : "legacy-detach-global";
+}
+
+function legacyDetachOutcome(result: ReturnType<
+  typeof detachLegacyTerminalInTransaction
+>) {
+  if (!result) return "legacy.rejected.CANVAS_NOT_FOUND";
+  if ("code" in result) {
+    return "command.rejected-conflict.CANVAS_OPERATION_REUSED";
+  }
+  if (result.outcome === "APPLIED") return "legacy.detached";
+  if (result.outcome === "NO_OP") return "legacy.already-detached";
+  return `command.rejected-conflict.${result.conflictCode ??
+    "GENERATION_TERMINAL_BINDING_CONFLICT"}`;
+}
+
+function classifyLegacyDetachCandidate(
+  store: ReturnType<typeof openAppDatabase>,
+  input: Pick<
+    TerminalDetachRequest,
+    "canvasId" | "kind" | "nodeId" | "taskId"
+  > & { ownerId: string },
+): CanvasServerClass {
+  const evidence = executeTransactionScopedCommand(
+    store,
+    readCanvasRouteGenerationEvidenceCommand,
+    input,
+  );
+  if (!evidence) return "D";
+  if (["queued", "running", "recovering", "retrying"].includes(
+    evidence.state,
+  )) return "T";
+  if (evidence.generationIdentityVersion === 2) return "D";
+  if (!["success", "failed", "cancelled"].includes(evidence.state)) {
+    return "D";
+  }
+  return evidence.dangerousAttempt && evidence.state !== "success" ? "D" : "C";
 }
 
 function uniqueAllowlistEntries() {
@@ -187,6 +257,7 @@ function validDetachRequest(
       kind: input.kind,
       nodeDataFingerprint: input.nodeDataFingerprint,
       nodeId: input.nodeId,
+      observedTerminalState: input.observedTerminalState,
       ownershipKey: input.ownershipKey,
       resultKey: input.resultKey,
       runId: input.runId,
@@ -338,6 +409,25 @@ function responseDocument(
   };
 }
 
+function gatewayResponseDocument(
+  ownerId: string,
+  canvasId: string,
+  document: Readonly<{
+    edges: readonly unknown[];
+    graphRevision: number;
+    nodes: readonly unknown[];
+    revision: number;
+    viewport: { x: number; y: number; zoom: number };
+  }>,
+) {
+  return {
+    ...document,
+    loadToken: canvasLoadTokenForApplication(ownerId, canvasId, document.revision),
+    ownerId,
+    canvasId,
+  };
+}
+
 /**
  * Active-runtime safety net for legacy failed/cancelled bindings.
  *
@@ -359,17 +449,23 @@ export async function runAllowlistedLegacyTerminalDetachSweep(
   let nodesDetached = 0;
   try {
     for (const entry of entries) {
+      const committedRoutes: Array<{
+        kind: GenerationKind;
+        outcome: string;
+        requestId: string;
+        runId: string;
+        serverClass: CanvasServerClass;
+        taskId: string;
+      }> = [];
       try {
         store.exec("BEGIN IMMEDIATE");
-        const row = store.prepare(`
-          SELECT edges, graph_revision, nodes, revision, viewport
-          FROM canvas_documents WHERE owner_id = ? AND id = ?
-        `).get(entry.accountId, entry.canvasId) as CanvasRow | undefined;
-        if (!row) {
+        const exists = store.prepare(`
+          SELECT 1 FROM canvas_documents WHERE owner_id = ? AND id = ?
+        `).get(entry.accountId, entry.canvasId);
+        if (!exists) {
           store.exec("COMMIT");
           continue;
         }
-        const nodes = JSON.parse(row.nodes) as unknown[];
         const tasks = executeTransactionScopedCommand(
           store,
           listFailedCancelledGenerationTaskBindingsCommand,
@@ -377,6 +473,12 @@ export async function runAllowlistedLegacyTerminalDetachSweep(
         );
         let detachedForCanvas = 0;
         for (const task of tasks) {
+          const row = store.prepare(`
+            SELECT edges, graph_revision, nodes, revision, viewport
+            FROM canvas_documents WHERE owner_id = ? AND id = ?
+          `).get(entry.accountId, entry.canvasId) as CanvasRow | undefined;
+          if (!row) continue;
+          const nodes = JSON.parse(row.nodes) as unknown[];
           const index = nodes.findIndex((node) => record(node)?.id === task.nodeId);
           const node = index >= 0 ? record(nodes[index]) : undefined;
           const data = record(node?.data);
@@ -406,6 +508,14 @@ export async function runAllowlistedLegacyTerminalDetachSweep(
             applicationId: legacyTerminalDetachApplicationIdForBinding(binding),
           };
           if (!validDetachRequest(input, entry.canvasId)) continue;
+          const serverClass = classifyLegacyDetachCandidate(store, {
+            canvasId: entry.canvasId,
+            kind: task.kind,
+            nodeId: task.nodeId,
+            ownerId: entry.accountId,
+            taskId: task.taskId,
+          });
+          if (serverClass !== "C") continue;
           const authoritativeTask = executeTransactionScopedCommand(
             store,
             readTerminalGenerationTaskBindingCommand,
@@ -417,38 +527,61 @@ export async function runAllowlistedLegacyTerminalDetachSweep(
               taskId: task.taskId,
             },
           );
-          if (
-            !authoritativeTask ||
-            authoritativeTask.state !== task.state ||
-            !exactBinding(node, data, input)
-          ) continue;
-          const nextData = detachNodeData(data, input, undefined);
-          if (!nextData) continue;
-          nodes[index] = { ...node, data: nextData };
-          detachedForCanvas += 1;
-        }
-        if (detachedForCanvas > 0) {
-          const updated = store.prepare(`
-            UPDATE canvas_documents
-            SET nodes = ?, revision = ?, graph_revision = ?, updated_at = ?
-            WHERE owner_id = ? AND id = ? AND revision = ?
-          `).run(
-            JSON.stringify(nodes),
-            row.revision + 1,
-            row.graph_revision + 1,
-            new Date().toISOString(),
-            entry.accountId,
-            entry.canvasId,
-            row.revision,
-          );
-          if (updated.changes !== 1) {
-            throw new Error("Canvas automatic terminal detach CAS failed");
+          const detachRequestId = randomUUID();
+          const result = detachLegacyTerminalInTransaction({
+            ...input,
+            authoritativeResultKey: authoritativeTask
+              ? authoritativeTaskResultKey(authoritativeTask)
+              : undefined,
+            database: store,
+            loadTokenEpoch: canvasLoadTokenEpochForApplication(),
+            loadTokenForRevision: (revision) => canvasLoadTokenForApplication(
+              entry.accountId,
+              entry.canvasId,
+              revision,
+            ),
+            ownerId: entry.accountId,
+            preconditionConflictCode: !authoritativeTask
+              ? "GENERATION_TERMINAL_TASK_CONFLICT"
+              : authoritativeTask.state !== task.state
+                ? "GENERATION_TERMINAL_STATE_CONFLICT"
+                : undefined,
+            requestId: detachRequestId,
+          });
+          if (result) {
+            committedRoutes.push({
+              kind: input.kind,
+              outcome: legacyDetachOutcome(result),
+              requestId: detachRequestId,
+              runId: input.runId,
+              serverClass,
+              taskId: input.taskId,
+            });
+          }
+          if (result && "outcome" in result && result.outcome === "APPLIED") {
+            detachedForCanvas += 1;
           }
         }
         store.exec("COMMIT");
+        flushDeferredCanvasObservability(store);
+        for (const route of committedRoutes) {
+          recordCanvasRouteEvent({
+            callerSymbol: "server.legacyTerminalDetachSweep",
+            capability: "legacy-detach-allowlisted",
+            clientBuild: "server",
+            operation: "legacy-terminal-detach-sweep",
+            outcome: route.outcome,
+            requestId: route.requestId,
+            route: "canvas.legacy-terminal-detach",
+            runId: route.runId,
+            serverClass: route.serverClass,
+            taskId: route.taskId,
+          });
+        }
         nodesDetached += detachedForCanvas;
       } catch {
         if (store.isTransaction) store.exec("ROLLBACK");
+        discardDeferredCanvasObservability(store);
         canvasesFailed += 1;
       }
     }
@@ -466,19 +599,71 @@ export async function canvasLegacyGenerationReconciliation(
   request: IncomingMessage,
   response: ServerResponse,
 ) {
+  const existingRequestId = response.getHeader("X-Request-Id");
+  const requestId = typeof existingRequestId === "string" &&
+      existingRequestId.length >= 8
+    ? existingRequestId
+    : randomUUID();
+  response.setHeader("X-Request-Id", requestId);
+  const clientBuild = canvasClientBuildFromHeader(
+    request.headers["x-unboundry-client-build"],
+  );
   const path = decodedRequestPath(request).replace(/^\/+/, "");
   const match = path.match(
     /^([a-z0-9._-]+)\/(generation-reconciliation-policy|generation-terminal-detach)$/i,
   );
   if (!match) {
-    json(response, 404, { code: "CANVAS_RECONCILIATION_NOT_FOUND", error: "Not found" });
+    recordCanvasRouteEvent({
+      callerSymbol: "client.legacyTerminalGenerationReconciler",
+      capability: "unresolved",
+      clientBuild,
+      operation: "legacy-reconciliation-route",
+      outcome: "legacy.rejected.CANVAS_RECONCILIATION_NOT_FOUND",
+      requestId,
+      route: "canvas.legacy-reconciliation",
+      runId: null,
+      serverClass: "D",
+      taskId: null,
+    });
+    json(response, 404, {
+      code: "CANVAS_RECONCILIATION_NOT_FOUND",
+      error: "Not found",
+      requestId,
+    });
     return;
   }
   const canvasId = match[1];
   const operation = match[2];
+  let capability = operation === "generation-reconciliation-policy"
+    ? "legacy-policy-v1"
+    : "legacy-detach-disabled";
+  let routeRunId: string | null = null;
+  let routeTaskId: string | null = null;
+  let serverClass: CanvasServerClass = "T";
+  const recordRoute = (outcome: string) => recordCanvasRouteEvent({
+    callerSymbol: "client.legacyTerminalGenerationReconciler",
+    capability,
+    clientBuild,
+    operation: operation === "generation-reconciliation-policy"
+      ? "legacy-policy-read"
+      : "legacy-terminal-detach",
+    outcome,
+    requestId,
+    route: operation === "generation-reconciliation-policy"
+      ? "canvas.legacy-reconciliation-policy"
+      : "canvas.legacy-terminal-detach",
+    runId: routeRunId,
+    serverClass,
+    taskId: routeTaskId,
+  });
   const identity = requestIdentity(request);
   if (!identity) {
-    json(response, 401, { code: "AUTH_REQUIRED", error: "Please sign in" });
+    recordRoute("legacy.rejected.AUTH_REQUIRED");
+    json(response, 401, {
+      code: "AUTH_REQUIRED",
+      error: "Please sign in",
+      requestId,
+    });
     return;
   }
   const ownerId = identity.bypass ? "__test__" : identity.userId;
@@ -488,41 +673,84 @@ export async function canvasLegacyGenerationReconciliation(
       SELECT 1 FROM canvas_documents WHERE owner_id = ? AND id = ?
     `).get(ownerId, canvasId);
     if (!owned) {
-      json(response, 404, { code: "CANVAS_NOT_FOUND", error: "Canvas not found" });
+      serverClass = "D";
+      recordRoute("legacy.rejected.CANVAS_NOT_FOUND");
+      json(response, 404, {
+        code: "CANVAS_NOT_FOUND",
+        error: "Canvas not found",
+        requestId,
+      });
       return;
     }
     const policy = rolloutPolicy(ownerId, canvasId);
     if (operation === "generation-reconciliation-policy") {
       if (request.method !== "GET") {
+        recordRoute("legacy.rejected.METHOD_NOT_ALLOWED");
         response.setHeader("Allow", "GET");
-        json(response, 405, { code: "METHOD_NOT_ALLOWED", error: "Method not allowed" });
+        json(response, 405, {
+          code: "METHOD_NOT_ALLOWED",
+          error: "Method not allowed",
+          requestId,
+        });
         return;
       }
+      recordRoute(policy.writeEnabled
+        ? "legacy.policy-write-enabled"
+        : "legacy.policy-detect-only");
       json(response, 200, policy);
       return;
     }
+    capability = legacyDetachCapability(policy, ownerId, canvasId);
     if (request.method !== "POST") {
+      recordRoute("legacy.rejected.METHOD_NOT_ALLOWED");
       response.setHeader("Allow", "POST");
-      json(response, 405, { code: "METHOD_NOT_ALLOWED", error: "Method not allowed" });
+      json(response, 405, {
+        code: "METHOD_NOT_ALLOWED",
+        error: "Method not allowed",
+        requestId,
+      });
       return;
     }
     if (!policy.writeEnabled) {
+      recordRoute("legacy.reconcile-required");
       json(response, 409, {
         code: "LEGACY_RECONCILIATION_WRITE_DISABLED",
         error: "Legacy generation reconciliation is detect-only",
+        requestId,
       });
       return;
     }
-    const body = await readJsonBody<unknown>(request, terminalDetachRequestMaxBytes);
+    let body: unknown;
+    try {
+      body = await readJsonBody<unknown>(request, terminalDetachRequestMaxBytes);
+    } catch (error) {
+      if (error instanceof HttpRequestError) {
+        serverClass = "D";
+        recordRoute(`legacy.rejected.${error.code}`);
+      }
+      throw error;
+    }
     if (!validDetachRequest(body, canvasId) || body.accountId !== ownerId) {
+      serverClass = "D";
+      recordRoute("legacy.rejected.GENERATION_TERMINAL_DETACH_INVALID");
       json(response, 400, {
         code: "GENERATION_TERMINAL_DETACH_INVALID",
         error: "Invalid terminal detach request",
+        requestId,
       });
       return;
     }
+    routeRunId = body.runId;
+    routeTaskId = body.taskId;
     store.exec("BEGIN IMMEDIATE");
     try {
+      serverClass = classifyLegacyDetachCandidate(store, {
+        canvasId,
+        kind: body.kind,
+        nodeId: body.nodeId,
+        ownerId,
+        taskId: body.taskId,
+      });
       const task = executeTransactionScopedCommand(
         store,
         readTerminalGenerationTaskBindingCommand,
@@ -534,110 +762,121 @@ export async function canvasLegacyGenerationReconciliation(
           taskId: body.taskId,
         },
       );
-      if (!task) {
+      const authoritativeResultKey = task &&
+          task.generationIdentityVersion !== 2
+        ? authoritativeTaskResultKey(task)
+        : undefined;
+      const preconditionConflictCode = !task ||
+          task.generationIdentityVersion === 2
+        ? "GENERATION_TERMINAL_TASK_CONFLICT" as const
+        : task.state !== body.observedTerminalState
+          ? "GENERATION_TERMINAL_STATE_CONFLICT" as const
+          : body.resultKey !== undefined && body.resultKey !== authoritativeResultKey
+            ? "GENERATION_TERMINAL_PROOF_CONFLICT" as const
+            : undefined;
+      const result = detachLegacyTerminalInTransaction({
+        ...body,
+        authoritativeResultKey,
+        database: store,
+        loadTokenEpoch: canvasLoadTokenEpochForApplication(),
+        loadTokenForRevision: (revision) => canvasLoadTokenForApplication(
+          ownerId,
+          canvasId,
+          revision,
+        ),
+        ownerId,
+        preconditionConflictCode,
+        requestId,
+      });
+      if (!result) {
         store.exec("ROLLBACK");
-        json(response, 409, {
-          code: "GENERATION_TERMINAL_TASK_CONFLICT",
-          error: "Generation task is not a matching terminal task",
+        discardDeferredCanvasObservability(store);
+        serverClass = "D";
+        recordRoute("legacy.rejected.CANVAS_NOT_FOUND");
+        json(response, 404, {
+          code: "CANVAS_NOT_FOUND",
+          error: "Canvas not found",
+          requestId,
         });
         return;
       }
-      if (task.state !== body.observedTerminalState) {
-        store.exec("ROLLBACK");
-        json(response, 409, {
-          code: "GENERATION_TERMINAL_STATE_CONFLICT",
-          error: "Generation task terminal state changed",
-        });
-        return;
+      store.exec("COMMIT");
+      flushDeferredCanvasObservability(store);
+      const committedOutcome = legacyDetachOutcome(result);
+      if (committedOutcome !== "legacy.detached" &&
+          committedOutcome !== "legacy.already-detached") {
+        serverClass = "D";
       }
-      const authoritativeResultKey = authoritativeTaskResultKey(task);
-      if (
-        body.resultKey !== undefined &&
-        body.resultKey !== authoritativeResultKey
-      ) {
-        store.exec("ROLLBACK");
-        json(response, 409, {
-          code: "GENERATION_TERMINAL_PROOF_CONFLICT",
-          error: "Canvas success proof belongs to a different result",
-        });
-        return;
-      }
-      const row = store.prepare(`
-        SELECT edges, graph_revision, nodes, revision, viewport
-        FROM canvas_documents WHERE owner_id = ? AND id = ?
-      `).get(ownerId, canvasId) as CanvasRow | undefined;
-      if (!row) {
-        store.exec("ROLLBACK");
-        json(response, 404, { code: "CANVAS_NOT_FOUND", error: "Canvas not found" });
-        return;
-      }
-      const nodes = JSON.parse(row.nodes) as unknown[];
-      const index = nodes.findIndex((node) => record(node)?.id === body.nodeId);
-      const node = index >= 0 ? record(nodes[index]) : undefined;
-      const data = record(node?.data);
-      if (!node || !data) {
-        store.exec("ROLLBACK");
-        json(response, 409, {
-          code: "GENERATION_TERMINAL_BINDING_CONFLICT",
-          error: "Canvas node no longer matches the terminal task",
-        });
-        return;
-      }
-      if (detachedAlready(data, body)) {
-        store.exec("COMMIT");
-        json(response, 200, {
-          clearedFields: detachClearedFields(body),
-          dataPatch: cleanupPatch(body),
-          document: responseDocument(ownerId, canvasId, row),
-          status: "already-detached",
-        });
-        return;
-      }
-      if (!exactBinding(node, data, body)) {
-        store.exec("ROLLBACK");
-        json(response, 409, {
-          code: "GENERATION_TERMINAL_BINDING_CONFLICT",
-          error: "Canvas node no longer matches the terminal task",
-        });
-        return;
-      }
-      const nextData = detachNodeData(data, body, authoritativeResultKey);
-      if (!nextData) {
-        store.exec("ROLLBACK");
-        json(response, 409, {
-          code: "GENERATION_TERMINAL_PROOF_CONFLICT",
-          error: "Canvas success proof belongs to a different result",
-        });
-        return;
-      }
-      const nextNode = { ...node, data: nextData };
-      nodes[index] = nextNode;
-      const revision = row.revision + 1;
-      const graphRevision = row.graph_revision + 1;
-      const updated = store.prepare(`
-        UPDATE canvas_documents
-        SET nodes = ?, revision = ?, graph_revision = ?, updated_at = ?
-        WHERE owner_id = ? AND id = ? AND revision = ?
-      `).run(
-        JSON.stringify(nodes),
-        revision,
-        graphRevision,
-        new Date().toISOString(),
+      recordRoute(committedOutcome);
+      const document = gatewayResponseDocument(
         ownerId,
         canvasId,
-        row.revision,
+        result.authoritativeDocument,
       );
-      if (updated.changes !== 1) throw new Error("Canvas terminal detach CAS failed");
-      const nextRow = { ...row, graph_revision: graphRevision, nodes: JSON.stringify(nodes), revision };
-      store.exec("COMMIT");
+      if ("code" in result) {
+        json(response, 409, {
+          authoritativeDocument: document,
+          code: result.code,
+          currentGraphRevision: result.authoritativeDocument.graphRevision,
+          currentLoadToken: document.loadToken,
+          currentRevision: result.authoritativeDocument.revision,
+          error: "Canvas operation identity was already used",
+          operationGraphRevision: result.operationInputGraphRevision,
+          operationId: result.operationId,
+          operationRevision: result.operationDocumentRevision,
+          originalRequestId: result.originalRequestId,
+          replayed: result.replayed,
+          requestId,
+          requiresAuthoritativeGet: true,
+        });
+        return;
+      }
+      if (result.outcome === "REJECTED_CONFLICT") {
+        const messages: Record<string, string> = {
+          CANVAS_TOPOLOGY_CONFLICT: "Canvas topology is invalid",
+          GENERATION_TERMINAL_BINDING_CONFLICT:
+            "Canvas node no longer matches the terminal task",
+          GENERATION_TERMINAL_PROOF_CONFLICT:
+            "Canvas success proof belongs to a different result",
+          GENERATION_TERMINAL_STATE_CONFLICT:
+            "Generation task terminal state changed",
+          GENERATION_TERMINAL_TASK_CONFLICT:
+            "Generation task is not a matching terminal task",
+        };
+        json(response, 409, {
+          authoritativeDocument: document,
+          code: result.conflictCode,
+          currentGraphRevision: result.authoritativeDocument.graphRevision,
+          currentLoadToken: document.loadToken,
+          currentRevision: result.authoritativeDocument.revision,
+          error: messages[String(result.conflictCode)] ?? "Terminal detach conflict",
+          operationGraphRevision: result.operationInputGraphRevision,
+          operationId: result.operationId,
+          operationRevision: result.operationDocumentRevision,
+          originalRequestId: result.originalRequestId,
+          replayed: result.replayed,
+          requestId,
+          requiresAuthoritativeGet: true,
+        });
+        return;
+      }
       json(response, 200, {
         clearedFields: detachClearedFields(body),
         dataPatch: cleanupPatch(body),
-        document: responseDocument(ownerId, canvasId, nextRow),
-        status: "detached",
+        document,
+        operationGraphRevision: result.operationInputGraphRevision,
+        operationId: result.operationId,
+        operationRevision: result.operationDocumentRevision,
+        originalRequestId: result.originalRequestId,
+        replayed: result.replayed,
+        requestId,
+        status: result.outcome === "APPLIED" && !result.replayed
+          ? "detached"
+          : "already-detached",
       });
     } catch (error) {
       if (store.isTransaction) store.exec("ROLLBACK");
+      discardDeferredCanvasObservability(store);
       throw error;
     }
   } finally {

@@ -150,9 +150,9 @@ function readManifest(input) {
   if (
     calculated !== input.manifestSha256 || manifestSha256 !== calculated ||
     manifest.manifestSchemaVersion !== 1 || manifest.mode !== "dry-run" ||
-    manifest.schemaVersion !== 42 || !Array.isArray(manifest.entries) ||
+    manifest.schemaVersion !== 43 || !Array.isArray(manifest.entries) ||
     !Array.isArray(manifest.blocked) || manifest.blocked.length > 0 ||
-    manifest.entries.length < 1 || manifest.source?.type !== "schema42-snapshot"
+    manifest.entries.length < 1 || manifest.source?.type !== "schema43-snapshot"
   ) fail("IG26_APPLY_MANIFEST_INVALID", "Manifest identity or contract is invalid");
   const safeSnapshotHead = process.env.UNBOUNDRY_SAFE_TEST === "1"
     ? process.env.UNBOUNDRY_SOURCE_HEAD
@@ -237,8 +237,8 @@ function main() {
     const schemaVersion = Number(database.prepare(
       "SELECT MAX(version) AS version FROM schema_migrations",
     ).get()?.version);
-    if (schemaVersion !== 42) {
-      fail("IG26_APPLY_SCHEMA_UNSUPPORTED", "Attempt settlement requires exact schema42");
+    if (schemaVersion !== 43) {
+      fail("IG26_APPLY_SCHEMA_UNSUPPORTED", "Attempt settlement requires exact schema43");
     }
     database.exec("PRAGMA foreign_keys = ON; BEGIN IMMEDIATE");
     try {

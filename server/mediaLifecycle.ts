@@ -135,6 +135,7 @@ export type MediaPublicationMetadata = {
   contentType: string;
   durationSeconds?: number;
   durationSource?: "provider-task" | "server-probe";
+  hasTransparency?: boolean;
   mediaHeight?: number;
   mediaWidth?: number;
 };
@@ -410,6 +411,8 @@ export function stageMediaPublication(
     metadata.contentType.length < 1 || metadata.contentType.length > 160 ||
     metadata.durationSeconds !== undefined &&
       (!Number.isFinite(metadata.durationSeconds) || metadata.durationSeconds <= 0) ||
+    metadata.hasTransparency !== undefined &&
+      typeof metadata.hasTransparency !== "boolean" ||
     metadata.mediaWidth !== undefined &&
       (!Number.isSafeInteger(metadata.mediaWidth) || metadata.mediaWidth < 1) ||
     metadata.mediaHeight !== undefined &&
@@ -441,6 +444,22 @@ export function stageMediaPublication(
       reservation.storageProfileId, reservation.objectKey,
     );
     if (media.changes !== 1) throw new MediaPublicationStateError();
+    if (reservation.kind === "image" && metadata.hasTransparency !== undefined) {
+      database.prepare(`
+        INSERT INTO media_image_metadata (
+          owner_id, kind, asset_id, has_transparency, created_at, updated_at
+        ) VALUES (?, 'image', ?, ?, ?, ?)
+        ON CONFLICT(owner_id, asset_id) DO UPDATE SET
+          has_transparency = excluded.has_transparency,
+          updated_at = excluded.updated_at
+      `).run(
+        reservation.ownerId,
+        reservation.id,
+        metadata.hasTransparency ? 1 : 0,
+        timestamp,
+        timestamp,
+      );
+    }
     const attempt = database.prepare(`
       UPDATE media_publication_attempts
       SET state = 'staged', byte_size = ?, checksum_sha256 = ?,

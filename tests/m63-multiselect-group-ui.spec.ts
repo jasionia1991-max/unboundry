@@ -82,6 +82,7 @@ async function seedCanvas(
 ) {
   await request.delete(`/api/canvas/${canvasId}`);
   const response = await request.put(`/api/canvas/${canvasId}`, {
+    headers: { "X-Unboundry-Safe-Fixture-Seed": canvasId },
     data: {
       edges: [
         {
@@ -225,7 +226,13 @@ test("group create, undo, delete recovery and reload preserve one active surface
   request,
 }) => {
   const canvasId = "persistence.nodes-assets-viewport";
-  await seedCanvas(request, canvasId, productNodes().slice(0, 2));
+  await seedCanvas(
+    request,
+    canvasId,
+    productNodes().slice(0, 2).map((node) => node.type === "image"
+      ? { ...node, data: { ...node.data, assetId: undefined } }
+      : node),
+  );
   const paidRequests = trackPaidRequests(page);
   const beforeStatus = await (await request.get("/api/generation-tasks/status")).json() as {
     paidProviderRequests: number;

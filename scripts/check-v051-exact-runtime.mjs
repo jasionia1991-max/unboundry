@@ -38,6 +38,10 @@ const {
   databaseMatchesSchemaContract,
 } = await import("../server/database.ts");
 const { migrateSchema37To39 } = await import("../server/schemaMigration.ts");
+const { migrateSchema39To40 } = await import("../server/schema39To40Migration.ts");
+const { migrateSchema40To41 } = await import("../server/schema40To41Migration.ts");
+const { migrateSchema41To42 } = await import("../server/schema41To42Migration.ts");
+const { migrateSchema42To43 } = await import("../server/schema42To43Migration.ts");
 
 const contract = "unboundry-v051-exact-runtime-rehearsal-v3";
 const timestamp = "2026-08-12T00:00:00.000Z";
@@ -537,17 +541,52 @@ async function rehearse(input) {
     fail("exact-tag hidden commit did not change the schema-37 logical snapshot");
   }
   process.env.UNBOUNDRY_SCHEMA_MIGRATION_TEST_CLOCK = "1";
-  const migrated = await migrateSchema37To39({
+  const migrationRuntimeDirectory = join(input.workRoot, "migration-runtime");
+  await mkdir(migrationRuntimeDirectory, { mode: 0o700 });
+  const schema39 = await migrateSchema37To39({
     dataDirectory,
     expectedSourceLogicalSha256: hiddenCommitLogicalSha256,
     mode: "apply",
+    runtimeDirectory: migrationRuntimeDirectory,
     scratchRoot: input.workRoot,
     testClock: { drainMilliseconds: 0, sleep: async () => undefined },
   });
   if (
-    migrated.status !== "complete" || migrated.sourceVersion !== 37 ||
+    schema39.status !== "complete" || schema39.sourceVersion !== 37 ||
+    schema39.targetVersion !== 39 || !schema39.targetLogicalSha256
+  ) fail("schema 37 to 39 migration did not publish the exact target schema");
+  const schema40 = await migrateSchema39To40({
+    dataDirectory,
+    expectedSourceLogicalSha256: schema39.targetLogicalSha256,
+    mode: "apply",
+    runtimeDirectory: migrationRuntimeDirectory,
+    scratchRoot: input.workRoot,
+  });
+  const schema41 = await migrateSchema40To41({
+    dataDirectory,
+    expectedSourceLogicalSha256: schema40.targetLogicalSha256,
+    mode: "apply",
+    runtimeDirectory: migrationRuntimeDirectory,
+    scratchRoot: input.workRoot,
+  });
+  const schema42 = await migrateSchema41To42({
+    dataDirectory,
+    expectedSourceLogicalSha256: schema41.targetLogicalSha256,
+    mode: "apply",
+    runtimeDirectory: migrationRuntimeDirectory,
+    scratchRoot: input.workRoot,
+  });
+  const migrated = await migrateSchema42To43({
+    dataDirectory,
+    expectedSourceLogicalSha256: schema42.targetLogicalSha256,
+    mode: "apply",
+    runtimeDirectory: migrationRuntimeDirectory,
+    scratchRoot: input.workRoot,
+  });
+  if (
+    migrated.status !== "complete" || migrated.sourceVersion !== 42 ||
     migrated.targetVersion !== currentSchemaVersion || !migrated.targetLogicalSha256
-  ) fail("one-shot migration did not publish the exact current schema");
+  ) fail("staged migration did not publish the exact current schema");
 
   const rollbackBaseline = normalizeCurrentRollbackBaseline(databasePath);
   const beforeRejectedLogicalSha256 = logicalSha(databasePath, input.workRoot);

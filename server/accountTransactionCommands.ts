@@ -1,5 +1,19 @@
 import type { TransactionScopedCommand } from "./transactionCommand";
 
+export const recordCanvasOperationReuseAuditCommand:
+  TransactionScopedCommand<Readonly<{
+    details: string;
+    ownerId: string;
+    timestamp: string;
+  }>, void> = {
+    execute(scope, input) {
+      scope.prepare(`
+        INSERT INTO admin_audit_events (actor_user_id, action, details, created_at)
+        VALUES (?, 'canvas.operation-reused', ?, ?)
+      `).run(input.ownerId, input.details, input.timestamp);
+    },
+  };
+
 export const selectActiveAdminAuditActorCommand:
   TransactionScopedCommand<void, string | undefined> = {
     execute(scope) {

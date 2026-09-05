@@ -1,5 +1,25 @@
+import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import type { NodeInputKind } from "../types/nodeInputs";
+import {
+  applyGenerationProjectionInTransaction,
+} from "./canvasMutationGateway";
+import { buildCanvasProjectionIdentity } from
+  "./generationCanvasProjection";
+import {
+  canvasLoadTokenEpochForApplication,
+  canvasLoadTokenForApplication,
+} from "./canvasPersistence";
+import { stableSha256 } from "../types/canvasFingerprint";
+import {
+  canvasObservabilitySavepoint,
+  deferCanvasCommandEvent,
+  deferCanvasRouteEvent,
+  deferGenerationLifecycleEvent,
+  rollbackDeferredCanvasObservabilityTo,
+  type CanvasServerClass,
+} from "./canvasObservability";
+import { currentVersion } from "./version";
 
 export function canvasGraphRevisionMatchesInTransaction(input: {
   canvasId: string;
@@ -19,48 +39,93 @@ export function canvasGraphRevisionMatchesInTransaction(input: {
 export function projectWorkflowResultInTransaction(input: {
   canvasId: string;
   database: DatabaseSync;
-  expectedModelId: string;
-  expectedPrompt: string;
   kind: NodeInputKind;
   nodeId: string;
   ownerId: string;
-  patch: Record<string, unknown>;
+  runId: string;
+  taskId: string;
 }) {
   if (!input.database.isTransaction) {
-    throw new Error("Workflow projection requires an existing transaction");
+    throw new Error("Workflow Canvas projection requires an active transaction");
   }
-  const canvas = input.database.prepare(`
-    SELECT nodes, revision FROM canvas_documents WHERE owner_id = ? AND id = ?
-  `).get(input.ownerId, input.canvasId) as
-    | { nodes: string; revision: number }
-    | undefined;
-  if (!canvas) return "failed" as const;
-  const nodes = JSON.parse(canvas.nodes) as Array<{
-    data?: Record<string, unknown>;
-    id?: string;
-    type?: string;
-  }>;
-  const index = nodes.findIndex(({ id }) => id === input.nodeId);
-  const node = nodes[index];
-  if (!node || node.type !== input.kind) return "conflict" as const;
-  const currentPrompt = String(node.data?.[`${input.kind}Prompt`] ?? "").trim();
-  const currentModel = input.kind === "video"
-    ? String(node.data?.videoModelId ?? node.data?.videoModel ?? "").trim()
-    : String(node.data?.[`${input.kind}ModelId`] ?? "").trim();
-  if (currentPrompt !== input.expectedPrompt || currentModel !== input.expectedModelId) {
-    return "conflict" as const;
+  const deferFailure = (serverClass: CanvasServerClass) => {
+    const requestId = randomUUID();
+    const row = input.database.prepare(`
+      SELECT revision, graph_revision FROM canvas_documents
+      WHERE owner_id = ? AND id = ?
+    `).get(input.ownerId, input.canvasId) as
+      | { graph_revision: number; revision: number }
+      | undefined;
+    deferCanvasCommandEvent(input.database, {
+      actor: "server",
+      affectedNodeHash: stableSha256({ nodeId: input.nodeId }),
+      afterDocumentRevision: row?.revision ?? null,
+      afterInputRevision: row?.graph_revision ?? null,
+      beforeDocumentRevision: row?.revision ?? null,
+      beforeInputRevision: row?.graph_revision ?? null,
+      commandKind: "server.projection",
+      operationId: `server-projection-unresolved:${input.taskId}`,
+      outcome: "projection.failed",
+      requestId,
+    });
+    deferCanvasRouteEvent(input.database, {
+      callerSymbol: "server.canvasWorkflowProjection",
+      capability: "internal-server-v1",
+      clientBuild: currentVersion,
+      operation: "workflow-result-projection",
+      outcome: "projection.failed",
+      requestId,
+      route: "canvas.server-projection",
+      runId: input.runId,
+      serverClass: row ? serverClass : "D",
+      taskId: input.taskId,
+    });
+    deferGenerationLifecycleEvent(input.database, {
+      kind: input.kind,
+      operation: "workflow-result-projection",
+      outcome: "projection.failed",
+      projectionState: "failed",
+      requestId,
+      runId: input.runId,
+      taskId: input.taskId,
+      taskState: "success",
+    });
+  };
+
+  const observabilitySavepoint = canvasObservabilitySavepoint(input.database);
+  input.database.exec("SAVEPOINT workflow_canvas_projection");
+  try {
+    const built = buildCanvasProjectionIdentity(input);
+    if (built.status !== "ready") {
+      input.database.exec("RELEASE SAVEPOINT workflow_canvas_projection");
+      deferFailure("D");
+      return "failed" as const;
+    }
+    const result = applyGenerationProjectionInTransaction({
+      database: input.database,
+      loadTokenEpoch: canvasLoadTokenEpochForApplication(),
+      loadTokenForRevision: (revision) => canvasLoadTokenForApplication(
+        input.ownerId,
+        input.canvasId,
+        revision,
+      ),
+      projection: built.projection,
+    });
+    input.database.exec("RELEASE SAVEPOINT workflow_canvas_projection");
+    return result;
+  } catch (error) {
+    try {
+      input.database.exec("ROLLBACK TO SAVEPOINT workflow_canvas_projection");
+      input.database.exec("RELEASE SAVEPOINT workflow_canvas_projection");
+    } catch (rollbackError) {
+      rollbackDeferredCanvasObservabilityTo(
+        input.database,
+        observabilitySavepoint,
+      );
+      throw rollbackError;
+    }
+    rollbackDeferredCanvasObservabilityTo(input.database, observabilitySavepoint);
+    deferFailure("B");
+    return "failed" as const;
   }
-  nodes[index] = { ...node, data: { ...(node.data ?? {}), ...input.patch } };
-  const updated = input.database.prepare(`
-    UPDATE canvas_documents
-    SET nodes = ?, revision = revision + 1, updated_at = ?
-    WHERE owner_id = ? AND id = ? AND revision = ?
-  `).run(
-    JSON.stringify(nodes),
-    new Date().toISOString(),
-    input.ownerId,
-    input.canvasId,
-    canvas.revision,
-  );
-  return Number(updated.changes) === 1 ? "applied" as const : "conflict" as const;
 }

@@ -154,6 +154,17 @@ async function createSyntheticRepository(options: {
     join(repository, "scripts/migrate-schema37-to39.mjs"),
     "throw new Error('synthetic migration is never executed');\n",
   );
+  for (const name of [
+    "migrate-schema39-to40.mjs",
+    "migrate-schema40-to41.mjs",
+    "migrate-schema41-to42.mjs",
+    "migrate-schema42-to43.mjs",
+  ]) {
+    await write(
+      join(repository, `scripts/${name}`),
+      "throw new Error('synthetic migration is never executed');\n",
+    );
+  }
   await write(
     join(repository, "scripts/node-typescript-runtime.mjs"),
     "export {};\n",

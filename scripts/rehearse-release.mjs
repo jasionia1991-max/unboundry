@@ -44,6 +44,13 @@ const releaseVersionByRole = Object.freeze({
   bridge: "0.5.2",
   final: "0.6.0",
 });
+const exactMigrationScriptPaths = Object.freeze([
+  "scripts/migrate-schema37-to39.mjs",
+  "scripts/migrate-schema39-to40.mjs",
+  "scripts/migrate-schema40-to41.mjs",
+  "scripts/migrate-schema41-to42.mjs",
+  "scripts/migrate-schema42-to43.mjs",
+]);
 const exactLegacyRuntimeContract = Object.freeze({
   archiveSha256: "e7a619c4d9dbaca14d1032ef18f83f81dcfb36c9402976debc4f8f546c8bb5d0",
   commitTree: "0990690bd9828757b82f59861f950ce6ff9ed4f8",
@@ -981,12 +988,12 @@ async function validateRelease(
   if (!exactLegacy) {
     const expectedCompatibility = releaseRole === "bridge"
       ? {
-          activeSchemaVersions: [37, 41],
+          activeSchemaVersions: [37, 43],
           migrationMode: "external-one-shot-only",
-          rollbackTargetForSchemaVersion: 41,
+          rollbackTargetForSchemaVersion: 43,
         }
       : {
-          activeSchemaVersions: [41],
+          activeSchemaVersions: [43],
           migrationMode: "forbidden-from-final-runtime",
           standbySchemaVersions: [37],
         };
@@ -1044,7 +1051,7 @@ async function validateRelease(
         "package.json",
         ...(releaseRole === "bridge"
           ? [
-              "scripts/migrate-schema37-to39.mjs",
+              ...exactMigrationScriptPaths,
               "scripts/node-typescript-runtime.mjs",
             ]
           : []),
@@ -1068,9 +1075,10 @@ async function validateRelease(
   ) fail("RELEASE_MANIFEST_INVALID", "Release runtime dependency closure is invalid");
   let migrationArtifactSha256;
   if (releaseRole === "bridge") {
-    const migrationEntry = inventory.find((entry) =>
-      entry.type === "file" && entry.path === "scripts/migrate-schema37-to39.mjs"
+    const migrationEntries = exactMigrationScriptPaths.map((path) =>
+      inventory.find((entry) => entry.type === "file" && entry.path === path)
     );
+    const migrationEntry = migrationEntries[0];
     if (
       manifest.migration?.command !== "/opt/node22/bin/node" ||
       JSON.stringify(manifest.migration?.arguments) !== JSON.stringify(exactMigrationArguments) ||
@@ -1078,7 +1086,7 @@ async function validateRelease(
       manifest.migration?.permittedReleaseRole !== "bridge" ||
       JSON.stringify(manifest.migration?.placeholders) !==
         JSON.stringify(exactMigrationPlaceholders) ||
-      !migrationEntry?.sha256
+      migrationEntries.some((entry) => !entry?.sha256)
     ) fail("RELEASE_MANIFEST_INVALID", "Release migration is not artifact-bound");
     migrationArtifactSha256 = migrationEntry.sha256;
     const legacyEntries = inventory.filter((entry) =>

@@ -675,15 +675,15 @@ function preflight() {
     new Set(manifested).size !== manifested.length ||
     manifested.join("\n") !== specs.join("\n")
   ) {
-    fail("safe test manifest must be a duplicate-free exact 124-spec partition");
+    fail("safe test manifest must be a duplicate-free exact 127-spec partition");
   }
-  const expectedModeCounts = { dev: 76, hybrid: 4, node: 32, preview: 2, self: 10 };
+  const expectedModeCounts = { dev: 76, hybrid: 4, node: 35, preview: 2, self: 10 };
   for (const mode of expectedModes) {
     if (manifest[mode].length !== expectedModeCounts[mode]) {
       fail(`unexpected ${mode} spec count ${manifest[mode].length}`);
     }
   }
-  if (specs.length !== 124) fail(`expected 124 isolated specs, found ${specs.length}`);
+  if (specs.length !== 127) fail(`expected 127 isolated specs, found ${specs.length}`);
 
   const packageJson = JSON.parse(
     readFileSync(join(repositoryRoot, "package.json"), "utf8"),
@@ -1374,11 +1374,11 @@ function validateExactV051RawEvidence(raw, nonce) {
     schema39.rollbackBaselineNormalizedByCurrent !== true ||
     JSON.stringify(schema39.rollbackCheckpoint) !==
       JSON.stringify({ busy: 0, checkpointed: 0, log: 0 }) ||
-    schema39.userVersion !== 42 ||
+    schema39.userVersion !== 43 ||
     schema39.versionEndpointBeforeDatabaseOpen !== true ||
-    schema39.latestMigration?.version !== 42 ||
+    schema39.latestMigration?.version !== 43 ||
     schema39.latestMigration?.name !==
-      "server-authoritative-workflow-runs"
+      "durable-canvas-operation-receipts"
   ) fail("exact v0.5.1 current-schema rejection rehearsal is incomplete");
 }
 
@@ -2123,8 +2123,8 @@ process.exit(0);
         })}`,
       );
     }
-    if (discovery.tests !== 1184) {
-      fail(`the frozen 1184-test inventory changed to ${discovery.tests}`);
+    if (discovery.tests !== 1227) {
+      fail(`the frozen 1227-test inventory changed to ${discovery.tests}`);
     }
     const idsByFile = {};
     const { entries } = collectReportEntries(reportFile, sourceRoot);
@@ -2352,6 +2352,17 @@ async function createImmutableReleaseFixture(
     join(repository, "scripts/migrate-schema37-to39.mjs"),
     "throw new Error('synthetic migration is never executed');\n",
   );
+  for (const name of [
+    "migrate-schema39-to40.mjs",
+    "migrate-schema40-to41.mjs",
+    "migrate-schema41-to42.mjs",
+    "migrate-schema42-to43.mjs",
+  ]) {
+    writeImmutableReleaseFixtureFile(
+      join(repository, `scripts/${name}`),
+      "throw new Error('synthetic migration is never executed');\n",
+    );
+  }
   writeImmutableReleaseFixtureFile(
     join(repository, "scripts/node-typescript-runtime.mjs"),
     "export {};\n",
@@ -3448,7 +3459,7 @@ async function runImmutableReleaseOperationalCheck(
       manifest.expectedVersion !== "0.6.0" || manifest.releaseId !== "v0.6.0" ||
       manifest.formalReleaseCommit !== false ||
       JSON.stringify(manifest.databaseCompatibility) !== JSON.stringify({
-        activeSchemaVersions: [39],
+        activeSchemaVersions: [43],
         migrationMode: "forbidden-from-final-runtime",
         standbySchemaVersions: [37],
       }) ||
@@ -3613,6 +3624,10 @@ async function runImmutableReleaseOperationalCheck(
       "legacy-runtime/package.json",
       "legacy-runtime/package-lock.json",
       "scripts/migrate-schema37-to39.mjs",
+      "scripts/migrate-schema39-to40.mjs",
+      "scripts/migrate-schema40-to41.mjs",
+      "scripts/migrate-schema41-to42.mjs",
+      "scripts/migrate-schema42-to43.mjs",
       "scripts/node-typescript-runtime.mjs",
     ]) {
       if (!bridgeManifestPaths.has(required)) {

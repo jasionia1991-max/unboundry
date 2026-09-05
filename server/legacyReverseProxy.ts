@@ -165,6 +165,10 @@ export function legacyBridgeMutationBlockCode(
 function legacyBridgeAllowsLocalMethod(path: string, method: string) {
   const uuid = "[a-f0-9-]{36}";
   const id = "[a-z0-9._-]+";
+  // A schema-37 bridge has neither schema43 durable receipts nor the typed
+  // mutation gateway. Never forward the modern command route to it and never
+  // reinterpret the request as a legacy full-document PUT.
+  if (new RegExp(`^/api/canvases/${id}/commands$`).test(path)) return false;
   const exactRules: ReadonlyArray<readonly [RegExp, string]> = [
     [/^\/api\/auth\/(?:status)$/, "GET"],
     [/^\/api\/auth\/(?:bootstrap|login|logout|password)$/, "POST"],

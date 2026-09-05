@@ -53,7 +53,10 @@ import {
   type StoredWorkflowPlan,
   type WorkflowRunSummary,
 } from "../types/workflowRuns";
-import { stableValueFingerprint } from "../types/canvasFingerprint";
+import {
+  discardDeferredCanvasObservability,
+  flushDeferredCanvasObservability,
+} from "./canvasObservability";
 
 const activeRunStates = ["running", "stopping"] as const;
 const terminalNodeStates = ["success", "failed", "blocked", "cancelled"] as const;
@@ -919,136 +922,19 @@ async function admitWorkflowNode(input: {
   });
 }
 
-function htmlForPlainText(value: string) {
-  const escaped = value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;")
-    .replaceAll("\n", "<br>");
-  return `<p>${escaped}</p>`;
-}
-
-function projectionPatch(nodePlan: StoredNodePlan, task: ReturnType<ReturnType<typeof generationTaskApplication.taskStore>["get"]>) {
-  if (!task) return undefined;
-  const generationInputKey = task.modelConfiguration.generationInputKey;
-  const generationOwnershipKey = task.modelConfiguration.generationOwnershipKey;
-  const taskModelConfigurationRevision =
-    task.modelConfiguration.modelConfigurationRevision;
-  const taskModelReleaseRevision = task.modelConfiguration.modelReleaseRevision;
-  const taskModelReleaseRevisionId = taskModelReleaseRevision &&
-      typeof taskModelReleaseRevision === "object" &&
-      !Array.isArray(taskModelReleaseRevision)
-    ? (taskModelReleaseRevision as Record<string, unknown>).revisionId
-    : undefined;
-  if (
-    typeof generationInputKey !== "string" || !generationInputKey ||
-    typeof generationOwnershipKey !== "string" || !generationOwnershipKey ||
-    taskModelConfigurationRevision !== nodePlan.modelConfigurationRevision ||
-    taskModelReleaseRevisionId !== nodePlan.modelReleaseRevision.revisionId
-  ) return undefined;
-  const result = nodePlan.kind === "text"
-    ? (() => {
-        const content = task.resultText?.trim() ?? "";
-        return { content, contentHtml: htmlForPlainText(content) };
-      })()
-    : task.resultAssetId && task.ownerId
-      ? (authoritativeMediaSourceData(
-          task.ownerId,
-          nodePlan.kind,
-          task.resultAssetId,
-        ) as Record<string, unknown>)[`${nodePlan.kind}Src`]
-      : undefined;
-  if (
-    nodePlan.kind === "text"
-      ? typeof (result as { content?: unknown }).content !== "string" ||
-        !(result as { content: string }).content
-      : typeof result !== "string" || !result
-  ) return undefined;
-  const common = {
-    [`${nodePlan.kind}Generating`]: false,
-    [`${nodePlan.kind}GenerationError`]: undefined,
-    [`${nodePlan.kind}GenerationErrorCode`]: undefined,
-    [`${nodePlan.kind}GenerationRetryAllowed`]: undefined,
-    [`${nodePlan.kind}GenerationRetryBlockCode`]: undefined,
-    [`${nodePlan.kind}GenerationRetryBlockReason`]: undefined,
-    groupRunSuccessInputFingerprint: generationInputKey,
-    groupRunSuccessModelConfigurationRevision:
-      nodePlan.modelConfigurationRevision,
-    groupRunSuccessModelReleaseRevision:
-      nodePlan.modelReleaseRevision.revisionId,
-    groupRunSuccessOwnershipKey: generationOwnershipKey,
-    groupRunSuccessResultKey: stableValueFingerprint(result),
-    groupRunSuccessTaskId: task.id,
-    workflowExecutionRunId: undefined,
-  };
-  if (nodePlan.kind === "text") {
-    const content = task.resultText?.trim() ?? "";
-    return {
-      ...common,
-      content,
-      contentHtml: htmlForPlainText(content),
-      textGenerationInputKey: undefined,
-      textGenerationOwnershipKey: undefined,
-      textGenerationTaskId: task.id,
-    };
-  }
-  if (!task.resultAssetId || !task.ownerId) return undefined;
-  const media = authoritativeMediaSourceData(
-    task.ownerId,
-    nodePlan.kind,
-    task.resultAssetId,
-  );
-  if (media.inputState !== "ready") return undefined;
-  const mediaPatch = {
-    ...common,
-    ...media,
-    [`${nodePlan.kind}GenerationInputKey`]: undefined,
-    [`${nodePlan.kind}GenerationOwnershipKey`]: undefined,
-    [`${nodePlan.kind}GenerationTaskId`]: undefined,
-  };
-  if (nodePlan.kind === "image") {
-    return { ...mediaPatch, imageGeneratedSuccess: true };
-  }
-  if (nodePlan.kind === "audio") {
-    return {
-      ...mediaPatch,
-      audioDuration: media.mediaDurationSeconds,
-      audioFileSize: media.mediaByteSize,
-      audioGeneratedResult: true,
-      audioPrompt: nodePlan.ownPrompt,
-    };
-  }
-  return {
-    ...mediaPatch,
-    videoAudioEnabled: task.parameters.generateAudio !== false,
-    videoCreatedAt: new Date(task.updatedAt).toLocaleDateString("zh-CN"),
-    videoDuration: media.mediaDurationSeconds,
-    videoFileSize: media.mediaByteSize,
-    videoHeight: media.mediaHeight,
-    videoPrompt: nodePlan.ownPrompt,
-    videoWidth: media.mediaWidth,
-  };
-}
-
 function projectWorkflowNode(database: DatabaseSync, input: {
   nodePlan: StoredNodePlan;
   runRow: Record<string, unknown>;
   taskId: string;
 }) {
-  const task = generationTaskApplication.taskStore().get(input.taskId);
-  const patch = projectionPatch(input.nodePlan, task);
-  if (!patch) return "failed" as const;
   return projectWorkflowResultInTransaction({
     canvasId: String(input.runRow.canvas_id),
     database,
-    expectedModelId: input.nodePlan.modelId,
-    expectedPrompt: input.nodePlan.ownPrompt,
     kind: input.nodePlan.kind,
     nodeId: input.nodePlan.id,
     ownerId: String(input.runRow.owner_id),
-    patch,
+    runId: String(input.runRow.id),
+    taskId: input.taskId,
   });
 }
 
@@ -1070,17 +956,12 @@ function retryFailedWorkflowProjections(runId: string) {
       if (!nodePlan) continue;
       database.exec("BEGIN IMMEDIATE");
       try {
-        let projectionState: "applied" | "conflict" | "failed";
-        try {
-          projectionState = projectWorkflowNode(database, {
-            nodePlan,
-            runRow: run,
-            taskId: row.task_id,
-          });
-        } catch {
-          projectionState = "failed";
-        }
-        database.prepare(`
+        const projectionState = projectWorkflowNode(database, {
+          nodePlan,
+          runRow: run,
+          taskId: row.task_id,
+        });
+        const settledProjection = database.prepare(`
           UPDATE workflow_run_nodes SET projection_state = ?, updated_at = ?
           WHERE run_id = ? AND node_id = ? AND projection_state = 'failed'
         `).run(
@@ -1089,9 +970,14 @@ function retryFailedWorkflowProjections(runId: string) {
           runId,
           row.node_id,
         );
+        if (settledProjection.changes !== 1) {
+          throw new Error("Workflow projection retry lost its state fence");
+        }
         database.exec("COMMIT");
+        flushDeferredCanvasObservability(database);
       } catch (error) {
         if (database.isTransaction) database.exec("ROLLBACK");
+        discardDeferredCanvasObservability(database);
         throw error;
       }
     }
@@ -1456,29 +1342,37 @@ async function processWorkflowRun(runId: string) {
         }
         database.exec("BEGIN IMMEDIATE");
         try {
-          database.prepare(`
+          const settledNode = database.prepare(`
             UPDATE workflow_run_nodes SET state = 'success', updated_at = ?
             WHERE run_id = ? AND node_id = ? AND state = 'admitted'
           `).run(timestamp, runId, String(node.node_id));
-          let projectionState: "applied" | "conflict" | "failed";
-          try {
-            projectionState = projectWorkflowNode(database, {
-              nodePlan,
-              runRow: run,
-              taskId: task.id,
-            });
-          } catch {
-            // Projection is a recoverable side effect. The authoritative task
-            // and publication still prove node success and unblock the DAG.
-            projectionState = "failed";
+          if (settledNode.changes !== 1) {
+            throw new Error("Workflow node completion lost its state fence");
           }
-          database.prepare(`
+          const projectionState = projectWorkflowNode(database, {
+            nodePlan,
+            runRow: run,
+            taskId: task.id,
+          });
+          const settledProjection = database.prepare(`
             UPDATE workflow_run_nodes SET projection_state = ?, updated_at = ?
-            WHERE run_id = ? AND node_id = ?
-          `).run(projectionState, timestamp, runId, String(node.node_id));
+            WHERE run_id = ? AND node_id = ? AND state = 'success'
+              AND task_id = ?
+          `).run(
+            projectionState,
+            timestamp,
+            runId,
+            String(node.node_id),
+            task.id,
+          );
+          if (settledProjection.changes !== 1) {
+            throw new Error("Workflow projection lost its state fence");
+          }
           database.exec("COMMIT");
+          flushDeferredCanvasObservability(database);
         } catch (error) {
           if (database.isTransaction) database.exec("ROLLBACK");
+          discardDeferredCanvasObservability(database);
           throw error;
         }
       } else if (task.state === "failed" || task.state === "cancelled") {

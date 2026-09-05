@@ -22,6 +22,34 @@ test("the private API documents and reads canvas, project and model configuratio
   };
   expect(specification.openapi).toBe("3.1.0");
   expect(specification.info.title).toBe("Unboundry Private Replica API");
+  const unresolvedReferences: string[] = [];
+  const visitReferences = (value: unknown) => {
+    if (!value || typeof value !== "object") return;
+    if (Array.isArray(value)) {
+      value.forEach(visitReferences);
+      return;
+    }
+    for (const [key, child] of Object.entries(value)) {
+      if (key === "$ref" && typeof child === "string") {
+        if (!child.startsWith("#/")) {
+          unresolvedReferences.push(child);
+          continue;
+        }
+        const resolved = child.slice(2).split("/").reduce<unknown>(
+          (current, segment) => current && typeof current === "object"
+            ? (current as Record<string, unknown>)[
+                segment.replaceAll("~1", "/").replaceAll("~0", "~")
+              ]
+            : undefined,
+          specification,
+        );
+        if (resolved === undefined) unresolvedReferences.push(child);
+      }
+      visitReferences(child);
+    }
+  };
+  visitReferences(specification);
+  expect(unresolvedReferences).toEqual([]);
   expect((specification.paths["/api/health/ready"] as {
     get: {
       responses: {
@@ -61,6 +89,7 @@ test("the private API documents and reads canvas, project and model configuratio
     "/api/auth/password",
     "/api/canvas/{canvasId}",
     "/api/canvas/{canvasId}/group-download",
+    "/api/canvases/{canvasId}/commands",
     "/api/canvases/{canvasId}/generation-reconciliation-policy",
     "/api/canvases/{canvasId}/generation-terminal-detach",
     "/api/characters",
@@ -174,6 +203,8 @@ test("the private API documents and reads canvas, project and model configuratio
       };
     };
     put: {
+      deprecated: boolean;
+      parameters: Array<Record<string, unknown>>;
       requestBody: JsonResponse;
       responses: {
         "200": JsonResponse;
@@ -244,16 +275,87 @@ test("the private API documents and reads canvas, project and model configuratio
   });
   expect(canvasPath.put.requestBody.content["application/json"].schema.$ref)
     .toBe("#/components/schemas/CanvasSaveRequest");
+  expect(canvasPath.put.deprecated).toBe(true);
+  expect(canvasPath.put.parameters).toContainEqual(expect.objectContaining({
+    in: "header",
+    name: "X-Unboundry-Canvas-Write-Contract",
+    required: false,
+    schema: { const: "legacy-put-v1", type: "string" },
+  }));
   expect(canvasPath.put.responses["200"].content["application/json"].schema.$ref)
-    .toBe("#/components/schemas/CanvasSaveResult");
+    .toBe("#/components/schemas/CanvasLegacyPutSuccess");
   expect(canvasPath.put.responses["401"].content["application/json"].schema.$ref)
     .toBe("#/components/schemas/CanvasAccessError");
   expect(canvasPath.put.responses["403"].content["application/json"].schema.$ref)
     .toBe("#/components/schemas/CanvasAccessError");
   expect(canvasPath.put.responses["409"].content["application/json"].schema.$ref)
-    .toBe("#/components/schemas/CanvasSaveConflict");
+    .toBe("#/components/schemas/CanvasLegacyPutConflict");
   expect(canvasPath.put.responses["503"].content["application/json"].schema.$ref)
     .toBe("#/components/schemas/CanvasSaveUnavailable");
+  const commandPath = specification.paths[
+    "/api/canvases/{canvasId}/commands"
+  ] as {
+    post: {
+      operationId: string;
+      parameters: Array<Record<string, unknown>>;
+      requestBody: JsonResponse;
+      responses: Record<string, JsonResponse & {
+        headers?: Record<string, { schema: Record<string, unknown> }>;
+      }>;
+    };
+  };
+  expect(commandPath.post.operationId).toBe("applyCanvasCommand");
+  expect(commandPath.post.parameters).toContainEqual(expect.objectContaining({
+    in: "header",
+    name: "X-Unboundry-Canvas-Write-Contract",
+    required: true,
+    schema: { const: "command-v1", type: "string" },
+  }));
+  expect(commandPath.post.requestBody.content["application/json"].schema.$ref)
+    .toBe("#/components/schemas/CanvasUserCommand");
+  expect(Object.keys(commandPath.post.responses).sort()).toEqual([
+    "200", "400", "401", "404", "405", "409", "503",
+  ]);
+  expect(commandPath.post.responses["200"].content["application/json"].schema.$ref)
+    .toBe("#/components/schemas/CanvasCommandSuccess");
+  expect(commandPath.post.responses["409"].content["application/json"].schema.$ref)
+    .toBe("#/components/schemas/CanvasCommandConflict");
+  expect(commandPath.post.responses["200"].headers?.[
+    "X-Unboundry-Canvas-Write-Contract"
+  ]?.schema).toEqual({ const: "command-v1", type: "string" });
+  expect(commandPath.post.responses["409"].headers?.["X-Request-ID"]?.schema)
+    .toEqual({ format: "uuid", type: "string" });
+  for (const response of Object.values(commandPath.post.responses)) {
+    expect(response.headers?.["X-Request-ID"]?.schema)
+      .toEqual({ format: "uuid", type: "string" });
+    expect(response.headers?.["X-Unboundry-Canvas-Write-Contract"]?.schema)
+      .toEqual({ const: "command-v1", type: "string" });
+  }
+  expect(specification.components.schemas.CanvasUserCommand).toMatchObject({
+    discriminator: {
+      propertyName: "kind",
+      mapping: {
+        "adopt-uploaded-asset":
+          "#/components/schemas/AdoptUploadedAssetCommand",
+        "apply-topology": "#/components/schemas/ApplyTopologyCommand",
+        "apply-user-field-changes":
+          "#/components/schemas/ApplyUserFieldChangesCommand",
+        "commit-user-layout": "#/components/schemas/CommitUserLayoutCommand",
+        "create-canvas-document":
+          "#/components/schemas/CreateCanvasDocumentCommand",
+        "edit-result-and-invalidate-proof":
+          "#/components/schemas/EditResultAndInvalidateProofCommand",
+      },
+    },
+    oneOf: [
+      { $ref: "#/components/schemas/CreateCanvasDocumentCommand" },
+      { $ref: "#/components/schemas/ApplyUserFieldChangesCommand" },
+      { $ref: "#/components/schemas/ApplyTopologyCommand" },
+      { $ref: "#/components/schemas/CommitUserLayoutCommand" },
+      { $ref: "#/components/schemas/AdoptUploadedAssetCommand" },
+      { $ref: "#/components/schemas/EditResultAndInvalidateProofCommand" },
+    ],
+  });
   expect((specification.paths[
     "/api/canvases/{canvasId}/generation-reconciliation-policy"
   ] as { get: { operationId: string; responses: { "200": JsonResponse } } }))
@@ -279,7 +381,9 @@ test("the private API documents and reads canvas, project and model configuratio
     post: {
       operationId: string;
       requestBody: JsonResponse;
-      responses: { "200": JsonResponse; "409": unknown };
+      responses: Record<string, JsonResponse & {
+        headers?: Record<string, { schema: Record<string, unknown> }>;
+      }>;
     };
   })).toMatchObject({
     post: {
@@ -303,6 +407,32 @@ test("the private API documents and reads canvas, project and model configuratio
       },
     },
   });
+  const detachResponses = (specification.paths[
+    "/api/canvases/{canvasId}/generation-terminal-detach"
+  ] as {
+    post: { responses: Record<string, JsonResponse & {
+      headers?: Record<string, { schema: Record<string, unknown> }>;
+    }> };
+  }).post.responses;
+  const detachConflictSchema = detachResponses["409"].content[
+    "application/json"
+  ].schema as unknown as { oneOf: Array<{ $ref: string }> };
+  expect(detachConflictSchema.oneOf).toEqual([
+      { $ref: "#/components/schemas/LegacyTerminalDetachConflict" },
+      { $ref: "#/components/schemas/LegacyTerminalDetachWriteDisabled" },
+    ]);
+  expect(specification.components.schemas.LegacyTerminalDetachWriteDisabled)
+    .toMatchObject({
+      additionalProperties: false,
+      properties: {
+        code: { const: "LEGACY_RECONCILIATION_WRITE_DISABLED" },
+      },
+      required: ["code", "error", "requestId"],
+    });
+  for (const response of Object.values(detachResponses)) {
+    expect(response.headers?.["X-Request-ID"]?.schema)
+      .toEqual({ format: "uuid", type: "string" });
+  }
   for (const schemaName of [
     "GenerationProjectionCommit",
     "LegacyTerminalDetachRequest",
@@ -333,6 +463,7 @@ test("the private API documents and reads canvas, project and model configuratio
     specification.components.schemas.CanvasSaveRequest.properties as object,
   ).sort()).toEqual([
     "edges",
+    "generationProjection",
     "nodes",
     "observedLoadToken",
     "observedRevision",
@@ -356,6 +487,7 @@ test("the private API documents and reads canvas, project and model configuratio
     properties: {
       code: { type: "string", const: "CANVAS_ID_INVALID" },
       error: { type: "string" },
+      requestId: { type: "string", format: "uuid" },
     },
     additionalProperties: false,
   });
@@ -363,18 +495,27 @@ test("the private API documents and reads canvas, project and model configuratio
     type: "object",
     required: ["error"],
     properties: {
+      code: { type: "string" },
       error: { type: "string" },
+      operationId: { type: ["string", "null"] },
+      requestId: { type: "string", format: "uuid" },
     },
     additionalProperties: false,
   });
   expect(specification.components.schemas.CanvasReadDocument.required)
     .toContain("loadToken");
+  expect(specification.components.schemas.CanvasReadDocument.properties)
+    .not.toHaveProperty("generationProjection");
+  expect((specification.components.schemas.CanvasSaveRequest.properties as {
+    generationProjection: { deprecated: boolean };
+  }).generationProjection.deprecated).toBe(true);
   expect(specification.components.schemas.CanvasReadDocument.required)
     .toEqual(expect.arrayContaining([
       "currentWriterSequence",
       "currentWriterSessionId",
       "saveEpoch",
       "sessionHighWaterAttemptId",
+      "sessionHighWaterOperationId",
       "sessionHighWaterSequence",
     ]));
   expect(specification.components.schemas.CanvasReadNotFound.required)
@@ -385,6 +526,7 @@ test("the private API documents and reads canvas, project and model configuratio
       "currentWriterSessionId",
       "saveEpoch",
       "sessionHighWaterAttemptId",
+      "sessionHighWaterOperationId",
       "sessionHighWaterSequence",
     ]));
   expect(specification.components.schemas.CanvasSaveResult.required)
@@ -487,6 +629,7 @@ test("the private API documents and reads canvas, project and model configuratio
     revision: 1,
     saveEpoch: expect.stringMatching(/^v1\.[A-Za-z0-9_-]{22}$/),
     sessionHighWaterAttemptId: saveAttemptId,
+    sessionHighWaterOperationId: null,
     sessionHighWaterSequence: 1,
   });
 
@@ -569,8 +712,8 @@ test("the private API documents and reads canvas, project and model configuratio
   await expect(page.getByTestId("admin-api-contract-page")).toBeVisible();
   await expect(page.getByRole("heading", { name: "项目自己的数据接口" }))
     .toBeVisible();
-  await expect(page.locator(".api-contract-grid article")).toHaveCount(56);
-  await expect(page.getByText("当前共 46 条接口路径", { exact: true }))
+  await expect(page.locator(".api-contract-grid article")).toHaveCount(57);
+  await expect(page.getByText("当前共 47 条接口路径", { exact: true }))
     .toBeVisible();
 
   const finalCanvasDelete = await request.delete(`/api/canvas/${canvasId}`);

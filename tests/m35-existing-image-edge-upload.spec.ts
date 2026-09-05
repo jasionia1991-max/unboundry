@@ -95,6 +95,7 @@ test("an existing Image edge becomes compatible when its source finishes uploadi
 
   try {
     const saved = await request.put(`/api/canvas/${canvasId}`, {
+      headers: { "X-Unboundry-Safe-Fixture-Seed": canvasId },
       data: {
         edges: [{
           data: { inputOrder: 1, inputRole: "reference-image" },
@@ -344,6 +345,7 @@ test("Image upload completion uses live edges, the live target model, and the fi
   try {
     await request.delete(`/api/canvas/${canvasId}`);
     const saved = await request.put(`/api/canvas/${canvasId}`, {
+      headers: { "X-Unboundry-Safe-Fixture-Seed": canvasId },
       data: {
         edges: [
           { id: "late-a", source: "live-source", sourceHandle: "source", target: "target-a", targetHandle: "target", type: "cuttable" },

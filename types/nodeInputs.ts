@@ -405,7 +405,7 @@ function text(value: unknown) {
 
 function stateFor(node: GraphNode, kind: NodeInputKind): NodeInputState {
   const data = node.data ?? {};
-  const explicit = data.inputState ?? data.uploadState;
+  const explicit = data.inputViewState ?? data.inputState ?? data.uploadState;
   // `ready` is derived from durable content. A canvas document is browser-owned,
   // so an explicit flag must never turn empty content into a server-ready input.
   if (["empty", "uploading", "invalid", "missing"].includes(String(explicit))) {
@@ -429,9 +429,10 @@ function stateFor(node: GraphNode, kind: NodeInputKind): NodeInputState {
 
 function generationErrorFor(node: GraphNode, kind: NodeInputKind) {
   const data = node.data ?? {};
+  const inputStateReason = data.inputViewStateReason ?? data.inputStateReason;
   return kind === "text"
-    ? text(data.inputStateReason)
-    : text(data.inputStateReason) || text(data[`${kind}GenerationError`]);
+    ? text(inputStateReason)
+    : text(inputStateReason) || text(data[`${kind}GenerationError`]);
 }
 
 /**

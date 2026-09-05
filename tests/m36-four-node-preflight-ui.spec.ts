@@ -225,7 +225,7 @@ test("Text, Image, Video and Audio stop after the same non-enqueueable preflight
     for (const check of checks) {
       const node = persisted.nodes.find((candidate) => candidate.id === check.id);
       expect(node?.data[`${check.kind}GenerationError`])
-        .toBe(check.kind === "video" ? blockedMessage : undefined);
+        .toBeUndefined();
       for (const otherKind of ["text", "image", "video", "audio"] as const) {
         if (otherKind !== check.kind) {
           expect(node?.data[`${otherKind}GenerationError`]).toBeUndefined();

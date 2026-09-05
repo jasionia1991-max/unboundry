@@ -15,7 +15,20 @@ import {
   setCanvasPersistenceBarriersForTests,
 } from "../server/canvasPersistence";
 import { openAppDatabase } from "../server/database";
+import { buildAuthoritativeGenerationModelConfiguration } from
+  "../server/authoritativeGenerationModelConfiguration";
+import { defaultModelReleaseDocument } from "../server/modelReleaseDefaults";
+import { inspectModelReleaseDocument } from "../server/modelReleaseRevisionStore";
+import { registeredModelExecution } from "../server/modelExecutionRegistry";
+import { resolvePersistedNodeInputs } from "../server/inputPreflight";
 import { stableValueFingerprint } from "../types/canvasFingerprint";
+import {
+  generationInputKey,
+  generationOwnershipEvidence,
+  generationOwnershipKey,
+} from "../types/generationIdentity";
+import { knownModelParameterSchema } from "../types/modelParameters";
+import type { ModelReleaseRevision } from "../types/modelReleaseRevisions";
 import { deleteProjectRows } from "../server/projects";
 import {
   canvasLegacyGenerationReconciliation,
@@ -362,6 +375,177 @@ function seedGenerationTask(
   }
 }
 
+function seedAuthoritativeWorkflowTextProjection(
+  dataDirectory: string,
+  input: Readonly<{
+    canvasId: string;
+    nodeId: string;
+    ownerId: string;
+    resultText: string;
+    runId: string;
+    taskId: string;
+  }>,
+) {
+  const store = openAppDatabase(dataDirectory);
+  const timestamp = "2026-09-04T00:00:00.000Z";
+  try {
+    const modelId = "m85-authoritative-text-model";
+    const providerModelId = "doubao-seed-2-0-lite-260428";
+    const providerProfileId = "m85-authoritative-provider";
+    const providerDriver = "volcengine-ark";
+    const providerProtocol = "native" as const;
+    const modelConfigurationRevision = "m85-authoritative-configuration";
+    const parameterSchema = knownModelParameterSchema({
+      capability: "text",
+      providerDriver,
+      providerModelId,
+    });
+    const modelReleaseDocument = defaultModelReleaseDocument({
+      capability: "text",
+      capabilitySchema: parameterSchema,
+      modelId,
+      providerDriver,
+      providerModelId,
+      providerProfileId,
+      providerProtocol,
+    });
+    const proof = inspectModelReleaseDocument(modelReleaseDocument);
+    const modelReleaseRevision: ModelReleaseRevision = {
+      createdAt: timestamp,
+      document: modelReleaseDocument,
+      hash: proof.documentHash,
+      modelId,
+      revisionId: "00000000-0000-4000-8000-000000000085",
+      revisionNumber: 1,
+      validation: {
+        compilerHash: proof.compilerHash,
+        impact: { incompatibleTemplateIds: [], templateIds: [] },
+        paidProviderRequests: 0,
+        preview: { modes: [] },
+        validatedAt: timestamp,
+      },
+    };
+    const execution = registeredModelExecution({
+      capability: "text",
+      providerDriver,
+      providerModelId,
+      providerProtocol,
+    });
+    if (!execution) throw new Error("M85 text execution adapter is missing");
+    const row = store.prepare(`
+      SELECT nodes FROM canvas_documents WHERE owner_id = ? AND id = ?
+    `).get(input.ownerId, input.canvasId) as { nodes: string } | undefined;
+    if (!row) throw new Error("M85 authoritative Canvas is missing");
+    const nodes = JSON.parse(row.nodes) as Array<Record<string, unknown>>;
+    const node = nodes.find((value) => value.id === input.nodeId);
+    const data = node?.data as Record<string, unknown> | undefined;
+    if (!node || !data) throw new Error("M85 authoritative node is missing");
+    Object.assign(data, {
+      textModelConfigurationRevision: modelConfigurationRevision,
+      textModelId: modelId,
+      textPrompt: "m85 authoritative prompt",
+      textGenerationTaskId: input.taskId,
+      workflowExecutionRunId: input.runId,
+    });
+    store.prepare(`
+      UPDATE canvas_documents SET nodes = ? WHERE owner_id = ? AND id = ?
+    `).run(JSON.stringify(nodes), input.ownerId, input.canvasId);
+    const resolved = resolvePersistedNodeInputs({
+      bypass: false,
+      canvasId: input.canvasId,
+      database: store,
+      modelReleaseRevision: modelReleaseRevision.revisionId,
+      modelSchema: parameterSchema,
+      ownerId: input.ownerId,
+      parameters: {},
+      targetId: input.nodeId,
+      targetKind: "text",
+    });
+    if (!resolved.contractFingerprint) {
+      throw new Error("M85 authoritative contract fingerprint is missing");
+    }
+    const parameters = resolved.normalizedParameters ?? {};
+    const inputFingerprint = generationInputKey({
+      inputs: resolved.inputs,
+      modelConfigurationRevision,
+      modelId,
+      modelReleaseRevision: modelReleaseRevision.revisionId,
+      ownPrompt: resolved.persistedOwnPrompt,
+      parameters,
+      prompt: resolved.finalPrompt,
+    });
+    const ownershipKey = generationOwnershipKey(generationOwnershipEvidence({
+      contractFingerprint: resolved.contractFingerprint,
+      inputs: resolved.inputs,
+      kind: "text",
+      modelConfigurationRevision,
+      modelId,
+      modelReleaseRevision: modelReleaseRevision.revisionId,
+      parameters,
+      prompt: resolved.persistedOwnPrompt,
+    }));
+    Object.assign(data, {
+      textGenerationInputKey: inputFingerprint,
+      textGenerationOwnershipKey: ownershipKey,
+    });
+    store.prepare(`
+      UPDATE canvas_documents SET nodes = ? WHERE owner_id = ? AND id = ?
+    `).run(JSON.stringify(nodes), input.ownerId, input.canvasId);
+    const modelConfiguration = buildAuthoritativeGenerationModelConfiguration({
+      credentialVersion: 1,
+      generationInputKey: inputFingerprint,
+      generationOwnershipKey: ownershipKey,
+      modelCapability: "text",
+      modelConfigurationRevision,
+      modelExecutionAdapterId: execution.adapterId,
+      modelId,
+      modelInputContractFingerprint: resolved.contractFingerprint,
+      modelReleaseRevision,
+      modelResultCount: execution.resultCount,
+      parameterSchema,
+      providerConfigurationVersion: 1,
+      providerDriver,
+      providerModelId,
+      providerProfileId,
+      providerProtocol,
+      workflowBinding: {
+        generationInputKey: inputFingerprint,
+        generationOwnershipKey: ownershipKey,
+        groupId: "m85-authoritative-group",
+        modelConfigurationRevision,
+        modelReleaseRevision: modelReleaseRevision.revisionId,
+        runId: input.runId,
+      },
+    });
+    store.prepare(`
+      INSERT INTO generation_tasks (
+        id, canvas_id, node_id, kind, prompt, model, parameters,
+        idempotency_key, request_fingerprint, state, attempt,
+        created_at, updated_at, owner_id, cost_currency,
+        model_configuration, credential_revision, result_text
+      ) VALUES (?, ?, ?, 'text', ?, ?, ?, ?, ?, 'success', 1,
+        ?, ?, ?, 'CNY', ?, 1, ?)
+    `).run(
+      input.taskId,
+      input.canvasId,
+      input.nodeId,
+      resolved.finalPrompt,
+      modelId,
+      JSON.stringify({ ...parameters, inputSchemaVersion: 1, inputs: [] }),
+      `m85-authoritative-${input.taskId}`,
+      `m85-authoritative-fingerprint-${input.taskId}`,
+      timestamp,
+      timestamp,
+      input.ownerId,
+      JSON.stringify(modelConfiguration),
+      input.resultText,
+    );
+    return { inputFingerprint, ownershipKey };
+  } finally {
+    store.close();
+  }
+}
+
 function saveBody(
   nodeId: string,
   revision: number,
@@ -522,7 +706,7 @@ test("legacy terminal detach is owner-scoped, atomic, idempotent and fail-closed
         ownershipKey: string;
         runId: string;
         taskId: string;
-      }) => {
+      }, observedTerminalState: "cancelled" | "failed" | "success" = "failed") => {
         const seededNode = [terminalNode, activeNode, conflictNode, proofNode].find(
           (candidate) => candidate.id === input.nodeId,
         );
@@ -531,6 +715,7 @@ test("legacy terminal detach is owner-scoped, atomic, idempotent and fail-closed
           accountId: ownerId,
           canvasId,
           nodeDataFingerprint: legacyTerminalNodeDataFingerprint(seededNode.data),
+          observedTerminalState,
           ...input,
         };
         return {
@@ -538,7 +723,7 @@ test("legacy terminal detach is owner-scoped, atomic, idempotent and fail-closed
           applicationId: legacyTerminalDetachApplicationIdForBinding(binding),
           canvasId,
           nodeDataFingerprint: binding.nodeDataFingerprint,
-          observedTerminalState: "failed",
+          observedTerminalState,
           ...input,
         };
       };
@@ -549,7 +734,11 @@ test("legacy terminal detach is owner-scoped, atomic, idempotent and fail-closed
         undefined,
         { cookie: otherCookie },
       )).toEqual({
-        body: { code: "CANVAS_NOT_FOUND", error: "Canvas not found" },
+        body: {
+          code: "CANVAS_NOT_FOUND",
+          error: "Canvas not found",
+          requestId: expect.any(String),
+        },
         status: 404,
       });
       expect(await reconcile(
@@ -663,17 +852,14 @@ test("legacy terminal detach is owner-scoped, atomic, idempotent and fail-closed
         "POST",
         canvasId,
         "generation-terminal-detach",
-        {
-          ...body({
+        body({
             inputFingerprint: longInputFingerprint,
             kind: "text",
             nodeId: "text-terminal",
             ownershipKey: "owner-terminal",
             runId: "run-terminal",
             taskId: "task-terminal",
-          }),
-          observedTerminalState: "success",
-        },
+          }, "success"),
         { cookie: ownerCookie },
       ))).toMatchObject({
         body: { code: "GENERATION_TERMINAL_STATE_CONFLICT" },
@@ -758,6 +944,7 @@ test("legacy terminal detach is owner-scoped, atomic, idempotent and fail-closed
           kind: editedNodeRequest.kind,
           nodeDataFingerprint: editedNodeRequest.nodeDataFingerprint,
           nodeId: editedNodeRequest.nodeId,
+          observedTerminalState: editedNodeRequest.observedTerminalState,
           ownershipKey: editedNodeRequest.ownershipKey,
           runId: editedNodeRequest.runId,
           taskId: editedNodeRequest.taskId,
@@ -802,7 +989,7 @@ test("legacy terminal detach is owner-scoped, atomic, idempotent and fail-closed
       expect(detached.status).toBe(200);
       expect(detached.body.status).toBe("detached");
       expect(detached.body.document).toMatchObject({
-        graphRevision: 13,
+        graphRevision: 11,
         revision: 9,
       });
       const detachedDocument = detached.body.document as { nodes: Array<{
@@ -825,7 +1012,7 @@ test("legacy terminal detach is owner-scoped, atomic, idempotent and fail-closed
       );
       expect(repeated).toMatchObject({
         body: {
-          document: { graphRevision: 13, revision: 9 },
+          document: { graphRevision: 11, revision: 9 },
           status: "already-detached",
         },
         status: 200,
@@ -916,6 +1103,12 @@ test("server sweep detaches only allowlisted failed/cancelled exact bindings wit
         stateLabel: "cancelled",
         taskId: "task-sweep-cancelled",
       });
+      const dangerousCancelled = boundNode({
+        kind: "text",
+        nodeId: "text-dangerous-cancelled",
+        stateLabel: "dangerous-cancelled",
+        taskId: "task-sweep-dangerous-cancelled",
+      });
       const recoverable = boundNode({
         kind: "image",
         nodeId: "image-recoverable",
@@ -950,7 +1143,15 @@ test("server sweep detaches only allowlisted failed/cancelled exact bindings wit
       const ownerCookie = seedAuthenticatedSession(dataDirectory, ownerId);
       seedProject(dataDirectory, canvasId, {
         graphRevision: 9,
-        nodes: [failed, cancelled, recoverable, success, running, mismatch],
+        nodes: [
+          failed,
+          cancelled,
+          dangerousCancelled,
+          recoverable,
+          success,
+          running,
+          mismatch,
+        ],
         revision: 6,
       }, ownerId);
       seedProject(dataDirectory, excludedCanvasId, {
@@ -961,6 +1162,7 @@ test("server sweep detaches only allowlisted failed/cancelled exact bindings wit
       for (const fixture of [
         { kind: "image" as const, nodeId: "image-failed", state: "failed" as const, taskId: "task-sweep-failed" },
         { kind: "text" as const, nodeId: "text-cancelled", state: "cancelled" as const, taskId: "task-sweep-cancelled" },
+        { kind: "text" as const, nodeId: "text-dangerous-cancelled", state: "cancelled" as const, taskId: "task-sweep-dangerous-cancelled" },
         { kind: "image" as const, nodeId: "image-recoverable", state: "failed" as const, taskId: "task-sweep-recoverable" },
         { kind: "text" as const, nodeId: "text-success", state: "success" as const, taskId: "task-sweep-success" },
         { kind: "image" as const, nodeId: "image-running", state: "running" as const, taskId: "task-sweep-running" },
@@ -982,6 +1184,19 @@ test("server sweep detaches only allowlisted failed/cancelled exact bindings wit
               finished_at = NULL
           WHERE task_id = 'task-sweep-recoverable'
         `).run();
+        recoverableStore.prepare(`
+          INSERT INTO generation_provider_attempts (
+            task_id, execution_attempt, provider_profile_id, provider_model_id,
+            kind, evidence, created_at, owner_id, credential_revision, outcome,
+            provider_task_id, finished_at
+          ) VALUES (
+            'task-sweep-dangerous-cancelled', 1, 'profile-fixture',
+            'model-fixture', 'text', 'historical-execution-attempt',
+            '2026-08-25T00:00:00.000Z', ?, 0, 'accepted',
+            'provider-task-sweep-dangerous-cancelled',
+            '2026-08-25T00:01:00.000Z'
+          )
+        `).run(ownerId);
       } finally {
         recoverableStore.close();
       }
@@ -1038,7 +1253,7 @@ test("server sweep detaches only allowlisted failed/cancelled exact bindings wit
       const allowed = await api("GET", canvasId, undefined, {
         cookie: ownerCookie,
       });
-      expect(allowed.body).toMatchObject({ graphRevision: 10, revision: 7 });
+      expect(allowed.body).toMatchObject({ graphRevision: 9, revision: 8 });
       const allowedNodes = allowed.body.nodes as Array<{
         data: Record<string, unknown>;
         id: string;
@@ -1062,6 +1277,8 @@ test("server sweep detaches only allowlisted failed/cancelled exact bindings wit
         );
       }
       expect(allowedNodes.find((node) => node.id === "text-success")).toEqual(success);
+      expect(allowedNodes.find((node) => node.id === "text-dangerous-cancelled"))
+        .toEqual(dangerousCancelled);
       expect(allowedNodes.find((node) => node.id === "image-recoverable"))
         .toEqual(recoverable);
       expect(allowedNodes.find((node) => node.id === "image-running")).toEqual(running);
@@ -1084,7 +1301,7 @@ test("server sweep detaches only allowlisted failed/cancelled exact bindings wit
         });
       expect((await api("GET", canvasId, undefined, {
         cookie: ownerCookie,
-      })).body).toMatchObject({ graphRevision: 10, revision: 7 });
+      })).body).toMatchObject({ graphRevision: 9, revision: 8 });
       expect(ledger()).toEqual(beforeLedger);
     }, { authBypass: false });
   } finally {
@@ -1222,6 +1439,169 @@ test("per-session high-water rejects A3 -> B1 -> A2 while cross-session last wri
       { id: "observed-no-session-last-writer" },
     ]);
   });
+});
+
+test("capability legacy PUT is receipt-backed, ownership-safe and content-idempotent", async () => {
+  await withCanvasServer("canvas-legacy-capability", async ({ api, dataDirectory }) => {
+    const canvasId = `m85-legacy-capability-${randomUUID()}`;
+    const node = {
+      data: {
+        groupRunSuccessTaskId: "authoritative-task",
+        label: "Text",
+        textPrompt: "before",
+      },
+      id: "text-node",
+      position: { x: 10, y: 20 },
+      type: "text",
+    };
+    seedProject(dataDirectory, canvasId, { nodes: [node] });
+    const baseline = await api("GET", canvasId);
+    const sessionId = `legacy-session-${randomUUID()}`;
+    const attemptId = randomUUID();
+    const headers = {
+      "X-Unboundry-Canvas-Write-Contract": "legacy-put-v1",
+    };
+    const body = {
+      edges: [],
+      nodes: [{
+        ...node,
+        data: {
+          ...node.data,
+          groupRunSuccessTaskId: "forged-task",
+          textPrompt: "after",
+        },
+        selected: true,
+      }],
+      observedLoadToken: loadTokenFrom(baseline),
+      observedRevision: 1,
+      revision: 1,
+      saveAttemptId: attemptId,
+      saveSequence: 1,
+      saveSessionId: sessionId,
+      viewport,
+    };
+    const first = await api("PUT", canvasId, body, { headers });
+    expect(first.status).toBe(200);
+    expect(first.body).toMatchObject({
+      currentGraphRevision: 2,
+      currentRevision: 2,
+      graphRevision: 2,
+      operationGraphRevision: 2,
+      operationRevision: 2,
+      originalSaveStatus: "applied",
+      replayed: false,
+      requiresAuthoritativeGet: false,
+      revision: 2,
+      saveAttemptId: attemptId,
+      saveSequence: 1,
+      saveSessionId: sessionId,
+      saveStatus: "applied",
+    });
+    const storedNode = ((first.body.authoritativeDocument as {
+      nodes: Array<{ data: Record<string, unknown>; selected?: boolean }>;
+    }).nodes[0])!;
+    expect(storedNode.data.textPrompt).toBe("after");
+    expect(storedNode.data.groupRunSuccessTaskId).toBeUndefined();
+    expect(storedNode.selected).toBeUndefined();
+
+    const replay = await api("PUT", canvasId, body, { headers });
+    expect(replay.status).toBe(200);
+    expect(replay.body).toMatchObject({
+      currentRevision: 2,
+      operationRevision: 2,
+      originalSaveStatus: "applied",
+      replayed: true,
+      revision: 2,
+      saveStatus: "already-applied",
+    });
+
+    const reused = await api("PUT", canvasId, {
+      ...body,
+      nodes: [{ ...node, data: { ...node.data, textPrompt: "different" } }],
+    }, { headers });
+    expect(reused.status).toBe(409);
+    expect(reused.body).toMatchObject({
+      code: "CANVAS_OPERATION_REUSED",
+      currentRevision: 2,
+      operationRevision: 2,
+      requiresAuthoritativeGet: true,
+    });
+
+    const noOpAttemptId = randomUUID();
+    const noOp = await api("PUT", canvasId, {
+      ...body,
+      nodes: [{ ...node, data: { ...node.data, textPrompt: "after" } }],
+      observedLoadToken: first.body.currentLoadToken,
+      observedRevision: 2,
+      revision: 2,
+      saveAttemptId: noOpAttemptId,
+      saveSequence: 2,
+    }, { headers });
+    expect(noOp.status).toBe(200);
+    expect(noOp.body).toMatchObject({
+      currentRevision: 2,
+      operationRevision: 2,
+      originalSaveStatus: "already-applied",
+      replayed: false,
+      revision: 2,
+      saveStatus: "already-applied",
+    });
+
+    const superseded = await api("PUT", canvasId, {
+      ...body,
+      nodes: [{ ...node, data: { ...node.data, textPrompt: "must-not-win" } }],
+      observedLoadToken: first.body.currentLoadToken,
+      observedRevision: 2,
+      revision: 2,
+      saveAttemptId: randomUUID(),
+      saveSequence: 2,
+    }, { headers });
+    expect(superseded.status).toBe(409);
+    expect(superseded.body).toMatchObject({
+      code: "CANVAS_SAVE_SUPERSEDED",
+      currentRevision: 2,
+      requiresAuthoritativeGet: true,
+    });
+
+    expect((await api("PUT", canvasId, body, {
+      headers: { "X-Unboundry-Canvas-Write-Contract": "unknown-v1" },
+    }))).toMatchObject({
+      body: { code: "CANVAS_WRITE_CONTRACT_UNSUPPORTED" },
+      status: 400,
+    });
+    const store = databaseAt(dataDirectory);
+    try {
+      const receipts = store.prepare(`
+        SELECT COUNT(*) AS count FROM canvas_operation_receipts
+        WHERE owner_id = '__test__' AND canvas_id = ?
+      `).get(canvasId) as { count: number };
+      expect(receipts.count).toBe(3);
+    } finally {
+      store.close();
+    }
+  });
+});
+
+test("legacy PUT capability is echoed on the authentication rejection path", async () => {
+  await withCanvasServer(
+    "canvas-legacy-capability-auth",
+    async ({ origin }) => {
+      const response = await fetch(`${origin}/api/canvas/legacy-auth-rejection`, {
+        body: JSON.stringify({}),
+        headers: {
+          "Content-Type": "application/json",
+          Origin: origin,
+          "X-Unboundry-Canvas-Write-Contract": "legacy-put-v1",
+        },
+        method: "PUT",
+      });
+      expect(response.status).toBe(401);
+      expect(response.headers.get("X-Unboundry-Canvas-Write-Contract")).toBe(
+        "legacy-put-v1",
+      );
+    },
+    { authBypass: false },
+  );
 });
 
 test("GET reports owner-scoped writer and TEMP high-water metadata without creating entries", async () => {
@@ -1427,6 +1807,7 @@ test("GET returns stable fenced 404 metadata and rejects an invalid save-session
         error: "Canvas not found",
         saveEpoch: expect.stringMatching(saveEpochPattern),
         sessionHighWaterAttemptId: null,
+        sessionHighWaterOperationId: null,
         sessionHighWaterSequence: 0,
       },
       status: 404,
@@ -1903,30 +2284,34 @@ test("an older issued baseline on the same canvas still permits DATA-005 last-wr
 
   await withCanvasServer("canvas-generation-projection-cas", async ({ api, dataDirectory }) => {
     const canvasId = `m85-projection-cas-${randomUUID()}`;
-    const inputFingerprint = JSON.stringify({
-      inputs: [],
-      modelId: "model-a",
-      parameters: {},
-      prompt: "测试长提示词".repeat(180),
-    });
-    expect(inputFingerprint.length).toBeGreaterThan(512);
-    expect(inputFingerprint.length).toBeLessThanOrEqual(100_000);
-    const boundNode = {
+    const nodeId = "text-a";
+    const runId = "run-a";
+    const taskId = "task-a";
+    const initialNode = {
       data: {
         label: "文案",
-        textGenerationInputKey: inputFingerprint,
-        textGenerationOwnershipKey: "owner-a",
-        textGenerationTaskId: "task-a",
-        textPrompt: "old prompt",
-        workflowExecutionRunId: "run-a",
+        textPrompt: "m85 authoritative prompt",
       },
-      id: "text-a",
+      id: nodeId,
       position: { x: 0, y: 0 },
       type: "text",
     };
-    seedProject(dataDirectory, canvasId, { nodes: [boundNode] });
+    seedProject(dataDirectory, canvasId, { nodes: [initialNode] });
+    const authoritativeIdentity = seedAuthoritativeWorkflowTextProjection(
+      dataDirectory,
+      {
+        canvasId,
+        nodeId,
+        ownerId: "__test__",
+        resultText: "authoritative server result",
+        runId,
+        taskId,
+      },
+    );
     const staleProjectionBaseline = await api("GET", canvasId);
     const staleToken = loadTokenFrom(staleProjectionBaseline);
+    const boundNode = (staleProjectionBaseline.body.nodes as unknown[])[0] as
+      typeof initialNode;
 
     const editedNode = {
       ...boundNode,
@@ -1947,18 +2332,17 @@ test("an older issued baseline on the same canvas still permits DATA-005 last-wr
       viewport,
     })).status).toBe(200);
 
-    const resultKey = "result-a";
     const projectionBase = {
-      inputFingerprint,
+      inputFingerprint: authoritativeIdentity.inputFingerprint,
       kind: "text" as const,
-      nodeId: "text-a",
-      ownershipKey: "owner-a",
-      resultKey,
-      runId: "run-a",
-      taskId: "task-a",
+      nodeId,
+      ownershipKey: authoritativeIdentity.ownershipKey,
+      resultKey: "forged-client-result-key",
+      runId,
+      taskId,
     };
     const projection = {
-      accountId: "__test__",
+      accountId: "forged-account",
       applicationId: groupResultProjectionApplicationId(projectionBase),
       ...projectionBase,
       semanticRevision: groupResultSemanticRevision(projectionBase),
@@ -1985,18 +2369,19 @@ test("an older issued baseline on the same canvas still permits DATA-005 last-wr
       body: { code: "CANVAS_DOCUMENT_INVALID" },
       status: 400,
     });
-    expect(await api("PUT", canvasId, {
+    const inputChangingProjection = await api("PUT", canvasId, {
       edges: [],
       generationProjection: projection,
       nodes: [{
         ...boundNode,
         data: {
           ...boundNode.data,
-          content: "old result must not overwrite",
-          contentHtml: "<p>old result must not overwrite</p>",
-          groupRunSuccessOwnershipKey: "owner-a",
-          groupRunSuccessResultKey: resultKey,
-          groupRunSuccessTaskId: "task-a",
+          content: "forged client result",
+          contentHtml: "<p>forged client result</p>",
+          groupRunSuccessOwnershipKey: "forged-ownership",
+          groupRunSuccessResultKey: "forged-client-result-key",
+          groupRunSuccessTaskId: "forged-task",
+          label: "同次投影保存的新标题",
         },
       }],
       observedLoadToken: staleToken,
@@ -2005,48 +2390,451 @@ test("an older issued baseline on the same canvas still permits DATA-005 last-wr
       saveSequence: 1,
       saveSessionId: "projection-writer-session",
       viewport,
-    })).toEqual({
-      body: {
-        code: "CANVAS_GENERATION_PROJECTION_CONFLICT",
-        error: "Generation result projection no longer matches the current node",
-      },
+    });
+    expect(inputChangingProjection).toMatchObject({
+      body: { code: "CANVAS_GENERATION_PROJECTION_CONFLICT" },
       status: 409,
     });
-    const freshProjectionBaseline = await api("GET", canvasId);
-    expect(freshProjectionBaseline.body.nodes).toEqual([editedNode]);
+    const afterInputChangingProjection = await api("GET", canvasId);
+    expect(afterInputChangingProjection.body.revision).toBe(2);
+    expect((afterInputChangingProjection.body.nodes as Array<{
+      data: Record<string, unknown>;
+    }>)[0]!.data).toMatchObject({
+      label: "另一标签修改的标题",
+      textPrompt: "m85 authoritative prompt",
+    });
+
     expect(await api("PUT", canvasId, {
       edges: [],
       generationProjection: projection,
       nodes: [{
-        ...editedNode,
+        ...boundNode,
         data: {
-          ...editedNode.data,
-          content: "fresh result",
-          contentHtml: "<p>fresh result</p>",
-          groupRunSuccessOwnershipKey: "owner-a",
-          groupRunSuccessResultKey: resultKey,
-          groupRunSuccessTaskId: "task-a",
+          ...boundNode.data,
+          groupRunSuccessOwnershipKey: "forged-ownership",
+          groupRunSuccessResultKey: "forged-client-result-key",
+          groupRunSuccessTaskId: "forged-task",
+          label: "同次投影保存的新标题",
         },
       }],
-      observedLoadToken: loadTokenFrom(freshProjectionBaseline),
-      observedRevision: 2,
-      revision: 2,
+      observedLoadToken: staleToken,
+      observedRevision: 1,
+      revision: 1,
       saveSequence: 1,
-      saveSessionId: "fresh-projection-session",
+      saveSessionId: "projection-writer-session",
       viewport,
     })).toMatchObject({ body: { revision: 3 }, status: 200 });
-    expect((await api("GET", canvasId)).body.nodes).toEqual([{
-      ...editedNode,
-      data: {
-        ...editedNode.data,
-        content: "fresh result",
-        contentHtml: "<p>fresh result</p>",
-        groupRunSuccessOwnershipKey: "owner-a",
-        groupRunSuccessResultKey: resultKey,
-        groupRunSuccessTaskId: "task-a",
+    const projected = await api("GET", canvasId);
+    expect(projected.body.edges).toEqual([]);
+    expect(projected.body.nodes).toHaveLength(1);
+    expect((projected.body.nodes as Array<{ data: Record<string, unknown> }>)[0]
+      .data).toMatchObject({
+        content: "authoritative server result",
+        contentHtml: "<p>authoritative server result</p>",
+        groupRunSuccessOwnershipKey: authoritativeIdentity.ownershipKey,
+        groupRunSuccessTaskId: taskId,
+        label: "同次投影保存的新标题",
+      });
+    const projectedData = (projected.body.nodes as Array<{
+      data: Record<string, unknown>;
+    }>)[0].data;
+    expect(projectedData.groupRunSuccessResultKey)
+      .not.toBe("forged-client-result-key");
+    expect(projectedData.userField).toBeUndefined();
+
+    expect(await api("PUT", canvasId, {
+      edges: [],
+      generationProjection: projection,
+      nodes: projected.body.nodes,
+      observedLoadToken: loadTokenFrom(projected),
+      observedRevision: 3,
+      revision: 3,
+      saveSequence: 1,
+      saveSessionId: "projection-writer-session",
+      viewport,
+    })).toMatchObject({
+      body: { code: "CANVAS_SAVE_SUPERSEDED" },
+      status: 409,
+    });
+
+    const capabilityBaseline = await api("GET", canvasId);
+    const capabilityNode = (capabilityBaseline.body.nodes as Array<{
+      data: Record<string, unknown>;
+    }>)[0]!;
+    expect(await api("PUT", canvasId, {
+      edges: [],
+      generationProjection: projection,
+      nodes: [{
+        ...capabilityNode,
+        data: {
+          ...capabilityNode.data,
+          label: "capability replay 同步保存的新标题",
+        },
+      }],
+      observedLoadToken: loadTokenFrom(capabilityBaseline),
+      observedRevision: 3,
+      revision: 3,
+      saveAttemptId: randomUUID(),
+      saveSequence: 1,
+      saveSessionId: "capability-projection-writer-session",
+      viewport,
+    }, {
+      headers: { "X-Unboundry-Canvas-Write-Contract": "legacy-put-v1" },
+    })).toMatchObject({ body: { revision: 4 }, status: 200 });
+    expect(((await api("GET", canvasId)).body.nodes as Array<{
+      data: Record<string, unknown>;
+    }>)[0]!.data.label).toBe("capability replay 同步保存的新标题");
+
+    const inputChangeBaseline = await api("GET", canvasId);
+    const inputChangeNode = (inputChangeBaseline.body.nodes as Array<{
+      data: Record<string, unknown>;
+    }>)[0]!;
+    expect(await api("PUT", canvasId, {
+      edges: [],
+      generationProjection: projection,
+      nodes: [{
+        ...inputChangeNode,
+        data: {
+          ...inputChangeNode.data,
+          textPrompt: "new prompt must invalidate the old generation proof",
+        },
+      }],
+      observedLoadToken: loadTokenFrom(inputChangeBaseline),
+      observedRevision: 4,
+      revision: 4,
+      saveAttemptId: randomUUID(),
+      saveSequence: 2,
+      saveSessionId: "capability-projection-writer-session",
+      viewport,
+    }, {
+      headers: { "X-Unboundry-Canvas-Write-Contract": "legacy-put-v1" },
+    })).toMatchObject({
+      body: {
+        code: "CANVAS_LEGACY_RECONCILE_REQUIRED",
+        currentRevision: 4,
       },
-    }]);
+      status: 409,
+    });
+    expect((await api("GET", canvasId)).body).toMatchObject({ revision: 4 });
   });
+});
+
+test("uncapable legacy projection keeps upload adoption and workflow locks inside one fence", async () => {
+  await withCanvasServer(
+    "canvas-legacy-projection-transaction-guards",
+    async ({ api, dataDirectory }) => {
+      const canvasId = `m85-projection-guards-${randomUUID()}`;
+      const nodeId = "text-guarded";
+      const runId = "run-projection-guards";
+      const taskId = "task-projection-guards";
+      const assetId = `m85-upload-${randomUUID()}`;
+      const replacementAssetId = `m85-upload-replacement-${randomUUID()}`;
+      const textNode = {
+        data: { label: "Text", textPrompt: "m85 authoritative prompt" },
+        id: nodeId,
+        position: { x: 0, y: 0 },
+        type: "text",
+      };
+      const imageNode = {
+        data: {
+          assetId,
+          groupRunSuccessInputFingerprint: "old-image-fingerprint",
+          groupRunSuccessOwnershipKey: "old-image-ownership",
+          groupRunSuccessTaskId: "old-image-task",
+          imageGeneratedSuccess: true,
+          imageGenerationInputKey: "old-image-input",
+          imageGenerationOwnershipKey: "old-image-ownership",
+          imageGenerationTaskId: "old-image-task",
+          imageSrc: `/api/assets/${assetId}`,
+          label: "Upload",
+        },
+        id: "image-upload",
+        position: { x: 320, y: 0 },
+        type: "image",
+      };
+      seedProject(dataDirectory, canvasId, { nodes: [textNode, imageNode] });
+      const timestamp = "2026-09-04T00:00:00.000Z";
+      const publicationAttemptId = `upload-attempt-${randomUUID()}`;
+      const replacementAttemptId = `upload-attempt-${randomUUID()}`;
+      const store = databaseAt(dataDirectory);
+      try {
+        store.prepare(`
+          INSERT INTO media_assets (
+            kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
+            storage_backend, object_key, content_type, checksum_sha256,
+            storage_status, duration_status, media_width, media_height
+          ) VALUES (
+            'image', ?, '__test__', ?, 68, ?, ?, 'local', ?, 'image/png', ?,
+            'ready', 'not-applicable', 1, 1
+          )
+        `).run(
+          assetId,
+          `${assetId}.png`,
+          timestamp,
+          timestamp,
+          `${assetId}.png`,
+          "a".repeat(64),
+        );
+        store.prepare(`
+          INSERT INTO media_assets (
+            kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
+            storage_backend, object_key, content_type, checksum_sha256,
+            storage_status, duration_status, media_width, media_height
+          ) VALUES (
+            'image', ?, '__test__', ?, 68, ?, ?, 'local', ?, 'image/png', ?,
+            'ready', 'not-applicable', 1, 1
+          )
+        `).run(
+          replacementAssetId,
+          `${replacementAssetId}.png`,
+          timestamp,
+          timestamp,
+          `${replacementAssetId}.png`,
+          "b".repeat(64),
+        );
+        store.prepare(`
+          INSERT INTO media_publication_attempts (
+            attempt_id, owner_id, kind, asset_id, source, state,
+            storage_backend, final_storage_name, object_key, staging_name,
+            byte_size, checksum_sha256, content_type, created_at, updated_at
+          ) VALUES (
+            ?, '__test__', 'image', ?, 'upload', 'published', 'local', ?, ?, ?,
+            68, ?, 'image/png', ?, ?
+          )
+        `).run(
+          publicationAttemptId,
+          assetId,
+          `${assetId}.png`,
+          `${assetId}.png`,
+          `${assetId}.staging`,
+          "a".repeat(64),
+          timestamp,
+          timestamp,
+        );
+        store.prepare(`
+          INSERT INTO media_publication_attempts (
+            attempt_id, owner_id, kind, asset_id, source, state,
+            storage_backend, final_storage_name, object_key, staging_name,
+            byte_size, checksum_sha256, content_type, created_at, updated_at
+          ) VALUES (
+            ?, '__test__', 'image', ?, 'upload', 'published', 'local', ?, ?, ?,
+            68, ?, 'image/png', ?, ?
+          )
+        `).run(
+          replacementAttemptId,
+          replacementAssetId,
+          `${replacementAssetId}.png`,
+          `${replacementAssetId}.png`,
+          `${replacementAssetId}.staging`,
+          "b".repeat(64),
+          timestamp,
+          timestamp,
+        );
+      } finally {
+        store.close();
+      }
+      const authoritativeIdentity = seedAuthoritativeWorkflowTextProjection(
+        dataDirectory,
+        {
+          canvasId,
+          nodeId,
+          ownerId: "__test__",
+          resultText: "transaction-guard projection result",
+          runId,
+          taskId,
+        },
+      );
+      const projectionBase = {
+        inputFingerprint: authoritativeIdentity.inputFingerprint,
+        kind: "text" as const,
+        nodeId,
+        ownershipKey: authoritativeIdentity.ownershipKey,
+        resultKey: "ignored-client-result-key",
+        runId,
+        taskId,
+      };
+      const projection = {
+        accountId: "ignored-client-account",
+        applicationId: groupResultProjectionApplicationId(projectionBase),
+        ...projectionBase,
+        semanticRevision: groupResultSemanticRevision(projectionBase),
+      };
+      const baseline = await api("GET", canvasId);
+      expect(await api("PUT", canvasId, {
+        edges: [],
+        generationProjection: projection,
+        nodes: baseline.body.nodes,
+        observedLoadToken: loadTokenFrom(baseline),
+        observedRevision: 1,
+        revision: 1,
+        saveSequence: 1,
+        saveSessionId: "projection-guard-session",
+        viewport,
+      })).toMatchObject({ body: { revision: 2 }, status: 200 });
+
+      const adopted = databaseAt(dataDirectory);
+      try {
+        expect(adopted.prepare(`
+          SELECT adopted_canvas_id, adopted_at
+          FROM media_publication_attempts WHERE attempt_id = ?
+        `).get(publicationAttemptId)).toEqual({
+          adopted_canvas_id: canvasId,
+          adopted_at: expect.any(String),
+        });
+        adopted.prepare(`
+          INSERT INTO workflow_runs (
+            id, owner_id, canvas_id, group_id, graph_revision,
+            semantic_fingerprint, plan_json, state, stop_requested,
+            created_at, updated_at
+          ) VALUES (?, '__test__', ?, 'guard-group', 1, 'guard-fingerprint',
+            '{"version":1}', 'running', 0, ?, ?)
+        `).run("active-projection-guard-run", canvasId, timestamp, timestamp);
+        adopted.prepare(`
+          INSERT INTO workflow_run_locks (
+            owner_id, canvas_id, node_id, run_id, created_at
+          ) VALUES ('__test__', ?, ?, 'active-projection-guard-run', ?)
+        `).run(canvasId, nodeId, timestamp);
+      } finally {
+        adopted.close();
+      }
+
+      const lockedBaseline = await api("GET", canvasId);
+      const lockedNodes = lockedBaseline.body.nodes as Array<{
+        data: Record<string, unknown>;
+        id: string;
+      }>;
+      expect(await api("PUT", canvasId, {
+        edges: [],
+        generationProjection: projection,
+        nodes: lockedNodes.map((node) => node.id === nodeId
+          ? {
+              ...node,
+              data: { ...node.data, textPrompt: "locked prompt must not commit" },
+            }
+          : node),
+        observedLoadToken: loadTokenFrom(lockedBaseline),
+        observedRevision: 2,
+        revision: 2,
+        saveSequence: 1,
+        saveSessionId: "projection-locked-session",
+        viewport,
+      })).toMatchObject({
+        body: { code: "WORKFLOW_GRAPH_LOCKED" },
+        status: 409,
+      });
+      expect((await api("GET", canvasId)).body).toMatchObject({ revision: 2 });
+
+      const unlocked = databaseAt(dataDirectory);
+      try {
+        unlocked.prepare(`
+          DELETE FROM workflow_run_locks
+          WHERE owner_id = '__test__' AND canvas_id = ?
+        `).run(canvasId);
+        unlocked.prepare(`
+          DELETE FROM workflow_runs
+          WHERE owner_id = '__test__' AND canvas_id = ?
+        `).run(canvasId);
+      } finally {
+        unlocked.close();
+      }
+      const replacementBaseline = await api("GET", canvasId);
+      const replacementNodes = replacementBaseline.body.nodes as Array<{
+        data: Record<string, unknown>;
+        id: string;
+      }>;
+      const replacementPayloadNodes = replacementNodes.map((node) =>
+        node.id === "image-upload"
+          ? {
+              ...node,
+              data: { ...node.data, assetId: replacementAssetId },
+            }
+          : node
+      );
+      expect(await api("PUT", canvasId, {
+        edges: [],
+        generationProjection: projection,
+        nodes: replacementPayloadNodes,
+        observedLoadToken: loadTokenFrom(replacementBaseline),
+        observedRevision: 2,
+        revision: 2,
+        saveAttemptId: randomUUID(),
+        saveSequence: 1,
+        saveSessionId: "rejected-capability-adoption-session",
+        viewport,
+      }, {
+        headers: { "X-Unboundry-Canvas-Write-Contract": "legacy-put-v1" },
+      })).toMatchObject({
+        body: { code: "CANVAS_LEGACY_RECONCILE_REQUIRED" },
+        status: 409,
+      });
+      const rejectedAdoption = databaseAt(dataDirectory);
+      try {
+        expect(rejectedAdoption.prepare(`
+          SELECT adopted_at, adopted_canvas_id
+          FROM media_publication_attempts WHERE attempt_id = ?
+        `).get(replacementAttemptId)).toEqual({
+          adopted_at: null,
+          adopted_canvas_id: null,
+        });
+      } finally {
+        rejectedAdoption.close();
+      }
+      expect((await api("GET", canvasId)).body).toMatchObject({ revision: 2 });
+
+      const replaced = await api("PUT", canvasId, {
+        edges: [{
+          data: { inputOrder: 1, inputRole: "reference-image" },
+          id: "legacy-proof-invalidating-edge",
+          source: "image-upload",
+          sourceHandle: "source",
+          target: nodeId,
+          targetHandle: "target",
+        }],
+        nodes: replacementPayloadNodes,
+        observedLoadToken: loadTokenFrom(replacementBaseline),
+        observedRevision: 2,
+        revision: 2,
+        saveAttemptId: randomUUID(),
+        saveSequence: 1,
+        saveSessionId: "legacy-proof-invalidation-session",
+        viewport,
+      });
+      expect(replaced).toMatchObject({
+        body: {
+          graphRevision: (replacementBaseline.body.graphRevision as number) + 1,
+          revision: 3,
+        },
+        status: 200,
+      });
+      const persistedNodes = ((await api("GET", canvasId)).body.nodes as Array<{
+        data: Record<string, unknown>;
+        id: string;
+      }>);
+      const persistedText = persistedNodes.find((node) => node.id === nodeId)!.data;
+      const persistedImage = persistedNodes.find((node) =>
+        node.id === "image-upload"
+      )!.data;
+      expect(persistedImage.assetId).toBe(replacementAssetId);
+      for (const field of [
+        "groupRunSuccessInputFingerprint",
+        "groupRunSuccessOwnershipKey",
+        "groupRunSuccessTaskId",
+        "imageGeneratedSuccess",
+        "imageGenerationInputKey",
+        "imageGenerationOwnershipKey",
+        "imageGenerationTaskId",
+      ]) expect(persistedImage[field]).toBeUndefined();
+      for (const field of [
+        "groupRunSuccessInputFingerprint",
+        "groupRunSuccessOwnershipKey",
+        "groupRunSuccessResultKey",
+        "groupRunSuccessTaskId",
+        "textGenerationInputKey",
+        "textGenerationOwnershipKey",
+        "textGenerationTaskId",
+      ]) expect(persistedText[field]).toBeUndefined();
+    },
+  );
 });
 
 test("observed revision and load token must be supplied together", async () => {

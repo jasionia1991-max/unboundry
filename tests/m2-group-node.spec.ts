@@ -170,6 +170,7 @@ test("Group layout reflows children into grid and horizontal positions", async (
   const image = page.getByTestId("image-node-group-image");
   const video = page.getByTestId("video-node-group-video");
   const group = page.locator(".react-flow__node-group");
+  await group.click({ force: true, position: { x: 8, y: 8 } });
   const beforeImage = (await image.boundingBox())!;
   const beforeVideo = (await video.boundingBox())!;
   const beforeGroup = (await group.boundingBox())!;

@@ -1,5 +1,172 @@
 import type { TransactionScopedCommand } from "./transactionCommand";
 
+export type ReadyMediaAssetRow = Readonly<{
+  byteSize: number;
+  checksumSha256: string | null;
+  contentType: string;
+  createdAt: string;
+  durationSeconds: number | null;
+  durationStatus: "failed" | "not-applicable" | "pending" | "ready";
+  height: number | null;
+  hasTransparency: boolean | null;
+  id: string;
+  kind: "audio" | "image" | "video";
+  mediaHeight: number | null;
+  mediaWidth: number | null;
+  storageBackend: "local" | "oss";
+  storageStatus: "ready";
+  width: number | null;
+}>;
+
+export const readReadyMediaAssetCommand: TransactionScopedCommand<Readonly<{
+  assetId: string;
+  kind: "audio" | "image" | "video";
+  ownerId: string;
+}>, ReadyMediaAssetRow | undefined> = {
+  execute(scope, input) {
+    const row = scope.prepare(`
+      SELECT media.id, media.kind, media.byte_size, media.content_type,
+             media.duration_seconds, media.media_height, media.media_width,
+             media.storage_backend, media.checksum_sha256,
+             media.duration_status, media.created_at,
+             image_metadata.has_transparency
+      FROM media_assets AS media
+      LEFT JOIN media_image_metadata AS image_metadata
+        ON image_metadata.owner_id = media.owner_id
+        AND image_metadata.kind = media.kind
+        AND image_metadata.asset_id = media.id
+      WHERE media.owner_id = ? AND media.kind = ? AND media.id = ?
+        AND media.storage_status = 'ready'
+    `).get(input.ownerId, input.kind, input.assetId) as
+      | {
+          byte_size: number;
+          checksum_sha256: string | null;
+          content_type: string | null;
+          created_at: string;
+          duration_seconds: number | null;
+          duration_status: "failed" | "not-applicable" | "pending" | "ready";
+          id: string;
+          kind: "audio" | "image" | "video";
+          has_transparency: number | null;
+          media_height: number | null;
+          media_width: number | null;
+          storage_backend: "local" | "oss";
+        }
+      | undefined;
+    if (!row || !row.content_type) return undefined;
+    return Object.freeze({
+      byteSize: Number(row.byte_size),
+      checksumSha256: row.checksum_sha256,
+      contentType: row.content_type,
+      createdAt: row.created_at,
+      durationSeconds: row.duration_seconds,
+      durationStatus: row.duration_status,
+      height: row.media_height,
+      hasTransparency: row.has_transparency === null
+        ? null
+        : row.has_transparency === 1,
+      id: row.id,
+      kind: row.kind,
+      mediaHeight: row.media_height,
+      mediaWidth: row.media_width,
+      storageBackend: row.storage_backend,
+      storageStatus: "ready",
+      width: row.media_width,
+    });
+  },
+};
+
+export type PublishedGenerationMediaProjectionRow = Readonly<{
+  assetId: string;
+  attemptId: string;
+  byteSize: number;
+  checksumSha256: string;
+  contentType: string;
+  createdAt: string;
+  durationSeconds: number | null;
+  durationStatus: "failed" | "not-applicable" | "pending" | "ready";
+  height: number | null;
+  hasTransparency: boolean | null;
+  storageBackend: "local" | "oss";
+  width: number | null;
+}>;
+
+export const readPublishedGenerationMediaProjectionCommand:
+  TransactionScopedCommand<Readonly<{
+    executionAttempt: number;
+    kind: "audio" | "image" | "video";
+    ownerId: string;
+    primaryAssetId: string;
+    taskId: string;
+  }>, readonly PublishedGenerationMediaProjectionRow[]> = {
+    execute(scope, input) {
+      const rows = scope.prepare(`
+        SELECT publication.asset_id, publication.attempt_id,
+               publication.created_at, media.byte_size, media.checksum_sha256,
+               media.content_type, media.duration_seconds,
+               media.duration_status, media.media_height, media.media_width,
+               media.storage_backend, image_metadata.has_transparency
+        FROM media_publication_attempts AS publication
+        JOIN media_assets AS media
+          ON media.owner_id = publication.owner_id
+          AND media.kind = publication.kind
+          AND media.id = publication.asset_id
+        LEFT JOIN media_image_metadata AS image_metadata
+          ON image_metadata.owner_id = media.owner_id
+          AND image_metadata.kind = media.kind
+          AND image_metadata.asset_id = media.id
+        WHERE publication.source = 'generation'
+          AND publication.state = 'published'
+          AND publication.task_id = ?
+          AND publication.task_execution_attempt = ?
+          AND publication.owner_id = ?
+          AND publication.kind = ?
+          AND media.storage_status = 'ready'
+        ORDER BY CASE WHEN publication.asset_id = ? THEN 0 ELSE 1 END,
+                 publication.created_at, publication.attempt_id
+      `).all(
+        input.taskId,
+        input.executionAttempt,
+        input.ownerId,
+        input.kind,
+        input.primaryAssetId,
+      ) as Array<{
+        asset_id: string;
+        attempt_id: string;
+        byte_size: number;
+        checksum_sha256: string | null;
+        content_type: string | null;
+        created_at: string;
+        duration_seconds: number | null;
+        duration_status: "failed" | "not-applicable" | "pending" | "ready";
+        has_transparency: number | null;
+        media_height: number | null;
+        media_width: number | null;
+        storage_backend: "local" | "oss";
+      }>;
+      return Object.freeze(rows.flatMap((row) =>
+        row.checksum_sha256 && row.content_type
+          ? [Object.freeze({
+              assetId: row.asset_id,
+              attemptId: row.attempt_id,
+              byteSize: Number(row.byte_size),
+              checksumSha256: row.checksum_sha256,
+              contentType: row.content_type,
+              createdAt: row.created_at,
+              durationSeconds: row.duration_seconds,
+              durationStatus: row.duration_status,
+              height: row.media_height,
+              hasTransparency: row.has_transparency === null
+                ? null
+                : row.has_transparency === 1,
+              storageBackend: row.storage_backend,
+              width: row.media_width,
+            })]
+          : [],
+      ));
+    },
+  };
+
 export const transferAccountMediaCommand: TransactionScopedCommand<Readonly<{
   assetId: string;
   kind: "audio" | "image" | "video";

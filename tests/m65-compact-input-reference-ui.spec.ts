@@ -22,11 +22,6 @@ const overflowTextTitle = "第五个仅在用户打开加号入口后显示的�
 const textSummary = "这段上游文字摘要只能在用户主动打开详情后出现，不能在节点输入框顶部长期占据整行高度";
 const longProblem = "这是一条用于检查不兼容引用的完整长原因：当前图片素材没有通过安全格式校验，引用必须保留，但原因不应该以橙色长段落在创建器中重复常驻";
 
-type CanvasDocument = {
-  loadToken: string;
-  revision: number;
-};
-
 function modelSchema(): ModelParameterSchema {
   return knownModelParameterSchema({
     capability: "text",
@@ -69,13 +64,7 @@ async function seedCanvas(
   destinationCanvasId = canvasId,
   generationError = "",
 ) {
-  const current = await request.get(`/api/canvas/${destinationCanvasId}`);
-  const currentDocument = current.ok()
-    ? await current.json() as CanvasDocument
-    : undefined;
-  if (!currentDocument) {
-    expect(current.status()).toBe(404);
-  }
+  await request.delete(`/api/canvas/${destinationCanvasId}`);
   const inputSources = [
     { key: "text", kind: "text" },
     { key: "image", kind: "image" },
@@ -84,6 +73,7 @@ async function seedCanvas(
     ...(includeOverflow ? [{ key: "text-extra", kind: "text" }] : []),
   ] as const;
   const response = await request.put(`/api/canvas/${destinationCanvasId}`, {
+    headers: { "X-Unboundry-Safe-Fixture-Seed": destinationCanvasId },
     data: {
       edges: inputSources.map(
         ({ key, kind }, index) => ({
@@ -176,13 +166,7 @@ async function seedCanvas(
           type: "text",
         },
       ],
-      ...(currentDocument
-        ? {
-            observedLoadToken: currentDocument.loadToken,
-            observedRevision: currentDocument.revision,
-          }
-        : {}),
-      revision: currentDocument?.revision ?? 0,
+      revision: 0,
       viewport: { x: 5, y: 5, zoom: 0.68 },
     },
   });
@@ -547,13 +531,12 @@ test.describe.serial("compact upstream references stay one-row and zero Provider
     } finally {
       const latest = await request.get("/api/canvas/default");
       if (original && latest.ok()) {
-        const latestDocument = await latest.json() as CanvasDocument;
+        await request.delete("/api/canvas/default");
         await request.put("/api/canvas/default", {
+          headers: { "X-Unboundry-Safe-Fixture-Seed": "default" },
           data: {
             ...original,
-            observedLoadToken: latestDocument.loadToken,
-            observedRevision: latestDocument.revision,
-            revision: latestDocument.revision,
+            revision: 0,
           },
         });
       } else if (!original) {

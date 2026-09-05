@@ -67,6 +67,110 @@ export type ImageGenerationToolInput = Readonly<{
   sourceNodeId: string;
 }>;
 
+const generationImageToolOperations = new Set<ImageGenerationToolInput["operation"]>([
+  "enhance-creative",
+  "erase",
+  "multi-angle",
+  "outpaint",
+  "redraw",
+  "remove-background",
+]);
+
+export function isImageGenerationToolOperation(
+  value: unknown,
+): value is ImageGenerationToolInput["operation"] {
+  return typeof value === "string" &&
+    generationImageToolOperations.has(value as ImageGenerationToolInput["operation"]);
+}
+
+/** Parse the canonical durable snapshot used by admission, execution and projection. */
+export function storedImageGenerationTool(
+  value: unknown,
+): ImageGenerationToolInput | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Invalid image tool snapshot");
+  }
+  const item = value as Partial<ImageGenerationToolInput>;
+  if (
+    !isImageGenerationToolOperation(item.operation) ||
+    typeof item.operationId !== "string" ||
+    !/^[a-z0-9._-]{1,160}$/i.test(item.operationId) ||
+    typeof item.sourceAssetId !== "string" ||
+    !/^[a-z0-9._-]{1,160}$/i.test(item.sourceAssetId) ||
+    typeof item.sourceNodeId !== "string" ||
+    !/^[a-z0-9._-]{1,160}$/i.test(item.sourceNodeId)
+  ) throw new Error("Invalid image tool snapshot");
+  const requiresMask = item.operation === "redraw" || item.operation === "erase" ||
+    item.operation === "outpaint";
+  if (
+    (item.operation === "remove-background" &&
+      item.outputBackground !== "transparent") ||
+    (item.operation !== "remove-background" && item.outputBackground !== undefined)
+  ) throw new Error("Invalid image tool output background snapshot");
+  if (!item.mask) {
+    if (requiresMask) throw new Error("Invalid image tool mask snapshot");
+    if (item.preparedInput !== undefined || item.outpaint !== undefined) {
+      throw new Error("Invalid image tool outpaint snapshot");
+    }
+    const outputBackground = item.outputBackground;
+    return {
+      operation: item.operation,
+      operationId: item.operationId,
+      ...(outputBackground ? { outputBackground } : {}),
+      sourceAssetId: item.sourceAssetId,
+      sourceNodeId: item.sourceNodeId,
+    };
+  }
+  const mask = item.mask;
+  if (
+    !requiresMask || typeof mask.assetId !== "string" ||
+    !/^[a-z0-9._-]{1,160}$/i.test(mask.assetId) || mask.version !== 1 ||
+    !Number.isSafeInteger(mask.width) || mask.width < 1 || mask.width > 8_192 ||
+    !Number.isSafeInteger(mask.height) || mask.height < 1 || mask.height > 8_192 ||
+    !Number.isSafeInteger(mask.featherPixels) ||
+    mask.featherPixels < 0 || mask.featherPixels > 64
+  ) throw new Error("Invalid image tool mask snapshot");
+  const outpaint = item.outpaint;
+  const preparedInput = item.preparedInput;
+  if (item.operation === "outpaint") {
+    if (!outpaint || !preparedInput || outpaint.version !== 1 ||
+        preparedInput.version !== 1 ||
+        !/^[a-z0-9._-]{1,160}$/i.test(preparedInput.assetId) ||
+        !Number.isSafeInteger(preparedInput.width) ||
+        !Number.isSafeInteger(preparedInput.height) ||
+        preparedInput.width !== mask.width || preparedInput.height !== mask.height ||
+        outpaint.outputWidth !== mask.width || outpaint.outputHeight !== mask.height ||
+        !Number.isSafeInteger(outpaint.sourceX) || outpaint.sourceX < 0 ||
+        !Number.isSafeInteger(outpaint.sourceY) || outpaint.sourceY < 0 ||
+        !Number.isSafeInteger(outpaint.sourceWidth) || outpaint.sourceWidth < 1 ||
+        !Number.isSafeInteger(outpaint.sourceHeight) || outpaint.sourceHeight < 1 ||
+        outpaint.sourceX + outpaint.sourceWidth > outpaint.outputWidth ||
+        outpaint.sourceY + outpaint.sourceHeight > outpaint.outputHeight ||
+        (outpaint.sourceWidth === outpaint.outputWidth &&
+          outpaint.sourceHeight === outpaint.outputHeight)) {
+      throw new Error("Invalid image tool outpaint snapshot");
+    }
+  } else if (outpaint !== undefined || preparedInput !== undefined) {
+    throw new Error("Invalid image tool outpaint snapshot");
+  }
+  return {
+    mask: {
+      assetId: mask.assetId,
+      featherPixels: mask.featherPixels,
+      height: mask.height,
+      version: 1,
+      width: mask.width,
+    },
+    ...(outpaint ? { outpaint } : {}),
+    ...(preparedInput ? { preparedInput } : {}),
+    operation: item.operation,
+    operationId: item.operationId,
+    sourceAssetId: item.sourceAssetId,
+    sourceNodeId: item.sourceNodeId,
+  };
+}
+
 export const imageToolOperationStatuses = [
   "available",
   "unavailable",

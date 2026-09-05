@@ -74,6 +74,7 @@ const {
   auth: { accountContextApi, adminUsersApi, authApi, authGate },
   canvas: {
     accountHistory,
+    canvasCommandsApi,
     canvasLegacyGenerationReconciliation,
     canvasPersistence,
     projectTitle,
@@ -1172,6 +1173,12 @@ function canvasPersistenceApi(runtime: RuntimeInstance): Plugin {
     return canvasPersistence(request, response);
   };
   const protectedCanvasHandler = apiBoundary("canvas", canvasHandler, runtime);
+  const canvasesHandler = (
+    request: Parameters<typeof canvasCommandsApi>[0],
+    response: Parameters<typeof canvasCommandsApi>[1],
+  ) => /^\/[a-z0-9._-]+\/commands(?:\?|$)/i.test(request.url ?? "")
+    ? canvasCommandsApi(request, response)
+    : canvasLegacyGenerationReconciliation(request, response);
   const install = (middlewares: {
     use: (path: string, handler: (...args: any[]) => void) => void;
   }) => {
@@ -1179,8 +1186,8 @@ function canvasPersistenceApi(runtime: RuntimeInstance): Plugin {
     middlewares.use(
       "/api/canvases",
       apiBoundary(
-        "canvas-legacy-generation-reconciliation",
-        canvasLegacyGenerationReconciliation,
+        "canvas-command-or-legacy-generation-reconciliation",
+        canvasesHandler,
         runtime,
       ),
     );

@@ -98,15 +98,22 @@ test("Text matches neutral, selected and editing states", async ({
   await expect(editor).toHaveAttribute("contenteditable", "false");
   await expect(node).toHaveClass(/selected/);
   await expect(toolbar).toBeVisible();
+  await expect(saveStatus).toHaveText("已保存到云端");
 
   const beforeDrag = (await node.boundingBox())!;
   await page.mouse.move(beforeDrag.x + 125, beforeDrag.y + 125);
   await page.mouse.down();
   await page.mouse.move(beforeDrag.x + 205, beforeDrag.y + 185, { steps: 4 });
   await page.mouse.up();
-  const afterDrag = (await node.boundingBox())!;
-  expect(afterDrag.x - beforeDrag.x).toBeGreaterThan(40);
-  expect(afterDrag.y - beforeDrag.y).toBeGreaterThan(30);
+  await expect.poll(async () => {
+    const afterDrag = await node.boundingBox();
+    return afterDrag ? afterDrag.x - beforeDrag.x : 0;
+  }).toBeGreaterThan(40);
+  await expect.poll(async () => {
+    const afterDrag = await node.boundingBox();
+    return afterDrag ? afterDrag.y - beforeDrag.y : 0;
+  }).toBeGreaterThan(30);
+  await expect(saveStatus).toHaveText("已保存到云端");
 
   await content.dblclick();
   const beforeEditDrag = (await node.boundingBox())!;
@@ -271,6 +278,7 @@ test("Text prompt commits only the final IME composition value", async ({
     "data-persistence-ready",
     "true",
   );
+  await page.locator('.react-flow__node[data-id="text-primary"]').click();
   await expect(prompt).toHaveValue("世界");
 });
 
@@ -282,6 +290,7 @@ test("Text toolbar and creator hide while dragging and return after release", as
     "data-persistence-ready",
     "true",
   );
+  await page.locator('.react-flow__node[data-id="text-primary"]').click();
   const creator = page.getByTestId("text-creator");
   const toolbar = page.getByTestId("text-node-toolbar");
   await expect(creator).toBeVisible();

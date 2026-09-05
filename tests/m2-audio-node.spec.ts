@@ -275,9 +275,6 @@ test("Audio empty, upload and playback chrome match the frozen basic state", asy
     .toEqual({ x: beforeDrag.x, y: beforeDrag.y });
 
   await page.keyboard.press("Meta+z");
-  await expect(media).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "上传音频" })).toBeVisible();
-
-  await page.keyboard.press("Meta+z");
+  await expect(media).toHaveCount(1);
   await expect(title).toHaveValue("Audio");
 });

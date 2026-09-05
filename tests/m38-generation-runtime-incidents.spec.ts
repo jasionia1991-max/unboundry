@@ -1788,7 +1788,9 @@ test("only capability success or an explicit Provider/model update clears an aut
           input.kind === "text" || input.kind === "video" ? "CNY" : "USD",
           JSON.stringify({
             fixtureScopeId: "",
-            generationIdentityVersion: 2,
+            // These manually seeded rows exercise the retained legacy retry
+            // safety path. A modern v2 task must be created through atomic
+            // server admission so its authoritative Canvas binding exists.
             modelConfigurationRevision:
               retryModelConfigurationRevision(input.id),
             modelInputContractFingerprint:

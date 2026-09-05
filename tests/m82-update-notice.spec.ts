@@ -185,8 +185,8 @@ test("held update reload is single-flight and reloads once after save", async ({
   const heldSave = new Promise<void>((resolve) => {
     releaseSave = resolve;
   });
-  await page.route(`**/api/canvas/${project.id}`, async (route) => {
-    if (route.request().method() !== "PUT") {
+  await page.route(`**/api/canvases/${project.id}/commands`, async (route) => {
+    if (route.request().method() !== "POST") {
       await route.continue();
       return;
     }

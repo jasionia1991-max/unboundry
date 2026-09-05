@@ -72,6 +72,13 @@ const exactLegacyProductionDependencies = {
 };
 const exactLegacySourceLockSha256 =
   "79612b35753b970b10223f50adc396c0a064c41bfa8779bb9698b40f9ce0296e";
+const exactMigrationScriptPaths = [
+  "scripts/migrate-schema37-to39.mjs",
+  "scripts/migrate-schema39-to40.mjs",
+  "scripts/migrate-schema40-to41.mjs",
+  "scripts/migrate-schema41-to42.mjs",
+  "scripts/migrate-schema42-to43.mjs",
+] as const;
 const exactMigrationArguments = [
   "scripts/migrate-schema37-to39.mjs",
   "--apply",
@@ -174,10 +181,12 @@ async function createRelease(
   await write(join(directory, "vite.config.ts"), "export default {};\n");
   await write(join(directory, "spec/unboundry-state-fixtures.json"), "{\"fixtures\":[]}\n");
   if (bridge) {
-    await write(
-      join(directory, "scripts/migrate-schema37-to39.mjs"),
-      "export const artifactBoundSyntheticMigration = true;\n",
-    );
+    for (const scriptPath of exactMigrationScriptPaths) {
+      await write(
+        join(directory, scriptPath),
+        `export const artifactBoundSyntheticMigration = ${JSON.stringify(scriptPath)};\n`,
+      );
+    }
     await write(join(directory, "scripts/node-typescript-runtime.mjs"), "export {};\n");
   }
   if (bridge) {
@@ -256,13 +265,13 @@ async function createRelease(
     : exactPlaceholders;
   const databaseCompatibility = releaseRole === "bridge"
     ? {
-        activeSchemaVersions: [37, 41],
+        activeSchemaVersions: [37, 43],
         migrationMode: "external-one-shot-only",
-        rollbackTargetForSchemaVersion: 41,
+        rollbackTargetForSchemaVersion: 43,
       }
     : releaseRole === "final"
       ? {
-          activeSchemaVersions: [41],
+          activeSchemaVersions: [43],
           migrationMode: "forbidden-from-final-runtime",
           standbySchemaVersions: [37],
         }
@@ -436,7 +445,7 @@ async function createRelease(
           "package.json",
           ...(bridge
             ? [
-                "scripts/migrate-schema37-to39.mjs",
+                ...exactMigrationScriptPaths,
                 "scripts/node-typescript-runtime.mjs",
               ]
             : []),

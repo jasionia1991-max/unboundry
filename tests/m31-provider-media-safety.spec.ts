@@ -755,6 +755,7 @@ test("connected cards share uploading while a failed replacement preserves the a
   const canvasId = "node.image.text-image-input";
   await request.delete(`/api/canvas/${canvasId}`);
   const saved = await request.put(`/api/canvas/${canvasId}`, {
+    headers: { "X-Unboundry-Safe-Fixture-Seed": canvasId },
     data: {
       edges: [
         {

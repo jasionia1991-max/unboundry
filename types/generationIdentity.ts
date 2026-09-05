@@ -1,5 +1,9 @@
 import type { ModelParameterValue } from "./modelParameters";
 import type { NodeInputKind, ResolvedNodeInput } from "./nodeInputs";
+import type {
+  ImageGenerationToolInput,
+  ImageMultiAngleParameters,
+} from "./imageTools";
 
 function stableIdentityValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stableIdentityValue);
@@ -55,6 +59,58 @@ export function generationOwnershipKey(value: unknown) {
     right = Math.imul(right ^ code, 0x85ebca6b) >>> 0;
   }
   return `${source.length.toString(36)}-${left.toString(36)}-${right.toString(36)}`;
+}
+
+/**
+ * Canonical ownership evidence for the six Provider-backed image tools. Keep
+ * this shared between browser planning and server preflight so a tool cannot
+ * bind a task under a generic image-generation identity.
+ */
+export function imageGenerationToolOwnershipEvidence(input: Readonly<{
+  accountId: string;
+  aspectRatio?: string;
+  canvasId: string;
+  imageTool: ImageGenerationToolInput;
+  modelId?: string;
+  modelParameters?: Record<string, ModelParameterValue>;
+  multiAngleParameters?: ImageMultiAngleParameters;
+  prompt: string;
+  quality?: string;
+}>) {
+  const tool = input.imageTool;
+  const common = {
+    accountId: input.accountId,
+    aspectRatio: input.aspectRatio,
+    canvasId: input.canvasId,
+    modelId: input.modelId,
+    modelParameters: input.modelParameters,
+    operation: tool.operation,
+    operationId: tool.operationId,
+    prompt: input.prompt,
+    quality: input.quality,
+    sourceAssetId: tool.sourceAssetId,
+    sourceNodeId: tool.sourceNodeId,
+  };
+  if (tool.operation === "multi-angle") {
+    if (!input.multiAngleParameters) {
+      throw new Error("Multi-angle ownership parameters are missing");
+    }
+    return { ...common, parameters: input.multiAngleParameters };
+  }
+  if (tool.operation === "redraw") {
+    if (!tool.mask) throw new Error("Redraw ownership mask is missing");
+    return { ...common, mask: tool.mask };
+  }
+  if (tool.operation === "erase" || tool.operation === "outpaint") {
+    if (!tool.mask) throw new Error("Image-tool ownership mask is missing");
+    return {
+      ...common,
+      mask: tool.mask,
+      outpaint: tool.outpaint,
+      preparedAssetId: tool.preparedInput?.assetId,
+    };
+  }
+  return common;
 }
 
 export function generationOwnershipEvidence(input: {

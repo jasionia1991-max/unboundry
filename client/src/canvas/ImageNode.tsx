@@ -20,7 +20,10 @@ import {
 } from "react";
 import { useCanvasCheckpoint } from "./CanvasHistory";
 import type { ImageToolOperation } from "../../../types/imageTools";
-import { useCanvasGraphMutation } from "./CanvasGraphMutationContext";
+import {
+  canvasUploadTargetStillCurrent,
+  useCanvasGraphMutation,
+} from "./CanvasGraphMutationContext";
 import { useSingleNodeChrome } from "./CanvasSelectionContext";
 import { useCompositionSafeText } from "./CompositionSafeText";
 import {
@@ -85,7 +88,6 @@ import {
   GENERATION_TASK_RETRY_ACCEPTED_EVENT,
   GenerationRequestError,
   getGenerationTask,
-  recoverPendingGenerationTask,
   reconcileOutcomeMessage,
   runWithSingleNodeGenerationAdmission,
   waitForGenerationTask,
@@ -93,6 +95,7 @@ import {
   type GenerationTaskSummary,
 } from "../generation/generationTasks";
 import type { CanvasGraphCommandCommit } from "./canvasPorts";
+import type { CuttableEdge } from "./canvasTypes";
 import {
   createSingleNodeGenerationLifecycle,
   markSingleNodeSemanticEdit,
@@ -122,6 +125,8 @@ import {
 import { UpstreamInputCards } from "./UpstreamInputCards";
 import { GenerationAvailabilityNotice } from "./GenerationAvailabilityNotice";
 import {
+  effectiveMediaInputState,
+  effectiveMediaInputStateReason,
   fetchTrustedMediaMetadata,
   hasCompleteTrustedMediaMetadata,
   hasTrustedMediaDimensions,
@@ -250,6 +255,22 @@ type ImageGenerationRun = {
   token: symbol;
 };
 
+type ImageGenerationRevocationIdentity = {
+  inputKey?: string;
+  ownershipKey?: string;
+  taskId?: string;
+};
+
+function imageGenerationRevocationIdentity(
+  data: ProbeNodeType["data"],
+): ImageGenerationRevocationIdentity {
+  return {
+    inputKey: data.imageGenerationInputKey,
+    ownershipKey: data.imageGenerationOwnershipKey,
+    taskId: data.imageGenerationTaskId,
+  };
+}
+
 function imageTaskMatchesNode(
   task: GenerationTaskSummary,
   canvasId: string,
@@ -353,31 +374,9 @@ function hasReadyImageMedia(node?: ProbeNodeType) {
   return Boolean(
     node?.data.assetId &&
     node.data.imageSrc &&
-    (node.data.inputState === undefined || node.data.inputState === "ready"),
+    (effectiveMediaInputState(node.data) === undefined ||
+      effectiveMediaInputState(node.data) === "ready"),
   );
-}
-
-function restoreImageUploadBaseline(
-  node: ProbeNodeType,
-  baseline: ProbeNodeType,
-) {
-  return {
-    ...node,
-    data: {
-      ...node.data,
-      assetId: baseline.data.assetId,
-      imageGenerationError: baseline.data.imageGenerationError,
-      imageSrc: baseline.data.imageSrc,
-      inputState: baseline.data.inputState ?? "ready",
-      inputStateReason: baseline.data.inputStateReason,
-      mediaByteSize: baseline.data.mediaByteSize,
-      mediaContentType: baseline.data.mediaContentType,
-      mediaDurationSeconds: baseline.data.mediaDurationSeconds,
-      mediaMetadataSource: baseline.data.mediaMetadataSource,
-      mediaMetadataStatus: baseline.data.mediaMetadataStatus,
-      mediaStorageBackend: baseline.data.mediaStorageBackend,
-    },
-  };
 }
 
 function supportedImageValue(values: string[], preferred?: string) {
@@ -1680,22 +1679,19 @@ function ImageNodeImpl({
   const metadataHydrationAssetIdRef = useRef<string | undefined>(undefined);
   const uploadBaseline = useRef<ProbeNodeType | undefined>(undefined);
   const uploadOperation = useRef(0);
-  const deferredPreviewAutoFit = useRef<{
-    height: number;
-    width: number;
-  } | undefined>(undefined);
-  const { getEdges, getNode, getNodes } = useReactFlow<ProbeNodeType>();
+  const { getEdges, getNodes } = useReactFlow<ProbeNodeType>();
   const {
+    adoptUploadedAsset,
+    adoptAuthoritativeNodeData,
+    applyViewUpdate,
     canvasMutationPendingNodeIds,
     graphCommandPort,
     imageColorFilter,
     mutateGraph,
+    readCanvasNode,
     readCanvasMutationVersion,
-    setEdges,
     setImageColorFilter,
-    setNodes,
     tryAdoptNodes,
-    trySetNodes,
   } =
     useCanvasGraphMutation();
   const canvasMutationPending = canvasMutationPendingNodeIds.has(id);
@@ -1716,6 +1712,9 @@ function ImageNodeImpl({
         kind: "image",
         nodeId: id,
       });
+      imageRecoveryControllerRef.current?.abort("image-input-edited");
+      imageRecoveryControllerRef.current = undefined;
+      imageRecoveryLifecycleRef.current?.abort("image-input-edited");
       imageRetryLifecycleRef.current?.abort("image-input-edited");
       promptSemanticVersionRef.current += 1;
       commitImageDataMutation((current) => ({
@@ -1728,12 +1727,9 @@ function ImageNodeImpl({
   });
   const titleControl = useCompositionSafeText({
     onCommit: (nextTitle) => {
-      setNodes((nodes) =>
-        nodes.map((node) =>
-          node.id === id
-            ? { ...node, data: { ...node.data, title: nextTitle } }
-            : node,
-        ),
+      commitImageDataMutation(
+        (current) => ({ ...current, title: nextTitle }),
+        () => undefined,
       );
     },
     onEditSessionStart: checkpoint,
@@ -1750,6 +1746,15 @@ function ImageNodeImpl({
     retryGenerationEnabled,
     waitForCanvasRevision,
   } = useGenerationCanvas();
+  const imageDataMutationVersionRef = useRef(0);
+  const imageMutationScopeKey = JSON.stringify([
+    accountId,
+    canvasId,
+    fixtureScopeId,
+    id,
+  ]);
+  const liveImageMutationScopeKeyRef = useRef(imageMutationScopeKey);
+  liveImageMutationScopeKeyRef.current = imageMutationScopeKey;
   const commitImageToolGraph = useCallback<CanvasGraphCommandCommit>(
     async (command) => {
       if (!graphCommandPort) {
@@ -1794,7 +1799,28 @@ function ImageNodeImpl({
     groupRunSuccessResultKey: undefined,
     groupRunSuccessTaskId: undefined,
   });
-  const revokeImageTaskForGenerationInputChange = () => {
+  const revokeImageTaskForGenerationInputChange = (expectedTaskId?: string) => {
+    const currentRun = generationRunRef.current;
+    if (
+      currentRun &&
+      (expectedTaskId === undefined || currentRun.taskId !== expectedTaskId)
+    ) {
+      if (expectedTaskId) {
+        clearGenerationSubmissionIntent(
+          "image",
+          canvasId,
+          id,
+          expectedTaskId,
+          accountId,
+          fixtureScopeId,
+        );
+      }
+      return;
+    }
+    imageRecoveryControllerRef.current?.abort("image-generation-input-changed");
+    imageRecoveryControllerRef.current = undefined;
+    imageRecoveryLifecycleRef.current?.abort("image-generation-input-changed");
+    imageRetryLifecycleRef.current?.abort("image-generation-input-changed");
     generationRunRef.current = undefined;
     setActiveTaskId(undefined);
     pollingPausedTaskIdRef.current = undefined;
@@ -1806,22 +1832,92 @@ function ImageNodeImpl({
       "image",
       canvasId,
       id,
-      undefined,
+      expectedTaskId,
       accountId,
       fixtureScopeId,
     );
   };
+  const finishImageGenerationInputRevocation = (
+    identity: ImageGenerationRevocationIdentity,
+    expectedScopeKey: string,
+  ) => {
+    const currentRun = generationRunRef.current;
+    const replacementClaimed = identity.taskId === undefined
+      ? Boolean(currentRun)
+      : Boolean(
+          currentRun && (
+            currentRun.taskId !== identity.taskId ||
+            (identity.inputKey !== undefined &&
+              currentRun.inputKey !== identity.inputKey) ||
+            (identity.ownershipKey !== undefined &&
+              currentRun.ownershipKey !== identity.ownershipKey)
+          ),
+        );
+    if (
+      liveImageMutationScopeKeyRef.current !== expectedScopeKey ||
+      replacementClaimed
+    ) {
+      if (identity.taskId) {
+        clearGenerationSubmissionIntent(
+          "image",
+          canvasId,
+          id,
+          identity.taskId,
+          accountId,
+          fixtureScopeId,
+        );
+      }
+      return;
+    }
+    revokeImageTaskForGenerationInputChange(identity.taskId);
+  };
   const commitImageDataMutation = (
     update: (current: ProbeNodeType["data"]) => ProbeNodeType["data"],
-    afterApplied: () => void = revokeImageTaskForGenerationInputChange,
+    afterApplied?: (identity: ImageGenerationRevocationIdentity) => void,
   ) => {
+    const mutationVersion = imageDataMutationVersionRef.current + 1;
+    imageDataMutationVersionRef.current = mutationVersion;
+    const expectedScopeKey = imageMutationScopeKey;
+    let identity: ImageGenerationRevocationIdentity | undefined;
     void mutateGraph(({ edges, nodes }) => ({
       edges,
-      nodes: nodes.map((node) => node.id === id
-        ? { ...node, data: update(node.data) }
-        : node),
+      nodes: nodes.map((node) => {
+        if (node.id !== id) return node;
+        identity = imageGenerationRevocationIdentity(node.data);
+        return { ...node, data: update(node.data) };
+      }),
     })).then((applied) => {
-      if (applied) afterApplied();
+      if (
+        !applied ||
+        !identity ||
+        imageDataMutationVersionRef.current !== mutationVersion ||
+        liveImageMutationScopeKeyRef.current !== expectedScopeKey
+      ) return;
+      if (afterApplied) afterApplied(identity);
+      else finishImageGenerationInputRevocation(identity, expectedScopeKey);
+    });
+  };
+  const commitImageInputEdgesMutation = (
+    updateEdges: (edges: CuttableEdge[]) => CuttableEdge[],
+  ) => {
+    const mutationVersion = imageDataMutationVersionRef.current + 1;
+    imageDataMutationVersionRef.current = mutationVersion;
+    const expectedScopeKey = imageMutationScopeKey;
+    let identity: ImageGenerationRevocationIdentity | undefined;
+    void mutateGraph(({ edges, nodes }) => {
+      const target = nodes.find((node) => node.id === id);
+      identity = target
+        ? imageGenerationRevocationIdentity(target.data)
+        : undefined;
+      return { edges: updateEdges(edges), nodes };
+    }).then((applied) => {
+      if (
+        !applied ||
+        !identity ||
+        imageDataMutationVersionRef.current !== mutationVersion ||
+        liveImageMutationScopeKeyRef.current !== expectedScopeKey
+      ) return;
+      finishImageGenerationInputRevocation(identity, expectedScopeKey);
     });
   };
   const finishedDurationLabel = useFinishedGenerationDuration(
@@ -1992,6 +2088,10 @@ function ImageNodeImpl({
   const imageRecoveryControllerRef = useRef<AbortController | undefined>(
     undefined,
   );
+  useEffect(() => () => {
+    imageRecoveryControllerRef.current?.abort("image-node-unmounted");
+    imageRecoveryControllerRef.current = undefined;
+  }, []);
   const imageRecoveryLifecycleRef = useRef<ReturnType<
     typeof createSingleNodeGenerationLifecycle
   > | undefined>(undefined);
@@ -2049,7 +2149,9 @@ function ImageNodeImpl({
   const [librarySaveState, setLibrarySaveState] = useState<
     "idle" | "saving" | "saved"
   >("idle");
-  const uploading = data.inputState === "uploading";
+  const effectiveInputState = effectiveMediaInputState(data);
+  const effectiveInputStateReason = effectiveMediaInputStateReason(data);
+  const uploading = effectiveInputState === "uploading";
   const referenceLimit = imageParameters.maxReferenceImages ?? 0;
   const imageInputSchema = selectedImageModel
     ? {
@@ -2258,6 +2360,7 @@ function ImageNodeImpl({
     inputKey?: string,
     ownershipKey?: string,
   ): ImageGenerationRun => {
+    imageDataMutationVersionRef.current += 1;
     imageRecoveryLifecycleRef.current?.abort("image-recovery-superseded");
     const run = { inputKey, ownershipKey, taskId, token: Symbol(taskId) };
     generationRunRef.current = run;
@@ -2294,18 +2397,18 @@ function ImageNodeImpl({
   useEffect(() => {
     if (pollingPausedTaskIdRef.current) return;
     setUploadError(
-      data.inputState === "invalid" && data.inputStateReason
-        ? data.inputStateReason
+      effectiveInputState === "invalid" && effectiveInputStateReason
+        ? effectiveInputStateReason
         : visibleGenerationError(data.imageGenerationError),
-      data.inputState === "invalid"
+      effectiveInputState === "invalid"
         ? "INPUT_INVALID"
         : data.imageGenerationErrorCode,
     );
   }, [
     data.imageGenerationError,
     data.imageGenerationErrorCode,
-    data.inputState,
-    data.inputStateReason,
+    effectiveInputState,
+    effectiveInputStateReason,
   ]);
 
   useEffect(() => {
@@ -2358,6 +2461,16 @@ function ImageNodeImpl({
       !data.imageGenerationInputKey &&
       !data.imageGenerationOwnershipKey
     ) return;
+    if (persistedMismatch) {
+      clearGenerationSubmissionIntent(
+        "image",
+        canvasId,
+        id,
+        data.imageGenerationTaskId,
+        accountId,
+        fixtureScopeId,
+      );
+    }
     commitImageDataMutation(clearImageGenerationForSemanticChange);
   }, [
     accountId,
@@ -2370,7 +2483,6 @@ function ImageNodeImpl({
     id,
     persistenceReady,
     rawGenerationInputFingerprint,
-    setNodes,
   ]);
 
   useEffect(() => {
@@ -2380,11 +2492,11 @@ function ImageNodeImpl({
   useEffect(() => {
     if (
       !persistenceReady ||
-      data.inputState !== "uploading" ||
+      effectiveInputState !== "uploading" ||
       uploadInFlight.current
     ) return;
     const message = "上传已中断，请重新上传";
-    setNodes((nodes) => nodes.map((node) => node.id === id
+    applyViewUpdate((nodes) => nodes.map((node) => node.id === id
       ? {
           ...node,
           data: {
@@ -2393,19 +2505,19 @@ function ImageNodeImpl({
           },
         }
       : node));
-  }, [data.inputState, id, persistenceReady, setNodes]);
+  }, [applyViewUpdate, effectiveInputState, id, persistenceReady]);
 
   useEffect(() => {
     if (
       !uploadInFlight.current ||
       uploadAdmissionPending.current ||
-      getNode(id)?.data.inputState === "uploading"
+      effectiveMediaInputState(readCanvasNode(id)?.data ?? {}) === "uploading"
     ) return;
     uploadOperation.current += 1;
     uploadAdmissionPending.current = false;
     uploadInFlight.current = false;
     uploadBaseline.current = undefined;
-  }, [data.inputState, getNode, id]);
+  }, [effectiveInputState, id, readCanvasNode]);
 
   useEffect(() => {
     if (persistenceReady || !uploadInFlight.current) return;
@@ -2430,7 +2542,7 @@ function ImageNodeImpl({
       !data.imageSrc ||
       hasCompleteTrustedMediaMetadata("image", data) ||
       metadataHydrationAssetIdRef.current === data.assetId ||
-      data.inputState === "uploading"
+      effectiveInputState === "uploading"
     ) return;
     const requestedAssetId = data.assetId;
     metadataHydrationAssetIdRef.current = requestedAssetId;
@@ -2439,16 +2551,11 @@ function ImageNodeImpl({
     void fetchTrustedMediaMetadata("image", requestedAssetId, controller.signal)
       .then((metadata) => {
         settled = true;
-        setNodes((nodes) => nodes.map((node) =>
-          node.id === id && node.data.assetId === requestedAssetId
-          ? {
-              ...node,
-              data: {
-                ...node.data,
-                ...trustedMediaPatch(metadata),
-              },
-            }
-          : node));
+        adoptAuthoritativeNodeData({
+          expectedAssetId: requestedAssetId,
+          nodeId: id,
+          patch: trustedMediaPatch(metadata),
+        });
       })
       .catch((error) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
@@ -2456,7 +2563,7 @@ function ImageNodeImpl({
         const message = error instanceof Error
           ? error.message
           : "服务端无法确认图片素材信息";
-        setNodes((nodes) => nodes.map((node) =>
+        applyViewUpdate((nodes) => nodes.map((node) =>
           node.id === id && node.data.assetId === requestedAssetId
           ? {
               ...node,
@@ -2477,7 +2584,7 @@ function ImageNodeImpl({
     canvasId,
     data.assetId,
     data.imageSrc,
-    data.inputState,
+    effectiveInputState,
     data.mediaByteSize,
     data.mediaContentType,
     data.mediaHeight,
@@ -2487,7 +2594,8 @@ function ImageNodeImpl({
     data.mediaWidth,
     id,
     persistenceReady,
-    setNodes,
+    adoptAuthoritativeNodeData,
+    applyViewUpdate,
   ]);
   const incomingImageReferences = inputPreflight.inputs
     .filter((input) => input.kind === "image" && input.preview)
@@ -2598,7 +2706,7 @@ function ImageNodeImpl({
       errorCode,
       "image",
     );
-    const applied = await tryAdoptNodes(id, (nodes) =>
+    const applied = applyViewUpdate((nodes) =>
       nodes.map((node) =>
         node.id === id
           ? {
@@ -2607,15 +2715,10 @@ function ImageNodeImpl({
                 ...node.data,
                 imageGenerationError: visibleMessage,
                 imageGenerationErrorCode: errorCode,
-                imageGenerationInputKey:
-                  run.inputKey ?? node.data.imageGenerationInputKey,
-                imageGenerationOwnershipKey:
-                  run.ownershipKey ?? node.data.imageGenerationOwnershipKey,
                 imageGenerating: false,
                 imageGenerationRetryAllowed: retryAllowed,
                 imageGenerationRetryBlockCode: retryBlockCode,
                 imageGenerationRetryBlockReason: retryBlockReason,
-                imageGenerationTaskId: taskId,
               },
             }
           : node,
@@ -2642,7 +2745,7 @@ function ImageNodeImpl({
     message: string,
   ) => {
     if (!ownsImageGenerationRun(run) || run.taskId !== taskId) return false;
-    const applied = await tryAdoptNodes(id, (nodes) =>
+    const applied = applyViewUpdate((nodes) =>
       nodes.map((node) =>
         node.id === id
           ? {
@@ -2651,13 +2754,10 @@ function ImageNodeImpl({
                 ...node.data,
                 imageGenerationError: message,
                 imageGenerationErrorCode: undefined,
-                imageGenerationInputKey: undefined,
-                imageGenerationOwnershipKey: undefined,
                 imageGenerating: false,
                 imageGenerationRetryAllowed: undefined,
                 imageGenerationRetryBlockCode: undefined,
                 imageGenerationRetryBlockReason: undefined,
-                imageGenerationTaskId: undefined,
               },
             }
           : node,
@@ -2683,8 +2783,10 @@ function ImageNodeImpl({
   const applyGeneratedImage = async (
     task: GenerationTaskSummary,
     run: ImageGenerationRun,
+    signal: AbortSignal,
   ) => {
     if (
+      signal?.aborted ||
       !ownsImageGenerationRun(run) ||
       !imageTaskMatchesNode(task, canvasId, id, run.taskId, fixtureScopeId)
     ) return false;
@@ -2700,6 +2802,62 @@ function ImageNodeImpl({
     }
     if (task.state !== "success" || !task.resultAssetId || !task.resultUrl) {
       throw new Error(task.errorMessage ?? "图片生成失败，请稍后再试");
+    }
+    if (task.generationIdentityVersion === 2) {
+      const projectionState = task.canvasProjectionState;
+      const projectionMessage = projectionState === "conflict"
+        ? "结果已生成，但节点输入已变化，未覆盖当前画布"
+        : projectionState === "failed"
+          ? "结果已生成，画布同步暂时失败，系统会继续重试"
+          : projectionState === "applied"
+            ? undefined
+            : "结果已生成，画布正在同步";
+      if (projectionState === "applied") {
+        try {
+          if (
+            !await graphCommandPort?.refreshAuthoritativeDocument?.(signal) ||
+            signal?.aborted ||
+            !ownsImageGenerationRun(run)
+          ) return false;
+        } catch {
+          return false;
+        }
+        clearGenerationSubmissionIntent(
+          "image",
+          canvasId,
+          id,
+          task.id,
+          accountId,
+          fixtureScopeId,
+        );
+        return true;
+      }
+      const patched = graphCommandPort?.applyViewPatch?.({
+        kind: "image",
+        nodeId: id,
+        ownershipKey: run.ownershipKey ?? "",
+        patch: {
+          imageGenerating: false,
+          imageGenerationError: projectionMessage,
+          imageGenerationErrorCode: projectionState === "conflict"
+            ? "CANVAS_SERVER_OWNERSHIP_CONFLICT"
+            : projectionState === "failed"
+              ? "CANVAS_PROJECTION_FAILED"
+              : "CANVAS_PROJECTION_PENDING",
+        },
+        taskId: task.id,
+      });
+      if (patched?.status !== "applied") return false;
+      if (signal?.aborted || !ownsImageGenerationRun(run)) return false;
+      clearGenerationSubmissionIntent(
+        "image",
+        canvasId,
+        id,
+        task.id,
+        accountId,
+        fixtureScopeId,
+      );
+      return true;
     }
     const applied = await tryAdoptNodes(id, (nodes) =>
       nodes.map((node) =>
@@ -2737,7 +2895,9 @@ function ImageNodeImpl({
           : node,
       ),
     );
-    if (!applied) return false;
+    if (signal?.aborted || !ownsImageGenerationRun(run) || !applied) {
+      return false;
+    }
     clearGenerationSubmissionIntent("image", canvasId, id, task.id, accountId, fixtureScopeId);
     endImageGenerationRun(run);
     return true;
@@ -2757,6 +2917,7 @@ function ImageNodeImpl({
       selectedImageModel.generationAvailable === false ||
       !referencesSupported
     ) return { status: "skipped" };
+    imageDataMutationVersionRef.current += 1;
     setUploadError("");
     setServerInputProblems([]);
     setRetryTaskId(undefined);
@@ -2771,7 +2932,6 @@ function ImageNodeImpl({
     let saveBoundary = 0;
     try {
       if (!graphCommandPort) return { status: "skipped" };
-      checkpoint();
       setSavingCanvas(true);
       const lifecycle = createSingleNodeGenerationLifecycle({
         adapter: createImageGenerationAdapter({
@@ -2802,6 +2962,10 @@ function ImageNodeImpl({
         }),
         graph: graphCommandPort,
         nodeId: id,
+        onBindingCommitted() {
+          setSavingCanvas(false);
+          setSubmitting(false);
+        },
         save: {
           flush: async () => undefined,
           async waitForRevision() {
@@ -2910,6 +3074,7 @@ function ImageNodeImpl({
       generating ||
       submitting
     ) return;
+    imageDataMutationVersionRef.current += 1;
     imageRecoveryControllerRef.current?.abort("image-recovery-superseded");
     const taskId = retryTaskId;
     const requestedPrompt = promptControl.readCommittedValue();
@@ -3084,6 +3249,8 @@ function ImageNodeImpl({
     const taskId = pollingPausedTaskIdRef.current;
     if (!taskId) return;
     imageRecoveryControllerRef.current?.abort("image-recovery-superseded");
+    const controller = new AbortController();
+    imageRecoveryControllerRef.current = controller;
     pollingPausedTaskIdRef.current = undefined;
     setPollingPausedTaskId(undefined);
     setUploadError("");
@@ -3093,14 +3260,19 @@ function ImageNodeImpl({
       data.imageGenerationOwnershipKey ?? rawGenerationInputFingerprint,
     );
     try {
-      await flushCanvasSave();
+      await flushCanvasSave(controller.signal);
+      if (controller.signal.aborted || !ownsImageGenerationRun(generationRun)) {
+        return;
+      }
       const task = await waitForGenerationTaskWithPause(taskId, () => {
         if (!ownsImageGenerationRun(generationRun)) return;
         pollingPausedTaskIdRef.current = taskId;
         setPollingPausedTaskId(taskId);
         setUploadError(POLLING_PAUSED_MESSAGE);
-      }, undefined, fixtureScopeId);
-      if (!ownsImageGenerationRun(generationRun)) return;
+      }, controller.signal, fixtureScopeId);
+      if (controller.signal.aborted || !ownsImageGenerationRun(generationRun)) {
+        return;
+      }
       if (task.state === "cancelled") {
         const applied = await persistImageGenerationCancellation(
           task.id,
@@ -3131,7 +3303,11 @@ function ImageNodeImpl({
         }
         return;
       }
-      const applied = await applyGeneratedImage(task, generationRun);
+      const applied = await applyGeneratedImage(
+        task,
+        generationRun,
+        controller.signal,
+      );
       if (!applied) {
         pollingPausedTaskIdRef.current = taskId;
         setPollingPausedTaskId(taskId);
@@ -3140,6 +3316,7 @@ function ImageNodeImpl({
       }
       setRetryTaskId(undefined);
     } catch (error) {
+      if (controller.signal.aborted) return;
       if (!ownsImageGenerationRun(generationRun)) return;
       if (pollingPausedTaskIdRef.current === taskId) return;
       if (isTransientPollingError(error)) {
@@ -3153,6 +3330,9 @@ function ImageNodeImpl({
         error instanceof GenerationRequestError ? error.code : undefined,
       );
     } finally {
+      if (imageRecoveryControllerRef.current === controller) {
+        imageRecoveryControllerRef.current = undefined;
+      }
       endImageGenerationRun(generationRun);
     }
   };
@@ -3419,15 +3599,23 @@ function ImageNodeImpl({
           persistedOwnershipKey &&
           persistedOwnershipKey !== rawGenerationInputFingerprint
         ) {
+          clearGenerationSubmissionIntent(
+            "image",
+            canvasId,
+            id,
+            persistedTaskId,
+            accountId,
+            fixtureScopeId,
+          );
           commitImageDataMutation(
             (current) => current.imageGenerationTaskId === persistedTaskId
               ? clearImageGenerationForSemanticChange(current)
               : current,
-            () => {
+            (identity) => {
               setUnverifiedRecoveryTaskId((current) =>
                 current === persistedTaskId ? undefined : current
               );
-              revokeImageTaskForGenerationInputChange();
+              finishImageGenerationInputRevocation(identity, imageMutationScopeKey);
             },
           );
           return;
@@ -3439,11 +3627,11 @@ function ImageNodeImpl({
               (current) => current.imageGenerationTaskId === persistedTaskId
                 ? clearImageGenerationForSemanticChange(current)
                 : current,
-              () => {
+              (identity) => {
                 setUnverifiedRecoveryTaskId((current) =>
                   current === persistedTaskId ? undefined : current
                 );
-                revokeImageTaskForGenerationInputChange();
+                finishImageGenerationInputRevocation(identity, imageMutationScopeKey);
               },
             );
             return;
@@ -3456,31 +3644,7 @@ function ImageNodeImpl({
           fixtureScopeId,
         );
         persistedTaskReadPending = false;
-      } else {
-        task = await recoverPendingGenerationTask(
-          "image",
-          canvasId,
-          id,
-          controller.signal,
-          selectedImageModel ? imageGenerationRequestInput : undefined,
-          accountId,
-          {
-            generationInputKey: persistedInputKey ?? imageGenerationInputKey,
-            generationOwnershipKey: rawGenerationInputFingerprint,
-            fixtureScopeId,
-            modelInputContractFingerprint:
-              data.imageGenerationContractFingerprint ??
-              inputPreflight.contractFingerprint,
-            modelConfigurationRevision:
-              data.imageGenerationModelConfigurationRevision ??
-              selectedImageModel?.configurationRevision,
-            modelReleaseRevision:
-              data.imageGenerationModelReleaseRevision ??
-              selectedImageModel?.releaseRevisionId,
-          },
-        );
-        recoveredIntent = Boolean(task);
-      }
+      } else return;
       if (controller.signal.aborted || !task) return;
       const recoveredOwnershipKey = persistedOwnershipKey ??
         task.generationOwnershipKey;
@@ -3535,11 +3699,11 @@ function ImageNodeImpl({
             (current) => current.imageGenerationTaskId === persistedTaskId
               ? clearImageGenerationForSemanticChange(current)
               : current,
-            () => {
+            (identity) => {
               setUnverifiedRecoveryTaskId((current) =>
                 current === persistedTaskId ? undefined : current
               );
-              revokeImageTaskForGenerationInputChange();
+              finishImageGenerationInputRevocation(identity, imageMutationScopeKey);
             },
           );
         }
@@ -3804,14 +3968,15 @@ function ImageNodeImpl({
       uploadInFlight.current
     ) return;
 
-    const baseline = uploadBaseline.current ?? getNode(id);
+    const baseline = uploadBaseline.current ?? readCanvasNode(id);
     const operation = uploadOperation.current + 1;
     const scope = mediaAdoptionScopeRef.current;
     uploadOperation.current = operation;
     uploadAdmissionPending.current = true;
     uploadInFlight.current = true;
     let admittedBaseline = baseline;
-    const prepared = await tryAdoptNodes(id, (nodes) =>
+    const releaseUploadCheckpoint = checkpoint();
+    const prepared = applyViewUpdate((nodes) =>
       nodes.map((node) => {
         if (node.id !== id) return node;
         admittedBaseline = uploadBaseline.current ?? node;
@@ -3824,12 +3989,12 @@ function ImageNodeImpl({
           },
         };
       }),
-      { checkpoint: true },
     );
     if (operation === uploadOperation.current) {
       uploadAdmissionPending.current = false;
     }
     if (!prepared) {
+      releaseUploadCheckpoint();
       if (operation === uploadOperation.current) {
         uploadAdmissionPending.current = false;
         uploadInFlight.current = false;
@@ -3850,8 +4015,9 @@ function ImageNodeImpl({
       if (
         operation !== uploadOperation.current ||
         scope !== mediaAdoptionScopeRef.current ||
+        !canvasUploadTargetStillCurrent(admittedBaseline, readCanvasNode(id)) ||
         !persistenceReadyLive.current ||
-        getNode(id)?.data.inputState !== "uploading"
+        effectiveMediaInputState(readCanvasNode(id)?.data ?? {}) !== "uploading"
       ) {
         await discardImageAsset(asset.assetId);
         return;
@@ -3882,15 +4048,38 @@ function ImageNodeImpl({
       if (
         operation !== uploadOperation.current ||
         scope !== mediaAdoptionScopeRef.current ||
+        !canvasUploadTargetStillCurrent(admittedBaseline, readCanvasNode(id)) ||
         !persistenceReadyLive.current ||
-        getNode(id)?.data.inputState !== "uploading"
+        effectiveMediaInputState(readCanvasNode(id)?.data ?? {}) !== "uploading"
       ) {
         await discardImageAsset(asset.assetId);
         return;
       }
       const wasReadyReplacement = hasReadyImageMedia(baseline);
-      const adopted = await tryAdoptNodes(id, (nodes) =>
-        {
+      // The transient checkpoint exists only while the upload response can be
+      // invalidated. Remove it before the authoritative adoption becomes
+      // visible so a fast Cmd+Z cannot consume upload-only history instead of
+      // the user's preceding graph edit.
+      releaseUploadCheckpoint();
+      uploadAdmissionPending.current = true;
+      let adopted = false;
+      try {
+        adopted = await adoptUploadedAsset({
+          asset: {
+            assetId: asset.assetId,
+            byteSize: metadata.byteSize,
+            contentType: metadata.contentType,
+            durationSeconds: metadata.durationSeconds,
+            hasTransparency: asset.hasTransparency,
+            height: metadata.mediaHeight,
+            src: asset.url,
+            storageBackend: metadata.storageBackend,
+            width: metadata.mediaWidth,
+          },
+          mediaKind: "image",
+          rollbackTarget: admittedBaseline,
+          targetNodeId: id,
+          update: (nodes) => {
           const liveEdges = getEdges();
           const nodesById = new Map(nodes.map((node) => [node.id, node]));
           const outgoingImageTargets = new Set(
@@ -3914,10 +4103,6 @@ function ImageNodeImpl({
                 ...node,
                 height: undefined,
                 measured: undefined,
-                style: {
-                  ...node.style,
-                  ...fitVisualMediaSize(asset.width, asset.height),
-                },
                 width: undefined,
                 data: {
                   ...node.data,
@@ -3928,9 +4113,12 @@ function ImageNodeImpl({
                   imageAspectRatio: undefined,
                   imageGeneratedSuccess: undefined,
                   imageHasTransparency: asset.hasTransparency,
+                  imageGenerationContractFingerprint: undefined,
                   imageGenerationErrorCode: undefined,
                   imageGenerationError: undefined,
                   imageGenerationInputKey: undefined,
+                  imageGenerationModelConfigurationRevision: undefined,
+                  imageGenerationModelReleaseRevision: undefined,
                   imageGenerationOwnershipKey: undefined,
                   imageGenerationRetryAllowed: undefined,
                   imageGenerationRetryBlockCode: undefined,
@@ -3959,6 +4147,13 @@ function ImageNodeImpl({
                   imageToolPreparedVersion: undefined,
                   imageToolPreparedWidth: undefined,
                   imageToolSourceAssetId: undefined,
+                  groupRunSuccessInputFingerprint: undefined,
+                  groupRunSuccessModelConfigurationRevision: undefined,
+                  groupRunSuccessModelReleaseRevision: undefined,
+                  groupRunSuccessOwnershipKey: undefined,
+                  groupRunSuccessResultKey: undefined,
+                  groupRunSuccessTaskId: undefined,
+                  workflowExecutionRunId: undefined,
                 },
               };
           }
@@ -3968,8 +4163,13 @@ function ImageNodeImpl({
             ? withImageReferenceInputMode(node, imageModels)
             : node;
           });
-        },
-      );
+          },
+        });
+      } finally {
+        if (operation === uploadOperation.current) {
+          uploadAdmissionPending.current = false;
+        }
+      }
       if (!adopted) {
         await discardImageAsset(asset.assetId);
         createdAssetId = undefined;
@@ -3982,12 +4182,20 @@ function ImageNodeImpl({
       if (operation !== uploadOperation.current) return;
       const message = error instanceof Error ? error.message : "图片上传失败";
       if (baseline && hasReadyImageMedia(baseline)) {
-        trySetNodes((nodes) => nodes.map((node) => node.id === id
-          ? restoreImageUploadBaseline(node, baseline)
+        applyViewUpdate((nodes) => nodes.map((node) => node.id === id
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                imageGenerationError: baseline.data.imageGenerationError,
+                inputViewState: baseline.data.inputViewState,
+                inputViewStateReason: baseline.data.inputViewStateReason,
+              },
+            }
           : node));
         setTransientUploadError(message);
       } else {
-        trySetNodes((nodes) => nodes.map((node) => node.id === id
+        applyViewUpdate((nodes) => nodes.map((node) => node.id === id
           ? {
               ...node,
               data: {
@@ -3999,6 +4207,7 @@ function ImageNodeImpl({
         setUploadError(message, "INPUT_INVALID");
       }
     } finally {
+      releaseUploadCheckpoint();
       if (operation === uploadOperation.current) {
         uploadAdmissionPending.current = false;
         uploadInFlight.current = false;
@@ -4022,7 +4231,7 @@ function ImageNodeImpl({
     file: File,
     sourceAssetId: string,
   ) => {
-    const source = getNode(id);
+    const source = readCanvasNode(id);
     if (!source || source.data.assetId !== sourceAssetId) {
       throw new Error(operation === "crop"
         ? "原图片已发生变化，请重新打开裁剪"
@@ -4098,10 +4307,10 @@ function ImageNodeImpl({
   const updateAnnotations = (
     annotations: NonNullable<ProbeNodeType["data"]["imageAnnotations"]>,
   ) => {
-    checkpoint();
-    setNodes((nodes) => nodes.map((node) => node.id === id
-      ? { ...node, data: { ...node.data, imageAnnotations: annotations } }
-      : node));
+    commitImageDataMutation((current) => ({
+      ...current,
+      imageAnnotations: annotations,
+    }));
   };
 
   const exportAnnotations = async (
@@ -4752,21 +4961,16 @@ function ImageNodeImpl({
     if (imageColorFilter === color && data.imageColorMarks?.includes(color)) {
       setImageColorFilter();
     }
-    checkpoint();
-    setNodes((nodes) => nodes.map((node) => {
-      if (node.id !== id) return node;
-      const current = node.data.imageColorMarks ?? [];
+    commitImageDataMutation((currentData) => {
+      const current = currentData.imageColorMarks ?? [];
       const next = current.includes(color)
         ? current.filter((item) => item !== color)
         : [...current, color];
       return {
-        ...node,
-        data: {
-          ...node.data,
-          imageColorMarks: next.length > 0 ? next : undefined,
-        },
+        ...currentData,
+        imageColorMarks: next.length > 0 ? next : undefined,
       };
-    }));
+    });
   };
 
   const download = () => {
@@ -4807,37 +5011,6 @@ function ImageNodeImpl({
     .register(createDownloadImageToolUseCase())
     .register(createFullscreenImageToolUseCase());
 
-  const applyPreviewAutoFit = useCallback((
-    width: number,
-    height: number,
-    resetHydrationMeasurement = false,
-  ) => {
-    const size = fitVisualMediaSize(width, height);
-    setNodes((nodes) =>
-      nodes.map((node) =>
-        node.id !== id ||
-        (!resetHydrationMeasurement && (
-          typeof node.width === "number" ||
-          typeof node.height === "number"
-        ))
-          ? node
-          : {
-              ...node,
-              ...(resetHydrationMeasurement
-                ? { height: undefined, measured: undefined, width: undefined }
-                : {}),
-              style: { ...node.style, ...size },
-            },
-      ),
-    );
-  }, [id, setNodes]);
-
-  useEffect(() => {
-    if (!persistenceReady || !deferredPreviewAutoFit.current) return;
-    const { height, width } = deferredPreviewAutoFit.current;
-    deferredPreviewAutoFit.current = undefined;
-    applyPreviewAutoFit(width, height, true);
-  }, [applyPreviewAutoFit, persistenceReady]);
   const semanticEditBlocked = Boolean(
     generating || (submitting && !retrying) || legacySubmissionBlocked ||
       lockedNodeIds.has(id),
@@ -5455,36 +5628,21 @@ function ImageNodeImpl({
           disabled={semanticEditBlocked}
           inputs={inputPreflight.inputs}
           onMove={(edgeId, direction) => {
-            void mutateGraph(({ edges, nodes }) => ({
-              edges: moveNodeInputEdge(edges, id, edgeId, direction),
-              nodes: nodes.map((node) => node.id === id
-                ? { ...node, data: clearImageGenerationForSemanticChange(node.data) }
-                : node),
-            })).then((applied) => {
-              if (applied) revokeImageTaskForGenerationInputChange();
-            });
+            commitImageInputEdgesMutation((edges) =>
+              moveNodeInputEdge(edges, id, edgeId, direction)
+            );
           }}
           onRemove={(edgeId) => {
-            void mutateGraph(({ edges, nodes }) => ({
-              edges: edges.filter((edge) => edge.id !== edgeId),
-              nodes: nodes.map((node) => node.id === id
-                ? { ...node, data: clearImageGenerationForSemanticChange(node.data) }
-                : node),
-            })).then((applied) => {
-              if (applied) revokeImageTaskForGenerationInputChange();
-            });
+            commitImageInputEdgesMutation((edges) =>
+              edges.filter((edge) => edge.id !== edgeId)
+            );
           }}
           onRoleChange={(edgeId, role) => {
-            void mutateGraph(({ edges, nodes }) => ({
-              edges: edges.map((edge) => edge.id === edgeId
+            commitImageInputEdgesMutation((edges) =>
+              edges.map((edge) => edge.id === edgeId
                 ? { ...edge, data: { ...edge.data, inputRole: role } }
-                : edge),
-              nodes: nodes.map((node) => node.id === id
-                ? { ...node, data: clearImageGenerationForSemanticChange(node.data) }
-                : node),
-            })).then((applied) => {
-              if (applied) revokeImageTaskForGenerationInputChange();
-            });
+                : edge)
+            );
           }}
           problems={inputProblems}
           roleOptions={(input) => availableNodeInputRoles({
@@ -5867,25 +6025,7 @@ function ImageNodeImpl({
               draggable={false}
               key={mediaLoad.key}
               onError={mediaLoad.markFailed}
-              onLoad={(event) => {
-                mediaLoad.markLoaded();
-                const current = getNode(id);
-                if (
-                  !current ||
-                  typeof current.width === "number" ||
-                  typeof current.height === "number"
-                ) return;
-                const naturalSize = {
-                  height: event.currentTarget.naturalHeight,
-                  width: event.currentTarget.naturalWidth,
-                };
-                if (!persistenceReady) {
-                  deferredPreviewAutoFit.current = naturalSize;
-                  return;
-                }
-                deferredPreviewAutoFit.current = undefined;
-                applyPreviewAutoFit(naturalSize.width, naturalSize.height);
-              }}
+              onLoad={() => mediaLoad.markLoaded()}
               ref={previewImageRef}
               src={mediaLoad.source}
             />

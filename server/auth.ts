@@ -444,6 +444,16 @@ export function authGate(
   response: ServerResponse,
   next: () => void,
 ) {
+  if (
+    request.method === "PUT" &&
+    /^\/api\/canvas\/[a-z0-9._-]+(?:\?|$)/i.test(request.url ?? "") &&
+    request.headers["x-unboundry-canvas-write-contract"] === "legacy-put-v1"
+  ) {
+    response.setHeader(
+      "X-Unboundry-Canvas-Write-Contract",
+      "legacy-put-v1",
+    );
+  }
   if (process.env.UNBOUNDRY_TEST_AUTH_BYPASS === "1") {
     const timestamp = new Date().toISOString();
     db()

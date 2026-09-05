@@ -10,7 +10,10 @@ import {
 } from "@xyflow/react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useCanvasCheckpoint } from "./CanvasHistory";
-import { useCanvasGraphMutation } from "./CanvasGraphMutationContext";
+import {
+  canvasUploadTargetStillCurrent,
+  useCanvasGraphMutation,
+} from "./CanvasGraphMutationContext";
 import { useSingleNodeChrome } from "./CanvasSelectionContext";
 import { useCompositionSafeText } from "./CompositionSafeText";
 import {
@@ -64,7 +67,6 @@ import {
   GENERATION_TASK_RETRY_ACCEPTED_EVENT,
   GenerationRequestError,
   getGenerationTask,
-  recoverPendingGenerationTask,
   reconcileOutcomeMessage,
   waitForGenerationTask,
   type GenerationTaskRetryAcceptedDetail,
@@ -98,7 +100,10 @@ import {
 } from "../../../types/nodeInputs";
 import { UpstreamInputCards } from "./UpstreamInputCards";
 import { GenerationAvailabilityNotice } from "./GenerationAvailabilityNotice";
+import type { CuttableEdge } from "./canvasTypes";
 import {
+  effectiveMediaInputState,
+  effectiveMediaInputStateReason,
   fetchTrustedMediaMetadata,
   hasCompleteTrustedMediaMetadata,
   mediaUploadState,
@@ -111,6 +116,22 @@ type AudioPollingRun = {
   taskId: string;
   token: symbol;
 };
+
+type AudioGenerationRevocationIdentity = {
+  inputKey?: string;
+  ownershipKey?: string;
+  taskId?: string;
+};
+
+function audioGenerationRevocationIdentity(
+  data: ProbeNodeType["data"],
+): AudioGenerationRevocationIdentity {
+  return {
+    inputKey: data.audioGenerationInputKey,
+    ownershipKey: data.audioGenerationOwnershipKey,
+    taskId: data.audioGenerationTaskId,
+  };
+}
 
 function createAudioGenerationAdapter(input: {
   bindingOwnershipKey?: string;
@@ -340,36 +361,9 @@ function hasReadyAudioMedia(node?: ProbeNodeType) {
   return Boolean(
     node?.data.assetId &&
     node.data.audioSrc &&
-    (node.data.inputState === undefined || node.data.inputState === "ready"),
+    (effectiveMediaInputState(node.data) === undefined ||
+      effectiveMediaInputState(node.data) === "ready"),
   );
-}
-
-function restoreAudioUploadBaseline(
-  node: ProbeNodeType,
-  baseline: ProbeNodeType,
-) {
-  return {
-    ...node,
-    data: {
-      ...node.data,
-      assetId: baseline.data.assetId,
-      audioDuration: baseline.data.audioDuration,
-      audioFileName: baseline.data.audioFileName,
-      audioFileSize: baseline.data.audioFileSize,
-      audioGenerationError: baseline.data.audioGenerationError,
-      audioResultChoices: baseline.data.audioResultChoices,
-      audioSrc: baseline.data.audioSrc,
-      audioWaveform: baseline.data.audioWaveform,
-      inputState: baseline.data.inputState ?? "ready",
-      inputStateReason: baseline.data.inputStateReason,
-      mediaByteSize: baseline.data.mediaByteSize,
-      mediaContentType: baseline.data.mediaContentType,
-      mediaDurationSeconds: baseline.data.mediaDurationSeconds,
-      mediaMetadataSource: baseline.data.mediaMetadataSource,
-      mediaMetadataStatus: baseline.data.mediaMetadataStatus,
-      mediaStorageBackend: baseline.data.mediaStorageBackend,
-    },
-  };
 }
 
 async function discardUnadoptedAudioAsset(assetId: string) {
@@ -417,16 +411,17 @@ function AudioNodeImpl({
   const metadataHydrationAssetIdRef = useRef<string | undefined>(undefined);
   const uploadOperation = useRef(0);
   const waveformSourceAttempted = useRef<string | undefined>(undefined);
-  const { getNode, getNodes } = useReactFlow<ProbeNodeType>();
+  const { getNodes } = useReactFlow<ProbeNodeType>();
   const {
+    adoptUploadedAsset,
+    adoptAuthoritativeNodeData,
+    applyViewUpdate,
     canvasMutationPendingNodeIds,
     graphCommandPort,
     mutateGraph,
+    readCanvasNode,
     readCanvasMutationVersion,
-    setEdges,
-    setNodes,
     tryAdoptNodes,
-    trySetNodes,
   } = useCanvasGraphMutation();
   const canvasMutationPending = canvasMutationPendingNodeIds.has(id);
   const canvasEdges = useEdges();
@@ -496,6 +491,11 @@ function AudioNodeImpl({
     ? ["outputCount"]
     : [];
   const [currentTime, setCurrentTime] = useState(0);
+  const [viewAudioMetadata, setViewAudioMetadata] = useState<{
+    duration: number;
+    source: string;
+    waveform?: number[];
+  }>();
   const generating = Boolean(data.audioGenerating);
   const [activeTaskId, setActiveTaskId] = useState<string>();
   // 页面刷新或组件重挂后 activeTaskId 会丢失，但持久化任务号还在；
@@ -525,6 +525,10 @@ function AudioNodeImpl({
   const audioRecoveryControllerRef = useRef<AbortController | undefined>(
     undefined,
   );
+  useEffect(() => () => {
+    audioRecoveryControllerRef.current?.abort("audio-node-unmounted");
+    audioRecoveryControllerRef.current = undefined;
+  }, []);
   const audioRecoveryLifecycleRef = useRef<ReturnType<
     typeof createSingleNodeGenerationLifecycle
   > | undefined>(undefined);
@@ -535,7 +539,18 @@ function AudioNodeImpl({
   const liveGenerationOwnershipKeyRef = useRef<string | undefined>(undefined);
   const [serverInputProblems, setServerInputProblems] = useState<NodeInputProblem[]>([]);
   const [retryWakeEpoch, setRetryWakeEpoch] = useState(0);
-  const uploading = data.inputState === "uploading";
+  const effectiveInputState = effectiveMediaInputState(data);
+  const effectiveInputStateReason = effectiveMediaInputStateReason(data);
+  const uploading = effectiveInputState === "uploading";
+  const audioDataMutationVersionRef = useRef(0);
+  const audioMutationScopeKey = JSON.stringify([
+    accountId,
+    canvasId,
+    fixtureScopeId,
+    id,
+  ]);
+  const liveAudioMutationScopeKeyRef = useRef(audioMutationScopeKey);
+  liveAudioMutationScopeKeyRef.current = audioMutationScopeKey;
   const clearAudioGenerationForSemanticChange = (
     current: ProbeNodeType["data"],
   ): ProbeNodeType["data"] => ({
@@ -553,7 +568,28 @@ function AudioNodeImpl({
     groupRunSuccessResultKey: undefined,
     groupRunSuccessTaskId: undefined,
   });
-  const revokeAudioTaskForGenerationInputChange = () => {
+  const revokeAudioTaskForGenerationInputChange = (expectedTaskId?: string) => {
+    const currentRun = generationPollingRunRef.current;
+    if (
+      currentRun &&
+      (expectedTaskId === undefined || currentRun.taskId !== expectedTaskId)
+    ) {
+      if (expectedTaskId) {
+        clearGenerationSubmissionIntent(
+          "audio",
+          canvasId,
+          id,
+          expectedTaskId,
+          accountId,
+          fixtureScopeId,
+        );
+      }
+      return;
+    }
+    audioRecoveryControllerRef.current?.abort("audio-generation-input-changed");
+    audioRecoveryControllerRef.current = undefined;
+    audioRecoveryLifecycleRef.current?.abort("audio-generation-input-changed");
+    audioRetryLifecycleRef.current?.abort("audio-generation-input-changed");
     generationPollingRunRef.current = undefined;
     setActiveTaskId(undefined);
     pollingPausedTaskIdRef.current = undefined;
@@ -565,22 +601,92 @@ function AudioNodeImpl({
       "audio",
       canvasId,
       id,
-      undefined,
+      expectedTaskId,
       accountId,
       fixtureScopeId,
     );
   };
+  const finishAudioGenerationInputRevocation = (
+    identity: AudioGenerationRevocationIdentity,
+    expectedScopeKey: string,
+  ) => {
+    const currentRun = generationPollingRunRef.current;
+    const replacementClaimed = identity.taskId === undefined
+      ? Boolean(currentRun)
+      : Boolean(
+          currentRun && (
+            currentRun.taskId !== identity.taskId ||
+            (identity.inputKey !== undefined &&
+              currentRun.inputKey !== identity.inputKey) ||
+            (identity.ownershipKey !== undefined &&
+              currentRun.ownershipKey !== identity.ownershipKey)
+          ),
+        );
+    if (
+      liveAudioMutationScopeKeyRef.current !== expectedScopeKey ||
+      replacementClaimed
+    ) {
+      if (identity.taskId) {
+        clearGenerationSubmissionIntent(
+          "audio",
+          canvasId,
+          id,
+          identity.taskId,
+          accountId,
+          fixtureScopeId,
+        );
+      }
+      return;
+    }
+    revokeAudioTaskForGenerationInputChange(identity.taskId);
+  };
   const commitAudioDataMutation = (
     update: (current: ProbeNodeType["data"]) => ProbeNodeType["data"],
-    afterApplied: () => void = revokeAudioTaskForGenerationInputChange,
+    afterApplied?: (identity: AudioGenerationRevocationIdentity) => void,
   ) => {
+    const mutationVersion = audioDataMutationVersionRef.current + 1;
+    audioDataMutationVersionRef.current = mutationVersion;
+    const expectedScopeKey = audioMutationScopeKey;
+    let identity: AudioGenerationRevocationIdentity | undefined;
     void mutateGraph(({ edges, nodes }) => ({
       edges,
-      nodes: nodes.map((node) => node.id === id
-        ? { ...node, data: update(node.data) }
-        : node),
+      nodes: nodes.map((node) => {
+        if (node.id !== id) return node;
+        identity = audioGenerationRevocationIdentity(node.data);
+        return { ...node, data: update(node.data) };
+      }),
     })).then((applied) => {
-      if (applied) afterApplied();
+      if (
+        !applied ||
+        !identity ||
+        audioDataMutationVersionRef.current !== mutationVersion ||
+        liveAudioMutationScopeKeyRef.current !== expectedScopeKey
+      ) return;
+      if (afterApplied) afterApplied(identity);
+      else finishAudioGenerationInputRevocation(identity, expectedScopeKey);
+    });
+  };
+  const commitAudioInputEdgesMutation = (
+    updateEdges: (edges: CuttableEdge[]) => CuttableEdge[],
+  ) => {
+    const mutationVersion = audioDataMutationVersionRef.current + 1;
+    audioDataMutationVersionRef.current = mutationVersion;
+    const expectedScopeKey = audioMutationScopeKey;
+    let identity: AudioGenerationRevocationIdentity | undefined;
+    void mutateGraph(({ edges, nodes }) => {
+      const target = nodes.find((node) => node.id === id);
+      identity = target
+        ? audioGenerationRevocationIdentity(target.data)
+        : undefined;
+      return { edges: updateEdges(edges), nodes };
+    }).then((applied) => {
+      if (
+        !applied ||
+        !identity ||
+        audioDataMutationVersionRef.current !== mutationVersion ||
+        liveAudioMutationScopeKeyRef.current !== expectedScopeKey
+      ) return;
+      finishAudioGenerationInputRevocation(identity, expectedScopeKey);
     });
   };
   const beginGenerationPollingRun = (
@@ -588,6 +694,7 @@ function AudioNodeImpl({
     inputKey?: string,
     ownershipKey?: string,
   ): AudioPollingRun => {
+    audioDataMutationVersionRef.current += 1;
     audioRecoveryLifecycleRef.current?.abort("audio-recovery-superseded");
     const run = { inputKey, ownershipKey, taskId, token: Symbol(taskId) };
     generationPollingRunRef.current = run;
@@ -616,14 +723,17 @@ function AudioNodeImpl({
         kind: "audio",
         nodeId: id,
       });
+      audioRecoveryControllerRef.current?.abort("audio-input-edited");
+      audioRecoveryControllerRef.current = undefined;
+      audioRecoveryLifecycleRef.current?.abort("audio-input-edited");
       audioRetryLifecycleRef.current?.abort("audio-input-edited");
       promptSemanticVersionRef.current += 1;
       commitAudioDataMutation((current) => ({
         ...clearAudioGenerationForSemanticChange(current),
         audioPrompt: nextPrompt,
-      }), () => {
+      }), (identity) => {
         setPrompt(nextPrompt);
-        revokeAudioTaskForGenerationInputChange();
+        finishAudioGenerationInputRevocation(identity, audioMutationScopeKey);
       });
     },
     onEditSessionStart: checkpoint,
@@ -631,19 +741,20 @@ function AudioNodeImpl({
   });
   const titleControl = useCompositionSafeText({
     onCommit: (nextTitle) => {
-      setTitle(nextTitle);
-      setNodes((nodes) =>
-        nodes.map((node) =>
-          node.id === id
-            ? { ...node, data: { ...node.data, title: nextTitle } }
-            : node,
-        ),
+      commitAudioDataMutation(
+        (current) => ({ ...current, title: nextTitle }),
+        () => setTitle(nextTitle),
       );
     },
     onEditSessionStart: checkpoint,
     value: title,
   });
-  const duration = data.audioDuration ?? 0;
+  const activeViewAudioMetadata =
+    viewAudioMetadata?.source === data.audioSrc ? viewAudioMetadata : undefined;
+  const duration = activeViewAudioMetadata?.duration ?? data.audioDuration ??
+    data.mediaDurationSeconds ?? 0;
+  const displayedWaveform = activeViewAudioMetadata?.waveform ??
+    data.audioWaveform ?? [];
   const inputPreflight = resolveNodeInputs({
     edges: canvasEdges,
     modelReleaseRevision: selectedAudioModel?.releaseRevisionId,
@@ -789,11 +900,11 @@ function AudioNodeImpl({
   useEffect(() => {
     if (pollingPausedTaskIdRef.current) return;
     setUploadError(
-      data.inputState === "invalid" && data.inputStateReason
-        ? data.inputStateReason
+      effectiveInputState === "invalid" && effectiveInputStateReason
+        ? effectiveInputStateReason
         : visibleGenerationError(data.audioGenerationError),
     );
-  }, [data.audioGenerationError, data.inputState, data.inputStateReason]);
+  }, [data.audioGenerationError, effectiveInputState, effectiveInputStateReason]);
 
   useEffect(() => {
     setServerInputProblems([]);
@@ -849,6 +960,16 @@ function AudioNodeImpl({
       !data.audioGenerationInputKey &&
       !data.audioGenerationOwnershipKey
     ) return;
+    if (persistedMismatch) {
+      clearGenerationSubmissionIntent(
+        "audio",
+        canvasId,
+        id,
+        data.audioGenerationTaskId,
+        accountId,
+        fixtureScopeId,
+      );
+    }
     commitAudioDataMutation(clearAudioGenerationForSemanticChange);
   }, [
     accountId,
@@ -861,7 +982,6 @@ function AudioNodeImpl({
     id,
     persistenceReady,
     rawGenerationInputFingerprint,
-    setNodes,
   ]);
 
   const persistAudioGenerationFailure = async (
@@ -871,8 +991,8 @@ function AudioNodeImpl({
     retryAllowed: boolean,
     retryBlockCode?: string,
     retryBlockReason?: string,
-    generationInputKey?: string,
-    generationOwnershipKey?: string,
+    _generationInputKey?: string,
+    _generationOwnershipKey?: string,
   ) => {
     const visibleMessage = generationFailureMessage(
       message,
@@ -880,22 +1000,17 @@ function AudioNodeImpl({
       errorCode,
       "audio",
     );
-    const applied = await tryAdoptNodes(id, (nodes) => nodes.map((node) => node.id === id
+    const applied = applyViewUpdate((nodes) => nodes.map((node) => node.id === id
       ? {
           ...node,
           data: {
             ...node.data,
             audioGenerationError: visibleMessage,
             audioGenerationErrorCode: errorCode,
-            audioGenerationInputKey:
-              generationInputKey ?? node.data.audioGenerationInputKey,
-            audioGenerationOwnershipKey:
-              generationOwnershipKey ?? node.data.audioGenerationOwnershipKey,
             audioGenerating: false,
             audioGenerationRetryAllowed: retryAllowed,
             audioGenerationRetryBlockCode: retryBlockCode,
             audioGenerationRetryBlockReason: retryBlockReason,
-            audioGenerationTaskId: taskId,
           },
       }
       : node));
@@ -917,20 +1032,17 @@ function AudioNodeImpl({
     taskId: string,
     message: string,
   ) => {
-    const applied = await tryAdoptNodes(id, (nodes) => nodes.map((node) => node.id === id
+    const applied = applyViewUpdate((nodes) => nodes.map((node) => node.id === id
       ? {
           ...node,
           data: {
             ...node.data,
             audioGenerationError: message,
             audioGenerationErrorCode: undefined,
-            audioGenerationInputKey: undefined,
-            audioGenerationOwnershipKey: undefined,
             audioGenerating: false,
             audioGenerationRetryAllowed: undefined,
             audioGenerationRetryBlockCode: undefined,
             audioGenerationRetryBlockReason: undefined,
-            audioGenerationTaskId: undefined,
           },
       }
       : node));
@@ -951,11 +1063,11 @@ function AudioNodeImpl({
   useEffect(() => {
     if (
       !persistenceReady ||
-      data.inputState !== "uploading" ||
+      effectiveInputState !== "uploading" ||
       uploadInFlight.current
     ) return;
     const message = "上传已中断，请重新上传";
-    setNodes((nodes) => nodes.map((node) => node.id === id
+    applyViewUpdate((nodes) => nodes.map((node) => node.id === id
       ? {
           ...node,
           data: {
@@ -964,13 +1076,13 @@ function AudioNodeImpl({
           },
         }
       : node));
-  }, [data.inputState, id, persistenceReady, setNodes]);
+  }, [applyViewUpdate, effectiveInputState, id, persistenceReady]);
 
   useEffect(() => {
     if (
       !uploadInFlight.current ||
       uploadAdmissionPending.current ||
-      getNode(id)?.data.inputState === "uploading"
+      effectiveMediaInputState(readCanvasNode(id)?.data ?? {}) === "uploading"
     ) return;
     uploadOperation.current += 1;
     uploadAdmissionPending.current = false;
@@ -978,7 +1090,7 @@ function AudioNodeImpl({
     uploadController.current = undefined;
     uploadInFlight.current = false;
     uploadBaseline.current = undefined;
-  }, [data.inputState, getNode, id]);
+  }, [effectiveInputState, id, readCanvasNode]);
 
   useEffect(() => {
     if (persistenceReady || !uploadInFlight.current) return;
@@ -1007,7 +1119,7 @@ function AudioNodeImpl({
       !data.audioSrc ||
       hasCompleteTrustedMediaMetadata("audio", data) ||
       metadataHydrationAssetIdRef.current === data.assetId ||
-      data.inputState === "uploading"
+      effectiveInputState === "uploading"
     ) return;
     const requestedAssetId = data.assetId;
     metadataHydrationAssetIdRef.current = requestedAssetId;
@@ -1016,18 +1128,14 @@ function AudioNodeImpl({
     void fetchTrustedMediaMetadata("audio", requestedAssetId, controller.signal)
       .then((metadata) => {
         settled = true;
-        setNodes((nodes) => nodes.map((node) =>
-          node.id === id && node.data.assetId === requestedAssetId
-          ? {
-              ...node,
-              data: {
-                ...node.data,
-                ...trustedMediaPatch(metadata),
-                audioDuration: metadata.durationSeconds ?? node.data.audioDuration,
-                audioFileSize: metadata.byteSize,
-              },
-            }
-          : node));
+        adoptAuthoritativeNodeData({
+          expectedAssetId: requestedAssetId,
+          nodeId: id,
+          patch: {
+            ...trustedMediaPatch(metadata),
+            audioDuration: metadata.durationSeconds ?? data.audioDuration,
+          },
+        });
       })
       .catch((error) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
@@ -1035,7 +1143,7 @@ function AudioNodeImpl({
         const message = error instanceof Error
           ? error.message
           : "服务端无法确认音频素材信息";
-        setNodes((nodes) => nodes.map((node) =>
+        applyViewUpdate((nodes) => nodes.map((node) =>
           node.id === id && node.data.assetId === requestedAssetId
           ? {
               ...node,
@@ -1056,7 +1164,7 @@ function AudioNodeImpl({
     canvasId,
     data.assetId,
     data.audioSrc,
-    data.inputState,
+    effectiveInputState,
     data.mediaByteSize,
     data.mediaContentType,
     data.mediaDurationSeconds,
@@ -1065,15 +1173,18 @@ function AudioNodeImpl({
     data.mediaStorageBackend,
     id,
     persistenceReady,
-    setNodes,
+    adoptAuthoritativeNodeData,
+    applyViewUpdate,
   ]);
 
   const applyGeneratedAudio = async (
     task: GenerationTaskSummary,
     cleanPrompt: string,
     run: AudioPollingRun,
+    signal: AbortSignal,
   ) => {
     if (
+      signal?.aborted ||
       !ownsGenerationPollingRun(run) ||
       !audioTaskMatchesNode(task, canvasId, id, run.taskId, fixtureScopeId)
     ) return false;
@@ -1089,6 +1200,62 @@ function AudioNodeImpl({
     }
     if (task.state !== "success" || !task.resultAssetId || !task.resultUrl) {
       throw new Error("音频结果不完整");
+    }
+    if (task.generationIdentityVersion === 2) {
+      const projectionState = task.canvasProjectionState;
+      const projectionMessage = projectionState === "conflict"
+        ? "结果已生成，但节点输入已变化，未覆盖当前画布"
+        : projectionState === "failed"
+          ? "结果已生成，画布同步暂时失败，系统会继续重试"
+          : projectionState === "applied"
+            ? undefined
+            : "结果已生成，画布正在同步";
+      if (projectionState === "applied") {
+        try {
+          if (
+            !await graphCommandPort?.refreshAuthoritativeDocument?.(signal) ||
+            signal?.aborted ||
+            !ownsGenerationPollingRun(run)
+          ) return false;
+        } catch {
+          return false;
+        }
+        clearGenerationSubmissionIntent(
+          "audio",
+          canvasId,
+          id,
+          task.id,
+          accountId,
+          fixtureScopeId,
+        );
+        return true;
+      }
+      const patched = graphCommandPort?.applyViewPatch?.({
+        kind: "audio",
+        nodeId: id,
+        ownershipKey: run.ownershipKey ?? "",
+        patch: {
+          audioGenerating: false,
+          audioGenerationError: projectionMessage,
+          audioGenerationErrorCode: projectionState === "conflict"
+            ? "CANVAS_SERVER_OWNERSHIP_CONFLICT"
+            : projectionState === "failed"
+              ? "CANVAS_PROJECTION_FAILED"
+              : "CANVAS_PROJECTION_PENDING",
+        },
+        taskId: task.id,
+      });
+      if (patched?.status !== "applied") return false;
+      if (signal?.aborted || !ownsGenerationPollingRun(run)) return false;
+      clearGenerationSubmissionIntent(
+        "audio",
+        canvasId,
+        id,
+        task.id,
+        accountId,
+        fixtureScopeId,
+      );
+      return true;
     }
     const applied = await tryAdoptNodes(id, (nodes) =>
       nodes.map((node) =>
@@ -1148,7 +1315,9 @@ function AudioNodeImpl({
           : node,
       ),
     );
-    if (!applied) return false;
+    if (signal?.aborted || !ownsGenerationPollingRun(run) || !applied) {
+      return false;
+    }
     waveformSourceAttempted.current = undefined;
     setCurrentTime(0);
     setPlaying(false);
@@ -1171,6 +1340,7 @@ function AudioNodeImpl({
       !selectedAudioModel ||
       selectedAudioModel.generationAvailable === false
     ) return { status: "skipped" };
+    audioDataMutationVersionRef.current += 1;
     setUploadError("");
     setServerInputProblems([]);
     setRetryTaskId(undefined);
@@ -1186,7 +1356,6 @@ function AudioNodeImpl({
     let saveBoundary = 0;
     try {
       if (!graphCommandPort) return { status: "skipped" };
-      checkpoint();
       const lifecycle = createSingleNodeGenerationLifecycle({
         adapter: createAudioGenerationAdapter({
           contractFingerprint: inputPreflight.contractFingerprint ?? "",
@@ -1215,6 +1384,9 @@ function AudioNodeImpl({
         }),
         graph: graphCommandPort,
         nodeId: id,
+        onBindingCommitted() {
+          setSubmitting(false);
+        },
         save: {
           flush: async () => undefined,
           async waitForRevision() {
@@ -1313,6 +1485,7 @@ function AudioNodeImpl({
       generating ||
       submitting
     ) return;
+    audioDataMutationVersionRef.current += 1;
     audioRecoveryControllerRef.current?.abort("audio-recovery-superseded");
     const taskId = retryTaskId;
     const requestedPrompt = promptControl.readCommittedValue();
@@ -1483,6 +1656,8 @@ function AudioNodeImpl({
     const taskId = pollingPausedTaskIdRef.current;
     if (!taskId) return;
     audioRecoveryControllerRef.current?.abort("audio-recovery-superseded");
+    const controller = new AbortController();
+    audioRecoveryControllerRef.current = controller;
     pollingPausedTaskIdRef.current = undefined;
     setPollingPausedTaskId(undefined);
     setUploadError("");
@@ -1492,14 +1667,19 @@ function AudioNodeImpl({
       data.audioGenerationOwnershipKey ?? rawGenerationInputFingerprint,
     );
     try {
-      await flushCanvasSave();
+      await flushCanvasSave(controller.signal);
+      if (controller.signal.aborted || !ownsGenerationPollingRun(pollingRun)) {
+        return;
+      }
       const task = await waitForGenerationTaskWithPause(taskId, () => {
         if (!ownsGenerationPollingRun(pollingRun)) return;
         pollingPausedTaskIdRef.current = taskId;
         setPollingPausedTaskId(taskId);
         setUploadError(POLLING_PAUSED_MESSAGE);
-      }, undefined, fixtureScopeId);
-      if (!ownsGenerationPollingRun(pollingRun)) return;
+      }, controller.signal, fixtureScopeId);
+      if (controller.signal.aborted || !ownsGenerationPollingRun(pollingRun)) {
+        return;
+      }
       if (task.state === "cancelled") {
         const applied = await persistAudioGenerationCancellation(
           task.id,
@@ -1532,6 +1712,7 @@ function AudioNodeImpl({
         task,
         promptControl.committedValue.trim(),
         pollingRun,
+        controller.signal,
       );
       if (!applied) {
         pollingPausedTaskIdRef.current = taskId;
@@ -1541,6 +1722,7 @@ function AudioNodeImpl({
       }
       setRetryTaskId(undefined);
     } catch (error) {
+      if (controller.signal.aborted) return;
       if (!ownsGenerationPollingRun(pollingRun)) return;
       if (pollingPausedTaskIdRef.current === taskId) return;
       if (isTransientPollingError(error)) {
@@ -1553,6 +1735,9 @@ function AudioNodeImpl({
         error instanceof Error ? error.message : "音频生成失败，请稍后再试",
       );
     } finally {
+      if (audioRecoveryControllerRef.current === controller) {
+        audioRecoveryControllerRef.current = undefined;
+      }
       endGenerationPollingRun(pollingRun);
     }
   };
@@ -1815,15 +2000,23 @@ function AudioNodeImpl({
           persistedOwnershipKey &&
           persistedOwnershipKey !== rawGenerationInputFingerprint
         ) {
+          clearGenerationSubmissionIntent(
+            "audio",
+            canvasId,
+            id,
+            persistedTaskId,
+            accountId,
+            fixtureScopeId,
+          );
           commitAudioDataMutation(
             (current) => current.audioGenerationTaskId === persistedTaskId
               ? clearAudioGenerationForSemanticChange(current)
               : current,
-            () => {
+            (identity) => {
               setUnverifiedRecoveryTaskId((current) =>
                 current === persistedTaskId ? undefined : current
               );
-              revokeAudioTaskForGenerationInputChange();
+              finishAudioGenerationInputRevocation(identity, audioMutationScopeKey);
             },
           );
           return;
@@ -1835,11 +2028,11 @@ function AudioNodeImpl({
               (current) => current.audioGenerationTaskId === persistedTaskId
                 ? clearAudioGenerationForSemanticChange(current)
                 : current,
-              () => {
+              (identity) => {
                 setUnverifiedRecoveryTaskId((current) =>
                   current === persistedTaskId ? undefined : current
                 );
-                revokeAudioTaskForGenerationInputChange();
+                finishAudioGenerationInputRevocation(identity, audioMutationScopeKey);
               },
             );
             return;
@@ -1852,31 +2045,7 @@ function AudioNodeImpl({
           fixtureScopeId,
         );
         persistedTaskReadPending = false;
-      } else {
-        task = await recoverPendingGenerationTask(
-          "audio",
-          canvasId,
-          id,
-          controller.signal,
-          selectedAudioModel ? audioGenerationRequestInput : undefined,
-          accountId,
-          {
-            generationInputKey: persistedInputKey ?? audioGenerationInputKey,
-            generationOwnershipKey: rawGenerationInputFingerprint,
-            fixtureScopeId,
-            modelInputContractFingerprint:
-              data.audioGenerationContractFingerprint ??
-              inputPreflight.contractFingerprint,
-            modelConfigurationRevision:
-              data.audioGenerationModelConfigurationRevision ??
-              selectedAudioModel?.configurationRevision,
-            modelReleaseRevision:
-              data.audioGenerationModelReleaseRevision ??
-              selectedAudioModel?.releaseRevisionId,
-          },
-        );
-        recoveredIntent = Boolean(task);
-      }
+      } else return;
       if (controller.signal.aborted || !task) return;
       const recoveredOwnershipKey = persistedOwnershipKey ??
         task.generationOwnershipKey;
@@ -1931,11 +2100,11 @@ function AudioNodeImpl({
             (current) => current.audioGenerationTaskId === persistedTaskId
               ? clearAudioGenerationForSemanticChange(current)
               : current,
-            () => {
+            (identity) => {
               setUnverifiedRecoveryTaskId((current) =>
                 current === persistedTaskId ? undefined : current
               );
-              revokeAudioTaskForGenerationInputChange();
+              finishAudioGenerationInputRevocation(identity, audioMutationScopeKey);
             },
           );
         }
@@ -2185,20 +2354,11 @@ function AudioNodeImpl({
           await response.arrayBuffer(),
         );
         if (!active) return;
-        setNodes((nodes) =>
-          nodes.map((node) =>
-            node.id === id
-              ? {
-                  ...node,
-                  data: {
-                    ...node.data,
-                    audioDuration: decoded.duration,
-                    audioWaveform: waveform(decoded),
-                  },
-                }
-              : node,
-          ),
-        );
+        setViewAudioMetadata({
+          duration: decoded.duration,
+          source,
+          waveform: waveform(decoded),
+        });
       } catch (error) {
         if (
           active &&
@@ -2221,9 +2381,7 @@ function AudioNodeImpl({
   }, [
     data.audioSrc,
     data.audioWaveform?.length,
-    id,
     persistenceReady,
-    setNodes,
   ]);
 
   useEffect(() => {
@@ -2264,11 +2422,11 @@ function AudioNodeImpl({
         ? "当前音频格式不受支持"
         : "";
     if (preflightError) {
-      const current = getNode(id);
+      const current = readCanvasNode(id);
       if (current && hasReadyAudioMedia(current)) {
         setTransientUploadError(preflightError);
       } else {
-        const applied = await tryAdoptNodes(id, (nodes) =>
+        const applied = applyViewUpdate((nodes) =>
           nodes.map((node) => node.id === id
             ? {
                 ...node,
@@ -2285,14 +2443,15 @@ function AudioNodeImpl({
       return;
     }
 
-    const baseline = uploadBaseline.current ?? getNode(id);
+    const baseline = uploadBaseline.current ?? readCanvasNode(id);
     const operation = uploadOperation.current + 1;
     const scope = mediaAdoptionScopeRef.current;
     uploadOperation.current = operation;
     uploadAdmissionPending.current = true;
     uploadInFlight.current = true;
     let admittedBaseline = baseline;
-    const prepared = await tryAdoptNodes(id, (nodes) =>
+    const releaseUploadCheckpoint = checkpoint();
+    const prepared = applyViewUpdate((nodes) =>
       nodes.map((node) => {
         if (node.id !== id) return node;
         admittedBaseline = uploadBaseline.current ?? node;
@@ -2305,12 +2464,12 @@ function AudioNodeImpl({
           },
         };
       }),
-      { checkpoint: true },
     );
     if (operation === uploadOperation.current) {
       uploadAdmissionPending.current = false;
     }
     if (!prepared) {
+      releaseUploadCheckpoint();
       if (operation === uploadOperation.current) {
         uploadAdmissionPending.current = false;
         uploadInFlight.current = false;
@@ -2342,9 +2501,10 @@ function AudioNodeImpl({
       if (
         operation !== uploadOperation.current ||
         scope !== mediaAdoptionScopeRef.current ||
+        !canvasUploadTargetStillCurrent(admittedBaseline, readCanvasNode(id)) ||
         !persistenceReadyLive.current ||
         controller.signal.aborted ||
-        getNode(id)?.data.inputState !== "uploading"
+        effectiveMediaInputState(readCanvasNode(id)?.data ?? {}) !== "uploading"
       ) return;
 
       requestedAssetId = `${crypto.randomUUID()}.${extension}`;
@@ -2392,9 +2552,10 @@ function AudioNodeImpl({
       if (
         operation !== uploadOperation.current ||
         scope !== mediaAdoptionScopeRef.current ||
+        !canvasUploadTargetStillCurrent(admittedBaseline, readCanvasNode(id)) ||
         !persistenceReadyLive.current ||
         controller.signal.aborted ||
-        getNode(id)?.data.inputState !== "uploading"
+        effectiveMediaInputState(readCanvasNode(id)?.data ?? {}) !== "uploading"
       ) {
         await discardUnadoptedAudioAsset(requestedAssetId);
         requestedAssetId = undefined;
@@ -2403,17 +2564,30 @@ function AudioNodeImpl({
 
       setCurrentTime(0);
       setPlaying(false);
-      adopted = await tryAdoptNodes(id, (nodes) =>
-        nodes.map((node) =>
+      // Keep the upload-only undo checkpoint until the remote response is
+      // fully validated, then retire it before the authoritative adoption is
+      // allowed to render.
+      releaseUploadCheckpoint();
+      uploadAdmissionPending.current = true;
+      try {
+        adopted = await adoptUploadedAsset({
+          asset: {
+            assetId: asset.assetId,
+            byteSize: metadata.byteSize,
+            contentType: metadata.contentType,
+            durationSeconds: metadata.durationSeconds,
+            src: asset.url,
+            storageBackend: metadata.storageBackend,
+          },
+          mediaKind: "audio",
+          rollbackTarget: admittedBaseline,
+          targetNodeId: id,
+          update: (nodes) => nodes.map((node) =>
           node.id === id
             ? {
                 ...node,
                 height: undefined,
                 measured: undefined,
-                style: {
-                  ...node.style,
-                  ...NODE_DEFAULT_SIZES.audio,
-                },
                 width: undefined,
                 data: {
                   ...node.data,
@@ -2422,18 +2596,39 @@ function AudioNodeImpl({
                   audioDuration: metadata.durationSeconds ?? decoded.duration,
                   audioFileSize: metadata.byteSize,
                   audioFileName: file.name,
+                  audioGeneratedResult: undefined,
+                  audioGenerationContractFingerprint: undefined,
                   audioGenerationError: undefined,
+                  audioGenerationErrorCode: undefined,
+                  audioGenerationInputKey: undefined,
+                  audioGenerationModelConfigurationRevision: undefined,
+                  audioGenerationModelReleaseRevision: undefined,
+                  audioGenerationOwnershipKey: undefined,
+                  audioGenerationRetryAllowed: undefined,
+                  audioGenerationRetryBlockCode: undefined,
+                  audioGenerationRetryBlockReason: undefined,
+                  audioGenerationTaskId: undefined,
+                  audioGenerating: undefined,
                   audioResultChoices: undefined,
                   groupRunSuccessOwnershipKey: undefined,
+                  groupRunSuccessInputFingerprint: undefined,
+                  groupRunSuccessModelConfigurationRevision: undefined,
+                  groupRunSuccessModelReleaseRevision: undefined,
                   groupRunSuccessResultKey: undefined,
                   groupRunSuccessTaskId: undefined,
+                  workflowExecutionRunId: undefined,
                   audioSrc: asset.url,
                   audioWaveform: waveform(decoded),
                 },
               }
             : node,
-        ),
-      );
+          ),
+        });
+      } finally {
+        if (operation === uploadOperation.current) {
+          uploadAdmissionPending.current = false;
+        }
+      }
       if (!adopted) {
         await discardUnadoptedAudioAsset(requestedAssetId);
         requestedAssetId = undefined;
@@ -2448,12 +2643,20 @@ function AudioNodeImpl({
       if (operation !== uploadOperation.current) return;
       const message = error instanceof Error ? error.message : "音频上传失败";
       if (baseline && hasReadyAudioMedia(baseline)) {
-        trySetNodes((nodes) => nodes.map((node) => node.id === id
-          ? restoreAudioUploadBaseline(node, baseline)
+        applyViewUpdate((nodes) => nodes.map((node) => node.id === id
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                audioGenerationError: baseline.data.audioGenerationError,
+                inputViewState: baseline.data.inputViewState,
+                inputViewStateReason: baseline.data.inputViewStateReason,
+              },
+            }
           : node));
         setTransientUploadError(message);
       } else {
-        trySetNodes((nodes) => nodes.map((node) => node.id === id
+        applyViewUpdate((nodes) => nodes.map((node) => node.id === id
           ? {
               ...node,
               data: {
@@ -2466,6 +2669,7 @@ function AudioNodeImpl({
       }
     } finally {
       URL.revokeObjectURL(localUrl);
+      releaseUploadCheckpoint();
       if (operation === uploadOperation.current) {
         uploadAdmissionPending.current = false;
         uploadController.current = undefined;
@@ -2501,18 +2705,14 @@ function AudioNodeImpl({
   };
 
   const applyLoadedAudioDuration = useCallback((nextDuration: number) => {
-    if (!Number.isFinite(nextDuration) || nextDuration < 0) return;
-    setNodes((nodes) =>
-      nodes.map((node) =>
-        node.id !== id || node.data.audioDuration === nextDuration
-          ? node
-          : {
-              ...node,
-              data: { ...node.data, audioDuration: nextDuration },
-            },
-      ),
-    );
-  }, [id, setNodes]);
+    const source = data.audioSrc;
+    if (!source || !Number.isFinite(nextDuration) || nextDuration < 0) return;
+    setViewAudioMetadata((current) => ({
+      duration: nextDuration,
+      source,
+      waveform: current?.source === source ? current.waveform : undefined,
+    }));
+  }, [data.audioSrc]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -2535,7 +2735,6 @@ function AudioNodeImpl({
         isVisible={singleNodeChrome}
         minHeight={160}
         minWidth={280}
-        onResizeStart={() => checkpoint()}
       />
       <EmptyMediaUploadToolbar
         disabled={uploadControlBlocked}
@@ -2601,36 +2800,21 @@ function AudioNodeImpl({
           disabled={semanticEditBlocked}
           inputs={inputPreflight.inputs}
           onMove={(edgeId, direction) => {
-            void mutateGraph(({ edges, nodes }) => ({
-              edges: moveNodeInputEdge(edges, id, edgeId, direction),
-              nodes: nodes.map((node) => node.id === id
-                ? { ...node, data: clearAudioGenerationForSemanticChange(node.data) }
-                : node),
-            })).then((applied) => {
-              if (applied) revokeAudioTaskForGenerationInputChange();
-            });
+            commitAudioInputEdgesMutation((edges) =>
+              moveNodeInputEdge(edges, id, edgeId, direction)
+            );
           }}
           onRemove={(edgeId) => {
-            void mutateGraph(({ edges, nodes }) => ({
-              edges: edges.filter((edge) => edge.id !== edgeId),
-              nodes: nodes.map((node) => node.id === id
-                ? { ...node, data: clearAudioGenerationForSemanticChange(node.data) }
-                : node),
-            })).then((applied) => {
-              if (applied) revokeAudioTaskForGenerationInputChange();
-            });
+            commitAudioInputEdgesMutation((edges) =>
+              edges.filter((edge) => edge.id !== edgeId)
+            );
           }}
           onRoleChange={(edgeId, role) => {
-            void mutateGraph(({ edges, nodes }) => ({
-              edges: edges.map((edge) => edge.id === edgeId
+            commitAudioInputEdgesMutation((edges) =>
+              edges.map((edge) => edge.id === edgeId
                 ? { ...edge, data: { ...edge.data, inputRole: role } }
-                : edge),
-              nodes: nodes.map((node) => node.id === id
-                ? { ...node, data: clearAudioGenerationForSemanticChange(node.data) }
-                : node),
-            })).then((applied) => {
-              if (applied) revokeAudioTaskForGenerationInputChange();
-            });
+                : edge)
+            );
           }}
           problems={inputProblems}
           roleOptions={(input) => availableNodeInputRoles({
@@ -2976,7 +3160,9 @@ function AudioNodeImpl({
                       checkpoint(false);
                       setCurrentTime(0);
                       setPlaying(false);
-                      setNodes((nodes) => nodes.map((node) => node.id === id
+                      void mutateGraph(({ edges, nodes }) => ({
+                        edges,
+                        nodes: nodes.map((node) => node.id === id
                         ? {
                             ...node,
                             data: {
@@ -2994,16 +3180,12 @@ function AudioNodeImpl({
                               }),
                               assetId: output.assetId,
                               audioDuration: output.durationSeconds ?? undefined,
-                              audioFileSize: output.byteSize,
                               audioSrc: output.url,
                               audioWaveform: undefined,
-                              groupRunSuccessResultKey:
-                                node.data.groupRunSuccessTaskId
-                                  ? groupRunResultKey(output.url)
-                                  : node.data.groupRunSuccessResultKey,
                             },
                           }
-                        : node));
+                        : node),
+                      }));
                     }}
                     type="button"
                   >
@@ -3020,9 +3202,7 @@ function AudioNodeImpl({
               onError={mediaLoad.markFailed}
               onLoadedMetadata={(event) => {
                 mediaLoad.markLoaded();
-                if (persistenceReady) {
-                  applyLoadedAudioDuration(event.currentTarget.duration);
-                }
+                applyLoadedAudioDuration(event.currentTarget.duration);
               }}
               onPause={() => setPlaying(false)}
               onPlay={() => setPlaying(true)}
@@ -3035,7 +3215,7 @@ function AudioNodeImpl({
             />
             <div className="audio-waveform">
               <div className="audio-waveform-bars" aria-hidden="true">
-                {(data.audioWaveform ?? []).map((height, index) => (
+                {displayedWaveform.map((height, index) => (
                   <span key={index} style={{ height }} />
                 ))}
               </div>

@@ -2827,7 +2827,7 @@ test("INC-GEN-026 historical terminal settlement is manifest-fenced and repeat a
         device: databaseDetails.dev.toString(),
         inode: databaseDetails.ino.toString(),
         path: databasePath,
-        schemaVersion: 42,
+        schemaVersion: 43,
       },
       evidenceSchemaVersion: 1,
       observations: [terminalObservation],

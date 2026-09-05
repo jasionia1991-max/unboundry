@@ -85,14 +85,23 @@ test("keyboard movement, pointer drag and 20px snap use world coordinates", asyn
 }) => {
   await page.goto("/__fixture/interaction.selection-and-keyboard-move");
   const c = page.locator('.react-flow__node[data-id="probe-c"]');
+  await expect(page.getByTestId("canvas-world")).toHaveAttribute(
+    "data-persistence-ready",
+    "true",
+  );
 
   await c.click();
+  await expect(c).toHaveClass(/selected/);
   const beforeKeyboard = await c.boundingBox();
   await page.keyboard.press("ArrowRight");
+  await expect.poll(async () => (await c.boundingBox())!.x)
+    .toBe(beforeKeyboard!.x + 5);
   await page.keyboard.press("Shift+ArrowDown");
+  await expect.poll(async () => {
+    const box = await c.boundingBox();
+    return { x: box?.x, y: box?.y };
+  }).toEqual({ x: beforeKeyboard!.x + 5, y: beforeKeyboard!.y + 20 });
   let afterKeyboard = await c.boundingBox();
-  expect(afterKeyboard!.x - beforeKeyboard!.x).toBe(5);
-  expect(afterKeyboard!.y - beforeKeyboard!.y).toBe(20);
 
   await page.keyboard.press("Meta+z");
   await page.keyboard.press("Meta+z");
@@ -103,7 +112,11 @@ test("keyboard movement, pointer drag and 20px snap use world coordinates", asyn
     })
     .toEqual({ x: beforeKeyboard!.x, y: beforeKeyboard!.y });
   await page.keyboard.press("ArrowRight");
+  await expect.poll(async () => (await c.boundingBox())!.x)
+    .toBe(beforeKeyboard!.x + 5);
   await page.keyboard.press("Shift+ArrowDown");
+  await expect.poll(async () => (await c.boundingBox())!.y)
+    .toBe(beforeKeyboard!.y + 20);
   afterKeyboard = await c.boundingBox();
 
   await page.mouse.move(

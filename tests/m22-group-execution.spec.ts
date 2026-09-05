@@ -204,13 +204,19 @@ test("legacy terminal classifier is exact, checksum-complete and fail-closed", (
   });
   expect(candidate).toBeTruthy();
   if (!candidate) throw new Error("candidate missing");
-  expect(legacyTerminalDetachApplicationId(candidate)).toBe(
-    legacyTerminalDetachApplicationIdForBinding(candidate),
+  expect(legacyTerminalDetachApplicationId(candidate, "failed")).toBe(
+    legacyTerminalDetachApplicationIdForBinding({
+      ...candidate,
+      observedTerminalState: "failed",
+    }),
   );
   expect(legacyTerminalDetachApplicationId({
     ...candidate,
     fixtureScopeId: "fixture-that-is-not-part-of-the-server-binding",
-  })).toBe(legacyTerminalDetachApplicationIdForBinding(candidate));
+  }, "failed")).toBe(legacyTerminalDetachApplicationIdForBinding({
+    ...candidate,
+    observedTerminalState: "failed",
+  }));
   const baseTask = {
     attempt: 1,
     canvasId: "canvas-a",
@@ -259,6 +265,10 @@ test("legacy terminal classifier is exact, checksum-complete and fail-closed", (
     candidate,
     task: completeSuccess,
   }).state).toBe("RESTORED");
+  expect(classifyLegacyTerminalGenerationTask({
+    candidate,
+    task: { ...completeSuccess, generationIdentityVersion: 2 },
+  }).state).toBe("UNKNOWN_BLOCKED");
   expect(classifyLegacyTerminalGenerationTask({
     candidate,
     task: { ...completeSuccess, nodeId: "other-node" },
@@ -853,9 +863,9 @@ test("all four headless executors preflight, run, recover and apply without moun
       status: "failed",
     });
     expect(posts).toHaveLength(4);
-    // Each initial execution durably persists its normalized contract and its
-    // accepted binding before paid work; recovery then projects each result.
-    expect(flushes).toBe(12);
+    // Each initial execution flushes pending user intent before server-atomic
+    // admission; recovery adopts the server projection without a browser write.
+    expect(flushes).toBe(8);
   } finally {
     globalThis.fetch = previousFetch;
     if (previousWindow) host.window = previousWindow;
@@ -2407,6 +2417,13 @@ test("workflow execution has no component registration or render-retention depen
   expect(provider.slice(retiredResumeGuard, serverWorkflowEntry)).toContain(
     "return;",
   );
+  expect(provider).not.toContain("enqueueGroupResultProjection(");
+  expect(provider).toContain(
+    "freshTask = await getGenerationTask(\n                    candidate.taskId",
+  );
+  expect(provider).toContain(
+    "if (freshTask.generationIdentityVersion === 2) {\n                  return \"modern\" as const;",
+  );
   expect(provider).toContain("let terminalErrorPublished = false");
   expect(provider).toContain(
     'errorClass: kind === "error" ? "run-terminal" : errorClass',
@@ -2484,8 +2501,8 @@ test("workflow execution has no component registration or render-retention depen
   expect(canvas).not.toContain("retainWorkflowNodesForRender");
   expect(canvas).not.toContain("isConnectionAllowed(connection, edgesRef.current)");
   expect(canvas).toContain("runCanvasMutationAdmission(");
-  expect(canvas).toContain("admittedSetNodes");
-  expect(canvas).toContain("admittedSetEdges");
+  expect(canvas).toContain("commitCanvasGraphAtomic");
+  expect(canvas).toContain("applyViewUpdate");
   expect(taskClient).toContain("runWithCanvasGraphMutationAdmission");
   expect(taskPanel).toContain("readGroupRunCheckpointCache(groupRunScope)");
   expect(taskPanel).toContain('data-testid="tasks-group-recovery"');
@@ -2494,7 +2511,7 @@ test("workflow execution has no component registration or render-retention depen
   expect(shell).toContain("readGroupRunLeaseCache(groupRunScope)");
   expect(executors).toContain("inputPreflight.normalizedParameters");
   expect(executors).toContain("inputs: inputPreflight.inputs");
-  expect(executors).toContain("persistExecutionContract(context, plan)");
+  expect(executors).toContain("recheckExecutionContract(context, plan)");
   expect(executors).toContain("workflowGroupId: context.groupId");
   expect(executors).toContain("task.modelReleaseRevision !== plan.modelReleaseRevision");
   expect(executors).not.toContain("document.");
@@ -3484,6 +3501,7 @@ test("group persist retry is bounded for a still-saving canvas and never covers 
   ])).toEqual(["node-a"]);
   const queuedApplications: string[] = [];
   const persistFailed = await runGroupNodeWithPersist({
+    allowLegacyBrowserProjection: true,
     persist: async () => "画布保存超时，请稍后再试",
     project: (candidate) => queuedApplications.push(candidate.applicationId),
     run: async () => ({
@@ -3497,6 +3515,18 @@ test("group persist retry is bounded for a still-saving canvas and never covers 
   });
   expect(queuedApplications).toEqual(["run-a:node-a:task-a:result-a"]);
 
+  const modernBrowserProjectionAttempts: string[] = [];
+  const modernPersistFailed = await runGroupNodeWithPersist({
+    persist: async () => "画布保存超时，请稍后再试",
+    project: (candidate) => {
+      modernBrowserProjectionAttempts.push(candidate.applicationId);
+    },
+    run: async () => ({ projection, status: "success" }),
+  });
+  expect(modernPersistFailed).toMatchObject({ status: "success" });
+  expect(modernPersistFailed.projectionState).toBeUndefined();
+  expect(modernBrowserProjectionAttempts).toEqual([]);
+
   const duplicateApplications: string[] = [];
   const projectOnce = (candidate: GroupResultProjection) => {
     if (!duplicateApplications.includes(candidate.applicationId)) {
@@ -3504,6 +3534,7 @@ test("group persist retry is bounded for a still-saving canvas and never covers 
     }
   };
   const repeat = () => runGroupNodeWithPersist({
+    allowLegacyBrowserProjection: true,
     persist: async () => "画布保存状态异常",
     project: projectOnce,
     run: async () => ({
@@ -4226,10 +4257,11 @@ test("group run preflights a truly unmounted offscreen Image and persists the re
       "data-persistence-ready",
       "true",
     );
-    await page.locator('[data-testid="rf__node-image-group"]').click({
+    const group = page.locator('[data-testid="rf__node-image-group"]');
+    await group.click({
       position: { x: 5, y: 5 },
     });
-    const execute = page.getByTestId("group-execute-button");
+    const execute = group.getByTestId("group-execute-button");
     await expect(execute).toBeEnabled();
     await expect(page.locator('[data-testid="rf__node-target-image"]'))
       .toHaveCount(0);
@@ -4789,19 +4821,21 @@ test("group run ignores a leftover canvas-save error and still blocks a real mod
     });
     expect(saved.ok()).toBeTruthy();
 
-    await page.goto(`/canvas/${project.id}`);
+    await page.goto(`/canvas/${project.id}`, { timeout: 10_000 });
     await expect(page.getByTestId("canvas-world")).toHaveAttribute(
       "data-persistence-ready",
       "true",
+      { timeout: 5_000 },
     );
-    await page.locator('[data-testid="rf__node-image-group"]').click({
-      position: { x: 5, y: 5 },
-    });
-    const execute = page.getByTestId("group-execute-button");
-    await expect(execute).toBeEnabled();
-    await execute.click();
+    const group = page.locator('[data-testid="rf__node-image-group"]');
+    await group.dispatchEvent("click");
+    await expect(group).toHaveClass(/selected/, { timeout: 5_000 });
+    const execute = group.getByTestId("group-execute-button");
+    await expect(execute).toBeEnabled({ timeout: 5_000 });
+    await execute.click({ timeout: 5_000 });
     await expect(page.getByTestId("workflow-run-toast")).toContainText(
       "节点 director-text 没有已选择的模型",
+      { timeout: 10_000 },
     );
     await expect(page.getByTestId("workflow-run-toast")).not.toContainText(
       "画布还在保存",

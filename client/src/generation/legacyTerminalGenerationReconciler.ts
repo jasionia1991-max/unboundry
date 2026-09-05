@@ -14,6 +14,10 @@ import type { AuthoritativeGenerationCanvasMutation } from
   "./GenerationCanvasContext";
 import { stableValueFingerprint } from "../../../types/canvasFingerprint";
 
+const clientBuildVersion = typeof __UNBOUNDRY_VERSION__ === "string"
+  ? __UNBOUNDRY_VERSION__
+  : "test-runtime";
+
 export type LegacyTerminalGenerationState =
   | "PASSTHROUGH"
   | "DETECTING"
@@ -289,6 +293,9 @@ export function classifyLegacyTerminalGenerationTask(input: {
   task: GenerationTaskSummary;
 }): LegacyTerminalGenerationDecision {
   const { candidate, task } = input;
+  if (task.generationIdentityVersion === 2) {
+    return { state: "UNKNOWN_BLOCKED" };
+  }
   if (
     task.id !== candidate.taskId || task.canvasId !== candidate.canvasId ||
     task.nodeId !== candidate.nodeId || task.kind !== candidate.kind ||
@@ -331,6 +338,7 @@ export function classifyLegacyTerminalGenerationTask(input: {
 
 export function legacyTerminalDetachApplicationId(
   candidate: LegacyTerminalGenerationCandidate,
+  observedTerminalState: "cancelled" | "failed" | "success",
   resultKey?: string,
 ) {
   return `legacy-terminal-detach:${stableValueFingerprint({
@@ -340,6 +348,7 @@ export function legacyTerminalDetachApplicationId(
     kind: candidate.kind,
     nodeDataFingerprint: candidate.nodeDataFingerprint,
     nodeId: candidate.nodeId,
+    observedTerminalState,
     ownershipKey: candidate.ownershipKey,
     resultKey,
     runId: candidate.runId,
@@ -384,7 +393,11 @@ export async function getLegacyTerminalGenerationPolicy(
     const value = await Promise.race([
       (async () => responseJson<unknown>(await fetch(
         `/api/canvases/${encodeURIComponent(canvasId)}/generation-reconciliation-policy`,
-        { cache: "no-store", signal: controller.signal },
+        {
+          cache: "no-store",
+          headers: { "X-Unboundry-Client-Build": clientBuildVersion },
+          signal: controller.signal,
+        },
       )))(),
       callerAbort,
       deadline,
@@ -412,12 +425,16 @@ export async function detachLegacyTerminalGeneration(input: {
         ...input.candidate,
         applicationId: legacyTerminalDetachApplicationId(
           input.candidate,
+          input.observedTerminalState,
           input.resultKey,
         ),
         observedTerminalState: input.observedTerminalState,
         resultKey: input.resultKey,
       }),
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Unboundry-Client-Build": clientBuildVersion,
+      },
       method: "POST",
       signal: input.signal,
     },

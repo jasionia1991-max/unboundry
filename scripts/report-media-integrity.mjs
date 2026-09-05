@@ -160,8 +160,8 @@ function parseFrozenSourceContract(values, historicalRecovery) {
   const generationFrozenAt = values.get("--generation-frozen-at");
   const admissionText = values.get("--last-provider-admission-at");
   const schemaAccepted = historicalRecovery
-    ? [37, 38, 39, 40, 41].includes(expectedSchemaVersion)
-    : expectedSchemaVersion === 42;
+    ? [37, 38, 39, 40, 41, 42].includes(expectedSchemaVersion)
+    : expectedSchemaVersion === 43;
   if (
     !/^[a-f0-9]{64}$/.test(expectedDatabaseLogicalSha256) ||
     !schemaAccepted ||
@@ -270,7 +270,7 @@ try {
   const report = await inspectFrozenMediaIntegrity({
     capturePurpose: parsed.historicalRecovery
       ? "historical-recovery"
-      : "current-schema42",
+      : "current-schema43",
     frozenSourceContract,
     mediaWarningAllowlist:
       parsed.requireCleanMedia || parsed.mediaWarnings.length
@@ -285,7 +285,7 @@ try {
     ...report,
     captureMode: frozenSourceContract ? "locked-exact" : "external-unverified",
     finalCandidate: Boolean(frozenSourceContract) &&
-      !parsed.historicalRecovery && report.schemaVersion === 42,
+      !parsed.historicalRecovery && report.schemaVersion === 43,
   })}\n`);
   if (
     !report.clean &&

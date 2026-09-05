@@ -121,6 +121,7 @@ test("history media opens previews and can add a real asset back to the canvas",
     await expect(
       page.locator('.react-flow__node-image img[src="/api/assets/preview-image.png"]'),
     ).toHaveCount(1);
+    await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
 
     await page.reload();
     await expect(world).toHaveAttribute("data-persistence-ready", "true");

@@ -1,4 +1,6 @@
 import { expect, test } from "./safe-test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { normalizePersistedMediaNodes } from "../types/persistedMediaSources";
 
 test("only the exact obsolete pre-task configuration error is removed", () => {
@@ -355,7 +357,18 @@ test("the canvas service persists only durable media state", async ({
   request,
 }) => {
   const canvasId = "media-source-normalization";
+  const imageAssetId = "asset-image-1";
   await request.delete(`/api/canvas/${canvasId}`);
+  const uploaded = await request.post(`/api/assets/${imageAssetId}`, {
+    data: readFileSync(resolve(
+      "spec/reference/upstream-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
+    )),
+    headers: {
+      "Content-Type": "image/png",
+      "X-File-Name": "m34-media-source-normalization.png",
+    },
+  });
+  expect(uploaded.ok()).toBeTruthy();
   try {
     const saved = await request.put(`/api/canvas/${canvasId}`, {
       data: {
@@ -401,46 +414,39 @@ test("the canvas service persists only durable media state", async ({
     });
     expect(saved.ok()).toBeTruthy();
     const document = await (await request.get(`/api/canvas/${canvasId}`)).json();
-    expect(document.nodes).toEqual([
-      {
-        data: {
-          assetId: "asset-image-1",
-          imageSrc: "/api/assets/asset-image-1",
-          inputState: "ready",
-        },
-        id: "image",
-        type: "image",
+    const nodesById = new Map(document.nodes.map(
+      (node: { id: string }) => [node.id, node],
+    ));
+    expect(nodesById.get("image")).toMatchObject({
+      data: {
+        assetId: imageAssetId,
+        imageAssetOrigin: "local-upload",
+        imageSrc: `/api/assets/${imageAssetId}`,
+        inputState: "ready",
+        mediaContentType: "image/png",
+        mediaMetadataSource: "server",
+        mediaMetadataStatus: "ready",
+        mediaStorageBackend: "local",
       },
-      {
-        data: {
-          inputState: "invalid",
-          inputStateReason: "旧本地预览已失效，请重新上传原视频",
-        },
-        id: "video",
-        type: "video",
+      id: "image",
+      type: "image",
+    });
+    expect(nodesById.get("video")).toEqual({ data: {}, id: "video", type: "video" });
+    expect(nodesById.get("audio")).toEqual({ data: {}, id: "audio", type: "audio" });
+    expect(nodesById.get("playlist")).toEqual({
+      data: {
+        playlistClips: [
+          { end: 2, id: "keep", sourceNodeId: "video", src: "/api/video-assets/video", start: 0, title: "Keep" },
+        ],
       },
-      {
-        data: {
-          inputState: "invalid",
-          inputStateReason: "音频上传已中断，请重新上传原音频",
-        },
-        id: "audio",
-        type: "audio",
-      },
-      {
-        data: {
-          playlistClips: [
-            { end: 2, id: "keep", sourceNodeId: "video", src: "/api/video-assets/video", start: 0, title: "Keep" },
-          ],
-        },
-        id: "playlist",
-        type: "playlist",
-      },
-    ]);
+      id: "playlist",
+      type: "playlist",
+    });
     expect(JSON.stringify(document.nodes)).not.toMatch(
       /(?:blob:|data:|https?:\/\/)/i,
     );
   } finally {
     await request.delete(`/api/canvas/${canvasId}`);
+    await request.delete(`/api/assets/${imageAssetId}`);
   }
 });

@@ -19,6 +19,7 @@ async function seedCanvas(
 ) {
   await request.delete(`/api/canvas/${canvasId}`);
   const response = await request.put(`/api/canvas/${canvasId}`, {
+    headers: { "X-Unboundry-Safe-Fixture-Seed": canvasId },
     data: {
       edges: [],
       nodes,
@@ -469,6 +470,9 @@ test("Text body pans the canvas until editing starts", async ({ page, request })
     y: Number(await world.getAttribute("data-viewport-y")),
   })).not.toEqual(viewportAfterWheel);
 
+  // The preceding middle-button pan leaves the node unselected. Select it
+  // before exercising the normal double-click-to-edit interaction.
+  await body.click({ position: { x: bodyBox.width / 2, y: 80 } });
   await body.dblclick({ position: { x: bodyBox.width / 2, y: 80 } });
   await expect(body).toHaveClass(/nowheel/);
   await expect(body).toHaveClass(/nodrag/);

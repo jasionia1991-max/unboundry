@@ -750,9 +750,11 @@ test("Video execute transition and interactive switches share Canvas admission",
   expect(loadFile).toContain("semanticEditBlocked ||");
   expect(loadFile).toContain("canvasMutationPending ||");
   expect(loadFile).toContain("uploadInFlight.current");
-  expect(loadFile).toContain("const prepared = await tryAdoptNodes(");
-  expect(loadFile.indexOf("const prepared = await tryAdoptNodes("))
+  expect(loadFile).toContain("const prepared = applyViewUpdate(");
+  expect(loadFile.indexOf("const prepared = applyViewUpdate("))
     .toBeLessThan(loadFile.indexOf("const response = await fetch("));
+  expect(loadFile.indexOf("adoptUploadedAsset({"))
+    .toBeGreaterThan(loadFile.indexOf("const response = await fetch("));
   expect(source).toContain("const uploadControlBlocked =");
   expect(source).toContain(
     "semanticEditBlocked || canvasMutationPending || uploading",
@@ -1174,7 +1176,7 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
     expect(after.paidProviderRequests).toBe(before.paidProviderRequests);
   });
 
-  test("server metadata hydration rejects forged ready fields for missing, foreign-owned and not-ready assets", async ({
+  test("Canvas admission rejects forged ready fields for missing, foreign-owned and not-ready assets", async ({
     request,
   }) => {
     const canvasId = `${serverCanvasId}-metadata-negative`;
@@ -1192,6 +1194,24 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
       database.close();
       throw new Error("P3 metadata negative test image was not registered");
     }
+    const reassignImageAssetOwner = (ownerId: string) => {
+      database.exec("BEGIN IMMEDIATE");
+      try {
+        database.exec("PRAGMA defer_foreign_keys = ON");
+        expect(database.prepare(`
+          UPDATE media_assets SET owner_id = ?
+          WHERE kind = 'image' AND id = ?
+        `).run(ownerId, serverImageAssetId).changes).toBe(1);
+        database.prepare(`
+          UPDATE media_image_metadata SET owner_id = ?
+          WHERE kind = 'image' AND asset_id = ?
+        `).run(ownerId, serverImageAssetId);
+        database.exec("COMMIT");
+      } catch (error) {
+        database.exec("ROLLBACK");
+        throw error;
+      }
+    };
 
     const expectBlocked = async (assetId: string) => {
       await request.delete(`/api/canvas/${canvasId}`);
@@ -1232,46 +1252,14 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
           viewport: { x: 0, y: 0, zoom: 1 },
         },
       });
-      expect(saved.ok()).toBeTruthy();
-      const revision = (await saved.json() as { revision: number }).revision;
-      const response = await request.post("/api/generation-tasks/preflight", {
-        data: {
-          canvasId,
-          canvasRevision: revision,
-          idempotencyKey: `p3-metadata-negative-${assetId}-${Date.now()}`,
-          inputSchemaVersion: 1,
-          inputs: [],
-          kind: "video",
-          model: serverModelId,
-          nodeId: "metadata-negative-video",
-          ownPrompt: "服务端必须重新核对素材归属和状态",
-          parameters: { inputMode: "multimodal" },
-          prompt: "客户端伪造提示词",
-        },
+      expect(saved.status()).toBe(409);
+      await expect(saved.json()).resolves.toMatchObject({
+        code: "CANVAS_MEDIA_UNAVAILABLE",
       });
-      expect(response.ok()).toBeTruthy();
-      const preflight = await response.json() as {
-        canSubmit: boolean;
-        inputs: Array<{
-          compatibility: string;
-          reason?: string;
-          sourceNodeId: string;
-          state: string;
-        }>;
-        problems: Array<{ code: string; message: string }>;
-      };
-      expect(preflight.canSubmit).toBeFalsy();
-      expect(preflight.inputs.find(({ sourceNodeId }) =>
-        sourceNodeId === "metadata-negative-image"))
-        .toMatchObject({
-          compatibility: "blocked",
-          reason: "素材不存在、尚未保存或不属于当前账号",
-          state: "invalid",
-        });
-      expect(preflight.problems).toContainEqual(expect.objectContaining({
-        code: "INVALID",
-        message: "素材不存在、尚未保存或不属于当前账号",
-      }));
+      const tasks = await (await request.get(
+        `/api/generation-tasks?canvasId=${encodeURIComponent(canvasId)}`,
+      )).json() as { tasks: unknown[] };
+      expect(tasks.tasks).toEqual([]);
     };
 
     try {
@@ -1291,23 +1279,22 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
       );
       await expectBlocked("p3-missing-image");
 
-      expect(database.prepare(`
-        UPDATE media_assets SET owner_id = ?
-        WHERE kind = 'image' AND id = ?
-      `).run(foreignOwnerId, serverImageAssetId).changes).toBe(1);
+      reassignImageAssetOwner(foreignOwnerId);
       await expectBlocked(serverImageAssetId);
 
+      reassignImageAssetOwner(original.owner_id);
       expect(database.prepare(`
-        UPDATE media_assets SET owner_id = ?, storage_status = 'pending'
-        WHERE kind = 'image' AND id = ?
+        UPDATE media_assets SET storage_status = 'pending'
+        WHERE owner_id = ? AND kind = 'image' AND id = ?
       `).run(original.owner_id, serverImageAssetId).changes).toBe(1);
       await expectBlocked(serverImageAssetId);
     } finally {
       try {
+        reassignImageAssetOwner(original.owner_id);
         database.prepare(`
-          UPDATE media_assets SET owner_id = ?, storage_status = ?
-          WHERE kind = 'image' AND id = ?
-        `).run(original.owner_id, original.storage_status, serverImageAssetId);
+          UPDATE media_assets SET storage_status = ?
+          WHERE owner_id = ? AND kind = 'image' AND id = ?
+        `).run(original.storage_status, original.owner_id, serverImageAssetId);
         database.prepare("DELETE FROM users WHERE id = ?").run(foreignOwnerId);
       } finally {
         database.close();
@@ -1417,6 +1404,7 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
         revision: 0,
         viewport: { x: 0, y: 0, zoom: 1 },
       },
+      headers: { "X-Unboundry-Safe-Fixture-Seed": canvasId },
     });
     expect(saved.ok()).toBeTruthy();
 
@@ -1433,7 +1421,7 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
       .toBeVisible();
     await expect.poll(async () => Number(
       await world.getAttribute("data-save-fingerprint-count") ?? "0",
-    )).toBeGreaterThan(0);
+    )).toBe(0);
     await expect(creator.getByRole("button", { exact: true, name: "文本" }))
       .toBeEnabled();
     await expect(page.getByText("当前模式至少需要1个尾帧输入", { exact: true }))
@@ -1447,7 +1435,10 @@ test.describe.serial("P3 Video server preflight trusts the persisted edge graph"
       };
       const target = current.nodes.find(({ id }) => id === "p3-ui-video");
       return [target?.data.videoGenerationError, target?.data.videoGenerationErrorCode];
-    }).toEqual([undefined, undefined]);
+    }).toEqual([
+      "当前模式至少需要1个尾帧输入",
+      "ROLE_CONFLICT",
+    ]);
 
     await connectNodes(page, "p3-ui-image-2", "p3-ui-video");
     await expect(world).toHaveAttribute("data-edge-count", "3");

@@ -663,7 +663,7 @@ test("Text failure retries once with the same task and restart fails without res
   }
 });
 
-test("a persisted pending Text task replaces old content after refresh without a Provider request", async ({
+test("a server-bound pending Text task replaces old content without a browser server-owned write", async ({
   page,
   request,
 }) => {
@@ -685,12 +685,17 @@ test("a persisted pending Text task replaces old content after refresh without a
   });
   expect(parameterSchema).toBeTruthy();
   let afterReload = false;
+  const canvasCommandBodies: unknown[] = [];
   let providerRequests = 0;
   let taskSubmissions = 0;
   let taskIdentity: ReturnType<typeof generationIdentityFromSubmission> | undefined;
 
   page.on("request", (entry) => {
     if (/volces|openrouter|mureka/i.test(entry.url())) providerRequests += 1;
+    if (
+      entry.method() === "POST" &&
+      new URL(entry.url()).pathname === "/api/canvases/default/commands"
+    ) canvasCommandBodies.push(entry.postDataJSON());
   });
   await page.route("**/api/models", async (route) => {
     await route.fulfill({
@@ -756,7 +761,12 @@ test("a persisted pending Text task replaces old content after refresh without a
       taskIdentity = generationIdentityFromSubmission(route.request().postDataJSON());
       await route.fulfill({
         contentType: "application/json",
-        json: { ...baseTask, ...taskIdentity, state: "queued" },
+        json: {
+          ...baseTask,
+          ...taskIdentity,
+          canvasProjectionState: "pending",
+          state: "queued",
+        },
         status: 202,
       });
       return;
@@ -770,10 +780,11 @@ test("a persisted pending Text task replaces old content after refresh without a
         json: afterReload
           ? {
               ...baseTask,
+              canvasProjectionState: "applied",
               resultText: "刷新恢复的新商品描述",
               state: "success",
             }
-          : { ...baseTask, state: "running" },
+          : { ...baseTask, canvasProjectionState: "pending", state: "running" },
         status: 200,
       });
       return;
@@ -781,7 +792,22 @@ test("a persisted pending Text task replaces old content after refresh without a
     if (requestUrl.pathname === "/api/generation-tasks" && method === "GET") {
       await route.fulfill({
         contentType: "application/json",
-        json: { tasks: [] },
+        json: {
+          tasks: taskIdentity
+            ? [afterReload
+                ? {
+                    ...baseTask,
+                    canvasProjectionState: "applied",
+                    resultText: "刷新恢复的新商品描述",
+                    state: "success",
+                  }
+                : {
+                    ...baseTask,
+                    canvasProjectionState: "pending",
+                    state: "running",
+                  }]
+            : [],
+        },
         status: 200,
       });
       return;
@@ -791,6 +817,58 @@ test("a persisted pending Text task replaces old content after refresh without a
       json: { error: "Unexpected fake task route" },
       status: 404,
     });
+  });
+  // The HTTP task fixture models the server-owned Canvas side of atomic
+  // admission/projection. Server transaction durability is covered in m104;
+  // this browser test verifies that the client only adopts authoritative GETs.
+  await page.route("**/api/canvas/default", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
+    const response = await route.fetch();
+    const document = await response.json() as {
+      nodes: Array<{ data?: Record<string, unknown>; id: string }>;
+    } & Record<string, unknown>;
+    if (!taskIdentity) {
+      await route.fulfill({ response, json: document });
+      return;
+    }
+    const nodes = document.nodes.map((node) => {
+      if (node.id !== "text-refresh-target") return node;
+      const data = {
+        ...node.data,
+        textGenerationContractFingerprint:
+          taskIdentity!.modelInputContractFingerprint,
+        textGenerationModelConfigurationRevision:
+          taskIdentity!.modelConfigurationRevision,
+        textGenerationModelReleaseRevision: taskIdentity!.modelReleaseRevision,
+        textGenerationTaskId: "text-ui-refresh-001",
+      } as Record<string, unknown>;
+      if (afterReload) {
+        delete data.textGenerationInputKey;
+        delete data.textGenerationOwnershipKey;
+        Object.assign(data, {
+          content: "刷新恢复的新商品描述",
+          contentHtml: "<p>刷新恢复的新商品描述</p>",
+          groupRunSuccessInputFingerprint: taskIdentity!.generationInputKey,
+          groupRunSuccessModelConfigurationRevision:
+            taskIdentity!.modelConfigurationRevision,
+          groupRunSuccessModelReleaseRevision: taskIdentity!.modelReleaseRevision,
+          groupRunSuccessOwnershipKey: taskIdentity!.generationOwnershipKey,
+          groupRunSuccessResultKey: "m33-text-success-result",
+          groupRunSuccessTaskId: "text-ui-refresh-001",
+          textGenerating: false,
+        });
+      } else {
+        Object.assign(data, {
+          textGenerationInputKey: taskIdentity!.generationInputKey,
+          textGenerationOwnershipKey: taskIdentity!.generationOwnershipKey,
+        });
+      }
+      return { ...node, data };
+    });
+    await route.fulfill({ response, json: { ...document, nodes } });
   });
 
   try {
@@ -861,15 +939,15 @@ test("a persisted pending Text task replaces old content after refresh without a
     await expect(downstreamCard)
       .toHaveAttribute("data-input-state", "ready");
     await expect.poll(async () => {
-      const response = await request.get("/api/canvas/default");
-      if (!response.ok()) return undefined;
-      const canvas = await response.json() as {
+      const canvas = await page.evaluate(async () => {
+        const response = await fetch("/api/canvas/default");
+        return response.json();
+      }) as {
         nodes: Array<{ data?: Record<string, unknown>; id: string }>;
       };
       return canvas.nodes.find(({ id }) => id === "text-refresh-target")?.data;
     }).toMatchObject({
       content: "生成前的旧内容",
-      textGenerating: true,
       textGenerationTaskId: "text-ui-refresh-001",
     });
 
@@ -881,6 +959,7 @@ test("a persisted pending Text task replaces old content after refresh without a
       .toContainText("刷新恢复的新商品描述");
     await expect(page.getByTestId("text-node-editor"))
       .not.toContainText("生成前的旧内容");
+    await page.getByTestId("rf__node-image-refresh-downstream").click();
     const restoredDownstreamCards = page.getByTestId("image-creator-references")
       .locator('[data-testid="upstream-input-text-refresh-target"]');
     await expect(restoredDownstreamCards).toHaveCount(1);
@@ -892,9 +971,10 @@ test("a persisted pending Text task replaces old content after refresh without a
     await expect(page.getByRole("dialog", { name: "刷新恢复目标引用详情" }))
       .toContainText("刷新恢复的新商品描述");
     await expect.poll(async () => {
-      const response = await request.get("/api/canvas/default");
-      if (!response.ok()) return undefined;
-      const canvas = await response.json() as {
+      const canvas = await page.evaluate(async () => {
+        const response = await fetch("/api/canvas/default");
+        return response.json();
+      }) as {
         nodes: Array<{ data?: Record<string, unknown>; id: string }>;
       };
       return canvas.nodes.find(({ id }) => id === "text-refresh-target")?.data;
@@ -905,6 +985,11 @@ test("a persisted pending Text task replaces old content after refresh without a
       textGenerationTaskId: "text-ui-refresh-001",
     });
     expect(taskSubmissions).toBe(1);
+    expect(canvasCommandBodies).toHaveLength(1);
+    expect(canvasCommandBodies[0]).toMatchObject({
+      changes: [{ field: "data.textModelName", nodeId: "text-refresh-target" }],
+      kind: "apply-user-field-changes",
+    });
     expect(providerRequests).toBe(0);
   } finally {
     await request.delete("/api/canvas/default");
@@ -940,6 +1025,7 @@ test("Text failure stays visible, refreshes, and retries the same task until inp
   expect(parameterSchema).toBeTruthy();
   const defaultParameters = defaultParameterValues(parameterSchema!);
   let currentTaskId = "text-ui-failure-001";
+  let bindingActive = false;
   let providerRequests = 0;
   let taskRetries = 0;
   let taskSubmissions = 0;
@@ -986,6 +1072,7 @@ test("Text failure stays visible, refreshes, and retries the same task until inp
       nodeId,
       prompt: "请生成商品描述",
       retryAllowed: state === "failed",
+      canvasProjectionState: state === "failed" ? "not-applicable" : "pending",
       state,
       updatedAt: "2026-08-03T04:00:01.000Z",
     });
@@ -1025,6 +1112,7 @@ test("Text failure stays visible, refreshes, and retries the same task until inp
       taskSubmissions += 1;
       currentTaskId = `text-ui-failure-00${taskSubmissions}`;
       taskIdentity = generationIdentityFromSubmission(route.request().postDataJSON());
+      bindingActive = true;
       await route.fulfill({
         contentType: "application/json",
         json: task(currentTaskId, "queued"),
@@ -1046,7 +1134,7 @@ test("Text failure stays visible, refreshes, and retries the same task until inp
     if (url.pathname === "/api/generation-tasks" && method === "GET") {
       await route.fulfill({
         contentType: "application/json",
-        json: { tasks: [] },
+        json: { tasks: bindingActive ? [task(currentTaskId, "failed")] : [] },
         status: 200,
       });
       return;
@@ -1056,6 +1144,52 @@ test("Text failure stays visible, refreshes, and retries the same task until inp
       json: { error: "Unexpected fake task route" },
       status: 404,
     });
+  });
+  // Model the server-owned admission binding while leaving failure details in
+  // task state. The Canvas GET deliberately contains no ephemeral error fields.
+  await page.route("**/api/canvas/default", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
+    const response = await route.fetch();
+    const document = await response.json() as {
+      nodes: Array<{ data?: Record<string, unknown>; id: string }>;
+    } & Record<string, unknown>;
+    const nodes = !bindingActive || !taskIdentity
+      ? document.nodes
+      : document.nodes.map((node) => node.id === nodeId
+        ? {
+            ...node,
+            data: {
+              ...node.data,
+              textGenerationContractFingerprint:
+                taskIdentity!.modelInputContractFingerprint,
+              textGenerationInputKey: taskIdentity!.generationInputKey,
+              textGenerationModelConfigurationRevision:
+                taskIdentity!.modelConfigurationRevision,
+              textGenerationModelReleaseRevision:
+                taskIdentity!.modelReleaseRevision,
+              textGenerationOwnershipKey: taskIdentity!.generationOwnershipKey,
+              textGenerationTaskId: currentTaskId,
+            },
+          }
+        : node);
+    await route.fulfill({ response, json: { ...document, nodes } });
+  });
+  await page.route("**/api/canvases/default/commands", async (route) => {
+    const command = route.request().postDataJSON() as {
+      changes?: Array<{ field?: string; nodeId?: string }>;
+      kind?: string;
+    };
+    const response = await route.fetch();
+    if (
+      response.ok() && command.kind === "apply-user-field-changes" &&
+      command.changes?.some((change) =>
+        change.nodeId === nodeId && change.field === "data.textPrompt"
+      )
+    ) bindingActive = false;
+    await route.fulfill({ response });
   });
 
   try {
@@ -1095,14 +1229,14 @@ test("Text failure stays visible, refreshes, and retries the same task until inp
     await expect(creator.getByRole("button", { name: "Retry generation" }))
       .toBeEnabled();
     await expect.poll(async () => {
-      const canvas = await (await request.get("/api/canvas/default")).json() as {
+      const canvas = await page.evaluate(async () => {
+        const response = await fetch("/api/canvas/default");
+        return response.json();
+      }) as {
         nodes: Array<{ data: Record<string, unknown>; id: string }>;
       };
       return canvas.nodes.find((node) => node.id === nodeId)?.data;
     }).toMatchObject({
-      textGenerating: false,
-      textGenerationError: "当前平台连接没有该模型的使用权限",
-      textGenerationErrorCode: "AUTH",
       textGenerationTaskId: "text-ui-failure-001",
     });
     expect(taskSubmissions).toBe(1);
@@ -1129,7 +1263,10 @@ test("Text failure stays visible, refreshes, and retries the same task until inp
     await expect(restoredCreator.getByRole("button", { name: "Generate" }))
       .toBeEnabled();
     await expect.poll(async () => {
-      const canvas = await (await request.get("/api/canvas/default")).json() as {
+      const canvas = await page.evaluate(async () => {
+        const response = await fetch("/api/canvas/default");
+        return response.json();
+      }) as {
         nodes: Array<{ data: Record<string, unknown>; id: string }>;
       };
       const node = canvas.nodes.find((candidate) => candidate.id === nodeId);

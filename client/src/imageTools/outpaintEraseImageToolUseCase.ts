@@ -4,6 +4,8 @@ import type {
   ImageToolCapability,
 } from "../../../types/imageTools";
 import { imageToolMaximums } from "../../../types/imageTools";
+import { imageGenerationToolOwnershipEvidence } from
+  "../../../types/generationIdentity";
 import { NODE_DEFAULT_SIZES } from "../canvas/mediaGeometry";
 import type { ProbeNodeType } from "../canvas/ProbeNode";
 import type {
@@ -40,28 +42,39 @@ export function outpaintEraseOwnershipEvidence(input: Readonly<{
   sourceAssetId: string;
   sourceNodeId: string;
 }>) {
-  return {
+  return imageGenerationToolOwnershipEvidence({
     accountId: input.accountId,
     aspectRatio: input.aspectRatio,
     canvasId: input.canvasId,
-    mask: {
-      assetId: input.maskAssetId,
-      featherPixels: input.maskFeatherPixels,
-      height: input.maskHeight,
-      version: 1,
-      width: input.maskWidth,
+    imageTool: {
+      mask: {
+        assetId: input.maskAssetId,
+        featherPixels: input.maskFeatherPixels,
+        height: input.maskHeight,
+        version: 1,
+        width: input.maskWidth,
+      },
+      operation: input.operation,
+      operationId: input.operationId,
+      ...(input.operation === "outpaint" && input.preparedAssetId
+        ? {
+            preparedInput: {
+              assetId: input.preparedAssetId,
+              height: input.maskHeight,
+              version: 1 as const,
+              width: input.maskWidth,
+            },
+          }
+        : {}),
+      ...(input.outpaint ? { outpaint: input.outpaint } : {}),
+      sourceAssetId: input.sourceAssetId,
+      sourceNodeId: input.sourceNodeId,
     },
     modelId: input.modelId,
     modelParameters: input.modelParameters,
-    operation: input.operation,
-    operationId: input.operationId,
-    outpaint: input.outpaint,
-    preparedAssetId: input.preparedAssetId,
     prompt: input.prompt,
     quality: input.quality,
-    sourceAssetId: input.sourceAssetId,
-    sourceNodeId: input.sourceNodeId,
-  } as const;
+  });
 }
 
 export type OutpaintEraseGenerationPlan = Readonly<{

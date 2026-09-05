@@ -440,8 +440,8 @@ function checkOperationalScripts(sourceFiles, manifest) {
     }
   }
 
-  if (operationalEntries.length !== 34) {
-    fail(`exactly 34 operational MJS scripts are required, found ${operationalEntries.length}`);
+  if (operationalEntries.length !== 36) {
+    fail(`exactly 36 operational MJS scripts are required, found ${operationalEntries.length}`);
   }
   return {
     behaviorCovered,

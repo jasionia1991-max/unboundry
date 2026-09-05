@@ -6,9 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
-  type Dispatch,
   type ReactNode,
-  type SetStateAction,
 } from "react";
 import type { ProbeNodeType } from "../canvas/ProbeNode";
 import type { CuttableEdge } from "../canvas/canvasTypes";
@@ -99,7 +97,6 @@ import {
   workflowRunStatusReadIsRetryable,
 } from "./workflowRuns";
 import {
-  enqueueGroupResultProjection,
   type GroupResultProjectionResult,
   waitForGroupResultProjections,
   reconcileGroupResultProjection,
@@ -276,6 +273,7 @@ const WorkflowExecutionContext = createContext<WorkflowExecutionValue>({
 });
 
 export function WorkflowExecutionProvider({
+  applyViewUpdate,
   children,
   graph,
   getEdges,
@@ -284,8 +282,10 @@ export function WorkflowExecutionProvider({
   notify,
   onActiveNodeIdsChange,
   onRetainedNodeIdsChange,
-  setNodes,
 }: {
+  applyViewUpdate: (
+    update: (nodes: ProbeNodeType[]) => ProbeNodeType[],
+  ) => boolean;
   children: ReactNode;
   graph: CanvasGraphCommandPort;
   getEdges: () => CuttableEdge[];
@@ -294,7 +294,6 @@ export function WorkflowExecutionProvider({
   notify: (message: string, kind?: "error" | "info" | "success") => void;
   onActiveNodeIdsChange: (nodeIds: ReadonlySet<string>) => void;
   onRetainedNodeIdsChange: (nodeIds: ReadonlySet<string>) => void;
-  setNodes: Dispatch<SetStateAction<ProbeNodeType[]>>;
 }) {
   const {
     accountId,
@@ -929,16 +928,18 @@ export function WorkflowExecutionProvider({
         if (isCancelled?.()) return;
         const stripped = stripStaleCanvasSaveErrors(getNodes(), groupId);
         if (!stripped.changed) return revision;
-        setNodes(stripped.nodes);
-        await flushCanvasSave();
-        if (isCancelled?.()) return;
-        return await waitForCanvasRevision(30_000);
+        if (!applyViewUpdate((nodes) =>
+          stripStaleCanvasSaveErrors(nodes, groupId).nodes
+        )) {
+          throw new Error("画布提示状态已变化，请重新执行");
+        }
+        return revision;
       } catch (error) {
         if (attempt === attempts - 1) throw error;
         await new Promise((resolve) => setTimeout(resolve, 1_000));
       }
     }
-  }, [flushCanvasSave, getNodes, setNodes, waitForCanvasRevision]);
+  }, [applyViewUpdate, flushCanvasSave, getNodes, waitForCanvasRevision]);
 
   const executeGroup = useCallback(
     async (
@@ -2039,11 +2040,6 @@ export function WorkflowExecutionProvider({
                 const result = await runGroupNodeWithPersist({
                   isCancelled: () => running.cancelled,
                   persist: () => persistGroupCanvasAfterNode({ save }),
-                  project: (projection) => {
-                    void enqueueGroupResultProjection(projection, {
-                      signal: abortController.signal,
-                    });
-                  },
                   run: () => executor.recover(
                     binding.nodeId,
                     createExecutorContext(
@@ -2449,11 +2445,6 @@ export function WorkflowExecutionProvider({
                 persist: () => persistGroupCanvasAfterNode({
                   save,
                 }),
-                project: (projection) => {
-                  void enqueueGroupResultProjection(projection, {
-                    signal: abortController.signal,
-                  });
-                },
                 run: async (admissionRemainingMs) => {
                   if (resumeInFlightNodeIds.has(nodeId)) {
                     return executor.recover(
@@ -3158,6 +3149,13 @@ export function WorkflowExecutionProvider({
           }
           legacyRecheckAttempts.current.delete(`task:${candidateKey}`);
           if (!scopeIsCurrent()) return;
+          if (task.generationIdentityVersion === 2) {
+            // Modern results and terminal cleanup are server-owned. A stale
+            // browser snapshot may still look legacy-shaped, but it must never
+            // call either browser projection or detach.
+            setLegacyGenerationState(candidate.nodeId, "PASSTHROUGH");
+            continue;
+          }
           let decision;
           try {
             decision = classifyLegacyTerminalGenerationTask({ candidate, task });
@@ -3217,6 +3215,19 @@ export function WorkflowExecutionProvider({
                 if (!legacyTerminalGenerationCandidateStillMatches(freshNode, candidate)) {
                   return "conflict" as const;
                 }
+                let freshTask;
+                try {
+                  freshTask = await getGenerationTask(
+                    candidate.taskId,
+                    controller.signal,
+                    scope.fixtureScopeId,
+                  );
+                } catch {
+                  return "unknown" as const;
+                }
+                if (freshTask.generationIdentityVersion === 2) {
+                  return "modern" as const;
+                }
                 if (
                   decision.state === "RESTORED" &&
                   semanticMatches.get(candidate.nodeId) === true
@@ -3265,6 +3276,8 @@ export function WorkflowExecutionProvider({
             } else if (result === "deferred") {
               setLegacyGenerationState(candidate.nodeId, "DETECTING");
               requestRecheck(1_000);
+            } else if (result === "modern") {
+              setLegacyGenerationState(candidate.nodeId, "PASSTHROUGH");
             } else if (result === "unknown" || result === "conflict") {
               setLegacyGenerationState(candidate.nodeId, "UNKNOWN_BLOCKED");
               if (result === "unknown") {

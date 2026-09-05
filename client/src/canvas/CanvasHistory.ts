@@ -1,7 +1,9 @@
 import { createContext, useContext } from "react";
 
-export const CanvasCheckpointContext = createContext<(history?: boolean) => void>(
-  () => {},
+export const CanvasCheckpointContext = createContext<
+  (history?: boolean) => () => void
+>(
+  () => () => {},
 );
 
 export function useCanvasCheckpoint() {
@@ -16,6 +18,6 @@ export function useCanvasCheckpoint() {
 export function closestEditableControl(target: EventTarget | null) {
   if (!(target instanceof Element)) return null;
   return target.closest(
-    'input, textarea, select, [contenteditable]:not([contenteditable="false"])',
+    'input:not([type="file"]), textarea, select, [contenteditable]:not([contenteditable="false"])',
   );
 }

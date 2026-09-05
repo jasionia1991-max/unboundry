@@ -204,7 +204,23 @@ function createKeys() {
   return { recovery, signing };
 }
 
+function rollbackMigration43To42(database: DatabaseSync) {
+  if (Number((database.prepare("PRAGMA user_version").get() as {
+    user_version: number;
+  }).user_version) !== 43) return;
+  database.exec(`
+    BEGIN IMMEDIATE;
+    DROP TABLE media_image_metadata;
+    DROP TABLE generation_canvas_projection_states;
+    DROP TABLE canvas_operation_receipts;
+    DELETE FROM schema_migrations WHERE version = 43;
+    PRAGMA user_version = 42;
+    COMMIT;
+  `);
+}
+
 function rollbackMigration39To38(database: DatabaseSync) {
+  rollbackMigration43To42(database);
   if (Number((database.prepare("PRAGMA user_version").get() as {
     user_version: number;
   }).user_version) === 42) {
@@ -2168,6 +2184,7 @@ test("locked schema42 backup verifies and restores into a fresh private director
   try {
     await verifyLockedSchema42HistoricalProviderEvidence();
     fixture = await createBackupFixture(root);
+    rollbackMigration43To42(fixture.database);
     const generationFrozenAt = "2026-01-01T00:02:00.000Z";
     fixture.database.prepare(`
       UPDATE generation_tasks
@@ -2362,6 +2379,7 @@ test("locked schema42 backup verifies and restores into a fresh private director
     const backupResult = await execute(process.execPath, [
       "scripts/backup-data.mjs",
       "--source-frozen",
+      "--historical-recovery",
       "--data-dir",
       fixture.dataDirectory,
       "--backup-root",
@@ -2409,7 +2427,7 @@ test("locked schema42 backup verifies and restores into a fresh private director
     expect(backup).toMatchObject({
       captureMode: "locked-exact",
       databaseLogicalSha256: sourceInspection.logicalSha256,
-      finalCandidate: true,
+      finalCandidate: false,
       mediaFiles: 2,
       ossMirrors: 1,
       schemaVersion: 42,
@@ -2433,7 +2451,7 @@ test("locked schema42 backup verifies and restores into a fresh private director
     expect(verified).toMatchObject({
       captureMode: "locked-exact",
       databaseLogicalSha256: sourceInspection.logicalSha256,
-      finalCandidate: true,
+      finalCandidate: false,
       schemaVersion: 42,
     });
     expect(verified.mediaIntegrity).toEqual(backup.mediaIntegrity);
@@ -2456,7 +2474,7 @@ test("locked schema42 backup verifies and restores into a fresh private director
     expect(restored).toMatchObject({
       captureMode: "locked-exact",
       databaseLogicalSha256: sourceInspection.logicalSha256,
-      finalCandidate: true,
+      finalCandidate: false,
       schemaVersion: 42,
     });
     expect(restored.mediaIntegrity).toEqual(backup.mediaIntegrity);
@@ -2523,6 +2541,7 @@ async function verifyLockedSchema42HistoricalProviderEvidence() {
   let fixture: Fixture | undefined;
   try {
     fixture = await createBackupFixture(root);
+    rollbackMigration43To42(fixture.database);
     const providerAttemptAt = "2026-01-01T00:00:00.000Z";
     const generationFrozenAt = "2026-01-01T00:02:00.000Z";
     fixture.database.prepare(`
@@ -2678,12 +2697,13 @@ async function verifyLockedSchema42HistoricalProviderEvidence() {
     };
     const backup = await createEncryptedBackup({
       ...backupOptions(fixture),
+      capturePurpose: "historical-recovery",
       frozenSourceContract: contract(),
       mediaWarningAllowlist: ["MEDIA_INTEGRITY_LOCAL_FILE_ORPHAN"],
     });
     expect(backup).toMatchObject({
       captureMode: "locked-exact",
-      finalCandidate: true,
+      finalCandidate: false,
       schemaVersion: 42,
     });
     const restoredDirectory = join(root, "historical-evidence-restore");
@@ -2743,6 +2763,7 @@ async function verifyLockedSchema42HistoricalProviderEvidence() {
     await expectPackageError(
       createEncryptedBackup({
         ...backupOptions(fixture),
+        capturePurpose: "historical-recovery",
         frozenSourceContract: contract(),
         mediaWarningAllowlist: ["MEDIA_INTEGRITY_LOCAL_FILE_ORPHAN"],
       }),
@@ -2756,6 +2777,7 @@ async function verifyLockedSchema42HistoricalProviderEvidence() {
     await expectPackageError(
       createEncryptedBackup({
         ...backupOptions(fixture),
+        capturePurpose: "historical-recovery",
         frozenSourceContract: contract(),
         mediaWarningAllowlist: ["MEDIA_INTEGRITY_LOCAL_FILE_ORPHAN"],
       }),
@@ -2779,6 +2801,7 @@ async function verifyLockedSchema42HistoricalProviderEvidence() {
     await expectPackageError(
       createEncryptedBackup({
         ...backupOptions(fixture),
+        capturePurpose: "historical-recovery",
         frozenSourceContract: contract(),
         mediaWarningAllowlist: ["MEDIA_INTEGRITY_LOCAL_FILE_ORPHAN"],
       }),
@@ -3805,15 +3828,20 @@ test("historical exact-v37 recovery chain rehydrates fake OSS offline and valida
   expect(finalCandidateSource).not.toContain(
     "UNBOUNDRY_TEST_FINAL_INVENTORY_SWAP_RELEASE",
   );
-  const [migrationCliSource, migrationSource] = await Promise.all([
-    readFile(
-      join(process.cwd(), "scripts", "migrate-schema37-to39.mjs"),
-      "utf8",
-    ),
-    readFile(join(process.cwd(), "server", "schemaMigration.ts"), "utf8"),
-  ]);
+  const migrationSources = await Promise.all([
+    "scripts/migrate-schema37-to39.mjs",
+    "scripts/migrate-schema39-to40.mjs",
+    "scripts/migrate-schema40-to41.mjs",
+    "scripts/migrate-schema41-to42.mjs",
+    "scripts/migrate-schema42-to43.mjs",
+    "server/schemaMigration.ts",
+    "server/schema39To40Migration.ts",
+    "server/schema40To41Migration.ts",
+    "server/schema41To42Migration.ts",
+    "server/schema42To43Migration.ts",
+  ].map((path) => readFile(join(process.cwd(), path), "utf8")));
   const migrationCodes = [...new Set(
-    [...`${migrationCliSource}\n${migrationSource}`.matchAll(
+    [...migrationSources.join("\n").matchAll(
       /["'](SCHEMA_MIGRATION_[A-Z0-9_]+)["']/g,
     )].map((match) => match[1]),
   )].sort();
@@ -3895,9 +3923,11 @@ test("historical exact-v37 recovery chain rehydrates fake OSS offline and valida
   )).toEqual({ code: "BACKUP_SOURCE_CHANGED" });
   expect(finalCandidateSource).toContain("NODE_NO_WARNINGS: \"1\"");
   expect(finalCandidateSource).toContain(
-    "Release-bound migration ${mode} child process",
+    "Release-bound ${scriptName} ${mode} child process",
   );
-  expect(finalCandidateSource).toContain("childStage: `migration-${mode}`");
+  expect(finalCandidateSource).toContain(
+    "childStage: `migration-${scriptName}-${mode}`",
+  );
   const checkoutBuildArtifactBefore = await productionBuildArtifactSummary(
     checkoutBuildRoot,
   );
@@ -3994,6 +4024,19 @@ test("historical exact-v37 recovery chain rehydrates fake OSS offline and valida
         targetLogicalSha256: string;
         targetVersion: number;
       };
+      migrationFinalApplied: {
+        sourceLogicalSha256: string;
+        sourceVersion: number;
+        targetLogicalSha256: string;
+        targetVersion: number;
+      };
+      migrationStages: Array<{
+        scriptName: string;
+        sourceLogicalSha256: string;
+        sourceVersion: number;
+        targetLogicalSha256: string;
+        targetVersion: number;
+      }>;
       migrationNativeAudit: {
         argumentContractSha256: string;
         externalNetworkAttempts: number;
@@ -4075,7 +4118,7 @@ test("historical exact-v37 recovery chain rehydrates fake OSS offline and valida
           servedStaticAssetSha256: string;
           version: string;
         };
-        bridgeSchema39: {
+        bridgeSchema43: {
           externalNetworkAttempts: number;
           readiness: {
             mode: string;
@@ -4132,7 +4175,11 @@ test("historical exact-v37 recovery chain rehydrates fake OSS offline and valida
         backfilledDurations: 1,
         drainMilliseconds: 0,
         sourceVersion: 37,
-        targetVersion: 42,
+        targetVersion: 39,
+      },
+      migrationFinalApplied: {
+        sourceVersion: 42,
+        targetVersion: 43,
       },
       migrationNativeAudit: {
         externalNetworkAttempts: 0,
@@ -4163,12 +4210,12 @@ test("historical exact-v37 recovery chain rehydrates fake OSS offline and valida
           releaseId: "v0.5.2",
           version: "0.5.2",
         },
-        bridgeSchema39: {
+        bridgeSchema43: {
           externalNetworkAttempts: 0,
           readiness: {
             mode: "active",
             mutationsAccepted: true,
-            schemaVersion: 42,
+            schemaVersion: 43,
             status: "ready",
           },
           releaseId: "v0.5.2",
@@ -4216,7 +4263,43 @@ test("historical exact-v37 recovery chain rehydrates fake OSS offline and valida
     expect(summary.startupValidation.guardLoads).toBeGreaterThanOrEqual(1);
     expect(summary.startupValidation.localMediaBytesRead).toBeGreaterThan(0);
     expect(summary.migrationInspection.logicalSha256)
-      .toBe(summary.migrationApplied.targetLogicalSha256);
+      .toBe(summary.migrationFinalApplied.targetLogicalSha256);
+    expect(summary.migrationStages.map((stage) => ({
+      scriptName: stage.scriptName,
+      sourceVersion: stage.sourceVersion,
+      targetVersion: stage.targetVersion,
+    }))).toEqual([
+      {
+        scriptName: "migrate-schema37-to39.mjs",
+        sourceVersion: 37,
+        targetVersion: 39,
+      },
+      {
+        scriptName: "migrate-schema39-to40.mjs",
+        sourceVersion: 39,
+        targetVersion: 40,
+      },
+      {
+        scriptName: "migrate-schema40-to41.mjs",
+        sourceVersion: 40,
+        targetVersion: 41,
+      },
+      {
+        scriptName: "migrate-schema41-to42.mjs",
+        sourceVersion: 41,
+        targetVersion: 42,
+      },
+      {
+        scriptName: "migrate-schema42-to43.mjs",
+        sourceVersion: 42,
+        targetVersion: 43,
+      },
+    ]);
+    for (let index = 1; index < summary.migrationStages.length; index += 1) {
+      expect(summary.migrationStages[index]!.sourceLogicalSha256).toBe(
+        summary.migrationStages[index - 1]!.targetLogicalSha256,
+      );
+    }
     expect(summary.migrationApplied.nativeDurationProbeAuditSha256)
       .toBe(summary.migrationNativeAudit.sha256);
     const expectedNativeDurationProbes =
@@ -4238,7 +4321,7 @@ test("historical exact-v37 recovery chain rehydrates fake OSS offline and valida
     expect(summary.releaseEvidence.bridge.sourceTree)
       .not.toBe(summary.releaseEvidence.final.sourceTree);
     expect(summary.startupValidation.targetLogicalSha256)
-      .toBe(summary.migrationApplied.targetLogicalSha256);
+      .toBe(summary.migrationFinalApplied.targetLogicalSha256);
     expect(summary.startupValidation.postBridge37LogicalSha256)
       .toBe(summary.migrationApplied.expectedSourceLogicalSha256);
     expect(
@@ -4279,10 +4362,10 @@ test("historical exact-v37 recovery chain rehydrates fake OSS offline and valida
     ).toMatch(/^[a-f0-9]{64}$/);
     expect(summary.startupValidation.bridgeSchema37.servedStaticAssetSha256)
       .toMatch(/^[a-f0-9]{64}$/);
-    expect(summary.startupValidation.bridgeSchema39.servedStaticAssetSha256)
+    expect(summary.startupValidation.bridgeSchema43.servedStaticAssetSha256)
       .toMatch(/^[a-f0-9]{64}$/);
     expect(summary.startupValidation.bridgeSchema37.servedStaticAssetSha256)
-      .not.toBe(summary.startupValidation.bridgeSchema39.servedStaticAssetSha256);
+      .not.toBe(summary.startupValidation.bridgeSchema43.servedStaticAssetSha256);
     expect(summary.fakeOssRecovery.objects).toHaveLength(1);
     expect(summary.fakeOssRecovery.objects[0]).toMatchObject({
       objectKey: fixture.objectKey,
@@ -5481,7 +5564,7 @@ test("logical fingerprints cover every table and sqlite_sequence independent of 
     const before = inspectBackupDatabase(original, inspectionRoot);
     const afterVacuum = inspectBackupDatabase(reorganized, inspectionRoot);
     expect(afterVacuum.logicalSha256).toBe(before.logicalSha256);
-    expect(before.tables).toHaveLength(35);
+    expect(before.tables).toHaveLength(38);
     expect(before.tables.map(({ name }) => name)).toEqual([
       "account_delete_intents",
       "account_permissions",
@@ -5490,7 +5573,9 @@ test("logical fingerprints cover every table and sqlite_sequence independent of 
       "admin_audit_events",
       "asset_history",
       "canvas_documents",
+      "canvas_operation_receipts",
       "generation_admission_events",
+      "generation_canvas_projection_states",
       "generation_provider_attempts",
       "generation_safety_settings",
       "generation_task_events",
@@ -5498,6 +5583,7 @@ test("logical fingerprints cover every table and sqlite_sequence independent of 
       "media_assets",
       "media_capacity_reservations",
       "media_delete_intents",
+      "media_image_metadata",
       "media_publication_attempts",
       "model_profiles",
       "node_model_bindings",

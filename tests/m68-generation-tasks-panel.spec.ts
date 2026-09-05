@@ -236,6 +236,7 @@ test("generation task panel hides manual reconcile and preserves one accepted re
   const targetCanvasId = "default";
   await request.delete(`/api/canvas/${targetCanvasId}`);
   const seededCanvas = await request.put(`/api/canvas/${targetCanvasId}`, {
+    headers: { "X-Unboundry-Safe-Fixture-Seed": targetCanvasId },
     data: {
       edges: [],
       nodes: [{

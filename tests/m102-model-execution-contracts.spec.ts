@@ -2168,7 +2168,7 @@ test("INC-GEN-018 CLI requires dual hashes and an exact recovery attestation", (
         createHash("sha256").update(databaseBytes).digest("hex"),
       databaseSizeBytes: statSync(databasePath).size,
       purpose,
-      schemaVersion: 42,
+      schemaVersion: 43,
       snapshotId: "inc-gen-018-cli-fixture",
     };
     if (existsSync(markerPath)) chmodSync(markerPath, 0o600);
@@ -2229,7 +2229,7 @@ test("contract planner selects Seed, TTS and the v0.7.1 TT Image async transitio
       missingExpectedModelIds: [],
       paidProviderRequests: 0,
       publishedModelCount: 10,
-      schemaVersion: 42,
+      schemaVersion: 43,
       unexpectedPublishedModelIds: [],
     });
     expect(plan.models.map((model) => model.modelId)).toEqual(

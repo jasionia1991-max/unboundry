@@ -11,6 +11,8 @@ import {
 } from "../types/nodeInputs";
 import { normalizePersistedMediaNodes } from "../types/persistedMediaSources";
 import { readableMediaForOwner } from "./mediaRegistry";
+import { readReadyMediaAssetCommand } from "./mediaTransactionCommands";
+import { executeTransactionScopedCommand } from "./transactionCommand";
 
 type CanvasRow = { edges: string; graph_revision: number; nodes: string };
 type PersistedNode = {
@@ -35,6 +37,7 @@ const persistedTrustedMediaKeys = [
 export function authoritativeMediaNodes(
   nodes: readonly PersistedNode[],
   ownerId: string,
+  database?: DatabaseSync,
 ): PersistedNode[] {
   return nodes.map((node) => {
     if (!mediaNodeKinds.has(node.type as "audio" | "image" | "video")) {
@@ -52,8 +55,14 @@ export function authoritativeMediaNodes(
 
     const assetId = typeof data.assetId === "string" ? data.assetId.trim() : "";
     if (!assetId) return { ...node, data };
-    const media = readableMediaForOwner(ownerId, kind, assetId);
-    if (!media || media.storageStatus !== "ready") {
+    const media = database?.isTransaction
+      ? executeTransactionScopedCommand(database, readReadyMediaAssetCommand, {
+          assetId,
+          kind,
+          ownerId,
+        })
+      : readableMediaForOwner(ownerId, kind, assetId);
+    if (!media || ("storageStatus" in media && media.storageStatus !== "ready")) {
       return {
         ...node,
         data: {
@@ -116,6 +125,7 @@ export function readPersistedCanvasGraph(input: {
       nodes: authoritativeMediaNodes(
         normalizePersistedMediaNodes(JSON.parse(row.nodes) as PersistedNode[]),
         input.ownerId,
+        database,
       ),
     });
   } finally {
@@ -216,6 +226,7 @@ export function resolvePersistedNodeInputs(input: {
     const nodes = authoritativeMediaNodes(
       normalizePersistedMediaNodes(JSON.parse(row.nodes) as PersistedNode[]),
       input.ownerId,
+      database,
     );
     const edges = JSON.parse(row.edges) as Array<{
       data?: Record<string, unknown>;

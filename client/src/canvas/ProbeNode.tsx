@@ -6,7 +6,6 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import { memo } from "react";
-import { useCanvasCheckpoint } from "./CanvasHistory";
 import { useSingleNodeChrome } from "./CanvasSelectionContext";
 import type { ModelParameterValue } from "../../../types/modelParameters";
 import type { NodeInputState } from "../../../types/nodeInputs";
@@ -144,6 +143,9 @@ export type ProbeNodeType = Node<
     imageSeedanceValidation?: SeedanceAssetValidation;
     inputState?: NodeInputState;
     inputStateReason?: string;
+    /** Local-only upload/request overlay; never serialized into Canvas. */
+    inputViewState?: NodeInputState;
+    inputViewStateReason?: string;
     label: string;
     mediaByteSize?: number;
     mediaContentType?: string;
@@ -220,14 +222,12 @@ function ProbeNodeImpl({
 }: NodeProps<ProbeNodeType>) {
   const singleNodeChrome = useSingleNodeChrome(selected, dragging);
   const group = data.variant === "group";
-  const checkpoint = useCanvasCheckpoint();
 
   return (
     <>
       <NodeResizer
         color="transparent"
         isVisible={singleNodeChrome}
-        onResizeStart={() => checkpoint()}
       />
       {!group && (
         <Handle id="target" position={Position.Left} type="target">

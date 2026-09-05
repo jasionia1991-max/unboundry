@@ -131,10 +131,7 @@ test("MP4 playback, range delivery, download and metadata survive a reload", asy
         mediaMetadataStatus: string;
         mediaStorageBackend: string;
         mediaWidth: number;
-        videoDuration: number;
-        videoHeight: number;
         videoSrc: string;
-        videoWidth: number;
       };
     }>;
   };
@@ -149,12 +146,9 @@ test("MP4 playback, range delivery, download and metadata survive a reload", asy
     mediaMetadataStatus: "ready",
     mediaStorageBackend: "local",
     mediaWidth: 320,
-    videoHeight: 180,
-    videoWidth: 320,
   });
   expect(videoNode.data.mediaByteSize).toBeGreaterThan(0);
   expect(videoNode.data.mediaDurationSeconds).toBeCloseTo(1, 1);
-  expect(videoNode.data.videoDuration).toBeCloseTo(1, 1);
 
   const metadata = await request.get(
     `/api/media-metadata/video/${videoNode.data.assetId}`,
@@ -286,33 +280,43 @@ test("MP4 playback, range delivery, download and metadata survive a reload", asy
     },
   });
   expect(savedLegacy.ok(), await savedLegacy.text()).toBeTruthy();
+  const savedLegacyDocument = await (
+    await request.get(`/api/canvas/${projectId}`)
+  ).json() as { revision: number };
 
-  const refreshedMetadata = page.waitForResponse((response) =>
-    response.request().method() === "GET" &&
-    response.url().includes(`/api/media-metadata/video/${videoNode.data.assetId}`)
-  );
-  await page.goto(`/canvas/${projectId}`);
-  expect((await refreshedMetadata).ok()).toBeTruthy();
-  await expect(world).toHaveAttribute("data-persistence-ready", "true");
-  await expect.poll(async () => {
-    const refreshed = await (
-      await request.get(`/api/canvas/${projectId}`)
-    ).json() as {
-      nodes: Array<{ data: Record<string, unknown> }>;
-    };
-    const data = refreshed.nodes.find((node) =>
-      node.data.assetId === videoNode.data.assetId
-    )?.data;
-    return data && {
-      ...data,
-      inputStateReason: data.inputStateReason ?? null,
-    };
-  }).toMatchObject({
-    inputState: "ready",
-    inputStateReason: null,
-    mediaHeight: 180,
-    mediaMetadataSource: "server",
-    mediaWidth: 320,
+  let canvasWrites = 0;
+  let metadataRequests = 0;
+  page.on("request", (entry) => {
+    const pathname = new URL(entry.url()).pathname;
+    if (
+      (entry.method() === "PUT" && pathname === `/api/canvas/${projectId}`) ||
+      (entry.method() === "POST" &&
+        pathname === `/api/canvases/${projectId}/commands`)
+    ) canvasWrites += 1;
+    if (
+      entry.method() === "GET" &&
+      pathname === `/api/media-metadata/video/${videoNode.data.assetId}`
+    ) metadataRequests += 1;
   });
+  await page.goto(`/canvas/${projectId}`);
+  await expect(world).toHaveAttribute("data-persistence-ready", "true");
+  await page.waitForTimeout(750);
+  expect(metadataRequests).toBe(0);
+  const afterHydration = await (
+    await request.get(`/api/canvas/${projectId}`)
+  ).json() as {
+    nodes: Array<{ data: Record<string, unknown> }>;
+    revision: number;
+  };
+  expect(afterHydration.revision).toBe(savedLegacyDocument.revision);
+  expect(afterHydration.nodes.find((node) =>
+    node.data.assetId === videoNode.data.assetId
+  )?.data).toMatchObject({
+    inputState: "ready",
+    mediaHeight: videoNode.data.mediaHeight,
+    mediaMetadataSource: "server",
+    mediaWidth: videoNode.data.mediaWidth,
+  });
+  expect(canvasWrites).toBe(0);
   await expect(preview).toHaveAttribute("src", videoNode.data.videoSrc);
 });

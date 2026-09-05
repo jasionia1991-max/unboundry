@@ -4,6 +4,8 @@ import type {
   ImageToolCapability,
 } from "../../../types/imageTools";
 import { NODE_DEFAULT_SIZES } from "../canvas/mediaGeometry";
+import { imageGenerationToolOwnershipEvidence } from
+  "../../../types/generationIdentity";
 import type { ProbeNodeType } from "../canvas/ProbeNode";
 import type {
   CanvasGraphCommand,
@@ -62,20 +64,22 @@ export type MultiAngleOwnershipEvidenceInput = Readonly<{
 export function multiAngleOwnershipEvidence(
   input: MultiAngleOwnershipEvidenceInput,
 ) {
-  return {
+  return imageGenerationToolOwnershipEvidence({
     accountId: input.accountId,
     aspectRatio: input.aspectRatio,
     canvasId: input.canvasId,
+    imageTool: {
+      operation: "multi-angle",
+      operationId: input.operationId,
+      sourceAssetId: input.sourceAssetId,
+      sourceNodeId: input.sourceNodeId,
+    },
     modelId: input.modelId,
     modelParameters: input.modelParameters,
-    operation: "multi-angle",
-    operationId: input.operationId,
-    parameters: input.parameters,
+    multiAngleParameters: input.parameters,
     prompt: input.prompt,
     quality: input.quality,
-    sourceAssetId: input.sourceAssetId,
-    sourceNodeId: input.sourceNodeId,
-  } as const;
+  });
 }
 
 function assertParameters(parameters: ImageMultiAngleParameters) {

@@ -15,6 +15,12 @@ import {
   upsertMediaHistoryCommand,
 } from "./canvasTransactionCommands";
 import { executeTransactionScopedCommand } from "./transactionCommand";
+import { projectSingleNodeGenerationResultInTransaction } from
+  "./generationCanvasProjectionService";
+import {
+  discardDeferredCanvasObservability,
+  flushDeferredCanvasObservability,
+} from "./canvasObservability";
 
 const identifierPattern = /^[a-z0-9._-]+$/i;
 
@@ -48,9 +54,11 @@ function transaction<T>(database: DatabaseSync, operation: () => T) {
   try {
     const result = operation();
     database.exec("COMMIT");
+    flushDeferredCanvasObservability(database);
     return result;
   } catch (error) {
     if (database.isTransaction) database.exec("ROLLBACK");
+    discardDeferredCanvasObservability(database);
     throw error;
   }
 }
@@ -241,8 +249,13 @@ export function commitGenerationMediaResult(
         if (!replay || replay.taskId !== taskId) {
           throw new Error("Generation publication replay does not match task");
         }
+        const projectionState = projectSingleNodeGenerationResultInTransaction(
+          database,
+          taskId,
+        );
         return {
           assetId: publicationToken.id,
+          projectionState,
           state: "success" as const,
           taskId,
         };
@@ -346,9 +359,14 @@ export function commitGenerationMediaResult(
           task_id, state, error_code, error_message, created_at
         ) VALUES (?, 'success', NULL, NULL, ?)
       `).run(taskId, timestamp);
+      const projectionState = projectSingleNodeGenerationResultInTransaction(
+        database,
+        taskId,
+      );
       runMediaPublicationFinalizeFaultForTests();
       return {
         assetId: evidence.assetId,
+        projectionState,
         state: "success" as const,
         taskId,
       };
@@ -594,8 +612,13 @@ export function commitGenerationMediaOutputSet(input: Readonly<{
         ) {
           throw new Error("Generation output set replay does not match task");
         }
+        const projectionState = projectSingleNodeGenerationResultInTransaction(
+          database,
+          input.taskId,
+        );
         return {
           assetId: input.assetIds[0],
+          projectionState,
           state: "success" as const,
           taskId: input.taskId,
         };
@@ -666,8 +689,17 @@ export function commitGenerationMediaOutputSet(input: Readonly<{
           preview: preview(publication.asset_id),
         });
       }
+      const projectionState = projectSingleNodeGenerationResultInTransaction(
+        database,
+        input.taskId,
+      );
       runMediaPublicationFinalizeFaultForTests();
-      return { assetId: primary.asset_id, state: "success" as const, taskId: input.taskId };
+      return {
+        assetId: primary.asset_id,
+        projectionState,
+        state: "success" as const,
+        taskId: input.taskId,
+      };
     });
   } finally {
     database.close();
@@ -757,7 +789,15 @@ export function commitGenerationTextResult(input: Readonly<{
           task_id, state, error_code, error_message, created_at
         ) VALUES (?, 'success', NULL, NULL, ?)
       `).run(input.taskId, timestamp);
-      return { state: "success" as const, taskId: input.taskId };
+      const projectionState = projectSingleNodeGenerationResultInTransaction(
+        database,
+        input.taskId,
+      );
+      return {
+        projectionState,
+        state: "success" as const,
+        taskId: input.taskId,
+      };
     });
   } finally {
     database.close();

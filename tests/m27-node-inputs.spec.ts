@@ -18,7 +18,20 @@ import {
   defaultParameterSchema,
   knownModelParameterSchema,
 } from "../types/modelParameters";
-import { canvasDocumentFingerprint } from "../client/src/canvas/canvasDocumentFingerprint";
+import {
+  canvasDocumentFingerprint,
+  canvasInputGraphFingerprint,
+} from "../client/src/canvas/canvasDocumentFingerprint";
+import {
+  canvasRevisionTransition,
+  canvasNodeDataFieldDescriptor,
+  durableDocumentEquals,
+  sha256Hex,
+} from "../types/canvasFingerprint";
+import {
+  canvasCommandPayloadSha256,
+  parseCanvasUserCommand,
+} from "../types/canvasCommands";
 import { openAppDatabase } from "../server/database";
 import { persistedNodeOwnPrompt } from "../server/inputPreflight";
 import { bootstrapPublishedModelContracts } from
@@ -240,6 +253,74 @@ async function ensureGarmentAsset(request: APIRequestContext) {
   expect(uploaded.status(), uploadedText).toBe(201);
 }
 
+async function seedTextImageInputCanvas(
+  request: APIRequestContext,
+  canvasId = "node.image.text-image-input",
+) {
+  await request.delete(`/api/canvas/${canvasId}`);
+  const saved = await request.put(`/api/canvas/${canvasId}`, {
+    data: {
+      edges: [{
+        data: { inputOrder: 1, inputRole: "instruction" },
+        id: "edge-master-text-target-image",
+        source: "input-master-text",
+        sourceHandle: "source",
+        target: "input-target-image",
+        targetHandle: "target",
+        type: "cuttable",
+      }, {
+        data: { inputOrder: 2, inputRole: "reference-image" },
+        id: "edge-garment-target-image",
+        source: "input-garment-image",
+        sourceHandle: "source",
+        target: "input-target-image",
+        targetHandle: "target",
+        type: "cuttable",
+      }],
+      nodes: [{
+        data: {
+          content: "电商白底产品图，保留服装材质和版型，干净柔和棚拍光线。",
+          label: "Text",
+          title: "白底图提示词母版",
+        },
+        id: "input-master-text",
+        position: { x: 80, y: 130 },
+        style: { height: 250, width: 250 },
+        type: "text",
+      }, {
+        data: {
+          assetId: garmentAssetId,
+          imageSrc: `/api/assets/${garmentAssetId}`,
+          label: "Image",
+          sourceKind: "image",
+          title: "服装照片",
+        },
+        id: "input-garment-image",
+        position: { x: 80, y: 470 },
+        style: { height: 300, width: 225 },
+        type: "image",
+      }, {
+        data: {
+          imageParameters: { inputMode: "image" },
+          imagePrompt: "",
+          imagePromptReady: true,
+          label: "Image",
+          sourceKind: "image",
+          title: "商品白底图",
+        },
+        id: "input-target-image",
+        position: { x: 560, y: 280 },
+        selected: true,
+        style: { height: 300, width: 300 },
+        type: "image",
+      }],
+      revision: 0,
+      viewport: { x: 0, y: 0, zoom: 1 },
+    },
+  });
+  expect(saved.ok()).toBeTruthy();
+}
+
 test.afterAll(async ({ request }) => {
   // Keep this shared fixed-ID fixture inside the disposable safe-test root.
   // Playwright runs afterAll before restarting a failed worker, while deleted
@@ -305,6 +386,307 @@ test("canvas fingerprint covers durable graph state but ignores interaction chro
     ...base,
     viewport: { x: 20, y: 0, zoom: 1 },
   })).not.toBe(fingerprint);
+});
+
+test("canvas fingerprints use stable SHA-256 and separate document from input", () => {
+  expect(sha256Hex("abc")).toBe(
+    "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+  );
+  const base = {
+    edges: [{ id: "edge-a-b", source: "a", target: "b" }],
+    nodes: [{
+      id: "node-a-1234",
+      type: "image",
+      position: { x: 10, y: 20 },
+      style: { width: 320, height: 240 },
+      data: { imagePrompt: "coat", imageSrc: "/api/assets/server-result" },
+    }],
+    viewport: { x: 0, y: 0, zoom: 1 },
+  };
+  const document = canvasDocumentFingerprint(base);
+  const input = canvasInputGraphFingerprint(base);
+  expect(document).toMatch(/^[0-9a-f]{64}$/);
+  expect(input).toMatch(/^[0-9a-f]{64}$/);
+  expect(document).not.toBe(input);
+  expect(canvasDocumentFingerprint({
+    ...base,
+    nodes: [{ ...base.nodes[0], data: { ...base.nodes[0].data, imageSrc: "/api/assets/new" } }],
+  })).not.toBe(document);
+  expect(canvasInputGraphFingerprint({
+    ...base,
+    nodes: [{ ...base.nodes[0], data: { ...base.nodes[0].data, imageSrc: "/api/assets/new" } }],
+  })).toBe(input);
+  expect(canvasDocumentFingerprint({
+    ...base,
+    nodes: [{ ...base.nodes[0], style: { width: 640, height: 480 } }],
+  })).not.toBe(document);
+  expect(canvasInputGraphFingerprint({
+    ...base,
+    nodes: [{ ...base.nodes[0], style: { width: 640, height: 480 } }],
+  })).toBe(input);
+  expect(canvasInputGraphFingerprint({
+    ...base,
+    nodes: [{ ...base.nodes[0], data: { ...base.nodes[0].data, imagePrompt: "dress" } }],
+  })).not.toBe(input);
+
+  const localUpload = {
+    ...base,
+    nodes: [{
+      ...base.nodes[0],
+      data: {
+        ...base.nodes[0].data,
+        assetId: "uploaded-asset",
+        inputState: "ready",
+      },
+    }],
+  };
+  expect(canvasDocumentFingerprint(localUpload)).not.toBe(document);
+  expect(canvasInputGraphFingerprint(localUpload)).not.toBe(input);
+  expect(canvasDocumentFingerprint({
+    ...localUpload,
+    nodes: [{
+      ...localUpload.nodes[0],
+      data: {
+        ...localUpload.nodes[0].data,
+        inputViewState: "loading",
+        inputViewStateReason: "uploading",
+      },
+    }],
+  })).toBe(canvasDocumentFingerprint(localUpload));
+  expect(canvasInputGraphFingerprint({
+    ...localUpload,
+    nodes: [{
+      ...localUpload.nodes[0],
+      data: {
+        ...localUpload.nodes[0].data,
+        inputViewState: "loading",
+        inputViewStateReason: "uploading",
+      },
+    }],
+  })).toBe(canvasInputGraphFingerprint(localUpload));
+
+  const textBeforeProjection = {
+    edges: [],
+    nodes: [{
+      data: { textModelId: "model-text", textPrompt: "write a caption" },
+      id: "text-server-result",
+      type: "text",
+    }],
+    viewport: { x: 0, y: 0, zoom: 1 },
+  };
+  const textInput = canvasInputGraphFingerprint(textBeforeProjection);
+  const textProjected = {
+    ...textBeforeProjection,
+    nodes: [{
+      ...textBeforeProjection.nodes[0],
+      data: {
+        ...textBeforeProjection.nodes[0].data,
+        content: "server result",
+        contentHtml: "<p>server result</p>",
+        groupRunSuccessTaskId: "task-server-result",
+      },
+    }],
+  };
+  expect(canvasDocumentFingerprint(textProjected)).not.toBe(
+    canvasDocumentFingerprint(textBeforeProjection),
+  );
+  expect(canvasInputGraphFingerprint(textProjected)).toBe(textInput);
+  expect(canvasInputGraphFingerprint({
+    ...textProjected,
+    nodes: [{
+      ...textProjected.nodes[0],
+      data: {
+        ...textProjected.nodes[0].data,
+        groupRunSuccessTaskId: undefined,
+        legacyTerminalDetachApplicationId: "legacy-terminal-detach:proof",
+      },
+    }],
+  })).toBe(textInput);
+
+  const generatedMedia = {
+    ...base,
+    nodes: [{
+      ...base.nodes[0],
+      data: {
+        ...base.nodes[0].data,
+        assetId: "server-result",
+        groupRunSuccessTaskId: "task-server-result",
+        inputState: "ready",
+      },
+    }],
+  };
+  const generatedMediaInput = canvasInputGraphFingerprint(generatedMedia);
+  expect(canvasInputGraphFingerprint({
+    ...generatedMedia,
+    nodes: [{
+      ...generatedMedia.nodes[0],
+      data: {
+        ...generatedMedia.nodes[0].data,
+        assetId: "server-result-replaced",
+        inputState: "invalid",
+        inputStateReason: "server projection changed",
+      },
+    }],
+  })).toBe(generatedMediaInput);
+  expect(canvasInputGraphFingerprint({
+    ...generatedMedia,
+    nodes: [{
+      ...generatedMedia.nodes[0],
+      data: {
+        ...generatedMedia.nodes[0].data,
+        groupRunSuccessTaskId: undefined,
+        legacyTerminalDetachApplicationId: "legacy-terminal-detach:proof",
+      },
+    }],
+  })).toBe(generatedMediaInput);
+});
+
+test("canvas descriptor excludes passive view fields and fails closed for unknown fields", () => {
+  expect(canvasNodeDataFieldDescriptor("imagePrompt")).toMatchObject({
+    allowedCommands: ["apply-user-field-changes"],
+    documentImpact: true,
+    durability: "durable",
+    input: true,
+    inputImpact: true,
+    owner: "durable-user",
+  });
+  expect(canvasNodeDataFieldDescriptor("imageSrc")).toMatchObject({
+    documentImpact: true,
+    durability: "durable",
+    input: false,
+    owner: "durable-server",
+  });
+  expect(canvasNodeDataFieldDescriptor("audioWaveform")).toMatchObject({
+    documentImpact: false,
+    durability: "ephemeral",
+    input: false,
+    owner: "ephemeral-view",
+  });
+  expect(canvasNodeDataFieldDescriptor("futureUnknownField")).toBeUndefined();
+
+  const withView = {
+    edges: [],
+    nodes: [{
+      id: "node-a-1234",
+      type: "audio",
+      data: { audioWaveform: [0.1, 0.2], audioDuration: 8 },
+    }],
+    viewport: { x: 0, y: 0, zoom: 1 },
+  };
+  expect(canvasDocumentFingerprint(withView)).toBe(canvasDocumentFingerprint({
+    ...withView,
+    nodes: [{ id: "node-a-1234", type: "audio", data: {} }],
+  }));
+});
+
+test("Canvas revision transition distinguishes no-op layout and input changes", () => {
+  const base = {
+    edges: [],
+    nodes: [{ id: "node-a-1234", type: "text", position: { x: 0, y: 0 },
+      data: { textPrompt: "coat" } }],
+    viewport: { x: 0, y: 0, zoom: 1 },
+  };
+  expect(durableDocumentEquals(base, JSON.parse(JSON.stringify(base)))).toBe(true);
+  const beforeDocumentSha256 = canvasDocumentFingerprint(base);
+  const beforeInputSha256 = canvasInputGraphFingerprint(base);
+  const layout = { ...base, nodes: [{ ...base.nodes[0], position: { x: 20, y: 0 } }] };
+  expect(canvasRevisionTransition({
+    afterDocumentSha256: canvasDocumentFingerprint(layout),
+    afterInputSha256: canvasInputGraphFingerprint(layout),
+    beforeDocumentSha256,
+    beforeInputSha256,
+    documentRevision: 7,
+    inputGraphRevision: 4,
+  })).toEqual({ changed: true, documentRevision: 8, inputChanged: false,
+    inputGraphRevision: 4 });
+  const input = { ...base, nodes: [{ ...base.nodes[0],
+    data: { textPrompt: "dress" } }] };
+  expect(canvasRevisionTransition({
+    afterDocumentSha256: canvasDocumentFingerprint(input),
+    afterInputSha256: canvasInputGraphFingerprint(input),
+    beforeDocumentSha256,
+    beforeInputSha256,
+    documentRevision: 7,
+    inputGraphRevision: 4,
+  })).toEqual({ changed: true, documentRevision: 8, inputChanged: true,
+    inputGraphRevision: 5 });
+});
+
+test("typed Canvas command parser binds create to null baselines", () => {
+  const command = {
+    operationId: "operation-create-1234",
+    saveSessionId: "session-create-1234",
+    saveSequence: 1,
+    baseDocumentRevision: null,
+    baseInputGraphRevision: null,
+    observedLoadToken: null,
+    kind: "create-canvas-document",
+    initialDocument: { nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } },
+  } as const;
+  expect(parseCanvasUserCommand(command)).toEqual({ ok: true, value: command });
+  expect(parseCanvasUserCommand({ ...command, baseDocumentRevision: 0 })).toEqual({
+    code: "CANVAS_COMMAND_INVALID",
+    ok: false,
+  });
+  expect(canvasCommandPayloadSha256(command)).toMatch(/^[0-9a-f]{64}$/);
+});
+
+test("typed Canvas command rejects identity smuggling and server-owned fields", () => {
+  const base = {
+    operationId: "operation-field-1234",
+    saveSessionId: "session-field-1234",
+    saveSequence: 2,
+    baseDocumentRevision: 1,
+    baseInputGraphRevision: 1,
+    observedLoadToken: "v1.valid-load-token",
+    kind: "apply-user-field-changes",
+    changes: [{
+      nodeId: "node-field-1234",
+      action: "set",
+      field: "data.imagePrompt",
+      baseValueDigest: sha256Hex("\"old prompt\""),
+      value: "new prompt",
+    }],
+  };
+  expect(parseCanvasUserCommand(base).ok).toBe(true);
+  expect(parseCanvasUserCommand({ ...base, canvasId: "smuggled-canvas" }).ok).toBe(false);
+  expect(parseCanvasUserCommand({
+    ...base,
+    changes: [{
+      nodeId: "node-field-1234",
+      action: "set",
+      field: "data.imageSrc",
+      baseValueDigest: sha256Hex("null"),
+      value: "/api/assets/forged",
+    }],
+  }).ok).toBe(false);
+  expect(parseCanvasUserCommand({
+    ...base,
+    changes: [{
+      nodeId: "node-field-1234",
+      action: "delete",
+      field: "data.futureUnknownField",
+      baseValueDigest: sha256Hex("null"),
+    }],
+  }).ok).toBe(false);
+  expect(parseCanvasUserCommand({
+    operationId: "operation-create-reject-1234",
+    saveSessionId: "session-create-reject-1234",
+    saveSequence: 1,
+    kind: "create-canvas-document",
+    baseDocumentRevision: null,
+    baseInputGraphRevision: null,
+    observedLoadToken: null,
+    initialDocument: {
+      edges: [],
+      nodes: [{
+        id: "new-node",
+        type: "image",
+        data: { imageSrc: "/api/assets/forged" },
+      }],
+      viewport: { x: 0, y: 0, zoom: 1 },
+    },
+  }).ok).toBe(false);
 });
 
 test("product node input matrix contains exactly 11 allowed and 5 forbidden pairs", () => {
@@ -572,19 +954,18 @@ test("generation submission cannot bypass persisted-edge preflight by omitting t
   const saved = await request.put(`/api/canvas/${canvasId}`, {
     data: {
       edges: [{
-        id: "forbidden-audio-image",
-        source: "client-hidden-audio",
+        id: "forbidden-group-image",
+        source: "client-hidden-group",
         target: "server-image-target",
       }],
       nodes: [
         {
           data: {
-            assetId: "audio-from-canvas",
-            audioSrc: "https://signed.example/short-audio",
-            title: "音频来源",
+            label: "Group",
+            title: "非生成节点来源",
           },
-          id: "client-hidden-audio",
-          type: "audio",
+          id: "client-hidden-group",
+          type: "group",
         },
         {
           data: { imagePrompt: "画布中的真实提示词" },
@@ -639,7 +1020,7 @@ test("generation submission cannot bypass persisted-edge preflight by omitting t
   expect(submissionBody.code).toBe("INPUT_INVALID");
   expect(submissionBody.problems).toContainEqual(expect.objectContaining({
     code: "INVALID",
-    edgeId: "forbidden-audio-image",
+    edgeId: "forbidden-group-image",
   }));
   expect(submissionBody.problems.map(({ code }) => code)).toEqual(
     structuralBody.problems.map(({ code }) => code),
@@ -810,33 +1191,14 @@ test("server rejects forged ready media, invalid role/order and a stale canvas w
       viewport: { x: 0, y: 0, zoom: 1 },
     },
   });
-  expect(forgedSave.ok()).toBeTruthy();
-  const forgedRevision = (await forgedSave.json() as { revision: number }).revision;
-  const forgedSubmit = await request.post("/api/generation-tasks", {
-    data: {
-      canvasId: forgedCanvasId,
-      canvasRevision: forgedRevision,
-      idempotencyKey: `forged-ready-${Date.now()}`,
-      inputSchemaVersion: 1,
-      kind: "image",
-      model: modelId,
-      nodeId: "target",
-      ownPrompt: "白底商品图",
-      parameters: {},
-      prompt: "前端声称素材存在",
-    },
+  expect(forgedSave.status()).toBe(409);
+  await expect(forgedSave.json()).resolves.toMatchObject({
+    code: "CANVAS_MEDIA_UNAVAILABLE",
   });
-  expect(forgedSubmit.status()).toBe(409);
-  const forgedResult = await forgedSubmit.json() as {
-    code: string;
-    problems: Array<{ code: string; edgeId?: string }>;
-  };
-  expect(forgedResult).toMatchObject({
-    code: "INPUT_INVALID",
-    problems: expect.arrayContaining([
-      expect.objectContaining({ code: "INVALID", edgeId: "forged-ready" }),
-    ]),
-  });
+  const forgedTasks = await (await request.get(
+    `/api/generation-tasks?canvasId=${encodeURIComponent(forgedCanvasId)}`,
+  )).json() as { tasks: unknown[] };
+  expect(forgedTasks.tasks).toEqual([]);
 
   const staleCanvasId = `node-input-stale-${Date.now()}`;
   const staleCreate = await request.put(`/api/canvas/${staleCanvasId}`, {
@@ -857,7 +1219,7 @@ test("server rejects forged ready media, invalid role/order and a stale canvas w
     data: {
       edges: [],
       nodes: [{
-        data: { imagePrompt: "白底商品图", title: "已保存的新版本" },
+        data: { imagePrompt: "已保存的新 Prompt", title: "已保存的新版本" },
         id: "target",
         type: "image",
       }],
@@ -926,14 +1288,7 @@ test("server rejects forged ready media, invalid role/order and a stale canvas w
           data: {
             imagePrompt: "把选中区域改成蓝色陶瓷材质",
             imagePromptReady: true,
-            imageToolMaskAssetId: redrawMaskAssetId,
             imageToolMaskFeatherPixels: 8,
-            imageToolMaskHeight: 720,
-            imageToolMaskVersion: 1,
-            imageToolMaskWidth: 1280,
-            imageToolOperation: "redraw",
-            imageToolOperationId: redrawOperationId,
-            imageToolSourceAssetId: garmentAssetId,
           },
           id: "redraw-target",
           type: "image",
@@ -991,7 +1346,7 @@ test("server rejects forged ready media, invalid role/order and a stale canvas w
   });
   expect(forgedRedraw.status()).toBe(400);
   await expect(forgedRedraw.json()).resolves.toMatchObject({
-    error: "图片工具遮罩身份或尺寸与已保存画布不一致",
+    error: "图片工具遮罩不存在、越界、尺寸不匹配或不属于当前账号",
   });
 
   const outpaintCanvasId = `node-input-outpaint-${Date.now()}`;
@@ -1021,14 +1376,9 @@ test("server rejects forged ready media, invalid role/order and a stale canvas w
           imageSrc: `/api/assets/${garmentAssetId}` },
           id: "outpaint-source", type: "image" },
         { data: { imagePrompt: "自然延展画面", imagePromptReady: true,
-          imageToolMaskAssetId: outpaintMaskAssetId,
-          imageToolMaskFeatherPixels: 0, imageToolMaskHeight: 1080,
-          imageToolMaskVersion: 1, imageToolMaskWidth: 1920,
-          imageToolOperation: "outpaint", imageToolOperationId: outpaintOperationId,
+          imageToolMaskFeatherPixels: 0,
           imageToolOutpaintParameters: outpaintParameters,
-          imageToolPreparedAssetId: outpaintPreparedAssetId,
-          imageToolPreparedHeight: 1080, imageToolPreparedVersion: 1,
-          imageToolPreparedWidth: 1920, imageToolSourceAssetId: garmentAssetId },
+        },
           id: "outpaint-target", type: "image" },
       ], revision: 0, viewport: { x: 0, y: 0, zoom: 1 },
     },
@@ -1060,7 +1410,7 @@ test("server rejects forged ready media, invalid role/order and a stale canvas w
   });
   expect(forgedOutpaint.status()).toBe(400);
   await expect(forgedOutpaint.json()).resolves.toMatchObject({
-    error: "扩图边界或准备图片与已保存画布不一致",
+    error: "图片工具遮罩不存在、越界、尺寸不匹配或不属于当前账号",
   });
 
   const cutoutCanvasId = `node-input-cutout-${Date.now()}`;
@@ -1073,11 +1423,7 @@ test("server rejects forged ready media, invalid role/order and a stale canvas w
         { data: { assetId: garmentAssetId,
           imageSrc: `/api/assets/${garmentAssetId}` },
           id: "cutout-source", type: "image" },
-        { data: { imagePrompt: "移除背景并输出透明PNG", imagePromptReady: true,
-          imageToolOperation: "remove-background",
-          imageToolOperationId: cutoutOperationId,
-          imageToolOutputBackground: "transparent",
-          imageToolSourceAssetId: garmentAssetId },
+        { data: { imagePrompt: "移除背景并输出透明PNG", imagePromptReady: true },
           id: "cutout-target", type: "image" },
       ], revision: 0, viewport: { x: 0, y: 0, zoom: 1 },
     },
@@ -1410,7 +1756,7 @@ test("Image Text+Image input cards merge, delete, undo and survive refresh with 
   const modelId = await ensureZeroProviderInputModel(request);
   await ensureGarmentAsset(request);
   await useZeroProviderInputModel(page, modelId);
-  await request.delete("/api/canvas/node.image.text-image-input");
+  await seedTextImageInputCanvas(request);
   const before = await (await request.get("/api/generation-tasks/status")).json() as {
     paidProviderRequests: number;
   };
@@ -1423,6 +1769,7 @@ test("Image Text+Image input cards merge, delete, undo and survive refresh with 
 
   await page.goto("/__fixture/node.image.text-image-input");
   await expect(page.getByTestId("canvas-world")).toHaveAttribute("data-persistence-ready", "true");
+  await page.locator('.react-flow__node[data-id="input-target-image"]').click();
   await expect(page.getByTestId("image-model-control")).toContainText(
     "零费用图片入参测试模型",
   );
@@ -1522,6 +1869,7 @@ test("Image Text+Image input cards merge, delete, undo and survive refresh with 
   expect(JSON.stringify(preflight.snapshot)).not.toContain("data:image");
 
   await page.reload();
+  await page.locator('.react-flow__node[data-id="input-target-image"]').click();
   await expect(page.getByTestId("image-creator-references").locator(":scope > div")).toHaveCount(2);
   await expect(page.getByTestId("image-creator-prompt")).toHaveValue("正面平铺，展示领口细节。");
   const after = await (await request.get("/api/generation-tasks/status")).json() as {
@@ -1630,6 +1978,31 @@ test("Text upstream role reorder and removal are atomic and preserve intent when
     },
   });
   expect(saved.ok()).toBeTruthy();
+  const directoryResponse = await request.get("/api/test-data-directory");
+  expect(directoryResponse.ok()).toBeTruthy();
+  const { dataDirectory } = await directoryResponse.json() as {
+    dataDirectory: string;
+  };
+  const database = openAppDatabase(dataDirectory);
+  try {
+    const row = database.prepare(`
+      SELECT nodes FROM canvas_documents WHERE id = ?
+    `).get(canvasId) as { nodes: string } | undefined;
+    if (!row) throw new Error("Text input mutation fixture Canvas is missing");
+    const authoritativeNodes = JSON.parse(row.nodes) as Array<{
+      data: Record<string, unknown>;
+      id: string;
+    }>;
+    const target = authoritativeNodes.find((node) => node.id === "target-text");
+    if (!target) throw new Error("Text input mutation fixture target is missing");
+    target.data.textGenerationError = "旧输入错误";
+    target.data.textGenerationErrorCode = "INPUT_INVALID";
+    database.prepare(`
+      UPDATE canvas_documents SET nodes = ? WHERE id = ?
+    `).run(JSON.stringify(authoritativeNodes), canvasId);
+  } finally {
+    database.close();
+  }
   const before = await (await request.get("/api/generation-tasks/status")).json() as {
     paidProviderRequests: number;
   };
@@ -1700,8 +2073,8 @@ test("Text upstream role reorder and removal are atomic and preserve intent when
     releaseDelayedSave = resolve;
   });
   let delayedSaveHeld = false;
-  await page.route(`**/api/canvas/${canvasId}`, async (route) => {
-    if (route.request().method() === "PUT" && !delayedSaveHeld) {
+  await page.route(`**/api/canvases/${canvasId}/commands`, async (route) => {
+    if (route.request().method() === "POST" && !delayedSaveHeld) {
       delayedSaveHeld = true;
       markDelayedSaveSeen();
       await delayedSaveReleased;
@@ -1760,6 +2133,8 @@ test("Text upstream role reorder and removal are atomic and preserve intent when
         .sort(([left], [right]) => left.localeCompare(right)),
     };
   }).toEqual({
+    // The browser submits only the edge mutation. The authoritative topology
+    // command owns invalidation of terminal state made obsolete by that input.
     error: undefined,
     order: [["source-a-target", 2], ["source-b-target", 1]],
   });
@@ -1786,7 +2161,7 @@ test("saved whole-node deletion followed by undo is durable across refresh", asy
   const modelId = await ensureZeroProviderInputModel(request);
   await ensureGarmentAsset(request);
   await useZeroProviderInputModel(page, modelId);
-  await request.delete("/api/canvas/node.image.text-image-input");
+  await seedTextImageInputCanvas(request);
   const before = await (await request.get("/api/generation-tasks/status")).json() as {
     paidProviderRequests: number;
   };
@@ -1879,11 +2254,12 @@ test("saved whole-node deletion followed by undo is durable across refresh", asy
   expect(after.paidProviderRequests).toBe(before.paidProviderRequests);
 });
 
-test("pagehide latest snapshot wins when an older same-session save is still pending", async ({
+test("pending topology commands serialize undo and remain durable across refresh", async ({
   page,
   request,
 }) => {
-  await request.delete("/api/canvas/node.image.text-image-input");
+  await ensureGarmentAsset(request);
+  await seedTextImageInputCanvas(request);
   let releaseOlderSave!: () => void;
   const olderSaveReleased = new Promise<void>((resolve) => {
     releaseOlderSave = resolve;
@@ -1893,19 +2269,25 @@ test("pagehide latest snapshot wins when an older same-session save is still pen
     markOlderSaveSeen = resolve;
   });
   let heldOlderSave = false;
-  await page.route("**/api/canvas/node.image.text-image-input", async (route) => {
+  await page.route("**/api/canvases/node.image.text-image-input/commands", async (route) => {
     const requestBody = route.request();
-    if (requestBody.method() !== "PUT") {
+    if (requestBody.method() !== "POST") {
       await route.continue();
       return;
     }
-    const body = requestBody.postDataJSON() as { saveSequence?: number };
-    if (body.saveSequence === 2 && !heldOlderSave) {
+    const body = requestBody.postDataJSON() as {
+      kind?: string;
+      saveSequence?: number;
+      topologyOperation?: { intent?: string };
+    };
+    if (
+      body.kind === "apply-topology" &&
+      body.topologyOperation?.intent === "delete-subgraph" &&
+      !heldOlderSave
+    ) {
       heldOlderSave = true;
       markOlderSaveSeen();
       await olderSaveReleased;
-    } else if (heldOlderSave && Number(body.saveSequence) >= 3) {
-      releaseOlderSave();
     }
     await route.continue();
   });
@@ -1918,8 +2300,12 @@ test("pagehide latest snapshot wins when an older same-session save is still pen
   });
   await page.keyboard.press("Backspace");
   await olderSaveSeen;
-  await page.keyboard.press("Meta+z");
+  const undo = page.keyboard.press("Meta+z");
+  await expect(world).toHaveAttribute("data-node-count", "2");
+  releaseOlderSave();
+  await undo;
   await expect(world).toHaveAttribute("data-node-count", "3");
+  await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
 
   await page.reload();
   await expect(world).toHaveAttribute("data-persistence-ready", "true");

@@ -77,8 +77,8 @@ const reservationMarkerMaximumBytes = 64 * 1024;
 const secretDocumentLockMaximumBytes = 1024 * 1024;
 const backupIncompleteMarker = ".unboundry-backup-incomplete";
 const restoreIncompleteMarker = ".unboundry-restore-incomplete";
-const supportedBackupSchemaVersions = new Set([37, 38, 39, 40, 41, 42]);
-const currentBackupSchemaVersion = 42 as const;
+const supportedBackupSchemaVersions = new Set([37, 38, 39, 40, 41, 42, 43]);
+const currentBackupSchemaVersion = 43 as const;
 const minimumProviderQuietMilliseconds = 60_000;
 const restorableSecretFiles = new Set([
   "config-master.key",
@@ -93,10 +93,10 @@ const transientSecretFiles = new Set([
 
 export type BackupKeyInput = KeyObject | string | Buffer;
 
-export type BackupSchemaVersion = 37 | 38 | 39 | 40 | 41 | 42;
+export type BackupSchemaVersion = 37 | 38 | 39 | 40 | 41 | 42 | 43;
 
 export type BackupCapturePurpose =
-  | "current-schema42"
+  | "current-schema43"
   | "historical-recovery";
 
 export type BackupCheckpointName =
@@ -462,9 +462,9 @@ function capturePurposeFor(
   value: BackupCapturePurpose | undefined,
   contractPresent: boolean,
 ): BackupCapturePurpose {
-  const purpose = value ?? "current-schema42";
+  const purpose = value ?? "current-schema43";
   if (
-    (purpose !== "current-schema42" && purpose !== "historical-recovery") ||
+    (purpose !== "current-schema43" && purpose !== "historical-recovery") ||
     (purpose === "historical-recovery" && !contractPresent)
   ) {
     fail(
@@ -481,7 +481,7 @@ function validateFrozenSourceContract(
   capturePurpose: BackupCapturePurpose,
 ) {
   const schemaPurposeMatches = Boolean(contract && typeof contract === "object") &&
-    (capturePurpose === "current-schema42"
+    (capturePurpose === "current-schema43"
       ? contract.expectedSchemaVersion === currentBackupSchemaVersion
       : supportedBackupSchemaVersions.has(contract.expectedSchemaVersion) &&
         contract.expectedSchemaVersion !== currentBackupSchemaVersion);

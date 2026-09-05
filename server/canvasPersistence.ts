@@ -1,6 +1,7 @@
 import {
   createHmac,
   randomBytes,
+  randomUUID,
   timingSafeEqual,
 } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -26,12 +27,34 @@ import {
   touchProjectUpdatedAtCommand,
   upsertProjectTitleCommand,
 } from "./projectTransactionCommands";
+import { deleteProjectCanvasDocumentsCommand } from
+  "./canvasTransactionCommands";
 import { executeTransactionScopedCommand } from "./transactionCommand";
+import { readCanvasRouteGenerationEvidenceCommand } from
+  "./generationTransactionCommands";
 import { persistedNodeSchemaRegistry } from "../types/persistedNodeSchemaRegistry";
+import { legacyCanvasPutWriteContract } from "../types/canvasCommands";
+import {
+  applyLegacyGenerationProjectionInTransaction,
+  applyLegacyCanvasPutInTransaction,
+  prepareUncapableLegacyCanvasPutCandidate,
+  CanvasMutationGatewayCapacityError,
+  CanvasMutationGatewayUnavailableError,
+  type CanvasMutationGatewayResult,
+  type CanvasOperationReuseResult,
+  type LegacyGenerationProjectionHint,
+} from "./canvasMutationGateway";
 import {
   hasActiveWorkflowRunForCanvas,
   workflowRunLockedNodeIdsInTransaction,
 } from "./workflowRunLocks";
+import {
+  canvasClientBuildFromHeader,
+  discardDeferredCanvasObservability,
+  flushDeferredCanvasObservability,
+  recordCanvasRouteEvent,
+  type CanvasServerClass,
+} from "./canvasObservability";
 
 function inImmediateTransaction<T>(store: DatabaseSync, operation: () => T): T {
   const ownsTransaction = !store.isTransaction;
@@ -59,18 +82,7 @@ type CanvasDocument = {
   viewport: { x: number; y: number; zoom: number };
 };
 
-type GenerationProjectionCommit = {
-  accountId: string;
-  applicationId: string;
-  inputFingerprint: string;
-  kind: "audio" | "image" | "text" | "video";
-  nodeId: string;
-  ownershipKey: string;
-  resultKey: string;
-  runId: string;
-  semanticRevision: string;
-  taskId: string;
-};
+type GenerationProjectionCommit = LegacyGenerationProjectionHint;
 
 type CanvasRow = {
   edges: string;
@@ -246,6 +258,77 @@ function json(response: ServerResponse, status: number, body: unknown) {
   response.end(JSON.stringify(body));
 }
 
+function sendLegacyCapabilityResult(
+  response: ServerResponse,
+  input: Readonly<{
+    canvasId: string;
+    currentRequestId: string;
+    ownerId: string;
+    result: CanvasMutationGatewayResult | CanvasOperationReuseResult;
+    saveAttemptId: string;
+    saveSequence: number;
+    saveSessionId: string;
+  }>,
+) {
+  const current = input.result.authoritativeDocument;
+  const currentLoadToken = canvasLoadTokenFor(
+    input.ownerId,
+    input.canvasId,
+    current.revision,
+  );
+  const operationReuse = "code" in input.result;
+  const rejected = !operationReuse &&
+    input.result.outcome === "REJECTED_CONFLICT";
+  const originalSaveStatus = !operationReuse && input.result.outcome === "APPLIED"
+    ? "applied" as const
+    : "already-applied" as const;
+  const common = {
+    authoritativeDocument: current,
+    currentGraphRevision: current.graphRevision,
+    currentLoadToken,
+    currentRevision: current.revision,
+    graphRevision: current.graphRevision,
+    loadToken: currentLoadToken,
+    operationGraphRevision: input.result.operationInputGraphRevision,
+    operationId: input.result.operationId,
+    operationRevision: input.result.operationDocumentRevision,
+    originalRequestId: input.result.originalRequestId,
+    rejectedAttemptId: input.saveAttemptId,
+    rejectedSequence: input.saveSequence,
+    rejectedSessionId: input.saveSessionId,
+    replayed: input.result.replayed,
+    requestId: input.currentRequestId,
+    revision: current.revision,
+    saveAttemptId: input.saveAttemptId,
+    saveSequence: input.saveSequence,
+    saveSessionId: input.saveSessionId,
+  };
+  response.setHeader(
+    "X-Unboundry-Canvas-Write-Contract",
+    legacyCanvasPutWriteContract,
+  );
+  if (operationReuse || rejected) {
+    const code = operationReuse
+      ? input.result.code
+      : input.result.conflictCode ?? "CANVAS_LEGACY_RECONCILE_REQUIRED";
+    json(response, 409, {
+      ...common,
+      code,
+      error: code === "CANVAS_SAVE_SUPERSEDED"
+        ? "Superseded same-session save"
+        : "Canvas must be reconciled with the authoritative document",
+      requiresAuthoritativeGet: true,
+    });
+    return;
+  }
+  json(response, 200, {
+    ...common,
+    originalSaveStatus,
+    requiresAuthoritativeGet: false,
+    saveStatus: input.result.replayed ? "already-applied" : originalSaveStatus,
+  });
+}
+
 function updateLengthPrefixed(
   hmac: ReturnType<typeof createHmac>,
   value: string,
@@ -294,6 +377,21 @@ function validCanvasLoadToken(
     received.length === expected.length &&
     timingSafeEqual(received, expected)
   );
+}
+
+/** Canvas-domain verification capability shared by the typed command API. */
+export function validCanvasLoadTokenForApplication(
+  token: string,
+  ownerId: string,
+  canvasId: string,
+  observedRevision: number,
+) {
+  return validCanvasLoadToken(token, ownerId, canvasId, observedRevision);
+}
+
+/** Opaque process epoch persisted only as a receipt baseline proof. */
+export function canvasLoadTokenEpochForApplication() {
+  return canvasSaveEpoch;
 }
 
 function rotateCanvasLoadTokenKey() {
@@ -522,6 +620,18 @@ function canvasReadFenceMetadata(
   const highWater = saveSessionId
     ? existingCanvasSaveHighWater(store, ownerId, canvasId, saveSessionId)
     : undefined;
+  const durableReceipt = saveSessionId
+    ? store.prepare(`
+        SELECT operation_id, save_sequence
+        FROM canvas_operation_receipts
+        WHERE owner_id = ? AND canvas_id = ? AND save_session_id = ?
+          AND save_sequence IS NOT NULL
+        ORDER BY save_sequence DESC, settled_at DESC, operation_id ASC
+        LIMIT 1
+      `).get(ownerId, canvasId, saveSessionId) as
+        | { operation_id: string; save_sequence: number }
+        | undefined
+    : undefined;
   const persistedSameSessionSequence =
     row && saveSessionId && row.save_session_id === saveSessionId
       ? row.save_sequence
@@ -529,7 +639,13 @@ function canvasReadFenceMetadata(
   const sessionHighWaterSequence = Math.max(
     highWater?.save_sequence ?? 0,
     persistedSameSessionSequence,
+    durableReceipt?.save_sequence ?? 0,
   );
+  const markerAttemptId = durableReceipt?.save_sequence ===
+      sessionHighWaterSequence &&
+      durableReceipt.operation_id.startsWith("save-marker:")
+    ? durableReceipt.operation_id.slice("save-marker:".length)
+    : null;
   return {
     currentWriterSequence: row?.save_sequence ?? 0,
     currentWriterSessionId: row?.save_session_id ?? null,
@@ -537,6 +653,12 @@ function canvasReadFenceMetadata(
     sessionHighWaterAttemptId:
       highWater?.save_sequence === sessionHighWaterSequence
         ? highWater.save_attempt_id
+        : markerAttemptId && canvasSaveSessionPattern.test(markerAttemptId)
+          ? markerAttemptId
+          : null,
+    sessionHighWaterOperationId:
+      durableReceipt?.save_sequence === sessionHighWaterSequence
+        ? durableReceipt.operation_id
         : null,
     sessionHighWaterSequence,
   };
@@ -788,85 +910,116 @@ function record(value: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
-function projectionResultComplete(
-  nodeData: Record<string, unknown>,
-  projection: GenerationProjectionCommit,
-) {
-  if (
-    nodeData.groupRunSuccessOwnershipKey !== projection.ownershipKey ||
-    nodeData.groupRunSuccessResultKey !== projection.resultKey ||
-    nodeData.groupRunSuccessTaskId !== projection.taskId
-  ) return false;
-  if (projection.kind === "text") {
-    return typeof nodeData.content === "string" && nodeData.content.trim().length > 0 &&
-      typeof nodeData.contentHtml === "string" && nodeData.contentHtml.length > 0;
+function legacyRouteServerClass(
+  store: DatabaseSync,
+  ownerId: string,
+  canvasId: string,
+  projection: GenerationProjectionCommit | undefined,
+): CanvasServerClass {
+  if (!projection) return "T";
+  const evidence = executeTransactionScopedCommand(
+    store,
+    readCanvasRouteGenerationEvidenceCommand,
+    {
+      canvasId,
+      kind: projection.kind,
+      nodeId: projection.nodeId,
+      ownerId,
+      taskId: projection.taskId,
+    },
+  );
+  if (!evidence) return "D";
+  if (["queued", "running", "recovering", "retrying"].includes(
+    evidence.state,
+  )) return "T";
+  if (evidence.generationIdentityVersion === 2) {
+    return evidence.state === "success" ? "B" : "D";
   }
-  return typeof nodeData.assetId === "string" && nodeData.assetId.length > 0 &&
-    typeof nodeData[`${projection.kind}Src`] === "string" &&
-    String(nodeData[`${projection.kind}Src`]).length > 0 &&
-    (projection.kind !== "image" || nodeData.imageGeneratedSuccess === true) &&
-    (projection.kind !== "audio" || nodeData.audioGeneratedResult === true);
+  if (!["success", "failed", "cancelled"].includes(evidence.state)) {
+    return "D";
+  }
+  return evidence.dangerousAttempt && evidence.state !== "success" ? "D" : "C";
 }
 
-function generationProjectionConflict(input: {
-  incomingNodes: unknown[];
-  observedRevision: number | undefined;
-  ownerId: string;
-  projection: GenerationProjectionCommit;
-  row: CanvasRow | undefined;
-}) {
-  const { projection, row } = input;
-  if (
-    !row || projection.accountId !== input.ownerId ||
-    input.observedRevision === undefined ||
-    row.revision !== input.observedRevision
-  ) return true;
-  const currentNode = (JSON.parse(row.nodes) as unknown[]).map(record).find(
-    (node) => node?.id === projection.nodeId,
-  );
-  const incomingNode = input.incomingNodes.map(record).find(
-    (node) => node?.id === projection.nodeId,
-  );
-  const currentData = record(currentNode?.data);
-  const incomingData = record(incomingNode?.data);
-  if (!currentNode || !currentData || !incomingNode || !incomingData) return true;
-
-  // Re-read and compare the target under BEGIN IMMEDIATE. This is the
-  // projection-specific semantic CAS that closes the GET -> PUT race while
-  // preserving DATA-005 last-writer-wins for ordinary canvas saves.
-  const currentAlreadyApplied =
-    currentData.groupRunSuccessOwnershipKey === projection.ownershipKey &&
-    currentData.groupRunSuccessResultKey === projection.resultKey &&
-    currentData.groupRunSuccessTaskId === projection.taskId;
-  if (currentAlreadyApplied) return true;
-  return currentNode.type !== projection.kind ||
-    currentData.workflowExecutionRunId !== projection.runId ||
-    currentData[`${projection.kind}GenerationTaskId`] !== projection.taskId ||
-    currentData[`${projection.kind}GenerationOwnershipKey`] !== projection.ownershipKey ||
-    currentData[`${projection.kind}GenerationInputKey`] !== projection.inputFingerprint ||
-    incomingNode.type !== projection.kind ||
-    !projectionResultComplete(incomingData, projection);
+function legacyRouteOutcome(
+  result: CanvasMutationGatewayResult | CanvasOperationReuseResult,
+) {
+  if ("code" in result) {
+    return "command.rejected-conflict.CANVAS_OPERATION_REUSED";
+  }
+  if (result.outcome === "APPLIED") return "legacy.applied";
+  if (result.outcome === "NO_OP") return "legacy.no-op";
+  if (result.conflictCode === "CANVAS_LEGACY_RECONCILE_REQUIRED") {
+    return "legacy.reconcile-required";
+  }
+  return `command.rejected-conflict.${result.conflictCode ??
+    "CANVAS_SERVER_OWNERSHIP_CONFLICT"}`;
 }
 
 export async function canvasPersistence(
   request: IncomingMessage,
   response: ServerResponse,
 ) {
+  const existingRequestId = response.getHeader("X-Request-ID");
+  const currentRequestId = typeof existingRequestId === "string" &&
+      existingRequestId.length >= 8
+    ? existingRequestId
+    : randomUUID();
+  response.setHeader("X-Request-ID", currentRequestId);
+  const clientBuild = canvasClientBuildFromHeader(
+    request.headers["x-unboundry-client-build"],
+  );
+  const rawWriteContract = request.headers["x-unboundry-canvas-write-contract"];
+  const legacyCapability = request.method === "PUT" &&
+    rawWriteContract === legacyCanvasPutWriteContract;
+  if (legacyCapability) {
+    response.setHeader(
+      "X-Unboundry-Canvas-Write-Contract",
+      legacyCanvasPutWriteContract,
+    );
+  }
+  let routeOperation = "legacy-full-document-put";
+  let routeRunId: string | null = null;
+  let routeTaskId: string | null = null;
+  let routeServerClass: CanvasServerClass = "T";
+  const recordLegacyRoute = (outcome: string) => recordCanvasRouteEvent({
+    callerSymbol: "client.canvasPersistenceFacade",
+    capability: legacyCapability ? legacyCanvasPutWriteContract : "none",
+    clientBuild,
+    operation: routeOperation,
+    outcome,
+    requestId: currentRequestId,
+    route: "canvas.legacy-put",
+    runId: routeRunId,
+    serverClass: routeServerClass,
+    taskId: routeTaskId,
+  });
   const id = decodedRequestPath(request).replace(
     /^\/+/,
     "",
   );
   if (!/^[a-z0-9._-]+$/i.test(id)) {
+    if (request.method === "PUT") {
+      recordLegacyRoute("legacy.rejected.CANVAS_ID_INVALID");
+    }
     json(response, 400, {
       code: "CANVAS_ID_INVALID",
       error: "Invalid canvas ID",
+      requestId: currentRequestId,
     });
     return;
   }
 
   const identity = requestIdentity(request);
   if (!identity) {
-    json(response, 401, { code: "AUTH_REQUIRED", error: "Please sign in" });
+    if (request.method === "PUT") {
+      recordLegacyRoute("legacy.rejected.AUTH_REQUIRED");
+    }
+    json(response, 401, {
+      code: "AUTH_REQUIRED",
+      error: "Please sign in",
+      requestId: currentRequestId,
+    });
     return;
   }
   const ownerId = identity.bypass ? "__test__" : identity.userId;
@@ -887,13 +1040,11 @@ export async function canvasPersistence(
         });
         return;
       }
-      if (identity.bypass) {
-        store.prepare("DELETE FROM canvas_documents WHERE id = ?").run(id);
-      } else {
-        store
-          .prepare("DELETE FROM canvas_documents WHERE owner_id = ? AND id = ?")
-          .run(identity.userId, id);
-      }
+      executeTransactionScopedCommand(store, deleteProjectCanvasDocumentsCommand, {
+        bypass: Boolean(identity.bypass),
+        canvasId: id,
+        ownerId,
+      });
       ensureCanvasSaveHighWaterTable(store);
       store.prepare(`
         DELETE FROM canvas_save_session_high_water
@@ -970,28 +1121,80 @@ export async function canvasPersistence(
     json(response, 405, {
       code: "METHOD_NOT_ALLOWED",
       error: "Method not allowed",
+      requestId: currentRequestId,
     });
     return;
   }
 
-  // The request stream and all request-derived transformations must complete
-  // before the write lock is acquired. A slow or malformed body therefore
-  // cannot hold BEGIN IMMEDIATE open.
-  const document = await readJsonBody<CanvasDocument>(request, 5_000_000);
-  if (!valid(document)) {
+  if (
+    Array.isArray(rawWriteContract) ||
+    (rawWriteContract !== undefined &&
+      rawWriteContract !== legacyCanvasPutWriteContract)
+  ) {
+    recordLegacyRoute("legacy.rejected.CANVAS_WRITE_CONTRACT_UNSUPPORTED");
     json(response, 400, {
-      code: "CANVAS_DOCUMENT_INVALID",
-      error: "Invalid canvas document",
+      code: "CANVAS_WRITE_CONTRACT_UNSUPPORTED",
+      error: "Canvas write contract is unsupported",
+      operationId: null,
+      requestId: currentRequestId,
     });
     return;
   }
-  const nodes = normalizePersistedMediaNodes(document.nodes);
-  const mediaReferences = persistedMediaReferences(nodes);
-  const edges = document.edges;
-  const serializedNodes = JSON.stringify(nodes);
-  const serializedEdges = JSON.stringify(edges);
+  // The request stream and all request-derived transformations must complete
+  // before the write lock is acquired. A slow or malformed body therefore
+  // cannot hold BEGIN IMMEDIATE open.
+  let document: CanvasDocument;
+  try {
+    document = await readJsonBody<CanvasDocument>(request, 5_000_000);
+  } catch (error) {
+    if (error instanceof HttpRequestError) {
+      recordLegacyRoute(`legacy.rejected.${error.code}`);
+    }
+    throw error;
+  }
+  if (!valid(document)) {
+    recordLegacyRoute("legacy.rejected.CANVAS_DOCUMENT_INVALID");
+    json(response, 400, {
+      code: "CANVAS_DOCUMENT_INVALID",
+      error: "Invalid canvas document",
+      ...(legacyCapability
+        ? { operationId: null, requestId: currentRequestId }
+        : {}),
+    });
+    return;
+  }
+  if (legacyCapability && (
+    typeof document.saveAttemptId !== "string" ||
+    typeof document.saveSessionId !== "string" ||
+    !Number.isSafeInteger(document.saveSequence) ||
+    document.observedRevision === undefined ||
+    document.observedLoadToken === undefined
+  )) {
+    recordLegacyRoute("legacy.rejected.CANVAS_LEGACY_WRITE_IDENTITY_INVALID");
+    response.setHeader(
+      "X-Unboundry-Canvas-Write-Contract",
+      legacyCanvasPutWriteContract,
+    );
+    json(response, 400, {
+      code: "CANVAS_LEGACY_WRITE_IDENTITY_INVALID",
+      error: "Legacy Canvas write identity is invalid",
+      operationId: null,
+      requestId: currentRequestId,
+    });
+    return;
+  }
+  if (document.generationProjection) {
+    routeOperation = "legacy-generation-projection";
+    routeRunId = document.generationProjection.runId;
+    routeTaskId = document.generationProjection.taskId;
+  }
+  let nodes = normalizePersistedMediaNodes(document.nodes);
+  let mediaReferences = persistedMediaReferences(nodes);
+  let edges = document.edges;
+  let serializedNodes = JSON.stringify(nodes);
+  let serializedEdges = JSON.stringify(edges);
   const serializedViewport = JSON.stringify(document.viewport);
-  const incomingGraphFingerprint = canvasGraphFingerprint({ edges, nodes });
+  let incomingGraphFingerprint = canvasGraphFingerprint({ edges, nodes });
   const barrierInput = {
     canvasId: id,
     ownerId,
@@ -1004,6 +1207,66 @@ export async function canvasPersistence(
   const store = db();
   store.exec("BEGIN IMMEDIATE");
   try {
+    routeServerClass = legacyRouteServerClass(
+      store,
+      ownerId,
+      id,
+      document.generationProjection,
+    );
+    if (legacyCapability) {
+      const result = applyLegacyCanvasPutInTransaction({
+        canvasId: id,
+        database: store,
+        document: {
+          edges,
+          ...(document.generationProjection
+            ? { generationProjection: document.generationProjection }
+            : {}),
+          nodes,
+          observedLoadToken: document.observedLoadToken!,
+          observedRevision: document.observedRevision!,
+          saveAttemptId: document.saveAttemptId!,
+          saveSequence: document.saveSequence!,
+          saveSessionId: document.saveSessionId!,
+          viewport: document.viewport,
+        },
+        loadTokenEpoch: canvasLoadTokenEpochForApplication(),
+        loadTokenForRevision: (revision) =>
+          canvasLoadTokenForApplication(ownerId, id, revision),
+        ownerId,
+        requestId: currentRequestId,
+        validLoadToken: validCanvasLoadTokenForApplication,
+      });
+      if ("code" in result && result.code === "CANVAS_NOT_FOUND") {
+        store.exec("ROLLBACK");
+        discardDeferredCanvasObservability(store);
+        recordLegacyRoute("legacy.rejected.CANVAS_NOT_FOUND");
+        response.setHeader(
+          "X-Unboundry-Canvas-Write-Contract",
+          legacyCanvasPutWriteContract,
+        );
+        json(response, 404, {
+          code: result.code,
+          error: "Canvas not found",
+          operationId: null,
+          requestId: currentRequestId,
+        });
+        return;
+      }
+      store.exec("COMMIT");
+      flushDeferredCanvasObservability(store);
+      recordLegacyRoute(legacyRouteOutcome(result));
+      sendLegacyCapabilityResult(response, {
+        canvasId: id,
+        currentRequestId,
+        ownerId,
+        result,
+        saveAttemptId: document.saveAttemptId!,
+        saveSequence: document.saveSequence!,
+        saveSessionId: document.saveSessionId!,
+      });
+      return;
+    }
     // Every decision that can make a save legal is reread under this one
     // writer lock. Project deletion uses the same SQLite writer lock, so an
     // old page can never pass the tombstone check and resurrect the project.
@@ -1013,6 +1276,9 @@ export async function canvasPersistence(
       identity.userId,
       id,
     );
+    const safeFixtureSeed =
+      process.env.UNBOUNDRY_SAFE_TEST === "1" && !row &&
+      request.headers["x-unboundry-safe-fixture-seed"] === id;
     if (projectTombstone(store, Boolean(identity.bypass), identity.userId, id)) {
       ensureCanvasSaveHighWaterTable(store);
       store.prepare(`
@@ -1020,6 +1286,7 @@ export async function canvasPersistence(
         WHERE owner_id = ? AND canvas_id = ?
       `).run(ownerId, id);
       store.exec("COMMIT");
+      recordLegacyRoute("legacy.rejected.CANVAS_PROJECT_DELETED");
       json(response, 409, {
         code: "CANVAS_PROJECT_DELETED",
         error: "项目已删除，请返回工作空间",
@@ -1028,6 +1295,7 @@ export async function canvasPersistence(
     }
     if (hasOtherOwnerProject(store, Boolean(identity.bypass), identity.userId, id)) {
       store.exec("ROLLBACK");
+      recordLegacyRoute("legacy.rejected.CANVAS_PROJECT_NOT_OWNED");
       json(response, 409, {
         code: "CANVAS_PROJECT_NOT_OWNED",
         error: "项目不存在或不属于当前账号",
@@ -1035,37 +1303,11 @@ export async function canvasPersistence(
       return;
     }
 
-    if (
-      document.generationProjection &&
-      generationProjectionConflict({
-        incomingNodes: nodes,
-        observedRevision: document.observedRevision,
-        ownerId,
-        projection: document.generationProjection,
-        row,
-      })
-    ) {
-      store.exec("ROLLBACK");
-      json(response, 409, {
-        code: "CANVAS_GENERATION_PROJECTION_CONFLICT",
-        error: "Generation result projection no longer matches the current node",
-      });
-      return;
-    }
-
     // A candidate save proves that this account loaded the claimed revision of
     // this exact canvas in this process epoch. The claimed revision may be
     // older than the current row so cross-session DATA-005 last-writer-wins is
-    // preserved. Restarting rotates the wire-only HMAC key, so a response
-    // delayed across a restart cannot overwrite a newer writer after TEMP
-    // high-water state has been discarded. Every write to an existing row,
-    // including a v0.5.1-shaped request, therefore requires the observed pair;
-    // only creation of a row that is still missing under this transaction may
-    // omit it. This intentionally fails old pages closed after an upgrade or
-    // restart instead of allowing a discarded per-session high-water to revive
-    // an older snapshot.
-    // Deliberately omit revision fields from this 409 so an old client cannot
-    // misclassify it as a retryable revision conflict.
+    // preserved. Existing rows always require the pair; legacy create is the
+    // only time-bounded exception.
     const validObservedBaseline =
       document.observedRevision !== undefined &&
       document.observedLoadToken !== undefined &&
@@ -1080,12 +1322,52 @@ export async function canvasPersistence(
       (row && !validObservedBaseline)
     ) {
       store.exec("ROLLBACK");
+      recordLegacyRoute("legacy.rejected.CANVAS_LOAD_REQUIRED");
       json(response, 409, {
         code: "CANVAS_LOAD_REQUIRED",
         error: "Canvas must be loaded successfully before saving",
       });
       return;
     }
+
+    const preparedLegacyDocument = safeFixtureSeed
+      ? {
+          document: { edges, nodes, viewport: document.viewport },
+          status: "ready" as const,
+        }
+      : prepareUncapableLegacyCanvasPutCandidate({
+          currentDocument: row
+            ? {
+                edges: JSON.parse(row.edges) as unknown[],
+                nodes: JSON.parse(row.nodes) as unknown[],
+                viewport: JSON.parse(row.viewport) as CanvasDocument["viewport"],
+              }
+            : undefined,
+          database: store,
+          document: { edges, nodes, viewport: document.viewport },
+          ownerId,
+        });
+    if (preparedLegacyDocument.status === "rejected") {
+      store.exec("ROLLBACK");
+      recordLegacyRoute(`legacy.rejected.${preparedLegacyDocument.code}`);
+      const messages = {
+        CANVAS_LEGACY_RECONCILE_REQUIRED:
+          "Legacy Canvas document requires authoritative reconciliation",
+        CANVAS_MEDIA_UNAVAILABLE: "Canvas media is no longer available",
+        CANVAS_TOPOLOGY_CONFLICT: "Canvas topology is invalid",
+      } as const;
+      json(response, 409, {
+        code: preparedLegacyDocument.code,
+        error: messages[preparedLegacyDocument.code],
+      });
+      return;
+    }
+    nodes = preparedLegacyDocument.document.nodes;
+    edges = preparedLegacyDocument.document.edges;
+    serializedNodes = JSON.stringify(nodes);
+    serializedEdges = JSON.stringify(edges);
+    mediaReferences = persistedMediaReferences(nodes);
+    incomingGraphFingerprint = canvasGraphFingerprint({ edges, nodes });
 
     const lockedWorkflowNodeIds = row
       ? workflowRunLockedNodeIdsInTransaction({
@@ -1102,6 +1384,7 @@ export async function canvasPersistence(
       previousNodes: JSON.parse(row.nodes) as unknown[],
     })) {
       store.exec("ROLLBACK");
+      recordLegacyRoute("legacy.rejected.WORKFLOW_GRAPH_LOCKED");
       json(response, 409, {
         code: "WORKFLOW_GRAPH_LOCKED",
         error: "整组执行中的相关节点或连线暂不能修改；其他画布内容仍可编辑",
@@ -1119,6 +1402,7 @@ export async function canvasPersistence(
       })
     ) {
       store.exec("ROLLBACK");
+      recordLegacyRoute("legacy.rejected.CANVAS_WORKFLOW_PROJECTION_STALE");
       json(response, 409, {
         code: "CANVAS_WORKFLOW_PROJECTION_STALE",
         error: "整组结果已由服务端保存；请刷新后再继续编辑",
@@ -1149,6 +1433,7 @@ export async function canvasPersistence(
         !hasCanvasSaveHighWaterCapacity(store, ownerId)
       ) {
         store.exec("ROLLBACK");
+        recordLegacyRoute("legacy.failed.CANVAS_SAVE_SESSION_CAPACITY");
         json(response, 503, {
           code: "CANVAS_SAVE_SESSION_CAPACITY",
           error: "Canvas save session capacity reached",
@@ -1188,6 +1473,7 @@ export async function canvasPersistence(
       Number(document.saveSequence) <= sessionHighWater
     ) {
       store.exec("ROLLBACK");
+      recordLegacyRoute("legacy.rejected.CANVAS_SAVE_SUPERSEDED");
       json(response, 409, {
         code: "CANVAS_SAVE_SUPERSEDED",
         currentGraphRevision: row?.graph_revision ?? 0,
@@ -1207,6 +1493,7 @@ export async function canvasPersistence(
     if (document.saveSessionId && !highWater) {
       if (!hasCanvasSaveHighWaterCapacity(store, ownerId)) {
         store.exec("ROLLBACK");
+        recordLegacyRoute("legacy.failed.CANVAS_SAVE_SESSION_CAPACITY");
         json(response, 503, {
           code: "CANVAS_SAVE_SESSION_CAPACITY",
           error: "Canvas save session capacity reached",
@@ -1233,9 +1520,89 @@ export async function canvasPersistence(
     } catch (error) {
       if (!(error instanceof MediaPublicationConflictError)) throw error;
       store.exec("ROLLBACK");
+      recordLegacyRoute("legacy.rejected.CANVAS_MEDIA_UNAVAILABLE");
       json(response, 409, {
         code: "CANVAS_MEDIA_UNAVAILABLE",
         error: "Canvas media is no longer available",
+      });
+      return;
+    }
+    if (document.generationProjection) {
+      const projectionResult = applyLegacyGenerationProjectionInTransaction({
+        baseDocument: preparedLegacyDocument.document,
+        canvasId: id,
+        database: store,
+        loadTokenEpoch: canvasLoadTokenEpochForApplication(),
+        loadTokenForRevision: (nextRevision) =>
+          canvasLoadTokenForApplication(ownerId, id, nextRevision),
+        ownerId,
+        projection: document.generationProjection,
+        requestId: currentRequestId,
+      });
+      if (projectionResult !== "applied") {
+        store.exec("ROLLBACK");
+        discardDeferredCanvasObservability(store);
+        recordLegacyRoute(
+          "legacy.rejected.CANVAS_GENERATION_PROJECTION_CONFLICT",
+        );
+        json(response, 409, {
+          code: "CANVAS_GENERATION_PROJECTION_CONFLICT",
+          error: "Generation result projection requires authoritative reconciliation",
+        });
+        return;
+      }
+      const projected = canvasRow(
+        store,
+        Boolean(identity.bypass),
+        identity.userId,
+        id,
+      );
+      if (!projected) {
+        throw new CanvasMutationGatewayUnavailableError(
+          "Projected Canvas document is unavailable",
+        );
+      }
+      if (document.saveSessionId) {
+        const writerUpdated = store.prepare(`
+          UPDATE canvas_documents
+          SET save_session_id = ?, save_sequence = ?
+          WHERE owner_id = ? AND id = ? AND revision = ?
+        `).run(
+          document.saveSessionId,
+          Number(document.saveSequence),
+          ownerId,
+          id,
+          projected.revision,
+        );
+        if (writerUpdated.changes !== 1) {
+          throw new CanvasMutationGatewayUnavailableError(
+            "Legacy projection writer identity was not retained",
+          );
+        }
+        const highWaterUpdated = upsertCanvasSaveHighWater(
+          store,
+          ownerId,
+          id,
+          document.saveSessionId,
+          Number(document.saveSequence),
+          document.saveAttemptId ?? null,
+        );
+        if (highWaterUpdated.changes !== 1) {
+          throw new CanvasMutationGatewayUnavailableError(
+            "Legacy projection high-water update failed",
+          );
+        }
+      }
+      if (afterCanvasSaveUpsertForTests) {
+        afterCanvasSaveUpsertForTests(barrierInput);
+      }
+      store.exec("COMMIT");
+      flushDeferredCanvasObservability(store);
+      recordLegacyRoute("legacy.applied");
+      json(response, 200, {
+        graphRevision: projected.graph_revision,
+        loadToken: canvasLoadTokenFor(ownerId, id, projected.revision),
+        revision: projected.revision,
       });
       return;
     }
@@ -1292,12 +1659,37 @@ export async function canvasPersistence(
       afterCanvasSaveUpsertForTests(barrierInput);
     }
     store.exec("COMMIT");
+    flushDeferredCanvasObservability(store);
+    recordLegacyRoute("legacy.applied");
     json(response, 200, {
       graphRevision,
       loadToken: canvasLoadTokenFor(ownerId, id, revision),
       revision,
     });
   } catch (error) {
+    if (
+      error instanceof CanvasMutationGatewayCapacityError ||
+      error instanceof CanvasMutationGatewayUnavailableError
+    ) {
+      if (store.isTransaction) store.exec("ROLLBACK");
+      discardDeferredCanvasObservability(store);
+      recordLegacyRoute(`legacy.failed.${error.code}`);
+      if (legacyCapability) {
+        response.setHeader(
+          "X-Unboundry-Canvas-Write-Contract",
+          legacyCanvasPutWriteContract,
+        );
+      }
+      json(response, 503, {
+        code: error.code,
+        error: error.message,
+        ...(legacyCapability
+          ? { operationId: null, requestId: currentRequestId }
+          : {}),
+      });
+      return;
+    }
+    discardDeferredCanvasObservability(store);
     rollbackCanvasSave(store, error);
   }
 }

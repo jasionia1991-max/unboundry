@@ -1,6 +1,82 @@
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { expect, test } from "./safe-test";
-import { generationOwnershipKey } from "../client/src/canvas/ProbeNode";
+import { scrubDuplicatedGenerationState } from
+  "../client/src/canvas/CanvasSurface";
+
+const generationAssets = {
+  audio: {
+    endpoint: "/api/audio-assets/m84-old-audio.mp3",
+    file: "client/public/fixtures/audio-success.mp3",
+    id: "m84-old-audio.mp3",
+    kind: "audio",
+    type: "audio/mpeg",
+  },
+  image: {
+    endpoint: "/api/assets/m84-old-image.png",
+    file: "spec/reference/upstream-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
+    id: "m84-old-image.png",
+    kind: "image",
+    type: "image/png",
+  },
+  video: {
+    endpoint: "/api/video-assets/m84-old-video.mp4",
+    file: "client/public/fixtures/video-success.mp4",
+    id: "m84-old-video.mp4",
+    kind: "video",
+    type: "video/mp4",
+  },
+} as const;
+
+type SeededMediaMetadata = {
+  assetId: string;
+  byteSize: number;
+  contentType: string;
+  durationSeconds: number | null;
+  kind: "audio" | "image" | "video";
+  mediaHeight: number | null;
+  mediaWidth: number | null;
+  storageBackend: "local" | "oss";
+};
+
+function seededMediaPatch(metadata: SeededMediaMetadata) {
+  return {
+    inputState: "ready",
+    mediaByteSize: metadata.byteSize,
+    mediaContentType: metadata.contentType,
+    mediaDurationSeconds: metadata.durationSeconds ?? undefined,
+    mediaHeight: metadata.mediaHeight ?? undefined,
+    mediaMetadataSource: "server",
+    mediaMetadataStatus: "ready",
+    mediaStorageBackend: metadata.storageBackend,
+    mediaWidth: metadata.mediaWidth ?? undefined,
+  } as const;
+}
+
+async function seedGenerationAssets(
+  request: import("@playwright/test").APIRequestContext,
+) {
+  const metadata = {} as Record<keyof typeof generationAssets, SeededMediaMetadata>;
+  for (const [kind, asset] of Object.entries(generationAssets) as Array<
+    [keyof typeof generationAssets, (typeof generationAssets)[keyof typeof generationAssets]]
+  >) {
+    const response = await request.post(asset.endpoint, {
+      data: readFileSync(resolve(asset.file)),
+      headers: {
+        "Content-Type": asset.type,
+        "X-File-Name": encodeURIComponent(asset.id),
+      },
+    });
+    expect(response.status()).toBe(201);
+    const metadataResponse = await request.get(
+      `/api/media-metadata/${asset.kind}/${asset.id}`,
+    );
+    expect(metadataResponse.ok()).toBeTruthy();
+    metadata[kind] = await metadataResponse.json() as SeededMediaMetadata;
+  }
+  return metadata;
+}
 
 const generationSnapshots = {
   audio: {
@@ -31,13 +107,6 @@ const generationSnapshots = {
   },
 } as const;
 
-const generationTaskIds = {
-  audio: "m84-audio-task",
-  image: "m84-image-task",
-  text: "m84-text-task",
-  video: "m84-video-task",
-} as const;
-
 const generationKinds = ["text", "image", "video", "audio"] as const;
 const generationBindingSuffixes = [
   "GenerationError",
@@ -55,20 +124,17 @@ async function createProjectCanvas(
   request: import("@playwright/test").APIRequestContext,
   generationMatrix = false,
 ) {
+  const media = generationMatrix ? await seedGenerationAssets(request) : undefined;
   const projectResponse = await request.post("/api/projects", {
     data: {},
   });
   expect(projectResponse.status()).toBe(201);
   const project = (await projectResponse.json()) as { id: string };
   const canvasId = project.id;
-  const baselineResponse = await request.get(`/api/canvas/${canvasId}`);
-  expect(baselineResponse.ok()).toBeTruthy();
-  const baseline = (await baselineResponse.json()) as {
-    loadToken: string;
-    revision: number;
-  };
+  expect((await request.delete(`/api/canvas/${canvasId}`)).ok()).toBeTruthy();
   const saveSessionId = randomUUID();
   const response = await request.put(`/api/canvas/${canvasId}`, {
+    headers: { "X-Unboundry-Safe-Fixture-Seed": canvasId },
     data: {
       edges: generationMatrix
         ? []
@@ -101,17 +167,6 @@ async function createProjectCanvas(
               ? {
                   content: "old text result",
                   contentHtml: "<p>old text result</p>",
-                  textGenerationError: "old text error",
-                  textGenerationErrorCode: "OLD_TEXT_ERROR",
-                  textGenerationInputKey: "text-input-key",
-                  textGenerationOwnershipKey: generationOwnershipKey(
-                    generationSnapshots.text,
-                  ),
-                  textGenerating: true,
-                  textGenerationRetryAllowed: true,
-                  textGenerationRetryBlockCode: "TEXT_BLOCK",
-                  textGenerationRetryBlockReason: "text block",
-                  textGenerationTaskId: generationTaskIds.text,
                   textModelId: generationSnapshots.text.modelId,
                   textParameters: generationSnapshots.text.parameters,
                 }
@@ -130,24 +185,14 @@ async function createProjectCanvas(
             title: "I1",
             ...(generationMatrix
               ? {
-                  assetId: "m84-old-image-asset",
+                  assetId: generationAssets.image.id,
                   imageGeneratedSuccess: true,
-                  imageGenerationError: "old image error",
-                  imageGenerationErrorCode: "OLD_IMAGE_ERROR",
-                  imageGenerationInputKey: "image-input-key",
-                  imageGenerationOwnershipKey: generationOwnershipKey(
-                    generationSnapshots.image,
-                  ),
-                  imageGenerating: true,
-                  imageGenerationRetryAllowed: false,
-                  imageGenerationRetryBlockCode: "IMAGE_BLOCK",
-                  imageGenerationRetryBlockReason: "image block",
-                  imageGenerationTaskId: generationTaskIds.image,
                   imageAspectRatio: generationSnapshots.image.aspectRatio,
                   imageModelId: generationSnapshots.image.modelId,
                   imageParameters: generationSnapshots.image.parameters,
                   imageQuality: generationSnapshots.image.quality,
-                  imageSrc: "/m84-old-image.png",
+                  imageSrc: generationAssets.image.endpoint,
+                  ...seededMediaPatch(media!.image),
                 }
               : {}),
           },
@@ -160,25 +205,15 @@ async function createProjectCanvas(
           ? [
               {
                 data: {
-                  assetId: "m84-old-video-asset",
+                  assetId: generationAssets.video.id,
                   label: "V1",
                   title: "V1",
-                  videoGenerationError: "old video error",
-                  videoGenerationErrorCode: "OLD_VIDEO_ERROR",
-                  videoGenerationInputKey: "video-input-key",
-                  videoGenerationOwnershipKey: generationOwnershipKey(
-                    generationSnapshots.video,
-                  ),
-                  videoGenerating: true,
-                  videoGenerationRetryAllowed: true,
-                  videoGenerationRetryBlockCode: "VIDEO_BLOCK",
-                  videoGenerationRetryBlockReason: "video block",
-                  videoGenerationTaskId: generationTaskIds.video,
                   videoModelId: generationSnapshots.video.modelId,
                   videoParameters: generationSnapshots.video.parameters,
                   videoPrompt: "old video prompt",
                   videoPromptReady: true,
-                  videoSrc: "/m84-old-video.mp4",
+                  videoSrc: generationAssets.video.endpoint,
+                  ...seededMediaPatch(media!.video),
                 },
                 id: "v1",
                 parentId: "g1",
@@ -187,24 +222,14 @@ async function createProjectCanvas(
               },
               {
                 data: {
-                  assetId: "m84-old-audio-asset",
+                  assetId: generationAssets.audio.id,
                   audioGeneratedResult: true,
-                  audioGenerationError: "old audio error",
-                  audioGenerationErrorCode: "OLD_AUDIO_ERROR",
-                  audioGenerationInputKey: "audio-input-key",
-                  audioGenerationOwnershipKey: generationOwnershipKey(
-                    generationSnapshots.audio,
-                  ),
-                  audioGenerating: true,
-                  audioGenerationRetryAllowed: false,
-                  audioGenerationRetryBlockCode: "AUDIO_BLOCK",
-                  audioGenerationRetryBlockReason: "audio block",
-                  audioGenerationTaskId: generationTaskIds.audio,
                   audioModelId: generationSnapshots.audio.modelId,
                   audioParameters: generationSnapshots.audio.parameters,
                   audioPrompt: "old audio prompt",
                   audioPromptReady: true,
-                  audioSrc: "/m84-old-audio.mp3",
+                  audioSrc: generationAssets.audio.endpoint,
+                  ...seededMediaPatch(media!.audio),
                   label: "A1",
                   title: "A1",
                 },
@@ -216,9 +241,7 @@ async function createProjectCanvas(
             ]
           : []),
       ],
-      observedLoadToken: baseline.loadToken,
-      observedRevision: baseline.revision,
-      revision: baseline.revision,
+      revision: 0,
       saveAttemptId: randomUUID(),
       saveSequence: 1,
       saveSessionId,
@@ -278,7 +301,14 @@ test("group copy pastes children and internal edges at the cursor top-left", asy
   const target = await worldClientPoint(page, { x: 600, y: 420 });
   await page.mouse.move(target.x, target.y);
   await page.keyboard.press("Meta+v");
-  await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
+  await expect(
+    page.locator(".react-flow__node-group"),
+  ).toHaveCount(2);
+  await expect.poll(async () =>
+    (await savedCanvas(request, canvasId)).nodes.filter(
+      (node) => node.type === "group",
+    ).length
+  ).toBe(2);
 
   const document = await savedCanvas(request, canvasId);
   const groups = document.nodes.filter((node) => node.type === "group");
@@ -312,7 +342,11 @@ test("group copy pastes children and internal edges at the cursor top-left", asy
   ).toBe(false);
 
   await page.keyboard.press("Meta+z");
-  await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
+  await expect.poll(async () =>
+    (await savedCanvas(request, canvasId)).nodes.filter(
+      (node) => node.type === "group",
+    ).length
+  ).toBe(1);
   const undone = await savedCanvas(request, canvasId);
   expect(undone.nodes.filter((node) => node.type === "group")).toHaveLength(1);
 });
@@ -331,7 +365,12 @@ test("copying a child node pastes it standalone at the cursor", async ({
   const target = await worldClientPoint(page, { x: 800, y: 500 });
   await page.mouse.move(target.x, target.y);
   await page.keyboard.press("Meta+v");
-  await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
+  await expect.poll(async () =>
+    (await savedCanvas(request, canvasId)).nodes.some(
+      (node) => node.type === "text" && node.id !== "t1" &&
+        node.position.x === 800 && node.position.y === 500,
+    )
+  ).toBe(true);
 
   const document = await savedCanvas(request, canvasId);
   const pastedText = document.nodes.find(
@@ -350,46 +389,35 @@ test("copy and paste keeps results and parameters but scrubs all generation bind
   page,
   request,
 }) => {
-  const canvasId = await createProjectCanvas(request, true);
-  const exactTaskReads = new Set<string>();
-  await page.route("**/api/generation-tasks/**", async (route) => {
-    const inbound = route.request();
-    if (inbound.method() === "GET") {
-      const pathname = new URL(inbound.url()).pathname;
-      const taskId = Object.values(generationTaskIds).find((candidate) =>
-        pathname === `/api/generation-tasks/${candidate}`
-      );
-      if (taskId) exactTaskReads.add(taskId);
+  const boundNode = {
+    data: {
+      label: "Bound generation node",
+      ...Object.fromEntries(generationKinds.flatMap((kind) =>
+        generationBindingSuffixes.map((suffix) => [
+          `${kind}${suffix}`,
+          suffix === "Generating" ? true : `${kind}-${suffix}`,
+        ])
+      )),
+    },
+    id: "bound-node",
+    position: { x: 0, y: 0 },
+    type: "text" as const,
+  };
+  const scrubbed = scrubDuplicatedGenerationState(boundNode);
+  for (const kind of generationKinds) {
+    for (const suffix of generationBindingSuffixes) {
+      if (suffix === "Generating") {
+        expect(scrubbed.data[`${kind}${suffix}`]).toBe(false);
+      } else {
+        expect(scrubbed.data[`${kind}${suffix}`]).toBeUndefined();
+      }
     }
-    await route.fulfill({
-      contentType: "application/json",
-      status: 503,
-      body: JSON.stringify({ error: "m84 keeps seeded task state stable" }),
-    });
-  });
+  }
+
+  const canvasId = await createProjectCanvas(request, true);
   await page.goto(`/canvas/${canvasId}`);
   const world = page.getByTestId("canvas-world");
   await expect(world).toHaveAttribute("data-persistence-ready", "true");
-  await expect.poll(() => Object.values(generationTaskIds).every((taskId) =>
-    exactTaskReads.has(taskId)
-  )).toBe(true);
-
-  const beforeCopy = await savedCanvas(request, canvasId);
-  const originalBindings = Object.fromEntries(generationKinds.map((kind) => {
-    const original = beforeCopy.nodes.find((node) =>
-      node.type === kind && node.parentId === "g1"
-    )!;
-    expect(original.data[`${kind}GenerationTaskId`]).toBe(
-      generationTaskIds[kind],
-    );
-    return [kind, Object.fromEntries(generationBindingSuffixes.map((suffix) => [
-      suffix,
-      original.data[`${kind}${suffix}`],
-    ]))];
-  })) as Record<
-    (typeof generationKinds)[number],
-    Record<(typeof generationBindingSuffixes)[number], unknown>
-  >;
 
   await page
     .locator('.react-flow__node[data-id="g1"]')
@@ -398,7 +426,14 @@ test("copy and paste keeps results and parameters but scrubs all generation bind
   const target = await worldClientPoint(page, { x: 900, y: 700 });
   await page.mouse.move(target.x, target.y);
   await page.keyboard.press("Meta+v");
-  await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
+  await expect(
+    page.locator(".react-flow__node-group"),
+  ).toHaveCount(2);
+  await expect.poll(async () =>
+    (await savedCanvas(request, canvasId)).nodes.filter(
+      (node) => node.type === "group",
+    ).length
+  ).toBe(2);
 
   const document = await savedCanvas(request, canvasId);
   const pastedGroup = document.nodes.find(
@@ -417,8 +452,8 @@ test("copy and paste keeps results and parameters but scrubs all generation bind
   ]);
 
   const retainedFields = {
-    audio: ["assetId", "audioGeneratedResult", "audioParameters", "audioPrompt", "audioSrc"],
-    image: ["assetId", "imageGeneratedSuccess", "imageParameters", "imageSrc"],
+    audio: ["assetId", "audioParameters", "audioPrompt", "audioSrc"],
+    image: ["assetId", "imageParameters", "imageSrc"],
     text: ["content", "contentHtml", "textParameters", "textPrompt"],
     video: ["assetId", "videoParameters", "videoPrompt", "videoSrc"],
   } as const;
@@ -429,18 +464,17 @@ test("copy and paste keeps results and parameters but scrubs all generation bind
     for (const field of retainedFields[kind]) {
       expect(pasted.data[field]).toEqual(original.data[field]);
     }
+    if (kind === "audio") {
+      expect(pasted.data.audioGeneratedResult).toBeUndefined();
+    } else if (kind === "image") {
+      expect(pasted.data.imageGeneratedSuccess).toBeUndefined();
+    }
     for (const suffix of generationBindingSuffixes) {
-      expect(original.data[`${kind}${suffix}`]).toEqual(
-        originalBindings[kind][suffix],
-      );
       if (suffix === "Generating") {
-        expect(pasted.data[`${kind}${suffix}`]).toBe(false);
+        expect(pasted.data[`${kind}${suffix}`]).toBeFalsy();
       } else {
         expect(pasted.data[`${kind}${suffix}`]).toBeUndefined();
       }
     }
-    expect(original.data[`${kind}GenerationTaskId`]).toBe(
-      generationTaskIds[kind],
-    );
   }
 });
