@@ -1,3 +1,5 @@
+> 2026-09-06 当前本地工作已转入 `spec/PERFORMANCE_REMEDIATION_CHECKPOINT_2026-09-06.md`。下面发布记录是历史事实；本轮仅本地性能修复，不授权线上/付费操作。
+
 # INC-GEN-026 Checkpoint
 
 更新时间：2026-09-03

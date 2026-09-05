@@ -158,3 +158,37 @@ export async function normalizeProviderImageToPng(input: Readonly<{
     release();
   }
 }
+
+/** Disposable history derivative. The original PNG is never rewritten. */
+export async function createHistoryImagePreview(bytes: Buffer, ownerId: string, signal?: AbortSignal) {
+  const dimensions = validatePng(bytes);
+  const root = appDataDirectory();
+  const release = await reserveMediaResources({
+    bytes: bytes.length * 2 + dimensions.width * dimensions.height * 8,
+    directory: root, ownerId,
+  });
+  let directory = "";
+  try {
+    directory = await mkdtemp(join(root, "history-preview-"));
+    const source = join(directory, "source.png");
+    const output = join(directory, "preview.png");
+    const handle = await open(source, "wx", 0o600);
+    try { await handle.writeFile(bytes); } finally { await handle.close(); }
+    for (const size of [320, 224, 160, 128]) {
+      await runMediaProcess("ffmpeg", [
+        "-v", "error", "-y", "-nostdin", "-protocol_whitelist", "file,pipe",
+        "-i", source, "-map", "0:v:0", "-frames:v", "1", "-an", "-sn", "-dn",
+        "-vf", `scale=${size}:${size}:force_original_aspect_ratio=decrease`,
+        "-c:v", "png", "-compression_level", "6", "-pix_fmt", "rgba", output,
+      ], { kind: "encode", signal, timeoutMs: 5_000,
+        stderrLimitBytes: 16 * 1024, stdoutLimitBytes: 1024 });
+      const preview = await readFile(output);
+      validatePng(preview);
+      if (preview.length <= 100 * 1024) return preview;
+    }
+    throw new Error("History preview exceeds its byte budget");
+  } finally {
+    if (directory) await rm(directory, { force: true, recursive: true });
+    release();
+  }
+}

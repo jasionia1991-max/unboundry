@@ -118,7 +118,8 @@
     "tests/m103-server-authoritative-workflow.spec.ts",
     "tests/m104-canvas-command-gateway.spec.ts",
     "tests/m105-canvas-writer-manifest.spec.ts",
-    "tests/m106-canvas-observability.spec.ts"
+    "tests/m106-canvas-observability.spec.ts",
+    "tests/m107-performance-reliability.spec.ts"
   ],
   "preview": [
     "tests/fixture-production.spec.ts",

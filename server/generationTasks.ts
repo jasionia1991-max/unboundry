@@ -18,7 +18,7 @@ import {
   type ArkImageBytesInput,
 } from "./arkFileUploader";
 import { createPrivateAliyunOssReadUrl } from "./aliyunOss";
-import { appDataDirectory, openAppDatabase } from "./database";
+import { appDataDirectory, openAppDatabase, readAppDatabaseSnapshot, closeRuntimeDatabaseTransactions } from "./database";
 import {
   allowlistedLegacyTerminalDetachSweepEnabled,
   runAllowlistedLegacyTerminalDetachSweep,
@@ -415,6 +415,7 @@ export function prepareGenerationRuntimeRoleTeardown(
   runningVideoRequests.clear();
   runningAudioRequests.clear();
   runningTextRequests.clear();
+  closeRuntimeDatabaseTransactions();
   preparedRuntimeRoleCoordinator = coordinator;
 }
 
@@ -434,6 +435,7 @@ export function unregisterGenerationRuntimeRoleCoordinatorBeforeStartup(
       "Generation runtime role coordinator already started durable work",
     );
   }
+  closeRuntimeDatabaseTransactions();
   preparedRuntimeRoleCoordinator = coordinator;
   runtimeRoleCoordinator = undefined;
   preparedRuntimeRoleCoordinator = undefined;
@@ -1484,19 +1486,12 @@ function taskSummaryForOwner(task: GenerationTask, ownerId?: string) {
     effectiveOwnerId && task.modelConfiguration.generationIdentityVersion === 2 &&
     !durableWorkflowBinding(task)
   ) {
-    const database = openAppDatabase();
     try {
-      database.exec("BEGIN");
-      canvasState = inspectSingleNodeGenerationCanvasState({
-        database,
-        ownerId: effectiveOwnerId,
-        taskId: task.id,
-      });
-      database.exec("COMMIT");
+      canvasState = readAppDatabaseSnapshot((database) => inspectSingleNodeGenerationCanvasState({
+        database, ownerId: effectiveOwnerId, taskId: task.id,
+      }));
     } catch {
-      if (database.isTransaction) database.exec("ROLLBACK");
-    } finally {
-      database.close();
+      // Status remains conservative while a maintenance/identity fence is active.
     }
   }
   return taskSummary(task, binding, canvasState);
@@ -1523,9 +1518,11 @@ function activeModelContractHealth(
   kind: NodeInputKind,
   model: GenerationModelRow,
   borrowedDatabase?: DatabaseSync,
-) {
-  const database = borrowedDatabase ?? openAppDatabase();
-  try {
+): ModelReleaseRevision {
+  if (!borrowedDatabase) {
+    return readAppDatabaseSnapshot((database) => activeModelContractHealth(kind, model, database));
+  }
+  const database = borrowedDatabase;
     return assertActiveModelContractHealth({
       capability: kind,
       costCurrency: model.cost_currency,
@@ -1537,9 +1534,6 @@ function activeModelContractHealth(
       providerProtocol: model.provider_protocol ?? "native",
       store: database,
     });
-  } finally {
-    if (!borrowedDatabase) database.close();
-  }
 }
 
 type ImageReference = {
@@ -1819,9 +1813,11 @@ function resolveModel(
   modelId: string | undefined,
   ownerId: string,
   borrowedDatabase?: DatabaseSync,
-) {
-  const database = borrowedDatabase ?? openAppDatabase();
-  try {
+): GenerationModelRow | undefined {
+  if (!borrowedDatabase) {
+    return readAppDatabaseSnapshot((database) => resolveModel(kind, modelId, ownerId, database));
+  }
+  const database = borrowedDatabase;
     return database.prepare(`
       SELECT
         model_profiles.id,
@@ -1903,9 +1899,6 @@ function resolveModel(
     ) as
       | GenerationModelRow
       | undefined;
-  } finally {
-    if (!borrowedDatabase) database.close();
-  }
 }
 
 function persistedSubmissionInputs(input: {
@@ -1990,10 +1983,8 @@ async function generationRuntimeDecision(input: {
   model: GenerationModelRow;
   ownerId: string;
 }) {
-  const contractStore = openAppDatabase();
-  const modelContractHealth = (() => {
-    try {
-      return inspectActiveModelContractHealth({
+  const modelContractHealth = readAppDatabaseSnapshot((contractStore) =>
+      inspectActiveModelContractHealth({
         capability: input.kind,
         costCurrency: input.model.cost_currency,
         defaultParameters: input.model.default_parameters,
@@ -2003,11 +1994,7 @@ async function generationRuntimeDecision(input: {
         providerProfileId: input.model.provider_profile_id,
         providerProtocol: input.model.provider_protocol ?? "native",
         store: contractStore,
-      });
-    } finally {
-      contractStore.close();
-    }
-  })();
+      }));
   const adapterSupported = modelGenerationAdapterSupported({
     capability: input.kind,
     costCurrency: input.model.cost_currency,
@@ -2561,9 +2548,8 @@ function strictGenerationPreflight(input: {
   };
 }
 
-async function generationAvailability(ownerId: string) {
-  const database = openAppDatabase();
-  try {
+function generationAvailabilitySnapshot(ownerId: string, includeDefaultImage: boolean) {
+  return readAppDatabaseSnapshot((database) => {
     const rows = database.prepare(`
       SELECT
         model_profiles.id,
@@ -2629,14 +2615,9 @@ async function generationAvailability(ownerId: string) {
     `).all(ownerId, ownerId, ownerId) as Array<
       GenerationModelRow & { capability: NodeInputKind }
     >;
-    const configuredKinds = new Set<NodeInputKind>();
-    const configuredCurrencies: Record<NodeInputKind, Set<"CNY" | "USD">> = {
-      audio: new Set(),
-      image: new Set(),
-      text: new Set(),
-      video: new Set(),
-    };
-    await Promise.all(rows.map(async (row) => {
+    // Every statement and contract check finishes inside this synchronous
+    // snapshot. Async credential reads below never retain a database handle.
+    const candidates = rows.flatMap((row) => {
       let activeRevision: ModelReleaseRevision;
       try {
         activeRevision = assertActiveModelContractHealth({
@@ -2660,78 +2641,108 @@ async function generationAvailability(ownerId: string) {
           revisionIdentity: activeRevision.revisionId,
         });
       } catch {
-        return;
+        return [];
       }
-      const providerState = await getProviderGenerationProfileState(
-        row.provider_profile_id,
-        ownerId,
-      ).catch(() => ({
-        configurationAligned: false as const,
-        profile: undefined,
-        reason: "configuration-mismatch" as const,
-      }));
-      const profile = providerState.profile;
-      const availability = evaluateModelRuntimeAvailability({
-        accountCredentialState:
-          providerState.reason === "account-credential-missing"
-            ? "missing"
-            : providerState.reason === "account-credential-invalid"
-              ? "invalid"
-              : providerState.reason === "ready"
-                ? "valid"
-                : undefined,
-        capability: row.capability,
-        costCurrency: row.cost_currency,
-        emergencyStop: false,
-        globalEnabled: true,
-        latestCapabilitySuccessAt:
-          row.latest_capability_success_at ?? undefined,
-        latestProviderAttemptAt:
-          row.latest_provider_attempt_at ?? undefined,
-        latestAuthFailureAt: row.latest_auth_failure_at ?? undefined,
-        modelConfigurationUpdatedAt: row.model_configuration_updated_at,
-        modelContractHealth: {
-          activeRevisionId: activeRevision.revisionId,
-          fingerprint: activeRevision.hash,
-          state: "healthy",
-        },
-        providerDriver: row.provider_driver,
-        providerModelId: row.provider_model_id,
-        providerProtocol: row.provider_protocol,
-        providerConfigurationUpdatedAt:
-          row.provider_configuration_updated_at ?? undefined,
-        providerConfigurationVersionAligned:
-          providerState.configurationAligned,
-        providerStatus:
-          providerState.reason === "ready" ||
-          providerState.reason === "account-credential-missing" ||
-          providerState.reason === "account-credential-invalid"
-            ? "enabled"
-            : "disabled",
-        storedProviderDriver: profile?.driver,
-      });
-      if (availability.generationAvailable) {
-        configuredKinds.add(row.capability);
-        configuredCurrencies[row.capability].add(row.cost_currency);
-      }
-    }));
+      return [{ row, activeRevision }];
+    });
     return {
-      ...generationProviderAttemptCounts(database),
-      audioProviderConfigured: configuredKinds.has("audio"),
-      imageProviderConfigured: configuredKinds.has("image"),
-      providerConfigured: configuredKinds.size > 0,
-      providerCurrencies: {
-        audio: [...configuredCurrencies.audio],
-        image: [...configuredCurrencies.image],
-        text: [...configuredCurrencies.text],
-        video: [...configuredCurrencies.video],
-      },
-      textProviderConfigured: configuredKinds.has("text"),
-      videoProviderConfigured: configuredKinds.has("video"),
+      candidates,
+      counts: generationProviderAttemptCounts(database),
+      defaultImage: includeDefaultImage
+        ? resolveModel("image", undefined, ownerId, database)
+        : undefined,
     };
-  } finally {
-    database.close();
-  }
+  });
+}
+
+async function resolveGenerationAvailability(
+  ownerId: string,
+  snapshot: ReturnType<typeof generationAvailabilitySnapshot>,
+) {
+  const configuredKinds = new Set<NodeInputKind>();
+  const configuredCurrencies: Record<NodeInputKind, Set<"CNY" | "USD">> = {
+    audio: new Set(), image: new Set(), text: new Set(), video: new Set(),
+  };
+  await Promise.all(snapshot.candidates.map(async ({ row, activeRevision }) => {
+    const providerState = await getProviderGenerationProfileState(
+      row.provider_profile_id,
+      ownerId,
+    ).catch(() => ({
+      configurationAligned: false as const,
+      profile: undefined,
+      reason: "configuration-mismatch" as const,
+    }));
+    const profile = providerState.profile;
+    const availability = evaluateModelRuntimeAvailability({
+      accountCredentialState:
+        providerState.reason === "account-credential-missing"
+          ? "missing"
+          : providerState.reason === "account-credential-invalid"
+            ? "invalid"
+            : providerState.reason === "ready"
+              ? "valid"
+              : undefined,
+      capability: row.capability,
+      costCurrency: row.cost_currency,
+      emergencyStop: false,
+      globalEnabled: true,
+      latestCapabilitySuccessAt:
+        row.latest_capability_success_at ?? undefined,
+      latestProviderAttemptAt:
+        row.latest_provider_attempt_at ?? undefined,
+      latestAuthFailureAt: row.latest_auth_failure_at ?? undefined,
+      modelConfigurationUpdatedAt: row.model_configuration_updated_at,
+      modelContractHealth: {
+        activeRevisionId: activeRevision.revisionId,
+        fingerprint: activeRevision.hash,
+        state: "healthy",
+      },
+      providerDriver: row.provider_driver,
+      providerModelId: row.provider_model_id,
+      providerProtocol: row.provider_protocol,
+      providerConfigurationUpdatedAt:
+        row.provider_configuration_updated_at ?? undefined,
+      providerConfigurationVersionAligned:
+        providerState.configurationAligned,
+      providerStatus:
+        providerState.reason === "ready" ||
+        providerState.reason === "account-credential-missing" ||
+        providerState.reason === "account-credential-invalid"
+          ? "enabled"
+          : "disabled",
+      storedProviderDriver: profile?.driver,
+    });
+    if (availability.generationAvailable) {
+      configuredKinds.add(row.capability);
+      configuredCurrencies[row.capability].add(row.cost_currency);
+    }
+  }));
+  return {
+    ...snapshot.counts,
+    audioProviderConfigured: configuredKinds.has("audio"),
+    imageProviderConfigured: configuredKinds.has("image"),
+    providerConfigured: configuredKinds.size > 0,
+    providerCurrencies: {
+      audio: [...configuredCurrencies.audio],
+      image: [...configuredCurrencies.image],
+      text: [...configuredCurrencies.text],
+      video: [...configuredCurrencies.video],
+    },
+    textProviderConfigured: configuredKinds.has("text"),
+    videoProviderConfigured: configuredKinds.has("video"),
+  };
+}
+
+async function generationAvailability(ownerId: string) {
+  return resolveGenerationAvailability(ownerId, generationAvailabilitySnapshot(ownerId, false));
+}
+
+async function imageToolAvailability(ownerId: string) {
+  const snapshot = generationAvailabilitySnapshot(ownerId, true);
+  return {
+    availability: await resolveGenerationAvailability(ownerId, snapshot),
+    model: snapshot.defaultImage,
+  };
 }
 
 function safeFailure(error: unknown, kind: "text" | "audio" | "image" | "video") {
@@ -6965,6 +6976,7 @@ export const generationTaskApplication = Object.freeze({
   autoMatchRelayProviderTask,
   cancelGenerationTask,
   generationAvailability,
+  imageToolAvailability,
   generationModelSchema,
   generationRequestIntent,
   generationRuntimeDecision,

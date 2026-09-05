@@ -1,3 +1,4 @@
+import { readAppDatabaseSnapshot } from "./database";
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import {
@@ -308,11 +309,9 @@ export function retrySingleNodeCanvasProjections(input?: Readonly<{
   dataDirectory?: string;
   limit?: number;
 }>): SingleNodeCanvasProjectionSweepResult {
-  const database = openAppDatabase(input?.dataDirectory);
   const limit = Math.max(1, Math.min(500, input?.limit ?? 200));
   const counts = { applied: 0, conflict: 0, failed: 0, visited: 0 };
-  try {
-    const rows = database.prepare(`
+  const rows = readAppDatabaseSnapshot((database) => database.prepare(`
       SELECT task.id
       FROM generation_tasks AS task
       LEFT JOIN generation_canvas_projection_states AS projection
@@ -325,7 +324,10 @@ export function retrySingleNodeCanvasProjections(input?: Readonly<{
         AND (projection.state IS NULL OR projection.state IN ('pending', 'failed'))
       ORDER BY task.updated_at DESC, task.id
       LIMIT ?
-    `).all(limit) as Array<{ id: string }>;
+    `).all(limit) as Array<{ id: string }>, input?.dataDirectory);
+  if (rows.length === 0) return Object.freeze({ ...counts });
+  const database = openAppDatabase(input?.dataDirectory);
+  try {
     for (const row of rows) {
       counts.visited += 1;
       database.exec("BEGIN IMMEDIATE");
@@ -352,8 +354,7 @@ export function retrySingleNodeCanvasProjections(input?: Readonly<{
 }
 
 export function singleNodeCanvasProjectionCandidateCount(dataDirectory?: string) {
-  const database = openAppDatabase(dataDirectory);
-  try {
+  return readAppDatabaseSnapshot((database) => {
     const row = database.prepare(`
       SELECT COUNT(*) AS count
       FROM generation_tasks AS task
@@ -366,7 +367,5 @@ export function singleNodeCanvasProjectionCandidateCount(dataDirectory?: string)
         AND (projection.state IS NULL OR projection.state IN ('pending', 'failed'))
     `).get() as { count: number };
     return Number(row.count);
-  } finally {
-    database.close();
-  }
+  }, dataDirectory);
 }

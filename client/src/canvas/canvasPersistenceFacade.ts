@@ -1,3 +1,4 @@
+import type { WorkflowRunSummary } from "../../../types/workflowRuns";
 import type { Viewport } from "@xyflow/react";
 import { useEffect } from "react";
 import type { ProbeNodeType } from "./ProbeNode";
@@ -22,6 +23,7 @@ import {
   commandSessionId,
   initialCanvasCommandDocument,
   planCanvasCommandIntents,
+  mergeWorkflowResultNodes,
   type CanvasCommandIntent,
   type CanvasCommandJournalEntry,
   type CanvasCommandTargetDocument,
@@ -380,12 +382,20 @@ export type CanvasPersistenceHttpResult = Readonly<{
 }>;
 
 export interface CanvasPersistenceTransport {
+  prepareWorkflowResultAdoption?(input: {
+    canvasId: string;
+    current: readonly unknown[];
+    document: LoadedCanvasDocument;
+    run: WorkflowRunSummary;
+  }): { baseline: AuthoritativeCanvasDocument; nodes: readonly unknown[];
+    conflicts: string[]; received: string[]; mergeHistory: (nodes: readonly unknown[]) => readonly unknown[]; commit: () => boolean } | undefined;
   adoptAuthoritativeDocument?(input: {
     canvasId: string;
     document: unknown;
     loadToken: string;
   }): boolean;
   load(input: {
+    adopt?: boolean;
     canvasId: string;
     saveSessionId: string;
     signal: AbortSignal;
@@ -405,6 +415,7 @@ export interface CanvasPersistenceTransport {
 
 /** One bounded read, including its body; cancellation never retries a request. */
 export async function loadCanvasPersistenceWithDeadline(input: {
+  adopt?: boolean;
   canvasId: string;
   controller: AbortController;
   saveSessionId: string;
@@ -432,6 +443,7 @@ export async function loadCanvasPersistenceWithDeadline(input: {
   try {
     const response = await Promise.race([
       input.transport.load({
+        adopt: input.adopt,
         canvasId: input.canvasId,
         saveSessionId: input.saveSessionId,
         signal,
@@ -661,6 +673,31 @@ export function createFetchCanvasPersistenceTransport(
   }));
 
   return {
+    prepareWorkflowResultAdoption(input) {
+      const cached = authoritative.get(input.canvasId);
+      const next = authoritativeCanvasDocument(input.document);
+      if (!cached || !next || input.run.canvasId !== input.canvasId ||
+          next.revision < cached.document.revision ||
+          !isCanvasLoadToken(input.document.loadToken)) return undefined;
+      const existing = activeIntents.get(input.canvasId);
+      const originalBaseline = existing?.baseline ?? cached.document;
+      const merged = mergeWorkflowResultNodes({
+        baseline: originalBaseline.nodes, current: input.current,
+        incoming: next.nodes, run: input.run,
+      });
+      const baseline = { ...originalBaseline, nodes: merged.baseline };
+      return { ...merged, baseline,
+        mergeHistory(nodes) {
+          return mergeWorkflowResultNodes({ baseline: originalBaseline.nodes,
+            current: nodes, incoming: next.nodes, run: input.run }).nodes;
+        }, commit() {
+        if (authoritative.get(input.canvasId) !== cached ||
+            activeIntents.get(input.canvasId) !== existing) return false;
+        authoritative.set(input.canvasId, { document: next, loadToken: input.document.loadToken });
+        activeIntents.set(input.canvasId, { baseline, entries: existing?.entries ?? [] });
+        return true;
+      } };
+    },
     adoptAuthoritativeDocument(input) {
       return Boolean(remember(
         input.canvasId,
@@ -687,10 +724,10 @@ export function createFetchCanvasPersistenceTransport(
       if (input.signal.aborted) {
         throw new DOMException("Canvas read aborted", "AbortError");
       }
-      if (result.ok) {
+      if (result.ok && input.adopt !== false) {
         const body = recordValue(result.body);
         remember(input.canvasId, result.body, body?.loadToken);
-      } else if (result.status === 404) {
+      } else if (result.status === 404 && input.adopt !== false) {
         authoritative.delete(input.canvasId);
       }
       return result;

@@ -121,15 +121,15 @@ const generationFrozenAt = requiredValue("--generation-frozen-at");
 const lastProviderAdmissionAt = requiredValue("--last-provider-admission-at");
 const profileId = requiredValue("--profile-id");
 const prefix = safePrefix(
-  valuesFor("--prefix")[0] ?? "objects/backups/unboundry-schema42",
+  valuesFor("--prefix")[0] ?? `objects/backups/unboundry-schema${expectedSchemaVersion}`,
 );
 const applyUpload = parsedArguments.flags.has("--apply-upload");
 const applyRetention = parsedArguments.flags.has("--apply-retention");
 const retainDays = Number(valuesFor("--retain-days")[0] ?? "0");
 
-if (expectedSchemaVersion !== "42" || !/^[a-f0-9]{64}$/.test(expectedDatabaseLogicalSha256)) {
+if (!["42", "43"].includes(expectedSchemaVersion) || !/^[a-f0-9]{64}$/.test(expectedDatabaseLogicalSha256)) {
   throw new Error(
-    "SCHEMA42_OSS_BACKUP_ARGUMENT_INVALID: exact schema42 and logical SHA are required",
+    "SCHEMA42_OSS_BACKUP_ARGUMENT_INVALID: exact schema42 or schema43 and logical SHA are required",
   );
 }
 if (!Number.isSafeInteger(retainDays) || retainDays < 0 || retainDays > 3650) {
@@ -169,14 +169,14 @@ const storageProfileModule = join(
 const backupArguments = [
   backupScript,
   "--source-frozen",
-  "--historical-recovery",
+  ...(expectedSchemaVersion === "42" ? ["--historical-recovery"] : []),
   "--data-dir", dataDirectory,
   "--backup-root", backupRoot,
   "--scratch-root", scratchRoot,
   "--recovery-public-key", recoveryPublicKey,
   "--signing-private-key", signingPrivateKey,
   "--expected-database-logical-sha256", expectedDatabaseLogicalSha256,
-  "--expected-schema-version", "42",
+  "--expected-schema-version", expectedSchemaVersion,
   "--generation-frozen-at", generationFrozenAt,
   "--last-provider-admission-at", lastProviderAdmissionAt,
 ];
@@ -193,8 +193,8 @@ const backupOutput = execFileSync(process.execPath, backupArguments, {
 });
 const backup = JSON.parse(backupOutput.trim());
 if (
-  backup?.captureMode !== "locked-exact" || backup?.finalCandidate !== false ||
-  backup?.schemaVersion !== 42 ||
+  backup?.captureMode !== "locked-exact" || backup?.finalCandidate !== (expectedSchemaVersion === "43") ||
+  backup?.schemaVersion !== Number(expectedSchemaVersion) ||
   backup?.databaseLogicalSha256 !== expectedDatabaseLogicalSha256 ||
   typeof backup?.packageDirectory !== "string"
 ) {
@@ -248,7 +248,7 @@ const manifest = {
   })),
   prefix: objectPrefix,
   profileId: profile.id,
-  schemaVersion: 42,
+  schemaVersion: Number(expectedSchemaVersion),
 };
 const manifestBytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`);
 const manifestObjectKey = `${objectPrefix}/oss-backup-manifest.json`;
@@ -260,7 +260,7 @@ console.log(JSON.stringify({
   databaseLogicalSha256: expectedDatabaseLogicalSha256,
   files: objects.length,
   manifestObjectKey,
-  schemaVersion: 42,
+  schemaVersion: Number(expectedSchemaVersion),
   totalBytes: objects.reduce((total, object) => total + object.byteSize, 0),
 }));
 

@@ -72,6 +72,7 @@ import type {
 import {
   MediaEditSourceAdmission,
   mediaEditSource,
+  HistoryPreviewCache,
 } from "../server/mediaEditSource";
 import type { MediaRecord } from "../server/mediaRegistry";
 import {
@@ -3728,4 +3729,30 @@ test("modern single-node terminal state adopts the server document without a bro
   });
   expect(refreshes).toBe(1);
   expect(snapshot.nodes[0]?.data.content).toBe("before replacement");
+});
+
+test("PERF private history previews recheck authorization on cache hits and after processing", async () => {
+  const { bytes, media } = await imageEditFixture();
+  let reads = 0;
+  let readable = true;
+  const cache = new HistoryPreviewCache();
+  const dependencies = {
+    identity: mediaEditIdentity,
+    lookup: () => readable ? media : undefined,
+    blobStore: imageEditBlobStore(async () => { reads += 1; return bytes; }),
+    previewCache: cache,
+    encodePreview: async () => Buffer.from(bytes.subarray(0, 100)),
+  };
+  const first = await invokeMediaEditSource(dependencies, "/private-image?preview=320-v1");
+  expect(first.status).toBe(200);
+  expect(first.header("Cache-Control")).toBe("private, no-store");
+  expect((await invokeMediaEditSource(dependencies, "/private-image?preview=320-v1")).status).toBe(200);
+  expect(reads).toBe(1);
+  readable = false;
+  expect((await invokeMediaEditSource(dependencies, "/private-image?preview=320-v1")).status).toBe(404);
+  expect(reads).toBe(1);
+  readable = true;
+  expect((await invokeMediaEditSource({ ...dependencies,
+    encodePreview: async () => { readable = false; return Buffer.alloc(20); },
+  }, "/other-image?preview=320-v1")).status).toBe(404);
 });

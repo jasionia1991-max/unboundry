@@ -3150,3 +3150,243 @@ test("INC-GEN-026 OpenRouter image uses the durable deferred-publication result-
     "synchronousResponseExecutionAttempt: running.attempt",
   );
 });
+
+test("PERF browser sees the first real workflow result while another task runs and preserves edits", async ({ page }) => {
+  test.setTimeout(120_000);
+  let releaseFirst!: () => void;
+  let releaseSecond!: () => void;
+  const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+  const secondGate = new Promise<void>((resolve) => { releaseSecond = resolve; });
+  let posts = 0;
+  const browserWrites: string[] = [];
+  const previousBypass = process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+  const originalFetch = globalThis.fetch;
+  const providerRequests: Array<{
+    body: string;
+    method: string;
+    originalUrl: string;
+  }> = [];
+  let app: ViteDevServer | undefined;
+  let provider: Server | undefined;
+  try {
+    process.env.UNBOUNDRY_TEST_AUTH_BYPASS = "1";
+    provider = createHttpServer(async (incoming, response) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of incoming) chunks.push(Buffer.from(chunk));
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      response.statusCode = 200;
+      response.setHeader("Content-Type", "application/json");
+      if (incoming.method === "GET") {
+        response.end(JSON.stringify({ items: [] }));
+        return;
+      }
+      posts += 1;
+      const index = posts;
+      await (index === 1 ? firstGate : secondGate);
+      response.end(JSON.stringify({
+        id: `resp_perf_${index}`,
+        output: [{
+          content: [{
+            text: `PERF result ${index}`,
+            type: "output_text",
+          }],
+          status: "completed",
+          type: "message",
+        }],
+        status: "completed",
+        usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+      }));
+    });
+    await listen(provider, providerPort);
+    globalThis.fetch = (async (input, init) => {
+      const originalUrl = input instanceof Request ? input.url : String(input);
+      const url = new URL(originalUrl);
+      if (url.hostname === "ark.cn-beijing.volces.com") {
+        const body = typeof init?.body === "string" ? init.body : "";
+        providerRequests.push({
+          body,
+          method: init?.method ?? "GET",
+          originalUrl,
+        });
+        const target = new URL(url.pathname + url.search, providerOrigin);
+        return await originalFetch(target, init);
+      }
+      return await originalFetch(input, init);
+    }) as typeof fetch;
+
+    app = await createViteServer({
+      configFile: "vite.config.ts",
+      logLevel: "silent",
+      server: {
+        host: "127.0.0.1",
+        hmr: false,
+        port: appPort,
+        strictPort: true,
+        ws: false,
+      },
+    });
+    await app.listen();
+    await waitForReady();
+    await expectOk(await request("/api/admin/generation-safety", {
+      body: JSON.stringify(safetySettings),
+      method: "PUT",
+    }), "generation safety");
+    const modelId = await createPublishedTextModel();
+    const project = await (await expectOk(await request("/api/projects", {
+      method: "POST", body: JSON.stringify({ title: "PERF browser" }),
+    }), "project")).json() as { id: string };
+    const canvasId = project.id;
+    const empty = await (await request(`/api/canvas/${canvasId}`)).json();
+    const groupId = "inc-gen-026-group";
+    const graph = {
+      edges: [{ id: "perf-dependency", source: "inc-gen-026-text", target: "perf-second",
+        sourceHandle: "source", targetHandle: "target", type: "cuttable" }],
+      nodes: [
+        {
+          data: { title: "INC-GEN-026 Group" },
+          id: groupId,
+          type: "group",
+        },
+        {
+          data: {
+            textModelId: modelId,
+            textParameters: { outputCount: 1, responseFormat: "text" },
+            textPrompt: "Complete this workflow exactly once",
+            textPromptReady: true,
+            title: "HTTP Text",
+          },
+          id: "inc-gen-026-text",
+          parentId: groupId,
+          type: "text",
+        },
+      ],
+    };
+    graph.nodes[0] = { ...graph.nodes[0], position: { x: 40, y: 60 }, style: { width: 600, height: 340 } } as unknown as typeof graph.nodes[number];
+    graph.nodes[1] = { ...graph.nodes[1], position: { x: 15, y: 45 }, style: { width: 250, height: 250 } } as unknown as typeof graph.nodes[number];
+    graph.nodes.push({ ...graph.nodes[1], id: "perf-second", position: { x: 310, y: 45 } } as unknown as typeof graph.nodes[number]);
+    graph.nodes.push({ id: "perf-edit", type: "text", position: { x: 680, y: 100 },
+      data: { title: "Independent draft", content: "draft before" }, style: { width: 250, height: 250 } } as unknown as typeof graph.nodes[number]);
+    const canvasResponse = await expectOk(await request(
+      `/api/canvas/${canvasId}`,
+      {
+        body: JSON.stringify({
+          ...graph,
+          revision: empty.revision, observedRevision: empty.revision, observedLoadToken: empty.loadToken,
+          viewport: { x: 0, y: 0, zoom: 1 },
+        }),
+        method: "PUT", headers: { "X-Unboundry-Safe-Fixture-Seed": canvasId },
+      },
+    ), "canvas");
+    expect((await canvasResponse.json()).revision).toBeGreaterThan(0);
+    const semantic = compileFrozenWorkflowSemanticPlan({
+      ...graph,
+      groupId,
+    });
+    const createBody = JSON.stringify({
+      canvasId,
+      clientSemanticFingerprint: semantic.semanticFingerprint,
+      groupId,
+    });
+    const createResponse = await expectOk(await request("/api/workflow-runs", {
+      body: createBody,
+      method: "POST",
+    }), "workflow create");
+    expect(createResponse.status).toBe(202);
+    const created = await createResponse.json() as { id: string };
+    const duplicateResponse = await expectOk(
+      await request("/api/workflow-runs", {
+        body: createBody,
+        method: "POST",
+      }),
+      "duplicate workflow create",
+    );
+    expect((await duplicateResponse.json() as { id: string }).id).toBe(created.id);
+    page.on("request", (entry) => {
+      const path = new URL(entry.url()).pathname;
+      if (entry.method() !== "GET" && /\/api\/(canvas|canvases|generation-tasks|workflow-runs)(\/|$)/.test(path)) browserWrites.push(path);
+    });
+    await page.goto(`${appOrigin}/canvas/${canvasId}`);
+    await expect(page.getByTestId("canvas-world")).toHaveAttribute("data-persistence-ready", "true");
+    const first = page.locator('.react-flow__node[data-id="inc-gen-026-text"]');
+    releaseFirst();
+    await expect(first).toContainText("PERF result 1", { timeout: 15_000 });
+    expect((await (await request(`/api/workflow-runs/${created.id}`)).json()).state).toBe("running");
+    expect(browserWrites).toEqual([]);
+    const edit = page.locator('.react-flow__node[data-id="perf-edit"]').getByTestId("text-node-editor");
+    await edit.dblclick();
+    await expect(edit).toHaveAttribute("contenteditable", "true");
+    await edit.fill("user draft survives results");
+    await edit.blur();
+    await expect.poll(async () => (await (await request(`/api/canvas/${canvasId}`)).json())
+      .nodes.find((node: { id: string }) => node.id === "perf-edit").data.content).toBe("user draft survives results");
+    releaseSecond();
+    const terminal = await waitForTerminalRun(created.id);
+    await expect(page.locator('.react-flow__node[data-id="perf-second"]')).toContainText("PERF result 2");
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(edit).toContainText("draft before");
+    await expect(first).toContainText("PERF result 1");
+    await expect(page.locator('.react-flow__node[data-id="perf-second"]')).toContainText("PERF result 2");
+    await page.keyboard.press("ControlOrMeta+Shift+z");
+    await expect(edit).toContainText("user draft survives results");
+    await expect.poll(async () => (await (await request(`/api/canvas/${canvasId}`)).json())
+      .nodes.find((node: { id: string }) => node.id === "perf-edit").data.content).toBe("user draft survives results");
+    const beforeReload = await (await request(`/api/canvas/${canvasId}`)).json();
+    const writes = browserWrites.length;
+    await page.reload();
+    await expect(page.getByTestId("canvas-world")).toHaveAttribute("data-persistence-ready", "true");
+    await expect(first).toContainText("PERF result 1");
+    await expect(edit).toContainText("user draft survives results");
+    expect((await (await request(`/api/canvas/${canvasId}`)).json()).nodes).toEqual(beforeReload.nodes);
+    expect(browserWrites.slice(writes)).toEqual([]);
+
+    const database = new DatabaseSync(
+      `${process.env.UNBOUNDRY_DATA_DIR}/unboundry.sqlite`,
+      { readOnly: true },
+    );
+    const evidence = database.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM generation_tasks
+          WHERE canvas_id = ?) AS tasks,
+        (SELECT COUNT(*) FROM generation_provider_attempts AS attempt
+          JOIN generation_tasks AS task ON task.id = attempt.task_id
+          WHERE task.canvas_id = ?) AS attempts,
+        (SELECT COUNT(*) FROM workflow_runs
+          WHERE canvas_id = ?) AS runs
+    `).get(canvasId, canvasId, canvasId) as {
+      attempts: number;
+      runs: number;
+      tasks: number;
+    };
+    database.close();
+    expect({
+      attempts: evidence.attempts,
+      errorCode: terminal.errorCode ?? terminal.nodes[0]?.errorCode,
+      errorMessage: terminal.errorMessage ?? terminal.nodes[0]?.errorMessage,
+      providerPosts: providerRequests.filter(({ method }) => method === "POST").length,
+      runs: evidence.runs,
+      state: terminal.state,
+      tasks: evidence.tasks,
+    }).toEqual({
+      attempts: 2,
+      errorCode: undefined,
+      errorMessage: undefined,
+      providerPosts: 2,
+      runs: 1,
+      state: "success",
+      tasks: 2,
+    });
+    expect(providerRequests.find(({ method }) => method === "POST")?.originalUrl)
+      .toBe("https://ark.cn-beijing.volces.com/api/v3/responses");
+  } finally {
+    releaseFirst(); releaseSecond();
+    await app?.close();
+    await close(provider);
+    globalThis.fetch = originalFetch;
+    if (previousBypass === undefined) {
+      delete process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+    } else {
+      process.env.UNBOUNDRY_TEST_AUTH_BYPASS = previousBypass;
+    }
+  }
+});

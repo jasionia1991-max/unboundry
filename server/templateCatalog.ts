@@ -847,6 +847,37 @@ export async function templateCatalogApi(
     return;
   }
 
+  if (request.method === "GET" && /^[a-z0-9._-]{1,160}$/i.test(path)) {
+    const url = new URL(request.url ?? "", "http://127.0.0.1");
+    const space = url.searchParams.get("space") ?? "public";
+    if (space !== "mine" && space !== "public") {
+      json(response, 400, { error: "模板空间无效" });
+      return;
+    }
+    if (space === "mine" && !identity) {
+      json(response, 401, { error: "请先登录" });
+      return;
+    }
+    const row = space === "mine"
+      ? store.prepare("SELECT * FROM user_templates WHERE id = ? AND owner_id = ?")
+          .get(path, identity!.userId) as UserTemplateRow | undefined
+      : store.prepare("SELECT * FROM public_templates WHERE id = ? AND status = 'published'")
+          .get(path) as PublicTemplateRow | undefined;
+    if (!row) {
+      json(response, 404, { error: "模板不存在或已下架" });
+      return;
+    }
+    const expected = url.searchParams.get("updatedAt");
+    if (expected !== null && expected !== String(row.updated_at)) {
+      json(response, 409, { error: "模板已更新，请重新选择" });
+      return;
+    }
+    json(response, 200, { template: space === "mine"
+      ? userTemplateCard(store, identity!.userId, row as UserTemplateRow, true)
+      : publicTemplateCard(store, row as PublicTemplateRow, true) });
+    return;
+  }
+
   if (request.method === "POST" && !path) {
     if (!identity) {
       json(response, 401, { error: "请先登录" });

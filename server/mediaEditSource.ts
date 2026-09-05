@@ -13,6 +13,8 @@ import {
   readableMedia,
   type MediaRecord,
 } from "./mediaRegistry";
+import { createHistoryImagePreview } from "./providerImageNormalization";
+import { MediaProcessPool } from "./mediaProcess";
 import { validatePng } from "./assetStorage";
 
 const maximumImageBytes = 20 * 1024 * 1024;
@@ -77,6 +79,8 @@ type MediaEditSourceDependencies = Readonly<{
     id: string,
   ) => MediaRecord | undefined;
   readTimeoutMs?: number;
+  previewCache?: HistoryPreviewCache;
+  encodePreview?: typeof createHistoryImagePreview;
 }>;
 
 let cachedBlobStore: MediaBlobStore | undefined;
@@ -179,6 +183,43 @@ export async function mediaEditSource(
     return;
   }
 
+  const preview = new URL(request.url ?? "", "http://127.0.0.1").searchParams.get("preview");
+  if (preview !== null) {
+    if (preview !== "320-v1") {
+      json(response, 400, "INVALID_PREVIEW", "预览尺寸无效");
+      return;
+    }
+    const keyFor = (item: MediaRecord) => JSON.stringify([
+      appDataDirectory(), ownerId, id, item.storageBackend, item.storageProfileId,
+      item.objectKey, item.storageName, item.checksumSha256,
+    ]);
+    const key = keyFor(media);
+    try {
+      const buffer = await (dependencies.previewCache ?? historyPreviews).get(key, async (signal) => {
+        const bytes = await readVerifiedImage(media, dependencies.blobStore ?? mediaBlobStore(), signal);
+        return (dependencies.encodePreview ?? createHistoryImagePreview)(bytes, ownerId, signal);
+      });
+      // Recheck live authorization after queued/remote work, including cache hits.
+      const current = (dependencies.lookup ?? readableMedia)(request, "image", id);
+      const currentIdentity = (dependencies.identity ?? requestIdentity)(request);
+      if (!currentIdentity || (currentIdentity.bypass ? "__test__" : currentIdentity.userId) !== ownerId ||
+          !current || current.storageStatus !== "ready" || keyFor(current) !== key) {
+        json(response, 404, "IMAGE_PREVIEW_NOT_FOUND", "图片已不可用");
+        return;
+      }
+      if (response.destroyed || response.writableEnded) return;
+      response.statusCode = 200;
+      response.setHeader("Cache-Control", "private, no-store");
+      response.setHeader("Content-Type", "image/png");
+      response.setHeader("Content-Length", String(buffer.length));
+      response.end(buffer);
+    } catch {
+      response.setHeader("Retry-After", "30");
+      json(response, 503, "IMAGE_PREVIEW_UNAVAILABLE", "预览暂不可用，可查看原图");
+    }
+    return;
+  }
+
   const release = (dependencies.admission ?? defaultAdmission).tryAcquire(ownerId);
   if (!release) {
     response.setHeader("Retry-After", "1");
@@ -208,36 +249,8 @@ export async function mediaEditSource(
   timer.unref?.();
 
   try {
-    const bytes = await (dependencies.blobStore ?? mediaBlobStore()).read(
-      blobReference(media),
-      {
-        maximumBytes: maximumImageBytes,
-        signal: controller.signal,
-      },
-    );
-    if (controller.signal.aborted) throw controller.signal.reason;
-    if (bytes.byteLength !== media.byteSize) {
-      throw new MediaEditSourceIntegrityError("Image byte length mismatch");
-    }
-    const buffer = bufferView(bytes);
-    if (
-      createHash("sha256").update(buffer).digest("hex") !==
-        media.checksumSha256.toLowerCase()
-    ) {
-      throw new MediaEditSourceIntegrityError("Image checksum mismatch");
-    }
-    let dimensions: ReturnType<typeof validatePng>;
-    try {
-      dimensions = validatePng(buffer);
-    } catch {
-      throw new MediaEditSourceIntegrityError("Image PNG validation failed");
-    }
-    if (
-      media.mediaWidth !== null && media.mediaWidth !== dimensions.width ||
-      media.mediaHeight !== null && media.mediaHeight !== dimensions.height
-    ) {
-      throw new MediaEditSourceIntegrityError("Image dimensions mismatch");
-    }
+    const buffer = await readVerifiedImage(media,
+      dependencies.blobStore ?? mediaBlobStore(), controller.signal);
 
     completed = true;
     response.statusCode = 200;
@@ -288,3 +301,89 @@ export async function mediaEditSource(
     release();
   }
 }
+
+async function readVerifiedImage(media: MediaRecord, store: MediaBlobStore, signal: AbortSignal) {
+    const bytes = await store.read(
+      blobReference(media),
+      {
+        maximumBytes: maximumImageBytes,
+        signal: signal,
+      },
+    );
+    if (signal.aborted) throw signal.reason;
+    if (bytes.byteLength !== media.byteSize) {
+      throw new MediaEditSourceIntegrityError("Image byte length mismatch");
+    }
+    const buffer = bufferView(bytes);
+    if (
+      createHash("sha256").update(buffer).digest("hex") !==
+        media.checksumSha256.toLowerCase()
+    ) {
+      throw new MediaEditSourceIntegrityError("Image checksum mismatch");
+    }
+    let dimensions: ReturnType<typeof validatePng>;
+    try {
+      dimensions = validatePng(buffer);
+    } catch {
+      throw new MediaEditSourceIntegrityError("Image PNG validation failed");
+    }
+    if (
+      media.mediaWidth !== null && media.mediaWidth !== dimensions.width ||
+      media.mediaHeight !== null && media.mediaHeight !== dimensions.height
+    ) {
+      throw new MediaEditSourceIntegrityError("Image dimensions mismatch");
+    }
+
+    return buffer;
+}
+
+/** Memory-only LRU: no derivative files accumulate or enter backups. A single
+ * bounded lane includes the source download, not just the encoder. */
+export class HistoryPreviewCache {
+  private readonly cache = new Map<string, { bytes: Buffer; at: number }>();
+  private readonly pending = new Map<string, Promise<Buffer>>();
+  private readonly failures = new Map<string, number>();
+  private readonly lane = new MediaProcessPool(1, 32);
+  private byteSize = 0;
+  constructor(private readonly maximumBytes = 64 * 1024 * 1024) {}
+  snapshot() { return { bytes: this.byteSize, entries: this.cache.size,
+    pending: this.pending.size, ...this.lane.snapshot() }; }
+  async get(key: string, create: (signal: AbortSignal) => Promise<Buffer>): Promise<Buffer> {
+    const cached = this.cache.get(key);
+    if (cached && cached.at > Date.now() - 300_000) {
+      this.cache.delete(key); this.cache.set(key, cached);
+      return cached.bytes;
+    }
+    if (cached) { this.cache.delete(key); this.byteSize -= cached.bytes.length; }
+    if ((this.failures.get(key) ?? 0) > Date.now()) throw new Error("Preview cooling down");
+    const existing = this.pending.get(key);
+    if (existing) return existing;
+    if (this.pending.size >= 33) throw new Error("Preview queue full");
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 30_000);
+    timer.unref?.();
+    const work = (async () => {
+      const release = await this.lane.acquire(controller.signal);
+      try {
+        const bytes = await create(controller.signal);
+        if (controller.signal.aborted || bytes.length > 100 * 1024 || !bytes.length) throw new Error("Invalid preview");
+        while (this.cache.size && this.byteSize + bytes.length > this.maximumBytes) {
+          const oldest = this.cache.keys().next().value!;
+          this.byteSize -= this.cache.get(oldest)!.bytes.length;
+          this.cache.delete(oldest);
+        }
+        if (bytes.length <= this.maximumBytes) {
+          this.cache.set(key, { bytes, at: Date.now() }); this.byteSize += bytes.length;
+        }
+        return bytes;
+      } finally { release(); }
+    })().catch((error) => {
+      if (this.failures.size >= 512) this.failures.delete(this.failures.keys().next().value!);
+      this.failures.set(key, Date.now() + 30_000);
+      throw error;
+    }).finally(() => { clearTimeout(timer); this.pending.delete(key); });
+    this.pending.set(key, work);
+    return work;
+  }
+}
+const historyPreviews = new HistoryPreviewCache();

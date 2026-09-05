@@ -2354,3 +2354,58 @@ test("Image model switch retains 2K quality when both models support it", async 
     .toHaveAttribute("aria-pressed", "true");
   await expect(creator).toContainText("2K");
 });
+
+test("PERF upload preview is visible before the upload response and never enters the saved document", async ({ page, request }) => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  await request.delete("/api/canvas/node.image.empty");
+  await page.goto("/__fixture/node.image.empty");
+  await expect(page.getByTestId("canvas-world")).toHaveAttribute("data-persistence-ready", "true");
+  await page.route("**/api/assets/*", async (route) => {
+    if (route.request().method() === "POST") await gate;
+    await route.continue();
+  });
+  try {
+    await page.getByTestId("image-upload-input").setInputFiles(path.resolve(
+      "spec/reference/upstream-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
+    ));
+    const preview = page.getByTestId("image-node-preview");
+    await expect(preview).toHaveAttribute("src", /^blob:/);
+    await expect(page.getByTestId("image-upload-input")).toBeDisabled();
+    const pending = await (await request.get("/api/canvas/node.image.empty")).text();
+    expect(pending).not.toContain("blob:");
+    release();
+    await expect(preview).toHaveAttribute("src", /^\/api\/assets\//);
+    await expect(page.getByTestId("image-upload-input")).toBeEnabled();
+    const saved = await (await request.get("/api/canvas/node.image.empty")).text();
+    expect(saved).not.toContain("blob:");
+  } finally { release(); }
+});
+
+test("PERF lost upload adoption ACK never deletes the server-adopted image", async ({ page, request }) => {
+  await request.delete("/api/canvas/node.image.empty");
+  await page.goto("/__fixture/node.image.empty");
+  await expect(page.getByTestId("canvas-world")).toHaveAttribute("data-persistence-ready", "true");
+  const deletions: string[] = [];
+  page.on("request", (event) => {
+    if (event.method() === "DELETE" && event.url().includes("/api/assets/")) deletions.push(event.url());
+  });
+  let committed = false;
+  await page.route("**/api/canvases/*/commands", async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    const response = await route.fetch();
+    if (response.ok()) committed = true;
+    await route.abort("connectionreset");
+  });
+  await page.getByTestId("image-upload-input").setInputFiles(path.resolve(
+    "spec/reference/upstream-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
+  ));
+  await expect.poll(() => committed).toBe(true);
+  await expect(page.getByTestId("image-upload-input")).toBeEnabled({ timeout: 30_000 });
+  const saved = await (await request.get("/api/canvas/node.image.empty")).json();
+  const image = saved.nodes.find((node: { data: { assetId?: string } }) => node.data.assetId);
+  expect(image?.data.assetId).toBeTruthy();
+  expect((await request.get(`/api/assets/${image.data.assetId}`)).ok()).toBe(true);
+  expect(deletions).toEqual([]);
+  expect(JSON.stringify(saved)).not.toContain("blob:");
+});

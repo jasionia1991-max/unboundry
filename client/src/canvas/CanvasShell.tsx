@@ -165,6 +165,7 @@ type ProjectTitleRecord = {
 type ProjectAction = "clone" | "create" | "delete";
 
 type TemplateCatalogCard = {
+  updatedAt?: number;
   categories: string[];
   cover?: { assetId: string; kind: "image" | "video" } | null;
   description?: string;
@@ -409,8 +410,11 @@ function persistedHistoryPreview(item: HistoryAsset) {
 }
 
 function HistoryCardMedia({ item }: { item: HistoryAsset }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [item.id, item.preview]);
   const mediaUrl = historyMediaUrl(item);
   if (item.kind === "image" && mediaUrl) {
+    if (failed) return <span role="img" aria-label="预览暂不可用，可打开原图">预览暂不可用</span>;
     return (
       <img
         alt=""
@@ -418,7 +422,8 @@ function HistoryCardMedia({ item }: { item: HistoryAsset }) {
         decoding="async"
         draggable={false}
         loading="lazy"
-        src={mediaUrl}
+        onError={() => setFailed(true)}
+        src={`/api/image-edit-sources/${encodeURIComponent(item.id)}?preview=320-v1`}
       />
     );
   }
@@ -1258,17 +1263,43 @@ export function CanvasShell({
     }));
   };
 
-  const applyTemplate = (template: TemplateCatalogCard) => {
-    if (effectiveCanvasLoadState !== "ready" || !template.graph) return;
-    recordRecentTemplate(userId, template.id);
-    setTemplateNoticeOpen(false);
-    setTemplatesOpen(false);
-    setTemplateBrowseAllOpen(false);
-    setShellMenuCommand((current) => ({
-      action: "apply-template",
-      graph: template.graph,
-      sequence: (current?.sequence ?? 0) + 1,
-    }));
+  const templateApplyController = useRef<AbortController | undefined>(undefined);
+  const templateApplyScope = useRef(canvasScopeId);
+  templateApplyScope.current = canvasScopeId;
+  useEffect(() => () => templateApplyController.current?.abort(), [canvasScopeId]);
+  const applyTemplate = async (template: TemplateCatalogCard) => {
+    if (effectiveCanvasLoadState !== "ready" || templateApplyController.current) return;
+    const controller = new AbortController();
+    templateApplyController.current = controller;
+    const scope = canvasScopeId;
+    try {
+      const parameters = new URLSearchParams({
+        space: templateTab === "我的模板" ? "mine" : "public",
+        ...(template.updatedAt === undefined ? {} : { updatedAt: String(template.updatedAt) }),
+      });
+      const response = await fetch(`/api/templates/${encodeURIComponent(template.id)}?${parameters}`, {
+        cache: "no-store", headers: { Accept: "application/json" }, signal: controller.signal,
+      });
+      const body = await response.json() as { error?: string; template?: TemplateCatalogCard };
+      if (!response.ok || body.template?.id !== template.id || !body.template.graph) {
+        throw new Error(body.error ?? "模板读取失败，请重新选择");
+      }
+      if (controller.signal.aborted || templateApplyScope.current !== scope) return;
+      recordRecentTemplate(userId, template.id);
+      setTemplateNoticeOpen(false);
+      setTemplatesOpen(false);
+      setTemplateBrowseAllOpen(false);
+      setShellMenuCommand((current) => ({
+        action: "apply-template", graph: body.template!.graph!,
+        sequence: (current?.sequence ?? 0) + 1,
+      }));
+    } catch (error) {
+      if (!controller.signal.aborted) setTemplateCatalogError(
+        error instanceof Error ? error.message : "模板读取失败",
+      );
+    } finally {
+      if (templateApplyController.current === controller) templateApplyController.current = undefined;
+    }
   };
 
   const deleteUserTemplate = async (template: TemplateCatalogCard) => {
@@ -1433,9 +1464,10 @@ export function CanvasShell({
   );
   useEffect(() => {
     const controller = new AbortController();
+    if (!templatesOpen && !templateBrowseAllOpen) return;
     const parameters = new URLSearchParams({
       category: templateBrowseAllOpen ? templateBrowseCategory : "全部",
-      includeGraph: "true",
+      includeGraph: "false",
       limit: "100",
       offset: "0",
       q: templateSearch.trim(),
@@ -1487,6 +1519,7 @@ export function CanvasShell({
       });
     return () => controller.abort();
   }, [
+    templatesOpen,
     templateBrowseAllOpen,
     templateBrowseCategory,
     templateSearch,

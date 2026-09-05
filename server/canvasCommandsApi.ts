@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { DatabaseSync } from "node:sqlite";
 import { requestIdentity } from "./auth";
-import { appDataDirectory, openAppDatabase } from "./database";
+import { createRuntimeDatabaseTransactionRunner } from "./database";
 import {
   canvasCommandWriteContract,
   parseCanvasUserCommand,
@@ -146,6 +146,7 @@ function sendGatewayResult(
 }
 
 export function createCanvasCommandsApi(options: CanvasCommandsApiOptions = {}) {
+  const transactions = createRuntimeDatabaseTransactionRunner();
   return async function canvasCommandsApi(
     request: IncomingMessage,
     response: ServerResponse,
@@ -239,22 +240,36 @@ export function createCanvasCommandsApi(options: CanvasCommandsApiOptions = {}) 
     }
     const canvasId = match[1]!;
     const ownerId = identity.userId;
-    const database = options.database?.() ?? openAppDatabase(appDataDirectory());
-    let settled = false;
+    const injectedDatabase = options.database?.();
+    const apply = (database: DatabaseSync) => {
+      try {
+        return applyCanvasUserCommandInTransaction({
+          canvasId, command: parsed.value, database,
+          loadTokenEpoch: canvasLoadTokenEpochForApplication(), ownerId,
+          requestId: currentRequestId,
+          validLoadToken: validCanvasLoadTokenForApplication,
+        });
+      } catch (error) {
+        discardDeferredCanvasObservability(database);
+        throw error;
+      }
+    };
     try {
-      database.exec("BEGIN IMMEDIATE");
-      const result = applyCanvasUserCommandInTransaction({
-        canvasId,
-        command: parsed.value,
-        database,
-        loadTokenEpoch: canvasLoadTokenEpochForApplication(),
-        ownerId,
-        requestId: currentRequestId,
-        validLoadToken: validCanvasLoadTokenForApplication,
-      });
-      database.exec("COMMIT");
-      settled = true;
-      flushDeferredCanvasObservability(database);
+      const result = injectedDatabase
+        ? (() => {
+            injectedDatabase.exec("BEGIN IMMEDIATE");
+            try {
+              const result = apply(injectedDatabase);
+              injectedDatabase.exec("COMMIT");
+              flushDeferredCanvasObservability(injectedDatabase);
+              return result;
+            } catch (error) {
+              if (injectedDatabase.isTransaction) injectedDatabase.exec("ROLLBACK");
+              discardDeferredCanvasObservability(injectedDatabase);
+              throw error;
+            }
+          })()
+        : transactions.run(apply, flushDeferredCanvasObservability);
       if ("outcome" in result) {
         recordRoute(routeOutcome(result));
         sendGatewayResult(
@@ -293,8 +308,6 @@ export function createCanvasCommandsApi(options: CanvasCommandsApiOptions = {}) 
         requestId: currentRequestId,
       });
     } catch (error) {
-      if (!settled && database.isTransaction) database.exec("ROLLBACK");
-      if (!settled) discardDeferredCanvasObservability(database);
       if (error instanceof CanvasMutationGatewayCapacityError ||
           error instanceof CanvasMutationGatewayUnavailableError) {
         recordRoute(`command.failed.${error.code}`);
@@ -307,10 +320,6 @@ export function createCanvasCommandsApi(options: CanvasCommandsApiOptions = {}) 
         return;
       }
       throw error;
-    } finally {
-      if (options.closeDatabaseAfterRequest !== false && !options.database) {
-        database.close();
-      }
     }
   };
 }
