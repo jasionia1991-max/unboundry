@@ -1,5 +1,17 @@
 # Unboundry 项目级 Agent 施工守则
 
+> **v0.7.11 候选当前事实（2026-09-05 14:32 UTC）**：生产仍`v0.7.9/schema43`，保留CURRENT live43的code-only回退；原组11/11真实成功禁止重跑。本地255项定向、独立全量代码Review161文件/1241hunks/257writers/194CWB及P0/P1/P2=0、正式127specs/1243PASS均已完成；session95805 exit0、异常0、源码无漂移。原48203终态不可恢复而补证，原记录保留NOT_PASS，不能伪称仅一次调用。post-full文档增量6/6复核已GO（155文件不变、P0/P1/P2=0），当前只待发布及生产后置验收，不重复成功full或255定向。用户允许既有素材OSS只读GET/Range，刷新不能触发新的生成、上传或Canvas写入。以当前状态与唯一Checkpoint顶部为准，下面早期时点保留为历史。
+
+> **11:00 UTC 当前事实**：0710两项后置失败已执行无损code-only rollback至079/schema43/PID489226；CURRENT live43从未被备份覆盖，目标95/input58及组11/11成功保留，37表与媒体/secret树无变化，原生成设置已恢复。后续只在唯一实施树准备下一未占用普通patch；不重跑原组、不改0710不可变发布物、不清除旧journal。当前依据`spec/V0_7_10_POST_FAILURE_CODE_ROLLBACK_RECEIPT_2026-09-05.json`与Checkpoint顶部；下方0710当前时点已经过时。
+
+> **10:20 UTC 最新事实，覆盖下面10:04时点**：目标group已11/11真实成功（7文/3图/1视频，每节点attempt1、一次run，全部回填、呼吸灯终止）。补充音频单击在task创建前409 `WORKFLOW_BINDING_MISMATCH`，音频task/Provider0；完成后刷新又暴露6个文字contentHtml实体编码被pagehide误当用户编辑，命令6秒abort/加载失败，DB95/input58及全部结果仍完整。生产仍0710/PID468648，尚未回滚或改已发布产品；正准备下一patch及保留CURRENT live43的code-only回滚复核。不得再次点击原group、清除浏览器journal、覆盖DB或标Goal完成。详见0710receipt `realOutcomesFinal0710` / Checkpoint顶部。
+
+> **10:04 UTC 当前事实（覆盖下方历史时点）**：v0.7.10 已激活，schema43/PID468648/NRestarts0；attempt2 最新 locked-exact43 备份、verify/fresh restore、实际 service 077隔离42回滚→0710 CURRENT43前进、37表零行变化及媒体/secret树无损、33/33公网静态均PASS。原生成设置09:42恢复。冷2/暖刷新三方零多余写均PASS（84/58不变、各5个允许的OSS只读GET）。10:02:20Z已消耗唯一整组点击，run=`10e1664e-32dc-4e67-8573-34b95e8336a0`正在运行；首文字成功、首图片原attempt处理中，严禁再次点击。音频/三类上传/结果后刷新/最终生产Review仍待完成。正式1239不重跑；权威为0710生产receipt及唯一Checkpoint顶部。
+
+> **09:27 UTC 更新**：首次维护已停/恢复079，因维护caller的warning-only参数导致latest43备份拒绝，0710仍INACTIVE、未触及077阶段、无DB恢复覆盖。当前079/schema43/PID463401、原生成设置已审计恢复，业务计数及目标84/58不变。只继续独立复核中的attempt2操作增量；不重复formal1239。当前事实看0710生产receipt/Checkpoint最新顶部，以下未停服/PID395702为历史。
+
+> **最新生产准备（2026-09-05）**：v0.7.10 已PR159合并、双CI成功、不可移动tag/Release发布，exact-tag fresh build与903源码/6129文件/33静态核验通过，安装INACTIVE；线上仍079/schema43/PID395702，未切换。新previous42恢复和625镜像核验通过，操作preflight原P1/P2经独立复核关闭；latest43备份、实际service rollback-forward、刷新/真实生成仍未执行。先读新`spec/V0_7_10_PRODUCTION_RECEIPT_2026-09-05.json`及唯一Checkpoint最新区块；下方“0710尚未发布”是历史时点。产品/测试未变，不重跑1239项full。
+
 > **2026-09-05 Canvas写入边界Goal当前覆盖层**：生产仍`v0.7.9/schema43`、刷新NO_GO、目标group点击0。v0.7.10统一30秒读取/迟到缓存围栏及精确版本登记已完成：定向208项通过，冻结独立Review覆盖158/158文件、1969/1969hunks、P0/P1/P2=0；唯一新formal full为127specs、1239/1239 PASS、exit0，源码快照不变。当前仅同步文档增量，尚未发布0710；不得因文档更新重跑业务full。三份独立恢复副本的实际进程forward→previous→forward已通过，但真实service回滚仍待操作方案复核/执行，不能混称生产通过。保留全部schema43新写；用户已允许既有素材OSS只读加载。先读`spec/UNBOUNDRY_CURRENT_STATE.md`与唯一Canvas写入边界Checkpoint；旧授权/版本段落只作历史。
 
 > **2026-09-03 INC-GEN-028 当前最高优先级**：生产运行`v0.7.7/schema42`且v0.7.7 tag/Release不可变；PR #155、双CI、exact-tag build、locked-exact backup/restore、切换与rollback-forward已通过。上线后按用户顺序先刷新精确Canvas `adcb89a5-c1f4-47e4-bbbb-28fff8d81583`，服务器版本页出现4次成功但多余的Canvas PUT，revision 71→75、graph revision 46→50；因此严格停在刷新门，group `group-17ee0cbc-cc81-4b35-9c5e-41040f627033`点击0次，workflow/task/Provider提交0次。根因是`ImageNode`加载图片时忽略已保存style尺寸并再次自动适配，持久化style变化触发保存。v0.7.7发布授权已消费；下一版本、代码修复、发布和真实点击均未授权。当前权威为 `spec/UNBOUNDRY_CURRENT_STATE.md` 与 `spec/V0_7_7_PRODUCTION_RECEIPT_2026-09-03.json`。

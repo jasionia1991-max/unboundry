@@ -1,0 +1,126 @@
+{
+  "status": "LOCAL_TARGETED_255_PASS_FROZEN_FULL_REVIEW_GO_FORMAL_1243_PASS_POST_FULL_DOC_REVIEW_GO",
+  "formalFullFinal": {
+    "command": "/Users/mymy/.hermes/node/bin/node scripts/run-safe-tests.mjs full",
+    "sessionId": 95805, "startedAt": "2026-09-05T14:04:22.089Z", "finishedAt": "2026-09-05T14:32:15.938Z", "exitStatus": 0,
+    "specs": 127, "passed": 1243, "tests": 1243, "failed": 0, "skipped": 0, "retries": 0, "blocked": 0, "reportErrors": 0,
+    "node": "22.23.1", "npm": "10.9.8", "sourceFiles": 906,
+    "sourceSha256": "deb4575d5dd84a276db0a3ce6b292927a4890080e1d615c8ff38de9f0b643b7c",
+    "snapshotSha256": "deb4575d5dd84a276db0a3ce6b292927a4890080e1d615c8ff38de9f0b643b7c",
+    "snapshotUnchanged": true, "listener4173Unchanged": true, "frozen161FileDrift": 0,
+    "immutableBuilder": {"attempts":1,"invocations":5,"failed":0,"syntheticOnly":true},
+    "completeLog": "/tmp/unboundry-v0711-candidate.JEYZZf/formal-recovery-complete.log",
+    "completeLogSha256": "245472e0586c78b6a44fee678ee5229d22dc1145a81108f6f73b254f84288008",
+    "summary": "/tmp/unboundry-v0711-candidate.JEYZZf/formal-full-final.json",
+    "originalInvocation": {"sessionId":48203,"status":"FINAL_RESULT_UNAVAILABLE_NOT_PASS","lastObservedAt":"2026-09-05T13:28:50.579Z","replacementReason":"Original task hit model-capacity compaction failure; session/process and surviving summary unavailable. Exact 161-file freeze unchanged; required release gate needed a recoverable final record. Original record retained, not relabeled PASS."},
+    "totalInvocations": 2, "recoverableCompletedInvocations": 1,
+    "postFullChanges": "Documentation only; no product/test/runtime changes or repeated targeted/full tests",
+    "postFullDocumentReview": {"verdict":"GO","reviewer":"independent_candidate_review","files":6,"unchangedFiles":155,"fullFiles":161,"fullHunks":1241,"deltaFilesSinceHead":25,"deltaHunksSinceHead":174,"entriesSha256":"bac18d22b2beb060a1e9a1d5fd78f434d42520b6fbba88a55a3b61ee8ec233ba","P0":0,"P1":0,"P2":0,"permittedBackfill":"Review conclusion only, then commit and release; production remains pending"}, "productionAcceptance": "NOT_PASSED"
+  },
+  "finalFrozenCandidateReview": { "reviewer": "independent_candidate_review", "inventoryEntriesSha256": "d3a3d4279c14929aebff3576191e654898f6bdec239c02f5036d4b48d5a271de", "files": 161, "hunks": 1241, "deltaFilesSinceHead": 25, "deltaHunksSinceHead": 173, "docsDeltaFiles": 5, "otherUnchangedFiles": 156, "writerEntries": 257, "productWriters": 200, "exceptions": 96, "violations": 0, "cwb": 194, "publishedModels": 10, "modelIdentities": 12, "adapters": 6, "protectedFileAccess": 0, "omissions": 0, "P0": 0, "P1": 0, "P2": 0, "originalFindings": "P1 CLOSED; P2 CLOSED; first NO_GO retained below", "verdict": "GO", "permittedBackfill": "Only this review conclusion; then one mandatory formal full. No product/test/runtime change, no repeated targeted tests", "formalFull": "NOT_RUN at review completion", "productionVerdict": "NOT_RUN/NO_GO for v0.7.11" },
+  "firstFrozenCandidateReview": {
+    "reviewer": "independent_candidate_review", "inventoryEntriesSha256": "30de0caf557c1ee4da17828a1cd40d16133ab16b15c9438737648cce8aaf61af",
+    "files": 161, "hunks": 1241, "hunkDefinition": "git diff --unified=3; whole untracked file counted as one", "deltaFilesSinceHead": 25, "deltaHunksSinceHead": 171,
+    "unchangedPriorFilesExplicitlyReused": 134, "changedFilesSincePriorReview": 27,
+    "writerEntries": 257, "productWriters": 200, "clientProductWriters": 131, "serverProductWriters": 69, "exceptions": 96, "violations": 0,
+    "cwb": 194, "publishedModels": 10, "modelIdentities": 12, "adapters": 6, "omissions": 0, "protectedFileAccess": 0, "inventoryDrift": 0,
+    "productFindings": 0, "P0": 0, "P1": 1, "P2": 1, "verdict": "NO_GO",
+    "findings": ["Matrix carried old candidate and v0.7.10 production AUTO_PASS into current v0.7.11 gates", "Latest Matrix/Plan m38 wording remained pending despite final 19/19 PASS"],
+    "correction": "Current 0711 candidate/release/backup/deploy/refresh/rollback gates PENDING; original unique group evidence explicitly HISTORICAL_AUTO_PASS and never rerun; R9 current formal1243 pending; m38 final19/19 aligned",
+    "docsDeltaReview": "PENDING; five documentation files only, product and tests unchanged",
+    "formalFull": "NOT_RUN"
+  },
+  "ttsIntegrationVerification": {
+    "command": "/Users/mymy/.hermes/node/bin/node scripts/run-safe-tests.mjs run --spec tests/m104-inc-gen-026-reliability.spec.ts",
+    "attempts": [
+      { "session": 79282, "exitStatus": 1, "productTestsRun": 0, "sourceSha256": "ca029fdb6bef11250ea6b62159a4e46a0c66d250d5803ab333b29195d98c1105", "reason": "New fixture parameter spread inferred only format; explicit record typing fixed before product execution" },
+      { "session": 68543, "exitStatus": 1, "passed": 13, "failed": 1, "tests": 14, "sourceSha256": "73957c2f6ced6dd631e8e3fbc1b9612017751d3dfd420fd46e574c79b7627da6", "reason": "Browser fixture lacked project metadata; CanvasShell project-title 404 redirected to workspace before generation" },
+      { "session": 90558, "exitStatus": 1, "passed": 13, "failed": 1, "tests": 14, "sourceSha256": "9ec2e981f81896f502873f760c168530cb40284e98d8cf7cfe98dabc6a98a9cb", "reason": "New project fixture seed omitted observedRevision/observedLoadToken; setup rejected with CANVAS_LOAD_REQUIRED before browser generation" },
+      { "session": 17944, "exitStatus": 1, "passed": 9, "failed": 5, "tests": 14, "sourceSha256": "2e20045c8024aab413215595bcffda1550654bc69511820c21a9df7167b81720", "dynamicPorts": [52913, 59235], "networkBlocked": 2, "reason": "Fake relay POST wrongly returned a final result without task_id. Original task remained recovering; later test contexts inherited unresolved fixture state and the network guard denied two api.lk888.test fetch attempts. No real Provider access occurred; replaced mock with the actual async task-id/status protocol. Trace preservation attempted after runner cleanup and failed; no preserved trace claimed." },
+      { "session": 37965, "exitStatus": 0, "passed": 14, "failed": 0, "tests": 14, "skipped": 0, "retries": 0, "blocked": 0, "reportErrors": 0, "duration": "17.8s product tests", "sourceSha256": "2ea0dc91d64b7224665e0426bd22afedfc745db53826bd87b29609905c46beb3", "snapshotSha256": "2ea0dc91d64b7224665e0426bd22afedfc745db53826bd87b29609905c46beb3" }
+    ],
+    "scope": [
+      "Actual browser Generate, actual local HTTP admission, published exact TTS schema, default mp3/emotion auto and preserved hidden UI emotionScale=4",
+      "Exact Provider payload model/params/prompt excludes emotionScale, emotion_scale and other UI-only keys",
+      "One task, one Provider POST, task_id response, skills status 404 fallback to media status, original task attempt1 success",
+      "Actual result download/publication/projection; terminal task and SQL result_asset_id/provider_task_id correlate with Canvas asset/groupRunSuccessTaskId",
+      "Browser reload retains audio and server nodes/revision, no extra API writes, no browser409, metadata loads",
+      "Existing HTTP workflow, published Seedance/TT Image/Grok and settlement tests remain green"
+    ],
+    "runnerChange": "Self-managed server specs can use page/context; include self in guarded browser preparation. No network or filesystem guard weakened.",
+    "discoveredSpecs": 127, "discoveredTests": 1243, "executedSpecs": 1,
+    "node": "22.23.1", "npm": "10.9.8", "sourceFiles": 906,
+    "snapshotUnchanged": true, "listener4173": "unchanged",
+    "realProviderOrOssUsed": false, "formalFull": "NOT_RUN", "finalCandidateReview": "NOT_RUN"
+  },
+  "sourceFenceVerification": {
+    "priorAttempt": { "session": 64030, "exitStatus": 1, "passed": 58, "failed": 1, "tests": 59, "skipped": 0, "retries": 0, "blocked": 0, "reportErrors": 0, "dynamicPorts": [42616, 48606], "sourceSha256": "b3006b46ac5af9655b54ef8063c8127e23bcb72f4a95b9618e18d46b13e5d028", "failure": "m41 line6991: upstream Text edit while catalog is pending still allowed a late success with canvasProjectionState=conflict to replace the target body; real product P1, assertion retained" },
+    "repair": [
+      "Shared catalog-independent source/edge/order/ownPrompt change fence supplements, but never replaces, strict parameter and full-contract proof",
+      "Four generic bound recoveries stop on proven source changes without clearing task, intent or server binding; imageTools retain their independent identity",
+      "Modern Text recovery, generation, retry and legacy polling helper use authoritative Canvas content after applied projection, never task resultText for a rejected or pending projection"
+    ],
+    "command": "/Users/mymy/.hermes/node/bin/node scripts/run-safe-tests.mjs run --spec tests/m41-generation-retry-ui.spec.ts --spec tests/m102-model-execution-contracts.spec.ts",
+    "session": 11332, "exitStatus": 0, "passed": 91, "tests": 91,
+    "specs": { "m102": "32/32, 8.5s", "m41": "59/59, 3.1m" },
+    "failed": 0, "skipped": 0, "retries": 0, "blocked": 0, "reportErrors": 0,
+    "node": "22.23.1", "npm": "10.9.8", "sourceFiles": 906,
+    "sourceSha256": "8749ab2c90d485cfc60f5c1340f8cd2c6e800eaac5ff1f0a18bb5e9ab6e22c46",
+    "snapshotSha256": "8749ab2c90d485cfc60f5c1340f8cd2c6e800eaac5ff1f0a18bb5e9ab6e22c46",
+    "snapshotUnchanged": true, "listener4173": "unchanged", "realProviderOrOssUsed": false,
+    "discoveredSpecs": 127, "discoveredTests": 1242, "executedSpecs": 2,
+    "formalFull": "NOT_RUN", "finalCandidateReview": "NOT_RUN"
+  },
+  "versionReserved": "0.7.11",
+  "packageVersion": "0.7.11",
+  "versionVerification": {
+    "firstAttempt": { "command": "/Users/mymy/.hermes/node/bin/node scripts/run-safe-tests.mjs run --spec tests/m81-deployment-hardening.spec.ts --spec tests/m38-generation-runtime-incidents.spec.ts", "session": 22103, "exitStatus": 1, "passed": 60, "tests": 61, "failed": 1, "skipped": 0, "retries": 0, "blocked": 0, "reportErrors": 0, "specs": { "m81": "42/42 PASS, 35.4s", "m38": "18/19; missing exact current production marker in AGENTS after code rollback" }, "sourceFiles": 906, "sourceSha256": "61654a1af0a701cc803a712fd09fbff0c7435645b70111e205d2b5ad7d3d5d99", "snapshotUnchanged": true, "listener4173": "unchanged" },
+    "repair": "AGENTS current production marker restored to verified v0.7.9/schema43; docs only, m81 evidence retained; rerun m38 only",
+    "finalDocumentationVerification": { "command": "/Users/mymy/.hermes/node/bin/node scripts/run-safe-tests.mjs run --spec tests/m38-generation-runtime-incidents.spec.ts", "session": 49793, "exitStatus": 0, "passed": 19, "tests": 19, "failed": 0, "skipped": 0, "retries": 0, "blocked": 0, "reportErrors": 0, "duration": "4.1s product tests", "sourceFiles": 906, "sourceSha256": "87fefd52eff2c89a4ce5efd43d3080905a84ede2023f59edd99d48c9c11381dd", "snapshotUnchanged": true, "listener4173": "unchanged", "node": "22.23.1", "npm": "10.9.8", "discoveredSpecs": 127, "discoveredTests": 1243, "executedSpecs": 1 }
+  },
+  "versionRegistration": { "registeredAt": "2026-09-05T12:40:35Z", "runtimeRole": "exact 0.7.11 final only; bridge mismatch and unknown/suffixed versions rejected", "verification": "m81 42/42 and m38 final 19/19 PASS; original 60/61 failure retained", "refreshAcceptance": "Existing assets readonly GET/Range allowed by explicit user reply; no new generation, upload or Canvas writes on refresh" },
+  "worktree": "/Users/mymy/Documents/unboundry-post-v076-canvas-convergence-2026-09-03",
+  "branch": "codex/v0.7.11-canonical-generation-boundaries",
+  "baseHead": "1443d69a40db666b5b932f4769e53e46b9ea4173",
+  "versionAvailability": { "checkedAt": "2026-09-05T12:40:35Z", "localTag": "absent", "remoteTag": "absent", "githubRelease": "release not found", "recheckRequiredBeforeVersioning": false, "recheckRequiredBeforeRelease": true },
+  "production": "079/schema43 after reviewed data-preserving code rollback; not acceptance PASS",
+  "textRepair": {
+    "designReview": "independent_candidate_review: Text narrow design GO; not final candidate Review",
+    "files": ["client/src/canvas/TextNode.tsx", "client/src/canvas/CanvasSurface.tsx"],
+    "behavior": "Compare committed editor HTML with the existing safe serialized stored baseline; preserve original authoritative bytes when equivalent",
+    "serverResultBytesChanged": false,
+    "browserJournalCleared": false,
+    "tests": "tests/m86-canvas-load-safety.spec.ts",
+    "newCases": 2,
+    "newCoverage": ["modern command-v1 and legacy transport", "server escaped quotes/apostrophe/ampersand/angle brackets/newline", "hydrate and delayed timer zero writes", "pagehide and actual reload zero writes", "existing real format-only editing preserved"]
+  },
+  "targetedVerification": {
+    "command": "/Users/mymy/.hermes/node/bin/node scripts/run-safe-tests.mjs run --spec tests/m86-canvas-load-safety.spec.ts",
+    "node": "22.23.1",
+    "npm": "10.9.8",
+    "attempts": [
+      { "session": 81450, "exitStatus": 1, "productTestsRun": 0, "reason": "new test locator inferred HTMLElement|SVGElement; innerText needed HTMLElement narrowing", "fixed": true },
+      { "session": 96286, "exitStatus": 1, "productTestsRun": 0, "reason": "managed timeout negative control kill EPERM; no matching process residual observed; no safety gate changed", "snapshotSha256": "8c1dd7d82159989455514669b201902b3b7e28d8a3a27ba7ae3f1f3627220cf3" },
+      { "session": 9747, "exitStatus": 0, "passed": 89, "tests": 89, "failed": 0, "skipped": 0, "retries": 0, "blocked": 0, "reportErrors": 0, "duration": "2.6m", "managedTimeoutNegativeControl": "PASS without code change", "dynamicPorts": [55674, 59324] }
+    ],
+    "sourceFiles": 905,
+    "sourceSha256": "8c1dd7d82159989455514669b201902b3b7e28d8a3a27ba7ae3f1f3627220cf3",
+    "snapshotUnchanged": true,
+    "listener4173": "unchanged",
+    "isolatedTemporaryData": true,
+    "realProviderOrOssUsed": false,
+    "discoveredSpecs": 127,
+    "discoveredTests": 1241,
+    "executedSpecs": 1,
+    "formalFull": "NOT_RUN for new candidate"
+  },
+  "writerManifest": { "entries": 257, "previousEntries": 256, "newEntryReason": "m86 commands route test double, not a pagehide event producer; no added product writer", "violations": 0, "sourceTreeHash": "90b850d28d1f82b05725c2738b889bd56d86b985c14043cd134d21369fd1ee06", "finalCandidateReviewPending": true },
+  "parameterRepair": { "implemented": "Four generic nodes integrated; parameter/source proof, recovery and actual TTS browser/API/fake Provider verification passed", "serverFinding": "Independent reviewer retracted server P1: validateParameterValues already returns the strict submission projection; no server identityParameters added", "clientFinding": "Canonical unbound identity, opaque bound evidence, independent source change fence and authoritative-only modern Text results", "design": "R10 item5 DOCUMENT_GO; final frozen candidate Review still pending", "sharedHelper": "types/generationIdentity.ts boundGenerationParameterProof and boundGenerationSourceProof", "workflowDirectDependency": "workflowNodeExecutors original-task bound recovery unchanged" },
+  "parameterVerification": {
+    "proofContract": { "command": "/Users/mymy/.hermes/node/bin/node scripts/run-safe-tests.mjs run --spec tests/m102-model-execution-contracts.spec.ts", "session": 64943, "exitStatus": 0, "passed": 32, "failed": 0, "skipped": 0, "retries": 0, "blocked": 0, "reportErrors": 0, "duration": "8.9s product tests", "sourceFiles": 906, "sourceSha256": "e31396d2c6e9b447eb3c3a6fa175a88da7551e2bc52c9c7427d639328a2926e0", "scope": "shared proof and existing contract tests before four-node integration; not browser create or full suite" },
+    "fourNodeRecovery": { "command": "/Users/mymy/.hermes/node/bin/node scripts/run-safe-tests.mjs run --spec tests/m41-generation-retry-ui.spec.ts", "session": 17332, "exitStatus": 1, "passed": 56, "failed": 3, "tests": 59, "skipped": 0, "retries": 0, "blocked": 0, "reportErrors": 0, "dynamicPorts": [56485, 44850], "sourceSha256": "bb5e2e2a8b52b32ebe6e9139e8cbe8de4eacf9de4c5f3618bcf1042ef511994f", "failures": ["line1912 initial Canvas GET route.fetch ECONNRESET and persistence-ready false", "line2840 Image cancel/prompt edit then Generate stalled; old generating view restored; diagnosis pending", "line6978 upstream Text edit preserves local intent while old test expects null; design reconciliation pending"], "preservedArtifacts": "/tmp/unboundry-v0711-m41-failure.LaPKqb", "artifactScope": "first two failures trace/context, first screenshot; third failure retained in tool output", "snapshotUnchanged": true, "listener4173": "unchanged" },
+    "node": "22.23.1", "npm": "10.9.8", "discoveredSpecs": 127, "discoveredTests": 1242,
+    "realProviderOrOssUsed": false, "formalFull": "NOT_RUN", "ttsBrowserCreateFakeProviderIntegration": "NOT_RUN"
+  },
+  "remaining": ["immutable release and deployment with current-data backup/restore/rollback", "production refresh gates, real audio and three uploads", "final production review"]
+}

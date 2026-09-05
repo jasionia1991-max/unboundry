@@ -1,5 +1,23 @@
 # Unboundry 当前权威状态
 
+> **2026-09-05 14:32 UTC 当前权威**：v0.7.11独立全量代码Review P0/P1/P2=0，正式全测127 specs、1243/1243 PASS、exit0、异常0，完整日志已落盘；原48203终态丢失未标PASS，在冻结无漂移下补证95805成功。255定向和成功full不重复。post-full文档增量6/6已审查GO（155文件不变、P0/P1/P2=0），当前进入发布，0711尚未commit/发布/部署。线上079/schema43，原11/11真实结果保留且禁止重跑；刷新、真实音频/三上传及最终生产复核尚未通过。下面所有较早覆盖段落为历史时点，以本段、下面统一当前字段和Checkpoint最新段为准。
+
+> **v0.7.11 最新Review结论**：首次独立全量Review覆盖161/161文件、1241/1241 hunks、257/257 writers、194 CWB、10模型/12 identities/6 adapters。产品无新增finding，治理P1=1/P2=1，NO_GO；当前已修正Matrix旧版状态继承及m38待验文案，正做5份文档增量重新冻结/复核。产品和测试未变，不重复255项定向；新formal full未运行，生产079不变，原11结果不重跑。下面“审查正在进行”只代表首次审查返回前。
+
+> **v0.7.11 版本门已通过**：m81 42/42、m38最小文档复验19/19，累计有效定向255项；原60/61失败及修正保留。当前进入候选冻结/独立全量Review，新formal full与发布未执行。线上仍079，原组11/11成功不重跑；下方“m81/m38待验”为本轮早期时点。
+
+> **最新本地进展**：v0.7.11 已登记 package/lock 与精确 final 运行时版本；本地/远端 tag、GitHub Release 均未占用。Text刷新89/89、参数与源输入32/32、四节点恢复59/59、TTS实际浏览器→本地API→假Provider→结果回填→刷新14/14通过，历次失败保留。下一步 m81/m38 版本定向验证、候选冻结/独立全量Review/新formal，随后发布与真实音频/三上传/结果刷新/最终生产Review。生产仍079/schema43，原11成功组不重跑；已有素材只读GET/Range允许，刷新不得新增生成、上传或Canvas写入。本地通过不是生产PASS。
+
+> **11:00 UTC 当前事实**：已按后置失败方案只回退代码到079/schema43/PID489226，保留CURRENT live43全部新结果；新stopped DB备份、37表零行变化、媒体/secret树零变化通过，11:00:30Z原生成设置已恢复。目标组11/11成功仍有效且不得重跑；音频参数身份与结果刷新派生写入仍待下一补丁修复，三上传与最终生产Review未完成。当前回执为`spec/V0_7_10_POST_FAILURE_CODE_ROLLBACK_RECEIPT_2026-09-05.json`，下面0710运行字样只代表此前时点。
+
+> **10:20 UTC 最新断点**：目标组真实执行11/11成功已确认，单run/11 task/11 attempt/4 publication、revision84→95/input58不变，浏览器额外Canvas写/409均0。随后两项验收NO_GO：独立Canvas4349f70d音频preflight200但提交409 `WORKFLOW_BINDING_MISMATCH`（创建前拒绝，task/Provider0）；结果后刷新派生富文本HTML编码被误当用户编辑，发出6字段commands并6秒abort，页面加载失败。服务端95/58、完整结果和业务计数不变，没有丢失/覆盖。当前仍0710/schema43，未执行后续回滚或代码修改；有界音频诊断及下一patch+无损code rollback设计处理中。下方“原run执行中”已过时；Goal未完成，三上传未运行。
+
+> **10:04 UTC 最新执行断点**：生产v0.7.10/schema43/PID468648，latest43备份`5178b05f-7d1b-4eee-94a4-853d6ea09b81`官方verify/fresh restore、实际service回滚前进、37表及文件树无损、33静态公网核验全部通过；attempt1失败证据保留，不能当成当前失败。冷2/暖刷新通过，revision84/input58不变，Canvas写/409/新增任务及Provider POST均0，既有素材GET各5允许。唯一目标group已于10:02:20Z点击，run=`10e1664e-32dc-4e67-8573-34b95e8336a0`，10:04首文字成功投影/首图片running，每节点attempt1；仅跟踪原run，禁止再点击。后续音频、三类自有上传/下游、结果刷新、最终生产独立Review尚未完成，Goal active/USER_RECHECK。下面未激活/点击0为历史；不重复已通过1239项formal full。
+
+> **09:27 UTC 维护实证优先**：0710仍未激活。首次实际维护被官方备份warning-only参数不适用于97项历史非阻断问题所拦下；无新备份package、未运行077/0710、未恢复覆盖DB。079已用CURRENT live43恢复，PID463401/NRestarts0/公网ready43、任务与目标84/58不变；UI审计345恢复原global1/emergency0/wait。下一attempt2仅修维护调用参数及Type=simple早期exec身份观察，正在有界独立复核，不重跑formal1239。详见0710生产receipt与唯一Checkpoint；下方“未停服/PID395702”为此前时点。
+
+> **最新实证（2026-09-05）**：v0.7.10 已完成 PR159、双CI、不可移动tag/Release；exact-tag全新构建903源码零漂移，已独占安装到未激活release目录，6129文件校验与33静态/12内部symlink通过。生产仍079/schema43/PID395702，未停服、未切换、真实group点击0。新previous42副本官方verify/fresh restore通过，625/625既有OSS镜像字节核验通过；停服preflight的P1/P2均经独立复核关闭。最新43备份、实际service回滚前进、0710刷新和全部真实生成验收仍待执行。当前0710生产准备回执为`spec/V0_7_10_PRODUCTION_RECEIPT_2026-09-05.json`；下方“尚未发布/进入PR”的句子为此前历史时点。产品/测试变化0，不重跑1239项full。
+
 > **发布前文档门已关闭**：formal后7/7文件增量独立Review为P0/P1/P2=0/DOCUMENT_GO，产品/测试变化0；CWB-176恢复AUTO_PASS。维护方案revision4也已取得设计GO，精确操作命令及全部生产验收仍待执行。0710进入commit/push/PR/CI流程，下方“文档待审”是本回填之前的历史时点；1239项full不重跑。
 
 > **最新断点（2026-09-05，优先于下方历史时点）**：v0.7.10候选独立全量Review `158/158 files、1969/1969 hunks、256/256 writers、194/194 CWB、P0/P1/P2=0`；唯一正式全测 `127 specs、1239/1239 PASS、failed/skipped/retries/blocked/reportErrors=0、exit0`，source/snapshot=`676ea9bc69eb4051a64b7abe32235c5cbd38f1ae9481370964a53ac5ece6e37b`且未变化。测试结束后只同步文档，增量复核待完成，不重复业务full。三份独立fresh restore的真实进程079/43→077/42→079/43通过，**不等于live service rollback**；其维护窗口方案仍在有界复核。生产保持079/schema43、刷新NO_GO、真实点击0；0710尚未commit/push/发布。当前回执：`spec/V0_7_10_LOCAL_IMPLEMENTATION_RECEIPT_2026-09-05.json`与`spec/V0_7_9_PRODUCTION_RECEIPT_2026-09-05.json`。
@@ -16,7 +34,7 @@
 
 **生产是 v0.7.9 / schema43。** 发布、备份恢复、静态文件及服务健康已有证据；暖刷新读取超时和完整进程回滚恢复门尚未通过，没有执行本Goal真实生成。
 
-**本地候选状态**：v0.7.10保留写入边界主体与终态计费历史修复，统一Canvas读取deadline/迟到缓存围栏并登记精确final版本；schema/Provider/保存写入合同不变。定向208项、独立代码Review及1239项formal full通过；当前文档增量待复核，尚未发布。
+**当前0710状态**：保留写入边界主体与终态计费历史修复，统一Canvas读取deadline/迟到缓存围栏并登记精确final版本；schema/Provider/保存写入合同不变。定向208项、独立代码Review及1239项formal full通过，PR159/tag/Release已发布，exact-tag构建已安装INACTIVE；尚未切换生产或完成0710真实验收。
 
 **生产遗留事实**：v0.7.7 登录普通 Chrome 打开目标 Canvas 后曾出现4次多余 Canvas PUT，revision 71→75、graph revision 46→50；前置刷新门失败后没有点击整组执行。该事实是 v0.7.8 的修复基线，不能把本地测试当作生产已通过。
 
@@ -28,18 +46,18 @@
 
 更新日期：2026-09-05
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.7.10**
-本地候选代码版本：**v0.7.10**
-当前本地候选说明：`v0.7.10 targeted208 / frozenReview158files1969hunks GO / formalFull1239 PASS / docsDelta7files GO / releaseInProgress；production079 refresh NO_GO`
+当前代码包版本：**v0.7.11**
+本地候选代码版本：**v0.7.11**
+当前本地候选说明：`v0.7.11 targeted255 / independent full Review GO / formal127specs-1243PASS；post-full文档增量6/6 GO，尚未发布；production079/schema43，原group11/11成功不重跑，后置刷新与真实音频/三上传未通过`
 当前生产部署版本：**v0.7.9/schema43**
 本地候选schema：**43**
-当前治理标记：`CURRENT_V0_7_10_USER_RECHECK`
-当前业务标记：`V0_7_9_DEPLOYED / REFRESH_NO_GO / REAL_WORKFLOW_NOT_RUN`
-当前发布执行标记：`V0_7_10_RELEASE_AUTHORIZED / TARGETED_208_PASS / FORMAL_FULL_1239_OF_1239_PASS / DOCS_DELTA_REVIEW_GO / REAL_CLICK_0_OF_1`
-当前本地Goal标记：`ACTIVE_CANVAS_DOCUMENT_WRITE_BOUNDARY_GOAL / PLAN_R0_R10 / MATRIX_CWB_001_CWB_194`
-当前计划标记：`V0_7_9_R9_PASS / R10_IN_PROGRESS / REFRESH_NO_GO / REAL_CLICK_0_OF_1`
+当前治理标记：`CURRENT_V0_7_11_USER_RECHECK`
+当前业务标记：`V0_7_9_CODE_ROLLBACK_CURRENT43 / ORIGINAL_GROUP_11_OF_11_PASS / REFRESH_AND_AUDIO_PRODUCTION_NO_GO / UPLOADS_NOT_RUN`
+当前发布执行标记：`V0_7_11_TARGETED_255_PASS / FULL_REVIEW_GO / FORMAL_1243_PASS / POST_FULL_DOC_REVIEW_GO / RELEASE_NOT_RUN / REAL_CLICK_1_OF_1`
+当前本地Goal标记：`CANVAS_DOCUMENT_WRITE_BOUNDARY_CONTINUATION / PLAN_R0_R10 / MATRIX_CWB_001_CWB_194 / USER_REQUESTED_CONTINUE`
+当前计划标记：`V0_7_11_CODE_REVIEW_AND_FORMAL_PASS / POST_FULL_DOC_REVIEW_GO / R10_PENDING / REAL_CLICK_1_OF_1`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`V0_7_9_PRODUCTION / V0_7_8_IMMUTABLE_PUBLISHED_NOT_DEPLOYED / R10_REFRESH_NO_GO`
+当前发布门：`V0_7_9_PRODUCTION / V0_7_11_NOT_RELEASED / CURRENT_DATA_BACKUP_AND_PRODUCTION_ACCEPTANCE_PENDING`
 
 ## INC-GEN-028 当前读取顺序
 

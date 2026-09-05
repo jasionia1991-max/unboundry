@@ -1,3 +1,4 @@
+import { boundGenerationParameterProof, boundGenerationSourceProof } from "../../../types/generationIdentity";
 import {
   Handle,
   NodeResizer,
@@ -880,11 +881,36 @@ function VideoNodeImpl({
     modelConfigurationRevision: selectedVideoModel?.configurationRevision,
     modelId: selectedVideoModelId,
     modelReleaseRevision: selectedVideoModel?.releaseRevisionId,
-    parameters: selectedVideoModel ? normalizedVideoParameters : data.videoParameters,
+    parameters: selectedVideoModel ? videoSubmissionParameters : data.videoParameters,
     prompt: promptControl.committedValue,
     upstream: generationOwnershipUpstream,
   });
-  const rawGenerationInputFingerprint = generationOwnershipKey({
+  const boundParameterProof = boundGenerationParameterProof({
+    kind: "video",
+    frozen: {
+      inputKey: data.videoGenerationInputKey,
+      ownershipKey: data.videoGenerationOwnershipKey,
+      modelId: data.videoModelId,
+      modelConfigurationRevision: data.videoGenerationModelConfigurationRevision,
+      modelReleaseRevision: data.videoGenerationModelReleaseRevision,
+      contractFingerprint: data.videoGenerationModelInputContractFingerprint,
+    },
+    current: selectedVideoModel ? {
+      capability: selectedVideoModel.capability,
+      modelId: selectedVideoModel.id,
+      modelConfigurationRevision: selectedVideoModel.configurationRevision,
+      modelReleaseRevision: selectedVideoModel.releaseRevisionId,
+      contractFingerprint: inputPreflight.contractFingerprint,
+      parameterSchema: selectedVideoModel.parameterSchema,
+      parameters: data.videoParameters,
+    } : undefined,
+  });
+  const boundParameterProofRef = useRef(boundParameterProof);
+  boundParameterProofRef.current = boundParameterProof;
+  const boundSourceProof = boundGenerationSourceProof(data.videoGenerationInputKey, videoGenerationInputKey);
+  const boundSourceProofRef = useRef(boundSourceProof);
+  boundSourceProofRef.current = boundSourceProof;
+  const rawGenerationInputFingerprint = data.videoGenerationOwnershipKey ?? generationOwnershipKey({
     contractFingerprint: data.videoGenerationOwnershipKey
       ? data.videoGenerationModelInputContractFingerprint
       : inputPreflight.contractFingerprint,
@@ -903,7 +929,7 @@ function VideoNodeImpl({
     parameters: data.videoGenerationOwnershipKey
       ? data.videoParameters
       : selectedVideoModel
-        ? normalizedVideoParameters
+        ? videoSubmissionParameters
         : data.videoParameters,
     prompt: promptControl.committedValue,
     // Only durable source/edge semantics belong here. Compatibility, resolver
@@ -936,6 +962,7 @@ function VideoNodeImpl({
     : `${videoModelSelection.status}:${selectedVideoModelId ?? ""}:${videoGenerationInputKey}`;
   const retryAvailable = Boolean(
     retryTaskId &&
+    (!data.videoGenerationOwnershipKey || boundParameterProof.state === "valid") &&
     data.videoGenerationInputKey === videoGenerationInputKey &&
     (!data.videoGenerationOwnershipKey ||
       data.videoGenerationOwnershipKey === rawGenerationInputFingerprint) &&
@@ -1044,7 +1071,7 @@ function VideoNodeImpl({
       stableRawGenerationInputFingerprint.current = undefined;
       return;
     }
-    if (data.workflowExecutionRunId) {
+    if (data.workflowExecutionRunId || data.videoGenerationOwnershipKey) {
       stableRawGenerationInputFingerprint.current = rawGenerationInputFingerprint;
       return;
     }
@@ -2379,6 +2406,14 @@ function VideoNodeImpl({
         persistedTaskReadPending = false;
       } else return;
       if (controller.signal.aborted || !task) return;
+      if (persistedOwnershipKey && (
+        boundParameterProofRef.current.state === "changed" ||
+        boundSourceProofRef.current === "changed" ||
+        (boundParameterProofRef.current.state === "unknown" &&
+          (task.generationIdentityVersion !== 2 || !graphCommandPort?.refreshAuthoritativeDocument)) ||
+        (boundParameterProofRef.current.state === "valid" &&
+          persistedInputKey !== liveGenerationInputKeyRef.current)
+      )) return;
       const recoveredOwnershipKey = persistedOwnershipKey ??
         task.generationOwnershipKey;
       if (
@@ -2504,7 +2539,15 @@ function VideoNodeImpl({
           preserveBindingOwnership: true,
           prompt: promptControl.committedValue.trim(),
           readBlock() {
-            if (!pollingRun || !ownsGenerationPollingRun(pollingRun)) {
+            if (!pollingRun || !ownsGenerationPollingRun(pollingRun) ||
+              (persistedOwnershipKey && (
+               boundParameterProofRef.current.state === "changed" ||
+                boundSourceProofRef.current === "changed" ||
+                (boundParameterProofRef.current.state === "unknown" &&
+                  (task!.generationIdentityVersion !== 2 || !graphCommandPort?.refreshAuthoritativeDocument)) ||
+                (boundParameterProofRef.current.state === "valid" &&
+                  persistedInputKey !== liveGenerationInputKeyRef.current)
+              ))) {
               return {
                 message: "生成输入已修改，已停止本次恢复",
                 status: "blocked",
@@ -2642,6 +2685,8 @@ function VideoNodeImpl({
     persistenceReady,
     recoveryEpoch,
     retryWakeEpoch,
+    boundParameterProof.state,
+    boundSourceProof,
     rawGenerationInputFingerprint,
     legacyRecoveryCatalogKey,
     lockedNodeIds,

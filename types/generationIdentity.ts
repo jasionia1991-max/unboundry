@@ -1,4 +1,9 @@
-import type { ModelParameterValue } from "./modelParameters";
+import {
+  validateParameterValues,
+  type ModelCapability,
+  type ModelParameterSchema,
+  type ModelParameterValue,
+} from "./modelParameters";
 import type { NodeInputKind, ResolvedNodeInput } from "./nodeInputs";
 import type {
   ImageGenerationToolInput,
@@ -16,6 +21,130 @@ function stableIdentityValue(value: unknown): unknown {
     );
   }
   return value;
+}
+
+function parameterRecord(value: unknown): value is Record<string, ModelParameterValue> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value)) &&
+    Object.entries(value as Record<string, unknown>).every(([key, item]) =>
+      key !== "__proto__" && key !== "constructor" && key !== "prototype" &&
+      (typeof item === "string" || typeof item === "boolean" ||
+        (typeof item === "number" && Number.isFinite(item)))
+    );
+}
+
+type FrozenGenerationModelIdentity = {
+  modelId?: string;
+  modelConfigurationRevision?: string;
+  modelReleaseRevision?: string;
+  contractFingerprint?: string;
+};
+
+export type BoundGenerationParameterProof =
+  | { state: "valid" | "changed"; parameters: Record<string, ModelParameterValue> }
+  | { state: "unknown" };
+
+/**
+ * Detect source/edge/prompt edits without consulting the model catalog. This
+ * is a change fence, not a complete contract proof: resolved roles, readiness,
+ * combined prompts and parameters still require their separate strict proof.
+ */
+export function boundGenerationSourceProof(
+  frozenInputKey: string | undefined,
+  currentInputKey: string,
+): "same" | "changed" | "unknown" {
+  const sourceIdentity = (key: string) => {
+    const value: unknown = JSON.parse(key);
+    if (!value || typeof value !== "object" || Array.isArray(value) ||
+      JSON.stringify(stableIdentityValue(value)) !== key) throw new Error("Invalid input key");
+    const saved = value as Record<string, unknown>;
+    if (typeof saved.ownPrompt !== "string" || !Array.isArray(saved.inputs)) {
+      throw new Error("Missing source identity");
+    }
+    return JSON.stringify(stableIdentityValue({
+      ownPrompt: saved.ownPrompt,
+      inputs: saved.inputs.map((item: unknown) => {
+        if (!item || typeof item !== "object" || Array.isArray(item)) {
+          throw new Error("Invalid source input");
+        }
+        const source = item as Record<string, unknown>;
+        if (typeof source.edgeId !== "string" || typeof source.sourceNodeId !== "string" ||
+          !["text", "image", "video", "audio"].includes(String(source.kind)) ||
+          !Number.isSafeInteger(source.order) ||
+          (source.assetId !== undefined && typeof source.assetId !== "string") ||
+          (source.text !== undefined && typeof source.text !== "string")) {
+          throw new Error("Invalid source fields");
+        }
+        return {
+          assetId: source.assetId, edgeId: source.edgeId, kind: source.kind,
+          order: source.order, sourceNodeId: source.sourceNodeId, text: source.text,
+        };
+      }),
+    }));
+  };
+  if (!frozenInputKey) return "unknown";
+  try {
+    return sourceIdentity(frozenInputKey) === sourceIdentity(currentInputKey) ? "same" : "changed";
+  } catch {
+    return "unknown";
+  }
+}
+
+/**
+ * Parameter proof only, never permission to submit, detach, or commit a result.
+ * A bound ownership key stays opaque. Missing/drifting catalog evidence must
+ * not be interpreted as a user edit or prevent reading the original task.
+ */
+export function boundGenerationParameterProof(input: {
+  kind: ModelCapability;
+  frozen: FrozenGenerationModelIdentity & { inputKey?: string; ownershipKey?: string };
+  current?: FrozenGenerationModelIdentity & {
+    capability: ModelCapability;
+    parameterSchema?: ModelParameterSchema;
+    parameters: unknown;
+  };
+}): BoundGenerationParameterProof {
+  const { frozen, current } = input;
+  if (!frozen.ownershipKey || !frozen.inputKey || !current?.parameterSchema ||
+    current.capability !== input.kind) return { state: "unknown" };
+  const identityKeys = [
+    "modelId", "modelConfigurationRevision", "modelReleaseRevision", "contractFingerprint",
+  ] as const;
+  if (identityKeys.some((key) =>
+    typeof frozen[key] !== "string" || !frozen[key] || frozen[key] !== current[key]
+  )) return { state: "unknown" };
+  try {
+    const parsed: unknown = JSON.parse(frozen.inputKey);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { state: "unknown" };
+    }
+    const saved = parsed as Record<string, unknown>;
+    // Require the serialization produced by generationInputKey, not a partial
+    // key-set witness (or ambiguous JSON with repeated properties).
+    if (JSON.stringify(stableIdentityValue(saved)) !== frozen.inputKey ||
+      !Array.isArray(saved.inputs) || typeof saved.prompt !== "string" ||
+      typeof saved.ownPrompt !== "string" ||
+      saved.modelId !== frozen.modelId ||
+      saved.modelConfigurationRevision !== frozen.modelConfigurationRevision ||
+      saved.modelReleaseRevision !== frozen.modelReleaseRevision ||
+      !parameterRecord(saved.parameters) || !parameterRecord(current.parameters)) {
+      return { state: "unknown" };
+    }
+    const parameters = validateParameterValues(current.parameterSchema, saved.parameters);
+    const stableParameters = JSON.stringify(stableIdentityValue(parameters));
+    // Frozen parameters must already be the strict submission projection.
+    // Silently normalizing invalid/missing/hidden frozen values is not proof.
+    if (stableParameters !== JSON.stringify(stableIdentityValue(saved.parameters))) {
+      return { state: "unknown" };
+    }
+    const currentParameters = validateParameterValues(current.parameterSchema, current.parameters);
+    return {
+      state: stableParameters === JSON.stringify(stableIdentityValue(currentParameters))
+        ? "valid" : "changed",
+      parameters,
+    };
+  } catch {
+    return { state: "unknown" };
+  }
 }
 
 /** Stable semantic identity shared by browser admission and server validation. */
