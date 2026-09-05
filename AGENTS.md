@@ -1,5 +1,7 @@
 # Unboundry 项目级 Agent 施工守则
 
+> **2026-09-05 Canvas写入边界Goal当前覆盖层**：生产仍`v0.7.9/schema43`、刷新NO_GO、目标group点击0。v0.7.10统一30秒读取/迟到缓存围栏及精确版本登记已完成：定向208项通过，冻结独立Review覆盖158/158文件、1969/1969hunks、P0/P1/P2=0；唯一新formal full为127specs、1239/1239 PASS、exit0，源码快照不变。当前仅同步文档增量，尚未发布0710；不得因文档更新重跑业务full。三份独立恢复副本的实际进程forward→previous→forward已通过，但真实service回滚仍待操作方案复核/执行，不能混称生产通过。保留全部schema43新写；用户已允许既有素材OSS只读加载。先读`spec/UNBOUNDRY_CURRENT_STATE.md`与唯一Canvas写入边界Checkpoint；旧授权/版本段落只作历史。
+
 > **2026-09-03 INC-GEN-028 当前最高优先级**：生产运行`v0.7.7/schema42`且v0.7.7 tag/Release不可变；PR #155、双CI、exact-tag build、locked-exact backup/restore、切换与rollback-forward已通过。上线后按用户顺序先刷新精确Canvas `adcb89a5-c1f4-47e4-bbbb-28fff8d81583`，服务器版本页出现4次成功但多余的Canvas PUT，revision 71→75、graph revision 46→50；因此严格停在刷新门，group `group-17ee0cbc-cc81-4b35-9c5e-41040f627033`点击0次，workflow/task/Provider提交0次。根因是`ImageNode`加载图片时忽略已保存style尺寸并再次自动适配，持久化style变化触发保存。v0.7.7发布授权已消费；下一版本、代码修复、发布和真实点击均未授权。当前权威为 `spec/UNBOUNDRY_CURRENT_STATE.md` 与 `spec/V0_7_7_PRODUCTION_RECEIPT_2026-09-03.json`。
 
 > **以下 v0.7.6 候选及发布授权是历史记录**：其发布和唯一真实点击均已执行并消费；11节点工作流成功，但刷新写抖动、409和误报使Canvas收敛验收未通过。不得据此再次发布v0.7.6或重复点击。

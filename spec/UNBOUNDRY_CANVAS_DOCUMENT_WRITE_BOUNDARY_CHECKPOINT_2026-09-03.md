@@ -1,6 +1,58 @@
 # Unboundry Canvas Document Write Boundary 实施 Checkpoint
 
-状态：`V0_7_8_PUBLISHED_NOT_DEPLOYED / V0_7_9_FROZEN / R9_PASS / R10_READY / RELEASE_AND_REAL_PROVIDER_AUTHORIZED`
+状态：`V0_7_9_DEPLOYED_SCHEMA43 / R9_PASS / R10_REFRESH_NO_GO / REAL_CLICK_0_OF_1 / RELEASE_AND_REAL_PROVIDER_AUTHORIZED`
+
+## 最新完成：v0.7.10 冻结候选正式全测（2026-09-05）
+
+- 发布前最终回填：同一独立Reviewer已完成post-full文档delta7/7、全部after-SHA匹配、产品/测试变化0，P0/P1/P2=0/DOCUMENT_GO；其确认此前引用外层路径只是笔误，并在正确实施树重验legacy SQL/sweep。维护方案revision4条件性设计GO，精确runbook仍须执行前复核。现在进入0710 commit/push/PR/CI；下方待审字样保留为此前时点，不重复full。
+
+- 上一Goal turn为verified wait：仅轮询同一正式full handle37186。当前turn完成实际全测并新增只读生产预检和有界回滚设计修正，不是重启测试或重复旧状态。
+- 候选基线`b73f402ef27b616e041eb5088fd2937b227ab4ca`、branch`codex/v0.7.10-canvas-read-deadline`。独立Review完整覆盖158/158文件、1969/1969hunks、writer256/256、CWB194/194；不变的10模型/12identity/6adapter已逐分支审查并明确复用。P0/P1/P2=0，遗漏0；当前21文件/231hunk增量全部审查。冻结inventory SHA=`1bebe69e48ad23aed4fca023b813fdec51df5a77b69622d62dcf6b1f017aa88a`。
+- 唯一正式命令`/Users/mymy/.hermes/node/bin/node scripts/run-safe-tests.mjs full`，session37186已terminal exit0：127specs、1239/1239PASS、failed/skipped/retries/blocked/reportErrors0，Node22.23.1/npm10.9.8，source/snapshot=`676ea9bc69eb4051a64b7abe32235c5cbd38f1ae9481370964a53ac5ece6e37b`、4173 listener unchanged，临时suite清理完成。测试结束、编辑文档之前再次只读核验158文件hash漂移0。
+- formal原始分段与完整最终聚合保存`/tmp/unboundry-v079-runtime-drill.YqH6MK/`；早期部分工具输出被截断，不声称原始逐行日志全量，但最终聚合完整。`formal-full-final.json`是本次完整结果摘要。文档only更新不使业务证据失效，不重跑full。
+- 三份新恢复副本真实进程079/43→077/42→079/43全部PASS，verify/fresh restore绑定、ready/version/schema、网络namespace零成功外联、优雅exit0、子进程0/端口释放全部通过；旧42所有表不变，43副本仅既有恢复投影改4表且业务计数不变。回执原文与SHA见生产079receipt补充。不能升级为真实service回滚通过。
+- 生产07:21–07:28 UTC只读预检：当前release079/PID395702/NRestarts0/schema43；task1064/admission984/attempt1075/run7/media979/publication570/receipt2，targetrevision84/input58。active/unknown/unsettled/run/publication0，删除/未adopt上传清理/projection candidate0。既有legacy sweep mode=allowlist、3Canvas，完整任务筛选为0/2/0，潜在绑定0/0/0；不擅自关闭既有配置。正式维护仍需stop后重验，不能用该采样代替freeze。
+- 维护方案在工作树外独立有界复核：失败只回滚code/unit到079，始终保留当时live43，不回灌旧42/43；临时实际service077只读权威备份的新42副本且网络隔离，公网停服明确。前置候选0、逐表主键/行hash和用户字段无损门已补；最新legacy-sweep零潜在绑定delta仍待复核。`LIVE_SERVICE_ROLLBACK_FORWARD_PLAN.md`与`V0_7_10_RELEASE_AND_MAINTENANCE_RUNBOOK.md`均不是已执行证据。
+- Goal自有图/视频/音频fixture已生成并解码校验，路径`/tmp/unboundry-v0710-acceptance-fixtures.Ipz2dv`；上传0、Provider0。既有素材OSS只读GET/Range允许并单列，新生成/上传/写仍0硬门。
+- **下一动作**：完成本次文档增量与维护设计复核；0710 commit/push/PR/双CI/immutable tag/Release/exact-tag build，然后latest43 locked-exact备份恢复与已审查维护rollback-forward。随后完整cold/warm三方0写门、唯一目标group、音频/三类上传/下游输入、结果后刷新和最终生产全量复核。生产/真实生成仍未通过，Goal保持active。
+
+以下“未冻结/未full/未进程演练”均为以上最新证据之前的历史记录，保留失败与顺序，不作为当前下一动作。
+
+## 本地读取修复断点（2026-09-05，优先于下方历史时点）
+
+- 最新完成：精确0.7.10版本登记经独立设计Review（P0/P1/P2=0/DOCUMENT_GO）后已实施；m81原用例新增精确final、角色冲突、未知0.7.11、hotfix/build/v前缀拒绝断言。safe m81 42/42+m38 19/19=61/61 PASS，exit0，failed/skipped/retries/blocked/reportErrors0，source=`9ee02c0b43423af892317421793cc157f2914685ba4e9eb5d8bcce4126f4f44f`，4173不变。现有定向208项，不是formal full。版本启动P1已由实际Vite启动及定向证据关闭；最终候选Review仍未运行。
+- 下一安全动作：完成`/tmp/unboundry-v079-runtime-drill.YqH6MK/driver.mjs`及runtime-stage.mjs的独立操作安全复审后，在新隔离恢复副本执行逐阶段真实进程演练。当前只新增脚本与Node语法验证，未上传或执行；副本证据不代替live rollback，所有用户数据必须保留。
+
+- 最新失败已确认：版本化后safe m38在重启持久化预检阶段退出1，原因是运行时精确版本白名单漏登记0.7.10，m38产品spec尚未运行；snapshot=`dbb4e57158f472adc75b4ac9dd16ae7d35c8d5aee217039f4eed7a28af52f534`，4173监听不变。Plan已登记最小白名单补丁及m81/m38验证，先做独立文档复核，不把此前147项当作新版启动通过。
+
+- 最新版本元数据：已将package/lock三处版本更新为0.7.10，并同步current-state/AGENTS实际生产079与候选0710路由；旧业务定向证据保留，未复用为候选formal full。发布物、生产服务和真实点击均未改变。
+
+- 最新补证：m22工作流直接依赖45/45、m105写入清单1/1通过，failed/skipped/retries/blocked/reportErrors0、exit0；source=`4398cd959dc5c4390514bb94d58b32f7c2844ce78903da82a85e8e52f3e1a8cb`。合并此前可复用m3/m86共147项有效定向PASS。未重跑formal full。
+- Linux namespace预检：普通ubuntu执行bwrap失败；sudo bwrap创建mount/PID/network/IPC/UTS namespace后setpriv降至UID/GID1000已验证可执行。恢复演练方案及控制脚本在`/tmp/unboundry-v079-runtime-drill.YqH6MK/`接受独立操作安全审查；尚未启动恢复副本，不把预检等同恢复PASS。
+
+- 上一Goal turn为进展：用户只读素材口径已进入Plan/Matrix/receipt，并完成有界超时诊断。本turn已经实施修复，不再停在未执行计划。
+- branch=`codex/v0.7.10-canvas-read-deadline`，base HEAD=`b73f402ef27b616e041eb5088fd2937b227ab4ca`；v0.7.10本地/远端tag空、GitHub Release404。package仍0.7.9，下一版本尚未冻结/版本化/发布，不得改既有v0.7.9发布物。
+- Plan R10补充经同一独立Reviewer取得`P0/P1/P2=0/DOCUMENT_GO`后实施：四个Canvas读取入口共用`loadCanvasPersistenceWithDeadline`，30秒覆盖headers+body，abort即使被底层忽略也结束调用；transport先检查abort再更新authoritative cache。保存截止仍6秒，无新GET重试/Provider/写入通道。
+- 自动化首轮在产品测试前分别因库存新增10项、runner目标hash过期停止，均已如实更新库存1239及对应hash。第一次产品定向执行101项，98通过/3失败：2项新增external用例误用了clean-page reload路径，1项旧hung-GET仍等5秒。只修测试fixture和虚拟时钟后，最小可选m86复验87/87、failed/skipped/retries/blocked/reportErrors0、exit0；m3原14/14证据复用，未重跑它或formal full。有效定向覆盖101项。命令/失败/源码hash详见新回执。
+- 新回执：`spec/V0_7_10_LOCAL_IMPLEMENTATION_RECEIPT_2026-09-05.json`；m86最终source SHA=`9c843282947df405458df1d319fcd8566504cef72829529429682381023a7661`。writer清单256 entries、0 violations已刷新。
+- 生产只读重验：v0.7.9/schema43、active、PID395702、NRestarts0。本turn未改生产代码、未写生产数据、未点击生成；后台既有恢复不计为本turn请求，也不声称全站静默。
+- 独立回滚调查确认：Linux已有bwrap/unshare，现有通用脚本无exact079/43→077/42→079/43实际进程证明；当前部署没有`release-manifest.json`，使用exact-tag生产回执与`RELEASE-INVENTORY.sha256`，不能套用要求manifest的旧runner。实际ExecStart已核对为Node22+Vite preview/configLoader runner；演练须独立新恢复副本、真实网络namespace、动态loopback，绝不绑定live data/current pointer/4173。只读probe不能冒充完成，schema43新写不得丢失。
+- 下一安全动作：m22直接工作流依赖与m105清单验证；补独立故障/回滚方案及完整进程恢复证明。然后版本化、冻结独立Review、唯一新formal full、发布/部署并重做cold/warm三方门；之后仍须一次目标组、音频、三类上传与最终全量生产复核。生产NO_GO不能因本地101项PASS而升级。
+
+## 当前断点覆盖层（2026-09-05）
+
+- 用户最新澄清“允许已有素材只读加载”：冷刷新既有4图+1视频的5个OSS GET不再构成合同阻断，Plan R10.11与CWB-185已同步；不修改原始Goal附件，原始失败观察和审查保留为历史证据。暖刷新3秒abort仍是当前真实NO_GO，不能因澄清就升级PASS。
+- 同一Reviewer已完成有界诊断复核：3秒读取截止在v0.7.7已存在，不能归因于v0.7.9回归，也不能声称回退旧版会解决。建议下一patch集中采用30秒Canvas只读截止，覆盖初始hydrate、admission权威读取、workflow结果refresh、external baseline；保存截止6秒与abort/迟到响应隔离/journal保留/禁止重复提交均不改变。需分别验证6秒延迟成功和30秒挂起失败关闭。尚未修改产品或发布下一版本。
+- 服务器6秒延迟来源尚未证实：Provider配置db()为进程缓存，不能把10模型查询误算为10次open；恢复schema43副本的只读quick_check为24ms、FK检查19ms，只是局部诊断，不构成生产请求分段性能证据。当前生产验收仍NO_GO，不能用延长客户端截止冒充服务器性能根因已解决。
+- 回滚边界未解决：schema43已有历史恢复/投影的新写，禁止覆盖或伪降级；v0.7.7只能配schema42精确备份。完整进程rollback-forward仍需补证，不能把只读probe升级为通过。
+
+- 前一 Goal turn 有实际进展：PR #158/Release、schema42→43 唯一正式 migration、两份 encrypted backup/verify/fresh restore、原子切换与恢复 generation safety 已完成。服务当前 active/enabled、PID395702、NRestarts0；下面历史阶段账本尚写生产 v0.7.7 的句子不再代表当前。
+- 本 turn 补齐：GitHub/live identity、33/33 dist files 公网和回环逐字节一致、备份 key/rollback 父目录权限恢复0700；恢复副本上的 v0.7.9/schema43→v0.7.7/schema42→v0.7.9/schema43 只读 runtime probe 均成功且副本 bytes 不变。该 probe 不是完整进程启停回滚演练，不得冒充 CWB-192 已通过。
+- 冷刷新 05:10:01Z 开始，4 images complete/video readyState4、无 alert；05:10:31Z 确认稳定至05:11:21Z无新网络。目标 revision84/input58、task1064/admission984/attempt1075/run7不变。浏览器存在4个OSS GET200+1个GET206；最早导航buffer出现截断（Canvas GET及之后记录仍在），所以不能宣称完整刷新硬门PASS。
+- 暖刷新 05:11:21Z 开始，Canvas GET `93268.121` 在3.001秒被前端abort；服务端 `b58cfd46-fa57-483a-94ff-4f2dba9d90a2` 约6秒后HTTP200、handler2ms，页面显示“画布加载失败”。`CanvasSurface.tsx` 的 `PERSIST_LOAD_TIMEOUT_MS=3000` 与 facade 的 abort deadline 已定位；延迟来自网络、进程阻塞或其他共享路径仍须定因，不能直接断言版本回归。
+- 前次独立有界审查历史结论为P0=1/P1=0/P2=1/NO_GO：OSS字面冲突已由用户澄清解决，重复音频/上传授权已按Goal修正文档；本次超时复核仍因真实暖刷新失败而NO_GO，不是最终候选或生产全量Review。
+- 当前没有费用权限缺口。真实group click0、Goal新增Provider POST0、OSS写0。读取现有素材的GET有明确非零证据；历史task自动结果恢复仍在运行，其Provider只读请求没有完整计数，不得写“所有Provider请求0”。
+- 最新回执：`spec/V0_7_9_PRODUCTION_RECEIPT_2026-09-05.json`。下一步：按上述窄范围制定下一patch与无数据损失的回滚处理，补完整rollback-forward，然后重新获取完整三方刷新证据。通过前不得真实点击；之后还需音频、三类本地上传、结果后刷新和最终全量生产证据Review。没有相关代码变化时不要重复已通过的formal full。
 
 更新日期：2026-09-05
 
@@ -84,7 +136,7 @@ Writer manifest：`spec/UNBOUNDRY_CANVAS_DOCUMENT_WRITE_BOUNDARY_WRITER_MANIFEST
 | R7 generation/legacy exit | `TARGETED_PASS` | single/group/fake Provider/slow/lost/restart/terminal projection、呼吸灯与 modern route 定向层通过 | 独立 Review |
 | R8 faults/observability/E2E | `TARGETED_PASS` | writer/static/source coverage、409/timeout/replay/schema/release/observability 定向层通过；`m79 3/3` | 独立 Review |
 | R9 freeze/full Review/formal full | `PASS` | v0.7.9 migration delta 定向 `67/67`；独立 Review `P0/P1/P2=0/GO`；变更后 formal full `1229/1229 PASS` | 不得重复 full |
-| R10 release/production/canary | `READY` | v0.7.8 已发布并 fresh build，但 preflight 后未部署；生产仍为 v0.7.7/schema42 | 发布 v0.7.9 后执行 locked-exact 迁移与生产验收 |
+| R10 release/production/canary | `IN_PROGRESS` | v0.7.9/schema43已部署；双schema备份恢复和33静态文件通过；刷新NO_GO、真实click0 | 解决刷新合同/加载失败并补齐剩余生产门 |
 
 ## 6. 测试与副作用账本
 

@@ -29,7 +29,7 @@ import {
 
 const LOAD_TOKEN_MAX_LENGTH = 256;
 const PERSIST_DEBOUNCE_MS = 500;
-const PERSIST_LOAD_TIMEOUT_MS = 3_000;
+export const CANVAS_READ_TIMEOUT_MS = 30_000;
 const PERSIST_SAVE_TIMEOUT_MS = 6_000;
 const PAGEHIDE_MAX_BYTES = 60 * 1024;
 const SAVE_JOURNAL_MAX_BYTES = 5_000_000;
@@ -403,6 +403,49 @@ export interface CanvasPersistenceTransport {
   }): Promise<CanvasPersistenceHttpResult>;
 }
 
+/** One bounded read, including its body; cancellation never retries a request. */
+export async function loadCanvasPersistenceWithDeadline(input: {
+  canvasId: string;
+  controller: AbortController;
+  saveSessionId: string;
+  timeoutMs?: number;
+  timeoutReason: string;
+  transport: CanvasPersistenceTransport;
+}): Promise<CanvasPersistenceHttpResult> {
+  const { signal } = input.controller;
+  const abortError = () => new DOMException(
+    signal.reason === input.timeoutReason
+      ? "Canvas load response timed out"
+      : "Canvas read aborted",
+    "AbortError",
+  );
+  if (signal.aborted) throw abortError();
+  let rejectAbort!: () => void;
+  const cancelled = new Promise<never>((_resolve, reject) => {
+    rejectAbort = () => reject(abortError());
+    signal.addEventListener("abort", rejectAbort, { once: true });
+  });
+  const timeout = setTimeout(
+    () => input.controller.abort(input.timeoutReason),
+    input.timeoutMs ?? CANVAS_READ_TIMEOUT_MS,
+  );
+  try {
+    const response = await Promise.race([
+      input.transport.load({
+        canvasId: input.canvasId,
+        saveSessionId: input.saveSessionId,
+        signal,
+      }),
+      cancelled,
+    ]);
+    if (signal.aborted) throw abortError();
+    return response;
+  } finally {
+    clearTimeout(timeout);
+    signal.removeEventListener("abort", rejectAbort);
+  }
+}
+
 type BrowserCanvasWritePayload = CanvasCommandTargetDocument & Readonly<{
   canvasCommandJournal?: readonly CanvasCommandJournalEntry[];
   canvasCommandJournalVersion?: 1;
@@ -640,6 +683,10 @@ export function createFetchCanvasPersistenceTransport(
             status: response.status,
           }
         : await read(response);
+      // Body readers can ignore cancellation. Never adopt their late result.
+      if (input.signal.aborted) {
+        throw new DOMException("Canvas read aborted", "AbortError");
+      }
       if (result.ok) {
         const body = recordValue(result.body);
         remember(input.canvasId, result.body, body?.loadToken);
@@ -1232,13 +1279,6 @@ export async function hydrateCanvasPersistence(input: {
   saveTimeoutMs: number;
 }): Promise<CanvasHydrationResult> {
   const { controller, facade, runtime } = input;
-  let loadTimeout: ReturnType<typeof setTimeout> | undefined;
-  const loadDeadline = new Promise<never>((_resolve, reject) => {
-    loadTimeout = setTimeout(() => {
-      controller.abort("canvas-load-timeout");
-      reject(new Error("Canvas load response timed out"));
-    }, input.loadTimeoutMs);
-  });
   const putHydrationDocument = async (payload: string, timeoutReason: string) => {
     let mutationTimeout: ReturnType<typeof setTimeout> | undefined;
     try {
@@ -1261,17 +1301,15 @@ export async function hydrateCanvasPersistence(input: {
     }
   };
 
-  try {
-    const response = await Promise.race([
-      facade.transport.load({
-        canvasId: input.canvasId,
-        saveSessionId: runtime.saveSessionId(),
-        signal: controller.signal,
-      }),
-      loadDeadline,
-    ]);
-    clearTimeout(loadTimeout);
-    loadTimeout = undefined;
+  {
+    const response = await loadCanvasPersistenceWithDeadline({
+      canvasId: input.canvasId,
+      controller,
+      saveSessionId: runtime.saveSessionId(),
+      timeoutMs: input.loadTimeoutMs,
+      timeoutReason: "canvas-load-timeout",
+      transport: facade.transport,
+    });
     if (!runtime.isCurrent()) return { kind: "cancelled" };
     const missing = response.status === 404;
     if (!missing && !response.ok) {
@@ -1477,8 +1515,6 @@ export async function hydrateCanvasPersistence(input: {
       graphRevision: document.graphRevision ?? document.revision,
       kind: "ready",
     };
-  } finally {
-    clearTimeout(loadTimeout);
   }
 }
 
@@ -1927,25 +1963,15 @@ export function useCanvasPersistenceSaveCoordinator(
         setPersistenceLoadState("loading");
         const baselineController = new AbortController();
         persistenceSaveController.current = baselineController;
-        let baselineTimeout: number | undefined;
-        const baselineDeadline = new Promise<never>((_resolve, reject) => {
-          baselineTimeout = window.setTimeout(() => {
-            baselineController.abort("canvas-external-baseline-timeout");
-            reject(new Error("Canvas external baseline response timed out"));
-          }, PERSIST_LOAD_TIMEOUT_MS);
-        });
         try {
-          const { baseline, response } = await Promise.race([
-            (async () => {
-              const fetched = await persistenceFacade.transport.load({
-                canvasId: persistenceId,
-                saveSessionId: persistenceSessionId.current,
-                signal: baselineController.signal,
-              });
-              return { baseline: fetched.body, response: fetched };
-            })(),
-            baselineDeadline,
-          ]);
+          const response = await loadCanvasPersistenceWithDeadline({
+            canvasId: persistenceId,
+            controller: baselineController,
+            saveSessionId: persistenceSessionId.current,
+            timeoutReason: "canvas-external-baseline-timeout",
+            transport: persistenceFacade.transport,
+          });
+          const baseline = response.body;
           if (
             !isCurrentCanvas() ||
             persistenceSaveRun.current !== saveRun
@@ -2015,7 +2041,6 @@ export function useCanvasPersistenceSaveCoordinator(
           }
           return false;
         } finally {
-          window.clearTimeout(baselineTimeout);
           if (persistenceSaveController.current === baselineController) {
             persistenceSaveController.current = undefined;
           }

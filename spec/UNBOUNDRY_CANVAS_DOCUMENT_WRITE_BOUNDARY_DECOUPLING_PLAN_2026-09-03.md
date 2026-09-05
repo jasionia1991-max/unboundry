@@ -1,12 +1,32 @@
 # Unboundry Canvas 文档写入边界解耦详细行动方案
 
-状态：`DOCUMENT_GO / V0_7_8_PUBLISHED_NOT_DEPLOYED / TARGET_VERSION_V0_7_9 / RELEASE_AND_REAL_PROVIDER_AUTHORIZED / R9_PASS / R10_READY`
+状态：`DOCUMENT_GO / V0_7_9_DEPLOYED_SCHEMA43 / RELEASE_AND_REAL_PROVIDER_AUTHORIZED / R9_PASS / R10_REFRESH_NO_GO`
 
 日期：2026-09-03
 
 配套验收矩阵：`spec/UNBOUNDRY_CANVAS_DOCUMENT_WRITE_BOUNDARY_ACCEPTANCE_MATRIX_2026-09-03.md`
 
 ## 0. 一句话结论
+
+### 最新执行证据（2026-09-05）
+
+正式full后7/7文件文档增量已获同一独立Reviewer P0/P1/P2=0/DOCUMENT_GO，产品/测试变化0；维护方案revision4也获设计GO（实际执行仍须精确命令、最新freeze与备份门）。以下待审文字是本回填之前的历史时点。进入0710 GitHub发布流程，不重复业务full。
+
+v0.7.10读取截止/迟到缓存/精确final版本登记已完成；定向208项通过。冻结独立Review为158/158files、1969/1969hunks、256writers、194CWB、10models/12identities/6adapters，P0/P1/P2=0、遗漏0。唯一正式full已取得127specs、1239/1239PASS、exit0、failed/skipped/retries/blocked/reportErrors0，source/snapshot=`676ea9bc69eb4051a64b7abe32235c5cbd38f1ae9481370964a53ac5ece6e37b`且不变。当前仅作文档增量复核，不重复业务full；0710尚未发布。
+
+恢复证据已从只读probe补成三份独立fresh restore上的真实进程079/43→077/42→079/43 PASS，仍不等于live rollback。真实service维护方案必须在停止writer后证明媒体删除/上传清理/projection/legacy sweep潜在写候选0，旧077只运行在隔离新42副本；前进及失败回退都保留当前live43，绝不恢复旧快照覆盖新写。操作方案和精确runbook在独立有界复核，未执行。生产079刷新仍NO_GO、group点击0；后续cold/warm、唯一group、audio/三上传/下游与最终生产复核均不因本地通过而豁免。以下“待冻结/full”的文字为本补证之前的历史设计与执行时点。
+
+### R10 暖刷新失败修复补充（2026-09-05，待候选验证）
+
+版本化必要补充（独立设计复核P0/P1/P2=0/DOCUMENT_GO，已按方案实施、待定向验证）：package更新0.7.10后，safe m38在产品spec之前的重启验证因`UNBOUNDRY_RELEASE_VERSION_INVALID`退出1。`server/bridgeRuntimeMode.ts`精确白名单只到0.7.9；因此上述两模块范围之外仅补登记0.7.10为final，并在既有m81用例验证精确版本、角色冲突及未登记/带后缀版本仍拒绝。不改schema或bridge选择，不改为宽泛semver放行。验证最小集合为m81与未执行到的m38；正式full仍待最终冻结。该故障发生于本地隔离启动，未部署候选。
+
+本地实施状态：本补充独立文档Review为P0/P1/P2=0/DOCUMENT_GO；已实施两个读取模块，safe m3 14/14、m86最终87/87。见`spec/V0_7_10_LOCAL_IMPLEMENTATION_RECEIPT_2026-09-05.json`；新候选冻结、formal full、回滚/生产门仍未完成。
+
+- 实证：v0.7.9暖刷新GET约3秒被客户端取消，约6秒后服务器返回200；同样的3秒截止已存在于v0.7.7，不宣称版本回归或服务器延迟根因已确定。
+- 将Canvas读取统一为30秒有界deadline，覆盖初始hydrate、generation admission权威读取、workflow结果refresh和external baseline；deadline必须覆盖headers与body，即使transport忽略abort也结束调用并拒绝迟到结果。取消的读取不得污染transport的authoritative cache。
+- 保持保存6秒、命令/receipt、Provider计费边界、草稿/journal恢复及DATA-005语义不变；不增加GET重试或任何写入。只修改两个现有Canvas读取模块和直接相关测试，不扩展数据库性能重构。
+- 定向证明6秒有效响应可读、30秒挂起与迟到body失败关闭、四调用点使用同一读合同、保存6秒不变；新代码须重新冻结、独立复核、正式full和下一未占用普通patch发布，不能复用旧候选证据当新代码PASS。
+- 生产schema43已存在新写，按schema附件保留全部数据，不直接覆盖为旧schema42。回滚方案及完整进程rollback-forward证据仍须补齐；本补充不授权伪降级或跳过回滚门。重新部署后必须重做完整cold/warm三方证据，再执行唯一真实点击。
 
 必须先完成 Canvas 应用层与持久化边界的有限解耦，再考虑下一次发布；不得继续用单点 hotfix 逐个压制图片、视频、音频或恢复副作用。
 
@@ -1239,12 +1259,12 @@ R9 通过门：`LOCAL_CANDIDATE_TECHNICAL_PASS / PRODUCTION_NOT_CHANGED / REAL_P
 8. 登录普通 Chrome 打开目标 Canvas 的服务器权威版本；
 9. 冷缓存硬刷新一次：从 Canvas GET 开始记录；等待全部可观察图片 load/error、视频 metadata/error 和 hydration promise 结束，再保持 30 秒网络/定时器静默；总等待上限 120 秒，未稳定即 `NO_GO`；
 10. 暖缓存普通刷新一次，使用相同 30 秒静默窗和 120 秒上限；
-11. 两次刷新都必须由浏览器网络、server structured log、DB revision/task/attempt 计数三方证明：Canvas PUT/command POST=0、workflow/task create=0、Provider/OSS=0、普通 409=0、误报=0；
+11. 两次刷新都必须由浏览器网络、server structured log、DB revision/task/attempt 计数三方证明：Canvas PUT/command POST=0、workflow/task create=0、刷新触发的Provider生成/OSS上传或其他写入=0、普通409=0、误报=0。2026-09-05 用户明确确认允许已有素材只读加载；已有素材的owner-scoped GET/307及OSS GET/Range须单列精确计数，不冒充所有OSS请求0，其他副作用门不放宽；
 12. 只有第 11 步通过，才在新的真实点击/费用授权范围内对指定 group 点一次；
 13. 结果不明只核对原 run/task，禁止第二次点击；
 14. 验证当前 Canvas 实际 DAG（7 text + 3 image + 1 video）全部节点终态、结果自动回填、每节点最多一个 Provider boundary；
 15. 完成后再暖刷新一次并执行相同 30 秒静默窗，要求结果保持且 Canvas write=0；
-16. audio 与 local-upload 的无费用完整行为由第 16.1 节 fixture/fake E2E 证明；当前 Canvas 不含这两类，不得把本次真实 canary 冒充其生产证明。若要生产验证，必须另选脱敏对象并另行授权上传/费用边界；
+16. 当前 Goal 已明确授权并要求补充 audio 与 local-upload 生产验收：在当前账号新建明确标记版本的验收 Canvas，只使用本 Goal 生成的无隐私 fixture，完成一次真实付费音频生成回填、图片/视频/音频本地上传以及保存/刷新/下游读取/工作流输入验证；不得把 fake E2E 或目标 group 的文字/图片/视频成功冒充这些生产证据，不再另索费用或上传权限；
 17. 保持 `USER_RECHECK`，直到用户明确说通过。
 
 ## 16. 测试策略与生产形状 fixture

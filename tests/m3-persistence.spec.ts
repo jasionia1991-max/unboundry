@@ -8,11 +8,89 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
+  CANVAS_READ_TIMEOUT_MS,
   CanvasSaveSessionStorageError,
+  createFetchCanvasPersistenceTransport,
   createCanvasPersistenceFacade,
   createCanvasSaveJournalPort,
+  loadCanvasPersistenceWithDeadline,
   type CanvasPersistenceTransport,
 } from "../client/src/canvas/canvasPersistenceFacade";
+
+test("all four Canvas reads share a 30-second deadline without changing six-second saves", () => {
+  expect(CANVAS_READ_TIMEOUT_MS).toBe(30_000);
+  const surface = readFileSync(resolve("client/src/canvas/CanvasSurface.tsx"), "utf8");
+  const facade = readFileSync(resolve("client/src/canvas/canvasPersistenceFacade.ts"), "utf8");
+  for (const source of [surface, facade]) {
+    expect(source).toContain("const PERSIST_SAVE_TIMEOUT_MS = 6_000;");
+    expect(source).not.toContain("PERSIST_LOAD_TIMEOUT_MS");
+  }
+  for (const [source, reason] of [
+    [surface, "canvas-authority-timeout"],
+    [surface, "workflow-refresh-timeout"],
+    [facade, "canvas-load-timeout"],
+    [facade, "canvas-external-baseline-timeout"],
+  ]) {
+    expect(source).toMatch(new RegExp(`loadCanvasPersistenceWithDeadline\\(\\{[^}]*timeoutReason: "${reason}"`));
+  }
+});
+
+for (const timeoutReason of [
+  "canvas-load-timeout", "canvas-authority-timeout",
+  "workflow-refresh-timeout", "canvas-external-baseline-timeout",
+]) {
+  test(`${timeoutReason} rejects an abort-ignoring transport once and ignores late completion`, async () => {
+    let reads = 0;
+    let writes = 0;
+    let release!: (value: { body: unknown; ok: boolean; status: number }) => void;
+    const controller = new AbortController();
+    const transport: CanvasPersistenceTransport = {
+      load: async () => { reads += 1; return new Promise((resolve) => { release = resolve; }); },
+      put: async () => { writes += 1; throw new Error("unexpected write"); },
+    };
+    const pending = loadCanvasPersistenceWithDeadline({
+      canvasId: "deadline-unit", controller, saveSessionId: "session",
+      timeoutMs: 20, timeoutReason, transport,
+    });
+    await expect(pending).rejects.toThrow("Canvas load response timed out");
+    expect(controller.signal.reason).toBe(timeoutReason);
+    release({ body: { revision: 123 }, ok: true, status: 200 });
+    await Promise.resolve();
+    await expect(pending).rejects.toThrow("Canvas load response timed out");
+    expect(reads).toBe(1);
+    expect(writes).toBe(0);
+  });
+}
+
+test("cancelled body cannot populate the authoritative Canvas transport cache", async () => {
+  const document = {
+    edges: [], graphRevision: 1, nodes: [], revision: 1,
+    loadToken: "11111111-1111-4111-8111-111111111111",
+    viewport: { x: 0, y: 0, zoom: 1 },
+  };
+  let release!: () => void;
+  let reads = 0;
+  const transport = createFetchCanvasPersistenceTransport((async () => {
+    reads += 1;
+    const response = new Response(null, { status: 200 });
+    Object.defineProperty(response, "text", { value: () => new Promise<string>((resolve) => {
+      release = () => resolve(JSON.stringify(document));
+    }) });
+    return response;
+  }) as typeof fetch);
+  const controller = new AbortController();
+  const pending = transport.load({ canvasId: "late-cache", saveSessionId: randomUUID(), signal: controller.signal });
+  await Promise.resolve();
+  controller.abort("canvas-authority-timeout");
+  release();
+  await expect(pending).rejects.toThrow("Canvas read aborted");
+  const payload = JSON.stringify({
+    ...document, observedRevision: 1, observedLoadToken: document.loadToken,
+    saveAttemptId: randomUUID(), saveSequence: 1, saveSessionId: randomUUID(),
+  });
+  expect(transport.preparePayload?.({ canvasId: "late-cache", payload })).toBe(payload);
+  expect(reads).toBe(1);
+});
 
 async function seedLegacyMediaPersistenceFixture(request: APIRequestContext) {
   const image =

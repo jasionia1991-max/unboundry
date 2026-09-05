@@ -1,10 +1,22 @@
 # Unboundry 当前权威状态
 
+> **发布前文档门已关闭**：formal后7/7文件增量独立Review为P0/P1/P2=0/DOCUMENT_GO，产品/测试变化0；CWB-176恢复AUTO_PASS。维护方案revision4也已取得设计GO，精确操作命令及全部生产验收仍待执行。0710进入commit/push/PR/CI流程，下方“文档待审”是本回填之前的历史时点；1239项full不重跑。
+
+> **最新断点（2026-09-05，优先于下方历史时点）**：v0.7.10候选独立全量Review `158/158 files、1969/1969 hunks、256/256 writers、194/194 CWB、P0/P1/P2=0`；唯一正式全测 `127 specs、1239/1239 PASS、failed/skipped/retries/blocked/reportErrors=0、exit0`，source/snapshot=`676ea9bc69eb4051a64b7abe32235c5cbd38f1ae9481370964a53ac5ece6e37b`且未变化。测试结束后只同步文档，增量复核待完成，不重复业务full。三份独立fresh restore的真实进程079/43→077/42→079/43通过，**不等于live service rollback**；其维护窗口方案仍在有界复核。生产保持079/schema43、刷新NO_GO、真实点击0；0710尚未commit/push/发布。当前回执：`spec/V0_7_10_LOCAL_IMPLEMENTATION_RECEIPT_2026-09-05.json`与`spec/V0_7_9_PRODUCTION_RECEIPT_2026-09-05.json`。
+
+> **最新验证（2026-09-05）**：0.7.10版本化后的精确运行时白名单漏登记已修复；独立设计复核P0/P1/P2=0/DOCUMENT_GO后仅增加0.7.10为final，未放宽未知版本/schema/bridge。safe m81 42/42、m38 19/19，合计61/61通过，exit0、failed/skipped/retries/blocked/reportErrors0；现有有效定向证据208项。新候选仍未冻结/最终Review/formal full/发布，生产与真实点击不变。以下147项是本次补证之前的断点。
+
+> **本地修复当前断点（2026-09-05）**：`codex/v0.7.10-canvas-read-deadline` 已实现统一30秒Canvas读取截止及迟到body缓存围栏，保存仍6秒。safe m3 `14/14`、m86最终`87/87`、m22+m105 `46/46`，有效定向证据共147项；不是新候选formal full或生产PASS。v0.7.10本地/远端tag未占用、Release404；package/lock已更新0.7.10，尚未冻结或发布。生产仍v0.7.9/schema43、刷新NO_GO、真实点击0。下一步是无数据损失回滚处理和完整进程恢复证据，随后候选冻结/Review/full/发布与完整真实验收。回执：`spec/V0_7_10_LOCAL_IMPLEMENTATION_RECEIPT_2026-09-05.json`。
+
+> **最新用户澄清（2026-09-05）**：允许加载已有图片/视频的OSS只读GET；只读请求单列，刷新触发的新生成、上传或其他写入仍须0。此前OSS字面合同阻断已解除，但暖刷新3秒abort/加载失败仍为`NO_GO`，真实点击保持0。继续处理加载失败和剩余生产验收，不再索要已授权的费用权限。
+
+> **2026-09-05 05:17 UTC 当前覆盖层：生产已经运行 v0.7.9/schema43，PR #158 已合并，tag/Release、双 schema locked-exact 备份验签与 fresh restore、原子切换及 33/33 静态文件公网/回环逐字节核对完成。刷新验收为 NO_GO，真实点击仍为 0：冷刷新正常加载既有媒体产生 5 个 OSS GET，不符合 Goal 字面零请求；暖刷新 Canvas GET 在前端 3 秒截止时取消，服务端约 6 秒后返回 200，页面显示加载失败。不得沿用此前聊天的“刷新通过/95%/仅剩一次点击”。音频、三类上传、完整进程回滚前进及最终生产复核仍未完成。** 权威回执：`spec/V0_7_9_PRODUCTION_RECEIPT_2026-09-05.json`；唯一断点：`spec/UNBOUNDRY_CANVAS_DOCUMENT_WRITE_BOUNDARY_CHECKPOINT_2026-09-03.md`。以下 v0.7.7 当前字样均为本覆盖层之前的历史时点。
+
 > **2026-09-05 最新权威：生产仍运行 v0.7.7/schema42。v0.7.8 已发布但尚未部署；上线前只读 census 发现其 42→43 one-shot 会把 23 条历史终态 Provider 证据误判为活跃工作，因此按不可移动版本规则转入 v0.7.9。v0.7.9 定向 m91 12/12、m81+m103 54/54、m105 1/1 已通过；独立增量 Review 覆盖 17/17 files、55/55 hunks并取得 P0/P1/P2=0/GO；变更后 formal full 为 127 specs、1229/1229 PASS、0 failed、0 skipped、exit 0，R9 已通过并进入 R10。真实 Provider/OSS/费用仍为零新增。** 当前 Goal 按 Canvas Document Write Boundary Plan R0-R10 与 Matrix CWB-001-CWB-194 继续执行。
 
-**生产是 v0.7.7 / schema42。** 代码、静态资源、数据库恢复、回滚前进和服务健康门均通过。v0.7.7 已消除此前7个文字节点的旧恢复写回；本次刷新没有出现409或“任务状态查询失败”误报，也没有任何生成提交。
+**生产是 v0.7.9 / schema43。** 发布、备份恢复、静态文件及服务健康已有证据；暖刷新读取超时和完整进程回滚恢复门尚未通过，没有执行本Goal真实生成。
 
-**本地候选状态**：v0.7.8 的 Canvas 写入边界主体保持不变；v0.7.9 仅修正 schema43 迁移的 quiescence 定义，使终态 task 保留的 accepted/response-received/outcome-unknown 计费与恢复证据原样穿越 DDL migration，活跃 task/run/publication/capacity 和 generation freeze 门不放宽。测试库存由 1227 增至 1229；新增回归覆盖全部 attempt 字段、failed/cancelled 与五个 schema42 静默负向门。
+**本地候选状态**：v0.7.10保留写入边界主体与终态计费历史修复，统一Canvas读取deadline/迟到缓存围栏并登记精确final版本；schema/Provider/保存写入合同不变。定向208项、独立代码Review及1239项formal full通过；当前文档增量待复核，尚未发布。
 
 **生产遗留事实**：v0.7.7 登录普通 Chrome 打开目标 Canvas 后曾出现4次多余 Canvas PUT，revision 71→75、graph revision 46→50；前置刷新门失败后没有点击整组执行。该事实是 v0.7.8 的修复基线，不能把本地测试当作生产已通过。
 
@@ -16,18 +28,18 @@
 
 更新日期：2026-09-05
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.7.9**
-本地候选代码版本：**v0.7.9**
-当前本地候选说明：`v0.7.8 published-not-deployed；v0.7.9 terminal-history migration delta targeted PASS；Review GO；formal full 1229/1229 PASS；R10 ready`
-当前生产部署版本：**v0.7.7**
+当前代码包版本：**v0.7.10**
+本地候选代码版本：**v0.7.10**
+当前本地候选说明：`v0.7.10 targeted208 / frozenReview158files1969hunks GO / formalFull1239 PASS / docsDelta7files GO / releaseInProgress；production079 refresh NO_GO`
+当前生产部署版本：**v0.7.9/schema43**
 本地候选schema：**43**
-当前治理标记：`CURRENT_V0_7_9_USER_RECHECK`
-当前业务标记：`V0_7_8_PUBLISHED_NOT_DEPLOYED / V0_7_9_DELTA_REVIEW_GO / REAL_WORKFLOW_NOT_RUN`
-当前发布执行标记：`V0_7_9_RELEASE_AUTHORIZED / TARGETED_67_OF_67_PASS / FORMAL_FULL_1229_OF_1229_PASS / REAL_CLICK_0_OF_1`
+当前治理标记：`CURRENT_V0_7_10_USER_RECHECK`
+当前业务标记：`V0_7_9_DEPLOYED / REFRESH_NO_GO / REAL_WORKFLOW_NOT_RUN`
+当前发布执行标记：`V0_7_10_RELEASE_AUTHORIZED / TARGETED_208_PASS / FORMAL_FULL_1239_OF_1239_PASS / DOCS_DELTA_REVIEW_GO / REAL_CLICK_0_OF_1`
 当前本地Goal标记：`ACTIVE_CANVAS_DOCUMENT_WRITE_BOUNDARY_GOAL / PLAN_R0_R10 / MATRIX_CWB_001_CWB_194`
-当前计划标记：`V0_7_9_R9_REFREEZE / R10_IN_PROGRESS / PRODUCTION_UNCHANGED`
+当前计划标记：`V0_7_9_R9_PASS / R10_IN_PROGRESS / REFRESH_NO_GO / REAL_CLICK_0_OF_1`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`V0_7_7_PRODUCTION / V0_7_8_IMMUTABLE_PUBLISHED_NOT_DEPLOYED / V0_7_9_R9_PASS_R10_READY`
+当前发布门：`V0_7_9_PRODUCTION / V0_7_8_IMMUTABLE_PUBLISHED_NOT_DEPLOYED / R10_REFRESH_NO_GO`
 
 ## INC-GEN-028 当前读取顺序
 

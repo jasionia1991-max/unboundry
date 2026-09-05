@@ -1,0 +1,794 @@
+{
+  "version": "0.7.9",
+  "status": "DEPLOYED_REFRESH_NO_GO_REAL_CLICK_ZERO",
+  "updatedAt": "2026-09-05",
+  "authority": "Current user Goal attachment d9516f04-80d0-43ac-9fce-15a7b88d3a7a; CWB Plan R0-R10 and Matrix CWB-001..194",
+  "git": {
+    "candidate": "b73f402ef27b616e041eb5088fd2937b227ab4ca",
+    "merge": "b33339377a9bd4a1f26284c5034692fe43dace6d",
+    "pr": "https://github.com/jasionia1991-max/unboundry/pull/158",
+    "prState": "MERGED",
+    "tag": "v0.7.9",
+    "tagObject": "5cd210bc4ff45008d74be7af0c60646788f77ed1",
+    "release": "https://github.com/jasionia1991-max/unboundry/releases/tag/v0.7.9",
+    "publishedAt": "2026-09-05T04:42:55Z",
+    "mainQualityRun": "33945213018"
+  },
+  "candidateVerification": {
+    "targeted": 67,
+    "passed": 67,
+    "formalFull": {
+      "specs": 127,
+      "tests": 1229,
+      "passed": 1229,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0,
+      "exit": 0,
+      "sourceSha256": "3b1fcd369e292c272183e3db7ee8316a38f700b96847f83e0370d2a0ebcbb9ea"
+    },
+    "postReceiptM38": {
+      "passed": 19,
+      "total": 19
+    },
+    "independentReview": {
+      "baseFiles": 155,
+      "baseHunks": 1934,
+      "deltaFiles": 17,
+      "deltaHunks": 56,
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "verdict": "GO",
+      "scope": "Frozen implementation, not production acceptance"
+    }
+  },
+  "deployment": {
+    "releaseDirectory": "/opt/unboundry/releases/v0.7.9-canvas-write-boundary-20260905",
+    "previousReleaseDirectory": "/opt/unboundry/releases/v0.7.7-inc-gen-029-20260903",
+    "node": "22.23.2",
+    "npm": "10.9.8",
+    "inventorySha256": "5d70975900d2ef9542e6d01a806ae2047032c59c65fae9e7a766512a078b6695",
+    "serviceStartedAt": "2026-09-05T05:05:09Z",
+    "mainPid": 395702,
+    "nRestarts": 0,
+    "service": "active/enabled",
+    "versionHttp": "0.7.9",
+    "schema": 43,
+    "healthReady": 200,
+    "staticFilesPassed": 33,
+    "staticFilesTotal": 33,
+    "staticFiles": [
+      {
+        "path": "index.html",
+        "sha256": "023a461b572f8642402af5133027b447af0e0de3aee4e27d0f37639b9cde8441",
+        "results": [
+          {
+            "host": "http://127.0.0.1:4173",
+            "status": 200,
+            "match": true
+          },
+          {
+            "host": "https://canvas.mymy.ltd",
+            "status": 200,
+            "match": true
+          }
+        ]
+      },
+      {
+        "path": "assets/CanvasShell-CTefyS5y.js",
+        "sha256": "4f308f036eb6a72783dfaa0acf216b654ddea9f616f38d6e5c1730cf11cc0419",
+        "results": [
+          {
+            "host": "http://127.0.0.1:4173",
+            "status": 200,
+            "match": true
+          },
+          {
+            "host": "https://canvas.mymy.ltd",
+            "status": 200,
+            "match": true
+          }
+        ]
+      },
+      {
+        "path": "assets/WorkspacePage-DbsBqq23.js",
+        "sha256": "68812c4f365e1065c718b35629b92c4dbfe12a9451ba412bf3b5c6c0586e6ecd",
+        "results": [
+          {
+            "host": "http://127.0.0.1:4173",
+            "status": 200,
+            "match": true
+          },
+          {
+            "host": "https://canvas.mymy.ltd",
+            "status": 200,
+            "match": true
+          }
+        ]
+      },
+      {
+        "path": "assets/index-CSHKZGHz.css",
+        "sha256": "0df4faeaaf3894fd986f544c9eb801d5ffb6c13d42cfae8e9cc47c0c3b46b693",
+        "results": [
+          {
+            "host": "http://127.0.0.1:4173",
+            "status": 200,
+            "match": true
+          },
+          {
+            "host": "https://canvas.mymy.ltd",
+            "status": 200,
+            "match": true
+          }
+        ]
+      },
+      {
+        "path": "assets/index-IIsivxx9.js",
+        "sha256": "35b07a01cbf716a64c6973897a9e14dec016e5b7bb557634aeac8724deb21455",
+        "results": [
+          {
+            "host": "http://127.0.0.1:4173",
+            "status": 200,
+            "match": true
+          },
+          {
+            "host": "https://canvas.mymy.ltd",
+            "status": 200,
+            "match": true
+          }
+        ]
+      },
+      {
+        "path": "assets/projectStorage-CwU5THgV.js",
+        "sha256": "db98f6254e6f7d34aa8a84d45fa55718a8e5b04944e8cccc3f4898c10a99d269",
+        "results": [
+          {
+            "host": "http://127.0.0.1:4173",
+            "status": 200,
+            "match": true
+          },
+          {
+            "host": "https://canvas.mymy.ltd",
+            "status": 200,
+            "match": true
+          }
+        ]
+      },
+      {
+        "path": "favicon.svg",
+        "sha256": "6d2795e7ca70fe26408c5f057c59224421cafe44288ac1a1c2b19bf6e4f2010b",
+        "results": [
+          {
+            "host": "http://127.0.0.1:4173",
+            "status": 200,
+            "match": true
+          },
+          {
+            "host": "https://canvas.mymy.ltd",
+            "status": 200,
+            "match": true
+          }
+        ]
+      },
+      {
+        "path": "templates/ecommerce-color-variants.jpg",
+        "sha256": "761550b2fa4c1422dff27e0da56498c2805e8a22051a374ea93c9415abcb94a5",
+        "results": [
+          {
+            "host": "http://127.0.0.1:4173",
+            "status": 200,
+            "match": true
+          },
+          {
+            "host": "https://canvas.mymy.ltd",
+            "status": 200,
+            "match": true
+          }
+        ]
+      },
+      {
+        "path": "templates/ecommerce-detail-workflow.png",
+        "sha256": "7a81f077bd88b633ede07fbbdff90b7094f78eecaac74775c25d3b236e24cf18",
+        "results": [
+          {
+            "host": "http://127.0.0.1:4173",
+            "status": 200,
+            "match": true
+          },
+          {
+            "host": "https://canvas.mymy.ltd",
+            "status": 200,
+            "match": true
+          }
+        ]
+      },
+      {
+        "path": "templates/ecommerce-douyin-fabric-macro.jpg",
+        "sha256": "7274b108553b3060a8b98469436375c7859328cc2a06f431542fe867e42ea105",
+        "results": [
+          {
+            "host": "http://127.0.0.1:4173",
+            "status": 200,
+            "match": true
+          },
+          {
+            "host": "https://canvas.mymy.ltd",
+            "status": 200,
+            "match": true
+          }
+        ]
+      },
+      {
+        "path": "templates/ecommerce-douyin-four-shot-batch.jpg",
+        "sha256": "65bcbf5dbb614571cc685ee604bd487ce86f62de4a720f783b976d4c840449b0",
+        "results": [
+          {
+            "host": "http://127.0.0.1:4173",
+            "status": 200,
+            "match": true
+          },
+          {
+            "host": "https://canvas.mymy.ltd",
+            "status": 200,
+            "match": true
+          }
+        ]
+      },
+      {
+        "path": "templates/ecommerce-douyin-live-clip.jpg",
+        "sha256": "72877aebf1ace645516f7d84125ae46d23c516e1e7e2dc50c9e94558bcf64e62",
+        "results": [
+          {
+            "host": "http://127.0.0.1:4173",
+            "status": 200,
+            "match": true
+          },
+          {
+            "host": "https://canvas.mymy.ltd",
+            "status": 200,
+            "match": true
+          }
+        ]
+      },
+      {
+        "path": "templates/ecommerce-douyin-menswear-15s.jpg",
+        "sha256": "fcbb500c8913bac1ccb9cc6a1ba2267c4aacb67f7992f9afe965dce01c9f009c",
+        "results": [
+          {
+            "host": "http://127.0.0.1:4173",
+            "status": 200,
+            "match": true
+          },
+          {
+            "host": "https://canvas.mymy.ltd",
+            "status": 200,
+            "match": true
+          }
+        ]
+      },
+      {
+        "path": "templates/ecommerce-douyin-six-second-motion.jpg",
+        "sha256": "330c9b532262d73b8905005c22b5551f8dd8086a9c435e99a8f25edb483bc82c",
+        "results": [
+          {
+            "host": "http://127.0.0.1:4173",
+            "status": 200,
+            "match": true
+          },
+          {
+            "host": "https://canvas.mymy.ltd",
+            "status": 200,
+            "match": true
+          }
+        ]
+      },
+      {
+        "path": "templates/ecommerce-douyin-vertical-cover.jpg",
+        "sha256": "211f0570abe41583aca2805770acff3ef75baa34809e212e79fdcb80b52e4147",
+        "results": [
+          {
+            "host": "http://127.0.0.1:4173",
+            "status": 200,
+            "match": true
+          },
+          {
+            "host": "https://canvas.mymy.ltd",
+            "status": 200,
+            "match": true
+          }
+        ]
+      },
+      {
+        "path": "templates/ecommerce-douyin-womenswear-15s.jpg",
+        "sha256": "03052b8b4e27f1d2bbc429d24cfdfd634580a56d4114bc062a9103b031dbe637",
+        "results": [
+          {
+            "host": "http://127.0.0.1:4173",
+            "status": 200,
+            "match": true
+          },
+          {
+            "host": "https://canvas.mymy.ltd",
+            "status": 200,
+            "match": true
+          }
+        ]
+      },
+      {
+        "path": "templates/ecommerce-fabric-craft-detail.jpg",
+        "sha256": "72257b0b0228e7c6f96f16c4fb7a3c253c0d342c18a29b0be53c2a47fd37801f",
+        "results": [
+          {
+            "host": "http://127.0.0.1:4173",
+            "status": 200,
+            "match": true
+          },
+          {
+            "host": "https://canvas.mymy.ltd",
+            "status": 200,
+            "match": true
+          }
+        ]
+      },
+      {
+        "path": "templates/ecommerce-fit-size-guide.jpg",
+        "sha256": "5f082bb02211ec9c5ece621a5636a87fb558152946ecd59cfa368d90350f1117",
+        "results": [
+          {
+            "host": "http://127.0.0.1:4173",
+            "status": 200,
+            "match": true
+          },
+          {
+            "host": "https://canvas.mymy.ltd",
+            "status": 200,
+            "match": true
+          }
+        ]
+      },
+      {
+        "path": "templates/ecommerce-garment-detail-six.png",
+        "sha256": "cb8cbb1f5ae5b0feda99331af4efba95ed45985f62990395b6d250b96f839571",
+        "results": [
+          {
+            "host": "http://127.0.0.1:4173",
+            "status": 200,
+            "match": true
+          },
+          {
+            "host": "https://canvas.mymy.ltd",
+            "status": 200,
+            "match": true
+          }
+        ]
+      },
+      {
+        "path": "templates/ecommerce-image-expert-213.png",
+        "sha256": "48f64fe87da50860cc669b0835497b041f5b93f7deb14acb3116447891fab82f",
+        "results": [
+          {
+            "host": "http://127.0.0.1:4173",
+            "status": 200,
+            "match": true
+          },
+          {
+            "host": "https://canvas.mymy.ltd",
+            "status": 200,
+            "match": true
+          }
+        ]
+      },
+      {
+        "path": "templates/ecommerce-menswear-commute-outdoor.jpg",
+        "sha256": "64a13a44984083b27feb121328b6c3075fd6d1d8c41c284897af9abf2ab06728",
+        "results": [
+          {
+            "host": "http://127.0.0.1:4173",
+            "status": 200,
+            "match": true
+          },
+          {
+            "host": "https://canvas.mymy.ltd",
+            "status": 200,
+            "match": true
+          }
+        ]
+      },
+      {
+        "path": "templates/ecommerce-menswear-five-panel.jpg",
+        "sha256": "ea86209e3055b362bdf2f1813d22049365a4de8431ef77ff8a545d69b07b0c60",
+        "results": [
+          {
+            "host": "http://127.0.0.1:4173",
+            "status": 200,
+            "match": true
+          },
+          {
+            "host": "https://canvas.mymy.ltd",
+            "status": 200,
+            "match": true
+          }
+        ]
+      },
+      {
+        "path": "templates/ecommerce-menswear-white-hero.jpg",
+        "sha256": "1659561c0bcf23b25855fdc56ee93023019e409d79bb5dd941ba22fb50d4da84",
+        "results": [
+          {
+            "host": "http://127.0.0.1:4173",
+            "status": 200,
+            "match": true
+          },
+          {
+            "host": "https://canvas.mymy.ltd",
+            "status": 200,
+            "match": true
+          }
+        ]
+      },
+      {
+        "path": "templates/ecommerce-womenswear-five-panel.jpg",
+        "sha256": "57557a7d11c1e39a46c0bb44465a042695d2ccc7b004b984e831d933ad2d7e72",
+        "results": [
+          {
+            "host": "http://127.0.0.1:4173",
+            "status": 200,
+            "match": true
+          },
+          {
+            "host": "https://canvas.mymy.ltd",
+            "status": 200,
+            "match": true
+          }
+        ]
+      },
+      {
+        "path": "templates/ecommerce-womenswear-lifestyle.jpg",
+        "sha256": "13dd30c19eb73c9c15a60f605fe93c61b23dc98b5f8b99c485edb84002860431",
+        "results": [
+          {
+            "host": "http://127.0.0.1:4173",
+            "status": 200,
+            "match": true
+          },
+          {
+            "host": "https://canvas.mymy.ltd",
+            "status": 200,
+            "match": true
+          }
+        ]
+      },
+      {
+        "path": "templates/ecommerce-womenswear-white-hero.jpg",
+        "sha256": "53ec8b10d95ab5d3f0350a07b5c4da963fb8301592e2ed68bdc7bb43eae25517",
+        "results": [
+          {
+            "host": "http://127.0.0.1:4173",
+            "status": 200,
+            "match": true
+          },
+          {
+            "host": "https://canvas.mymy.ltd",
+            "status": 200,
+            "match": true
+          }
+        ]
+      },
+      {
+        "path": "fonts/LXGW-WenKai-OFL.txt",
+        "sha256": "fe4ddef88d2705569740a4b6c59e1a73315e1a55fb0a0d054bd791977681f8cb",
+        "results": [
+          {
+            "host": "http://127.0.0.1:4173",
+            "status": 200,
+            "match": true
+          },
+          {
+            "host": "https://canvas.mymy.ltd",
+            "status": 200,
+            "match": true
+          }
+        ]
+      },
+      {
+        "path": "fonts/lxgw-wenkai-regular-subset-112.woff2",
+        "sha256": "98efe6d51509d50acbd1a5a94893ede9c62fc74187930e397ace273116d57e21",
+        "results": [
+          {
+            "host": "http://127.0.0.1:4173",
+            "status": 200,
+            "match": true
+          },
+          {
+            "host": "https://canvas.mymy.ltd",
+            "status": 200,
+            "match": true
+          }
+        ]
+      },
+      {
+        "path": "fonts/lxgw-wenkai-regular-subset-118.woff2",
+        "sha256": "f29c89cd7420937450ecf9ba3c2f23268673a107dfe84c63243769cc0a12c418",
+        "results": [
+          {
+            "host": "http://127.0.0.1:4173",
+            "status": 200,
+            "match": true
+          },
+          {
+            "host": "https://canvas.mymy.ltd",
+            "status": 200,
+            "match": true
+          }
+        ]
+      },
+      {
+        "path": "fixtures/audio-success.mp3",
+        "sha256": "94ba40d073c6699518b02bee9c0801b17bdcfaaff8319345f224bc002f385a3a",
+        "results": [
+          {
+            "host": "http://127.0.0.1:4173",
+            "status": 200,
+            "match": true
+          },
+          {
+            "host": "https://canvas.mymy.ltd",
+            "status": 200,
+            "match": true
+          }
+        ]
+      },
+      {
+        "path": "fixtures/image-success.svg",
+        "sha256": "157673a21698904ca18823e54e40f7fd88c28ad3645372924da11617e84305dd",
+        "results": [
+          {
+            "host": "http://127.0.0.1:4173",
+            "status": 200,
+            "match": true
+          },
+          {
+            "host": "https://canvas.mymy.ltd",
+            "status": 200,
+            "match": true
+          }
+        ]
+      },
+      {
+        "path": "fixtures/playlist-portrait.mp4",
+        "sha256": "09f93c7ed859fb9d0b1cbde65df176e6c08d1a7835083782e8159b0bb2dc1c4d",
+        "results": [
+          {
+            "host": "http://127.0.0.1:4173",
+            "status": 200,
+            "match": true
+          },
+          {
+            "host": "https://canvas.mymy.ltd",
+            "status": 200,
+            "match": true
+          }
+        ]
+      },
+      {
+        "path": "fixtures/video-success.mp4",
+        "sha256": "a9ac608ba2c2df35e0c883a1decba7351180b3288b17e11c6d186d6fd49f8f2c",
+        "results": [
+          {
+            "host": "http://127.0.0.1:4173",
+            "status": 200,
+            "match": true
+          },
+          {
+            "host": "https://canvas.mymy.ltd",
+            "status": 200,
+            "match": true
+          }
+        ]
+      }
+    ]
+  },
+  "freeze": {
+    "at": "2026-09-05T04:49:10.522Z",
+    "lastProviderAttemptAt": "2026-09-03T06:35:04.232Z",
+    "restoredAt": "2026-09-05T05:07:28.940Z",
+    "originalAndRestored": {
+      "globalEnabled": true,
+      "emergencyStop": false,
+      "runningTaskPolicy": "wait"
+    },
+    "audit": true,
+    "keyAndRollbackParentModeRestored": "0700"
+  },
+  "migration": {
+    "mode": "one-shot 42 to 43",
+    "dryRun": "verified",
+    "applyCount": 1,
+    "apply": "complete",
+    "sourceLogicalSha256": "9dbd83d52726baa9796595185ce7f889090bc20268ffafa579ada625dc443864",
+    "targetLogicalSha256": "2dabc77c9303830bec3a5b6476cc1b957d11cd3e13f192c3387c06f8849fac73",
+    "integrity": "ok",
+    "foreignKeyViolations": 0,
+    "providerAttemptsPreserved": {
+      "count": 1075,
+      "sha256": "cb7bb6662c8a62cfc96289824b314ae3af1912fb283852b085dbd3b8779a0bcd"
+    },
+    "tasksPreserved": 1064,
+    "workflowRunsPreserved": 7
+  },
+  "backups": [
+    {
+      "schema": 42,
+      "id": "0d07c396-7313-476b-9001-d50cafcecd68",
+      "directory": "/var/lib/unboundry-rollbacks/v0.7.9-20260905-schema42/0d07c396-7313-476b-9001-d50cafcecd68.ubbackup",
+      "restore": "/var/lib/unboundry-v079-restores/schema42-fresh",
+      "capture": "locked-exact",
+      "verify": true,
+      "freshRestore": true,
+      "independentLogicalHashMatch": true,
+      "integrity": "ok",
+      "foreignKeyViolations": 0
+    },
+    {
+      "schema": 43,
+      "id": "e851e48f-5800-4e68-bf52-e736ae51de73",
+      "directory": "/var/lib/unboundry-rollbacks/v0.7.9-20260905-schema43/e851e48f-5800-4e68-bf52-e736ae51de73.ubbackup",
+      "restore": "/var/lib/unboundry-v079-restores/schema43-fresh",
+      "capture": "locked-exact",
+      "verify": true,
+      "freshRestore": true,
+      "independentLogicalHashMatch": true,
+      "integrity": "ok",
+      "foreignKeyViolations": 0
+    }
+  ],
+  "backupMedia": {
+    "localFiles": 355,
+    "ossMirrors": 625,
+    "secretFiles": 3,
+    "backupBlockingIssues": 0,
+    "clean": false,
+    "preexistingIssues": 97,
+    "addedMirrorReadOnlyGet": 1,
+    "addedMirrorBytes": 3106781,
+    "addedMirrorSha256": "d58ad083472df0c83c4d1e9417b11ad2c4e9bf8708c2709301ed28b572a6aa12",
+    "note": "Historical media findings retained; not cleaned or represented as clean."
+  },
+  "rollbackEvidence": {
+    "scope": "Read-only runtime/database pairing on independently fresh-restored copies; no live database rollback performed",
+    "forward43": true,
+    "previous42": true,
+    "forwardAgain43": true,
+    "oldRuntimeOn43": "DATABASE_SCHEMA_MISMATCH",
+    "copyBytesUnchanged": true,
+    "fullProcessRollbackForward": "NOT_PROVEN_BY_READ_ONLY_PROBES",
+    "subsequentFreshCopyProcessDrill": {
+      "status": "PASS",
+      "scope": "Three independently fresh-restored copies with actual process start/ready/stop; not live service rollback",
+      "remoteRoot": "/var/tmp/unboundry-v079-runtime-drill-2.ske5dk",
+      "localEvidenceRoot": "/tmp/unboundry-v079-runtime-drill.YqH6MK",
+      "stages": [
+        {"name":"forward43","version":"0.7.9","schema":43,"requestId":"2dfed3ed-69f1-4b9e-945a-8fa7116391e2","receiptSha256":"dd92f27cc0f124fd1f9677a37cf8a8d679d1cb8ab58ec1ce04d3b8d83610e73e"},
+        {"name":"previous42","version":"0.7.7","schema":42,"requestId":"9bb808ff-ad1d-4f5c-bd4b-bc42a0755046","receiptSha256":"54f1f0b49b9e8b867f6f8eabcc30b704c148d88a27a0210a15d9057301a9f5bf"},
+        {"name":"forwardAgain43","version":"0.7.9","schema":43,"requestId":"cf5d6b37-7669-4be1-bd59-5fcd60b3cd9b","receiptSha256":"dee6edf666b475e86be351c27841387532dc25ae19880b0e2d7fa450748b49ca"}
+      ],
+      "allVerifyAndFreshRestoreBindingsPassed": true,
+      "allActualReadyVersionSchemaPassed": true,
+      "allGracefulProcessExit": 0,
+      "remainingProcesses": 0,
+      "allPortsReleased": true,
+      "successfulExternalEgress": 0,
+      "applicationExternalAttemptCount": "NOT_CLAIMED",
+      "businessCreationCountsUnchanged": true,
+      "schema42TablesChanged": [],
+      "eachSchema43CopyTablesChanged": ["canvas_documents","canvas_operation_receipts","generation_canvas_projection_states","project_metadata"],
+      "schema43ChangeReason": "Existing authoritative startup result recovery on isolated copies; no claim of whole-database byte identity",
+      "failedEarlierCasesRetained": true,
+      "liveServiceChanged": false,
+      "liveDataChangedByDrill": false
+    },
+    "liveServiceRollbackForward": "NOT_RUN_PENDING_REVIEWED_MAINTENANCE_SEQUENCE"
+  },
+  "productionCanary": {
+    "canvas": "adcb89a5-c1f4-47e4-bbbb-28fff8d81583",
+    "owner": "02c9dbba-5b72-408b-9045-eaaec20b799a",
+    "group": "group-17ee0cbc-cc81-4b35-9c5e-41040f627033",
+    "groupClicks": 0,
+    "newWorkflowRuns": 0,
+    "newTasks": 0,
+    "newAdmissions": 0,
+    "newProviderAttempts": 0,
+    "canvasRevision": 84,
+    "inputRevision": 58,
+    "canvasUpdatedAt": "2026-09-05T03:46:46.376Z",
+    "nodesSha256": "811d86fbfa36b074b8a12280057753a81df127d91233f4e727eda587fae44f7e",
+    "edgesSha256": "178280bd203a9001f3886ea0fd9bea7df9fafab343ee2bc52817d527415635cc",
+    "counts": {
+      "tasks": 1064,
+      "admissions": 984,
+      "providerAttempts": 1075,
+      "workflowRuns": 7,
+      "media": 979,
+      "publications": 570
+    },
+    "cold": {
+      "startedAt": "2026-09-05T05:10:01.232Z",
+      "observedSettledAt": "2026-09-05T05:10:31.744Z",
+      "finishedAt": "2026-09-05T05:11:21.566Z",
+      "canvasGetRequestId": "afecbece-a9e9-41c9-a5e7-7c556294d0c8",
+      "imagesComplete": 4,
+      "videoReadyState": 4,
+      "alerts": 0,
+      "canvasWrites": 0,
+      "status409": 0,
+      "ossGet200": 4,
+      "ossGet206": 1,
+      "browserBufferTruncatedBeforeCanvasGet": true,
+      "verdict": "READ_ONLY_MEDIA_ALLOWED_BY_USER; earliest navigation buffer incomplete, full cold/warm gate not passed"
+    },
+    "warm": {
+      "startedAt": "2026-09-05T05:11:21.579Z",
+      "browserCanvasRequestId": "93268.121",
+      "serverCanvasRequestId": "b58cfd46-fa57-483a-94ff-4f2dba9d90a2",
+      "canvasRequestAt": "2026-09-05T05:11:22.146Z",
+      "canceledAfterMs": 3001.287,
+      "error": "net::ERR_ABORTED",
+      "serverRespondedAt": "2026-09-05T05:11:28.214Z",
+      "serverHttp": 200,
+      "serverHandlerMs": 2,
+      "page": "画布加载失败",
+      "canvasWrites": 0,
+      "status409": 0,
+      "verdict": "NO_GO: hydration failed before media settle"
+    },
+    "providerReadRequests": "NOT_COUNTED; historical recovery remains active and must not be reported as zero",
+    "ossWriteRequests": 0,
+    "browserCacheOverrideRestored": true
+  },
+  "reviewAfterDeployment": {
+    "scope": "Bounded refresh-gate semantics review; not final full review",
+    "P0": 1,
+    "P1": 0,
+    "P2": 1,
+    "verdict": "NO_GO",
+    "findings": [
+      "Cold refresh includes 5 existing-media OSS GETs; user literal zero request gate cannot be silently narrowed.",
+      "Plan R10.16 incorrectly requests new audio/upload authorization already supplied by Goal."
+    ],
+    "findingsResolvedByUser": ["Literal OSS read-zero conflict"],
+    "findingsResolvedByDocument": ["Supplemental audio/upload authorization aligned with Goal"]
+  },
+  "userClarification": {
+    "date": "2026-09-05",
+    "answer": "允许已有素材只读加载",
+    "effect": "Existing-media GET/Range allowed and separately counted; new generation, upload and all other refresh writes remain forbidden."
+  },
+  "remaining": [
+    "Diagnose 3-second Canvas load timeout against observed 6-second response; do not hide failed refresh.",
+    "Prove required runtime rollback-forward beyond read-only probes.",
+    "Fresh complete cold/warm network/server/database evidence before any group click.",
+    "Exactly one real target group execution after refresh gate passes.",
+    "Goal-owned audio generation and image/video/audio local uploads on separate labeled Canvas.",
+    "Post-run refresh and final full evidence review; USER_RECHECK remains."
+  ],
+  "warmTimeoutDiagnosticReview": {
+    "scope": "Bounded source/history and rollback review; not final candidate review",
+    "verdict": "NO_GO",
+    "P0": 1,
+    "P1": 0,
+    "P2": 0,
+    "threeSecondDeadlineExistsInV077": true,
+    "serverSixSecondRootCause": "UNPROVEN",
+    "proposedReadDeadlineMs": 30000,
+    "saveDeadlineRemainsMs": 6000,
+    "affectedReads": ["hydrate", "admission authoritative read", "workflow refresh", "external baseline"],
+    "productCodeChanged": false,
+    "restoredCopyReadOnlyTimingMs": {"quickCheck": 24, "foreignKeyCheck": 19},
+    "rollbackConstraint": "Do not overwrite schema43 writes or run v0.7.7 against schema43; full process rollback-forward remains unproven."
+  },
+  "userAcceptance": "USER_RECHECK",
+  "goalComplete": false
+}

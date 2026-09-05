@@ -68,9 +68,11 @@ import {
   createCanvasModelTransitionPort,
 } from "./CanvasModelTransitionCommand";
 import {
+  CANVAS_READ_TIMEOUT_MS,
   CanvasSaveSessionStorageError,
   createBrowserCanvasPersistenceFacade,
   hydrateCanvasPersistence,
+  loadCanvasPersistenceWithDeadline,
   isCanvasLoadToken,
   isCanvasSaveAttemptId,
   isCanvasSaveEpoch,
@@ -505,7 +507,6 @@ export type CanvasLibraryAsset = {
 export const CANVAS_LIBRARY_ASSET_MIME =
   "application/x-unboundry-library-asset";
 const emptyEdges: CuttableEdge[] = [];
-const PERSIST_LOAD_TIMEOUT_MS = 3_000;
 const PERSIST_SAVE_TIMEOUT_MS = 6_000;
 const PERSIST_SAVE_JOURNAL_MAX_BYTES = 5_000_000;
 const nodeSize = (node: ProbeNodeType) => ({
@@ -4408,7 +4409,7 @@ export function CanvasSurface({
           canvasId: persistenceId,
           controller,
           facade: persistenceFacade,
-          loadTimeoutMs: PERSIST_LOAD_TIMEOUT_MS,
+          loadTimeoutMs: CANVAS_READ_TIMEOUT_MS,
           runtime: {
             clearPendingPagehide() {
               persistencePendingPagehide.current = undefined;
@@ -5177,22 +5178,18 @@ export function CanvasSurface({
       return Number(revision);
     }
     const controller = new AbortController();
-    const timeout = window.setTimeout(
-      () => controller.abort("canvas-authority-timeout"),
-      PERSIST_LOAD_TIMEOUT_MS,
-    );
-    try {
-      const response = await persistenceFacade.transport.load({
+    {
+      const response = await loadCanvasPersistenceWithDeadline({
         canvasId: persistenceId,
+        controller,
         saveSessionId: persistenceSessionId.current,
-        signal: controller.signal,
+        timeoutReason: "canvas-authority-timeout",
+        transport: persistenceFacade.transport,
       });
       if (!response.ok || !persistenceFacade.isLoadedDocument(response.body)) {
         throw new Error("无法确认画布最新版本");
       }
       return response.body.graphRevision ?? response.body.revision;
-    } finally {
-      window.clearTimeout(timeout);
     }
   }, [persistenceFacade, persistenceFixture, persistenceId]);
   const refreshAuthoritativeCanvasDocument = useCallback(async (
@@ -5211,15 +5208,13 @@ export function CanvasSurface({
     const relayAbort = () => controller.abort(signal?.reason ?? "workflow-refresh-aborted");
     if (signal?.aborted) relayAbort();
     else signal?.addEventListener("abort", relayAbort, { once: true });
-    const timeout = window.setTimeout(
-      () => controller.abort("workflow-refresh-timeout"),
-      PERSIST_LOAD_TIMEOUT_MS,
-    );
     try {
-      const response = await persistenceFacade.transport.load({
+      const response = await loadCanvasPersistenceWithDeadline({
         canvasId: persistenceId,
+        controller,
         saveSessionId: persistenceSessionId.current,
-        signal: controller.signal,
+        timeoutReason: "workflow-refresh-timeout",
+        transport: persistenceFacade.transport,
       });
       if (controller.signal.aborted || signal?.aborted) return false;
       if (!response.ok || !persistenceFacade.isLoadedDocument(response.body)) {
@@ -5279,7 +5274,6 @@ export function CanvasSurface({
       applyViewport(document.viewport);
       return true;
     } finally {
-      window.clearTimeout(timeout);
       signal?.removeEventListener("abort", relayAbort);
     }
   }, [
