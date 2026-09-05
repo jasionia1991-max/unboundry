@@ -1,6 +1,6 @@
 # Unboundry Canvas 文档写入边界解耦验收矩阵
 
-状态：`IMPLEMENTATION_CANDIDATE / TARGET_VERSION_V0_7_8 / RELEASE_AND_REAL_PROVIDER_AUTHORIZED / R9_PASS / R10_IN_PROGRESS`
+状态：`V0_7_8_PUBLISHED_NOT_DEPLOYED / TARGET_VERSION_V0_7_9 / RELEASE_AND_REAL_PROVIDER_AUTHORIZED / R9_PASS / R10_READY`
 
 日期：2026-09-03
 
@@ -435,3 +435,12 @@ RESIDUAL_RISK:
 - 只在该 fetch 上启用 Playwright `maxRetries: 2`；它只处理连接重置，不改变业务、Canvas、task、Provider 或 request-count 断言。完整 m41 复验 `59/59 PASS`。
 - 最后一次 mandatory formal full：`127` specs、`1227/1227 PASS`、0 failed、0 skipped、exit `0`；source/snapshot SHA-256 `70ac7cd827e2442cfe91d4a39639328b267218864b1fff2102791cf8914ca6da`，4173 listener unchanged。CWB-159=`AUTO_PASS`。
 - 当前 identity：`155` files、`1934` hunks；payload `152` files、SHA-256 `8e7a00c6b11b3410fed749e72cebc4856c4cdf84bf90b6c7f3d91e2045c70567`；writer manifest `295/256/200/95/0`。同一 Reviewer 最终 `P0=0 / P1=0 / P2=0 / GO`；R9=`PASS`，进入 R10，不再重复 full。
+
+### 17.8 v0.7.8 preflight NO_GO 与 v0.7.9 delta（2026-09-05）
+
+- v0.7.8 release 与 exact-tag build 已完成但未部署。生产 census：active task/run/publication/capacity 均为 0；23 条 accepted/response-received/outcome-unknown 记录全部绑定 failed/cancelled 终态 task，必须保留且绝不重发 Provider。
+- v0.7.8 迁移错误地把这 23 条历史证据当成活跃执行，因此 CWB-182 继续 `NOT_RUN`，生产 current、schema、业务数据和费用均未变化。
+- v0.7.9 delta 保留 active/freeze 门并允许 terminal billing history 原样穿越 DDL-only migration；新增回归覆盖 failed/cancelled task 的 accepted、response-received、outcome-unknown，dry-run/source schema42 不变、apply 后 schema43 且三行全部字段相同。
+- 首轮独立增量 Review 覆盖 `17/17` files、`55/55` hunks，产品逻辑 `P0=0 / P1=0`，因 attempt 全字段/terminal 组合与 schema42 五个负向门缺少直接回归而为 `P2=2 / NO_GO`。两项均已补测：failed/cancelled 的 accepted/response-received/outcome-unknown 全字段保留，以及 active task/run/publication/capacity/generation-unfrozen fail-closed 且 source 不变。
+- 定向证据：m91 `12/12`、m81+m103 `54/54`、m105 `1/1`，合计 `67/67`；测试库存 `1229`，writer manifest `295/256/200/95/0`。补测后同一 Reviewer 覆盖 `17/17` files、`55/55` hunks并确认三项 P2 全部关闭，最终 `P0=0 / P1=0 / P2=0 / GO`；当前只待变更后 formal full。
+- 变更后 formal full：`127` specs、`1229/1229 PASS`、0 failed、0 skipped、0 retries/blocked/reportErrors，exit `0`；Node/npm `22.23.1/10.9.8`，source/snapshot SHA-256 `3b1fcd369e292c272183e3db7ee8316a38f700b96847f83e0370d2a0ebcbb9ea`，4173 listener unchanged。post-receipt m38 `19/19 PASS`；同一 Reviewer 对当前 `17/17` files、`56/56` hunks完成只读收口，保护文件访问 0，`P0/P1/P2=0/0/0 / GO`。CWB-159=`AUTO_PASS`，R9=`PASS`，R10=`READY`；不得重复 full。

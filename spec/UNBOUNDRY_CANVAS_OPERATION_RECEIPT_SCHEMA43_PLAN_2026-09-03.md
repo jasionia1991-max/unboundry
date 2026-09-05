@@ -1,10 +1,10 @@
 # Unboundry Canvas Operation Receipt schema 43 迁移、备份与回滚附件
 
-状态：`REVIEW_PASS / P0=0 / P1=0 / P2=0 / IMPLEMENTED_TARGETED_VERIFIED / FORMAL_FULL_NOT_RUN / RELEASE_NOT_RUN`
+状态：`V0_7_8_PUBLISHED_NOT_DEPLOYED / V0_7_9_PRODUCTION_PREFLIGHT_DELTA_R9_PASS_R10_READY`
 
 日期：2026-09-03
 
-目标版本：`v0.7.8`
+目标版本：`v0.7.9`（v0.7.8 保留为已发布未部署历史版本）
 
 依赖方案：`spec/UNBOUNDRY_CANVAS_DOCUMENT_WRITE_BOUNDARY_DECOUPLING_PLAN_2026-09-03.md`
 
@@ -255,3 +255,11 @@ CREATE INDEX generation_canvas_projection_states_owner_state
 2026-09-04 独立 Review 共四轮修订加最终确认：最终 `P0=0 / P1=0 / P2=0`。确认 schema/actor/baseline 联合约束、server-observed token proof、DATA-005/high-water、capacity error、downlevel fail-closed，以及 legacy capability 唯一 operation identity 均与主 Plan 一致；runtime implementation stop 已解除。
 
 实现已落入 schema 43 migration、exact schema contract、42→43 one-shot migration、backup/restore/downlevel gates 与单节点 projection service。定向证据：`tests/m91-schema-migration.spec.ts` 覆盖 migration/physical contract/backup/downlevel；`tests/m103-server-authoritative-workflow.spec.ts` 12/12 覆盖 workflow projection savepoint fault/retry；`tests/m104-canvas-command-gateway.spec.ts` 9/9 覆盖单节点 durable failed state、restart、单次 retry 和 receipt no-op。上述只代表定向验证；候选冻结后的唯一 formal full、发布与生产迁移仍未执行。
+
+## 8. 生产 preflight 修订（2026-09-05）
+
+v0.7.8 发布后、生产切换前的只读 census 发现：active task/run/publication/capacity 全 0，但 schema42 合法保留 23 条 failed/cancelled 终态 task 的 Provider boundary 历史证据。原 `assertQuiescentSource` 只按 attempt outcome 计数，会要求删除或改写这些计费/恢复记录才能迁移，与本附件“历史证据原样保留”以及 Goal 禁止清理历史数据冲突。
+
+v0.7.9 修订为：执行静默由 active task、active workflow run、active publication、active capacity 与 generation freeze 共同证明；terminal task 的 accepted、response-received、outcome-unknown attempt 是永久 billing/recovery evidence，不是 live work。42→43 migration 只追加 DDL，既不 settlement 这些行，也不触发 Provider。新增测试用 production-shaped 三条历史行证明 dry-run 不写 source、apply 后全部字段相同；五个 active/freeze 门原样保留。该 delta 必须独立 Review 和变更后 formal full 后才能发布。
+
+首轮增量 Review 的 `P2=2 / NO_GO` 已转为直接回归：历史 fixture 扩展为 failed/cancelled task 的 accepted、response-received、outcome-unknown，并比较 `generation_provider_attempts` 全部字段；active task、active workflow run、active publication、active capacity 与 generation-unfrozen 五个 schema42 门均验证精确 fail-closed、source bytes 不变及 schema42 不变。m91 当前 `12/12 PASS`；同一 Reviewer 已确认原两项 P2 和文档同步 P2 全部关闭，最终 `P0=0 / P1=0 / P2=0 / GO`。变更后 formal full 为 `127` specs、`1229/1229 PASS`、0 failed、0 skipped、exit `0`，source/snapshot SHA-256 `3b1fcd369e292c272183e3db7ee8316a38f700b96847f83e0370d2a0ebcbb9ea`，4173 listener unchanged；R9 已通过并进入 R10。

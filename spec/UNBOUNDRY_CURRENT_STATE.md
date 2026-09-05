@@ -1,14 +1,14 @@
 # Unboundry 当前权威状态
 
-> **2026-09-05 最新权威：生产仍运行 v0.7.7/schema42；本地 v0.7.8/schema43 Canvas 写入边界最终正式 full 已取得 1227/1227 passed、0 failed、0 skipped、exit 0，最终独立 Review 为 P0/P1/P2=0/GO。R9 已通过，当前进入 R10 发布与生产验收；尚未发布或消费真实费用。** 当前 Goal 按 Canvas Document Write Boundary Plan R0-R10 与 Matrix CWB-001-CWB-194 执行；生产、真实 Provider、OSS 和付费写入均保持零新增。
+> **2026-09-05 最新权威：生产仍运行 v0.7.7/schema42。v0.7.8 已发布但尚未部署；上线前只读 census 发现其 42→43 one-shot 会把 23 条历史终态 Provider 证据误判为活跃工作，因此按不可移动版本规则转入 v0.7.9。v0.7.9 定向 m91 12/12、m81+m103 54/54、m105 1/1 已通过；独立增量 Review 覆盖 17/17 files、55/55 hunks并取得 P0/P1/P2=0/GO；变更后 formal full 为 127 specs、1229/1229 PASS、0 failed、0 skipped、exit 0，R9 已通过并进入 R10。真实 Provider/OSS/费用仍为零新增。** 当前 Goal 按 Canvas Document Write Boundary Plan R0-R10 与 Matrix CWB-001-CWB-194 继续执行。
 
 **生产是 v0.7.7 / schema42。** 代码、静态资源、数据库恢复、回滚前进和服务健康门均通过。v0.7.7 已消除此前7个文字节点的旧恢复写回；本次刷新没有出现409或“任务状态查询失败”误报，也没有任何生成提交。
 
-**本地候选状态**：v0.7.8 已建立 typed Canvas command、字段 ownership、document/input 双 fingerprint、revision 状态机、operation receipt、服务端结果投影和兼容窗口治理。历史 full 失败均已保留并闭环；最后一次 mandatory formal full 在冻结源码 `70ac7cd827e2442cfe91d4a39639328b267218864b1fff2102791cf8914ca6da` 上取得 `1227/1227 PASS`。最后一次测试 delta 仅为 Playwright 对 `ECONNRESET` 的内置有限重试，不放宽业务断言。
+**本地候选状态**：v0.7.8 的 Canvas 写入边界主体保持不变；v0.7.9 仅修正 schema43 迁移的 quiescence 定义，使终态 task 保留的 accepted/response-received/outcome-unknown 计费与恢复证据原样穿越 DDL migration，活跃 task/run/publication/capacity 和 generation freeze 门不放宽。测试库存由 1227 增至 1229；新增回归覆盖全部 attempt 字段、failed/cancelled 与五个 schema42 静默负向门。
 
 **生产遗留事实**：v0.7.7 登录普通 Chrome 打开目标 Canvas 后曾出现4次多余 Canvas PUT，revision 71→75、graph revision 46→50；前置刷新门失败后没有点击整组执行。该事实是 v0.7.8 的修复基线，不能把本地测试当作生产已通过。
 
-**授权状态**：用户已在当前 Goal 明确授权 v0.7.8 的实施、Review、一次正式全量、GitHub 发布、备份/恢复/部署和受预算约束的真实验收；授权尚未消费到发布或付费阶段。v0.7.7 tag/Release仍不可移动，既有生产数据不得删除或覆盖。
+**授权状态**：当前 Goal 明确授权确定性失败后的修复、下一顺序版本、重新测试/发布/部署和真实验收。v0.7.8 tag/Release 与已安装但未激活的 release 目录保持不可移动；既有生产数据、任务和计费证据不得删除或覆盖。
 
 > **以下 INC-GEN-025 顶部记录是历史声明快照**：它记录当时的 Goal、测试、Review 和发布前状态；v0.6.70 后续已经发布，最终审计推翻了“可直接继续 R8/真实点击”的当前有效性。其历史授权已消费，不得恢复。
 
@@ -16,18 +16,18 @@
 
 更新日期：2026-09-05
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
-当前代码包版本：**v0.7.8**
-本地候选代码版本：**v0.7.8**
-当前本地候选说明：`Canvas Document Write Boundary 最终 formal full 1227/1227 PASS；最终独立 Review GO；进入 R10`
+当前代码包版本：**v0.7.9**
+本地候选代码版本：**v0.7.9**
+当前本地候选说明：`v0.7.8 published-not-deployed；v0.7.9 terminal-history migration delta targeted PASS；Review GO；formal full 1229/1229 PASS；R10 ready`
 当前生产部署版本：**v0.7.7**
 本地候选schema：**43**
-当前治理标记：`CURRENT_V0_7_8_USER_RECHECK`
-当前业务标记：`V0_7_8_R9_PASS / FINAL_REVIEW_P0_P1_P2_ZERO_GO / REAL_WORKFLOW_NOT_RUN`
-当前发布执行标记：`V0_7_8_RELEASE_AUTHORIZED_NOT_CONSUMED / FINAL_FORMAL_FULL_1227_OF_1227_PASS / REAL_CLICK_0_OF_1`
+当前治理标记：`CURRENT_V0_7_9_USER_RECHECK`
+当前业务标记：`V0_7_8_PUBLISHED_NOT_DEPLOYED / V0_7_9_DELTA_REVIEW_GO / REAL_WORKFLOW_NOT_RUN`
+当前发布执行标记：`V0_7_9_RELEASE_AUTHORIZED / TARGETED_67_OF_67_PASS / FORMAL_FULL_1229_OF_1229_PASS / REAL_CLICK_0_OF_1`
 当前本地Goal标记：`ACTIVE_CANVAS_DOCUMENT_WRITE_BOUNDARY_GOAL / PLAN_R0_R10 / MATRIX_CWB_001_CWB_194`
-当前计划标记：`V0_7_8_R9_PASS / R10_IN_PROGRESS / PRODUCTION_UNCHANGED`
+当前计划标记：`V0_7_9_R9_REFREEZE / R10_IN_PROGRESS / PRODUCTION_UNCHANGED`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`V0_7_7_IMMUTABLE / V0_7_8_FINAL_FORMAL_FULL_PASS / FINAL_REVIEW_GO / R10_AUTHORIZED`
+当前发布门：`V0_7_7_PRODUCTION / V0_7_8_IMMUTABLE_PUBLISHED_NOT_DEPLOYED / V0_7_9_R9_PASS_R10_READY`
 
 ## INC-GEN-028 当前读取顺序
 

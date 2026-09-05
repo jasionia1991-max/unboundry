@@ -85,18 +85,11 @@ function assertQuiescentSource(database: DatabaseSync) {
       "Active workflow runs must drain before migration",
     );
   }
-  if (scalarCount(database, `
-    SELECT COUNT(*) AS count FROM generation_provider_attempts
-    WHERE evidence = 'provider-boundary'
-      AND outcome IN (
-        'boundary-claimed', 'accepted', 'response-received', 'outcome-unknown'
-      )
-  `) !== 0) {
-    fail(
-      "SCHEMA_MIGRATION_UNSETTLED_PROVIDER_ATTEMPTS",
-      "Provider-boundary attempts must be definitively settled before migration",
-    );
-  }
+  // A terminal task can intentionally retain accepted, response-received, or
+  // outcome-unknown Provider evidence forever. Those rows are billing and
+  // recovery history, not live work, and migration must preserve them exactly.
+  // The active-task gate above is the execution-quiescence boundary; neither
+  // this DDL-only migration nor the schema 43 runtime re-admits terminal tasks.
   if (scalarCount(database, `
     SELECT COUNT(*) AS count FROM media_publication_attempts
     WHERE state IN ('reserved', 'staged', 'external-ready', 'compensating')

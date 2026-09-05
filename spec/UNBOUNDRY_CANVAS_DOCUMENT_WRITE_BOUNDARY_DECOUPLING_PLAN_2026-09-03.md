@@ -1,6 +1,6 @@
 # Unboundry Canvas 文档写入边界解耦详细行动方案
 
-状态：`DOCUMENT_GO / IMPLEMENTATION_CANDIDATE / TARGET_VERSION_V0_7_8 / RELEASE_AND_REAL_PROVIDER_AUTHORIZED / R9_PASS / R10_IN_PROGRESS`
+状态：`DOCUMENT_GO / V0_7_8_PUBLISHED_NOT_DEPLOYED / TARGET_VERSION_V0_7_9 / RELEASE_AND_REAL_PROVIDER_AUTHORIZED / R9_PASS / R10_READY`
 
 日期：2026-09-03
 
@@ -24,7 +24,7 @@
 ### 1.1 当前授权
 
 - 本节最初记录的是文档阶段边界；2026-09-04 用户通过当前 `/goal` 明确取代该旧边界。
-- 当前已授权 R0-R10、目标版本 `v0.7.8`、产品/测试/类型/OpenAPI/文档/schema43 migration、GitHub 发布、locked-exact backup/restore、生产部署与回滚、普通 Chrome、真实 Provider/OSS 和费用。
+- 当前已授权 R0-R10；首个 `v0.7.8` 已发布但未部署，生产 preflight 发现确定性 migration bug 后按 Goal 自动转入下一普通 patch `v0.7.9`，继续覆盖产品/测试/文档/schema43 migration、GitHub 发布、locked-exact backup/restore、生产部署与回滚、普通 Chrome、真实 Provider/OSS 和费用。
 - 权限不改变阶段顺序：冻结候选、独立全量 Review `P0/P1/P2=0` 与唯一 formal full 仍是发布前硬门。
 - 生产仅可操作本 Goal 新建的验收对象；指定既有 Canvas/group 先只读核对，且必须先通过冷/暖刷新零写门。
 
@@ -1225,7 +1225,7 @@ R9 通过门：`LOCAL_CANDIDATE_TECHNICAL_PASS / PRODUCTION_NOT_CHANGED / REAL_P
 
 ### R10：版本、发布与生产 canary
 
-当前 Goal 已明确给出普通 patch 目标、冻结候选上线以及真实生成/费用权限；授权条件已满足，但 R9 独立 Review 与唯一 formal full 尚未完成，因此 R10 仍未开始。任何生产动作仍须严格按下列顺序执行，不得因已授权而越过技术门。
+当前 Goal 已明确给出普通 patch 目标、冻结候选上线以及真实生成/费用权限；v0.7.9 独立 Review 与变更后 formal full 已通过，R9 已关闭，R10 获准开始。生产动作仍须严格按下列顺序执行。
 
 授权后顺序固定：
 
@@ -1526,3 +1526,13 @@ R0-R9 完成但没有发布授权时，最远只能写：
 - 最后一次 mandatory formal full 取得 `127` specs、`1227/1227 PASS`、0 failed、0 skipped、exit `0`；Node/npm `22.23.1/10.9.8`，source/snapshot SHA-256 `70ac7cd827e2442cfe91d4a39639328b267218864b1fff2102791cf8914ca6da`，4173 listener `unchanged`。
 - 当前允许范围仍为 `155` files（tracked `134`、untracked `21`）、`1934` hunks；payload `152` files，SHA-256 `8e7a00c6b11b3410fed749e72cebc4856c4cdf84bf90b6c7f3d91e2045c70567`。writer manifest 保持 `295/256/200/95/0`。
 - 同一独立 Reviewer 已核对该单一测试基础设施 delta、最终 identity 与 CURRENT_STATE 同步，覆盖 `155/155` files、`1934/1934` hunks、CWB `194/194`，保护文件访问 0；结论 `P0=0 / P1=0 / P2=0 / GO`。R9 已通过，现进入 R10，禁止再次重复 full。
+
+## 26. v0.7.8 生产 preflight 与 v0.7.9 再冻结（2026-09-05）
+
+- v0.7.8 已完成 PR #157、双 CI、annotated tag、GitHub Release 与 exact-tag fresh build，但尚未切换生产；生产仍为 v0.7.7/schema42。
+- 上线前只读 census 为 active task/run/publication/capacity 全 0，同时保留 23 条属于 failed/cancelled 终态 task 的 Provider boundary 历史证据。v0.7.8 one-shot 错把这些永久计费/恢复证据当作活跃执行，确定性拒绝迁移；没有修改生产 DB、没有切 current、没有 Provider/OSS/费用新增。
+- v0.7.9 只把 42→43 quiescence 收口到活跃 task/run/publication/capacity 与 generation freeze。terminal task 的 accepted、response-received、outcome-unknown 行逐字段保留；不 settlement、不删除、不重发 Provider。新增 production-shaped terminal-history migration 回归，测试库存为 1229。
+- 首轮独立增量 Review 覆盖 `17/17` files、`55/55` hunks，产品逻辑 `P0=0 / P1=0`，但因 attempt 只比较部分字段且 schema42 五个负向门未直接覆盖而给出 `P2=2 / NO_GO`。现已补齐全部 attempt 字段、failed/cancelled 和 accepted/response-received/outcome-unknown，以及 active task/run/publication/capacity 与 generation-unfrozen 的 fail-closed/source-unchanged 回归。
+- 当前定向结果：m91 `12/12`、m81+m103 `54/54`、m105 `1/1`，合计 `67/67`，均 exit 0；writer manifest `295/256/200/95/0`，source tree `7f7942be29d4e342ec079439468d1136dd2fc2f2de5d4771a64cd944020330bb`。
+- 补测后同一 Reviewer 确认原两项 P2 和随后发现的文档同步 P2 全部关闭；最终覆盖 `17/17` files、`55/55` hunks，`P0=0 / P1=0 / P2=0 / GO`，保护文件访问 0。当前只允许执行一次变更后 formal full；通过后才可发布和继续生产 R10。
+- 变更后 formal full 仅执行一次并通过：`127` specs、`1229/1229 PASS`、0 failed、0 skipped、0 retries/blocked/reportErrors，exit `0`；Node/npm `22.23.1/10.9.8`，source/snapshot SHA-256 `3b1fcd369e292c272183e3db7ee8316a38f700b96847f83e0370d2a0ebcbb9ea`，4173 listener hash `24c91e579e5f03e4327568db06303d4f094c0250c63228866946f7b8a47b8244` unchanged。post-receipt m38 `19/19 PASS`；同一 Reviewer 对当前 `17/17` files、`56/56` hunks完成只读收口，`P0/P1/P2=0/0/0 / GO`，保护文件访问 0。R9=`PASS`，进入 R10；不得重复 full。

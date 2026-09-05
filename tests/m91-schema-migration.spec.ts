@@ -42,6 +42,7 @@ import {
   databaseMatchesSchema39Contract,
   databaseMatchesSchema40Contract,
   databaseMatchesSchema41Contract,
+  databaseMatchesSchema42Contract,
   databaseMatchesSchemaContract,
   migrationIncompleteMarker,
   openAppDatabase,
@@ -56,6 +57,7 @@ import {
 } from "../server/schemaMigration";
 import { migrateSchema39To40 } from "../server/schema39To40Migration";
 import { migrateSchema40To41 } from "../server/schema40To41Migration";
+import { migrateSchema42To43 } from "../server/schema42To43Migration";
 import { createRuntimeRoleCoordinator } from "../server/runtimeRole";
 import { acquireLegacyChildGuardian } from "../server/legacyChildGuardian";
 import { expect, test } from "./safe-test";
@@ -164,7 +166,7 @@ async function waitForFile(path: string) {
 
 async function createExactSchema(
   dataDirectory: string,
-  targetVersion: 37 | 38 | 39 | 40,
+  targetVersion: 37 | 38 | 39 | 40 | 42,
 ) {
   await mkdir(dataDirectory, { mode: 0o700 });
   const databasePath = join(dataDirectory, "unboundry.sqlite");
@@ -345,6 +347,267 @@ test("exact schema 40 dry-run and apply migrate only the v41 compliance boundary
     await rm(root, { force: true, recursive: true });
   }
 });
+
+test("schema 42 to 43 preserves terminal Provider billing history while migrating", async () => {
+  const root = await mkdtemp(join(tmpdir(), "unboundry-m91-schema42-to43-history-"));
+  const dataDirectory = join(root, "data");
+  const runtimeDirectory = join(root, "runtime");
+  try {
+    const databasePath = await createExactSchema(dataDirectory, 42);
+    const database = new DatabaseSync(databasePath);
+    database.exec(`
+      INSERT INTO generation_tasks (
+        id, canvas_id, node_id, kind, prompt, model, parameters,
+        idempotency_key, request_fingerprint, state, attempt, error_code,
+        created_at, updated_at, provider_profile_id, provider_model_id
+      ) VALUES
+        (
+          'm91-terminal-unknown', 'canvas', 'node-unknown', 'image',
+          'prompt', NULL, '{}', 'idem-unknown', 'fingerprint-unknown',
+          'failed', 1, 'PROVIDER_REQUEST_FAILED',
+          '2026-08-15T00:00:00.000Z', '2026-08-15T00:01:00.000Z',
+          'provider', 'model'
+        ),
+        (
+          'm91-terminal-response', 'canvas', 'node-response', 'video',
+          'prompt', NULL, '{}', 'idem-response', 'fingerprint-response',
+          'cancelled', 1, 'GENERATION_CANCELLED',
+          '2026-08-16T00:00:00.000Z', '2026-08-16T00:01:00.000Z',
+          'provider', 'model'
+        ),
+        (
+          'm91-terminal-accepted', 'canvas', 'node-accepted', 'audio',
+          'prompt', NULL, '{}', 'idem-accepted', 'fingerprint-accepted',
+          'cancelled', 2, 'GENERATION_CANCELLED',
+          '2026-08-17T00:00:00.000Z', '2026-08-17T00:01:00.000Z',
+          'provider', 'model'
+        );
+      INSERT INTO generation_provider_attempts (
+        task_id, execution_attempt, provider_profile_id, provider_model_id,
+        kind, evidence, outcome, failure_code, finished_at, created_at,
+        owner_id, credential_revision, provider_task_id
+      ) VALUES
+        (
+          'm91-terminal-unknown', 1, 'provider', 'model', 'image',
+          'provider-boundary', 'outcome-unknown', 'PROVIDER_REQUEST_FAILED',
+          '2026-08-15T00:01:00.000Z', '2026-08-15T00:00:30.000Z',
+          'owner-unknown', 3, 'provider-task-unknown'
+        ),
+        (
+          'm91-terminal-response', 1, 'provider', 'model', 'video',
+          'provider-boundary', 'response-received', 'GENERATION_CANCELLED',
+          NULL, '2026-08-16T00:00:30.000Z',
+          'owner-response', 4, 'provider-task-response'
+        ),
+        (
+          'm91-terminal-accepted', 2, 'provider', 'model', 'audio',
+          'provider-boundary', 'accepted', NULL,
+          NULL, '2026-08-17T00:00:30.000Z',
+          'owner-accepted', 5, 'provider-task-accepted'
+        );
+    `);
+    const before = database.prepare(`
+      SELECT *
+      FROM generation_provider_attempts
+      WHERE task_id LIKE 'm91-terminal-%'
+      ORDER BY task_id
+    `).all();
+    database.close();
+
+    const sourceSha = expectedLogicalSha(databasePath, root);
+    await expect(migrateSchema42To43({
+      dataDirectory,
+      expectedSourceLogicalSha256: sourceSha,
+      mode: "dry-run",
+      runtimeDirectory,
+      scratchRoot: root,
+    })).resolves.toMatchObject({
+      sourceLogicalSha256: sourceSha,
+      sourceVersion: 42,
+      status: "verified",
+      targetVersion: 43,
+    });
+
+    const unchanged = new DatabaseSync(databasePath, { readOnly: true });
+    expect(databaseMatchesSchema42Contract(unchanged)).toBe(true);
+    expect(unchanged.prepare("PRAGMA user_version").get()).toEqual({
+      user_version: 42,
+    });
+    expect(unchanged.prepare(`
+      SELECT *
+      FROM generation_provider_attempts
+      WHERE task_id LIKE 'm91-terminal-%'
+      ORDER BY task_id
+    `).all()).toEqual(before);
+    unchanged.close();
+
+    await expect(migrateSchema42To43({
+      dataDirectory,
+      expectedSourceLogicalSha256: sourceSha,
+      mode: "apply",
+      runtimeDirectory,
+      scratchRoot: root,
+    })).resolves.toMatchObject({
+      sourceLogicalSha256: sourceSha,
+      sourceVersion: 42,
+      status: "complete",
+      targetVersion: 43,
+    });
+    const migrated = new DatabaseSync(databasePath, { readOnly: true });
+    expect(databaseMatchesSchemaContract(migrated)).toBe(true);
+    expect(migrated.prepare("PRAGMA user_version").get()).toEqual({
+      user_version: 43,
+    });
+    expect(migrated.prepare(`
+      SELECT *
+      FROM generation_provider_attempts
+      WHERE task_id LIKE 'm91-terminal-%'
+      ORDER BY task_id
+    `).all()).toEqual(before);
+    migrated.close();
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("schema 42 to 43 rejects every active gate without changing its source", async () => {
+  const root = await mkdtemp(join(tmpdir(), "unboundry-m91-schema42-to43-gates-"));
+  const cases = [
+    {
+      code: "SCHEMA_MIGRATION_ACTIVE_GENERATION_TASKS",
+      name: "generation-task",
+      setup: (database: DatabaseSync) => database.exec(`
+        INSERT INTO generation_tasks (
+          id, canvas_id, node_id, kind, prompt, model, parameters,
+          idempotency_key, request_fingerprint, state, attempt,
+          created_at, updated_at
+        ) VALUES (
+          'm91-active-task', 'canvas', 'node', 'image', 'prompt', NULL,
+          '{}', 'idem', 'fingerprint', 'queued', 0,
+          '2026-08-18T00:00:00.000Z', '2026-08-18T00:00:00.000Z'
+        )
+      `),
+    },
+    {
+      code: "SCHEMA_MIGRATION_ACTIVE_WORKFLOW_RUNS",
+      name: "workflow-run",
+      setup: (database: DatabaseSync) => {
+        insertMigrationGateOwner(database);
+        database.exec(`
+          INSERT INTO workflow_runs (
+            id, owner_id, canvas_id, group_id, graph_revision,
+            semantic_fingerprint, plan_json, state, stop_requested,
+            created_at, updated_at
+          ) VALUES (
+            'm91-active-run', 'm91-gate-owner', 'canvas', 'group', 0,
+            'fingerprint', '{}', 'running', 0,
+            '2026-08-18T00:00:00.000Z', '2026-08-18T00:00:00.000Z'
+          )
+        `);
+      },
+    },
+    {
+      code: "SCHEMA_MIGRATION_ACTIVE_MEDIA",
+      name: "publication",
+      setup: (database: DatabaseSync) => {
+        insertMigrationGateOwner(database);
+        database.exec(`
+          INSERT INTO media_publication_attempts (
+            attempt_id, owner_id, kind, asset_id, source, state,
+            storage_backend, final_storage_name, object_key, staging_name,
+            content_type, created_at, updated_at
+          ) VALUES (
+            'm91-active-publication', 'm91-gate-owner', 'image', 'asset',
+            'upload', 'reserved', 'local', 'asset.png', 'asset.png',
+            'staging.png', 'image/png',
+            '2026-08-18T00:00:00.000Z', '2026-08-18T00:00:00.000Z'
+          )
+        `);
+      },
+    },
+    {
+      code: "SCHEMA_MIGRATION_ACTIVE_MEDIA_CAPACITY",
+      name: "capacity",
+      setup: (database: DatabaseSync) => {
+        insertMigrationGateOwner(database);
+        database.exec(`
+          INSERT INTO workflow_runs (
+            id, owner_id, canvas_id, group_id, graph_revision,
+            semantic_fingerprint, plan_json, state, stop_requested,
+            created_at, updated_at
+          ) VALUES (
+            'm91-settled-run', 'm91-gate-owner', 'canvas', 'group', 0,
+            'fingerprint', '{}', 'success', 0,
+            '2026-08-18T00:00:00.000Z', '2026-08-18T00:00:00.000Z'
+          );
+          INSERT INTO media_capacity_reservations (
+            id, owner_id, workflow_run_id, reserved_bytes, state,
+            expires_at, created_at, updated_at
+          ) VALUES (
+            'm91-active-capacity', 'm91-gate-owner', 'm91-settled-run', 1,
+            'active', '2026-08-18T01:00:00.000Z',
+            '2026-08-18T00:00:00.000Z', '2026-08-18T00:00:00.000Z'
+          )
+        `);
+      },
+    },
+    {
+      code: "SCHEMA_MIGRATION_GENERATION_NOT_FROZEN",
+      name: "generation-unfrozen",
+      setup: (database: DatabaseSync) => database.exec(`
+        UPDATE generation_safety_settings
+        SET global_enabled = 1, emergency_stop = 0
+        WHERE id = 1
+      `),
+    },
+  ] as const;
+  try {
+    for (const gate of cases) {
+      const caseRoot = join(root, gate.name);
+      await mkdir(caseRoot, { mode: 0o700 });
+      const dataDirectory = join(caseRoot, "data");
+      const runtimeDirectory = join(caseRoot, "runtime");
+      const databasePath = await createExactSchema(dataDirectory, 42);
+      const database = new DatabaseSync(databasePath);
+      gate.setup(database);
+      database.exec("PRAGMA journal_mode = DELETE");
+      database.close();
+      const sourceSha = expectedLogicalSha(databasePath, root);
+      const before = await sourceFingerprint(dataDirectory);
+
+      await expect(migrateSchema42To43({
+        dataDirectory,
+        expectedSourceLogicalSha256: sourceSha,
+        mode: "dry-run",
+        runtimeDirectory,
+        scratchRoot: root,
+      })).rejects.toMatchObject({ code: gate.code });
+
+      expect(await sourceFingerprint(dataDirectory)).toEqual(before);
+      const unchanged = new DatabaseSync(databasePath, { readOnly: true });
+      expect(databaseMatchesSchema42Contract(unchanged)).toBe(true);
+      expect(unchanged.prepare("PRAGMA user_version").get()).toEqual({
+        user_version: 42,
+      });
+      unchanged.close();
+    }
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+function insertMigrationGateOwner(database: DatabaseSync) {
+  database.exec(`
+    INSERT INTO users (
+      id, login_name, display_name, password_hash, role, status,
+      created_at, updated_at
+    ) VALUES (
+      'm91-gate-owner', 'm91-gate-owner', 'Migration Gate Owner', 'test',
+      'user', 'active',
+      '2026-08-18T00:00:00.000Z', '2026-08-18T00:00:00.000Z'
+    )
+  `);
+}
 
 async function sourceFingerprint(dataDirectory: string) {
   const names = (await readdir(dataDirectory)).sort();
