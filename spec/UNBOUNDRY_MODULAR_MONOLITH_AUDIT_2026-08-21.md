@@ -1,3 +1,5 @@
+> 当前治理路由：`CURRENT_V0_7_13_USER_RECHECK`；v0.7.13功能验收通过、性能部分达标，以 `UNBOUNDRY_CURRENT_STATE.md` 和性能唯一断点为准。本文历史模块化计划只在真实新功能触发，不因发布回执重启重构。
+
 > 2026-09-06 当前治理引用：`CURRENT_V0_7_11_USER_RECHECK`，性能本地修复以 `PERFORMANCE_REMEDIATION_CHECKPOINT_2026-09-06.md` 为准。模块化仍只在真实新功能触发，下方版本为历史记录。
 
 # Unboundry 全项目模块化单体审计

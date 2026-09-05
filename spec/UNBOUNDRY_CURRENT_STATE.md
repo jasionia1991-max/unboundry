@@ -1,3 +1,5 @@
+> **2026-09-06 当前：v0.7.13 已上线，零付费功能验收通过，性能仅部分达标。** 生产运行`v0.7.13/schema43`，commit `66f16304a6f9aefeda04cbb5eee09317ba0abd6e`、PID668342；PR162双CI通过（主分支首轮进程清理EPERM保留，原提交重跑成功）、exact-tag构建911源码一致。最新冻结备份verify/fresh restore及997文件和清单云端上传/GET核对通过；本次临时副本已清理3,939,555,876字节，剩余98,019,000,320字节。真实上传201、Canvas保存200、刷新/重新打开零额外写且内容保留、本地blob先显、模板摘要惰性通过；暖画布182ms/能力208ms，但历史27小图冷加载11.682s、首次新建1.214s，不能标性能全通过或USER_PASS。真实生成0，任务1086/attempt1097不变；CURRENT未覆盖，schema未改，v0.7.11恢复点39c6385不动。自动备份服务仍failed；本次手动备份通过，历史媒体97项非阻断提示保留。唯一断点为 `spec/PERFORMANCE_REMEDIATION_CHECKPOINT_2026-09-06.md`，生产回执 `spec/V0_7_13_PRODUCTION_RECEIPT_2026-09-06.json`；以下更早时点均为历史。
+
 > **2026-09-06 v0.7.13 发布授权已确认，准备中。** 用户明确确认按 v0.7.13 发布 DELETE journal 保存补修；包含 commit/push/PR/CI/tag/Release、最新备份与独立恢复、生产切换和零付费验收。当前生产仍 v0.7.11/schema43；保留 v0.7.11 恢复检查点和 CURRENT 数据，不迁移、不触发付费生成。补修最终直接29/29及 Linux 禁网 DELETE 写入通过，上传/清单40项复用；新版本 m81 42/42、文档标记纠正后 m38 19/19通过，首次60/61保留；不宣称全量1266通过。v0.7.12验收失败记录与不可变发布物保留；自动备份仍未修复，本次使用手动验证备份。唯一断点见 `spec/PERFORMANCE_REMEDIATION_CHECKPOINT_2026-09-06.md`。下方旧状态只作历史。
 
 > **2026-09-06 05:28 CST 当前状态：v0.7.12 零付费生产验收失败，已保留 CURRENT 数据回退至 v0.7.11/schema43。** 上传201后 Canvas commands 500，已在 Linux 禁网恢复副本实证 DELETE rollback journal 被新 WAL 检查误拒。当前补修仅在本地分支 `codex/performance-delete-journal-save-fix`，未 commit/push/发布；最终直接29/29、既有上传/清单40项复用、独立复核GO，不能写全量1266通过或线上性能修复完成。v0.7.12 tag/发布物不可变且已标失败，v0.7.11恢复分支39c6385不变；下一版须重新确认版本号和允许发布。自动备份timer仍失败，最新手动加密备份verify/fresh restore通过，996文件及清单OSS上传/GET校验于05:48 CST通过。唯一断点为 `spec/PERFORMANCE_REMEDIATION_CHECKPOINT_2026-09-06.md`，详细回执为 `spec/V0_7_12_FAILED_ACCEPTANCE_ROLLBACK_AND_LOCAL_CORRECTION_2026-09-06.json`。以下更早状态均为历史。
@@ -8,7 +10,7 @@
 
 > **2026-09-06 性能修复当前状态**：最近核对生产运行`v0.7.11/schema43`（本轮未新查生产）。用户已授权仅本地实施、测试和审查；生产/付费生成不操作。唯一断点为 `spec/PERFORMANCE_REMEDIATION_CHECKPOINT_2026-09-06.md`，实施分支 `codex/performance-remediation-from-v0.7.11`，基线 `39c6385`（与已发布 v0.7.11 同源码树）。恢复分支保留不动。本地正式全测1258/1263，5失败已最小60/60关闭，产品审查GO、发布 NO_GO，下面 v0.7.11 发布前及更早状态均为历史记录，不可继承其授权或 PASS。
 
-**生产是 v0.7.11 / schema43。** 这是性能诊断阶段最后已核对的生产身份，本轮仅本地实施，未修改线上；恢复分支39c6385与其源码树一致。下面9月5日发布前说明保留为历史。
+**生产是 v0.7.13 / schema43。** 最新生产已通过零付费保存与数据保留验收；首次历史图片加载仍未达到性能目标。v0.7.11恢复分支39c6385保留，回退仅切代码并保留CURRENT。最新云端备份核对与本次临时副本清理已完成，用户体验仍为USER_RECHECK。下面9月5日发布前说明保留为历史。
 
 
 > **2026-09-05 14:32 UTC 当前权威**：v0.7.11独立全量代码Review P0/P1/P2=0，正式全测127 specs、1243/1243 PASS、exit0、异常0，完整日志已落盘；原48203终态丢失未标PASS，在冻结无漂移下补证95805成功。255定向和成功full不重复。post-full文档增量6/6已审查GO（155文件不变、P0/P1/P2=0），当前进入发布，0711尚未commit/发布/部署。线上079/schema43，原11/11真实结果保留且禁止重跑；刷新、真实音频/三上传及最终生产复核尚未通过。下面所有较早覆盖段落为历史时点，以本段、下面统一当前字段和Checkpoint最新段为准。
@@ -55,22 +57,28 @@
 
 > **以下所有旧 INC 区块均为历史账本**：其中出现的“当前”“等待发布”“授权尚未消费”等文字只代表当时时点，不能覆盖本页第一段，也不能恢复任何旧授权。
 
-更新日期：2026-09-05
+更新日期：2026-09-06
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
 当前代码包版本：**v0.7.13**
 本地候选代码版本：**v0.7.13**
-当前本地候选说明：`性能修复A-G本地实现；独立审查问题已关闭；正式full1258/1263，5失败最小60/60已关闭；未提交/发布`
-当前生产部署版本：**v0.7.11/schema43**（最近诊断核对；本轮不重新操作生产）
+当前本地候选说明：`v0.7.13 已提交、PR162合并并部署；保存补修29/29及Linux禁网验证通过；旧性能full1258/1263与最小60/60关闭记录保留，不宣称新全测全通过`
+当前生产部署版本：**v0.7.13/schema43**（commit66f1630；零付费功能通过、性能部分达标）
 本地候选schema：**43**
-当前治理标记：`CURRENT_V0_7_11_USER_RECHECK`
-当前业务标记：`USER_CONFIRMED_GENERATION_WORKS / PERFORMANCE_USER_RECHECK`
-当前发布执行标记：`LOCAL_ONLY / RELEASE_NO_GO / PAID_GENERATION_FORBIDDEN`
-当前本地Goal标记：`NO_ACTIVE_GOAL / USER_AUTHORIZED_LOCAL_IMPLEMENTATION`
-当前计划标记：`V0_7_11_CODE_REVIEW_AND_FORMAL_PASS / POST_FULL_DOC_REVIEW_GO / R10_PENDING / REAL_CLICK_1_OF_1`
+当前治理标记：`CURRENT_V0_7_13_USER_RECHECK`
+当前业务标记：`ZERO_PAID_FUNCTIONAL_PASS / PERFORMANCE_PARTIAL / USER_RECHECK`
+当前发布执行标记：`V0_7_13_DEPLOYED / CURRENT_DATA_PRESERVED / PAID_GENERATION_NOT_RUN`
+当前本地Goal标记：`NO_ACTIVE_GOAL / USER_CONFIRMED_V0_7_13_RELEASE`
+当前计划标记：`PERFORMANCE_REMEDIATION / SAVING_CORRECTION_PASS / COLD_HISTORY_AND_INITIAL_DB_COST_REMAIN`
 当前热修门：`INC_UI_011_HISTORICAL_PRODUCTION_V0_6_43_TECHNICAL_PASS / LOCAL_USER_PASS / USER_RECHECK`
-当前发布门：`V0_7_9_PRODUCTION / V0_7_11_NOT_RELEASED / CURRENT_DATA_BACKUP_AND_PRODUCTION_ACCEPTANCE_PENDING`
+当前发布门：`V0_7_13_PRODUCTION_FUNCTIONAL_PASS / PERFORMANCE_PARTIAL / VERIFIED_BACKUP_AND_TEMP_CLEANUP_PASS`
 
-## INC-GEN-028 当前读取顺序
+## 当前读取顺序
+
+1. 本文件顶部与统一当前字段。
+2. `spec/PERFORMANCE_REMEDIATION_CHECKPOINT_2026-09-06.md`。
+3. `spec/V0_7_13_PRODUCTION_RECEIPT_2026-09-06.json`。
+
+## INC-GEN-028 历史读取顺序
 
 1. 本文件顶部当前区块。
 2. `spec/V0_7_7_PRODUCTION_RECEIPT_2026-09-03.json`。
