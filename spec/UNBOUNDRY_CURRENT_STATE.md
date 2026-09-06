@@ -1,3 +1,7 @@
+> **2026-09-06 最新：v0.7.14已上线，功能技术验收通过，线上USER_RECHECK。** 生产运行`v0.7.14/schema43`，commit c9d414a32613a28b5e013ee671223fcc219c7e05，PID839221/NRestarts0。PR163双CI、87项定向、921源码不可变构建、33静态公网/回环、Linux配对回退及DELETE写入、最新冻结备份verify/fresh restore通过。原视频836px溢出已变418px完整contain；原画布20/3及内容哈希不变。新上传816×1104→250×338、manual400×420、主动适配/撤销/刷新零额外写通过，最终示例恢复auto。任务1097/attempt1108不变，付费生成0。兼容回退包0.7.14-compat.1已备，禁止直接切旧0.7.13；v0.7.11检查点保留。仅本次临时副本清理3,917,917,682字节，磁盘22%。本地加密备份可恢复，云端副本仍上传中；原自动备份服务仍failed。维护502后旧页更新流未恢复，须手动刷新，不宣称自动提示通过。当前权威回执 `spec/V0_7_14_PRODUCTION_RECEIPT_2026-09-06.json`，断点 `spec/MEDIA_ASPECT_RATIO_LOCAL_CHECKPOINT_2026-09-06.md`；下面均为历史时点，不重复已完成测试或发布。
+
+**生产是 v0.7.14 / schema43。** 当前状态以本段及统一字段为准，以下旧生产标记是历史记录。
+
 > **2026-09-06 发布授权更新：用户明确委托自行增加小版本，并在检查通过后上线。** 选定v0.7.14，生产仍v0.7.13/schema43。本地USER_PASS保留；开始补齐发布门并制作独立标识v0.7.14-compat.1的配对兼容回退包，禁止直接切旧v0.7.13。授权包含提交/PR/CI/tag/Release、备份恢复及生产切换，不含付费生成、schema迁移或删除历史数据。下面未授权/等待再次确认均为历史时点。
 
 > **2026-09-06 最新本地任务：原比例适配和选中模板置前候选已获用户本地验收通过（USER_PASS）；上线NO_GO。** 18/18产品文件主代理审阅，25项定向有效通过（非全套1271、非独立审计）；本地命令/数据库兼容回退检查通过，正式包切换及其他发布门尚待完成。未commit/push/上线/付费生成，v0.7.11恢复点保持。唯一当前断点：`spec/MEDIA_ASPECT_RATIO_LOCAL_CHECKPOINT_2026-09-06.md`。以下裁切单项及生产段落为各自历史时点记录。
@@ -67,10 +71,10 @@
 用途：新会话、压缩恢复、换人接手时先读这份。历史细节仍以各 INC 记录和 receipt 为准，**不得改写历史时点字段**。
 当前代码包版本：**v0.7.14**
 本地候选代码版本：**v0.7.14**
-当前本地候选说明：`v0.7.14原比例适配、视频预览完整显示及选中模板置前；本地USER_PASS，87项发布定向通过；已授权发布，生产操作门进行中`
-当前生产部署版本：**v0.7.13/schema43**（commit66f1630；零付费功能通过、性能部分达标）
+当前本地候选说明：`v0.7.14已发布；仅生产回执更新，无新的未发布产品修改；云备份上传进行中，线上USER_RECHECK`
+当前生产部署版本：**v0.7.14/schema43**（commitc9d414a；原比例/视频完整预览零付费技术验收通过，用户复验待确认）
 本地候选schema：**43**
-当前治理标记：`CURRENT_V0_7_13_USER_RECHECK`
+当前治理标记：`CURRENT_V0_7_14_USER_RECHECK`
 当前业务标记：`ZERO_PAID_FUNCTIONAL_PASS / PERFORMANCE_PARTIAL / USER_RECHECK`
 当前发布执行标记：`V0_7_13_LAST_VERIFIED_PRODUCTION / VIDEO_PREVIEW_PATCH_LOCAL_PASS / DEPLOYMENT_PENDING_CONFIRMATION / PAID_GENERATION_NOT_RUN`
 当前本地Goal标记：`NO_ACTIVE_GOAL / USER_AUTHORIZED_VIDEO_PREVIEW_LOCAL_IMPLEMENTATION`
