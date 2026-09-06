@@ -1,3 +1,4 @@
+import { CanvasSelectionLayers } from "./CanvasSelectionLayers";
 import type { WorkflowRunSummary } from "../../../types/workflowRuns";
 import {
   addEdge,
@@ -3290,6 +3291,9 @@ export function CanvasSurface({
       idMap.set(source.id, id);
       let data: ProbeNodeType["data"] = {
         ...source.data,
+        ...((source.type === "image" || source.type === "video") &&
+          !source.data.assetId && !source.data.imageSrc && !source.data.videoSrc &&
+          source.data.mediaSizingMode === undefined ? { mediaSizingMode: "auto" as const } : {}),
         label: source.data.label ?? "Node",
         title: typeof source.data.title === "string"
           ? source.data.title
@@ -3863,6 +3867,7 @@ export function CanvasSurface({
         data: {
           audioPromptReady: type === "audio" || undefined,
           imagePromptReady: type === "image" || undefined,
+          ...((type === "image" || type === "video") ? { mediaSizingMode: "auto" as const } : {}),
           label: labels[type],
           sourceKind:
             type === "audio" || type === "image" || type === "video"
@@ -3924,6 +3929,7 @@ export function CanvasSurface({
         selected: true,
         data: {
           audioPromptReady: asset.kind === "audio" || undefined,
+          ...((asset.kind === "image" || asset.kind === "video") ? { mediaSizingMode: "auto" as const } : {}),
           assetId: asset.id,
           audioSrc: asset.kind === "audio" ? asset.src : undefined,
           imagePromptReady: asset.kind === "image" || undefined,
@@ -3941,7 +3947,9 @@ export function CanvasSurface({
           videoSrc: asset.kind === "video" ? asset.src : undefined,
         },
         style:
-          asset.kind === "image"
+          (asset.kind === "image" || asset.kind === "video") && metadata.mediaWidth && metadata.mediaHeight
+            ? fitVisualMediaSize(metadata.mediaWidth, metadata.mediaHeight)
+            : asset.kind === "image"
             ? { ...NODE_DEFAULT_SIZES.image }
             : asset.kind === "video"
               ? { ...NODE_DEFAULT_SIZES.video }
@@ -4038,6 +4046,7 @@ export function CanvasSurface({
               storageBackend: asset.storageBackend,
             }),
             assetId: asset.assetId,
+            mediaSizingMode: "auto",
             imagePromptReady: true,
             imageSrc: asset.url,
             label: "Image",
@@ -5707,6 +5716,7 @@ export function CanvasSurface({
       return dimensions
         ? {
             ...node,
+            data: { ...node.data, ...((node.type === "image" || node.type === "video") ? { mediaSizingMode: "manual" as const } : {}) },
             style: {
               ...node.style,
               height: dimensions.height,
@@ -5827,10 +5837,12 @@ export function CanvasSurface({
         nextPosition.y !== node.position.y;
       const sizeChanged = nextWidth !== node.style?.width ||
         nextHeight !== node.style?.height;
-      if (!positionChanged && !sizeChanged) return node;
+      const markManual = kind === "resize" && (node.type === "image" || node.type === "video");
+      if (!positionChanged && !sizeChanged && (!markManual || node.data.mediaSizingMode === "manual")) return node;
       return {
         ...node,
         position: { ...nextPosition },
+        ...(markManual ? { data: { ...node.data, mediaSizingMode: "manual" as const } } : {}),
         ...(sizeChanged
           ? {
               style: {
@@ -6336,6 +6348,7 @@ export function CanvasSurface({
       ref={worldRef}
       role="application"
     >
+      <CanvasSelectionLayers nodes={nodes} primaryId={primaryId} />
       <ReactFlow
         autoPanOnNodeDrag
         autoPanSpeed={15}

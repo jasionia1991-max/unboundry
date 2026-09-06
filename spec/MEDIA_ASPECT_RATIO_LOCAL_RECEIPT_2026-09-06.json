@@ -1,0 +1,182 @@
+{
+  "status": "LOCAL_TARGETED_PASS_USER_PASS_RELEASE_NO_GO",
+  "repository": "/Users/mymy/Documents/unboundry-post-v076-canvas-convergence-2026-09-03",
+  "branch": "codex/video-node-preview-containment",
+  "head": "e3617807a0c118d46bc1d2149454f16f30d56a45",
+  "restoreCheckpoint": "39c6385427d3f62d1e4f8231046bb5159ee55ecd",
+  "committed": false,
+  "productionOperations": 0,
+  "paidProviderRequests": 0,
+  "userAcceptance": "USER_PASS",
+  "review": {
+    "reviewer": "primary agent",
+    "independentAgent": false,
+    "productFilesReviewed": 18,
+    "productFilesTotal": 18,
+    "trackedProductHunks": 49,
+    "newProductFilesFullyRead": 3,
+    "productHashes": {
+      "client/src/canvas/CanvasGraphMutationContext.ts": "d523a869b11b634f414191453a521d1d3f9779694586a262ccc244f7cd07adf3",
+      "client/src/canvas/CanvasSelectionLayers.tsx": "035dbe334bb66ed6637b9bb050528c554dc6bbc2f702ec56924486e24330a66b",
+      "client/src/canvas/CanvasSurface.tsx": "70155303b9c5a656d65c8c9bafe04ff8ef6e0d355ec7b52be7a0f9d360217b53",
+      "client/src/canvas/ImageNode.tsx": "f1dcac5205bd6646b77df357912699f94a05d37c7f06f73ed7635e586973a478",
+      "client/src/canvas/MediaAspectFitButton.tsx": "d0450f22491948a7ef533ab3ab93ba3d94367271cee2c5549d571cc8e6adff2c",
+      "client/src/canvas/ProbeNode.tsx": "5f2a2fdcc36d4c8e4061ac687e8ef01f235090495ecf4d16438e4fea4042c18a",
+      "client/src/canvas/VideoNode.tsx": "ef264527a0e73b81de033eef1165374efde4e117910714549f637b6dfb5a3cb9",
+      "client/src/canvas/canvasCommandJournal.ts": "8d072018fdf37b57669d6466f1fa861eebcc77d90ce882b2d141d77d48cf7d8c",
+      "client/src/canvas/mediaGeometry.ts": "5a347a73f3014971e71e07b32e53294e02ad9fd3a37b09c88a2c2c152b2a5f11",
+      "client/src/imageTools/batchDerivedImageToolUseCase.ts": "7af776b91f582f6b9b2bf361e7332ffbbd031ec227aac0d521d9057d4736e251",
+      "client/src/imageTools/derivedImageToolUseCase.ts": "0d899b9d19a76a813e6f856670f768ef8c9bbb236addb35171d3e3d3992172ce",
+      "client/src/styles.css": "2c9e7c218d2ac74a14fc22908bd5be1d96a9b50b3ec507e951546dda6c843ba6",
+      "server/canvasMutationGateway.ts": "50bfb192e57272dcf0cc964287010de3f6f9e07d7d056734bf487ce7a13eb032",
+      "server/canvasTransactionCommands.ts": "693b3b13b28fd005a1e4efd2d1f589c30e83c8bfbc4d30e10a4fe1d7a05cfafd",
+      "server/openApi.ts": "a13b946e90eae1fb45ff57da043ec5298acabf30f7a806531c3aa26471f1321d",
+      "types/canvasCommands.ts": "7682b6c2042407dc2ce16e9e8c0ecc479c70c94dde7f28b42c24b2d39db1a865",
+      "types/canvasFingerprint.ts": "33076498f28566e3ad9ed1ae8bcba44efca6ea470779a708ed02d973205842fb",
+      "types/mediaGeometry.ts": "8f7151a0a3d401b64e8b6c571de4a323aa028d50e1cf4db666b136b38660eb42"
+    }
+  },
+  "verification": {
+    "targetedPassed": 25,
+    "fullSuiteRun": false,
+    "discoveredInventory": 1271,
+    "tests": [
+      {
+        "spec": "tests/m104-canvas-command-gateway.spec.ts",
+        "passed": 16,
+        "log": "/Users/mymy/Documents/unboundry/media-aspect-compat-20260906/compat-final.log",
+        "exit": 0,
+        "scenarios": "12 branded image/video x single/workflow x auto/manual/legacy result projections plus replay and command ownership cases",
+        "compatibilityTestsAdded": 2
+      },
+      {
+        "spec": "tests/m4-video-upload.spec.ts",
+        "passed": 3,
+        "log": "ui-final.log",
+        "exit": 0
+      },
+      {
+        "spec": "tests/m2-node-geometry.spec.ts",
+        "passed": 1,
+        "log": "core-final.log",
+        "exit": 0,
+        "reuse": "unchanged geometry rendering scope"
+      },
+      {
+        "spec": "tests/m63-multiselect-group-ui.spec.ts",
+        "passed": 3,
+        "log": "core-final.log",
+        "exit": 0,
+        "reuse": "unchanged selection implementation"
+      },
+      {
+        "spec": "tests/m19-history-media-actions.spec.ts",
+        "passed": 2,
+        "log": "history-frozen.log",
+        "exit": 0
+      }
+    ],
+    "typescript": "PASS",
+    "build": "PASS",
+    "writerManifestEntries": 264,
+    "writerManifestViolations": 0,
+    "manualProductFilesCompared": 298,
+    "manualSourceMismatches": 0
+  },
+  "manual": {
+    "root": "/private/var/folders/3f/ckfmzck51612dwqng3kcnyyr0000gn/T/unboundry-manual-aspect-75jwgwyc",
+    "source": "/private/var/folders/3f/ckfmzck51612dwqng3kcnyyr0000gn/T/unboundry-manual-aspect-75jwgwyc/source",
+    "data": "/private/var/folders/3f/ckfmzck51612dwqng3kcnyyr0000gn/T/unboundry-manual-aspect-75jwgwyc/work/data",
+    "port": 51743,
+    "url": "http://127.0.0.1:51743",
+    "node": "/private/var/folders/3f/ckfmzck51612dwqng3kcnyyr0000gn/T/unboundry-manual-aspect-75jwgwyc/runtime/node",
+    "profile": "/private/var/folders/3f/ckfmzck51612dwqng3kcnyyr0000gn/T/unboundry-manual-aspect-75jwgwyc/manual.sb",
+    "sourceFiles": 565,
+    "cssSha256": "2c9e7c218d2ac74a14fc22908bd5be1d96a9b50b3ec507e951546dda6c843ba6",
+    "productionDataCopied": false,
+    "credentialsCopied": false,
+    "pid": 46391,
+    "projectId": "aa27b2cd-d88f-4276-81ef-ef6900eda8df",
+    "acceptanceUrl": "http://127.0.0.1:51743/canvas/aa27b2cd-d88f-4276-81ef-ef6900eda8df",
+    "generationDisabled": true,
+    "accountLogin": "local-preview"
+  },
+  "remainingGates": [
+    "exact versioned release package switch and stale-browser refresh rehearsal; command/database bridge checks passed",
+    "nested/multiselection layering and multi-page concurrent editing release matrix",
+    "release-required checks and current production backup restore verification"
+  ],
+  "failureRecords": "All earlier logs retained. projection-red/debug failures were invalid non-transactional fixture evidence (invalid vs ready input state), not a production incident. Wrong projection insertion was found by code review and fixed. History-final product 2/2 passed but safe runner exit1 due workspace changing; frozen rerun exit0.",
+  "userAcceptanceEvidence": {
+    "message": "通过",
+    "scope": "Local manual acceptance of original media aspect sizing, manual sizing protection/fit/undo, and selected template foreground behavior",
+    "url": "http://127.0.0.1:51743/canvas/aa27b2cd-d88f-4276-81ef-ef6900eda8df",
+    "recordedAt": "2026-09-06T17:25:09.772402+08:00",
+    "releaseAuthorized": false
+  },
+  "compatibility": {
+    "status": "LOCAL_COMMAND_DATABASE_COMPATIBILITY_PASS_RELEASE_NO_GO",
+    "at": "2026-09-06T17:39:03.823816+08:00",
+    "productionOperations": 0,
+    "paidRequests": 0,
+    "acceptedProductChanged": false,
+    "exactOldCommit": "66f16304a6f9aefeda04cbb5eee09317ba0abd6e",
+    "oldRuntimeSourceFiles": 45,
+    "bridgeRuntimeSourceFiles": 46,
+    "oldPackageDirectRollback": "UNSAFE_CONFIRMED",
+    "compatibleRollbackPatch": "/Users/mymy/Documents/unboundry/media-aspect-compat-20260906/compatibility-rollback.patch",
+    "patch": {
+      "files": {
+        "types/mediaGeometry.ts": {
+          "candidateSha256": "8f7151a0a3d401b64e8b6c571de4a323aa028d50e1cf4db666b136b38660eb42",
+          "rollbackSha256": "778e1f9aca1cdffde09ce8585bb9908ae06bba7b0347690c0af93a3bb6b3eff5"
+        },
+        "client/src/canvas/CanvasSelectionLayers.tsx": {
+          "candidateSha256": "035dbe334bb66ed6637b9bb050528c554dc6bbc2f702ec56924486e24330a66b",
+          "rollbackSha256": "6267524392d576a709359a48d71dcc3c4ed3ac379302bf1c5da778a3b6e55b3f"
+        },
+        "client/src/canvas/MediaAspectFitButton.tsx": {
+          "candidateSha256": "d0450f22491948a7ef533ab3ab93ba3d94367271cee2c5549d571cc8e6adff2c",
+          "rollbackSha256": "9765d1163d6e47ef3c5a16e90099d923b7e13ac2fbd0cddb2521ffeeffe76aa5"
+        }
+      },
+      "patchSha256": "f0491714fd2ea3db232e77d5fb2c9e8a1e0dcd6051a491cfd313701747b64a98"
+    },
+    "checks": {
+      "safeSpec": "tests/m104-canvas-command-gateway.spec.ts",
+      "passed": 16,
+      "failed": 0,
+      "exit": 0,
+      "log": "/Users/mymy/Documents/unboundry/media-aspect-compat-20260906/compat-final.log",
+      "newCompatibilityTests": 2,
+      "schema43DatabaseReopen": "PASS",
+      "oldParserRejectsNewMode": "CONFIRMED",
+      "oldResizeLeavesAuto": "CONFIRMED_UNSAFE",
+      "bridgeOldFormatResizeRecordsManual": "PASS",
+      "bridgeNewModeParser": "PASS",
+      "unknownFieldsAndSuccessfulResultMarkers": "PRESERVED",
+      "mediaLedger": "PRESERVED",
+      "generationTasks": 0,
+      "providerAttempts": 0,
+      "bridgeTypecheck": 0,
+      "bridgeFrontendBuild": 0,
+      "frontendArtifactCount": 33
+    },
+    "scopeLimits": [
+      "Uses actual bundled old/bridge command gateway on isolated SQLite; not a production service restart/symlink deployment rehearsal.",
+      "No real paid generation or production media used.",
+      "Versioned release packages, stale browser refresh gate, Linux journal/runtime permissions and latest production data restore remain pre-release gates.",
+      "Multi-page race and nested/multiselection layer matrices remain separate outstanding checks."
+    ],
+    "retainedFailures": [
+      {
+        "log": "compat-first.log",
+        "reason": "Runner target hashes stale; zero product tests ran."
+      },
+      {
+        "log": "compat-second.log",
+        "reason": "Fixture media row lacked required checksum, exact-schema reopen correctly rejected it; 15/16 passed. Fixture fixed without changing product validation."
+      }
+    ]
+  }
+}

@@ -1,3 +1,4 @@
+import { adoptedMediaStyle } from "../types/mediaGeometry";
 import { createHash, randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import type {
@@ -1183,10 +1184,11 @@ function applyGenerationProjectionCore(input: Readonly<{
     if (value === undefined) delete nextData[field];
     else nextData[field] = value;
   }
+  const fittedStyle = adoptedMediaStyle(node, nextData);
   const candidate: MutableCanvasDocument = {
     ...before,
     nodes: before.nodes.map((value) => value === node
-      ? { ...node, data: nextData }
+      ? { ...node, data: nextData, ...(fittedStyle ? { style: fittedStyle } : {}) }
       : value),
   };
   validateCanvasDocumentTopology(candidate);

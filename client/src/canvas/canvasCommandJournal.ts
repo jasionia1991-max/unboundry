@@ -1,3 +1,4 @@
+import { adoptedMediaStyle } from "../../../types/mediaGeometry";
 import type { WorkflowRunSummary } from "../../../types/workflowRuns";
 import type {
   AdoptedCanvasAsset,
@@ -64,6 +65,7 @@ export type CanvasCommandJournalEntry =
         nodeId: string;
         position?: Readonly<{ x: number; y: number }>;
         style?: Readonly<{ height?: number; width?: number }>;
+        mediaSizingMode?: "auto" | "manual" | null;
         zIndex?: number;
       }>[];
       viewport?: Readonly<{ x: number; y: number; zoom: number }>;
@@ -351,7 +353,9 @@ export function canvasCommandIntentFromJournalEntry(
           const node = record(current.nodes.find((value) => idOf(value) === layout.nodeId));
           if (!node) return true;
           const style = record(node.style) ?? {};
-          return (layout.position !== undefined &&
+          return (layout.mediaSizingMode !== undefined &&
+              (record(node.data)?.mediaSizingMode ?? null) !== layout.mediaSizingMode) ||
+            (layout.position !== undefined &&
               stableSha256(node.position) !== stableSha256(layout.position)) ||
             (layout.style?.height !== undefined &&
               style.height !== layout.style.height) ||
@@ -747,13 +751,19 @@ export function planCanvasCommandIntents(
     const next = record(targetValue) ?? {};
     const previousStyle = record(previous.style) ?? {};
     const nextStyle = record(next.style) ?? {};
+    const nextMode = record(next.data)?.mediaSizingMode;
+    const modeChanged = record(previous.data)?.mediaSizingMode !== nextMode;
     const positionChanged = stableSha256(previous.position) !== stableSha256(next.position);
-    const widthChanged = previousStyle.width !== nextStyle.width;
-    const heightChanged = previousStyle.height !== nextStyle.height;
+    const autoAdoption = record(previous.data)?.assetId !== record(next.data)?.assetId &&
+      !modeChanged && nextMode === "auto" &&
+      stableSha256(nextStyle) === stableSha256(adoptedMediaStyle(next, record(next.data) ?? {}));
+    const widthChanged = !autoAdoption && previousStyle.width !== nextStyle.width;
+    const heightChanged = !autoAdoption && previousStyle.height !== nextStyle.height;
     const zIndexChanged = previous.zIndex !== next.zIndex;
-    if (!positionChanged && !widthChanged && !heightChanged && !zIndexChanged) return [];
+    if (!positionChanged && !widthChanged && !heightChanged && !zIndexChanged && !modeChanged) return [];
     return [{
       nodeId,
+      ...((modeChanged || widthChanged || heightChanged) && (next.type === "image" || next.type === "video") ? { mediaSizingMode: nextMode === "auto" || nextMode === "manual" ? nextMode as "auto" | "manual" : null } : {}),
       ...(positionChanged && record(next.position)
         ? { position: next.position as { x: number; y: number } }
         : {}),
@@ -771,7 +781,7 @@ export function planCanvasCommandIntents(
         ? { zIndex: Number(next.zIndex) }
         : {}),
     }];
-  }).filter((value) => value.position || value.style &&
+  }).filter((value) => value.mediaSizingMode !== undefined || value.position || value.style &&
     Object.keys(value.style).length > 0 || value.zIndex !== undefined);
   const viewportChanged = stableSha256(before.viewport) !== stableSha256(target.viewport);
   if (layouts.length > 0 || viewportChanged) {
@@ -835,6 +845,7 @@ export function mergeWorkflowResultNodes(input: {
     node.state === "success" && node.projectionState === "applied" && node.taskId
   ).map((node) => [node.id, node]));
   const patches = new Map<string, Record<string, unknown>>();
+  const mediaStyles = new Map<string, Record<string, unknown>>();
   const conflicts: string[] = [];
   const resultFields = Object.entries(canvasNodeDataFieldDescriptors)
     .filter(([, field]) => field.owner === "durable-server")
@@ -877,13 +888,19 @@ export function mergeWorkflowResultNodes(input: {
       conflicts.push(id);
       return value;
     }
-    return { ...local, data: { ...currentData, ...patch } };
+    const fitted = adoptedMediaStyle(remote!, remoteData);
+    if (fitted && stableSha256(remote?.style) === stableSha256(fitted)) mediaStyles.set(id, fitted);
+    const preserveLocalLayout = currentData.mediaSizingMode !== "auto" ||
+      stableSha256(local.style) !== stableSha256(before.style);
+    return { ...local, data: { ...currentData, ...patch },
+      ...(!preserveLocalLayout && mediaStyles.has(id) ? { style: mediaStyles.get(id), width: undefined, height: undefined, measured: undefined } : {}) };
   });
   return {
     baseline: input.baseline.map((value) => {
       const patch = patches.get(idOf(value));
       const node = record(value);
-      return patch && node ? { ...node, data: { ...record(node.data), ...patch } } : value;
+      return patch && node ? { ...node, data: { ...record(node.data), ...patch },
+        ...(mediaStyles.has(idOf(value)) ? { style: mediaStyles.get(idOf(value)) } : {}) } : value;
     }),
     conflicts,
     nodes,

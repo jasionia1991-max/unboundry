@@ -76,6 +76,7 @@ export function createDerivedImageToolUseCase(input: Readonly<{
         const derivedId = `image-${input.operation}-${command.operationId}`;
         const derivedNode: ProbeNodeType = {
           data: {
+            mediaSizingMode: "auto",
             assetId: asset.assetId,
             ...metadata,
             imageAssetOrigin: "image-tool",

@@ -7,11 +7,4 @@ export const NODE_DEFAULT_SIZES = {
   video: { height: 250, width: 444 },
 } as const;
 
-export function fitVisualMediaSize(width: number, height: number) {
-  if (width <= 0 || height <= 0) return { height: 250, width: 444 };
-
-  const ratio = width / height;
-  return ratio >= 1
-    ? { height: 250, width: Math.round(250 * ratio) }
-    : { height: Math.round(250 / ratio), width: 250 };
-}
+export { fitVisualMediaSize } from "../../../types/mediaGeometry";

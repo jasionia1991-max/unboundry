@@ -181,6 +181,7 @@ export type ProbeNodeType = Node<
     groupColor?: string;
     groupTemplate?: boolean;
     videoAudioEnabled?: boolean;
+    mediaSizingMode?: "auto" | "manual";
     videoCreatedAt?: string;
     videoDuration?: number;
     videoFileSize?: number;

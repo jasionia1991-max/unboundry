@@ -1,0 +1,329 @@
+{
+  "phase": "RELEASE_CLOSED_WITH_PERFORMANCE_PARTIAL",
+  "version": "0.7.13",
+  "pr": 162,
+  "candidateCommit": "9668bdafb9c42209cc00bdbcb52a90c435f7e84b",
+  "mergeCommit": "66f16304a6f9aefeda04cbb5eee09317ba0abd6e",
+  "tree": "875b3bed70b7f7f6b2a18a71ffad847d6221b1ad",
+  "prCI": {
+    "id": 33995215535,
+    "status": "success"
+  },
+  "mainCI": {
+    "id": 33995366628,
+    "attempt1": "FAIL_PREBUSINESS_CLEANUP_KILL_EPERM",
+    "attempt2": "SUCCESS"
+  },
+  "independentReview": "GO_P0_P1_P2_ZERO",
+  "previousRestore": "PASS",
+  "mirrors": {
+    "objects": 635,
+    "reused": 634,
+    "downloaded": 1
+  },
+  "production": "0.7.13/schema43",
+  "tagCreated": true,
+  "realPaidGeneration": 0,
+  "exactTagBuild": "PASS_911_SOURCE_FILES",
+  "candidateLinuxDeleteWrite": "PASS_ATTEMPT2_MOUNT_ALIAS_FIXED",
+  "activeRemoteCase": "/var/lib/unboundry-v0713-performance-20260906/attempt2",
+  "cutoverAttempt1": {
+    "status": "ABORTED_BUSINESS_CHANGED_DURING_FREEZE",
+    "changes": "historical 2026-08-19 failed task recovery metadata and 3 events; provider attempt unchanged1097",
+    "compensation": "v0.7.11 ready generation restored PID665519",
+    "dataReplaced": false
+  },
+  "candidateProductChanged": false,
+  "pid": 668342,
+  "cutoverAttempt2": "PASS_CURRENT_PRESERVED_GENERATION_SAFETY_RESTORED",
+  "latestBackupId": "2855f517-c127-4985-99ff-934f985d9994",
+  "latestBackupVerify": "PASS",
+  "latestBackupFreshRestore": "PASS",
+  "browser": {
+    "status": "ZERO_PAID_FUNCTIONAL_PASS_PERFORMANCE_PARTIAL",
+    "version": "0.7.13",
+    "canvas": "077342b5-1090-46a7-b366-6f3370f931ac",
+    "coldFirst": {
+      "canvasMs": 1232,
+      "capabilitiesMs": 4911,
+      "modelsMs": 5023,
+      "templatesRequests": 0,
+      "extraWrites": 0,
+      "publicAssetVerificationConcurrent": true,
+      "bulkBackupTransfer": false
+    },
+    "titleSave": {
+      "status": 200,
+      "ms": 26
+    },
+    "imageReplacement": {
+      "assetId": "7e223bf1-1e97-46e1-ad3a-c4e08a172f0f",
+      "uploadStatus": 201,
+      "uploadMs": 5110,
+      "commandStatus": 200,
+      "commandMs": 1213,
+      "imageGETStatus": 200,
+      "imageGETMs": 200,
+      "blobImmediate": "NOT_CAPTURED_FIRST_DOM_READ_PREVIOUS_IMAGE"
+    },
+    "paidGeneration": 0,
+    "performanceConclusion": "SOME_REQUESTS_STILL_SECONDS_NO_FULL_PERFORMANCE_PASS",
+    "warmRefresh": {
+      "canvasMs": 182,
+      "capabilitiesMs": 208,
+      "modelsMs": 315,
+      "imageMs": 249,
+      "imageNaturalWidth": 1024,
+      "imagePreserved": true,
+      "extraWrites": 0
+    },
+    "history": {
+      "directoryMs": 33,
+      "previewCount": 27,
+      "allHTTP200": true,
+      "allCompleted": true,
+      "totalBytesIncludingDirectory": 1934816,
+      "lastPreviewMs": 11682,
+      "speedGoal": "NOT_MET_COLD"
+    },
+    "newCanvas": {
+      "id": "b7d39916-57bd-4659-bef8-47555fc99026",
+      "createStatus": 201,
+      "createMs": 1214,
+      "titleSave": 200,
+      "emptyNodeCommandMs": 184,
+      "uploadedAssetId": "4e77b291-aa5a-40eb-b0e2-72cf8b21e53d",
+      "blobPreviewObserved": {
+        "complete": true,
+        "naturalWidth": 1024,
+        "toolCallElapsedSeconds": 0.1674,
+        "P95Measured": false
+      },
+      "uploadStatus": 201,
+      "uploadMs": 5131,
+      "saveStatus": 200,
+      "saveMs": 182
+    },
+    "templates": {
+      "startupFullListRequests": 0,
+      "summaryBytes": 20100,
+      "summaryMs": 1210,
+      "singleDetailBytes": 18081,
+      "singleDetailMs": 23,
+      "insertionCommandStatuses": [
+        200,
+        200
+      ],
+      "generationClicked": false
+    },
+    "templateAndImageRefresh": {
+      "preserved": true,
+      "extraWrites": 0,
+      "httpErrors": 0
+    },
+    "navigation": {
+      "oldAndNewTestCanvasesReopened": true,
+      "extraWrites": 0,
+      "httpErrors": 0
+    },
+    "historyExpanded": {
+      "loadedPreviewImagesObserved": 72,
+      "searchControl": "NOT_PRESENT_NO_SEARCH_TEST",
+      "originalFullView": "NOT_TESTED"
+    },
+    "providerEvidence": {
+      "attemptsBefore": 1097,
+      "attemptsAfter": 1097,
+      "tasksBefore": 1086,
+      "tasksAfter": 1086,
+      "lastProviderAttempt": "2026-09-05T17:38:28.440Z"
+    },
+    "journalMode": "delete",
+    "realPaidProgressiveGeneration": "NOT_RUN_LOCAL_FAKE_ONLY",
+    "subjectiveAcceptance": "USER_RECHECK",
+    "remainingPerformanceEvidence": {
+      "historyColdCause": {
+        "file": "server/mediaEditSource.ts",
+        "lines": "345-381",
+        "mechanism": "single global lane encloses readVerifiedImage including original source download plus encodePreview; 5 minute memory-only cache",
+        "observed": "27 requests stair-step complete0.780s through11.682s; all200; no bulk backup transfer active"
+      },
+      "limits": "No production P95 or competitor parity measurement; first candidate cold sample concurrent 5 static-asset checks; subsequent warm sample clean before backup upload",
+      "firstUploadBackendMs": [
+        5110,
+        5131
+      ],
+      "firstCreateMs": 1214
+    }
+  },
+  "publicStatic": {
+    "assetCount": 5,
+    "exact": true,
+    "bytes": 1758872
+  },
+  "status": "PRODUCTION_FUNCTIONAL_PASS_PERFORMANCE_PARTIAL",
+  "generatedAt": "2026-09-06T06:50:44.242144+08:00",
+  "backup": {
+    "id": "2855f517-c127-4985-99ff-934f985d9994",
+    "schema": 43,
+    "verify": "PASS",
+    "freshRestore": "PASS",
+    "ossUploadGetVerify": "PASS",
+    "files": 997,
+    "bytes": 1917424640,
+    "manifestGetVerify": "PASS",
+    "automaticTimer": "FAILED_UNCHANGED",
+    "mediaIntegrity": {
+      "clean": false,
+      "issues": 97,
+      "backupBlockingIssues": 0,
+      "historicalIssuesPreserved": true
+    }
+  },
+  "recoveryCheckpoint": {
+    "branch": "codex/restore-v0.7.11-before-performance-20260906",
+    "commit": "39c6385427d3f62d1e4f8231046bb5159ee55ecd",
+    "preserved": true
+  },
+  "restoredCurrentData": false,
+  "migratedSchema": false,
+  "temporaryCleanup": {
+    "status": "ONLY_THIS_RELEASE_OWNED_TEMPORARIES_REMOVED",
+    "removed": [
+      {
+        "path": "/var/lib/unboundry-v0713-performance-20260906/save-diagnostic",
+        "bytes": 37617664
+      },
+      {
+        "path": "/var/lib/unboundry-v0713-performance-20260906/save-diagnostic-attempt2",
+        "bytes": 37617664
+      },
+      {
+        "path": "/var/lib/unboundry-v0713-performance-20260906/home",
+        "bytes": 0
+      },
+      {
+        "path": "/var/lib/unboundry-v0713-performance-20260906/temporary",
+        "bytes": 0
+      },
+      {
+        "path": "/var/lib/unboundry-v0713-performance-20260906/scratch",
+        "bytes": 0
+      },
+      {
+        "path": "/var/lib/unboundry-v0713-performance-20260906/backup43",
+        "bytes": 0
+      },
+      {
+        "path": "/var/lib/unboundry-v0713-performance-20260906/fresh-restore-work",
+        "bytes": 0
+      },
+      {
+        "path": "/var/lib/unboundry-v0713-performance-20260906/attempt2/previous-restore-work",
+        "bytes": 1916590554
+      },
+      {
+        "path": "/var/lib/unboundry-v0713-performance-20260906/attempt2/fresh-restore-work",
+        "bytes": 1916610143
+      },
+      {
+        "path": "/var/lib/unboundry-v0713-performance-20260906/attempt2/new-mirrors",
+        "bytes": 19188
+      },
+      {
+        "path": "/var/lib/unboundry-v0713-performance-20260906/attempt2/scratch",
+        "bytes": 0
+      },
+      {
+        "path": "/var/lib/unboundry-v0713-performance-20260906/attempt2/temporary",
+        "bytes": 0
+      },
+      {
+        "path": "/var/lib/unboundry-v0713-performance-20260906/attempt2/home",
+        "bytes": 0
+      },
+      {
+        "path": "/var/lib/unboundry-v0713-performance-20260906/evidence/v0.7.13-source.tar.gz",
+        "bytes": 31100663
+      }
+    ],
+    "bytes": 3939555876,
+    "currentDataTouched": false,
+    "historicalBackupsTouched": false,
+    "releaseCheckpointsTouched": false,
+    "preservedBackup": "/var/lib/unboundry-v0713-performance-20260906/attempt2/backup43/2855f517-c127-4985-99ff-934f985d9994.ubbackup"
+  },
+  "preCutoverAttempt2Watcher": {
+    "status": "TIMED_OUT_NO_FREEZE_ATTEMPTED",
+    "unit": "unboundry-v0713-cutover-attempt2-20260906.service",
+    "error": "NO_RECENT_SETTLED_HISTORY_WINDOW_NO_FREEZE_ATTEMPTED",
+    "effect": "read-only watcher timed out; no operation lock or freeze; unchanged strict cutover later succeeded under unboundry-v0713-cutover-settled-20260906.service"
+  },
+  "finalEvidenceReview": {
+    "status": "GO_WITH_RECORDED_PERFORMANCE_PARTIAL",
+    "scope": "11 production evidence files, receipt, six notices and external report",
+    "newFindings": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0
+    },
+    "finalBackupAndCleanup": "PRIMARY_VERIFIED_PASS"
+  },
+  "completedAt": "2026-09-05T23:07:20.274646+00:00",
+  "latestBackupOssUploadGetVerify": "PASS",
+  "finalReadOnlyState": {
+    "observedAt": "2026-09-05T23:07:20.274646+00:00",
+    "current": "/opt/unboundry/releases/v0.7.13-performance-20260906",
+    "service": {
+      "MainPID": "668342",
+      "Result": "success",
+      "NRestarts": "0",
+      "ExecMainStatus": "0",
+      "ActiveState": "active"
+    },
+    "version": {
+      "version": "0.7.13"
+    },
+    "ready": {
+      "status": "ready",
+      "mode": "active",
+      "mutationsAccepted": true,
+      "activeLeaseHeld": true,
+      "runtimeRole": "active",
+      "databaseProbe": "read-only",
+      "schemaVersion": 43,
+      "requestId": "ff5b5212-1e3b-472b-8eb5-8c577be00e4d"
+    },
+    "schema": 43,
+    "journalMode": "delete",
+    "counts": {
+      "generation_tasks": 1086,
+      "generation_provider_attempts": 1097
+    },
+    "lastProviderAttempt": "2026-09-05T17:38:28.440Z",
+    "safety": {
+      "global_enabled": 1,
+      "emergency_stop": 0
+    },
+    "backupUpload": {
+      "MainPID": "0",
+      "Result": "success",
+      "NRestarts": "0",
+      "ExecMainStatus": "0",
+      "ActiveState": "inactive"
+    },
+    "automaticBackup": {
+      "MainPID": "0",
+      "Result": "exit-code",
+      "NRestarts": "0",
+      "ExecMainStatus": "1",
+      "ActiveState": "failed"
+    },
+    "disk": {
+      "total": 126695563264,
+      "used": 23398813696,
+      "free": 98019000320
+    }
+  },
+  "localOwnedArchiveRemovedBytes": 31100663
+}

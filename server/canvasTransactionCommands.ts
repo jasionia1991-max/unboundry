@@ -1,3 +1,4 @@
+import { adoptedMediaStyle } from "../types/mediaGeometry";
 import type { TransactionScopedCommand } from "./transactionCommand";
 import {
   canvasUserFieldChangeMatchesNode,
@@ -284,6 +285,8 @@ function applyAuthoritativeAssetAdoption(input: Readonly<{
     kind as "audio" | "image" | "video",
     asset,
   ));
+  const fittedStyle = adoptedMediaStyle(node, data);
+  if (fittedStyle) node.style = fittedStyle;
   if (adoption.kind === "edit-result-and-invalidate-proof") {
     data.imageAssetOrigin = "image-tool";
     data.imageToolOperation = adoption.toolOperation;
@@ -600,6 +603,14 @@ export function applyCanvasUserCommand(input: Readonly<{
       if (!node) failTopology("Layout node no longer exists");
       if (layout.position) node.position = layout.position;
       if (layout.style) node.style = { ...record(node.style), ...layout.style };
+      const data = record(node.data);
+      const visual = node.type === "image" || node.type === "video";
+      if (layout.mediaSizingMode !== undefined && !visual) failTopology("Media sizing requires a visual node");
+      if (data && visual) {
+        if (layout.mediaSizingMode === null) delete data.mediaSizingMode;
+        else if (layout.mediaSizingMode !== undefined) data.mediaSizingMode = layout.mediaSizingMode;
+        else if (layout.style) data.mediaSizingMode = "manual";
+      }
       if (layout.zIndex !== undefined) node.zIndex = layout.zIndex;
       changedPaths.push(`nodes.${layout.nodeId}.layout`);
     }

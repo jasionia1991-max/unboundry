@@ -103,6 +103,7 @@ export type CommitUserLayoutCommand = ExistingCanvasCommandBase & Readonly<{
     nodeId: string;
     position?: Readonly<{ x: number; y: number }>;
     style?: Readonly<{ height?: number; width?: number }>;
+    mediaSizingMode?: "auto" | "manual" | null;
     zIndex?: number;
   }>[];
   viewport?: CanvasViewport;
@@ -418,6 +419,7 @@ function validMultiAngle(value: unknown) {
 }
 
 function fieldAllowedForKind(field: string, nodeKind: string) {
+  if (field === "mediaSizingMode") return nodeKind === "image" || nodeKind === "video";
   if (imageFieldNames.has(field)) return nodeKind === "image";
   if (textFieldNames.has(field)) return nodeKind === "text";
   if (audioFieldNames.has(field)) return nodeKind === "audio";
@@ -433,6 +435,7 @@ function fieldAllowedForKind(field: string, nodeKind: string) {
 function validUserFieldValue(field: string, value: unknown, nodeKind?: string) {
   if (nodeKind && (!canvasNodeKinds.has(nodeKind) ||
       !fieldAllowedForKind(field, nodeKind))) return false;
+  if (field === "mediaSizingMode") return value === "auto" || value === "manual";
   if (field === "label") return boundedString(value, 1_000, false);
   if (field === "title" || field.endsWith("ModelName") || field === "videoModel" ||
       field === "audioFileName") return boundedString(value, 1_000);
@@ -702,9 +705,11 @@ function validLayoutCommand(command: Record<string, unknown>) {
       if (!item || !exactOrOptionalKeys(
         item,
         ["nodeId"],
-        ["position", "style", "zIndex"],
+        ["position", "style", "zIndex", "mediaSizingMode"],
       ) || !validObjectId(item.nodeId) ||
-          !("position" in item || "style" in item || "zIndex" in item)) return false;
+          !("position" in item || "style" in item || "zIndex" in item || "mediaSizingMode" in item)) return false;
+      if (item.mediaSizingMode !== undefined && item.mediaSizingMode !== null &&
+          item.mediaSizingMode !== "auto" && item.mediaSizingMode !== "manual") return false;
       if (item.position !== undefined && !finitePoint(item.position)) return false;
       const style = record(item.style);
       if (item.style !== undefined && (!style ||

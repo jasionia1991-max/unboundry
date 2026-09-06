@@ -108,7 +108,7 @@ test("canvas shows the update notice only when versions differ", async ({
 }) => {
   await page.route("**/api/updates", (route) =>
     route.fulfill({
-      body: `data: ${JSON.stringify({ version: "99.0.0" })}\n\n`,
+      body: `data: ${JSON.stringify({ version: "0.7.14-compat.1" })}\n\n`,
       contentType: "text/event-stream",
       status: 200,
     }),
@@ -116,7 +116,7 @@ test("canvas shows the update notice only when versions differ", async ({
   await page.goto("/canvas");
   await expect(page.getByTestId("update-notice")).toBeVisible();
   await expect(page.getByTestId("update-notice")).toContainText(
-    "已更新到 v99.0.0",
+    "已更新到 v0.7.14-compat.1",
   );
   await page.getByTestId("update-reload").click();
   await page.waitForLoadState("load");

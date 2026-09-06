@@ -4359,6 +4359,8 @@ sup {
 .video-node-card {
   position: relative;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   width: 100%;
   height: 100%;
   min-width: 240px;
@@ -4454,6 +4456,8 @@ sup {
   display: block;
   width: 100%;
   height: 100%;
+  min-width: 0;
+  min-height: 0;
   object-fit: contain;
   pointer-events: none;
 }
@@ -17895,3 +17899,6 @@ sup {
     width: 100%;
   }
 }
+
+.media-aspect-fit-action { position: absolute; left: calc(100% + 6px); top: 0; background: #272727; border-radius: 10px; padding: 4px; }
+.media-aspect-fit-error { position: absolute; top: 52px; right: 0; width: 240px; padding: 8px; background: #272727; color: #fff; border-radius: 8px; }
