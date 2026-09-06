@@ -1,71 +1,32 @@
-> **2026-09-06 当前：v0.7.13 已上线，零付费功能验收通过，性能仅部分达标。** 生产运行`v0.7.13/schema43`，commit `66f16304a6f9aefeda04cbb5eee09317ba0abd6e`、PID668342；PR162双CI通过（主分支首轮进程清理EPERM保留，原提交重跑成功）、exact-tag构建911源码一致。最新冻结备份verify/fresh restore及997文件和清单云端上传/GET核对通过；本次临时副本已清理3,939,555,876字节，剩余98,019,000,320字节。真实上传201、Canvas保存200、刷新/重新打开零额外写且内容保留、本地blob先显、模板摘要惰性通过；暖画布182ms/能力208ms，但历史27小图冷加载11.682s、首次新建1.214s，不能标性能全通过或USER_PASS。真实生成0，任务1086/attempt1097不变；CURRENT未覆盖，schema未改，v0.7.11恢复点39c6385不动。自动备份服务仍failed；本次手动备份通过，历史媒体97项非阻断提示保留。唯一断点为 `spec/PERFORMANCE_REMEDIATION_CHECKPOINT_2026-09-06.md`，生产回执 `spec/V0_7_13_PRODUCTION_RECEIPT_2026-09-06.json`；以下更早时点均为历史。
-
-> **2026-09-06 v0.7.13 发布授权已确认，准备中。** 用户明确确认按 v0.7.13 发布 DELETE journal 保存补修；包含 commit/push/PR/CI/tag/Release、最新备份与独立恢复、生产切换和零付费验收。当前生产仍 v0.7.11/schema43；保留 v0.7.11 恢复检查点和 CURRENT 数据，不迁移、不触发付费生成。补修最终直接29/29及 Linux 禁网 DELETE 写入通过，上传/清单40项复用；新版本 m81 42/42、文档标记纠正后 m38 19/19通过，首次60/61保留；不宣称全量1266通过。v0.7.12验收失败记录与不可变发布物保留；自动备份仍未修复，本次使用手动验证备份。唯一断点见 `spec/PERFORMANCE_REMEDIATION_CHECKPOINT_2026-09-06.md`。下方旧状态只作历史。
-
-> **2026-09-06 05:28 CST 当前状态：v0.7.12 零付费生产验收失败，已保留 CURRENT 数据回退至 v0.7.11/schema43。** 上传201后 Canvas commands 500，已在 Linux 禁网恢复副本实证 DELETE rollback journal 被新 WAL 检查误拒。当前补修仅在本地分支 `codex/performance-delete-journal-save-fix`，未 commit/push/发布；最终直接29/29、既有上传/清单40项复用、独立复核GO，不能写全量1266通过或线上性能修复完成。v0.7.12 tag/发布物不可变且已标失败，v0.7.11恢复分支39c6385不变；下一版须重新确认版本号和允许发布。自动备份timer仍失败，最新手动加密备份verify/fresh restore通过，996文件及清单OSS上传/GET校验于05:48 CST通过。唯一断点为 `spec/PERFORMANCE_REMEDIATION_CHECKPOINT_2026-09-06.md`，详细回执为 `spec/V0_7_12_FAILED_ACCEPTANCE_ROLLBACK_AND_LOCAL_CORRECTION_2026-09-06.json`。以下更早状态均为历史。
-
-> **2026-09-06 v0.7.12 发布当前状态**：用户已先确认上线/回退方案，再明确同意按 v0.7.12 发布；本次授权包含候选提交、PR/CI、不可移动标签/Release、最新备份与独立恢复验证、生产切换及零付费验收。保留 v0.7.11 恢复分支和当前数据；不触发真实付费生成，不删除历史备份/素材，不迁移schema43。生产运行`v0.7.11/schema43`，当前断点 `spec/PERFORMANCE_REMEDIATION_CHECKPOINT_2026-09-06.md`。20产品文件已审证据复用，新增仅版本登记及必要发布增量，版本定向验证待执行。自动备份旧入口缺少动态冻结证据，保持安装NO_GO；最新手动备份独立作为应用发布前置门。下面未授权/待版本确认是历史时点。
-
-> 2026-09-06 当前本地工作已转入 `spec/PERFORMANCE_REMEDIATION_CHECKPOINT_2026-09-06.md`。下面发布记录是历史事实；本轮仅本地性能修复，不授权线上/付费操作。
-
 # Production backup contracts
 
-This directory contains production operation sources. Production currently runs
-`v0.7.7/schema42`; PR #155, branch/main Quality, immutable tag/Release,
-exact-tag build, locked-exact backup/restore, switch and rollback-forward all
-passed. The v0.7.7 release authorization is consumed. Its ordered post-deploy
-refresh gate did not pass: the server Canvas produced four redundant successful
-PUTs that changed only three image-card heights. There was no 409, false task
-read warning or generation submission during refresh, but the required zero-save
-condition failed, so group `group-17ee0cbc-cc81-4b35-9c5e-41040f627033` was not
-clicked and no real workflow was executed. The root cause is the image preview
-hydration path rewriting persisted style dimensions after load. There is no
-authorized next-version candidate; code repair, release and real execution need
-new authorization. Current evidence is recorded in
-`spec/V0_7_7_PRODUCTION_RECEIPT_2026-09-03.json`; candidate and v0.7.6 receipts
-are historical evidence only.
+Current snapshot: 2026-09-06, `v0.7.14/schema43`. See [current authority](../../spec/UNBOUNDRY_CURRENT_STATE.md) and [release receipt](../../spec/V0_7_14_PRODUCTION_RECEIPT_2026-09-06.json). This directory contains operation sources; their presence in a release does not mean the systemd timer uses them.
 
-## Local candidate schema42/schema43 backup contract
+## Observed production state
 
-`backup-to-oss-retention.mjs` calls the signed, encrypted
-`scripts/backup-data.mjs` contract. It requires explicit absolute source,
-backup, scratch, key, profile, schema, logical-SHA, freeze, and last-admission
-arguments. Schema must be explicitly 42 (historical recovery) or 43 (current-schema final candidate). With no `--apply-upload` it creates only
-the local encrypted package and prints a dry-run inventory; it performs no OSS
-write. `--apply-upload` is a separate production side effect and is not
-authorized by this repository state. Retention deletion remains fail-closed
-even with upload apply until an exact remote deletion manifest and a separate
-reviewed operation exist.
+- Application: active/running, PID839221, NRestarts0; current points to `/opt/unboundry/releases/v0.7.14-media-aspect-20260906`.
+- Daily timer: active, next scheduled 2026-09-07 03:30 CST at the observation time. Service: failed, exit1; last start 2026-09-06 03:30:01 CST.
+- Installed ExecStart still invokes `/opt/unboundry/scripts/backup-to-oss.mjs`, which invokes the old standalone `backup-data.mjs`. Its validation requires schema41; production is schema43. Journal reports `Backup database validation failed`.
+- This release's separate manual encrypted backup succeeded: local verify and fresh restore plus remote PUT/GET hash verification, 1004 files, 1,939,771,911 bytes. This does not repair or validate the daily job.
 
-The wrapper must remain at `ops/production/backup-to-oss-retention.mjs` inside
-the complete immutable release tree; do not copy it into a standalone system
-path. It resolves `scripts/backup-data.mjs` and
-`server/secureStorageProfiles.ts` from that immutable module location and sets
-the child WorkingDirectory to the same release root. The systemd unit may set
-`WorkingDirectory` for readability, but correctness must not depend on it.
-Unknown, missing, or duplicated options fail before a backup package or OSS
-client can be created.
+The daily job needs a separately implemented and verified current-schema freeze/backup/restore/upload pipeline and an exact installed-unit receipt. Merely replacing a path or schema constant does not supply dynamic freeze and logical-SHA evidence. No installation, restart, cleanup or new backup was performed by the documentation update.
 
-Before any future installation, freeze an immutable release and record:
+## Current wrapper contract
 
-- release commit/tree and wrapper SHA-256;
-- installed absolute paths and owner/mode;
-- exact selected-schema database logical SHA and freeze evidence;
-- signing trust anchor and recovery-key identities, never private key bytes;
-- systemd service/timer unit hashes and the next scheduled time;
-- backup, verify, fresh-restore, fake-OSS, and zero-egress receipts.
+`backup-to-oss-retention.mjs` resolves `scripts/backup-data.mjs` and `server/secureStorageProfiles.ts` from its own immutable release root. Keep it in `ops/production/` within the complete release; do not copy it to a standalone `/opt/unboundry/scripts` path.
 
-The consumed v0.7.7 release authorization and failed refresh gate are recorded
-in the INC-GEN-026 Checkpoint. Every future release switch, timer installation,
-and real OSS upload/delete/restore still requires separate user authorization.
+Required arguments explicitly identify source, backup root, scratch root, signing-private-key and recovery-public-key paths, storage profile, schema, database logical SHA, generation freeze and last Provider admission. Schema43 is current/final; schema42 is historical recovery. Unknown/missing/duplicate arguments fail closed. Media warnings and OSS mirrors are explicit repeatable arguments.
 
-## Historical schema39 artifact
+Without `--apply-upload`, it creates a local encrypted package and reports an upload inventory; this is not a zero-write dry-run of the local filesystem. It reads the selected source's encrypted storage profile, never an inherited unrelated data directory. With upload authorization, `--apply-upload` writes private no-overwrite objects and a manifest. The wrapper does not itself run separate verify/fresh-restore or GET content verification; the operation must supply these gates. Retention deletion is blocked pending an exact reviewed remote deletion manifest; this is not an active automatic deletion policy.
 
-`backup-data-schema39.mjs` is retained only to identify the 2026-08-15 legacy
-plaintext format. It now exits immediately with
-`HISTORICAL_SCHEMA39_BACKUP_DISABLED` and must not be installed as the current
-timer source. Historical hashes and receipts remain historical evidence; they
-do not authorize reuse against schema42.
+## Installation and recovery evidence
 
-The two protected JSON files named in `AGENTS.md` remain outside every backup
-source, test snapshot, release inventory, and Git operation.
+Before installing or changing a job, record immutable release commit/tree, wrapper and unit hashes, owner/mode, current-schema freeze/SHA evidence, key identities without key bytes, verify/fresh-restore result, upload/GET verification and timer next-run. Use isolated synthetic/fake tests first. Do not replace CURRENT with a backup or rewrite historical task/attempt records to satisfy quiet gates.
+
+The v0.7.14 package is `/var/lib/unboundry-v0714-media-aspect-20260906/backup43/1779934b-9d23-4a9d-849d-531f21d678b7.ubbackup`. Verification retained 98 historical nonblocking media warnings; do not claim every historic asset is intact. The detailed completed cloud receipt remains `/var/lib/unboundry-v0714-media-aspect-20260906/evidence/oss-backup-upload.json`.
+
+## Historical tools and authorization
+
+`backup-data-schema39.mjs` is retained only as historical format evidence and exits with `HISTORICAL_SCHEMA39_BACKUP_DISABLED`. Repository `scripts/backup-to-oss.mjs` and `mirror-oss-to-local.mjs` are also frozen stubs; they are not the installed old server bytes.
+
+Future production changes, real OSS upload/delete/restore and paid generation follow the user's actual authorization. This README and consumed old release permissions do not authorize them. Both permanently protected JSON paths in AGENTS remain excluded from all snapshots, inventories and Git operations.

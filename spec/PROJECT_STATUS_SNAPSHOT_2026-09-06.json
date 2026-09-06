@@ -1,0 +1,182 @@
+{
+  "schemaVersion": "project-status-documentation-v1",
+  "date": "2026-09-06",
+  "scope": "READ_ONLY_CODE_AND_STATUS_DOCUMENTATION_SYNC; not a new production or paid-generation receipt",
+  "repository": "/Users/mymy/Documents/unboundry-post-v076-canvas-convergence-2026-09-03",
+  "branch": "codex/video-node-preview-containment",
+  "head": "038ee8444e1b0901b28b5a2a65c08eca5c9400b9",
+  "productCommit": "c9d414a32613a28b5e013ee671223fcc219c7e05",
+  "version": "0.7.14",
+  "initialWorkingTree": "clean",
+  "finalWorkingTree": "documentation-only, uncommitted",
+  "remoteMainAndPeeledTag": "c9d414a32613a28b5e013ee671223fcc219c7e05",
+  "openPullRequestsAtObservation": 0,
+  "recoveryCheckpoint": {
+    "branch": "codex/restore-v0.7.11-before-performance-20260906",
+    "commit": "39c6385427d3f62d1e4f8231046bb5159ee55ecd"
+  },
+  "productionReadOnly": {
+    "observedAt": "2026-09-06T11:15:47.978697+00:00",
+    "release": "/opt/unboundry/releases/v0.7.14-media-aspect-20260906",
+    "version": {
+      "version": "0.7.14"
+    },
+    "ready": {
+      "status": "ready",
+      "mode": "active",
+      "mutationsAccepted": true,
+      "activeLeaseHeld": true,
+      "runtimeRole": "active",
+      "databaseProbe": "read-only",
+      "schemaVersion": 43,
+      "requestId": "08a39a3b-e3b8-4ef4-8c0e-2fbef7bcb4a2"
+    },
+    "service": {
+      "MainPID": "839221",
+      "NRestarts": "0",
+      "ActiveState": "active",
+      "SubState": "running"
+    },
+    "backupService": {
+      "Result": "exit-code",
+      "ExecMainStartTimestamp": "Sun 2026-09-06 03:30:01 CST",
+      "ExecMainStatus": "1",
+      "ExecStart": "{ path=/opt/node22/bin/node ; argv[]=/opt/node22/bin/node --experimental-strip-types /opt/unboundry/scripts/backup-to-oss.mjs --data-dir /var/lib/unboundry --backup-root /var/lib/unboundry-backups --retain-days 30 ; ignore_errors=no ; start_time=[Sun 2026-09-06 03:30:01 CST] ; stop_time=[Sun 2026-09-06 03:30:02 CST] ; pid=616520 ; code=exited ; status=1 }",
+      "ActiveState": "failed"
+    },
+    "backupTimer": {
+      "NextElapseUSecRealtime": "Mon 2026-09-07 03:30:00 CST",
+      "ActiveState": "active"
+    },
+    "disk": "Filesystem        1B-blocks        Used   Available Use% Mounted on\n/dev/vda2      126695563264 25864335360 95553478656  22% /",
+    "memory": "total        used        free      shared  buff/cache   available\nMem:      8058511360  1102475264  3675881472     6045696  3607437312  6956036096\nSwap:     2084564992   393322496  1691242496",
+    "cloudBackup": {
+      "status": "ENCRYPTED_BACKUP_OSS_UPLOAD_GET_VERIFY_PASS",
+      "backupId": "1779934b-9d23-4a9d-849d-531f21d678b7",
+      "files": 1004,
+      "bytes": 1939771911,
+      "retentionDeletes": 0
+    },
+    "automaticBackupRootCause": {
+      "script": "/opt/unboundry/scripts/backup-data.mjs",
+      "expectedSchema41PredicatePresent": true
+    },
+    "operations": "read-only status and existing receipt/code inspection; no database query, backup execution, service change or Provider request"
+  },
+  "dependencyAlerts": [
+    {
+      "number": 2,
+      "state": "open",
+      "package": "qs",
+      "severity": "medium",
+      "firstPatchedVersion": {
+        "identifier": "6.16.0"
+      },
+      "summary": "qs array-limit bypass via bracket-key comma parsing",
+      "ghsaId": "GHSA-x5fp-wj9c-mxmx"
+    },
+    {
+      "number": 1,
+      "state": "open",
+      "package": "qs",
+      "severity": "medium",
+      "firstPatchedVersion": {
+        "identifier": "6.16.0"
+      },
+      "summary": "qs: Denial of Service via Attacker Controlled isBuffer",
+      "ghsaId": "GHSA-4mjr-xmp4-gh2g"
+    }
+  ],
+  "sourceReview": {
+    "programFiles": 518,
+    "styleAndHtml": 2,
+    "serverDataJson": 2,
+    "coverageRows": 522,
+    "clientAndTypesFiles": 134,
+    "serverFiles": 168,
+    "operationsAndTests": 216,
+    "rootConfigurationFiles": 4,
+    "limits": "all-file inventory/static coverage plus module and key-range reading; not exhaustive branch-by-branch semantic or security audit",
+    "depthCounts": {
+      "full-text": 89,
+      "structure+key": 146,
+      "STRUCTURE_AND_STATIC_VALIDATION": 220,
+      "full": 67
+    }
+  },
+  "staticChecks": {
+    "sourceCoverage": {
+      "exitCode": 0,
+      "node": "22.23.1",
+      "typescript": 466,
+      "javascript": 52,
+      "inventoryStable": true
+    },
+    "architecture": {
+      "exitCode": 0,
+      "node": "25.9.0",
+      "files": 298,
+      "runtimeEdges": 1039,
+      "typeEdges": 274,
+      "baselineExceptions": 88,
+      "byRule": {
+        "CROSS_DOMAIN_INTERNAL": 12,
+        "CROSS_DOMAIN_SQL": 73,
+        "PROVIDER_STORAGE": 3
+      },
+      "new": 0,
+      "invalid": 0,
+      "stale": 0,
+      "runtimeScc": 0
+    },
+    "canvasWriterManifest": {
+      "exitCode": 0,
+      "node": "25.9.0",
+      "rawHits": 264,
+      "productHits": 203,
+      "exceptions": 100,
+      "violations": 0,
+      "manifestUpdated": false
+    }
+  },
+  "historicalEvidenceReused": {
+    "receipt": "V0_7_14_PRODUCTION_RECEIPT_2026-09-06.json",
+    "targetedTests": 87,
+    "otherUnaffectedTestsReused": 6,
+    "recordedCaseInventory": 1271,
+    "fullSuiteRunThisTurn": false,
+    "userAcceptance": "media preview/aspect/manual protection/selected group display priority only",
+    "performance": "PARTIAL; previous v0.7.13 timings not remeasured"
+  },
+  "documents": {
+    "initialRepositoryMarkdown": 187,
+    "updatedExistingRepositoryMarkdown": 55,
+    "newRecords": 4,
+    "outerInventoried": 21,
+    "outerUpdated": 13
+  },
+  "operationsThisTurn": {
+    "productChanges": 0,
+    "testCodeChanges": 0,
+    "dependencyChanges": 0,
+    "productionMutations": 0,
+    "paidGenerations": 0,
+    "commit": false,
+    "push": false,
+    "newGoal": false,
+    "protectedFilesAccessed": false
+  },
+  "externalEvidenceDirectory": "/Users/mymy/Documents/unboundry/project-documentation-audit-20260906",
+  "documentationValidation": {
+    "status": "PASS",
+    "existingM38DocumentAssertions": "reproduced outside business runtime; exit0",
+    "originalNonMarkdownFilesShaUnchanged": 639,
+    "addedRelativeLinksChecked": 120,
+    "missingLinks": 0,
+    "repositoryDocsWithExactOldBodyRetained": 41,
+    "newArtifactsAllowlistCount": 4,
+    "gitDiffCheck": "PASS",
+    "fullBusinessSuiteRepeated": false,
+    "independentDocumentationReview": "One historical TASKS heading ambiguity identified and clarified; no other blocking findings in bounded review"
+  }
+}

@@ -1,3 +1,16 @@
+> **当前验收增量（2026-09-06）**：本矩阵继续为`AUTHORITATIVE_ACCEPTANCE_LEDGER`。v0.7.14新增范围见下表，其余历史条目的用户状态不自动升级。当前生产/待办以 [CURRENT_STATE](UNBOUNDRY_CURRENT_STATE.md) 为准，下面旧INC段落是各自日期的历史验收，不提供当前执行授权。
+
+| 当前项目 | 判定 | 证据边界 |
+| --- | --- | --- |
+| 视频节点完整预览 | USER_PASS | v0.7.14生产元素618×418容纳816×1104素材，原画布不变；用户线上通过 |
+| 新媒体原比例/手动尺寸/主动适配撤销 | USER_PASS | local及production合成上传、auto250×338/manual400×420/undo/refresh；用户通过 |
+| 选中模板整体置前 | USER_PASS | 本地真实命中与多选定向，随同候选用户本地及线上通过；不持久化层级 |
+| 发布手动加密备份 | TECHNICAL_PASS | verify/fresh restore与云端1004文件GET哈希验证 |
+| 全站性能对标 | PARTIAL | 历史小图冷加载与首次新建仍有未达标证据；本轮未重测 |
+| 每日自动备份、维护后更新通知、qs告警 | OPEN | 已登记现状，未在本轮修复 |
+
+当前语义纠偏：DATA-005是跨标签最后写入者胜并同步、同标签迟到写拒绝；不能把下面早期OPEN-008/025的跨标签全局409叙述当现合同。服务已部署HTTPS，工作流与模板后端已实现；下面OPS-001、OPEN-020/023关于“未部署/无后端”的说明是原始验收时点。当前实现链路见 [生成结构](UNBOUNDRY_GENERATION_ARCHITECTURE.md)，不得把这些旧说明当成未实现待办。
+
 # Unboundry 绿地复刻验收矩阵
 
 ## INC-GEN-023 服务端终态解绑（2026-09-01，v0.6.69 CANDIDATE REFROZEN / RELEASE AUTHORIZED）

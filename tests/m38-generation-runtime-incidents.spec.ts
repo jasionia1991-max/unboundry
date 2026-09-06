@@ -1,7 +1,8 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { expect, test } from "./safe-test";
 import { saveAccountCredential } from "../server/accountCredentials";
@@ -3188,86 +3189,122 @@ test("deferred relaunch starts exactly once after the old execution exits", asyn
 });
 
 test("current-state documentation has one recovery authority and matches package version", async () => {
-  const [
-    agents,
-    checkpoint,
-    currentState,
-    incident,
-    matrix,
-    packageSource,
-    progressiveAudit,
-    progressiveCheckpoint,
-    progressivePlan,
-    readme,
-    remediation,
-  ] = await Promise.all([
-    readFile("AGENTS.md", "utf8"),
+  const activePaths = [
+    "AGENTS.md",
+    "spec/UNBOUNDRY_CURRENT_STATE.md",
+    "TASKS.md",
+    "README.md",
+  ] as const;
+  const [agents, currentState, tasks, readme] = await Promise.all(
+    activePaths.map((path) => readFile(path, "utf8")),
+  );
+  const [checkpoint, matrix, packageSource, incident, remediation] = await Promise.all([
     readFile("spec/UNBOUNDRY_REMEDIATION_CHECKPOINT.md", "utf8"),
-    readFile("spec/UNBOUNDRY_CURRENT_STATE.md", "utf8"),
-    readFile(
-      "spec/INCIDENT_2026-08-20_TEMPLATE_GROUP_FAILURE_AND_QUEUED_TASK_HANDOFF.md",
-      "utf8",
-    ),
     readFile("spec/UNBOUNDRY_ACCEPTANCE_MATRIX.md", "utf8"),
     readFile("package.json", "utf8"),
-    readFile("spec/UNBOUNDRY_MODULAR_MONOLITH_AUDIT_2026-08-21.md", "utf8"),
-    readFile("spec/UNBOUNDRY_PROGRESSIVE_MODULARIZATION_CHECKPOINT.md", "utf8"),
-    readFile("spec/UNBOUNDRY_PROGRESSIVE_MODULARIZATION_PLAN_2026-08-21.md", "utf8"),
-    readFile("README.md", "utf8"),
-    readFile(
-      "spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md",
-      "utf8",
-    ),
+    readFile("spec/INCIDENT_2026-08-20_TEMPLATE_GROUP_FAILURE_AND_QUEUED_TASK_HANDOFF.md", "utf8"),
+    readFile("spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md", "utf8"),
   ]);
   const packageDocument = JSON.parse(packageSource) as { version: string };
-  const productionMarker = currentState.match(
-    /\*\*生产是 v(\d+\.\d+\.\d+) \/ schema(\d+)/,
-  );
-  const productionVersion = productionMarker?.[1];
-  const productionSchemaVersion = productionMarker?.[2];
-  expect(productionVersion).toBeTruthy();
-  expect(productionSchemaVersion).toBeTruthy();
-  const currentVersionMarker = currentState.match(
-    /当前治理标记：`(CURRENT_V\d+_\d+_\d+_(?:USER_PASS|USER_RECHECK|USER_REJECTED(?:_[A-Z0-9_]+)?))`/,
-  )?.[1];
-  expect(currentVersionMarker).toBeTruthy();
   expect(currentState).toContain(`当前代码包版本：**v${packageDocument.version}**`);
-  expect(agents).toContain(
-    `生产运行\`v${productionVersion}/schema${productionSchemaVersion}\``,
-  );
   expect(currentState).toMatch(
     new RegExp(
       `本地候选代码版本：\\*\\*(?:v${packageDocument.version.replaceAll(".", "\\.")}|未指定（package仍为${packageDocument.version.replaceAll(".", "\\.")}，仅本地未发布纠正）)\\*\\*`,
     ),
   );
-  const currentVersionPrefix = currentVersionMarker!.match(
-    /^CURRENT_V\d+_\d+_\d+/,
-  )?.[0];
-  expect(currentVersionPrefix).toBeTruthy();
-  for (const document of [progressiveAudit, progressiveCheckpoint, progressivePlan]) {
-    expect(document).toContain(currentVersionPrefix!);
-    expect(document).toContain("只在真实新功能触发");
+  // Production is an observed snapshot, not necessarily the local package.
+  expect(currentState).toMatch(/最近核验的生产是 v\d+\.\d+\.\d+ \/ schema\d+/);
+  expect(currentState).toMatch(/当前产品验收标记：`CURRENT_V\d+_\d+_\d+_(?:USER_PASS|USER_RECHECK|USER_REJECTED(?:_[A-Z0-9_]+)?)`/);
+  expect(currentState).toMatch(/生产观测日期：\d{4}-\d{2}-\d{2}/);
+
+  // A small default context and one owner for each kind of changing fact.
+  const activeDocuments = [agents, currentState, tasks, readme];
+  const roles = ["PROJECT_RULES", "CURRENT_STATE", "CURRENT_TASK"];
+  for (let index = 0; index < roles.length; index += 1) {
+    expect(activeDocuments[index].slice(0, 400)).toContain(`文档角色：\`${roles[index]}\``);
   }
-  expect(readme).toContain(
-    "当前版本、未发布工作区、待验收项和下一步只以",
-  );
-  expect(readme).not.toContain("当前线上 `v");
+  const characterLimits = [4500, 5000, 5000, 1500];
+  for (let index = 0; index < activeDocuments.length; index += 1) {
+    expect([...activeDocuments[index]].length, activePaths[index])
+      .toBeLessThanOrEqual(characterLimits[index]);
+    expect(activeDocuments[index]).not.toMatch(/^## 历史(?:账本|任务记录|：)/m);
+  }
+  expect(agents).not.toMatch(/\bv\d+\.\d+\.\d+/);
+  expect(agents).not.toContain("本轮授权边界");
+  expect(readme).not.toMatch(/\bv\d+\.\d+\.\d+/);
+  expect(readme).toContain("当前版本、未发布工作区、待验收项和下一步只以");
+  expect(agents.indexOf("spec/UNBOUNDRY_CURRENT_STATE.md"))
+    .toBeLessThan(agents.indexOf("README.md"));
+  expect(agents).toContain("默认只读本文件、当前状态、当前任务");
+  expect(agents).toContain("文件日期新不等于规则有效");
+  expect(agents).toContain("不能默默删掉旧功能");
+  expect(currentState).toContain("[当前任务](../TASKS.md)");
+  expect((tasks.match(/^## 当前任务：/gm) ?? []).length).toBe(1);
+  for (const field of ["用户授权：", "## 受影响合同", "## 必须保留的行为", "验证方法", "工程检查：", "独立复核：", "用户验收：", "## 下一步"]) {
+    expect(tasks).toContain(field);
+  }
+  const contractSection = tasks.split("## 受影响合同")[1]?.split("\n## ")[0] ?? "";
+  const preservationSection = tasks.split("## 必须保留的行为")[1]?.split("\n## ")[0] ?? "";
+  expect(contractSection).toMatch(/\[[^\]]+\]\([^)]+\)/);
+  expect(preservationSection).toContain("验证方法");
+
+  // Check links only in the four entry documents. Never crawl the archive,
+  // production data, arbitrary absolute paths, or the protected snapshots.
+  const protectedPaths = new Set([
+    "spec/public-templates-director-split-revision.json",
+    "spec/INC_GEN_017_R0_PUBLISHED_MODEL_SNAPSHOT_2026-08-28.json",
+  ]);
+  for (let index = 0; index < activeDocuments.length; index += 1) {
+    for (const match of activeDocuments[index].matchAll(/\[([^\]]+)\]\(([^)]+)\)/g)) {
+      const target = match[2].split("#")[0];
+      if (!target || /^(?:https?:|mailto:)/.test(target)) continue;
+      const path = relative(process.cwd(), resolve(dirname(activePaths[index]), target));
+      expect(path === ".." || path.startsWith(`..${sep}`)).toBe(false);
+      expect(protectedPaths.has(path.split(sep).join("/"))).toBe(false);
+      // Assertions above must pass before any file access.
+      expect((await readFile(path)).length, `${activePaths[index]} -> ${target}`).toBeGreaterThan(0);
+      if (target.endsWith(".history.md")) expect(match[1]).toContain("历史");
+    }
+  }
+
+  // Frozen snapshots retain the entire pre-governance dirty document payload.
+  // Do not require old audit/plan documents to repeat the current version.
+  const archives = [
+    ["README.history.md", "README.md"],
+    ["TASKS.history.md", "TASKS.md"],
+    ["spec/UNBOUNDRY_CURRENT_STATE.history.md", "spec/UNBOUNDRY_CURRENT_STATE.md"],
+  ];
+  for (const [path, source] of archives) {
+    const archive = await readFile(path, "utf8");
+    const prefix = "<!-- ARCHIVE_PAYLOAD_BEGIN -->\n";
+    const suffix = "\n<!-- ARCHIVE_PAYLOAD_END -->";
+    const start = archive.indexOf(prefix);
+    const end = archive.indexOf(suffix, start + prefix.length);
+    expect(start).toBeGreaterThan(0);
+    expect(end).toBeGreaterThan(start);
+    const header = archive.slice(0, start);
+    expect(header).toContain("HISTORICAL_SNAPSHOT");
+    expect(header).toContain(source);
+    expect(header).toContain("不提供当前状态或授权");
+    const expectedHash = header.match(/原文 SHA-256：`([a-f0-9]{64})`/)?.[1];
+    const payload = archive.slice(start + prefix.length, end);
+    expect(createHash("sha256").update(payload).digest("hex")).toBe(expectedHash);
+    if (source === "README.md") {
+      const agentsPrefix = "<!-- ARCHIVE_AGENTS_BEGIN -->\n";
+      const agentsStart = archive.indexOf(agentsPrefix);
+      const agentsEnd = archive.indexOf("\n<!-- ARCHIVE_AGENTS_END -->", agentsStart);
+      expect(agentsStart).toBeGreaterThan(end);
+      expect(agentsEnd).toBeGreaterThan(agentsStart);
+      const agentsHash = archive.slice(end, agentsStart).match(/原文 SHA-256：`([a-f0-9]{64})`/)?.[1];
+      expect(createHash("sha256").update(archive.slice(agentsStart + agentsPrefix.length, agentsEnd)).digest("hex"))
+        .toBe(agentsHash);
+    }
+  }
   expect(checkpoint).toContain("HISTORICAL_CHECKPOINT / APPEND_ONLY");
   expect(matrix).toContain("AUTHORITATIVE_ACCEPTANCE_LEDGER");
   expect(matrix).not.toContain("当前权威状态：生产已运行");
-  expect(agents.indexOf("spec/UNBOUNDRY_CURRENT_STATE.md"))
-    .toBeLessThan(agents.indexOf("README.md"));
-  expect(incident).toContain(
-    "spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md",
-  );
+  expect(incident).toContain("spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md");
   expect(remediation).toMatch(/状态：`IMPLEMENTED_(?:TARGETED_PASS|AUTO_PASS)/);
-  expect([
-    agents,
-    checkpoint,
-    currentState,
-    incident,
-    matrix,
-    readme,
-    remediation,
-  ].join("\n")).not.toContain("READY_FOR_IMPLEMENTATION / DOCUMENTED_ONLY");
+  expect([...activeDocuments, checkpoint, matrix, incident, remediation].join("\n"))
+    .not.toContain("READY_FOR_IMPLEMENTATION / DOCUMENTED_ONLY");
 });
