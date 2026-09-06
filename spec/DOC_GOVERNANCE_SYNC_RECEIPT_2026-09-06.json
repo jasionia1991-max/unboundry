@@ -1,6 +1,6 @@
 {
   "taskId": "DOC-GOV-002",
-  "status": "PREPARED",
+  "status": "COMPLETED",
   "scope": "Private governance documents only; no product deployment",
   "product": {
     "version": "0.7.14",
@@ -12,16 +12,43 @@
       "NRestarts": 0,
       "ActiveState": "active",
       "SubState": "running"
-    }
+    },
+    "after": {
+      "MainPID": "839221",
+      "NRestarts": "0",
+      "ActiveState": "active",
+      "SubState": "running"
+    },
+    "publicVersionAfter": "0.7.14"
   },
   "repository": "jasionia1991-max/unboundry",
   "localBaseline": "68a6dc83e2b2a50e83699e55522769a4d2e84098",
   "serverGovernanceEntry": "/opt/unboundry/governance/current",
   "serverManifest": ".governance-manifest.json",
   "validation": {
-    "github": "NOT_RUN",
-    "serverExport": "NOT_RUN",
-    "threeWayHashes": "NOT_RUN",
+    "github": {
+      "status": "PASS",
+      "pullRequest": "https://github.com/jasionia1991-max/unboundry/pull/164",
+      "headCommit": "7a2d532ac202a05f5fcf5234d317fcf4a01210bc",
+      "headCi": "https://github.com/jasionia1991-max/unboundry/actions/runs/34038420673",
+      "mainCommit": "24f26a52ccf7f739f2fd6a4bc5b65b9f82863d64",
+      "mainCi": "https://github.com/jasionia1991-max/unboundry/actions/runs/34038597414"
+    },
+    "serverExport": {
+      "status": "PASS",
+      "sourceCommit": "24f26a52ccf7f739f2fd6a4bc5b65b9f82863d64",
+      "sourceTree": "aa1a33c94cf2f80252899d026c5d3e46b9d3266d",
+      "files": 284,
+      "privatePermissions": "PASS",
+      "rootNavigator": "PASS",
+      "archiveSha256": "53979bb1b002653438c7c4a06dae796f40b61d1be1f44708754552cd0100f858"
+    },
+    "threeWayHashes": {
+      "status": "PASS",
+      "localMatchesGitHubCommit": true,
+      "serverFilesVerified": 284,
+      "manifestSha256": "d2c9cda5a34d49bc35af94a4daa0bb47ad8a1078f43be51240fcdb0a7d39a995"
+    },
     "local": {
       "status": "PASS",
       "command": "PATH=/Users/mymy/.local/bin:$PATH node scripts/run-safe-tests.mjs run --spec tests/m38-generation-runtime-incidents.spec.ts",
@@ -41,5 +68,39 @@
     "databaseAndMedia": true,
     "protectedJsonNotAccessed": true,
     "noPaidGeneration": true
+  },
+  "deployment": {
+    "status": "PASS",
+    "action": "installed",
+    "repository": "jasionia1991-max/unboundry",
+    "sourceCommit": "24f26a52ccf7f739f2fd6a4bc5b65b9f82863d64",
+    "sourceTree": "aa1a33c94cf2f80252899d026c5d3e46b9d3266d",
+    "release": "/opt/unboundry/governance/releases/24f26a52ccf7f739f2fd6a4bc5b65b9f82863d64",
+    "current": "/opt/unboundry/governance/current",
+    "serverEntry": "/opt/unboundry/AGENTS.md",
+    "deploymentReceipt": "/opt/unboundry/governance/deployment-receipts/24f26a52ccf7f739f2fd6a4bc5b65b9f82863d64.json",
+    "files": 284,
+    "bytes": 5414538,
+    "productBefore": {
+      "MainPID": "839221",
+      "NRestarts": "0",
+      "ActiveState": "active",
+      "SubState": "running",
+      "current": "/opt/unboundry/releases/v0.7.14-media-aspect-20260906"
+    },
+    "productAfter": {
+      "MainPID": "839221",
+      "NRestarts": "0",
+      "ActiveState": "active",
+      "SubState": "running",
+      "current": "/opt/unboundry/releases/v0.7.14-media-aspect-20260906"
+    },
+    "productUnchanged": true
+  },
+  "revisionEvidence": {
+    "scope": "This receipt records the verified initial deployment; subsequent receipt-only commits use the same synchronization process.",
+    "latestSourceCommit": "Read /opt/unboundry/governance/current/.governance-manifest.json",
+    "latestDeploymentReceipt": "/opt/unboundry/governance/deployment-receipts/<sourceCommit>.json",
+    "reason": "The deployed manifest owns its exact commit identity; this tracked receipt does not duplicate its own future commit SHA."
   }
 }
