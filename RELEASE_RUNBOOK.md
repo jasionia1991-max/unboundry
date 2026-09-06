@@ -1,6 +1,6 @@
 # Unboundry 版本发布 Runbook
 
-更新日期：2026-09-06。适用于普通代码/构建发布；当前事实先看 [CURRENT_STATE](spec/UNBOUNDRY_CURRENT_STATE.md)，证据见 [v0.7.14回执](spec/V0_7_14_PRODUCTION_RECEIPT_2026-09-06.json)。v0.7.14已上线并获本地、线上USER_PASS，当前没有新发布任务。
+更新日期：2026-09-06。当前授权与进度只看 [TASKS](TASKS.md)，产品现状看 [CURRENT_STATE](spec/UNBOUNDRY_CURRENT_STATE.md)。以下普通代码/构建发布流程与独立文档同步流程分别适用。
 
 ## 1. 识别范围和已有授权
 
@@ -8,7 +8,15 @@
 - 版本与发布授权须明确。用户已明确委托自行增加patch时直接核对未占用版本，不再次索要版本确认。其他情况下按`上线规矩.md`补齐缺失范围。
 - 发布授权不自动包含付费生成、历史数据/备份删除、schema迁移或云权限变更；已有明确授权则在原范围内继续，不重复确认。
 - 两份永久保护JSON不得读取、hash、复制、移动、修改、删除或暂存：`spec/public-templates-director-split-revision.json`、`spec/INC_GEN_017_R0_PUBLISHED_MODEL_SNAPSHOT_2026-08-28.json`。所有源码导出/检查使用显式排除。
-- 纯模板数据发布走`上线规矩.md`轻量路径；纯文档同步不部署、不bump产品版本。
+- 纯模板数据发布走`上线规矩.md`轻量路径；纯文档同步按下节发布独立文档镜像，不替换产品构建或 bump 产品版本。
+
+## 独立文档同步
+
+1. 用户授权推送和同步后，将治理入口及其现行文档依赖提交到 GitHub；保留产品代码与数据。PR 最终 head 和合并后的 main 均通过现有 CI，其中 m38 检查治理入口。
+2. 从通过 CI 的精确 main 提交枚举并导出已跟踪 Markdown、文档索引/回执、治理测试与 CI 配置；先按路径排除两份永久保护 JSON。不要复制 dirty 工作树、凭据、真实数据、依赖或本地日志。
+3. 在服务器 `/opt/unboundry/governance/releases/<文档提交SHA>` 新目录准备私有镜像；生成 `.governance-manifest.json`，记录提交、文件清单和 SHA-256。校验完整后原子切换 `governance/current`；保留上一镜像用于文档回退。
+4. `/opt/unboundry/AGENTS.md` 使用 [服务器导航源](ops/production/GOVERNANCE_AGENT_ENTRY.md)，进入当前镜像。镜像不进 Nginx/应用静态目录，不提供公网文档页；不改 `/opt/unboundry/current`、产品 release、数据库或服务。
+5. 比较 Git 提交、本地对应文件及服务器镜像哈希；核对产品版本、current、PID/restarts 前后不变。这里的健康检查只证明文档同步没有改变进程状态，不替代产品行为验收。收尾文档有新提交时再同步该提交并核验；不因此重启产品或触发付费生成。
 
 ## 2. 本地候选和最小必要验证
 

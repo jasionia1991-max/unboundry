@@ -1,3 +1,5 @@
+> **历史断点路由（2026-09-06）**：本文保留对应事件的当时证据和独立未决项，不承担当前生产身份或执行授权。接手先读 [UNBOUNDRY_CURRENT_STATE.md](UNBOUNDRY_CURRENT_STATE.md) 与 [文档索引](PROJECT_DOCUMENTATION_INVENTORY_2026-09-06.tsv)；不得因本文旧“当前/Goal/允许发布”重启操作。未确认项目不自动升级PASS。
+
 # INC-GEN-023 Checkpoint
 
 状态：`V0_6_68_DEPLOYED / V0_6_69_CANDIDATE_REVIEW_GO / REAL_GROUP_NOT_CLICKED / RELEASE_AUTHORIZED_NOT_CONSUMED`

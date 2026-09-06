@@ -1,6 +1,6 @@
 # Unboundry 当前状态
 
-文档角色：`CURRENT_STATE`。本页只维护项目现状；当前授权、工作进度和验收见 [当前任务](../TASKS.md)。本地身份于 2026-09-06 核对；下面生产和远端信息是同日上一轮已有证据的快照，本次文档治理没有重新访问生产或 GitHub。
+文档角色：`CURRENT_STATE`。本页只维护项目现状；当前授权、工作进度和验收见 [当前任务](../TASKS.md)。本地、GitHub 和服务器入口于 2026-09-06 核对。下面产品验收及备份详情沿用同日既有证据；本次文档同步另行核对产品版本、current 指针与服务状态，具体范围由当前任务和同步回执记录。
 
 ## 项目现在怎么样
 
@@ -13,13 +13,14 @@
 当前产品验收标记：`CURRENT_V0_7_14_USER_PASS`
 产品验收证据：[v0.7.14 发布回执](V0_7_14_PRODUCTION_RECEIPT_2026-09-06.json)、[媒体比例验收记录](MEDIA_ASPECT_RATIO_LOCAL_CHECKPOINT_2026-09-06.md)。具体行为规则由 [UI 合同 6.3](UNBOUNDRY_UI_DESIGN_SYSTEM.md) 维护。本页只记录产品验收；文档治理的验收结果由 [当前任务](../TASKS.md) 维护。
 
-## 实际代码目录
+## 各环境入口
 
-- 代码 Git 根目录：`/Users/mymy/Documents/unboundry-post-v076-canvas-convergence-2026-09-03`。
-- 核对时分支：`codex/video-node-preview-containment`；本轮起始 HEAD：`038ee8444e1b0901b28b5a2a65c08eca5c9400b9`。每次接手重新查 Git，不根据这里强行切分支。
-- 工作区已有上一轮未提交文档更新；本项文档治理改动也位于此工作树。具体进度只看当前任务，不能将 HEAD 当作全部未提交内容。
-- `/Users/mymy/Documents/unboundry` 是有独立 Git 的资料外层；其中 app 和其他历史副本不是上述代码入口。
-- 最近核验产品 commit、远端 main 和 v0.7.14 tag：`c9d414a32613a28b5e013ee671223fcc219c7e05`。生产 release 目录、备份清单和运行时观察详见发布回执；实际操作前重新核对。
+- 开发工作树：以当前 checkout 的 `git rev-parse --show-toplevel`、HEAD、分支和 dirty 状态为准；不按历史路径或旧分支强制切换。
+- GitHub 源仓库：`jasionia1991-max/unboundry`，默认分支 `main`。文档发布从通过 CI 的精确提交导出。
+- 服务器治理入口：`/opt/unboundry/AGENTS.md` → `/opt/unboundry/governance/current/AGENTS.md`。导出文件清单与来源提交由镜像根目录 `.governance-manifest.json` 维护；同步结果见当前任务及 [同步回执](DOC_GOVERNANCE_SYNC_RECEIPT_2026-09-06.json)。
+- 产品运行目录：`/opt/unboundry/current`；文档镜像与产品 release 分开。该 release 内旧说明只代表构建时点，不作为当前治理入口。
+- 本机外层 `/Users/mymy/Documents/unboundry` 是独立资料 Git；其中导航负责定位本机开发工作树，不适用于其他机器。其他历史副本不自动成为当前入口。
+- 已验收产品 commit：`c9d414a32613a28b5e013ee671223fcc219c7e05`。治理提交可比产品提交更新；不能把最新文档 SHA 当成产品构建身份。
 
 ## 未决事项
 

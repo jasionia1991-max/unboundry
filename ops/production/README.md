@@ -30,3 +30,7 @@ The v0.7.14 package is `/var/lib/unboundry-v0714-media-aspect-20260906/backup43/
 `backup-data-schema39.mjs` is retained only as historical format evidence and exits with `HISTORICAL_SCHEMA39_BACKUP_DISABLED`. Repository `scripts/backup-to-oss.mjs` and `mirror-oss-to-local.mjs` are also frozen stubs; they are not the installed old server bytes.
 
 Future production changes, real OSS upload/delete/restore and paid generation follow the user's actual authorization. This README and consumed old release permissions do not authorize them. Both permanently protected JSON paths in AGENTS remain excluded from all snapshots, inventories and Git operations.
+
+## Governance documents
+
+The private server entry is `/opt/unboundry/AGENTS.md`, installed from [the navigation source](GOVERNANCE_AGENT_ENTRY.md). It routes to `/opt/unboundry/governance/current`, an export from an exact GitHub main commit. Its `.governance-manifest.json` owns the deployed document identity and hashes. See [the document synchronization procedure](../../RELEASE_RUNBOOK.md) and [the current task](../../TASKS.md) for execution status. These documents are separate from the immutable product release and are not served publicly.

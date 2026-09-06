@@ -1,3 +1,5 @@
+> **2026-09-06 当前结构核对：** 模块端口和架构门已存在于已发布v0.7.14；本次静态图298应用文件、1039 runtime/274 type边、88登记例外（73跨域SQL、12internal、3Provider/Storage），新增/失效/过期例外0、runtime SCC0。历史P1/D3计数与INTEGRATION_RECHECK不是当前集成状态；不把静态门等同于所有调用语义或生产验收。详见 [查阅记录](PROJECT_DOCUMENTATION_AUDIT_2026-09-06.md)。
+
 # Unboundry 模块化窄 Port 合同
 
 状态：`P2_AUTO_PASS / P6_AUTO_PASS / P7_AUTO_PASS / P8_AUTO_PASS / P9_AUTO_PASS / OFFLINE_HISTORY / INTEGRATION_RECHECK_IN_PROGRESS`
