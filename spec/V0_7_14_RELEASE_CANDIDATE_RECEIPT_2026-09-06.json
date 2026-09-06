@@ -1,0 +1,20 @@
+{
+  "version": "0.7.14",
+  "productionBefore": "0.7.13",
+  "authorization": "user delegates patch version and deployment after checks",
+  "localUserPass": true,
+  "acceptedProductFilesUnchanged": 18,
+  "additionalProductChange": "exact release role allowlist only",
+  "targetedPassed": 87,
+  "reusedUnaffectedPassed": 6,
+  "fullSuiteRun": false,
+  "totalInventory": 1271,
+  "review": "primary review only; no independent subagent audit",
+  "logs": [
+    "release-gates-attempt2.log",
+    "ui-final-attempt2.log"
+  ],
+  "rollbackVersion": "0.7.14-compat.1",
+  "productionSwitched": false,
+  "paidGeneration": 0
+}

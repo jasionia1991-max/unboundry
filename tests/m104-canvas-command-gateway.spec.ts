@@ -211,6 +211,67 @@ function atomicImageGenerationContract() {
   } as const;
 }
 
+function atomicVideoGenerationContract() {
+  const modelId = "m104-atomic-video-model";
+  const providerModelId = "grok-video-3";
+  const providerProfileId = "m104-atomic-video-provider";
+  const providerDriver = "multi-protocol-relay";
+  const providerProtocol = "media-generate" as const;
+  const parameterSchema = knownModelParameterSchema({
+    capability: "video",
+    providerDriver,
+    providerModelId,
+  });
+  const modelReleaseDocument = defaultModelReleaseDocument({
+    capability: "video",
+    capabilitySchema: parameterSchema,
+    modelId,
+    providerDriver,
+    providerModelId,
+    providerProfileId,
+    providerProtocol,
+  });
+  const proof = inspectModelReleaseDocument(modelReleaseDocument);
+  const modelReleaseRevision: ModelReleaseRevision = {
+    createdAt: "2026-09-04T00:00:00.000Z",
+    document: modelReleaseDocument,
+    hash: proof.documentHash,
+    modelId,
+    revisionId: "00000000-0000-4000-8000-000000000304",
+    revisionNumber: 1,
+    validation: {
+      compilerHash: proof.compilerHash,
+      impact: { incompatibleTemplateIds: [], templateIds: [] },
+      paidProviderRequests: 0,
+      preview: { modes: [] },
+      validatedAt: "2026-09-04T00:00:00.000Z",
+    },
+  };
+  const execution = registeredModelExecution({
+    capability: "video",
+    providerDriver,
+    providerModelId,
+    providerProtocol,
+  });
+  if (!execution) throw new Error("M104 atomic video adapter is missing");
+  return {
+    credentialVersion: 1,
+    fixtureScopeId: "m104-atomic-video-safe-fixture",
+    modelCapability: "video",
+    modelConfigurationRevision: "m104-atomic-video-configuration",
+    modelExecutionAdapterId: execution.adapterId,
+    modelId,
+    modelReleaseRevision,
+    modelResultCount: execution.resultCount,
+    parameterSchema,
+    providerConfigurationVersion: 1,
+    providerDriver,
+    providerModelId,
+    providerProfileId,
+    providerProtocol,
+  } as const;
+}
+
 function insertGenerationCanvas(
   database: DatabaseSync,
   canvasId: string,
@@ -2470,5 +2531,241 @@ test("single-node success reports settlement unavailable and remains retryable w
       else process.env.UNBOUNDRY_SAFE_TEST = previousSafeTest;
       resetCanvasObservabilityForTests();
     }
+  });
+});
+
+
+test("AR sizing mode, adoption and layout have one durable authority", async () => {
+  const { adoptedMediaStyle, fitVisualMediaSize } = await import("../types/mediaGeometry");
+  const { canvasDocumentFingerprint, canvasInputGraphFingerprint } = await import("../types/canvasFingerprint");
+  expect(fitVisualMediaSize(816, 1104)).toEqual({ width: 250, height: 338 });
+  expect(fitVisualMediaSize(9, 16)).toEqual({ width: 250, height: 444 });
+  for (const kind of ["image", "video"] as const) for (const mode of [undefined, "manual", "auto"]) {
+    const node = { id: "visual", type: kind, position: { x: 4, y: 8 },
+      style: { width: 620, height: 420 }, data: { label: "Video", ...(mode ? { mediaSizingMode: mode } : {}) } };
+    const document = { nodes: [node], edges: [], viewport: { x: 0, y: 0, zoom: 1 } };
+    const asset = { assetId: "asset-video", byteSize: 100, contentType: kind === "video" ? "video/mp4" : "image/png", src: `/api/${kind}-assets/asset-video.${kind === "video" ? "mp4" : "png"}`,
+      storageBackend: "local" as const, width: 816, height: 1104, durationSeconds: 2 };
+    const command = { kind: "adopt-uploaded-asset" as const, nodeId: "visual", mediaKind: kind, asset,
+      baseDocumentRevision: 1, baseInputGraphRevision: 1, observedLoadToken: "token",
+      operationId: "adopt-aspect", saveSessionId: "session-aspect", saveSequence: 1 };
+    const result = applyCanvasUserCommand({ command, currentDocument: document, authoritativeAsset: asset });
+    const adopted = result.document.nodes[0] as typeof node;
+    expect(adopted.style).toEqual(mode === "auto" ? { width: 250, height: 338 } : node.style);
+    expect(adopted.position).toEqual(node.position);
+    const layout = { ...command, kind: "commit-user-layout" as const,
+      nodes: [{ nodeId: "visual", style: { width: 300, height: 350 }, mediaSizingMode: "manual" as const }] };
+    const changed = applyCanvasUserCommand({ command: layout, currentDocument: result.document });
+    expect(canvasInputGraphFingerprint(changed.document)).toBe(canvasInputGraphFingerprint(result.document));
+    expect(canvasDocumentFingerprint(changed.document)).not.toBe(canvasDocumentFingerprint(result.document));
+    expect((changed.document.nodes[0] as typeof node).data.mediaSizingMode).toBe("manual");
+    // Both serializations of an upload finishing against a manual resize retain
+    // the resize. The media identity still moves to the newly adopted asset.
+    const manualFirst = applyCanvasUserCommand({ command: layout, currentDocument: document });
+    const uploadAfterManual = applyCanvasUserCommand({ command, currentDocument: manualFirst.document, authoritativeAsset: asset });
+    expect(uploadAfterManual.document.nodes[0]).toMatchObject({style:{width:300,height:350}, data:{mediaSizingMode:"manual",assetId:asset.assetId}});
+    expect(changed.document.nodes[0]).toMatchObject({style:{width:300,height:350}, data:{mediaSizingMode:"manual",assetId:asset.assetId}});
+    const oldClient = applyCanvasUserCommand({ command: { ...layout, nodes: [{ nodeId: "visual", style: { width: 444 } }] }, currentDocument: result.document });
+    expect((oldClient.document.nodes[0] as typeof node).data.mediaSizingMode).toBe("manual");
+    expect(adoptedMediaStyle({ type: "video" }, { mediaSizingMode: "auto", mediaWidth: NaN, mediaHeight: 10 })).toBeUndefined();
+  }
+  const { mergeWorkflowResultNodes, planCanvasCommandIntents } = await import("../client/src/canvas/canvasCommandJournal");
+  const before = { id: "result", type: "video", position: { x: 3, y: 4 }, style: { width: 444, height: 250 },
+    data: { label: "Video", mediaSizingMode: "auto" } };
+  const incoming = { ...before, style: { width: 250, height: 338 }, data: { ...before.data,
+    mediaWidth: 816, mediaHeight: 1104, groupRunSuccessTaskId: "task", groupRunSuccessOwnershipKey: "owner", groupRunSuccessResultKey: "result-key" } };
+  const run: Parameters<typeof mergeWorkflowResultNodes>[0]["run"] = {
+    canvasId: "canvas", clientSemanticFingerprint: "client", createdAt: "2026-09-06T00:00:00Z", groupId: "group", id: "run", lockedNodeIds: [], semanticFingerprint: "semantic", state: "success", updatedAt: "2026-09-06T00:00:01Z",
+    nodes: [{ id: "result", kind: "video", taskId: "task", state: "success", projectionState: "applied" }] };
+  const merged = mergeWorkflowResultNodes({ baseline: [before], current: [before], incoming: [incoming], run });
+  expect((merged.nodes[0] as typeof before).style).toEqual(incoming.style);
+  expect((merged.baseline[0] as typeof before).style).toEqual(incoming.style);
+  const unmatchedRemote = { ...incoming, style: before.style };
+  const noInventedSize = mergeWorkflowResultNodes({ baseline: [before], current: [before], incoming: [unmatchedRemote], run });
+  expect((noInventedSize.nodes[0] as typeof before).style).toEqual(before.style);
+  const manual = { ...before, data: { ...before.data, mediaSizingMode: "manual" }, style: { width: 333, height: 441 } };
+  const concurrent = mergeWorkflowResultNodes({ baseline: [before], current: [manual], incoming: [incoming], run });
+  expect((concurrent.nodes[0] as typeof before).style).toEqual(manual.style);
+  expect((concurrent.nodes[0] as typeof incoming).data.groupRunSuccessTaskId).toBe("task");
+  const baseline = { nodes: [before], edges: [], viewport: { x: 0, y: 0, zoom: 1 }, revision: 1, graphRevision: 1 };
+  const intents = planCanvasCommandIntents(baseline, { ...baseline, nodes: [{ ...before, data: { ...before.data, mediaSizingMode: "manual" } }] });
+  expect(intents.map((i) => i.entry.kind)).toEqual(["commit-user-layout"]);
+  expect(intents[0].entry).toMatchObject({ nodes: [{ nodeId: "result", mediaSizingMode: "manual" }] });
+  const invalidMode = { baseDocumentRevision: 1, baseInputGraphRevision: 1, observedLoadToken: "token", operationId: "sizing", saveSessionId: "session", saveSequence: 1,
+    kind: "commit-user-layout", nodes: [{ nodeId: "result", mediaSizingMode: "guess" }] };
+  expect(parseCanvasUserCommand(invalidMode).ok).toBe(false);
+
+  // Exercise the branded server result boundary with an already-published local
+  // ledger. No worker is launched and no Provider request is made.
+  const { buildCanvasProjectionIdentity } = await import("../server/generationCanvasProjection");
+  const { submissionParameterValues } = await import("../types/modelParameters");
+  const { applyGenerationProjectionInTransaction } = await import("../server/canvasMutationGateway");
+  for (const kind of ["image", "video"] as const) for (const scope of ["single-node", "workflow"] as const) for (const mode of ["auto", "manual", undefined] as const) {
+    await withDatabase(`ar-result-${scope}`, async (database, _directory, canvasId) => {
+      const stamp = "2026-09-06T00:00:00Z";
+      database.prepare("INSERT OR IGNORE INTO users (id,login_name,display_name,password_hash,role,status,created_at,updated_at) VALUES (?,?,'AR','test-only','user','active',?,?)").run(generationOwnerId,generationOwnerId,stamp,stamp);
+      database.prepare("UPDATE project_metadata SET owner_id=? WHERE id=?").run(generationOwnerId,canvasId);
+      const contract = kind === "image" ? atomicImageGenerationContract() : atomicVideoGenerationContract();
+      const nodeId = "ar-target";
+      insertGenerationCanvas(database, canvasId, nodeId, contract.modelId, contract.modelConfigurationRevision, "AR local fixture");
+      const target = { id: nodeId, type: kind, position: { x: 10, y: 20 }, style: { width: 620, height: 420 },
+        data: { label: "AR", ...(mode ? { mediaSizingMode: mode } : {}),
+          [`${kind}ModelId`]: contract.modelId, [`${kind}ModelConfigurationRevision`]: contract.modelConfigurationRevision,
+          [`${kind}Prompt`]: "AR local fixture", [`${kind}PromptReady`]: true, [`${kind}Parameters`]: { inputMode: "text" } } };
+      database.prepare("UPDATE canvas_documents SET nodes=? WHERE owner_id=? AND id=?").run(JSON.stringify([target]),generationOwnerId,canvasId);
+      const modelConfiguration = buildAuthoritativeGenerationModelConfiguration({ ...contract,
+        generationInputKey: "ar-pending", generationOwnershipKey: "ar-pending", modelInputContractFingerprint: "ar-pending" });
+      const projectionSchema = modelConfiguration.parameterSchema;
+      database.exec("BEGIN IMMEDIATE");
+      const resolved = resolvePersistedNodeInputs({ database, canvasId, bypass: false,
+        ownerId: generationOwnerId, targetId: nodeId, targetKind: kind,
+        modelSchema: projectionSchema, modelReleaseRevision: contract.modelReleaseRevision.revisionId,
+        parameters: submissionParameterValues(projectionSchema, { inputMode: "text" }) });
+      const semantic = submissionParameterValues(projectionSchema, resolved.normalizedParameters ?? {});
+      const configuration = { ...modelConfiguration,
+        modelInputContractFingerprint: resolved.contractFingerprint!,
+        generationInputKey: generationInputKey({ inputs: resolved.inputs,
+          modelConfigurationRevision: contract.modelConfigurationRevision, modelId: contract.modelId,
+          modelReleaseRevision: contract.modelReleaseRevision.revisionId, ownPrompt: resolved.persistedOwnPrompt,
+          parameters: semantic, prompt: resolved.finalPrompt }),
+        generationOwnershipKey: generationOwnershipKey(generationOwnershipEvidence({
+          contractFingerprint: resolved.contractFingerprint!, inputs: resolved.inputs, kind,
+          modelConfigurationRevision: contract.modelConfigurationRevision, modelId: contract.modelId,
+          modelReleaseRevision: contract.modelReleaseRevision.revisionId, parameters: semantic,
+          prompt: resolved.persistedOwnPrompt })),
+      };
+      if (scope === "workflow") Object.assign(configuration, { workflowBinding: {
+        runId: "ar-run", groupId: "ar-group", generationInputKey: configuration.generationInputKey,
+        generationOwnershipKey: configuration.generationOwnershipKey,
+        modelConfigurationRevision: configuration.modelConfigurationRevision,
+        modelReleaseRevision: configuration.modelReleaseRevision.revisionId,
+      } });
+      database.prepare(`INSERT INTO generation_tasks (id,owner_id,canvas_id,node_id,kind,prompt,model,parameters,idempotency_key,request_fingerprint,state,attempt,result_asset_id,model_configuration,created_at,updated_at)
+        VALUES ('ar-task',?,?,?,?,?,?,?,'ar-key','ar-fingerprint','success',1,'ar-output',?,?,?)`).run(generationOwnerId,canvasId,nodeId,kind,resolved.finalPrompt,contract.modelId,JSON.stringify(semantic),JSON.stringify(configuration),stamp,stamp);
+      const storageName = kind === "image" ? "ar-output.png" : "ar-output.mp4";
+      const contentType = kind === "image" ? "image/png" : "video/mp4";
+      database.prepare(`INSERT INTO media_assets (kind,id,owner_id,storage_name,byte_size,created_at,updated_at,storage_backend,object_key,content_type,checksum_sha256,storage_status,duration_status,media_width,media_height,duration_seconds)
+        VALUES (?,'ar-output',?,?,16,?,?,'local',?,?,?,'ready',?,816,1104,2)`).run(kind,generationOwnerId,storageName,stamp,stamp,storageName,contentType,'a'.repeat(64),kind === 'image' ? 'not-applicable' : 'ready');
+      database.prepare(`INSERT INTO media_publication_attempts (attempt_id,owner_id,kind,asset_id,source,state,storage_backend,final_storage_name,object_key,staging_name,task_id,task_execution_attempt,content_type,created_at,updated_at)
+        VALUES ('ar-pub',?,?,'ar-output','generation','published','local',?,?,'ar-stage','ar-task',1,?,?,?)`).run(generationOwnerId,kind,storageName,storageName,contentType,stamp,stamp);
+      try {
+        const built = buildCanvasProjectionIdentity({ database,canvasId,kind,nodeId,ownerId:generationOwnerId,taskId:"ar-task",...(scope === "workflow" ? {runId:"ar-run"} : {}) });
+        expect(built).toMatchObject({status:"ready",projection:{bindingMatches:true}});
+        if (built.status!=="ready") throw new Error("AR projection identity missing");
+        const args={database,projection:built.projection,loadTokenEpoch:"ar-epoch",loadTokenForRevision:(revision:number)=>`ar-token-${revision}`};
+        expect(applyGenerationProjectionInTransaction(args)).toBe("applied");
+        const saved=generationCanvasRow(database,canvasId);
+        expect(JSON.parse(saved.nodes).find((n:{id:string})=>n.id===nodeId).style).toEqual(mode === "auto" ? {width:250,height:338} : {width:620,height:420});
+        expect(applyGenerationProjectionInTransaction(args)).toBe("applied");
+        expect(generationCanvasRow(database,canvasId)).toEqual(saved);
+        expect(database.prepare("SELECT COUNT(*) AS n FROM generation_provider_attempts").get()).toMatchObject({n:0});
+      } finally { database.exec("ROLLBACK"); }
+    });
+  }
+
+});
+
+async function withAspectCompatibility(run: (old: typeof import("../server/canvasMutationGateway") & typeof import("../types/canvasCommands") & typeof import("../server/canvasTransactionCommands") & typeof import("../types/canvasFingerprint"), bridge: typeof import("../server/canvasMutationGateway") & typeof import("../types/canvasCommands") & typeof import("../server/canvasTransactionCommands") & typeof import("../types/canvasFingerprint")) => Promise<void>) {
+  const { readFile, writeFile, mkdir, symlink } = await import("node:fs/promises");
+  const { resolve } = await import("node:path");
+  const { pathToFileURL } = await import("node:url");
+  const { createHash } = await import("node:crypto");
+  const fixtures = JSON.parse(await readFile(resolve("tests/fixtures/media-aspect-compat-runtime.json"), "utf8"));
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-aspect-compat-runtime-"));
+  try {
+    await mkdir(join(directory, "server"));
+    await writeFile(join(directory, "package.json"), JSON.stringify({type:"module",version:"0.7.13"}));
+    await symlink(resolve("node_modules"), join(directory,"node_modules"), "dir");
+    for (const name of ["old", "bridge"]) {
+      expect(createHash("sha256").update(fixtures[name].code).digest("hex")).toBe(fixtures[name].sha256);
+      await writeFile(join(directory,"server",`${name}.mjs`),fixtures[name].code);
+    }
+    const old = await import(pathToFileURL(join(directory,"server/old.mjs")).href);
+    const bridge = await import(pathToFileURL(join(directory,"server/bridge.mjs")).href);
+    await run(old, bridge);
+  } finally { await rm(directory, { recursive:true, force:true }); }
+}
+
+function aspectCompatLayout(revision: number, mode?: "auto"|"manual") : CommitUserLayoutCommand {
+  return { kind:"commit-user-layout",baseDocumentRevision:revision,baseInputGraphRevision:1,
+    observedLoadToken:"compat-token",operationId:randomUUID(),saveSessionId:randomUUID(),saveSequence:1,
+    nodes:[{nodeId:"compat-image",style:{width:333,height:441},...(mode?{mediaSizingMode:mode}:{})}] };
+}
+
+function insertAspectCompatCanvas(database: DatabaseSync, canvasId: string) {
+  const node={id:"compat-image",type:"image",position:{x:12,y:34},style:{width:250,height:338},data:{
+    label:"Image",mediaSizingMode:"auto",assetId:"compat-asset",imageSrc:"/api/assets/compat-asset",
+    mediaWidth:816,mediaHeight:1104,mediaMetadataSource:"server",mediaMetadataStatus:"ready",
+    groupRunSuccessTaskId:"completed-before-downgrade",groupRunSuccessResultKey:"preserved-proof",
+    futureServerField:{keep:true}}};
+  database.prepare(`INSERT INTO canvas_documents (owner_id,id,revision,graph_revision,nodes,edges,viewport,updated_at,save_session_id,save_sequence)
+    VALUES (?,?,1,1,?,'[]',?,'2026-09-06T00:00:00Z','compat-initial',1)`).run(ownerId,canvasId,JSON.stringify([node]),JSON.stringify(viewport));
+  database.prepare(`INSERT INTO media_assets (kind,id,owner_id,storage_name,byte_size,created_at,updated_at,storage_backend,object_key,content_type,storage_status,duration_status,media_width,media_height,checksum_sha256)
+    VALUES ('image','compat-asset',?,'compat.png',16,'2026-09-06','2026-09-06','local','compat.png','image/png','ready','not-applicable',816,1104,?)`).run(ownerId,'a'.repeat(64));
+  return node;
+}
+
+test("AR exact v0.7.13 code retains new data but cannot preserve sizing intent on downgrade", async () => {
+  await withAspectCompatibility(async (old) => {
+    expect(old.parseCanvasUserCommand(aspectCompatLayout(1,"manual")).ok).toBe(false);
+    expect(old.parseCanvasUserCommand(aspectCompatLayout(1)).ok).toBe(true);
+    await withDatabase("compat-old",async(database,_directory,canvasId)=>{
+      const initial=insertAspectCompatCanvas(database,canvasId);
+      database.exec("BEGIN IMMEDIATE");
+      const result=old.applyCanvasUserCommandInTransaction({database,canvasId,ownerId,command:aspectCompatLayout(1),
+        loadTokenEpoch:"compat-old",validLoadToken:()=>true,requestId:randomUUID()});
+      database.exec("COMMIT");
+      expect(result).toMatchObject({outcome:"APPLIED"});
+      const saved=JSON.parse(row(database,canvasId).nodes)[0];
+      expect(saved.style).toEqual({width:333,height:441});
+      expect(saved.data).toEqual(initial.data);
+      // This is a negative control: an actual old resize left auto behind.
+      // Forwarding again would overwrite that manual size on the next asset.
+      const { adoptedMediaStyle }=await import("../types/mediaGeometry");
+      expect(adoptedMediaStyle(saved,saved.data)).toEqual({width:250,height:338});
+      expect(old.durableCanvasNodes([saved])).toEqual([saved]);
+    });
+  });
+});
+
+test("AR compatibility bridge keeps saved media and sizing intent across forward rollback forward", async () => {
+  await withAspectCompatibility(async (old,bridge)=>{
+    expect(bridge.parseCanvasUserCommand(aspectCompatLayout(1,"manual")).ok).toBe(true);
+    await withDatabase("compat-bridge",async(database,directory,canvasId)=>{
+      const initial=insertAspectCompatCanvas(database,canvasId);
+      const ledger=database.prepare("SELECT * FROM media_assets WHERE id='compat-asset'").get();
+      const currentBefore=row(database,canvasId);
+      const oldFormat=aspectCompatLayout(1);
+      expect(old.parseCanvasUserCommand(oldFormat).ok).toBe(true);
+      database.exec("BEGIN IMMEDIATE");
+      const result=bridge.applyCanvasUserCommandInTransaction({database,canvasId,ownerId,command:oldFormat,
+        loadTokenEpoch:"compat-bridge",validLoadToken:()=>true,requestId:randomUUID()});
+      database.exec("COMMIT");
+      expect(result).toMatchObject({outcome:"APPLIED"});
+      expect(row(database,canvasId).graph_revision).toBe(currentBefore.graph_revision);
+      const afterBridge=JSON.parse(row(database,canvasId).nodes)[0];
+      expect(afterBridge.data).toEqual({...initial.data,mediaSizingMode:"manual"});
+      expect(afterBridge.style).toEqual({width:333,height:441});
+      const reloaded=openAppDatabase(directory);
+      expect(row(reloaded,canvasId)).toEqual(row(database,canvasId));
+      reloaded.close();
+      const forward=aspectCompatLayout(2,"manual");
+      const applied=commit(database,canvasId,{...forward,nodes:[{nodeId:"compat-image",position:{x:56,y:78}}]});
+      expect(applied).toMatchObject({outcome:"APPLIED"});
+      const final=JSON.parse(row(database,canvasId).nodes)[0];
+      expect(final.data).toEqual(afterBridge.data);
+      expect(final.style).toEqual(afterBridge.style);
+      expect(final.position).toEqual({x:56,y:78});
+      expect(database.prepare("SELECT * FROM media_assets WHERE id='compat-asset'").get()).toEqual(ledger);
+      expect(database.prepare("SELECT COUNT(*) AS n FROM generation_tasks").get()).toMatchObject({n:0});
+      expect(database.prepare("SELECT COUNT(*) AS n FROM generation_provider_attempts").get()).toMatchObject({n:0});
+      const autoDocument={nodes:[initial],edges:[],viewport};
+      const asset={assetId:"compat-next",byteSize:16,contentType:"image/png",src:"/api/assets/compat-next",storageBackend:"local" as const,width:640,height:360};
+      const adoption={...aspectCompatLayout(1),kind:"adopt-uploaded-asset" as const,nodeId:initial.id,mediaKind:"image" as const,asset};
+      const frozen=bridge.applyCanvasUserCommand({command:adoption,currentDocument:autoDocument,authoritativeAsset:asset});
+      expect((frozen.document.nodes[0] as typeof initial).style).toEqual(initial.style);
+      expect((frozen.document.nodes[0] as typeof initial).data.assetId).toBe(asset.assetId);
+      expect((applyCanvasUserCommand({command:adoption,currentDocument:autoDocument,authoritativeAsset:asset}).document.nodes[0] as typeof initial).style).toEqual({width:444,height:250});
+    });
   });
 });

@@ -1,3 +1,5 @@
+import { MediaAspectFitButton } from "./MediaAspectFitButton";
+import { adoptedMediaStyle } from "../../../types/mediaGeometry";
 import { boundGenerationParameterProof, boundGenerationSourceProof } from "../../../types/generationIdentity";
 import {
   Handle,
@@ -2881,6 +2883,8 @@ function VideoNodeImpl({
                 height: undefined,
                 measured: undefined,
                 width: undefined,
+                ...(adoptedMediaStyle(node, { ...node.data, ...trustedMediaPatch(trustedMetadata) })
+                  ? { style: adoptedMediaStyle(node, { ...node.data, ...trustedMediaPatch(trustedMetadata) }) } : {}),
                 data: {
                   ...node.data,
                   ...trustedMediaPatch(trustedMetadata),
@@ -3133,6 +3137,7 @@ function VideoNodeImpl({
             <path d="M8 3H3v5M12 3h5v5M3 12v5h5M17 12v5h-5" />
           </svg>
         </button>
+      <MediaAspectFitButton nodeId={id} />
       </NodeToolbar>
       <NodeToolbar
         className="video-creator nodrag nopan nowheel"

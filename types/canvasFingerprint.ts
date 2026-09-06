@@ -56,6 +56,7 @@ const migrationDocument = descriptor("migration", false, ["document.migration"])
  * part of the document hash so a newer server field cannot be silently erased.
  */
 export const canvasNodeDataFieldDescriptors = Object.freeze({
+  mediaSizingMode: userLayout,
   assetId: serverInput,
   groupRunSuccessOwnershipKey: serverDocument,
   groupRunSuccessInputFingerprint: serverDocument,

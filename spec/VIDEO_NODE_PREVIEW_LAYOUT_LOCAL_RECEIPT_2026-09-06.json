@@ -1,0 +1,218 @@
+{
+  "status": "LOCAL_IMPLEMENTATION_AND_TARGETED_REVIEW_PASS_DEPLOYMENT_PENDING_USER_CONFIRMATION",
+  "date": "2026-09-06",
+  "repository": "/Users/mymy/Documents/unboundry-post-v076-canvas-convergence-2026-09-03",
+  "branch": "codex/video-node-preview-containment",
+  "baselineHead": "e3617807a0c118d46bc1d2149454f16f30d56a45",
+  "lastVerifiedProduction": "v0.7.13/schema43 from prior read-only diagnosis; not re-probed this implementation turn",
+  "productionChanged": false,
+  "paidGeneration": 0,
+  "committed": false,
+  "pushed": false,
+  "versionAssigned": false,
+  "protectedRestoreCheckpoint": "39c6385427d3f62d1e4f8231046bb5159ee55ecd",
+  "productChange": {
+    "file": "client/src/styles.css",
+    "selectors": [
+      ".video-node-card",
+      ".video-node-preview"
+    ],
+    "cssDeclarationsAdded": 4,
+    "javascriptChanged": false,
+    "backendChanged": false,
+    "schemaChanged": false
+  },
+  "reviewedHashes": {
+    "client/src/styles.css": "bb3a2b68c8a249206ef4683924d440d73be20d50a82b0f5544189cb0013244d2",
+    "tests/m4-video-upload.spec.ts": "5ec6d09d9117478e52ff9e4b68c92a54ca183035e9d1eb2ea02fb340b25d9afd"
+  },
+  "reproduction": {
+    "status": "EXPECTED_FAIL_REPRODUCED",
+    "log": "before-fix-final-harness.log",
+    "actualVideoHeight": 836,
+    "availableHeight": 418,
+    "snapshot": "ea238f881793d76c1e80212c037c2ce6921eb10fecf58c1e52570e0589c2339a"
+  },
+  "effectiveTargetedPasses": [
+    {
+      "spec": "tests/m2-video-node.spec.ts",
+      "passed": 3,
+      "log": "after-fix.log",
+      "snapshot": "d764e98e8607fbb6cfb90eef48d6bf198ea871db65084404fd23387071292a6d",
+      "reuse": "product CSS unchanged; subsequent edits only in m4 spec"
+    },
+    {
+      "spec": "tests/m98-canvas-ui-recovery.spec.ts",
+      "passed": 5,
+      "log": "after-fix-pixel-scale.log",
+      "snapshot": "69402e0617157c14a206f2923802ef3bc22555b321ee6103f02adeaa202bf8c6",
+      "reuse": "product CSS unchanged; subsequent edits only in m4 spec"
+    },
+    {
+      "spec": "tests/m4-video-upload.spec.ts",
+      "passed": 1,
+      "scenarioSteps": 4,
+      "log": "after-fix-interactions.log",
+      "snapshot": "d30337e6cc4096147c881d58bc5fe9709826a758e3299571dce42f57522877f8",
+      "exitCode": 0
+    }
+  ],
+  "uniqueEffectiveTests": 9,
+  "fullRegressionRun": false,
+  "discovered1266IsNotExecuted1266": true,
+  "buildAndStaticChecks": "PASS mandatory safe-runner validation: 463 TypeScript and 52 JavaScript sources, production Vite build",
+  "environment": {
+    "node": "22.23.1",
+    "npm": "10.9.8",
+    "browser": "isolated Chromium, deviceScaleFactor2; pixel screenshots explicitly CSS scale",
+    "network": "guarded dynamic loopback only",
+    "productionPort4173": "unchanged",
+    "temporaryData": "runner-owned temporary copies; cleaned by runner"
+  },
+  "layoutCases": [
+    {
+      "name": "reported portrait",
+      "geometry": {
+        "media": [
+          816,
+          1104
+        ],
+        "video": [
+          618,
+          418
+        ],
+        "card": [
+          618,
+          418
+        ],
+        "relative": [
+          1,
+          1,
+          618,
+          418
+        ],
+        "scale": 1
+      },
+      "screenshot": "/Users/mymy/Documents/unboundry/video-preview-local-verification-20260906/reported-portrait.png"
+    },
+    {
+      "name": "9:16 at 32 percent",
+      "geometry": {
+        "media": [
+          360,
+          640
+        ],
+        "video": [
+          618,
+          418
+        ],
+        "card": [
+          618,
+          418
+        ],
+        "relative": [
+          0.31999969482421875,
+          0.31999969482421875,
+          197.760009765625,
+          133.75999450683594
+        ],
+        "scale": 0.3200000147665701
+      },
+      "screenshot": "/Users/mymy/Documents/unboundry/video-preview-local-verification-20260906/9-16-at-32-percent.png"
+    },
+    {
+      "name": "landscape in tall node",
+      "geometry": {
+        "media": [
+          640,
+          360
+        ],
+        "video": [
+          358,
+          558
+        ],
+        "card": [
+          358,
+          558
+        ],
+        "relative": [
+          1,
+          1,
+          358,
+          558
+        ],
+        "scale": 1
+      },
+      "screenshot": "/Users/mymy/Documents/unboundry/video-preview-local-verification-20260906/landscape-in-tall-node.png"
+    },
+    {
+      "name": "square at minimum size",
+      "geometry": {
+        "media": [
+          400,
+          400
+        ],
+        "video": [
+          238,
+          133
+        ],
+        "card": [
+          238,
+          133
+        ],
+        "relative": [
+          1,
+          1,
+          238,
+          133
+        ],
+        "scale": 1
+      },
+      "screenshot": "/Users/mymy/Documents/unboundry/video-preview-local-verification-20260906/square-at-minimum-size.png"
+    }
+  ],
+  "resizeAndRefresh": {
+    "initial": [
+      620,
+      420
+    ],
+    "resized": [
+      380,
+      540
+    ],
+    "persisted": true,
+    "frameCornersAfterResizeAndRefresh": "PASS",
+    "initialAndReopenExtraCanvasWrites": 0,
+    "nodeAndEdgeComparison": "unchanged on view and refresh"
+  },
+  "failedAttemptsRetained": {
+    "registrationPreBusiness": [
+      "before-fix.log: fixed dev spec count",
+      "before-fix-registered.log: discovered helper file differs from inventory",
+      "before-fix-in-existing-spec.log: fixed total test inventory",
+      "before-fix-steps.log: direct Playwright type import rejected by safe wrapper rule"
+    ],
+    "postFix": [
+      "after-fix.log: screenshot physical/CSS pixel mismatch; m2 3 passed",
+      "after-fix-pixel-scale.log: interaction timed out, cleanup masked primary action; m98 5 passed"
+    ],
+    "resolution": "tests integrated as steps in existing m4 spec; safe runner unchanged; screenshots use CSS scale; blank deselection coordinate moved, action timeout bounded and primary error preserved; final m4 pass"
+  },
+  "finalReview": {
+    "reviewer": "primary agent, code and evidence review; not independent subagent review",
+    "coverage": "2 implementation/test files, all diff hunks; adjacent VideoNode metadata, NodeResizer, overlays/fullscreen, direct test logs and four screenshots",
+    "blockingFindings": 0,
+    "decision": "GO_LOCAL_ONLY",
+    "limits": [
+      "online post-deploy acceptance not run",
+      "other browser engines not tested",
+      "32 percent fixture screenshot includes fixed page-header text; no node overflow and four corner samples verified",
+      "real paid generation not run or needed for this CSS defect"
+    ]
+  },
+  "rollbackTarget": {
+    "version": "v0.7.13",
+    "commit": "66f16304a6f9aefeda04cbb5eee09317ba0abd6e",
+    "method": "code-only switch preserving CURRENT; no data restore"
+  }
+}

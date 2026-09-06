@@ -69,6 +69,7 @@ export function createBatchDerivedImageToolUseCase(input: Readonly<{
           const size = sizes[index];
           return {
             data: {
+              mediaSizingMode: "auto",
               assetId: asset.assetId,
               ...metadata[index],
               imageAssetOrigin: "image-tool",

@@ -3234,6 +3234,10 @@ export const openApiDocument = {
                       },
                       additionalProperties: false,
                     },
+                    mediaSizingMode: {
+                      type: ["string", "null"], enum: ["auto", "manual", null],
+                      description: "Explicit media sizing policy; null preserves legacy layout semantics.",
+                    },
                     zIndex: { type: "integer" },
                   },
                   additionalProperties: false,

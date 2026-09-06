@@ -1,3 +1,4 @@
+import { adoptedMediaStyle } from "../../../types/mediaGeometry";
 import {
   createContext,
   useContext,
@@ -265,6 +266,11 @@ export function canvasUploadedAssetAdoptionAllowed(
       const descriptor = canvasNodeTopLevelFieldDescriptors[
         field as keyof typeof canvasNodeTopLevelFieldDescriptors
       ];
+      if (targetNode && field === "style") {
+        const fitted = adoptedMediaStyle(beforeNode, { ...beforeNode.data,
+          mediaWidth: adoption.asset.width, mediaHeight: adoption.asset.height });
+        if (fitted && stableSha256(fitted) === stableSha256(afterNode.style)) continue;
+      }
       if (!descriptor || descriptor.owner !== "ephemeral-view") return false;
     }
 
