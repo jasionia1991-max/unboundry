@@ -1,0 +1,925 @@
+# 历史存档：spec/UNBOUNDRY_CURRENT_STATE.md
+
+文档角色：`HISTORICAL_SNAPSHOT`。仅按明确问题查证；不进入默认阅读，不提供当前状态或授权。
+
+[返回当前状态](UNBOUNDRY_CURRENT_STATE.md)。以下为 2026-09-06 本轮治理开始前的完整原文，包含当时尚未提交的更新。原文中的“当前”“下一步”“允许发布”只对记录时点有效。保留原目录以维持相对路径语义；源正文冻结，不继续追加当前进度。
+
+原文 SHA-256：`44ed28f4893c9b5381e315c9205d8c091f44a30cd0b5f72dee2df93184b08eb6`
+
+<!-- ARCHIVE_PAYLOAD_BEGIN -->
+# Unboundry 当前权威状态
+
+**生产是 v0.7.14 / schema43。** 本页是当前状态唯一入口；历史事件、方案和回执按主题查阅，不能从历史“当前”“Goal active”或“允许发布”恢复授权。
+
+更新日期：2026-09-06。本轮依据实际代码、SSH只读状态、GitHub只读记录和已完成发布回执同步文档，详细范围见 [全仓查阅与文档更新记录](PROJECT_DOCUMENTATION_AUDIT_2026-09-06.md)。
+
+## 统一当前字段
+
+当前代码包版本：**v0.7.14**
+本地候选代码版本：**v0.7.14**
+当前本地候选说明：`没有未发布产品修改；本轮只有项目文档同步，尚未提交`
+当前生产部署版本：**v0.7.14/schema43**（产品commit `c9d414a32613a28b5e013ee671223fcc219c7e05`）
+本地候选schema：**43**
+当前治理标记：`CURRENT_V0_7_14_USER_PASS`
+当前业务标记：`MEDIA_PREVIEW_ASPECT_SELECTION_USER_PASS / PERFORMANCE_PARTIAL / NO_NEW_PAID_GENERATION_TEST`
+当前发布执行标记：`V0_7_14_DEPLOYED / USER_ACCEPTANCE_CLOSED / CLOUD_BACKUP_VERIFIED`
+当前本地Goal标记：`NO_ACTIVE_GOAL / DOCUMENTATION_SYNC_ONLY`
+当前计划标记：`MEDIA_ASPECT_CLOSED / PERFORMANCE_REMAINDERS_PAUSED / AUTOMATIC_BACKUP_FIX_NOT_STARTED`
+当前热修门：`NO_NEW_PRODUCT_FIX_AUTHORIZED`
+当前发布门：`V0_7_14_RELEASE_COMPLETE / NO_NEW_RELEASE_AUTHORIZED`
+
+## 仓库和环境
+
+- 实际代码仓库：`/Users/mymy/Documents/unboundry-post-v076-canvas-convergence-2026-09-03`。
+- 分支：`codex/video-node-preview-containment`；本轮开始HEAD `038ee8444e1b0901b28b5a2a65c08eca5c9400b9`。其中产品与v0.7.14 tag一致，其后两次提交只更新文档。
+- `/Users/mymy/Documents/unboundry` 是资料外层，Git main尚无提交；`app/`和其他历史工作树不作为当前实现入口。
+- 远端main与v0.7.14 peeled tag均为 `c9d414a32613a28b5e013ee671223fcc219c7e05`。本轮GitHub只读核对无打开的PR；不是对后续远端状态的永久保证。
+- 生产指针：`/opt/unboundry/current` → `/opt/unboundry/releases/v0.7.14-media-aspect-20260906`；实查service active/running、PID839221、NRestarts0，ready为active/schema43。
+- 普通开发默认Node25.9.0/npm11.12.1；safe runner及源码覆盖使用Node22.23.1/npm10.9.8；生产Node22.23.2/npm10.9.8。三者不得混写。
+- 本地验收画布是合成数据环境，不能用本地URL冒充线上。保留现有验收环境；其端口和存活状态使用前重新核对。
+
+## 本次已验收范围
+
+用户2026-09-06先完成本地验收，再于上线后回复“通过   接下来收尾一下，需要我做什么”。视频节点完整预览、图片/视频新节点按素材比例适配、手动尺寸保护与主动适配/撤销、选中模板整体置前已收口为USER_PASS。详见 [发布回执](V0_7_14_PRODUCTION_RECEIPT_2026-09-06.json) 和 [原比例断点](MEDIA_ASPECT_RATIO_LOCAL_CHECKPOINT_2026-09-06.md)。
+
+旧节点缺少尺寸模式时保留原大小；新auto节点在可信素材接管/结果投影时适配；加载、播放、metadata或刷新不写布局。组内节点位置和持久zIndex不变，尺寸变高可能重叠，由用户整理；选中组使用临时层级置前。此次USER_PASS不升级下列独立未决项。
+
+## 仍需处理或保持暂停
+
+| 项目 | 状态与实际证据 | 下一步边界 |
+| --- | --- | --- |
+| 每日自动备份 | OPEN。timer active，service failed/exit1；仍调用 `/opt/unboundry/scripts/backup-to-oss.mjs`，旧子脚本硬编码schema41；当前库schema43因此报 `Backup database validation failed` | 单独修复自动作业的冻结、schema43、签名/加密、校验/恢复、上传验证全链；只换路径或schema数字不够。本轮未实施 |
+| 历史图与首次画布性能 | PARTIAL。v0.7.13线上历史27小图冷加载11.682s、首次新建1.214s；本轮未重测，不把旧指标当当前测量 | 延续性能断点，重新量化真实场景后再改；不承诺已对齐TapNow/LibTV |
+| 维护后更新提示 | OPEN。v0.7.14发布时旧EventSource遇502后未恢复；手动刷新与数据保留已通过 | 客户端重连恢复需单独修复和断线测试；有SSE接口不等于通知可靠 |
+| 依赖告警 | OPEN。GitHub只读查询2条medium告警，均为锁定的qs6.15.3（ali-oss/urllib依赖）；告警给出的修复版6.16.0 | 单独评估升级与受影响媒体/OSS链路；本轮未改依赖，未证明可利用性 |
+| 原有未验收/暂停功能 | 按总验收矩阵逐项保持。真实Agent、团队/多人、打光、Mureka真实生成、Storyboard完整生命周期等不能由本版通过一并关闭 | 无新授权不启动，不把代码存在或fake测试当真实验收 |
+
+## 备份与回退
+
+最新发布冻结备份 `1779934b-9d23-4a9d-849d-531f21d678b7.ubbackup`：本地verify、独立fresh restore通过；云端1004文件、1,939,771,911字节全部上传并GET哈希核对通过。98条历史媒体非阻断提示保留，不能据此说所有历史素材无缺损。此手动备份成功与每日自动备份失败分别记录。
+
+兼容回退包为 `/opt/unboundry/releases/v0.7.14-compat.1-media-aspect-20260906`，保留CURRENT数据及新尺寸字段。**禁止直接切旧v0.7.13**；旧包不兼容新字段/手动模式。v0.7.11 Git恢复分支 `codex/restore-v0.7.11-before-performance-20260906` 指向 `39c6385427d3f62d1e4f8231046bb5159ee55ecd`，保留代码检查点不等于任何时候能直接恢复旧数据库或无损运行旧包。
+
+发布时仅清理本次临时副本约3.92GB；本轮只读检查磁盘22%、可用约95.56GB。没有进行新清理或创建新业务备份。
+
+## 当前读取顺序
+
+1. 本页与用户最新请求；随后看仓库 `AGENTS.md`、`上线规矩.md`。
+2. [项目文档索引](PROJECT_DOCUMENTATION_INVENTORY_2026-09-06.tsv) 与 [本轮查阅记录](PROJECT_DOCUMENTATION_AUDIT_2026-09-06.md)。
+3. 视频/比例/置前：`MEDIA_ASPECT_RATIO_LOCAL_CHECKPOINT_2026-09-06.md` → `V0_7_14_PRODUCTION_RECEIPT_2026-09-06.json`。
+4. 性能待办：`PERFORMANCE_REMEDIATION_CHECKPOINT_2026-09-06.md` → `V0_7_13_PRODUCTION_RECEIPT_2026-09-06.json`；后者是历史测量。
+5. 结构与操作：`UNBOUNDRY_GENERATION_ARCHITECTURE.md`、`UNBOUNDRY_UI_DESIGN_SYSTEM.md`、根目录 `RELEASE_RUNBOOK.md`、`ops/production/README.md`。
+6. 独立验收未决项看 `UNBOUNDRY_ACCEPTANCE_MATRIX.md`；历史INC/Goal按索引查证，不重启旧授权。
+
+## 历史账本
+
+下面是历史时点，不提供当前部署身份、待发布候选或执行权限；原始失败/通过记录保留。当前统一字段仅使用上文。
+
+## INC-GEN-023 历史区块（2026-09-01）
+
+- 生产 v0.6.68/schema41 已发布并健康；原任务已无费用收口为 cancelled，但浏览器本地 checkpoint/active lease 仍阻止客户端发出解绑请求。
+- v0.6.69 本地候选以独立terminal-only服务端sweep收口 failed/cancelled 精确绑定；只访问显式 allowlist，success、非终态、非allowlist和task binding不匹配均不改，也不会因空闲启动打开全局generation recovery。
+- 单事务/CAS更新Canvas，重复执行幂等；generation task/event/admission/attempt、media和publication账本保持逐项不变。
+- safe m81 `42/42`、m85 `28/28`、m93 `7/7`通过；三轮独立复审发现的active0漏装sweep、根矩阵过期、误开全局taskStore、timer越过runtime lease及可恢复failed accepted任务竞态均已修复。跨Canvas outcome-unknown账本不变、accepted恢复绑定保留、teardown timer清零，测试库存1142，TypeScript、架构、source coverage、production build与4173隔离门通过；等待最终独立复审。
+- 用户已明确确认版本v0.6.69并允许发布；授权尚未消费，独立复审已GO，现执行commit/push/PR/tag/Release/生产切换。真实整组点击仍为0/1，Provider POST0/11，费用0。
+- 权威方案、断点、Matrix分别为`spec/INC_GEN_023_SERVER_TERMINAL_DETACH_PLAN_2026-09-01.md`、`spec/INC_GEN_023_CHECKPOINT.md`、`spec/INC_GEN_023_ACCEPTANCE_MATRIX_2026-09-01.md`。
+
+## INC-GEN-022 历史区块（2026-09-01）
+
+- v0.6.67 已发布并部署；生产服务、版本、schema、静态文件和业务计数门通过。
+- 点击前自动收口发现P0：客户端把浏览器缓存字段 `fixtureScopeId` 纳入 terminal-detach application identity，服务端合同不包含它，合法请求被400拒绝。
+- 页面旧续跑缓存已安全清除，历史任务保留；只核对原任务，没有重试或新Provider请求。目标allowlist随后已撤回，生产恢复原配置并保持健康。
+- 本地 v0.6.68 候选显式使用服务端十个合同字段；服务端owner/task/terminal/binding/fingerprint/result/CAS安全门不放宽。
+- safe m22 `44/44`、m85 `27/27`，合计`71/71 PASS`；真实整组点击0/1，Provider POST0/11，费用0。
+- 用户已确认并允许发布v0.6.68；commit/push/PR/CI/tag/Release、冻结备份和生产切换进入本次一次性授权。真实整组点击仍须等待部署和自动解绑门通过后才能消费。
+- 权威方案、断点、Matrix分别为`spec/INC_GEN_022_TERMINAL_DETACH_CONTRACT_HOTFIX_PLAN_2026-09-01.md`、`spec/INC_GEN_022_CHECKPOINT.md`、`spec/INC_GEN_022_ACCEPTANCE_MATRIX_2026-09-01.md`。
+
+## INC-GEN-021 历史区块（2026-09-01）
+
+- 用户合同：整组只点一次；Provider 返回的图片、视频、音频先由系统保住并在后台完成保存，用户不重试、不去 Provider 平台捞结果。
+- 当前现网：仍为v0.6.66；截图只有文字成功、图片失败、其余9项未运行，不能写整组或多媒体真实通过。
+- 根因：图片 OSS 前缺 durable staging；视频/音频 staging 在短暂保存失败时被补偿删除；pending generated publication 原来只在启动时恢复。
+- 本地候选：三媒体统一 durable staging；保存失败保留原 task/attempt/publication；30秒 sweep 续传同一字节；pending publication 与 Provider 轮询/匹配互斥；终态错误码覆盖旧 recovery 文案。
+- 证据：TypeScript、diff-check、safe m22 `44/44`、m38+m57+m88+m90 `94/94`、最终 m38+m88 `56/56`通过；真实 Provider POST、真实 OSS、生产写和费用为0。
+- 当前门：v0.6.67 已确认并允许发布；发布后只在 CNY300、最多11次Provider POST、一次点击、不重试、原任务核对边界内验证实际图片/视频/音频结果。
+- 权威方案、断点、Matrix分别为`spec/INC_GEN_021_CROSS_MEDIA_ONE_CLICK_RELIABILITY_PLAN_2026-09-01.md`、`spec/INC_GEN_021_CHECKPOINT.md`、`spec/INC_GEN_021_ACCEPTANCE_MATRIX_2026-09-01.md`。
+
+## INC-GEN-020 历史区块（2026-09-01）
+
+- 用户核心合同：整组只点一次；系统自己保存或回收结果，不要求用户反复重试，也不要求用户去Provider平台找结果。
+- 发布前原任务`8b6e5b71-c45f-485d-a6a7-7f83dc7be3f1`为image/recovering/attempt1；Provider attempt=`response-received`，provider task id/result asset id均为空。该同步响应没有远端可轮询ID，丢失字节不可再取，所以绝不再发Provider POST。
+- 本地实现：私有OSS路径直接上传内存PNG，不写根盘staging；保留进程并发/内存门和OSS大小、SHA、HEAD、private ACL、forbid-overwrite验证；只有不落本地的OSS路径跳过本地磁盘门，本地存储路径不放宽。
+- 自动收口：精确`gpt-image + response-received + 无provider task id + 无待提交publication`由后台将原任务置为`RESULT_SAVE_FAILED_NO_RETRY`终态，整组自动释放；不创建新task/attempt/Provider POST。`outcome-unknown`继续核对原任务，`media-generate`原有匹配/轮询不变。
+- 定向证据：safe m13 `8/8`，safe m38+m88+m90 `76/76`，合计84/84 PASS；TypeScript `--noEmit`和`git diff --check`通过。没有重复执行INC-GEN-019已经消费的formal full。
+- 生产结果：candidate `1308c06…cfd31`、PR #138、merge `bbb8001…ce7bb`、PR/main CI、v0.6.66 tag/Release、exact tag fresh build、schema41冻结备份与原子切换通过；当前release=`/opt/unboundry/releases/v0.6.66-inc-gen-020-20260901`，service active/enabled、NRestarts0，公网version/live/ready正常，33/33静态文件逐字节一致。
+- 自动收口：原任务在既有15分钟退避到期后自动转`failed / RESULT_SAVE_FAILED_NO_RETRY`；连续3次数据采样为active0，tasks1028/admissions948/provider attempts1039/media956/publications547不变。新task/attempt/Provider POST/OSS/费用均为0。
+- 实页：已登录打开目标Canvas，整组按钮可用，任务面板明确失败码和“不会重复提交”，console无错误；未点击整组、继续、放弃或生成。节点alert还残留“自动找回中”旧文案，记为非阻断文案残余，不写`USER_PASS`。
+- 授权：v0.6.66一次性版本、GitHub、备份和生产发布授权已消费；新代码、新版本、新发布或新Provider POST需要新授权。回执为`spec/V0_6_66_PRODUCTION_RECEIPT_2026-09-01.json`。
+- 权威方案、断点、Matrix分别为`spec/INC_GEN_020_DURABLE_GPT_IMAGE_RESULT_PLAN_2026-08-31.md`、`spec/INC_GEN_020_CHECKPOINT.md`、`spec/INC_GEN_020_ACCEPTANCE_MATRIX_2026-08-31.md`。
+
+## INC-GEN-019 历史区块（2026-08-31）
+
+- 用户已在本 Session 显式启动一次性 Goal；唯一 checkout 与新分支为`/Users/mymy/Documents/unboundry-inc-gen-016-v0.6.56-2026-08-28`、`codex/inc-gen-019-group-admission-2026-08-31`，HEAD=`origin/main@86685471092941a31c30621233b9238ce6b1c393`，package0.6.64、Node/npm25.9.0/11.12.1。
+- R0生产只读冻结：release v0.6.64/schema41，service active/running/enabled、NRestarts0；tasks1026/admissions946/attempts1037/paid Provider requests1025/active0/current unknown0/media956/publications547；新 task/admission/attempt/POST/OSS/费用0。
+- R1旧代码稳定红得到两轮preflight200/formal409；生产形状34个Canvas PUT已精确归因为33次旧generation binding逐节点durable reconciliation加1次root model-contract normalization，`other=0`。它们都是不同字段补丁，不是same-fingerprint no-op，因此没有修改全局Canvas writer。
+- 目标Canvas/group exact allowlist为11个logical executable node、22条依赖边、一个root，脱敏digest=`dbb2d0aa9010f0a994a8cce2244238d5fb1b10a5b35f5d758c1c9a084ef24da0`。真实点击仍0/1；每个logical node的task/admission/attempt/POST至多1，总数各不超过11。
+- R2～R5已落地shared monotonic deadline、preflight revision exact校验、preflight network/5xx同key重试、确定性revision 409 exact lookup后同key收敛及formal unknown原key reconcile。最终产品+测试改动10/10、产品净新增199/450、62 hunks、diff=`9925eda3…d16ed`。R6主线程与唯一 independent Review 线程覆盖10/10 published models、11个exact identities及完整Provider链；formal后唯一产品增量仍由同一线程复核，最终P0=0/P1=0/P2=0/GO。R7唯一formal full原始122 specs/1135 tests=`1133/1135`、2失败、0重试/跳过/blocked/reportErrors、source=`ae7289ec…1976`，不得改写为全绿；m22+m36+m38最小关闭=`62/62 PASS`、source=`18a991e9…9ca4`，未运行第二次full。formal full1/1、Review代理1/1；真实点击前还须用可靠estimate证明`CNY + 10×USD <= 100`。
+- R8已完成：candidate=`a4750ea…14e8f`、PR #136、merge=`9a32373…89d5`、final-head/main CI success、annotated tag/GitHub Release v0.6.65、exact tag fresh build、冻结恢复、forward→rollback→final forward、33/33静态和生产零付费门。当前release=`/opt/unboundry/releases/v0.6.65-inc-gen-019-20260831`，active/enabled、MainPID2950523、NRestarts0、schema41；前后tasks1026/admissions946/attempts1037/paidProviderRequests1025/active0/currentUnknown0/media956/publications547不变。目标11节点preflight 11/11 HTTP200，formal POST0。预算保守折算CNY300>CNY100且无可靠实际报价，故真实click0/1未消费并硬停止。回执：`spec/V0_6_65_PRODUCTION_RECEIPT_2026-08-31.json`。
+- 权威方案、Goal、断点、Matrix分别为`spec/INC_GEN_019_GROUP_EXECUTION_SAVE_RACE_AND_ATOMIC_ADMISSION_FINAL_AUDITED_PLAN_2026-08-31.md`、`spec/INC_GEN_019_ONE_SHOT_GOAL_PROMPT_2026-08-31.md`、`spec/INC_GEN_019_CHECKPOINT.md`、`spec/INC_GEN_019_ACCEPTANCE_MATRIX_2026-08-31.md`。
+
+## INC-GEN-018 历史区块（2026-08-31）
+
+- 用户已在本Session完整发送一次性Goal并连续实施；分支`codex/inc-gen-018-contract-health-boundary-2026-08-31`，candidate commit=`790db916…ab618`，PR final head=`7467ad2…0965ae7`，merge/origin-main=`fc046f4…291fe`；package/生产均为v0.6.64/schema41。
+- R0生产只读冻结完成：v0.6.63/schema41、globalEnabled1/emergencyStop0、tasks1026/attempts1037/active0/current-unsettled-unknown0，10/10 published logical models与10/10 exact identities全部入脱敏快照，SHA=`fa6a498a…0457`。仅Seed/TTS缺`$.inputPolicy`，其余8个active/expected schema一致；两份受保护JSON未读取或触碰。
+- availability预期红完成：safe m32执行7 tests，6通过、唯一预期失败证明enabled平台+out-of-sync合同仍返回available/null；source/snapshot=`07fae080…f8ebe`，4173 unchanged，suite cleaned。测试库存已由1125更新到1126并同步runner coverage target；前置fail-closed尝试如实保留。
+- R0期间真实Provider POST0、OSS写0、新费用0；正式full、迁移、GitHub、版本/tag/Release和生产写仍未执行。下一步仅进入R1 availability状态解耦。
+- R1已完成：结构化合同健康分为healthy/out-of-sync/migration-required/invalid，availability新增3个稳定模型级码；catalog与generation preflight/admission保留真实globalEnabled并独立传合同健康。TypeScript exit0，safe m32 `7/7 PASS`、source/snapshot=`4a73de46…26a14`、4173 unchanged；Provider/OSS/费用0。下一步R2 canonical resolver与全published planner。
+- R2定向诊断硬停止：m102三轮结果均为`23/24 PASS`，最后source/snapshot=`45ed56d9…6772a`、4173 unchanged。复查spec确认`publishedModelSnapshot()`读取受保护`spec/INC_GEN_017_R0_PUBLISHED_MODEL_SNAPSHOT_2026-08-28.json`，且本轮safe runner已执行到使用该fixture的测试。文件未修改/暂存/移动/删除且正文未输出，但Goal的禁止读取边界已违反，因此R2/R3不标PASS并停止后续测试、迁移、formal full、GitHub与生产。Provider POST/OSS写/费用仍0。
+- 上一条是历史硬停止时点，不删除也不改写。后续当前实现已去除m102对受保护快照的依赖并新增独立脱敏10-model active-contract fixture；safe runner工作文件集合与m102均排除两份受保护JSON。当前 containment 通过，但不能把历史事件表述为“从未读取”。
+- R2已完成：canonical resolver统一catalog/generation/bootstrap/upgrade的effective schema与fingerprint；planner动态枚举10/10 published/exact identities，只有Seed/TTS得到批准transition，其余8个none，集合漂移、near-miss与未知差异全部写前阻断。11条精确只读跨域SQL边界已获架构预检通过，runner库存精确同步到1135。
+- R2最终最小定向证据：TypeScript `--noEmit` exit0；safe m5 `31/31 PASS`；safe m102 `30/30 PASS`，失败/跳过/重试/reportErrors均0，source/snapshot=`60c5e7ee…18008`，4173 unchanged、suite cleaned。正式full、冻结生产副本、Review、GitHub与生产均未执行；Provider POST/OSS写/新费用继续为0。下一步仅进入R3。
+- R3已完成：仅Seed/TTS exact from identity允许迁移；外层单事务完成active CAS、新immutable revision、published row activation、追加审计和最终10/10健康，旧history/document/compiler/audit前缀保持。第二目标及最终健康故障注入均全回滚；独立干净兄弟副本repeat为10 none、升级0、mutation/DB bytes不变。
+- R3最新最小定向证据：TypeScript exit0、diff-check通过；safe m102 `30/30 PASS`、异常0、source/snapshot=`d89e48c8…235af0`、4173 unchanged、suite cleaned。正式full、真实冻结生产副本、Review、GitHub及生产均未执行；Provider POST/OSS写/新费用继续为0。下一步仅进入R4。
+- R4已完成：10模型代表性catalog为10/10健康，目标7节点整组模型选择预检零阻断且task/attempt计数不变；已有immutable history的bootstrap恢复strict persisted-schema校验，exact registry明确Mureka/Seedance/Grok Video 3为contract v2、其余7个为v1。最终TypeScript/diff-check通过，m102 `30/30`与m12 `6/6`的source/snapshot=`23a006b7…0eae9`，m38 `16/16`=`9b86a69f…f824b`；同阶段m22 `44/44`、m32 `7/7`、m94 `4/4`证据仍有效。正式full、冻结生产副本、Review、GitHub及生产均未执行；Provider POST/OSS写/新费用继续为0。下一步仅进入R5。
+- R5冻结生产数据库副本演练已完成：服务器新source/restore位于`v0.6.63-inc-gen-018-r5-frozen.ngKnVU`，双DB SHA=`8862f4ed…8dd0f`、manifest=`e8aef175…16faa`，schema41/quick/integrity/FK/quiet/counts一致。主dry-run为8 none/仅Seed+TTS 2 publish；apply后10/10 exact healthy。31表全字段hash比较仅`model_profiles/admin_audit_events/sqlite_sequence`变化，两目标只新增`inputPolicy`与更新时间，旧309条audit前缀不变并只追加2条脱敏publish audit，其余28表及全部业务计数不变。独立repeat 10 none、升级0，DB前后同SHA=`249386bd…b60da`。现网current/service与生产audit309/tasks1026/attempts1037等均未变化；Provider/OSS/费用0。
+- R6主线程与独立全量Review均完成：冻结身份HEAD=`d3e213da…55ab2`、30 tracked+7 untracked、309 tracked hunks，tracked diff SHA=`d522e201…10fa5`、候选manifest=`6d0e2792…65382`。独立逐文件/逐hunk/完整链覆盖10/10 published、11/11 registry identity、10/10数据库exact identity和全部Provider/protocol/adapter分支；结论`P0=0/P1=0/P2=7/GO`、受保护文件访问0。`currentModelReleasePolicy`清晰化后的直接依赖m102 `30/30 PASS`，source/snapshot=`bb6b5955…fe37`。
+- 上一条`d522…/6d0e…`精确标识独立产品终审输入；R6 GO后8份docs-only同步输入为tracked diff=`f3e1b85c…e25cb`、manifest=`5ec20647…66c8a`，独立delta审查8/8后要求同步Checkpoint顶端状态并区分两层hash，现已关闭。Checkpoint自包含hash不回写自身；R7正式full前必须只读重算当前完整候选身份，禁止误用旧hash。
+- R6的7项P2已登记且不扩大为当前P1：bootstrap缺全模型外层事务；结构有效但不完整v2的语义默认继承；retry helper兼容fallback；CLI attestation path TOCTOU；post-COMMIT `toTask`与历史裸`JSON.parse`一致性；DELETE post-read owner scope；admin contract GET损坏schema错误映射。它们均不绕过Provider边界。正式full、GitHub、版本/tag/Release和生产仍未执行；Provider POST/OSS写/费用0。
+- R7唯一正式safe full已执行且绝不重跑：原始`1131/1135`、4 failures、source/snapshot=`13d932f3…54ad99`、4173 unchanged；m27/m40/m86在四失败最小子集通过，m4最终单spec=`6/6 PASS`。4个测试文件/5 hunks独立复审SHA=`e3cf5d07…530c2`，`P0=0/P1=0/P2=0/GO`。
+- R7隔离浏览器AUTO_PASS：10/10 models healthy、10/10 releaseRevisionId、7/7节点模型可选择、10卡admin UI；API真实验证global关闭、emergency优先、Seed malformed只返回模型级`MODEL_CONTRACT_INVALID`并可精确恢复。49 requests全部loopback/内联，blocked/non-loopback0，tasks/attempts0/0、paid0；owned server/端口/temp均已清理。
+- R8初始PR阶段历史：PR #134 initial head=`d60a59a5…6bdd`，initial Quality run/job=`33365723417/99405850023`通过；当时final-head修复、merge与main CI仍待完成。该历史输入已由下一条最终R8证据关闭，不能替代当前final-head/main结论。
+- R8 GitHub与不可变发布完成：PR #134 final head=`7467ad2…0965ae7`，final-head CI=`33365802396/99406083381`、merge=`fc046f4…291fe`、main CI=`33365855132/99406242436`均通过；annotated tag object=`99aa90c…25a104`精确peel到merge，GitHub Release v0.6.64已发布。tag archive SHA=`12e9d5f5…2954`；fresh build、6044行inventory SHA=`1bb30d16…21b64`和dist33均通过。
+- R8生产迁移/回退完成：冻结根`/var/lib/unboundry-rollbacks/v0.6.64-inc-gen-018-r8-frozen.5DiOVQ`必须保留；source/restore DB SHA均为`2eba3bbd…a7a6f6`。primary只为TTS/Seed发布revision2 `57e909c4…1f30b`/`7945b3d6…31ae2`，table diff只涉及model_profiles、admin_audit_events及sqlite_sequence；repeat为10 none、升级0、DB字节不变。外部exact release+DB pair fence正确拒绝旧runtime+迁移库；原子forward、实际rollback、最终forward均通过。生产current为`/opt/unboundry/releases/v0.6.64-inc-gen-018-20260831`，active/enabled、MainPID2859331、NRestarts0，最终启动`2026-08-31T07:21:27Z`；正式start恰为3，严禁再次stop/restart。
+- R8生产零付费验收完成：认证`/api/models`两次HTTP200且10/10 published available、全部完整releaseRevisionId、无意外/敏感公开字段；admin UI显示10个published active contracts。目标Canvas/group的7节点preflight均generationAvailable且无`GLOBAL_GENERATION_DISABLED`，1项可提交、6项只由当前EMPTY/INVALID上游输入阻断。前后schema41/global1/emergency0/models20/published10/templates50/published48/tasks1026/attempts1037/active0/current unknown0/canvases76/media956/publications547不变，Provider request count保持1025，Provider POST/OSS写/新费用0；72秒7样本稳定门通过。
+- 技术终态为`PRODUCTION_V0_6_64_TECHNICAL_PASS / ZERO_PROVIDER_POST_PASS / USER_RECHECK`，不可变回执为`spec/V0_6_64_PRODUCTION_RECEIPT_2026-08-31.json`。IG18-036～039关闭，IG18-040仍须用户真实页面明确确认。历史9个已持有Provider task id的失败图片任务继续同attempt结果收回轮询，未新增task/attempt/admission/Provider POST但会写状态事件与日志；同时根盘99%、可用约1.42GiB，二者登记为R8 P2，仅允许后续单独治理。
+
+- 用户重新开启真实生成后，目标整组预检持续提示7个不兼容节点，首个“提取服装事实”为“管理员已关闭真实生成”；强制刷新和重新打开页面无效。
+- 生产只读核对为`globalEnabled=1/emergencyStop=0`；登录态`/api/models` no-store请求返回10个published模型，其中8个available，Doubao Seed与Doubao TTS 2.0返回伪`GLOBAL_GENERATION_DISABLED`。
+- 根因已由生产状态、活动immutable revision和源码调用链共同确认：两个旧active revision缺当前effective `inputPolicy`；`semanticContractUpgradeProviderModelIds`遗漏Seed/TTS；`modelCatalog`又把`contractHealthy`折叠进全局`globalEnabled`，`modelAvailability`因而输出错误原因。
+- 本轮点击未创建任务，计数保持tasks1026/attempts1037/active0，最新任务早于本轮点击；Provider POST、OSS写和新费用均0。fail-closed避免了错误付费提交，但产品生成能力回归和错误提示均为真实缺陷。
+- 已冻结独立INC-GEN-018 Plan/Checkpoint/Matrix，要求平台安全与单模型合同健康分离、canonical contract单一真相、全published planner、Seed/TTS exact immutable revision迁移、冻结副本dry-run/apply/repeat和零Provider验收。
+- 新Session一次性Goal提示词已由用户在本Session完整发送并激活；其中v0.6.64或最低未占用patch、GitHub/迁移/生产发布权限已经进入本Goal一次性授权，Provider POST/OSS写/费用硬上限仍全部为0。
+- Goal提示词经独立只读终审关闭首轮1项路由P1与2项授权措辞P2，最终`P0=0/P1=0/P2=0/GO`；最终SHA-256=`6206be98…3ec7`，全部权威引用存在且diff-check通过。该GO只证明提示词完整，不是INC-GEN-018产品实现、测试、迁移或生产通过。
+- INC-GEN-017的`P0/P1/P2=0/GO`、v0.6.63发布技术通过及既有Seedance真实结果保留为历史时点事实；本事件不回写这些证据，只覆盖当前产品状态。
+
+权威文件：`spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_PLAN_2026-08-30.md`、`spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_CHECKPOINT.md`、`spec/INC_GEN_018_MODEL_CONTRACT_HEALTH_BOUNDARY_AND_LEGACY_REVISION_REMEDIATION_ACCEPTANCE_MATRIX_2026-08-30.md`、`spec/INC_GEN_018_ONE_SHOT_GOAL_PROMPT_2026-08-31.md`。
+
+## INC-GEN-017 历史区块（2026-08-28）
+
+- v0.6.63生产技术收口：PR #132最终head/main CI通过，merge=`55ef9557…de9b3`，annotated tag/Release、fresh tag build、冻结source/restore、原子切换、paired rollback/forward、33/33回环+公网静态字节、schema/integrity/FK与72秒7采样稳定门均通过。退出trap的额外启停曾触发systemd `start-limit-hit`，确认应用forward已ready和current正确后清限流恢复；最终service active/enabled、NRestarts0、journal warning0。稳定样本保持tasks1026/attempts1037/active0/unknownBilling0/media954/publications545/canvases76。当前`PRODUCTION_V0_6_63_TECHNICAL_PASS / REAL_PROVIDER_PASS / USER_RECHECK`；Provider不再POST。
+- 最终治理m38首轮15/16只暴露本文旧production marker，修正后最小复验16/16 PASS；source/snapshot=`7c194edd…56f5a`、库存1125、异常0、4173 unchanged，正式full未重跑。
+- v0.6.63 PR阶段回执：base/head曾为`main@dda1bce`/`0ff10fc`，首个Quality gates run/job=`33315776774/99268840337`以36秒通过；随后最终head CI、merge/main CI、不可变tag/Release和生产v0.6.63门均已闭合，Provider未新增POST。
+- v0.6.63后置P1整改已独立复审GO：accepted-only空凭证在运行注册/提交前fail-closed；同一run的cancel/stop-loss/checkpoint/exception红色终态统一稳定去重键。safe m22 44/44（`79e5a3d2…cda3`）、m81 41/41（`dd33875b…6ae2`）及治理m38最终16/16（`d87f6f5e…277e`）PASS；m38首轮15/16仅暴露并关闭三份渐进治理文档旧current marker。独立结论`P0=0/P1=0/P2=0/GO`；候选commit=`e6cad632…72b2c`，提交后m38 16/16（`9fc99f7f…622c`）通过。全部库存1125、异常0、4173 unchanged；正式full未重跑、Provider未新增POST，该阶段已由GitHub和生产v0.6.63门闭合。
+- v0.6.62唯一Seedance 2.0 Mini真实请求已完成：专用Canvas三条参考边按image/video/audio确定性绑定、模式`multimodal`；attempt1明确accepted/completed，OSS asset ready、publication published、原Video自动回填并在真实reload后保持。实际费用`1.412012 CNY`、retry0、unknown0，结果后service active/NRestarts0/active0。顶部保存文案虽持续`保存中...`，服务端revision与结果均已确认持久，登记为P2 UI状态观察项；当前`REAL_PROVIDER_PASS / USER_RECHECK`，不再允许新Provider POST。
+- v0.6.62 paired forward和72秒7采样稳定门已通过；现网current/API0.6.62、ready active/schema41、service active/running/NRestarts0，active/unknown及tasks1025/attempts1036/media949/publications531/canvas76零漂移。`PRODUCTION_TECHNICAL_PASS`，真实Provider POST0/USD0，下一步最小真实验收。
+- v0.6.62首轮切换已通过API/ready、DB完整性/计数、回环+公网33/33静态字节；随后成对rollback到v0.6.57旧triplet+symlink并通过公网/回环健康、NRestarts0和数据完整性。v0.6.62 live triplet保存在`v0.6.62-forward-live-triplet.GwK6uF`；当前只执行forward恢复，Provider0/USD0。
+- v0.6.62最新冻结restore隔离迁移与clean repeat已通过：5 exact revisions、22模板/34节点，repeat 11/11 none且DB字节不变，schema/integrity/FK/unknown/audit门全绿；详细SHA见Checkpoint。错误sidecar副本在dry-run前fail-closed且保留。生产DB/current未变，service inactive/enabled；当前进入生产迁移/切换。
+- v0.6.62正式冻结目录`v0.6.62-cutover-frozen.Y0d1Bm`的source/restore各366文件，双清单`a758e801…aea2b`、主DB`13589eea…2261`、Library`444e64f4…f49`；两副本schema/integrity/FK及全部关键计数一致。service inactive/enabled，生产库未写；当前只执行restore派生隔离迁移。
+- v0.6.62生产quiet gate于`2026-08-30T12:56:55Z–12:57:55Z`连续7次active0/unsettledUnknown0；current/API始终v0.6.57、ready active/schema41、service active/running、NRestarts0。首个过宽旧迁移查询37全部关联终态任务，8条unknown均finished；现行未收口unknown为0。当前进入停服冻结双副本，生产DB尚未写，Provider0/USD0。
+- v0.6.62 tag archive`0e32a951…e7e348`服务器一致；staging`v0.6.62-inc-gen-017-20260830.w9BL3M/source`在Node22.23.2/npm10.9.8完成npm ci、TypeScript、Vite、6035行inventory（`6d40ebfa…14e21`）与dist33。生产仍v0.6.57/schema41健康；当前进入quiet gate，Provider0/USD0。
+- PR #131最终head/main CI分别48秒、30秒通过，merge=`dda1bce6…3f57`；annotated tag object=`4cb4ff2b…90854`精确指向merge，GitHub Release v0.6.62已发布。当前进入tag fresh build，生产仍v0.6.57/schema41，Provider0/USD0。
+- PR #131 head`3aef7e8`与治理head`d01d564`的Quality gates分别33秒、36秒通过。当前推送最终CI回执head并等待同一门；生产仍v0.6.57/schema41，Provider0/USD0。
+- PR #131已创建，base/head=`main@fe93d835`/`3aef7e8`且mergeable；首个Quality gates run`33312070069`/job`99258820272`正在运行。当前推送本条治理回执后等待最终head CI，生产仍v0.6.57/schema41，Provider0/USD0。
+- v0.6.62 GitHub身份门通过：origin/main`fe93d835…b8d3f`未前进，tag/Release/same-head PR未占用，PR diff为16个预期文件、845 insertions/49 deletions且无受保护JSON。当前提交回执后push/PR/CI，生产仍v0.6.57/schema41，Provider0/USD0。
+- 候选提交后治理safe m38=`16/16 PASS`，source/snapshot`76716e87…fc747`、库存1125、异常0、HEAD`fe152fe3…f9241`、4173 unchanged。当前单独提交六份治理回执后进入GitHub身份门；生产仍v0.6.57/schema41，Provider0/USD0。
+- v0.6.62候选commit=`fe152fe3…f9241`、tree=`079464b7…90ce1`，精确10文件/611 insertions/35 deletions；六份治理和受保护JSON未进入commit。当前只运行提交后治理m38并提交治理回执，生产仍v0.6.57/schema41，Provider0/USD0。
+- Review GO六份治理同步后的safe m38=`16/16 PASS`，source/snapshot`ce9126ef…13fac`、库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged；formal full不重跑，冻结产品hash保持`bb364480…ae897`。当前只精确提交10个候选文件，治理文档与受保护JSON不进入候选commit。
+- v0.6.62独立最终Review覆盖冻结hash`bb364480…ae897`的10/10文件、53/53 hunks、完整链、10/10 models、11/11 identities、6/6 adapters与全部Provider分支，结论`P0=0/P1=0/P2=0/GO`，无finding；mixed-template P1已关闭。当前只运行Review GO治理m38后精确提交，生产仍v0.6.57/schema41，Provider0/USD0。
+- v0.6.62主审GO六份治理同步后的safe m38=`16/16 PASS`，source/snapshot`bb2f4316…d6d3c`、库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged；正式full不重跑，冻结产品hash仍为`bb364480…ae897`。当前只允许既有独立上下文只读终审。
+- v0.6.62混合模板整改候选主线程Review已覆盖10/10文件、53/53 hunks、完整迁移/事务/回滚/repeat链、10/10 logical models、11/11 exact identities、6/6 adapters与全部Provider分支，结论`P0=0/P1=0/P2=0/GO`；611 insertions/35 deletions，diff hash=`bb364480…ae897`并冻结。六份治理m38和既有独立上下文终审待执行；此前禁止commit/GitHub/生产/Provider。
+- v0.6.62隔离复验治理safe m38=`16/16 PASS`，source/snapshot`91c82e9a…ba85`、库存1125、异常0、4173 unchanged。正式full不重跑，当前进入精确diff/hash与主线程完整Review。
+- v0.6.62混合模板整改后的新隔离主/重复副本均通过：主dry-run/apply完成5 revisions与22模板/34节点，repeat为11/11 none、迁移0且DB字节不变；schema41、integrity/FK/active、34 image/0 reference和脱敏audit门通过。精确路径与SHA见Checkpoint；生产仍v0.6.57/schema41健康未写，Provider0/USD0。当前只做治理m38与重新Review。
+- v0.6.62混合模板P1已定向关闭：逐模板只有全部不兼容节点均为before/after双失败才标preexisting；混合新增回归保持blocking。TypeScript/diff-check通过，safe m102最终`24/24 PASS`，source/snapshot`909b1cc8…d3c0`、库存1125、异常0、4173 unchanged。当前只重跑新的隔离dry-run/apply/repeat与重新Review；生产仍v0.6.57/schema41、Provider POST=0/USD0。
+- v0.6.62冻结hash`29e09816…2f55`独立终审覆盖10/10文件、50/50 hunks、完整链、10/10 models、11/11 identities和6/6 adapters后为`P0=0/P1=1/P2=0/NO-GO`。P1是templateId级preexisting集合可用一个双失败节点掩盖同模板另一个before-pass/after-fail新回归；候选解冻，当前只实施节点级聚合与混合模板回归，然后最小验证/隔离复验/重新Review。
+- v0.6.62主线程逐代码Review覆盖10/10文件、50/50 hunks、完整schema/template/dry-run/attestation/CAS/transaction/revision/activation/audit/rollback/repeat链、10/10 logical models、11/11 exact identities及6/6 adapters/全部Provider分支；`P0=0/P1=0/P2=0/GO`。候选500 insertions/33 deletions、diff-check通过，hash`29e09816…2f55`并冻结；当前只等待既有独立上下文只读终审，GO前不commit/GitHub/生产/Provider。
+- v0.6.62隔离迁移治理回执safe m38=`16/16 PASS`，source/snapshot`57f644da…8d006`、库存1125、失败/重试/跳过/reportErrors0、Node22.23.1/npm10.9.8、4173 unchanged；架构/TypeScript/build前置通过，正式full未重跑。当前进入候选精确diff/hash与完整Review。
+- v0.6.62最终代码的真实冻结恢复副本迁移已`PASS`：主副本dry-run `d3f27a13…a8d1`/plan `8c0dc03c…cc05`，apply `37e7f100…7194`，DB `13589eea…2261→19ed87b8…039`，五个exact legacy revision升级、22模板/34节点原子迁移，`image=34/reference=0`且audit无graph正文。新兄弟副本attestation `34864a3d…c5b5`的repeat dry-run `e7019f57…2c66`/plan `760e0da9…9fd4`为11/11 action none，repeat apply `7884ff99…8c7e`、`upgradedModels=[]`且DB字节不变。schema41/quick/integrity/FK/active门通过，Provider POST=0/USD0；生产仍v0.6.57/schema41、DB未写。当前仅治理m38与完整Review待执行。
+- v0.6.62当前最终代码已增加显式Grok模板事务迁移：22模板/34节点的legacy `videoParameters.inputMode=reference`按首帧边迁为`image`，否则为`text`；计划/audit仅记录ID和图hash，Templates域事务命令逐行CAS并与revision发布同事务，失败整体回滚且repeat不重做。直接跨域SQL曾被架构预检阻断，已改为合法事务命令。safe m102最终`24/24 PASS`，source/snapshot`8942d621…748f4`、库存1125、异常0、4173 unchanged；两次`23/24`只为测试夹具诊断。生产仍v0.6.57/schema41且未写，当前只重跑隔离dry-run/apply/repeat并重新Review。
+- v0.6.62独立P1已关闭：exact迁移恢复真实active-before/proposed-after，只有两侧均失败可扣为preexisting，legacy-only selector与unparseable保持阻断。TypeScript/diff-check与safe m102 `24/24 PASS`（source/snapshot`8ccaa3cd…c880`、库存1125、异常0、4173 unchanged）；因迁移逻辑改变，隔离真实副本dry-run/apply/repeat与重新Review待执行。
+- v0.6.62冻结hash`32345132…3f9b`独立终审为`P0=0/P1=1/P2=0/NO-GO`，候选解冻。P1：exact schema migration用target同时做before/after并批量扣除parseable incompatible，可放行active legacy有效、target current无效的模板；当前只开放真实before/after最小整改、m102回归与重新Review，发布门关闭。
+- v0.6.62主线程增量终审覆盖8/8文件、31/31 hunks、完整迁移/模板/attestation/CAS/事务/激活/immutable/repeat链、10/10 logical models、11/11 exact identities和6/6 adapter分支，结论`P0=0/P1=0/P2=0/GO`。候选321 insertions/16 deletions、diff-check通过，hash`32345132…3f9b`并冻结；当前等待既有独立上下文只读终审，GO前不commit/GitHub/生产/真实Provider。
+- v0.6.62隔离迁移阶段治理safe m38 `16/16 PASS`，source/snapshot`8a12f5b…c11b`、库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged；正式full未重跑。当前进入精确diff/hash与完整Review。
+- v0.6.62隔离副本dry-run/apply/repeat已`PASS`：最终dry-run报告`95cd8ffb…e9d`、plan hash`51ec14bc…e05`；首次apply报告`9c1cc84b…66af`并升级五个exact legacy活动revision。首个repeat apply在任何写入前暴露无动作Grok误跑22模板/34节点矩阵的幂等缺陷并fail-closed，DB保持post-apply SHA`66554d03…1fb`；修复后干净兄弟副本全11身份action none，repeat apply报告`b1e766b6…4158`、`upgradedModels=[]`、DB前后字节同SHA。隔离库schema41/integrity/FK/active/unsettled门通过；最终safe m102 `24/24 PASS`，source/snapshot`34a24549…123a`、库存1125、异常0、4173 unchanged。生产继续v0.6.57/schema41、DB SHA`13589eea…2261`，Provider POST=0/USD0；当前Review待执行。
+- v0.6.62首轮隔离dry-run已越过Grok3.5 schema门并在apply前暴露历史模板双计阻塞。整改仅对已有exact runtime-equivalence证明的GPT Image 2/Grok3/Grok3.5迁移扣除可解析preexisting项；unparseable、非exact和新增回归继续阻断。最终safe m102 `24/24 PASS`（source/snapshot`e1f9e974…abc52`、库存1125、异常0、4173 unchanged），TypeScript/diff-check通过；下一步重跑隔离dry-run/apply/repeat，Provider POST=0/USD0。
+- v0.6.62版本/治理safe m38+m81 `57/57 PASS`（16+41），source/snapshot`dc4cd489…43f1`、库存1125、异常0、4173 unchanged；正式full未重跑。下一步隔离真实副本dry-run/apply/repeat与完整Review。
+- v0.6.62最低未占用身份已确认，分支基线`origin/main@fe93d835…b8d3f`；exact legacy Grok3.5 row+active到current的v1等价迁移与near-miss阻断已实现。TypeScript/diff-check通过，safe m102 `24/24 PASS`（source/snapshot`474120c1…099`、库存1125、异常0、4173 unchanged）。下一步m81+m38与完整Review；Provider POST=0/USD0。
+- v0.6.61隔离工作副本`v0.6.61-contract-upgrade.Tupzga`在任何apply前因真实Grok3.5旧prompt policy fail-closed；工作/生产DB SHA保持`13589eea…2261`，v0.6.61未部署。生产已恢复v0.6.57健康；下一步v0.6.62 exact legacy整改，Provider POST=0/USD0。
+- v0.6.61首次冻结目录`v0.6.61-cutover-frozen.LRLTxA`因清单引号错误fail-closed并保留；正式目录`v0.6.61-cutover-frozen.q9k50E`的source/restore各366、双清单`a758e801…aea2b`、DB`13589eea…2261`，schema41/integrity/FK及全部关键计数一致。服务inactive/enabled，生产DB未写；下一步仅对restore复制的隔离工作副本迁移。
+- v0.6.61生产quiet gate连续7次active0/unsettledUnknown0；current/API仍为v0.6.57且service active/running、NRestarts0。首个诊断口径含10条已finished历史unknown，按未收口口径核对为0；该门已闭合，Provider POST=0/USD0。
+- v0.6.61精确tag archive SHA=`70be072c9ea41891fe63f8b793775598307aa49055cb2b6972f94f6b8fdb1a22`；服务器独立staging=`/opt/unboundry/staging/v0.6.61-inc-gen-017-20260830.Dnplbk`固定Node22.23.2/npm10.9.8完成npm ci、TypeScript、Vite、6035行inventory（SHA=`3efd2f7e6eb49b7f829257f484051ae610098b6f9a66f0e80101bfb0719f4600`）和dist33验证；该门已闭合，生产仍精确为v0.6.57/schema41，Provider POST=0/USD0。
+- PR #130最终head/main CI通过，merge=`fe93d835…b8d3f`；annotated tag object=`19919318…814fd`精确指向该merge，GitHub Release v0.6.61已发布；该GitHub身份门已闭合。
+- PR #130 head`31c4737`的Quality gates run`33303385616`/job`99235504319`以29秒通过；当前只推送本条CI纯文档回执并等待最终head同一门。
+- v0.6.61分支已推送并创建PR #130，base/head=`main@b5867b3`/`dc64f08`、mergeable；回写本条后推送最终纯文档head，等待Quality gates通过。
+- v0.6.61实时GitHub身份门通过：origin/main`b5867b3…9de2`未前进，v0.6.61 local/remote tag与Release未占用，无既有PR；PR差异14个预期文件且不含受保护JSON。当前提交身份回执后push/PR/CI。
+- v0.6.61候选提交后治理safe m38 `16/16 PASS`，source/snapshot`60754094…14297`、库存1125、异常0、HEAD`7733464…a45423`、4173 unchanged；当前只提交六份治理回执，再刷新远端身份并进入push/PR/CI。
+- v0.6.61冻结8文件候选已提交为`7733464cc997…a45423`，tree`692f11ea…9371`；治理文档和受保护JSON未进入commit。当前只运行提交后治理m38并独立提交六份治理回执。
+- v0.6.61独立Review GO治理safe m38 `16/16 PASS`，失败/重试/跳过/reportErrors0、库存1125、source/snapshot`b5a903f8…d150`、4173 unchanged；runner成功完成，外层zsh包装只读变量错误不重复测试。当前只精确提交冻结8文件候选，治理文档保持独立。
+- v0.6.61第三候选同一独立审查上下文已完成冻结hash`8e1a52ea…32ae8`只读终审：8/8文件、30/30 hunks、337 insertions/12 deletions、10/10 logical models、11/11 exact identities、全部adapter和完整普通发布/迁移/事务/幂等链，结论`P0=0/P1=0/P2=0/GO`。当前只运行Review GO治理m38；通过前不commit、不进入GitHub/生产/真实Provider。
+- v0.6.61第三候选主线程已完成8/8文件、30/30 hunks、完整迁移/普通发布/事务/CAS/immutable/repeat链、10/10 logical models、11/11 exact identities与全部Provider分支复核，结论`P0=0/P1=0/P2=0/GO`。候选337 insertions/12 deletions、diff-check通过，hash`8e1a52ea…32ae8`并冻结；当前只允许同一独立上下文只读终审，GO前不commit、不进入GitHub/生产/真实Provider。
+- v0.6.61别名整改最终治理safe m38为`16/16 PASS`，source/snapshot`2b3f2b69…5376f`、库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged；取代此前`769a79cf…a32f`。当前只开放精确diff/hash与主线程Review，冻结和独立GO前不进入commit/GitHub/生产/真实Provider。
+- v0.6.61 OpenRouter exact alias残余P1已关闭：relay `gpt-image-2/gpt-image`与OpenRouter `openai/gpt-image-2/native`都由普通发布策略生成并核对各自registry-owned expected contract；exact合同可validate+publish，evidence、受支持的version-bumped connector与create path漂移在激活前阻断。强化反例首轮`23/24`只因测试先命中既有unsupported runtime version门，修正后safe m102 `24/24 PASS`，source/snapshot`0eced929…50636`、库存1125、异常0、4173 unchanged；TypeScript/diff-check通过。
+- v0.6.61第二独立复核为`P0=0/P1=1/P2=0/NO-GO`：relay主GPT身份已关闭，但OpenRouter exact alias `openrouter/openai/gpt-image-2/native`仍可激活version-bumped connector/contract漂移。候选解冻；当前只开放同一exact policy补齐、m102回归和再次复核。
+- v0.6.61整改后主线程复核为`P0=0/P1=0/P2=0/GO`；第二候选8文件/30 hunks、285 insertions/12 deletions、diff-check通过，hash`6ff60ec5…c2d71`并冻结。独立复核GO前不commit、不进入GitHub/生产/真实Provider。
+- v0.6.61独立终审P1已关闭：普通GPT Image 2发布前强制image/gpt-image、connector/version、specialized runtime、EXACT evidence与完整专用执行合同，transition identity同步纳入evidence；TypeScript/diff-check通过，safe m102最终`24/24 PASS`，source/snapshot`bb4d4df1…0bd60`、库存1125、异常0、4173 unchanged。首轮`23/24`仅测试错误文案过窄；当前重新冻结/复核前仍不进入GitHub/生产/真实Provider。
+- v0.6.61独立只读终审覆盖8/8文件、25/25 hunks、完整迁移/普通发布/事务/幂等链与10/10 models、11/11 identities，结论`P0=0/P1=1/P2=0/NO-GO`，候选解冻。P1为普通发布未在激活前强制GPT Image 2 exact registry的runtime/connector/evidence/执行合同，允许evidence漂移revision被激活；当前仅开放最小修复、m102回归和同一上下文复核。
+- v0.6.61主线程终审覆盖8/8文件、25/25 hunks、完整迁移/schema/模板/事务/CAS/immutable revision/幂等链、10/10 published logical models、11/11 exact identities与全部Provider分支，结论`P0=0/P1=0/P2=0/GO`；候选216 insertions/11 deletions、diff-check通过，hash`017c3b94…6a5ea`并冻结。独立只读Review GO前不commit、不进入GitHub/生产/真实Provider。
+- v0.6.61最终safe m102在加入非GPT模型不得滥用`exact-legacy-gpt-image-2-v1`证明的阻断回归后仍为`24/24 PASS`，source/snapshot`da861c1de482fb1b057e684dc0fbf91532400283d90c0ce5d6364617e95a34c6`、库存1125、异常0、4173 unchanged；该结果取代`73797359…5327`作为当前m102证据。Provider POST=0/USD0，正式full未重跑；下一步精确diff/hash与主线程逐链复核。
+- v0.6.61版本/治理直接safe m38+m81 `57/57 PASS`，source/snapshot`c70e4e4670db0ca2e20449240f636732adb2b43c51edca89aa0fbf81eed85699`、库存1125、异常0、4173 unchanged；正式full未重跑。生产继续v0.6.57/schema41、Provider POST=0/USD0；当前只做候选精确复核/冻结与独立Review。
+- v0.6.61精确legacy GPT Image 2迁移只接受生产确认的row+active旧schema，并要求proposed current schema、v1 execution contract和完整runtime identity等价；两侧near-miss均阻断。package/lock/runtime/m81同步0.6.61；TypeScript/diff-check与safe m102 `24/24 PASS`，source/snapshot`73797359030006eb198ac63e60dadcf8c498c921536847a08e81b986d7655327`、库存1125、异常0、4173 unchanged。生产仍v0.6.57/schema41，Provider POST=0/USD0；下一步仅运行safe m81+m38。
+- v0.6.60精确tag archive SHA=`8db3ed0f921a64187b2cdca7ae7c7ae6fcf7e9b2c48f6c0ee3fc3b1659790b03`；服务器独立staging=`/opt/unboundry/staging/v0.6.60-inc-gen-017-20260830.dA88ys`固定Node22.23.2/npm10.9.8完成npm ci、TypeScript、Vite build与6035文件inventory验证，清单SHA=`d14ed3db17e1cc60b025093072a673278f191a33d48e3cbae5889275f13db6c8`、dist33。现网仍精确为v0.6.57/schema41、service active/enabled，Provider POST=0/USD0；下一步quiet gate。
+- v0.6.60生产quiet gate连续7次均为active0/unsettledUnknown0；现网current/API仍为v0.6.57，service active/running、NRestarts0。冻结双副本尚未建立，生产DB未写，Provider POST=0/USD0。
+- v0.6.60正式冻结目录=`/var/lib/unboundry-rollbacks/v0.6.60-cutover-frozen.k3xebQ`，source/restore各366、双清单`a758e801…aea2b`、DB`13589eea…2261`；两副本schema41/quick/integrity/FK0、tasks1025、attempts1036、active0、unknown0、media949/1772056577、canvas76、models20/published10、templates50/published48及Library一致。首个清单失败目录`v0.6.60-cutover-frozen.in7NN7`保留。服务当前inactive/enabled，生产DB未写，Provider POST=0/USD0。
+- v0.6.60隔离工作副本`v0.6.60-contract-upgrade.Ym2zSJ`在apply前因真实GPT Image 2旧合同缺reference media rules而fail-closed；DB SHA未变且生产DB未写，失败证据`5f68f8a7…7f6d0`。现网已恢复v0.6.57，回环/公网version/live/ready与service active/running、NRestarts0通过；v0.6.60不可变且未部署，下一步v0.6.61窄整改，Provider POST=0/USD0。
+
+- v0.6.60最低未占用patch身份已确认并从`origin/main@e6341d5`建立隔离分支；package/lock/final runtime/m81同步。只读冻结副本确认Grok default schema与活动immutable revision均是旧text/image/reference宽合同。整改只接受该exact快照，收敛到当前text/image+单first-frame，任意near-miss阻断；模板桥仍逐节点比较execution contract。
+- safe m102首轮`23/24`诊断出通用schema field diff会误报22模板；关闭该精确边界后只重跑m102为`24/24 PASS`，source/snapshot`25f82ecd…e51a2`、库存1125、失败/重试/跳过/reportErrors0、4173 unchanged。随后版本/治理直接safe m38+m81为`57/57 PASS`（16+41），source/snapshot`07053ab1…4490b8`、库存1125、异常0、4173 unchanged；正式full未重跑。当前只开放精确冻结与独立Review；生产继续v0.6.57/schema41，Provider POST=0/USD0。
+- 6文件产品/版本/测试候选已冻结：156 insertions/17 deletions，diff hash=`f4489901…222643`，diff-check通过。独立增量Review进行中；P0/P1清零前禁止commit/GitHub/生产。
+- 主线程终审发现`P0=0/P1=1/NO-GO`并解冻候选：真实active Grok execution contract v2会被现有semantic-change版本上限阻断；模板兼容桥也必须同时核活动revision schema exact。当前仅开放精确v2 narrowing修复、m102最小回归与重新终审。
+- P1整改已完成并收窄证明：row/active必须exact legacy、proposed必须exact current，v2同版本schema transition须全部运行身份与execution contract等价；迁移事务只传字面证明，底层策略再独立验证predecessor/proposed exact schema、Grok3、v2/v2与相同runtime signature，普通管理员发布、非Grok及其他Grok变化的版本门保持不变。m102真实v2、row/active near-miss、apply/repeat及证明滥用阻断最终`24/24 PASS`（source/snapshot`fbb527b7…81ca4`），库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged。
+- 当前树六份治理同步后的safe m38 `16/16 PASS`，source/snapshot=`df49cb21808262d3c56ae257232d81af1ac67ff5f7a073f320b32dcb5f105c10`、库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged；前一树`3236e2bf…72dd3`只保留历史。当前8文件diff为308 insertions/27 deletions、hash=`79252797…d45a5`且diff-check通过；主线程逐链复核、重新冻结和独立Review尚未完成，生产继续v0.6.57/schema41，Provider POST=0/USD0。
+- 主线程已完成8/8文件、全部diff/hunk、完整migration/template/transaction/CAS/idempotence链、10/10 published logical models、11/11 exact identities与全部Provider/protocol/adapter分支复核，结论`P0=0/P1=0/P2=0/GO`。候选以`79252797…d45a5`冻结，只允许同一独立上下文只读终审；生产继续v0.6.57/schema41，Provider POST=0/USD0。
+- 独立只读增量终审现已覆盖8/8文件、31/31 hunks、10/10 logical models、11/11 exact identities、全部Provider/protocol/adapter分支与完整migration/template/transaction/CAS/immutable revision/repeat链，最终`P0=0/P1=0/P2=0/GO`。下一步仅运行治理m38后精确提交；生产继续v0.6.57/schema41，Provider POST=0/USD0。
+- Review GO治理safe m38 `16/16 PASS`，source/snapshot=`3811d4a83a62802d10581bbeb3d1b2b306bfc6ddb423bf4cc0decbc218418a66`、库存1125、异常0、Node22.23.1/npm10.9.8、4173 unchanged；当前只精确提交8文件候选，生产继续v0.6.57/schema41，Provider POST=0/USD0。
+- v0.6.60候选已提交为`8be339c387ec9df21e4e6e6ee43da2f14e2ee8dc`，tree=`8179a5540fecd2b920154bb059c788080a0374a4`，精确8文件；治理文档与受保护JSON未提交。当前只运行提交后治理m38，生产继续v0.6.57/schema41，Provider POST=0/USD0。
+- 候选提交后治理safe m38 `16/16 PASS`，source/snapshot=`fdfbe741ebb004c9d4dc8a740d2ce4217efd94d7ae9f57eabe83f2a2a108d1d0`、库存1125、异常0、4173 unchanged；当前只提交六份治理回执，生产继续v0.6.57/schema41，Provider POST=0/USD0。
+- PR #129已创建，base/head=`main@e6341d5`/`7f34d094ec219ad15b5fd545167cbfbdbb5dd875`且mergeable；Quality gates run`33298263718`/job`99221554337`以35秒通过。当前只推送本条CI治理回执并等待最终head同一门；生产继续v0.6.57/schema41，Provider POST=0/USD0。
+- PR #129最终head`76fd686`与main Quality gates均通过，merge=`b5867b3edf8f39c9a58b4e77d9060e1567dd9de2`；annotated tag object=`c54cf6d107dd891d0ac689b5bd313845e5dd3e72`与GitHub Release v0.6.60已冻结。当前只允许精确tag fresh build与后续生产硬门；生产继续v0.6.57/schema41，Provider POST=0/USD0。
+
+- v0.6.59精确tag archive `63042cff…71b8`的fresh staging `/opt/unboundry/staging/v0.6.59-inc-gen-017-20260830.qjbYhr`在Node22.23.2/npm10.9.8完成npm ci、TypeScript和Vite build；quiet gate连续7次active0/unsettledUnknown0。冻结备份`/var/lib/unboundry-rollbacks/v0.6.59-cutover-frozen.jufZ1z`双副本366/366、清单`39c9e691…ebf3`、DB`13589eea…2261`、schema41/integrity/FK/计数门通过。
+- 隔离迁移副本`/var/lib/unboundry-rollbacks/v0.6.59-contract-upgrade.Nz9OFg`在apply前对真实published `grok-video-3`旧schema报`Invalid model reference policy`并fail-closed；生产DB未写，现网继续v0.6.57/schema41、service active/enabled、NRestarts0。v0.6.59 tag/Release不可变且未部署；当前转入v0.6.60 exact legacy Grok整改，Provider POST=0/USD0。
+
+- 2026-08-30 R8生产POST前合同硬门暴露Seedance/Grok3.5/Grok3旧published schema迁移缺口。整改冻结diff `dcf8a42d…3cb854`的独立增量终审覆盖8/8文件、10/10 logical models、11/11 exact identities，最终`P0=0/P1=0/P2=0/GO`；m102 `24/24 PASS`（`e93a5baf…610032`），库存1125、4173 unchanged。当前进入v0.6.58准备；生产迁移和真实Provider尚未执行。
+- v0.6.58身份门：`origin/main@b34a6f4`未前进，本地tag、远端tag和GitHub Release均不存在；package/lock、final runtime allowlist与m81断言已同步。当前本地候选v0.6.58，生产仍为v0.6.57/schema41；版本定向m81+m38待执行。
+- v0.6.58版本直接门最终有效`57/57 PASS`：m81 `41/41`首轮通过，m38修正唯一治理版本字段后`16/16 PASS`（`30e11dbd…c7d7b`），库存1125、异常0、4173 unchanged。当前候选提交就绪，生产仍为v0.6.57/schema41。
+- v0.6.58提交前最终治理safe m38 `16/16 PASS`，source/snapshot`79ae8703…609cd6`、库存1125、异常0、4173 unchanged；精确diff-check通过。`b577…`早期候选终审的12项P1已在后续整改链闭合，当前仍以`dcf8…`热修Review GO为准；随后仅回写本条证据。
+- v0.6.58功能/版本候选已提交为`760dfcf131d5800f8e03e8533199ef1e773a7ea3`，tree`dc8c192e27acf6373899a959e9cc0d4a22f86e3e`，18个安全文件，受保护JSON未进入提交；生产继续v0.6.57/schema41且真实Provider POST/费用仍为0。
+- 候选提交后治理safe m38 `16/16 PASS`，source/snapshot`1b906cf7…968f79`、库存1125、异常0、4173 unchanged；随后仅回写该证据，六份治理文档可提交，生产未变。
+- PR #127已创建，base=`main@b34a6f4`、head=`0226d77`且mergeable；Quality gates / lightweight通过（run`33273711037`、job`99156654353`、31秒）。当前只推送本条CI治理回执并等待最终head同一门，生产仍为v0.6.57/schema41。
+- PR #127最终head/main CI通过并以merge`730ea56`进入main；annotated tag object`959dbc9`与GitHub Release v0.6.58已冻结。精确tag archive`85cfe65e…ffe5b`在服务器Node22.23.2/npm10.9.8 fresh build通过：6035文件、inventory`37b52e73…16bb8`、dist33。生产仍为v0.6.57/schema41，下一步只做冻结恢复与合同迁移。
+- v0.6.58冻结备份`v0.6.58-cutover-frozen.ZXQMnx`双副本、清单`d0fb1598…d632c`、DB`54468f71…12aded`、schema41/integrity/FK0/计数一致。隔离dry-run在apply前因真实Mureka旧歌词8000与outputCount1/2/3不满足当前精确合同而阻断；生产DB未写并恢复v0.6.57回环/公网健康、NRestarts0。v0.6.59现从`main@730ea56`整改精确legacy schema收敛，Provider POST/费用0。
+- v0.6.59 safe m102最终`24/24 PASS`（source/snapshot`c00a705d…ed955`）：精确旧Mureka保持lyrics 8000，只把outputCount 1/2/3收敛为1；畸形1/4阻断、事务apply及重复幂等通过，runtime同时支持冻结contract v1/v2读取。库存1125、异常0、4173 unchanged，生产仍为v0.6.57且Provider POST/费用0。
+- v0.6.59 m38+m81版本/治理直接门`57/57 PASS`（source/snapshot`6848e45b…ff3f`），7文件候选diff`d58b6101…d702`且diff-check通过。候选冻结等待独立增量Review；生产仍为v0.6.57/schema41，Provider POST/费用0。
+- v0.6.59独立增量Review覆盖7/7文件、14/14 hunks、完整migration/transaction/idempotence链、10/10 published logical models与11/11 exact identities，最终`P0=0/P1=0/P2=0/GO`。只读生产核验确认当前DB与v0.6.58冻结source/restore三份SHA均为`54468f…12aded`，published Mureka均为lyrics8000/outputCount1/2/3；因此旧Git源码5000不是本次迁移输入，首轮P1已撤销。当前进入治理m38与精确提交；生产仍v0.6.57且Provider POST/费用0。
+- Review GO治理safe m38 `16/16 PASS`（source/snapshot`0cce774d…799a`），库存1125、异常0、4173 unchanged；diff-check通过且正式full未重跑。当前只提交7个v0.6.59产品/版本/测试文件，治理文档后续独立提交；生产仍v0.6.57/schema41，Provider POST/费用0。
+- v0.6.59产品/版本候选已提交为`6abe72b72b496de08a7309948b3b3ee06df54652`，tree`25b4a00d19cead0a5ef8080e89db6795543654aa`，精确7个安全文件；治理文档与受保护JSON未提交。当前运行提交后治理m38；生产仍v0.6.57/schema41且Provider POST/费用0。
+- 候选提交后治理safe m38 `16/16 PASS`（source/snapshot`25c7a168…7bf9e`），库存1125、异常0、4173 unchanged；正式full未重跑。当前提交六份治理回执后进入push/PR/CI；生产仍v0.6.57/schema41且Provider POST/费用0。
+- 分支已推送，PR #128已创建且base/head=`main@730ea56`/`61f5b2b`；首次push TLS失败未改变远端，重试同一分支成功。当前提交最终治理回执并等待新head CI；生产仍v0.6.57/schema41，Provider POST/费用0。
+- PR #128治理head`f575836`的Quality gates / lightweight已通过（run`33295091931`、job`99213263004`、48秒）。当前只推送本条CI治理证据，等待最终head同一门；生产仍v0.6.57/schema41，Provider POST/费用0。
+- PR #128最终head`944ae9b`、merge`e6341d5`及main Quality gates均通过；annotated tag object`52308b6`与GitHub Release v0.6.59已冻结。当前进入精确tag fresh build；生产仍v0.6.57/schema41，Provider POST/费用0。
+
+- 用户已在本Session显式启动一次性Goal；当前实施分支为`codex/inc-gen-017-workflow-self-healing-2026-08-28`，实时基线`origin/main@75f6c1aca055b8b82f258a9d38be5c27ce7d6305`。
+- R0已完成：只读冻结生产v0.6.56/schema41、20模型/10 published、Node/npm与USD100真实Provider硬预算；Provider POST=0、费用USD0，受保护JSON未读取或改动。
+- safe预期红证据：m102+m17+m22为`67/72 PASS、5项预期失败`，m30为`9/10 PASS、1项预期失败`；精确证明未知模型fallback、Mureka多结果、Grok缺单首帧、checkpoint歧义、刷新后pending不续作和Seedance旧角色不迁移。
+- R1已完成group/run精确准入、v1兼容读/v2写、缓存损坏/缺失时Canvas绑定+服务端task权威重建、accepted零重复POST、同快照继续pending、变更快照新run和通知去重。
+- R1安全定向m22为`41/41 PASS`，异常0，source/snapshot`31a5d1b3d771dd096eeb150402abaa62805a10e15cb59652e7dda9b240ff0dee`，4173 unchanged；真实Provider/OSS/生产写/费用0。
+- R2已建立无React/HTTP/Provider字段的纯语义compiler和Canvas单一nodes+edges事务；模型/模式切换一次undo/save/revision确认，失败完整回滚，真实task/result/ownership不清理。边界Review`P0=0/P1=0`；m30 `10/10`、m50 `2/2 PASS`。
+- R3已收口Seedance text/首尾帧/全能参考三种模式及完整图/视频/音频adapter映射；Grok当前只开放文字和一张`first-frame`；Mureka schema、任务/API既有单结果门、请求构造和result normalize统一为1。合同错误写入`contractFingerprint`，模型切换只清匹配旧合同的错误，非匹配Provider错误保留。
+- R3安全定向m16 `12/12`、m17 `17/17`、m30 `10/10 PASS`，失败/重试/跳过/报告异常均0，末次source/snapshot分别`adae795de53d63072e54f9af29b426dd880635d69a244ab6481670df80ce0777`和`adeba0c37c87a2b3f56608647154b2ca28151034f579522b0e5c91adacbe82db`，4173 unchanged；真实Provider POST/费用、OSS和生产写均0。
+- R4已为实时全部10个published模型建立精确registry，发布/任务创建在Provider前重算同一语义合同并一次判定adapter、费用币种、单结果和恢复身份；全部字段、mode、reference set最小/最大边界均做totality，旧/新路径shadow为零Provider且一致。未知未来模型的generic/specialized兜底已关闭；历史任务保留创建时revision/schema/adapter，旧任务没有adapter字段仍按历史冻结路径可读。
+- R4两个临时开关`workflowSelfHealingV2`和`modelInputContractV2`均默认启用且关闭时fail-closed，不放宽unknown费用或paid retry围栏。迁移Review逐一核对10模型、发布门、任务门、历史retry和fallback顺序，结论`P0=0/P1=0`。safe m102 `16/16`、m12 `6/6`、m32 `6/6 PASS`，失败/重试/跳过/报告异常0，末次m102 source/snapshot`036648bf670c04f692174271a8dd568a7ad5171ef28c339c1f9e2f1d07469092`，4173 unchanged；真实Provider POST/费用、OSS和生产写均0。
+- R5从生产只读目录冻结`spec/INC_GEN_017_R0_PUBLISHED_MODEL_SNAPSHOT_2026-08-28.json`，仅含10个published模型的脱敏身份；动态生成`10×10=100`个有向切换对，不把模型数量写死。全部模型逐字段选项、数值/文本/数量边界、黄金任务决策、单结果、错误、等价规范化和冻结恢复通过；未来精确registry模型通过，只有通用协议的模型在发布前阻断。
+- R5安全证据：m102 `19/19 PASS`，source/snapshot`af8afe8eb38d1196c88071ef6dba1cf8519ef07f61a9db11977d34e8b1139d0d`；m17 `17/17 PASS`，source/snapshot`51b9d7663ac1f64858cc071bd4c63afec415278c5846a37274b8db43227895b5`；直接Provider/目录依赖m16/m26/m32/m33/m53/m57为`78/78 PASS`，m12在把旧测试fixture恢复为精确发布合同后`6/6 PASS`，末次source/snapshot`6d69a666d34574391e12ef0ed0e00285c1cd82f263e2f8e00cca5df161c2cd5c`。安全库存1099，失败/重试/跳过/报告异常0，4173 unchanged，真实Provider POST/费用、OSS和生产写均0。当前进入R6故障注入与候选冻结；尚无独立候选终审、正式full、GitHub或生产通过结论。
+- R6故障注入首轮m5/m22/m38/m40/m88为`130/133 PASS`，精确暴露并关闭认证fixture非规范schema、退款新attempt重释冻结角色和状态响应缺止损开关三项；m38+m5最终`42/42 PASS`，source/snapshot`edbc6855321ef41f97d71ae65b3e38b552f8f6e78f69a03b8964f3f28ec61f42`。同树m40 `14/14`、m88 `36/36 PASS`。
+- R6体验边界把投影冲突/异常收口为项目内自动恢复，不再要求任务面板、素材库或外部平台；m22新增普通UI否定断言后`42/42 PASS`，source/snapshot`0614043b2b62192097fb78e9f54167b7bc64773ad9043cc352a38759512093a5`。新增Relay精确schema选择收口到命名registry后m102+m12+m17 `42/42 PASS`，最终source/snapshot`b577309e1295231d1476eccebb28d93f02f5c0508d2fd0229eb0d7dde2ad7e4f`。
+- R6最终安全库存1100、失败/重试/跳过/报告异常0、4173 unchanged、`git diff --check`通过；Provider POST/费用、OSS和生产写均0。冻结前边界/体验Review `P0=0/P1=0`只代表阶段自查；候选源码随后按`b577309e…d7e4f`冻结并完成两个互斥范围的独立只读终审。
+- 第十八候选两路完整只读终审已完成并合并为`P0=0/P1=4/P2=3/NO-GO`，候选已解冻。模型/Provider覆盖10/10 published与11/11 exact identities，为`P0=0/P1=0/P2=1/GO`；工作流覆盖84/84文件和完整调用链，为`P0=0/P1=4/P2=2/NO-GO`。四项P1是group最终准入图TOCTOU、手动暂停恢复durable ordering、上下文菜单删除外部端点、媒体上传开始态admission；三项P2是relay usage fixture occupied-ID、raw edge add/replace和raw node remove。整改、最小回归和原两路复核GO前正式full、GitHub、版本、生产和真实Provider继续禁止。
+- 第十八轮4项P1与3项P2均已实施关闭：group最终准入在同一Canvas admission内重读权威revision和最新图并重算计划/锁/snapshot；四类手动终态与媒体adoption等待durable settle，失败按语义data CAS回滚；上下文删除纳入全部外部端点；上传开始态、raw edge/node结构变化与relay fixture隔离均已收口。
+- 最终直接回归safe m22/m27/m37为`44/44、22/22、36/36 PASS`，合计`102/102`、source/snapshot`21a1b01d…fd422`、库存1122、异常0、4173 unchanged；同整改树m30 `13/13`、m57 `17/17 PASS`继续有效，TypeScript/diff-check通过。治理m38前状态为`R6_EIGHTEENTH_REMEDIATION_TARGETED_PASS / NINETEENTH_CANDIDATE_PREPARING / PRODUCTION_V0_6_56_UNCHANGED`；治理m38和原两路Review GO前正式full、GitHub、版本、生产和真实Provider继续禁止。
+- 六份治理同步后safe m38 `16/16 PASS`，库存1122、source/snapshot`56997014…452f6`、异常0、4173 unchanged；随后只回写治理证据与冻结状态。第十九候选产品/测试树`21a1b01d…fd422`已冻结，只交原两个审查上下文完整只读终审。当前严格为`R6_EIGHTEENTH_REMEDIATION_TARGETED_PASS / NINETEENTH_CANDIDATE_FROZEN_REVIEW_PENDING / PRODUCTION_V0_6_56_UNCHANGED`。
+- 第十九候选两路完整只读终审已合并为`P0=0/P1=0/P2=1/GO`：工作流84/84安全范围文件、21/21相关测试调用链全覆盖；模型/Provider 10/10 published logical models、11/11精确registry identities和全部adapter/protocol分支全覆盖。两路均只读，未跑测试/build、未触发Git/网络/Provider/OSS/生产，两个受保护JSON未读取。
+- 非阻断`P2-19-1`已登记：adoption持久失败回滚可覆盖同页并发位置/选择/尺寸变化，不会产生重复付费POST或错误task恢复。当前严格为`R6_NINETEENTH_REVIEW_P0_0_P1_0_P2_1_GO / FORMAL_SAFE_FULL_PREPARING / PRODUCTION_V0_6_56_UNCHANGED`；唯一正式full、GitHub、版本、生产和真实Provider仍未运行。
+- Review GO治理同步后safe m38为`16/16 PASS`，库存1122、source/snapshot`783344b1…a259`、异常0、4173 unchanged；候选产品/测试代码未改。当前严格为`R6_NINETEENTH_REVIEW_P0_0_P1_0_P2_1_GO / FORMAL_SAFE_FULL_READY / PRODUCTION_V0_6_56_UNCHANGED`；本Goal唯一正式full仍为`NOT_RUN`。
+- 本Goal唯一正式safe full已执行并永久消费：122/122 specs、1122 tests中`1023 PASS / 95 FAIL / 4 NOT_RUN`，retries0、reportErrors0，source/snapshot`15fa9980…acd2`，immutable release builder `1 attempt / 5 invocations / PASS`，4173 unchanged。当前严格为`FORMAL_SAFE_FULL_CONSUMED_FAILED_REMEDIATION / PRODUCTION_V0_6_56_UNCHANGED`；只允许最小失败spec整改复验，GitHub、版本、生产和真实Provider继续禁止。
+- 正式full失败整改第一批已完成：Canvas同页连续语义修改在已持有graph admission时合并进当前pending graph，跨标签锁等待最新document/graph fingerprint持久化与revision确认；m86任务面板旧retry fixture补齐完整模型/fixture身份。safe m86最终`83/83 PASS`（`18ef7c5a…7dce`），治理m38 `16/16 PASS`（`6f888528…21eb`），异常0、4173 unchanged；TypeScript/diff-check通过。正式full仍为已消费失败，继续只跑剩余失败spec最小集合。
+- 正式full失败整改第二批已完成：Image/Audio/Video上传先建立本地operation围栏再await Canvas admission，`uploading`/Canvas pending期间替换与隐藏上传控件禁用，连续上传必须等待前一资产durable adoption；m2-image GPT Image工具fixture补齐configuration/release/generation identity。safe m2-image `13/13`、m2-audio+m2-video `5/5 PASS`，共同source/snapshot`299d2e9a…783ae`，异常0、4173 unchanged；TypeScript/diff-check通过。生产仍为v0.6.56/schema41，Provider POST/费用0。
+- 第二批六份治理文档同步后治理safe m38 `16/16 PASS`，库存1122、source/snapshot`e795be07…9f51f`、失败/重试/跳过/reportErrors0、4173 unchanged。当前严格为`FORMAL_SAFE_FULL_CONSUMED_FAILED_REMEDIATION_BATCH_2_GOVERNANCE_PASS / PRODUCTION_V0_6_56_UNCHANGED`；下一批只跑m2-text/m50/m84最小失败spec。
+- 正式full失败整改第三批已完成：Canvas mutation admission真正开始时进入保存中；TextNode以mutation version和pending fence防止旧异步回调/graph echo覆盖最新rich text。safe m2-text `8/8 PASS`（`eb2d3fe…2493`）；m50补齐精确published fixture identity后`2/2 PASS`，m84-copy-paste无需产品修复为`3/3 PASS`（最终`b5d58e55…77d9`）。异常0、库存1122、4173 unchanged，TypeScript/diff-check通过；当前等待治理m38，生产仍为v0.6.56/schema41，Provider POST/费用0。
+- 第三批治理safe m38 `16/16 PASS`，source/snapshot`f181f990…2d69`、库存1122、失败/重试/跳过/reportErrors0、4173 unchanged。当前严格为`FORMAL_SAFE_FULL_CONSUMED_FAILED_REMEDIATION_BATCH_3_GOVERNANCE_PASS / PRODUCTION_V0_6_56_UNCHANGED`；正式full不重跑，先冻结整改候选并做原上下文只读增量复核。
+- full整改增量终审现为`P0=0/P1=1/P2=3/NO-GO`：运行时代码未见新P0/P1，但95 FAIL与4 NOT_RUN缺逐项映射/闭合证明；另登记adoption整node回滚、upload-start失败遗留uploading两项运行时P2及TASKS标题治理P2。已从原始Session回执恢复95项分布为27个spec，4项NOT_RUN来自m29/m65各2项。当前只允许失败映射、直接修复与最小spec复验；R7、GitHub、版本、生产和真实Provider继续禁止，Provider POST/费用仍为0。
+- 增量终审3项P2现已关闭：Canvas adoption失败执行字段级三方CAS，不覆盖并发位置/选择/尺寸/测量；Image/Audio/Video上传开始态以带checkpoint的durable adoption提交，失败无`uploading`残留且替换串行化；TASKS标题同步。safe m37最终`38/38 PASS`、库存1124、source/snapshot`de0d967a…8b4`、异常0、4173 unchanged，TypeScript通过。95 FAIL/4 NOT_RUN闭合P1仍OPEN，正式full不重跑。
+- 六份治理同步后safe m38 `16/16 PASS`、库存1124、source/snapshot`bce62952…c61e`、异常0、4173 unchanged。当前只进入17个原失败spec最小闭合集合；生产仍为v0.6.56/schema41，Provider POST/费用0。
+- 原始full的27个失败spec、95项FAIL与m29/m65四项NOT_RUN现已全部以最小失败spec闭合；最后m73 `16/16`、m77 `11/11`，合计`27/27 PASS`，source/snapshot`720b0ea6f77968e663b2db426a30fe376184a8aec7f3cbebac8c81d462a9499c`，失败/重试/跳过/reportErrors0、4173 unchanged。唯一正式full原始失败回执保持且永久不重跑；当前先同步治理并跑m38，再冻结整改候选做独立增量终审。R7、GitHub、版本、生产和真实Provider继续禁止，Provider POST/费用0。
+- 六份治理同步后的safe m38为`16/16 PASS`，库存1124、source/snapshot`7246af43338288c1bebc682bbed358f000aa78646d1ffe83b008c40870545b11`、异常0、4173 unchanged。整改产品/测试候选以`720b0ea6…a9499c`冻结；当前仅允许独立只读增量终审，Review GO前R7、GitHub、版本、生产和真实Provider继续禁止。
+- 独立增量终审已覆盖96/96个安全范围改动文件（产品/类型60、测试36）、六份治理文档、全部diff/hunk、关键分支、完整调用链及published模型/Provider分支，结论`P0=0/P1=0/P2=1/GO`。唯一P2为legacy terminal路径未显式携带cache corruption信号；不创建task、不产生第二Provider POST，仍受admission/scope/fresh-match围栏，登记为非阻断。当前进入R7隔离浏览器验收；GitHub、版本、生产和真实Provider仍未执行。
+- R7隔离浏览器组合验收现为`61/61 PASS`：m22 `44/44`覆盖三组真实规模、组间隔离、失败/停止/刷新自动续作和零重复task；m68 `4/4`覆盖任务面板与兄弟组恢复；m30最终`13/13`覆盖Seedance遗留首帧到`multimodal/reference-image`的原子迁移。首轮`60/61`唯一失败是测试断言仍指向旧上传门，产品实际门更严格；只更新断言后最终source/snapshot`5fc0da23…8d35`，异常0、4173 unchanged。该结论为组合浏览器定向通过，不冒充单一monolithic fixture；当前进入R8准备，Provider POST/费用、OSS/生产/真实数据写仍为0。
+- R7治理回写后的safe m38为`16/16 PASS`，库存1124、source/snapshot`26bbf3a8…82c3`、失败/重试/跳过/reportErrors0、4173 unchanged；当前R8前置治理门已闭合，生产仍为v0.6.56/schema41。
+- R8实时版本门确认origin/main仍为`75f6c1aca055b8b82f258a9d38be5c27ce7d6305`，v0.6.57本地/远端tag和GitHub Release均未占用；本地package/lock与final runtime版本门已同步为v0.6.57。该状态仅是本地候选，生产仍为v0.6.56/schema41；版本定向safe m81+m38、GitHub与生产均待执行。
+- v0.6.57版本直接safe m38+m81现为`57/57 PASS`，库存1124、source/snapshot`2e0c5fee…0c3a5`、失败/重试/跳过/reportErrors0、4173 unchanged；TypeScript与diff-check通过。生产仍为v0.6.56/schema41，候选提交前最终治理m38待执行。
+- 候选提交前最终治理safe m38 `16/16 PASS`，库存1124、source/snapshot`d82e3545…b945b`、异常0、4173 unchanged；当前本地v0.6.57候选提交就绪，生产仍为v0.6.56/schema41。
+- v0.6.57功能候选已提交为`46a9abf110e55dd14d9519228c708759224d8c78`，tree`43825c5ef8601e3e55d8bced9ca9c48317f9a4c7`；两份受保护JSON未进入提交。生产仍为v0.6.56/schema41，治理commit、GitHub/CI与生产发布待执行。
+- 功能候选提交后治理safe m38 `16/16 PASS`，source/snapshot`a52ff92c…92527`、库存1124、失败/重试/跳过/reportErrors0、4173 unchanged。当前六份治理文档可提交；生产仍为v0.6.56/schema41。
+- 治理commit`0941fc5`已推送并创建PR #126；候选mergeable，GitHub Quality gates正在运行。生产仍为v0.6.56/schema41，tag/Release与生产切换尚未执行。
+- PR #126 head`d153b61`的Quality gates已通过（run`33269246033`/job`99144636759`）；只需最终纯文档head复核即可合并。生产仍为v0.6.56/schema41。
+- PR #126最终head/main Quality gates通过，merge`b34a6f4`、annotated tag/GitHub Release v0.6.57与精确tag fresh build均已完成；inventory 6035文件/`321256ab…c7581`、dist33。
+- 生产当前`/opt/unboundry/releases/v0.6.57-inc-gen-017-20260830`：冻结备份`v0.6.57-cutover-frozen.bFZKEN`双副本366/366和清单`73ac36da…835d`，恢复standby、原子切换、v0.6.56回滚/v0.6.57前向、33/33静态、schema41/integrity/FK0、数据不变与72秒稳定门通过；service active/enabled、NRestarts0、journal warning0。真实Provider POST/费用当前仍为0/USD0，下一步为预算内最小验收。
+- 生产技术回写治理m38在对齐`CURRENT_V0_6_57_USER_RECHECK`和三份渐进式治理版本标记后最终`16/16 PASS`，source/snapshot`7aac68cc…833af`、库存1124、异常0、4173 unchanged；正式full未重跑。
+- 第三批整改候选已按`f181f990…2d69`冻结，当前仅允许原两名审查上下文只读增量复核；生产保持v0.6.56/schema41，GitHub/版本/生产/真实Provider未执行。
+- 独立终审合并结论为`P0=0/P1=16/P2=8/NO-GO`。工作流12项P1覆盖规范化语义、accepted-only、终态通知、孤立task重建、混合cache损坏、并发回滚、多group调用者、durable restart、手动corruption门、success proof、snapshot role/order/revision和lease损坏导航；模型/Provider4项P1覆盖Mureka歌词边界、relay单结果响应、Seedance重叠模式priority发布门和统一server feature-flag闸门。
+- 16项P1均已实施关闭；与相同局部相邻的8项P2也已处理。最小受影响证据为m22 `43/43`、m30 `11/11`、m102 `22/22`、m27 `20/20`，m68 `4/4`及m5/m16/m17/m38/m40/m57/m79/m88直接依赖无失败；文档同步m38 `16/16 PASS`，最近source/snapshot`d3c277714ed6aa88079ed9181dcbb0fe98c726b1c643ed689181e707e7261952`，库存1105、异常0、4173 unchanged。
+- 候选已重新冻结并等待原两名审查上下文增量复核；该状态不是Review GO。`P0/P1=0/GO`前继续禁止唯一正式full、GitHub、版本、生产或真实Provider。
+- 原两个审查上下文第二轮复核已完成：模型/Provider `P0=0/P1=0/P2=1/GO`，工作流`P0=0/P1=8/P2=2/NO-GO`，合并为`P0=0/P1=8/P2=3/NO-GO`。候选已再次解冻；8项P1与3项P2的精确清单见INC-GEN-017 Checkpoint。
+- 第二轮8项P1与3项P2已整改并完成最小验证：服务端task admission原子冻结workflow binding，cache/lease损坏全入口fail-closed，snapshot双记录崩溃自愈，terminal精确核revision/contract，稳定后重算lock set，availability/Canvas pending graph/兄弟组Continue均收口；已投影standalone成功task不再永久阻塞，blocked group不连带阻断其他组恢复。
+- safe m30 `11/11 PASS`（source/snapshot`76e0a755…e5c5`），最终产品树safe m22 `43/43 PASS`（`1a30fe8d…674a`）；失败/重试/跳过/报告异常0、库存1105、Node`22.23.1`/npm`10.9.8`、4173 unchanged，typecheck与diff-check通过。第三候选产品源码已按`1a30fe8d…674a`冻结，其后仅同步治理文档；等待原两个审查上下文第三轮只读增量全量复核。
+- 原两个审查上下文第三轮只读复核已完成：模型/Provider `P0=0/P1=1/P2=2/NO-GO`，工作流`P0=0/P1=5/P2=2/NO-GO`，合并`P0=0/P1=6/P2=4/NO-GO`。第三候选已解冻并退回整改；阻断项为release UUID/hash混用、checkpoint corruption Continue、standalone revision/contract、workflow binding幂等、relay取消费用围栏、standalone projected recovery；P2为availability健康、lease scope、imageTool幂等和AGENTS历史文字。
+- 已证实：工作流准入读取画布级最新checkpoint而不是目标group/run；Seedance模型/模式切换不原子迁移edge role；Grok发布schema比声明式执行合同更宽；Mureka outputCount在UI/adapter和任务/API之间不一致。
+- 最终审计已关闭六项P1并冻结：checkpoint只作缓存、snapshot变化自动新run、共享语义/Canvas命令/Provider adapter三层隔离、Grok只保留文字+单首帧、Mureka固定单结果、通知去重以及当前模型先显式注册/shadow再关闭未来兜底。
+- 已冻结目标：工作流按group/run隔离并自动恢复；模型/模式/角色真原子规范化；所有published模型的schema合法组合必须唯一编译到精确adapter；未来模型缺合同默认不可发布；普通用户不接触外部平台且恢复过程不堆红错。
+- 第三轮6项P1与同局部4项P2现已全部关闭；风险定向m22/m40/m100/m102/m5/m38/m27/m30/m12/m81/m86/m88全绿，治理同步后m38 `16/16 PASS`，末次治理safe source/snapshot`9c142661398981539539e7108431cfe12cd87bd1df6bcc4221be4834c5fba6de`。库存1105、异常0、4173 unchanged，typecheck与diff-check通过。第四候选已冻结，仅等待原两个审查上下文只读复核；当前状态严格为`R6_THIRD_REMEDIATION_TARGETED_PASS / FOURTH_CANDIDATE_FROZEN_REVIEW_PENDING / PRODUCTION_V0_6_56_UNCHANGED`。
+- 第四候选指纹`f1a8a0c6…61c67`终审合并为`P0=0/P1=7/P2=4/NO-GO`并已解冻；开放项为standalone/unknown/workflow terminal完整identity、navigation/delete/exact-key corruption、TTS submittable ownership及四项同局部P2。模型审查发生一次只读通配误触受保护R0 JSON后安全停止，无写入或外部操作；整改后须补完其剩余范围。当前严格为`R6_FOURTH_REVIEW_P0_0_P1_7_P2_4_NO_GO / FOURTH_CANDIDATE_UNFROZEN_REMEDIATION / PRODUCTION_V0_6_56_UNCHANGED`。
+- 第四轮7项P1与4项相邻P2已实施关闭；safe m40 `15/15`、m22 `44/44`、m15 `7/7`、m26 `10/10`、m100 `13/13 PASS`，库存1108、异常0、4173 unchanged，最近产品+测试source/snapshot`b62f7f29…4b05d`，typecheck/diff-check通过。治理m38 `16/16 PASS`，source/snapshot`479ce3bb…8c87`；第五候选已冻结。在原两个审查上下文给出第五轮`P0/P1=0/GO`前，正式full、GitHub、版本、生产与真实Provider仍禁止。当前严格为`R6_FOURTH_REMEDIATION_TARGETED_PASS / FIFTH_CANDIDATE_FROZEN_REVIEW_PENDING / PRODUCTION_V0_6_56_UNCHANGED`。
+- 第五候选主线程只读复核发现prefixed malformed checkpoint/lease key被解析器静默忽略，cache/navigation/delete/admission可能fail-open，结论`P0=0/P1=1/NO-GO`；候选已解冻并停止两路审查，等待最小修复与复验。当前严格为`R6_FIFTH_PRIMARY_REVIEW_P0_0_P1_1_NO_GO / FIFTH_CANDIDATE_UNFROZEN_REMEDIATION / PRODUCTION_V0_6_56_UNCHANGED`。
+- prefixed malformed key现统一标记corrupted，lease acquire/claim、checkpoint write、navigation/delete全链fail-closed；safe m22 `44/44 PASS`，source/snapshot`dc8a12a1…84f3`、库存1108、异常0、4173 unchanged，typecheck/diff-check通过。治理m38 `16/16 PASS`、source/snapshot`d1f4201a…faf0`；第六候选已冻结。当前严格为`R6_FIFTH_REMEDIATION_TARGETED_PASS / SIXTH_CANDIDATE_FROZEN_REVIEW_PENDING / PRODUCTION_V0_6_56_UNCHANGED`。
+- 第六候选主线程继续复核发现合法JSON非数组/不完整prefixed key与空value仍可能静默跳过，结论`P0=0/P1=1/NO-GO`；候选已解冻并停止两路审查。当前严格为`R6_SIXTH_PRIMARY_REVIEW_P0_0_P1_1_NO_GO / SIXTH_CANDIDATE_UNFROZEN_REMEDIATION / PRODUCTION_V0_6_56_UNCHANGED`。
+- 第六轮同根P1已完整关闭：prefixed key严格校验tuple/scope/runId结构，非数组、不完整tuple与空value全部corrupted并使cache/active/admission/navigation/delete fail-closed。safe m22 `44/44 PASS`、source/snapshot`c3b348fc…618e4`、库存1108、异常0、4173 unchanged，typecheck/diff-check通过。当前严格为`R6_SIXTH_REMEDIATION_TARGETED_PASS / SEVENTH_CANDIDATE_GOVERNANCE_SYNC / PRODUCTION_V0_6_56_UNCHANGED`。
+- 治理同步后的safe m38 `16/16 PASS`、source/snapshot`ab9d6008…d7994`、库存1108、异常0、4173 unchanged；第七候选已冻结，只等待原两个审查上下文完整只读终审。当前严格为`R6_SIXTH_REMEDIATION_TARGETED_PASS / SEVENTH_CANDIDATE_FROZEN_REVIEW_PENDING / PRODUCTION_V0_6_56_UNCHANGED`。
+- 第七候选主线程终审发现`P0=0/P1=1/NO-GO`：损坏cache虽阻断提交，但权威重建后仍不能write/lease/clear，可能永久卡住组/画布。候选已解冻并停止两路全量审查，等待跨标签安全的缓存修复闭环。当前严格为`R6_SEVENTH_PRIMARY_REVIEW_P0_0_P1_1_NO_GO / SEVENTH_CANDIDATE_UNFROZEN_REMEDIATION / PRODUCTION_V0_6_56_UNCHANGED`。
+- 第七轮P1已关闭：服务端task+Canvas binding完整重建后，当前页面只在Canvas admission Web Lock内确认无当前scope held/pending run/claim lock，并以精确raw CAS隔离损坏缓存；原字节保留，变化/同key写删即撤销，隔离期间每次恢复继续查询服务端。无Web Locks query、活动foreign run、CAS漂移或重建不完整均fail-closed且零新POST。typecheck/diff-check通过；m22两次诊断性`43/44`均零新增/零重复POST并安全interrupted，增强失败诊断后的当前树`44/44 PASS`、source/snapshot`72d76cd…d7f26`、库存1108、异常0、4173 unchanged。当前严格为`R6_SEVENTH_REMEDIATION_TARGETED_PASS / EIGHTH_CANDIDATE_GOVERNANCE_SYNC / PRODUCTION_V0_6_56_UNCHANGED`。
+- 六份治理文档同步后的safe m38 `16/16 PASS`、source/snapshot`35ab0be5…3ce6b9`、库存1108、异常0、4173 unchanged；第八候选已冻结并只交原两个审查上下文完整只读终审。当前严格为`R6_SEVENTH_REMEDIATION_TARGETED_PASS / EIGHTH_CANDIDATE_FROZEN_REVIEW_PENDING / PRODUCTION_V0_6_56_UNCHANGED`。
+- 第八候选主线程终审发现`P0=0/P1=1/NO-GO`：corruption恢复的服务端task+Canvas重建发生在Canvas admission锁外，和后续Web Lock/raw CAS隔离之间存在跨标签受理/终态/崩溃TOCTOU；foreign lock/query瞬态失败后自动入口不会再触发，手动入口会重复红错。候选已解冻并停止两路审查。当前严格为`R6_EIGHTH_PRIMARY_REVIEW_P0_0_P1_1_NO_GO / EIGHTH_CANDIDATE_UNFROZEN_REMEDIATION / PRODUCTION_V0_6_56_UNCHANGED`。
+- 第八轮P1已关闭：锁快照、损坏raw快照、服务端task+实时Canvas binding重建和raw CAS现在处于同一个Canvas admission临界区；authority task ID基线由最终lease admission再次核对，任何临界区后新出现的相关task都阻断。自动入口仅在瞬态失败时进行40×250ms有界重试并由跨标签storage/lease事件再唤醒，稳定ref避免普通run被effect依赖变化循环重启；手动/Continue恢复提示中性且去重。
+- 四次诊断性safe m22 `43/44`依次暴露并关闭活动标记滞留、失败summary重复唤醒、effect依赖重启和历史task过度阻断；最终safe m22 `44/44 PASS`，source/snapshot`b5a8405ebfd7891501c7c0fdf3cf1ba376545c84c40e632cdf58512f2455666e`、库存1108、异常0、4173 unchanged，TypeScript/diff-check通过。真实Provider POST=0、费用USD0、生产/OSS/真实数据写0。当前严格为`R6_EIGHTH_REMEDIATION_TARGETED_PASS / NINTH_CANDIDATE_GOVERNANCE_SYNC / PRODUCTION_V0_6_56_UNCHANGED`。
+- 六份治理文档同步后的safe m38 `16/16 PASS`，source/snapshot`38e07c9b2ce7b7b6b7eccc13fa8c2e94f89d46fdd431f260f32f415954af4a9a`、库存1108、异常0、4173 unchanged；随后仅回写证据与冻结状态。第九候选已冻结并只交原两个审查上下文完整只读终审。当前严格为`R6_EIGHTH_REMEDIATION_TARGETED_PASS / NINTH_CANDIDATE_FROZEN_REVIEW_PENDING / PRODUCTION_V0_6_56_UNCHANGED`。
+- 第九候选主线程终审发现`P0=0/P1=1/NO-GO`并已停止两路审查：既有自动扫描结束后，手动/Continue因foreign admission lock失败不会更新effect内的等待状态，锁释放`storage`/lease事件被忽略，系统不能自动继续。候选已解冻，等待实时cache状态唤醒门与最小m22回归；正式full、GitHub、版本、生产和真实Provider继续禁止。当前严格为`R6_NINTH_PRIMARY_REVIEW_P0_0_P1_1_NO_GO / NINTH_CANDIDATE_UNFROZEN_REMEDIATION / PRODUCTION_V0_6_56_UNCHANGED`。
+- 第九轮P1已关闭：`storage`/lease唤醒会实时读取cache，只要处于corrupted/quarantined或原effect仍等待即自动重启authority核对；clean普通run不被重复唤醒。m22首轮`43/44`唯一既有双页竞态在15秒内零新增、零重复POST并安全interrupted，未改代码复跑失败集后`44/44 PASS`，source/snapshot`8e9f759afac303bca5ef2037f1cb0c4e8c480e961410845c8f0cc17087d6e4c1`、库存1108、异常0、4173 unchanged；typecheck/diff-check通过。当前严格为`R6_NINTH_REMEDIATION_TARGETED_PASS / TENTH_CANDIDATE_GOVERNANCE_SYNC / PRODUCTION_V0_6_56_UNCHANGED`。
+- 六份治理文档同步后的safe m38 `16/16 PASS`，source/snapshot`5a4d1c60d16b98afb3c78c74139e45b10cbaa842612f2d462df3a421b7e21758`、库存1108、异常0、4173 unchanged；随后仅回写证据与冻结状态。第十候选已冻结并只交原两个审查上下文完整只读终审。当前严格为`R6_NINTH_REMEDIATION_TARGETED_PASS / TENTH_CANDIDATE_FROZEN_REVIEW_PENDING / PRODUCTION_V0_6_56_UNCHANGED`。
+- 第十候选两路完整只读终审合并为`P0=0/P1=6/P2=4/NO-GO`：GPT Image 2错误转入异步media route；clean/quarantine-empty recovery反复authority访问；checkpoint key与payload scope不一致未损坏；empty/malformed submission intent可重铸幂等键且活动task门不全；standalone用canvas-only scope；snapshot漏configurationRevision。四项P2为通知去重、quarantine-only面板状态、pending nodes连接校验和极端lock-query唤醒。候选已解冻，正式full/GitHub/版本/生产/Provider继续禁止。当前严格为`R6_TENTH_REVIEW_P0_0_P1_6_P2_4_NO_GO / TENTH_CANDIDATE_UNFROZEN_REMEDIATION / PRODUCTION_V0_6_56_UNCHANGED`。
+- 第十轮6项P1及同局部4项P2已关闭：GPT Image 2独立同步sender与单primary结果、稳定空authority终止/有界唤醒、checkpoint scope、损坏intent权威恢复及服务端active-task幂等门、standalone完整scope、snapshot/configurationRevision，以及通知/面板/pending graph。定向最终m102 `23/23`、m40 `17/17`、m5 `27/27`、m57 `16/16`、m22 `44/44 PASS`；库存1112、异常0、4173 unchanged，最近source/snapshot`2d8c36b0…28b7e`，typecheck/diff-check通过。Provider POST/费用、生产/OSS/真实数据写0。当前严格为`R6_TENTH_REMEDIATION_TARGETED_PASS / ELEVENTH_CANDIDATE_GOVERNANCE_SYNC / PRODUCTION_V0_6_56_UNCHANGED`。
+- 治理m38 `16/16 PASS`、source/snapshot`62da784d…23707`、库存1112、异常0、4173 unchanged；随后只回写证据与冻结状态。第十一候选已冻结并交原两个审查上下文完整只读终审。当前严格为`R6_TENTH_REMEDIATION_TARGETED_PASS / ELEVENTH_CANDIDATE_FROZEN_REVIEW_PENDING / PRODUCTION_V0_6_56_UNCHANGED`。
+- 第十一候选两路完整只读终审合并`P0=0/P1=5/P2=6/NO-GO`：configurationRevision完整身份、损坏intent历史active-task收敛、standalone fixture scope、native Web Lock真实释放顺序、OpenRouter同步图片post-boundary unknown五项P1开放；六项P2为legacy revision、面板/批连接/通知证据、bootstrap totality和Doubao Seed治理文字。候选已解冻；正式full/GitHub/版本/生产/Provider继续禁止。当前严格为`R6_ELEVENTH_REVIEW_P0_0_P1_5_P2_6_NO_GO / ELEVENTH_CANDIDATE_UNFROZEN_REMEDIATION / PRODUCTION_V0_6_56_UNCHANGED`。
+- 第十一轮5项P1和6项P2已完成整改：四类任务采用版本化完整generation identity；损坏intent与不完整历史active任务fail-closed；standalone scope、Web Lock真实释放事件、OpenRouter post-boundary durable recovery、legacy revision、quarantine面板、批连接、通知/lock-query、bootstrap totality及Doubao Seed协议文字均收口。定向证据为m22 `44/44`、m81 `41/41`、m88 `36/36`、m100+m31+m68 `28/28`、最终m5+m68+m1 `34/34 PASS`，库存1113、异常0、4173 unchanged，最近source/snapshot`fa23d0c1…4d38fc`，typecheck/diff-check通过；Provider POST/费用、生产/OSS/真实数据写0。当前严格为`R6_ELEVENTH_REMEDIATION_TARGETED_PASS / TWELFTH_CANDIDATE_GOVERNANCE_SYNC / PRODUCTION_V0_6_56_UNCHANGED`。
+- 治理m38两次`15/16`只暴露旧retry fixture缺完整expected identity与workflow binding configuration revision；补齐fixture后最终`16/16 PASS`、source/snapshot`d7f3cc93…e8fb4`、库存1113、异常0、4173 unchanged。随后仅回写治理证据和冻结标记；当前严格为`R6_ELEVENTH_REMEDIATION_TARGETED_PASS / TWELFTH_CANDIDATE_FROZEN_REVIEW_PENDING / PRODUCTION_V0_6_56_UNCHANGED`，等待原两个审查上下文完整只读终审。
+- 第十二候选模型/Provider终审`P0=0/P1=0/P2=0/GO`，工作流终审`P0=0/P1=3/P2=3/NO-GO`，合并NO-GO并解冻。P1为四类standalone恢复缺configuration/fixture、unknown idempotency恢复未核fixture、任务面板/list/get/cancel/abandon及task-ID match未按fixture隔离；P2为stable-empty提示、无locks.query可用性和legacy terminal fixture hardening。当前严格为`R6_TWELFTH_REVIEW_P0_0_P1_3_P2_3_NO_GO / TWELFTH_CANDIDATE_UNFROZEN_REMEDIATION / PRODUCTION_V0_6_56_UNCHANGED`。
+- 第十二轮3项P1/3项P2现已按fixture与完整generation identity关闭；定向浏览器回归另发现并关闭单节点prepare早于跨tab admission、与整组lease互退导致零提交的并发空窗。safe m100 `13/13`、m22 `44/44`、m40 `17/17 PASS`，产品/测试source/snapshot`78c33729…eaa27`；治理同步后m38 `16/16 PASS`、source/snapshot`30bf17b9…92563`，库存1113、异常0、4173 unchanged，typecheck/diff-check通过。第十三候选已冻结等待原两路完整只读终审；生产仍为v0.6.56/schema41，Provider POST/费用、OSS/真实数据写0，正式full/GitHub/版本/生产/真实Provider未运行。
+- 第十三候选两路完整只读终审已合并为`P0=0/P1=5/P2=1/NO-GO`并解冻：Video execute-time transition仍在单节点admission外；accepted map漏configuration revision；服务端reconcile漏fixture scope、reconcile/usage GET缺Provider lease、Grok3恢复回退generic合同、startup/sweep/auto-retry未统一受止损开关约束。两路均未写文件、测试/build、联网、Provider/OSS/生产，两个受保护JSON未读取。当前严格为`R6_THIRTEENTH_REVIEW_P0_0_P1_5_P2_1_NO_GO / THIRTEENTH_CANDIDATE_UNFROZEN_REMEDIATION / PRODUCTION_V0_6_56_UNCHANGED`。
+- 第十三轮上述5项P1/1项P2已完成整改：服务端fixture/lease/frozen-contract/双feature-flag链路闭合；Video transition与fresh request/input/ownership identity在同一单节点Canvas admission内编译并持久化；交互控件与accepted map revision比较同步收口。首轮safe六spec`108/111`仅暴露测试marker与旧fixture问题；只修失败测试后最终树m30 `12/12`、m5 `28/28 PASS`，其他m100/m102/m38/m57首轮绿色证据继续有效。最终source/snapshot`e233a4b4…3a27b`、库存1117、异常0、4173 unchanged，typecheck/diff-check通过。
+- 当前严格为`R6_THIRTEENTH_REMEDIATION_TARGETED_PASS / FOURTEENTH_CANDIDATE_PREPARING / PRODUCTION_V0_6_56_UNCHANGED`：先完成治理m38再冻结和终审；Provider POST/费用、OSS/生产/真实数据写0，唯一正式full、GitHub、版本、生产与真实Provider未运行。
+- 六份治理同步后safe m38 `16/16 PASS`，source/snapshot`ca0efc14…08c4b`、库存1117、异常0、4173 unchanged；其后只回写本条证据与冻结状态。第十四候选产品/测试树`e233a4b4…3a27b`已冻结并等待原两个审查上下文完整只读终审。当前严格为`R6_FOURTEENTH_CANDIDATE_FROZEN_REVIEW_PENDING / PRODUCTION_V0_6_56_UNCHANGED`；Provider POST/费用、OSS/生产/真实数据写0，唯一正式full、GitHub、版本、生产与真实Provider未运行。
+- 第十四候选两路完整只读终审已合并为`P0=0/P1=3/P2=1/NO-GO`并解冻；模型/Provider路全清零，工作流路发现Video旧点击在admission等待后覆盖新Canvas、Text/Audio/Image及Canvas结构mutation绕过foreign group lease、lease-only corruption不进authority quarantine三项P1，以及legacy recovery缺fixture equality一项P2。两路均无写入/测试/build/网络/Provider/OSS/生产，受保护JSON未读取。当前严格为`R6_FOURTEENTH_REVIEW_P0_0_P1_3_P2_1_NO_GO / FOURTEENTH_CANDIDATE_UNFROZEN_REMEDIATION / PRODUCTION_V0_6_56_UNCHANGED`。
+- 第十四轮三项P1与一项P2已关闭：checkpoint/lease corruption统一authority quarantine，legacy recovery严格fixture scope；节点语义修改和Canvas连线/切边/删除/模型迁移统一进入跨标签admission，foreign group lease与本页pending mutation均锁住相关控件；Video在等待前冻结expected-before revision+semantic fingerprint，锁内发现新Canvas即拒绝旧点击。safe m22 `44/44`、m30 `13/13 PASS`，合计`57/57`、库存1118、source/snapshot`f45f84ce…f568`、异常0、4173 unchanged；typecheck/diff-check通过，Provider POST/费用和生产/OSS写0。当前严格为`R6_FOURTEENTH_REMEDIATION_TARGETED_PASS / FIFTEENTH_CANDIDATE_PREPARING / PRODUCTION_V0_6_56_UNCHANGED`，先跑治理m38再冻结终审。
+- 六份治理同步后的safe m38 `16/16 PASS`，source/snapshot`73587e37…9beb`、库存1118、异常0、4173 unchanged；随后只回写治理证据与冻结状态。第十五候选产品/测试树`f45f84ce…f568`已冻结，只允许原两个审查上下文完整只读终审。当前严格为`R6_FOURTEENTH_REMEDIATION_TARGETED_PASS / FIFTEENTH_CANDIDATE_FROZEN_REVIEW_PENDING / PRODUCTION_V0_6_56_UNCHANGED`，不是Review GO。
+- 第十五候选主线程终审发现`P0=0/P1=1/NO-GO`并停止两路审查、解冻候选：Text上游移动/删除/角色动作同步发出node与edge两个admitted mutation，前者立即占用pending node使后者固定拒绝，且intent在准入前已清除，产生node/edge半状态。当前严格为`R6_FIFTEENTH_MAIN_REVIEW_P0_0_P1_1_NO_GO / FIFTEENTH_CANDIDATE_UNFROZEN_REMEDIATION / PRODUCTION_V0_6_56_UNCHANGED`；先完成原子graph mutation与最小回归。
+- 第十五候选主线程P1已关闭：Canvas新增单次admission的原子nodes+edges `mutateGraph`，Text角色/移动/删除只在成功提交后撤销intent，foreign lease拒绝保持图、旧错误和intent。safe m27最终`21/21 PASS`，库存1119、source/snapshot`5e2a807b…09fa`、异常0、4173 unchanged，TypeScript/diff-check通过；Provider POST/费用、生产/OSS/真实数据写仍为0。当前严格为`R6_FIFTEENTH_MAIN_REVIEW_P1_REMEDIATED_TARGETED_PASS / SIXTEENTH_CANDIDATE_PREPARING / PRODUCTION_V0_6_56_UNCHANGED`；先跑治理m38再冻结终审。
+- 六份治理同步后的safe m38 `16/16 PASS`，库存1119、source/snapshot`bb48efe0…24d89`、异常0、4173 unchanged；随后只回写治理证据与冻结状态。第十六候选产品/测试树`5e2a807b…09fa`已冻结，只允许原两个审查上下文完整只读终审。当前严格为`R6_FIFTEENTH_REMEDIATION_TARGETED_PASS / SIXTEENTH_CANDIDATE_FROZEN_REVIEW_PENDING / PRODUCTION_V0_6_56_UNCHANGED`，不是Review GO。
+- 第十六候选主线程终审发现`P0=0/P1=1/NO-GO`并停止两路审查、解冻候选：共享Canvas admission在内存commit后立即释放，Canvas flush/confirmed revision仍在锁外；另一标签可随后按旧服务器图取得group lease并在保存前提交。当前严格为`R6_SIXTEENTH_MAIN_REVIEW_P0_0_P1_1_NO_GO / SIXTEENTH_CANDIDATE_UNFROZEN_REMEDIATION / PRODUCTION_V0_6_56_UNCHANGED`；先关闭durable ordering窗口并补双标签回归。
+- 第十六候选主线程P1已关闭：全部admitted Canvas node/edge/graph/结构mutation在同一Canvas Web Lock内完成内存commit、flush与confirmed revision，保存未完成前另一标签无法取得组准入。m27真实双标签延迟PUT最终`21/21 PASS`，库存1119、source/snapshot`b8e125ae…a8c2`、异常0、4173 unchanged，TypeScript/diff-check通过；Provider POST/费用和生产/OSS写0。当前严格为`R6_SIXTEENTH_MAIN_REVIEW_P1_REMEDIATED_TARGETED_PASS / SEVENTEENTH_CANDIDATE_PREPARING / PRODUCTION_V0_6_56_UNCHANGED`；先跑治理m38再冻结终审。
+- 六份治理同步后safe m38 `16/16 PASS`，库存1119、source/snapshot`e4678fb3…e3416`、异常0、4173 unchanged；随后仅回写治理证据与冻结状态。第十七候选产品/测试树`b8e125ae…a8c2`已冻结，只交原两个审查上下文完整只读终审。当前严格为`R6_SIXTEENTH_REMEDIATION_TARGETED_PASS / SEVENTEENTH_CANDIDATE_FROZEN_REVIEW_PENDING / PRODUCTION_V0_6_56_UNCHANGED`，不是Review GO；Provider POST/费用、生产/OSS/真实数据写仍为0。
+- 第十七候选工作流完整只读终审覆盖76/76个安全范围改动文件、全diff/hunk、关键分支与完整调用链，结论`P0=0/P1=6/P2=3/NO-GO`。候选已解冻，模型/Provider审查按硬门停止；六项P1为POST后fresh-plan、existing-task apply+flush admission、upload adoption、Image tool placeholder/derived mutation、raw edge remove和durable-success intent清理。当前严格为`R6_SEVENTEENTH_WORKFLOW_REVIEW_P0_0_P1_6_P2_3_NO_GO / SEVENTEENTH_CANDIDATE_UNFROZEN_REMEDIATION / PRODUCTION_V0_6_56_UNCHANGED`；正式full、GitHub、版本、生产和真实Provider继续禁止。
+- 第十七候选六项P1现已关闭：single-node fresh-plan、existing-task admitted projection/flush、完成态upload adoption、六类Image tool图命令、raw edge removal与durable-success intent顺序均已收口；Playlist导出同步使用组合graph mutation。safe m100/m27/m1/m37/m30最终`15/15、21/21、7/7、35/35、13/13 PASS`，库存1120、最终产品/测试source/snapshot`c4b9bce6…40933`、异常0、4173 unchanged，TypeScript/diff-check通过。当前严格为`R6_SEVENTEENTH_REMEDIATION_TARGETED_PASS / EIGHTEENTH_CANDIDATE_PREPARING / PRODUCTION_V0_6_56_UNCHANGED`；先完成治理m38再冻结终审。
+- 六份治理同步后safe m38 `16/16 PASS`，库存1120、source/snapshot`cf053737…3dedf`、异常0、4173 unchanged；随后仅回写治理证据与冻结状态。第十八候选产品/测试树`c4b9bce6…40933`当时已冻结并交原两个审查上下文重新完整只读终审；该历史冻结状态已由本区块更靠前的第十八候选`P0=0/P1=4/P2=3/NO-GO`结论取代。Provider POST/费用、生产/OSS/真实数据写仍为0。
+- 权威方案：`spec/INC_GEN_017_WORKFLOW_SELF_HEALING_AND_MODEL_CONTRACT_ISOLATION_PLAN_2026-08-28.md`；矩阵：`spec/INC_GEN_017_ACCEPTANCE_MATRIX_2026-08-28.md`；断点：`spec/INC_GEN_017_CHECKPOINT.md`；一次性Goal：`spec/INC_GEN_017_ONE_SHOT_GOAL_PROMPT_2026-08-28.md`。
+
+## INC-GEN-016 历史区块（2026-08-28）
+
+- v0.6.56已完成PR #124、PR/main Quality、不可移动tag/GitHub Release、精确tag fresh build、冻结备份恢复演练、原子切换、回滚与生产健康门。merge `7c751d59d9241387dc0cb368f4825b8b09a20af7`，tag tree `7a8721a1fd8a1aa74a2ba859fc5220d0f9bea853`。
+- 新工作树`/Users/mymy/Documents/unboundry-inc-gen-016-v0.6.56-2026-08-28`基于最新`origin/main@86e17db78559a83e781e75ba8c1b1eaa0079ac0e`；v0.6.56未占用。R0生产计数tasks954/attempts964/active0/current unknown billing0/media910/publications501/canvases72/models20/published10/templates50/published48。
+- 新修复范围只覆盖真实响应中的数字`data.task_ids[]`与`data.任务ids[]`，要求所有出现路径唯一一致并规范化为canonical task ID；空数组、多值、冲突、非整数、零值、危险值和任意嵌套继续fail-closed。预期红唯一命中，修复后m102 `13/13`，共享adapter/媒体publication/版本准入定向`103/103`通过；独立Review最终`P0=0/P1=0/GO`。
+- 唯一正式safe full在精确merge/tag tree执行一次：发现122 specs/1090 tests，1084通过、3失败、3跳过；失败仅为m1瞬态性能样本、m2陈旧可见前缀和m94隔离npm fixture。未改源码的同源最小失败集m1+m2+m94 `13/13 PASS`，没有第二次full。
+- 生产release为`/opt/unboundry/releases/v0.6.56-inc-gen-016-20260828`；service active/enabled、NRestarts0，schema41/integrity ok/FK0，公网/回环version/live/ready及入口CSS/JS逐字节通过。
+- 目标task严格复用原task并只新增attempt4；唯一Provider POST获数字task ID `118533110`，随后完成并自动投影到原节点。结果MP4为720×1280、10.042秒、4,825,780 bytes、SHA-256 `57119de6ca64b8d6a0e0d0ee85febd6ddb8976d37d8882dfd4cbe547c043e588`，OSS ready/published；浏览器刷新后仍为readyState4且无重试入口。
+- 实际费用USD10，低于新增USD20总预算；tasks954/attempts965/active0/unknown0/media911/publications502/canvases72在结果后60秒不变。v0.6.56版本、发布和本轮唯一Provider提交授权均已消费，禁止再次POST或移动tag。
+- 当前为`PRODUCTION_V0_6_56_TECHNICAL_PASS / REAL_PROVIDER_PASS / USER_RECHECK`。唯一下一动作是用户观看已留在目标生产Canvas中的成片并明确确认或拒绝；只有用户回复可升级`USER_PASS`。回执：`spec/V0_6_56_PRODUCTION_RECEIPT_2026-08-28.json`。
+
+- 用户核心合同：只点击一次生成；系统自动提交、追踪、恢复、保存结果并回到项目。普通用户不登录中转站、不填写任务号、不点击“核对结果”。
+- 生产发布：PR #122和main Quality通过；merge `7bdc40f67697e1e3be735db947d3b26ba5b6c0bd`、注释tag `v0.6.55`及GitHub Release不可移动发布完成。生产release为`/opt/unboundry/releases/v0.6.55-inc-gen-016-20260828`；schema41、integrity ok、FK0、service active/enabled、NRestarts0，rollout为目标allowlist。
+- 真实事件：画布`67bfb2ee-f895-4308-9111-9de188306514`、节点`video-019c3604-bae5-4880-b7ac-8410231df6a0`、task`da761fff-6a65-46fd-84cf-4dc5bddbc985`。历史attempt2经Provider完整当日账本证明未受理且未扣费，收口为`PROVIDER_NOT_ACCEPTED_NO_CHARGE`；只在此后消费唯一替代attempt3。
+- attempt3虽获HTTP 200，但响应只含数字task IDs，当前合同没有提取到字符串task ID；Provider账本随后明确为`已退款`、金额0.924、成功0、退款1且无作品。任务收口为`PROVIDER_REFUNDED`、实际费用0、`provider_task_id/result_asset_id=null`，项目内准确显示“平台未完成本次生成，费用已全额退回；未再次提交”。
+- 本地v0.6.55候选已修复有限响应、脱敏证据、持久自动恢复/CAS/退避/事故队列和普通用户人工核对入口；Provider成功后的正式资产与Canvas投影继续复用既有事务/CAS合同。
+- 当前已发布模型、专用connector、旧任务、旧Canvas、模板和不可变Revision的定向非回归已通过；不批量迁移或猜协议。
+- 独立Review最终`P0=0/P1=0/GO`；唯一正式full执行一次为`1089/1090 PASS`，唯一旧文案断言同步后m22 `41/41 PASS`，没有第二次full。最终生产计数tasks954、attempts964、active0、unknown-billing tasks0、media910、publications501、canvases72，66秒内不变。
+- 版本、发布和真实提交授权均已消费。APR-020退款UI通过，但APR-021～023的真实成功/结果/刷新条件失败；禁止再次Provider POST，不能升级为`REAL_PROVIDER_PASS`或`USER_PASS`。生产回执：`spec/V0_6_55_PRODUCTION_RECEIPT_2026-08-28.json`。
+
+权威方案：`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_PLAN_2026-08-27.md`；矩阵：`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_ACCEPTANCE_MATRIX_2026-08-27.md`；断点：`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_CHECKPOINT.md`；本次Goal授权冻结副本：`spec/INC_GEN_016_AUTOMATIC_PROVIDER_RESULT_RECOVERY_GOAL_PROMPT_2026-08-27.md`。
+
+### 2026-08-27 MODEL-CONTRACT-002 本地候选
+
+- 根因已确认：v0.6.51 用当前 GK 默认合同校验历史 revision 1，使保存时合法的文生视频/单首帧快照在 Provider POST 前被误判为完整性失败。
+- 候选已拆分 `ContractCompiler / CurrentReleasePolicy / RevisionStore / TaskAdmission / TaskExecution` 边界；GK 新合同提升到 version 2 并恢复文字与单首帧，revision 1 保持不可变且可执行，篡改和不支持版本继续 fail-closed。
+- 显式升级路径默认 dry-run，schema41、精确11模型身份、Provider/profile/config/credential脱敏快照及22模板/34节点语义门不满足就阻断；apply 还要求隔离 staging 与恢复证明，使用 active revision CAS 和原子审计。`kwvideo-v2` 不伪造文字基础证据，候选决定为停用归档并保留历史 Canvas。
+- 独立 Review 经四轮关闭全部问题，最终为`P0=0/P1=0/GO`；唯一正式safe full为`122/122 specs、1085/1085 tests PASS`，没有第二次full。v0.6.52真实生产只读dry-run因运行时默认值未被兼容分析器复用而阻断；修复commit `26cdc6d1…6254`后真实只读矩阵22/22模板、34/34节点兼容。v0.6.53冻结副本演练又因无关账户无效Ark凭证被误作共享Provider全局失败而阻断，生产自动恢复且未切换。v0.6.54修复保留credential快照/CAS与账户任务fail-closed，只移除模型级过宽阻断；最终发布结果见下一条。
+- v0.6.54已完成PR #120/main CI、merge `5a6347f5…e0f`、不可移动tag/Release、fresh tag build、候选和生产冻结副本双幂等演练、备份`/var/lib/unboundry-rollbacks/v0.6.54-cutover-frozen.wF6woT`、原子切换、回滚门、33静态文件逐字节与发布后66秒稳定门。生产service active/enabled、NRestarts0、schema41/integrity ok/FK0；GK工作台revision2/EXACT及文字+单首帧可见，kwvideo-v2已从普通列表下架。真实Provider/Generation/OSS/费用0；回执`spec/V0_6_54_PRODUCTION_RECEIPT_2026-08-27.json`，用户状态仍为`USER_RECHECK`。
+
+### 2026-08-27 v0.6.51生产发布收口
+
+- PR #116最终Quality run `33047796300`与main Quality run `33047853632`通过；merge为`0c63938536a3056b1b1f652486d2ea5c72ad283f`，候选/merge/tag tree均为`90861ecd464c4413a1bdfe57abad6672227f679e`。注释tag及GitHub Release `v0.6.51`已发布。
+- 精确tag fresh TypeScript/Vite build在Node `22.23.2` / npm `10.9.8`通过。生产release为`/opt/unboundry/releases/v0.6.51-model-contract-remediation-20260827`；33个dist文件与公网逐字节一致。
+- 权威冻结备份为`/var/lib/unboundry-rollbacks/v0.6.51-cutover-frozen.SYCQq1`，source/restore各366文件且清单SHA-256同为`f9155930cee7c66373865e58a28ef41b740868c75bc4e6e88cbc5cabf5c2c2a5`。旧schema39助手对schema41准确fail-closed，未切换前的证据根`/var/lib/unboundry-rollbacks/v0.6.51-cutover-final.JAMVYH`保留。
+- 原子切换与回滚门通过；service active/enabled、NRestarts0，schema41/integrity ok/FK0，公网/回环健康。tasks933、attempts942、active0、media901、publications492、canvases72、models20、publishedModels11、templates50、publishedTemplates48、audits297、contractEvents56、publishEvents14在发布及浏览器复验中不变。
+- 生产浏览器确认当前13张可见模型卡均有合同工作台入口；grok-video-3八区合同与published revision1可见，四视口无横向溢出，console error/warn 0，未执行写动作。真实Provider请求、Generation提交、OSS写和新费用均为0。
+- 权威回执：`spec/V0_6_51_PRODUCTION_RECEIPT_2026-08-27.json`。唯一下一动作：用户复验剩余27项边界与最终生成媒体质量；明确确认前不得写`USER_PASS`。
+
+## 当前活动项：MODEL-CONTRACT-001 用户复验失败返工
+
+- 真实验收不是通过：27项中15项通过，12项失败或证据不足；历史v0.6.50技术发布不被改写，但不能继续作为当前产品验收结论。
+- P0根因是任务恢复把“没有匹配到远端记录”错误推断为“没有提交”，在Provider可能已经受理/计费时仍开放新付费请求。本地幂等不能替代Provider端幂等。
+- 版本A已修付费确定性、unknown outcome、GPT Image结果解析、Mureka 429和GK模式级证据；版本B已修工作台三态、纯本地校验、草稿CAS、三来源预览、精确官方文档、模式/角色和UI可访问性。
+- 当前工作树`codex/model-contract-user-recheck-fixes`基于`origin/main@cc9df2a`；R0已确认进入时实际为14 tracked + 3 untracked，4个产品候选文件已冻结审查且不会覆盖。
+- 权威入口：`spec/MODEL_CONTRACT_001_USER_RECHECK_REMEDIATION_PLAN_2026-08-27.md`、对应返工矩阵和`spec/MODEL_CONTRACT_001_CHECKPOINT.md`。
+- R0只读复核确认生产v0.6.50/schema41健康、旧4173属于历史工作树、本Goal生产/Provider/OSS写和费用均0；既有`⚡2.182`无法核验人民币换算，真实付费分支保持阻断。
+- 版本A当前源码safe证据为m5 `22/22`、m38 `15/15`、m22 `41/41`，对应m102/m26/m53回执继续有效；schema41、真实Provider/OSS/生产写与新费用均为0。
+- 版本A独立commit为`584e4071c87ae06b980e091df47ce0aaa3e03b4f`/tree`c85bd81a8775ef786bf3146583ae57c2ee00ec53`。
+- 版本B独立commit为`31b3d28489742b69846eac6f3826a5c0289a1f69`/tree`956c1e78d01e216fe2d62f2a33420ed8fd5cd79d`；m102 `7/7`、m20 `1/1 PASS`。候选Computer Use执行账本和阻塞项见返工矩阵；真实Provider/OSS/生产写/新费用均0。
+- 独立Review首轮`P0=0/P1=2/NO-GO`；修复commit `979d448256fb5f58970eafae41f6ea17c0282c1b`关闭模板完整合同影响与未验证Provider task ID认领，m102+m38 `22/22`、末次m102 `7/7 PASS`；同一线程最终`P0=0/P1=0/GO`。
+- 唯一正式full在commit `e56df4efcf607ab7e9c79a94cc8c205b96bbe798`执行一次：122 specs、1077/1079 PASS、其余异常0、immutable release builder 1/5 PASS，source/snapshot `459770bee1b30e933bed13e243cf82bb12f354d4dba76bf2350e4f90af5c76b9`，4173不变。唯二失败为新付费安全语义对应的陈旧断言。
+- 陈旧断言commit `2821f0579d4f455109349232e053502670686c03`已定向收口：m81 `41/41 PASS`，m100 `13/13 PASS`；未运行第二次full。
+- 分支已推送并创建PR #116；代码/证据候选head `7e0fb553d2d14771298c60523eef8f78ffc02c9d`的Quality gates run `33045709604`通过。本节最终文档同步后的精确head仍以PR最新Quality gate为放行依据。
+- v0.6.51已完成merge、注释tag、GitHub Release与生产发布；版本与发布授权均已执行并消费。
+- 用户已明确知悉本轮未做真实付费生成且仍有`USER_RECHECK`，并授权合并PR #116、v0.6.51 tag/Release、生产备份恢复门、原子发布与回滚门。
+- v0.6.51 package/lock/final runtime admission已冻结；Node22 safe m38+m81 `56/56 PASS`，source/snapshot `acc01f54ab42723d9655b6ea01833f80fe3b2e3d01b6a01593ba6f4e62c9cdf6`，4173不变，未重复full。
+- 唯一下一动作：用户复验剩余27项边界与最终生成媒体质量；此前保持`USER_RECHECK`。
+
+v0.6.50由PR #114合并为`d3f5490f524b2d8d212ef7607d85afbf1981ca05` / tree `5b12ebeb97ed7a0e9ed34927fca51de2d0fd38ad`并发布不可移动tag/Release，现网release为`/opt/unboundry/releases/v0.6.50-model-contract-workbench-entry-20260827`。当前隔离工作树为`/Users/mymy/Documents/unboundry-model-contract-001-2026-08-26`，已切到用户复验返工分支并含4个待审相关改动；旧`/Users/mymy/Documents/unboundry/app`不得施工或自动清理。
+
+当前工具链分层：普通项目shell、开发、类型检查和CI默认Node `25.9.0` / npm `11.12.1`；现网v0.6.55运行Node `22.23.2` / npm `10.9.8`。安全测试、源码覆盖和不可变release builder继续以Node `22.23.1` / npm `10.9.8`作为生产兼容复现通道；本版没有迁移生产Node运行时。
+
+v0.6.47发布状态：用户的一次性commit/push/发布与v0.6.47授权已执行并消费。PR #110、PR/main CI、tag/Release、fresh tag build、冻结备份恢复、原子切换、公网/回环/数据/inventory/5资源与60秒稳定门全通过。生产路径`/opt/unboundry/releases/v0.6.47-governance-node25-20260826`，权威备份`/var/lib/unboundry-rollbacks/v0.6.47-cutover-final2-20j2R3`，回执`spec/V0_6_47_PRODUCTION_RECEIPT_2026-08-26.json`。真实Provider/Generation/OSS/费用0，schema41。用户随后明确回复`v0.6.47 验收通过`，当前为`PRODUCTION_V0_6_47_USER_PASS / USER_PASS`；原receipt保留生成时的技术状态，不回写历史JSON。
+
+v0.6.47验证证据：默认Node25.9.0/npm11.12.1下build与architecture通过；生产兼容Node22.23.1/npm10.9.8定向m38+m81+m94共`60/60 PASS`。冻结候选commit `76eaaebaf5271b552a425c3af5885c45a24d606f` / tree `e15fb581…34ef`上的唯一正式safe full为`121/121 specs、1069/1069 tests PASS`，异常0，source/snapshot`8d8f12b8…8f76a`且4173不变；证据文档门`15/15 PASS`，未重复full。
+
+生产回执收口的safe m38先后仅暴露当前治理标记复合后缀与三份渐进式模块化文档仍停在v0.6.46；统一为`CURRENT_V0_6_47_USER_RECHECK`后`15/15 PASS`，source/snapshot`83cf1676…7afe`、4173不变，未重复业务spec或唯一full。
+
+## 当前完成项：MODEL-CONTRACT-001 模型执行合同治理
+
+- 用户已确认并启动最终Goal，权威文档为`spec/MODEL_CONTRACT_001_MODEL_EXECUTION_CONTRACT_GOVERNANCE_PLAN_2026-08-26.md`；实时矩阵和断点见同名前缀文件。
+- 目标是让管理员在平台安全白名单内自行维护模型参数、输入模式、角色/数量、请求字段、任务轮询与结果合同；新协议/鉴权/模态、秘密、SSRF、计费幂等、事务、媒体归属和合规仍必须改代码。
+- R0已覆盖四节点、图片工具、11个生产已发布模型和完整恢复/模板影响；R1-R6已实现合同compiler、不可变revision、原子发布、task快照、独立工作台、GK精确声明式合同和其他专用connector保留。
+- GK-video-3只开放文生视频和“恰好1张首帧图片→`params.images` URL数组”；无正式证据的尾帧、多图或其他参考能力继续阻断。
+- 早期隔离fixture bootstrap 11/11不能替代正式生产恢复副本。v0.6.48正式恢复门在首个审计写入因固定system actor不满足`users`外键而fail-closed；生产bootstrap与指针切换均未发生，旧v0.6.47已恢复active/enabled且NRestarts=0。
+- v0.6.49以auth-owned transaction command确定性选择真实活跃管理员actor，无有效actor继续阻断；m102+m81定向48/48 PASS，正式恢复副本真实CLI首次11/11、二次0新增，同一审查线程复核`P0=0 / P1=0 / GO`。唯一full没有重复；Provider控制面、真实生成、OSS写入和费用均为0。
+- v0.6.49现已完成PR/main CI、merge、tag/Release、fresh tag build、冻结备份恢复、生产bootstrap、原子切换、数据/inventory/五资源与65秒稳定门；当前生产tasks898、attempts906、active0、media885、publications476、canvases68、models20/已发布11、templates50/已发布48，Provider/Generation/OSS/费用0。
+- 生产浏览器曾确认v0.6.49合同状态/revision证据可见，但活动模型缺少工作台入口。v0.6.50只提升既有入口到所有模型共享动作并增加活动模型实页回归；默认Node25 build、Node22 m102+m81 48/48、m38 15/15均通过，未重复本Goal唯一full。独立增量Review唯一文档P1修复后最终`P0=0 / P1=0 / GO`。
+- v0.6.50已完成PR #114、PR/main CI、merge/tag/Release、fresh tag build、冻结备份恢复、原子切换、数据/inventory/六资源逐字节与66秒稳定门。生产最终快照保持tasks898、attempts906、active0、media885、publications476、canvases68、models20/已发布11、templates50/已发布48、audit273不变；service active/enabled、NRestarts0、schema41/integrity ok/FK0。
+- 生产零付费浏览器确认14张模型卡均有工作台入口；grok-video-3活动模型进入八区块工作台，四视口无横向溢出，未点击保存/校验/发布/回滚等写动作。当前为`PRODUCTION_V0_6_50_TECHNICAL_PASS / USER_RECHECK`；权威回执为`spec/V0_6_50_PRODUCTION_RECEIPT_2026-08-27.json`。
+
+## 历史一句话（INC-GEN-025 发布前快照，不是当前状态）
+
+> 以下粗体句只保留当时的原文，不得用于判断当前版本、发布阶段或授权。
+
+**历史时点：生产是 v0.6.69 / schema41；v0.6.69发布与生产技术门已通过。v0.6.70/schema42候选唯一formal safe full原始1149/1154、失败最小子集关闭及增量Review GO已完成，正进入GitHub；尚未发布、迁移或真实点击，当时保持USER_RECHECK。**
+
+## INC-GEN-015 老画布孤立生成态与终态结果自动收口（PRODUCTION_V0_6_46_USER_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON）
+
+- 用户在INC-GEN-014生产复验时发现老问题Canvas仍有节点显示呼吸灯，但实际上没有生成任务在运行。
+- 2026-08-26只读证据：目标Canvas有5个持久`Generating=true`节点（3 Text/2 Image、3个runId），对应5个原任务全部success；Canvas和全局active均为0，因此呼吸灯是持久状态残留，不是后台真实生成。
+- 已确认代码原因：四类节点在存在`workflowExecutionRunId`时让路单节点恢复；group自动恢复要求浏览器可信checkpoint/acceptedTasks；当旧run绑定仍在而checkpoint缺失/不可用时，两条恢复路径都可能不接管。
+- 诚实审计结论：无法证明归属时fail-closed合理，无限显示生成中不合理；当前为P1状态真实性/历史兼容bug，未发现重复付费、Provider重提、结果删除或活动任务。
+- 最终方案要求：全部checkpoint按精确runId优先；只GET原taskId；活动任务保留呼吸灯；完整success复用既有projection；明确终态但语义冲突/结果不完整走服务端原子`terminal-detach`；unknown显示中性blocked且零写、零新提交。
+- 审计6项阻塞已全部进入合同：原子字段集合、窄职责terminal-detach、全checkpoint精确匹配、unknown保护、server-controlled detect/allowlist/on/off灰度、revision安全的字段级回退。
+- LGR-01～12、R0～R6、风险驱动m22/m85/m41验证、独立终审、唯一safe full和生产灰度/回退门已冻结；schema首选保持41。
+- 权威方案：`spec/INC_GEN_015_LEGACY_CANVAS_ORPHAN_GENERATION_STATE_RECONCILIATION_PLAN_2026-08-26.md`。
+- v0.6.45候选已完成完整候选判定、全部checkpoint精确优先、原task只读核对、活动态显示、既有安全投影、终态原子detach、unknown阻断、无锁零写与全局零新单保护；服务端灰度为`off/detect/allowlist/on`，schema保持41。
+- 首轮独立只读终审为`NO-GO / P0=0 / P1=4`：缺少active/unknown有界重读、旧状态可能跨新生成残留、task归属证明不足、OpenAPI required/properties矛盾；该轮未冒充PASS。
+- 4项P1均已关闭，并额外修复无result的success分类异常。修复后同一source/snapshot`e4962ca3…9ca8`下m41 `52/52`、m22 `40/40`、m5 `21/21`、m20 `1/1 PASS`；此前m85 `27/27`、m81 `41/41`仍有效，TypeScript通过，4173不变。
+- 同一审查线程第二轮复核为`NO-GO / P0=0 / P1=2`，指出classifier unknown/无锁/write-disabled未全部有界重读、scope cleanup未abort且policy GET无deadline。现已按1/2/4秒有限重读所有UNKNOWN/不可写分支，cleanup真实abort，policy GET具备10秒deadline。
+- 第二轮修复后同一source/snapshot`8b1e93e1…3896`下m41 `53/53`、m22 `41/41 PASS`，新增无锁有界停止、零写和policy deadline/cleanup abort证据。真实Generation POST、Provider submit/probe、Media/OSS写和费用仍为0；当前没有commit、GitHub或生产变化，目标Canvas尚未写入；唯一下一步是同一独立审查线程最终复核。
+- 同一审查线程第三轮复核为`NO-GO / P0=0 / P1=2`，指出malformed rollout policy缺少运行时拒绝、Canvas admission内deferred分支未安排重读。现已用共享解析器严格校验mode/writeEnabled组合并fail-closed，且匹配lease到期后按同一scope重读原task；签名变化不再清空其他scope预算。
+- 第三轮修复后同一source/snapshot`5f28ce23…11c1`下m41 `54/54`、m22 `41/41 PASS`，新增deferred恢复、malformed policy fail-closed和零Generation证据。真实Generation POST、Provider submit/probe、Media/OSS写和费用仍为0；当前没有commit、GitHub或生产变化，目标Canvas尚未写入；唯一下一步仍是同一独立审查线程最终复核。
+- 同一审查线程第四轮复核为`NO-GO / P0=2 / P1=2`：额外policy字段可穿透、其他活动run lease未阻断旧detach、旧projection快照可覆盖并发用户编辑、terminal-detach未把success proof精确绑定权威resultKey。现已严格policy键集合；在锁外与admission内检查同节点其他活动run；projection事务要求精确observed revision并从新GET安全重试；服务端派生权威resultKey并与请求/节点proof三方匹配。
+- 第四轮修复产品源码快照`172e053d…af1f`下m41 `54/54`、m22 `41/41`、m20 `1/1 PASS`；仅增强m85测试后的当前快照`15a5564e…57b3`下m85 `27/27 PASS`。TypeScript/diff门通过，真实Generation POST、Provider submit/probe、Media/OSS写和费用仍为0；当前没有commit、GitHub或生产变化，目标Canvas尚未写入；唯一下一步仍是同一独立审查线程最终复核。
+- 同一独立线程第五轮逐项确认第四轮4项阻断全部`CLOSED`，最终结论`P0=0 / P1=0 / GO`；未发现新的重复付费、unknown解锁、无Web Locks写、活动任务误清、结果覆盖或跨owner/API语义缺口。审查全程零写、零测试、零网络。
+- 冻结候选commit`f243e8eab0d534f9c7c0518b3898f6cd67857057`/tree`2c8ae98bb1869e7454e5b96849ee9116e4ee04f0`的本Goal唯一safe full已通过：`121/121 specs、1069/1069 tests PASS`，failed/skipped/retries/blocked/reportErrors均0；source/snapshot`df8cdec086998654d8635cedb433737b100fed7389ca1073cbc2d059999a3d68`，4173监听不变。不得重复full；当前唯一下一步是GitHub发布。
+- PR #105、PR/main Quality CI、merge`72e1b60`、tag/Release `v0.6.45`已完成；fresh tag构建、366文件冻结备份/恢复、原子切换、公网/回环健康、schema41、service active+enabled/NRestarts0均通过。
+- detect模式与技术Canvas allowlist实页均为零写；tasks814/attempts822/active0/media849/publications439/canvases67/dataFiles366不变，真实Generation/Provider/Media/OSS/费用0。
+- 用户确认登录提交后，可控Chrome与内置浏览器均以目标owner`zzx`打开目标Canvas；5个候选最终均为静态`UNKNOWN_BLOCKED / 状态待核对`。Chrome与服务端日志确认每节点3次有界projection，共15个Canvas PUT均返回`400 CANVAS_DOCUMENT_INVALID`。
+- 根因为v0.6.45把原始`generationInputKey`误当ASCII短ID：真实指纹为1644字符JSON并含中文；projection限制512且terminal-detach仍为ASCII/2048/16KiB。所有失败都在校验阶段关闭，5个binding与原任务未变；目标Generation POST、Provider、retry、Media/OSS、publication和费用0。其他owner的全局并发变化不归因于本Goal。
+- 本地补丁commit`ff3d139f1aceba1fd02b406bdd0fa5290175ea0e`统一两条路径为opaque非空最多100000字符，其他身份/CAS不放宽，detach body有1MiB硬上限。TypeScript、safe m20 `1/1`、m85 `27/27 PASS`，source/snapshot`3828c8e3…f1c6`，4173不变；没有重复唯一full。
+- 新独立终审首轮`NO-GO / P0=0 / P1=1`发现detach同类缺口；修复后复审`P0=0 / P1=0 / GO`。v0.6.45继续不可移动且不直接覆盖生产。
+- 文档治理m38首轮`14/15`只因生产句式未命中既有正则；修正后`15/15 PASS`，source/snapshot`92b712e5…991e`、4173不变，未重复业务spec或full。
+- 用户已明确授权以v0.6.46继续发布；package/lock/final runtime role同步完成，TypeScript与safe m81 `41/41 PASS`，source/snapshot`c5ba0228…0aec`、4173不变；版本文档m38修正唯一候选标记后`15/15 PASS`，source/snapshot`a0251547…9dc`、4173不变。当前进入GitHub与不可变生产发布流程，不重复唯一full。
+- v0.6.46候选commit`78b5f8a`/tree`80378c4`经PR #107、PR/main Quality CI、merge`c961cee`进入main；annotated tag对象`0ce3278…3e45`与GitHub Release已发布，tag peeled commit与main树精确一致。
+- fresh tag archive在生产固定Node22.23.2/npm10.9.8构建为5978文件、inventory`50c8bd13…88c2`；首次构建只因PATH继承Node18在切换前失败，固定Node22后重跑失败构建，未影响现网。
+- 60秒静默门tasks825/attempts833/active0稳定；冻结source/restore各366文件，manifest`a15b3626…e7cf`一致，schema41/integrity ok/FK0；带自动回退trap的原子切换通过。
+- zzx目标allowlist复验使5个旧候选全部复用原success task/result proof；Generating=false且task/ownership/input/run旧binding清空，页面`状态待核对=0 / 生成中=0`。
+- 目标Canvas revision336/graph52→343/58；39节点/73边、节点ID、连线、viewport、位置和父子关系不变，只有5个候选结果/收口字段变化。target tasks10/attempts10与原5个success task不变。
+- global tasks825/attempts833/active0/media855/publications445/canvases68不变；Generation POST、Provider submit/retry、Media/OSS、publication和新增费用均0。
+- 服务端首次`on`、`off`止写回退、最终`on`均通过；各阶段重载目标Canvas均revision343/graph58不变、Canvas PUT0、Generation/Provider/Media/publication POST0。最终生产mode=`on`。
+- 最终生产回执与治理文档同步后的safe m38 `15/15 PASS`，source/snapshot`750654cb…ce28`、4173不变；未重复业务spec或本Goal唯一full。
+- 用户在生产目标Canvas目视复验后明确回复“通过”；本确认只关闭INC-GEN-015的5个恢复结果，不改写其他独立`USER_RECHECK`条目，也不构成新代码、Provider或发布授权。
+- USER_PASS治理同步仅运行safe m38，`15/15 PASS`且异常0；source/snapshot`f5c542e1…33b8`、4173不变，未重复业务spec或唯一full。
+- 权威生产回执：`spec/V0_6_46_PRODUCTION_RECEIPT_2026-08-26.json`。当前为`PRODUCTION_V0_6_46_USER_PASS / TARGET_RECONCILIATION_PASS / ROLLOUT_ON`，本项已完成且无活动下一动作。
+
+## INC-GEN-014 工作流自动恢复与密钥校验解耦（R0～R5_COMPLETE / R6_TARGETED_PASS）
+
+- 用户报告涉事账号整组生成再次因“画布保存状态异常”出现后续节点未运行，同时「我的连接」的API Key校验被运行任务保护阻止。
+- 当前代码已核实两个独立根因：整组执行仍把Canvas投影失败降级为节点执行失败；`verifyAccountCredential`写回状态时误用密钥替换/删除的paid-work guard。
+- 最终方案已冻结：Generation Task/Attempt/Media/ownership proof作为执行事实，Canvas只作结果投影；使用applicationId幂等、generation-owned字段三方合并和有界自动对账。当前存活run可继续，刷新恢复只GET原任务且新的付费pending POST为0。
+- 密钥校验始终允许，使用credential/profile快照和CAS写回；替换/删除继续受运行任务保护；瞬态失败不得伪装成invalid。
+- 权威方案：`spec/INC_GEN_014_WORKFLOW_SELF_HEALING_AND_CREDENTIAL_VERIFY_DECOUPLING_PLAN_2026-08-25.md`。
+- 文档一致性定向m38首轮`14/15`，修正计划状态与既有生产治理标记混写后`15/15 PASS`；没有运行业务spec或full。
+- 新Goal只读身份核验通过：HEAD/origin/main均为`42bc0ac…fe9295`，生产仍为`v0.6.43/schema41`；`v0.6.44`tag/Release未占用，版本及本Goal发布授权已确认。
+- 实时断点：`spec/INC_GEN_014_WORKFLOW_SELF_HEALING_AND_CREDENTIAL_VERIFY_DECOUPLING_CHECKPOINT.md`；当前真实Provider、Generation、OSS和费用仍为0。
+- R1安全预期红精确完成：m22 `35/37`仅两项冻结失败，证明投影失败仍会降级节点并阻断下游；m73 `14/16`仅两项冻结失败，证明运行任务错误拒绝verify且瞬态错误丢失结构化code。4173监听者不变。
+- R2～R5实现完成：节点结果proof成立即execution success；Canvas写回使用最新owner-scoped文档、generation-owned白名单、applicationId、语义/ownership/input围栏、Web Lock单writer、4次退避与单次超时/abort。冲突时不覆盖、不重提，原结果留在任务历史。
+- verify只做只读远端probe与状态CAS，不再调用paid-work mutation guard；保存/替换/删除保护未放宽。credential revision或profile configuration变化返回CHANGED；只有AUTH写invalid，PERMISSION/网络/限流/5xx/格式为unknown；API返回稳定code。
+- 当前候选安全定向m22 `37/37`、m73 `16/16`、m20 `1/1`，TypeScript/生产构建与源码门通过；source/snapshot`ca81902e…a21b`、4173不变，真实Provider/Generation/OSS/费用仍为0。
+- package/lock与final runtime role已同步为v0.6.44，schema保持41；safe m81 `41/41 PASS`，source/snapshot`66a14287…0158f`、4173不变。
+- 首轮独立只读终审发现`2 P0 + 2 P1`，现已全部关闭：投影写入新增服务端事务内目标语义CAS；terminal success不再回退失效旧plan；无Web Locks浏览器零投影写fail-closed；accepted-task人工继续统一经过persist/projection边界。
+- 修复后最小受影响safe为m22 `37/37`、m85 `26/26`、m20 `1/1 PASS`；只用动态loopback、临时数据与fake边界，4173和真实Provider/Generation/OSS/费用均不变。当前等待同一独立审查线程复核，不冒充最终P0/P1=0或safe full。
+- 第二轮独立复核确认首轮4项关闭，另发现`1 P1`：projection exhausted后人工继续可能因success proof跳过节点并误清checkpoint。现已用持久`projectionPendingNodeIds`和逐节点settled receipt关闭；人工/自动继续只GET accepted原task并重建projection，m22最小复验`37/37 PASS`。当前仍等待最终独立复核。
+- 第三轮复核另发现`1 P1`活性缺口：pending recover后direct Canvas persist成功未形成receipt。普通DAG与accepted-only现均把`projectionState=applied`转换成逐节点receipt并与queue receipt统一结算，m22 `37/37 PASS`、generation POST 0；仍等待最终独立复核。
+- 同一独立只读终审线程最终复核为`P0=0 / P1=0 / GO`，未发现新增重复付费、结果覆盖、credential隔离或API语义问题；审查全程零写、零测试、零网络。
+- 文档治理m38首轮产品`14/15`只因生产句式未匹配既有正则，修正文案后最小复验`15/15 PASS`；source/snapshot`6428b45b…6414`，未重复业务spec。
+- account/canvas/application三重scope和投影队列异常收口后，最小复验m22 `37/37 PASS`；功能候选source/snapshot`2c889063…3042`，4173不变。
+- 首轮正式full只发现m20 OpenAPI枚举快照未包含新投影冲突码，产品其余`1060/1061`全部通过；补齐该契约后定向m20 `1/1 PASS`。修正后clean-record safe full在commit`626d209`/tree`f55860b`完成`121/121 specs、1061/1061 tests PASS`，failed/skipped/retries/blocked/reportErrors均0，source/snapshot`c5f8dc61…bd07`、4173 unchanged。真实Provider/Generation/OSS/probe/费用仍为0。
+- PR #103、PR/main Quality CI、merge`3ff3df4`、不可移动tag/GitHub Release v0.6.44均通过。生产以tag源码fresh build，冻结source/restore各366文件并完成schema41/integrity ok/FK0恢复演练后原子切换；公网/回环v0.6.44、live/ready active、service active+enabled/NRestarts0、inventory与静态资源全部通过。
+- 切换前后tasks814、attempts822、active0、media849、publications439、canvases67、dataFiles366不变；probe、真实生成、Generation POST、OSS写和费用均0，未修改账号业务画布。回执：`spec/V0_6_44_PRODUCTION_RECEIPT_2026-08-26.json`。当前严格为`PRODUCTION_V0_6_44_TECHNICAL_PASS / USER_RECHECK`，不是USER_PASS。
+- 生产回执落档后只运行治理定向m38；两轮`14/15`依次暴露AGENTS与渐进治理文档的旧生产标记，统一为`CURRENT_V0_6_44_USER_RECHECK`后`15/15 PASS`，source/snapshot`18914338…321a6`、4173不变；未重复业务spec或full。
+
+## INC-UI-011 节点排序菜单层级修复（PRODUCTION_V0_6_43_TECHNICAL_PASS / USER_RECHECK）
+
+- 用户截图显示组合框「节点排序」菜单向下展开后被组内节点遮挡；代码核实为组合框`zIndex: 0`、子节点`zIndex: 1`形成的父级层叠上下文问题，单独提高菜单`z-index`不能脱离父级。
+- 已完成最小修复：只将「宫格 / 水平」菜单Portal到`document.body`并使用触发按钮屏幕矩形定位，补齐上下翻转、左右8px收边、`nodrag nopan nowheel`、ARIA、Escape返焦、外部/失选/画布切换/滚轮关闭；没有提高组合框或降低子节点层级，也没有修改排序算法。
+- 密集fixture旧实现预期红为m2 `4/5`，唯一失败是按钮中心非最上层；最终safe m2 `5/5 PASS`，source/snapshot`d729b635…d6d4f`，TypeScript 408/408与生产构建通过，4173不变。
+- `1280×720`、`1440×900`、`1920×1080`三视口的遮挡、翻转、左右收边、Escape、应用console/pageerror和零手势通过；打开/关闭图快照不变、画布`PUT=0`。
+- 用户于2026-08-25在可见本地密集组合框测试页亲自复验，并明确回复「通过 继续」；因此本地验收已收口为`USER_PASS`，但不自动等于生产`USER_PASS`。
+- `USER_PASS`权威文档同步后的定向safe m38为`15/15 PASS`，failed/skipped/retries/blocked/reportErrors均0，4173监听者不变。
+- Provider、Generation、OSS写入、购买/订阅和费用均0；package与生产均为0.6.43、schema保持41。PR #100、PR/main Quality CI、merge`0f7a41d`、不可移动tag/GitHub Release已完成；一次性发布授权已消费。权威方案：`spec/INC_UI_011_GROUP_LAYOUT_MENU_LAYERING_PLAN_2026-08-25.md`。
+- v0.6.43运行时版本同步后的定向safe m81为`41/41 PASS`；唯一safe full在精确commit`92e8325`/tree`89cf2be`完成`121/121 specs、1061/1061 tests PASS`，failed/skipped/retries/blocked/reportErrors均0，TypeScript 408/408、Vite构建、source/snapshot一致、immutable release builder和4173不变门均通过。后续证据文档只做m38定向复验，不重复full。
+- 生产release`/opt/unboundry/releases/v0.6.43-inc-ui-011-menu-layering-20260825`共5973文件，inventory`d9e0886…d0291`；权威冻结source/restore各366文件、双清单`31dd802…caa`，schema41恢复副本integrity ok/FK0。原子切换后公网/回环v0.6.43、service active+enabled/NRestarts0、数据与8项静态资源门通过。
+- 生产零付费浏览器在技术项目中选中密集组合框后，「宫格/水平」可见，宫格中心`elementFromPoint()`命中自身，菜单z-index 1000，Escape关闭并返焦；canvas revision 233、graph revision 92、updated_at在前后完全不变。当前严格为`PRODUCTION_V0_6_43_TECHNICAL_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / LOCAL_USER_PASS / USER_RECHECK`；回执`spec/V0_6_43_PRODUCTION_RECEIPT_2026-08-25.json`。
+
+## INC-GEN-013 整组刷新恢复与组合框拖动性能治理（PRODUCTION_V0_6_42_TECHNICAL_PASS / USER_RECHECK）
+
+- 权威方案：`spec/INC_GEN_013_GROUP_RECOVERY_AND_GROUP_DRAG_PERFORMANCE_PLAN_2026-08-25.md`
+- 实时断点：`spec/INC_GEN_013_GROUP_RECOVERY_AND_GROUP_DRAG_PERFORMANCE_CHECKPOINT.md`
+- 只读证据显示涉事服务端任务和Provider已成功、结果媒体仍在OSS；截图提示是防止重复付费的安全门，不是服务端生成失败。
+- 自动恢复缺口来自group run checkpoint没有可靠保存已接收任务的完整绑定；后续方案只允许`accepted-tasks-only`查询和回填原任务，generation POST必须为0，pending节点不得自动提交。
+- 拖动卡顿直接落在`GroupNode.tsx`旧自定义拖动旁路：每次pointer move直接`setNodes`并绕过统一交互/持久化门。它不是后续Git提交撤销修复，而是历史旁路和测试覆盖缺口形成的实际体验回归。
+- 方案已冻结向后兼容checkpoint、精确写回围栏、单写入租约、先保存确认再清理，以及组合框优先原生拖动/必要时共享交互端口的止损路径。
+- 本地实现已完成；schema/OpenAPI不变。定向m1`6/6`、m2`5/5`、m3`6/6`、m40`14/14`、m79`3/3`、m22最终`37/37`，build/diff-check通过。
+- rich fixture精确为3组/39节点/73边、zoom15.6%；p95`9.9ms`、max`10.3ms`、long task和dropped frame均0、媒体请求0、最终画布PUT1。
+- 独立终审原始2个P1已关闭：accepted但未绑定的精确任务可进入恢复，外来租约立即abort旧poller；当前无已知P0/P1。
+- 本Goal唯一safe full在功能候选`31f0fcbc…ee4b`原始`1060/1061`；唯一未改动m0筛选计数瞬态失败在相同源码快照定向`23/23 PASS`，未重复full；source/snapshot `3baf4f5d…97e41`、4173 unchanged。
+- PR #98、PR/main Quality CI、merge`2203889`、tag/GitHub Release完成；tag/main tree同为`c6035375…e80a`。
+- 生产release`/opt/unboundry/releases/v0.6.42-group-recovery-drag-performance-20260825`共5971文件，inventory`a48a4ce…9666e`；冻结source/restore各366文件，双清单`19c40c3…d3e28`，standalone rehearsal schema41/integrity ok/FK0。
+- 公网/回环v0.6.42、service active+enabled/NRestarts0、数据和全部构建JS/CSS一致；三视口复杂组拖动、停止、撤销、刷新保持通过，最终位置精确还原，应用console error/warn0。
+- 新验收`GEN-011～012 / CANVAS-020～022`为`PRODUCTION_AUTO_PASS / USER_RECHECK`；tasks/attempts/media/publications无增量，真实Provider/Generation/OSS写入/费用均0。回执`spec/V0_6_42_PRODUCTION_RECEIPT_2026-08-25.json`。
+
+## INC-SEEDANCE-002 AI角色单图合规验证（BRANCH_C / PRODUCTION_V0_6_41_TECHNICAL_PASS / USER_RECHECK）
+
+- 权威方案：`spec/INC_SEEDANCE_002_AI_CHARACTER_SINGLE_IMAGE_COMPLIANCE_PLAN_2026-08-25.md`；实时断点：`spec/INC_SEEDANCE_002_AI_CHARACTER_SINGLE_IMAGE_COMPLIANCE_CHECKPOINT.md`。
+- 正式一手合同只支持Seedance真人私域素材链；第三方审核票据没有正式提交字段，虚拟人像权益额外订阅超预算。Sightengine/Hive公开合同不足以完整证明人物、公众人物、版权IP、未成年人/敏感和隐私边界，因此B、A依次不成立，自动选择C。
+- C分支产品名固定「角色风险预检」：菜单入口直接禁用并标注当前不可用，保留独立的「角色可信素材」入口，不显示蓝勾，不使用「Seedance已验证」「版权已认证」「法律合规」文案；用户附件未发送到任何Provider。
+- schema41新增独立Check/Attempt/Disclosure三表；Port/Application/Store、fake Provider、16态、风险码、API/OpenAPI、ImageToolHost关闭态、刷新读模型和未来可插拔Provider边界已完成。INC-SEEDANCE-001三表、信任状态和历史H5请求未迁移、未重提。
+- Generation已在task-create和provider-submit双重支持正式B快照核验；A风险预检在付费前拒绝，Ark adapter在没有官方翻译合同时拒绝第三方ticket。当前C不会生成ticket、任务或Provider请求。
+- schema41已贯穿备份/恢复/媒体/版本/bridge/release；新增精确schema40→41 dry-run/apply迁移。最终定向：m101 `4/4`、m2 `13/13`、m20 `1/1`、m5 `21/21`、m10 `17/17`、m91 `9/9`、m92 `2/2`、m95 `5/5 PASS`。
+- 独立终审原始`1 P0 + 5 P1`已全部关闭：Generation/Provider/策略身份全绑定，旧真人入口保留，Attempt未知结果不自动重提，审计不随媒体删除，C入口菜单层禁用；无剩余P0/P1。
+- 冻结功能commit `9f4ed1589bb4d8d65619186035a076f572409255`的本Goal唯一safe full为`121/121 specs、1061/1061 tests PASS`，异常0，source/snapshot `07a69e52…a60c2863`，4173 unchanged；后续文档收口不重复full。
+- PR #96、main Quality run `32776214629`、merge `59599df`、tag/GitHub Release `v0.6.41`均完成；tag与main tree同为`2e7f1cd6…b6`。
+- 生产release `/opt/unboundry/releases/v0.6.41-seedance-character-compliance-20260825`共5968文件，inventory `7a2f12dd…e884b3`；冻结备份source/restore各366文件，双清单`5a5b2f9e…adb5a`；schema40→41副本演练与生产迁移、原子切换、公网/回环/service/schema41/数据/inventory/5资源门全部通过。
+- 生产浏览器三视口均显示disabled「角色风险预检（当前不可用）」及enabled「角色可信素材」，刷新恢复一致，console 0；tasks/attempts/合规行增量0。
+- 请求账本：Provider控制面0、真实审核创建0、状态查询0、Generation0、OSS0、订阅/购买0、费用0。当前为`USER_RECHECK`，不能提前写`USER_PASS`；回执`spec/V0_6_41_PRODUCTION_RECEIPT_2026-08-25.json`。
+
+## INC-SEEDANCE-001 Seedance可信素材真实链路恢复（PRODUCTION_V0_6_40_TECHNICAL_PASS / BLOCKED_EXTERNAL_CAPABILITY）
+
+- 权威方案：`spec/INC_SEEDANCE_001_TRUSTED_ASSET_REAL_CHAIN_RECOVERY_PLAN_2026-08-24.md`；实时断点：`spec/INC_SEEDANCE_001_TRUSTED_ASSET_REAL_CHAIN_RECOVERY_CHECKPOINT.md`。
+- 正式合同确认管控面 Base URL 与四个私域素材 Action 使用`ark.cn-beijing.volcengineapi.com`；H5创建另要求必填公网HTTPS `CallbackURL`。
+- v0.6.38实现同时存在控制面主机错误和CallbackURL缺失；v0.6.39已统一URL/Host/V4签名主机并配置`UNBOUNDRY_SEEDANCE_ARK_CALLBACK_URL=https://canvas.mymy.ltd/`，缺失或非法时请求前fail-closed。
+- m42最终`16/16`、m81 `41/41`、m38 `15/15 PASS`。唯一safe full原始`1055/1056`，唯一为m1性能抖动，同源码m1复验`1/1 PASS`，未重复full。
+- tag源码commit`8bc89c0`/tree`4c504919`；PR #90合并`1540d6b`且tree相同，Quality CI成功，GitHub Release已发布。生产release`/opt/unboundry/releases/v0.6.39-seedance-trusted-chain-20260824`，冻结备份`/var/lib/unboundry-rollbacks/v0.6.39-cutover-frozen-OFeGIs` source/restore各366文件且双清单SHA`fcb8791d…8e20`；公网/回环/service/schema40/数据/inventory通过。
+- 新事件唯一`CreateVisualValidateSession`于`2026-08-24T13:54:10Z`返回本地HTTP503，session保存`FAILED/CREATE_FAILED`，没有Provider session ID、H5Link或BytedToken。现有脱敏层丢弃远端HTTP状态、错误码与RequestId，只能确认远端边界快速失败，不能把原因写成ArkFullAccess、参数、签名或格式中的任一项。
+- 官方私域人像指南明确AK需具备对应Project的`ArkFullAccess`；这是下一轮必须人工核对的前提，不是本次已证实根因。账本：H5创建`1/1`，认证查询`0/15`，Asset创建`0/1`，Asset查询`0/33`，总计`1/50`；Generation task/attempt、费用、OSS测试写入均0。
+- v0.6.40候选在既有固定安全错误响应之外，受限保留并持久化Provider HTTP状态、错误码和RequestId；远端Message、Body、AK/SK不进入应用错误或数据库。最终定向m42+m100+m81+m9为4 specs、`71/71 PASS`；唯一safe full原始`1055/1056`，唯一失败为AGENTS治理短语多一个“仍”字，产品1055项均通过，修正后m38 `15/15 PASS`，未重复full。full source/snapshot `ce05428c…c64`；m38 source/snapshot `c62658c6…8c70`；真实Provider、Generation、OSS和费用0。
+- commit`70e3730`、PR #92、Quality CI run`32744976578`、merge`21eb483`、tag与GitHub Release `v0.6.40`均已完成；tag与main tree同为`1defaa5`。
+- fresh release`/opt/unboundry/releases/v0.6.40-seedance-provider-diagnostics-20260824`共5952文件，inventory SHA`1f440381…a4084`；冻结备份`/var/lib/unboundry-rollbacks/v0.6.40-cutover-frozen-OtzczQ`的source/restore各366文件且双清单SHA`f88135d5…b51a`。
+- 生产已原子切换到v0.6.40；公网/回环version、live、ready active/schema40、service active+enabled/NRestarts0、数据库quick_check/FK、切换前后数据与媒体、5项公网资源均通过，新增service warning与NGINX error均0。回执：`spec/V0_6_40_PRODUCTION_RECEIPT_2026-08-24.json`。
+- 用户动作时确认后，Project `default`只为IAM用户`tapnow-ark-catalog-ro-20260803`新增系统策略`ArkFullAccess`，结果1成功、0失败；用户详情明确显示`default(默认项目)`限制，原`TapNowArkCatalogReadOnly`保留。一次误从用户入口加入的无Project限制策略被立即撤销并核验无残留，随后才从正确Project入口提交。
+- 生产对新已就绪图片只执行一次`CreateVisualValidateSession`；本地HTTP503对应远端`HTTP 403 / SubscriptionRequired`，RequestId `202608250008127B4DD9D53F9A85BDEFF9`。session为`FAILED`，无Provider session ID、H5Link或BytedToken。
+- 新账本为H5创建`1/1`、认证查询`0/15`、Asset创建`0/1`、Asset查询`0/33`，总计`1/50`；Generation、费用、OSS测试写入均0。明确的订阅缺失证明Project权限不是根因；本事件不购买、不重试、不进入Asset阶段。
+- 当前`PRODUCTION_V0_6_40_TECHNICAL_PASS / PROJECT_PERMISSION_APPLIED / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / BLOCKED_EXTERNAL_CAPABILITY / USER_RECHECK`。现网仍按配置展示A分支入口，但真实有效能力应按C分支处理；修正能力探测或入口需要新的版本和授权，v0.6.40 tag/release不移动。
+
+## INC-IMGEDIT-006 图片全屏完整适配与Seedance可信素材（PRODUCTION_V0_6_38 / USER_PASS）
+
+- 权威方案为`spec/INC_IMGEDIT_006_FULLSCREEN_FIT_AND_SEEDANCE_TRUSTED_ASSET_PLAN_2026-08-24.md`，实时断点为`spec/INC_IMGEDIT_006_FULLSCREEN_FIT_AND_SEEDANCE_TRUSTED_ASSET_CHECKPOINT.md`，生产回执为`spec/V0_6_38_PRODUCTION_RECEIPT_2026-08-24.json`；v0.6.38发布授权已执行并消费。
+- R2已修复1086×1448、3:4、9:16、16:9、1:1和超宽图在三视口的双轴完整适配；R3移除会冒充远端可信素材的旧本地校验入口。
+- R4～R6新增schema40的owner/profile/account/region/project/source绑定、正式方舟A分支控制adapter、只由服务端构造的`asset://`判别联合、任务快照及提交/Provider边界双重复核；伪造、跨账号、失效和旧快照全部fail-closed。
+- R7新增“角色可信素材”modal、同步预开H5、双击防重、20秒QPM兼容轮询、session ID刷新恢复、Processing到Active服务端推进、A/B/C与失败状态准确文案、inert/Escape/焦点及三视口。最终build和safe m100+m2+m20 `27/27 PASS`，source/snapshot`f22637b7…d2d0d1`，自动化真实Provider/Generation/OSS/费用0。
+- R8只读审查补齐Active绑定主动远端复核与schema40发布链：备份/恢复/媒体完整性、exact-v0.5.1、one-shot迁移、40迁移失败回滚、Linux验证及bridge rollback均已同步。诊断批次原始`35/56`、`45/48`，修正后精确`19/19`、`90/90`、`8/8 PASS`，P0/P1无剩余。
+- 本Goal唯一safe full在`d5c5840`执行120 specs/1055 tests，原始`1053/1055`、退出1；m10漏收schema40迁移错误码、m9旧正则误判Authorization产品语义。精确修正后只复验m10+m9 `18/18 PASS`，source/snapshot`ad6bc903…60dd3`，未重复full；R8按原始结果收口。
+- 治理提交`34893db`后的m38精确复验`15/15 PASS`、source/snapshot`7c05244d…9e8aa`；文档同步不重复业务测试。
+- R9 tag`v0.6.38`→`ff8b80c`/tree`c8e1e19`，PR #87 Quality CI SUCCESS并合并为`1a1756a`，GitHub Release已发布。
+- R10/R11已完成双备份、schema39→40副本演练、旧runtime拒绝不改写、fresh build、原子切换、公网/回环/service/inventory/数据/5资源与三视口浏览器门；冻结备份`v0.6.38-cutover-frozen-hoN2aM`双清单`5ebe6ef5…b7a7`。
+- 生产全屏代表图444×818在1280×720、1440×900、1728×900均四边完整、比例不变且contain；755×1332第二竖图同样通过，console error/warn0。
+- Provider控制面账本为`2/200`：权益只读1、唯一H5创建1，其余0。H5创建返回HTTP503并保存为`FAILED/CREATE_FAILED`，没有H5 URL；因创建预算耗尽且副作用未知未重试，未进入Asset阶段。付费生成、Generation task/attempt增量、费用和OSS写入0。
+- 用户于2026-08-24在生产实页明确回复“通过”，当前状态`PRODUCTION_PUBLISHED_USER_PASS / PRODUCTION_ZERO_PAID_BROWSER_PASS / PROVIDER_PROTOCOL_REAL_FAIL_CLOSED / USER_PASS`。该确认覆盖全屏完整显示与Seedance失败态的真实呈现，不把真实协议失败改写为`PROVIDER_PROTOCOL_REAL_PASS`。
+
+## INC-IMGEDIT-005 图片工具产品质量拒收返工（R9_COMPLETE / USER_RECHECK）
+
+- 用户在前一轮本地纠正后继续指出：图片全屏缺少提示词、模型、尺寸等详情；派生结果使用固定坐标覆盖；Seedance素材校验只有本地规则；擦除、扩图、增强等本地与模型处理方式不透明
+- 只读检查确认图片详情确实只有标题/下载/关闭，视频详情已有完整信息；多个派生use case仍使用`source.x + source.width + 140`；Seedance返回`remoteValidationAvailable:false / local-technical-preflight`；擦除/重绘/扩图为本地mask或准备图加模型生成，保守增强为本地轻滤镜
+- 权威方案为`spec/INC_IMGEDIT_005_IMAGE_TOOL_PRODUCT_REMEDIATION_PLAN_2026-08-24.md`，实时断点为`spec/INC_IMGEDIT_005_IMAGE_TOOL_PRODUCT_REMEDIATION_CHECKPOINT.md`
+- 方案覆盖图片详情、统一空白区放置、有效内容切分、透明Surface、扩图参数真实性、预计金额移除、处理引擎语义、Seedance三层校验及顶部9项/更多8项全review；验收新增`IMGEDIT-029～038`
+- R0～R8本地工程完成；三轮独立审查关闭全部P1/P2，最终`INDEPENDENT_REVIEW_PASS`。最终safe m100+m2 `24/24 PASS`，source/snapshot`015a7329…95c8`。唯一一次safe full原始120 specs / 1053 tests为`1052/1053 PASS`，唯一失败是旧m38治理正则不能表达用户拒收与未定候选版本；精确修正后只复验m38并`15/15 PASS`，未运行第二次full
+- 用户已明确给出`版本号确认：v0.6.37`与`允许发布：v0.6.37 上线`；该一次性授权已完成并消费
+- tag `v0.6.37`解引用到`d28996b`/tree`c710145c`；PR #85合并为`0d65c98`且main tree相同，Quality gates SUCCESS，GitHub Release已发布
+- 生产已原子切换到`/opt/unboundry/releases/v0.6.37-inc-imgedit-005-20260824`；冻结备份`/var/lib/unboundry-rollbacks/v0.6.37-frozen-taKYwu`双清单一致；schema39、主库/Library、数据计数、service、公网/回环、inventory和5资源全部通过
+- 生产零付费浏览器复验完成三视口代表矩阵、全屏详情、有效内容切分、扩图语义、Seedance三层、单一Host/inert、无预计金额和零写网络门；console error/warn0，数据不变
+- 真实Provider/尝试/成功/费用和真实OSS测试写入继续固定为0；旧6次/60 USD与v0.6.37发布授权不得复用。回执：`spec/V0_6_37_PRODUCTION_RECEIPT_2026-08-24.json`
+
+v0.6.34冻结前定向`234/234 PASS`；唯一一次safe full原始`1048/1052`，只修正一个真实图片预检缺陷与三个测试确定性问题后，精确四spec `106/106 PASS`，没有第二次full。GitHub、冻结备份与恢复副本、精确tag源码构建、schema39数据门、原子切换、公网/回环/service/inventory/资源门均已完成。
+
+发布流程自身Provider请求和OSS写入均为0。用户另行确认D13真实Provider技术冒烟最多6次、总预算上限60 USD，并确认剩余5项总额不超过50 USD；v0.6.35六项各一次真实提交成功、无重试，生产tasks/attempts为`728/736`、active0，最终`6/6 / 60 USD`。主体抠图结果另以OSS原始字节确认真实Alpha。
+
+v0.6.34版本号、tag和发布授权均已执行并消费，禁止移动tag或覆盖release。用户于2026-08-24明确确认`v0.6.35`并独立回复“按v0.6.35上线吧”；新授权只覆盖共同生成热修及Goal内剩余D13，不扩大到Mureka、团队/多人协作、真实Agent协议、Storyboard完整编辑、图片打光或其他既有`PARTIAL/PAUSED/BLOCK`项。
+
+## INC-IMGEDIT-004 图片工具交互与 UI 一次性返工（PRODUCTION_V0_6_36_USER_REJECTED / LOCAL_REMEDIATION_NOT_RELEASED）
+
+- 2026-08-24用户抽查后明确拒收：快速切分把透明留白算入比例；大型编辑层整面铺黑灰棋盘格；扩图参数与提示词不透明；UI规范偏离；多个位置展示无用的预计USD；并要求复审顶部工具栏与“更多”内全部功能。
+- 本地纠正已完成：快速切分先按Alpha扫描可见主体边界再分片；普通节点/工具舞台恢复纯灰壳层，棋盘格只保留给真实透明输出；移除全部图片工具用户可见预计USD/CNY；扩图明确展示输入到输出尺寸，并确认范围通过准备图、蒙版和持久参数提交，提示词仅为可见输入框内容；修复“更多”底部Seedance被Creator遮挡、蓝色原生焦点/滑块偏色等额外审查发现。
+- 已逐一浏览器复审顶部9项（裁剪、多角度、重绘、打光暂停态、更多、颜色、素材库、下载、全屏）和更多菜单8项（扩图、擦除、标注、增强、调整像素、抠图、快速切分、Seedance），覆盖1280×720、1440×900、1728×900代表矩阵；生成式按钮全部禁用，Generation/Provider/OSS/费用0。
+- 当前代码树safe m2 `11/11 PASS`，m100同一业务合同改动树`13/13 PASS`；未重复既有full。该证据只证明本地纠正，不代表生产已修复或用户通过。
+
+- 用户在生产实页反馈图片工具“几乎都不正常”且没有对齐项目UI规范；只读复核确认多个工具可叠层、部分面板在视口底部裁切、重绘/擦除/标注与底层Creator碰撞、透明图在编辑器/全屏显示黑底、扩图与紧凑面板布局失衡。顶部400×48工具栏、更多菜单和颜色标记基本符合既有基线，作为回归保护。
+- 根因冻结为：多套独立open状态缺少互斥；多个面板依附节点`NodeToolbar`而不是screen-space Portal；缺少统一modal/popover/surface、焦点、viewport和透明背景合同。
+- R0～R6已完成单一活动状态、Portal `ImageToolHost`、modal inert、焦点返回、共享棋盘格surface、紧凑/大型面板、三目标视口和13张本地浏览器证据；该实现已随v0.6.36发布。
+- 主方案：`spec/INC_IMGEDIT_004_IMAGE_TOOL_UI_REMEDIATION_PLAN_2026-08-24.md`；唯一断点：`spec/INC_IMGEDIT_004_IMAGE_TOOL_UI_REMEDIATION_CHECKPOINT.md`；新Session Goal：`spec/INC_IMGEDIT_004_IMAGE_TOOL_UI_REMEDIATION_GOAL_PROMPT_2026-08-24.md`。
+- R7独立只读审查报告普通透明上传节点surface、标注tooltip、busy焦点、URL-only裁剪空壳和全工具zoom证据五项缺口；产品/测试候选`39cd494`已按最小范围修正。精确候选safe m2 `10/10`、m18 `2/2`、m100 `13/13 PASS`，source/snapshot`8c3cd1a6…f5b98`、4173 listener unchanged，真实Provider/OSS/费用0。
+- 唯一一次safe full在精确`4fd25cc`执行，原始`1050/1052`；两个失败为m24异步目录结果时序和m37在modal inert后使用非法背景编辑前置条件。未重复full；m24在`e2c412e`定向`2/2 PASS`，m37在最终候选`161f417`以真实派生use case直接验证上传后持久化关闭补偿并`35/35 PASS`。当前工程状态`LOCAL_ENGINEERING_COMPLETE / TARGETED_AUTO_PASS / VIEWPORT_MATRIX_PASS / LOCAL_BROWSER_PASS / SAFE_FULL_EXECUTED_WITH_TARGETED_CORRECTION_RECHECKS`，不把原始full改写成全绿。
+- `IMGEDIT-021～028`原R8/R9技术历史继续保留，但用户拒收已覆盖“待确认”结论；本地纠正需新的候选、发布和生产复验后才能重新进入用户验收。
+- v0.6.36版本门与发布授权已经执行并消费。本地纠正没有新版本门或发布授权；INC-IMGEDIT-003的6次/60 USD已全部消费，真实Provider成功、尝试和费用预算继续固定为0。
+- v0.6.36精确版本提交`72f0b0d`已通过safe m38 `15/15`与m81 `41/41`，合计`56/56 PASS`，source/snapshot`a7613c8e…903a765`；最终冻结候选`c2cbd54`又完成治理文档树m38 `15/15 PASS`，source/snapshot`a5e44a88…64d3`。各轮4173 listener unchanged，Provider/OSS/费用0；未重复R7唯一一次full。
+- R8生产：release`/opt/unboundry/releases/v0.6.36-image-tool-ui-remediation-20260824`，inventory SHA`d05c702a…fcd6`；冻结备份`/var/lib/unboundry-rollbacks/v0.6.36-frozen-r8a4f2`的source/restore各366文件且双清单SHA`64e0ed92…143e`。切换前后主库schema39/integrity/FK、Library schema1/integrity/FK和tasks759/attempts767/active0、media800/1436473382、publications390/active0、canvas62、templates50/48、Library2完全一致；公网5资源一致，journal错误0，发布Provider/OSS/费用0。
+- R9生产零付费实页技术检查是历史证据；它没有发现随后被用户抽查指出的产品质量问题，因此不能再作为“只剩用户确认”的结论。当前生产质量状态为`USER_REJECTED`，本地纠正尚未发布。
+
+## INC-IMGEDIT-003 图片工具栏剩余能力单 Goal（D13技术完成，用户质量未通过并转INC-IMGEDIT-004）
+
+- 用户已批准最终V5方案并明确启动Goal；D0～D13技术工作已完成，技术状态`V0_6_35_PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS`。用户质量随后未通过，整体转入`USER_QUALITY_REMEDIATION_REQUIRED`，由INC-IMGEDIT-004继续；历史主方案为`spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_PLAN_2026-08-23.md`。
+- 为防止长任务在新 Session 或上下文压缩后漂移，已建立唯一实时断点 `spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_CHECKPOINT.md` 和可复制 Goal 合同 `spec/INC_IMGEDIT_003_IMAGE_TOOLBAR_FUNCTIONALIZATION_GOAL_PROMPT_2026-08-23.md`。D0～D13 每阶段必须先回写断点、矩阵和 TASKS，再继续下一阶段。
+- 计划范围包含颜色标记、调整像素、快速分割、标注、个人素材库、多角度、遮罩/重绘、扩图、擦除、增强、主体抠图和 Seedance 素材校验；裁剪只回归，打光继续 `PAUSED`。
+- 生产D13冒烟先发现多角度漏传`imageTool`身份，随后重绘暴露六项生成工具共用非法持久输入顺序0；同时确认源节点1K会被模型默认2K覆盖。两次都在Provider前fail-closed，没有task/attempt/Provider和费用。本地热修提交`a411a63`，最终安全定向m100+m2+m27 `43/43 PASS`、外部/Provider请求0。
+- 真实付费技术冒烟最多6次、总预算上限60 USD。六项均一次成功、各10 USD，Provider依次为`113882656 / 113886725 / 113888063 / 113888832 / 113889816 / 113890583`；六项均经Media发布、Canvas节点和来源边挂接、云端保存与刷新恢复验证，主体抠图另确认8-bit RGBA和真实Alpha。该证据只证明技术链路，不等于图片质量通过。最终已用6/6、60 USD，不再允许追加真实Provider请求。
+
+## v0.6.33 图片裁剪准备态体验优化（已发布并获用户确认）
+
+- HTTP/OSS图片打开裁剪时显示320×180紧凑加载卡片，不再先撑开大幅空舞台，也不为视觉占位重复读取原图；只有已在内存中的`blob:`/`data:`预览显示缩略图。
+- 安全同站编辑源、20 MiB、owner scope、校验、取消、Blob URL和派生上传补偿合同均未改变；安全Blob仍是唯一裁剪和导出数据源。
+- 直接受影响m2 `10/10 PASS`；正式full原始`1049/1050`，同源码m22复验`37/37 PASS`。tag、PR、main CI、fresh build、冻结备份、原子切换和生产技术门全部通过。
+- 用户已在生产页面完成复验并明确回复“通过”，本功能收口为`PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`。
+
+## v0.6.32 图片裁剪同站编辑源（已发布并获用户确认）
+
+- 用户随后明确回复“按 v0.6.32 上线吧”，版本号与生产发布授权均已执行并消费。
+- 裁剪编辑器不再直接把可能跨域重定向的素材 URL 画入 Canvas，而是通过 owner-scoped 同站接口读取 local/OSS 原图，校验长度、哈希和 PNG 结构后，以 Blob URL 供预览和导出。
+- 客户端使用可替换 resolver；未来可接 `media.mymy.ltd + CDN/CORS`，当前同站接口继续作为私有素材安全兜底。来源 assetId 在打开裁剪时冻结，来源变化或持久化身份漂移时拒绝落图并补偿清理派生资产。
+- 自动证据：直接相关定向 `89/89 PASS`；唯一一次正式 safe full 为 `1049/1050`，唯一失败是未修改 m22 的既有缩放时序断言，同一源码隔离复验 m22 `37/37 PASS`。原始 full 不改写成全绿。
+- GitHub：功能提交 `ca6bddb`，PR #75 merge `864cd2d`，main Quality gates run `32623969904` 为 `SUCCESS`；注释标签 `v0.6.32` 解引用后指向生产源码 `4cf9d74dec941dea8f10e73bb07de990b668e150`。
+- 生产技术门全部通过，权威回执为 `spec/V0_6_32_PRODUCTION_RECEIPT_2026-08-23.json`。用户随后实际裁剪原先报错的OSS图片并明确反馈成功，本功能收口为`USER_PASS`。
+
+## 图片裁剪准备态体验优化（INC-IMGEDIT-002，已随v0.6.33发布）
+
+- 用户确认当前“大黑框+正在准备图片”是可优化体验，并同意“当前图片视觉占位+半透明遮罩+小型加载动画+准备完成淡入”的方向。
+- 权威方案与施工记录：`spec/INC_IMGEDIT_002_CROP_LOADING_EXPERIENCE_PLAN_2026-08-23.md`；状态`PRODUCTION_PUBLISHED_USER_PASS / USER_PASS / VERSION_V0_6_33`。
+- 实际行为：`blob:`/`data:`内存预览可作为视觉缩略图；HTTP/OSS图片为避免再次请求大图，显示320×180紧凑加载卡片。两者都只作准备反馈，安全Blob仍是唯一裁剪/导出数据源。
+- 改动仅在`ImageNode.tsx`、样式和m2定向测试；服务端、20 MiB、并发、缓存、媒体域名、schema和数据未改。safe m2最终`10/10 PASS`，source/snapshot SHA-256均为`425ff6ab1114589272f792c0cef28fc6171b82b0c6c355e1f6d8de22af8f603c`；本地实页加载/ready状态和空控制台通过。
+- 用户已指定小版本v0.6.33并授权commit、push、PR和发布；该授权已完成并消费，用户线上复验也已通过。
+
+## 2026-08-23 治理与 nginx 加固
+
+- 应用版本、release、schema和生产数据保持 v0.6.31/schema39 不变；本轮没有新应用发布、Provider请求或OSS写入。
+- 生产 nginx 已隐藏详细版本，并对点文件、源码目录、package/tsconfig和robots路径明确返回404；原配置有只读备份。reload后nginx与`unboundry.service`均active、应用`NRestarts=0`，公网root/version/live/ready均200。
+- GitHub已关闭冲突草稿PR #68、删除8条已合并或被取代的远端分支、启用合并后自动删分支和Vulnerability Alerts；main分支保护仍受当前私有仓库套餐限制。
+- 治理候选已补权威版本一致性门、nginx安全合同和轻量CI；PR #72已于2026-08-23 squash merge为`f78e7daccd8fce58c3c30a02bc9f27794129933a`，对应main Quality gates run `32615001671`已`SUCCESS`。没有tag或新应用release。
+- 没有真实功能触发，第三至第七模块化批次继续保持`NO_ACTIVE_NEXT_BATCH`。完整证据见`spec/UNBOUNDRY_GOVERNANCE_NGINX_HARDENING_RECEIPT_2026-08-23.md`。
+
+## 2026-08-23 服务器运维回执收口
+
+- 同日P0安全加固与低风险磁盘清理没有修改Unboundry应用、schema39、生产业务数据、Provider、OSS或release指针；两份证据分别收口于`spec/UNBOUNDRY_SERVER_SECURITY_HARDENING_RECEIPT_2026-08-23.md`和`spec/UNBOUNDRY_SERVER_DISK_CLEANUP_RECEIPT_2026-08-23.md`。
+- 时间线已澄清：安全加固检查点为服务器时间`10:03`，磁盘清理检查点为`10:50`；`76% / 28G available`是清理前状态，后续清理及11:24只读复核均为`61% / 45G available`。
+- 11:24只读复核确认生产仍为v0.6.31/schema39，current release未变；SSH密钥登录、UFW、Fail2ban、loopback服务、备份timer、关键服务和公网健康/敏感路径合同均通过，`NRestarts=0`。复核没有生产写入、服务重启、Provider请求或OSS操作。
+- 本地docs-only候选在离线安装依赖后通过m38定向`15/15`，source snapshot与4173 listener均不变；没有运行safe full。
+- 两份回执已通过docs-only PR #73于2026-08-23 squash merge为`c16139ce3a59092b6ac796ab8953fd3dc243bd27`，对应main Quality gates run `32615533816`已`SUCCESS`。没有tag或应用release；受保护未跟踪JSON继续完全排除。
+
+## VIEW-005 密集画布性能证据已关闭（2026-08-21，仅工程证据）
+
+- 最终被测实现commit `7d436b89e34a77b01b84de4e764d49044ba25fd2`；产品代码、schema和package版本均未修改。
+- 正式安全定向命令`node scripts/run-safe-tests.mjs run --spec m79-canvas-smoothness`退出0，精确98/171/200三档3/3通过；Node `22.23.1`、npm `10.9.8`、生产构建、动态loopback端口和fresh系统临时数据目录。
+- 三档正常zoom=1均只挂载12个可见节点且小于总数；平移后挂载/可见ID集合均改变；fit后zoom=0.15分别挂载并可见98/171/200全部节点。三档long task>=100ms均0，p95分别9.3/9.2/9.3ms，max分别25/25/17.6ms，dropped分别1/1/0。
+- 页面未处理错误、console error、外部请求、generation/Provider/OSS/媒体写请求均为0；每档临时项目finally清理成功，safe runner清理整套临时账号/数据库目录，4173监听者前后不变。
+- 该结果只把矩阵`VIEW-005`从`NOT_RUN`改为`AUTO_PASS`。v0.6.30既有`PRODUCTION_PUBLISHED_USER_PASS / USER_PASS`不变；没有新用户主观验收、版本升级、tag、release、生产访问或发布。完整回执：`spec/VIEW_005_DENSE_CANVAS_PERFORMANCE_RECEIPT_2026-08-21.md`。
+
+## v0.6.30 Provider 结果兼容已发布（2026-08-21）
+
+- 用户上传一直支持PNG/JPEG/WebP/GIF；故障只在Provider结果链。Nano真实成片为JPEG，Suno真实响应为两个不同的完整MP3候选。
+- 非PNG图片经20MiB/4000万像素/私有临时目录/有界ffprobe+ffmpeg合同转成规范PNG；资源闸门在响应读取之前，资源繁忙保持可恢复语义。
+- relay结果接受1至4个同类型输出。所有候选先成为restart-safe published media，整组齐全后才以第一个为primary原子完成task/attempt；不会在主音频成功后静默丢失第二音频。
+- 后续alternate不重复成本或成功事件；任务API返回`resultOutputs`，音频节点提供持久版本选择并同步整组成功证明，上传替换会清除旧候选。
+- 独立subagent review的三个阻断和两个高风险项均已处理，复审无剩余阻断。唯一一次正式safe full在HEAD `a8c9e8f`、source/snapshot `621ac501…e6b`执行：`1035/1037`通过；只按失败项复验，m38 `15/15`、m2+m4 `4/4`通过，未第二次运行full。m4根因是测试夹具伪assetId被持久化成不存在的API路径，不是生产音频下载合同；夹具已纠正。
+- 生产恢复仅限已存在的云腾provider task `112083470`/`112087930`，零新建POST。权威设计：`spec/UNBOUNDRY_PROVIDER_RESULT_COMPATIBILITY_V0_6_30_2026-08-21.md`。
+- tag `v0.6.30` 指向 commit `bfed2f79581935882bb58279c8faf992679f12c1` / tree `9a95f30993fc9f21489d1a8acb2e7347d90845c8`；PR #64 merge `0d71d37c77423f3870e97f1e44b9745fef999cfb`。生产 release `/opt/unboundry/releases/v0.6.30-provider-result-compatibility-20260821`，冻结备份 `/var/lib/unboundry-rollbacks/v0.6.30-frozen-1uQmic`。
+- 生产恢复后 Nano task 和 Suno task 均 success，attempt 仍为原记录且 `created_at` 已恢复；逻辑媒体由716增至719，字节由1186596417增至1196648534，正好对应1张PNG和2条MP3。公网/loopback version/live/ready、schema39、integrity、FK、service、release inventory、公网5资源与实页播放全部通过。
+- 上线后独立review确认无需回滚、无新运行时P0/P1；同时限定这次“临时轮询窗口”是两个已超过deadline历史任务的受控GET-only维护例外，不是普通重启刷新ASYNC-005 deadline的证明。首次启动严格使用原始时间并在发GET前落`RESULT_DELAYED`，维护成功后attempt `created_at`已精确恢复，完整事件号见回执。
+- 完整生产回执：`spec/V0_6_30_PRODUCTION_RECEIPT_2026-08-21.json`。
+
+## v0.6.29 已发布，云腾三次真实验收后部分配置回滚（2026-08-21）
+
+- tag `v0.6.29` 指向 commit `d4ccc360e2645e43005c8bdf9a05ec984d48e655` / tree `a291420309236f2b2bb53653301b2b1f1395dbfd`；PR #60 merge `af8493cdf710dc9f899aa098d725e9d034bdb032`，发布时 main tree、tag tree 和 release archive 一致。
+- 生产 current：`/opt/unboundry/releases/v0.6.29-yunteng-provider-isolation-20260821`；冻结备份：`/var/lib/unboundry-rollbacks/v0.6.29-frozen-6c2fff`，365 文件，双清单 SHA 均为 `cabcb1c0…c0b5`。
+- 发布后终门：service active/enabled、NRestarts0；公网/loopback 0.6.29；schema39、integrity ok、FK0；tasks633、attempts641、active0、模板50/已发布48、逻辑媒体716条/1186596417字节、画布57；5个公网构建资源与 release 逐字节一致，管理页和验收画布控制台 error/warn 均为0。
+- 云腾 profile `06831aee…60fdf` 独立存在并保持 enabled，driver=`multi-protocol-relay`、base URL=`https://api.lk888.ai`；profile key、账号凭据身份和目录凭据均 valid，credential version=1，目录129模型，控制面请求2次。
+- 三条精确模型均只在云腾：Nano `cb2e1041…2db4`、Kling `3919d490…4760`、Suno `65830fc7…5ec1`。真实验收后 Nano/Suno=`disabled`、binding enabled=0；Kling=`published`、binding enabled=1；三者均非默认、未归档，历史task/attempt保留。
+- 三次创建 POST 恰好对应 provider task `112083470`、`112086188`、`112087930`；Provider attempt均只有execution_attempt=1。Nano/Suno一次“核对原任务”只读取既有providerTaskId，没有新增admission或创建POST。Kling产物 `ec4aec38…22d.mp4` 已ready、OSS 3378176字节/5.042秒；Nano/Suno Provider作品已下载到 `/Users/mymy/Documents/unboundry/recovery/yunteng-provider-results-20260821`。
+- 优创对冻结备份逐项哈希一致：profile 1、账号凭据身份3、模型/绑定12/12、任务/attempt 281/288；没有读取、复制、覆盖或回退使用优创 key。完整回执：`spec/V0_6_29_PRODUCTION_RECEIPT_2026-08-21.json`。
+
+## 云腾 Provider 隔离纠正（2026-08-21，v0.6.29 代码已发布）
+
+- 用户明确：优创与云腾是两个老板、两套充值余额、两套 API key 和账单，互相完全不能使用；二者只是都接入天空兼容 API。“天空”是技术兼容层，不是默认计费 Provider。
+- 发布前只读核对：当时存在优创 profile、没有云腾 profile；优创目录快照中碰巧出现三个 Provider 模型 ID，但 `model_profiles` 没有三条精确模型记录。当前三个内部模型记录和绑定均只归属独立云腾 profile；Nano/Suno因结果格式不兼容停用，Kling保持发布。目录出现本身不证明模型归属，最终以profile/model/binding/task/attempt证据为准。
+- 正确数据模型：优创、云腾各自一条 `provider_profiles`；账号凭据继续按 `(account_id, provider_profile_id)` 隔离；相同 Provider model ID 可在两个 profile 下各有独立内部 model ID。三模型本轮明确归属云腾，禁止写入或回退到优创。
+- schema39 保持不变。普通 `/api/models` 已安全返回 `providerName`，节点下拉以“模型名 + 商业Provider + capability”区分同名模型并继续按内部 model ID 选择；管理端明确区分商业平台、技术 driver 与 protocol，并禁止既有模型跨 profile 原地重绑。
+- 凭据 owner 模式不再回退 profile 全局 key；task/attempt/recovery、relay 自动核对和 Generation 结果提交均把 `provider_profile_id` 纳入严格身份核对。一次独立 subagent review 找出的四项（凭据 fallback、恢复上下文串 profile、结果提交缺 profile、模型身份漂移）已全部修复。
+- Node `22.23.1` / npm `10.9.8` 定向有效覆盖：review 后 m12/m56/m57/m73/m88 `78/78 PASS`，TypeScript 退出0；另有 m9/m16/m18/m46 直接覆盖密钥表面、灰阶布局、两字号和多目录UI。全部使用隔离临时数据、动态loopback和fake fetch，真实创建POST为0，4173 listener不变。实现提交：`8f4a2b6 feat(provider): isolate commercial platform identity`。
+- 唯一一次正式safe full在HEAD `0f23b19`、source/snapshot `40da52cc…20a`上执行：`1025/1034`通过，9项旧测试夹具/可访问名称失败，退出1；源码快照和4173 listener不变。按合同只复验失败spec，首轮`30/31`，唯一剩余m43修正后`6/6 PASS`；未第二次运行full。测试兼容提交：`19ec414 test(provider): align isolation fixtures`。
+- 施工方案：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_PLAN_2026-08-21.md`；续接：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_CHECKPOINT.md`；Goal 合同：`spec/UNBOUNDRY_YUNTENG_PROVIDER_ISOLATION_GOAL_PROMPT_2026-08-21.md`。GitHub与代码发布、凭据配置和三次真实调用均已执行；本版本停止在两模型配置fail-closed，不得再次调用、移动tag或进入v0.6.30。
+
+## v0.6.28 已发布（2026-08-21）
+
+- 用户已分别确认版本号`v0.6.28`与“允许发布”；本次授权已完成并消费。tag`v0.6.28`精确指向commit`ee6ce437730cf78ef4488217b778f6b0ef2aaee5`/tree`2811ada65140779d4a5e10cbd8ed6fa54893638b`；PR #58 merge`753d24f8ee6e4facb3c88e876c4a38b456addc75`且main tree一致。
+- 正式safe full执行`1032/1034`：dense-canvas p95 25.3ms超过25ms 0.3ms，m38候选文档精确字符串不符；修正文档后仅复验这两个失败spec并`16/16 PASS`，未重复full。真实Provider/付费/OSS请求为0。
+- 生产current为`/opt/unboundry/releases/v0.6.28-relay-media-models-20260821`；冻结备份`/var/lib/unboundry-rollbacks/v0.6.28-frozen-awqsNE`共365文件，双清单SHA均为`2897b65a20419e38ae940b353c3f57112ab352133054052557a06d63f496c58e`。
+- 生产门：schema39、integrity ok、FK0、tasks630、attempts638、active0、公共模板50/已发布48、媒体355个/284663380字节切换前后不变；service active/enabled、NRestarts0、应用错误0，公网5个构建资源与release逐字节一致。
+- Release第七批只读追踪确认：当前通用发布路径是`RELEASE_RUNBOOK.md`记录的安全runner、精确Git archive、staging fresh build、冻结备份与原子current切换；历史`0.5.2/0.6.0` bridge脚本不是本次v0.6.28发布入口，不做无关治理。
+- 权威回执：`spec/V0_6_28_PRODUCTION_RECEIPT_2026-08-21.json`。用户线上实测前保持`USER_RECHECK`。
+
+## 三媒体模型与Generation结果提交边界（2026-08-21，已随v0.6.28发布）
+
+- v0.6.28 发布时点状态为 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；v0.6.29/30 已补齐独立云腾真实验证、结果兼容、生产与用户验收，这些历史能力继续包含在当前 v0.6.33 中；当前聚合状态以本文顶部 v0.6.33 为准。GenerationResultCommit在同一SQLite事务内提交media publication、Provider attempt、task success与event；MediaLifecycle/MediaRegistry不再查询或更新Generation表，TaskStore与Safety运行时循环已解除。
+- 模型：`gemini-3-pro-image-preview`、`kling-v3-omni-cankao`、`suno-v4.5`均复用`multi-protocol-relay/media-generate`。Nano/Kling只接受按edge order的图片引用（上限14/7），Suno不接受媒体引用；参数映射、`result_type`、PNG/MP4/音频保存均为fail-closed。
+- 异步安全：截止从paid attempt `created_at`计算，Nano/Kling/Suno分别10/75/15分钟，5秒起步且最多10秒；已有Provider task id只查询原任务；提交响应丢失不二次POST；status只在404/405回退；无`refunded:true`不自动付费重试。
+- 自动证据：本地Goal冻结十spec最终有效`148/148`；发布阶段另执行正式full覆盖1034条，两个失败经最小复验`16/16`通过。TypeScript、构建、source coverage、外网门禁与生产技术门均通过。
+- 隔离和授权：自动测试继续使用新临时目录、动态loopback与fake fetch，4173 listener不变。`REAL_PROVIDER_SMOKE_PAUSED`；发布与生产已按本次授权完成，真实Provider/付费生成/OSS写入仍为0。受保护JSON未读、未改、未暂存、未提交。
+- 本地提交：`3144d7a refactor(generation): own media result commits`；第二提交为`feat(generation): add relay media model contracts`。权威方案、矩阵与Checkpoint见`spec/UNBOUNDRY_RELAY_MEDIA_MODELS_INTEGRATION_PLAN_2026-08-21.md`、`spec/UNBOUNDRY_RELAY_MEDIA_MODELS_ACCEPTANCE_MATRIX_2026-08-21.md`、`spec/UNBOUNDRY_RELAY_MEDIA_MODELS_CHECKPOINT.md`。
+
+## 同步文字Provider port（2026-08-21，已随v0.6.28发布）
+
+- v0.6.28 发布时点状态为 `PRODUCTION_PUBLISHED_AUTO_PASS / USER_RECHECK`；该代码持续包含在当前 v0.6.33 生产版本中，不再是待发布工作。同步文字执行已统一经过`TextGenerationProvider`与`TextProviderRegistry`；Generation Task不再按Ark/relay具体文字driver调用adapter。原未使用的媒体形态`GenerationProvider`假抽象已收敛为当前真实port。
+- 安全边界：Provider profile/credential继续由原owner解析和租赁；Task协调器继续拥有task、attempt、幂等、reconcile、lease、结果归属与写回；adapter只返回规范化`text + providerUsageTokens`，不获得数据库、TaskStore、Canvas或MediaLifecycle。
+- 替换性：m33用可注入fake Provider完成一个task，网络fetch为0、provider-boundary attempt恰好1；未知driver/缺少实现时本地失败且fetch仍为0。
+- 自动证据：Node `22.23.1` / npm `10.9.8`下，一次`npx tsc --noEmit`退出0；安全runner定向m33 `8/8`、m39 `3/3`、m44 `8/8`、m53 `23/23`、m57 `14/14`通过，异常0，使用新临时数据和动态loopback端口，4173 listener不变。
+- 证据边界：本地第一批没有运行full；v0.6.28发布阶段已执行正式full覆盖与失败spec最小复验，并完成GitHub/生产技术门。未访问真实Provider或付费生成，OSS写入0，schema仍为39。受保护JSON未读取、修改、格式化、暂存或提交。
+- 权威文件：`spec/UNBOUNDRY_MODULAR_MONOLITH_AUDIT_2026-08-21.md`、`spec/UNBOUNDRY_PROGRESSIVE_MODULARIZATION_PLAN_2026-08-21.md`、`spec/UNBOUNDRY_PROVIDER_PORT_BATCH_ACCEPTANCE_MATRIX_2026-08-21.md`、`spec/UNBOUNDRY_PROGRESSIVE_MODULARIZATION_CHECKPOINT.md`。
+- 后续：第一、第二与发布追踪批均已随v0.6.28收口；用户页面复验前为`USER_RECHECK`。下一次Provider、发布、push/PR、版本/tag、SSH或生产动作仍需新的明确授权。
+
+## v0.6.27 画布执行解耦已发布（2026-08-21）
+
+- 状态：`PRODUCTION_PUBLISHED_USER_PASS`。用户于2026-08-21明确回复「v0.6.27 验收通过，同步更新为 USER PASS。」四类整组执行已从React节点registration迁移到静态headless executor；`workflowRenderRetention.ts`已删除；同画布不相交组可并行，重叠节点/直接输入在付费提交前阻止。
+- 所有权：结果应用必须匹配runId、taskId、ownershipKey、nodeId和kind；checkpoint、lease、lock与摘要按runId隔离且checkpoint写入强制匹配lease runId，一轮不能清除另一轮。手动单节点提交也必须避让同标签活跃组lease；headless executor只放行自己的runId。
+- 自动证据：m22 `37/37`、m38 `15/15`、m40 `14/14`、m41 `51/51`、m44 `8/8`、m68 `4/4`均通过。m22直接覆盖四模态headless preflight/run/recover/apply、多run导航/精确checkpoint清理，以及双run反例：A成功、A失败、A停止时B均继续；A整组和两层子节点真实卸载后，第二层仍提交、完成并落盘。运行中无关节点编辑/移动/连接/删除/复制和视图缩放仍可用。
+- 最终自动回执：HEAD `26525387ff02a34d8de1eae4d74ed51c11529a7a`执行`node scripts/run-safe-tests.mjs full`退出码0，`119/119 specs、1029/1029 tests`，failed/skipped/retries/blocked/reportErrors均0；source/snapshot SHA均为`bef8b0f3c0204a6634dd45753d0700827eb8df6de0a7abb992f144116cf535d6`，4173 listener未变，受保护未跟踪JSON未进入快照。架构终审P0=0/P1=0，测试终审无新的P0/P1实现阻断。
+- 发布身份：注释tag `v0.6.27`精确指向上述tested commit，tree `3735ea655cc9f353b0ccfca1060221cea445ba0e`；PR #55 merge `93f0e46be78d04f7663444c3306f91081051dc9b`，main tree与tag tree一致。生产指针为`/opt/unboundry/releases/v0.6.27-canvas-execution-decoupling-20260821`；冻结备份`/var/lib/unboundry-rollbacks/v0.6.27-frozen-yaet3a`，365文件，双清单SHA均为`fb4efe7f219894c9ff73c9a32c550a1595346024f2c20a69b0365a1f05d95162`。
+- 真实页面：新画布`0f92bbc0-b30a-4c1d-bef2-ecf15216ac01`包含A/B两个不相交文字组；并发轮B后A相差557ms启动，页面同时显示两组运行中，数据库时间窗也证明B2未完成时A2已提交。并发轮4 tasks/4 attempts均attempt 1 success且无重复；连同前置A组控制轮共新增6 tasks/6 attempts，active归零。页面分别显示A组2/2用时6秒、B组2/2用时7秒，刷新后A1_OK/A2_OK/B1_OK/B2_OK仍在原节点，已保存到云端，应用console error/warn为0。
+- 生产门：公网和回环version均`0.6.27`，service active/enabled、NRestarts0，schema39/integrity ok/FK0；发布前590 tasks/598 attempts，真实验证后596/604，模板50/已发布48，所有5个构建资源与release逐字节一致。权威回执：`spec/V0_6_27_PRODUCTION_RECEIPT_2026-08-21.json`。
+- 权威方案、矩阵与施工续接分别见 `spec/UNBOUNDRY_CANVAS_EXECUTION_DECOUPLING_PLAN_2026-08-21.md`、`spec/UNBOUNDRY_CANVAS_EXECUTION_ACCEPTANCE_MATRIX_2026-08-21.md`、`spec/UNBOUNDRY_CANVAS_EXECUTION_CHECKPOINT.md`。
+
+## INC-GEN-012 / v0.6.26 已发布（2026-08-21）
+
+- 状态：`PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK`。用户已确认 v0.6.26 并授权上线与一次真实网站技术实测；授权已执行完毕。权威方案见 `spec/INC_GEN_012_VIEWPORT_INDEPENDENT_GROUP_RUN_2026-08-20.md`，生产回执见 `spec/V0_6_26_PRODUCTION_RECEIPT_2026-08-21.json`。
+- 已修边界：用户看得到组工具栏并点开始后，组内部分节点初始离屏、运行中平移/缩放/调整窗口或把父组拖出视口，都不再因 React Flow 虚拟化卸载 execution registration 而静默漏跑；全画布虚拟化仍保留。
+- 运行中的参与节点、结构及直接外部输入源只读，父组仍可移动；左侧任务面板持续显示进度并可停止后续；刷新后只在 task/ownership/result proof 能严格核对时继续，不能证明时 fail-closed，不盲目重复付费。
+- 跨标签用 Web Lock 持有整轮；没有 Web Locks 的浏览器明确阻止整组付费执行。单节点提交/重试也会核对其他标签页的整组租约。
+- 自动证据：m22/m68/m79 `39/39 PASS`；正式安全全量 `119/119 specs、1025/1025 tests PASS`，失败/重试/跳过均 0，4173 listener 不变。
+- 发布证据：tag `v0.6.26` 精确指向 commit `dc29cc00d5b379e3e8b8cb1746dc6cf85f01c140` / tree `0770cb7c03e335620906d0b3954e510aa30f9bf2`；PR #53 merge `4a675be056aaca4b3d3a3239136857fecbefbb94`，main tree 与 tag tree 一致。生产指针 `/opt/unboundry/current -> /opt/unboundry/releases/v0.6.26-viewport-independent-group-run-20260821`；冻结备份 `/var/lib/unboundry-rollbacks/v0.6.26-frozen-234452`，365 文件，两份清单 SHA 同为 `6b64da90d996446e570a60bc0454ead445defe42df09579787e796e39864b525`。切换前后 schema39/integrity ok/FK0/tasks569/attempts577/templates50/published48/active0 完全一致，公网 5 个构建资源逐字节一致。
+- 真实页面证据：画布 `9dd7c462-cc1e-40e9-90c7-8e0131df490e` 启动“一键上新+自检”后把父组拖出屏幕；任务面板仍从“已完成 5/11、正在处理 4”继续到“成功 11、失败 0、跳过 0、未运行 0”，总用时 3:18。生产正好新增 11 tasks / 11 attempts，全部 attempt 1 success，4 图 + 7 文，active0；页面“已保存到云端”，控制台 0 error/warn。尚缺用户主观复验，不能写 `USER_PASS`。
+
+## v0.6.25 发布与真实验证（2026-08-20，历史时点）
+
+- 本节以下为 v0.6.25 历史记录，不承担当前版本播报；当前生产只以本文顶部v0.6.47状态为准。v0.6.26 的 `PRODUCTION_PUBLISHED_AGENT_REAL_PAGE_PASS / USER_RECHECK` 是该版本独立验收时点，继续作为历史证据保留。v0.6.25 的完整实施记录见 `spec/UNBOUNDRY_GLOBAL_AUDIT_REMEDIATION_PLAN_2026-08-20.md`，生产凭证见 `spec/V0_6_25_PRODUCTION_RECEIPT_2026-08-20.json`。
+- 事二「生成任务一直排队中」已在线闭环：已知任务 `c479826f-a426-4a11-854c-79ecc802bcbc` 从 `queued / attempt 1 / provider_task_id null` 在 v0.6.25 重启后自动接力，平台任务 `111092189` 完成，最终 `success / attempt 2`；没有盲目重复。
+- 事一已查清：2026-08-19 15:23–15:26Z 上游“服装主体标准化”图片成功并产出 11,596,744 字节 PNG；v0.6.23 的 10MB 文字输入预检随后拦下四个下游文字节点，五个后代未运行。不是客户端 DAG 漏发；红字把失败错归因给已经成功的上游图片节点。
+- “2:33 三张主图从未提交”的旧说法已被生产任务表与 nginx 202 提交记录否定：该轮 7 图 + 4 文全部 success。
+- Ark Files 已补齐失败/取消清理、底层 abort、单次与整体 poll deadline、读取前限流、OSS 流式 20MiB 上限、账号隔离 gate、脱敏结构化日志与安全本地读取。事故画布原节点 `text-932053d1…` 真实引用 `11,596,744` 字节 PNG；agent 在页面点一次生成，任务 `6d304853…` attempt 1 success、4289 tokens、结果 1278 字符；日志 upload/poll(1 次)/delete 全 success，页面显示用时 1:06 和“已保存到云端”，浏览器控制台 0 error/warn。
+- Provider 成片保存退避、整组“停止后续”、持久失败摘要、scope 隔离、旧轮次保护、预检双击保护与并行失败映射均已上线。正式安全全量 `119/119 specs、1018/1018 tests PASS`，异常计数 0，最终 v0.6.25 source/snapshot SHA-256 均为 `fa9fa1dbdae1e70dd1c3c308a03e01a68cd11e6280d12682174ae8ba457525b4`；独立子 agent 终审未发现新的 P1/P2。agent 的技术实页通过不等于用户主观 `USER_PASS`。
+
+## 历史线上（v0.6.35 时点，已被v0.6.46取代）
+
+- 地址：https://canvas.mymy.ltd
+- 指针：`/opt/unboundry/current -> /opt/unboundry/releases/v0.6.35-image-toolbar-hotfix-20260824`
+- 源码：注释tag `v0.6.35`解引用为commit `fc99101327efc8fc3687406598169a6ae7dc1272`，tree `cb13fef2e71e41c3ada09ade95619c9362636b36`
+- 标签：`v0.6.35`与`origin/main` tree一致；`origin/main=cc62bfbb155372ba3b1da65c029d9c97b5330ac7`
+- 功能 PR：#81，squash merge `cc62bfbb155372ba3b1da65c029d9c97b5330ac7`
+- 冻结备份：`/var/lib/unboundry-rollbacks/v0.6.35-frozen-ad7b91`，主库、Library sidecar与媒体恢复副本均已纳入清单
+- 上一不可变版：`/opt/unboundry/releases/v0.6.34-image-toolbar-20260823`（以及更早版本）仍保留
+- 当前数据门：schema39、integrity/外键/生产切换门均已通过；六项技术冒烟后tasks728、attempts736、active0，真实Provider预算为`6/6 / 60 USD`。
+- 生产并发配置已恢复推荐值：per_user 20 / image 10 / video 2 / audio 2 / text 10 / RPM 120
+- 正式安全全量：v0.6.35冻结候选唯一一次执行 `1052/1052 PASS`；此前v0.6.34原始full及精确修正复验继续按原始证据保留，不改写
+- 生产技术门和真实Provider技术冒烟已完成；用户随后确认图片工具交互/UI未通过，当前为`PRODUCTION_PUBLISHED_AUTO_PASS / REAL_PROVIDER_TECHNICAL_SMOKE_PASS / USER_QUALITY_REMEDIATION_REQUIRED`。v0.6.35版本号与发布授权已消费，下一工程动作只能由INC-IMGEDIT-004新Goal启动
+
+## 历史发布记录（v0.6.25 及更早时点）
+
+**v0.6.25（生成恢复与整组运行加固）**：旧执行挡住自动重试时，退场后可靠接力；Ark Files 完整清理/abort/限流/gate/结构化日志；保存退避完整；整组“停止后续”和失败摘要/隔离/旧轮次保护上线。正式安全全量 `119/119 specs、1018/1018 tests PASS`。生产旧 queued 任务自动接力成功；原事故节点用 11,596,744 字节 PNG 在真实页面完成一次文字生成，Ark upload/poll/delete 全 success。权威凭证：`spec/V0_6_25_PRODUCTION_RECEIPT_2026-08-20.json`。
+
+**v0.6.24（方舟文字模型大图原图直传 Files API，INC-GEN-011）**：火山方舟文字模型引用 10–20MB PNG 参考图时，不再被 10MB 限制拦下、也不再压缩转 Base64，而是原图直传：上传到方舟临时文件后用 file_id 发给文字模型。上传/轮询/删除全程在配置锁外（避免重演线上锁死）；每个优创连接同时最多 2 个大图上传、排队最长 30 秒；超时写死（上传 60s / 等待就绪 120s / 删除 10s）；上传失败不产生计费记录；取消后独立清理信号删除文件不留孤儿；代码默认关闭，但生产已显式打开（`UNBOUNDRY_ARK_FILES_API=1`，systemd drop-in），关闭时旧路径 100% 不变。v0.6.24 发布时真实方舟 12MB 验证通过；当时尚无用户侧 `ark-files-*` 记录。该缺口已由上方 v0.6.25 的 11MB 真实页面验证补齐。
+
+权威方案：`spec/INC_GEN_011_ARK_FILES_API_2026-08-20.md`。权威凭证：`spec/V0_6_24_PRODUCTION_RECEIPT_2026-08-20.json`。
+
+**v0.6.23（生成稳定性根治修复）**：针对 v0.6.22 上线后仍反复出现的卡住/红字问题，本轮从全局根治：1）优创固定通道的轮询、提交、恢复全部接上配置锁释放边界，发起平台请求即释放配置锁，不再长时间占用；2）保存保险丝改为有界重试（5 次退避：1s/2s/4s/8s/15s），锁忙不再被误判成「平台配置已变化」；3）服务端每 30 秒自动扫描「有平台任务号但本地未收片」的旧任务并自动 resume（只回收、绝不重新付费提交）；4）前端锁忙自动重试、画布保存最长自动等 90 秒、取消用持久化任务号兜底；5）生产并发配置从 500 恢复为推荐值（20/10/2/2/10/120），消除放大器。已随 v0.6.23 上线，2026-08-19 发布，待你打开线上页面复验。
+
+权威凭证：`spec/V0_6_23_PRODUCTION_RECEIPT_2026-08-19.json`。
+
+**v0.6.22（四合一生成稳定性修复，已被 v0.6.23 根治版取代）**：1）同一输入已有平台任务已受理/已出片时禁止重复付费提交，只允许先「核对结果」，避免重复扣费；2）成片保存失败按瞬时/终局分类：瞬时错误继续后台核对/轮询并保持呼吸灯，终局错误按任务原样收口，不再把「还在尝试」误判成红字；3）手动/自动重试共用同一道同输入防重判断；4）切换模型时保留已选比例与画质。已随 v0.6.22 上线，2026-08-19 发布，待你打开线上页面复验。
+
+权威凭证：`spec/V0_6_22_PRODUCTION_RECEIPT_2026-08-19.json`。
+
+## 历史模板数据变更（2026-08-19 时点）
+
+- 新增公共模板「电商服装详情页组图（6张·1:1）」（id `e6b7f8c4-8c7d-4f8e-9d0a-3a1b2c3d4e5f`）：白底图输入 + 精品提示词母版 + 6 个 1:1·2K 出图节点（正面整体、领口/腰头与开口结构、袖口/下摆与收口边缘、细节与辅料、面料肌理、缝线与工艺）；提示词已改为通用服装描述（不写死某一款式），母版节点 contentOnly 不参与生成执行。
+- 走「加模板轻量路径」：不需要版本号、不打标签、不跑全量；初版源码 commit `ad610b6`，PR #42 合并（merge `b18742a9`）；v0.6.22 发布时用 `scripts/apply-public-template-seed.mjs --update-existing --apply` 更新生产库（published 保持 47），schema39、服务 active，公网预览图 200。
+- 规矩已写入 `上线规矩.md`（加模板轻量路径）；`RELEASE_RUNBOOK.md` 适用范围已注明。
+- 状态：`PENDING_USER_RECHECK`（2026-08-19 已灌库，待用户在线上页面确认）。
+
+**v0.6.21（通用保存保险丝）**：平台已经生成成功、但我们这边保存成片时遇到瞬时问题（网络断、下载超时、平台暂时拿不到、资源忙、媒体状态冲突），不再判红，任务继续后台核对/轮询并保持呼吸灯。所有平台/模型共用同一道保险丝：图片（relay/优创 GPT Image）、视频（relay/火山 Seedance 原生）、音频（relay/Mureka）全覆盖；非瞬时错误与坏文件仍原样拦截，不把坏图存进去；重试只重新下载保存，不会重复提交平台生成、不重复扣费。已随 v0.6.21 上线，2026-08-19 你已回复「通过」。
+
+权威凭证：`spec/V0_6_21_PRODUCTION_RECEIPT_2026-08-19.json`。
+
+**v0.6.20（生成稳定性一次性修复，INC-GEN-010）**：生成流程少红字、少手动操作。图片主轮询 5 分钟、视频 8 分钟，主窗结束后后台继续慢速核对；任务号丢失自动从用量记录找回，确认缺失时整个任务只自动补提交一次；平台退款自动确认并重试一次，未确认退款不自动发起新付费；只有明确拒绝/本地问题才红字，超时/没出片走中性提示；结果下载网络/5xx 自动重试 3 次；熔断按账号拆分；画布保存等待放宽到 15 秒、按钮显示「正在保存画布…」。已随 v0.6.20 上线，2026-08-19 你已回复「通过」。
+
+权威方案：`spec/INC_GEN_010_GENERATION_STABILITY_2026-08-19.md`。权威凭证：`spec/V0_6_20_PRODUCTION_RECEIPT_2026-08-19.json`。
+
+**v0.6.19（验收收口）**：记录 v0.6.17/v0.6.18 用户复验通过、版本号升至 0.6.19、运行时放行新版本；无产品功能改动。已随 v0.6.19 上线，2026-08-19 你已回复「通过」。
+
+权威凭证：`spec/V0_6_19_PRODUCTION_RECEIPT_2026-08-19.json`。
+
+**v0.6.19（验收收口）**：记录 v0.6.17/v0.6.18 用户复验通过、版本号升至 0.6.19、运行时放行新版本；无产品功能改动。已随 v0.6.19 上线，待你打开线上页面复验。
+
+权威凭证：`spec/V0_6_19_PRODUCTION_RECEIPT_2026-08-19.json`。
+
+**v0.6.18（UI 对齐）**：管理员后台「优创尺寸映射」面板样式对齐项目暗黑 UI，比例输入支持下拉建议，说明文案改成人话；出图逻辑不变。已随 v0.6.18 上线。2026-08-19 你强制刷新后回复「通过」。
+
+权威凭证：`spec/INC_GEN_009_UI_ALIGN_PRODUCTION_RECEIPT_2026-08-19.json`。
+
+**INC-GEN-008**：选优创专用协议的 2K/4K 时，按优创文档像素发 `size`，不再偷换成 1024×1536。默认已改为 1K（生产配置已改）。旧格子已选 4K 的按真 4K 发。未知组合说人话拦截。「新增参数直发收费口」本轮不做。OpenRouter 出图用户说先算了，不要续。2026-08-19 你确认真 4K 已成功出一张，并回复确认项通过。
+
+**INC-GEN-009**：管理员后台可编辑「画质档 × 比例 → 像素」，只对优创 gpt-image 生效，新格子按管理员填的像素真发；没填回退内置表；非法/未知组合整单拒绝、不发不扣费。已随 v0.6.17 上线。2026-08-19 你回复「通过」。
+
+权威方案：`spec/INC_GEN_008_YOUCHOANG_GPT_IMAGE_SIZE_2026-08-18.md`、`spec/INC_GEN_009_ADMIN_EDITABLE_GPT_IMAGE_SIZE_MAP_2026-08-19.md`。权威凭证：`spec/INC_GEN_008_009_PRODUCTION_RECEIPT_2026-08-19.json`、`spec/INC_GEN_009_UI_ALIGN_PRODUCTION_RECEIPT_2026-08-19.json`。发布授权已消费；下一次发布仍要分别说版本号和「可以上线」。
+
+## 站着的产品合同
+
+1. 用户上传一张图，点整组，流程自己走完，结果自己留下来下载。
+2. 没有证据证明平台已经在出图，就不能写「已向模型提交」，也不能挡住自动再试。
+3. 整组碰到可恢复失败：自己核对；对得上就收回；确认没成片就自动再试 **1 次**；对不上/还在做就停住。
+4. 同一格同一套输入，真等到超时还没对上，不许再点出一张新付费单。
+5. 视频仍是提交 + 轮询。GPT Image 2 是一次 HTTP 出图，没有视频那种任务列表。
+6. DATA-005：跨标签最后保存者胜。不恢复金额/额度/订阅。普通账号五项默认权限不可撤。
+
+## 这一轮已经收口的修复（由近到远）
+
+| 版本 | 编号 | 用户要的结果 | 验收 |
+|---|---|---|---|
+| v0.6.23 | 生成稳定性根治修复 | 释放配置锁、保存有界重试、锁忙不误报、服务端自动恢复旧任务、前端自动兜底、并发恢复推荐值 | **USER RECHECK**（2026-08-19 已发布待复验）；全量 118/994 PASS |
+| v0.6.22 | 四合一生成稳定性修复 | 同输入防重扣费、保存失败瞬时/终局分类、手动/自动重试统一、切换模型保留比例画质 | **USER RECHECK**（2026-08-19 已发布待复验）；全量 118/991 PASS |
+| v0.6.21 | 通用保存保险丝 | 平台成功但本地保存失败不再红字：所有平台/模型共用，瞬时错误继续轮询保持呼吸灯 | **USER PASS**（2026-08-19 回复「通过」）；全量 118/986 PASS |
+| v0.6.20 | INC-GEN-010 | 生成稳定性一次性修复：不红字、保持呼吸灯、自动核对/再试、画布保存提示 | **USER PASS**（2026-08-19 回复「通过」）；全量 118/983 PASS |
+| v0.6.19 | 验收收口发布 | 记录 v0.6.17/18 用户复验通过、版本号收口、运行时放行 | **USER PASS**（2026-08-19 回复「通过」）；全量 118/983 PASS |
+| v0.6.18 | INC-GEN-009 UI 对齐 | 后台尺寸映射面板样式对齐、比例下拉、文案白话 | **USER PASS**（2026-08-19 回复「通过」）；全量 118/983 PASS |
+| v0.6.17 | INC-GEN-009 | 后台自改优创尺寸映射，新格子真发 | **USER PASS**（2026-08-19 回复「通过」）；全量 118/983 PASS |
+| v0.6.17 | INC-GEN-008 | 优创专用协议按文档尺寸出 2K/4K | **USER PASS**（2026-08-19 回复「通过」）；全量 118/983 PASS |
+| v0.6.16 | INC-UI-010 | 管理员打组后可直接发成公共模板 | **USER PASS**（2026-08-18 回复「通过」） |
+| v0.6.15 | INC-GEN-007 | 假提交不再挡住；整组自己核对或再试一次 | **USER PASS**（2026-08-18 回复「通过」） |
+| v0.6.14 | INC-GEN-006 | 过期「画布还在保存」不再挡整组 | **USER PASS**（2026-08-18 回复「全通过」） |
+| v0.6.13 | INC-GEN-005 | Mini 时长/清晰度能改、能保存 | USER PASS |
+| v0.6.12 | INC-GEN-004 | 整组节点跑完先存稳再给下游 | **USER PASS**（2026-08-18 回复「全通过」） |
+| v0.6.11 | INC-UI-009 | 整组下载改走数据盘 | USER PASS |
+| v0.6.10 | INC-UI-008 | 文字全屏改画布遮罩 | USER PASS |
+| v0.6.9 | INC-GEN-003 | 失败后自动配对平台用量 | USER PASS |
+| v0.6.8 | INC-GEN-002 | 同层提交排队，避免互相报保存中 | USER PASS |
+| v0.6.7 | INC-GEN-001 | 生成用时 + 画布核对结果 | USER PASS |
+| v0.6.6 | INC-UI-007 | 组标题、文字平移、模板目录刷新 | USER PASS |
+| v0.6.5 | INC-UI-006 | 缩放时坐标不乱漂 | USER PASS |
+| v0.6.1 | INC-ECOM-007 | 整组按依赖自动往下跑 | USER PASS |
+
+更早的电商模板、封面、真实生成补验、schema37→39、备份/OSS 保留，都已按当时 receipt 收口。不要改那些时点数字。
+
+## 旧项用户验收（2026-08-18 一并收口）
+
+用户明确回复「全通过，这几个全部都通过」。下列已在线上、原先仍标 `USER_RECHECK` 的旧项，现全部收口为 **USER PASS**：
+
+- INC-GEN-006 / v0.6.14：过期「画布还在保存」
+- INC-GEN-004 / v0.6.12：整组存稳
+- INC-UI-005 / v0.6.4：组标题总览层级
+- INC-UI-004 / v0.6.3：节点标题缩放可读
+- INC-UI-003 / v0.6.3：模板 UI 与旧画布会话
+- INC-UI-001 / INC-UI-002 / v0.6.2：设置返回、框选、媒体失败态、长标题
+- INC-VIDEO-001：真实视频结果
+
+这不等于把别的未点头条目自动升级，也不改那些发布当时的时点数字。
+
+## 接着干活时的硬规矩
+
+- 用中文，像跟朋友说话，别拽术语。先给结论。
+- 改文件前先说改什么。删东西必须先问。
+- 测试不准碰 `4173`、`app/data`、`/var/lib/unboundry`、真实媒体/备份。
+- 不准擅自真实付费生成、改生产库、动 OSS。
+- 没分别听到「版本号」和「可以上线」，不准发布、不准 push/tag/PR。一次授权只用一次。
+- 查网页优先用本机 `firecrawl`。
+- 新项目放 `~/Desktop/Projects/<项目名>/`。这个仓库继续在 `/Users/mymy/Documents/unboundry/app`。
+- 用户不懂技术、脾气急。先当产品经理听他要的结果，不要追问一串技术细节。
+
+## 新会话默认动作
+
+1. 先读本文 + `上线规矩.md` + `TASKS.md` 顶部。
+2. 只读核对`pwd`、所有worktree、分支、HEAD、`main = origin/main`、工作树和`package.json`；不得仅凭目录名认定`/Users/mymy/Documents/unboundry/app`是当前仓库。2026-08-26核验时，当前干净main为`12e2fd9b…2795`，旧`/app`不得施工或清理。
+3. 只读核对公网`/api/version`、`/api/health/live`、`/api/health/ready`与最新生产回执；2026-08-26已确认生产v0.6.46/schema41、INC-GEN-015为`USER_PASS`。时间敏感结论必须重新核验，不能只抄本文。
+4. 普通shell默认应为Node `25.9.0` / npm `11.12.1`；Node `22.23.1` / npm `10.9.8`只允许安全测试/源码覆盖/release builder生产兼容通道。生产当前Node `22.23.2` / npm `10.9.8`未经新版本和发布授权不得迁移。
+5. INC-GEN-015已完成且无活动下一动作；v0.6.46一次性发布授权已消费。未获新授权不得commit、push、tag、PR、SSH、发布、改生产或发起真实Provider/OSS/Generation写入。
+6. 云腾三模型只归属云腾Provider；不得借用优创密钥、不得新增计费Provider、不得自动追加真实Provider POST。若生成或工作流再次异常，先只读核对task/profile/attempt/result所有权，再提新方案。
+
+<!-- ARCHIVE_PAYLOAD_END -->

@@ -1,3 +1,5 @@
+> **历史方案入口（2026-09-06）**：本文保留原规划/阶段验收，不作为当前实现清单或施工授权。已发布v0.7.14的实际结构、参数与未决项见 [CURRENT_STATE](UNBOUNDRY_CURRENT_STATE.md)、[生成结构](UNBOUNDRY_GENERATION_ARCHITECTURE.md) 和 [文档索引](PROJECT_DOCUMENTATION_INVENTORY_2026-09-06.tsv)。旧“未接入/未部署/等待发布”不得脱离日期直接当当前待办；独立PARTIAL/PAUSED仍需原范围证据。
+
 # Unboundry 私有复刻「部署到云服务器」详细方案
 
 状态：已上线（2026-08-08 完成阶段 2-4；阶段 5 备份定时已装、首次备份与恢复演练已通过；剩余事项见 §10）

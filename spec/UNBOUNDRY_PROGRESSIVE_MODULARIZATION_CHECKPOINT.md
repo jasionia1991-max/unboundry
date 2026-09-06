@@ -1,6 +1,4 @@
-> 当前治理路由：`CURRENT_V0_7_13_USER_RECHECK`；v0.7.13功能验收通过、性能部分达标，以 `UNBOUNDRY_CURRENT_STATE.md` 和性能唯一断点为准。本文历史模块化计划只在真实新功能触发，不因发布回执重启重构。
-
-> 2026-09-06 当前治理引用：`CURRENT_V0_7_11_USER_RECHECK`，性能本地修复以 `PERFORMANCE_REMEDIATION_CHECKPOINT_2026-09-06.md` 为准。模块化仍只在真实新功能触发，下方版本为历史记录。
+> 当前治理：`CURRENT_V0_7_14_USER_PASS`。本轮只同步文档；只在真实新功能触发时开展模块化。实时静态架构为298应用文件、1039 runtime边、274 type边、88已登记例外，new/stale/invalid均0，无runtime SCC；例外不是零耦合。以下P1～P10及v0.6/v0.7历史数字按原时点保留，不能作为当前图或新施工授权。当前依据 [CURRENT_STATE](UNBOUNDRY_CURRENT_STATE.md) 与 [查阅记录](PROJECT_DOCUMENTATION_AUDIT_2026-09-06.md)。
 
 # Unboundry 渐进式模块化 Checkpoint
 

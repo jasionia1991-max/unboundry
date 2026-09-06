@@ -1,3 +1,5 @@
+> **历史断点路由（2026-09-06）**：本文保留对应事件的当时证据和独立未决项，不承担当前生产身份或执行授权。接手先读 [UNBOUNDRY_CURRENT_STATE.md](UNBOUNDRY_CURRENT_STATE.md) 与 [文档索引](PROJECT_DOCUMENTATION_INVENTORY_2026-09-06.tsv)；不得因本文旧“当前/Goal/允许发布”重启操作。未确认项目不自动升级PASS。
+
 > 2026-09-06 当前本地工作已转入 `spec/PERFORMANCE_REMEDIATION_CHECKPOINT_2026-09-06.md`。下面发布记录是历史事实；本轮仅本地性能修复，不授权线上/付费操作。
 
 # INC-GEN-026 Checkpoint

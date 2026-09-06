@@ -1,3 +1,11 @@
+# 视频节点预览布局：已随v0.7.14验收收口
+
+当前状态：`PRODUCTION_V0_7_14_USER_PASS / CLOSED`。视频裁切补丁与原比例适配一起发布；2026-09-06本地及线上用户均明确通过。最终范围见 [原比例断点](MEDIA_ASPECT_RATIO_LOCAL_CHECKPOINT_2026-09-06.md) 和 [生产回执](V0_7_14_PRODUCTION_RECEIPT_2026-09-06.json)。
+
+没有新的待发布裁切候选；不再请求本地验收或版本确认。回退必须使用0.7.14-compat.1兼容包，旧0.7.13方案已失效。
+
+## 以下为本地修复阶段证据（历史）
+
 # 视频节点预览布局修复唯一断点（2026-09-06）
 
 状态：LOCAL_IMPLEMENTATION_AND_TARGETED_REVIEW_PASS / USER_RECHECK / DEPLOYMENT_PENDING_USER_CONFIRMATION。
@@ -11,4 +19,4 @@
 已审行动方案：/Users/mymy/Documents/unboundry/VIDEO_NODE_PREVIEW_LAYOUT_PLAN_AND_AUDIT_2026-09-06.md。
 日志和合成截图：/Users/mymy/Documents/unboundry/video-preview-local-verification-20260906/。
 
-下一步：用户确认上线后才进入版本登记、commit/PR/CI和部署。建议下一未占用patch（预计v0.7.14，发布前核实），不得移动既有tag。发布前核实生产身份、活动任务和当前数据备份门；代码切换后用既有素材零付费核对节点/全屏及刷新零写。若失败回退v0.7.13代码，保留CURRENT与新数据，不恢复旧数据库。性能慢点和自动备份失败继续由原性能断点记录，本次不扩修。
+下一步：用户确认上线后才进入版本登记、commit/PR/CI和部署。建议下一未占用patch（预计v0.7.14，发布前核实），不得移动既有tag。发布前核实生产身份、活动任务和当前数据备份门；代码切换后用既有素材零付费核对节点/全屏及刷新零写。该裁切单项发布前曾拟直接回退v0.7.13；v0.7.14合入原比例字段后此旧方案作废，必须按v0.7.14回执使用0.7.14-compat.1兼容包并保留CURRENT。性能慢点和自动备份失败继续由原性能断点记录，本次不扩修。

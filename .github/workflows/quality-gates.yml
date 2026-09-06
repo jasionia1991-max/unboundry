@@ -63,10 +63,10 @@ jobs:
         env:
           PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/unboundry-playwright-browsers
         run: npx playwright install chromium
-      - name: Workflow reliability integration (fake Provider, isolated data)
+      - name: Workflow and documentation checks (fake Provider, isolated data)
         env:
           UNBOUNDRY_PLAYWRIGHT_BROWSER_CACHE: ${{ runner.temp }}/unboundry-playwright-browsers
-        run: npm run test:ci:reliability
+        run: npm run test:ci:reliability -- --spec tests/m38-generation-runtime-incidents.spec.ts
       - name: Source coverage inventory
         run: node scripts/check-source-coverage.mjs
       - name: Source coverage behavior

@@ -1,0 +1,45 @@
+{
+  "taskId": "DOC-GOV-002",
+  "status": "PREPARED",
+  "scope": "Private governance documents only; no product deployment",
+  "product": {
+    "version": "0.7.14",
+    "schema": 43,
+    "commit": "c9d414a32613a28b5e013ee671223fcc219c7e05",
+    "current": "/opt/unboundry/releases/v0.7.14-media-aspect-20260906",
+    "before": {
+      "MainPID": 839221,
+      "NRestarts": 0,
+      "ActiveState": "active",
+      "SubState": "running"
+    }
+  },
+  "repository": "jasionia1991-max/unboundry",
+  "localBaseline": "68a6dc83e2b2a50e83699e55522769a4d2e84098",
+  "serverGovernanceEntry": "/opt/unboundry/governance/current",
+  "serverManifest": ".governance-manifest.json",
+  "validation": {
+    "github": "NOT_RUN",
+    "serverExport": "NOT_RUN",
+    "threeWayHashes": "NOT_RUN",
+    "local": {
+      "status": "PASS",
+      "command": "PATH=/Users/mymy/.local/bin:$PATH node scripts/run-safe-tests.mjs run --spec tests/m38-generation-runtime-incidents.spec.ts",
+      "passed": 19,
+      "failed": 0,
+      "exitCode": 0,
+      "sourceSnapshotSha256": "bc4a6906c8e4bba30c8eb5f2b1ee97a9cd223c61e6b39f5f5b1f67f6570a4612",
+      "scope": "m38 only; no full suite",
+      "snapshotUnchanged": true,
+      "listener4173Unchanged": true
+    },
+    "independentReview": "PASS"
+  },
+  "preserved": {
+    "productFiles": true,
+    "productPointer": true,
+    "databaseAndMedia": true,
+    "protectedJsonNotAccessed": true,
+    "noPaidGeneration": true
+  }
+}

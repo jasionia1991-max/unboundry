@@ -1,143 +1,86 @@
 # Unboundry 版本发布 Runbook
 
-给人和接手的 AI 看。作用：从「版本号 + 上线授权」到「线上验证 + 文档收口」的每一步照做，避免每次现场拼命令、用错脚本。
-历史基线：v0.6.29（2026-08-21）曾按旧流程发布；其版本号、路径和先打 tag 的命令不再是可执行模板。当前生产身份与发布边界只看 `spec/UNBOUNDRY_CURRENT_STATE.md`、`spec/INC_GEN_026_CHECKPOINT.md` 顶部当前覆盖层和 `上线规矩.md`。
+更新日期：2026-09-06。当前授权与进度只看 [TASKS](TASKS.md)，产品现状看 [CURRENT_STATE](spec/UNBOUNDRY_CURRENT_STATE.md)。以下普通代码/构建发布流程与独立文档同步流程分别适用。
 
-> **2026-09-03 INC-GEN-028 边界**：生产当前为`v0.7.7/schema42`；PR #155、双CI、不可移动tag/Release、exact-tag fresh build、schema42 locked-exact backup/restore、原子切换与rollback-forward已通过。上线后先刷新目标Canvas时产生4次多余200 PUT，revision 71→75、graph revision 46→50；根因是`ImageNode`加载自动适配忽略已保存style尺寸并写回布局。因此前置0保存门NO-GO，group点击0、workflow/task/Provider提交0。v0.7.7发布授权已消费；下一普通patch版本尚未授权，禁止复用v0.7.7授权、移动tag、擅自修复发布或真实点击。版本不得使用`hotfix`后缀。
+## 1. 识别范围和已有授权
 
-**适用范围**：本 Runbook 只用于「代码 / 构建产物」变更（bump 版本、改逻辑、重发静态资源）。纯公共模板数据变更（新增/修改模板、预览图、种子）走 `上线规矩.md` 的「加模板轻量路径」，**不需要版本号、不打标签、不跑全量**，直接提交 + 服务器灌库。
+- 先核对实际Git root、branch、HEAD、dirty范围、origin及live current指针、版本/schema；外层资料目录和历史app路径不能替代真实源码树。
+- 版本与发布授权须明确。用户已明确委托自行增加patch时直接核对未占用版本，不再次索要版本确认。其他情况下按`上线规矩.md`补齐缺失范围。
+- 发布授权不自动包含付费生成、历史数据/备份删除、schema迁移或云权限变更；已有明确授权则在原范围内继续，不重复确认。
+- 两份永久保护JSON不得读取、hash、复制、移动、修改、删除或暂存：`spec/public-templates-director-split-revision.json`、`spec/INC_GEN_017_R0_PUBLISHED_MODEL_SNAPSHOT_2026-08-28.json`。所有源码导出/检查使用显式排除。
+- 纯模板数据发布走`上线规矩.md`轻量路径；纯文档同步按下节发布独立文档镜像，不替换产品构建或 bump 产品版本。
 
-## 0. 前置（必须先满足）
+## 独立文档同步
 
-- 用户分别说了「版本号」和「可以上线」，缺一句都不动。一次授权只用一次。
-- 删任何东西（含备份目录、临时文件）必须先问用户。
-- 测试不碰 `4173`、本地 `app/data`、`/var/lib/unboundry`、真实媒体/备份；不准未授权真实付费生成。
-- 两份永久受保护文件都不得读取、hash、复制、移动、修改、删除或暂存：
-  `spec/INC_GEN_017_R0_PUBLISHED_MODEL_SNAPSHOT_2026-08-28.json` 与
-  `spec/public-templates-director-split-revision.json`。
+1. 用户授权推送和同步后，将治理入口及其现行文档依赖提交到 GitHub；保留产品代码与数据。PR 最终 head 和合并后的 main 均通过现有 CI，其中 m38 检查治理入口。
+2. 从通过 CI 的精确 main 提交枚举并导出已跟踪 Markdown、文档索引/回执、治理测试与 CI 配置；先按路径排除两份永久保护 JSON。不要复制 dirty 工作树、凭据、真实数据、依赖或本地日志。
+3. 在服务器 `/opt/unboundry/governance/releases/<文档提交SHA>` 新目录准备私有镜像；生成 `.governance-manifest.json`，记录提交、文件清单和 SHA-256。校验完整后原子切换 `governance/current`；保留上一镜像用于文档回退。
+4. `/opt/unboundry/AGENTS.md` 使用 [服务器导航源](ops/production/GOVERNANCE_AGENT_ENTRY.md)，进入当前镜像。镜像不进 Nginx/应用静态目录，不提供公网文档页；不改 `/opt/unboundry/current`、产品 release、数据库或服务。
+5. 比较 Git 提交、本地对应文件及服务器镜像哈希；核对产品版本、current、PID/restarts 前后不变。这里的健康检查只证明文档同步没有改变进程状态，不替代产品行为验收。收尾文档有新提交时再同步该提交并核验；不因此重启产品或触发付费生成。
 
-## 1. 只读核对
+## 2. 本地候选和最小必要验证
 
-```bash
-cd <本次 Goal 明确选择且已核对 origin/HEAD/tree 的仓库>
-pwd
-git branch --show-current
-git rev-parse --short HEAD
-git status --porcelain=v1 -b
-grep '"version"' package.json
-```
+1. package/lock与`server/bridgeRuntimeMode.ts`精确版本准入一致；不要移动既有tag，普通版本不加hotfix。
+2. 列出实际行为变更、直接依赖和失败代价，选择受影响safe specs；用本轮合成数据和动态loopback，不碰4173、本地app/data、真实Provider或OSS。
+3. 普通类型/构建默认Node25.9.0/npm11.12.1；safe runner和source coverage专用Node22.23.1/npm10.9.8；生产Node22.23.2/npm10.9.8，不能混同。
+4. 成功测试只在相关代码变化、明确失败或强制发布门时重跑。文档更新只检查文档，不重跑业务full。风险跨域且发布门确需full时按当次计划执行，不能继承或复活旧Goal的full权限。
+5. 冻结产品候选并审查实际增量；区分主代理审查与独立审查。UI变化先让用户验收可见本地候选；通过后复核候选未漂移。
+6. 新增持久字段须验证旧节点读取、旧客户端命令、刷新、撤销、并发与回退包兼容。schema号未变并不证明旧包可读新字段。
 
-读 `上线规矩.md`、`spec/UNBOUNDRY_CURRENT_STATE.md`、`TASKS.md` 顶部，确认当前线上版本和上一发布事实。
+## 3. GitHub和不可变身份
 
-## 2. 版本号与发布 commit（本地）
+获当次发布授权后，显式文件清单commit/push → PR的最终head CI通过 → 合并 → main CI通过 → annotated tag指向精确merge → GitHub Release。
 
-1. `package.json`、`package-lock.json` 精确设为用户本次批准的新版本号；普通发布只递增 patch 号，不加 `hotfix` 后缀，也不得复用任何历史版本号。
-2. `server/bridgeRuntimeMode.ts` 的 final 角色放行清单加入新版本号。
-3. `tests/m81-deployment-hardening.spec.ts` 加对应断言。
-4. 按需同步 `上线规矩.md`、`TASKS.md`、`spec/UNBOUNDRY_CURRENT_STATE.md` 等记录。
-5. 冻结增量 Review 后，用显式文件清单暂存并 commit；两份受保护 JSON 永远不得进入暂存。先不要打标签，tag 只能落在 PR 合并后的精确 main commit。
+当前CI源码为`.github/workflows/quality-gates.yml`：macOS15；Node25类型/架构/build、`npm audit --audit-level=high`；随后Node22 safe preflight、ffprobe准备、m104真实HTTP/fake Provider集成、源码覆盖及其行为检查。中等级告警不会使high阈值失败，CI绿色不等于依赖无告警或真实付费验收通过。
 
-## 3. 发布前定向门与 GitHub（本地 Mac）
+记录PR、branch/main CI run、tag object、peeled commit/tree和Release。已发布tag和产品构建不可改写；后续验收文档记录用自己的提交身份，不将文档HEAD冒充生产产品commit。
 
-历史 INC-GEN-026/v0.7.0 已经消费唯一 formal full，永久保留原始 `1162/1167` 与最小关闭 `112/112`；不得把它当作 INC-GEN-028 可重跑或已通过的发布门。下一版本只运行本次变更直接相关 safe specs、增量 Review 和项目规定的 PR/main CI build+m104 门，除非新的明确发布规则另有要求。
+## 4. 从精确tag构建新目录
 
-本次保留直接相关m103、m41、m81、共同preflight/build/source coverage、治理m38和冻结后独立Review；备份能力复用schema未改变的当前合同。不要运行 `node scripts/run-safe-tests.mjs full`。
+- 从已通过main CI的精确tag，用排除受保护路径的allowlist导出源码，落到全新staging目录；不上传脏工作树或复用旧dist。
+- 在该目录按lock安装并用自身源码构建，核对Node/npm、源码清单不变、构建完整性。v0.7.14记录为921源码文件与33静态资源；这些是该次分母，下次须重新枚举。
+- 使用NUL分隔文件名制作清单，排除清单自身和永久保护路径；校验源码身份和完整静态资产，不能只看一个JS文件。
+- `scripts/deploy.mjs`已立即抛`LEGACY_DEPLOY_DISABLED`，不得执行旧rsync一键上线流程。
+- `scripts/build-release.mjs`、`lib/release-source-pair.mjs`及配对演练工具绑定历史0.5.2/0.6.0合同，不是任意patch发布器；不要为了新版本改写历史工具。
 
-- 需要Node 22.23.x、npm 10.9.8、Playwright浏览器缓存、npm离线缓存，缺了preflight会明说。
-- 测试必须只使用runner新建的临时数据和回环端口；本地4173、`app/data`、`/var/lib/unboundry`、真实媒体和密钥不得触碰。
-- v0.6.29 的 `119 specs / 1034 tests` 与 v0.7.0 的 formal 结果只作历史账本，不是 INC-GEN-028 当前命令或分母。当前证据以 `spec/V0_7_7_PRODUCTION_RECEIPT_2026-09-03.json`、历史候选回执和Checkpoint顶部覆盖层为准。
-- 两份受保护 JSON 不得进入测试快照、archive、commit、tag 或 PR；除此之外，发布候选必须没有范围外脏改动。
+## 5. 当前schema43备份门
 
-候选冻结后按这个顺序执行，不能把 tag 打在 PR 分支头：
+当前使用不可变release内`backup-data.mjs` → `verify-backup.mjs` → `restore-backup.mjs`合同。正式切换前最新快照须持有真实冻结/静默证据并满足locked-exact：显式schema43、logical SHA、冻结时间、last Provider admission、独立scratch、外置签名/恢复key路径及精确媒体策略。
 
-```bash
-git push origin <branch>
-gh pr create --base main --head <branch>
-# 等待 PR Quality gates 成功后合并，再等待 main Quality gates 成功。
-git fetch origin main --tags
-git tag -a <new-version> <merged-main-commit> -m "<new-version>"
-git push origin <new-version>
-gh release create <new-version> --verify-tag --title "<new-version>"
-```
+必须先核对当前活动任务、计费结果不明边界和publication，不伪造冻结时间或为通过门清理历史终态记录。备份不通过就不切换。`--external-freeze-non-final`不能冒充final candidate；schema42仅历史恢复，不能作为当前验收schema。
 
-记录 PR 号、final-head run、merge commit、main run、annotated tag object、peeled commit/tree 和 GitHub Release URL。tag、merge 与 release archive 的 tree 必须一致。
+- 私钥内容不得输出或进仓库；新恢复目录私有且独立，不能覆盖CURRENT。
+- verify通过后fresh restore，再核对schema43、integrity、FK、logical SHA及计数/媒体/secret清单。日志模式包含实际生产DELETE，不能只测WAL。
+- 允许的历史媒体warning精确列入证据，不能写成“无媒体问题”；v0.7.14保留98条非阻断提示。
+- 真实云上传只在已授权范围进行，上传后需要GET哈希/大小核验，PUT成功本身不等于可恢复。
+- `ops/production/backup-to-oss-retention.mjs`可创建当前加密备份并上传；它自身不自动完成verify/fresh restore/远端GET闭环，需要操作方案分别补齐。
+- **当前自动备份故障尚未修好**：systemd仍调用`/opt/unboundry/scripts/backup-to-oss.mjs`，其旧子脚本要求schema41。不得把它作为当前备份入口。更不能仅因应用已升级就宣称每日备份生效。
 
-## 4. 服务器准备发布目录（staging）
+## 6. 切换与回退
 
-1. 从不可移动 `<new-version>` tag 导出 archive，校验其 peeled commit/tree 与已通过 main CI 的合并身份一致，再解包到全新 `/opt/unboundry/staging/unboundry-<new-version>-<唯一后缀>`；不得同步当前脏工作树或复用旧 dist。
-2. 在 staging 内 `npm ci`（完整依赖），然后用 **staging 自身源码**重建产物：
+先准备本次精确新包、精确兼容回退包及数据保持策略，在隔离副本完成真实Linux HTTP保存/刷新和forward→rollback→forward；记录其与真实systemd切换测试的区别。正式维护中保留旧current身份，排空再原子切换；核对服务、版本、ready、数据及静态资源后解除维护。
 
-```bash
-cd /opt/unboundry/staging/unboundry-<new-version>-<唯一后缀>
-/opt/node22/bin/node /opt/unboundry/node_modules/typescript/bin/tsc --noEmit
-/opt/node22/bin/node node_modules/vite/bin/vite.js build
-```
+v0.7.14具体回退约束：
 
-- 坑：**不能沿用旧 dist**。v0.6.18/19 的服务器 release `node_modules` 只有 dependencies（无 typescript），构建工具用 `/opt/unboundry/node_modules`（vite 8.1.5 / typescript 7.0.2 需与 staging lock 版本一致）。
-3. 重算发布清单（**排除清单自身**，用 NUL 分隔处理特殊文件名）：
+- 新包：`/opt/unboundry/releases/v0.7.14-media-aspect-20260906`。
+- 兼容包：`/opt/unboundry/releases/v0.7.14-compat.1-media-aspect-20260906`。
+- 已备脚本：`/var/lib/unboundry-v0714-media-aspect-20260906/evidence/rollback.py`；执行前仍须核对当次授权与脚本身份，不因本Runbook而运行。
+- 兼容包保留新字段解析和manual保护，只关闭新auto适配/主动按钮/临时置前；使用不同版本标识，保留CURRENT全部新数据。
+- **禁止直接切旧v0.7.13**：旧parser/resize语义与新字段不兼容。v0.7.11检查点仅为代码恢复基线，也不等于当前数据库可直接降级。
+- v0.7.14已完成隔离Linux配对运行与两个包的DELETE写入验证；没有执行真实线上systemd回退演练，不补造该PASS。
 
-```bash
-find . -type f -not -name RELEASE-INVENTORY.sha256 -print0 \
-  | LC_ALL=C sort -z | xargs -0 sha256sum > RELEASE-INVENTORY.sha256
-sha256sum -c RELEASE-INVENTORY.sha256 --quiet && echo INVENTORY_OK
-```
+## 7. 发布后验证
 
-## 5. 正式备份（当前 schema42：签名、加密、locked-exact）
+1. current精确指针、`/api/version`、`/api/health/live`与`ready`、service/PID/restarts、schema与当前数据保持；ready只证明进程/只读探针。
+2. 首页引用与其他静态资产全部在公网和loopback逐项匹配构建清单。
+3. 用既有素材或已授权合成上传核对实际受影响界面，观察保存/刷新/重新打开与写请求次数；查看和刷新不得产生额外Canvas写或Generation POST。
+4. 真实生成仅在单独明确授权后进行，不能照抄v0.7.7旧group点击；结果不明不自动重复提交。
+5. 更新提示须单独记录：v0.7.14维护期间旧EventSource遇502未恢复，人工刷新通过。不要把m82正常SSE测试当故障重连验收。
 
-当前候选只允许 release 内的 `scripts/backup-data.mjs`、
-`scripts/verify-backup.mjs`、`scripts/restore-backup.mjs` 合同。调用时必须显式提供
-schema42、数据库 logical SHA、生成冻结时间、最后 Provider admission、独立 scratch、
-签名私钥路径和恢复公钥路径；任何证据缺失、活动 task、当前 unknown-billing、当前关联的未完成 Provider boundary、活动
-publication、SHA 漂移或 schema 漂移都 fail-closed。备份包必须先 verify，再只恢复到
-全新 0700 私有目录；禁止覆盖活动数据目录。
+## 8. 收尾
 
-schema42 包必须原样保留终态历史 evidence；不得为通过 quiet gate 删除、改写或“收口”历史 task/attempt。只有当前运行边界不静默才阻断 current backup。schema37/38 historical-recovery 继续走其严格旧合同。
+生产回执分别记录源码/CI、定向或full范围、备份/恢复/云端验证、生产数据和UI、未决风险、用户验收。先是技术结果，只有用户明确通过才记对应范围USER_PASS。
 
-生产 wrapper 的候选源为 `ops/production/backup-to-oss-retention.mjs`。默认不上传；
-真实 `--apply-upload`、timer 安装/启用、OSS 删除/恢复都需要单独授权和不可变版本回执。
-wrapper 必须保留在完整不可变 release tree 的 `ops/production/` 原位置，不得单独复制到
-`/opt/unboundry/scripts` 等脱离 `scripts/` 与 `server/` 的路径；内部 child/import 均从
-wrapper 的 module URL 解析，不能依赖 systemd 当前目录。
-安装前必须记录 wrapper SHA、安装路径/权限、service/timer unit SHA、next-run、
-backup/verify/fresh-restore receipt。`ops/production/backup-data-schema39.mjs` 仅是历史标识，
-已 fail-closed，不能再作为 current timer 源。
+更新CURRENT_STATE、TASKS、主题checkpoint、总矩阵及必要架构/操作文档。固定历史JSON、失败记录和tag不改写；演进中的当前回执补上后续验收事实。文档是否commit/push按用户当次授权，不能把旧发布授权扩为永久权限。
 
-恢复副本只读校验：`PRAGMA user_version = 42`、`integrity_check = ok`、
-`foreign_key_check = 0`、logical SHA、关键表计数、媒体和 secrets manifest 与源证据一致。
-
-## 6. 切换上线
-
-```bash
-sudo mv /opt/unboundry/staging/unboundry-<new-version>-<唯一后缀> \
-  /opt/unboundry/releases/<new-version>-<release-id>
-sudo ln -s /opt/unboundry/releases/<new-version>-<release-id> /opt/unboundry/current.next
-sudo mv -T /opt/unboundry/current.next /opt/unboundry/current
-sudo systemctl restart unboundry
-curl -fsS http://127.0.0.1:4173/api/version   # 期望与本次发布版本一致
-```
-
-切换前记录旧 `current` 精确目标。新版本首次门通过后，按同一 schema42 数据副本把 `current` 原子切回切换前的精确 release、启动并验证；再原子 forward 到同一 `<new-version>` release 并验证。每次切换都记录 service、version/live/ready、schema/integrity/FK、关键计数、静态清单和 restart 计数。不得运行历史数据 apply，也不得在 rollback/forward 间调用 Provider 或 OSS。
-
-## 7. 发布核验
-
-1. 服务：`systemctl is-active unboundry` = active，`NRestarts` = 0。
-2. 数据门（只读）：当前 schema42、integrity ok、FK0、tasks/attempts/templates/active 与本次 schema42 locked-exact 备份基准**完全一致**。旧 schema39 仅属于历史灾难恢复流程，不得用于当前发布核验。
-3. 公网：`https://canvas.mymy.ltd/api/version` 与本次发布版本一致；首页引用的 `assets/*.js/css` 逐个 `sha256sum`，与 release `dist/client/assets/*` **逐字节一致**。
-4. 外部影响：发布基础设施与rollback-forward期间真实Provider/付费生成/OSS写入必须为0。v0.7.7生产健康后先在已登录普通Chrome刷新精确Canvas，记录观察窗内Canvas PUT、409、误报、workflow/task POST且均应为0；仅在该门通过后点击精确group一次，单独记录run/task/admission/attempt/Provider次数并证明无重复。结果不明禁止重试。
-
-## 8. 文档收口
-
-1. 写生产回执：`spec/V<版本>_PRODUCTION_RECEIPT_<日期>.json`（照 `spec/V0_6_19_PRODUCTION_RECEIPT_2026-08-19.json` 结构：source/tests/backup/production/publicAssets/github，`userAcceptance: USER_RECHECK`）。
-2. 更新 `上线规矩.md`、`spec/UNBOUNDRY_CURRENT_STATE.md`、`TASKS.md` 顶部、`spec/UNBOUNDRY_HANDOFF_2026-08-09.md`、`spec/UNBOUNDRY_REMEDIATION_CHECKPOINT.md`：线上版本、指针、commit/tag/PR、备份路径与双清单 SHA、数据门数字、状态写「待用户复验」。
-3. commit + push + PR 合并（记录类 PR），提交前再次确认不可提交 json 不在 add 列表。
-4. 用户打开线上页面回复「通过」后，另一次文档收口为 `USER PASS`（不要提前写）。
-
-## 9. 已知坑（本次踩过，先看这里）
-
-- schema39 明文脚本只属于历史证据；current timer 必须绑定不可变 schema42 加密 wrapper 的精确 SHA，不能靠同名路径猜版本。
-- `scripts/build-release.mjs` 及其 bridge/final 双版本工具固定服务旧 v0.5.2/v0.6.0 不可变演练，不是下一版本发布入口；新版本按精确合并 commit/tag archive fresh build，不得为凑当前版本改写旧工具。
-- 发布清单 `RELEASE-INVENTORY.sha256` 不含自身行；生成必须排除自身，否则 `sha256sum -c` 永远失败（v0.6.18 也是自包含旧行、发布时以排除自身为准）。
-- `find | xargs sha256sum` 遇 node_modules 里带空格/换行的文件名会断；统一用 `-print0 | sort -z | xargs -0`。
-- staging 的 dist 若与源码来源不明，**重建**后再发布；重算清单在重建之后。
-- current schema42 备份必须使用外部私有 key 文件；密钥内容不得写进仓库、命令回执或备份 manifest。
-- 备份目录父级 `/var/lib/unboundry-rollbacks` 是 root 0700，ubuntu 直接 ls 会 Permission denied；用 `sudo` 查看/操作。
+仅清理当次已获授权且确认身份的临时副本；保留用户数据与必要回退/恢复材料。不要为了收尾再部署、重复测试、真实生成或清空历史未决项。

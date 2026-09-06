@@ -1,0 +1,243 @@
+{
+  "version": "0.7.14",
+  "status": "PRODUCTION_USER_PASS / CLOUD_BACKUP_VERIFIED",
+  "commit": "c9d414a32613a28b5e013ee671223fcc219c7e05",
+  "pr": 163,
+  "ci": {
+    "pullRequest": 34025998657,
+    "main": 34026116677,
+    "both": "success"
+  },
+  "tag": "v0.7.14",
+  "schema": 43,
+  "cutover": {
+    "status": "V0714_ACTIVE_CODE_SWITCH_PASS",
+    "current": "/opt/unboundry/releases/v0.7.14-media-aspect-20260906",
+    "commit": "c9d414a32613a28b5e013ee671223fcc219c7e05",
+    "state": {
+      "MainPID": "839221",
+      "NRestarts": "0",
+      "ActiveState": "active",
+      "SubState": "running"
+    },
+    "providerRequests": 0,
+    "databaseReplaced": false,
+    "schemaChanged": false,
+    "backup": "/var/lib/unboundry-v0714-media-aspect-20260906/backup43/1779934b-9d23-4a9d-849d-531f21d678b7.ubbackup"
+  },
+  "localValidation": {
+    "targetedPassed": 87,
+    "unaffectedReused": 6,
+    "fullSuiteRun": false,
+    "inventory": 1271,
+    "userPass": true,
+    "acceptedProductHashesUnchanged": 18,
+    "review": "primary, not independent subagent"
+  },
+  "build": {
+    "exactTagSourceFiles": 921,
+    "sourceUnchanged": true,
+    "runtime": "Node22.23.2/npm10.9.8",
+    "staticFilesExactPublicAndLoopback": 33
+  },
+  "compatibilityRollback": {
+    "version": "0.7.14-compat.1",
+    "directory": "/opt/unboundry/releases/v0.7.14-compat.1-media-aspect-20260906",
+    "script": "/var/lib/unboundry-v0714-media-aspect-20260906/evidence/rollback.py",
+    "preserveCurrentData": true,
+    "directOldV0713Unsafe": true,
+    "linuxPairedRuntime": {
+      "status": "PASS",
+      "scope": "Linux private network synthetic HTTP runtime forward rollback forward",
+      "versions": [
+        {
+          "version": "0.7.14",
+          "ready": true,
+          "layoutSave": true,
+          "refreshNoWrite": true,
+          "updateStream": true,
+          "revision": 5
+        },
+        {
+          "version": "0.7.14-compat.1",
+          "ready": true,
+          "layoutSave": true,
+          "refreshNoWrite": true,
+          "updateStream": true,
+          "revision": 8
+        },
+        {
+          "version": "0.7.14",
+          "ready": true,
+          "layoutSave": true,
+          "refreshNoWrite": true,
+          "updateStream": true,
+          "revision": 11
+        }
+      ],
+      "counts": {
+        "generation_tasks": 0,
+        "generation_provider_attempts": 0
+      },
+      "liveDataMounted": false
+    },
+    "deleteJournalWrites": "PASS for both packages",
+    "v0711Checkpoint": "39c6385427d3f62d1e4f8231046bb5159ee55ecd"
+  },
+  "backup": {
+    "package": "/var/lib/unboundry-v0714-media-aspect-20260906/backup43/1779934b-9d23-4a9d-849d-531f21d678b7.ubbackup",
+    "receipt": {
+      "backupId": "1779934b-9d23-4a9d-849d-531f21d678b7",
+      "captureMode": "locked-exact",
+      "databaseLogicalSha256": "b77484ec301fee8a82bd44895b753a94f796507c8050277fc05c83f27814a623",
+      "finalCandidate": true,
+      "mediaFiles": 355,
+      "mediaIntegrity": {
+        "backupBlockingIssues": 0,
+        "clean": false,
+        "evidenceSha256": "b259fd85b7cd1352478acdcfcf8085f70ac24d33141031f6e36200a623f7088e",
+        "issues": 98,
+        "sha256": "7cbf5bb28dd28ca067bfd3566508e59fe44cd283bd4e3bfc0a668bcf7f6cd064"
+      },
+      "ossMirrors": 642,
+      "packageDirectory": "/work/backup43/1779934b-9d23-4a9d-849d-531f21d678b7.ubbackup",
+      "schemaVersion": 43,
+      "secretFiles": 3
+    },
+    "verify": "PASS",
+    "freshRestore": "PASS",
+    "cloud": "VERIFIED",
+    "cloudReceiptPath": "/var/lib/unboundry-v0714-media-aspect-20260906/evidence/oss-backup-upload.json",
+    "automaticBackupService": "failed; existing issue, not changed in this release",
+    "cloudVerification": {
+      "status": "ENCRYPTED_BACKUP_OSS_UPLOAD_GET_VERIFY_PASS",
+      "backupId": "1779934b-9d23-4a9d-849d-531f21d678b7",
+      "retentionDeletes": 0,
+      "mediaWrites": 0,
+      "providerRequests": 0,
+      "files": 1004,
+      "bytes": 1939771911
+    },
+    "completedTransfer": {
+      "cloudExecSession": 91473,
+      "cloudServerPid": 839660
+    }
+  },
+  "productionUI": {
+    "original": {
+      "originalCanvasUnchanged": true,
+      "revision": 20,
+      "graphRevision": 3,
+      "documentHash": "7c12e4f14064a24baef9f90c4f86b096bf6f9bec09b2ca14dedca0fd29fff795",
+      "videoElementBefore": [
+        618,
+        836
+      ],
+      "videoElementAfter": [
+        618,
+        418
+      ],
+      "parentSize": [
+        618,
+        418
+      ],
+      "mediaIntrinsic": [
+        816,
+        1104
+      ],
+      "refreshWrites": 0,
+      "automaticNotice": "maintenance 502 ended EventSource; explicit reload required; existing behavior"
+    },
+    "sampleCanvas": "837344f0-5988-4408-9651-0b0cebe0f6fa",
+    "uploadManual": {
+      "revision": 5,
+      "graphRevision": 4,
+      "nodeId": "video-765ea2f6-e01d-4219-bed1-37adb3c3fbde",
+      "style": {
+        "height": 420,
+        "width": 400
+      },
+      "position": {
+        "x": 80,
+        "y": 300
+      },
+      "mode": "manual",
+      "assetId": "46b42e7b-2e1d-442b-b643-74087d63b804.mp4",
+      "width": 816,
+      "height": 1104
+    },
+    "fitAndUndo": "250x338 auto -> 400x420 manual -> 250x338 auto -> undo 400x420 manual; refresh retained; final restored to auto",
+    "refreshedUndo": {
+      "revision": 7,
+      "graphRevision": 4,
+      "style": {
+        "height": 420,
+        "width": 400
+      },
+      "mode": "manual",
+      "assetId": "46b42e7b-2e1d-442b-b643-74087d63b804.mp4"
+    },
+    "refreshWrites": 0,
+    "playback": "PASS",
+    "originalDataUnchanged": true,
+    "userRecheck": "USER_PASS",
+    "userAcceptance": {
+      "date": "2026-09-06",
+      "quote": "通过   接下来收尾一下，需要我做什么",
+      "scope": "v0.7.14 video preview containment, native media aspect sizing and selected template foreground; does not close earlier performance or automatic backup issues"
+    }
+  },
+  "finalFunctional": {
+    "counts": {
+      "generation_tasks": 1097,
+      "generation_provider_attempts": 1108,
+      "media_assets": 997,
+      "canvas_documents": 88
+    },
+    "sampleFinalSize": {
+      "height": 338,
+      "width": 250
+    },
+    "sampleFinalMode": "auto",
+    "sampleAssetId": "46b42e7b-2e1d-442b-b643-74087d63b804.mp4",
+    "ready": {
+      "status": "ready",
+      "mode": "active",
+      "mutationsAccepted": true,
+      "activeLeaseHeld": true,
+      "runtimeRole": "active",
+      "databaseProbe": "read-only",
+      "schemaVersion": 43,
+      "requestId": "db714ba2-e78b-456c-8d09-cbf55d0a6f61"
+    },
+    "service": "MainPID=839221\nNRestarts=0\nActiveState=active\n"
+  },
+  "cleanup": {
+    "ownedTemporaryBytesRemoved": 3917917682,
+    "historicalDeletes": 0,
+    "encryptedBackupRetained": true,
+    "diskUsedPercent": 22
+  },
+  "paidGeneration": 0,
+  "limitations": [
+    "No new real model generation was performed",
+    "Maintenance 502 ended the old EventSource; user must explicitly reload; no automatic notice pass is claimed",
+    "Historical nonblocking media warnings retained",
+    "Existing automatic daily backup service failure remains unresolved; this release manual backup is verified locally and in cloud"
+  ],
+  "evidenceDirectory": "/Users/mymy/Documents/unboundry/media-aspect-v0714-release-ops-20260906",
+  "rehearsalCorrections": [
+    "Precreated service-owned synthetic data directory",
+    "Explicit /opt directory in private bwrap namespace for dropped-UID subprocess traversal",
+    "HTTP command-v1 header matched the product client",
+    "Legacy PUT sanitizes unknown fixture fields; durable unknown-field preservation remains covered by m104 direct database compatibility tests",
+    "Structured error code capture replaced truncated error-body matching"
+  ],
+  "productChangedForRehearsalFailures": false,
+  "closeout": {
+    "date": "2026-09-06",
+    "scope": "receipt and governance documents only; no product change, redeployment or paid generation",
+    "status": "USER_ACCEPTANCE_AND_CLOUD_BACKUP_RECORDED",
+    "priorValidationReused": true
+  }
+}
