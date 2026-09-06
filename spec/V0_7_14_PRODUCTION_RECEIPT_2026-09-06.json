@@ -1,6 +1,6 @@
 {
   "version": "0.7.14",
-  "status": "PRODUCTION_TECHNICAL_PASS / CLOUD_BACKUP_IN_PROGRESS / USER_RECHECK",
+  "status": "PRODUCTION_USER_PASS / CLOUD_BACKUP_VERIFIED",
   "commit": "c9d414a32613a28b5e013ee671223fcc219c7e05",
   "pr": 163,
   "ci": {
@@ -106,11 +106,22 @@
     },
     "verify": "PASS",
     "freshRestore": "PASS",
-    "cloud": "IN_PROGRESS",
-    "cloudExecSession": 91473,
-    "cloudServerPid": 839660,
+    "cloud": "VERIFIED",
     "cloudReceiptPath": "/var/lib/unboundry-v0714-media-aspect-20260906/evidence/oss-backup-upload.json",
-    "automaticBackupService": "failed; existing issue, not changed in this release"
+    "automaticBackupService": "failed; existing issue, not changed in this release",
+    "cloudVerification": {
+      "status": "ENCRYPTED_BACKUP_OSS_UPLOAD_GET_VERIFY_PASS",
+      "backupId": "1779934b-9d23-4a9d-849d-531f21d678b7",
+      "retentionDeletes": 0,
+      "mediaWrites": 0,
+      "providerRequests": 0,
+      "files": 1004,
+      "bytes": 1939771911
+    },
+    "completedTransfer": {
+      "cloudExecSession": 91473,
+      "cloudServerPid": 839660
+    }
   },
   "productionUI": {
     "original": {
@@ -169,7 +180,12 @@
     "refreshWrites": 0,
     "playback": "PASS",
     "originalDataUnchanged": true,
-    "userRecheck": "PENDING"
+    "userRecheck": "USER_PASS",
+    "userAcceptance": {
+      "date": "2026-09-06",
+      "quote": "通过   接下来收尾一下，需要我做什么",
+      "scope": "v0.7.14 video preview containment, native media aspect sizing and selected template foreground; does not close earlier performance or automatic backup issues"
+    }
   },
   "finalFunctional": {
     "counts": {
@@ -206,8 +222,8 @@
   "limitations": [
     "No new real model generation was performed",
     "Maintenance 502 ended the old EventSource; user must explicitly reload; no automatic notice pass is claimed",
-    "Cloud copy still uploading; local encrypted package verification and fresh restore have passed",
-    "Historical nonblocking media warnings retained"
+    "Historical nonblocking media warnings retained",
+    "Existing automatic daily backup service failure remains unresolved; this release manual backup is verified locally and in cloud"
   ],
   "evidenceDirectory": "/Users/mymy/Documents/unboundry/media-aspect-v0714-release-ops-20260906",
   "rehearsalCorrections": [
@@ -217,5 +233,11 @@
     "Legacy PUT sanitizes unknown fixture fields; durable unknown-field preservation remains covered by m104 direct database compatibility tests",
     "Structured error code capture replaced truncated error-body matching"
   ],
-  "productChangedForRehearsalFailures": false
+  "productChangedForRehearsalFailures": false,
+  "closeout": {
+    "date": "2026-09-06",
+    "scope": "receipt and governance documents only; no product change, redeployment or paid generation",
+    "status": "USER_ACCEPTANCE_AND_CLOUD_BACKUP_RECORDED",
+    "priorValidationReused": true
+  }
 }

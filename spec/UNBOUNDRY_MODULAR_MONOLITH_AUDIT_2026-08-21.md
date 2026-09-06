@@ -1,4 +1,4 @@
-> 当前治理同步：`CURRENT_V0_7_14_USER_RECHECK`；v0.7.14已上线，本地用户通过与线上用户复验保持区分。只在真实新功能触发时再开展模块化工作；当前回执见 `spec/V0_7_14_PRODUCTION_RECEIPT_2026-09-06.json`。
+> 当前治理同步：`CURRENT_V0_7_14_USER_PASS`；v0.7.14本地及线上用户验收均已通过，云备份上传和GET校验完成；不扩大为此前性能或自动备份故障通过。只在真实新功能触发时再开展模块化工作；当前回执见 `spec/V0_7_14_PRODUCTION_RECEIPT_2026-09-06.json`。
 
 > 当前治理路由：`CURRENT_V0_7_13_USER_RECHECK`；v0.7.13功能验收通过、性能部分达标，以 `UNBOUNDRY_CURRENT_STATE.md` 和性能唯一断点为准。本文历史模块化计划只在真实新功能触发，不因发布回执重启重构。
 
