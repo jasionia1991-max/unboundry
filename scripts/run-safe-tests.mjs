@@ -543,7 +543,7 @@ function prepareGenerationStatusBaseline(testRoot) {
   const outputManifest = join(baselineRoot, "manifest.json");
   writeFileSync(
     outputManifest,
-    `${JSON.stringify({ schemaVersion: 1, head: manifest.head, files }, null, 2)}\n`,
+    `${JSON.stringify({ schemaVersion: 1, head: manifest.head, candidateHead: workspaceBaseline.head, files }, null, 2)}\n`,
     { mode: 0o400, flag: "wx" },
   );
   return Object.freeze({
