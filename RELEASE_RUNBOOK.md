@@ -1,6 +1,6 @@
 # Unboundry 版本发布 Runbook
 
-更新日期：2026-09-06。当前授权与进度只看 [TASKS](TASKS.md)，产品现状看 [CURRENT_STATE](spec/UNBOUNDRY_CURRENT_STATE.md)。以下普通代码/构建发布流程与独立文档同步流程分别适用。
+更新日期：2026-09-07。当前授权与进度只看 [TASKS](TASKS.md)，产品现状看 [CURRENT_STATE](spec/UNBOUNDRY_CURRENT_STATE.md)。以下普通代码/构建发布流程与独立文档同步流程分别适用。
 
 ## 1. 识别范围和已有授权
 
@@ -9,6 +9,8 @@
 - 发布授权不自动包含付费生成、历史数据/备份删除、schema迁移或云权限变更；已有明确授权则在原范围内继续，不重复确认。
 - 两份永久保护JSON不得读取、hash、复制、移动、修改、删除或暂存：`spec/public-templates-director-split-revision.json`、`spec/INC_GEN_017_R0_PUBLISHED_MODEL_SNAPSHOT_2026-08-28.json`。所有源码导出/检查使用显式排除。
 - 纯模板数据发布走`上线规矩.md`轻量路径；纯文档同步按下节发布独立文档镜像，不替换产品构建或 bump 产品版本。
+
+当前发布身份、备份与验证状态统一见 [v0.7.15发布回执](spec/V0_7_15_PRODUCTION_RECEIPT_2026-09-07.json)；当前回退约束见第6节。每日自动备份仍USER_DEFERRED，不以手动发布备份代替该项验收。
 
 ## 独立文档同步
 
@@ -51,7 +53,7 @@
 
 - 私钥内容不得输出或进仓库；新恢复目录私有且独立，不能覆盖CURRENT。
 - verify通过后fresh restore，再核对schema43、integrity、FK、logical SHA及计数/媒体/secret清单。日志模式包含实际生产DELETE，不能只测WAL。
-- 允许的历史媒体warning精确列入证据，不能写成“无媒体问题”；v0.7.14保留98条非阻断提示。
+- 允许的历史媒体 warning 精确列入证据，不能写成“无媒体问题”；本轮 v0.7.15 的 98 条非阻断提示和最终媒体计数以发布回执为准。
 - 真实云上传只在已授权范围进行，上传后需要GET哈希/大小核验，PUT成功本身不等于可恢复。
 - `ops/production/backup-to-oss-retention.mjs`可创建当前加密备份并上传；它自身不自动完成verify/fresh restore/远端GET闭环，需要操作方案分别补齐。
 - **当前自动备份故障尚未修好**：systemd仍调用`/opt/unboundry/scripts/backup-to-oss.mjs`，其旧子脚本要求schema41。不得把它作为当前备份入口。更不能仅因应用已升级就宣称每日备份生效。
@@ -60,14 +62,17 @@
 
 先准备本次精确新包、精确兼容回退包及数据保持策略，在隔离副本完成真实Linux HTTP保存/刷新和forward→rollback→forward；记录其与真实systemd切换测试的区别。正式维护中保留旧current身份，排空再原子切换；核对服务、版本、ready、数据及静态资源后解除维护。
 
-v0.7.14具体回退约束：
+v0.7.15当前回退约束：
 
-- 新包：`/opt/unboundry/releases/v0.7.14-media-aspect-20260906`。
-- 兼容包：`/opt/unboundry/releases/v0.7.14-compat.1-media-aspect-20260906`。
-- 已备脚本：`/var/lib/unboundry-v0714-media-aspect-20260906/evidence/rollback.py`；执行前仍须核对当次授权与脚本身份，不因本Runbook而运行。
-- 兼容包保留新字段解析和manual保护，只关闭新auto适配/主动按钮/临时置前；使用不同版本标识，保留CURRENT全部新数据。
-- **禁止直接切旧v0.7.13**：旧parser/resize语义与新字段不兼容。v0.7.11检查点仅为代码恢复基线，也不等于当前数据库可直接降级。
-- v0.7.14已完成隔离Linux配对运行与两个包的DELETE写入验证；没有执行真实线上systemd回退演练，不补造该PASS。
+- 当前新包：`/opt/unboundry/releases/v0.7.15-bug-ui-20260907`；固定回退包：`/opt/unboundry/releases/v0.7.14-media-aspect-20260906`。
+- 回退前必须确认当前仍指向精确 v0.7.15、备份/verify/fresh restore 证据和当次授权齐全；回退只原子切换 release 指针，保留 `CURRENT` 数据，不做 schema 迁移或持久字段清理。
+- v0.7.15 无新增持久字段；隔离 Linux 新包→旧包→新包及两包 DELETE 验证通过。该证据支持兼容回退，不等同于已经执行真实线上回退。
+- **禁止直接切旧 v0.7.13**：旧 parser/resize 语义与当前数据不兼容。v0.7.11 检查点仅为代码恢复基线，也不等于当前数据库可直接降级。
+
+### 历史 v0.7.14 兼容约束（非当前回退身份）
+
+- `v0.7.14-compat.1-media-aspect-20260906` 及 `/var/lib/unboundry-v0714-media-aspect-20260906/evidence/rollback.py` 只记录上一轮的兼容方案和证据；执行任何回退前仍须按当前版本重新核对身份、授权和数据门。
+- 其中“保留新字段解析和 manual 保护、关闭当时的 auto 适配/主动按钮/临时置前”是 v0.7.14 当时的历史约束，不是 v0.7.15 的新产品要求。
 
 ## 7. 发布后验证
 
@@ -79,7 +84,7 @@ v0.7.14具体回退约束：
 
 ## 8. 收尾
 
-生产回执分别记录源码/CI、定向或full范围、备份/恢复/云端验证、生产数据和UI、未决风险、用户验收。先是技术结果，只有用户明确通过才记对应范围USER_PASS。
+生产回执分别记录源码/CI、定向或full范围、备份/恢复/云端验证、生产数据和UI、未决风险、用户验收；本轮最终状态见 [v0.7.15 发布回执](spec/V0_7_15_PRODUCTION_RECEIPT_2026-09-07.json)。先是技术结果，只有用户明确通过才记对应范围USER_PASS。
 
 更新CURRENT_STATE、TASKS、主题checkpoint、总矩阵及必要架构/操作文档。固定历史JSON、失败记录和tag不改写；演进中的当前回执补上后续验收事实。文档是否commit/push按用户当次授权，不能把旧发布授权扩为永久权限。
 
