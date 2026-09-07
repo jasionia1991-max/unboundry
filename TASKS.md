@@ -4,17 +4,20 @@
 
 ## 当前任务：文档事实对齐与生成状态查询加固方案
 
-任务ID：`GENERATION-STATUS-QUERY-PLAN-001`。状态：`PLAN_REVIEW_PASS / NOT_IMPLEMENTED`。
+任务ID：`GENERATION-STATUS-QUERY-PLAN-001`。状态：`PLAN_REVIEW_PASS / NOT_IMPLEMENTED`，方案版本2。
 
 用户授权：2026-09-07用户回复“可以 同意你的建议”，同意先更正架构说明中的旧状态，再将外部生成任务材料中有价值的检查点整理成本项目方案；并已明确要求“文档得先对齐项目现状再同步，项目现状不能靠猜”。按本次文档范围完成事实核对、独立复核、文档PR/CI及私有治理镜像同步，不扩大为产品实施、付费生成或新一轮产品上线授权。
 
-身份：代码根`/Users/mymy/Documents/unboundry-post-v076-canvas-convergence-2026-09-03`，查证起点分支`codex/v0715-user-acceptance`、HEAD `8bae2c50f01ef6c4800dbafc7269e2ee85b7d308`、工作区干净；本次文档分支`codex/generation-status-query-plan`。origin为`https://github.com/jasionia1991-max/unboundry.git`。不为匹配旧记录强行切分支或撤销合法改动。
+本次追加授权：用户询问风险和回退后，明确“可以 先补齐再复审”。只补充同一方案的风险响应、停止条件、本地撤销、未来发布回退与验收要求，独立复审后按原文档同步范围交付；不开始产品代码施工，不执行真实产品回退。
+
+身份：代码根`/Users/mymy/Documents/unboundry-post-v076-canvas-convergence-2026-09-03`；首版查证起点为`8bae2c50f01ef6c4800dbafc7269e2ee85b7d308`，已审首版文档提交为`9ff1254f1940b4993b497280bf4323012aa938df`。本次从后者的干净工作树创建`codex/query-plan-rollback-audit`。origin为`https://github.com/jasionia1991-max/unboundry.git`。不为匹配旧记录强行切分支或撤销合法改动。
 
 ## 受影响合同
 
 - [生成架构合同](spec/UNBOUNDRY_GENERATION_ARCHITECTURE.md)第1、4、5节：将旧现状陈述改为引用当前事实来源，历史扫描计数保留日期和范围。
 - [发布手册](RELEASE_RUNBOOK.md)“独立文档同步”：明确先核实事实、更新对应文档、复核，再同步；哈希一致不代表内容准确。
 - [UI合同](spec/UNBOUNDRY_UI_DESIGN_SYSTEM.md)5.9与现行生成架构第2、3节：作为查询加固设计必须保留的约束。[本次方案](spec/GENERATION_STATUS_QUERY_HARDENING_PLAN_2026-09-07.md)为选中的审查对象，尚未实施；本次不改变生效的产品行为。
+- 方案第7节补充风险、撤销和回退验证；发布手册第6节约束未来产品切换，旧包演练不替代本功能演练。当前只完善方案，不执行其中未来操作。
 
 ## 必须保留的行为
 
@@ -26,14 +29,14 @@
 
 文档修正：架构说明中的旧版性能/维护/依赖待办已改为引用当前状态，历史扫描保留日期与范围；同步手册已补事实核对前置要求。方案仅设计原任务有限自动重查，没有把静态发现记成付费任务丢失或已复现线上故障。
 
-工程检查：本地相对链接/锚点、入口角色/长度/版本、历史payload与变更范围检查PASS；git diff --check PASS。产品代码、依赖、版本与schema未修改。本次未运行本地产品测试；PR/main CI的实际运行身份与结论由下述governance-ci.json记录，不将配置存在写成运行通过。
+工程检查：本次两份文档的变更范围、相对链接/锚点、入口角色/长度/状态及git diff --check检查PASS；历史文档与产品代码、依赖、版本、schema均未修改。本次未运行本地产品测试；PR/main CI的实际运行身份与结论由下述governance-ci.json记录，不将配置存在写成运行通过。
 
-独立复核：文档事实与权限边界PASS；生成查询技术方案最终复核PASS。补齐四类节点兼容路径、严格错误分类、取消/身份/Canvas admission边界与m41/m40/m27回归要求后，无阻断项。具体首批设计与Q01～Q11验收要求由本次方案维护。
+独立复核：首版的文档事实与查询设计PASS；后续核查发现专项回退细则不足，现已补齐第7节，版本2独立复审PASS，无阻断项。审查覆盖风险处置、本地完整撤销、用户改动保护、在途任务/未知付费结果、旧客户端及未来发布门。Q01～Q11、RB01～RB05仍为NOT_RUN；复审通过不代表已实现或演练。
 
 用户验收：本次只有整理方案的授权，尚无新功能验收。上一轮修复的正式站验收已完成，记录保留于 [发布回执](spec/V0_7_15_PRODUCTION_RECEIPT_2026-09-07.json)；每日自动备份、视频/音频空工具按钮和其他暂停项维持原状态。
 
-同步结果的唯一身份来源为服务器`/opt/unboundry/governance/current/.governance-manifest.json`。本次CI/同步证据存于`/var/lib/unboundry-v0715-bug-ui-20260907/evidence/generation-status-query-plan-20260907/governance-ci.json`、`governance-sync.json`；本地副本在外层`generation-status-query-plan-20260907/`。只有其中成功记录与当前镜像提交一致时，才可确认本轮同步；旧镜像结果不能代替。保留前一治理镜像，产品包不替换、不重启。
+同步结果的唯一身份来源为服务器`/opt/unboundry/governance/current/.governance-manifest.json`。首版同步记录保留于外层`generation-status-query-plan-20260907/`；本次增补CI/同步证据使用全新目录`/var/lib/unboundry-v0715-bug-ui-20260907/evidence/generation-status-query-rollback-plan-20260907/`中的`governance-ci.json`、`governance-sync.json`，本地副本在同名外层目录。只有其中成功记录与当前镜像提交一致时，才可确认本次增补同步；旧镜像结果不能代替。保留前一治理镜像，产品包不替换、不重启。
 
 ## 下一步
 
-方案已完成并通过审查，产品实现尚未开始。按精确提交完成上述文档同步与核验后交付；下一项由用户决定是否按已审方案本地实施，暂缓项不自动恢复。
+版本2的风险/回退方案已补齐并独立复审通过；本次文档同步交付以成功回执与当前镜像身份一致为准。产品实现、回退演练及用户功能验收未开始；下一项须由用户明确指令开始本地实施，暂缓项不自动恢复。
