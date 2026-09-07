@@ -1,8 +1,8 @@
 # Unboundry 当前生成与画布结构
 
-更新日期：2026-09-06。代码基线v0.7.14，产品commit `c9d414a32613a28b5e013ee671223fcc219c7e05`。本文描述本项目实现；上游产品的观察证据另见 `UNBOUNDRY_REFERENCE_EVIDENCE_CATALOG.md`，不推断其内部架构。部署、授权与验收状态只以 [CURRENT_STATE](UNBOUNDRY_CURRENT_STATE.md) 和 [总矩阵](UNBOUNDRY_ACCEPTANCE_MATRIX.md) 为准。
+更新日期：2026-09-07。本文维护本项目的结构、职责和行为边界；产品版本、部署、性能结论及未决事项只由 [CURRENT_STATE](UNBOUNDRY_CURRENT_STATE.md) 维护，授权见 [当前任务](../TASKS.md)，逐项验收见 [总矩阵](UNBOUNDRY_ACCEPTANCE_MATRIX.md)。上游观察另见 `UNBOUNDRY_REFERENCE_EVIDENCE_CATALOG.md`，不能据此前端材料推断上游内部架构。
 
-本轮按代码更新旧版架构说明，没有修改生成逻辑或发起真实生成。逐文件查阅深度见 [源码清单](PROJECT_SOURCE_REVIEW_COVERAGE_2026-09-06.tsv)；代码存在不等于所有Provider/模型都已真实验收。
+2026-09-07按当前代码与发布验收证据纠正旧状态描述，核对范围见当前任务；没有因此重跑全部功能或真实生成。2026-09-06的逐文件查阅深度保留在 [历史源码清单](PROJECT_SOURCE_REVIEW_COVERAGE_2026-09-06.tsv)，代码存在不等于所有Provider/模型都已真实验收。
 
 ## 1. 结构和职责
 
@@ -20,7 +20,7 @@
 | 素材发布 | `server/mediaPublicationService.ts`、`server/mediaBlobStore.ts`、`server/generationResultCommit.ts`；媒体对象、staging、publication和任务结果登记 |
 | 画布投影 | `server/generationCanvasProjectionService.ts`、`server/canvasWorkflowProjection.ts`、`server/canvasMutationGateway.ts`；按精确绑定把结果写入Canvas，独立记录同步失败 |
 
-本轮架构扫描：298个应用TS/TSX文件，1039条runtime边、274条type边；88条登记例外仍存在（73跨域SQL、12跨域internal、3Provider/Storage）。新增、失效和无效项均0，runtime SCC为0。该结果证明静态合同检查通过，不证明零耦合或全部函数无缺陷。
+2026-09-06历史架构扫描：298个应用TS/TSX文件，1039条runtime边、274条type边；88条登记例外（73跨域SQL、12跨域internal、3Provider/Storage），新增、失效和无效项均0，runtime SCC为0。本次没有重跑该扫描；这些计数只证明当时的静态合同检查通过，不证明零耦合或当前全部函数无缺陷。
 
 ## 2. 当前生成链路
 
@@ -58,16 +58,16 @@ workflow节点结果也分别记录业务state与projection_state；`retryFailed
 
 新图片/视频auto节点在可信素材接管或结果投影时按素材比例适配。旧节点没有尺寸模式时保留旧大小；manual节点保留用户尺寸，主动适配通过正式命令并可撤销。加载、播放、metadata、刷新不应触发布局写入。视频节点内部约束播放器可用高度并使用contain，避免竖屏下半截被裁切。
 
-模板节点位置不自动重排，竖屏高度增加后的重叠由用户整理；选中模板整体使用临时层级置前，不重写持久zIndex。该优先性由selected触发；仅新插入模板、设置primaryId不等于选中或自动置前。完整规则见 `UNBOUNDRY_UI_DESIGN_SYSTEM.md`，v0.7.14已获本地及线上对应范围USER_PASS。
+模板节点位置不自动重排，竖屏高度增加后的重叠由用户整理；选中模板整体使用临时层级置前，不重写持久zIndex。该优先性由selected触发；仅新插入模板、设置primaryId不等于选中或自动置前。完整规则见 [UI合同](UNBOUNDRY_UI_DESIGN_SYSTEM.md)，已验收范围按总矩阵对应条目查证。
 
-前端会按节点消费服务端结果；这说明代码不要求等待整组结束后才显示，不承诺零延迟。图历史缩略图、首次新建等仍为PERFORMANCE_PARTIAL；本轮没有重新测量延迟或与TapNow/LibTV对比。
+前端会按节点消费服务端结果；这说明代码不要求等待整组结束后才显示，不承诺零延迟。历史缩略图和首次画布的性能状态见 [当前状态的未决事项](UNBOUNDRY_CURRENT_STATE.md#未决事项)，测量方法与适用范围见 [性能证据7.2](REMAINING_BUG_UI_REPAIR_PLAN_2026-09-07.md#72-性能结论与范围)。本地目标通过不能推导为正式站性能基准或竞品对标通过。
 
 Canvas写入口受命令/写者清单约束，DATA-005仍是跨标签最后保存者胜并同步、同标签拒绝迟到旧请求，不得误写成跨标签全局CAS。
 
 ## 5. 运维与验收边界
 
-线上HTTPS、systemd、服务端workflow、schema43和v0.7.14部署均已存在；旧版“尚未部署/备份未实现”不是当前事实。当前手动加密备份已完成verify/fresh restore及云端GET核验；每日自动备份因旧schema41脚本仍失败，两者分开记账。
+线上HTTPS、systemd和服务端workflow已有实现；实际版本、schema及运行入口以CURRENT_STATE链接的发布回执为准。手动加密备份、恢复演练、云端核验和每日自动备份是不同验收项，其现状由CURRENT_STATE维护；不能用一次手动备份通过代替自动作业验收。
 
-当前CI包含类型、架构、生产build、high阈值依赖审计、安全预检、隔离HTTP/fake Provider工作流测试及源码覆盖；不代表所有测试套件、真实Provider或灾备均通过。本轮只执行静态/类型/源码及文档检查，复用原版本有效定向验收证据。
+CI配置见 [.github/workflows/quality-gates.yml](../.github/workflows/quality-gates.yml)，包含类型、架构、生产build、high阈值依赖审计、安全预检、隔离HTTP/fake Provider工作流与文档检查及源码覆盖。配置了检查不等于某次运行通过；实际run与范围由相应任务和发布回执记录，不扩大为所有测试套件、真实Provider或灾备通过。
 
-当前残余还包括维护后SSE更新提示重连、2条qs medium告警及矩阵中独立PAUSED/PARTIAL功能。具体操作看 [发布Runbook](../RELEASE_RUNBOOK.md) 与 [备份运维](../ops/production/README.md)；本文不构成运行旧脚本、发布或付费生成授权。
+维护后更新通知、依赖修补、性能和暂停项的现状统一见CURRENT_STATE；本文不保留另一份会落后的待办列表。具体操作看 [发布Runbook](../RELEASE_RUNBOOK.md) 与 [备份运维](../ops/production/README.md)。专项加固方案只有被当前任务明确选中才约束该项工作，尚未实施的方案不能写成现有行为；本文不构成运行旧脚本、发布或付费生成授权。
