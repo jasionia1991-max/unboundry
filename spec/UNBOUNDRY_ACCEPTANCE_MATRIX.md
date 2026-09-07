@@ -1,13 +1,14 @@
-> **当前验收增量（2026-09-06）**：本矩阵继续为`AUTHORITATIVE_ACCEPTANCE_LEDGER`。v0.7.14新增范围见下表，其余历史条目的用户状态不自动升级。当前生产/待办以 [CURRENT_STATE](UNBOUNDRY_CURRENT_STATE.md) 为准，下面旧INC段落是各自日期的历史验收，不提供当前执行授权。
+> **当前验收增量（2026-09-07）**：本矩阵为`AUTHORITATIVE_ACCEPTANCE_LEDGER`。v0.7.15已部署，本轮本地用户通过与生产工程验证分开；其余历史条目不自动升级。当前生产/待办以 [CURRENT_STATE](UNBOUNDRY_CURRENT_STATE.md) 为准，下面旧INC段落是各自日期的历史验收，不提供当前执行授权。
 
 | 当前项目 | 判定 | 证据边界 |
 | --- | --- | --- |
-| 视频节点完整预览 | USER_PASS | v0.7.14生产元素618×418容纳816×1104素材，原画布不变；用户线上通过 |
-| 新媒体原比例/手动尺寸/主动适配撤销 | USER_PASS | local及production合成上传、auto250×338/manual400×420/undo/refresh；用户通过 |
-| 选中模板整体置前 | USER_PASS | 本地真实命中与多选定向，随同候选用户本地及线上通过；不持久化层级 |
-| 发布手动加密备份 | TECHNICAL_PASS | verify/fresh restore与云端1004文件GET哈希验证 |
-| 全站性能对标 | PARTIAL | 历史小图冷加载与首次新建仍有未达标证据；本轮未重测 |
-| 每日自动备份、维护后更新通知、qs告警 | OPEN | 已登记现状，未在本轮修复 |
+| 本轮模板保存、其余12项及验收反馈修复 | DEPLOYED / LOCAL_USER_PASS / PRODUCTION_USER_RECHECK | 用户本地全部通过；发布及技术证据见[v0.7.15回执](V0_7_15_PRODUCTION_RECEIPT_2026-09-07.json)和[方案7～10节](REMAINING_BUG_UI_REPAIR_PLAN_2026-09-07.md)，没有代签线上用户验收 |
+| 图片「浏览全部」及模板筛选UI | PRODUCTION_TECHNICAL_PASS / LOCAL_USER_PASS / PRODUCTION_USER_RECHECK | 原生Chrome九项无遮挡、快速切分可打开/取消、46px项目筛选控件；原画布与生成记录不变 |
+| 视频完整预览、媒体原比例/手动/撤销、模板置前 | USER_PASS（v0.7.14已验收范围） | 原用户状态继承；新发布不扩展到其他历史暂停功能 |
+| 发布手动加密备份 | TECHNICAL_PASS / CLOUD_BACKUP_VERIFIED | 最新冻结加密包verify/fresh restore及云端GET通过；确切计数由[v0.7.15回执](V0_7_15_PRODUCTION_RECEIPT_2026-09-07.json)维护 |
+| 历史图与首次画布性能 | DEPLOYED / LOCAL_TARGET_PASS / LOCAL_USER_PASS | 本地180样本达标；未重做正式站基准，不等于全站竞品对标通过 |
+| 维护后更新通知、qs修补 | DEPLOYED / LOCAL_TEST_REVIEW_PASS | 本地重连/草稿保护和依赖验证完成；旧v0.7.14页面维护后仍需人工刷新，不冒充新客户端真实维护通过 |
+| 每日自动备份、视频/音频空按钮 | OPEN / USER_DEFERRED | 按用户要求跳过；手动发布备份不表示每日作业修复 |
 
 当前语义纠偏：DATA-005是跨标签最后写入者胜并同步、同标签迟到写拒绝；不能把下面早期OPEN-008/025的跨标签全局409叙述当现合同。服务已部署HTTPS，工作流与模板后端已实现；下面OPS-001、OPEN-020/023关于“未部署/无后端”的说明是原始验收时点。当前实现链路见 [生成结构](UNBOUNDRY_GENERATION_ARCHITECTURE.md)，不得把这些旧说明当成未实现待办。
 
@@ -489,7 +490,7 @@ F14本地门日志SHA-256：targeted `b9d260babe051c1f89ef86256ade2d57fda19b5700
 | CANVAS-011 | P0 | — | zoom 范围 0.15–2；左键拖空白框选，普通触控板双指横向/纵向滑动按1.2系数平移且zoom不变，捏合缩放；搜索定位只消费一次，光标在节点、输入框或Creator上仍可缩放；纯viewport保存不阻塞生成、不显示保存提示且面板不闪烁 | 2026-08-04用户实页复查、Unboundry活体对照、`m62-canvas-zoom-persistence`5/5、viewport/graph版本快照 | PASS |
 | CANVAS-012 | P1 | `interaction.fit-five-nodes` | 5 节点 fit view 得到全节点可见和近似参考矩阵 | 自动前后可见性、viewport | PASS |
 | CANVAS-013 | P1 | `interaction.selection-and-keyboard-move` | 有节点小地图 rect、selected、mask 和导航一致；198×148内容区外侧1px边线连续无断口；小地图原生按真实比例拖动且zoom不变，单击跳转到点击位置，滚轮不缩放画布 | 用户实页复查、Unboundry活体对照、自动 SVG DOM、比例拖动、点击跳转与滚轮 viewport | PASS |
-| CANVAS-014 | P0 | `interaction.source-aware-connect-menus-current` | Text/Image/Video/Audio 连线松到空白打开4/5/4/2项菜单；尺寸、临时线跟随及取消行为保留。可用项按UI6.4原子创建节点与引用edge并可保存/撤销，未接入项禁用并说明原因；开关菜单不得重载画布 | 原几何/取消PASS仅作历史；2026-09-07反馈修正后来源动作/保存恢复定向测试、独立复核及原Chrome12次拖线/刷新工程检查通过，2026-09-07用户明确其他项均通过，来源菜单获本地确认；见剩余方案第8/9节 | LOCAL_USER_PASS / NOT_DEPLOYED |
+| CANVAS-014 | P0 | `interaction.source-aware-connect-menus-current` | Text/Image/Video/Audio 连线松到空白打开4/5/4/2项菜单；尺寸、临时线跟随及取消行为保留。可用项按UI6.4原子创建节点与引用edge并可保存/撤销，未接入项禁用并说明原因；开关菜单不得重载画布 | 原几何/取消PASS仅作历史；2026-09-07反馈修正后来源动作/保存恢复定向测试、独立复核及原Chrome12次拖线/刷新工程检查通过，2026-09-07用户明确其他项均通过，来源菜单获本地确认；见剩余方案第8～10节；随v0.7.15部署，真实生产创建引用动作未再执行 | DEPLOYED / LOCAL_USER_PASS / PRODUCTION_USER_RECHECK |
 | CANVAS-015 | P0 | `legacy.interaction.invalid-same-side-edge`、`interaction.edge-clipboard-sandbox-current`、`interaction.edge-delete-reconnect-download-sandbox-current` | self、source→source、重复和二节点环不生成第二条稳定 edge；临时预览可关闭；失败端点拖拽保持原edge；当前普通edge无显式updater；无冲突的B→C仍可新增 | 参考36、自动指针、graph diff、用户实页复查 | PASS |
 | CANVAS-016 | P1 | `legacy.dense-canvas.neutral` | 62节点/58边/5组拖拽、zoom、面板交互无持续掉帧或全量保存；小地图触摸板横滑不得触发浏览器返回 | DOM/graph、长任务监测、请求统计、横滑回归检查、用户实页复查 | PASS |
 | CANVAS-017 | P0 | `interaction.multi-source-connect-to-node` | 多选时隐藏各节点左右加号，只在整体选择框右侧中线外12px显示一个20×20共用加号；拖动时每个已选节点各出现一条预览线，松到额外目标节点身体任意位置后，每个已选节点各生成一条到目标的稳定连线；多选保持；框选已连线节点不得显示连线剪刀，只有直接点击连线或悬浮约0.7秒才显示 | 用户截图、Unboundry活体DOM/指针、本地自动graph diff、两轮用户实页复查 | PASS |

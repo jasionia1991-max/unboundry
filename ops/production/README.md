@@ -1,15 +1,15 @@
 # Production backup contracts
 
-Current snapshot: 2026-09-06, `v0.7.14/schema43`. See [current authority](../../spec/UNBOUNDRY_CURRENT_STATE.md) and [release receipt](../../spec/V0_7_14_PRODUCTION_RECEIPT_2026-09-06.json). This directory contains operation sources; their presence in a release does not mean the systemd timer uses them.
+Current snapshot: 2026-09-07, `v0.7.15/schema43`. See [current authority](../../spec/UNBOUNDRY_CURRENT_STATE.md) and [v0.7.15 release receipt](../../spec/V0_7_15_PRODUCTION_RECEIPT_2026-09-07.json). This directory contains operation sources; their presence in a release does not mean the systemd timer uses them.
 
 ## Observed production state
 
-- Application: active/running, PID839221, NRestarts0; current points to `/opt/unboundry/releases/v0.7.14-media-aspect-20260906`.
-- Daily timer: active, next scheduled 2026-09-07 03:30 CST at the observation time. Service: failed, exit1; last start 2026-09-06 03:30:01 CST.
+- Application: active/running, PID1088583, NRestarts0; current points to `/opt/unboundry/releases/v0.7.15-bug-ui-20260907`.
+- Daily timer: failure remains `USER_DEFERRED`; the installed job still uses the old schema41 path and has not been repaired.
 - Installed ExecStart still invokes `/opt/unboundry/scripts/backup-to-oss.mjs`, which invokes the old standalone `backup-data.mjs`. Its validation requires schema41; production is schema43. Journal reports `Backup database validation failed`.
-- This release's separate manual encrypted backup succeeded: local verify and fresh restore plus remote PUT/GET hash verification, 1004 files, 1,939,771,911 bytes. This does not repair or validate the daily job.
+- The current manual schema43 encrypted backup is under `/var/lib/unboundry-v0715-bug-ui-20260907`, backup `cf5cd5b5-c9d2-4f45-b39a-100cd6ccd6f8`: verify and fresh restore passed, with 355 media, 648 mirrors and 3 secrets; 98 historical nonblocking warnings remain. Cloud upload and per-file GET hash/size verification passed; exact transfer counts are owned by the release receipt. This does not repair or validate the daily job.
 
-The daily job needs a separately implemented and verified current-schema freeze/backup/restore/upload pipeline and an exact installed-unit receipt. Merely replacing a path or schema constant does not supply dynamic freeze and logical-SHA evidence. No installation, restart, cleanup or new backup was performed by the documentation update.
+The daily job needs a separately implemented and verified current-schema freeze/backup/restore/upload pipeline and an exact installed-unit receipt. Merely replacing a path or schema constant does not supply dynamic freeze and logical-SHA evidence. The v0.7.15 deployment and current backup evidence are owned by the linked release receipt; this README does not mark the deferred daily job repaired.
 
 ## Current wrapper contract
 
@@ -23,7 +23,7 @@ Without `--apply-upload`, it creates a local encrypted package and reports an up
 
 Before installing or changing a job, record immutable release commit/tree, wrapper and unit hashes, owner/mode, current-schema freeze/SHA evidence, key identities without key bytes, verify/fresh-restore result, upload/GET verification and timer next-run. Use isolated synthetic/fake tests first. Do not replace CURRENT with a backup or rewrite historical task/attempt records to satisfy quiet gates.
 
-The v0.7.14 package is `/var/lib/unboundry-v0714-media-aspect-20260906/backup43/1779934b-9d23-4a9d-849d-531f21d678b7.ubbackup`. Verification retained 98 historical nonblocking media warnings; do not claim every historic asset is intact. The detailed completed cloud receipt remains `/var/lib/unboundry-v0714-media-aspect-20260906/evidence/oss-backup-upload.json`.
+The previous v0.7.14 recovery package remains `/var/lib/unboundry-v0714-media-aspect-20260906/backup43/1779934b-9d23-4a9d-849d-531f21d678b7.ubbackup`; it is retained for the reviewed rollback route. Do not use the old v0.7.13 path or claim every historic asset is intact. The current v0.7.15 cloud verification result is recorded in the linked release receipt.
 
 ## Historical tools and authorization
 

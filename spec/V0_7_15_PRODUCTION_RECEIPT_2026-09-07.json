@@ -1,0 +1,253 @@
+{
+  "version": "0.7.15",
+  "status": "DEPLOYED / CLOUD_BACKUP_VERIFIED / PRODUCTION_USER_RECHECK",
+  "date": "2026-09-07",
+  "commit": "8ac75ca79d525d34e8a9b1b8b5fb820c020cd402",
+  "tree": "5ee5dd88b08301ab1d97e44612ab98c64a7dd818",
+  "tag": "v0.7.15",
+  "tagObject": "96347e1f4bf00cb9ba792abf6ad9eccc5ab77c05",
+  "pr": 166,
+  "releaseUrl": "https://github.com/jasionia1991-max/unboundry/releases/tag/v0.7.15",
+  "site": "https://canvas.mymy.ltd",
+  "schema": 43,
+  "ci": {
+    "pullRequest": {
+      "head": "6879964982b115f95396124fb3393df4e8881124",
+      "run": 34080454345,
+      "conclusion": "success"
+    },
+    "main": {
+      "head": "8ac75ca79d525d34e8a9b1b8b5fb820c020cd402",
+      "run": 34080686396,
+      "successfulAttempt": 2,
+      "conclusion": "success",
+      "attempt1": "failed before product tests: managed timeout cleanup kill EPERM; exact same commit retry succeeded",
+      "preservedFailureLog": "/Users/mymy/Documents/unboundry/bug-ui-v0715-release-ops-20260907/main-ci-attempt1-failed.log"
+    }
+  },
+  "localValidation": {
+    "releaseSpecs": {
+      "m81": 42,
+      "m38": 19,
+      "total": 61,
+      "failed": 0,
+      "skipped": 0,
+      "retries": 0,
+      "blocked": 0,
+      "reportErrors": 0
+    },
+    "sourceSnapshot": "b4b1367ec6a005f70413411e1942556786a664e3497cb2b7207f9f195e9bde18",
+    "acceptedProductHashesUnchanged": 13,
+    "localUserPass": true,
+    "fullSuiteRun": false,
+    "priorUnchangedEvidence": "REMAINING_BUG_UI_REPAIR_PLAN_2026-09-07.md sections 7-9; final menu 42 distinct tests and native Chrome; earlier 214/75 retained as scoped historical evidence"
+  },
+  "independentReview": {
+    "productFixes": "PASS",
+    "releaseScopeAndDurableFieldCompatibility": "PASS",
+    "buildAndExport": "PASS",
+    "pairedCutoverAndRollbackOperations": "PASS",
+    "governanceExportAndInstall": "PASS",
+    "blockingFindings": 0,
+    "releaseDocumentation": "PASS; authorization phrasing and production acceptance enum clarified before commit"
+  },
+  "build": {
+    "version": "0.7.15",
+    "tag": "v0.7.15",
+    "commit": "8ac75ca79d525d34e8a9b1b8b5fb820c020cd402",
+    "tree": "5ee5dd88b08301ab1d97e44612ab98c64a7dd818",
+    "archiveSha256": "33fefd486308578eab8af357ea3a8e060302976350207800bda6a6b51497eb4d",
+    "sourceFiles": 934,
+    "nodeVersion": "22.23.2",
+    "npmVersion": "10.9.8",
+    "sourceUnchanged": true,
+    "builtFresh": true,
+    "protectedEntriesExcluded": [
+      "spec/INC_GEN_017_R0_PUBLISHED_MODEL_SNAPSHOT_2026-08-28.json",
+      "spec/public-templates-director-split-revision.json"
+    ],
+    "allStaticFilesPublicAndLoopback": 33,
+    "allStaticBytes": 6463970,
+    "allStaticExact": true
+  },
+  "cutover": {
+    "status": "V0715_ACTIVE_CODE_SWITCH_PASS",
+    "current": "/opt/unboundry/releases/v0.7.15-bug-ui-20260907",
+    "version": "0.7.15",
+    "commit": "8ac75ca79d525d34e8a9b1b8b5fb820c020cd402",
+    "tree": "5ee5dd88b08301ab1d97e44612ab98c64a7dd818",
+    "schemaVersion": 43,
+    "state": {
+      "MainPID": "1088583",
+      "NRestarts": "0",
+      "ActiveState": "active",
+      "SubState": "running"
+    },
+    "providerRequests": 0,
+    "databaseReplaced": false,
+    "schemaChanged": false,
+    "backup": "/var/lib/unboundry-v0715-bug-ui-20260907/backup43/cf5cd5b5-c9d2-4f45-b39a-100cd6ccd6f8.ubbackup"
+  },
+  "dataPreservation": {
+    "businessTablesExactlyEqual": true,
+    "mediaAndSecretFilesExactlyEqual": true,
+    "mediaAndSecretFileCount": 358,
+    "filesSha256": "a2cf8455ba7398b81421e5e4616a26d2af8dde1c55a5eff771f16e7d35ca0601",
+    "schemaChanged": false,
+    "databaseReplaced": false,
+    "intentionalWrites": "generation safety freeze/restore and associated audit entries only; no history rewritten to satisfy quiet gate",
+    "generationSafetyRestored": true
+  },
+  "compatibilityRollback": {
+    "version": "0.7.14",
+    "directory": "/opt/unboundry/releases/v0.7.14-media-aspect-20260906",
+    "commit": "c9d414a32613a28b5e013ee671223fcc219c7e05",
+    "tree": "6cbfbbe9905ac18c26beecc38f12e6b9901d37b6",
+    "script": "/var/lib/unboundry-v0715-bug-ui-20260907/evidence/rollback.py",
+    "scriptSha256": "71d4a6476aec8751322b775be1550906e3c26dc8f22e27e553ace00fc1f608ee",
+    "preserveCurrentData": true,
+    "newDurableFields": false,
+    "directOldV0713Unsafe": true,
+    "linuxPairedRuntime": {
+      "status": "PASS",
+      "scope": "Linux private network synthetic HTTP runtime new old new",
+      "versions": [
+        {
+          "version": "0.7.15",
+          "ready": true,
+          "layoutSave": true,
+          "refreshNoWrite": true,
+          "updateStream": true,
+          "revision": 5
+        },
+        {
+          "version": "0.7.14",
+          "ready": true,
+          "layoutSave": true,
+          "refreshNoWrite": true,
+          "updateStream": true,
+          "revision": 8
+        },
+        {
+          "version": "0.7.15",
+          "ready": true,
+          "layoutSave": true,
+          "refreshNoWrite": true,
+          "updateStream": true,
+          "revision": 11
+        }
+      ],
+      "counts": {
+        "generation_tasks": 0,
+        "generation_provider_attempts": 0
+      },
+      "schemaVersion": 43,
+      "liveDataMounted": false
+    },
+    "deleteJournalWrites": "PASS for both packages",
+    "realSystemdRollbackExecuted": false
+  },
+  "backup": {
+    "package": "/var/lib/unboundry-v0715-bug-ui-20260907/backup43/cf5cd5b5-c9d2-4f45-b39a-100cd6ccd6f8.ubbackup",
+    "receipt": {
+      "backupId": "cf5cd5b5-c9d2-4f45-b39a-100cd6ccd6f8",
+      "captureMode": "locked-exact",
+      "databaseLogicalSha256": "7207225f81d66ee2c7a57361fc3717dcfd022bb24e86f63b9f9955c57def0f6e",
+      "finalCandidate": true,
+      "mediaFiles": 355,
+      "mediaIntegrity": {
+        "backupBlockingIssues": 0,
+        "clean": false,
+        "evidenceSha256": "8871f4e292402e52408f3813d33d95e6a24ee76ffbc01dd3047e9d9b0f3b1546",
+        "issues": 98,
+        "sha256": "2a570cd1f8735a0c72872f068f19beac8ac70398c6b2e486fe63ef4d56276aa4"
+      },
+      "ossMirrors": 648,
+      "packageDirectory": "/work/backup43/cf5cd5b5-c9d2-4f45-b39a-100cd6ccd6f8.ubbackup",
+      "schemaVersion": 43,
+      "secretFiles": 3
+    },
+    "verify": "PASS",
+    "freshRestore": "PASS",
+    "cloud": "VERIFIED",
+    "cloudReceiptPath": "/var/lib/unboundry-v0715-bug-ui-20260907/evidence/oss-backup-upload.json",
+    "mirrorPreparation": {
+      "total": 648,
+      "reusedVerified": 642,
+      "exactOssGets": 6,
+      "ossWrites": 0
+    },
+    "automaticDailyBackup": "OPEN / USER_DEFERRED; installed schema41 job remains incompatible with schema43",
+    "cloudVerification": {
+      "status": "ENCRYPTED_BACKUP_OSS_UPLOAD_GET_VERIFY_PASS",
+      "backupId": "cf5cd5b5-c9d2-4f45-b39a-100cd6ccd6f8",
+      "retentionDeletes": 0,
+      "mediaWrites": 0,
+      "providerRequests": 0,
+      "files": 1010,
+      "bytes": 1968014584,
+      "manifestPutGetVerified": true
+    }
+  },
+  "productionUI": {
+    "status": "PASS",
+    "before": {
+      "projectId": "837344f0-5988-4408-9651-0b0cebe0f6fa",
+      "rowCount": 1,
+      "canvasSha256": "8feacf4b796fbd44376fc3ff629637e10021737c546e5f38738b4685d722a566",
+      "tasks": 1108,
+      "attempts": 1119,
+      "canvasCommands": 95
+    },
+    "after": {
+      "projectId": "837344f0-5988-4408-9651-0b0cebe0f6fa",
+      "rowCount": 1,
+      "canvasSha256": "8feacf4b796fbd44376fc3ff629637e10021737c546e5f38738b4685d722a566",
+      "tasks": 1108,
+      "attempts": 1119,
+      "canvasCommands": 95
+    },
+    "browser": "native Chrome",
+    "version": "0.7.15",
+    "checks": {
+      "workspaceAndSavedCanvasLoad": true,
+      "imageMoreMenuNineItemsUncovered": true,
+      "imageToolbarExpandedZIndex": 36,
+      "quickSplitOpenedAndCancelled": true,
+      "browserErrorLogs": 0,
+      "templateStatusFilter": "PASS: four options, project custom combobox, 46px height / 12px radius",
+      "canvasReopen": true
+    },
+    "scope": "read-only interaction, no generation or new node creation",
+    "observedAt": "2026-09-07T04:18:54.512246+00:00",
+    "serialization": "sqlite fetchall tuples, matching original baseline",
+    "diagnosticCorrection": "First comparison encoded dictionaries instead of baseline tuples; frozen-restored and current rows are exactly equal across every column. Original mismatch evidence retained."
+  },
+  "userAcceptance": {
+    "local": "LOCAL_USER_PASS",
+    "quotes": [
+      "其他的都通过",
+      "通过了 收尾吧"
+    ],
+    "production": "PRODUCTION_USER_RECHECK",
+    "nextStep": "刷新正式站，在常用画布确认模板、拖线菜单/稳定性及图片浏览全部体验，然后统一回复结果"
+  },
+  "paidGeneration": 0,
+  "limitations": [
+    "Daily automatic backup and video/audio empty toolbar buttons remain USER_DEFERRED",
+    "98 historical nonblocking media warnings retained",
+    "No real generation or historical template repair was performed",
+    "Old v0.7.14 client required manual refresh after maintenance; no real-maintenance pass claimed for newly loaded v0.7.15 client",
+    "Production performance benchmark not rerun; local target evidence does not establish whole-site competitor parity"
+  ],
+  "governance": {
+    "procedure": "RELEASE_RUNBOOK.md independent documentation synchronization",
+    "identityOwner": "/opt/unboundry/governance/current/.governance-manifest.json",
+    "productRebuildRequired": false,
+    "productRestartRequired": false,
+    "verificationOwner": "/var/lib/unboundry-v0715-bug-ui-20260907/evidence/governance-sync.json",
+    "finalDocCiOwner": "/var/lib/unboundry-v0715-bug-ui-20260907/evidence/governance-ci.json"
+  },
+  "evidenceDirectory": "/Users/mymy/Documents/unboundry/bug-ui-v0715-release-ops-20260907",
+  "serverEvidenceDirectory": "/var/lib/unboundry-v0715-bug-ui-20260907/evidence"
+}
