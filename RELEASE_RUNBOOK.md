@@ -10,7 +10,7 @@
 - 两份永久保护JSON不得读取、hash、复制、移动、修改、删除或暂存：`spec/public-templates-director-split-revision.json`、`spec/INC_GEN_017_R0_PUBLISHED_MODEL_SNAPSHOT_2026-08-28.json`。所有源码导出/检查使用显式排除。
 - 纯模板数据发布走`上线规矩.md`轻量路径；纯文档同步按下节发布独立文档镜像，不替换产品构建或 bump 产品版本。
 
-当前发布身份、备份与验证状态统一见 [v0.7.15发布回执](spec/V0_7_15_PRODUCTION_RECEIPT_2026-09-07.json)；当前回退约束见第6节。每日自动备份仍USER_DEFERRED，不以手动发布备份代替该项验收。
+当前发布身份、备份与验证状态统一见 [v0.7.16发布回执](spec/V0_7_16_PRODUCTION_RECEIPT_2026-09-07.json)；当前回退约束见第6节。每日自动备份仍USER_DEFERRED，不以手动发布备份代替该项验收。
 
 ## 独立文档同步
 
@@ -55,7 +55,7 @@
 
 - 私钥内容不得输出或进仓库；新恢复目录私有且独立，不能覆盖CURRENT。
 - verify通过后fresh restore，再核对schema43、integrity、FK、logical SHA及计数/媒体/secret清单。日志模式包含实际生产DELETE，不能只测WAL。
-- 允许的历史媒体 warning 精确列入证据，不能写成“无媒体问题”；本轮 v0.7.15 的 98 条非阻断提示和最终媒体计数以发布回执为准。
+- 允许的历史媒体 warning 精确列入证据，不能写成“无媒体问题”；本轮 v0.7.16 的 98 条非阻断提示和最终媒体计数以发布回执为准。
 - 真实云上传只在已授权范围进行，上传后需要GET哈希/大小核验，PUT成功本身不等于可恢复。
 - `ops/production/backup-to-oss-retention.mjs`可创建当前加密备份并上传；它自身不自动完成verify/fresh restore/远端GET闭环，需要操作方案分别补齐。
 - **当前自动备份故障尚未修好**：systemd仍调用`/opt/unboundry/scripts/backup-to-oss.mjs`，其旧子脚本要求schema41。不得把它作为当前备份入口。更不能仅因应用已升级就宣称每日备份生效。
@@ -64,12 +64,12 @@
 
 先准备本次精确新包、精确兼容回退包及数据保持策略，在隔离副本完成真实Linux HTTP保存/刷新和forward→rollback→forward；记录其与真实systemd切换测试的区别。正式维护中保留旧current身份，排空再原子切换；核对服务、版本、ready、数据及静态资源后解除维护。
 
-v0.7.15当前回退约束：
+v0.7.16当前回退约束：
 
-- 当前新包：`/opt/unboundry/releases/v0.7.15-bug-ui-20260907`；固定回退包：`/opt/unboundry/releases/v0.7.14-media-aspect-20260906`。
-- 回退前必须确认当前仍指向精确 v0.7.15、备份/verify/fresh restore 证据和当次授权齐全；回退只原子切换 release 指针，保留 `CURRENT` 数据，不做 schema 迁移或持久字段清理。
-- v0.7.15 无新增持久字段；隔离 Linux 新包→旧包→新包及两包 DELETE 验证通过。该证据支持兼容回退，不等同于已经执行真实线上回退。
-- **禁止直接切旧 v0.7.13**：旧 parser/resize 语义与当前数据不兼容。v0.7.11 检查点仅为代码恢复基线，也不等于当前数据库可直接降级。
+- 当前新包：`/opt/unboundry/releases/v0.7.16-status-query-20260907`；固定回退包：`/opt/unboundry/releases/v0.7.15-bug-ui-20260907`。精确commit/tree、操作单和脚本SHA由本次发布回执拥有。
+- 回退前确认当前仍是精确v0.7.16，按本次rollback.py重新执行静默、最新冻结备份/verify/fresh restore；只原子切换代码指针，保留CURRENT，不迁移schema或清理持久字段。
+- RB05隔离Linux新→旧→新、原合成任务/草稿/素材和真实客户端bundle身份通过。它不等于实际线上systemd回退或真实Provider恢复。新素材必须在当前备份镜像中严格对应，缺失时停止；回退失败保持维护，不自动切回问题新包。
+- v0.7.15→v0.7.14及其DELETE演练是历史证据，不替代本次身份。禁止跳过已核验回退候选直接切更老包；旧v0.7.13的parser/resize语义不兼容，v0.7.11代码检查点也不是数据库备份。
 
 ### 历史 v0.7.14 兼容约束（非当前回退身份）
 
@@ -86,7 +86,7 @@ v0.7.15当前回退约束：
 
 ## 8. 收尾
 
-生产回执分别记录源码/CI、定向或full范围、备份/恢复/云端验证、生产数据和UI、未决风险、用户验收；本轮最终状态见 [v0.7.15 发布回执](spec/V0_7_15_PRODUCTION_RECEIPT_2026-09-07.json)。先是技术结果，只有用户明确通过才记对应范围USER_PASS。
+生产回执分别记录源码/CI、定向或full范围、备份/恢复/云端验证、生产数据和UI、未决风险、用户验收；本轮最终状态见 [v0.7.16 发布回执](spec/V0_7_16_PRODUCTION_RECEIPT_2026-09-07.json)。先是技术结果，只有用户明确通过才记对应范围USER_PASS。
 
 更新CURRENT_STATE、TASKS、主题checkpoint、总矩阵及必要架构/操作文档。固定历史JSON、失败记录和tag不改写；演进中的当前回执补上后续验收事实。文档是否commit/push按用户当次授权，不能把旧发布授权扩为永久权限。
 
