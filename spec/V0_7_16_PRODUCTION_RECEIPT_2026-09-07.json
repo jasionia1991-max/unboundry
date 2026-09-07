@@ -285,7 +285,18 @@
       "secretFiles": 3
     },
     "cloud": {
-      "status": "UPLOAD_AND_GET_VERIFY_IN_PROGRESS"
+      "status": "ENCRYPTED_BACKUP_OSS_UPLOAD_GET_VERIFY_PASS",
+      "backupId": "cfa31842-9cf6-429c-92e3-960c3988dc4d",
+      "prefix": "objects/backups/unboundry-schema43/cfa31842-9cf6-429c-92e3-960c3988dc4d",
+      "retentionDeletes": 0,
+      "mediaWrites": 0,
+      "providerRequests": 0,
+      "files": 1015,
+      "bytes": 1978517734,
+      "allObjectsGetAndSha256Verified": true,
+      "manifestGetAndBytesVerified": true,
+      "receiptPath": "/var/lib/unboundry-v0716-status-query-20260907/evidence/oss-backup-upload.json",
+      "receiptSha256": "aea6cc8f61cb5316ef552bdd0cabe8f7f6f53258d2bbed21e48fca482c46bcf1"
     },
     "mirrorPreparation": {
       "currentObjects": 653,
