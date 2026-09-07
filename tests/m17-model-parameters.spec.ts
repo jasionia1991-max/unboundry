@@ -1219,6 +1219,7 @@ test("text, image, video and audio nodes render admin-defined parameters and per
         { defaultValue: "text", key: "inputMode", label: "输入", options: [{ label: "文本", value: "text" }], type: "select" },
         { defaultValue: "markdown", key: "responseFormat", label: "输出格式", options: [{ label: "Markdown", value: "markdown" }], type: "select" },
         { defaultValue: "creative", key: "creativity", label: "创造性", options: [{ label: "创意", value: "creative" }], type: "select" },
+        { defaultValue: 7, group: "advanced", key: "custom_seed12345678", label: "随机种子", max: 999999, min: 0, options: [], step: 1, type: "number" },
         { defaultValue: 2, key: "outputCount", label: "数量", options: [{ label: "2×", value: 2 }], type: "select" },
       ],
       referenceInputs: { audio: 0, image: 0, video: 0 },
@@ -1293,6 +1294,37 @@ test("text, image, video and audio nodes render admin-defined parameters and per
     page.getByTestId("text-creator-prompt"),
     "文字指令",
   );
+  await test.step("数字参数通过实际触发器可改并保存", async () => {
+    const parameterTrigger = page.getByTestId("text-creator").getByRole(
+      "button",
+      { exact: true, name: "文本 · Markdown · 创意 · 7" },
+    );
+    await expect(parameterTrigger).toBeVisible();
+    await parameterTrigger.click();
+    const seed = page.getByRole("dialog", { name: "模型参数" })
+      .getByRole("spinbutton", { name: "随机种子" });
+    await expect(seed).toHaveAttribute("aria-label", "随机种子");
+    await expect(seed).toHaveValue("7");
+    await seed.fill("42");
+    await expect(seed).toHaveValue("42");
+    await expect.poll(async () => {
+      const response = await page.request.get("/api/canvas/default");
+      if (!response.ok()) return undefined;
+      const document = await response.json() as {
+        nodes?: Array<{
+          data?: { textParameters?: Record<string, unknown> };
+          type?: string;
+        }>;
+      };
+      return document.nodes?.find((node) => node.type === "text")
+        ?.data?.textParameters?.custom_seed12345678;
+    }).toBe(42);
+    await expect(page.getByTestId("text-creator").getByRole("button", {
+      exact: true,
+      name: "文本 · Markdown · 创意 · 42",
+    })).toBeVisible();
+    await seed.press("Escape");
+  });
 
   await addNode("图片");
   await expect(page.getByTestId("image-creator")).toContainText("9:16 · 高");

@@ -9,6 +9,7 @@ import type { AuthoritativeCanvasDocument } from "../types/canvasCommands";
 import { mergeWorkflowResultNodes, planCanvasCommandIntents } from "../client/src/canvas/canvasCommandJournal";
 import { HistoryPreviewCache } from "../server/mediaEditSource";
 import { createHistoryImagePreview } from "../server/providerImageNormalization";
+import { mediaResourceBudget } from "../server/resourceBudget";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -237,6 +238,7 @@ test("incremental results reject stale tasks and missing nodes and preserve conf
 });
 
 test("preview cache coalesces source reads, bounds memory and cools failed work", async () => {
+  test.setTimeout(60_000);
   const cache = new HistoryPreviewCache(20);
   let calls = 0;
   const make = async () => { calls += 1; return Buffer.alloc(12, 1); };
@@ -250,6 +252,93 @@ test("preview cache coalesces source reads, bounds memory and cools failed work"
   await expect(cache.get("bad", fail)).rejects.toThrow("synthetic");
   await expect(cache.get("bad", fail)).rejects.toThrow("cooling down");
   expect(failures).toBe(1);
+  expect(cache.snapshot()).toMatchObject({ active: 0, queued: 0, pending: 0 });
+
+  let releaseSaturated!: () => void;
+  const saturationReleased = new Promise<void>((resolve) => {
+    releaseSaturated = resolve;
+  });
+  const saturated = new HistoryPreviewCache();
+  let activeCreates = 0;
+  let maximumActiveCreates = 0;
+  let duplicateFactoryCalls = 0;
+  let overflowFactoryCalls = 0;
+  const saturatedKeys = Array.from({ length: 33 }, (_, index) => `saturated-${index}`);
+  const saturatedRequests = saturatedKeys.map((key) => saturated.get(key, async () => {
+    activeCreates += 1;
+    maximumActiveCreates = Math.max(maximumActiveCreates, activeCreates);
+    try {
+      await saturationReleased;
+      return Buffer.from([1]);
+    } finally {
+      activeCreates -= 1;
+    }
+  }));
+  await Promise.resolve();
+  expect(saturated.snapshot()).toMatchObject({ active: 2, queued: 31, pending: 33 });
+  expect(maximumActiveCreates).toBe(2);
+
+  const duplicateRequest = saturated.get(saturatedKeys[0]!, async () => {
+    duplicateFactoryCalls += 1;
+    return Buffer.from([2]);
+  });
+  expect(saturated.snapshot()).toMatchObject({ pending: 33 });
+  await expect(saturated.get("saturated-overflow", async () => {
+    overflowFactoryCalls += 1;
+    return Buffer.from([3]);
+  })).rejects.toThrow("Preview queue full");
+  expect(duplicateFactoryCalls).toBe(0);
+  expect(overflowFactoryCalls).toBe(0);
+
+  releaseSaturated();
+  const saturatedResults = await Promise.all([
+    ...saturatedRequests,
+    duplicateRequest,
+  ]);
+  expect(saturatedResults).toHaveLength(34);
+  expect(saturated.snapshot()).toMatchObject({ active: 0, queued: 0, pending: 0 });
+  expect(maximumActiveCreates).toBe(2);
+
+  const aborted = new HistoryPreviewCache();
+  let maximumAbortActive = 0;
+  let abortActive = 0;
+  const abortSignals: AbortSignal[] = [];
+  const abortRequests = ["a", "b", "c"].map((key) => aborted.get(`aborted-${key}`, async (signal) => {
+    abortSignals.push(signal);
+    abortActive += 1;
+    maximumAbortActive = Math.max(maximumAbortActive, abortActive);
+    try {
+      await new Promise<never>((_resolve, reject) => {
+        if (signal.aborted) {
+          reject(signal.reason ?? new Error("preview signal aborted"));
+          return;
+        }
+        signal.addEventListener("abort", () => {
+          reject(signal.reason ?? new Error("preview signal aborted"));
+        }, { once: true });
+      });
+      throw new Error("abort work unexpectedly resolved");
+    } finally {
+      abortActive -= 1;
+    }
+  }));
+  const abortSettled = Promise.allSettled(abortRequests);
+  await Promise.resolve();
+  expect(aborted.snapshot()).toMatchObject({ active: 2, queued: 1, pending: 3 });
+  expect(maximumAbortActive).toBe(2);
+  await new Promise((resolve) => setTimeout(resolve, 30_250));
+  const abortResults = await abortSettled;
+  expect(abortResults.every(({ status }) => status === "rejected")).toBe(true);
+  expect(abortSignals.length).toBeGreaterThanOrEqual(2);
+  expect(abortSignals.every((signal) => signal.aborted)).toBe(true);
+  expect(maximumAbortActive).toBe(2);
+  expect(aborted.snapshot()).toEqual({
+    active: 0,
+    bytes: 0,
+    entries: 0,
+    pending: 0,
+    queued: 0,
+  });
 });
 
 test("real history codec creates bounded PNG without changing the PNG or leaving files", async () => {
@@ -270,6 +359,11 @@ test("real history codec creates bounded PNG without changing the PNG or leaving
         return result;
       })));
     const coldMs = performance.now() - coldStarted;
+    expect(mediaResourceBudget.snapshot()).toEqual({
+      activeJobs: 0,
+      owners: 0,
+      reservedBytes: 0,
+    });
     const warmStarted = performance.now();
     await Promise.all(Array.from({ length: 20 }, (_, index) => cache.get(`synthetic-history-${index}`,
       async () => { throw new Error("warm preview unexpectedly reread its source"); })));

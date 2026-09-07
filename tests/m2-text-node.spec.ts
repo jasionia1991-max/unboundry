@@ -28,7 +28,10 @@ test("Text matches neutral, selected and editing states", async ({
   await node.click();
   await expect(node).toHaveCSS("outline-color", "rgb(122, 122, 122)");
   await expect(node).toHaveCSS("outline-width", "2px");
-  await expect(node).toHaveCSS("z-index", "1000");
+  const selectedTextZIndex = await node.evaluate((element) =>
+    Number(getComputedStyle(element).zIndex),
+  );
+  expect(selectedTextZIndex).toBeGreaterThan(0);
 
   const toolbar = page.getByTestId("text-node-toolbar");
   expect(await toolbar.boundingBox()).toMatchObject({ width: 617, height: 48 });
@@ -182,6 +185,63 @@ test("Text matches neutral, selected and editing states", async ({
   await page.mouse.click(1000, 700);
   await expect(node).not.toHaveClass(/selected/);
   await expect(toolbar).toHaveCount(0);
+
+  await test.step("CUI-08: fixed left add keeps the new text controls inside every supported viewport", async () => {
+    for (const viewport of [
+      { height: 720, width: 1280 },
+      { height: 900, width: 1440 },
+      { height: 1080, width: 1920 },
+      { height: 917, width: 1135 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await page.getByTestId("add-node").click();
+      const menu = page.getByTestId("add-node-menu");
+      await expect(menu).toBeVisible();
+      await menu.getByRole("menuitem", { name: "文本", exact: true }).click();
+
+      const selectedText = page.locator(".react-flow__node-text.selected");
+      await expect(selectedText).toHaveCount(1);
+      await expect(selectedText).toHaveCSS("width", "250px");
+      await expect(selectedText).toHaveCSS("height", "250px");
+      const creator = page.getByTestId("text-creator");
+      const textToolbar = page.getByTestId("text-node-toolbar");
+      await expect(creator).toBeVisible();
+      await expect(textToolbar).toBeVisible();
+      await expect(creator.getByTestId("text-creator-prompt")).toBeVisible();
+      await expect(creator.getByRole("button", { name: "Generate" })).toBeVisible();
+
+      for (const testId of ["text-creator", "text-node-toolbar"] as const) {
+        const bounds = await page.getByTestId(testId).boundingBox();
+        expect(bounds).toBeTruthy();
+        expect(bounds!.x).toBeGreaterThanOrEqual(8);
+        expect(bounds!.y).toBeGreaterThanOrEqual(8);
+        expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(viewport.width - 8);
+        expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(viewport.height - 8);
+      }
+      expect(await page.evaluate(() => ({
+        horizontal: document.documentElement.scrollWidth > window.innerWidth,
+        vertical: document.documentElement.scrollHeight > window.innerHeight,
+      }))).toEqual({ horizontal: false, vertical: false });
+    }
+  });
+
+  await test.step("CANVAS-001: selected nodes use relative display priority over unselected peers", async () => {
+    await page.goto("/__fixture/interaction.selection-and-keyboard-move");
+    const selected = page.locator('.react-flow__node[data-id="probe-a"]');
+    await expect(selected).toBeVisible();
+    await selected.click();
+    await expect(selected).toHaveClass(/selected/);
+    const selectedZIndex = await selected.evaluate((element) =>
+      Number(getComputedStyle(element).zIndex),
+    );
+    const unselectedZIndices = await page.locator(
+      ".react-flow__node:not(.selected)",
+    ).evaluateAll((elements) =>
+      elements.map((element) => Number(getComputedStyle(element).zIndex)),
+    );
+    expect(unselectedZIndices.length).toBeGreaterThan(0);
+    expect(selectedZIndex).toBeGreaterThan(Math.max(...unselectedZIndices));
+  });
 });
 
 test("Text body keeps the final IME composition and never persists pinyin intermediates", async ({

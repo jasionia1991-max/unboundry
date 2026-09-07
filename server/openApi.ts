@@ -1397,6 +1397,7 @@ export const openApiDocument = {
           { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 100 } },
           { in: "query", name: "offset", schema: { type: "integer", minimum: 0 } },
           { in: "query", name: "includeGraph", schema: { type: "boolean" } },
+          { in: "query", name: "revision", description: "Use the first page revision on subsequent pages; omit to refresh or for legacy clients", schema: { type: "string", pattern: "^[a-f0-9]{64}$" } },
         ],
         responses: {
           "200": {
@@ -1413,11 +1414,12 @@ export const openApiDocument = {
                     },
                     pagination: {
                       type: "object",
-                      required: ["hasMore", "limit", "offset", "total"],
+                      required: ["hasMore", "limit", "offset", "revision", "total"],
                       properties: {
                         hasMore: { type: "boolean" },
                         limit: { type: "integer" },
                         offset: { type: "integer" },
+                        revision: { type: "string", pattern: "^[a-f0-9]{64}$" },
                         total: { type: "integer" },
                       },
                     },
@@ -1426,7 +1428,9 @@ export const openApiDocument = {
               },
             },
           },
+          "400": { description: "Invalid pagination or revision" },
           "403": { description: "Requires manage_public_templates" },
+          "409": { description: "LIST_REVISION_STALE: list changed; discard previous pages and refresh once" },
         },
       },
       post: {
@@ -1485,6 +1489,29 @@ export const openApiDocument = {
       },
     },
     "/api/admin/templates/{templateId}": {
+      get: {
+        operationId: "getAdminPublicTemplate",
+        summary: "Read one public template including its graph, compatibility and archived state",
+        parameters: [{
+          in: "path", name: "templateId", required: true,
+          schema: { type: "string", format: "uuid" },
+        }],
+        responses: {
+          "200": {
+            description: "Exact template; Cache-Control: no-store",
+            content: { "application/json": { schema: {
+              type: "object", required: ["template"],
+              properties: { template: { allOf: [
+                { $ref: "#/components/schemas/TemplateCatalogCard" },
+                { type: "object", required: ["graph"] },
+              ] } },
+            } } },
+          },
+          "401": { description: "Authentication required" },
+          "403": { description: "Requires manage_public_templates" },
+          "404": { description: "Invalid UUID or template not found" },
+        },
+      },
       patch: {
         operationId: "updatePublicTemplate",
         summary: "Update title, description, category, graph, cover status or preview image",

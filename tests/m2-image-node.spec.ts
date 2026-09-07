@@ -64,6 +64,56 @@ async function expectScreenSpaceSizeInvariant(page: Page, locator: Locator) {
   await expect(world).toHaveAttribute("data-viewport-zoom", originalZoom);
 }
 
+async function routeImageToolCapabilities(
+  page: Page,
+  status: "available" | "unavailable" | "stale",
+  options: {
+    expiresAt?: string;
+    reason?: string;
+    waitFor?: Promise<void>;
+  } = {},
+) {
+  const available = status === "available";
+  const reason = options.reason ?? (available
+    ? "受控测试能力可用"
+    : status === "stale"
+      ? "受控测试能力状态陈旧"
+      : "受控测试能力不可用");
+  const reasonCode = available
+    ? "AVAILABLE"
+    : status === "stale"
+      ? "CAPABILITY_STALE"
+      : "PROVIDER_UNAVAILABLE";
+  await page.route("**/api/image-tools/capabilities", async (route) => {
+    if (options.waitFor) await options.waitFor;
+    await route.fulfill({
+      body: JSON.stringify({
+        generatedAt: "2026-08-23T13:00:00.000Z",
+        operations: imageToolOperations.map((operation) => ({
+          expiresAt: options.expiresAt ?? "2099-08-23T13:05:00.000Z",
+          maximumInputBytes: imageToolMaximums.inputBytes,
+          maximumInputPixels: imageToolMaximums.inputPixels,
+          operation,
+          outputContentTypes: ["image/png"],
+          reason,
+          reasonCode,
+          status,
+          supportsAlpha: available,
+          supportsMask: available,
+          supportsReferenceImage: available,
+        })),
+        revision: available
+          ? "dddddddddddddddddddddddd"
+          : status === "stale"
+            ? "bbbbbbbbbbbbbbbbbbbbbbbb"
+            : "cccccccccccccccccccccccc",
+      }),
+      contentType: "application/json",
+      status: 200,
+    });
+  });
+}
+
 test.beforeEach(async ({ page }, testInfo) => {
   const retention = testInfo.title.includes("retains 2K");
   const referenceModel = testInfo.title.includes("reference chip");
@@ -315,6 +365,13 @@ test("Image tools accurately close character risk precheck without a false trust
       status: 200,
     });
   });
+  let releaseLoading!: () => void;
+  const loadingGate = new Promise<void>((resolve) => {
+    releaseLoading = resolve;
+  });
+  await routeImageToolCapabilities(page, "unavailable", {
+    waitFor: loadingGate,
+  });
   await page.setViewportSize({ height: 900, width: 1440 });
   await page.goto("/__fixture/node.image.empty");
   const node = page.locator('.react-flow__node-image[data-id="image-primary"]');
@@ -329,6 +386,72 @@ test("Image tools accurately close character risk precheck without a false trust
     .getByRole("button", { name: "浏览全部" })
     .click();
   const menu = page.getByTestId("image-node-more-menu");
+  await test.step("CUI-02: loading, stale and expired remote tools stay disabled while local tools stay available", async () => {
+    const expectBlocked = async (
+      status: "unavailable" | "stale",
+      reason: string,
+    ) => {
+      for (const name of ["多角度", "重绘"] as const) {
+        const button = page.getByRole("button", { name });
+        await expect(button).toBeDisabled();
+        await expect(button).toHaveAttribute("data-capability-status", status);
+      }
+      for (const name of ["扩图", "擦除", "增强", "抠图"] as const) {
+        const entry = menu.getByRole("menuitem", { name });
+        await expect(entry).toBeDisabled();
+        await expect(entry).toHaveAttribute("data-capability-status", status);
+        await expect(entry).toHaveAttribute("title", reason);
+      }
+    };
+    const expectLocalToolsAvailable = async () => {
+      for (const name of ["标注", "调整像素", "快速切分"] as const) {
+        await expect(menu.getByRole("menuitem", { name })).toBeEnabled();
+      }
+    };
+    const reopenImageMenu = async () => {
+      await expect(node.getByTestId("image-node-preview")).toBeVisible();
+      await node.click();
+      await page.getByTestId("image-node-toolbar")
+        .getByRole("button", { name: "浏览全部" })
+        .click();
+      await expect(page.getByTestId("image-node-more-menu")).toBeVisible();
+    };
+
+    // The provider exposes its loading fallback as stale; remote entry points
+    // stay disabled while local tools remain usable.
+    await expectBlocked("stale", "图片工具能力状态正在加载");
+    await expectLocalToolsAvailable();
+
+    // Once the delayed response arrives, the existing unavailable contract is
+    // still enforced without making a provider or generation request.
+    releaseLoading();
+    await expectBlocked("unavailable", "受控测试能力不可用");
+    await expectLocalToolsAvailable();
+    await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
+
+    // An explicit stale snapshot has the same safe UI behavior.
+    await page.unroute("**/api/image-tools/capabilities");
+    await routeImageToolCapabilities(page, "stale", {
+      reason: "受控测试能力状态陈旧",
+    });
+    await page.reload();
+    await reopenImageMenu();
+    await expectBlocked("stale", "受控测试能力状态陈旧");
+    await expectLocalToolsAvailable();
+
+    // An already expired response is cleared by the provider before the
+    // assertion, so it converges to the same stale and disabled state.
+    await page.unroute("**/api/image-tools/capabilities");
+    await routeImageToolCapabilities(page, "available", {
+      expiresAt: "1970-01-01T00:00:00.000Z",
+    });
+    await page.reload();
+    await reopenImageMenu();
+    await expect.poll(() => page.getByRole("button", { name: "多角度" })
+      .getAttribute("data-capability-status")).toBe("stale");
+    await expectBlocked("stale", "图片工具能力状态正在加载");
+    await expectLocalToolsAvailable();
+  });
   await expect(menu.getByRole("menuitem", { name: "Seedance 素材校验" }))
     .toHaveCount(0);
   await expect(menu.getByRole("menuitem", { name: "角色可信素材" }))
@@ -353,6 +476,7 @@ test("Image empty and local upload states match the observed geometry", async ({
       generationRequests.push(request.url());
     }
   });
+  await routeImageToolCapabilities(page, "available");
   await page.setViewportSize({ height: 720, width: 1280 });
   await request.delete("/api/canvas/node.image.empty");
   await page.goto("/__fixture/node.image.empty");
@@ -409,7 +533,14 @@ test("Image empty and local upload states match the observed geometry", async ({
   ).toHaveCount(0);
   const toolbar = page.getByTestId("image-node-toolbar");
   await expect(toolbar).toBeVisible();
-  await expect(toolbar).toHaveCSS("z-index", "1002");
+  const toolbarZIndex = await toolbar.evaluate((element) =>
+    Number(getComputedStyle(element).zIndex),
+  );
+  const nodeZIndices = await page.locator(".react-flow__node").evaluateAll(
+    (elements) => elements.map((element) => Number(getComputedStyle(element).zIndex)),
+  );
+  expect(nodeZIndices.length).toBeGreaterThan(0);
+  expect(toolbarZIndex).toBeGreaterThan(Math.max(...nodeZIndices));
   expect(await toolbar.boundingBox()).toMatchObject({
     width: 400,
     height: 48,
@@ -417,7 +548,21 @@ test("Image empty and local upload states match the observed geometry", async ({
   const toolbarBox = (await toolbar.boundingBox())!;
   const titleBox = (await node.locator(".image-node-title").boundingBox())!;
   expect(toolbarBox.y + toolbarBox.height).toBeLessThan(titleBox.y);
-  await expect(toolbar.getByRole("button")).toHaveCount(9);
+  const toolbarButtonLabels = await toolbar.getByRole("button").evaluateAll(
+    (buttons) => buttons.map((button) => button.getAttribute("aria-label")).sort(),
+  );
+  expect(toolbarButtonLabels).toEqual([
+    "保存到素材库",
+    "按素材比例适配",
+    "打光",
+    "多角度",
+    "浏览全部",
+    "全屏查看",
+    "下载",
+    "颜色标记",
+    "裁剪",
+    "重绘",
+  ].sort());
   const uploadedAssetId = await card.getAttribute("data-asset-id");
   expect(uploadedAssetId).toBeTruthy();
   const saveToLibrary = toolbar.getByRole("button", { name: "保存到素材库" });
@@ -534,7 +679,7 @@ test("Image empty and local upload states match the observed geometry", async ({
   await expect.soft(page.getByTestId("image-tool-host"))
     .toHaveAttribute("data-active-tool", "outpaint");
   await expect.soft(page.locator("#root")).toHaveAttribute("inert", "");
-  await expect(outpaint.getByRole("button", { name: "提交扩图" })).toBeDisabled();
+  await expect(outpaint.getByRole("button", { name: "提交扩图" })).toBeEnabled();
   await expectInsideViewport(outpaint);
   await expectInsideViewport(page.getByTestId("image-outpaint-stage"));
   await expectInsideViewport(outpaint.locator(".image-outpaint-controls"));
@@ -595,7 +740,7 @@ test("Image empty and local upload states match the observed geometry", async ({
   await expect(enhance).toContainText("在保持主体身份、构图和主要颜色的前提下增强清晰度与细节");
   await expect(enhance).not.toContainText(/预计|USD|CNY/);
   await expect(enhance.getByRole("button", { name: "保守增强" })).toBeEnabled();
-  await expect(enhance.getByRole("button", { name: /创意增强/ })).toBeDisabled();
+  await expect(enhance.getByRole("button", { name: /创意增强/ })).toBeEnabled();
   await enhance.getByRole("button", { name: "取消" }).click();
   await card.click({ position: { x: 20, y: 20 } });
   await toolbar.getByRole("button", { name: "浏览全部" }).click();
@@ -611,13 +756,14 @@ test("Image empty and local upload states match the observed geometry", async ({
   await expect(cutout).toContainText("任务指令");
   await expect(cutout).toContainText("精确保留主要主体和边缘细节，完全移除背景");
   await expect(cutout).not.toContainText(/预计|USD|CNY/);
-  await expect(cutout.getByRole("button", { name: "生成透明PNG" })).toBeDisabled();
+  await expect(cutout.getByRole("button", { name: "生成透明PNG" })).toBeEnabled();
   await page.getByTestId("image-tool-host").click({ position: { x: 4, y: 4 } });
   await expect(cutout).toBeHidden();
   await expect(toolbar.getByRole("button", { name: "浏览全部" })).toBeFocused();
   expect(generationRequests).toEqual([]);
   await card.click({ position: { x: 20, y: 20 } });
   await expect(moreMenu).toHaveCount(0);
+
 
   const replace = page.getByRole("button", { name: "替换" });
   await page.mouse.move(1000, 700);
@@ -760,6 +906,7 @@ test("Image quick split crops transparent padding and divides only the visible b
       generationRequests.push(request.url());
     }
   });
+  await routeImageToolCapabilities(page, "available");
   await request.delete("/api/canvas/node.image.empty");
   await page.goto("/__fixture/node.image.empty");
   const node = page.locator('.react-flow__node-image[data-id="image-primary"]');
@@ -1031,6 +1178,103 @@ test("Image prompt controls match the frozen ready state", async ({
   const afterDrag = (await node.boundingBox())!;
   expect(afterDrag.x - beforeDrag.x).toBeGreaterThan(30);
   expect(afterDrag.y - beforeDrag.y).toBeGreaterThan(30);
+
+  await test.step("UI6.3/6.5/6.6: the bottom of the more-tools menu stays above the Creator", async () => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await node.click({ position: { x: 20, y: 20 } });
+    await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
+    await expect(page.getByRole("button", { name: "上传图片", exact: true }))
+      .toBeEnabled();
+    await page.getByTestId("image-upload-input").setInputFiles(path.resolve(
+      "spec/reference/upstream-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
+    ));
+    const preview = page.getByTestId("image-node-preview");
+    const toolbar = page.getByTestId("image-node-toolbar");
+    const creator = page.getByTestId("image-creator");
+    const moreTrigger = toolbar.getByRole("button", { name: "浏览全部" });
+    const quickSplit = page.getByTestId("image-node-more-menu")
+      .getByRole("menuitem", { name: /^快速切分/ });
+    const readGeometry = async () => node.evaluate((element) => {
+      const rectangle = element.getBoundingClientRect();
+      return {
+        height: Math.round(rectangle.height * 100) / 100,
+        left: Math.round(rectangle.left * 100) / 100,
+        top: Math.round(rectangle.top * 100) / 100,
+        width: Math.round(rectangle.width * 100) / 100,
+      };
+    });
+    const readPersistedGraph = async () => {
+      const response = await request.get("/api/canvas/node.image.prompt-ready");
+      expect(response.ok()).toBe(true);
+      const saved = await response.json() as {
+        edges?: unknown[];
+        nodes?: unknown[];
+      };
+      return {
+        edges: saved.edges ?? [],
+        nodes: saved.nodes ?? [],
+      };
+    };
+
+    await expect(node).toHaveCSS("width", "250px");
+    await expect(node).toHaveCSS("height", "250px");
+    await expect(preview).toBeVisible();
+    await expect(creator).toBeVisible();
+    await expect(page.getByTestId("image-creator-prompt")).toBeVisible();
+    await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
+    await expect.poll(readPersistedGraph).toMatchObject({
+      nodes: [{ data: {
+        assetId: expect.any(String),
+        imageSrc: expect.stringMatching(/^\/api\/assets\//),
+      } }],
+    });
+    const beforeGeometry = await readGeometry();
+    const beforeGraph = await readPersistedGraph();
+
+    await moreTrigger.click();
+    await expect(moreTrigger).toHaveAttribute("aria-expanded", "true");
+    await expect(quickSplit).toBeVisible();
+    await expect(quickSplit).toBeEnabled();
+    const hit = await quickSplit.evaluate((item) => {
+      const itemBox = item.getBoundingClientRect();
+      const creatorElement = document.querySelector<HTMLElement>(
+        '[data-testid="image-creator"]',
+      );
+      if (!creatorElement) throw new Error("image Creator missing");
+      const creatorBox = creatorElement.getBoundingClientRect();
+      const left = Math.max(itemBox.left, creatorBox.left);
+      const right = Math.min(itemBox.right, creatorBox.right);
+      const top = Math.max(itemBox.top, creatorBox.top);
+      const bottom = Math.min(itemBox.bottom, creatorBox.bottom);
+      const x = (left + right) / 2;
+      const y = (top + bottom) / 2;
+      const topElement = document.elementFromPoint(x, y);
+      const topMenuItem = topElement?.closest<HTMLElement>('[role="menuitem"]');
+      return {
+        overlapsCreator: right > left && bottom > top,
+        clickPosition: { x: x - itemBox.left, y: y - itemBox.top },
+        topIsQuickSplit: topMenuItem === item,
+        topMenuItemText: topMenuItem?.textContent?.trim() ?? null,
+      };
+    });
+    expect(hit.overlapsCreator).toBe(true);
+    expect(hit.topIsQuickSplit).toBe(true);
+    expect(hit.topMenuItemText).toContain("快速切分");
+
+    await quickSplit.click({ position: hit.clickPosition });
+    const splitPanel = page.getByTestId("image-split-panel");
+    await expect(splitPanel).toBeVisible();
+    await expect(splitPanel.getByRole("button", { name: "关闭快速切分" }))
+      .toBeEnabled();
+    await splitPanel.getByRole("button", { name: "关闭快速切分" }).click();
+    await expect(splitPanel).toHaveCount(0);
+    await expect(moreTrigger).toHaveAttribute("aria-expanded", "false");
+    await expect(moreTrigger).toBeFocused();
+    await expect(node).toHaveClass(/selected/);
+    await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
+    expect(await readGeometry()).toEqual(beforeGeometry);
+    expect(await readPersistedGraph()).toEqual(beforeGraph);
+  });
 });
 
 test("Image reference chip follows the incoming edge and undo restores both", async ({
@@ -1231,6 +1475,7 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
 }) => {
   const generationRequests: string[] = [];
   let seedanceValidationRequests = 0;
+  await routeImageToolCapabilities(page, "available");
   await page.route("**/api/image-tools/seedance-validation", async (route) => {
     seedanceValidationRequests += 1;
     await route.fulfill({
@@ -1337,6 +1582,12 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
     "正在准备高清原图",
   );
   await expect(confirmCrop).toBeDisabled();
+  await test.step("CUI-01: crop ratio trigger stays closed until the real source is ready", async () => {
+    const ratioTrigger = page.getByRole("button", { name: "宽高比" });
+    await expect(ratioTrigger).toBeDisabled();
+    await expect(page.getByRole("menuitemradio")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "取消裁剪" })).toBeEnabled();
+  });
   await expect(selection).toHaveCount(0);
   expect(await stage.boundingBox()).toMatchObject({ height: 180, width: 320 });
   expect(redirectedAssetReads).toBe(0);
@@ -1346,6 +1597,7 @@ test("Image crop cancels cleanly and confirms a derived asset", async ({
     "src",
     /^blob:/,
   );
+  await expect(page.getByRole("button", { name: "宽高比" })).toBeEnabled();
   await expect(confirmCrop).toBeEnabled();
   expect(redirectedAssetReads).toBe(0);
   expect(await stage.boundingBox()).toMatchObject({ height: 552 });

@@ -212,11 +212,11 @@ test("release role and bridge-mode selection are exact and fail closed", () => {
   expect(() => releaseRoleFromEnvironment("0.7.13", {
     UNBOUNDRY_RELEASE_ROLE: "bridge",
   })).toThrow(/UNBOUNDRY_RELEASE_ROLE_MISMATCH/);
-  for (const version of ["0.7.14", "0.7.14-compat.1"]) {
+  for (const version of ["0.7.14", "0.7.14-compat.1", "0.7.15"]) {
     expect(releaseRoleFromEnvironment(version, {})).toBe("final");
     expect(() => releaseRoleFromEnvironment(version, { UNBOUNDRY_RELEASE_ROLE: "bridge" })).toThrow();
   }
-  for (const version of ["0.7.15", "0.7.13-hotfix.1", "0.7.13+build.1", "v0.7.13", "0.7.12-hotfix.1", "0.7.12+build.1", "v0.7.12", "0.7.11-hotfix.1", "0.7.11+build.1", "v0.7.11", "0.7.10-hotfix.1", "0.7.10+build.1", "v0.7.10"]) {
+  for (const version of ["0.7.16", "0.7.13-hotfix.1", "0.7.13+build.1", "v0.7.13", "0.7.12-hotfix.1", "0.7.12+build.1", "v0.7.12", "0.7.11-hotfix.1", "0.7.11+build.1", "v0.7.11", "0.7.10-hotfix.1", "0.7.10+build.1", "v0.7.10"]) {
     expect(() => releaseRoleFromEnvironment(version, {})).toThrow(
       /UNBOUNDRY_RELEASE_VERSION_INVALID/,
     );
@@ -935,6 +935,7 @@ test("legacy bridge classifies every exact-old top-level mount by method", () =>
     ["GET", "/api/models"],
     ["PATCH", "/api/admin/models/model-id"],
     ["POST", "/api/templates"],
+    ["GET", "/api/admin/templates/00000000-0000-4000-8000-000000000001"],
     ["PATCH", "/api/admin/templates/00000000-0000-4000-8000-000000000001"],
     ["GET", "/api/agent-config"],
     ["GET", "/api/characters"],
@@ -969,6 +970,8 @@ test("legacy bridge classifies every exact-old top-level mount by method", () =>
     ["DELETE", "/api/projects/project"],
     ["GET", "/api"],
     ["GET", "/API.foo"],
+    ["GET", "/api/admin/templates/not-a-uuid"],
+    ["PUT", "/api/admin/templates/00000000-0000-4000-8000-000000000001"],
     ["GET", "/api/unknown-mount"],
     ["POST", "/api/unknown-mount"],
   ] as const;

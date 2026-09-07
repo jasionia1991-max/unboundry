@@ -337,13 +337,13 @@ async function readVerifiedImage(media: MediaRecord, store: MediaBlobStore, sign
     return buffer;
 }
 
-/** Memory-only LRU: no derivative files accumulate or enter backups. A single
- * bounded lane includes the source download, not just the encoder. */
+/** Memory-only LRU: no derivative files accumulate or enter backups. Two
+ * bounded lanes include source downloads, not just encoding. */
 export class HistoryPreviewCache {
   private readonly cache = new Map<string, { bytes: Buffer; at: number }>();
   private readonly pending = new Map<string, Promise<Buffer>>();
   private readonly failures = new Map<string, number>();
-  private readonly lane = new MediaProcessPool(1, 32);
+  private readonly lane = new MediaProcessPool(2, 31);
   private byteSize = 0;
   constructor(private readonly maximumBytes = 64 * 1024 * 1024) {}
   snapshot() { return { bytes: this.byteSize, entries: this.cache.size,

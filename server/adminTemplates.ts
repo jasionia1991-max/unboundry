@@ -432,23 +432,35 @@ export async function adminTemplatesApi(
     const query = (url.searchParams.get("q") ?? "").trim().toLocaleLowerCase();
     const category = (url.searchParams.get("category") ?? "全部").trim();
     const includeGraph = url.searchParams.get("includeGraph") === "true";
-    const { rows, total } = listPublicTemplates(store, {
-      category,
-      includeGraph,
-      limit,
-      offset,
-      query,
-      status: statusParam,
-    });
-    json(response, 200, {
-      items: rows.map((row) => adminTemplateItem(store, row, includeGraph)),
-      pagination: {
-        hasMore: offset + rows.length < total,
-        limit,
-        offset,
-        total,
-      },
-    });
+    const expectedRevision = url.searchParams.get("revision");
+    if (expectedRevision !== null && !/^[a-f0-9]{64}$/.test(expectedRevision)) {
+      json(response, 400, { error: "模板列表版本无效" });
+      return;
+    }
+    // The revision, count and page must describe one database read snapshot.
+    store.exec("BEGIN");
+    try {
+      const { rows, total, revision } = listPublicTemplates(store, {
+        category, includeGraph, includeRevision: true, limit, offset,
+        query, status: statusParam,
+      });
+      if (expectedRevision !== null && expectedRevision !== revision) {
+        json(response, 409, {
+          code: "LIST_REVISION_STALE",
+          error: "模板列表已变化，请刷新后继续浏览",
+        });
+      } else {
+        json(response, 200, {
+          items: rows.map((row) => adminTemplateItem(store, row, includeGraph)),
+          pagination: {
+            hasMore: offset + rows.length < total,
+            limit, offset, revision, total,
+          },
+        });
+      }
+    } finally {
+      store.exec("COMMIT");
+    }
     return;
   }
 
@@ -476,6 +488,21 @@ export async function adminTemplatesApi(
     return;
   }
   const templateId = path.toLocaleLowerCase();
+
+  if (request.method === "GET") {
+    if (!/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(templateId)) {
+      json(response, 404, { error: "公共模板不存在" });
+      return;
+    }
+    const row = store.prepare("SELECT * FROM public_templates WHERE id = ?")
+      .get(templateId) as PublicTemplateRow | undefined;
+    if (!row) {
+      json(response, 404, { error: "公共模板不存在" });
+      return;
+    }
+    json(response, 200, { template: adminTemplateItem(store, row, true) });
+    return;
+  }
 
   if (request.method === "PATCH") {
     try {

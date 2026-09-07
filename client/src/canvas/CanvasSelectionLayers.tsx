@@ -42,7 +42,9 @@ export function CanvasSelectionLayers({ nodes, primaryId }: {
   const rules = ordered.map(({ node }, index) => {
     const id = CSS.escape(node.id);
     return `.react-flow__node[data-id="${id}"]{z-index:${index + 1}!important}` +
-      `.react-flow__node-toolbar[data-id="${id}"]{z-index:${nodes.length + index + 1}!important}`;
+      `.react-flow__node-toolbar[data-id="${id}"]{z-index:${nodes.length + index + 1}!important}` +
+      // An expanded image menu must sit above the same node's Creator.
+      `.react-flow__node-toolbar[data-id="${id}"][data-image-more-open="true"]{z-index:${nodes.length * 2 + index + 1}!important}`;
   }).join("\n");
   return <style data-testid="canvas-selection-layers">{rules}</style>;
 }
