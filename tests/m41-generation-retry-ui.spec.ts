@@ -13,8 +13,13 @@ import {
 } from "../types/modelParameters";
 import { generationInputKey } from
   "../client/src/generation/generationRetry";
-import type { GenerationTaskSummary } from
-  "../client/src/generation/generationTasks";
+import {
+  GenerationRequestError,
+  getGenerationTaskByIdempotency,
+  listGenerationTasks,
+  waitForGenerationTask,
+  type GenerationTaskSummary,
+} from "../client/src/generation/generationTasks";
 import {
   POLLING_PAUSED_MESSAGE,
   waitForGenerationTaskWithPause,
@@ -437,9 +442,22 @@ function canvasCommandConflictEnvelope(
 
 async function withWindowTimerGlobal<T>(run: () => Promise<T>) {
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const windowTarget = new EventTarget() as typeof globalThis;
+  Object.defineProperties(windowTarget, {
+    clearTimeout: {
+      configurable: true,
+      value: globalThis.clearTimeout,
+      writable: true,
+    },
+    setTimeout: {
+      configurable: true,
+      value: globalThis.setTimeout,
+      writable: true,
+    },
+  });
   Object.defineProperty(globalThis, "window", {
     configurable: true,
-    value: globalThis,
+    value: windowTarget,
     writable: true,
   });
   try {
@@ -567,6 +585,23 @@ function currentIntentOnlyIdentity(kind: Kind): SubmittedGenerationIdentity {
       quality: parameters.quality,
       upstream: [],
     }),
+  };
+}
+
+function directPollingTask(taskId: string): GenerationTaskSummary {
+  return {
+    ...currentStandaloneIdentity("text"),
+    attempt: 1,
+    canvasId: "default",
+    costCurrency: "CNY",
+    createdAt: "2026-09-07T00:00:00.000Z",
+    id: taskId,
+    kind: "text",
+    model: modelInputs.text.id,
+    nodeId: nodeId("text"),
+    prompt: "text 状态读取测试",
+    state: "success",
+    updatedAt: "2026-09-07T00:00:01.000Z",
   };
 }
 
@@ -1441,6 +1476,536 @@ test("an aborted task poll exits without showing a transient polling pause", asy
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("WithPause retries transient status reads with bounded backoff and resets after success", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalSetTimeout = globalThis.setTimeout;
+  const task = directPollingTask("m41-direct-transient-status");
+  const statuses = [500, 503, 200, 502, 200];
+  const backoffDelays: number[] = [];
+  let reads = 0;
+  let pauses = 0;
+  globalThis.setTimeout = ((...args: Parameters<typeof globalThis.setTimeout>) => {
+    const timeout = args[1];
+    if (timeout === 1_000 || timeout === 2_000) backoffDelays.push(timeout);
+    return originalSetTimeout(...args);
+  }) as typeof globalThis.setTimeout;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = new URL(String(input), "http://safe.invalid");
+    expect(url.pathname).toBe(`/api/generation-tasks/${task.id}`);
+    reads += 1;
+    const status = statuses.shift();
+    if (status === undefined) throw new Error("Unexpected status read");
+    if (status === 200) {
+      return new Response(JSON.stringify({
+        ...task,
+        state: reads === 3 ? "running" : "success",
+      }), {
+        headers: { "Content-Type": "application/json" },
+        status,
+      });
+    }
+    return new Response("<html>temporary status failure</html>", {
+      headers: { "Content-Type": "text/html" },
+      status,
+    });
+  }) as typeof globalThis.fetch;
+  try {
+    await withWindowTimerGlobal(async () => {
+      await expect(
+        waitForGenerationTaskWithPause(task.id, () => {
+          pauses += 1;
+        }),
+      ).resolves.toMatchObject({ id: task.id, state: "success" });
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.setTimeout = originalSetTimeout;
+  }
+  expect(reads).toBe(5);
+  // The third 1s entry is the normal running-task interval; the fourth is
+  // the fresh 1s retry after that successful status read.
+  expect(backoffDelays).toEqual([1_000, 2_000, 1_000, 1_000]);
+  expect(pauses).toBe(0);
+});
+
+test("status polling keeps transient failure counters isolated per task", async () => {
+  const originalFetch = globalThis.fetch;
+  const taskIds = [
+    "m41-direct-isolated-success",
+    "m41-direct-isolated-paused",
+  ] as const;
+  const statuses = new Map<string, number[]>([
+    [taskIds[0], [500, 200]],
+    [taskIds[1], [500, 500, 500]],
+  ]);
+  const reads = new Map<string, number>();
+  const pauses = new Map<string, number>();
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = new URL(String(input), "http://safe.invalid");
+    const taskId = decodeURIComponent(url.pathname.split("/").pop() ?? "");
+    const sequence = statuses.get(taskId);
+    if (!sequence) throw new Error(`Unexpected status task ${taskId}`);
+    reads.set(taskId, (reads.get(taskId) ?? 0) + 1);
+    const status = sequence.shift();
+    if (status === undefined) throw new Error(`Unexpected read for ${taskId}`);
+    if (status === 200) {
+      return new Response(JSON.stringify(directPollingTask(taskId)), {
+        headers: { "Content-Type": "application/json" },
+        status,
+      });
+    }
+    return new Response(JSON.stringify({
+      code: "TEMPORARY",
+      error: "temporary status failure",
+    }), { status });
+  }) as typeof globalThis.fetch;
+  try {
+    await withWindowTimerGlobal(async () => {
+      const results = await Promise.allSettled([
+        waitForGenerationTaskWithPause(taskIds[0], () => {
+          pauses.set(taskIds[0], (pauses.get(taskIds[0]) ?? 0) + 1);
+        }),
+        waitForGenerationTaskWithPause(taskIds[1], () => {
+          pauses.set(taskIds[1], (pauses.get(taskIds[1]) ?? 0) + 1);
+        }),
+      ]);
+      expect(results[0]?.status).toBe("fulfilled");
+      expect(results[1]?.status).toBe("rejected");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  expect(reads).toEqual(new Map([
+    [taskIds[0], 2],
+    [taskIds[1], 3],
+  ]));
+  expect(pauses).toEqual(new Map([[taskIds[1], 1]]));
+});
+
+test("AbortSignal cancels a transient retry during backoff without another GET or pause", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalSetTimeout = globalThis.setTimeout;
+  const controller = new AbortController();
+  let releaseBackoff!: () => void;
+  const backoffScheduled = new Promise<void>((resolve) => {
+    releaseBackoff = resolve;
+  });
+  let reads = 0;
+  let pauses = 0;
+  globalThis.setTimeout = ((...args: Parameters<typeof globalThis.setTimeout>) => {
+    if (args[1] === 1_000) releaseBackoff();
+    return originalSetTimeout(...args);
+  }) as typeof globalThis.setTimeout;
+  globalThis.fetch = (async () => {
+    reads += 1;
+    return new Response(JSON.stringify({
+      code: "TEMPORARY",
+      error: "transient status failure",
+    }), { status: 503 });
+  }) as typeof globalThis.fetch;
+  try {
+    await withWindowTimerGlobal(async () => {
+      const polling = waitForGenerationTaskWithPause(
+        "m41-direct-abort-backoff",
+        () => {
+          pauses += 1;
+        },
+        controller.signal,
+      );
+      await backoffScheduled;
+      controller.abort("scope changed");
+      await expect(polling).rejects.toMatchObject({ name: "AbortError" });
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.setTimeout = originalSetTimeout;
+  }
+  expect(reads).toBe(1);
+  expect(pauses).toBe(0);
+});
+
+test("status polling retries network and 5xx HTML failures but not definitive read errors", async () => {
+  const originalFetch = globalThis.fetch;
+  const transientCases: Array<{
+    label: string;
+    reply: () => Response | Error;
+  }> = [
+    {
+      label: "network TypeError",
+      reply: () => new TypeError("temporary network failure"),
+    },
+    {
+      label: "502 HTML",
+      reply: () => new Response("<html>bad gateway</html>", {
+        headers: { "Content-Type": "text/html" },
+        status: 502,
+      }),
+    },
+    {
+      label: "503 HTML",
+      reply: () => new Response("<html>service unavailable</html>", {
+        headers: { "Content-Type": "text/html" },
+        status: 503,
+      }),
+    },
+  ];
+  const task = directPollingTask("m41-direct-classifier-success");
+  try {
+    for (const fixture of transientCases) {
+      let reads = 0;
+      let pauses = 0;
+      globalThis.fetch = (async () => {
+        reads += 1;
+        if (reads === 1) {
+          const reply = fixture.reply();
+          if (reply instanceof Error) throw reply;
+          return reply;
+        }
+        return new Response(JSON.stringify(directPollingTask(
+          `${task.id}-${fixture.label}`,
+        )), {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        });
+      }) as typeof globalThis.fetch;
+      await withWindowTimerGlobal(async () => {
+        await expect(
+          waitForGenerationTaskWithPause(
+            `${task.id}-${fixture.label}`,
+            () => {
+              pauses += 1;
+            },
+          ),
+        ).resolves.toMatchObject({ state: "success" });
+      });
+      expect(reads, fixture.label).toBe(2);
+      expect(pauses, fixture.label).toBe(0);
+    }
+
+    const definitiveCases: Array<{
+      label: string;
+      reply: () => Response | Error;
+    }> = [
+      ...[401, 403, 404, 409, 429].map((status) => ({
+        label: `${status} HTML`,
+        reply: () => new Response("<html>definitive status</html>", {
+          headers: { "Content-Type": "text/html" },
+          status,
+        }),
+      })),
+      {
+        label: "200 malformed JSON",
+        reply: () => new Response("{", {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        }),
+      },
+      {
+        label: "200 invalid shape",
+        reply: () => new Response(JSON.stringify({ state: "running" }), {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        }),
+      },
+      {
+        label: "200 same id missing required fields",
+        reply: () => new Response(JSON.stringify({
+          id: `${task.id}-200 same id missing required fields`,
+          state: "running",
+        }), {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        }),
+      },
+      {
+        label: "processing exception",
+        reply: () => {
+          const response = new Response("{}", {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          });
+          Object.defineProperty(response, "json", {
+            configurable: true,
+            value: () => Promise.reject(new Error("status processing failed")),
+          });
+          return response;
+        },
+      },
+      {
+        label: "external GenerationRequestError 500",
+        reply: () => new GenerationRequestError(
+          "external status error",
+          500,
+          "EXTERNAL_STATUS_ERROR",
+        ),
+      },
+    ];
+    for (const fixture of definitiveCases) {
+      let reads = 0;
+      let pauses = 0;
+      const taskId = `${task.id}-${fixture.label}`;
+      globalThis.fetch = (async () => {
+        reads += 1;
+        const reply = fixture.reply();
+        if (reply instanceof Error) throw reply;
+        return reply;
+      }) as typeof globalThis.fetch;
+      await withWindowTimerGlobal(async () => {
+        await expect(
+          waitForGenerationTaskWithPause(taskId, () => {
+            pauses += 1;
+          }),
+        ).rejects.toBeTruthy();
+      });
+      expect(reads, fixture.label).toBe(1);
+      // The external error is outside the status-read classifier. It may
+      // still use the existing pause presentation, but it must not re-read.
+      if (fixture.label !== "external GenerationRequestError 500") {
+        expect(pauses, fixture.label).toBe(0);
+      }
+    }
+
+    const sharedParserTask = directPollingTask(
+      "m41-direct-shared-parser-task",
+    );
+    const byIdempotencyCases: Array<{
+      body: string;
+      contentType: string;
+      expected: "task" | "undefined" | "status";
+      label: string;
+      status: number;
+    }> = [
+      {
+        body: "<html>not found</html>",
+        contentType: "text/html",
+        expected: "undefined",
+        label: "by-idempotency 404 HTML",
+        status: 404,
+      },
+      {
+        body: JSON.stringify(sharedParserTask),
+        contentType: "application/json",
+        expected: "task",
+        label: "by-idempotency valid task",
+        status: 200,
+      },
+      {
+        body: "<html>bad gateway</html>",
+        contentType: "text/html",
+        expected: "status",
+        label: "by-idempotency 503 HTML",
+        status: 503,
+      },
+    ];
+    for (const fixture of byIdempotencyCases) {
+      let reads = 0;
+      globalThis.fetch = (async (input: RequestInfo | URL) => {
+        reads += 1;
+        const url = new URL(String(input), "http://safe.invalid");
+        expect(url.pathname).toBe(
+          "/api/generation-tasks/by-idempotency",
+        );
+        return new Response(fixture.body, {
+          headers: { "Content-Type": fixture.contentType },
+          status: fixture.status,
+        });
+      }) as typeof globalThis.fetch;
+      await withWindowTimerGlobal(async () => {
+        const result = getGenerationTaskByIdempotency(
+          "default",
+          `m41-${fixture.label}`,
+        );
+        if (fixture.expected === "status") {
+          await expect(result).rejects.toMatchObject({
+            status: fixture.status,
+          });
+        } else if (fixture.expected === "task") {
+          await expect(result).resolves.toEqual(sharedParserTask);
+        } else {
+          await expect(result).resolves.toBeUndefined();
+        }
+      });
+      expect(reads, fixture.label).toBe(1);
+    }
+
+    const listCases: Array<{
+      body: string;
+      contentType: string;
+      expected: "tasks" | "status";
+      label: string;
+      status: number;
+    }> = [
+      {
+        body: JSON.stringify({ tasks: [sharedParserTask] }),
+        contentType: "application/json",
+        expected: "tasks",
+        label: "list valid array",
+        status: 200,
+      },
+      {
+        body: "{",
+        contentType: "application/json",
+        expected: "status",
+        label: "list bad JSON",
+        status: 200,
+      },
+      {
+        body: "<html>bad gateway</html>",
+        contentType: "text/html",
+        expected: "status",
+        label: "list 503 HTML",
+        status: 503,
+      },
+    ];
+    for (const fixture of listCases) {
+      let reads = 0;
+      globalThis.fetch = (async (input: RequestInfo | URL) => {
+        reads += 1;
+        const url = new URL(String(input), "http://safe.invalid");
+        expect(url.pathname).toBe("/api/generation-tasks");
+        return new Response(fixture.body, {
+          headers: { "Content-Type": fixture.contentType },
+          status: fixture.status,
+        });
+      }) as typeof globalThis.fetch;
+      await withWindowTimerGlobal(async () => {
+        const result = listGenerationTasks("default");
+        if (fixture.expected === "tasks") {
+          await expect(result).resolves.toEqual([sharedParserTask]);
+        } else {
+          await expect(result).rejects.toMatchObject({
+            status: fixture.status,
+          });
+        }
+      });
+      expect(reads, fixture.label).toBe(1);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("known 401 status stays non-retryable when its response body hangs", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalSetTimeout = globalThis.setTimeout;
+  let reads = 0;
+  let pauses = 0;
+  globalThis.setTimeout = ((...args: Parameters<typeof globalThis.setTimeout>) => {
+    if (args[1] === 10_000) {
+      const [handler, , ...rest] = args;
+      return originalSetTimeout(handler, 1, ...rest);
+    }
+    return originalSetTimeout(...args);
+  }) as typeof globalThis.setTimeout;
+  globalThis.fetch = (async () => {
+    reads += 1;
+    const response = new Response(null, {
+      headers: { "Content-Type": "text/html" },
+      status: 401,
+    });
+    Object.defineProperty(response, "json", {
+      configurable: true,
+      value: () => new Promise<never>(() => undefined),
+    });
+    return response;
+  }) as typeof globalThis.fetch;
+  try {
+    await withWindowTimerGlobal(async () => {
+      await expect(
+        waitForGenerationTaskWithPause(
+          "m41-direct-401-stalled-body",
+          () => {
+            pauses += 1;
+          },
+        ),
+      ).rejects.toMatchObject({
+        code: "TASK_STATUS_TIMEOUT",
+        status: 401,
+      });
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.setTimeout = originalSetTimeout;
+  }
+  expect(reads).toBe(1);
+  expect(pauses).toBe(0);
+});
+
+test("direct wait keeps the default status-read behavior without transient retries", async () => {
+  const originalFetch = globalThis.fetch;
+  let reads = 0;
+  globalThis.fetch = (async () => {
+    reads += 1;
+    return new Response(JSON.stringify({
+      code: "TEMPORARY",
+      error: "direct wait outage",
+    }), { status: 503 });
+  }) as typeof globalThis.fetch;
+  try {
+    await withWindowTimerGlobal(async () => {
+      await expect(
+        waitForGenerationTask("m41-direct-default-wait"),
+      ).rejects.toMatchObject({ status: 503 });
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  expect(reads).toBe(1);
+});
+
+test("WithPause keeps the original 1800-round wait budget with bounded retries", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalSetTimeout = globalThis.setTimeout;
+  const taskId = "m41-direct-wait-budget";
+  let reads = 0;
+  let oneSecondTimers = 0;
+  let pauses = 0;
+  globalThis.setTimeout = ((...args: Parameters<typeof globalThis.setTimeout>) => {
+    if (args[1] === 1_000) {
+      oneSecondTimers += 1;
+      const [handler, , ...rest] = args;
+      return originalSetTimeout(handler, 0, ...rest);
+    }
+    return originalSetTimeout(...args);
+  }) as typeof globalThis.setTimeout;
+  globalThis.fetch = (async () => {
+    reads += 1;
+    const status = reads === 900 || reads === 1_802 ? 503 : 200;
+    const state = reads < 1_803 ? "running" : "success";
+    if (status === 503) {
+      return new Response(JSON.stringify({
+        code: "TEMPORARY",
+        error: "bounded status outage",
+      }), { status });
+    }
+    return new Response(JSON.stringify({
+      ...directPollingTask(taskId),
+      state,
+    }), {
+      headers: { "Content-Type": "application/json" },
+      status,
+    });
+  }) as typeof globalThis.fetch;
+  try {
+    await withWindowTimerGlobal(async () => {
+      await expect(
+        waitForGenerationTaskWithPause(taskId, () => {
+          pauses += 1;
+        }),
+      ).resolves.toMatchObject({ id: taskId, state: "success" });
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.setTimeout = originalSetTimeout;
+  }
+  expect(reads).toBe(1_803);
+  // There are 1,800 normal running-task waits plus one 1s retry after each
+  // injected 503, including the final read after the wait budget. The outer
+  // 1,800-round loop must not restart.
+  expect(oneSecondTimers).toBe(1_802);
+  expect(pauses).toBe(0);
 });
 
 test("legacy nodes boundedly recheck unknown and active tasks without submission", async ({
@@ -3236,6 +3801,7 @@ for (const retryPollingCase of [
   }) => {
     const taskId = `m41-${kind}-retry-poll-${failure.replaceAll(" ", "-")}`;
     const resultAssetId = `m41-${kind}-retry-poll-result-${failure.replaceAll(" ", "-")}`;
+    const transientFailureCount = 3;
     const identity = currentStandaloneIdentity(kind);
     const inputKey = identity.generationInputKey;
     const ownershipKey = identity.generationOwnershipKey;
@@ -3291,7 +3857,7 @@ for (const retryPollingCase of [
     };
     if (failure !== "GET 500") {
       await page.clock.install();
-      await page.addInitScript(({ failure, taskId }) => {
+      await page.addInitScript(({ failure, taskId, transientFailureCount }) => {
         const state = { hungStarts: 0, retryAccepted: false };
         (window as typeof window & {
           __m41RetryHungDetail?: typeof state;
@@ -3308,7 +3874,7 @@ for (const retryPollingCase of [
             method === "GET" &&
             url.pathname === `/api/generation-tasks/${taskId}` &&
             state.retryAccepted &&
-            state.hungStarts === 0
+            state.hungStarts < transientFailureCount
           ) {
             state.hungStarts += 1;
             if (failure === "fetch hung") {
@@ -3330,7 +3896,7 @@ for (const retryPollingCase of [
           }
           return originalFetch(input, init);
         }) as typeof window.fetch;
-      }, { failure, taskId });
+      }, { failure, taskId, transientFailureCount });
     }
 
     let createPosts = 0;
@@ -3454,7 +4020,10 @@ for (const retryPollingCase of [
           return;
         }
         postAcceptanceDetailReads += 1;
-        if (failure === "GET 500" && postAcceptanceDetailReads === 1) {
+        if (
+          failure === "GET 500" &&
+          postAcceptanceDetailReads <= transientFailureCount
+        ) {
           await route.fulfill({
             json: { code: "TEMPORARY", error: "temporary status outage" },
             status: 500,
@@ -3532,6 +4101,21 @@ for (const retryPollingCase of [
             __m41RetryHungDetail?: { hungStarts: number };
           }).__m41RetryHungDetail?.hungStarts ?? 0)).toBe(1);
         await page.clock.fastForward(10_100);
+        await page.clock.fastForward(1_100);
+        await expect.poll(() => page.evaluate(() =>
+          (window as typeof window & {
+            __m41RetryHungDetail?: { hungStarts: number };
+          }).__m41RetryHungDetail?.hungStarts ?? 0)).toBe(2);
+        await page.clock.fastForward(10_100);
+        await page.clock.fastForward(2_100);
+        await expect.poll(() => page.evaluate(() =>
+          (window as typeof window & {
+            __m41RetryHungDetail?: { hungStarts: number };
+          }).__m41RetryHungDetail?.hungStarts ?? 0)).toBe(3);
+        await page.clock.fastForward(10_100);
+      } else {
+        await expect.poll(() => postAcceptanceDetailReads)
+          .toBe(transientFailureCount);
       }
 
       const node = page.getByTestId(`${kind}-node-${nodeId(kind)}`);
@@ -3543,10 +4127,28 @@ for (const retryPollingCase of [
         const data = canvas.nodes.find((node) => node.id === nodeId(kind))?.data;
         return data?.[`${kind}GenerationTaskId`];
       }).toBe(taskId);
+      if (failure === "GET 500") {
+        expect(postAcceptanceDetailReads).toBe(transientFailureCount);
+      } else {
+        expect(await page.evaluate(() =>
+          (window as typeof window & {
+            __m41RetryHungDetail?: { hungStarts: number };
+          }).__m41RetryHungDetail?.hungStarts ?? 0)).toBe(transientFailureCount);
+      }
       expect(retryPosts).toBe(1);
       expect(createPosts).toBe(0);
 
-      await recheck.click();
+      // Dispatch two user clicks in the same turn. The first click owns the
+      // new observation session; the second must not start another watcher.
+      await recheck.evaluate((button) => {
+        const click = () => button.dispatchEvent(new MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+        }));
+        click();
+        click();
+      });
       await expect.poll(async () => {
         const canvas = await readPageCanvas(page);
         const data = canvas.nodes.find((node) => node.id === nodeId(kind))?.data;
@@ -3564,6 +4166,14 @@ for (const retryPollingCase of [
       });
       expect(retryPosts).toBe(1);
       expect(createPosts).toBe(0);
+      if (failure === "GET 500") {
+        expect(postAcceptanceDetailReads).toBe(transientFailureCount + 1);
+      } else {
+        expect(await page.evaluate(() =>
+          (window as typeof window & {
+            __m41RetryHungDetail?: { hungStarts: number };
+          }).__m41RetryHungDetail?.hungStarts ?? 0)).toBe(transientFailureCount);
+      }
       expect(providerRequests).toBe(0);
     } finally {
       await request.delete("/api/canvas/default");
@@ -4053,13 +4663,23 @@ for (const ensureFenceCase of [
   });
 }
 
-for (const kind of kinds) {
-  test(`${kind} recovered polling pauses on a transient 500 and resumes to success without POST`, async ({
-    page,
-    request,
-  }) => {
-    const taskId = `m41-recovered-polling-pause-${kind}`;
-    const resultAssetId = `m41-recovered-polling-result-${kind}`;
+for (const recoveredPollingPath of [
+  "initial-read-failure",
+  "watch-read-failure",
+  "watch-pause",
+] as const) {
+  for (const kind of kinds) {
+    const pathLabel = recoveredPollingPath === "initial-read-failure"
+      ? "initial read failure pauses for manual recovery"
+      : recoveredPollingPath === "watch-read-failure"
+        ? "watch read failure retries automatically"
+        : "watch read failures pause for manual recovery";
+    test(`${kind} recovered polling ${pathLabel} without POST`, async ({
+      page,
+      request,
+    }) => {
+    const taskId = `m41-recovered-polling-${recoveredPollingPath}-${kind}`;
+    const resultAssetId = `m41-recovered-polling-result-${recoveredPollingPath}-${kind}`;
     const resultText = "m41 recovered Text result";
     const identity = currentStandaloneIdentity(kind);
     const activeInputKey = identity.generationInputKey;
@@ -4111,9 +4731,18 @@ for (const kind of kinds) {
     let projectionApplied = false;
     let taskReads = 0;
     let taskSubmissions = 0;
+    let canvasWrites = 0;
 
     page.on("request", (entry) => {
       if (/volces|openrouter|mureka/i.test(entry.url())) providerRequests += 1;
+      const url = new URL(entry.url());
+      if (
+        entry.method() !== "GET" &&
+        (url.pathname === "/api/canvas/default" ||
+          url.pathname === "/api/canvases/default/commands")
+      ) {
+        canvasWrites += 1;
+      }
     });
     if (kind === "audio") {
       await page.route("**/api/audio-assets/**", async (route) => {
@@ -4199,14 +4828,37 @@ for (const kind of kinds) {
         inbound.method() === "GET"
       ) {
         taskReads += 1;
-        if (taskReads === 1) {
+        if (recoveredPollingPath === "initial-read-failure" && taskReads === 1) {
           await route.fulfill({
             json: { code: "TEMPORARY", error: "temporary polling outage" },
             status: 500,
           });
+        } else if (
+          recoveredPollingPath === "watch-read-failure" && taskReads === 2
+        ) {
+          await route.fulfill({
+            json: { code: "TEMPORARY", error: "temporary polling outage" },
+            status: 500,
+          });
+        } else if (
+          recoveredPollingPath === "watch-pause" &&
+          taskReads >= 2 &&
+          taskReads <= 4
+        ) {
+          await route.fulfill({
+            json: { code: "TEMPORARY", error: "temporary polling outage" },
+            status: 503,
+          });
         } else {
-          projectionApplied = true;
-          await route.fulfill({ json: successTask, status: 200 });
+          const stillRunning = (
+            recoveredPollingPath === "watch-read-failure" ||
+            recoveredPollingPath === "watch-pause"
+          ) && taskReads === 1;
+          if (!stillRunning) projectionApplied = true;
+          await route.fulfill({
+            json: stillRunning ? runningTask : successTask,
+            status: 200,
+          });
         }
         return;
       }
@@ -4260,20 +4912,44 @@ for (const kind of kinds) {
       const controls = kind === "text"
         ? page.getByTestId("text-creator")
         : node;
-      if (kind === "text") {
-        await selectNode(page, kind);
-        const status = controls.getByTestId("upstream-input-problem");
-        await expect(status).toHaveAttribute("role", "status");
-        await expect(status).toContainText("点击重试重新检查");
-      } else {
-        await expect(node.getByRole("alert"))
-          .toContainText("点击重试重新检查");
+      if (kind === "text") await selectNode(page, kind);
+      if (
+        recoveredPollingPath === "initial-read-failure" ||
+        recoveredPollingPath === "watch-pause"
+      ) {
+        if (kind === "text") {
+          const status = controls.getByTestId("upstream-input-problem");
+          await expect(status).toHaveAttribute("role", "status");
+          await expect(status).toContainText("点击重试重新检查");
+        } else {
+          await expect(node.getByRole("alert"))
+            .toContainText("点击重试重新检查");
+        }
+        const recheck = controls.getByRole("button", {
+          name: "重新检查任务状态",
+        });
+        await expect(recheck).toBeVisible();
+        if (recoveredPollingPath === "watch-pause") {
+          await recheck.evaluate((button) => {
+            const click = () => button.dispatchEvent(new MouseEvent("click", {
+              bubbles: true,
+              cancelable: true,
+              view: window,
+            }));
+            click();
+            click();
+          });
+        } else {
+          await recheck.click();
+        }
       }
-      const resume = controls.getByRole("button", { name: "重新检查任务状态" });
-      await expect(resume).toBeVisible();
-      await resume.click();
-
-      await expect.poll(() => taskReads).toBeGreaterThanOrEqual(2);
+      const expectedTaskReads = recoveredPollingPath === "initial-read-failure"
+        ? 2
+        : recoveredPollingPath === "watch-read-failure"
+          ? 3
+          : 5;
+      await expect.poll(() => taskReads)
+        .toBeGreaterThanOrEqual(expectedTaskReads);
       await expect.poll(async () => {
         const canvas = await readPageCanvas(page);
         const data = canvas.nodes.find((node) => node.id === nodeId(kind))?.data;
@@ -4291,10 +4967,312 @@ for (const kind of kinds) {
           : mediaAssetUrl(kind, resultAssetId),
         taskId: kind === "text" ? taskId : null,
       });
+      expect(taskReads).toBe(expectedTaskReads);
+      await expect(controls.getByText(POLLING_PAUSED_MESSAGE, { exact: false }))
+        .toHaveCount(0);
       expect(taskSubmissions).toBe(0);
       expect(providerRequests).toBe(0);
+      if (recoveredPollingPath === "watch-pause") {
+        expect(canvasWrites).toBe(0);
+      }
     } finally {
       await request.delete("/api/canvas/default");
+    }
+  });
+  }
+}
+
+for (const lifecycleBoundary of [
+  "workspace-navigation",
+  "logout-login",
+] as const) {
+  test(`watching task stops after ${lifecycleBoundary} without stale canvas writes`, async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(120_000);
+    const otherProjectResponse = await request.post("/api/projects", {
+      data: { title: `m41 Q05 ${lifecycleBoundary}` },
+    });
+    expect(otherProjectResponse.status()).toBe(201);
+    const otherProject = (await otherProjectResponse.json()) as { id: string };
+    const taskId = `m41-q05-${lifecycleBoundary}-text-task`;
+    const identity = currentStandaloneIdentity("text");
+    const runningTask = {
+      ...identity,
+      attempt: 1,
+      canvasId: "default",
+      costCurrency: "CNY",
+      createdAt: "2026-09-07T03:00:00.000Z",
+      id: taskId,
+      kind: "text" as const,
+      model: modelInputs.text.id,
+      nodeId: nodeId("text"),
+      prompt: "text 原始提示词",
+      state: "running" as const,
+      updatedAt: "2026-09-07T03:00:00.500Z",
+    };
+    const lateSuccessTask = {
+      ...runningTask,
+      canvasProjectionState: "applied",
+      resultText: `m41 Q05 late result ${lifecycleBoundary}`,
+      state: "success" as const,
+      updatedAt: "2026-09-07T03:00:01.000Z",
+    };
+    let taskReads = 0;
+    let canvasWrites = 0;
+    let lateResponseAttempts = 0;
+    let logoutRequests = 0;
+    let loginRequests = 0;
+    let providerRequests = 0;
+    let markWatchReadStarted!: () => void;
+    const watchReadStarted = new Promise<void>((resolve) => {
+      markWatchReadStarted = resolve;
+    });
+    let markWatchReadDelivered!: () => void;
+    const watchReadDelivered = new Promise<void>((resolve) => {
+      markWatchReadDelivered = resolve;
+    });
+    let releaseInFlightRead!: () => void;
+    const inFlightReadRelease = new Promise<void>((resolve) => {
+      releaseInFlightRead = resolve;
+    });
+
+    page.on("request", (entry) => {
+      const url = new URL(entry.url());
+      if (/volces|openrouter|mureka/i.test(entry.url())) providerRequests += 1;
+      if (url.pathname === "/api/auth/logout" && entry.method() === "POST") {
+        logoutRequests += 1;
+      }
+      if (url.pathname === "/api/auth/login" && entry.method() === "POST") {
+        loginRequests += 1;
+      }
+      if (
+        entry.method() !== "GET" &&
+        (url.pathname.startsWith("/api/canvas/") ||
+          url.pathname.startsWith("/api/canvases/"))
+      ) {
+        canvasWrites += 1;
+      }
+    });
+
+    // Keep the app's real logout and login UI path. The login response is a
+    // safe fixture because the normal safe server runs with auth bypass.
+    await page.route("**/api/auth/login", async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        json: {
+          user: {
+            displayName: "Test User",
+            id: "__test__",
+            loginName: "test-user",
+            protected: true,
+            role: "admin",
+            status: "active",
+          },
+        },
+        status: 200,
+      });
+    });
+    await page.route("**/api/models", async (route) => {
+      await route.fulfill({
+        json: {
+          generationEnabled: true,
+          models: [{
+            capability: "text",
+            displayName: "Q05 text lifecycle",
+            generationAvailable: true,
+            generationUnavailableReason: "",
+            generationUnavailableReasonCode: null,
+            ...modelInputs.text,
+            isDefault: true,
+            parameterSchema: schemas.text,
+          }],
+        },
+        status: 200,
+      });
+    });
+    await page.route("**/api/canvas/default", async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      const response = await route.fetch();
+      const document = await response.json();
+      await route.fulfill({ response, json: document });
+    });
+    await page.route("**/api/generation-tasks**", async (route) => {
+      const inbound = route.request();
+      const url = new URL(inbound.url());
+      if (url.pathname.endsWith("/status")) {
+        await route.fulfill({
+          json: {
+            paidProviderRequests: 0,
+            persistentQueueReady: true,
+            providerConfigured: true,
+            submissionEnabled: true,
+          },
+          status: 200,
+        });
+        return;
+      }
+      if (url.pathname.endsWith("/by-idempotency")) {
+        await route.fulfill({
+          body: "<html>not found</html>",
+          contentType: "text/html",
+          status: 404,
+        });
+        return;
+      }
+      if (
+        url.pathname === "/api/generation-tasks" &&
+        inbound.method() === "GET"
+      ) {
+        const canvasId = url.searchParams.get("canvasId");
+        await route.fulfill({
+          json: { tasks: canvasId === "default" ? [runningTask] : [] },
+          status: 200,
+        });
+        return;
+      }
+      if (
+        url.pathname === `/api/generation-tasks/${taskId}` &&
+        inbound.method() === "GET"
+      ) {
+        taskReads += 1;
+        if (taskReads === 1) {
+          await route.fulfill({ json: runningTask, status: 200 });
+          return;
+        }
+        if (taskReads === 2) {
+          markWatchReadStarted();
+          if (lifecycleBoundary === "logout-login") {
+            await inFlightReadRelease;
+            lateResponseAttempts += 1;
+            try {
+              await route.fulfill({ json: lateSuccessTask, status: 200 });
+            } catch {
+              // Unmounting the Canvas is allowed to abort this deliberately
+              // late response; the counter and persisted-canvas checks remain.
+            }
+          } else {
+            await route.fulfill({
+              json: { code: "TEMPORARY", error: "watch backoff fixture" },
+              status: 503,
+            });
+            markWatchReadDelivered();
+          }
+          return;
+        }
+        lateResponseAttempts += 1;
+        await route.fulfill({ json: lateSuccessTask, status: 200 });
+        return;
+      }
+      await route.fulfill({ json: { error: "unexpected" }, status: 404 });
+    });
+
+    await request.delete("/api/canvas/default");
+    const [baseNode] = canvasNodes("text");
+    expect((await request.put("/api/canvas/default", {
+      data: {
+        edges: [],
+        nodes: [{
+          ...baseNode,
+          data: {
+            ...baseNode.data,
+            ...generationNodeIdentityData("text", identity),
+            content: `m41 Q05 old canvas ${lifecycleBoundary}`,
+            contentHtml: `<p>m41 Q05 old canvas ${lifecycleBoundary}</p>`,
+            textGenerating: true,
+            textGenerationTaskId: taskId,
+          },
+        }],
+        revision: 0,
+        viewport: { x: 0, y: 0, zoom: 0.75 },
+      },
+    })).ok()).toBeTruthy();
+
+    try {
+      await page.goto("/canvas");
+      await expect(page.getByTestId("canvas-world"))
+        .toHaveAttribute("data-persistence-ready", "true");
+      await expect.poll(() => taskReads).toBeGreaterThanOrEqual(2);
+      await watchReadStarted;
+      if (lifecycleBoundary === "workspace-navigation") {
+        await watchReadDelivered;
+        await expect(page.getByText(POLLING_PAUSED_MESSAGE, { exact: false }))
+          .toHaveCount(0);
+        await page.getByTestId("logo-button").click();
+        await page.getByTestId("project-menu")
+          .getByText("工作空间", { exact: true })
+          .click();
+        await expect(page).toHaveURL(/\/canvas\/projects(?:\?.*)?$/);
+      } else {
+        await page.getByTestId("user-avatar").click();
+        const account = page.getByTestId("account-popover");
+        await expect(account).toBeVisible();
+        await account.getByRole("button", { name: "退出登录" }).click();
+        await expect(page.getByTestId("login-page")).toBeVisible();
+        releaseInFlightRead();
+        await expect.poll(() => lateResponseAttempts).toBe(1);
+        await page
+          .getByPlaceholder("3–40 位字母、数字或 . _ -")
+          .fill("test-user");
+        await page.getByPlaceholder("至少 12 位").fill("test-password-123");
+        await page.getByRole("button", { name: "登录" }).click();
+        await expect(page).toHaveURL(/\/canvas\/projects$/);
+      }
+
+      await expect(page.getByTestId("workspace-page")).toBeVisible();
+      await page.getByTestId(`project-card-${otherProject.id}`).click();
+      await expect(page).toHaveURL(
+        new RegExp(`/canvas/${otherProject.id}$`),
+      );
+      await expect(page.getByTestId("canvas-world"))
+        .toHaveAttribute("data-persistence-ready", "true");
+      await page.waitForTimeout(1_200);
+
+      expect(taskReads).toBe(2);
+      expect(lateResponseAttempts).toBe(
+        lifecycleBoundary === "logout-login" ? 1 : 0,
+      );
+      expect(canvasWrites).toBe(0);
+      expect(logoutRequests).toBe(
+        lifecycleBoundary === "logout-login" ? 1 : 0,
+      );
+      expect(loginRequests).toBe(
+        lifecycleBoundary === "logout-login" ? 1 : 0,
+      );
+      expect(providerRequests).toBe(0);
+      await expect(page.getByText(POLLING_PAUSED_MESSAGE, { exact: false }))
+        .toHaveCount(0);
+
+      const oldCanvas = await (
+        await request.get("/api/canvas/default")
+      ).json() as {
+        nodes: Array<{ data: Record<string, unknown>; id: string }>;
+      };
+      const oldData = oldCanvas.nodes.find(
+        (node) => node.id === nodeId("text"),
+      )?.data;
+      expect(oldData).toEqual(expect.objectContaining({
+        content: `m41 Q05 old canvas ${lifecycleBoundary}`,
+        textGenerating: true,
+        textGenerationTaskId: taskId,
+      }));
+      const otherCanvasResponse = await request.get(
+        `/api/canvas/${otherProject.id}`,
+      );
+      expect(otherCanvasResponse.ok()).toBeTruthy();
+      const otherCanvas = await otherCanvasResponse.json();
+      expect(JSON.stringify(otherCanvas)).not.toContain(lateSuccessTask.resultText);
+    } finally {
+      releaseInFlightRead();
+      await request.delete("/api/canvas/default");
+      await request.delete(`/api/projects/${otherProject.id}`);
     }
   });
 }
