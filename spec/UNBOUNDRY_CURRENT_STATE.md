@@ -4,15 +4,15 @@
 
 ## 项目现在怎么样
 
-**最近核验的生产是 v0.7.15 / schema43。** 本轮模板保存隔离、其余12项修复及后续反馈全部本地验收通过，现已发布。生产工程检查通过；仍待用户生产复验。
+**最近核验的生产是 v0.7.15 / schema43。** 本轮模板保存隔离、其余12项修复及后续反馈全部本地验收通过，现已发布。生产工程检查通过，用户于2026-09-07回复“通过”，本轮正式站验收完成。
 
 当前代码包版本：**v0.7.15**
 本地候选代码版本：**v0.7.15**
 本地候选 schema：**43**
 生产观测日期：2026-09-07。
-当前产品验收标记：`CURRENT_V0_7_15_USER_RECHECK`
+当前产品验收标记：`CURRENT_V0_7_15_USER_PASS`
 
-本轮状态：`DEPLOYED / LOCAL_USER_PASS / PRODUCTION_USER_RECHECK`。本地用户明确“其他的都通过”“通过了 收尾吧”，范围见 [修复方案7～9节](REMAINING_BUG_UI_REPAIR_PLAN_2026-09-07.md)。随后授权“允许上线，各种流程都允许”；发布见 [方案第10节](REMAINING_BUG_UI_REPAIR_PLAN_2026-09-07.md#10-v0715发布2026-09-07)。本地验收临时环境已正常关闭清理。
+本轮状态：`DEPLOYED / LOCAL_USER_PASS / PRODUCTION_USER_PASS`。本地用户明确“其他的都通过”“通过了 收尾吧”，范围见 [修复方案7～9节](REMAINING_BUG_UI_REPAIR_PLAN_2026-09-07.md)。随后授权“允许上线，各种流程都允许”；发布见 [方案第10节](REMAINING_BUG_UI_REPAIR_PLAN_2026-09-07.md#10-v0715发布2026-09-07)。本地验收临时环境已正常关闭清理。生产确认原话与范围见发布回执；不扩大为付费生成、真实维护演练或生产性能基准通过。
 
 生产已核对：精确tag独立构建；CURRENT数据、schema43、媒体及secret清单保持；33个静态资源公网/loopback全部匹配。原生Chrome已有画布正常打开，图片更多菜单九项无遮挡，快速切分能打开/取消，模板状态筛选使用项目控件；查看、刷新和菜单操作后原画布行、保存版本及生成计数不变。未执行真实生成。旧v0.7.14页面维护后仍需人工刷新，不把旧客户端现象作为新v0.7.15重连验证。
 
@@ -28,7 +28,6 @@
 
 | 项目 | 当前状态与边界 | 后续入口 |
 | --- | --- | --- |
-| v0.7.15生产用户复验 | LOCAL_USER_PASS / PRODUCTION_USER_RECHECK。工程检查通过，仍需用户确认正式站体验 | [发布回执](V0_7_15_PRODUCTION_RECEIPT_2026-09-07.json)，一次确认即可 |
 | 每日自动备份 | OPEN / USER_DEFERRED。旧作业要求schema41，当前schema43，报Backup database validation failed；手动备份不修复timer | [备份合同](../ops/production/README.md)，待用户恢复此项 |
 | 视频/音频空工具按钮 | USER_DEFERRED，按用户要求跳过 | [修复方案](REMAINING_BUG_UI_REPAIR_PLAN_2026-09-07.md) |
 | 历史图与首次画布性能 | DEPLOYED / LOCAL_TARGET_PASS / LOCAL_USER_PASS。本地180样本目标通过；未重测正式站基准，不宣称对齐竞品 | [性能证据7.2](REMAINING_BUG_UI_REPAIR_PLAN_2026-09-07.md#72-性能结论与范围) |

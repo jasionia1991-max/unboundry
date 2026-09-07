@@ -1,6 +1,6 @@
 {
   "version": "0.7.15",
-  "status": "DEPLOYED / CLOUD_BACKUP_VERIFIED / PRODUCTION_USER_RECHECK",
+  "status": "DEPLOYED / CLOUD_BACKUP_VERIFIED / PRODUCTION_USER_PASS",
   "date": "2026-09-07",
   "commit": "8ac75ca79d525d34e8a9b1b8b5fb820c020cd402",
   "tree": "5ee5dd88b08301ab1d97e44612ab98c64a7dd818",
@@ -229,8 +229,21 @@
       "其他的都通过",
       "通过了 收尾吧"
     ],
-    "production": "PRODUCTION_USER_RECHECK",
-    "nextStep": "刷新正式站，在常用画布确认模板、拖线菜单/稳定性及图片浏览全部体验，然后统一回复结果"
+    "production": "PRODUCTION_USER_PASS",
+    "nextStep": "本轮验收完成，用户无需操作",
+    "productionConfirmation": {
+      "date": "2026-09-07",
+      "quote": "通过",
+      "scope": "v0.7.15已交付修复的正式站体验，包含模板、拖线菜单/页面稳定性、图片浏览全部；承接本轮已完成的本地验收",
+      "excluded": [
+        "每日自动备份",
+        "视频/音频空工具按钮",
+        "其他既有暂停项",
+        "真实付费生成",
+        "新客户端真实维护演练",
+        "生产性能基准与竞品对标"
+      ]
+    }
   },
   "paidGeneration": 0,
   "limitations": [
@@ -245,9 +258,16 @@
     "identityOwner": "/opt/unboundry/governance/current/.governance-manifest.json",
     "productRebuildRequired": false,
     "productRestartRequired": false,
-    "verificationOwner": "/var/lib/unboundry-v0715-bug-ui-20260907/evidence/governance-sync.json",
-    "finalDocCiOwner": "/var/lib/unboundry-v0715-bug-ui-20260907/evidence/governance-ci.json"
+    "verificationOwner": "/var/lib/unboundry-v0715-bug-ui-20260907/evidence/user-acceptance-20260907/governance-sync.json",
+    "finalDocCiOwner": "/var/lib/unboundry-v0715-bug-ui-20260907/evidence/user-acceptance-20260907/governance-ci.json"
   },
   "evidenceDirectory": "/Users/mymy/Documents/unboundry/bug-ui-v0715-release-ops-20260907",
-  "serverEvidenceDirectory": "/var/lib/unboundry-v0715-bug-ui-20260907/evidence"
+  "serverEvidenceDirectory": "/var/lib/unboundry-v0715-bug-ui-20260907/evidence",
+  "acceptanceCloseout": {
+    "date": "2026-09-07",
+    "scope": "验收记录和治理文档同步；产品commit/tag/version/schema与已有验证证据保持",
+    "priorBusinessValidationReused": true,
+    "newProductDeployment": false,
+    "paidGeneration": 0
+  }
 }
