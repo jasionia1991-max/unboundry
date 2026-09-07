@@ -1,11 +1,12 @@
-> **当前验收增量（2026-09-07）**：本矩阵为`AUTHORITATIVE_ACCEPTANCE_LEDGER`。v0.7.15已部署，本轮本地用户通过；2026-09-07用户在正式站确认“通过”。生产工程证据与用户验收分别记录，其余历史条目不自动升级。当前生产/待办以 [CURRENT_STATE](UNBOUNDRY_CURRENT_STATE.md) 为准，下面旧INC段落是各自日期的历史验收，不提供当前执行授权。
+> **当前验收增量（2026-09-07）**：本矩阵为`AUTHORITATIVE_ACCEPTANCE_LEDGER`。v0.7.16生成状态查询加固已部署，本地用户通过、正式站工程检查通过，等待新版正式站用户确认；此前v0.7.15修复的用户通过状态保留。生产工程证据与用户验收分别记录，其余历史条目不自动升级。当前生产/待办以 [CURRENT_STATE](UNBOUNDRY_CURRENT_STATE.md) 为准，下面旧INC段落是各自日期的历史验收，不提供当前执行授权。
 
 | 当前项目 | 判定 | 证据边界 |
 | --- | --- | --- |
+| 生成状态查询加固 | DEPLOYED / LOCAL_USER_PASS / PRODUCTION_TECHNICAL_PASS / USER_RECHECK | 139项本地回归、独立复审及精确包RB05通过；正式站只读打开/刷新保持原数据，未做真实生成；详见[v0.7.16回执](V0_7_16_PRODUCTION_RECEIPT_2026-09-07.json) |
 | 本轮模板保存、其余12项及验收反馈修复 | DEPLOYED / LOCAL_USER_PASS / PRODUCTION_USER_PASS | 用户本地全部通过；2026-09-07用户在正式站确认“通过”；发布及技术证据见[v0.7.15回执](V0_7_15_PRODUCTION_RECEIPT_2026-09-07.json)和[方案7～10节](REMAINING_BUG_UI_REPAIR_PLAN_2026-09-07.md) |
 | 图片「浏览全部」及模板筛选UI | PRODUCTION_TECHNICAL_PASS / LOCAL_USER_PASS / PRODUCTION_USER_PASS | 原生Chrome九项无遮挡、快速切分可打开/取消、46px项目筛选控件；2026-09-07用户在正式站确认相关体验“通过”；原画布与生成记录不变 |
 | 视频完整预览、媒体原比例/手动/撤销、模板置前 | USER_PASS（v0.7.14已验收范围） | 原用户状态继承；新发布不扩展到其他历史暂停功能 |
-| 发布手动加密备份 | TECHNICAL_PASS / CLOUD_BACKUP_VERIFIED | 最新冻结加密包verify/fresh restore及云端GET通过；确切计数由[v0.7.15回执](V0_7_15_PRODUCTION_RECEIPT_2026-09-07.json)维护 |
+| 发布手动加密备份 | BACKUP_RESTORE_TECHNICAL_PASS | v0.7.16最新冻结包verify/fresh restore通过；云端GET最终状态及精确计数由[v0.7.16回执](V0_7_16_PRODUCTION_RECEIPT_2026-09-07.json)维护，不修复每日timer |
 | 历史图与首次画布性能 | DEPLOYED / LOCAL_TARGET_PASS / LOCAL_USER_PASS | 本地180样本达标；未重做正式站基准，不等于全站竞品对标通过 |
 | 维护后更新通知、qs修补 | DEPLOYED / LOCAL_TEST_REVIEW_PASS | 本地重连/草稿保护和依赖验证完成；旧v0.7.14页面维护后仍需人工刷新，不冒充新客户端真实维护通过 |
 | 每日自动备份、视频/音频空按钮 | OPEN / USER_DEFERRED | 按用户要求跳过；手动发布备份不表示每日作业修复 |

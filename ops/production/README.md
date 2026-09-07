@@ -1,15 +1,14 @@
 # Production backup contracts
 
-Current snapshot: 2026-09-07, `v0.7.15/schema43`. See [current authority](../../spec/UNBOUNDRY_CURRENT_STATE.md) and [v0.7.15 release receipt](../../spec/V0_7_15_PRODUCTION_RECEIPT_2026-09-07.json). This directory contains operation sources; their presence in a release does not mean the systemd timer uses them.
+Current snapshot: 2026-09-07, `v0.7.16/schema43`. Product state, release identity and exact backup results are owned by [current authority](../../spec/UNBOUNDRY_CURRENT_STATE.md) and the [v0.7.16 release receipt](../../spec/V0_7_16_PRODUCTION_RECEIPT_2026-09-07.json). The presence of operation sources in a release does not mean the systemd timer uses them.
 
 ## Observed production state
 
-- Application: active/running, PID1088583, NRestarts0; current points to `/opt/unboundry/releases/v0.7.15-bug-ui-20260907`.
-- Daily timer: failure remains `USER_DEFERRED`; the installed job still uses the old schema41 path and has not been repaired.
-- Installed ExecStart still invokes `/opt/unboundry/scripts/backup-to-oss.mjs`, which invokes the old standalone `backup-data.mjs`. Its validation requires schema41; production is schema43. Journal reports `Backup database validation failed`.
-- The current manual schema43 encrypted backup is under `/var/lib/unboundry-v0715-bug-ui-20260907`, backup `cf5cd5b5-c9d2-4f45-b39a-100cd6ccd6f8`: verify and fresh restore passed, with 355 media, 648 mirrors and 3 secrets; 98 historical nonblocking warnings remain. Cloud upload and per-file GET hash/size verification passed; exact transfer counts are owned by the release receipt. This does not repair or validate the daily job.
+- The application was switched to the exact v0.7.16 package; actual pointer, PID, restart count and verification are in the release receipt rather than duplicated here.
+- Daily backup failure remains `USER_DEFERRED`: installed ExecStart still uses `/opt/unboundry/scripts/backup-to-oss.mjs` and its old schema41 validation. The application is schema43; this release did not alter that job.
+- The new manual frozen schema43 backup, verify and independent fresh restore passed. Cloud upload/GET completion and all counts are owned by the current release receipt. The 98 pre-existing nonblocking media warnings remain; a manual backup does not repair or validate the daily timer.
 
-The daily job needs a separately implemented and verified current-schema freeze/backup/restore/upload pipeline and an exact installed-unit receipt. Merely replacing a path or schema constant does not supply dynamic freeze and logical-SHA evidence. The v0.7.15 deployment and current backup evidence are owned by the linked release receipt; this README does not mark the deferred daily job repaired.
+The daily job needs a separately implemented and verified current-schema freeze/backup/restore/upload pipeline and an exact installed-unit receipt. Replacing only a path or schema constant does not provide dynamic freeze and logical-SHA evidence.
 
 ## Current wrapper contract
 
@@ -23,7 +22,7 @@ Without `--apply-upload`, it creates a local encrypted package and reports an up
 
 Before installing or changing a job, record immutable release commit/tree, wrapper and unit hashes, owner/mode, current-schema freeze/SHA evidence, key identities without key bytes, verify/fresh-restore result, upload/GET verification and timer next-run. Use isolated synthetic/fake tests first. Do not replace CURRENT with a backup or rewrite historical task/attempt records to satisfy quiet gates.
 
-The previous v0.7.14 recovery package remains `/var/lib/unboundry-v0714-media-aspect-20260906/backup43/1779934b-9d23-4a9d-849d-531f21d678b7.ubbackup`; it is retained for the reviewed rollback route. Do not use the old v0.7.13 path or claim every historic asset is intact. The current v0.7.15 cloud verification result is recorded in the linked release receipt.
+Previous recovery packages and exact old v0.7.15 code are retained. The current rollback identity, latest backup location and reviewed operation script are recorded in the v0.7.16 receipt. Do not restore any backup into CURRENT or substitute old v0.7.14/v0.7.13 evidence for the present release.
 
 ## Historical tools and authorization
 

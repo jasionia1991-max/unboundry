@@ -1,0 +1,388 @@
+{
+  "version": "0.7.16",
+  "status": "DEPLOYED / PRODUCTION_TECHNICAL_PASS / PRODUCTION_USER_RECHECK",
+  "date": "2026-09-07",
+  "commit": "b40bca8cf7b6e09faac4d1a449a65a060b10a0b6",
+  "tree": "a85a742f782fee75d965f283fe40bb44a0f83ac8",
+  "tag": "v0.7.16",
+  "tagObject": "71bb06554fdfec6ab3ae5a9503e108e6cfc92209",
+  "pr": 171,
+  "releaseUrl": "https://github.com/jasionia1991-max/unboundry/releases/tag/v0.7.16",
+  "site": "https://canvas.mymy.ltd",
+  "schema": 43,
+  "ci": {
+    "pullRequest": {
+      "head": "1d9e12cf064f763273a6fac3f2dd14742ca8bd4f",
+      "run": 34113559236,
+      "conclusion": "success"
+    },
+    "main": {
+      "head": "b40bca8cf7b6e09faac4d1a449a65a060b10a0b6",
+      "run": 34113880207,
+      "conclusion": "success"
+    }
+  },
+  "localValidation": {
+    "acceptedFeatureSpecs": {
+      "m41": 76,
+      "m27": 27,
+      "m40": 17,
+      "m38": 19,
+      "total": 139
+    },
+    "releaseChecks": {
+      "m38": 19,
+      "m81": 42,
+      "failures": 0,
+      "retries": 0,
+      "skips": 0
+    },
+    "typeArchitectureBuildSourceCoverage": "PASS",
+    "postCommitHelperStartup": "PASS: pinned old baseline plus separate candidate identity, legal temporary media uploads, clean shutdown",
+    "acceptedProductHashes": {
+      "client/src/generation/taskPolling.ts": "bf7fcdbf82d4ddb6593dbc6c10658773ca93bb3b83c84531aafe926b73f93d72",
+      "client/src/generation/generationTasks.ts": "39af279e0a3daed06faba87567a43c1e95423ae32bb57614bad2c845a3069d08"
+    },
+    "fullSuiteRun": false,
+    "evidenceScope": "Existing unchanged accepted feature results reused; no paid generation; temporary data and dynamic loopback only."
+  },
+  "independentReview": {
+    "product-independent-review.json": {
+      "status": "PASS",
+      "sha256": "61f3841df1dd6e917c3760a5f55707be4c7ce85407d6da7a14a3f34ec1da0a49"
+    },
+    "prepare-build-independent-review.json": {
+      "status": "PASS",
+      "sha256": "1c8f4460d2a510e7a9892e36814022179e515b2bacc0863a5e4b3d7f36a162e7"
+    },
+    "acceptance-baseline-incremental-review.json": {
+      "status": "PASS",
+      "sha256": "a80e19964377ed58f4ff0a0a99e67f80be94e4281797841e3be593e0caff16f1"
+    },
+    "production-operations-independent-review.json": {
+      "status": "PASS",
+      "sha256": "c3b2462e3580a02dd4f0e7ff499ffce3470476beeb37a92087f5265d3948f36d"
+    },
+    "rb05-independent-review.json": {
+      "status": "PASS",
+      "sha256": "4bafcf923208f5bc66b701b61e2e0311f70c361f34f098f8a11e6ce8732415a2"
+    },
+    "rollback-independent-review.json": {
+      "status": "PASS",
+      "sha256": "b0163f5bc1a2724032dae10f7cd7fdfd258c29b591567334e6dced1a2abe3605"
+    }
+  },
+  "build": {
+    "version": "0.7.16",
+    "tag": "v0.7.16",
+    "commit": "b40bca8cf7b6e09faac4d1a449a65a060b10a0b6",
+    "tree": "a85a742f782fee75d965f283fe40bb44a0f83ac8",
+    "archiveSha256": "e9f7820fa5ce70e62ce64ca3ba978c9a0aaf4a20414458f3206df1fcbe69fa9a",
+    "sourceFiles": 937,
+    "nodeVersion": "22.23.2",
+    "npmVersion": "10.9.8",
+    "sourceUnchanged": true,
+    "builtFresh": true,
+    "protectedEntriesExcluded": [
+      "spec/INC_GEN_017_R0_PUBLISHED_MODEL_SNAPSHOT_2026-08-28.json",
+      "spec/public-templates-director-split-revision.json"
+    ],
+    "staticFiles": 33,
+    "staticBytes": 6465600,
+    "allStaticPublicAndLoopbackExact": true
+  },
+  "cutover": {
+    "status": "V0716_ACTIVE_CODE_SWITCH_PASS",
+    "current": "/opt/unboundry/releases/v0.7.16-status-query-20260907",
+    "version": "0.7.16",
+    "commit": "b40bca8cf7b6e09faac4d1a449a65a060b10a0b6",
+    "tree": "a85a742f782fee75d965f283fe40bb44a0f83ac8",
+    "schemaVersion": 43,
+    "state": {
+      "MainPID": "1197743",
+      "NRestarts": "0",
+      "ActiveState": "active",
+      "SubState": "running"
+    },
+    "providerRequests": 0,
+    "databaseReplaced": false,
+    "schemaChanged": false,
+    "backup": "/var/lib/unboundry-v0716-status-query-20260907/backup43/cfa31842-9cf6-429c-92e3-960c3988dc4d.ubbackup"
+  },
+  "dataPreservation": {
+    "businessTablesExactlyEqual": true,
+    "mediaAndSecretFilesExactlyEqual": true,
+    "mediaAndSecretFileCount": 358,
+    "filesSha256": "a2cf8455ba7398b81421e5e4616a26d2af8dde1c55a5eff771f16e7d35ca0601",
+    "schemaChanged": false,
+    "databaseReplaced": false,
+    "intentionalWrites": [
+      "generation maintenance freeze/restore and required audit records",
+      "backup source lock bookkeeping, no business payload changes"
+    ],
+    "generationSafetyRestored": {
+      "status": "SAFETY_RESTORED",
+      "globalEnabled": true
+    }
+  },
+  "compatibilityRollback": {
+    "version": "0.7.15",
+    "directory": "/opt/unboundry/releases/v0.7.15-bug-ui-20260907",
+    "commit": "8ac75ca79d525d34e8a9b1b8b5fb820c020cd402",
+    "tree": "5ee5dd88b08301ab1d97e44612ab98c64a7dd818",
+    "script": "/var/lib/unboundry-v0716-status-query-20260907/rollback.py",
+    "scriptSha256": "a126918fef1f213d5232695c2a86fbceb0babd35a79e55a29b16d360ad54d5e5",
+    "preserveCurrentData": true,
+    "newDurableFields": false,
+    "linuxPairedRuntime": {
+      "status": "PASS",
+      "schemaVersion": 43,
+      "isolatedLinux": true,
+      "liveDataMounted": false,
+      "sourceEvidenceRoot": "/tmp/unboundry-v0716-rb05.g5pMc4",
+      "sourceEvidence": [
+        {
+          "path": "/tmp/unboundry-v0716-rb05.g5pMc4/rb05-evidence/rb05-paired-runtime.json",
+          "sha256": "48ef44e8de21056736ee256b830f8c3b57a9e6978cf847ed55a2bcf600b617e9"
+        },
+        {
+          "path": "/tmp/unboundry-v0716-rb05.g5pMc4/rb05-evidence/rb05-execution.json",
+          "sha256": "1c1374fcb8bc2b6e5453f8d952efff862a2e2b580ee725e951a050f79626f855"
+        },
+        {
+          "path": "/tmp/unboundry-v0716-rb05.g5pMc4/rb05-evidence/rb05-browser-forward-new.json",
+          "sha256": "c2b8e50412b9bc92c3cf41002557e248617d594d9cd8cd0cf90a029a7168f6fa"
+        },
+        {
+          "path": "/tmp/unboundry-v0716-rb05.g5pMc4/rb05-evidence/rb05-browser-rollback-old.json",
+          "sha256": "3f49b4a2203784ffe68e76ecf4315bed680778905d0d5a3a388b6ee10e39a264"
+        },
+        {
+          "path": "/tmp/unboundry-v0716-rb05.g5pMc4/rb05-evidence/rb05-browser-forward-new-final.json",
+          "sha256": "10f7a6a902cc3802690deba105301ce31a0ac7fa7c5a86579c523344b44dd2fe"
+        }
+      ],
+      "candidate": {
+        "version": "0.7.16",
+        "commit": "b40bca8cf7b6e09faac4d1a449a65a060b10a0b6",
+        "tree": "a85a742f782fee75d965f283fe40bb44a0f83ac8"
+      },
+      "rollback": {
+        "version": "0.7.15",
+        "commit": "8ac75ca79d525d34e8a9b1b8b5fb820c020cd402",
+        "tree": "5ee5dd88b08301ab1d97e44612ab98c64a7dd818"
+      },
+      "checks": {
+        "sameDataPreserved": true,
+        "persistedSyntheticTaskRecovered": true,
+        "clientLoadedRollback": true,
+        "draftPreserved": true,
+        "staticAssetsMatch": true,
+        "affectedBehaviorVerified": true,
+        "providerCalls": 0,
+        "generationPosts": 0,
+        "unexpectedCanvasWrites": 0,
+        "databaseRestored": false
+      },
+      "authorizedSyntheticWrites": [
+        {
+          "method": "POST",
+          "path": "/api/auth/bootstrap",
+          "count": 1
+        },
+        {
+          "method": "POST",
+          "path": "/api/projects",
+          "count": 1
+        },
+        {
+          "method": "POST",
+          "path": "/api/assets/rb05-reference-image",
+          "count": 1
+        },
+        {
+          "method": "PUT",
+          "path": "/api/canvas/d367e6dc-c278-4147-a6a2-e02bc63817a1",
+          "count": 1
+        },
+        {
+          "method": "POST",
+          "path": "/api/canvases/d367e6dc-c278-4147-a6a2-e02bc63817a1/commands",
+          "count": 3
+        }
+      ],
+      "databaseCounts": {
+        "generation_tasks": 1,
+        "generation_provider_attempts": 0,
+        "generation_admission_events": 0,
+        "generation_task_events": 2,
+        "media_assets": 1,
+        "media_publication_attempts": 1,
+        "schemaVersion": 43,
+        "paidProviderRequests": 0,
+        "generationAdmissionEvents": 0
+      },
+      "scope": "Exact Linux package new-old-new with saved drafts, same synthetic persistent task and local asset, three new browser contexts and actual loaded primary client bundle SHA. Task settlement is an explicit stopped-process fixture transition, not real Provider recovery. Primary bundle identity is checked here; all production static assets are a separate release gate.",
+      "realSystemdRollbackExecuted": false
+    },
+    "realSystemdRollbackExecuted": false,
+    "failureHandling": "Only switch exact old code after fresh backup validation; retain maintenance on failed rollback, never replace CURRENT with a backup or auto-forward to a regressed candidate."
+  },
+  "backup": {
+    "package": "/var/lib/unboundry-v0716-status-query-20260907/backup43/cfa31842-9cf6-429c-92e3-960c3988dc4d.ubbackup",
+    "receipt": {
+      "backupId": "cfa31842-9cf6-429c-92e3-960c3988dc4d",
+      "captureMode": "locked-exact",
+      "databaseLogicalSha256": "4b444fb13f90b223b735bbf9f41469c54db8fa7cd3385ad7faf9447fcf16e47b",
+      "finalCandidate": true,
+      "mediaFiles": 355,
+      "mediaIntegrity": {
+        "backupBlockingIssues": 0,
+        "clean": false,
+        "evidenceSha256": "9fc3f2daac43825d80685febac5fd069268d157183ed6e61165650f026ac8757",
+        "issues": 98,
+        "sha256": "50def38ebd88ef5516ba24e3b3c3451cada534969869e10ed1f30e5826c09d6f"
+      },
+      "ossMirrors": 653,
+      "packageDirectory": "/work/backup43/cfa31842-9cf6-429c-92e3-960c3988dc4d.ubbackup",
+      "schemaVersion": 43,
+      "secretFiles": 3
+    },
+    "verify": {
+      "backupId": "cfa31842-9cf6-429c-92e3-960c3988dc4d",
+      "captureMode": "locked-exact",
+      "databaseLogicalSha256": "4b444fb13f90b223b735bbf9f41469c54db8fa7cd3385ad7faf9447fcf16e47b",
+      "finalCandidate": true,
+      "mediaFiles": 355,
+      "mediaIntegrity": {
+        "backupBlockingIssues": 0,
+        "clean": false,
+        "evidenceSha256": "9fc3f2daac43825d80685febac5fd069268d157183ed6e61165650f026ac8757",
+        "issues": 98,
+        "sha256": "50def38ebd88ef5516ba24e3b3c3451cada534969869e10ed1f30e5826c09d6f"
+      },
+      "ossMirrors": 653,
+      "packageDirectory": "/backup",
+      "schemaVersion": 43,
+      "secretFiles": 3
+    },
+    "freshRestore": {
+      "backupId": "cfa31842-9cf6-429c-92e3-960c3988dc4d",
+      "captureMode": "locked-exact",
+      "databaseLogicalSha256": "4b444fb13f90b223b735bbf9f41469c54db8fa7cd3385ad7faf9447fcf16e47b",
+      "finalCandidate": true,
+      "mediaFiles": 355,
+      "mediaIntegrity": {
+        "backupBlockingIssues": 0,
+        "clean": false,
+        "evidenceSha256": "9fc3f2daac43825d80685febac5fd069268d157183ed6e61165650f026ac8757",
+        "issues": 98,
+        "sha256": "50def38ebd88ef5516ba24e3b3c3451cada534969869e10ed1f30e5826c09d6f"
+      },
+      "ossMirrors": 653,
+      "packageDirectory": "/backup",
+      "schemaVersion": 43,
+      "secretFiles": 3
+    },
+    "cloud": {
+      "status": "ENCRYPTED_BACKUP_OSS_UPLOAD_GET_VERIFY_PASS",
+      "backupId": "cfa31842-9cf6-429c-92e3-960c3988dc4d",
+      "prefix": "objects/backups/unboundry-schema43/cfa31842-9cf6-429c-92e3-960c3988dc4d",
+      "retentionDeletes": 0,
+      "mediaWrites": 0,
+      "providerRequests": 0,
+      "files": 1015,
+      "bytes": 1978517734,
+      "allObjectsGetAndSha256Verified": true,
+      "manifestGetAndBytesVerified": true,
+      "receiptPath": "/var/lib/unboundry-v0716-status-query-20260907/evidence/oss-backup-upload.json",
+      "receiptSha256": "aea6cc8f61cb5316ef552bdd0cabe8f7f6f53258d2bbed21e48fca482c46bcf1"
+    },
+    "mirrorPreparation": {
+      "currentObjects": 653,
+      "verifiedPreviousRestoreReused": 648,
+      "newExactReadDownloads": 5,
+      "mediaWrites": 0,
+      "providerRequests": 0
+    },
+    "automaticDailyBackup": "OPEN / USER_DEFERRED: old schema41 job unchanged"
+  },
+  "productionUI": {
+    "status": "PRODUCTION_TECHNICAL_PASS",
+    "version": "0.7.16",
+    "browser": "existing authenticated native Chrome, fresh reload after deployment",
+    "url": "https://canvas.mymy.ltd/canvas/837344f0-5988-4408-9651-0b0cebe0f6fa",
+    "beforeBundle": "/assets/index-BeMqgeB0.js",
+    "afterBundle": "/assets/index-DNqJcjj4.js",
+    "revisionBefore": 44,
+    "revisionAfter": 44,
+    "nodeCount": 27,
+    "nodesEqual": true,
+    "viewportEqual": true,
+    "saveIndicator": "已保存到云端",
+    "saveErrorVisible": false,
+    "loadedImages": 4,
+    "video": {
+      "readyState": 4,
+      "error": null
+    },
+    "refreshWrites": [],
+    "httpErrors": [],
+    "canvasResponseDifferentKeys": [
+      "loadToken",
+      "saveEpoch"
+    ],
+    "differenceExplanation": "server/canvasPersistence.ts process epoch changes on restart; not a document write",
+    "databaseBefore": {
+      "projectId": "837344f0-5988-4408-9651-0b0cebe0f6fa",
+      "rowCount": 1,
+      "canvasSha256": "036c5af7fe4dd67c4931be27f86db776c7a084401a09850ff4d0af691dba54ec",
+      "counts": {
+        "generation_tasks": 1119,
+        "generation_provider_attempts": 1130,
+        "canvas_operation_receipts": 113
+      }
+    },
+    "databaseAfter": {
+      "projectId": "837344f0-5988-4408-9651-0b0cebe0f6fa",
+      "rowCount": 1,
+      "canvasSha256": "036c5af7fe4dd67c4931be27f86db776c7a084401a09850ff4d0af691dba54ec",
+      "counts": {
+        "generation_tasks": 1119,
+        "generation_provider_attempts": 1130,
+        "canvas_operation_receipts": 113
+      }
+    },
+    "rawCanvasRowAndTaskCountersEqual": true,
+    "paidGeneration": 0,
+    "scope": "Read/open/reload only of existing production canvas. No real generation, edits, drag, resize or paid task recovery performed. User acceptance still pending.",
+    "observedAt": "2026-09-07T11:27:31.047422+00:00"
+  },
+  "userAcceptance": {
+    "local": "USER_PASS",
+    "quotes": [
+      "都通过了",
+      "ok 现在都通过了是不是可以直接上线了？"
+    ],
+    "production": "USER_RECHECK",
+    "nextStep": "在正式站打开已有画布，刷新后确认内容和位置保留、正常显示且无保存报错；无需重新做本地故障注入。"
+  },
+  "paidGeneration": 0,
+  "limitations": [
+    "RB05 task settlement is an explicit synthetic transition between stopped processes; not real Provider or billed recovery.",
+    "No actual production systemd rollback was performed; the real operation was the forward deployment.",
+    "98 pre-existing nonblocking media integrity warnings retained; no claim that all historical media is intact.",
+    "Daily automatic backup and empty video/audio toolbar buttons remain user-deferred.",
+    "Production user acceptance pending; technical checks are not USER_PASS."
+  ],
+  "governance": {
+    "procedure": "RELEASE_RUNBOOK.md#独立文档同步",
+    "identityOwner": "/opt/unboundry/governance/current/.governance-manifest.json",
+    "verificationOwner": "/var/lib/unboundry-v0716-status-query-20260907/evidence/governance-sync.json",
+    "finalDocCiOwner": "/Users/mymy/Documents/unboundry/status-query-v0716-release-ops-20260907/governance-ci.json",
+    "productRebuildRequired": false,
+    "productRestartRequired": false
+  },
+  "evidenceDirectory": "/Users/mymy/Documents/unboundry/status-query-v0716-release-ops-20260907",
+  "serverEvidenceDirectory": "/var/lib/unboundry-v0716-status-query-20260907/evidence"
+}
