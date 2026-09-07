@@ -23,8 +23,8 @@ function isPollingAbortError(error: unknown): boolean {
 }
 
 /**
- * A transient polling failure (network or server-side 5xx) pauses the local
- * poll instead of marking the durable task failed. The caller keeps the task
+ * An exhausted transient status read pauses the local poll instead of marking
+ * the durable task failed. The caller keeps the task
  * id and offers a “重新检查” action that resumes polling.
  */
 export function isTransientPollingError(error: unknown): boolean {
@@ -40,9 +40,14 @@ export async function waitForGenerationTaskWithPause(
   fixtureScopeId = "",
 ): Promise<GenerationTaskSummary> {
   try {
-    return await waitForGenerationTask(taskId, signal, fixtureScopeId);
+    const task = await waitForGenerationTask(taskId, signal, fixtureScopeId, {
+      retryTransientStatusReads: true,
+    });
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+    return task;
   } catch (error) {
     if (isPollingAbortError(error)) throw error;
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
     if (isTransientPollingError(error)) onPause();
     throw error;
   }

@@ -208,6 +208,24 @@ export function runWithCanvasGraphMutationAdmission<T>(
 const GENERATION_TASK_STATUS_READ_TIMEOUT_MS = 10_000;
 export const GENERATION_TASK_MUTATION_TIMEOUT_MS = 12_000;
 
+// Only failures classified at the status GET boundary may be retried. An
+// exception from applying a task (or from a mutation) is never a read failure.
+class GenerationTaskStatusReadError extends GenerationRequestError {
+  constructor(
+    message: string,
+    status: number,
+    readonly retryable: boolean,
+    code?: string,
+    problems: NodeInputProblem[] = [],
+  ) {
+    super(message, status, code, problems);
+  }
+}
+
+function assertStatusReadActive(signal?: AbortSignal) {
+  if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+}
+
 function safeProblems(value: unknown): NodeInputProblem[] {
   if (!Array.isArray(value)) return [];
   return value.filter((problem): problem is NodeInputProblem =>
@@ -244,12 +262,11 @@ async function readTaskStatusJson<T>(
   signal?: AbortSignal,
   allowNotFound = false,
 ): Promise<T | undefined> {
-  if (signal?.aborted) {
-    throw new DOMException("Aborted", "AbortError");
-  }
+  assertStatusReadActive(signal);
   const controller = new AbortController();
   let timeout: ReturnType<typeof globalThis.setTimeout> | undefined;
   let onAbort: (() => void) | undefined;
+  let observedFailureStatus: number | undefined;
   const callerAbort = new Promise<never>((_resolve, reject) => {
     if (!signal) return;
     onAbort = () => {
@@ -260,27 +277,68 @@ async function readTaskStatusJson<T>(
   });
   const deadline = new Promise<never>((_resolve, reject) => {
     timeout = globalThis.setTimeout(() => {
-      reject(new GenerationRequestError(
+      // A stalled error body cannot turn known 401/403/etc. into a network
+      // failure. Preserve the status as soon as response headers arrive.
+      reject(new GenerationTaskStatusReadError(
         "任务状态查询超时",
-        0,
+        observedFailureStatus ?? 0,
+        observedFailureStatus === undefined || observedFailureStatus >= 500,
         "TASK_STATUS_TIMEOUT",
       ));
       controller.abort("generation-task-status-timeout");
     }, GENERATION_TASK_STATUS_READ_TIMEOUT_MS);
   });
   try {
-    return await Promise.race([
+    const result = await Promise.race([
       (async () => {
-        const response = await fetch(input, {
-          ...init,
-          signal: controller.signal,
-        });
+        let response: Response;
+        try {
+          response = await fetch(input, { ...init, signal: controller.signal });
+        } catch (error) {
+          assertStatusReadActive(signal);
+          if (error instanceof TypeError ||
+            (error instanceof DOMException && error.name === "NetworkError")) {
+            throw new GenerationTaskStatusReadError(
+              "任务状态网络查询失败", 0, true, "TASK_STATUS_NETWORK_ERROR",
+            );
+          }
+          throw error;
+        }
+        assertStatusReadActive(signal);
+        if (!response.ok) observedFailureStatus = response.status;
         if (allowNotFound && response.status === 404) return undefined;
-        return readJson<T>(response);
+        let body: unknown;
+        try {
+          body = await response.json();
+        } catch {
+          assertStatusReadActive(signal);
+          if (response.ok) {
+            throw new GenerationTaskStatusReadError(
+              "任务状态响应格式无效", response.status, false,
+              "TASK_STATUS_INVALID_RESPONSE",
+            );
+          }
+          // Gateways can return HTML. HTTP status remains authoritative.
+        }
+        assertStatusReadActive(signal);
+        if (!response.ok) {
+          const details = body && typeof body === "object"
+            ? body as Record<string, unknown> : {};
+          throw new GenerationTaskStatusReadError(
+            typeof details.error === "string" ? details.error : "生成任务服务暂不可用",
+            response.status,
+            response.status >= 500,
+            typeof details.code === "string" ? details.code : undefined,
+            safeProblems(details.problems),
+          );
+        }
+        return body as T;
       })(),
       callerAbort,
       deadline,
     ]);
+    assertStatusReadActive(signal);
+    return result;
   } finally {
     if (timeout !== undefined) globalThis.clearTimeout(timeout);
     if (signal && onAbort) signal.removeEventListener("abort", onAbort);
@@ -376,6 +434,22 @@ export async function getGenerationTask(
     { cache: "no-store" },
     signal,
   ) as GenerationTaskSummary;
+  assertStatusReadActive(signal);
+  if (!task || typeof task !== "object" || Array.isArray(task) ||
+    task.id !== taskId ||
+    !["text", "image", "video", "audio"].includes(task.kind) ||
+    typeof task.canvasId !== "string" || !task.canvasId ||
+    typeof task.nodeId !== "string" || !task.nodeId ||
+    !Number.isInteger(task.attempt) || task.attempt < 0 ||
+    typeof task.createdAt !== "string" || !task.createdAt ||
+    typeof task.updatedAt !== "string" || !task.updatedAt ||
+    typeof task.prompt !== "string" ||
+    !["queued", "running", "success", "failed", "cancelled", "retrying", "recovering"]
+      .includes(task.state)) {
+    throw new GenerationTaskStatusReadError(
+      "任务状态响应与当前任务不匹配", 200, false, "TASK_STATUS_INVALID_RESPONSE",
+    );
+  }
   rememberFinishedTaskDuration(task);
   return task;
 }
@@ -2245,33 +2319,53 @@ export async function submitAudioGeneration(input: {
   });
 }
 
+function waitForTaskStatusDelay(delayMs: number, signal?: AbortSignal) {
+  assertStatusReadActive(signal);
+  return new Promise<void>((resolve, reject) => {
+    const onAbort = () => {
+      window.clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    const timer = window.setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, delayMs);
+    signal?.addEventListener("abort", onAbort, { once: true });
+    if (signal?.aborted) onAbort();
+  });
+}
+
 export async function waitForGenerationTask(
   taskId: string,
   signal?: AbortSignal,
   fixtureScopeId = "",
+  options: { retryTransientStatusReads?: boolean } = {},
 ) {
+  const readCurrentTask = async () => {
+    const retryDelays = options.retryTransientStatusReads ? [1_000, 2_000] : [];
+    for (let failure = 0; ; failure += 1) {
+      assertStatusReadActive(signal);
+      try {
+        return await getGenerationTask(taskId, signal, fixtureScopeId);
+      } catch (error) {
+        assertStatusReadActive(signal);
+        if (!(error instanceof GenerationTaskStatusReadError) ||
+          !error.retryable || failure >= retryDelays.length) throw error;
+        await waitForTaskStatusDelay(retryDelays[failure], signal);
+      }
+    }
+  };
   // Generic relay media is allowed to poll for at most 15 minutes server-side.
   // Keep the browser waiting slightly longer so it never reports a false local
   // failure while the durable server task is still running.
   for (let attempt = 0; attempt < 1800; attempt += 1) {
-    const task = await getGenerationTask(taskId, signal, fixtureScopeId);
+    const task = await readCurrentTask();
     if (["success", "failed", "cancelled"].includes(task.state)) return task;
-    await new Promise<void>((resolve, reject) => {
-      const onAbort = () => {
-        window.clearTimeout(timer);
-        signal?.removeEventListener("abort", onAbort);
-        reject(new DOMException("Aborted", "AbortError"));
-      };
-      const timer = window.setTimeout(() => {
-        signal?.removeEventListener("abort", onAbort);
-        resolve();
-      }, 1_000);
-      signal?.addEventListener("abort", onAbort, { once: true });
-      if (signal?.aborted) onAbort();
-    });
+    await waitForTaskStatusDelay(1_000, signal);
   }
   // The server task is still active after the local waiting window. Return the
   // current snapshot so the caller can keep the breathing light and continue
   // with automatic recovery instead of showing a red error.
-  return getGenerationTask(taskId, signal, fixtureScopeId);
+  return readCurrentTask();
 }

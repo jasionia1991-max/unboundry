@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "head": "955b9d2d89f76f8b91e71dd76cfb37ecad32cdc6",
+  "files": {
+    "client/src/generation/taskPolling.ts": "ce9622994549a03fde72fe71cd31bd4ede7f53e66b5e64ab6ac5598c02c0b81b",
+    "client/src/generation/generationTasks.ts": "9e88d0e71d822a03e28bc370805df48ff912eed81fc90142c6561fbf56816e5c"
+  }
+}

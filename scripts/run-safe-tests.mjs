@@ -68,6 +68,14 @@ const EXACT_V051_ATTESTATION_CONTRACT =
   "unboundry-v051-safe-runner-attestation-v2";
 const TEMPLATE_ACCEPTANCE_SCRIPT = "scripts/template-acceptance-preview.mjs";
 const TEMPLATE_ACCEPTANCE_TIMEOUT = 2 * 60 * 60 * 1_000 + 60_000;
+const GENERATION_STATUS_ACCEPTANCE_SCENARIO = "generation-status";
+const GENERATION_STATUS_BASELINE_HEAD = "955b9d2d89f76f8b91e71dd76cfb37ecad32cdc6";
+const GENERATION_STATUS_BASELINE_MANIFEST =
+  "tests/fixtures/generation-status-query-baseline.json";
+const GENERATION_STATUS_BASELINE_FILES = Object.freeze([
+  "client/src/generation/taskPolling.ts",
+  "client/src/generation/generationTasks.ts",
+]);
 const scriptPath = fileURLToPath(import.meta.url);
 const repositoryRoot = realpathSync(resolve(dirname(scriptPath), ".."));
 let activeSuiteRoot;
@@ -411,6 +419,7 @@ ensureNode22();
 
 function parseArguments(values) {
   const parsed = {
+    acceptanceScenario: GENERATION_STATUS_ACCEPTANCE_SCENARIO,
     command: "full",
     repeat: 1,
     repeatSpecified: false,
@@ -431,12 +440,21 @@ function parseArguments(values) {
         fail("--repeat must be an integer from 1 to 10");
       }
       parsed.repeat = value;
+    } else if (argument === "--scenario" || argument === "--acceptance-scenario") {
+      const value = args.shift();
+      if (![GENERATION_STATUS_ACCEPTANCE_SCENARIO, "templates"].includes(value)) {
+        fail(`--scenario must be ${GENERATION_STATUS_ACCEPTANCE_SCENARIO} or templates`);
+      }
+      parsed.acceptanceScenario = value;
     } else {
       fail(`unknown argument: ${argument}`);
     }
   }
   if (!["preflight", "list", "run", "full", "acceptance"].includes(parsed.command)) {
     fail(`unknown command: ${parsed.command}`);
+  }
+  if (parsed.command !== "acceptance" && parsed.acceptanceScenario !== GENERATION_STATUS_ACCEPTANCE_SCENARIO) {
+    fail("--scenario is only supported by acceptance mode");
   }
   if (parsed.command === "acceptance") {
     if (parsed.specs.length > 0) {
@@ -470,6 +488,68 @@ function workingSourceFiles() {
     .filter(Boolean)
     .filter((file) => !protectedWorkspaceFiles.has(file))
     .sort();
+}
+
+function prepareGenerationStatusBaseline(testRoot) {
+  const manifestPath = join(repositoryRoot, GENERATION_STATUS_BASELINE_MANIFEST);
+  if (!existsSync(manifestPath)) {
+    fail(`generation status baseline manifest is missing: ${GENERATION_STATUS_BASELINE_MANIFEST}`);
+  }
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  } catch (error) {
+    fail(`generation status baseline manifest is invalid: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (
+    manifest?.schemaVersion !== 1 ||
+    manifest.head !== GENERATION_STATUS_BASELINE_HEAD ||
+    !manifest.files ||
+    Object.keys(manifest.files).sort().join("\n") !==
+      GENERATION_STATUS_BASELINE_FILES.slice().sort().join("\n")
+  ) {
+    fail("generation status baseline manifest does not match the frozen baseline HEAD or file set");
+  }
+  const baselineRoot = join(testRoot, "generation-status-query-baseline");
+  mkdirSync(baselineRoot, { recursive: true, mode: 0o700 });
+  const files = {};
+  for (const file of GENERATION_STATUS_BASELINE_FILES) {
+    const expected = manifest.files[file];
+    if (!/^[a-f0-9]{64}$/.test(expected)) {
+      fail(`generation status baseline SHA-256 is invalid: ${file}`);
+    }
+    // This is deliberately the only git read in the baseline preparation.
+    // Do not replace it with a repository-wide export or a protected-file scan.
+    const result = spawnSync("git", ["show", `${manifest.head}:${file}`], {
+      cwd: repositoryRoot,
+      encoding: null,
+      maxBuffer: 16 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    if (result.error) throw result.error;
+    if (result.status !== 0 || !Buffer.isBuffer(result.stdout)) {
+      fail(`git show could not read the generation status baseline: ${file}`);
+    }
+    const bytes = Buffer.from(result.stdout);
+    const actual = sha256Bytes(bytes);
+    if (actual !== expected) {
+      fail(`generation status baseline SHA-256 mismatch for ${file}: ${actual}`);
+    }
+    const destination = join(baselineRoot, file);
+    mkdirSync(dirname(destination), { recursive: true, mode: 0o700 });
+    writeFileSync(destination, bytes, { mode: 0o400, flag: "wx" });
+    files[file] = actual;
+  }
+  const outputManifest = join(baselineRoot, "manifest.json");
+  writeFileSync(
+    outputManifest,
+    `${JSON.stringify({ schemaVersion: 1, head: manifest.head, files }, null, 2)}\n`,
+    { mode: 0o400, flag: "wx" },
+  );
+  return Object.freeze({
+    manifestPath: realpathSync(outputManifest),
+    root: realpathSync(baselineRoot),
+  });
 }
 
 function createTrackedSnapshot(suiteRoot, browserRequired) {
@@ -837,12 +917,15 @@ function sandboxProfile(testRoot, sourceRoot, configuredBrowserRoot) {
 }
 
 function sanitizedEnvironment({
+  acceptanceScenario = GENERATION_STATUS_ACCEPTANCE_SCENARIO,
   auxiliaryPort,
   auditFile,
   browserRoot,
   dataDirectory,
   port,
   reportFile,
+  generationBaselineManifest,
+  generationBaselineRoot,
   sourceRoot,
   spec,
   testRoot,
@@ -878,6 +961,7 @@ function sanitizedEnvironment({
     UNBOUNDRY_ORIGINAL_REPOSITORY_ROOT: repositoryRoot,
     UNBOUNDRY_SYSTEM_TEMPORARY_ROOT: realpathSync(tmpdir()),
     UNBOUNDRY_TEST_AUX_PORT: String(auxiliaryPort),
+    UNBOUNDRY_TEST_ACCEPTANCE_SCENARIO: acceptanceScenario,
     UNBOUNDRY_TEST_NETWORK_AUDIT: auditFile,
     UNBOUNDRY_TEST_PORT: String(port),
     UNBOUNDRY_TEST_PREVIEW:
@@ -895,6 +979,10 @@ function sanitizedEnvironment({
     npm_config_offline: "true",
     npm_config_update_notifier: "false",
   };
+  if (generationBaselineRoot && generationBaselineManifest) {
+    environment.UNBOUNDRY_GENERATION_STATUS_BASELINE_ROOT = generationBaselineRoot;
+    environment.UNBOUNDRY_GENERATION_STATUS_BASELINE_MANIFEST = generationBaselineManifest;
+  }
   for (const name of [
     "UNBOUNDRY_EXPLICIT_SCHEMA_MIGRATION",
     "UNBOUNDRY_MAINTENANCE_MODE",
@@ -1098,10 +1186,18 @@ async function sandboxedCommand(
   );
 }
 
-async function runTemplateAcceptancePreview(suiteRoot, sourceRoot, browserRoot) {
+async function runTemplateAcceptancePreview(
+  suiteRoot,
+  sourceRoot,
+  browserRoot,
+  acceptanceScenario = GENERATION_STATUS_ACCEPTANCE_SCENARIO,
+) {
   const testRoot = mkdtempSync(join(suiteRoot, "template-acceptance-preview-"));
   const dataDirectory = join(testRoot, "data");
   mkdirSync(dataDirectory, { recursive: true });
+  const generationBaseline = acceptanceScenario === GENERATION_STATUS_ACCEPTANCE_SCENARIO
+    ? prepareGenerationStatusBaseline(testRoot)
+    : undefined;
   const auditFile = join(testRoot, "network-audit.jsonl");
   const reportFile = join(testRoot, "unused-report.json");
   const script = join(sourceRoot, TEMPLATE_ACCEPTANCE_SCRIPT);
@@ -1112,12 +1208,15 @@ async function runTemplateAcceptancePreview(suiteRoot, sourceRoot, browserRoot) 
   const port = await freePort();
   const auxiliaryPort = await freePort(new Set([port]));
   const env = sanitizedEnvironment({
+    acceptanceScenario,
     auxiliaryPort,
     auditFile,
     browserRoot,
     dataDirectory,
     port,
     reportFile,
+    generationBaselineManifest: generationBaseline?.manifestPath,
+    generationBaselineRoot: generationBaseline?.root,
     sourceRoot,
     spec: script,
     testRoot,
@@ -1136,7 +1235,7 @@ async function runTemplateAcceptancePreview(suiteRoot, sourceRoot, browserRoot) 
       join(sourceRoot, "scripts/check-source-coverage.mjs"),
     ]);
     console.log(
-      `[safe-runner] template acceptance preview (port ${port}, auxiliary ${auxiliaryPort}; max ${TEMPLATE_ACCEPTANCE_TIMEOUT}ms)`,
+      `[safe-runner] ${acceptanceScenario} acceptance preview (port ${port}, auxiliary ${auxiliaryPort}; max ${TEMPLATE_ACCEPTANCE_TIMEOUT}ms)`,
     );
     const result = await sandboxedNode(
       sourceRoot,
@@ -1150,7 +1249,7 @@ async function runTemplateAcceptancePreview(suiteRoot, sourceRoot, browserRoot) 
     const audit = assertAudit(auditFile, new Set([port, auxiliaryPort]));
     if (result.status !== 0 || result.signal || result.timedOut) {
       fail(
-        `template acceptance preview exited unexpectedly (status ${result.status}, signal ${result.signal ?? "none"})`,
+        `${acceptanceScenario} acceptance preview exited unexpectedly (status ${result.status}, signal ${result.signal ?? "none"})`,
       );
     }
     console.log(JSON.stringify({
@@ -2202,8 +2301,8 @@ process.exit(0);
         })}`,
       );
     }
-    if (discovery.tests !== 1271) {
-      fail(`the frozen 1271-test inventory changed to ${discovery.tests}`);
+    if (discovery.tests !== 1288) {
+      fail(`the frozen 1288-test inventory changed to ${discovery.tests}`);
     }
     const idsByFile = {};
     const { entries } = collectReportEntries(reportFile, sourceRoot);
@@ -3865,7 +3964,7 @@ async function main() {
   snapshotBaseline = snapshotFingerprint(sourceRoot, files, capturedWorkspace.head);
   assertTrackedSnapshotUnchanged();
   if (options.command === "acceptance") {
-    await runTemplateAcceptancePreview(suiteRoot, sourceRoot, browserRoot);
+    await runTemplateAcceptancePreview(suiteRoot, sourceRoot, browserRoot, options.acceptanceScenario);
     return;
   }
   if (
