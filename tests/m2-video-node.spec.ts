@@ -304,10 +304,24 @@ test("Video empty, upload and editing states match the frozen basic state", asyn
   const toolbarBox = (await toolbar.boundingBox())!;
   const titleBox = (await node.locator(".video-node-title").boundingBox())!;
   expect(toolbarBox.y + toolbarBox.height).toBeLessThan(titleBox.y);
-  await expect(toolbar.getByRole("button")).toHaveCount(10);
-  await expect(
-    toolbar.getByRole("button", { name: "下载" }),
-  ).toBeVisible();
+  const toolbarButtonLabels = [
+    "剪辑",
+    "增强",
+    "替换",
+    "移除",
+    "截帧",
+    "浏览全部",
+    "Pin",
+    "保存到素材库",
+    "下载",
+    "全屏查看",
+    "按素材比例适配",
+  ];
+  const toolbarButtons = toolbar.getByRole("button");
+  await expect(toolbarButtons).toHaveCount(toolbarButtonLabels.length);
+  for (const [index, label] of toolbarButtonLabels.entries()) {
+    await expect(toolbarButtons.nth(index)).toHaveAttribute("aria-label", label);
+  }
 
   const volume = page.getByRole("button", { name: "开启声音" });
   await expect(volume).toBeVisible();

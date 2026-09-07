@@ -585,6 +585,7 @@ function ImageCropEditor({
     : maxWidth / maxHeight > aspect
     ? { height: maxHeight, width: maxHeight * aspect }
     : { height: maxWidth / aspect, width: maxWidth };
+  const sourcePreparationBlocked = busy || sourceBusy || !editableSource || !sourceDecoded;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -594,6 +595,14 @@ function ImageCropEditor({
     setSourceDecoded(false);
     setSourceBusy(true);
     setSourceError("");
+    setRatio("原图");
+    setRatioOpen(false);
+    setBox({
+      height: 0.8,
+      width: 0.8,
+      x: 0.1,
+      y: 0.1,
+    });
     const start = window.setTimeout(() => {
       void resolveEditableImageSource(assetId, controller.signal).then(
         (source) => {
@@ -624,6 +633,7 @@ function ImageCropEditor({
   }, [assetId, sourceEpoch]);
 
   const chooseRatio = (next: CropRatio) => {
+    if (sourcePreparationBlocked) return;
     setRatio(next);
     setRatioOpen(false);
     if (next === "自定义") return;
@@ -679,6 +689,7 @@ function ImageCropEditor({
 
   const confirm = async () => {
     setError("");
+    setRatioOpen(false);
     if (!editableSource || !imageRef.current) {
       setError(sourceError || "图片尚未准备完成");
       return;
@@ -839,18 +850,20 @@ function ImageCropEditor({
         <span className="image-crop-divider" />
         <span className="image-crop-ratio-wrap">
           <button
-            aria-expanded={ratioOpen}
+            aria-expanded={ratioOpen && !sourcePreparationBlocked}
             className="image-crop-ratio"
+            disabled={sourcePreparationBlocked}
             onClick={() => setRatioOpen((open) => !open)}
             type="button"
           >
             {ratio === "原图" ? "宽高比" : ratio}
           </button>
-          {ratioOpen && (
+          {ratioOpen && !sourcePreparationBlocked && (
             <div className="image-crop-ratio-menu" role="menu">
               {cropRatios.map((item) => (
                 <button
                   aria-checked={ratio === item}
+                  disabled={sourcePreparationBlocked}
                   key={item}
                   onClick={() => chooseRatio(item)}
                   role="menuitemradio"
@@ -5115,6 +5128,7 @@ function ImageNodeImpl({
       />
       <NodeToolbar
         className="media-node-toolbar image-node-toolbar nodrag nopan nowheel"
+        data-image-more-open={moreOpen}
         data-testid="image-node-toolbar"
         isVisible={Boolean(preview && singleNodeChrome && !generating && !uploading)}
         offset={28}
@@ -5147,7 +5161,11 @@ function ImageNodeImpl({
           data-tooltip={multiAngleCapability.status === "available"
             ? "多角度"
             : multiAngleCapability.reason}
+          disabled={multiAngleCapability.status !== "available"}
           onClick={(event) => openImageTool("multi-angle", event.currentTarget)}
+          title={multiAngleCapability.status === "available"
+            ? "多角度"
+            : multiAngleCapability.reason}
           type="button"
         >
           <svg aria-hidden="true" viewBox="0 0 20 20">
@@ -5161,10 +5179,14 @@ function ImageNodeImpl({
           data-tooltip={redrawCapability.status === "available"
             ? "重绘"
             : redrawCapability.reason}
+          disabled={redrawCapability.status !== "available"}
           onClick={(event) => {
             setRedrawError("");
             openImageTool("redraw", event.currentTarget);
           }}
+          title={redrawCapability.status === "available"
+            ? "重绘"
+            : redrawCapability.reason}
           type="button"
         >
           <svg aria-hidden="true" viewBox="0 0 20 20">
@@ -5218,7 +5240,8 @@ function ImageNodeImpl({
               ] as const).map(([label, icon, toolCapability]) => (
                 <button
                   data-capability-status={toolCapability?.status}
-                  disabled={!(["调整像素", "标注", "扩图", "擦除", "增强", "抠图"] as string[]).includes(label)}
+                  disabled={toolCapability !== undefined &&
+                    toolCapability.status !== "available"}
                   key={label}
                   onClick={(event) => {
                     setEraseError("");
@@ -5239,6 +5262,9 @@ function ImageNodeImpl({
                     );
                   }}
                   role="menuitem"
+                  title={toolCapability && toolCapability.status !== "available"
+                    ? toolCapability.reason
+                    : undefined}
                   type="button"
                 >
                   <span aria-hidden="true" className={`image-more-icon ${icon}`} />

@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext } from "./safe-test";
+import { expect, test, type APIRequestContext, type Locator } from "./safe-test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -32,6 +32,53 @@ async function clearProjects(request: APIRequestContext) {
       await request.delete(`/api/projects/${project.id}`);
     }
   }
+}
+
+async function dispatchComposingRenameKeys(control: Locator, value: string) {
+  await expect(control).toBeVisible();
+  await control.focus();
+  await control.dispatchEvent("compositionstart", { data: "" });
+  await control.evaluate((element, nextValue) => {
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    if (!setter) throw new Error("input value setter is unavailable");
+    setter.call(element, nextValue);
+    element.dispatchEvent(new InputEvent("input", {
+      bubbles: true,
+      data: nextValue,
+      inputType: "insertCompositionText",
+      isComposing: true,
+    }));
+  }, value);
+  for (const key of [
+    { code: "Enter", isComposing: true, key: "Enter", keyCode: 13 },
+    { code: "Escape", isComposing: true, key: "Escape", keyCode: 27 },
+    { code: "Unidentified", isComposing: false, key: "Process", keyCode: 229 },
+  ]) {
+    await control.evaluate((element, init) => {
+      const event = new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        code: init.code,
+        isComposing: init.isComposing,
+        key: init.key,
+      });
+      for (const [name, value] of [
+        ["isComposing", init.isComposing],
+        ["keyCode", init.keyCode],
+        ["which", init.keyCode],
+      ] as const) {
+        Object.defineProperty(event, name, {
+          configurable: true,
+          value,
+        });
+      }
+      element.dispatchEvent(event);
+    }, key);
+  }
+  await expect(control).toHaveAttribute("data-composition-active", "true");
 }
 
 test.describe("multi-project API", () => {
@@ -352,19 +399,95 @@ test.describe("workspace page", () => {
     await expect(page.getByTestId(`project-card-${first.id}`)).toHaveCount(0);
     await page.getByTestId("workspace-search").fill("");
 
-    await expect(page.getByTestId(`project-menu-${second.id}`))
+    const menuTrigger = page.getByTestId(`project-menu-${second.id}`);
+    const menu = page.getByTestId(`project-menu-pop-${second.id}`);
+    await expect(menuTrigger)
       .toHaveCSS("opacity", "0");
     await page.getByTestId(`project-card-${second.id}`).hover();
-    await expect(page.getByTestId(`project-menu-${second.id}`))
+    await expect(menuTrigger)
       .toHaveCSS("opacity", "1");
-    await page.getByTestId(`project-menu-${second.id}`).click();
-    await page
-      .getByTestId(`project-menu-pop-${second.id}`)
-      .getByText("重命名")
+    await test.step("项目菜单支持外点和 Escape 关闭并返回焦点", async () => {
+      await menuTrigger.click();
+      await expect(menu).toBeVisible();
+      await page.getByTestId("workspace-search").click();
+      await expect(menu).toHaveCount(0);
+
+      await page.getByTestId(`project-card-${second.id}`).hover();
+      await menuTrigger.click();
+      await expect(menu).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(menu).toHaveCount(0);
+      await expect(menuTrigger).toBeFocused();
+    });
+
+    const renameCalls = new Map([
+      [first.id, 0],
+      [second.id, 0],
+    ]);
+    page.on("request", (requestEvent) => {
+      if (requestEvent.method() !== "PUT") return;
+      for (const id of renameCalls.keys()) {
+        if (requestEvent.url().endsWith(`/api/project-title/${id}`)) {
+          renameCalls.set(id, (renameCalls.get(id) ?? 0) + 1);
+        }
+      }
+    });
+    await test.step(
+      "网格合成中的 Enter、Escape、229 不提交，普通 blur 提交最终中文",
+      async () => {
+        await menuTrigger.click();
+        await menu.getByText("重命名").click();
+        const renameInput = page.getByTestId("workspace-rename-input");
+        await dispatchComposingRenameKeys(renameInput, "项目B2");
+        await expect(renameInput).toHaveValue("项目B2");
+        await expect.poll(() => renameCalls.get(second.id) ?? 0).toBe(0);
+        await renameInput.dispatchEvent("compositionend", { data: "项目B2" });
+        await expect(renameInput).not.toHaveAttribute(
+          "data-composition-active",
+          "true",
+        );
+        await expect.poll(() => renameCalls.get(second.id) ?? 0).toBe(0);
+        await renameInput.blur();
+        await expect.poll(() => renameCalls.get(second.id) ?? 0).toBe(1);
+        await expect(page.getByText("项目B2", { exact: true })).toBeVisible();
+      },
+    );
+
+    await test.step(
+      "列表分支真实失焦等待 compositionend 后只提交最终中文",
+      async () => {
+        const firstMenuTrigger = page.getByTestId(`project-menu-${first.id}`);
+        const firstMenu = page.getByTestId(`project-menu-pop-${first.id}`);
+        await page.getByTestId(`project-card-${first.id}`).hover();
+        await firstMenuTrigger.click();
+        await firstMenu.getByText("重命名").click();
+        const gridInput = page.getByTestId("workspace-rename-input");
+        await dispatchComposingRenameKeys(gridInput, "网格候选");
+        await expect.poll(() => renameCalls.get(first.id) ?? 0).toBe(0);
+
+        await page.getByTestId("workspace-view")
+          .getByRole("radio", { name: "列表" })
+          .click();
+        await expect(page.getByTestId("workspace-list")).toBeVisible();
+        const listInput = page.getByTestId("workspace-rename-input");
+        await expect(listInput).toBeVisible();
+        await dispatchComposingRenameKeys(listInput, "列表中文");
+        await expect.poll(() => renameCalls.get(first.id) ?? 0).toBe(0);
+        await listInput.focus();
+        await listInput.blur();
+        await expect(listInput).toHaveAttribute(
+          "data-composition-active",
+          "true",
+        );
+        await listInput.dispatchEvent("compositionend", { data: "列表中文" });
+        await expect.poll(() => renameCalls.get(first.id) ?? 0).toBe(1);
+        await expect(page.getByText("列表中文", { exact: true })).toBeVisible();
+      },
+    );
+
+    await page.getByTestId("workspace-view")
+      .getByRole("radio", { name: "网格" })
       .click();
-    await page.getByTestId("workspace-rename-input").fill("项目B2");
-    await page.getByTestId("workspace-rename-input").press("Enter");
-    await expect(page.getByText("项目B2", { exact: true })).toBeVisible();
 
     await page.getByTestId(`project-card-${second.id}`).hover();
     await page.getByTestId(`project-menu-${second.id}`).click();
@@ -475,53 +598,58 @@ test.describe("workspace page", () => {
       await route.fulfill({ json: payload, status: 200 });
     });
 
-    await page.getByTestId(`project-card-${project.id}`).hover();
-    await page.getByTestId(`project-menu-${project.id}`).click();
-    await page
-      .getByTestId(`project-menu-pop-${project.id}`)
-      .getByText("重命名")
-      .click();
-    const input = page.getByTestId("workspace-rename-input");
-    await input.fill("必须保留的草稿");
-    await input.press("Enter");
-    await input.evaluate((element) => {
-      element.dispatchEvent(
-        new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }),
-      );
-      (element as HTMLInputElement).blur();
-    });
-    await expect.poll(() => calls).toBe(1);
-    await expect(input).toBeDisabled();
-    releaseHeld();
-    await expect(input).toBeEnabled();
-    await expect(input).toBeFocused();
-    await expect(input).toHaveValue("必须保留的草稿");
-    await expect(page.getByRole("alert")).toContainText("503");
+    await test.step(
+      "网络、HTTP 和冲突失败都保留最终中文草稿并支持重试",
+      async () => {
+        await page.getByTestId(`project-card-${project.id}`).hover();
+        await page.getByTestId(`project-menu-${project.id}`).click();
+        await page
+          .getByTestId(`project-menu-pop-${project.id}`)
+          .getByText("重命名")
+          .click();
+        const input = page.getByTestId("workspace-rename-input");
+        await input.fill("必须保留的草稿");
+        await input.press("Enter");
+        await input.evaluate((element) => {
+          element.dispatchEvent(
+            new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }),
+          );
+          (element as HTMLInputElement).blur();
+        });
+        await expect.poll(() => calls).toBe(1);
+        await expect(input).toBeDisabled();
+        releaseHeld();
+        await expect(input).toBeEnabled();
+        await expect(input).toBeFocused();
+        await expect(input).toHaveValue("必须保留的草稿");
+        await expect(page.getByRole("alert")).toContainText("503");
 
-    await input.press("Enter");
-    await expect.poll(() => calls).toBe(2);
-    await expect(input).toBeEnabled();
-    await expect(input).toHaveValue("必须保留的草稿");
-    await expect(page.getByRole("alert")).toContainText("重命名项目失败");
+        await input.press("Enter");
+        await expect.poll(() => calls).toBe(2);
+        await expect(input).toBeEnabled();
+        await expect(input).toHaveValue("必须保留的草稿");
+        await expect(page.getByRole("alert")).toContainText("重命名项目失败");
 
-    await input.press("Enter");
-    await expect.poll(() => calls).toBe(3);
-    await expect(input).toBeEnabled();
-    await expect(input).toHaveValue("必须保留的草稿");
-    await expect(page.getByRole("alert")).toContainText("422");
+        await input.press("Enter");
+        await expect.poll(() => calls).toBe(3);
+        await expect(input).toBeEnabled();
+        await expect(input).toHaveValue("必须保留的草稿");
+        await expect(page.getByRole("alert")).toContainText("422");
 
-    await input.press("Enter");
-    await expect.poll(() => calls).toBe(4);
-    await expect(input).toBeEnabled();
-    await expect(input).toBeFocused();
-    await expect(input).toHaveValue("必须保留的草稿");
-    await expect(page.getByRole("alert")).toContainText("其他页面更新");
+        await input.press("Enter");
+        await expect.poll(() => calls).toBe(4);
+        await expect(input).toBeEnabled();
+        await expect(input).toBeFocused();
+        await expect(input).toHaveValue("必须保留的草稿");
+        await expect(page.getByRole("alert")).toContainText("其他页面更新");
 
-    await input.press("Enter");
-    await expect.poll(() => calls).toBe(5);
-    await expect(input).toHaveCount(0);
-    await expect(page.getByText("必须保留的草稿", { exact: true }))
-      .toBeVisible();
+        await input.press("Enter");
+        await expect.poll(() => calls).toBe(5);
+        await expect(input).toHaveCount(0);
+        await expect(page.getByText("必须保留的草稿", { exact: true }))
+          .toBeVisible();
+      },
+    );
 
     await request.delete(`/api/projects/${project.id}`);
   });

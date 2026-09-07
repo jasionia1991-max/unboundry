@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { DatabaseSync } from "node:sqlite";
 import { requestIdentity } from "./auth";
@@ -587,6 +587,7 @@ export function listPublicTemplates(
     offset: number;
     query: string;
     status: PublicTemplateStatus | "";
+    includeRevision?: boolean;
   },
 ) {
   const parameters: Array<string | number> = [];
@@ -615,6 +616,21 @@ export function listPublicTemplates(
     parameters.push(options.category);
   }
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  // Bind pages to the ordered, filtered metadata set. No graph payloads or
+  // process-local counters: other database connections must invalidate it too.
+  const revision = options.includeRevision
+    ? createHash("sha256").update(JSON.stringify({
+        category: options.category,
+        query: options.query,
+        status: options.status,
+        rows: store.prepare(`
+          SELECT rowid, id, title, description, category, cover_asset_id,
+            preview_image, status, created_at, updated_at, archived_at
+          FROM public_templates ${where}
+          ORDER BY updated_at DESC, rowid DESC
+        `).all(...parameters),
+      })).digest("hex")
+    : undefined;
   const rows = store
     .prepare(`
       SELECT
@@ -641,6 +657,7 @@ export function listPublicTemplates(
       publicTemplateCard(store, row, options.includeGraph),
     ),
     rows,
+    revision,
     total,
   };
 }

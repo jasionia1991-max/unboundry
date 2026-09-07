@@ -187,7 +187,7 @@ function legacyBridgeAllowsLocalMethod(path: string, method: string) {
     [new RegExp(`^/api/admin/models/[a-z0-9-]{3,80}/contract/(?:draft|validate|publish|rollback|revoke|restore)$`), "POST"],
     [/^\/api\/templates$/, "GET|POST"],
     [/^\/api\/admin\/templates$/, "GET|POST"],
-    [new RegExp(`^/api/admin/templates/${uuid}$`), "PATCH"],
+    [new RegExp(`^/api/admin/templates/${uuid}$`), "GET|PATCH"],
     [/^\/api\/(?:agent-config|characters|library)$/, "GET"],
     [/^\/api\/admin\/providers$/, "GET|POST"],
     [new RegExp(`^/api/admin/providers/${uuid}$`), "PATCH"],

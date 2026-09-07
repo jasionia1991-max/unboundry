@@ -1,7 +1,18 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type CompositionEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type Ref,
+} from "react";
 import { GrayMenuSelect } from "../ui/GrayMenuSelect";
 import { InlineOptionGroup } from "../ui/InlineOptionGroup";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { useCompositionSafeText } from "../canvas/CompositionSafeText";
 import {
   projectCanvasPath,
   rememberLastProjectId,
@@ -162,6 +173,103 @@ function deleteProjectRequest(id: string) {
   );
 }
 
+type WorkspaceRenameInputProps = {
+  draft: string;
+  error: string;
+  inputRef: Ref<HTMLInputElement>;
+  onCancel: () => void;
+  onDraftChange: (value: string) => void;
+  onSubmit: (value: string) => void;
+  saving: boolean;
+};
+
+function WorkspaceRenameInput({
+  draft,
+  error,
+  inputRef,
+  onCancel,
+  onDraftChange,
+  onSubmit,
+  saving,
+}: WorkspaceRenameInputProps) {
+  const control = useCompositionSafeText({
+    onCommit: onDraftChange,
+    value: draft,
+  });
+  const composingRef = useRef(false);
+  const blurPendingRef = useRef(false);
+
+  const submitAfterBlur = () => {
+    if (saving || composingRef.current) return;
+    const result = control.blur();
+    if (!result.rolledBack) onSubmit(result.value);
+  };
+
+  const handleCompositionEnd = (
+    event: CompositionEvent<HTMLInputElement>,
+  ) => {
+    control.compositionEnd(event.currentTarget.value);
+    composingRef.current = false;
+    if (!blurPendingRef.current) return;
+    blurPendingRef.current = false;
+    submitAfterBlur();
+  };
+
+  return (
+    <input
+      aria-describedby={error ? "workspace-error" : undefined}
+      aria-invalid={Boolean(error)}
+      aria-label="重命名项目"
+      className="workspace-inline-rename"
+      data-composition-active={
+        control.composing || composingRef.current || undefined
+      }
+      data-testid="workspace-rename-input"
+      disabled={saving}
+      maxLength={120}
+      onBlur={() => {
+        if (composingRef.current) {
+          blurPendingRef.current = true;
+          return;
+        }
+        submitAfterBlur();
+      }}
+      onChange={(event: ChangeEvent<HTMLInputElement>) => {
+        control.change(
+          event.target.value,
+          (event.nativeEvent as InputEvent).isComposing,
+        );
+      }}
+      onClick={(event) => event.stopPropagation()}
+      onCompositionEnd={handleCompositionEnd}
+      onCompositionStart={() => {
+        composingRef.current = true;
+        control.compositionStart();
+      }}
+      onKeyDown={(event: ReactKeyboardEvent<HTMLInputElement>) => {
+        control.keyDown(event);
+        event.stopPropagation();
+        const composing =
+          composingRef.current ||
+          event.nativeEvent.isComposing ||
+          event.keyCode === 229;
+        if (composing) return;
+        if (event.key === "Escape") {
+          event.preventDefault();
+          control.blur();
+          blurPendingRef.current = false;
+          onCancel();
+        } else if (event.key === "Enter") {
+          event.preventDefault();
+          submitAfterBlur();
+        }
+      }}
+      ref={inputRef}
+      value={control.value}
+    />
+  );
+}
+
 export function WorkspacePage({ userId = "" }: { userId?: string }) {
   usePageTitle("工作空间");
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
@@ -182,6 +290,8 @@ export function WorkspacePage({ userId = "" }: { userId?: string }) {
   const [menuFor, setMenuFor] = useState<string>();
   const [returningToCanvas, setReturningToCanvas] = useState(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const menuWrapRefs = useRef(new Map<string, HTMLDivElement>());
+  const menuTriggerRefs = useRef(new Map<string, HTMLButtonElement>());
   const mounted = useRef(true);
   const returnLookup = useRef<AbortController | undefined>(undefined);
   const createInFlight = useRef(false);
@@ -255,6 +365,32 @@ export function WorkspacePage({ userId = "" }: { userId?: string }) {
     return () => document.removeEventListener("keydown", closeOnEscape);
   }, [selectMode]);
 
+  useEffect(() => {
+    if (!menuFor) return;
+    const activeMenuId = menuFor;
+    const closeOnPointerDown = (event: PointerEvent) => {
+      if (deleting) return;
+      const target = event.target;
+      const menuWrap = menuWrapRefs.current.get(activeMenuId);
+      if (target instanceof Node && menuWrap?.contains(target)) return;
+      setMenuFor(undefined);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (deleting) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setMenuFor(undefined);
+      menuTriggerRefs.current.get(activeMenuId)?.focus();
+    };
+    document.addEventListener("pointerdown", closeOnPointerDown);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnPointerDown);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [deleting, menuFor]);
+
   const filtered = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
     const sorted = [...projects].filter((project) =>
@@ -308,9 +444,12 @@ export function WorkspacePage({ userId = "" }: { userId?: string }) {
     renameUpdatedAt.current = project.updatedAt;
   };
 
-  const commitRename = async (project: ProjectSummary) => {
+  const commitRename = async (
+    project: ProjectSummary,
+    requestedTitle = renameDraft,
+  ) => {
     if (renameInFlight.current) return;
-    const title = renameDraft.trim();
+    const title = requestedTitle.trim();
     if (!title) {
       setError("项目名称不能为空");
       return;
@@ -613,27 +752,16 @@ export function WorkspacePage({ userId = "" }: { userId?: string }) {
   const renderRenameOrTitle = (project: ProjectSummary) => {
     if (renamingId === project.id) {
       return (
-        <input
-          aria-describedby={error ? "workspace-error" : undefined}
-          aria-label="重命名项目"
-          aria-invalid={Boolean(error)}
-          className="workspace-inline-rename"
-          data-testid="workspace-rename-input"
-          disabled={renameSavingId === project.id}
-          maxLength={120}
-          onBlur={() => void commitRename(project)}
-          onChange={(event) => setRenameDraft(event.target.value)}
-          onClick={(event) => event.stopPropagation()}
-          onKeyDown={(event) => {
-            event.stopPropagation();
-            if (event.key === "Escape") {
-              if (renameSavingId !== project.id) setRenamingId(undefined);
-            } else if (event.key === "Enter") {
-              void commitRename(project);
-            }
+        <WorkspaceRenameInput
+          draft={renameDraft}
+          error={error}
+          inputRef={renameInputRef}
+          onCancel={() => {
+            if (!renameSavingId) setRenamingId(undefined);
           }}
-          ref={renameInputRef}
-          value={renameDraft}
+          onDraftChange={setRenameDraft}
+          onSubmit={(value) => void commitRename(project, value)}
+          saving={renameSavingId === project.id}
         />
       );
     }
@@ -798,15 +926,25 @@ export function WorkspacePage({ userId = "" }: { userId?: string }) {
               <div
                 className="workspace-card-menu-wrap"
                 data-open={menuFor === project.id ? "true" : undefined}
+                ref={(element) => {
+                  if (element) menuWrapRefs.current.set(project.id, element);
+                  else menuWrapRefs.current.delete(project.id);
+                }}
               >
                 <button
                   aria-label={`${project.title} 项目菜单`}
+                  aria-expanded={menuFor === project.id}
+                  aria-haspopup="menu"
                   className="workspace-card-menu-trigger"
                   data-testid={`project-menu-${project.id}`}
                   onClick={() =>
                     setMenuFor((current) =>
                       current === project.id ? undefined : project.id,
                     )}
+                  ref={(element) => {
+                    if (element) menuTriggerRefs.current.set(project.id, element);
+                    else menuTriggerRefs.current.delete(project.id);
+                  }}
                   type="button"
                 >
                   ⋯
@@ -883,29 +1021,16 @@ export function WorkspacePage({ userId = "" }: { userId?: string }) {
                 {renderCover(project)}
               </span>
               {renamingId === project.id ? (
-                <input
-                  aria-describedby={error ? "workspace-error" : undefined}
-                  aria-label="重命名项目"
-                  aria-invalid={Boolean(error)}
-                  className="workspace-inline-rename"
-                  data-testid="workspace-rename-input"
-                  disabled={renameSavingId === project.id}
-                  maxLength={120}
-                  onBlur={() => void commitRename(project)}
-                  onChange={(event) => setRenameDraft(event.target.value)}
-                  onClick={(event) => event.stopPropagation()}
-                  onKeyDown={(event) => {
-                    event.stopPropagation();
-                    if (event.key === "Escape") {
-                      if (renameSavingId !== project.id) {
-                        setRenamingId(undefined);
-                      }
-                    } else if (event.key === "Enter") {
-                      void commitRename(project);
-                    }
+                <WorkspaceRenameInput
+                  draft={renameDraft}
+                  error={error}
+                  inputRef={renameInputRef}
+                  onCancel={() => {
+                    if (!renameSavingId) setRenamingId(undefined);
                   }}
-                  ref={renameInputRef}
-                  value={renameDraft}
+                  onDraftChange={setRenameDraft}
+                  onSubmit={(value) => void commitRename(project, value)}
+                  saving={renameSavingId === project.id}
                 />
               ) : (
                 <button

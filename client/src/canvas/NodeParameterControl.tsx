@@ -206,6 +206,7 @@ export function NodeParameterControl({
                 )}
                 {field.type === "number" && (
                   <input
+                    aria-label={field.label}
                     data-canvas-text-edit="graph"
                     disabled={fieldDisabled}
                     max={field.max}

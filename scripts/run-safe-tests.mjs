@@ -66,6 +66,8 @@ const EXACT_V051 = Object.freeze({
 });
 const EXACT_V051_ATTESTATION_CONTRACT =
   "unboundry-v051-safe-runner-attestation-v2";
+const TEMPLATE_ACCEPTANCE_SCRIPT = "scripts/template-acceptance-preview.mjs";
+const TEMPLATE_ACCEPTANCE_TIMEOUT = 2 * 60 * 60 * 1_000 + 60_000;
 const scriptPath = fileURLToPath(import.meta.url);
 const repositoryRoot = realpathSync(resolve(dirname(scriptPath), ".."));
 let activeSuiteRoot;
@@ -411,6 +413,7 @@ function parseArguments(values) {
   const parsed = {
     command: "full",
     repeat: 1,
+    repeatSpecified: false,
     specs: [],
   };
   const args = [...values];
@@ -422,6 +425,7 @@ function parseArguments(values) {
       if (!value) fail("--spec requires a path or unique substring");
       parsed.specs.push(value);
     } else if (argument === "--repeat") {
+      parsed.repeatSpecified = true;
       const value = Number(args.shift());
       if (!Number.isInteger(value) || value < 1 || value > 10) {
         fail("--repeat must be an integer from 1 to 10");
@@ -431,8 +435,16 @@ function parseArguments(values) {
       fail(`unknown argument: ${argument}`);
     }
   }
-  if (!["preflight", "list", "run", "full"].includes(parsed.command)) {
+  if (!["preflight", "list", "run", "full", "acceptance"].includes(parsed.command)) {
     fail(`unknown command: ${parsed.command}`);
+  }
+  if (parsed.command === "acceptance") {
+    if (parsed.specs.length > 0) {
+      fail("acceptance mode is fixed to scripts/template-acceptance-preview.mjs; --spec is not supported");
+    }
+    if (parsed.repeatSpecified) {
+      fail("acceptance mode runs one persistent session; --repeat is not supported");
+    }
   }
   return parsed;
 }
@@ -1084,6 +1096,73 @@ async function sandboxedCommand(
       timeout: options.timeout,
     },
   );
+}
+
+async function runTemplateAcceptancePreview(suiteRoot, sourceRoot, browserRoot) {
+  const testRoot = mkdtempSync(join(suiteRoot, "template-acceptance-preview-"));
+  const dataDirectory = join(testRoot, "data");
+  mkdirSync(dataDirectory, { recursive: true });
+  const auditFile = join(testRoot, "network-audit.jsonl");
+  const reportFile = join(testRoot, "unused-report.json");
+  const script = join(sourceRoot, TEMPLATE_ACCEPTANCE_SCRIPT);
+  if (!existsSync(script)) {
+    fail(`acceptance helper is missing from the isolated source snapshot: ${TEMPLATE_ACCEPTANCE_SCRIPT}`);
+  }
+  writeFileSync(auditFile, "", "utf8");
+  const port = await freePort();
+  const auxiliaryPort = await freePort(new Set([port]));
+  const env = sanitizedEnvironment({
+    auxiliaryPort,
+    auditFile,
+    browserRoot,
+    dataDirectory,
+    port,
+    reportFile,
+    sourceRoot,
+    spec: script,
+    testRoot,
+  });
+  // This marker is only visible to the isolated helper. It lets the helper
+  // fail closed if someone invokes it outside this fixed runner entrypoint.
+  env.UNBOUNDRY_TEST_TEMPLATE_ACCEPTANCE = "1";
+
+  try {
+    await validateFileAndCredentialIsolation(sourceRoot, testRoot, env);
+    await sandboxedNode(sourceRoot, testRoot, env, [
+      join(sourceRoot, "scripts/check-offline-network-guard.mjs"),
+    ]);
+    await validateManagedTimeoutCleanup(sourceRoot, testRoot, env);
+    await sandboxedNode(sourceRoot, testRoot, env, [
+      join(sourceRoot, "scripts/check-source-coverage.mjs"),
+    ]);
+    console.log(
+      `[safe-runner] template acceptance preview (port ${port}, auxiliary ${auxiliaryPort}; max ${TEMPLATE_ACCEPTANCE_TIMEOUT}ms)`,
+    );
+    const result = await sandboxedNode(
+      sourceRoot,
+      testRoot,
+      env,
+      [script],
+      { allowFailure: true, timeout: TEMPLATE_ACCEPTANCE_TIMEOUT },
+    );
+    await assertPortBindable(port);
+    await assertPortBindable(auxiliaryPort);
+    const audit = assertAudit(auditFile, new Set([port, auxiliaryPort]));
+    if (result.status !== 0 || result.signal || result.timedOut) {
+      fail(
+        `template acceptance preview exited unexpectedly (status ${result.status}, signal ${result.signal ?? "none"})`,
+      );
+    }
+    console.log(JSON.stringify({
+      ...audit,
+      acceptanceSession: "closed",
+      acceptanceScript: TEMPLATE_ACCEPTANCE_SCRIPT,
+      status: "closed",
+    }));
+  } finally {
+    assertTrackedSnapshotUnchanged();
+    rmSync(testRoot, { force: true, recursive: true });
+  }
 }
 
 function sha256Bytes(value) {
@@ -3769,7 +3848,8 @@ async function main() {
   const { browserRoot, capturedWorkspace, files, sourceRoot } =
     createTrackedSnapshot(
       suiteRoot,
-      options.command === "full" || selectedSpecsRequireBrowser(specs),
+      options.command !== "acceptance" &&
+        (options.command === "full" || selectedSpecsRequireBrowser(specs)),
     );
   if (
     capturedWorkspace.head !== workspaceBaseline.head ||
@@ -3779,11 +3859,15 @@ async function main() {
     sourceRoot,
     browserRoot,
     suiteRoot,
-    options.command === "run" || options.command === "full",
+    options.command === "run" || options.command === "full" || options.command === "acceptance",
   );
   snapshotSourceRoot = sourceRoot;
   snapshotBaseline = snapshotFingerprint(sourceRoot, files, capturedWorkspace.head);
   assertTrackedSnapshotUnchanged();
+  if (options.command === "acceptance") {
+    await runTemplateAcceptancePreview(suiteRoot, sourceRoot, browserRoot);
+    return;
+  }
   if (
     options.command === "full" ||
     (options.command === "run" && (

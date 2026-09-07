@@ -156,6 +156,7 @@ import {
   isNodeInputConnectionAllowed,
   isNodeInputKind,
   nextNodeInputOrder,
+  type NodeInputKind,
 } from "../../../types/nodeInputs";
 import {
   normalizeParameterValues,
@@ -443,13 +444,25 @@ type BatchConnectionDrag = {
   pointerId: number;
   sources: Array<{ id: string; x: number; y: number }>;
 };
+type SourceMenuKind = NodeInputKind;
+type SourceMenuItem = {
+  beta?: boolean;
+  description: string;
+  disabledReason?: string;
+  icon: string;
+  label: string;
+  nodeType?: NodeInputKind;
+};
 type SourceConnectMenu = {
   drop: { x: number; y: number };
-  kind: "audio" | "image" | "video";
+  kind: SourceMenuKind;
+  /** Raw release position captured in flow coordinates before menu clamping. */
+  releasePoint: { x: number; y: number };
   sourceId: string;
 };
 type CreateMenu = {
   flow: { x: number; y: number };
+  origin: "fixed-shell" | "pointer";
   screen: { x: number; y: number };
 };
 type BlankContextMenu = CreateMenu & {
@@ -603,35 +616,209 @@ export function withVideoReferenceInputModeForNewEdges(
   };
 }
 
-const sourceMenuItems = {
+const sourceMenuItems: Record<SourceMenuKind, readonly SourceMenuItem[]> = {
+  text: [
+    {
+      description: "脚本、广告词、品牌文案",
+      icon: "text",
+      label: "文本生成",
+      nodeType: "text",
+    },
+    {
+      description: "宣传图、海报、封面",
+      icon: "image",
+      label: "图片生成",
+      nodeType: "image",
+    },
+    {
+      description: "宣传视频、动画、电影",
+      icon: "video",
+      label: "视频生成",
+      nodeType: "video",
+    },
+    {
+      description: "音乐、配音、音效",
+      icon: "audio",
+      label: "音频生成",
+      nodeType: "audio",
+    },
+  ],
   image: [
-    { description: "脚本、广告词、品牌文案", icon: "text", label: "文本生成" },
-    { description: "宣传图、海报、封面", icon: "image", label: "图片生成" },
-    { description: "宣传视频、动画、电影", icon: "video", label: "视频生成" },
-    { description: "编辑、调整和组合图片", icon: "edit", label: "图片编辑器" },
+    {
+      description: "脚本、广告词、品牌文案",
+      icon: "text",
+      label: "文本生成",
+      nodeType: "text",
+    },
+    {
+      description: "宣传图、海报、封面",
+      icon: "image",
+      label: "图片生成",
+      nodeType: "image",
+    },
+    {
+      description: "宣传视频、动画、电影",
+      icon: "video",
+      label: "视频生成",
+      nodeType: "video",
+    },
+    {
+      description: "编辑、调整和组合图片",
+      disabledReason: "图片编辑器暂未接入来源菜单",
+      icon: "edit",
+      label: "图片编辑器",
+    },
     {
       beta: true,
       description: "场景与资产生成、导演编排",
+      disabledReason: "3D 世界暂未接入来源菜单",
       icon: "world",
       label: "3D 世界",
     },
   ],
   video: [
-    { description: "脚本、广告词、品牌文案", icon: "text", label: "文本生成" },
-    { description: "音乐、配音、音效", icon: "audio", label: "音频生成" },
-    { description: "剪辑、拼接和处理视频", icon: "edit", label: "视频编辑" },
+    {
+      description: "脚本、广告词、品牌文案",
+      icon: "text",
+      label: "文本生成",
+      nodeType: "text",
+    },
+    {
+      description: "音乐、配音、音效",
+      icon: "audio",
+      label: "音频生成",
+      nodeType: "audio",
+    },
+    {
+      description: "剪辑、拼接和处理视频",
+      disabledReason: "视频编辑暂未接入来源菜单",
+      icon: "edit",
+      label: "视频编辑",
+    },
     {
       beta: true,
       description: "场景与资产生成、导演编排",
+      disabledReason: "3D 世界暂未接入来源菜单",
       icon: "world",
       label: "3D 世界",
     },
   ],
   audio: [
-    { description: "宣传视频、动画、电影", icon: "video", label: "视频生成" },
-    { description: "数字人、口播、虚拟主播", icon: "person", label: "数字人视频" },
+    {
+      description: "宣传视频、动画、电影",
+      icon: "video",
+      label: "视频生成",
+      nodeType: "video",
+    },
+    {
+      description: "数字人、口播、虚拟主播",
+      disabledReason: "数字人视频暂未接入来源菜单",
+      icon: "person",
+      label: "数字人视频",
+    },
   ],
-} as const;
+};
+
+const sourceMenuKindLabels: Record<SourceMenuKind, string> = {
+  audio: "音频",
+  image: "图片",
+  text: "文本",
+  video: "视频",
+};
+
+const sourceMenuNodeLabels: Record<NodeInputKind, string> = {
+  audio: "音频",
+  image: "图片",
+  text: "文本",
+  video: "视频",
+};
+
+const SOURCE_MENU_WIDTH = 288;
+const SOURCE_MENU_GUTTER = 8;
+
+function sourceMenuKindForNode(
+  node: ProbeNodeType,
+): SourceMenuKind | undefined {
+  if (isNodeInputKind(node.type)) return node.type;
+  return isNodeInputKind(node.data.sourceKind)
+    ? node.data.sourceKind
+    : undefined;
+}
+
+function sourceMenuDisabledReason(
+  kind: SourceMenuKind,
+  item: SourceMenuItem,
+) {
+  if (item.disabledReason) return item.disabledReason;
+  if (!item.nodeType || !isNodeInputConnectionAllowed(kind, item.nodeType)) {
+    if (kind === "video" && item.nodeType === "audio") {
+      return "音频生成当前仅支持文字输入";
+    }
+    return item.nodeType
+      ? `${sourceMenuKindLabels[kind]}来源不能直接连接${sourceMenuNodeLabels[item.nodeType]}生成`
+      : "该能力暂未接入来源菜单";
+  }
+  return undefined;
+}
+
+function sourceMenuHeight(kind: SourceMenuKind) {
+  const itemCount = sourceMenuItems[kind].length;
+  return 2 + 8 + 40 + itemCount * 52 + Math.max(0, itemCount - 1) * 4;
+}
+
+function clampSourceMenuDrop(
+  drop: { x: number; y: number },
+  kind: SourceMenuKind,
+  bounds: { height: number; width: number },
+) {
+  const maxX = Math.max(
+    SOURCE_MENU_GUTTER,
+    bounds.width - SOURCE_MENU_WIDTH - SOURCE_MENU_GUTTER,
+  );
+  const maxY = Math.max(
+    SOURCE_MENU_GUTTER,
+    bounds.height - sourceMenuHeight(kind) - SOURCE_MENU_GUTTER,
+  );
+  return {
+    x: Math.min(maxX, Math.max(SOURCE_MENU_GUTTER, drop.x)),
+    y: Math.min(maxY, Math.max(SOURCE_MENU_GUTTER, drop.y)),
+  };
+}
+
+function sourceMenuTargetNode(
+  nodeType: NodeInputKind,
+  nodeId: string,
+  position: { x: number; y: number },
+): ProbeNodeType {
+  const labels: Record<NodeInputKind, string> = {
+    audio: "Audio",
+    image: "Image",
+    text: "Text",
+    video: "Video",
+  };
+  const label = labels[nodeType];
+  return {
+    id: nodeId,
+    position,
+    selected: true,
+    style: { ...NODE_DEFAULT_SIZES[nodeType] },
+    type: nodeType,
+    data: {
+      audioPromptReady: nodeType === "audio" || undefined,
+      imagePromptReady: nodeType === "image" || undefined,
+      label,
+      mediaSizingMode:
+        nodeType === "image" || nodeType === "video" ? "auto" : undefined,
+      sourceKind:
+        nodeType === "audio" || nodeType === "image" || nodeType === "video"
+          ? nodeType
+          : undefined,
+      textPromptReady: nodeType === "text" || undefined,
+      title: label,
+      videoPromptReady: nodeType === "video" || undefined,
+    },
+  };
+}
 
 function SourceMenuIcon({ name }: { name: string }) {
   return (
@@ -777,19 +964,24 @@ const CuttableEdge = memo(function CuttableEdge({
 
 const edgeTypes = { cuttable: CuttableEdge };
 
-function ConnectionEscapeGuard() {
+function ConnectionEscapeGuard({
+  onEscape,
+}: {
+  onEscape: () => void;
+}) {
   const store = useStoreApi<ProbeNodeType, CuttableEdge>();
 
   useEffect(() => {
     const cancel = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         store.getState().cancelConnection();
+        onEscape();
       }
     };
 
     window.addEventListener("keydown", cancel);
     return () => window.removeEventListener("keydown", cancel);
-  }, [store]);
+  }, [onEscape, store]);
 
   return null;
 }
@@ -2254,6 +2446,16 @@ export function CanvasSurface({
   const [batchDrag, setBatchDrag] = useState<BatchConnectionDrag>();
   const [sourceConnectMenu, setSourceConnectMenu] =
     useState<SourceConnectMenu>();
+  // Viewport callbacks also belong to persistence hydration dependencies.
+  // Opening UI chrome must not change those callbacks and reload the graph.
+  const sourceConnectMenuOpenRef = useRef(false);
+  sourceConnectMenuOpenRef.current = sourceConnectMenu !== undefined;
+  const sourceConnectMenuStateRef = useRef<SourceConnectMenu | undefined>(undefined);
+  sourceConnectMenuStateRef.current = sourceConnectMenu;
+  const sourceConnectMenuDomRef = useRef<HTMLDivElement>(null);
+  const [sourceMenuActionPending, setSourceMenuActionPending] =
+    useState(false);
+  const sourceMenuActionPendingRef = useRef(false);
   const [createMenu, setCreateMenu] = useState<CreateMenu>();
   const [blankContextMenu, setBlankContextMenu] =
     useState<BlankContextMenu>();
@@ -2533,6 +2735,31 @@ export function CanvasSurface({
   }, [effectivePersistenceLoadState, onLoadStateChange]);
   const uploadInput = useRef<HTMLInputElement>(null);
   const worldRef = useRef<HTMLDivElement>(null);
+  const focusSourceNode = useCallback((sourceId: string) => {
+    const source = [...(worldRef.current?.querySelectorAll<HTMLElement>(
+      ".react-flow__node",
+    ) ?? [])].find((candidate) => candidate.dataset.id === sourceId);
+    if (!source) return;
+    if (!source.hasAttribute("tabindex")) source.tabIndex = -1;
+    source.focus({ preventScroll: true });
+  }, []);
+  const closeSourceConnectMenu = useCallback((menu: SourceConnectMenu) => {
+    setSourceConnectMenu((current) => current === menu ? undefined : current);
+  }, []);
+  const handleSourceConnectMenuEscape = useCallback(() => {
+    const menu = sourceConnectMenuStateRef.current;
+    if (!menu) return;
+    focusSourceNode(menu.sourceId);
+    closeSourceConnectMenu(menu);
+  }, [closeSourceConnectMenu, focusSourceNode]);
+  useEffect(() => {
+    if (!sourceConnectMenu) return;
+    const menu = sourceConnectMenuDomRef.current;
+    if (!menu) return;
+    menu.querySelector<HTMLButtonElement>(
+      '[role="menuitem"]:not(:disabled)',
+    )?.focus();
+  }, [sourceConnectMenu, sourceMenuActionPending]);
   const marqueeStart = useRef<{ x: number; y: number } | undefined>(undefined);
   const syncSentFingerprintCount = useCallback(() => {
     worldRef.current?.setAttribute(
@@ -2753,7 +2980,9 @@ export function CanvasSurface({
     markCanvasInteraction();
     viewportRef.current = next;
     updateViewportDom(next);
-    if (selectedNodeCountRef.current > 1) setViewport(next);
+    if (selectedNodeCountRef.current > 1 || sourceConnectMenuOpenRef.current) {
+      setViewport(next);
+    }
     if (flowInstance.current) {
       flowInstance.current.setViewport(next);
       pendingProgrammaticViewport.current = undefined;
@@ -2889,6 +3118,7 @@ export function CanvasSurface({
               x: (x - viewportRef.current.x) / viewportRef.current.zoom,
               y: (y - viewportRef.current.y) / viewportRef.current.zoom,
             },
+            origin: "fixed-shell",
             screen: { x, y },
           },
     );
@@ -3207,7 +3437,9 @@ export function CanvasSurface({
       }
       viewportRef.current = next;
       updateViewportDom(next);
-      if (selectedNodeCountRef.current > 1) setViewport(next);
+      if (selectedNodeCountRef.current > 1 || sourceConnectMenuOpenRef.current) {
+        setViewport(next);
+      }
       const now = performance.now();
       lastViewportInteractionAt.current = now;
       window.clearTimeout(viewportQuietTimer.current);
@@ -3855,29 +4087,54 @@ export function CanvasSurface({
       video: "Video",
     } as const;
     const nodeId = `${type}-${crypto.randomUUID()}`;
+    const world = worldRef.current;
+    const nodePosition = type === "text" &&
+        createMenu.origin === "fixed-shell" && world
+      ? (() => {
+          const bounds = world.getBoundingClientRect();
+          const viewport = viewportRef.current;
+          const nodeWidth = NODE_DEFAULT_SIZES.text.width;
+          const chromeHalfWidth = 628 / 2;
+          const minimumCenter = chromeHalfWidth + 8;
+          const maximumCenter = Math.max(
+            minimumCenter,
+            bounds.width - chromeHalfWidth - 8,
+          );
+          const currentCenter = createMenu.flow.x * viewport.zoom +
+            viewport.x + nodeWidth * viewport.zoom / 2;
+          const safeCenter = Math.min(
+            maximumCenter,
+            Math.max(minimumCenter, currentCenter),
+          );
+          return {
+            x: (safeCenter - viewport.x) / viewport.zoom - nodeWidth / 2,
+            y: createMenu.flow.y,
+          };
+        })()
+      : createMenu.flow;
     void mutateGraph(({ edges, nodes }) => ({
       edges,
       nodes: [
         ...nodes.map((node) => ({ ...node, selected: false })),
         {
-        id: nodeId,
-        type,
-        position: createMenu.flow,
-        selected: true,
-        data: {
-          audioPromptReady: type === "audio" || undefined,
-          imagePromptReady: type === "image" || undefined,
-          ...((type === "image" || type === "video") ? { mediaSizingMode: "auto" as const } : {}),
-          label: labels[type],
-          sourceKind:
-            type === "audio" || type === "image" || type === "video"
-              ? type
-              : undefined,
-          textPromptReady: type === "text" || undefined,
-          title: labels[type],
-          videoPromptReady: type === "video" || undefined,
-        },
-        style: { ...NODE_DEFAULT_SIZES[type] },
+          id: nodeId,
+          type,
+          position: nodePosition,
+          selected: true,
+          data: {
+            audioPromptReady: type === "audio" || undefined,
+            imagePromptReady: type === "image" || undefined,
+            ...((type === "image" || type === "video") ? { mediaSizingMode: "auto" as const } : {}),
+            label: labels[type],
+            sourceKind:
+              type === "audio" || type === "image" || type === "video"
+                ? type
+                : undefined,
+            textPromptReady: type === "text" || undefined,
+            title: labels[type],
+            videoPromptReady: type === "video" || undefined,
+          },
+          style: { ...NODE_DEFAULT_SIZES[type] },
         },
       ],
     }));
@@ -5043,25 +5300,25 @@ export function CanvasSurface({
     : undefined;
   const sourceMenuAnchor =
     sourceConnectMenu && sourceMenuNode
-      ? {
-          x:
-            (sourceMenuNode.position.x +
-              (sourceMenuNode.measured?.width ??
-                (typeof sourceMenuNode.style?.width === "number"
-                  ? sourceMenuNode.style.width
-                  : 0))) *
-              viewportRef.current.zoom +
-            viewportRef.current.x,
-          y:
-            (sourceMenuNode.position.y +
-              (sourceMenuNode.measured?.height ??
-                (typeof sourceMenuNode.style?.height === "number"
-                  ? sourceMenuNode.style.height
-                  : 0)) /
-                2) *
-              viewportRef.current.zoom +
-            viewportRef.current.y,
-        }
+      ? (() => {
+          const absolutePosition =
+            flowInstance.current?.getInternalNode(sourceMenuNode.id)?.internals
+              .positionAbsolute ?? sourceMenuNode.position;
+          const width = sourceMenuNode.measured?.width ??
+            (typeof sourceMenuNode.style?.width === "number"
+              ? sourceMenuNode.style.width
+              : 0);
+          const height = sourceMenuNode.measured?.height ??
+            (typeof sourceMenuNode.style?.height === "number"
+              ? sourceMenuNode.style.height
+              : 0);
+          return {
+            x: (absolutePosition.x + width) * viewportRef.current.zoom +
+              viewportRef.current.x,
+            y: (absolutePosition.y + height / 2) * viewportRef.current.zoom +
+              viewportRef.current.y,
+          };
+        })()
       : undefined;
   const generationCanvasRevision =
     persistenceFixture &&
@@ -5700,6 +5957,131 @@ export function CanvasSurface({
     commitCanvasGraphAtomic,
     runCanvasMutationAdmission,
   ]);
+  const createSourceMenuNode = async (item: SourceMenuItem) => {
+    const menu = sourceConnectMenu;
+    if (!menu || !item.nodeType) return;
+    const disabledReason = sourceMenuDisabledReason(menu.kind, item);
+    if (disabledReason) {
+      showWorkflowToast(disabledReason, "info");
+      return;
+    }
+    if (sourceMenuActionPendingRef.current) return;
+    const sourceBefore = (
+      pendingGuardedNodes.current ?? nodesRef.current
+    ).find((node) => node.id === menu.sourceId);
+    if (!sourceBefore) {
+      closeSourceConnectMenu(menu);
+      showWorkflowToast("来源节点已不存在，引用操作已取消", "error");
+      return;
+    }
+    if (!persistenceReadyRef.current || persistenceConflict.current) {
+      showWorkflowToast("画布保存边界不可用，请刷新后重试", "error");
+      return;
+    }
+
+    sourceMenuActionPendingRef.current = true;
+    setSourceMenuActionPending(true);
+    const nodeType = item.nodeType;
+    const size = NODE_DEFAULT_SIZES[nodeType];
+    const targetPosition = {
+      x: menu.releasePoint.x - Number(size.width) / 2,
+      y: menu.releasePoint.y - Number(size.height) / 2,
+    };
+    const targetId = `${nodeType}-${crypto.randomUUID()}`;
+
+    try {
+      const applied = await mutateGraph(({ edges, nodes }) => {
+        const source = nodes.find((node) => node.id === menu.sourceId);
+        const sourceKind = source ? sourceMenuKindForNode(source) : undefined;
+        if (
+          !source ||
+          sourceKind !== menu.kind ||
+          !isNodeInputConnectionAllowed(sourceKind, nodeType)
+        ) {
+          return { edges, nodes };
+        }
+        const target = sourceMenuTargetNode(nodeType, targetId, targetPosition);
+        const nextNodes = [
+          ...nodes.map((node) => node.selected
+            ? { ...node, selected: false }
+            : node),
+          target,
+        ];
+        const connection: Connection = {
+          source: source.id,
+          sourceHandle: "source",
+          target: target.id,
+          targetHandle: "target",
+        };
+        if (!isConnectionAllowed(connection, edges, nextNodes)) {
+          return { edges, nodes };
+        }
+        const afterEdges = addEdge(
+          {
+            ...connection,
+            data: {
+              inputOrder: nextNodeInputOrder(edges, target.id),
+              inputRole: defaultNodeInputRole(sourceKind, nodeType),
+            },
+            id: `edge-${source.id}-${target.id}-${edges.length}`,
+            interactionWidth: 20,
+            type: "cuttable",
+          },
+          edges,
+        );
+        return normalizeGraphForNewInputs(
+          nextNodes,
+          edges,
+          afterEdges,
+          target.id,
+          [source.id],
+        );
+      });
+      if (applied) {
+        closeSourceConnectMenu(menu);
+      } else {
+        const targetExists = (
+          pendingGuardedNodes.current ?? nodesRef.current
+        ).some((node) => node.id === targetId);
+        if (targetExists) {
+          closeSourceConnectMenu(menu);
+          showWorkflowToast(
+            "节点已创建，保存尚未确认，请查看保存状态",
+            "info",
+          );
+          return;
+        }
+        const sourceAfter = (
+          pendingGuardedNodes.current ?? nodesRef.current
+        ).some((node) => node.id === menu.sourceId);
+        if (!sourceAfter) {
+          closeSourceConnectMenu(menu);
+          showWorkflowToast("来源节点已不存在，引用操作已取消", "error");
+        } else {
+          showWorkflowToast("引用节点未创建，当前画布状态已变化，请重试", "error");
+        }
+      }
+    } catch (error) {
+      const targetExists = (
+        pendingGuardedNodes.current ?? nodesRef.current
+      ).some((node) => node.id === targetId);
+      if (targetExists) {
+        closeSourceConnectMenu(menu);
+        showWorkflowToast(
+          "节点已创建，保存尚未确认，请查看保存状态",
+          "info",
+        );
+        return;
+      }
+      showWorkflowToast(
+        error instanceof Error ? error.message : "引用节点创建失败，请重试",
+        "error",
+      );
+    } finally {
+      sourceMenuActionPendingRef.current = false;
+      setSourceMenuActionPending(false);
+    }
+  };
   const applyDurableLayoutChanges = useCallback((
     current: ProbeNodeType[],
     changes: NodeChange<ProbeNodeType>[],
@@ -6322,6 +6704,7 @@ export function CanvasSurface({
         const x = event.clientX - bounds.left;
         const y = event.clientY - bounds.top;
         setCreateMenu({
+          origin: "pointer",
           flow: {
             x: (x - viewportRef.current.x) / viewportRef.current.zoom,
             y: (y - viewportRef.current.y) / viewportRef.current.zoom,
@@ -6403,14 +6786,24 @@ export function CanvasSurface({
           const sourceNode = nodes.find(
             (node) => node.id === state.fromNode?.id,
           );
-          if (sourceNode?.data.sourceKind && worldRef.current) {
+          const sourceKind = sourceNode
+            ? sourceMenuKindForNode(sourceNode)
+            : undefined;
+          if (sourceNode && sourceKind && worldRef.current) {
             const worldRect = worldRef.current.getBoundingClientRect();
+            const releasePoint = {
+              x: point.clientX - worldRect.left,
+              y: point.clientY - worldRect.top,
+            };
             setSourceConnectMenu({
-              drop: {
-                x: point.clientX - worldRect.left,
-                y: point.clientY - worldRect.top,
+              drop: clampSourceMenuDrop(releasePoint, sourceKind, worldRect),
+              kind: sourceKind,
+              releasePoint: {
+                x: (releasePoint.x - viewportRef.current.x) /
+                  viewportRef.current.zoom,
+                y: (releasePoint.y - viewportRef.current.y) /
+                  viewportRef.current.zoom,
               },
-              kind: sourceNode.data.sourceKind,
               sourceId: sourceNode.id,
             });
           }
@@ -6840,7 +7233,7 @@ export function CanvasSurface({
           setNodeContextMenu(undefined);
           setCreateMenu(undefined);
           setUploadError("");
-          setSourceConnectMenu(undefined);
+          handleSourceConnectMenuEscape();
           clearCutIndicators();
         }}
         onPaneContextMenu={(event) => {
@@ -6861,6 +7254,7 @@ export function CanvasSurface({
           setBlankContextMenu({
             canPaste: Boolean(internalClipboard.current?.nodes.length),
             canUndo: history.current.length > 0,
+            origin: "pointer",
             flow: {
               x: (x - viewportRef.current.x) / viewportRef.current.zoom,
               y: (y - viewportRef.current.y) / viewportRef.current.zoom,
@@ -6988,7 +7382,7 @@ export function CanvasSurface({
             />
           </svg>
         )}
-        <ConnectionEscapeGuard />
+        <ConnectionEscapeGuard onEscape={handleSourceConnectMenuEscape} />
         {minimapOpen && (
           <div
             className="tap-minimap-host"
@@ -7237,6 +7631,7 @@ export function CanvasSurface({
               onClick={() => {
                 setCreateMenu({
                   flow: blankContextMenu.flow,
+                  origin: blankContextMenu.origin,
                   screen: blankContextMenu.screen,
                 });
                 setBlankContextMenu(undefined);
@@ -7251,6 +7646,7 @@ export function CanvasSurface({
               onClick={() => {
                 setCreateMenu({
                   flow: blankContextMenu.flow,
+                  origin: blankContextMenu.origin,
                   screen: blankContextMenu.screen,
                 });
                 setBlankContextMenu(undefined);
@@ -7490,10 +7886,12 @@ export function CanvasSurface({
       )}
       {sourceConnectMenu && sourceMenuAnchor && (
         <div
-          aria-label={`${sourceConnectMenu.kind} 来源操作`}
+          aria-label={`${sourceMenuKindLabels[sourceConnectMenu.kind]}来源操作`}
+          aria-busy={sourceMenuActionPending}
           className="source-connect-menu nodrag nopan"
           data-source-kind={sourceConnectMenu.kind}
           data-testid="source-connect-menu"
+          ref={sourceConnectMenuDomRef}
           role="menu"
           style={{
             left: sourceConnectMenu.drop.x,
@@ -7502,24 +7900,42 @@ export function CanvasSurface({
         >
           <div className="source-connect-menu-title">引用该节点生成</div>
           <div className="source-connect-menu-items">
-            {sourceMenuItems[sourceConnectMenu.kind].map((item) => (
-              <button key={item.label} role="menuitem" type="button">
-                <span className="source-connect-menu-icon">
-                  <SourceMenuIcon name={item.icon} />
-                </span>
-                <span className="source-connect-menu-copy">
-                  <span className="source-connect-menu-label">
-                    {item.label}
-                    {"beta" in item && item.beta && (
-                      <span className="source-connect-menu-beta">Beta</span>
-                    )}
+            {sourceMenuItems[sourceConnectMenu.kind].map((item) => {
+              const disabledReason = sourceMenuActionPending
+                ? "正在保存引用节点，请稍候"
+                : sourceMenuDisabledReason(sourceConnectMenu.kind, item);
+              const disabled = Boolean(disabledReason);
+              return (
+                <button
+                  aria-disabled={disabled || undefined}
+                  aria-label={disabledReason
+                    ? `${item.label}，${disabledReason}`
+                    : item.label}
+                  data-disabled-reason={disabledReason}
+                  disabled={disabled}
+                  key={item.label}
+                  onClick={() => void createSourceMenuNode(item)}
+                  role="menuitem"
+                  title={disabledReason}
+                  type="button"
+                >
+                  <span className="source-connect-menu-icon">
+                    <SourceMenuIcon name={item.icon} />
                   </span>
-                  <span className="source-connect-menu-description">
-                    {item.description}
+                  <span className="source-connect-menu-copy">
+                    <span className="source-connect-menu-label">
+                      {item.label}
+                      {item.beta && (
+                        <span className="source-connect-menu-beta">Beta</span>
+                      )}
+                    </span>
+                    <span className="source-connect-menu-description">
+                      {disabledReason ?? item.description}
+                    </span>
                   </span>
-                </span>
-              </button>
-            ))}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}

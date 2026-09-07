@@ -20,6 +20,17 @@ test("the private API documents and reads canvas, project and model configuratio
     openapi: string;
     paths: Record<string, unknown>;
   };
+  await test.step("UI04 exact admin GET and revision pagination are documented", async () => {
+    const list = specification.paths["/api/admin/templates"] as any;
+    const item = specification.paths["/api/admin/templates/{templateId}"] as any;
+    expect(list.get.parameters).toEqual(expect.arrayContaining([expect.objectContaining({ name: "revision" })]));
+    expect(list.get.responses["409"].description).toContain("LIST_REVISION_STALE");
+    expect(item.get.operationId).toBe("getAdminPublicTemplate");
+    expect(item.get.responses["403"]).toBeTruthy();
+    expect(item.get.responses["404"]).toBeTruthy();
+    expect(item.get.responses["200"].content["application/json"].schema.properties.template.allOf)
+      .toContainEqual({ type: "object", required: ["graph"] });
+  });
   expect(specification.openapi).toBe("3.1.0");
   expect(specification.info.title).toBe("Unboundry Private Replica API");
   const unresolvedReferences: string[] = [];
@@ -712,7 +723,7 @@ test("the private API documents and reads canvas, project and model configuratio
   await expect(page.getByTestId("admin-api-contract-page")).toBeVisible();
   await expect(page.getByRole("heading", { name: "项目自己的数据接口" }))
     .toBeVisible();
-  await expect(page.locator(".api-contract-grid article")).toHaveCount(57);
+  await expect(page.locator(".api-contract-grid article")).toHaveCount(58);
   await expect(page.getByText("当前共 47 条接口路径", { exact: true }))
     .toBeVisible();
 

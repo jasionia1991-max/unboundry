@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import type { ClientRequest, IncomingMessage } from "node:http";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -29,6 +30,11 @@ const port = Number(process.env.UNBOUNDRY_TEST_AUX_PORT);
 const origin = `http://127.0.0.1:${port}`;
 const vite = join(process.cwd(), "node_modules/vite/bin/vite.js");
 const secretSentinel = "storage-secret-must-not-leave-server";
+const require = createRequire(import.meta.url);
+const qs = require("qs") as {
+  parse: (input: string, options?: Record<string, unknown>) => unknown;
+  stringify: (value: unknown, options?: Record<string, unknown>) => string;
+};
 
 async function startServer(dataDirectory: string) {
   const child = spawn(
@@ -611,6 +617,25 @@ test("Aliyun OSS adapter keeps private random keys and signs offline", async () 
       ),
     ),
   ).not.toContain(secretSentinel);
+  await test.step("qs query limits and prototype-shaped values stay safe for SDK serialization", () => {
+    expect(() => qs.parse("a[]=1,2,3,4", {
+      arrayLimit: 3,
+      comma: true,
+      throwOnLimitExceeded: true,
+    })).toThrow(RangeError);
+
+    const hostile = qs.parse("a[constructor][isBuffer]=not-a-function", {
+      plainObjects: true,
+    });
+    expect(() => qs.stringify(hostile)).not.toThrow();
+
+    const original = {
+      tags: ["中文", "数组", "特殊&字符"],
+      title: "签名 / 读取?保留=值",
+    };
+    const encoded = qs.stringify(original);
+    expect(qs.parse(encoded)).toEqual(original);
+  });
 });
 
 test("private OSS read signatures clamp lifetime and never expose the secret", async () => {

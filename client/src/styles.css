@@ -6733,7 +6733,7 @@ sup {
   transition: background 200ms ease;
 }
 
-.source-connect-menu button:hover {
+.source-connect-menu button:not(:disabled):hover {
   background: rgba(63, 63, 63, 0.5);
 }
 
@@ -6791,12 +6791,30 @@ sup {
   white-space: nowrap;
 }
 
-.source-connect-menu button:hover .source-connect-menu-label {
+.source-connect-menu button:not(:disabled):hover .source-connect-menu-label,
+.source-connect-menu button:focus-visible .source-connect-menu-label,
+.source-connect-menu button:disabled .source-connect-menu-label {
   translate: 0;
 }
 
-.source-connect-menu button:hover .source-connect-menu-description {
+.source-connect-menu button:not(:disabled):hover .source-connect-menu-description,
+.source-connect-menu button:focus-visible .source-connect-menu-description,
+.source-connect-menu button:disabled .source-connect-menu-description {
   opacity: 1;
+}
+
+.source-connect-menu button:disabled {
+  cursor: not-allowed;
+}
+
+.source-connect-menu button:disabled .source-connect-menu-label,
+.source-connect-menu button:disabled .source-connect-menu-icon {
+  color: #858585;
+}
+
+.source-connect-menu button:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.6);
+  outline-offset: -2px;
 }
 
 .source-connect-menu-beta {
@@ -12570,6 +12588,13 @@ sup {
   width: min(960px, 100%);
   margin: 0 auto;
   gap: 14px;
+}
+
+.admin-template-filter-select .gray-menu-select-trigger {
+  height: 46px;
+  min-height: 46px;
+  padding: 0 14px;
+  border-radius: 12px;
 }
 
 .admin-templates-grid {

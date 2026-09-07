@@ -476,7 +476,7 @@ F14本地门日志SHA-256：targeted `b9d260babe051c1f89ef86256ade2d57fda19b5700
 
 | ID | 优先级 | Fixture | 验收动作与断言 | 证据 | 实现状态 |
 |---|---|---|---|---|---|
-| CANVAS-001 | P0 | `interaction.selection-and-keyboard-move` | 单击选择，Shift+点击多选，选中 z-index=1000；选中外观为 `#7a7a7a` 2px圆角描边，不出现蓝边或可见方形缩放角点；未选中且未悬浮时两侧连接点不可见，鼠标悬浮即显示，选中后移开鼠标仍常态显示 | 用户实页复查、DOM class、computed style、opacity | PASS |
+| CANVAS-001 | P0 | `interaction.selection-and-keyboard-move` | 单击选择，Shift+点击多选；选中节点或其所在组临时置前，失选恢复且不保存临时层级，相对层级遵循 [UI 合同 6.3](UNBOUNDRY_UI_DESIGN_SYSTEM.md#63-默认尺寸与媒体比例)，不固定为 z-index=1000；选中外观为 `#7a7a7a` 2px圆角描边，不出现蓝边或可见方形缩放角点；未选中且未悬浮时两侧连接点不可见，鼠标悬浮即显示，选中后移开鼠标仍常态显示 | 用户实页复查、DOM class、computed style、opacity | PASS |
 | CANVAS-002 | P0 | `interaction.selection-and-keyboard-move` | 方向键移动 5px，Shift+方向键移动 20px | 自动前后坐标 JSON | PASS |
 | CANVAS-003 | P0 | `interaction.pointer-drag-at-1.3` | zoom=1.3 真鼠标拖拽；屏幕位移/1.3=逻辑位移 | 自动指针操作、坐标 | PASS |
 | CANVAS-004 | P0 | `interaction.resize-bottom-right` | 八向缩放操作区域存在但视觉透明；右下 resize 可独立改宽高且位置不变 | 自动指针操作、computed style、前后尺寸 | PASS |
@@ -489,7 +489,7 @@ F14本地门日志SHA-256：targeted `b9d260babe051c1f89ef86256ade2d57fda19b5700
 | CANVAS-011 | P0 | — | zoom 范围 0.15–2；左键拖空白框选，普通触控板双指横向/纵向滑动按1.2系数平移且zoom不变，捏合缩放；搜索定位只消费一次，光标在节点、输入框或Creator上仍可缩放；纯viewport保存不阻塞生成、不显示保存提示且面板不闪烁 | 2026-08-04用户实页复查、Unboundry活体对照、`m62-canvas-zoom-persistence`5/5、viewport/graph版本快照 | PASS |
 | CANVAS-012 | P1 | `interaction.fit-five-nodes` | 5 节点 fit view 得到全节点可见和近似参考矩阵 | 自动前后可见性、viewport | PASS |
 | CANVAS-013 | P1 | `interaction.selection-and-keyboard-move` | 有节点小地图 rect、selected、mask 和导航一致；198×148内容区外侧1px边线连续无断口；小地图原生按真实比例拖动且zoom不变，单击跳转到点击位置，滚轮不缩放画布 | 用户实页复查、Unboundry活体对照、自动 SVG DOM、比例拖动、点击跳转与滚轮 viewport | PASS |
-| CANVAS-014 | P0 | `interaction.source-aware-connect-menus-current` | Image/Video/Audio 连线松到空白打开各自的5项/4项/2项来源菜单；外框宽288、内边距4、标题区40、内容宽278、行高52、间距4、图标框36；拖动来源节点时临时线保持连接；点击空白或其他节点后临时线、菜单和临时节点均清理，原3节点/0正式连线不变 | 活体DOM、自动菜单尺寸、拖动跟随、点击其他节点关闭、graph、用户实页复查 | PASS |
+| CANVAS-014 | P0 | `interaction.source-aware-connect-menus-current` | Text/Image/Video/Audio 连线松到空白打开4/5/4/2项菜单；尺寸、临时线跟随及取消行为保留。可用项按UI6.4原子创建节点与引用edge并可保存/撤销，未接入项禁用并说明原因；开关菜单不得重载画布 | 原几何/取消PASS仅作历史；2026-09-07反馈修正后来源动作/保存恢复定向测试、独立复核及原Chrome12次拖线/刷新工程检查通过，2026-09-07用户明确其他项均通过，来源菜单获本地确认；见剩余方案第8/9节 | LOCAL_USER_PASS / NOT_DEPLOYED |
 | CANVAS-015 | P0 | `legacy.interaction.invalid-same-side-edge`、`interaction.edge-clipboard-sandbox-current`、`interaction.edge-delete-reconnect-download-sandbox-current` | self、source→source、重复和二节点环不生成第二条稳定 edge；临时预览可关闭；失败端点拖拽保持原edge；当前普通edge无显式updater；无冲突的B→C仍可新增 | 参考36、自动指针、graph diff、用户实页复查 | PASS |
 | CANVAS-016 | P1 | `legacy.dense-canvas.neutral` | 62节点/58边/5组拖拽、zoom、面板交互无持续掉帧或全量保存；小地图触摸板横滑不得触发浏览器返回 | DOM/graph、长任务监测、请求统计、横滑回归检查、用户实页复查 | PASS |
 | CANVAS-017 | P0 | `interaction.multi-source-connect-to-node` | 多选时隐藏各节点左右加号，只在整体选择框右侧中线外12px显示一个20×20共用加号；拖动时每个已选节点各出现一条预览线，松到额外目标节点身体任意位置后，每个已选节点各生成一条到目标的稳定连线；多选保持；框选已连线节点不得显示连线剪刀，只有直接点击连线或悬浮约0.7秒才显示 | 用户截图、Unboundry活体DOM/指针、本地自动graph diff、两轮用户实页复查 | PASS |

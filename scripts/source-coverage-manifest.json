@@ -8,7 +8,8 @@
     "scripts/check-offline-network-guard.mjs",
     "scripts/check-source-coverage.mjs",
     "scripts/offline-network-guard.mjs",
-    "scripts/run-safe-tests.mjs"
+    "scripts/run-safe-tests.mjs",
+    "scripts/template-acceptance-preview.mjs"
   ],
   "automaticNpmRoots": [
     "build",
@@ -127,7 +128,7 @@
       "scriptSha256": "edb54c2e10695c12f290f8507e0e96ce692e76dd2416f667237e1dcb0b344f00",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "Full snapshot bridge/final fixtures prove the release closure",
-      "targetSha256": "81cc88d0cfdd99c7b1d97d201144d336588ec8603cb6c4bdeb2b04cd5c836b73"
+      "targetSha256": "65f567e1a3cffd7afed6286d3200ba8ce40b6b8be419d19421963e3109b3e25c"
     },
     "scripts/check-greenfield.mjs": {
       "mode": "behavior-test",
@@ -141,14 +142,14 @@
       "scriptSha256": "c13a839154006e47341942ceee5e82ef553b975bac9c0ad1708d07844bcbd24a",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "scripts/check-restart-persistence.mjs",
-      "targetSha256": "81cc88d0cfdd99c7b1d97d201144d336588ec8603cb6c4bdeb2b04cd5c836b73"
+      "targetSha256": "65f567e1a3cffd7afed6286d3200ba8ce40b6b8be419d19421963e3109b3e25c"
     },
     "scripts/check-v051-exact-runtime.mjs": {
       "mode": "behavior-test",
       "scriptSha256": "53797d2e3046840249fb7be60a8ace95111bc62f6f86ce957ae50500d29be7f6",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "scripts/check-v051-exact-runtime.mjs",
-      "targetSha256": "81cc88d0cfdd99c7b1d97d201144d336588ec8603cb6c4bdeb2b04cd5c836b73"
+      "targetSha256": "65f567e1a3cffd7afed6286d3200ba8ce40b6b8be419d19421963e3109b3e25c"
     },
     "scripts/deploy.mjs": {
       "mode": "frozen",
