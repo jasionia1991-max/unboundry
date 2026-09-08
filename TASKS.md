@@ -23,7 +23,7 @@
 
 ## 已完成的本地实现与验证
 
-施工根：`/Users/mymy/Documents/unboundry-post-v076-canvas-convergence-2026-09-03`；分支 `codex/v0717-node-recovery-release`；发布基线 HEAD `38709d2b878e8546daa06e9ea20d2a82a2ae91b8`；91份已验收及发布增量文件已提交为 `c3d21e39c0ece8ac400b00345b5e2aed13199dbc`。后续文档断点为本地增量，不冒充已推送内容。
+施工根：`/Users/mymy/Documents/unboundry-post-v076-canvas-convergence-2026-09-03`；分支 `codex/v0717-node-recovery-release`；发布基线 HEAD `38709d2b878e8546daa06e9ea20d2a82a2ae91b8`；91份已验收及发布增量文件已提交为 `c3d21e39c0ece8ac400b00345b5e2aed13199dbc`。后续文档提交属于发布收尾，最终head以PR实际记录为准，不改变已验收产品行为。
 
 - V4 持久维护记录、严格 admin、原结果受保护找回、四节点进展、管理页及重启接续已实现；维护开关默认关闭，schema 仍为 43。
 - `quiesced-active-preservation` 已实现：在停服证明与既有 active lease 下保留精确旧 task/attempt 的未知事实，完整核验事件、付费围栏、媒体/secret 和 logical SHA；不改 task 终态，额外活动边界或证据不一致即拒绝。
@@ -35,12 +35,12 @@
 
 正式站仍为 `v0.7.16/schema43`。只读核对的唯一旧 task `9c93f308-bb77-4935-a4e3-37dd72e6cd28` 仍是 `recovering/AUTOMATIC_RESULT_RECOVERY`，attempt 为 `outcome-unknown` 且无平台 task ID；原始 Provider code/msg 未保存。充值、`finished_at`、假回执或维护 phase 都不能证明未受理、未扣费或可取消；不得清账、改码或整组重跑。正式站没有本轮生产写入或 Provider 请求。
 
-ops 切换/回退脚本的独立复审正在完成；完整 Linux 真实安装包、真实备份、systemd 停服切换和线上回退尚未执行，不能把本地 29/29、95/71 或合成演练写成生产放行。候选已提交并创建PR；须先通过最终head及合并后的main CI，再打精确tag并构建。完整隔离Linux新→旧→新、最新停服备份及verify/fresh restore通过后才切换；任一失败保留旧站和CURRENT。
+ops 切换/回退脚本已完成独立窄复审，直接阻断已修复；Linux隔离模块自检与共享锁争用/重取检查通过。真实完整包证据转存步骤已补齐并复审，尚未实跑。完整 Linux 真实安装包、真实备份、systemd 停服切换和线上回退尚未执行，不能把本地 29/29、95/71 或合成演练写成生产放行。候选已提交并创建PR；须先通过最终head及合并后的main CI，再打精确tag并构建。完整隔离Linux新→旧→新、最新停服备份及verify/fresh restore通过后才切换；任一失败保留旧站和CURRENT。
 
 ## 下一步
 
-只收口 ops 脚本复审及其真实发布专属证据，保持 v0.7.16 生产、v0.7.17 本地候选和维护默认关闭；不新增产品功能，不改变旧 task/attempt 事实。每日自动备份及视频/音频空工具按钮仍暂缓。
+GitHub账号恢复后，重跑最终head CI并继续真实发布专属证据门，保持 v0.7.16 生产、v0.7.17 本地候选和维护默认关闭；不新增产品功能，不改变旧 task/attempt 事实。每日自动备份及视频/音频空工具按钮仍暂缓。
 
 ## 当前外部阻断（2026-09-09）
 
-[PR #173](https://github.com/jasionia1991-max/unboundry/pull/173)，head `c3d21e39c0ece8ac400b00345b5e2aed13199dbc`。[本次CI](https://github.com/jasionia1991-max/unboundry/actions/runs/34288124306)两个job均被GitHub账号付款/额度限制拒绝启动；没有本次远端测试结果，不是观察到代码测试失败。原始注释见release ops的`github-ci-blocker.json`。用户需处理GitHub Billing/Actions额度，随后重跑最终head CI；不改账单设置、不绕过发布门，不重新索要已有上线授权。当前未合并/tag/构建/冻结/停服/切换；生产仍v0.7.16。维护默认关闭。此断点先保留本地，后续随发布进展同步。
+[PR #173](https://github.com/jasionia1991-max/unboundry/pull/173)已提交，后续文档检查19/19通过；精确head以该PR记录为准。首次产品候选为`c3d21e39c0ece8ac400b00345b5e2aed13199dbc`。[首次CI](https://github.com/jasionia1991-max/unboundry/actions/runs/34288124306)两个job均被GitHub账号付款/额度限制拒绝启动；没有本次远端测试结果，不是观察到代码测试失败。原始注释见release ops的`github-ci-blocker.json`。用户需处理GitHub Billing/Actions额度，随后重跑最终head CI；不改账单设置、不绕过发布门，不重新索要已有上线授权。当前未合并/tag/构建/冻结/停服/切换；生产仍v0.7.16。维护默认关闭。后续文档提交触发的CI也因同一账单提示未启动，最新注释和检查身份由`github-ci-blocker.json`保留。断点已随PR同步；main及服务器治理镜像尚未更新。
