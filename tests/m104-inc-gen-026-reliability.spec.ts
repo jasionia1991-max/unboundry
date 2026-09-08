@@ -21,11 +21,17 @@ import {
   createGenerationTaskStore,
   GenerationTaskWorkflowLockedError,
 } from "../server/generationTaskStore";
+import { registerMediaForOwner } from "../server/mediaRegistry";
 import {
   generationTaskApplication,
   recoverGenerationTasksAtStartupForRuntimeTest,
   runGenerationRecoverySweep,
 } from "../server/generationTasks";
+import {
+  activateStorageProfile,
+  markStorageProfileVerified,
+  saveStorageProfile,
+} from "../server/secureStorageProfiles";
 import { bootstrapPublishedModelContracts } from
   "../server/modelReleaseBootstrap";
 import {
@@ -1439,6 +1445,7 @@ async function waitForTerminalRun(runId: string, deadlineMs = 30_000) {
       errorCode?: string;
       errorMessage?: string;
       nodes: Array<{
+        id: string;
         errorCode?: string;
         errorMessage?: string;
         state: string;
@@ -3383,6 +3390,519 @@ test("PERF browser sees the first real workflow result while another task runs a
     await app?.close();
     await close(provider);
     globalThis.fetch = originalFetch;
+    if (previousBypass === undefined) {
+      delete process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+    } else {
+      process.env.UNBOUNDRY_TEST_AUTH_BYPASS = previousBypass;
+    }
+  }
+});
+
+test("V3 real HTTP failed workflow permits one video rerun and preserves nine results and blocked downstream", async ({ page }) => {
+  test.setTimeout(180_000);
+  let videoPosts = 0;
+  let imagePosts = 0;
+  let textPosts = 0;
+  let allowDownstream = false;
+  const arkRequests: Array<{ method: string; pathname: string }> = [];
+  const previousBypass = process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+  const previousRelayMediaFetcher =
+    process.env.UNBOUNDRY_TEST_RELAY_MEDIA_FETCHER;
+  const originalFetch = globalThis.fetch;
+  const providerRequests: Array<{
+    body: string;
+    method: string;
+    originalUrl: string;
+  }> = [];
+  let app: ViteDevServer | undefined;
+  let provider: Server | undefined;
+  try {
+    const resultVideo = await readFile(new URL(
+      "../client/public/fixtures/video-success.mp4",
+      import.meta.url,
+    ));
+    process.env.UNBOUNDRY_TEST_AUTH_BYPASS = "1";
+    process.env.UNBOUNDRY_TEST_RELAY_MEDIA_FETCHER = "1";
+    provider = createHttpServer(async (incoming, response) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of incoming) chunks.push(Buffer.from(chunk));
+      const url = new URL(incoming.url ?? "/", providerOrigin);
+      response.setHeader("Content-Type", "application/json");
+      if (incoming.method === "GET" && url.pathname === "/v1/skills/models") {
+        response.statusCode = 200;
+        response.end(JSON.stringify({
+          models: [{
+            display_name: "TT Image 2",
+            name: "tt-image-2",
+            output_modalities: ["image"],
+            protocols: ["media-generate"],
+            type: "图片",
+          }, {
+            display_name: "Grok Video 3",
+            name: "grok-video-3",
+            output_modalities: ["video"],
+            protocols: ["media-generate"],
+            type: "视频",
+          }],
+          total: 2,
+          type: "list",
+        }));
+        return;
+      }
+      if (incoming.method === "GET" && url.pathname === "/v1/models") {
+        response.statusCode = 200;
+        response.end(JSON.stringify({
+          data: [{ id: "tt-image-2" }, { id: "grok-video-3" }],
+        }));
+        return;
+      }
+      if (incoming.method === "POST" && url.pathname === "/v1/media/generate") {
+        const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
+          model?: string;
+        };
+        response.statusCode = 200;
+        response.end(JSON.stringify({
+          task_id: body.model === "grok-video-3"
+            ? `v3_video_${++videoPosts}`
+            : `v3_image_${++imagePosts}`,
+        }));
+        return;
+      }
+      if (incoming.method === "GET" && url.pathname === "/v1/skills/task-status") {
+        response.statusCode = 404;
+        response.end(JSON.stringify({ error: "official route required" }));
+        return;
+      }
+      if (incoming.method === "GET" && url.pathname === "/v1/media/status") {
+        const remoteId = url.searchParams.get("task_id") ?? "";
+        const video = remoteId.startsWith("v3_video_");
+        if (remoteId === "v3_video_1") {
+          response.end(JSON.stringify({ task_id: remoteId, is_final: true, state: 'failed', fee_disposition: 'charged' }));
+          return;
+        }
+        response.statusCode = 200;
+        response.end(JSON.stringify({
+          is_final: true,
+          result_type: video ? "video" : "image",
+          result_url: video
+            ? "https://api.lk888.test/v1/results/dynamic-first-frame.mp4"
+            : "https://api.lk888.test/v1/results/dynamic-first-frame.png",
+          state: "success",
+        }));
+        return;
+      }
+      if (incoming.method === "GET" && url.pathname === "/v1/results/dynamic-first-frame.png") {
+        response.statusCode = 200;
+        response.setHeader("Content-Length", String(tinyPng.byteLength));
+        response.setHeader("Content-Type", "image/png");
+        response.end(tinyPng);
+        return;
+      }
+      if (incoming.method === "GET" && url.pathname === "/v1/results/dynamic-first-frame.mp4") {
+        response.statusCode = 200;
+        response.setHeader("Content-Length", String(resultVideo.byteLength));
+        response.setHeader("Content-Type", "video/mp4");
+        response.end(resultVideo);
+        return;
+      }
+      response.statusCode = 404;
+      response.end(JSON.stringify({ error: "unknown safe-test route" }));
+    });
+    await listen(provider, providerPort);
+    globalThis.fetch = (async (input, init) => {
+      const originalUrl = input instanceof Request ? input.url : String(input);
+      const url = new URL(originalUrl);
+      if (url.hostname === "api.lk888.test") {
+        providerRequests.push({
+          body: typeof init?.body === "string" ? init.body : "",
+          method: input instanceof Request ? input.method : init?.method ?? "GET",
+          originalUrl,
+        });
+        return originalFetch(
+          new URL(url.pathname + url.search, providerOrigin),
+          init,
+        );
+      }
+      if (url.hostname === "ark.cn-beijing.volces.com") {
+        arkRequests.push({
+          method: input instanceof Request ? input.method : init?.method ?? "GET",
+          pathname: url.pathname,
+        });
+        if ((init?.method ?? "GET") === "GET") return new Response(JSON.stringify({ items: [] }));
+        if (!allowDownstream) throw new Error("Blocked downstream must not reach text Provider");
+        if (!url.pathname.endsWith('/responses')) throw new Error('Unexpected downstream fixture endpoint');
+        textPosts += 1;
+        return new Response(JSON.stringify({ id: 'resp_v3_downstream', status: 'completed',
+          output: [{ type: 'message', status: 'completed', content: [{ type: 'output_text', text: 'V3 downstream generated only after its own click' }] }],
+          usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+        }), { headers: { 'Content-Type': 'application/json' } });
+      }
+      return originalFetch(input, init);
+    }) as typeof fetch;
+
+    app = await createViteServer({
+      configFile: "vite.config.ts",
+      logLevel: "silent",
+      server: {
+        host: "127.0.0.1",
+        hmr: false,
+        port: appPort,
+        strictPort: true,
+        ws: false,
+      },
+    });
+    await app.listen();
+    await waitForReady();
+    await expectOk(await request("/api/admin/generation-safety", {
+      body: JSON.stringify({ ...safetySettings, requestsPerMinute: 100 }),
+      method: "PUT",
+    }), "generation safety");
+    const imageModelId = await createPublishedRelayModel();
+    const fixtureDatabase = openAppDatabase(
+      String(process.env.UNBOUNDRY_DATA_DIR),
+    );
+    const providerRow = fixtureDatabase.prepare(`
+      SELECT provider_profile_id AS providerProfileId
+      FROM model_profiles WHERE id = ?
+    `).get(imageModelId) as { providerProfileId: string };
+    fixtureDatabase.close();
+    const videoModelId = await createPublishedGrokVideoModel(
+      providerRow.providerProfileId,
+    );
+    const project = await (await expectOk(await request('/api/projects', {
+      method: 'POST', body: JSON.stringify({ title: 'V3 单节点补跑真实链路' }),
+    }), 'V3 project')).json() as { id: string };
+    const canvasId = project.id;
+    const downstreamModelId = await createPublishedTextModel();
+    const groupId = "inc-gen-028-dynamic-first-frame-group";
+    const imageNodeId = "inc-gen-028-dynamic-first-frame-image";
+    const videoNodeId = "inc-gen-028-dynamic-first-frame-video";
+    const graph: { edges: Array<{ id: string; source: string; target: string; data: { inputOrder: number; inputRole: string } }>; nodes: Array<{ id: string; type: string; parentId?: string; position?: { x: number; y: number }; style?: Record<string, number>; data: Record<string, unknown> }> } = {
+      edges: [{
+        data: { inputOrder: 1, inputRole: "first-frame" },
+        id: "inc-gen-028-dynamic-first-frame-edge",
+        source: imageNodeId,
+        target: videoNodeId,
+      }],
+      nodes: [{
+        data: { title: "Dynamic first-frame group" },
+        id: groupId,
+        type: "group", position: { x: 0, y: 0 }, style: { width: 1950, height: 1050 },
+      }, {
+        data: {
+          imageModelId,
+          imageParameters: {
+            aspectRatio: "9:16",
+            inputMode: "text",
+            outputCount: 1,
+            quality: "2k",
+          },
+          imagePrompt: "Create the first frame",
+          imagePromptReady: true,
+          title: "Generated first frame",
+        },
+        id: imageNodeId, position: { x: 30, y: 30 }, style: { width: 300, height: 300 },
+        parentId: groupId,
+        type: "image",
+      }, {
+        data: {
+          title: "Grok video from dynamic first frame",
+          videoModelId,
+          videoParameters: {
+            aspectRatio: "9:16",
+            duration: 6,
+            generateAudio: true,
+            inputMode: "image",
+            outputCount: 1,
+            resolution: "720p",
+          },
+          videoPrompt: "Animate the generated first frame",
+          videoPromptReady: true,
+        },
+        id: videoNodeId, position: { x: 1100, y: 100 },
+        parentId: groupId,
+        type: "video",
+      }],
+    };
+    for (let index = 1; index < 9; index++) {
+      graph.nodes.push({ ...graph.nodes[1],
+        id: `${imageNodeId}-${index}`,
+        data: { ...graph.nodes[1].data,
+          imageParameters: { ...(graph.nodes[1].data.imageParameters as Record<string, unknown>), inputMode: 'image' },
+        },
+        position: { x: 30 + index % 3 * 330, y: 30 + Math.floor(index / 3) * 330 },
+      });
+      graph.edges.push({ id: `v3-image-chain-${index}`,
+        source: index === 1 ? imageNodeId : `${imageNodeId}-${index - 1}`,
+        target: `${imageNodeId}-${index}`,
+        data: { inputOrder: 1, inputRole: 'reference' },
+      });
+    }
+    // The failed video must start only after all nine prerequisite results exist.
+    graph.edges[0].source = `${imageNodeId}-8`;
+    graph.nodes.push({ id: 'v3-blocked-text', parentId: groupId, type: 'text',
+      position: { x: 1550, y: 100 }, style: { width: 300, height: 260 },
+      data: { title: '等待视频的文案', textModelId: downstreamModelId,
+        textPrompt: 'Describe the video', textPromptReady: true,
+        textParameters: { outputCount: 1, responseFormat: 'text' } },
+    } as typeof graph.nodes[number]);
+    graph.edges.push({ id: 'v3-video-downstream', source: videoNodeId, target: 'v3-blocked-text',
+      data: { inputOrder: 1, inputRole: 'reference' },
+    });
+    const emptyCanvas = await (await request(`/api/canvas/${canvasId}`)).json();
+    await expectOk(await request(`/api/canvas/${canvasId}`, {
+      headers: { 'X-Unboundry-Safe-Fixture-Seed': canvasId },
+      body: JSON.stringify({
+        ...graph,
+        revision: emptyCanvas.revision, observedRevision: emptyCanvas.revision,
+        observedLoadToken: emptyCanvas.loadToken,
+        viewport: { x: -300, y: 160, zoom: 0.65 },
+      }),
+      method: "PUT",
+    }), "dynamic first-frame canvas");
+    const semantic = compileFrozenWorkflowSemanticPlan({ ...graph, groupId });
+    const createStartedAt = Date.now();
+    const createResponse = await expectOk(await request("/api/workflow-runs", {
+      body: JSON.stringify({
+        canvasId,
+        clientSemanticFingerprint: semantic.semanticFingerprint,
+        groupId,
+      }),
+      method: "POST",
+    }), "dynamic first-frame workflow create");
+    expect(createResponse.status).toBe(202);
+    expect(Date.now() - createStartedAt).toBeLessThan(15_000);
+    const created = await createResponse.json() as { id: string };
+    const terminal = await waitForTerminalRun(created.id, 45_000);
+    expect(terminal.state).toBe('failed');
+    expect(imagePosts).toBe(9);
+    expect(videoPosts).toBe(1);
+    const oldVideo = terminal.nodes.find((node) => node.id === videoNodeId)!;
+    expect(terminal.nodes.filter((node) => node.state === 'success')).toHaveLength(9);
+    expect(terminal.nodes.find((node) => node.id === 'v3-blocked-text')?.state).toBe('blocked');
+    const before = await (await request(`/api/canvas/${canvasId}`)).json();
+    const stableNodes = before.nodes.filter((node: { id: string }) => node.id !== videoNodeId);
+    const beforeEdges = before.edges;
+    // The declarative Grok contract does not infer fee settlement from a raw
+    // status field. Apply an exact synthetic verified receipt through the
+    // internal settlement boundary; the public API cannot supply this proof.
+    const unknownSummary = await (await request(`/api/generation-tasks/${oldVideo.taskId}`)).json();
+    expect(unknownSummary.newGenerationAllowed).toBe(false);
+    const settlementStore = createGenerationTaskStore(String(process.env.UNBOUNDRY_DATA_DIR));
+    try {
+      const oldTask = settlementStore.get(oldVideo.taskId!)!;
+      settlementStore.settleConfirmedChargedProviderFailure({
+        taskId: oldTask.id, ownerId: oldTask.ownerId!, canvasId, nodeId: videoNodeId,
+        kind: 'video', executionAttempt: oldTask.attempt, expectedUpdatedAt: oldTask.updatedAt,
+        providerProfileId: oldTask.providerProfileId!, providerModelId: oldTask.providerModelId!,
+        providerTaskId: 'v3_video_1', protocolContractId: 'safe-test-v3-exact-terminal',
+        evidenceSha256: createHash('sha256').update(JSON.stringify({ task_id: 'v3_video_1',
+          is_final: true, state: 'failed', fee_disposition: 'charged' })).digest('hex'),
+        terminalState: 'failed', feeDisposition: 'charged',
+      });
+    } finally { settlementStore.close(); }
+    const oldSummary = await (await request(`/api/generation-tasks/${oldVideo.taskId}`)).json();
+    expect(oldSummary.newGenerationAllowed, oldSummary.newGenerationBlockReason).toBe(true);
+    expect(oldSummary.retryAllowed).toBe(false);
+    await page.goto(`${appOrigin}/canvas/${canvasId}`);
+    await expect(page.getByTestId('canvas-world')).toHaveAttribute('data-persistence-ready', 'true');
+    const videoNode = page.locator(`.react-flow__node[data-id="${videoNodeId}"]`);
+    await videoNode.click({ position: { x: 8, y: 8 }, timeout: 10_000 });
+    await expect(page.getByTestId('video-creator')).toBeVisible({ timeout: 10_000 });
+    const generate = page.getByTestId('video-creator').getByRole('button', { name: 'Generate', exact: true });
+    await expect(generate).toBeEnabled();
+    await generate.click();
+    try {
+      await expect.poll(() => videoPosts, { timeout: 15_000 }).toBe(2);
+    } catch (error) {
+      console.info('V3_GENERATE_DIAGNOSTIC', JSON.stringify({
+        creator: await page.getByTestId('video-creator').innerText(),
+        notices: await page.locator('.video-node-upload-error').allTextContents(),
+        buttonTitle: await generate.getAttribute('title'),
+      }));
+      throw error;
+    }
+    await expect.poll(async () => {
+      const canvas = await (await request(`/api/canvas/${canvasId}`)).json();
+      const data = canvas.nodes.find((node: { id: string }) => node.id === videoNodeId).data;
+      return Boolean(data.videoSrc && data.assetId && data.groupRunSuccessTaskId && data.groupRunSuccessTaskId !== oldVideo.taskId);
+    }, { timeout: 45_000 }).toBe(true);
+    await expect(videoNode.locator('video')).toHaveAttribute('src', /video-assets/);
+    await page.reload();
+    await expect(page.getByTestId('canvas-world')).toHaveAttribute('data-persistence-ready', 'true');
+    const after = await (await request(`/api/canvas/${canvasId}`)).json();
+    expect(after.nodes.filter((node: { id: string }) => node.id !== videoNodeId)).toEqual(stableNodes);
+    expect(after.edges).toEqual(beforeEdges);
+    const videoResult = after.nodes.find((node: { id: string }) => node.id === videoNodeId).data;
+    const newSummary = await (await request(`/api/generation-tasks/${videoResult.groupRunSuccessTaskId}`)).json();
+    expect(newSummary.state).toBe('success');
+    expect(newSummary.canvasProjectionState).toBe('applied');
+    expect(newSummary.attempt).toBe(1);
+    expect(newSummary.resultAssetId).toBe(videoResult.assetId);
+    const playable = await request(videoResult.videoSrc);
+    expect(playable.status).toBe(200);
+    expect(playable.headers.get('content-type')).toContain('video/');
+    expect(imagePosts).toBe(9);
+    expect(videoPosts).toBe(2);
+    const stillFailed = await (await request(`/api/workflow-runs/${created.id}`)).json();
+    expect(stillFailed.state).toBe('failed');
+    expect(stillFailed.nodes.find((node: { id: string }) => node.id === 'v3-blocked-text').state).toBe('blocked');
+    expect((await (await request(`/api/generation-tasks/${oldVideo.taskId}`)).json()).state).toBe('failed');
+
+    // The relay video result is deliberately local in this test so the nine
+    // node workflow never touches OSS. Before exercising the independent Ark
+    // text action, register the same result as a private OSS-readable asset.
+    // The profile is synthetic and signing is performed locally; no OSS
+    // request is made by this fixture.
+    const privateVideoProfile = await saveStorageProfile({
+      accessKeyId: 'inc-gen-026-fake-oss-access-key',
+      accessKeySecret: 'inc-gen-026-fake-oss-secret-key',
+      bucket: 'inc-gen-026-private-bucket',
+      endpoint: 'https://oss-cn-hangzhou.aliyuncs.com',
+      label: 'INC-GEN-026 fake private OSS',
+      region: 'oss-cn-hangzhou',
+    });
+    await markStorageProfileVerified(privateVideoProfile.id);
+    await activateStorageProfile(privateVideoProfile.id);
+    registerMediaForOwner('__test__', {
+      byteSize: resultVideo.byteLength,
+      checksumSha256: createHash('sha256').update(resultVideo).digest('hex'),
+      contentType: 'video/mp4',
+      durationSeconds: Number(videoResult.mediaDurationSeconds) > 0
+        ? Number(videoResult.mediaDurationSeconds)
+        : 6,
+      id: videoResult.assetId,
+      kind: 'video',
+      mediaHeight: Number(videoResult.mediaHeight) > 0
+        ? Number(videoResult.mediaHeight)
+        : 720,
+      mediaWidth: Number(videoResult.mediaWidth) > 0
+        ? Number(videoResult.mediaWidth)
+        : 1_280,
+      objectKey: `objects/2026/09/video/${videoResult.assetId}.mp4`,
+      storageBackend: 'oss',
+      storageProfileId: privateVideoProfile.id,
+      storageName: `${videoResult.assetId}.mp4`,
+    });
+    // Registry metadata is authoritative for the next Canvas command, but it
+    // does not rewrite an already-persisted node. Use the same typed adoption
+    // boundary as a real Canvas upload so the fixture's existing asset keeps
+    // its identity while its persisted storage backend becomes OSS.
+    const privateAssetDuration = Number(videoResult.mediaDurationSeconds) > 0
+      ? Number(videoResult.mediaDurationSeconds)
+      : 6;
+    const privateAssetHeight = Number(videoResult.mediaHeight) > 0
+      ? Number(videoResult.mediaHeight)
+      : 720;
+    const privateAssetWidth = Number(videoResult.mediaWidth) > 0
+      ? Number(videoResult.mediaWidth)
+      : 1_280;
+    const adoptResponse = await request(
+      `/api/canvases/${canvasId}/commands`,
+      {
+        body: JSON.stringify({
+          asset: {
+            assetId: videoResult.assetId,
+            byteSize: resultVideo.byteLength,
+            contentType: 'video/mp4',
+            durationSeconds: privateAssetDuration,
+            height: privateAssetHeight,
+            src: `/api/video-assets/${encodeURIComponent(videoResult.assetId)}`,
+            storageBackend: 'oss',
+            width: privateAssetWidth,
+          },
+          baseDocumentRevision: after.revision,
+          baseInputGraphRevision: after.graphRevision,
+          kind: 'adopt-uploaded-asset',
+          mediaKind: 'video',
+          nodeId: videoNodeId,
+          observedLoadToken: after.loadToken,
+          operationId: 'inc-gen-026-private-video-oss-adopt',
+          saveSequence: 1,
+          saveSessionId: 'inc-gen-026-private-video-oss-session',
+        }),
+        headers: { 'X-Unboundry-Canvas-Write-Contract': 'command-v1' },
+        method: 'POST',
+      },
+    );
+    await expectOk(adoptResponse, 'private video Canvas asset adoption');
+    expect((await adoptResponse.json()).status).toBe('applied');
+    await page.route(
+      `${appOrigin}/api/video-assets/${encodeURIComponent(videoResult.assetId)}`,
+      async (route) => route.fulfill({
+        body: resultVideo,
+        contentType: 'video/mp4',
+        status: 200,
+      }),
+    );
+    await page.reload();
+    await expect(page.getByTestId('canvas-world')).toHaveAttribute('data-persistence-ready', 'true');
+    const afterPrivateVideo = await (await request(`/api/canvas/${canvasId}`)).json();
+    const imageNodesAfterPrivateAdoption = afterPrivateVideo.nodes
+      .filter((node: { type?: string }) => node.type === 'image');
+    expect(imageNodesAfterPrivateAdoption).toHaveLength(9);
+    expect(imageNodesAfterPrivateAdoption).toEqual(
+      stableNodes.filter((node: { type?: string }) => node.type === 'image'),
+    );
+    expect(afterPrivateVideo.nodes.find((node: { id: string }) => node.id === videoNodeId).data)
+      .toMatchObject({
+        mediaMetadataSource: 'server',
+        mediaMetadataStatus: 'ready',
+        mediaStorageBackend: 'oss',
+      });
+    expect(textPosts).toBe(0);
+    allowDownstream = true;
+    const textMutationDiagnostics: unknown[] = [];
+    page.on('response', async response => {
+      if (response.request().method() === 'POST' && new URL(response.url()).pathname.startsWith('/api/generation-tasks')) {
+        textMutationDiagnostics.push({ path: new URL(response.url()).pathname,
+          status: response.status(), body: await response.json().catch(() => null) });
+      }
+    });
+    await page.locator('.react-flow__node[data-id="v3-blocked-text"]').click({ position: { x: 8, y: 8 } });
+    const textGenerate = page.getByTestId('text-creator').getByRole('button', { name: 'Generate', exact: true });
+    await expect(textGenerate).toBeEnabled();
+    await textGenerate.click();
+    try {
+      await expect.poll(() => textPosts, { timeout: 15000 }).toBe(1);
+    } catch (error) {
+      const [taskResponse, canvasResponse] = await Promise.all([
+        request(`/api/generation-tasks?canvasId=${encodeURIComponent(canvasId)}&fixtureScopeId=inc-gen-026-safe-fixture`),
+        request(`/api/canvas/${canvasId}`),
+      ]);
+      const taskBody = await taskResponse.json().catch(() => undefined) as
+        | { tasks?: Array<Record<string, unknown>> }
+        | undefined;
+      const canvasBody = await canvasResponse.json().catch(() => undefined) as
+        | { nodes?: Array<{ id: string; data?: Record<string, unknown> }> }
+        | undefined;
+      console.info('V3_GENERATE_DIAGNOSTIC', JSON.stringify({
+        arkRequests,
+        creator: await page.getByTestId('text-creator').innerText(),
+        textMutationDiagnostics,
+        canvasNode: canvasBody?.nodes?.find(({ id }) => id === 'v3-blocked-text')?.data,
+        textPosts,
+        textTasks: taskBody?.tasks?.filter((task) => task.nodeId === 'v3-blocked-text'),
+      }));
+      throw error;
+    }
+    await expect(page.getByTestId('text-node-v3-blocked-text')).toContainText('V3 downstream generated only after its own click', { timeout: 15000 });
+    const downstreamAfter = await (await request(`/api/canvas/${canvasId}`)).json();
+    expect(downstreamAfter.nodes.filter((node: { id: string }) => node.id !== 'v3-blocked-text'))
+      .toEqual(afterPrivateVideo.nodes.filter((node: { id: string }) => node.id !== 'v3-blocked-text'));
+    expect(downstreamAfter.edges).toEqual(beforeEdges);
+    expect(imagePosts).toBe(9);
+    expect(videoPosts).toBe(2);
+    expect((await (await request(`/api/workflow-runs/${created.id}`)).json()).state).toBe('failed');
+  } finally {
+    await app?.close();
+    await close(provider);
+    globalThis.fetch = originalFetch;
+    if (previousRelayMediaFetcher === undefined) {
+      delete process.env.UNBOUNDRY_TEST_RELAY_MEDIA_FETCHER;
+    } else {
+      process.env.UNBOUNDRY_TEST_RELAY_MEDIA_FETCHER = previousRelayMediaFetcher;
+    }
     if (previousBypass === undefined) {
       delete process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
     } else {

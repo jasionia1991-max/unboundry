@@ -1,3 +1,4 @@
+import { generationRecoveryOpenApiPaths } from "./generationRecoveryOpenApi";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { currentSchemaVersion } from "./database";
 
@@ -36,6 +37,7 @@ export const openApiDocument = {
   },
   servers: [{ url: "/", description: "Current private service" }],
   paths: {
+    ...generationRecoveryOpenApiPaths,
     "/api/health/live": {
       get: {
         operationId: "readProcessLiveness",
@@ -2458,6 +2460,7 @@ export const openApiDocument = {
           "manage_providers",
           "manage_storage",
           "manage_generation_safety",
+          "manage_generation_recovery",
           "manage_public_templates",
           "manage_permissions",
           "manage_projects",

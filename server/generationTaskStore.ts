@@ -1,3 +1,6 @@
+import { assertOriginalRecoveryReadFence, type OriginalRecoveryReadFence } from "./generationRecoveryReadFence";
+import { hasGenerationPublicationEvidenceCommand } from "./mediaTransactionCommands";
+import { executeTransactionScopedCommand } from "./transactionCommand";
 import { createHash, randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { openAppDatabase } from "./database";
@@ -13,6 +16,7 @@ import {
 } from "./generationSafety";
 import {
   generationProviderAttemptCreatedAt,
+  newGenerationForNodeInTransaction,
   hasUnresolvedGenerationOutcomeForNodeInTransaction,
   latestGenerationProviderAttemptInTransaction,
 } from "./generationAttemptQueries";
@@ -67,6 +71,8 @@ export type GenerationTaskInput = {
    * in the same write transaction that inserts the task.
    */
   expectedCanvasRevision?: number;
+  /** Explicit terminal predecessor; never a request to revive the old task. */
+  replacesTaskId?: string;
   costCurrency?: "CNY" | "USD";
   credentialRevision?: number;
   estimatedCostMicrounits?: number;
@@ -103,6 +109,13 @@ export type AuthoritativeGenerationTaskInput = Omit<
   providerModelId: string;
   providerProfileId: string;
   requestIntent: Record<string, unknown>;
+};
+
+/** Internal-only option. HTTP input never supplies the automatic budget. */
+export type GenerationTaskAdmissionOptions = {
+  beforeCommit?: (context: Readonly<{ database: DatabaseSync; task: GenerationTask }>) => void;
+  now?: Date;
+  automaticRefund?: Readonly<{ parentTaskId: string; expectedAttempt: number; expectedUpdatedAt: string }>;
 };
 
 export type GenerationIdempotentIntentInput = {
@@ -535,6 +548,7 @@ const requestIntentKeys = [
   "parameters",
   "prompt",
   "workflowBinding",
+  "replacesTaskId",
 ] as const;
 const requestIntentFingerprintVersion = "intent-v3:";
 
@@ -558,6 +572,10 @@ function stableClientIntent(
 ) {
   if (
     (Object.hasOwn(supplied, "canvasId") && supplied.canvasId !== canvasId) ||
+    (Object.hasOwn(supplied, "replacesTaskId") &&
+      (typeof supplied.replacesTaskId !== "string" ||
+        !identifierPattern.test(supplied.replacesTaskId) ||
+        supplied.replacesTaskId.length > 120)) ||
     typeof supplied.kind !== "string" ||
     !generationTaskKinds.includes(supplied.kind as GenerationTaskKind) ||
     typeof supplied.nodeId !== "string" ||
@@ -622,6 +640,8 @@ function stableClientIntent(
     ...(Object.hasOwn(supplied, "modelReleaseRevision")
       ? { modelReleaseRevision: supplied.modelReleaseRevision }
       : {}),
+    ...(Object.hasOwn(supplied, "replacesTaskId")
+      ? { replacesTaskId: supplied.replacesTaskId } : {}),
     nodeId: supplied.nodeId,
     prompt: supplied.prompt,
     ...(Object.hasOwn(supplied, "ownPrompt")
@@ -656,6 +676,7 @@ function stableIntentForTask(input: GenerationTaskInput) {
     kind: input.kind,
     model: input.model ?? null,
     nodeId: input.nodeId,
+    ...(input.replacesTaskId ? { replacesTaskId: input.replacesTaskId } : {}),
     prompt: input.prompt,
     ...(Object.hasOwn(parameters, "ownPrompt")
       ? { ownPrompt: stableValue(parameters.ownPrompt) }
@@ -693,6 +714,8 @@ function normalizeInput(input: GenerationTaskInput): GenerationTaskInput {
   const costCurrency = input.costCurrency ?? "USD";
 
   if (
+    (input.replacesTaskId !== undefined &&
+      (!identifierPattern.test(input.replacesTaskId) || input.replacesTaskId.length > 120)) ||
     !identifierPattern.test(input.canvasId) ||
     input.canvasId.length > 120 ||
     !identifierPattern.test(input.nodeId) ||
@@ -740,6 +763,7 @@ function normalizeInput(input: GenerationTaskInput): GenerationTaskInput {
         : 0
     ),
     expectedCanvasRevision: input.expectedCanvasRevision,
+    replacesTaskId: input.replacesTaskId,
     idempotencyKey: input.idempotencyKey,
     kind: input.kind,
     model,
@@ -888,6 +912,25 @@ export function createGenerationTaskStore(
       task_id, execution_attempt, owner_id, kind, admission_type, created_at
     ) VALUES (?, ?, ?, ?, ?, ?)
   `);
+
+  function hasOriginalRecoveryOnly(taskId: string) {
+    const task = readById.get(taskId) as GenerationTaskRow | undefined;
+    if (!task) return false;
+    const markers = database.prepare(`
+      SELECT error_message FROM generation_task_events
+      WHERE task_id = ? AND error_code GLOB 'RECOVERY_ORIGINAL_ONLY_V*'
+      ORDER BY id DESC
+    `).all(taskId) as { error_message: string | null }[];
+    return markers.some((marker) => {
+      try {
+        if (!marker.error_message || marker.error_message.length > 8_192) return true;
+        const value = JSON.parse(marker.error_message) as Record<string, unknown>;
+        if (!value || value.version !== 1 || value.marker !== "original-only" ||
+            value.taskId !== task.id || !Number.isSafeInteger(value.executionAttempt)) return true;
+        return value.executionAttempt === task.attempt;
+      } catch { return true; }
+    });
+  }
 
   function providerAttemptForTask(task: GenerationTaskRow) {
     const attempt = latestGenerationProviderAttemptInTransaction(database, {
@@ -1222,6 +1265,7 @@ export function createGenerationTaskStore(
   }
 
   function attachProviderTaskId(input: {
+    readFence?: OriginalRecoveryReadFence;
     credentialRevision?: number;
     executionAttempt: number;
     providerTaskId: string;
@@ -1235,6 +1279,10 @@ export function createGenerationTaskStore(
     }
     database.exec("BEGIN IMMEDIATE");
     try {
+      if (input.readFence) {
+        if (input.readFence.taskId !== input.taskId) throw new Error("Recovery task identity changed");
+        assertOriginalRecoveryReadFence(database, input.readFence);
+      }
       const task = readById.get(input.taskId) as GenerationTaskRow | undefined;
       if (
         !task ||
@@ -1333,15 +1381,23 @@ export function createGenerationTaskStore(
     database.exec("BEGIN IMMEDIATE");
     try {
       const current = database.prepare(`
-        SELECT outcome
+        SELECT outcome, failure_code
         FROM generation_provider_attempts
         WHERE task_id = ? AND execution_attempt = ?
       `).get(input.taskId, input.executionAttempt) as
         | {
             outcome: GenerationProviderAttemptOutcome;
+            failure_code: string | null;
         }
         | undefined;
       if (!current) throw new Error("Provider attempt does not exist");
+      if (current.failure_code === 'PROVIDER_FAILED_CHARGE_SETTLED') {
+        if (current.outcome !== input.outcome || current.failure_code !== input.failureCode) {
+          throw new Error('Confirmed charged Provider failure is sealed');
+        }
+        database.exec('COMMIT');
+        return;
+      }
       const allowedSources: Record<
         typeof input.outcome,
         readonly GenerationProviderAttemptOutcome[]
@@ -1415,6 +1471,26 @@ export function createGenerationTaskStore(
      * Read-only early replay check for the HTTP layer. This intentionally needs
      * no current model, credential, canvas revision, or safety state.
      */
+    automaticReplacementTask(taskId: string) {
+      const event = database.prepare(`SELECT error_message FROM generation_task_events
+        WHERE task_id = ? AND error_code = 'AUTO_REFUND_COMPENSATION_ADMITTED'
+        ORDER BY id DESC LIMIT 1`).get(taskId) as { error_message: string } | undefined;
+      if (!event) return undefined;
+      try {
+        const id = JSON.parse(event.error_message).taskId;
+        return typeof id === 'string' ? api.get(id) : undefined;
+      } catch { return undefined; }
+    },
+
+    newGenerationDecision(taskId: string) {
+      const task = api.get(taskId);
+      if (!task?.ownerId || task.state !== "failed") return {
+        allowed: false, reason: "只有已确认失败的任务才能开始新一轮生成",
+      };
+      return newGenerationForNodeInTransaction(database, task as
+        GenerationTask & { ownerId: string });
+    },
+
     getIdempotentIntent(input: GenerationIdempotentIntentInput) {
       if (
         !identifierPattern.test(input.canvasId) ||
@@ -1449,13 +1525,7 @@ export function createGenerationTaskStore(
      */
     admitAuthoritativeOrGet(
       input: AuthoritativeGenerationTaskInput,
-      options: {
-        beforeCommit?: (context: Readonly<{
-          database: DatabaseSync;
-          task: GenerationTask;
-        }>) => void;
-        now?: Date;
-      } = {},
+      options: GenerationTaskAdmissionOptions = {},
     ) {
       assertAuthoritativeGenerationModelConfiguration(input.modelConfiguration);
       return api.admitOrGet(input, options);
@@ -1467,13 +1537,7 @@ export function createGenerationTaskStore(
      */
     admitOrGet(
       input: GenerationTaskInput,
-      options: {
-        beforeCommit?: (context: Readonly<{
-          database: DatabaseSync;
-          task: GenerationTask;
-        }>) => void;
-        now?: Date;
-      } = {},
+      options: GenerationTaskAdmissionOptions = {},
     ) {
       let authoritativeInputConfiguration:
         | AuthoritativeGenerationModelConfiguration
@@ -1743,89 +1807,64 @@ export function createGenerationTaskStore(
           }));
         }
 
-        // A different browser intent must not create a sibling task while the
-        // same semantic input is already queued/running, even before the first
-        // worker records a Provider attempt. This closes the accepted-task
-        // gap after a local intent is lost or corrupted.
-        const activeSameInput = database.prepare(`
-          SELECT id
-          FROM generation_tasks
-          WHERE
-            owner_id = ?
-            AND canvas_id = ?
-            AND node_id = ?
-            AND kind = ?
-            AND request_fingerprint = ?
-            AND state IN ('queued', 'running', 'retrying', 'recovering')
-          LIMIT 1
-        `).get(
-          normalized.ownerId,
-          normalized.canvasId,
-          normalized.nodeId,
-          normalized.kind,
-          fingerprint,
-        );
-        if (activeSameInput) {
+        const nodeDecision = newGenerationForNodeInTransaction(database, {
+          ownerId: normalized.ownerId,
+          canvasId: normalized.canvasId,
+          nodeId: normalized.nodeId,
+          kind: normalized.kind,
+        });
+        if (!nodeDecision.allowed) {
           throw new GenerationProviderAttemptBlockedError(
-            "RETRY_OUTCOME_UNKNOWN",
-            "同一输入已有任务正在安全执行；系统会继续原任务，当前不能重复提交",
+            "RETRY_OUTCOME_UNKNOWN", nodeDecision.reason!,
           );
         }
-
-        const unresolvedSameInput = database.prepare(`
-          SELECT t.id
-          FROM generation_tasks AS t
-          JOIN generation_provider_attempts AS attempt
-            ON attempt.task_id = t.id
-            AND attempt.execution_attempt = t.attempt
-          WHERE
-            t.owner_id = ?
-            AND t.canvas_id = ?
-            AND t.node_id = ?
-            AND t.kind = ?
-            AND t.request_fingerprint = ?
-            AND t.state = 'failed'
-            AND attempt.outcome = 'outcome-unknown'
-          LIMIT 1
-        `).get(
-          normalized.ownerId,
-          normalized.canvasId,
-          normalized.nodeId,
-          normalized.kind,
-          fingerprint,
-        );
-        if (unresolvedSameInput) {
-          throw new GenerationProviderAttemptBlockedError(
-            "RETRY_OUTCOME_UNKNOWN",
-            "上次结果仍在系统自动找回中；为避免重复扣费，当前不能重新生成",
-          );
+        if (normalized.replacesTaskId) {
+          const previous = readById.get(normalized.replacesTaskId) as
+            GenerationTaskRow | undefined;
+          if (!previous || previous.owner_id !== normalized.ownerId ||
+              previous.canvas_id !== normalized.canvasId ||
+              previous.node_id !== normalized.nodeId || previous.kind !== normalized.kind ||
+              previous.state !== "failed") {
+            throw new GenerationProviderAttemptBlockedError(
+              "RETRY_OUTCOME_UNKNOWN", "原任务记录已变化，请刷新节点后再试",
+            );
+          }
         }
 
-        const confirmedSameInput = database.prepare(`
-          SELECT t.id
-          FROM generation_tasks AS t
-          JOIN generation_provider_attempts AS attempt
-            ON attempt.task_id = t.id
-          WHERE
-            t.owner_id = ?
-            AND t.canvas_id = ?
-            AND t.node_id = ?
-            AND t.kind = ?
-            AND t.request_fingerprint = ?
-            AND attempt.outcome IN ('accepted', 'response-received')
-          LIMIT 1
-        `).get(
-          normalized.ownerId,
-          normalized.canvasId,
-          normalized.nodeId,
-          normalized.kind,
-          fingerprint,
-        );
-        if (confirmedSameInput) {
-          throw new GenerationProviderAttemptBlockedError(
-            "RETRY_OUTCOME_UNKNOWN",
-            "同一输入已有平台任务已受理或已出片；系统会自动处理，当前不能重复提交",
-          );
+        if (options.automaticRefund) {
+          const fence = options.automaticRefund;
+          const previous = api.get(fence.parentTaskId);
+          const attempt = latestGenerationProviderAttemptInTransaction(database, { taskId: fence.parentTaskId });
+          const parentConfig = previous?.modelConfiguration;
+          const registeredIntent = database.prepare(`SELECT 1 FROM generation_task_events
+            WHERE task_id = ? AND error_code = 'USER_GENERATION_INTENT_OPENED_V3' LIMIT 1
+          `).get(fence.parentTaskId);
+          const budgetUsed = database.prepare(`
+            SELECT 1 FROM generation_task_events WHERE task_id = ?
+            AND error_code IN ('AUTO_REFUND_COMPENSATION_ADMITTED', 'AUTO_REFUND_COMPENSATION_CHILD') LIMIT 1
+          `).get(fence.parentTaskId);
+          const stableContract = (value: Record<string, unknown>) => JSON.stringify(stableValue(
+            Object.fromEntries(Object.entries(value).filter(([key]) =>
+              !['credentialVersion', 'providerConfigurationVersion', 'displayName'].includes(key))),
+          ));
+          if (!authoritativeInputConfiguration || !options.beforeCommit ||
+              !previous || previous.id !== normalized.replacesTaskId ||
+              previous.attempt !== fence.expectedAttempt || previous.updatedAt !== fence.expectedUpdatedAt ||
+              previous.errorCode !== 'PROVIDER_REFUNDED' || !registeredIntent || budgetUsed ||
+              previous.state !== 'failed' || previous.attempt !== 1 ||
+              attempt?.execution_attempt !== previous.attempt ||
+              attempt.outcome !== 'provider-failed' || attempt.failure_code !== 'PROVIDER_REFUNDED' ||
+              !attempt.finished_at || parentConfig?.generationIdentityVersion !== 2 || parentConfig.workflowBinding ||
+              normalized.idempotencyKey !== `auto-refund:${previous.id}` ||
+              normalized.prompt !== previous.prompt || normalized.model !== previous.model ||
+              normalized.providerModelId !== previous.providerModelId ||
+              normalized.providerProfileId !== previous.providerProfileId ||
+              JSON.stringify(stableValue(normalized.parameters)) !== JSON.stringify(stableValue(previous.parameters)) ||
+              stableContract(authoritativeModelConfiguration) !== stableContract(parentConfig)) {
+            throw new GenerationProviderAttemptBlockedError(
+              'PROVIDER_RECOVERY_ATTEMPT_USED', '自动恢复条件已变化，系统不会重复提交',
+            );
+          }
         }
 
         const admission = generationAdmissionInTransaction(database, {
@@ -1874,6 +1913,21 @@ export function createGenerationTaskStore(
           admittedCredentialRevision,
         );
         recordEvent.run(id, "queued", null, null, timestamp);
+        if (!options.automaticRefund) {
+          recordEvent.run(id, 'queued', 'USER_GENERATION_INTENT_OPENED_V3', null, timestamp);
+        }
+        if (normalized.replacesTaskId) {
+          recordEvent.run(id, "queued", "NEW_GENERATION_REPLACES_FAILED_TASK",
+            JSON.stringify({ taskId: normalized.replacesTaskId }), timestamp);
+          recordEvent.run(normalized.replacesTaskId, "failed", "NEW_GENERATION_REQUESTED",
+            JSON.stringify({ taskId: id }), timestamp);
+        }
+        if (options.automaticRefund) {
+          recordEvent.run(options.automaticRefund.parentTaskId, 'failed',
+            'AUTO_REFUND_COMPENSATION_ADMITTED', JSON.stringify({ taskId: id }), timestamp);
+          recordEvent.run(id, 'queued', 'AUTO_REFUND_COMPENSATION_CHILD',
+            JSON.stringify({ taskId: options.automaticRefund.parentTaskId }), timestamp);
+        }
         recordAdmission.run(
           id,
           1,
@@ -2367,6 +2421,8 @@ export function createGenerationTaskStore(
         : new Map<string, GenerationTaskCanvasRetryBinding>();
     },
 
+    hasOriginalRecoveryOnly,
+
     listRecovering() {
       return (
         database
@@ -2378,6 +2434,18 @@ export function createGenerationTaskStore(
           `)
           .all() as GenerationTaskRow[]
       ).map(toTask);
+    },
+
+    listRefundCompensationCandidates() {
+      return (database.prepare(`SELECT task.* FROM generation_tasks AS task
+        WHERE task.state = 'failed' AND task.error_code = 'PROVIDER_REFUNDED'
+          AND task.attempt = 1 AND EXISTS (
+            SELECT 1 FROM generation_task_events AS event WHERE event.task_id = task.id
+              AND event.error_code = 'USER_GENERATION_INTENT_OPENED_V3'
+          ) AND NOT EXISTS (
+            SELECT 1 FROM generation_task_events AS event WHERE event.task_id = task.id
+              AND event.error_code IN ('AUTO_REFUND_COMPENSATION_ADMITTED', 'AUTO_REFUND_COMPENSATION_CHILD')
+          ) ORDER BY task.updated_at ASC LIMIT 100`).all() as GenerationTaskRow[]).map(toTask);
     },
 
     listFailedOutcomeUnknown() {
@@ -2406,6 +2474,7 @@ export function createGenerationTaskStore(
       if (!identifierPattern.test(taskId) || taskId.length > 120) {
         throw new Error("Invalid generation task ID");
       }
+      if (hasOriginalRecoveryOnly(taskId)) return undefined;
       const expectedTimestamp = Date.parse(expectedUpdatedAt);
       const nowMs = now.getTime();
       const timestamp = new Date(Math.max(
@@ -2496,6 +2565,9 @@ export function createGenerationTaskStore(
     recordProviderResponseEvidence(
       taskId: string,
       evidence: Readonly<{
+        providerCode?: 500;
+        providerReason?: 'INSUFFICIENT_BALANCE';
+        protocolContractId?: 'lk888-media-create-error-20260907';
         contentType?: string;
         failureStage?: string;
         fieldPaths: readonly string[];
@@ -2511,6 +2583,10 @@ export function createGenerationTaskStore(
       const task = readById.get(taskId) as GenerationTaskRow | undefined;
       if (!task) throw new Error("Generation task not found");
       const safe = {
+        ...(evidence.providerCode === 500 && evidence.providerReason === 'INSUFFICIENT_BALANCE' &&
+          evidence.protocolContractId === 'lk888-media-create-error-20260907'
+          ? { providerCode: 500, providerReason: evidence.providerReason,
+              protocolContractId: evidence.protocolContractId, billingDisposition: 'unknown' } : {}),
         contentType: evidence.contentType?.slice(0, 160),
         failureStage: evidence.failureStage?.slice(0, 80),
         fieldPaths: evidence.fieldPaths.slice(0, 128).map((path) => path.slice(0, 160)),
@@ -3064,6 +3140,15 @@ export function createGenerationTaskStore(
         let recoveryAt = Number.NEGATIVE_INFINITY;
         const fixtureOwner = !current.owner_id || current.owner_id === "__test__";
         if (!fixtureOwner) {
+          const nodeDecision = newGenerationForNodeInTransaction(database, {
+            canvasId: current.canvas_id, nodeId: current.node_id,
+            kind: current.kind, ownerId: current.owner_id!, excludeTaskId: current.id,
+          });
+          if (!nodeDecision.allowed || hasUnsafeProviderAttemptForNewPaidRetry(current.id)) {
+            throw new GenerationProviderAttemptBlockedError(
+              'RETRY_OUTCOME_UNKNOWN', nodeDecision.reason ?? '原请求尚未查清，本次没有重复提交',
+            );
+          }
           const admissionEvidence = database.prepare(`
             SELECT 1
             FROM generation_admission_events
@@ -3404,11 +3489,77 @@ export function createGenerationTaskStore(
 
     settleProviderAttempt,
 
-    /**
-     * Idempotent current-task terminal settlement. The first call delegates
-     * to transition, whose single transaction writes attempt + task + event;
-     * later identical calls are a byte-stable no-op.
+    /** Internal evidence application only; no HTTP endpoint accepts this receipt.
+     * A caller must verify the Provider contract and the exact request first.
+     * This preserves acceptance history without inventing a refund.
      */
+    settleConfirmedChargedProviderFailure(input: Readonly<{
+      taskId: string; ownerId: string; canvasId: string; nodeId: string;
+      kind: GenerationTaskKind; executionAttempt: number; expectedUpdatedAt: string;
+      providerProfileId: string; providerModelId: string; providerTaskId: string;
+      protocolContractId: string; evidenceSha256: string;
+      terminalState: 'failed'; feeDisposition: 'charged';
+    }>) {
+      if (input.terminalState !== 'failed' || input.feeDisposition !== 'charged' ||
+          !/^[a-f0-9]{64}$/.test(input.evidenceSha256) ||
+          !/^[a-z0-9._:-]{1,160}$/i.test(input.protocolContractId) ||
+          !providerTaskIdPattern.test(input.providerTaskId) ||
+          !Number.isSafeInteger(input.executionAttempt) || input.executionAttempt < 1) {
+        throw new Error('Invalid confirmed Provider failure receipt');
+      }
+      database.exec('BEGIN IMMEDIATE');
+      try {
+        const current = readById.get(input.taskId) as GenerationTaskRow | undefined;
+        if (!current || current.owner_id !== input.ownerId || current.canvas_id !== input.canvasId ||
+            current.node_id !== input.nodeId || current.kind !== input.kind ||
+            current.attempt !== input.executionAttempt || current.provider_profile_id !== input.providerProfileId ||
+            current.provider_model_id !== input.providerModelId || current.provider_task_id !== input.providerTaskId) {
+          throw new Error('Provider terminal failure receipt identity mismatch');
+        }
+        const prior = database.prepare(`SELECT error_message FROM generation_task_events
+          WHERE task_id = ? AND error_code = 'PROVIDER_FAILURE_CHARGE_SETTLED'
+          ORDER BY id DESC LIMIT 1`).get(current.id) as { error_message: string } | undefined;
+        if (prior) {
+          let recorded: Record<string, unknown> | undefined;
+          try { recorded = JSON.parse(prior.error_message); } catch { /* Fail closed on damaged evidence. */ }
+          if (current.state === 'failed' && current.error_code === 'PROVIDER_FAILED_CHARGE_SETTLED' &&
+              recorded && Object.entries(input).every(([key, value]) =>
+                key === 'expectedUpdatedAt' || recorded[key] === value)) {
+            database.exec('COMMIT'); return { changed: false, task: toTask(current) };
+          }
+          throw new Error('Provider terminal failure receipt conflicts with current evidence');
+        }
+        const attempt = latestGenerationProviderAttemptInTransaction(database, { taskId: current.id });
+        if (current.updated_at !== input.expectedUpdatedAt ||
+            !['running', 'recovering', 'failed'].includes(current.state) ||
+            attempt?.execution_attempt !== input.executionAttempt || attempt.evidence !== 'provider-boundary' || attempt.owner_id !== input.ownerId ||
+            attempt.provider_task_id !== input.providerTaskId || attempt.kind !== input.kind ||
+            attempt.provider_profile_id !== input.providerProfileId || attempt.provider_model_id !== input.providerModelId ||
+            !['accepted', 'response-received', 'outcome-unknown', 'provider-failed'].includes(attempt.outcome) ||
+            (attempt.outcome === 'provider-failed' && attempt.failure_code === 'PROVIDER_REFUNDED') ||
+            current.result_asset_id || current.result_text ||
+            executeTransactionScopedCommand(database, hasGenerationPublicationEvidenceCommand, { taskId: current.id })) {
+          throw new Error('Provider terminal failure receipt conflicts with current evidence');
+        }
+        const timestamp = new Date().toISOString();
+        database.prepare(`UPDATE generation_provider_attempts
+          SET outcome = 'provider-failed', failure_code = 'PROVIDER_FAILED_CHARGE_SETTLED', finished_at = ?
+          WHERE task_id = ? AND execution_attempt = ?`).run(timestamp, current.id, input.executionAttempt);
+        database.prepare(`UPDATE generation_tasks SET state = 'failed',
+          error_code = 'PROVIDER_FAILED_CHARGE_SETTLED',
+          error_message = '平台已确认本次生成失败且已扣费；重新生成是新一轮，可能再次收费', updated_at = ?
+          WHERE id = ?`).run(timestamp, current.id);
+        recordEvent.run(current.id, 'failed', 'PROVIDER_FAILURE_CHARGE_SETTLED',
+          JSON.stringify(input), timestamp);
+        database.exec('COMMIT');
+        return { changed: true, task: api.get(current.id)! };
+      } catch (error) {
+        if (database.isTransaction) database.exec('ROLLBACK');
+        throw error;
+      }
+    },
+
+    /** Idempotent task/attempt settlement in the existing transition transaction. */
     settleProviderTerminalFailure(input: {
       failureCode: string;
       message: string;
@@ -3817,6 +3968,7 @@ export function createGenerationTaskStore(
     },
 
     resume(id: string) {
+      if (hasOriginalRecoveryOnly(id)) throw new Error("Original-only recovery cannot enter generic execution");
       const timestamp = new Date().toISOString();
       database.exec("BEGIN IMMEDIATE");
       try {
@@ -3859,10 +4011,11 @@ export function createGenerationTaskStore(
       return toTask(readById.get(id) as GenerationTaskRow);
     },
 
-    setProviderTaskId(id: string, providerTaskId: string) {
+    setProviderTaskId(id: string, providerTaskId: string, readFence?: OriginalRecoveryReadFence) {
       const current = readById.get(id) as GenerationTaskRow | undefined;
       if (!current) throw new Error("Generation task changed concurrently");
       return attachProviderTaskId({
+        readFence,
         credentialRevision: current.credential_revision,
         executionAttempt: current.attempt,
         providerTaskId,

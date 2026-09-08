@@ -7,6 +7,11 @@ const {
   BackupPackageError,
   createEncryptedBackup,
 } = await import("../server/backupPackage.ts");
+const {
+  RuntimeRoleError,
+  assertStoppedProcessProof,
+  createRuntimeRoleCoordinator,
+} = await import("../server/runtimeRole.ts");
 
 const maximumKeyBytes = 64 * 1024;
 
@@ -53,6 +58,7 @@ function parseArguments(argv) {
   let sourceFrozen = false;
   let externalFreezeNonFinal = false;
   let historicalRecovery = false;
+  let quiescedActivePreservation = false;
   let requireCleanMedia = false;
   const valueOptions = new Set([
     "--allow-media-warning",
@@ -65,6 +71,12 @@ function parseArguments(argv) {
     "--oss-mirror",
     "--recovery-public-key",
     "--retry-backup-id",
+    "--previous-pid",
+    "--previous-pid-namespace",
+    "--previous-pid-start-ticks",
+    "--preserved-task-attempt",
+    "--preserved-task-id",
+    "--runtime-directory",
     "--scratch-root",
     "--signing-private-key",
   ]);
@@ -87,6 +99,13 @@ function parseArguments(argv) {
         fail("BACKUP_ARGUMENT_INVALID", "Historical recovery mode is duplicated");
       }
       historicalRecovery = true;
+      continue;
+    }
+    if (option === "--quiesced-active-preservation") {
+      if (quiescedActivePreservation) {
+        fail("BACKUP_ARGUMENT_INVALID", "Quiesced preservation mode is duplicated");
+      }
+      quiescedActivePreservation = true;
       continue;
     }
     if (option === "--require-clean-media") {
@@ -141,9 +160,60 @@ function parseArguments(argv) {
     historicalRecovery,
     mediaWarnings,
     mirrors,
+    quiescedActivePreservation,
     requireCleanMedia,
     sourceFrozen,
     values,
+  };
+}
+
+function parsePositiveInteger(value, option) {
+  if (!value || !/^[0-9]+$/.test(value)) {
+    fail("BACKUP_ARGUMENT_INVALID", `${option} must be a decimal integer`);
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || String(parsed) !== value) {
+    fail("BACKUP_ARGUMENT_INVALID", `${option} is outside the safe integer range`);
+  }
+  return parsed;
+}
+
+function parseQuiescedSourceContract(values, frozenSourceContract) {
+  if (!frozenSourceContract) {
+    fail(
+      "BACKUP_ARGUMENT_INVALID",
+      "Quiesced preservation requires a complete frozen source contract",
+    );
+  }
+  const runtimeDirectory = normalizedAbsolutePath(values.get("--runtime-directory"));
+  const pid = parsePositiveInteger(values.get("--previous-pid"), "--previous-pid");
+  if (pid === process.pid) {
+    fail("BACKUP_ARGUMENT_INVALID", "--previous-pid must identify the stopped service");
+  }
+  const startTicks = values.get("--previous-pid-start-ticks");
+  const pidNamespace = values.get("--previous-pid-namespace");
+  if (
+    !startTicks || !/^[1-9][0-9]*$/.test(startTicks) ||
+    !pidNamespace || pidNamespace.length > 128 || pidNamespace.includes("\0")
+  ) {
+    fail("BACKUP_ARGUMENT_INVALID", "Stopped process proof is incomplete");
+  }
+  const taskId = values.get("--preserved-task-id");
+  if (
+    !taskId || taskId.length > 256 || taskId.includes("\0")
+  ) {
+    fail("BACKUP_ARGUMENT_INVALID", "--preserved-task-id is invalid");
+  }
+  const executionAttempt = parsePositiveInteger(
+    values.get("--preserved-task-attempt"),
+    "--preserved-task-attempt",
+  );
+  return {
+    ...frozenSourceContract,
+    expectedSchemaVersion: 43,
+    preservedTask: { executionAttempt, taskId },
+    runtimeDirectory,
+    stoppedProcess: { pid, pidNamespace, startTicks },
   };
 }
 
@@ -347,6 +417,9 @@ function redactPaths(message, paths) {
 
 let pathArguments = [];
 const keyMaterials = [];
+let runtimeCoordinator;
+let drainStarted = false;
+let drainCompleted = false;
 try {
   const parsed = parseArguments(process.argv.slice(2));
   const value = (option) => normalizedAbsolutePath(parsed.values.get(option));
@@ -358,7 +431,19 @@ try {
     parsed.values,
     parsed.historicalRecovery,
   );
-  if (Boolean(frozenSourceContract) === parsed.externalFreezeNonFinal) {
+  if (
+    parsed.quiescedActivePreservation &&
+    (parsed.historicalRecovery || parsed.externalFreezeNonFinal)
+  ) {
+    fail(
+      "BACKUP_ARGUMENT_INVALID",
+      "Quiesced preservation cannot combine historical or external freeze modes",
+    );
+  }
+  if (
+    !parsed.quiescedActivePreservation &&
+    Boolean(frozenSourceContract) === parsed.externalFreezeNonFinal
+  ) {
     fail(
       "BACKUP_ARGUMENT_INVALID",
       "Choose either a complete locked source contract or explicit external non-final freeze mode",
@@ -368,6 +453,26 @@ try {
     fail(
       "BACKUP_ARGUMENT_INVALID",
       "Historical recovery requires a complete historical locked source contract",
+    );
+  }
+  const quiescedSourceContract = parsed.quiescedActivePreservation
+    ? parseQuiescedSourceContract(parsed.values, frozenSourceContract)
+    : undefined;
+  const quiescedOnlyArguments = [
+    "--previous-pid",
+    "--previous-pid-namespace",
+    "--previous-pid-start-ticks",
+    "--preserved-task-attempt",
+    "--preserved-task-id",
+    "--runtime-directory",
+  ];
+  if (
+    !parsed.quiescedActivePreservation &&
+    quiescedOnlyArguments.some((option) => parsed.values.has(option))
+  ) {
+    fail(
+      "BACKUP_ARGUMENT_INVALID",
+      "Quiesced preservation proof arguments require quiesced preservation mode",
     );
   }
   const retryBackupId = parsed.values.get("--retry-backup-id");
@@ -389,6 +494,7 @@ try {
     [
       sourceDirectory,
       backupRoot,
+      ...(quiescedSourceContract ? [quiescedSourceContract.runtimeDirectory] : []),
       ...(scratchRoot ? [scratchRoot] : []),
       ...ossMirrors.map(({ filePath }) => filePath),
     ],
@@ -399,8 +505,27 @@ try {
     recoveryPublicKeyPath,
     signingPrivateKeyPath,
     ...(scratchRoot ? [scratchRoot] : []),
+    ...(quiescedSourceContract ? [quiescedSourceContract.runtimeDirectory] : []),
     ...ossMirrors.map(({ filePath }) => filePath),
   ];
+  if (quiescedSourceContract) {
+    assertStoppedProcessProof(quiescedSourceContract.stoppedProcess);
+    runtimeCoordinator = createRuntimeRoleCoordinator({
+      dataDirectory: sourceDirectory,
+      requireExistingLease: true,
+      role: "active",
+      runtimeDirectory: quiescedSourceContract.runtimeDirectory,
+    });
+    drainStarted = true;
+    const drained = await runtimeCoordinator.beginDrain(120_000);
+    if (!drained.drained || drained.activeExecutions !== 0) {
+      fail(
+        "BACKUP_RUNTIME_DRAIN_FAILED",
+        "The stopped runtime did not complete its active execution drain",
+      );
+    }
+    drainCompleted = true;
+  }
   const recoveryPublicKey = await readKey(recoveryPublicKeyPath);
   keyMaterials.push(recoveryPublicKey);
   const signingPrivateKey = await readKey(signingPrivateKeyPath, "private");
@@ -409,8 +534,15 @@ try {
     backupRoot,
     capturePurpose: parsed.historicalRecovery
       ? "historical-recovery"
-      : "current-schema43",
-    frozenSourceContract,
+      : parsed.quiescedActivePreservation
+        ? "quiesced-active-preservation"
+        : "current-schema43",
+    ...(parsed.quiescedActivePreservation
+      ? {
+          quiescedRuntimeLease: runtimeCoordinator,
+          quiescedSourceContract,
+        }
+      : { frozenSourceContract }),
     mediaWarningAllowlist:
       parsed.requireCleanMedia || parsed.mediaWarnings.length
         ? parsed.mediaWarnings
@@ -425,12 +557,30 @@ try {
   });
   process.stdout.write(`${JSON.stringify(result)}\n`);
 } catch (error) {
-  const known = error instanceof CliError || error instanceof BackupPackageError;
+  const known = error instanceof CliError || error instanceof BackupPackageError ||
+    error instanceof RuntimeRoleError;
   process.stderr.write(`${JSON.stringify({
     code: known ? error.code : "BACKUP_FAILED",
     message: redactPaths(known ? error.message : "Backup failed", pathArguments),
   })}\n`);
   process.exitCode = 1;
 } finally {
+  if (runtimeCoordinator) {
+    try {
+      if (drainCompleted) {
+        runtimeCoordinator.releaseAfterDrain();
+      } else if (!drainStarted) {
+        runtimeCoordinator.close();
+      }
+    } catch (error) {
+      if (process.exitCode === undefined) {
+        process.stderr.write(`${JSON.stringify({
+          code: error?.code || "BACKUP_RUNTIME_RELEASE_FAILED",
+          message: redactPaths(error?.message || "Runtime lease release failed", pathArguments),
+        })}\n`);
+        process.exitCode = 1;
+      }
+    }
+  }
   for (const material of keyMaterials) material.fill(0);
 }

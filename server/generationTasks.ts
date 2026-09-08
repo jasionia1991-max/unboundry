@@ -1,3 +1,24 @@
+import { createGenerationRecoveryCaseStore, GenerationRecoveryCaseError } from "./generationRecoveryCaseStore";
+import { readOriginalGenerationRecoveryLedgers } from "./generationRecoveryLedgerQueries";
+import { generationRecoveryCasesEnabled } from "./generationRecoveryFeatureFlags";
+import { createHash } from "node:crypto";
+import {
+  createGenerationRecoveryOriginalCommands,
+  issueAdapterVerifiedOriginalRecoveryEvidence,
+  type OriginalRecoveryCapture,
+  type OriginalProviderEvidenceFacts,
+  type OriginalProviderEvidenceReceipt,
+} from "./generationRecoveryOriginalCommands";
+import {
+  claimAutomaticRecoveryCheck,
+  deferAutomaticRecoveryCheck,
+  hasProviderEvidenceConflictForTaskInTransaction,
+  type OriginalRecoveryCheck,
+} from "./generationRecoveryTaskQueries";
+import { captureOriginalRecoveryReadFence, type OriginalRecoveryReadFence } from "./generationRecoveryReadFence";
+import { configureGenerationRecoveryWorkerPorts, runGenerationRecoveryCasesSweep, abortGenerationRecoveryInspections } from "./generationRecoveryCaseWorker";
+import { admitPreparedGenerationTransaction } from "./generationAdmissionTransaction";
+import { buildAuthoritativeGenerationModelConfiguration } from "./authoritativeGenerationModelConfiguration";
 import { statSync } from "node:fs";
 import { appendFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -65,6 +86,7 @@ import {
   commitGenerationTextResult,
   publishGenerationMediaCandidate,
   recoverPendingGenerationMediaResults,
+  recoverPublishedOriginalGenerationResult,
   settleSynchronousResultSaveExhaustion,
 } from "./generationResultCommit";
 import {
@@ -678,6 +700,7 @@ function taskStore(launchOptions?: GenerationLaunchOptions) {
   // evidence into the same durable automatic recovery lane; no attempt is
   // incremented and no Provider submission is made.
   for (const task of store.listFailedOutcomeUnknown()) {
+    if (store.hasOriginalRecoveryOnly(task.id)) continue;
     const attempt = store.getProviderAttemptForTask(task.id);
     if (
       attempt?.executionAttempt === task.attempt &&
@@ -719,6 +742,7 @@ function taskStore(launchOptions?: GenerationLaunchOptions) {
               const recovered = store?.get(taskId);
               if (
                 recovered?.state === "recovering" &&
+                !store!.hasOriginalRecoveryOnly(taskId) &&
                 recovered.providerTaskId &&
                 taskProviderProtocol(recovered) === "media-generate"
               ) {
@@ -733,7 +757,7 @@ function taskStore(launchOptions?: GenerationLaunchOptions) {
     ).catch(() => undefined);
   }
   ensureGenerationRecoverySweep();
-  void runGenerationRecoverySweep()
+  void runGenerationRecoverySweep({ launchOptions })
     .catch(() => undefined)
     .finally(() => generationTaskSettlementObserver?.());
   return store;
@@ -752,6 +776,8 @@ export function resetGenerationTaskStoreForRuntimeTest() {
     throw new Error("Generation task store reset still has active executions");
   }
   clearGenerationRecoverySweepTimers();
+  abortGenerationRecoveryInspections();
+  abortUnmatchedRecoveryLookups();
   store?.close();
   store = undefined;
   storeDataDirectory = undefined;
@@ -891,8 +917,18 @@ function settleRecoveringProviderTerminalFailure(
  * This guarantees re-collection does not depend on the browser being open
  * or on the user tapping a button.
  */
+let unmatchedLookupCursor = "";
+let unmatchedLookupDirectory = "";
+let unmatchedLookupBatch: Promise<void> | undefined;
+const unmatchedLookupActive = new Set<string>();
+const unmatchedLookupControllers = new Map<string, AbortController>();
+function abortUnmatchedRecoveryLookups() {
+  for (const controller of unmatchedLookupControllers.values()) controller.abort();
+}
+
 export async function runGenerationRecoverySweep(options?: {
   hasPendingGenerated?: () => boolean;
+  launchOptions?: GenerationLaunchOptions;
   launch?: (taskId: string, kind: GenerationTask["kind"]) => void;
   match?: typeof autoMatchRelayProviderTask;
   pendingPublicationTaskIds?: () => ReadonlySet<string>;
@@ -900,6 +936,7 @@ export async function runGenerationRecoverySweep(options?: {
   store?: ReturnType<typeof createGenerationTaskStore>;
 }) {
   if (!incGen017GenerationEnabled()) return;
+  if (!options?.store) void runGenerationRecoveryCasesSweep().catch(() => undefined);
   const launch = options?.launch ?? launchGenerationTask;
   const matchProviderTask = options?.match ?? autoMatchRelayProviderTask;
   const store = options?.store ?? taskStore();
@@ -918,6 +955,7 @@ export async function runGenerationRecoverySweep(options?: {
         const recovered = store.get(taskId);
         if (
           recovered?.state === "recovering" &&
+          !store.hasOriginalRecoveryOnly(taskId) &&
           recovered.providerTaskId &&
           taskProviderProtocol(recovered) === "media-generate"
         ) {
@@ -931,6 +969,13 @@ export async function runGenerationRecoverySweep(options?: {
     }
   }
   if (!options?.store) {
+    for (const candidate of store.listRefundCompensationCandidates()) {
+      await autoRetryRelayTaskOnce(
+        candidate.id,
+        undefined,
+        options?.launchOptions,
+      );
+    }
     try {
       retrySingleNodeCanvasProjections();
     } catch {
@@ -948,7 +993,87 @@ export async function runGenerationRecoverySweep(options?: {
       pendingPublicationTaskIds();
     return publicationTaskIds.has(taskId);
   };
+  const missingProviderTasks: GenerationTask[] = [];
+  const recoverMissingProviderTask = async (task: GenerationTask) => {
+    const guarded = generationRecoveryCasesEnabled();
+    const controller = new AbortController();
+    let timer: NodeJS.Timeout | undefined;
+    let automaticCheck: OriginalRecoveryCheck | undefined;
+    const permitted = () => {
+      if (!incGen017GenerationEnabled()) return false;
+      if (!guarded) return true;
+      if (!generationRecoveryCasesEnabled()) return false;
+      if (options?.store) return true; // Existing isolated runtime test port.
+      const safety = generationSafetyStatus();
+      return safety.globalEnabled && !safety.emergencyStop;
+    };
+    try {
+      if (!permitted()) return;
+      // V3 can run with the V4 case switch disabled. A previously recorded
+      // ambiguous match remains a permanent read fence in that mode too;
+      // never fall back to another Provider GET for the same paid attempt.
+      if (!guarded) {
+        const database = openAppDatabase(store.dataDirectory);
+        try {
+          if (hasProviderEvidenceConflictForTaskInTransaction(database, task.id)) return;
+        } finally { database.close(); }
+      }
+      let readFence: OriginalRecoveryReadFence | undefined;
+      if (guarded) {
+        const database = openAppDatabase(store.dataDirectory);
+        try {
+          if (!task.ownerId) return;
+          automaticCheck = claimAutomaticRecoveryCheck(database, {
+            taskId: task.id, ownerId: task.ownerId, executionAttempt: task.attempt,
+          });
+          if (!automaticCheck) return;
+          readFence = captureOriginalRecoveryReadFence(database, task.id);
+        } finally { database.close(); }
+        unmatchedLookupControllers.set(task.id, controller);
+        timer = setTimeout(() => controller.abort(), 10_000);
+      }
+      await runRegisteredGenerationExecution(async () => {
+        // V4 reserves one persistent read before network access. V3 keeps its
+        // existing path when the separate maintenance switch is off.
+        const match = await matchProviderTask(task, guarded ? controller.signal : undefined);
+        controller.signal.throwIfAborted();
+        if (!permitted()) return;
+        if (guarded && match.status === "many" && task.ownerId && readFence) {
+          const database = openAppDatabase(store.dataDirectory);
+          try {
+            const cases = createGenerationRecoveryCaseStore(database);
+            let existing = false;
+            try { cases.getByTaskAttempt(task.id, task.attempt, task.ownerId); existing = true; }
+            catch (error) { if (!(error instanceof GenerationRecoveryCaseError) || error.code !== "RECOVERY_NOT_FOUND") throw error; }
+            if (!existing) cases.ensureCase({ taskId: task.id, ownerId: task.ownerId,
+              executionAttempt: task.attempt, reason: "provider_evidence_conflict",
+              operationId: `ambiguous:${task.id}:${task.attempt}`, expectedOriginalReadFence: readFence });
+          } finally { database.close(); }
+        }
+        if (match.status !== "one") return;
+        store.setProviderTaskId(task.id, match.record.taskId, readFence);
+        const running = store.resume(task.id);
+        if (running) launch(running.id, running.kind);
+      }, () => controller.abort());
+    } catch (error) {
+      const retryAfterSeconds = error && typeof error === "object" && "retryAfterSeconds" in error
+        ? error.retryAfterSeconds : undefined;
+      if (guarded && permitted() && automaticCheck && task.ownerId && typeof retryAfterSeconds === "number") {
+        const database = openAppDatabase(store.dataDirectory);
+        try { deferAutomaticRecoveryCheck(database, { taskId: task.id, ownerId: task.ownerId,
+          executionAttempt: task.attempt, check: automaticCheck, retryAfterSeconds }); }
+        catch { /* Keep the consumed checkpoint; never buy another query on a write error. */ }
+        finally { database.close(); }
+      }
+      // No match, ambiguity, network failure and a late response never prove
+      // rejection and never start another paid request.
+    } finally {
+      if (timer) clearTimeout(timer);
+      if (unmatchedLookupControllers.get(task.id) === controller) unmatchedLookupControllers.delete(task.id);
+    }
+  };
   for (const task of store.listRecovering()) {
+    if (store.hasOriginalRecoveryOnly(task.id)) continue;
     const providerAttempt = store.getProviderAttemptForTask(task.id);
     const publicationPending = hasPendingPublication(task.id);
     const decision = generationRecoveryDecisionForTask(
@@ -981,26 +1106,14 @@ export async function runGenerationRecoverySweep(options?: {
       taskProviderProtocol(task) !== "media-generate" ||
       task.kind === "text"
     ) continue;
-    try {
-      // A billing-unknown relay attempt may only perform a read-only lookup.
-      // No recovery checkpoint is written until that lookup supplies one new,
-      // exact Provider task identity.
-      const match = await matchProviderTask(task);
-      if (!incGen017GenerationEnabled()) return;
-      if (match.status !== "one") continue;
-      store.setProviderTaskId(task.id, match.record.taskId);
-      const running = store.resume(task.id);
-      if (running) launch(running.id, running.kind);
-    } catch {
-      // Search/network/ambiguity is a retryable recovery checkpoint. The
-      // next sweep queries the same paid attempt and performs zero new POSTs.
-    }
+    if (generationRecoveryCasesEnabled()) missingProviderTasks.push(task);
+    else await recoverMissingProviderTask(task);
   }
   // 失败不足两分钟的任务先交给正在运行的轮询/自动重试通道，
   // 避免前后端在同一窗口内重复抢同一个任务。
   const olderThan = new Date(Date.now() - 2 * 60_000);
   for (const task of store.listFailedAutoRecoverable(olderThan)) {
-    if (task.state !== "failed") continue;
+    if (task.state !== "failed" || store.hasOriginalRecoveryOnly(task.id)) continue;
     const retry = retrySafetyDecision(
       task,
       store.getProviderAttemptForTask(task.id),
@@ -1031,6 +1144,24 @@ export async function runGenerationRecoverySweep(options?: {
     if (task.updatedAt > olderThan.toISOString()) continue;
     launch(task.id, task.kind);
   }
+  if (missingProviderTasks.length && !unmatchedLookupBatch) {
+    if (unmatchedLookupDirectory !== store.dataDirectory) {
+      unmatchedLookupCursor = ""; unmatchedLookupDirectory = store.dataDirectory;
+    }
+    const ordered = missingProviderTasks.sort((a, b) => a.id.localeCompare(b.id));
+    const page = ordered.filter((task) => task.id > unmatchedLookupCursor).slice(0, 8);
+    unmatchedLookupCursor = page.length < 8 ? "" : page.at(-1)!.id;
+    let next = 0;
+    unmatchedLookupBatch = Promise.all(Array.from({ length: Math.min(4, page.length) }, async () => {
+      while (next < page.length) {
+        const task = page[next++];
+        unmatchedLookupActive.add(task.id);
+        try { await recoverMissingProviderTask(task); }
+        finally { unmatchedLookupActive.delete(task.id); }
+      }
+    })).then(() => undefined).finally(() => { unmatchedLookupBatch = undefined; });
+  }
+  await unmatchedLookupBatch;
 }
 
 function generationRecoveryDecisionForTask(
@@ -1066,6 +1197,7 @@ function recoverGenerationTasksAtStartup(input: {
   store: ReturnType<typeof createGenerationTaskStore>;
 }) {
   for (const task of input.store.listRecovering()) {
+    if (input.store.hasOriginalRecoveryOnly(task.id)) continue;
     const providerAttempt = input.store.getProviderAttemptForTask(task.id);
     const decision = generationRecoveryDecisionForTask(
       task,
@@ -1375,7 +1507,24 @@ function taskSummary(
         reason: "任务已不再绑定当前节点输入，请从节点重新提交",
       }
     : snapshotRetry;
+  const replacement = taskStore().automaticReplacementTask(task.id);
+  let replacementTaskId: string | undefined;
+  if (replacement?.ownerId === task.ownerId && replacement?.canvasId === task.canvasId &&
+      replacement?.nodeId === task.nodeId && replacement?.kind === task.kind &&
+      replacement?.modelConfiguration.generationInputKey === task.modelConfiguration.generationInputKey &&
+      replacement?.modelConfiguration.generationOwnershipKey === task.modelConfiguration.generationOwnershipKey &&
+      replacement.ownerId) {
+    const state = readAppDatabaseSnapshot((database) => inspectSingleNodeGenerationCanvasState({
+      database, ownerId: replacement.ownerId!, taskId: replacement.id,
+    }));
+    if (state.bindingMatches) replacementTaskId = replacement.id;
+  }
+  const newGeneration = taskStore().newGenerationDecision(task.id);
+  const originalOnly = taskStore().hasOriginalRecoveryOnly(task.id);
   return {
+    replacementTaskId,
+    newGenerationAllowed: newGeneration.allowed,
+    newGenerationBlockReason: newGeneration.reason,
     abandonAllowed: taskAbandonAllowed(task, providerAttempt),
     actualCostMicrounits: task.actualCostMicrounits,
     attempt: task.attempt,
@@ -1433,9 +1582,9 @@ function taskSummary(
     prompt: task.prompt,
     providerTaskBound: Boolean(task.providerTaskId),
     reconcileAllowed: false,
-    retryAllowed: retry.allowed,
-    retryBlockCode: retry.allowed ? undefined : retry.code,
-    retryBlockReason: retry.allowed ? undefined : retry.reason,
+    retryAllowed: !originalOnly && retry.allowed,
+    retryBlockCode: originalOnly ? "RECOVERY_ORIGINAL_ONLY" : retry.allowed ? undefined : retry.code,
+    retryBlockReason: originalOnly ? "原任务已保留，请查看处理进度" : retry.allowed ? undefined : retry.reason,
     resultAssetId: resultMedia ? publishedResultAssetId : undefined,
     resultText: task.resultText,
     resultMedia: resultMedia
@@ -1591,6 +1740,7 @@ function generationRequestIntent(
     parameters: body.parameters ?? {},
     prompt: String(body.prompt ?? ""),
     workflowBinding: body.workflowBinding,
+    ...(body.replacesTaskId ? { replacesTaskId: body.replacesTaskId } : {}),
   };
 }
 
@@ -3010,6 +3160,7 @@ function launchGenerationTask(
   if (!incGen017GenerationEnabled()) {
     throw new Error("INC_GEN_017_STOP_LOSS");
   }
+  if (taskStore().hasOriginalRecoveryOnly(taskId)) return;
   if (launchedGenerationTasks.has(taskId)) {
     pendingGenerationRelaunches.set(taskId, kind);
     logGenerationDiagnostic(
@@ -3041,7 +3192,14 @@ function launchGenerationTask(
       // Register the replacement execution before runtime teardown can pass its
       // active-work fence. If the runtime is already draining, registration
       // fails closed and the durable queued task is left for the next owner.
-      launchGenerationTask(taskId, pendingKind, options);
+      try {
+        launchGenerationTask(taskId, pendingKind, options);
+      } catch (error) {
+        // The writer/marker read can reject before detached registration when
+        // shutdown has frozen the runtime. Keep the committed task intact and
+        // allow this execution to settle so teardown can release its lease.
+        logGenerationDiagnostic(taskId, "launch-schedule-failed", error);
+      }
     }
     generationTaskSettlementObserver?.();
   });
@@ -3075,14 +3233,14 @@ function launchGenerationTask(
   let cancelledBeforeStart = false;
   try {
     void runRegisteredGenerationExecution(
-      () => new Promise<void>((resolve) => {
+      () => new Promise<void>((resolve, reject) => {
         setTimeout(() => {
           if (cancelledBeforeStart) {
             launchedGenerationTasks.delete(taskId);
             resolve();
             return;
           }
-          void execute().then(resolve);
+          void execute().then(resolve, reject);
         }, 0);
       }),
       () => {
@@ -3170,6 +3328,42 @@ function committedActiveGenerationTaskCount() {
   } finally {
     database.close();
   }
+}
+
+/**
+ * Read the same narrow V3 refund-compensation queue used by the durable
+ * store, without opening that store's writer. A parent can be left in this
+ * queue if the process exits after its refunded terminal transition and
+ * before the automatic child admission commits. Startup must therefore use
+ * this read-only probe before deciding that an otherwise idle runtime has no
+ * generation work to recover.
+ */
+function committedRefundCompensationCandidateCount() {
+  return readAppDatabaseSnapshot((database) => {
+    const row = database.prepare(`
+      SELECT COUNT(*) AS count
+      FROM generation_tasks AS task
+      WHERE task.state = 'failed'
+        AND task.error_code = 'PROVIDER_REFUNDED'
+        AND task.attempt = 1
+        AND EXISTS (
+          SELECT 1
+          FROM generation_task_events AS event
+          WHERE event.task_id = task.id
+            AND event.error_code = 'USER_GENERATION_INTENT_OPENED_V3'
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM generation_task_events AS event
+          WHERE event.task_id = task.id
+            AND event.error_code IN (
+              'AUTO_REFUND_COMPENSATION_ADMITTED',
+              'AUTO_REFUND_COMPENSATION_CHILD'
+            )
+        )
+    `).get() as { count?: unknown } | undefined;
+    return Number(row?.count ?? 0);
+  });
 }
 
 function failInterruptedRetryingGenerationTasks() {
@@ -3281,7 +3475,8 @@ function startupWorkerTestProviderFetcher(): typeof fetch | undefined {
 
 /**
  * Starts or recovers durable active work once per process. The first pass only
- * counts active tasks; an idle non-allowlisted database never opens a writer.
+ * counts active tasks and the exact V3 refund-compensation queue; an idle
+ * non-allowlisted database never opens a writer.
  * An allowlisted idle runtime may open only the short-lived Canvas detach writer,
  * while the generation task store remains closed.
  */
@@ -3313,11 +3508,14 @@ export function initializePersistentGenerationTaskWorker() {
     }
     const activeTaskCount = committedActiveGenerationTaskCount();
     const projectionCandidateCount = singleNodeCanvasProjectionCandidateCount();
+    const refundCompensationCandidateCount =
+      committedRefundCompensationCandidateCount();
     const terminalDetachSweepEnabled =
       allowlistedLegacyTerminalDetachSweepEnabled();
     if (
       activeTaskCount === 0 && projectionCandidateCount === 0 &&
-      !terminalDetachSweepEnabled
+      refundCompensationCandidateCount === 0 &&
+      !terminalDetachSweepEnabled && !generationRecoveryCasesEnabled()
     ) {
       return { activeTaskCount, projectionCandidateCount, writerOpened: false };
     }
@@ -3346,7 +3544,7 @@ export function initializePersistentGenerationTaskWorker() {
         // The result is already durable and no Provider retry is permitted.
       }
     }
-    if (activeTaskCount === 0) {
+    if (activeTaskCount === 0 && refundCompensationCandidateCount === 0 && !generationRecoveryCasesEnabled()) {
       return {
         activeTaskCount,
         projectionCandidateCount,
@@ -4466,6 +4664,7 @@ function declarativeModelExecutionContract(task: GenerationTask) {
 
 function mediaProviderExecution(input: {
   absoluteDeadline?: string;
+  deferProviderEvidenceCommit?: boolean;
   beforeProviderRequest?: () => void;
   fetcher: typeof fetch;
   metadata?: Readonly<Record<string, unknown>>;
@@ -4482,6 +4681,9 @@ function mediaProviderExecution(input: {
     fetcher: input.fetcher,
     metadata: input.metadata,
     onProviderResponseEvidence: (evidence) => {
+      // Maintenance captures its evidence and ledger fence before the read.
+      // Its protected apply commits that evidence atomically after the GET.
+      if (input.deferProviderEvidenceCommit) return;
       try {
         taskStore().recordProviderResponseEvidence(input.task.id, evidence);
       } catch (error) {
@@ -4545,17 +4747,35 @@ async function settleRelayMediaFailed(
 ) {
   const current = taskStore().get(taskId);
   if (!current || current.state !== "running") return;
+  let preparedCompensation: {
+    model: GenerationModelRow;
+    runtime: Awaited<ReturnType<typeof generationRuntimeDecision>>;
+  } | undefined;
+  if (refunded && current.ownerId && current.modelConfiguration.generationIdentityVersion === 2 &&
+      !durableWorkflowBinding(current)) {
+    const model = resolveModel(current.kind, current.model, current.ownerId);
+    if (model) {
+      try {
+        preparedCompensation = { model, runtime: await generationRuntimeDecision({
+          canSubmit: true, kind: current.kind, model, ownerId: current.ownerId,
+        }) };
+      } catch { /* The terminal refund remains valid when automatic admission is unavailable. */ }
+    }
+  }
+  // Keep the node running while checking prerequisites, then settle and bind
+  // the eligible successor without an asynchronous gap visible to polling.
+  if (taskStore().get(taskId)?.state !== 'running') return;
   taskStore().transition(taskId, "failed", {
     code: refunded ? "PROVIDER_REFUNDED" : "OUTCOME_UNKNOWN_BILLING_RISK",
     message: refunded
-      ? "平台未完成本次生成（已退款），系统正在自动重试"
+      ? "平台未完成本次生成，已确认退款"
       : "平台未完成本次生成且未确认退款；系统会继续自动找回结果并禁止重复提交",
   });
   if (!refunded) return;
   try {
     const failed = taskStore().get(taskId);
     if (!failed || failed.state !== "failed") return;
-    await autoRetryRelayTaskOnce(taskId);
+    await autoRetryRelayTaskOnce(taskId, preparedCompensation);
   } catch {
     // The task is already failed with a neutral message; a racing transition
     // or a stale retry fence simply disables the automatic retry.
@@ -4693,93 +4913,89 @@ async function recoverRelayMediaAfterPoll(
   }
 }
 
-/**
- * One automatic new-paid retry per task lifetime, using the exact same safe
- * retry fences as the manual retry endpoint. It never fires twice because the
- * retry itself advances the attempt number.
- */
-async function autoRetryRelayTaskOnce(taskId: string) {
+/** One durable compensation budget for the original user intent. */
+async function autoRetryRelayTaskOnce(taskId: string, prepared?: {
+  model: GenerationModelRow;
+  runtime: Awaited<ReturnType<typeof generationRuntimeDecision>>;
+}, launchOptions?: GenerationLaunchOptions) {
   if (!incGen017GenerationEnabled()) return false;
-  const task = taskStore().get(taskId);
-  if (!task || task.state !== "failed" || task.attempt >= 2) return false;
-  const retry = retrySafetyDecision(task);
-  if (!retry.allowed || retry.mode !== "new-provider-attempt") return false;
-  const binding = taskStore()
-    .retryBindingsForCanvas(task.canvasId, task.ownerId)
-    .get(task.id);
-  if (!binding?.generationOwnershipKey) return false;
+  const store = taskStore();
+  const task = store.get(taskId);
+  if (!task?.ownerId || task.state !== 'failed' || task.errorCode !== 'PROVIDER_REFUNDED' ||
+      task.attempt !== 1 || task.modelConfiguration.generationIdentityVersion !== 2 ||
+      taskProviderProtocol(task) !== 'media-generate' || durableWorkflowBinding(task)) return false;
+  const model = prepared?.model ?? resolveModel(task.kind, task.model, task.ownerId);
+  if (!model || model.provider_profile_id !== task.providerProfileId ||
+      model.provider_model_id !== task.providerModelId ||
+      retrySnapshotCompatibilityProblem(task, model)) return false;
+  const binding = store.retryBindingsForCanvas(task.canvasId, task.ownerId).get(task.id);
+  if (!binding?.generationOwnershipKey ||
+      binding.generationInputKey !== task.modelConfiguration.generationInputKey ||
+      binding.generationOwnershipKey !== task.modelConfiguration.generationOwnershipKey) return false;
   try {
-    const runtime = await generationRuntimeDecision({
-      canSubmit: true,
-      kind: task.kind,
-      model: retry.model,
-      ownerId: task.ownerId ?? "__test__",
+    // The automatic successor must carry the canonical image-tool snapshot at
+    // all three admission fences. Passing only the nested task parameters (as
+    // the old path did) makes the shared atomic admission reject a valid image
+    // compensation because it cannot prove the top-level and intent snapshots
+    // are the same operation.
+    const imageTool = storedImageGenerationTool(task.parameters.imageTool);
+    const runtime = prepared?.runtime ?? await generationRuntimeDecision({
+      canSubmit: true, kind: task.kind, model, ownerId: task.ownerId,
     });
-    const runtimeProblem = preAdmissionRuntimeProblem(runtime);
-    if (runtimeProblem) return false;
-    if (
-      !runtime.providerProfile ||
-      !Number.isSafeInteger(runtime.credentialVersion) ||
-      Number(runtime.credentialVersion) < 1
-    ) {
-      return false;
-    }
-    const snapshot: GenerationPaidRetrySnapshot = {
-      credentialRevision: Number(runtime.credentialVersion),
-      modelConfiguration: {
-        ...task.modelConfiguration,
-        credentialVersion: Number(runtime.credentialVersion),
-        providerConfigurationVersion: providerConfigurationVersion(
-          runtime.providerProfile,
-        ),
-      },
-      providerModelId: retry.model.provider_model_id,
-      providerProfileId: retry.model.provider_profile_id,
-    };
-    const release = task.modelConfiguration.modelReleaseRevision;
-    const releaseRevisionId = release && typeof release === "object" &&
-        typeof (release as Record<string, unknown>).revisionId === "string"
-      ? String((release as Record<string, unknown>).revisionId)
-      : "";
-    const fixtureScopeId = typeof task.modelConfiguration.fixtureScopeId === "string"
-      ? task.modelConfiguration.fixtureScopeId
-      : "";
-    const modelConfigurationRevision =
-      typeof task.modelConfiguration.modelConfigurationRevision === "string"
-        ? task.modelConfiguration.modelConfigurationRevision
-        : "";
-    const modelInputContractFingerprint =
-      typeof task.modelConfiguration.modelInputContractFingerprint === "string"
-        ? task.modelConfiguration.modelInputContractFingerprint
-        : "";
-    if (
-      task.modelConfiguration.generationIdentityVersion !== 2 ||
-      task.modelConfiguration.generationInputKey !== binding.generationInputKey ||
-      task.modelConfiguration.generationOwnershipKey !==
-        binding.generationOwnershipKey ||
-      !modelConfigurationRevision || !modelInputContractFingerprint ||
-      !releaseRevisionId
-    ) return false;
+    if (preAdmissionRuntimeProblem(runtime) || !runtime.providerProfile ||
+        !Number.isSafeInteger(runtime.credentialVersion) || Number(runtime.credentialVersion) < 1) return false;
+    // Re-brand only through the validating constructor, retaining the frozen
+    // input/model contract. Current credentials are rechecked at admission.
+    const modelConfiguration = buildAuthoritativeGenerationModelConfiguration({
+      ...task.modelConfiguration,
+      credentialVersion: Number(runtime.credentialVersion),
+      providerConfigurationVersion: providerConfigurationVersion(runtime.providerProfile),
+    } as Parameters<typeof buildAuthoritativeGenerationModelConfiguration>[0]);
     if (!incGen017GenerationEnabled()) return false;
-    const queued = taskStore().admitRetry({
-      canvasId: task.canvasId,
-      expectedAttempt: task.attempt,
-      expectedCanvasRevision: binding.canvasRevision,
-      expectedFixtureScopeId: fixtureScopeId,
-      expectedGenerationInputKey: binding.generationInputKey,
-      expectedGenerationOwnershipKey: binding.generationOwnershipKey,
-      expectedModelConfigurationRevision: modelConfigurationRevision,
-      expectedModelInputContractFingerprint: modelInputContractFingerprint,
-      expectedModelReleaseRevision: releaseRevisionId,
-      expectedUpdatedAt: task.updatedAt,
-      kind: task.kind,
-      mode: "new-paid-attempt",
-      nodeId: task.nodeId,
-      snapshot,
-      taskId: task.id,
+    const admitted = admitPreparedGenerationTransaction(store, {
+      ...(imageTool ? { imageTool } : {}),
+      input: {
+        canvasId: task.canvasId, expectedCanvasRevision: binding.canvasRevision,
+        costCurrency: task.costCurrency, credentialRevision: Number(runtime.credentialVersion),
+        estimatedCostMicrounits: task.estimatedCostMicrounits,
+        idempotencyKey: `auto-refund:${task.id}`, kind: task.kind,
+        model: model.id, modelConfiguration, nodeId: task.nodeId,
+        ownerId: task.ownerId, parameters: task.parameters, prompt: task.prompt,
+        providerModelId: model.provider_model_id, providerProfileId: model.provider_profile_id,
+        replacesTaskId: task.id,
+        requestIntent: {
+          canvasId: task.canvasId, kind: task.kind, nodeId: task.nodeId,
+          model: model.id, prompt: task.prompt, parameters: task.parameters,
+          replacesTaskId: task.id,
+          generationIdentityVersion: 2,
+          generationInputKey: modelConfiguration.generationInputKey,
+          generationOwnershipKey: modelConfiguration.generationOwnershipKey,
+          modelConfigurationRevision: modelConfiguration.modelConfigurationRevision,
+          modelInputContractFingerprint: modelConfiguration.modelInputContractFingerprint,
+          modelReleaseRevision: modelConfiguration.modelReleaseRevision.revisionId,
+          ...(modelConfiguration.fixtureScopeId === undefined ? {} : {
+            fixtureScopeId: modelConfiguration.fixtureScopeId,
+          }),
+          ...(imageTool ? { imageTool } : {}),
+          ...(task.parameters.ownPrompt === undefined ? {} : { ownPrompt: task.parameters.ownPrompt }),
+          ...(task.parameters.inputSchemaVersion === undefined ? {} : { inputSchemaVersion: task.parameters.inputSchemaVersion }),
+          ...(task.parameters.inputs === undefined ? {} : { inputs: task.parameters.inputs }),
+        },
+      },
+    }, {
+      automaticRefund: { parentTaskId: task.id, expectedAttempt: task.attempt, expectedUpdatedAt: task.updatedAt },
+      beforeCommit: () => {
+        const current = store.retryBindingsForCanvas(task.canvasId, task.ownerId).get(task.id);
+        if (!current || current.canvasRevision !== binding.canvasRevision ||
+            current.generationInputKey !== binding.generationInputKey ||
+            current.generationOwnershipKey !== binding.generationOwnershipKey) {
+          throw new Error('Automatic compensation binding changed');
+        }
+      },
     });
-    if (!queued) return false;
-    launchGenerationTask(task.id, task.kind);
+    if (admitted.created) {
+      launchGenerationTask(admitted.task.id, task.kind, launchOptions);
+    }
     return true;
   } catch {
     return false;
@@ -4886,6 +5102,16 @@ async function executeRelayMediaTask(
         }
         providerTaskId = submission.providerTaskId;
       } catch (error) {
+        if (error instanceof RelayProviderError && error.rejectionEvidence) {
+          try {
+            taskStore().recordProviderResponseEvidence(taskId, {
+              failureStage: 'create-rejected-billing-unknown', fieldPaths: ['code', 'msg', 'data.失败原因'],
+              httpStatus: error.statusCode, providerCode: error.rejectionEvidence.providerCode,
+              providerReason: error.rejectionEvidence.reason,
+              protocolContractId: 'lk888-media-create-error-20260907',
+            });
+          } catch { /* Evidence recording never grants retry permission. */ }
+        }
         // The submission crossed the Provider boundary but its response was
         // lost (no durable task id). Image/video enter usage-record recovery
         // instead of failing red; references stay alive during that search.
@@ -4898,7 +5124,9 @@ async function executeRelayMediaTask(
           // original task, but this path never submits a second request.
           taskStore().transition(taskId, "recovering", {
             code: "AUTOMATIC_RESULT_RECOVERY",
-            message: "系统正在自动找回平台结果；不会重新提交付费请求",
+            message: error instanceof RelayProviderError && error.rejectionEvidence
+              ? "平台提示余额不足；系统正在核对原请求结果和扣费，不会重复提交"
+              : "系统正在自动找回平台结果；不会重新提交付费请求",
           });
           return;
         }
@@ -5100,7 +5328,7 @@ async function recoverGptImageFromProviderTask(
   });
 }
 
-async function autoMatchRelayProviderTask(task: GenerationTask) {
+async function autoMatchRelayProviderTask(task: GenerationTask, signal?: AbortSignal) {
   if (!task.ownerId || !task.providerProfileId || !task.providerModelId) {
     return { status: "none" as const };
   }
@@ -5129,6 +5357,7 @@ async function autoMatchRelayProviderTask(task: GenerationTask) {
     request: (currentProfile, leasedFetch, providerBoundary) =>
       listRelayUsageRecords(currentProfile, leasedFetch, {
         beforeRequest: providerBoundary(),
+        signal,
       }),
   });
   const recoveryWindow = taskStore().providerRecoveryWindow(task.id);
@@ -6773,6 +7002,8 @@ async function cancelGenerationTask(task: GenerationTask) {
  * claiming that an unsupported or already-unknown Provider request stopped.
  */
 export async function applyEmergencyStopRunningTaskPolicy() {
+  abortGenerationRecoveryInspections();
+  abortUnmatchedRecoveryLookups();
   const generationStore = taskStore();
   const summary = { cancelled: 0, failed: 0, waiting: 0 };
   for (const task of generationStore.listActive()) {
@@ -6816,6 +7047,249 @@ export async function cancelCanvasGenerationTasks(
   }
 }
 
+/** One original-request read. This port has no submit/retry method. */
+export type OriginalGenerationProviderInspection = Readonly<{
+  state: "unsupported" | "not-found" | "ambiguous" | "matched" |
+    "queued" | "running" | "succeeded" | "failed" | "cancelled";
+  providerTaskId?: string;
+  normalized?: NormalizedMediaProviderResult;
+  refunded?: true;
+}>;
+
+const verifiedOriginalInspections = new WeakMap<object, Readonly<{
+  facts: OriginalProviderEvidenceFacts; receipt: OriginalProviderEvidenceReceipt;
+}>>();
+function verifiedOriginalInspection(task: GenerationTask, observation: OriginalGenerationProviderInspection,
+  validatedResponse: unknown): OriginalGenerationProviderInspection {
+  if (!task.ownerId || !task.providerProfileId || !task.providerModelId ||
+      ["unsupported", "not-found", "ambiguous"].includes(observation.state)) return observation;
+  const facts: OriginalProviderEvidenceFacts = {
+    taskId: task.id, ownerId: task.ownerId, canvasId: task.canvasId, nodeId: task.nodeId,
+    kind: task.kind, executionAttempt: task.attempt, providerProfileId: task.providerProfileId,
+    providerModelId: task.providerModelId, requestFingerprint: task.requestFingerprint,
+    providerTaskId: observation.providerTaskId,
+    providerState: observation.state as OriginalProviderEvidenceFacts["providerState"],
+    feeDisposition: observation.refunded === true ? "not_charged" : "unknown",
+    observedAt: new Date().toISOString(),
+  };
+  const release = task.modelConfiguration.modelReleaseRevision as ModelReleaseRevision | undefined;
+  const receipt = { adapterId: generationOutcomeAdapterForTask(task),
+    protocolContractId: release?.revisionId ?? `legacy-${taskProviderProtocol(task)}-${task.kind}`,
+    evidenceSha256: createHash("sha256").update(JSON.stringify(validatedResponse)).digest("hex") };
+  const frozen = Object.freeze(observation);
+  verifiedOriginalInspections.set(frozen, { facts: Object.freeze(facts), receipt: Object.freeze(receipt) });
+  return frozen;
+}
+
+export async function inspectOriginalGenerationProvider(
+  task: GenerationTask,
+  signal: AbortSignal,
+): Promise<OriginalGenerationProviderInspection> {
+  if (!task.ownerId || !task.providerProfileId || !task.providerModelId ||
+      task.kind === "text") return { state: "unsupported" };
+  const protocol = taskProviderProtocol(task);
+  if (!task.providerTaskId) {
+    if (protocol !== "media-generate") return { state: "unsupported" };
+    const match = await autoMatchRelayProviderTask(task, signal);
+    if (match.status !== "one") return { state: match.status === "many" ? "ambiguous" : "not-found" };
+    // Matching and inspecting consume separate persisted read reservations.
+    return verifiedOriginalInspection(task, { state: "matched", providerTaskId: match.record.taskId }, match.record);
+  }
+  if (protocol !== "media-generate" &&
+      !(protocol === "native" && ["video", "audio"].includes(task.kind))) {
+    return { state: "unsupported" };
+  }
+  const snapshot = await inspectReconcileMediaProvider(
+    task, task.providerTaskId, protocol, task.kind, signal, true,
+  );
+  if (snapshot.providerTaskId !== task.providerTaskId) throw new Error("Original Provider identity changed");
+  if (snapshot.state !== "succeeded") {
+    return verifiedOriginalInspection(task, { state: snapshot.state, providerTaskId: snapshot.providerTaskId,
+      ...(snapshot.refunded === true ? { refunded: true } : {}) }, snapshot);
+  }
+  const profile = await taskProviderSnapshotProfile(task, task.ownerId);
+  const normalized = protocol === "media-generate"
+    ? generationRuntimeAdapters().relayMedia.normalize(profile, task.kind, snapshot.rawResult)
+    : task.kind === "video"
+      ? generationRuntimeAdapters().arkVideo.normalize(profile, snapshot.rawResult)
+      : generationRuntimeAdapters().murekaAudio.normalize(profile, snapshot.rawResult);
+  if (!normalized.outputs.length || normalized.outputs.some((output) => output.kind !== task.kind)) {
+    throw new Error("Original Provider result kind mismatch");
+  }
+  return verifiedOriginalInspection(task, { state: "succeeded", providerTaskId: snapshot.providerTaskId, normalized }, snapshot.rawResult);
+}
+
+/** Reuses publication/Canvas commands after protected original-only admission. */
+export async function saveOriginalGenerationProviderResult(input: Readonly<{
+  task: GenerationTask;
+  inspection: OriginalGenerationProviderInspection;
+  signal: AbortSignal;
+}>) {
+  const { task, inspection, signal } = input;
+  if (inspection.state !== "succeeded" || !inspection.normalized || !task.ownerId ||
+      task.kind === "text" || !task.providerTaskId || inspection.providerTaskId !== task.providerTaskId) {
+    throw new Error("Missing verified original result");
+  }
+  const current = taskStore().get(task.id);
+  if (!current || current.attempt !== task.attempt || current.ownerId !== task.ownerId ||
+      current.providerTaskId !== task.providerTaskId ||
+      !["running", "recovering"].includes(current.state)) return false;
+  const profile = await taskProviderSnapshotProfile(current, task.ownerId);
+  const protocol = taskProviderProtocol(current);
+  taskStore().markProviderResponseReceivedForTask(current.id);
+  if (protocol === "media-generate") {
+    return saveRelayMediaOutputs({
+      actualCostMicrounits: inspection.normalized.actualCostMicrounits ?? current.estimatedCostMicrounits ?? 0,
+      executionAttempt: current.attempt,
+      expectedResultCount: frozenModelResultCount(current),
+      outputs: relayOutputsFromNormalized(inspection.normalized.outputs),
+      ownerId: task.ownerId, profile, prompt: current.prompt, signal, taskId: current.id,
+    });
+  }
+  if (protocol === "native" && current.kind === "video" && inspection.normalized.outputs.length === 1) {
+    return attemptProviderResultSave({ taskId: current.id, save: () =>
+      saveVolcengineVideoResult(current.id, current, profile, inspection.normalized!.outputs[0], signal) });
+  }
+  if (protocol === "native" && current.kind === "audio" && inspection.normalized.outputs.length === 1) {
+    const output = inspection.normalized.outputs[0];
+    if (!output.transientUrl) throw new Error("Original audio result is unavailable");
+    return attemptProviderResultSave({ taskId: current.id, save: async () => {
+      const body = await downloadMurekaAudioResult(profile, output.transientUrl!, { signal });
+      const saved = await saveGeneratedMp3({ body, label: current.prompt.slice(0, 120), ownerId: task.ownerId!,
+        task: { actualCostMicrounits: current.estimatedCostMicrounits ?? 0, executionAttempt: current.attempt, taskId: current.id } });
+      await commitSavedGenerationMedia(saved);
+    } });
+  }
+  throw new Error("Original result recovery adapter is unavailable");
+}
+
+configureGenerationRecoveryWorkerPorts({
+  inspect: inspectOriginalGenerationProvider,
+  recoverPublished: recoverPublishedOriginalGenerationResult,
+  normalSweep: () => runGenerationRecoverySweep(),
+  registered: (work, abort) => runRegisteredGenerationExecution(work, abort),
+  capture: (taskId, caseId) => {
+    const task = taskStore().get(taskId);
+    if (!task?.ownerId) throw new Error("Original recovery identity unavailable");
+    const database = openAppDatabase(appDataDirectory());
+    try {
+      return createGenerationRecoveryOriginalCommands(database, { enabled: generationRecoveryCasesEnabled(), readRelatedLedgers: readOriginalGenerationRecoveryLedgers })
+        .captureOriginalRecovery({ taskId, caseId, ownerId: task.ownerId, executionAttempt: task.attempt });
+    } finally { database.close(); }
+  },
+  apply: async ({ task, case: item, expected, observation, actorId, commandId, signal }) => {
+    const verification = verifiedOriginalInspections.get(observation);
+    if (!verification) {
+      if (["unsupported", "not-found", "ambiguous"].includes(observation.state)) return;
+      throw new Error("Original recovery observation was not verified by the adapter");
+    }
+    const evidence = issueAdapterVerifiedOriginalRecoveryEvidence(verification.facts,
+      (facts) => facts === verification.facts ? verification.receipt : undefined);
+    const captured = expected as OriginalRecoveryCapture;
+    if (!captured || captured.taskId !== task.id || captured.caseId !== item.caseId ||
+        captured.ownerId !== task.ownerId || captured.executionAttempt !== task.attempt) {
+      throw new Error("Original recovery capture identity mismatch");
+    }
+    const database = openAppDatabase(appDataDirectory());
+    try {
+      const commands = createGenerationRecoveryOriginalCommands(database, { enabled: generationRecoveryCasesEnabled(), readRelatedLedgers: readOriginalGenerationRecoveryLedgers });
+      const input = { taskId: task.id, caseId: item.caseId, ownerId: task.ownerId!, executionAttempt: task.attempt,
+        expectedTaskUpdatedAt: task.updatedAt, expectedTaskEventWatermark: captured.taskEventWatermark,
+        expectedCaseEventId: captured.caseEventId, expected: captured, evidence, actorId, operationId: commandId };
+      signal.throwIfAborted();
+      const preview = commands.dryRunOriginalRecovery(input);
+      if (preview.allowed) commands.applyOriginalRecovery(input);
+      else {
+        if (preview.reasonCode === "CAS_CONFLICT") {
+          // A trusted response may arrive after a different response has
+          // settled the same original request. Retain a contradictory fact,
+          // but never replay settlement, GET, save or resume using a fresh
+          // fence. The command rechecks this snapshot in its own transaction.
+          if (evidence.providerState === "succeeded" ||
+              (evidence.providerState === "failed" &&
+                ["charged", "not_charged"].includes(evidence.feeDisposition))) {
+            const fresh = commands.captureOriginalRecovery({
+              taskId: task.id, caseId: item.caseId, ownerId: task.ownerId!,
+              executionAttempt: task.attempt,
+            });
+            const settled = fresh.task.state === "failed" && [
+              "PROVIDER_FAILED_CHARGE_SETTLED", "PROVIDER_NOT_ACCEPTED_NO_CHARGE",
+            ].includes(fresh.task.error_code ?? "");
+            if (evidence.providerState === "succeeded" && settled) {
+              const lateInput = { ...input, expected: fresh,
+                expectedTaskUpdatedAt: fresh.task.updated_at,
+                expectedTaskEventWatermark: fresh.taskEventWatermark,
+                expectedCaseEventId: fresh.caseEventId };
+              const applied = commands.recordLateSucceededOriginalRecoveryConflict(lateInput);
+              if (applied.maintenance !== "provider_evidence_conflict") {
+                throw new Error("Late succeeded original evidence did not remain isolated");
+              }
+              return;
+            }
+            if (evidence.providerState === "failed" &&
+                ["charged", "not_charged"].includes(evidence.feeDisposition)) {
+              const conflicting = settled && fresh.taskEvents.some((event) => {
+                if (!["PROVIDER_FAILURE_CHARGE_SETTLED", "PROVIDER_FAILURE_NO_CHARGE_SETTLED"]
+                  .includes(event.error_code ?? "") || !event.error_message) return false;
+                try {
+                  const receipt = JSON.parse(event.error_message) as Record<string, unknown>;
+                  return receipt.version === 1 && receipt.taskId === task.id &&
+                    receipt.executionAttempt === task.attempt &&
+                    (receipt.feeDisposition !== evidence.feeDisposition ||
+                      receipt.evidenceSha256 !== evidence.evidenceSha256);
+                } catch { return false; }
+              });
+              if (conflicting) {
+                const lateInput = { ...input, expected: fresh,
+                  expectedTaskUpdatedAt: fresh.task.updated_at,
+                  expectedTaskEventWatermark: fresh.taskEventWatermark,
+                  expectedCaseEventId: fresh.caseEventId };
+                const latePreview = commands.dryRunOriginalRecovery(lateInput);
+                if (latePreview.allowed && ["settle_charged_failure", "settle_no_charge_failure"]
+                    .includes(latePreview.action)) {
+                  const applied = commands.applyOriginalRecovery(lateInput);
+                  if (applied.maintenance !== "provider_evidence_conflict") {
+                    throw new Error("Late original evidence did not remain isolated");
+                  }
+                  return;
+                }
+              }
+            }
+          }
+          throw Object.assign(new Error("Original recovery evidence changed concurrently"),
+            { code: preview.reasonCode });
+        }
+        logGenerationDiagnostic(task.id, "original-recovery-admission",
+          Object.assign(new Error("Original recovery admission deferred"), { code: preview.reasonCode }));
+        return;
+      }
+    } catch (error) {
+      logGenerationDiagnostic(task.id, "original-recovery-apply", error);
+      throw error;
+    } finally { database.close(); }
+    signal.throwIfAborted();
+    const current = taskStore().get(task.id);
+    if (!current || current.ownerId !== task.ownerId || current.attempt !== task.attempt) return;
+    if (observation.state === "succeeded") {
+      await saveOriginalGenerationProviderResult({ task: current, inspection: observation, signal });
+    } else if (observation.state === "matched" && current.state === "recovering" &&
+        !taskStore().hasOriginalRecoveryOnly(task.id)) {
+      const running = taskStore().resume(task.id);
+      if (running) launchGenerationTask(running.id, running.kind);
+    }
+    // Return the current local evidence fence after this admitted operation.
+    // A subsequent task/case mutation must still beat its progress update.
+    const progressDatabase = openAppDatabase(appDataDirectory());
+    try {
+      const row = progressDatabase.prepare(`SELECT
+        COALESCE(MAX(id), 0) AS watermark,
+        COALESCE(MAX(CASE WHEN error_code = 'RECOVERY_CASE_V1' THEN id END), 0) AS case_id
+        FROM generation_task_events WHERE task_id = ?`).get(task.id) as { watermark: number; case_id: number };
+      return { taskEventWatermark: Number(row.watermark), caseEventId: Number(row.case_id) };
+    } finally { progressDatabase.close(); }
+  },
+});
+
 const reconcileCooldownMs = 8_000;
 const lastReconcileAt = new Map<string, number>();
 
@@ -6827,6 +7301,7 @@ async function inspectReconcileMediaProvider(
   protocol: ProviderProtocol,
   kind: "audio" | "image" | "video",
   signal: AbortSignal,
+  deferProviderEvidenceCommit = false,
 ) {
   const profile = await taskProviderSnapshotProfile(task, task.ownerId!);
   return withProviderRequestLease({
@@ -6841,6 +7316,7 @@ async function inspectReconcileMediaProvider(
         // polling window, so it owns a fresh request deadline without changing
         // the persisted paid-attempt deadline.
         absoluteDeadline: new Date(Date.now() + 30_000).toISOString(),
+        deferProviderEvidenceCommit,
         beforeProviderRequest: providerBoundary(),
         fetcher: leasedFetch,
         metadata: {
@@ -6982,6 +7458,9 @@ export const generationTaskApplication = Object.freeze({
   generationRuntimeDecision,
   generationRuntimeProblems,
   generationSafetyStatus,
+  recoveryActive: (taskId: string) => unmatchedLookupActive.has(taskId) ||
+    runningTextRequests.has(taskId) || runningImageRequests.has(taskId) ||
+    runningVideoRequests.has(taskId) || runningAudioRequests.has(taskId),
   hasActiveGenerationTaskForNodeInTransaction,
   hasUnresolvedGenerationOutcomeForNodeInTransaction,
   lastReconcileAt,

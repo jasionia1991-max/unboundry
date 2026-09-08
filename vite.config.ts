@@ -81,6 +81,8 @@ const {
   },
   generation: {
     adminGenerationSafetyApi,
+    adminGenerationRecoveryApi,
+    ownerGenerationRecoveryApi,
     assertMediaDeletionAllowedInTransaction:
       assertGenerationMediaDeletionAllowedInTransaction,
     httpHandler: generationTasks,
@@ -1117,6 +1119,8 @@ function generationSafetyAdminApi(runtime: RuntimeInstance): Plugin {
       "/api/admin/generation-safety",
       apiBoundary("admin.generation-safety", adminGenerationSafetyApi, runtime),
     );
+    middlewares.use("/api/admin/generation-recovery", apiBoundary("admin.generation-recovery", adminGenerationRecoveryApi, runtime));
+    middlewares.use("/api/generation-recovery", apiBoundary("generation-recovery", ownerGenerationRecoveryApi, runtime));
   };
   return {
     name: "unboundry-generation-safety-admin-api",

@@ -38,6 +38,7 @@ import {
   commitGenerationMediaResult,
   publishGenerationMediaCandidate,
   recoverPendingGenerationMediaResults,
+  recoverPublishedOriginalGenerationResult,
 } from "../server/generationResultCommit";
 import { assertGenerationMediaDeletionAllowedInTransaction } from "../server/generationAttemptQueries";
 import {
@@ -1431,6 +1432,273 @@ test("restart finalizes staged local generation evidence without a second Provid
       recoveredStore.close();
     }
   });
+});
+
+test("pending publication restores only the exact failed original result", async () => {
+  await withDataDirectory("failed-original-publication", async (directory) => {
+    const ownerId = "m88-failed-original-owner";
+    addOwner(directory, ownerId);
+    const store = createGenerationTaskStore(directory);
+    try {
+      for (const scenario of [
+        {
+          attemptOutcome: "response-received",
+          errorCode: "OPERATOR_INCIDENT",
+          suffix: "operator",
+        },
+        {
+          attemptOutcome: "outcome-unknown",
+          errorCode: "OUTCOME_UNKNOWN_BILLING_RISK",
+          suffix: "unknown",
+        },
+      ] as const) {
+        const { reservation, task } = reserveGeneratedImage(
+          store,
+          ownerId,
+          `failed-original-${scenario.suffix}`,
+        );
+        recordProviderAttemptFixture(
+          directory,
+          task.id,
+          scenario.attemptOutcome,
+        );
+        const bytes = await publishFixture(directory, reservation);
+        const failed = store.transition(task.id, "failed", {
+          code: scenario.errorCode,
+          message: `m88 ${scenario.suffix} original result remains recoverable`,
+        })!;
+        const eventsBefore = store.listEvents(task.id);
+        const attemptsBefore = (() => {
+          const database = openAppDatabase(directory);
+          try {
+            return generationProviderAttemptCounts(database);
+          } finally {
+            database.close();
+          }
+        })();
+
+        expect(failed).toMatchObject({
+          attempt: 1,
+          errorCode: scenario.errorCode,
+          state: "failed",
+        });
+        expect(await recoverPendingGenerationMediaResults()).toEqual([{
+          action: "finalized",
+          assetId: reservation.id,
+          taskId: task.id,
+        }]);
+        expect(store.get(task.id)).toMatchObject({
+          attempt: 1,
+          resultAssetId: reservation.id,
+          state: "success",
+        });
+        expect(await readFile(mediaPublicationFinalPath(reservation))).toEqual(bytes);
+        expect(await pathExists(mediaPublicationStagingPath(reservation))).toBe(false);
+        expect(providerAttemptSnapshot(directory, task.id)).toEqual([{
+          execution_attempt: 1,
+          failure_code: null,
+          finished_at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+          outcome: "completed",
+          provider_task_id: null,
+        }]);
+        const attemptsAfterDatabase = openAppDatabase(directory);
+        try {
+          expect(generationProviderAttemptCounts(attemptsAfterDatabase)).toEqual(
+            attemptsBefore,
+          );
+        } finally {
+          attemptsAfterDatabase.close();
+        }
+        const eventsAfter = store.listEvents(task.id);
+        expect(eventsAfter.filter((event) => event.state === "running")).toHaveLength(
+          eventsBefore.filter((event) => event.state === "running").length,
+        );
+        expect(eventsAfter.filter((event) => event.state === "success")).toHaveLength(1);
+      }
+
+      const terminal = reserveGeneratedImage(
+        store,
+        ownerId,
+        "failed-original-terminal-provider",
+      );
+      recordProviderAttemptFixture(directory, terminal.task.id, "response-received");
+      await publishFixture(directory, terminal.reservation);
+      expect(store.settleProviderAttempt({
+        executionAttempt: 1,
+        failureCode: "PROVIDER_FAILED",
+        outcome: "provider-failed",
+        taskId: terminal.task.id,
+      })).toBeUndefined();
+      store.transition(terminal.task.id, "failed", {
+        code: "OPERATOR_INCIDENT",
+        message: "m88 terminal Provider outcome must stay protected",
+      });
+      expect(await recoverPendingGenerationMediaResults()).toEqual([{
+        action: "blocked",
+        assetId: terminal.reservation.id,
+        taskId: terminal.task.id,
+      }]);
+      expect(store.get(terminal.task.id)).toMatchObject({
+        resultAssetId: undefined,
+        state: "failed",
+      });
+      expect(publicationSnapshot(directory, {
+        assetId: terminal.reservation.id,
+        attemptId: terminal.reservation.attemptId,
+        taskId: terminal.task.id,
+      })).toMatchObject({
+        attempt: { state: "external-ready" },
+        historyCount: 0,
+        mediaStatus: "pending",
+        successEventCount: 0,
+        task: { state: "failed" },
+      });
+
+      const chargedUnknown = reserveGeneratedImage(
+        store,
+        ownerId,
+        "failed-original-charged-unknown",
+      );
+      recordProviderAttemptFixture(
+        directory,
+        chargedUnknown.task.id,
+        "outcome-unknown",
+      );
+      await publishFixture(directory, chargedUnknown.reservation);
+      const chargedDatabase = openAppDatabase(directory);
+      try {
+        const updated = chargedDatabase.prepare(`
+          UPDATE generation_provider_attempts
+          SET failure_code = 'PROVIDER_FAILED_CHARGE_SETTLED'
+          WHERE task_id = ? AND execution_attempt = 1
+        `).run(chargedUnknown.task.id);
+        expect(updated.changes).toBe(1);
+      } finally {
+        chargedDatabase.close();
+      }
+      store.transition(chargedUnknown.task.id, "failed", {
+        code: "OPERATOR_INCIDENT",
+        message: "m88 charged unknown result must stay protected",
+      });
+      expect(() => commitGenerationMediaResult(chargedUnknown.reservation))
+        .toThrow("cannot complete publication");
+      const blockedRecoveries = await recoverPendingGenerationMediaResults();
+      expect(blockedRecoveries).toHaveLength(2);
+      expect(blockedRecoveries).toEqual(expect.arrayContaining([
+        {
+          action: "blocked",
+          assetId: terminal.reservation.id,
+          taskId: terminal.task.id,
+        },
+        {
+          action: "blocked",
+          assetId: chargedUnknown.reservation.id,
+          taskId: chargedUnknown.task.id,
+        },
+      ]));
+      expect(store.get(chargedUnknown.task.id)).toMatchObject({
+        resultAssetId: undefined,
+        state: "failed",
+      });
+    } finally {
+      store.close();
+    }
+  });
+});
+
+test("failed relay recovery commits the complete original output set", async () => {
+  for (const finishMode of ["pending", "published-before-crash"] as const) {
+  await withDataDirectory("failed-relay-output-set", async (directory) => {
+    const ownerId = "m88-failed-relay-owner";
+    addOwner(directory, ownerId);
+    const store = createGenerationTaskStore(directory);
+    try {
+      const first = reserveGeneratedImage(store, ownerId, "failed-relay-first");
+      const setup = openAppDatabase(directory);
+      try {
+        const updated = setup.prepare(`
+          UPDATE generation_tasks
+          SET model_configuration = ?
+          WHERE id = ?
+        `).run(JSON.stringify({
+          modelResultCount: 2,
+          providerProtocol: "media-generate",
+        }), first.task.id);
+        expect(updated.changes).toBe(1);
+      } finally {
+        setup.close();
+      }
+      recordProviderAttemptFixture(directory, first.task.id, "response-received");
+      const firstBytes = await publishFixture(directory, first.reservation);
+
+      store.transition(first.task.id, "failed", {
+        code: "OPERATOR_INCIDENT",
+        message: "m88 relay output set remains recoverable",
+      });
+
+      // Publication permits one active candidate at a time. Save the first
+      // while the second output has not yet been downloaded or reserved.
+      expect(await recoverPendingGenerationMediaResults()).toEqual([
+        { action: "finalized", assetId: first.reservation.id, taskId: first.task.id },
+      ]);
+      expect(store.get(first.task.id)?.state).toBe("failed");
+      expect(() => commitGenerationMediaOutputSet({
+        assetIds: [first.reservation.id], executionAttempt: 1, kind: "image", ownerId, taskId: first.task.id,
+      })).toThrow("original output set is incomplete");
+      const secondId = "m88-asset-failed-relay-second";
+      const second = reserveMediaPublication({
+        contentType: "image/png",
+        finalStorageName: `${secondId}.png`,
+        historyLabel: "m88 failed relay second",
+        id: secondId,
+        kind: "image",
+        objectKey: `${secondId}.png`,
+        ownerId,
+        storageBackend: "local",
+        task: {
+          actualCostMicrounits: 123,
+          executionAttempt: 1,
+          providerUsageTokens: 7,
+          taskId: first.task.id,
+        },
+      });
+      const secondBytes = await publishFixture(directory, second);
+      if (finishMode === "published-before-crash") {
+        publishGenerationMediaCandidate(second);
+        expect(pendingGeneratedMediaPublications()).toHaveLength(0);
+        expect(recoverPublishedOriginalGenerationResult(first.task.id)).toBe(true);
+        expect(recoverPublishedOriginalGenerationResult(first.task.id)).toBe(false);
+      } else expect(await recoverPendingGenerationMediaResults()).toEqual([{
+        action: "finalized",
+        assetId: second.id,
+        taskId: first.task.id,
+      }]);
+      expect(store.get(first.task.id)).toMatchObject({
+        attempt: 1,
+        resultAssetId: first.reservation.id,
+        state: "success",
+      });
+      expect(await readFile(mediaPublicationFinalPath(first.reservation)))
+        .toEqual(firstBytes);
+      expect(await readFile(mediaPublicationFinalPath(second))).toEqual(secondBytes);
+      expect(publishedGenerationMediaCandidateIds({
+        executionAttempt: 1,
+        kind: "image",
+        ownerId,
+        taskId: first.task.id,
+      })).toEqual([first.reservation.id, second.id]);
+      expect(providerAttemptSnapshot(directory, first.task.id)).toEqual([{
+        execution_attempt: 1,
+        failure_code: null,
+        finished_at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+        outcome: "completed",
+        provider_task_id: null,
+      }]);
+    } finally {
+      store.close();
+    }
+  });
+  }
 });
 
 test("startup compensates an active local upload and removes only its exact object", async () => {

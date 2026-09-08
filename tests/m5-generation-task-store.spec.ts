@@ -14,6 +14,8 @@ import { bootstrapPublishedModelContracts } from
 import { modelContractState } from "../server/modelReleaseRevisionStore";
 import { authoritativeModelConfigurationRevision } from
   "../server/modelConfigurationIdentity";
+import { buildAuthoritativeGenerationModelConfiguration } from
+  "../server/authoritativeGenerationModelConfiguration";
 import { assertRegisteredModelExecutionTotality } from
   "../server/modelExecutionRegistry";
 import {
@@ -249,6 +251,152 @@ function runAtomicAdmissionChild(
   };
 }
 
+const automaticRefundAdmissionChildBootstrap = `
+  import { access } from "node:fs/promises";
+  import { createServer } from "vite";
+
+  const [releasePath, encodedPayload] = process.argv.slice(1);
+  const waitForRelease = async (path) => {
+    while (true) {
+      try {
+        await access(path);
+        return;
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+    }
+  };
+  const server = await createServer({
+    appType: "custom",
+    configFile: false,
+    logLevel: "silent",
+    server: { hmr: false, middlewareMode: true, ws: false },
+  });
+  let store;
+  try {
+    const storeModule = await server.ssrLoadModule("/server/generationTaskStore.ts");
+    const configurationModule = await server.ssrLoadModule(
+      "/server/authoritativeGenerationModelConfiguration.ts",
+    );
+    store = storeModule.createGenerationTaskStore(process.env.UNBOUNDRY_DATA_DIR);
+    const payload = JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf8"));
+    const request = {
+      ...payload.request,
+      modelConfiguration:
+        configurationModule.buildAuthoritativeGenerationModelConfiguration(
+          payload.request.modelConfiguration,
+        ),
+    };
+    process.stdout.write("READY\\n");
+    await waitForRelease(releasePath);
+    try {
+      const admitted = store.admitAuthoritativeOrGet(request, {
+        automaticRefund: payload.automaticRefund,
+        beforeCommit: () => undefined,
+      });
+      process.stdout.write("RESULT " + JSON.stringify({
+        created: admitted.created,
+        taskId: admitted.task.id,
+      }) + "\\n");
+    } catch (error) {
+      process.stdout.write("RESULT " + JSON.stringify({
+        errorCode: error && typeof error === "object" && "code" in error
+          ? String(error.code)
+          : undefined,
+        errorName: error instanceof Error ? error.name : typeof error,
+        message: error instanceof Error ? error.message : String(error),
+      }) + "\\n");
+    }
+  } finally {
+    store?.close();
+    await server.close();
+  }
+`;
+
+function runAutomaticRefundAdmissionChild(
+  dataDirectory: string,
+  releasePath: string,
+  request: Record<string, unknown>,
+  automaticRefund: Record<string, unknown>,
+) {
+  const payload = Buffer.from(JSON.stringify({ request, automaticRefund }), "utf8")
+    .toString("base64url");
+  const child = spawn(process.execPath, [
+    "--input-type=module",
+    "-e",
+    automaticRefundAdmissionChildBootstrap,
+    releasePath,
+    payload,
+  ], {
+    cwd: process.cwd(),
+    env: { ...process.env, UNBOUNDRY_DATA_DIR: dataDirectory },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let buffer = "";
+  let stderr = "";
+  let readySettled = false;
+  let resultSettled = false;
+  let resolveReady!: () => void;
+  let rejectReady!: (error: Error) => void;
+  let resolveResult!: (value: AdmissionChildOutcome) => void;
+  let rejectResult!: (error: Error) => void;
+  let resolveDone!: () => void;
+  let rejectDone!: (error: Error) => void;
+  const ready = new Promise<void>((resolve, reject) => {
+    resolveReady = resolve;
+    rejectReady = reject;
+  });
+  const result = new Promise<AdmissionChildOutcome>((resolve, reject) => {
+    resolveResult = resolve;
+    rejectResult = reject;
+  });
+  const done = new Promise<void>((resolve, reject) => {
+    resolveDone = resolve;
+    rejectDone = reject;
+  });
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  child.stderr.on("data", (chunk) => { stderr += chunk; });
+  child.stdout.on("data", (chunk) => {
+    buffer += chunk;
+    while (buffer.includes("\n")) {
+      const newline = buffer.indexOf("\n");
+      const line = buffer.slice(0, newline);
+      buffer = buffer.slice(newline + 1);
+      if (line === "READY") {
+        readySettled = true;
+        resolveReady();
+      } else if (line.startsWith("RESULT ")) {
+        resultSettled = true;
+        resolveResult(JSON.parse(line.slice(7)) as AdmissionChildOutcome);
+      }
+    }
+  });
+  child.once("error", (error) => {
+    if (!readySettled) rejectReady(error);
+    if (!resultSettled) rejectResult(error);
+    rejectDone(error);
+  });
+  child.once("exit", (code) => {
+    if (code === 0 && readySettled && resultSettled) {
+      resolveDone();
+      return;
+    }
+    const error = new Error(
+      `Automatic admission child exited with ${code}: ${stderr || buffer}`,
+    );
+    if (!readySettled) rejectReady(error);
+    if (!resultSettled) rejectResult(error);
+    rejectDone(error);
+  });
+  return {
+    done,
+    ready,
+    result,
+    terminate: () => child.kill("SIGTERM"),
+  };
+}
+
 function seedAtomicGenerationFixture(
   database: ReturnType<typeof openAppDatabase>,
   owners = ["atomic-owner-a", "atomic-owner-b"],
@@ -410,6 +558,106 @@ function atomicImageRequest(input: {
       modelReleaseRevision: release.revisionId,
     },
   };
+}
+
+function brandedAtomicImageRequest(input: Parameters<typeof atomicImageRequest>[0]) {
+  const request = atomicImageRequest(input);
+  return {
+    ...request,
+    modelConfiguration: buildAuthoritativeGenerationModelConfiguration(
+      request.modelConfiguration as Parameters<
+        typeof buildAuthoritativeGenerationModelConfiguration
+      >[0],
+    ),
+  };
+}
+
+function chargedProviderFailureReceipt(
+  task: GenerationTask,
+  providerTaskId: string,
+  evidenceSha256 = "a".repeat(64),
+) {
+  return {
+    canvasId: task.canvasId,
+    evidenceSha256,
+    executionAttempt: task.attempt,
+    expectedUpdatedAt: task.updatedAt,
+    feeDisposition: "charged" as const,
+    kind: task.kind,
+    nodeId: task.nodeId,
+    ownerId: task.ownerId!,
+    protocolContractId: "fixture-relay-contract-v3",
+    providerModelId: task.providerModelId!,
+    providerProfileId: task.providerProfileId!,
+    providerTaskId,
+    taskId: task.id,
+    terminalState: "failed" as const,
+  };
+}
+
+function insertPendingGenerationPublication(
+  dataDirectory: string,
+  task: GenerationTask,
+  suffix: string,
+) {
+  const database = openAppDatabase(dataDirectory);
+  const timestamp = new Date().toISOString();
+  const ownerId = task.ownerId!;
+  const assetId = `fixture-publication-asset-${suffix}`;
+  const storageName = `fixture-publication-${suffix}.png`;
+  try {
+    // The publication row has an owner FK and its asset is intentionally a
+    // real local media row. Keep this fixture inside the normal relational
+    // contract instead of disabling foreign-key enforcement.
+    database.prepare(`
+      INSERT OR IGNORE INTO users (
+        id, login_name, display_name, password_hash, role, status,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, 'test-only', 'user', 'active', ?, ?)
+    `).run(ownerId, ownerId, ownerId, timestamp, timestamp);
+    database.prepare(`
+      INSERT INTO media_assets (
+        kind, id, owner_id, storage_name, byte_size, created_at, updated_at,
+        storage_backend, storage_profile_id, object_key, content_type,
+        checksum_sha256, storage_status, duration_seconds, duration_source,
+        duration_status, media_width, media_height
+      ) VALUES (?, ?, ?, ?, 1, ?, ?, 'local', NULL, ?, 'image/png', ?,
+        'ready', NULL, NULL, 'not-applicable', 1, 1)
+      ON CONFLICT(kind, id) DO NOTHING
+    `).run(
+      task.kind,
+      assetId,
+      ownerId,
+      storageName,
+      timestamp,
+      timestamp,
+      storageName,
+      "a".repeat(64),
+    );
+    database.prepare(`
+      INSERT INTO media_publication_attempts (
+        attempt_id, owner_id, kind, asset_id, source, state,
+        storage_backend, final_storage_name, object_key,
+        storage_profile_id, staging_name, task_id,
+        task_execution_attempt, content_type, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, 'generation', 'staged',
+        'local', ?, ?, NULL, ?, ?, ?, 'image/png', ?, ?)
+    `).run(
+      `fixture-publication-attempt-${suffix}`,
+      ownerId,
+      task.kind,
+      assetId,
+      storageName,
+      storageName,
+      `fixture-publication-${suffix}.staging`,
+      task.id,
+      task.attempt,
+      timestamp,
+      timestamp,
+    );
+  } finally {
+    database.close();
+  }
 }
 
 function seedGenerationRetryBinding(
@@ -1820,6 +2068,20 @@ test("atomic admission serializes 20 contenders and replays stable owner-scoped 
         JOIN generation_tasks AS tasks ON tasks.id = events.task_id
         WHERE tasks.owner_id = ? AND tasks.canvas_id = ?
           AND tasks.idempotency_key = ? AND events.state = 'queued'
+          AND events.error_code IS NULL
+      `).get(
+        replayRequest.ownerId,
+        replayRequest.canvasId,
+        replayRequest.idempotencyKey,
+      )).toEqual({ count: 1 });
+      expect(sameIntentEvidence.prepare(`
+        SELECT COUNT(*) AS count
+        FROM generation_task_events AS events
+        JOIN generation_tasks AS tasks ON tasks.id = events.task_id
+        WHERE tasks.owner_id = ? AND tasks.canvas_id = ?
+          AND tasks.idempotency_key = ?
+          AND events.state = 'queued'
+          AND events.error_code = 'USER_GENERATION_INTENT_OPENED_V3'
       `).get(
         replayRequest.ownerId,
         replayRequest.canvasId,
@@ -2932,7 +3194,7 @@ test("the same input cannot open a new task after a sibling already holds accept
     }));
     expect(otherNode.created).toBe(true);
 
-    const changedPrompt = store.admitOrGet({
+    const changedPrompt = {
       ...atomicImageRequest({
         idempotencyKey: "sibling-paid-changed-prompt-0004",
       }),
@@ -2945,9 +3207,757 @@ test("the same input cannot open a new task after a sibling already holds accept
         parameters: { count: 1, size: "1k" },
         prompt: "a genuinely different prompt",
       },
-    });
-    expect(changedPrompt.created).toBe(true);
+    };
+    expect(() => store.admitOrGet(changedPrompt)).toThrow(
+      GenerationProviderAttemptBlockedError,
+    );
+    try {
+      store.admitOrGet(changedPrompt);
+    } catch (error) {
+      expect(error).toMatchObject({ code: "RETRY_OUTCOME_UNKNOWN" });
+    }
   } finally {
+    store.close();
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("new generation decision includes the current task's unresolved evidence and accepts only a charged receipt", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-new-generation-decision-"));
+  const seed = openAppDatabase(dataDirectory);
+  seedAtomicGenerationFixture(seed, ["atomic-owner-a"]);
+  seed.close();
+  const store = createGenerationTaskStore(dataDirectory);
+  try {
+    const unknown = store.admitOrGet(atomicImageRequest({
+      idempotencyKey: "decision-unknown-current-0001",
+    })).task;
+    store.transition(unknown.id, "running");
+    store.recordProviderAttempt(unknown.id);
+    store.transition(unknown.id, "failed", {
+      code: "TIMEOUT",
+      message: "response may still exist at the Provider",
+    });
+    expect(store.newGenerationDecision(unknown.id)).toMatchObject({
+      allowed: false,
+    });
+    expect(store.hasUnsafeProviderAttemptForNewPaidRetry(unknown.id)).toBe(true);
+
+    const charged = store.admitOrGet(atomicImageRequest({
+      idempotencyKey: "decision-charged-current-0002",
+      nodeId: "atomic-image-charged-node",
+    })).task;
+    store.transition(charged.id, "running");
+    store.recordProviderAttempt(charged.id);
+    store.setProviderTaskId(charged.id, "decision-charged-provider-0001");
+    const chargedBeforeSettlement = store.get(charged.id)!;
+    expect(store.settleConfirmedChargedProviderFailure(
+      chargedProviderFailureReceipt(
+        chargedBeforeSettlement,
+        "decision-charged-provider-0001",
+      ),
+    )).toMatchObject({
+      changed: true,
+      task: {
+        errorCode: "PROVIDER_FAILED_CHARGE_SETTLED",
+        state: "failed",
+      },
+    });
+    expect(store.newGenerationDecision(charged.id)).toMatchObject({
+      allowed: true,
+    });
+    // The legacy automatic retry safety fence remains conservative even
+    // though the separate manual-new-generation gate accepts this receipt.
+    expect(store.hasUnsafeProviderAttemptForNewPaidRetry(charged.id)).toBe(true);
+    expect(store.listRefundCompensationCandidates()).toEqual([]);
+    const conflicting = openAppDatabase(dataDirectory);
+    try {
+      for (const column of ['owner_id', 'kind', 'provider_profile_id', 'provider_model_id']) {
+        const original = conflicting.prepare(`SELECT ${column} AS value FROM generation_provider_attempts WHERE task_id = ?`).get(charged.id) as { value: string };
+        conflicting.prepare(`UPDATE generation_provider_attempts SET ${column} = ? WHERE task_id = ?`)
+          .run(column === 'kind' ? 'video' : 'conflicting-evidence', charged.id);
+        expect(store.newGenerationDecision(charged.id), column).toMatchObject({ allowed: false });
+        conflicting.prepare(`UPDATE generation_provider_attempts SET ${column} = ? WHERE task_id = ?`)
+          .run(original.value, charged.id);
+      }
+    } finally { conflicting.close(); }
+    expect(store.newGenerationDecision(charged.id)).toMatchObject({ allowed: true });
+  } finally {
+    store.close();
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("a charged terminal receipt permits one manual replacement and preserves the original ledger", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-charged-manual-replacement-"));
+  const seed = openAppDatabase(dataDirectory);
+  seedAtomicGenerationFixture(seed, ["atomic-owner-a"]);
+  seed.close();
+  const store = createGenerationTaskStore(dataDirectory);
+  try {
+    const parent = store.admitOrGet(atomicImageRequest({
+      idempotencyKey: "charged-manual-parent-0001",
+      nodeId: "atomic-image-charged-manual-node",
+    })).task;
+    store.transition(parent.id, "running");
+    store.recordProviderAttempt(parent.id);
+    store.setProviderTaskId(parent.id, "charged-manual-provider-0001");
+    const parentBeforeSettlement = store.get(parent.id)!;
+    store.settleConfirmedChargedProviderFailure(
+      chargedProviderFailureReceipt(
+        parentBeforeSettlement,
+        "charged-manual-provider-0001",
+      ),
+    );
+    expect(store.newGenerationDecision(parent.id)).toMatchObject({ allowed: true });
+
+    const replacementBase = atomicImageRequest({
+      idempotencyKey: "charged-manual-replacement-0002",
+      nodeId: parent.nodeId,
+    });
+    const replacement = store.admitOrGet({
+      ...replacementBase,
+      replacesTaskId: parent.id,
+      requestIntent: {
+        ...replacementBase.requestIntent,
+        replacesTaskId: parent.id,
+      },
+    });
+    expect(replacement).toMatchObject({
+      created: true,
+      task: { attempt: 0, state: "queued" },
+    });
+    expect(replacement.task.id).not.toBe(parent.id);
+    expect(store.get(parent.id)).toMatchObject({
+      attempt: 1,
+      errorCode: "PROVIDER_FAILED_CHARGE_SETTLED",
+      providerTaskId: "charged-manual-provider-0001",
+      state: "failed",
+    });
+    expect(store.listEvents(parent.id).map(({ errorCode }) => errorCode))
+      .toContain("PROVIDER_FAILURE_CHARGE_SETTLED");
+    expect(store.listEvents(parent.id).map(({ errorCode }) => errorCode))
+      .toContain("NEW_GENERATION_REQUESTED");
+    expect(store.listEvents(replacement.task.id).map(({ errorCode }) => errorCode))
+      .toEqual(expect.arrayContaining([
+        "NEW_GENERATION_REPLACES_FAILED_TASK",
+        "USER_GENERATION_INTENT_OPENED_V3",
+      ]));
+    expect(store.newGenerationDecision(parent.id)).toMatchObject({
+      allowed: false,
+    });
+
+    const secondReplacementBase = atomicImageRequest({
+      idempotencyKey: "charged-manual-replacement-0003",
+      nodeId: parent.nodeId,
+    });
+    try {
+      store.admitOrGet({
+        ...secondReplacementBase,
+        replacesTaskId: parent.id,
+        requestIntent: {
+          ...secondReplacementBase.requestIntent,
+          replacesTaskId: parent.id,
+        },
+      });
+      throw new Error("expected the active replacement to occupy the node");
+    } catch (error) {
+      expect(error).toBeInstanceOf(GenerationProviderAttemptBlockedError);
+      expect(error).toMatchObject({ code: "RETRY_OUTCOME_UNKNOWN" });
+    }
+    expect(store.getProviderAttemptForTask(replacement.task.id)).toBeUndefined();
+    const database = openAppDatabase(dataDirectory);
+    try {
+      expect(generationProviderAttemptCounts(database)).toMatchObject({
+        paidProviderRequests: 1,
+      });
+      expect(database.prepare(`
+        SELECT COUNT(*) AS count FROM generation_tasks
+        WHERE owner_id = 'atomic-owner-a' AND canvas_id = 'atomic-canvas'
+          AND node_id = ?
+      `).get(parent.nodeId)).toEqual({ count: 2 });
+    } finally {
+      database.close();
+    }
+  } finally {
+    store.close();
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("new keys, prompts, models, and replacement identities cannot bypass an unresolved attempt", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-unresolved-identity-fence-"));
+  const store = createGenerationTaskStore(dataDirectory);
+  try {
+    const original = store.create({
+      canvasId: "unresolved-identity-canvas",
+      idempotencyKey: "unresolved-identity-original-0001",
+      kind: "image",
+      model: "unresolved-original-model",
+      modelConfiguration: { providerProtocol: "native" },
+      nodeId: "unresolved-identity-node",
+      ownerId: "__test__",
+      parameters: { count: 1 },
+      prompt: "the original prompt",
+      providerModelId: "unresolved-original-provider",
+      providerProfileId: "unresolved-original-profile",
+    }).task;
+    store.transition(original.id, "running");
+    store.recordProviderAttempt(original.id);
+    store.setProviderTaskId(original.id, "unresolved-original-provider-task");
+    store.transition(original.id, "failed", {
+      code: "TIMEOUT",
+      message: "the accepted outcome is unresolved",
+    });
+    expect(store.getProviderAttemptForTask(original.id)).toMatchObject({
+      outcome: "accepted",
+    });
+
+    const attempt = (input: Record<string, unknown>) => store.admitOrGet({
+      canvasId: "unresolved-identity-canvas",
+      idempotencyKey: String(input.idempotencyKey),
+      kind: "image",
+      model: String(input.model ?? "unresolved-original-model"),
+      modelConfiguration: { providerProtocol: "native" },
+      nodeId: String(input.nodeId ?? original.nodeId),
+      ownerId: String(input.ownerId ?? "__test__"),
+      parameters: { count: 1 },
+      prompt: String(input.prompt ?? original.prompt),
+      providerModelId: String(input.providerModelId ?? "unresolved-original-provider"),
+      providerProfileId: "unresolved-original-profile",
+      ...(input.replacesTaskId
+        ? { replacesTaskId: String(input.replacesTaskId) }
+        : {}),
+      requestIntent: {
+        canvasId: "unresolved-identity-canvas",
+        kind: "image",
+        model: String(input.model ?? "unresolved-original-model"),
+        nodeId: String(input.nodeId ?? original.nodeId),
+        parameters: { count: 1 },
+        prompt: String(input.prompt ?? original.prompt),
+      },
+    });
+
+    const variants = [
+      {
+        idempotencyKey: "unresolved-identity-new-key-0002",
+        prompt: "a changed prompt",
+      },
+      {
+        idempotencyKey: "unresolved-identity-new-model-0003",
+        model: "unresolved-new-model",
+        providerModelId: "unresolved-new-provider",
+      },
+      {
+        idempotencyKey: "unresolved-identity-new-replacement-0004",
+        prompt: "a changed replacement prompt",
+        replacesTaskId: original.id,
+      },
+    ];
+    for (const variant of variants) {
+      try {
+        attempt(variant);
+        throw new Error("expected unresolved outcome to block admission");
+      } catch (error) {
+        expect(error).toBeInstanceOf(GenerationProviderAttemptBlockedError);
+        expect(error).toMatchObject({ code: "RETRY_OUTCOME_UNKNOWN" });
+      }
+    }
+
+    try {
+      attempt({
+        idempotencyKey: "unresolved-identity-wrong-node-0005",
+        nodeId: "unresolved-different-node",
+        replacesTaskId: original.id,
+      });
+      throw new Error("expected a replacement identity mismatch");
+    } catch (error) {
+      expect(error).toBeInstanceOf(GenerationProviderAttemptBlockedError);
+      expect(error).toMatchObject({ code: "RETRY_OUTCOME_UNKNOWN" });
+    }
+
+    try {
+      attempt({
+        idempotencyKey: "unresolved-identity-wrong-owner-0006",
+        ownerId: "unresolved-different-owner",
+        replacesTaskId: original.id,
+      });
+      throw new Error("expected a replacement owner mismatch");
+    } catch (error) {
+      expect(error).toBeInstanceOf(GenerationProviderAttemptBlockedError);
+    }
+    const database = openAppDatabase(dataDirectory);
+    try {
+      expect(database.prepare(`
+        SELECT COUNT(*) AS count FROM generation_tasks
+        WHERE canvas_id = 'unresolved-identity-canvas'
+      `).get()).toEqual({ count: 1 });
+      expect(generationProviderAttemptCounts(database)).toMatchObject({
+        paidProviderRequests: 1,
+      });
+    } finally {
+      database.close();
+    }
+  } finally {
+    store.close();
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("failed tasks with an old result or pending publication remain blocked", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-old-result-publication-fence-"));
+  const store = createGenerationTaskStore(dataDirectory);
+  try {
+    const resultTask = store.create({
+      canvasId: "old-result-publication-canvas",
+      idempotencyKey: "old-result-task-0001",
+      kind: "image",
+      modelConfiguration: { providerProtocol: "native" },
+      nodeId: "old-result-node",
+      ownerId: "__test__",
+      prompt: "result was already materialized",
+      providerModelId: "old-result-provider",
+      providerProfileId: "old-result-profile",
+    }).task;
+    store.transition(resultTask.id, "running");
+    store.transition(resultTask.id, "failed", {
+      code: "RESULT_SAVE_FAILED",
+      message: "save was interrupted after a result existed",
+    });
+    const resultDatabase = openAppDatabase(dataDirectory);
+    resultDatabase.prepare(`
+      UPDATE generation_tasks
+      SET result_asset_id = ?, updated_at = ?
+      WHERE id = ?
+    `).run("old-result-asset", new Date().toISOString(), resultTask.id);
+    resultDatabase.close();
+    expect(store.newGenerationDecision(resultTask.id)).toMatchObject({
+      allowed: false,
+    });
+
+    const publicationTask = store.create({
+      canvasId: "old-result-publication-canvas",
+      idempotencyKey: "pending-publication-task-0002",
+      kind: "image",
+      modelConfiguration: { providerProtocol: "native" },
+      nodeId: "pending-publication-node",
+      ownerId: "__test__",
+      prompt: "publication remains staged",
+      providerModelId: "pending-publication-provider",
+      providerProfileId: "pending-publication-profile",
+    }).task;
+    store.transition(publicationTask.id, "running");
+    store.transition(publicationTask.id, "failed", {
+      code: "MEDIA_PUBLICATION_FAILED",
+      message: "the local publication is still staged",
+    });
+    insertPendingGenerationPublication(
+      dataDirectory,
+      store.get(publicationTask.id)!,
+      "pending-publication",
+    );
+    expect(store.newGenerationDecision(publicationTask.id)).toMatchObject({
+      allowed: false,
+    });
+
+    const admit = (nodeId: string, key: string) => store.admitOrGet({
+      canvasId: "old-result-publication-canvas",
+      idempotencyKey: key,
+      kind: "image",
+      modelConfiguration: { providerProtocol: "native" },
+      nodeId,
+      ownerId: "__test__",
+      prompt: "a new request must wait for the old evidence",
+      providerModelId: "old-result-provider",
+      providerProfileId: "old-result-profile",
+    });
+    for (const [nodeId, key] of [
+      ["old-result-node", "old-result-retry-0003"],
+      ["pending-publication-node", "pending-publication-retry-0004"],
+    ] as const) {
+      try {
+        admit(nodeId, key);
+        throw new Error("expected old result/publication to block admission");
+      } catch (error) {
+        expect(error).toBeInstanceOf(GenerationProviderAttemptBlockedError);
+        expect(error).toMatchObject({ code: "RETRY_OUTCOME_UNKNOWN" });
+      }
+    }
+    const database = openAppDatabase(dataDirectory);
+    try {
+      expect(database.prepare(`
+        SELECT COUNT(*) AS count FROM generation_tasks
+        WHERE canvas_id = 'old-result-publication-canvas'
+      `).get()).toEqual({ count: 2 });
+    } finally {
+      database.close();
+    }
+  } finally {
+    store.close();
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("confirmed charged failure receipts validate exact evidence, stale attempts, and pending writes", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-charged-receipt-fence-"));
+  const store = createGenerationTaskStore(dataDirectory);
+  try {
+    const createBoundaryTask = (key: string, nodeId: string) => store.create({
+      canvasId: "charged-receipt-canvas",
+      idempotencyKey: key,
+      kind: "image",
+      modelConfiguration: { providerProtocol: "native" },
+      nodeId,
+      ownerId: "__test__",
+      prompt: "charged receipt fixture",
+      providerModelId: "charged-receipt-provider",
+      providerProfileId: "charged-receipt-profile",
+    }).task;
+    const exact = createBoundaryTask(
+      "charged-receipt-exact-0001",
+      "charged-receipt-exact-node",
+    );
+    store.transition(exact.id, "running");
+    store.recordProviderAttempt(exact.id);
+    store.setProviderTaskId(exact.id, "charged-receipt-provider-0001");
+    const exactBeforeSettlement = store.get(exact.id)!;
+    const receipt = chargedProviderFailureReceipt(
+      exactBeforeSettlement,
+      "charged-receipt-provider-0001",
+      "b".repeat(64),
+    );
+    expect(store.settleConfirmedChargedProviderFailure(receipt)).toMatchObject({
+      changed: true,
+      task: {
+        errorCode: "PROVIDER_FAILED_CHARGE_SETTLED",
+        state: "failed",
+      },
+    });
+    expect(store.settleConfirmedChargedProviderFailure(receipt)).toMatchObject({
+      changed: false,
+      task: { errorCode: "PROVIDER_FAILED_CHARGE_SETTLED", state: "failed" },
+    });
+    expect(() => store.settleConfirmedChargedProviderFailure({
+      ...receipt,
+      evidenceSha256: "invalid",
+    })).toThrow("Invalid confirmed Provider failure receipt");
+    expect(() => store.settleConfirmedChargedProviderFailure({
+      ...receipt,
+      ownerId: "wrong-owner",
+    })).toThrow("identity mismatch");
+    expect(() => store.settleConfirmedChargedProviderFailure({
+      ...receipt,
+      providerTaskId: "wrong-provider-task-0001",
+    })).toThrow("identity mismatch");
+    expect(() => store.settleConfirmedChargedProviderFailure({
+      ...receipt,
+      evidenceSha256: "c".repeat(64),
+      expectedUpdatedAt: "2026-08-11T08:00:00.000Z",
+    })).toThrow("conflicts with current evidence");
+    expect(() => store.settleConfirmedChargedProviderFailure({
+      ...receipt,
+      evidenceSha256: "c".repeat(64),
+      expectedUpdatedAt: store.get(exact.id)!.updatedAt,
+    })).toThrow("conflicts with current evidence");
+    expect(() => store.settleConfirmedChargedProviderFailure({
+      ...receipt,
+      protocolContractId: "different-contract",
+      expectedUpdatedAt: store.get(exact.id)!.updatedAt,
+    })).toThrow("conflicts with current evidence");
+    expect(store.listEvents(exact.id).filter(({ errorCode }) =>
+      errorCode === "PROVIDER_FAILURE_CHARGE_SETTLED")).toHaveLength(1);
+    const sealedAttempt = store.getProviderAttemptForTask(exact.id);
+    expect(() => store.settleProviderAttempt({
+      taskId: exact.id, executionAttempt: receipt.executionAttempt,
+      outcome: 'provider-failed', failureCode: 'PROVIDER_REFUNDED',
+    })).toThrow('Confirmed charged Provider failure is sealed');
+    store.settleProviderAttempt({
+      taskId: exact.id, executionAttempt: receipt.executionAttempt,
+      outcome: 'provider-failed', failureCode: 'PROVIDER_FAILED_CHARGE_SETTLED',
+      finishedAt: new Date('2030-01-01T00:00:00.000Z'),
+    });
+    expect(store.getProviderAttemptForTask(exact.id)).toEqual(sealedAttempt);
+    expect(store.hasUnsafeProviderAttemptForNewPaidRetry(exact.id)).toBe(true);
+    expect(store.listEvents(exact.id).map(({ errorCode }) => errorCode))
+      .toContain("PROVIDER_FAILURE_CHARGE_SETTLED");
+    expect(store.listEvents(exact.id).map(({ errorCode }) => errorCode))
+      .not.toContain("PROVIDER_REFUNDED");
+
+    const stale = createBoundaryTask(
+      "charged-receipt-stale-0002",
+      "charged-receipt-stale-node",
+    );
+    store.transition(stale.id, "running");
+    store.recordProviderAttempt(stale.id);
+    store.setProviderTaskId(stale.id, "charged-receipt-old-provider-0001");
+    store.transition(stale.id, "failed", {
+      code: "TIMEOUT",
+      message: "old attempt remained unresolved",
+    });
+    const staleAttempt = store.get(stale.id)!;
+    store.transition(stale.id, "retrying");
+    store.transition(stale.id, "queued");
+    store.transition(stale.id, "running");
+    store.recordProviderAttempt(stale.id);
+    store.setProviderTaskId(stale.id, "charged-receipt-current-provider-0002");
+    expect(() => store.settleConfirmedChargedProviderFailure(
+      chargedProviderFailureReceipt(
+        staleAttempt,
+        "charged-receipt-old-provider-0001",
+      ),
+    )).toThrow("identity mismatch");
+
+    const pendingResult = createBoundaryTask(
+      "charged-receipt-pending-result-0003",
+      "charged-receipt-pending-result-node",
+    );
+    store.transition(pendingResult.id, "running");
+    store.recordProviderAttempt(pendingResult.id);
+    store.setProviderTaskId(pendingResult.id, "charged-receipt-result-provider-0003");
+    const pendingResultDatabase = openAppDatabase(dataDirectory);
+    pendingResultDatabase.prepare(`
+      UPDATE generation_tasks SET result_asset_id = ? WHERE id = ?
+    `).run("pending-result-asset", pendingResult.id);
+    pendingResultDatabase.close();
+    expect(() => store.settleConfirmedChargedProviderFailure(
+      chargedProviderFailureReceipt(
+        store.get(pendingResult.id)!,
+        "charged-receipt-result-provider-0003",
+      ),
+    )).toThrow("conflicts with current evidence");
+
+    const pendingPublication = createBoundaryTask(
+      "charged-receipt-pending-publication-0004",
+      "charged-receipt-pending-publication-node",
+    );
+    store.transition(pendingPublication.id, "running");
+    store.recordProviderAttempt(pendingPublication.id);
+    store.setProviderTaskId(
+      pendingPublication.id,
+      "charged-receipt-publication-provider-0004",
+    );
+    insertPendingGenerationPublication(
+      dataDirectory,
+      store.get(pendingPublication.id)!,
+      "charged-receipt-publication",
+    );
+    expect(() => store.settleConfirmedChargedProviderFailure(
+      chargedProviderFailureReceipt(
+        store.get(pendingPublication.id)!,
+        "charged-receipt-publication-provider-0004",
+      ),
+    )).toThrow("conflicts with current evidence");
+    expect(store.listRefundCompensationCandidates()).toEqual([]);
+  } finally {
+    store.close();
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+test("automatic refund compensation consumes one registered intent budget across reopen and child retries", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-automatic-refund-budget-"));
+  const seed = openAppDatabase(dataDirectory);
+  seedAtomicGenerationFixture(seed, ["atomic-owner-a"]);
+  seed.close();
+  let store = createGenerationTaskStore(dataDirectory);
+  const automaticChildren: Array<ReturnType<
+    typeof runAutomaticRefundAdmissionChild
+  >> = [];
+  let childrenFinished = false;
+  try {
+    const parent = store.admitAuthoritativeOrGet(brandedAtomicImageRequest({
+      idempotencyKey: "automatic-refund-parent-0001",
+      nodeId: "automatic-refund-node",
+    })).task;
+    store.transition(parent.id, "running");
+    store.recordProviderAttempt(parent.id);
+    store.setProviderTaskId(parent.id, "automatic-refund-provider-0001");
+    store.transition(parent.id, "failed", {
+      code: "PROVIDER_REFUNDED",
+      message: "the Provider confirmed a refund",
+    });
+    const refundedParent = store.get(parent.id)!;
+    expect(store.listRefundCompensationCandidates().map(({ id }) => id))
+      .toContain(parent.id);
+
+    const childBase = brandedAtomicImageRequest({
+      idempotencyKey: `auto-refund:${parent.id}`,
+      nodeId: parent.nodeId,
+    });
+    const childInput = {
+      ...childBase,
+      replacesTaskId: parent.id,
+      requestIntent: {
+        ...childBase.requestIntent,
+        replacesTaskId: parent.id,
+      },
+    };
+    const automaticRefund = {
+      expectedAttempt: refundedParent.attempt,
+      expectedUpdatedAt: refundedParent.updatedAt,
+      parentTaskId: parent.id,
+    };
+    // The automatic transaction uses the same full ledger gate as manual intent.
+    // A late local result must stop compensation before spending its budget.
+    const resultFenceDatabase = openAppDatabase(dataDirectory);
+    resultFenceDatabase.prepare('UPDATE generation_tasks SET result_asset_id = ? WHERE id = ?')
+      .run('late-refunded-result', parent.id);
+    expect(() => store.admitAuthoritativeOrGet(childInput, {
+      automaticRefund, beforeCommit: () => undefined,
+    })).toThrow(GenerationProviderAttemptBlockedError);
+    expect(store.automaticReplacementTask(parent.id)).toBeUndefined();
+    resultFenceDatabase.prepare('UPDATE generation_tasks SET result_asset_id = NULL WHERE id = ?').run(parent.id);
+    resultFenceDatabase.close();
+    const releasePath = join(dataDirectory, "automatic-refund.release");
+    automaticChildren.push(
+      runAutomaticRefundAdmissionChild(
+        dataDirectory,
+        releasePath,
+        childInput as unknown as Record<string, unknown>,
+        automaticRefund,
+      ),
+      runAutomaticRefundAdmissionChild(
+        dataDirectory,
+        releasePath,
+        childInput as unknown as Record<string, unknown>,
+        automaticRefund,
+      ),
+    );
+    for (const child of automaticChildren) await child.ready;
+    await writeFile(releasePath, "release", { flag: "wx" });
+    const resolvedOutcomes = await Promise.all(automaticChildren.map(async (child) => {
+      const outcome = await child.result;
+      await child.done;
+      return outcome;
+    }));
+    childrenFinished = true;
+    expect(
+      resolvedOutcomes.filter(({ created }) => created),
+      JSON.stringify(resolvedOutcomes),
+    ).toHaveLength(1);
+    expect(new Set(resolvedOutcomes.map(({ taskId }) => taskId)).size).toBe(1);
+    const childId = resolvedOutcomes[0].taskId!;
+    expect(childId).not.toBe(parent.id);
+    expect(store.automaticReplacementTask(parent.id)?.id).toBe(childId);
+    expect(store.listRefundCompensationCandidates()).toEqual([]);
+    expect(store.listEvents(parent.id).map(({ errorCode }) => errorCode))
+      .toContain("AUTO_REFUND_COMPENSATION_ADMITTED");
+    expect(store.listEvents(childId).map(({ errorCode }) => errorCode))
+      .toContain("AUTO_REFUND_COMPENSATION_CHILD");
+    expect(store.listEvents(childId).map(({ errorCode }) => errorCode))
+      .not.toContain("USER_GENERATION_INTENT_OPENED_V3");
+
+    store.close();
+    store = createGenerationTaskStore(dataDirectory);
+    expect(store.automaticReplacementTask(parent.id)?.id).toBe(childId);
+    expect(store.listRefundCompensationCandidates()).toEqual([]);
+
+    store.transition(childId, "running");
+    store.recordProviderAttempt(childId);
+    store.setProviderTaskId(childId, "automatic-refund-child-provider-0001");
+    store.transition(childId, "failed", {
+      code: "PROVIDER_REFUNDED",
+      message: "the compensation attempt was also refunded",
+    });
+    const secondChildBase = brandedAtomicImageRequest({
+      idempotencyKey: `auto-refund:${parent.id}:again`,
+      nodeId: parent.nodeId,
+    });
+    expect(() => store.admitAuthoritativeOrGet({
+      ...secondChildBase,
+      replacesTaskId: parent.id,
+      requestIntent: {
+        ...secondChildBase.requestIntent,
+        replacesTaskId: parent.id,
+      },
+    }, {
+      automaticRefund: {
+        expectedAttempt: parent.attempt,
+        expectedUpdatedAt: refundedParent.updatedAt,
+        parentTaskId: parent.id,
+      },
+      beforeCommit: () => undefined,
+    })).toThrow(GenerationProviderAttemptBlockedError);
+    try {
+      store.admitAuthoritativeOrGet({
+        ...secondChildBase,
+        replacesTaskId: parent.id,
+        requestIntent: {
+          ...secondChildBase.requestIntent,
+          replacesTaskId: parent.id,
+        },
+      }, {
+        automaticRefund: {
+          expectedAttempt: parent.attempt,
+          expectedUpdatedAt: refundedParent.updatedAt,
+          parentTaskId: parent.id,
+        },
+        beforeCommit: () => undefined,
+      });
+    } catch (error) {
+      expect(error).toMatchObject({ code: "PROVIDER_RECOVERY_ATTEMPT_USED" });
+    }
+
+    const oldInput = brandedAtomicImageRequest({
+      idempotencyKey: "automatic-refund-old-history-0002",
+      nodeId: "automatic-refund-old-history-node",
+      ownerId: "__test__",
+    });
+    const old = store.create(oldInput).task;
+    store.transition(old.id, "running");
+    store.recordProviderAttempt(old.id);
+    store.setProviderTaskId(old.id, "automatic-refund-old-provider-0001");
+    store.transition(old.id, "failed", {
+      code: "PROVIDER_REFUNDED",
+      message: "old fixture has no registered user intent",
+    });
+    expect(store.listEvents(old.id).map(({ errorCode }) => errorCode))
+      .not.toContain("USER_GENERATION_INTENT_OPENED_V3");
+    const oldChildBase = brandedAtomicImageRequest({
+      idempotencyKey: `auto-refund:${old.id}`,
+      nodeId: old.nodeId,
+      ownerId: "__test__",
+    });
+    expect(() => store.admitAuthoritativeOrGet({
+      ...oldChildBase,
+      replacesTaskId: old.id,
+      requestIntent: {
+        ...oldChildBase.requestIntent,
+        replacesTaskId: old.id,
+      },
+    }, {
+      automaticRefund: {
+        expectedAttempt: old.attempt,
+        expectedUpdatedAt: store.get(old.id)!.updatedAt,
+        parentTaskId: old.id,
+      },
+      beforeCommit: () => undefined,
+    })).toThrow(GenerationProviderAttemptBlockedError);
+    try {
+      store.admitAuthoritativeOrGet({
+        ...oldChildBase,
+        replacesTaskId: old.id,
+        requestIntent: {
+          ...oldChildBase.requestIntent,
+          replacesTaskId: old.id,
+        },
+      }, {
+        automaticRefund: {
+          expectedAttempt: old.attempt,
+          expectedUpdatedAt: store.get(old.id)!.updatedAt,
+          parentTaskId: old.id,
+        },
+        beforeCommit: () => undefined,
+      });
+    } catch (error) {
+      expect(error).toMatchObject({ code: "PROVIDER_RECOVERY_ATTEMPT_USED" });
+    }
+  } finally {
+    if (!childrenFinished) {
+      for (const child of automaticChildren) child.terminate();
+      await Promise.all(automaticChildren.map(({ done }) =>
+        done.catch(() => undefined)));
+    }
     store.close();
     await rm(dataDirectory, { force: true, recursive: true });
   }

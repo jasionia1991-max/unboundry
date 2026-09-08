@@ -76,3 +76,37 @@ export const migrateLegacyAccountCredentialsCommand: TransactionScopedCommand<Re
     }
   },
 };
+
+/** Same-transaction guard for the admin-only generation maintenance commands. */
+export const isActiveGenerationRecoveryAdminCommand:
+  TransactionScopedCommand<string, boolean> = {
+    execute(scope, actorId) {
+      return Boolean(scope.prepare(`
+        SELECT 1 FROM users
+        WHERE id = ? AND role = 'admin' AND status = 'active'
+          AND NOT EXISTS (
+            SELECT 1 FROM account_delete_intents WHERE owner_id = users.id
+          )
+      `).get(actorId));
+    },
+  };
+
+/** Fixed recovery namespace only; the general audit reader remains unchanged. */
+export const readGenerationRecoveryAuditCommand: TransactionScopedCommand<string,
+  readonly Readonly<{ id: number; action: string; actor: string; createdAt: string }>[]> = {
+  execute(scope, taskId) {
+    const rows = scope.prepare(`SELECT audit.id, audit.action, audit.created_at,
+        COALESCE(users.display_name, '原管理员') AS actor
+      FROM admin_audit_events AS audit LEFT JOIN users ON users.id = audit.actor_user_id
+      WHERE audit.action IN ('generation_recovery.case_acknowledged','generation_recovery.case_checked',
+        'generation_recovery.case_claimed','generation_recovery.case_closed','generation_recovery.case_opened',
+        'generation_recovery.case_progressed','generation_recovery.original_attach_provider_task',
+        'generation_recovery.original_resume','generation_recovery.original_result_admit','generation_recovery.original_settlement')
+        AND CASE WHEN json_valid(audit.details) THEN json_extract(audit.details, '$.taskId') END = ?
+      ORDER BY audit.id DESC LIMIT 50`).all(taskId) as Array<{
+        id: number; action: string; actor: string; created_at: string;
+      }>;
+    return rows.map((row) => ({ id: Number(row.id), action: row.action,
+      actor: row.actor.slice(0, 80), createdAt: row.created_at }));
+  },
+};

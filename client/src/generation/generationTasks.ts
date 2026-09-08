@@ -42,6 +42,8 @@ export type GenerationTaskSummary = {
   id: string;
   idempotencyKey?: string;
   providerTaskBound?: boolean;
+  /** Server-verified automatic compensation successor for this task. */
+  replacementTaskId?: string;
   reconcileAllowed?: boolean;
   generationIdentityVersion?: 2;
   generationInputKey?: string;
@@ -80,6 +82,8 @@ export type GenerationTaskSummary = {
   updatedAt: string;
   workflowExecutionRunId?: string;
   workflowGroupId?: string;
+  newGenerationAllowed?: boolean;
+  newGenerationBlockReason?: string;
 };
 
 export type GenerationCapabilityStatus = {
@@ -220,6 +224,78 @@ class GenerationTaskStatusReadError extends GenerationRequestError {
   ) {
     super(message, status, code, problems);
   }
+}
+
+/**
+ * Only errors raised by the status-GET boundary may open the transient polling
+ * pause. Keeping the class private prevents callers from manufacturing a
+ * retryable error for ordinary processing or mutation failures.
+ */
+export function isRetryableGenerationStatusReadError(error: unknown): boolean {
+  return error instanceof GenerationTaskStatusReadError && error.retryable;
+}
+
+const generationTaskKinds: readonly GenerationTaskKind[] = [
+  "text",
+  "image",
+  "video",
+  "audio",
+];
+
+const generationTaskStates: readonly GenerationTaskState[] = [
+  "queued",
+  "running",
+  "success",
+  "failed",
+  "cancelled",
+  "retrying",
+  "recovering",
+];
+
+function isGenerationTaskSummary(value: unknown): value is GenerationTaskSummary {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const task = value as Partial<GenerationTaskSummary>;
+  return typeof task.id === "string" && task.id.length > 0 &&
+    generationTaskKinds.includes(task.kind as GenerationTaskKind) &&
+    typeof task.canvasId === "string" && task.canvasId.length > 0 &&
+    typeof task.nodeId === "string" && task.nodeId.length > 0 &&
+    Number.isInteger(task.attempt) && (task.attempt as number) >= 0 &&
+    typeof task.createdAt === "string" && task.createdAt.length > 0 &&
+    typeof task.updatedAt === "string" && task.updatedAt.length > 0 &&
+    typeof task.prompt === "string" &&
+    generationTaskStates.includes(task.state as GenerationTaskState) &&
+    (task.fixtureScopeId === undefined ||
+      typeof task.fixtureScopeId === "string");
+}
+
+function invalidTaskStatusResponse(): GenerationTaskStatusReadError {
+  return new GenerationTaskStatusReadError(
+    "任务状态响应与当前任务不匹配",
+    200,
+    false,
+    "TASK_STATUS_INVALID_RESPONSE",
+  );
+}
+
+function validateGenerationTaskSummary(
+  value: unknown,
+  expected: {
+    canvasId?: string;
+    fixtureScopeId?: string;
+    id?: string;
+    idempotencyKey?: string;
+  } = {},
+): GenerationTaskSummary {
+  if (!isGenerationTaskSummary(value) ||
+    (expected.id !== undefined && value.id !== expected.id) ||
+    (expected.canvasId !== undefined && value.canvasId !== expected.canvasId) ||
+    (expected.fixtureScopeId !== undefined &&
+      (value.fixtureScopeId ?? "") !== expected.fixtureScopeId) ||
+    (expected.idempotencyKey !== undefined &&
+      value.idempotencyKey !== expected.idempotencyKey)) {
+    throw invalidTaskStatusResponse();
+  }
+  return value;
 }
 
 function assertStatusReadActive(signal?: AbortSignal) {
@@ -427,31 +503,77 @@ export async function getGenerationTask(
   taskId: string,
   signal?: AbortSignal,
   fixtureScopeId = "",
+  options: {
+    followReplacementTask?: boolean;
+    retryTransientStatusReads?: boolean;
+  } = {},
 ): Promise<GenerationTaskSummary> {
-  const task = await readTaskStatusJson<GenerationTaskSummary>(
-    `/api/generation-tasks/${encodeURIComponent(taskId)}` +
-      `?fixtureScopeId=${encodeURIComponent(fixtureScopeId)}`,
-    { cache: "no-store" },
-    signal,
-  ) as GenerationTaskSummary;
-  assertStatusReadActive(signal);
-  if (!task || typeof task !== "object" || Array.isArray(task) ||
-    task.id !== taskId ||
-    !["text", "image", "video", "audio"].includes(task.kind) ||
-    typeof task.canvasId !== "string" || !task.canvasId ||
-    typeof task.nodeId !== "string" || !task.nodeId ||
-    !Number.isInteger(task.attempt) || task.attempt < 0 ||
-    typeof task.createdAt !== "string" || !task.createdAt ||
-    typeof task.updatedAt !== "string" || !task.updatedAt ||
-    typeof task.prompt !== "string" ||
-    !["queued", "running", "success", "failed", "cancelled", "retrying", "recovering"]
-      .includes(task.state)) {
-    throw new GenerationTaskStatusReadError(
-      "任务状态响应与当前任务不匹配", 200, false, "TASK_STATUS_INVALID_RESPONSE",
-    );
+  const retryDelays = options.retryTransientStatusReads ? [1_000, 2_000] : [];
+  for (let failure = 0; ; failure += 1) {
+    assertStatusReadActive(signal);
+    try {
+      const rawTask = await readTaskStatusJson<GenerationTaskSummary>(
+        `/api/generation-tasks/${encodeURIComponent(taskId)}` +
+          `?fixtureScopeId=${encodeURIComponent(fixtureScopeId)}`,
+        { cache: "no-store" },
+        signal,
+      ) as GenerationTaskSummary;
+      assertStatusReadActive(signal);
+      const task = validateGenerationTaskSummary(rawTask, {
+        fixtureScopeId,
+        id: taskId,
+      });
+      rememberFinishedTaskDuration(task);
+      const replacementTaskId = options.followReplacementTask &&
+        typeof task.replacementTaskId === "string"
+        ? task.replacementTaskId.trim()
+        : undefined;
+      if (replacementTaskId && replacementTaskId !== task.id) {
+        const replacement = await getGenerationTask(
+          replacementTaskId,
+          signal,
+          fixtureScopeId,
+          // The outer original-task read owns the finite 1s/2s budget. A
+          // replacement read is part of that same observation attempt.
+          { retryTransientStatusReads: false },
+        );
+        const sameGenerationIdentity = task.generationIdentityVersion === 2 &&
+          replacement.generationIdentityVersion === 2 &&
+          typeof task.generationInputKey === "string" &&
+          task.generationInputKey.length > 0 &&
+          replacement.generationInputKey === task.generationInputKey &&
+          typeof task.generationOwnershipKey === "string" &&
+          task.generationOwnershipKey.length > 0 &&
+          replacement.generationOwnershipKey === task.generationOwnershipKey &&
+          replacement.modelInputContractFingerprint ===
+            task.modelInputContractFingerprint &&
+          replacement.modelConfigurationRevision ===
+            task.modelConfigurationRevision &&
+          replacement.modelReleaseRevision === task.modelReleaseRevision;
+        if (
+          replacement.id !== replacementTaskId ||
+          replacement.canvasId !== task.canvasId ||
+          replacement.nodeId !== task.nodeId ||
+          replacement.kind !== task.kind ||
+          !sameGenerationIdentity
+        ) {
+          throw new GenerationTaskStatusReadError(
+            "自动补偿任务关联不一致，已停止覆盖当前节点",
+            409,
+            false,
+            "REPLACEMENT_TASK_BINDING_STALE",
+          );
+        }
+        return replacement;
+      }
+      return task;
+    } catch (error) {
+      assertStatusReadActive(signal);
+      if (!(error instanceof GenerationTaskStatusReadError) ||
+        !error.retryable || failure >= retryDelays.length) throw error;
+      await waitForTaskStatusDelay(retryDelays[failure], signal);
+    }
   }
-  rememberFinishedTaskDuration(task);
-  return task;
 }
 
 export async function cancelGenerationTask(
@@ -662,6 +784,7 @@ export type GenerationOwnershipOptions = {
   modelInputContractFingerprint?: string;
   modelConfigurationRevision?: string;
   modelReleaseRevision?: string;
+  replacesTaskId?: string;
   workflowGroupId?: string;
   workflowRunId?: string;
 };
@@ -924,13 +1047,19 @@ export async function listGenerationTasks(
   signal?: AbortSignal,
   fixtureScopeId = "",
 ): Promise<GenerationTaskSummary[]> {
-  const body = await readTaskStatusJson<{ tasks: GenerationTaskSummary[] }>(
+  const body = await readTaskStatusJson<unknown>(
     `/api/generation-tasks?canvasId=${encodeURIComponent(canvasId)}` +
       `&fixtureScopeId=${encodeURIComponent(fixtureScopeId)}`,
     { cache: "no-store" },
     signal,
   );
-  const tasks = body?.tasks ?? [];
+  if (!body || typeof body !== "object" || Array.isArray(body) ||
+    !Array.isArray((body as { tasks?: unknown }).tasks)) {
+    throw invalidTaskStatusResponse();
+  }
+  const tasks = (body as { tasks: unknown[] }).tasks.map((task) =>
+    validateGenerationTaskSummary(task, { canvasId, fixtureScopeId }),
+  );
   for (const task of tasks) rememberFinishedTaskDuration(task);
   return tasks;
 }
@@ -946,6 +1075,7 @@ type GenerationSubmissionIntent = {
   modelConfigurationRevision?: string;
   modelReleaseRevision?: string;
   nodeId: string;
+  replacesTaskId?: string;
   requestSignature: string;
   taskId?: string;
   updatedAt: string;
@@ -1050,6 +1180,10 @@ function validIntent(
       (typeof intent.modelReleaseRevision === "string" &&
         intent.modelReleaseRevision.length > 0 &&
         intent.modelReleaseRevision.length <= 500)) &&
+    (intent.replacesTaskId === undefined ||
+      (typeof intent.replacesTaskId === "string" &&
+        intent.replacesTaskId.length > 0 &&
+        intent.replacesTaskId.length <= 500)) &&
     typeof intent.updatedAt === "string" &&
     (intent.taskId === undefined || typeof intent.taskId === "string");
 }
@@ -1190,6 +1324,7 @@ function prepareGenerationSubmission(
     input.nodeId,
     fixtureScopeId,
   );
+  const replacesTaskId = options.replacesTaskId?.trim() || undefined;
   const generationOwnershipKey = options.generationOwnershipKey?.trim() || undefined;
   const generationInputKey = options.generationInputKey?.trim() || undefined;
   const modelInputContractFingerprint =
@@ -1197,7 +1332,7 @@ function prepareGenerationSubmission(
   const modelConfigurationRevision =
     options.modelConfigurationRevision?.trim() || undefined;
   const modelReleaseRevision = options.modelReleaseRevision?.trim() || undefined;
-  if (current) {
+  if (current && current.replacesTaskId === replacesTaskId) {
     // Never mint a second idempotency key while an older durable intent might
     // already have crossed the paid boundary. ensureGenerationTask first asks
     // the server for this exact key; only a confirmed empty lookup may upgrade
@@ -1215,6 +1350,7 @@ function prepareGenerationSubmission(
     ...(modelConfigurationRevision ? { modelConfigurationRevision } : {}),
     ...(modelReleaseRevision ? { modelReleaseRevision } : {}),
     nodeId: input.nodeId,
+    ...(replacesTaskId ? { replacesTaskId } : {}),
     requestSignature: signature,
     updatedAt: new Date().toISOString(),
     version: 2,
@@ -1238,6 +1374,7 @@ function replacementGenerationSubmissionIntent(
   const modelConfigurationRevision =
     options.modelConfigurationRevision?.trim() || undefined;
   const modelReleaseRevision = options.modelReleaseRevision?.trim() || undefined;
+  const replacesTaskId = options.replacesTaskId?.trim() || undefined;
   return {
     canvasId: input.canvasId,
     fixtureScopeId: options.fixtureScopeId ?? "",
@@ -1249,6 +1386,7 @@ function replacementGenerationSubmissionIntent(
     ...(modelConfigurationRevision ? { modelConfigurationRevision } : {}),
     ...(modelReleaseRevision ? { modelReleaseRevision } : {}),
     nodeId: input.nodeId,
+    ...(replacesTaskId ? { replacesTaskId } : {}),
     requestSignature: requestSignature(kind, input),
     ...(taskId ? { taskId } : {}),
     updatedAt: new Date().toISOString(),
@@ -1334,7 +1472,7 @@ export async function getGenerationTaskByIdempotency(
   fixtureScopeId = "",
   signal?: AbortSignal,
 ): Promise<GenerationTaskSummary | undefined> {
-  return readTaskStatusJson<GenerationTaskSummary>(
+  const task = await readTaskStatusJson<unknown>(
     `/api/generation-tasks/by-idempotency?canvasId=${encodeURIComponent(canvasId)}` +
       `&idempotencyKey=${encodeURIComponent(idempotencyKey)}` +
       `&fixtureScopeId=${encodeURIComponent(fixtureScopeId)}`,
@@ -1342,6 +1480,12 @@ export async function getGenerationTaskByIdempotency(
     signal,
     true,
   );
+  if (task === undefined) return undefined;
+  return validateGenerationTaskSummary(task, {
+    canvasId,
+    fixtureScopeId,
+    idempotencyKey,
+  });
 }
 
 export async function recoverPendingGenerationTask(
@@ -1451,11 +1595,18 @@ async function postGeneration(
   kind: GenerationTaskKind,
   input: GenerationPreflightInput,
   signal?: AbortSignal,
+  replacesTaskId?: string,
 ) {
   return readMutationJson<GenerationTaskSummary>(
     "/api/generation-tasks",
     {
-      body: JSON.stringify({ ...input, kind }),
+      body: JSON.stringify({
+        ...input,
+        kind,
+        ...(replacesTaskId?.trim()
+          ? { replacesTaskId: replacesTaskId.trim() }
+          : {}),
+      }),
       headers: { "Content-Type": "application/json" },
       method: "POST",
     },
@@ -1574,6 +1725,7 @@ export async function ensureGenerationTask(
   };
   const modernIdentityRequired = accountId.trim().length > 0 ||
     workflowBinding !== undefined;
+  let replacesTaskId = options.replacesTaskId?.trim() || undefined;
   if (modernIdentityRequired && !generationIdentityIsComplete(strictIdentity)) {
     throw new GenerationRequestError(
       "生成请求缺少完整版本化输入身份，已在提交前停止",
@@ -1607,6 +1759,7 @@ export async function ensureGenerationTask(
             (task.fixtureScopeId ?? "") === (options.fixtureScopeId ?? ""),
         );
         const exactMatches = nodeTasks.filter((task) =>
+          task.id !== replacesTaskId &&
           task.generationIdentityVersion === 2 &&
           generationIdentityIsComplete(task) &&
           taskMatchesGenerationIdentity(task, strictIdentity) &&
@@ -1681,6 +1834,7 @@ export async function ensureGenerationTask(
             (task.fixtureScopeId ?? "") === (options.fixtureScopeId ?? ""),
         );
         const exactMatches = nodeTasks.filter((task) =>
+          task.id !== replacesTaskId &&
           task.generationIdentityVersion === 2 &&
           generationIdentityIsComplete(task) &&
           taskMatchesGenerationIdentity(task, strictIdentity) &&
@@ -1695,6 +1849,16 @@ export async function ensureGenerationTask(
         }
         const authoritative = exactMatches[0];
         if (authoritative) {
+          // Failed workflow projection may have cleared the node binding. A
+          // deliberate Generate click is a new intent only when the exact
+          // server task has a settled failure and its complete ledger allows
+          // replacement. Admission still rechecks that decision atomically.
+          if (!workflowBinding && authoritative.state === "failed" &&
+            authoritative.newGenerationAllowed === true) {
+            replacesTaskId = authoritative.id;
+            options = { ...options, replacesTaskId };
+            return undefined;
+          }
           if (!authoritative.idempotencyKey) {
             throw new GenerationRequestError(
               "原生成任务缺少可验证的提交身份，系统已停止重复提交",
@@ -1894,7 +2058,12 @@ export async function ensureGenerationTask(
       const task = await runAdmissionStep(
         options.admissionRemainingMs,
         "formal",
-        (signal) => postGeneration(kind, prepared, signal),
+        (signal) => postGeneration(
+          kind,
+          prepared,
+          signal,
+          intent.replacesTaskId,
+        ),
       );
       if (
         task.canvasId !== input.canvasId ||
@@ -2340,14 +2509,20 @@ export async function waitForGenerationTask(
   taskId: string,
   signal?: AbortSignal,
   fixtureScopeId = "",
-  options: { retryTransientStatusReads?: boolean } = {},
+  options: {
+    followReplacementTask?: boolean;
+    retryTransientStatusReads?: boolean;
+  } = {},
 ) {
   const readCurrentTask = async () => {
     const retryDelays = options.retryTransientStatusReads ? [1_000, 2_000] : [];
     for (let failure = 0; ; failure += 1) {
       assertStatusReadActive(signal);
       try {
-        return await getGenerationTask(taskId, signal, fixtureScopeId);
+        return await getGenerationTask(taskId, signal, fixtureScopeId, {
+          followReplacementTask: options.followReplacementTask,
+          retryTransientStatusReads: false,
+        });
       } catch (error) {
         assertStatusReadActive(signal);
         if (!(error instanceof GenerationTaskStatusReadError) ||
@@ -2361,7 +2536,12 @@ export async function waitForGenerationTask(
   // failure while the durable server task is still running.
   for (let attempt = 0; attempt < 1800; attempt += 1) {
     const task = await readCurrentTask();
-    if (["success", "failed", "cancelled"].includes(task.state)) return task;
+    const projectionPending = task.generationIdentityVersion === 2 &&
+      task.state === "success" &&
+      (task.canvasProjectionState === "pending" ||
+        task.canvasProjectionState === "failed");
+    if (!projectionPending &&
+      ["success", "failed", "cancelled"].includes(task.state)) return task;
     await waitForTaskStatusDelay(1_000, signal);
   }
   // The server task is still active after the local waiting window. Return the

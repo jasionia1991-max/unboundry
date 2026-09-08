@@ -1,0 +1,256 @@
+{
+  "schemaVersion": 1,
+  "scenario": "node-recovery",
+  "syntheticOnly": true,
+  "title": "失败节点恢复 · V4 同页三项本地验收",
+  "description": "本夹具只在 safe runner 临时数据目录内使用；所有任务、维护案例和素材均为合成/本地 fixture，不代表后端、Provider 或付款回执，也不产生付费请求。",
+  "preservedSuccessNodeCount": 9,
+  "successNodes": [
+    {
+      "id": "node-recovery-success-01",
+      "type": "text",
+      "label": "已成功节点 01",
+      "resultText": "已保留内容 01 · 原位置与连接不变",
+      "position": {
+        "x": 80,
+        "y": 80
+      }
+    },
+    {
+      "id": "node-recovery-success-02",
+      "type": "text",
+      "label": "已成功节点 02",
+      "resultText": "已保留内容 02 · 原位置与连接不变",
+      "position": {
+        "x": 390,
+        "y": 80
+      }
+    },
+    {
+      "id": "node-recovery-success-03",
+      "type": "text",
+      "label": "已成功节点 03",
+      "resultText": "已保留内容 03 · 原位置与连接不变",
+      "position": {
+        "x": 700,
+        "y": 80
+      }
+    },
+    {
+      "id": "node-recovery-success-04",
+      "type": "text",
+      "label": "已成功节点 04",
+      "resultText": "已保留内容 04 · 原位置与连接不变",
+      "position": {
+        "x": 1010,
+        "y": 80
+      }
+    },
+    {
+      "id": "node-recovery-success-05",
+      "type": "text",
+      "label": "已成功节点 05",
+      "resultText": "已保留内容 05 · 原位置与连接不变",
+      "position": {
+        "x": 80,
+        "y": 390
+      }
+    },
+    {
+      "id": "node-recovery-success-06",
+      "type": "text",
+      "label": "已成功节点 06",
+      "resultText": "已保留内容 06 · 原位置与连接不变",
+      "position": {
+        "x": 390,
+        "y": 390
+      }
+    },
+    {
+      "id": "node-recovery-success-07",
+      "type": "text",
+      "label": "已成功节点 07",
+      "resultText": "已保留内容 07 · 原位置与连接不变",
+      "position": {
+        "x": 700,
+        "y": 390
+      }
+    },
+    {
+      "id": "node-recovery-success-08",
+      "type": "text",
+      "label": "已成功节点 08",
+      "resultText": "已保留内容 08 · 原位置与连接不变",
+      "position": {
+        "x": 1010,
+        "y": 390
+      }
+    },
+    {
+      "id": "node-recovery-success-09",
+      "type": "text",
+      "label": "已成功节点 09",
+      "resultText": "已保留内容 09 · 原位置与连接不变",
+      "position": {
+        "x": 80,
+        "y": 700
+      }
+    }
+  ],
+  "preservedEdges": [
+    {
+      "id": "node-recovery-edge-01",
+      "source": "node-recovery-success-01",
+      "target": "node-recovery-success-02",
+      "type": "default"
+    },
+    {
+      "id": "node-recovery-edge-02",
+      "source": "node-recovery-success-02",
+      "target": "node-recovery-success-03",
+      "type": "default"
+    },
+    {
+      "id": "node-recovery-edge-03",
+      "source": "node-recovery-success-03",
+      "target": "node-recovery-success-04",
+      "type": "default"
+    },
+    {
+      "id": "node-recovery-edge-04",
+      "source": "node-recovery-success-04",
+      "target": "node-recovery-success-05",
+      "type": "default"
+    },
+    {
+      "id": "node-recovery-edge-05",
+      "source": "node-recovery-success-05",
+      "target": "node-recovery-success-06",
+      "type": "default"
+    },
+    {
+      "id": "node-recovery-edge-06",
+      "source": "node-recovery-success-06",
+      "target": "node-recovery-success-07",
+      "type": "default"
+    },
+    {
+      "id": "node-recovery-edge-07",
+      "source": "node-recovery-success-07",
+      "target": "node-recovery-success-08",
+      "type": "default"
+    },
+    {
+      "id": "node-recovery-edge-08",
+      "source": "node-recovery-success-08",
+      "target": "node-recovery-success-09",
+      "type": "default"
+    }
+  ],
+  "automaticRecovery": {
+    "transient": {
+      "id": "node-recovery-auto-transient",
+      "type": "text",
+      "label": "短暂故障演示",
+      "resultText": "短暂故障已自动越过 · 结果已回到当前节点",
+      "position": {
+        "x": 390,
+        "y": 700
+      },
+      "faultStatuses": [
+        500,
+        503
+      ]
+    },
+    "save": {
+      "id": "node-recovery-auto-save",
+      "type": "image",
+      "label": "保存恢复演示",
+      "position": {
+        "x": 700,
+        "y": 700
+      },
+      "faultStatuses": [
+        503
+      ]
+    }
+  },
+  "retry": {
+    "id": "node-recovery-video-failed",
+    "type": "video",
+    "label": "失败视频 · 仅此节点补跑",
+    "position": {
+      "x": 1010,
+      "y": 700
+    },
+    "modes": {
+      "balance-denied": {
+        "errorCode": "PROVIDER_NOT_ACCEPTED_NO_CHARGE",
+        "errorMessage": "余额问题已解决，已模拟确认原请求未受理且未扣费；可只重新生成此视频。",
+        "rawProviderMessage": "synthetic-provider-response: insufficient quota; requestId=local-node-recovery-balance; no provider call was made"
+      },
+      "provider-failed": {
+        "errorCode": "PROVIDER_FAILED_CHARGE_SETTLED",
+        "errorMessage": "已模拟确认平台最终失败且已扣费；重新生成是新一轮，可能再次收费。",
+        "rawProviderMessage": "synthetic-provider-response: provider did not finish; requestId=local-node-recovery-failed; no provider call was made"
+      }
+    },
+    "retryPath": "/api/generation-tasks"
+  },
+  "unknown": {
+    "id": "node-recovery-text-unknown",
+    "type": "text",
+    "label": "无法确认的旧请求",
+    "position": {
+      "x": 80,
+      "y": 1010
+    },
+    "errorCode": "OUTCOME_UNKNOWN_BILLING_RISK",
+    "errorMessage": "无法确认旧请求的最终结果。系统保留原任务并继续找回，不会重复提交或改变已成功节点。此处原文仅为本地合成说明，不是平台回执。",
+    "rawProviderMessage": "synthetic-provider-response: outcome unknown; requestId=local-node-recovery-unknown; no provider call was made",
+    "retryAllowed": false,
+    "retryBlockCode": "OUTCOME_UNKNOWN_BILLING_RISK",
+    "retryBlockReason": "旧请求结果暂时无法确认，为避免重复付费，当前不能重新生成"
+  },
+  "checks": {
+    "transient": "点击后由真实产品 watcher 自动读取；不需要在 Canvas 手动注入故障。",
+    "save": "模拟服务让结果投影暂缓一次，产品页面自动等待同一结果；服务端真实故障恢复由独立HTTP测试证明。",
+    "retry": "mode 仅改变合成失败原因；新任务 POST 必须来自真实产品按钮，helper 只记录并返回隔离的合成任务。",
+    "unknown": "真实产品应显示统一错误摘要、状态与可展开/复制的原文，并隐藏/禁用重复生成。"
+  },
+  "v4": {
+    "syntheticOnly": true,
+    "maintenancePhases": [
+      "queued",
+      "claimed",
+      "waiting_provider"
+    ],
+    "cases": {
+      "originalResult": {
+        "caseId": "node-recovery-case-original-result",
+        "taskId": "node-recovery-auto-transient",
+        "nodeId": "node-recovery-auto-transient",
+        "kind": "text",
+        "executionAttempt": 1,
+        "reasonCode": "result_recovery_pending"
+      },
+      "maintenance": {
+        "caseId": "node-recovery-case-maintenance",
+        "taskId": "node-recovery-text-unknown",
+        "nodeId": "node-recovery-text-unknown",
+        "kind": "text",
+        "executionAttempt": 1,
+        "reasonCode": "outcome_unknown"
+      },
+      "failedVideo": {
+        "caseId": "node-recovery-case-failed-video",
+        "taskId": "node-recovery-video-failed",
+        "nodeId": "node-recovery-video-failed",
+        "kind": "video",
+        "executionAttempt": 1,
+        "reasonCode": "operator_incident",
+        "preservedSuccessNodeCount": 9
+      }
+    }
+  }
+}

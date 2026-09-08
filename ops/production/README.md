@@ -18,6 +18,10 @@ Required arguments explicitly identify source, backup root, scratch root, signin
 
 Without `--apply-upload`, it creates a local encrypted package and reports an upload inventory; this is not a zero-write dry-run of the local filesystem. It reads the selected source's encrypted storage profile, never an inherited unrelated data directory. With upload authorization, `--apply-upload` writes private no-overwrite objects and a manifest. The wrapper does not itself run separate verify/fresh-restore or GET content verification; the operation must supply these gates. Retention deletion is blocked pending an exact reviewed remote deletion manifest; this is not an active automatic deletion policy.
 
+## Authorized stopped preservation capture
+
+A separately authorized release may use `quiesced-active-preservation` under [Runbook 5.1](../../RELEASE_RUNBOOK.md#51-经当次授权的停服保全备份). It must preserve exact task/attempt/event evidence and hold the existing runtime lease, secret lease and SQLite capture lock after verified shutdown. This is a distinct signed mode; it does not loosen `locked-exact`, turn an unknown task into a terminal task, or make `external-unverified` a final backup. Verify and independent fresh restore, exact rollback compatibility, and independent review remain required. Current implementation and execution status belongs to TASKS; this contract is not evidence that a new backup or deployment has run. The daily timer remains deferred.
+
 ## Installation and recovery evidence
 
 Before installing or changing a job, record immutable release commit/tree, wrapper and unit hashes, owner/mode, current-schema freeze/SHA evidence, key identities without key bytes, verify/fresh-restore result, upload/GET verification and timer next-run. Use isolated synthetic/fake tests first. Do not replace CURRENT with a backup or rewrite historical task/attempt records to satisfy quiet gates.

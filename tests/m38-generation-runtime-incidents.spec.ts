@@ -27,6 +27,7 @@ import {
   executeTextTaskWithDependencies,
   generationTaskCancellationMode,
   launchGenerationTaskForRuntimeTest,
+  resetGenerationTaskStoreForRuntimeTest,
   retrySafetyDecision,
   retrySnapshotCompatibilityProblem,
   runGenerationRecoverySweep,
@@ -3119,14 +3120,16 @@ test("server recovery sweep relaunches stale queued tasks and leaves fresh ones 
       errorCode: "TEST_EXECUTION_SETTLED",
       state: "failed",
     });
-    expect(store.listEvents(aged.task.id).map((event) => event.state)).toEqual([
-      "queued",
-      "running",
-      "failed",
+    expect(store.listEvents(aged.task.id).map(({ state, errorCode }) => ({ state, errorCode }))).toEqual([
+      { state: "queued", errorCode: undefined },
+      { state: "queued", errorCode: "USER_GENERATION_INTENT_OPENED_V3" },
+      { state: "running", errorCode: undefined },
+      { state: "failed", errorCode: "TEST_EXECUTION_SETTLED" },
     ]);
     expect(store.get(fresh.task.id)?.state).toBe("queued");
-    expect(store.listEvents(fresh.task.id).map((event) => event.state)).toEqual([
-      "queued",
+    expect(store.listEvents(fresh.task.id).map(({ state, errorCode }) => ({ state, errorCode }))).toEqual([
+      { state: "queued", errorCode: undefined },
+      { state: "queued", errorCode: "USER_GENERATION_INTENT_OPENED_V3" },
     ]);
   } finally {
     database.close();
@@ -3135,57 +3138,79 @@ test("server recovery sweep relaunches stale queued tasks and leaves fresh ones 
 });
 
 test("deferred relaunch starts exactly once after the old execution exits", async () => {
-  const taskId = "queued-relaunch-race-task";
+  const dataDirectory = await mkdtemp(join(tmpdir(), "unboundry-m38-relaunch-"));
+  const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  let releaseFirst: (() => void) | undefined;
   const settledExecutions: Promise<void>[] = [];
-  let executionCount = 0;
-  let releaseFirst!: () => void;
-  let reportSecondStarted!: () => void;
-  const firstBarrier = new Promise<void>((resolve) => {
-    releaseFirst = resolve;
-  });
-  const secondStarted = new Promise<void>((resolve) => {
-    reportSecondStarted = resolve;
-  });
-  const execute = async () => {
-    executionCount += 1;
-    if (executionCount === 1) {
-      await firstBarrier;
-      return;
+  try {
+    // Earlier m38 HTTP fixtures leave the process singleton pinned to their
+    // temporary database. Reset it before switching the product runtime to
+    // this test's own empty directory.
+    resetGenerationTaskStoreForRuntimeTest();
+    process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
+
+    const taskId = "queued-relaunch-race-task";
+    let executionCount = 0;
+    let reportSecondStarted!: () => void;
+    const firstBarrier = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const secondStarted = new Promise<void>((resolve) => {
+      reportSecondStarted = resolve;
+    });
+    const execute = async () => {
+      executionCount += 1;
+      if (executionCount === 1) {
+        await firstBarrier;
+        return;
+      }
+      reportSecondStarted();
+    };
+
+    launchGenerationTaskForRuntimeTest({
+      execute,
+      kind: "image",
+      settledExecutions,
+      taskId,
+    });
+    for (let attempt = 0; attempt < 20 && executionCount === 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
     }
-    reportSecondStarted();
-  };
+    expect(executionCount).toBe(1);
 
-  launchGenerationTaskForRuntimeTest({
-    execute,
-    kind: "image",
-    settledExecutions,
-    taskId,
-  });
-  for (let attempt = 0; attempt < 20 && executionCount === 0; attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    // Repeated retry/recovery signals while the old execution is still present
+    // coalesce into one pending relaunch.
+    launchGenerationTaskForRuntimeTest({
+      execute,
+      kind: "image",
+      settledExecutions,
+      taskId,
+    });
+    launchGenerationTaskForRuntimeTest({
+      execute,
+      kind: "image",
+      settledExecutions,
+      taskId,
+    });
+    expect(executionCount).toBe(1);
+
+    releaseFirst?.();
+    await secondStarted;
+    await Promise.all(settledExecutions);
+    expect(executionCount).toBe(2);
+  } finally {
+    // Always release the barrier before teardown so a failed assertion cannot
+    // leave the runtime singleton with an active execution.
+    releaseFirst?.();
+    for (let attempt = 0; attempt < 20 && settledExecutions.length < 2; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    if (settledExecutions.length > 0) await Promise.allSettled(settledExecutions);
+    resetGenerationTaskStoreForRuntimeTest();
+    if (previousDataDirectory === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
+    else process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
+    await rm(dataDirectory, { force: true, recursive: true });
   }
-  expect(executionCount).toBe(1);
-
-  // Repeated retry/recovery signals while the old execution is still present
-  // coalesce into one pending relaunch.
-  launchGenerationTaskForRuntimeTest({
-    execute,
-    kind: "image",
-    settledExecutions,
-    taskId,
-  });
-  launchGenerationTaskForRuntimeTest({
-    execute,
-    kind: "image",
-    settledExecutions,
-    taskId,
-  });
-  expect(executionCount).toBe(1);
-
-  releaseFirst();
-  await secondStarted;
-  await Promise.all(settledExecutions);
-  expect(executionCount).toBe(2);
 });
 
 test("current-state documentation has one recovery authority and matches package version", async () => {

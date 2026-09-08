@@ -1,7 +1,11 @@
 import { expect, test } from "./safe-test";
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { DatabaseSync } from "node:sqlite";
+import { saveAccountCredential } from "../server/accountCredentials";
 import {
   createGenerationTaskStore,
   generationProviderAttemptCounts,
@@ -9,6 +13,14 @@ import {
 } from "../server/generationTaskStore";
 import { openAppDatabase } from "../server/database";
 import { removeUnpublishedGeneratedMedia } from "../server/generatedMediaCleanup";
+import { resolvePersistedNodeInputs } from "../server/inputPreflight";
+import { bootstrapPublishedModelContracts } from "../server/modelReleaseBootstrap";
+import { modelContractState } from "../server/modelReleaseRevisionStore";
+import { buildAuthoritativeGenerationModelConfiguration } from
+  "../server/authoritativeGenerationModelConfiguration";
+import { authoritativeModelConfigurationRevision } from
+  "../server/modelConfigurationIdentity";
+import { registeredModelExecution } from "../server/modelExecutionRegistry";
 import { registerMediaForOwner } from "../server/mediaRegistry";
 import {
   attemptProviderResultSave,
@@ -17,9 +29,22 @@ import {
   generationTaskCancellationMode,
   isTransientProviderResultSaveError,
   relayMediaParametersForTask,
+  resetGenerationTaskStoreForRuntimeTest,
   retrySafetyDecision,
+  runGenerationRecoverySweep,
   validateImageToolResultPng,
 } from "../server/generationTasks";
+// Exercise the production composition root so the recovery write/frozen gate
+// and its real inspection ports are installed before the sweep runs.
+import "../server/applicationComposition";
+import { inspectGenerationRecoveryCase } from
+  "../server/generationRecoveryCaseWorker";
+import { createGenerationRecoveryCaseStore, generationRecoverySystemActorId } from
+  "../server/generationRecoveryCaseStore";
+import { createGenerationRecoveryOriginalCommands, issueAdapterVerifiedOriginalRecoveryEvidence } from
+  "../server/generationRecoveryOriginalCommands";
+import { readOriginalGenerationRecoveryLedgers } from
+  "../server/generationRecoveryLedgerQueries";
 import { settleSynchronousResultSaveExhaustion } from
   "../server/generationResultCommit";
 import {
@@ -30,7 +55,7 @@ import {
 import { ResourceBudgetError } from "../server/resourceBudget";
 import { ProviderResultMediaError } from "../server/providerResultMedia";
 import { MediaMetadataError } from "../server/mediaMetadata";
-import type { ProviderProfile } from "../server/providerProfiles";
+import { saveProviderProfile, type ProviderProfile } from "../server/providerProfiles";
 import { RelayProviderError } from "../server/relayProviderAdapters";
 import { listRelayUsageRecords } from "../server/relayUsageReconcile";
 import {
@@ -39,6 +64,11 @@ import {
   relayMediaSubmissionAction,
 } from "../server/relayMediaModelContracts";
 import { providerParameterSchema } from "../types/modelParameters";
+import {
+  generationInputKey,
+  generationOwnershipEvidence,
+  generationOwnershipKey,
+} from "../types/generationIdentity";
 
 const relayProfile: ProviderProfile = {
   apiKey: "relay-runtime-fixture-secret",
@@ -110,6 +140,95 @@ function relayTask(
     state: "failed",
     updatedAt: "2026-08-03T00:00:01.000Z",
     ...overrides,
+  };
+}
+
+function authoritativeRuntimeFixture(input: Readonly<{
+  canvasId: string;
+  credentialVersion: number;
+  database: DatabaseSync;
+  modelId: string;
+  nodeId: string;
+  parameters: Record<string, unknown>;
+  prompt: string;
+  providerModelId: string;
+  providerProfileId: string;
+}>) {
+  const model = input.database.prepare(`
+    SELECT
+      models.updated_at AS modelConfigurationUpdatedAt,
+      providers.provider_configuration_version AS providerConfigurationVersion
+    FROM model_profiles AS models
+    JOIN provider_profiles AS providers
+      ON providers.id = models.provider_profile_id
+    WHERE models.id = ?
+  `).get(input.modelId) as {
+    modelConfigurationUpdatedAt: string;
+    providerConfigurationVersion: number;
+  } | undefined;
+  const modelReleaseRevision = modelContractState(
+    input.database,
+    input.modelId,
+  ).active;
+  const execution = registeredModelExecution({
+    capability: "video",
+    providerDriver: "multi-protocol-relay",
+    providerModelId: input.providerModelId,
+    providerProtocol: "media-generate",
+  });
+  if (!model || !modelReleaseRevision || !execution) {
+    throw new Error("m57 runtime model fixture is incomplete");
+  }
+  const parameterSchema = modelReleaseRevision.document.capabilitySchema;
+  const modelConfigurationRevision = authoritativeModelConfigurationRevision({
+    capability: "video",
+    id: input.modelId,
+    modelConfigurationUpdatedAt: model.modelConfigurationUpdatedAt,
+    parameterSchema,
+    providerDriver: "multi-protocol-relay",
+    providerModelId: input.providerModelId,
+  });
+  const generationInputKey = `m57:${input.canvasId}:${input.nodeId}:input`;
+  const generationOwnershipKey =
+    `m57:${input.modelId}:${input.nodeId}:ownership`;
+  const modelInputContractFingerprint = `m57:${input.modelId}:contract`;
+  const fixtureScopeId = "m57-runtime-auto-refund";
+  const modelConfiguration = buildAuthoritativeGenerationModelConfiguration({
+    credentialVersion: input.credentialVersion,
+    fixtureScopeId,
+    generationInputKey,
+    generationOwnershipKey,
+    modelCapability: "video",
+    modelConfigurationRevision,
+    modelExecutionAdapterId: execution.adapterId,
+    modelId: input.modelId,
+    modelInputContractFingerprint,
+    modelReleaseRevision,
+    modelResultCount: execution.resultCount,
+    parameterSchema,
+    providerConfigurationVersion: model.providerConfigurationVersion,
+    providerDriver: "multi-protocol-relay",
+    providerModelId: input.providerModelId,
+    providerProfileId: input.providerProfileId,
+    providerProtocol: "media-generate",
+  });
+  return {
+    modelConfiguration,
+    requestIntent: {
+      canvasId: input.canvasId,
+      fixtureScopeId,
+      generationIdentityVersion: 2,
+      generationInputKey,
+      generationOwnershipKey,
+      kind: "video" as const,
+      model: input.modelId,
+      modelConfigurationRevision,
+      modelInputContractFingerprint,
+      modelReleaseRevision: modelReleaseRevision.revisionId,
+      nodeId: input.nodeId,
+      parameters: input.parameters,
+      prompt: input.prompt,
+    },
   };
 }
 
@@ -1400,3 +1519,1072 @@ test("a lost relay response remains outcome-unknown across reopen and blocks pai
     await rm(directory, { force: true, recursive: true });
   }
 });
+
+test("charged relay terminal evidence stays outside legacy retry safety without another Provider attempt", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-relay-charged-terminal-"));
+  const store = createGenerationTaskStore(directory);
+  try {
+    const created = store.create({
+      canvasId: "relay-charged-terminal-canvas",
+      idempotencyKey: "relay-charged-terminal-0001",
+      kind: "text",
+      modelConfiguration: {
+        providerConfigurationVersion: 1,
+        providerDriver: "multi-protocol-relay",
+        providerProtocol: "openai-chat",
+      },
+      nodeId: "relay-charged-terminal-node",
+      ownerId: "__test__",
+      parameters: { inputSchemaVersion: 1, inputs: [] },
+      prompt: "the Provider confirmed a charged failure",
+      providerModelId: "relay-text-model",
+      providerProfileId: relayProfile.id,
+    }).task;
+    store.transition(created.id, "running");
+    store.recordProviderAttempt(created.id);
+    store.setProviderTaskId(created.id, "relay-charged-terminal-provider-0001");
+    const beforeSettlement = store.get(created.id)!;
+    const receipt = {
+      canvasId: beforeSettlement.canvasId,
+      evidenceSha256: "d".repeat(64),
+      executionAttempt: beforeSettlement.attempt,
+      expectedUpdatedAt: beforeSettlement.updatedAt,
+      feeDisposition: "charged" as const,
+      kind: beforeSettlement.kind,
+      nodeId: beforeSettlement.nodeId,
+      ownerId: beforeSettlement.ownerId!,
+      protocolContractId: "fixture-relay-contract-v3",
+      providerModelId: beforeSettlement.providerModelId!,
+      providerProfileId: beforeSettlement.providerProfileId!,
+      providerTaskId: "relay-charged-terminal-provider-0001",
+      taskId: beforeSettlement.id,
+      terminalState: "failed" as const,
+    };
+    expect(store.settleConfirmedChargedProviderFailure(receipt)).toMatchObject({
+      changed: true,
+      task: {
+        errorCode: "PROVIDER_FAILED_CHARGE_SETTLED",
+        state: "failed",
+      },
+    });
+    const settled = store.get(created.id)!;
+    const attempt = store.getProviderAttemptForTask(created.id)!;
+    expect(retrySafetyDecision(
+      settled,
+      attempt,
+      store.hasUnsafeProviderAttemptForNewPaidRetry(created.id),
+    )).toMatchObject({
+      allowed: false,
+      code: "PROVIDER_TERMINAL",
+    });
+    const database = openAppDatabase(directory);
+    try {
+      expect(generationProviderAttemptCounts(database)).toEqual({
+        historicalEstimatedProviderAttempts: 0,
+        paidProviderRequests: 1,
+      });
+      expect(database.prepare(`
+        SELECT COUNT(*) AS count FROM generation_task_events
+        WHERE task_id = ? AND error_code = 'PROVIDER_FAILURE_CHARGE_SETTLED'
+      `).get(created.id)).toEqual({ count: 1 });
+    } finally {
+      database.close();
+    }
+  } finally {
+    store.close();
+    await rm(directory, { force: true, recursive: true });
+  }
+});
+
+test("runtime refund compensation creates one child and never loops on the child", async () => {
+  const testRoot = process.env.UNBOUNDRY_TEST_ROOT;
+  expect(testRoot).toBeTruthy();
+  const dataDirectory = await mkdtemp(join(testRoot!, "m57-auto-refund-"));
+  const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  const previousFetcherFlag = process.env.UNBOUNDRY_TEST_RELAY_MEDIA_FETCHER;
+  const previousSweepFlag = process.env.UNBOUNDRY_DISABLE_GENERATION_RECOVERY_SWEEP;
+  const nativeFetch = globalThis.fetch;
+  const ownerId = "__test__";
+  const canvasId = "m57-auto-refund-canvas";
+  const nodeId = "m57-auto-refund-video-node";
+  const modelId = "m57-auto-refund-grok-model";
+  const providerModelId = "grok-imagine-video-1.5-preview";
+  const sourceAssetId = "m57-auto-refund-source";
+  let database: DatabaseSync | undefined;
+  let store: ReturnType<typeof createGenerationTaskStore> | undefined;
+  let fakeServer: ReturnType<typeof createServer> | undefined;
+  let postCount = 0;
+  let pollCount = 0;
+  const requests: string[] = [];
+
+  try {
+    process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
+    process.env.UNBOUNDRY_TEST_RELAY_MEDIA_FETCHER = "1";
+    process.env.UNBOUNDRY_DISABLE_GENERATION_RECOVERY_SWEEP = "1";
+    resetGenerationTaskStoreForRuntimeTest();
+
+    // Establish the empty safe database before saving the encrypted Provider
+    // profile. The profile is a local fixture only; no real Provider is used.
+    openAppDatabase(dataDirectory).close();
+    const profile = await saveProviderProfile({
+      apiKey: "m57-runtime-profile-key-001",
+      baseUrl: "https://m57-relay.test/v1",
+      driver: "multi-protocol-relay",
+      label: "m57 local relay fixture",
+    });
+    const timestamp = new Date().toISOString();
+    database = openAppDatabase(dataDirectory);
+    database.prepare(`
+      INSERT OR IGNORE INTO users (
+        id, login_name, display_name, password_hash, role, status,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, 'safe-fixture', 'admin', 'active', ?, ?)
+    `).run(ownerId, ownerId, "m57 local fixture", timestamp, timestamp);
+    database.prepare(`
+      UPDATE provider_profiles
+      SET status = 'enabled', key_status = 'valid', key_checked_at = ?,
+        updated_at = ?
+      WHERE id = ? AND driver = 'multi-protocol-relay'
+    `).run(timestamp, timestamp, profile.id);
+
+    const parameterSchema = providerParameterSchema({
+      capability: "video",
+      providerDriver: "multi-protocol-relay",
+      providerModelId,
+    });
+    if (!parameterSchema) throw new Error("m57 relay parameter schema is missing");
+    database.prepare(`
+      INSERT INTO model_profiles (
+        id, display_name, provider_profile_id, provider_model_id,
+        capability, status, default_parameters, created_at, updated_at,
+        max_cost_microunits, cost_currency, provider_protocol
+      ) VALUES (?, ?, ?, ?, 'video', 'published', ?, ?, ?, 5000000, 'USD', 'media-generate')
+    `).run(
+      modelId,
+      "m57 Grok Imagine refund fixture",
+      profile.id,
+      providerModelId,
+      JSON.stringify(parameterSchema),
+      timestamp,
+      timestamp,
+    );
+    database.prepare(`
+      INSERT INTO node_model_bindings (
+        node_type, model_id, enabled, is_default, sort_order,
+        created_at, updated_at
+      ) VALUES ('video', ?, 1, 0, 999, ?, ?)
+    `).run(modelId, timestamp, timestamp);
+    database.prepare(`
+      UPDATE generation_safety_settings
+      SET global_enabled = 1, emergency_stop = 0,
+        per_user_concurrency = 10, requests_per_minute = 120,
+        image_concurrency = 5, video_concurrency = 5, audio_concurrency = 5,
+        text_concurrency = 5, updated_at = ?
+      WHERE id = 1
+    `).run(timestamp);
+    bootstrapPublishedModelContracts(database, ownerId);
+    const credential = await saveAccountCredential(
+      database,
+      ownerId,
+      profile.id,
+      "m57-runtime-account-key-001",
+    );
+    database.prepare(`
+      UPDATE account_provider_credentials
+      SET key_status = 'valid', key_checked_at = ?, updated_at = ?
+      WHERE account_id = ? AND provider_profile_id = ?
+    `).run(timestamp, timestamp, ownerId, profile.id);
+
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DAAAAEAQEARwbK3gAAAABJRU5ErkJggg==",
+      "base64",
+    );
+    await mkdir(join(dataDirectory, "media"), { recursive: true });
+    const storageName = `${sourceAssetId}.png`;
+    await writeFile(join(dataDirectory, "media", storageName), png);
+    registerMediaForOwner(ownerId, {
+      byteSize: png.byteLength,
+      checksumSha256: createHash("sha256").update(png).digest("hex"),
+      contentType: "image/png",
+      id: sourceAssetId,
+      kind: "image",
+      mediaHeight: 1,
+      mediaWidth: 1,
+      storageName,
+      storageStatus: "ready",
+    });
+
+    const requestedParameters = {
+      aspectRatio: "16:9",
+      duration: 1,
+      generateAudio: true,
+      inputMode: "reference",
+      outputCount: 1,
+      resolution: "480p",
+    };
+    const prompt = "m57 local automatic refund compensation";
+    const fixture = authoritativeRuntimeFixture({
+      canvasId,
+      credentialVersion: credential.credentialVersion,
+      database,
+      modelId,
+      nodeId,
+      parameters: requestedParameters,
+      prompt,
+      providerModelId,
+      providerProfileId: profile.id,
+    });
+    const sourceNodeId = "m57-auto-refund-source-node";
+    const initialNodes = [{
+      data: {
+        assetId: sourceAssetId,
+        imageSrc: `/api/assets/${sourceAssetId}`,
+        title: "M57 automatic refund source image",
+      },
+      id: sourceNodeId,
+      position: { x: 0, y: 0 },
+      type: "image",
+    }, {
+      data: {
+        title: "M57 auto refund video target",
+        videoModelConfigurationRevision:
+          fixture.modelConfiguration.modelConfigurationRevision,
+        videoModelId: modelId,
+        videoParameters: requestedParameters,
+        videoPrompt: prompt,
+        videoPromptReady: true,
+      },
+      id: nodeId,
+      position: { x: 400, y: 0 },
+      type: "video",
+    }];
+    const initialEdges = [{
+      data: { inputOrder: 1, inputRole: "first-frame" },
+      id: "m57-auto-refund-first-frame-edge",
+      source: sourceNodeId,
+      sourceHandle: "source",
+      target: nodeId,
+      targetHandle: "target",
+    }];
+    database.prepare(`
+      INSERT INTO canvas_documents (
+        owner_id, id, revision, graph_revision, nodes, edges, viewport,
+        updated_at, save_session_id, save_sequence
+      ) VALUES (?, ?, 1, 1, ?, ?, ?, ?, NULL, 0)
+    `).run(
+      ownerId,
+      canvasId,
+      JSON.stringify(initialNodes),
+      JSON.stringify(initialEdges),
+      JSON.stringify({ x: 0, y: 0, zoom: 1 }),
+      timestamp,
+    );
+    const resolved = resolvePersistedNodeInputs({
+      bypass: false,
+      canvasId,
+      database,
+      modelReleaseRevision:
+        fixture.modelConfiguration.modelReleaseRevision.revisionId,
+      modelSchema: fixture.modelConfiguration.parameterSchema,
+      ownerId,
+      parameters: requestedParameters,
+      targetId: nodeId,
+      targetKind: "video",
+    });
+    expect(resolved.canSubmit).toBe(true);
+    const contractFingerprint = resolved.contractFingerprint;
+    if (!contractFingerprint) {
+      throw new Error("m57 runtime fixture contract fingerprint is missing");
+    }
+    const normalizedParameters = {
+      ...(resolved.normalizedParameters ?? requestedParameters),
+    };
+    const inputFingerprint = generationInputKey({
+      inputs: resolved.inputs,
+      modelConfigurationRevision:
+        fixture.modelConfiguration.modelConfigurationRevision,
+      modelId,
+      modelReleaseRevision:
+        fixture.modelConfiguration.modelReleaseRevision.revisionId,
+      ownPrompt: resolved.persistedOwnPrompt,
+      parameters: normalizedParameters,
+      prompt: resolved.finalPrompt,
+    });
+    const ownershipKey = generationOwnershipKey(generationOwnershipEvidence({
+      contractFingerprint,
+      inputs: resolved.inputs,
+      kind: "video",
+      modelConfigurationRevision:
+        fixture.modelConfiguration.modelConfigurationRevision,
+      modelId,
+      modelReleaseRevision:
+        fixture.modelConfiguration.modelReleaseRevision.revisionId,
+      parameters: normalizedParameters,
+      prompt: resolved.persistedOwnPrompt,
+    }));
+    const modelConfiguration = buildAuthoritativeGenerationModelConfiguration({
+      ...fixture.modelConfiguration,
+      generationInputKey: inputFingerprint,
+      generationOwnershipKey: ownershipKey,
+      modelInputContractFingerprint: contractFingerprint,
+    });
+    const parameters = {
+      ...normalizedParameters,
+      inputSchemaVersion: 1,
+      inputs: resolved.snapshot,
+    };
+    const requestIntent = {
+      ...fixture.requestIntent,
+      generationInputKey: inputFingerprint,
+      generationOwnershipKey: ownershipKey,
+      inputSchemaVersion: 1,
+      inputs: resolved.snapshot,
+      modelInputContractFingerprint: contractFingerprint,
+      parameters: normalizedParameters,
+      prompt: resolved.finalPrompt,
+    };
+
+    store = createGenerationTaskStore(dataDirectory, { recoverRunning: false });
+    const admitted = store.admitAuthoritativeOrGet({
+      canvasId,
+      expectedCanvasRevision: 1,
+      costCurrency: "USD",
+      credentialRevision: credential.credentialVersion,
+      estimatedCostMicrounits: 5_000_000,
+      idempotencyKey: "m57-auto-refund-parent-001",
+      kind: "video",
+      model: modelId,
+      modelConfiguration,
+      nodeId,
+      ownerId,
+      parameters,
+      prompt: resolved.finalPrompt,
+      providerModelId,
+      providerProfileId: profile.id,
+      requestIntent,
+    });
+    expect(admitted.created).toBe(true);
+    const parent = admitted.task;
+    database.prepare(`
+      UPDATE canvas_documents
+      SET nodes = ?, updated_at = ?
+      WHERE owner_id = ? AND id = ?
+    `).run(
+      JSON.stringify(initialNodes.map((node) => node.id === nodeId
+        ? {
+            ...node,
+            data: {
+              ...node.data,
+              videoGenerationContractFingerprint: undefined,
+              videoGenerationInputKey: inputFingerprint,
+              videoGenerationModelConfigurationRevision:
+                modelConfiguration.modelConfigurationRevision,
+              videoGenerationModelInputContractFingerprint:
+                contractFingerprint,
+              videoGenerationModelReleaseRevision:
+                modelConfiguration.modelReleaseRevision.revisionId,
+              videoGenerationOwnershipKey: ownershipKey,
+              videoGenerationTaskId: parent.id,
+            },
+          }
+        : node)),
+      new Date().toISOString(),
+      ownerId,
+      canvasId,
+    );
+    expect(store.retryBindingsForCanvas(canvasId, ownerId).get(parent.id))
+      .toMatchObject({
+        canvasRevision: 1,
+        generationInputKey: inputFingerprint,
+        generationOwnershipKey: ownershipKey,
+        kind: "video",
+        nodeId,
+        taskId: parent.id,
+      });
+    store.transition(parent.id, "running");
+    store.recordProviderAttempt(parent.id);
+    store.setProviderTaskId(parent.id, "m57-parent-provider-0001");
+    store.transition(parent.id, "failed", {
+      code: "PROVIDER_REFUNDED",
+      message: "safe fixture Provider response confirmed a refund",
+    });
+    expect(store.listRefundCompensationCandidates().map((task) => task.id))
+      .toEqual([parent.id]);
+
+    fakeServer = createServer((request, response) => {
+      const url = new URL(request.url ?? "/", "http://m57-relay.test");
+      requests.push(`${request.method ?? ""} ${url.pathname}`);
+      void (async () => {
+        for await (const _chunk of request) { /* consume request body */ }
+        response.setHeader("Content-Type", "application/json");
+        if (request.method === "POST" && url.pathname === "/v1/media/generate") {
+          postCount += 1;
+          response.statusCode = 200;
+          response.end(JSON.stringify({ task_id: "m57-child-provider-0001" }));
+          return;
+        }
+        if (request.method === "GET" && url.pathname === "/v1/skills/task-status") {
+          pollCount += 1;
+          response.statusCode = 200;
+          response.end(JSON.stringify({
+            refunded: true,
+            state: "failed",
+            task_id: "m57-child-provider-0001",
+          }));
+          return;
+        }
+        response.statusCode = 404;
+        response.end(JSON.stringify({ error: "unexpected fixture route" }));
+      })().catch(() => {
+        response.statusCode = 500;
+        response.end(JSON.stringify({ error: "fixture handler failed" }));
+      });
+    });
+    await new Promise<void>((resolve, reject) => {
+      fakeServer!.once("error", reject);
+      fakeServer!.listen(0, "127.0.0.1", () => resolve());
+    });
+    const address = fakeServer.address();
+    if (!address || typeof address === "string") throw new Error("m57 fixture server address is missing");
+    const port = address.port;
+    globalThis.fetch = (async (input, init) => {
+      const requested = new URL(String(input));
+      if (requested.hostname !== "m57-relay.test") {
+        throw new Error(`unexpected fixture destination: ${requested.hostname}`);
+      }
+      return nativeFetch(
+        `http://127.0.0.1:${port}${requested.pathname}${requested.search}`,
+        init,
+      );
+    }) as typeof fetch;
+
+    await runGenerationRecoverySweep();
+    let child: GenerationTask | undefined;
+    for (let attempt = 0; attempt < 240; attempt += 1) {
+      child = store.list(canvasId).find((task) => task.id !== parent.id);
+      if (child?.state === "failed") break;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    expect(child).toBeDefined();
+    expect(child).toMatchObject({
+      attempt: 1,
+      canvasId,
+      errorCode: "PROVIDER_REFUNDED",
+      kind: "video",
+      model: modelId,
+      nodeId,
+      ownerId,
+      parameters,
+      prompt: resolved.finalPrompt,
+      providerModelId,
+      providerProfileId: profile.id,
+      state: "failed",
+    });
+    expect(store.get(parent.id)).toMatchObject({
+      attempt: 1,
+      errorCode: "PROVIDER_REFUNDED",
+      providerTaskId: "m57-parent-provider-0001",
+      state: "failed",
+    });
+    const parentEventCodes = store.listEvents(parent.id).map((event) => event.errorCode);
+    const childEventCodes = store.listEvents(child!.id).map((event) => event.errorCode);
+    expect(parentEventCodes).toContain("USER_GENERATION_INTENT_OPENED_V3");
+    expect(parentEventCodes).toContain("AUTO_REFUND_COMPENSATION_ADMITTED");
+    expect(childEventCodes).toContain("AUTO_REFUND_COMPENSATION_CHILD");
+    expect(childEventCodes).not.toContain("USER_GENERATION_INTENT_OPENED_V3");
+    expect(store.listRefundCompensationCandidates()).toEqual([]);
+    expect(postCount).toBe(1);
+    expect(pollCount).toBeGreaterThanOrEqual(1);
+    expect(requests).toContain("POST /v1/media/generate");
+    expect(requests).toContain("GET /v1/skills/task-status");
+
+    const taskCountAfterChild = store.list(canvasId).length;
+    await runGenerationRecoverySweep();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(store.list(canvasId)).toHaveLength(taskCountAfterChild);
+    expect(postCount).toBe(1);
+    expect(store.get(child!.id)).toMatchObject({
+      errorCode: "PROVIDER_REFUNDED",
+      state: "failed",
+    });
+    expect(generationProviderAttemptCounts(database)).toEqual({
+      historicalEstimatedProviderAttempts: 0,
+      paidProviderRequests: 2,
+    });
+  } finally {
+    globalThis.fetch = nativeFetch;
+    if (fakeServer) {
+      await new Promise<void>((resolve) => fakeServer!.close(() => resolve()));
+    }
+    resetGenerationTaskStoreForRuntimeTest();
+    store?.close();
+    database?.close();
+    if (previousDataDirectory === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
+    else process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
+    if (previousFetcherFlag === undefined) delete process.env.UNBOUNDRY_TEST_RELAY_MEDIA_FETCHER;
+    else process.env.UNBOUNDRY_TEST_RELAY_MEDIA_FETCHER = previousFetcherFlag;
+    if (previousSweepFlag === undefined) delete process.env.UNBOUNDRY_DISABLE_GENERATION_RECOVERY_SWEEP;
+    else process.env.UNBOUNDRY_DISABLE_GENERATION_RECOVERY_SWEEP = previousSweepFlag;
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+
+for (const recoveryMode of ["result", "late-fee-conflict", "late-success-conflict"] as const) {
+test(recoveryMode === "result"
+  ? "runtime original-result recovery saves a known outcome-unknown video without a new Provider POST"
+  : recoveryMode === "late-fee-conflict"
+    ? "a late contradictory Provider response stays isolated without a second GET or settlement"
+    : "a late successful Provider response preserves the failure settlement without downloading or resuming",
+async () => {
+  test.setTimeout(120_000);
+  const testRoot = process.env.UNBOUNDRY_TEST_ROOT;
+  expect(testRoot).toBeTruthy();
+  const dataDirectory = await mkdtemp(join(testRoot!, "m57-original-result-recovery-"));
+  const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  const previousFetcherFlag = process.env.UNBOUNDRY_TEST_RELAY_MEDIA_FETCHER;
+  const previousSweepFlag = process.env.UNBOUNDRY_DISABLE_GENERATION_RECOVERY_SWEEP;
+  const previousCasesFlag = process.env.UNBOUNDRY_GENERATION_RECOVERY_CASES_ENABLED;
+  const nativeFetch = globalThis.fetch;
+  const ownerId = "__test__";
+  const canvasId = "m57-original-result-recovery-canvas";
+  const nodeId = "m57-original-result-recovery-video-node";
+  const modelId = "m57-original-result-recovery-grok-model";
+  const providerModelId = "grok-imagine-video-1.5-preview";
+  const sourceAssetId = "m57-original-result-recovery-source";
+  const providerTaskId = "m57-original-provider-0001";
+  let database: DatabaseSync | undefined;
+  let store: ReturnType<typeof createGenerationTaskStore> | undefined;
+  let fakeServer: ReturnType<typeof createServer> | undefined;
+  let statusReads = 0;
+  let resultReads = 0;
+  let postCount = 0;
+  const requests: string[] = [];
+
+  try {
+    process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
+    process.env.UNBOUNDRY_TEST_RELAY_MEDIA_FETCHER = "1";
+    process.env.UNBOUNDRY_DISABLE_GENERATION_RECOVERY_SWEEP = "1";
+    process.env.UNBOUNDRY_GENERATION_RECOVERY_CASES_ENABLED = "1";
+    resetGenerationTaskStoreForRuntimeTest();
+
+    // This is a local safe fixture. The recovery path below performs only a
+    // status GET and a result GET against the loopback server.
+    const resultVideo = await readFile(new URL(
+      "../client/public/fixtures/video-success.mp4",
+      import.meta.url,
+    ));
+    openAppDatabase(dataDirectory).close();
+    const profile = await saveProviderProfile({
+      apiKey: "m57-original-result-profile-key-001",
+      baseUrl: "https://m57-original-result.test/v1",
+      driver: "multi-protocol-relay",
+      label: "m57 original result fixture",
+    });
+    const timestamp = new Date().toISOString();
+    database = openAppDatabase(dataDirectory);
+    database.prepare(`
+      INSERT OR IGNORE INTO users (
+        id, login_name, display_name, password_hash, role, status,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, 'safe-fixture', 'admin', 'active', ?, ?)
+    `).run(ownerId, ownerId, "m57 original result fixture", timestamp, timestamp);
+    database.prepare(`
+      UPDATE provider_profiles
+      SET status = 'enabled', key_status = 'valid', key_checked_at = ?,
+        updated_at = ?
+      WHERE id = ? AND driver = 'multi-protocol-relay'
+    `).run(timestamp, timestamp, profile.id);
+
+    const parameterSchema = providerParameterSchema({
+      capability: "video",
+      providerDriver: "multi-protocol-relay",
+      providerModelId,
+    });
+    if (!parameterSchema) throw new Error("m57 original result parameter schema is missing");
+    database.prepare(`
+      INSERT INTO model_profiles (
+        id, display_name, provider_profile_id, provider_model_id,
+        capability, status, default_parameters, created_at, updated_at,
+        max_cost_microunits, cost_currency, provider_protocol
+      ) VALUES (?, ?, ?, ?, 'video', 'published', ?, ?, ?, 5000000, 'USD', 'media-generate')
+    `).run(
+      modelId,
+      "m57 Grok original result fixture",
+      profile.id,
+      providerModelId,
+      JSON.stringify(parameterSchema),
+      timestamp,
+      timestamp,
+    );
+    database.prepare(`
+      INSERT INTO node_model_bindings (
+        node_type, model_id, enabled, is_default, sort_order,
+        created_at, updated_at
+      ) VALUES ('video', ?, 1, 0, 999, ?, ?)
+    `).run(modelId, timestamp, timestamp);
+    database.prepare(`
+      UPDATE generation_safety_settings
+      SET global_enabled = 1, emergency_stop = 0,
+        per_user_concurrency = 10, requests_per_minute = 120,
+        image_concurrency = 5, video_concurrency = 5, audio_concurrency = 5,
+        text_concurrency = 5, updated_at = ?
+      WHERE id = 1
+    `).run(timestamp);
+    bootstrapPublishedModelContracts(database, ownerId);
+    const credential = await saveAccountCredential(
+      database,
+      ownerId,
+      profile.id,
+      "m57-original-result-account-key-001",
+    );
+    database.prepare(`
+      UPDATE account_provider_credentials
+      SET key_status = 'valid', key_checked_at = ?, updated_at = ?
+      WHERE account_id = ? AND provider_profile_id = ?
+    `).run(timestamp, timestamp, ownerId, profile.id);
+
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DAAAAEAQEARwbK3gAAAABJRU5ErkJggg==",
+      "base64",
+    );
+    await mkdir(join(dataDirectory, "media"), { recursive: true });
+    const storageName = `${sourceAssetId}.png`;
+    await writeFile(join(dataDirectory, "media", storageName), png);
+    registerMediaForOwner(ownerId, {
+      byteSize: png.byteLength,
+      checksumSha256: createHash("sha256").update(png).digest("hex"),
+      contentType: "image/png",
+      id: sourceAssetId,
+      kind: "image",
+      mediaHeight: 1,
+      mediaWidth: 1,
+      storageName,
+      storageStatus: "ready",
+    });
+
+    const requestedParameters = {
+      aspectRatio: "16:9",
+      duration: 1,
+      generateAudio: true,
+      inputMode: "reference",
+      outputCount: 1,
+      resolution: "480p",
+    };
+    const prompt = "m57 local original result recovery";
+    const fixture = authoritativeRuntimeFixture({
+      canvasId,
+      credentialVersion: credential.credentialVersion,
+      database,
+      modelId,
+      nodeId,
+      parameters: requestedParameters,
+      prompt,
+      providerModelId,
+      providerProfileId: profile.id,
+    });
+    const sourceNodeId = "m57-original-result-source-node";
+    const initialNodes = [{
+      data: {
+        assetId: sourceAssetId,
+        imageSrc: `/api/assets/${sourceAssetId}`,
+        title: "M57 original result source image",
+      },
+      id: sourceNodeId,
+      position: { x: 0, y: 0 },
+      type: "image",
+    }, {
+      data: {
+        title: "M57 original result video target",
+        videoModelConfigurationRevision:
+          fixture.modelConfiguration.modelConfigurationRevision,
+        videoModelId: modelId,
+        videoParameters: requestedParameters,
+        videoPrompt: prompt,
+        videoPromptReady: true,
+      },
+      id: nodeId,
+      position: { x: 400, y: 0 },
+      type: "video",
+    }];
+    const initialEdges = [{
+      data: { inputOrder: 1, inputRole: "first-frame" },
+      id: "m57-original-result-first-frame-edge",
+      source: sourceNodeId,
+      sourceHandle: "source",
+      target: nodeId,
+      targetHandle: "target",
+    }];
+    database.prepare(`
+      INSERT INTO canvas_documents (
+        owner_id, id, revision, graph_revision, nodes, edges, viewport,
+        updated_at, save_session_id, save_sequence
+      ) VALUES (?, ?, 1, 1, ?, ?, ?, ?, NULL, 0)
+    `).run(
+      ownerId,
+      canvasId,
+      JSON.stringify(initialNodes),
+      JSON.stringify(initialEdges),
+      JSON.stringify({ x: 0, y: 0, zoom: 1 }),
+      timestamp,
+    );
+    const resolved = resolvePersistedNodeInputs({
+      bypass: false,
+      canvasId,
+      database,
+      modelReleaseRevision:
+        fixture.modelConfiguration.modelReleaseRevision.revisionId,
+      modelSchema: fixture.modelConfiguration.parameterSchema,
+      ownerId,
+      parameters: requestedParameters,
+      targetId: nodeId,
+      targetKind: "video",
+    });
+    expect(resolved.canSubmit).toBe(true);
+    const contractFingerprint = resolved.contractFingerprint;
+    if (!contractFingerprint) {
+      throw new Error("m57 original result contract fingerprint is missing");
+    }
+    const normalizedParameters = {
+      ...(resolved.normalizedParameters ?? requestedParameters),
+    };
+    const inputFingerprint = generationInputKey({
+      inputs: resolved.inputs,
+      modelConfigurationRevision:
+        fixture.modelConfiguration.modelConfigurationRevision,
+      modelId,
+      modelReleaseRevision:
+        fixture.modelConfiguration.modelReleaseRevision.revisionId,
+      ownPrompt: resolved.persistedOwnPrompt,
+      parameters: normalizedParameters,
+      prompt: resolved.finalPrompt,
+    });
+    const ownershipKey = generationOwnershipKey(generationOwnershipEvidence({
+      contractFingerprint,
+      inputs: resolved.inputs,
+      kind: "video",
+      modelConfigurationRevision:
+        fixture.modelConfiguration.modelConfigurationRevision,
+      modelId,
+      modelReleaseRevision:
+        fixture.modelConfiguration.modelReleaseRevision.revisionId,
+      parameters: normalizedParameters,
+      prompt: resolved.persistedOwnPrompt,
+    }));
+    const modelConfiguration = buildAuthoritativeGenerationModelConfiguration({
+      ...fixture.modelConfiguration,
+      generationInputKey: inputFingerprint,
+      generationOwnershipKey: ownershipKey,
+      modelInputContractFingerprint: contractFingerprint,
+    });
+    const parameters = {
+      ...normalizedParameters,
+      inputSchemaVersion: 1,
+      inputs: resolved.snapshot,
+    };
+    const requestIntent = {
+      ...fixture.requestIntent,
+      generationInputKey: inputFingerprint,
+      generationOwnershipKey: ownershipKey,
+      inputSchemaVersion: 1,
+      inputs: resolved.snapshot,
+      modelInputContractFingerprint: contractFingerprint,
+      parameters: normalizedParameters,
+      prompt: resolved.finalPrompt,
+    };
+
+    store = createGenerationTaskStore(dataDirectory, { recoverRunning: false });
+    const admitted = store.admitAuthoritativeOrGet({
+      canvasId,
+      expectedCanvasRevision: 1,
+      costCurrency: "USD",
+      credentialRevision: credential.credentialVersion,
+      estimatedCostMicrounits: 5_000_000,
+      idempotencyKey: "m57-original-result-parent-001",
+      kind: "video",
+      model: modelId,
+      modelConfiguration,
+      nodeId,
+      ownerId,
+      parameters,
+      prompt: resolved.finalPrompt,
+      providerModelId,
+      providerProfileId: profile.id,
+      requestIntent,
+    });
+    expect(admitted.created).toBe(true);
+    const parent = admitted.task;
+    database.prepare(`
+      UPDATE canvas_documents
+      SET nodes = ?, updated_at = ?
+      WHERE owner_id = ? AND id = ?
+    `).run(
+      JSON.stringify(initialNodes.map((node) => node.id === nodeId
+        ? {
+            ...node,
+            data: {
+              ...node.data,
+              videoGenerationContractFingerprint: undefined,
+              videoGenerationInputKey: inputFingerprint,
+              videoGenerationModelConfigurationRevision:
+                modelConfiguration.modelConfigurationRevision,
+              videoGenerationModelInputContractFingerprint:
+                contractFingerprint,
+              videoGenerationModelReleaseRevision:
+                modelConfiguration.modelReleaseRevision.revisionId,
+              videoGenerationOwnershipKey: ownershipKey,
+              videoGenerationTaskId: parent.id,
+            },
+          }
+        : node)),
+      new Date().toISOString(),
+      ownerId,
+      canvasId,
+    );
+    expect(store.retryBindingsForCanvas(canvasId, ownerId).get(parent.id))
+      .toMatchObject({
+        canvasRevision: 1,
+        generationInputKey: inputFingerprint,
+        generationOwnershipKey: ownershipKey,
+        kind: "video",
+        nodeId,
+        taskId: parent.id,
+      });
+    store.transition(parent.id, "running");
+    store.recordProviderAttempt(parent.id);
+    store.setProviderTaskId(parent.id, providerTaskId);
+    // Model the real lost-response boundary explicitly: the accepted Provider
+    // task is known, but the paid attempt remains outcome-unknown.
+    database.prepare(`
+      UPDATE generation_provider_attempts
+      SET outcome = 'outcome-unknown', failure_code = 'OUTCOME_UNKNOWN_BILLING_RISK'
+      WHERE task_id = ? AND execution_attempt = ? AND provider_task_id = ?
+    `).run(parent.id, store.get(parent.id)!.attempt, providerTaskId);
+    store.transition(parent.id, "failed", {
+      code: "OPERATOR_INCIDENT",
+      message: "safe fixture keeps the original Provider result unresolved",
+    });
+    expect(store.get(parent.id)).toMatchObject({
+      errorCode: "OPERATOR_INCIDENT",
+      providerTaskId,
+      state: "failed",
+    });
+    expect(store.getProviderAttemptForTask(parent.id)).toMatchObject({
+      executionAttempt: 1,
+      outcome: "outcome-unknown",
+      providerTaskId,
+    });
+    const attemptsBefore = generationProviderAttemptCounts(database);
+    expect(attemptsBefore).toEqual({
+      historicalEstimatedProviderAttempts: 0,
+      paidProviderRequests: 1,
+    });
+
+    fakeServer = createServer((request, response) => {
+      const url = new URL(request.url ?? "/", "http://m57-original-result.test");
+      requests.push(`${request.method ?? ""} ${url.pathname}`);
+      void (async () => {
+        for await (const _chunk of request) { /* consume request body */ }
+        if (request.method === "GET" && url.pathname === "/v1/skills/task-status") {
+          statusReads += 1;
+          response.statusCode = 200;
+          response.setHeader("Content-Type", "application/json");
+          if (recoveryMode !== "result") {
+            // A separate trusted terminal receipt wins while the original
+            // GET is in flight. The GET then returns contradictory fee proof.
+            const cases = createGenerationRecoveryCaseStore(database!);
+            const item = cases.getByTaskAttempt(parent.id, 1, ownerId);
+            const commands = createGenerationRecoveryOriginalCommands(database!, {
+              enabled: true, readRelatedLedgers: readOriginalGenerationRecoveryLedgers,
+            });
+            const expected = commands.captureOriginalRecovery({
+              taskId: parent.id, caseId: item.caseId, ownerId, executionAttempt: 1,
+            });
+            const evidence = issueAdapterVerifiedOriginalRecoveryEvidence({
+              taskId: parent.id, ownerId, canvasId, nodeId, kind: "video",
+              executionAttempt: 1, providerProfileId: profile.id, providerModelId,
+              requestFingerprint: parent.requestFingerprint, providerTaskId,
+              providerState: "failed", feeDisposition: "charged", observedAt: new Date().toISOString(),
+            }, () => ({ adapterId: "m57-local-terminal-receipt",
+              protocolContractId: "m57-local-terminal-v1", evidenceSha256: "a".repeat(64) }));
+            const command = { taskId: parent.id, caseId: item.caseId, ownerId, executionAttempt: 1,
+              expected, evidence, expectedTaskUpdatedAt: expected.task.updated_at,
+              expectedTaskEventWatermark: expected.taskEventWatermark,
+              expectedCaseEventId: expected.caseEventId, actorId: generationRecoverySystemActorId,
+              operationId: "m57-concurrent-terminal-0001" };
+            expect(commands.dryRunOriginalRecovery(command).allowed).toBe(true);
+            expect(commands.applyOriginalRecovery(command).action).toBe("settle_charged_failure");
+            if (recoveryMode === "late-fee-conflict") {
+              response.end(JSON.stringify({ refunded: true, state: "failed", task_id: providerTaskId }));
+              return;
+            }
+          }
+          response.end(JSON.stringify({
+            is_final: true,
+            result_type: "video",
+            result_url: "https://m57-original-result.test/result.mp4",
+            state: "success",
+            task_id: providerTaskId,
+          }));
+          return;
+        }
+        if (request.method === "GET" && url.pathname === "/result.mp4") {
+          resultReads += 1;
+          response.statusCode = 200;
+          response.setHeader("Content-Length", String(resultVideo.byteLength));
+          response.setHeader("Content-Type", "video/mp4");
+          response.end(resultVideo);
+          return;
+        }
+        if (request.method === "POST" && url.pathname === "/v1/media/generate") {
+          postCount += 1;
+          response.statusCode = 500;
+          response.setHeader("Content-Type", "application/json");
+          response.end(JSON.stringify({ error: "new Provider POST is forbidden in this fixture" }));
+          return;
+        }
+        response.statusCode = 404;
+        response.setHeader("Content-Type", "application/json");
+        response.end(JSON.stringify({ error: "unexpected fixture route" }));
+      })().catch(() => {
+        response.statusCode = 500;
+        response.end(JSON.stringify({ error: "fixture handler failed" }));
+      });
+    });
+    await new Promise<void>((resolve, reject) => {
+      fakeServer!.once("error", reject);
+      fakeServer!.listen(0, "127.0.0.1", () => resolve());
+    });
+    const address = fakeServer.address();
+    if (!address || typeof address === "string") throw new Error("m57 original result fixture server address is missing");
+    const port = address.port;
+    globalThis.fetch = (async (input, init) => {
+      const requested = new URL(String(input));
+      if (requested.hostname !== "m57-original-result.test") {
+        throw new Error(`unexpected fixture destination: ${requested.hostname}`);
+      }
+      return nativeFetch(
+        `http://127.0.0.1:${port}${requested.pathname}${requested.search}`,
+        init,
+      );
+    }) as typeof fetch;
+
+    createGenerationRecoveryCaseStore(database).ensureCase({
+      taskId: parent.id, ownerId, executionAttempt: 1,
+      reason: "operator_incident", operationId: "m57-original-case-0001",
+    });
+    await inspectGenerationRecoveryCase(parent.id, generationRecoverySystemActorId,
+      "m57-original-check-0001");
+
+    const recovered = store.get(parent.id);
+    if (recoveryMode !== "result") {
+      expect(recovered).toMatchObject({ state: "failed", attempt: 1,
+        errorCode: "PROVIDER_FAILED_CHARGE_SETTLED", providerTaskId });
+      expect(store.getProviderAttemptForTask(parent.id)).toMatchObject({ outcome: "provider-failed", executionAttempt: 1 });
+      expect(store.newGenerationDecision(parent.id).allowed).toBe(false);
+      const eventCodes = store.listEvents(parent.id).map((event) => event.errorCode);
+      expect(eventCodes.filter((code) => code === "RECOVERY_PROVIDER_EVIDENCE_CONFLICT_V1")).toHaveLength(1);
+      expect(eventCodes.filter((code) => code === "PROVIDER_FAILURE_CHARGE_SETTLED")).toHaveLength(1);
+      expect(eventCodes).not.toContain("PROVIDER_FAILURE_NO_CHARGE_SETTLED");
+      expect(eventCodes).not.toContain("RECOVERY_ORIGINAL_ONLY_V1");
+      const item = createGenerationRecoveryCaseStore(database).getByTaskAttempt(parent.id, 1, ownerId);
+      expect(item).toMatchObject({ phase: "queued", reason: "provider_evidence_conflict" });
+      const eventCount = store.listEvents(parent.id).length;
+      await inspectGenerationRecoveryCase(parent.id, generationRecoverySystemActorId,
+        "m57-conflict-follow-up-0001");
+      expect(store.listEvents(parent.id)).toHaveLength(eventCount);
+      expect(generationProviderAttemptCounts(database)).toEqual(attemptsBefore);
+      expect({ statusReads, resultReads, postCount }).toEqual({ statusReads: 1, resultReads: 0, postCount: 0 });
+      return;
+    }
+    expect(recovered, JSON.stringify({
+      statusReads, resultReads, postCount,
+      events: store.listEvents(parent.id).map((event) => event.errorCode),
+    })).toMatchObject({
+      attempt: 1,
+      canvasId,
+      kind: "video",
+      nodeId,
+      ownerId,
+      providerModelId,
+      providerProfileId: profile.id,
+      providerTaskId,
+      state: "success",
+    });
+    expect(recovered?.resultAssetId).toBeTruthy();
+    expect(store.list(canvasId)).toHaveLength(1);
+    expect(store.getProviderAttemptForTask(parent.id)).toMatchObject({
+      executionAttempt: 1,
+      outcome: "completed",
+      providerTaskId,
+    });
+    expect(generationProviderAttemptCounts(database)).toEqual(attemptsBefore);
+    expect(statusReads).toBe(1);
+    expect(resultReads).toBe(1);
+    expect(postCount).toBe(0);
+    expect(requests).toContain("GET /v1/skills/task-status");
+    expect(requests).toContain("GET /result.mp4");
+    expect(requests.some((request) => request.startsWith("POST "))).toBe(false);
+
+    const eventCodes = store.listEvents(parent.id).map((event) => event.errorCode);
+    expect(eventCodes).toContain("OPERATOR_INCIDENT");
+    expect(eventCodes).toContain("RECOVERY_ORIGINAL_ONLY_V1");
+    expect(eventCodes).toContain("RECOVERY_ORIGINAL_EVIDENCE_V1");
+    expect(eventCodes).toContain(undefined);
+
+    const finalDatabase = openAppDatabase(dataDirectory);
+    try {
+      const projection = finalDatabase.prepare(`
+        SELECT state FROM generation_canvas_projection_states
+        WHERE task_id = ? AND owner_id = ? AND canvas_id = ?
+      `).get(parent.id, ownerId, canvasId) as { state: string } | undefined;
+      expect(projection).toEqual({ state: "applied" });
+      const row = finalDatabase.prepare(`
+        SELECT result_asset_id, state, provider_task_id, attempt
+        FROM generation_tasks WHERE id = ?
+      `).get(parent.id) as {
+        attempt: number;
+        provider_task_id: string;
+        result_asset_id: string;
+        state: string;
+      };
+      expect(row).toMatchObject({ attempt: 1, provider_task_id: providerTaskId, state: "success" });
+      const canvas = finalDatabase.prepare(`
+        SELECT nodes FROM canvas_documents WHERE owner_id = ? AND id = ?
+      `).get(ownerId, canvasId) as { nodes: string };
+      const target = (JSON.parse(canvas.nodes) as Array<{
+        data: Record<string, unknown>;
+        id: string;
+      }>).find((node) => node.id === nodeId);
+      expect(target?.data).toMatchObject({
+        assetId: row.result_asset_id,
+        groupRunSuccessTaskId: parent.id,
+        videoSrc: `/api/video-assets/${row.result_asset_id}`,
+      });
+      expect(target?.data.videoGenerationTaskId).toBeUndefined();
+      expect(finalDatabase.prepare(`
+        SELECT COUNT(*) AS count FROM media_publication_attempts
+        WHERE task_id = ? AND task_execution_attempt = ? AND state = 'published'
+      `).get(parent.id, 1)).toEqual({ count: 1 });
+    } finally {
+      finalDatabase.close();
+    }
+  } finally {
+    globalThis.fetch = nativeFetch;
+    if (fakeServer) {
+      await new Promise<void>((resolve) => fakeServer!.close(() => resolve()));
+    }
+    resetGenerationTaskStoreForRuntimeTest();
+    store?.close();
+    database?.close();
+    if (previousDataDirectory === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
+    else process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
+    if (previousFetcherFlag === undefined) delete process.env.UNBOUNDRY_TEST_RELAY_MEDIA_FETCHER;
+    else process.env.UNBOUNDRY_TEST_RELAY_MEDIA_FETCHER = previousFetcherFlag;
+    if (previousSweepFlag === undefined) delete process.env.UNBOUNDRY_DISABLE_GENERATION_RECOVERY_SWEEP;
+    else process.env.UNBOUNDRY_DISABLE_GENERATION_RECOVERY_SWEEP = previousSweepFlag;
+    if (previousCasesFlag === undefined) delete process.env.UNBOUNDRY_GENERATION_RECOVERY_CASES_ENABLED;
+    else process.env.UNBOUNDRY_GENERATION_RECOVERY_CASES_ENABLED = previousCasesFlag;
+    await rm(dataDirectory, { force: true, recursive: true });
+  }
+});
+}

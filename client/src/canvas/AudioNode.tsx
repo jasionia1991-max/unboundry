@@ -56,9 +56,13 @@ import {
   type NodeGenerationOutcome,
 } from "../generation/workflowExecution";
 import { groupRunResultKey } from "../generation/groupRunCheckpoint";
-import { visibleGenerationError } from "../generation/generationErrors";
+import {
+  generationNoticeTone,
+  visibleGenerationError,
+} from "../generation/generationErrors";
 import {
   generationFailureMessage,
+  generationFailureIsDefinitive,
   generationInputKey as createGenerationInputKey,
   generationRetryVisible,
   safelyRetryableGenerationTask,
@@ -101,6 +105,8 @@ import {
 } from "../../../types/nodeInputs";
 import { UpstreamInputCards } from "./UpstreamInputCards";
 import { GenerationAvailabilityNotice } from "./GenerationAvailabilityNotice";
+import { ProviderErrorNotice } from "../generation/ProviderErrorNotice";
+import { useGenerationRecoveryFollowUp } from "../generation/GenerationRecoveryContext";
 import type { CuttableEdge } from "./canvasTypes";
 import {
   effectiveMediaInputState,
@@ -511,11 +517,21 @@ function AudioNodeImpl({
   const [playing, setPlaying] = useState(false);
   const [prompt, setPrompt] = useState(data.audioPrompt ?? "");
   const [title, setTitle] = useState(data.title ?? "Audio");
-  const [uploadError, setUploadError] = useState(
+  const [uploadError, setRawUploadError] = useState(
     visibleGenerationError(data.audioGenerationError),
   );
+  const [uploadErrorNeutral, setUploadErrorNeutral] = useState(false);
+  const setUploadError = (message: string, errorCode?: string | null) => {
+    setUploadErrorNeutral(
+      Boolean(message) && !generationFailureIsDefinitive(errorCode),
+    );
+    setRawUploadError(message);
+  };
   const [transientUploadError, setTransientUploadError] = useState("");
   const [retryTaskId, setRetryTaskId] = useState<string>();
+  const [newGenerationTaskId, setNewGenerationTaskId] = useState<string>();
+  const [newGenerationAllowed, setNewGenerationAllowed] = useState(false);
+  const [newGenerationBlockReason, setNewGenerationBlockReason] = useState("");
   const [reconcileBusy, setReconcileBusy] = useState(false);
   const [pollingPausedTaskId, setPollingPausedTaskId] = useState<string>();
   const pollingPausedTaskIdRef = useRef<string | undefined>(undefined);
@@ -533,6 +549,11 @@ function AudioNodeImpl({
   const audioRecoveryLifecycleRef = useRef<ReturnType<
     typeof createSingleNodeGenerationLifecycle
   > | undefined>(undefined);
+  const nodeRecoveryCase = useGenerationRecoveryFollowUp(
+    data.audioGenerationTaskId,
+    Boolean(generationPollingRunRef.current || audioRecoveryControllerRef.current),
+    () => setRecoveryEpoch((current) => current + 1),
+  );
   const audioRetryLifecycleRef = useRef<ReturnType<
     typeof createSingleNodeGenerationLifecycle
   > | undefined>(undefined);
@@ -773,6 +794,24 @@ function AudioNodeImpl({
     ...inputPreflight.problems,
     ...serverInputProblems,
   ];
+  const audioNoticeMessage = effectiveInputState === "invalid" &&
+    inputProblems.length > 0 && !transientUploadError
+    ? ""
+    : transientUploadError || uploadError;
+  const audioNoticeTone = generationNoticeTone({
+    code: data.audioGenerationErrorCode,
+    inputBlocked: Boolean(
+      modelSwitchProblem ||
+      inputPreflight.problems.length ||
+      serverInputProblems.length ||
+      effectiveInputState === "invalid",
+    ),
+    message: audioNoticeMessage,
+    recovering: Boolean(
+      pollingPausedTaskId ||
+      unverifiedRecoveryTaskId,
+    ),
+  });
   const hasCompatibleUpstreamText = inputPreflight.inputs.some((input) =>
     input.kind === "text" &&
     input.state === "ready" &&
@@ -911,6 +950,18 @@ function AudioNodeImpl({
     selectedAudioModel &&
     selectedAudioModel.generationAvailable !== false,
   );
+  const newGenerationAvailable = Boolean(
+    newGenerationTaskId &&
+    newGenerationAllowed &&
+    selectedAudioModel &&
+    selectedAudioModel.generationAvailable !== false,
+  );
+  const existingAudioTaskNeedsDecision = Boolean(
+    data.audioGenerationTaskId &&
+    data.audioGenerationError &&
+    !data.audioGenerating &&
+    !newGenerationAvailable,
+  );
   const showAudioRetry = generationRetryVisible({
     errorCode: data.audioGenerationErrorCode,
     retryAvailable,
@@ -930,8 +981,16 @@ function AudioNodeImpl({
       effectiveInputState === "invalid" && effectiveInputStateReason
         ? effectiveInputStateReason
         : visibleGenerationError(data.audioGenerationError),
+      effectiveInputState === "invalid"
+        ? "INPUT_INVALID"
+        : data.audioGenerationErrorCode,
     );
-  }, [data.audioGenerationError, effectiveInputState, effectiveInputStateReason]);
+  }, [
+    data.audioGenerationError,
+    data.audioGenerationErrorCode,
+    effectiveInputState,
+    effectiveInputStateReason,
+  ]);
 
   useEffect(() => {
     setServerInputProblems([]);
@@ -1366,7 +1425,20 @@ function AudioNodeImpl({
       serverInputProblems.length > 0 ||
       !selectedAudioModel ||
       selectedAudioModel.generationAvailable === false
-    ) return { status: "skipped" };
+    ) {
+      if (canvasRevision === undefined) {
+        setUploadError("画布尚未保存，保存完成后可生成", "CANVAS_NOT_SAVED");
+      } else if (
+        !inputProblems.length &&
+        !audioModelUnavailableReason &&
+        !isFixture &&
+        !generating &&
+        !submitting
+      ) {
+        setUploadError("音频生成暂未开始，请检查当前节点状态");
+      }
+      return { status: "skipped" };
+    }
     audioDataMutationVersionRef.current += 1;
     setUploadError("");
     setServerInputProblems([]);
@@ -1382,7 +1454,10 @@ function AudioNodeImpl({
     const requestedPrompt = promptControl.committedValue.trim();
     let saveBoundary = 0;
     try {
-      if (!graphCommandPort) return { status: "skipped" };
+      if (!graphCommandPort) {
+        setUploadError("画布事务尚未就绪，暂未创建音频生成任务");
+        return { status: "skipped" };
+      }
       const lifecycle = createSingleNodeGenerationLifecycle({
         adapter: createAudioGenerationAdapter({
           contractFingerprint: inputPreflight.contractFingerprint ?? "",
@@ -1426,12 +1501,18 @@ function AudioNodeImpl({
         tasks: createBrowserSingleNodeGenerationTaskPort({
           accountId,
           fixtureScopeId,
+          replacesTaskId: newGenerationAvailable
+            ? newGenerationTaskId
+            : undefined,
           onPollingPaused(taskId) {
             pollingPausedTaskIdRef.current = taskId;
             setPollingPausedTaskId(taskId);
             setUploadError(POLLING_PAUSED_MESSAGE);
           },
           onTaskObserved(task) {
+            setNewGenerationTaskId(undefined);
+            setNewGenerationAllowed(false);
+            setNewGenerationBlockReason("");
             pollingRun = beginGenerationPollingRun(
               task.id,
               requestedGenerationInputKey,
@@ -1442,7 +1523,16 @@ function AudioNodeImpl({
       });
       const result = await lifecycle.generate();
       if (!result.task) {
-        return { message: "生成输入已修改，已停止本次生成", status: "failed" };
+        const message = result.message ??
+          "生成任务未创建，当前节点未开始生成";
+        setUploadError(message);
+        return { message, status: "failed" };
+      }
+      if (result.status === "stale") {
+        const message = result.message ??
+          "生成结果已过期，当前节点未被覆盖";
+        setUploadError(message);
+        return { message, status: "failed" };
       }
       clearGenerationSubmissionIntent(
         "audio",
@@ -1470,12 +1560,21 @@ function AudioNodeImpl({
             ? result.task.id
             : undefined,
         );
+        setNewGenerationTaskId(result.task.id);
+        setNewGenerationAllowed(result.task.newGenerationAllowed === true);
+        setNewGenerationBlockReason(
+          result.task.newGenerationBlockReason ??
+            "原任务已结束，当前暂不能重新生成",
+        );
         return { message, status: "failed" };
       }
       waveformSourceAttempted.current = undefined;
       setCurrentTime(0);
       setPlaying(false);
       setRetryTaskId(undefined);
+      setNewGenerationTaskId(undefined);
+      setNewGenerationAllowed(false);
+      setNewGenerationBlockReason("");
       setUploadError("");
       return {
         status: "success",
@@ -1607,12 +1706,22 @@ function AudioNodeImpl({
         result.status === "stale" ||
         !pollingRun ||
         !ownsGenerationPollingRun(pollingRun)
-      ) return;
+      ) {
+        if (result.task && pollingRun && ownsGenerationPollingRun(pollingRun)) {
+          setUploadError(result.message ?? "生成结果已过期，当前节点未被覆盖");
+        } else if (!result.task) {
+          setUploadError(result.message ?? "重试任务未返回结果，当前节点未被更新");
+        }
+        return;
+      }
       setServerInputProblems([]);
       clearGenerationSubmissionIntent("audio", canvasId, id, taskId, accountId, fixtureScopeId);
       pollingPausedTaskIdRef.current = undefined;
       setPollingPausedTaskId(undefined);
       if (result.status === "success") {
+        setNewGenerationTaskId(undefined);
+        setNewGenerationAllowed(false);
+        setNewGenerationBlockReason("");
         waveformSourceAttempted.current = undefined;
         setCurrentTime(0);
         setPlaying(false);
@@ -1637,6 +1746,12 @@ function AudioNodeImpl({
         safelyRetryableGenerationTask(result.task)
           ? result.task.id
           : undefined,
+      );
+      setNewGenerationTaskId(result.task.id);
+      setNewGenerationAllowed(result.task.newGenerationAllowed === true);
+      setNewGenerationBlockReason(
+        result.task.newGenerationBlockReason ??
+          "原任务已结束，当前暂不能重新生成",
       );
     } catch (error) {
       if (
@@ -1703,11 +1818,18 @@ function AudioNodeImpl({
         pollingPausedTaskIdRef.current = taskId;
         setPollingPausedTaskId(taskId);
         setUploadError(POLLING_PAUSED_MESSAGE);
-      }, controller.signal, fixtureScopeId);
+      }, controller.signal, fixtureScopeId, { followReplacementTask: true });
       if (controller.signal.aborted || !ownsGenerationPollingRun(pollingRun)) {
         return;
       }
+      if (task.id !== pollingRun.taskId) {
+        pollingRun.taskId = task.id;
+        setActiveTaskId(task.id);
+      }
       if (task.state === "cancelled") {
+        setNewGenerationTaskId(undefined);
+        setNewGenerationAllowed(false);
+        setNewGenerationBlockReason("");
         const applied = await persistAudioGenerationCancellation(
           task.id,
           task.errorMessage ?? "音频生成已取消",
@@ -1720,6 +1842,12 @@ function AudioNodeImpl({
         return;
       }
       if (task.state !== "success") {
+        setNewGenerationTaskId(task.id);
+        setNewGenerationAllowed(task.newGenerationAllowed === true);
+        setNewGenerationBlockReason(
+          task.newGenerationBlockReason ??
+            "原任务已结束，当前暂不能重新生成",
+        );
         const applied = await persistAudioGenerationFailure(
           task.id,
           friendlyGenerationMessage(task.errorMessage, "audio", task.errorCode),
@@ -1748,6 +1876,9 @@ function AudioNodeImpl({
         return;
       }
       setRetryTaskId(undefined);
+      setNewGenerationTaskId(undefined);
+      setNewGenerationAllowed(false);
+      setNewGenerationBlockReason("");
     } catch (error) {
       if (controller.signal.aborted) return;
       if (!ownsGenerationPollingRun(pollingRun)) return;
@@ -1867,12 +1998,27 @@ function AudioNodeImpl({
       pollingPausedTaskIdRef.current = undefined;
       setPollingPausedTaskId(undefined);
       if (result.status === "success") {
+        setNewGenerationTaskId(undefined);
+        setNewGenerationAllowed(false);
+        setNewGenerationBlockReason("");
         waveformSourceAttempted.current = undefined;
         setCurrentTime(0);
         setPlaying(false);
         setUploadError("");
         setRetryTaskId(undefined);
         return;
+      }
+      if (result.status === "cancelled") {
+        setNewGenerationTaskId(undefined);
+        setNewGenerationAllowed(false);
+        setNewGenerationBlockReason("");
+      } else {
+        setNewGenerationTaskId(result.task.id);
+        setNewGenerationAllowed(result.task.newGenerationAllowed === true);
+        setNewGenerationBlockReason(
+          result.task.newGenerationBlockReason ??
+            "原任务已结束，当前暂不能重新生成",
+        );
       }
       const failureMessage = generationFailureMessage(
         result.task.errorMessage ?? (
@@ -2013,6 +2159,11 @@ function AudioNodeImpl({
     const persistedOwnershipKey = data.audioGenerationOwnershipKey;
     const catalogReady = audioModelSelection.status === "ready" &&
       Boolean(selectedAudioModel);
+    const canInspectTerminalFailure = Boolean(
+      persistedTaskId &&
+      data.audioGenerationError &&
+      !data.audioGenerating,
+    );
     const controller = new AbortController();
     audioRecoveryControllerRef.current = controller;
     let pollingRun: AudioPollingRun | undefined;
@@ -2025,7 +2176,8 @@ function AudioNodeImpl({
       if (persistedTaskId) {
         if (
           persistedOwnershipKey &&
-          persistedOwnershipKey !== rawGenerationInputFingerprint
+          persistedOwnershipKey !== rawGenerationInputFingerprint &&
+          !canInspectTerminalFailure
         ) {
           clearGenerationSubmissionIntent(
             "audio",
@@ -2049,8 +2201,12 @@ function AudioNodeImpl({
           return;
         }
         if (!persistedOwnershipKey) {
-          if (!catalogReady) return;
-          if (persistedInputKey && persistedInputKey !== audioGenerationInputKey) {
+          if (!catalogReady && !canInspectTerminalFailure) return;
+          if (
+            persistedInputKey &&
+            persistedInputKey !== audioGenerationInputKey &&
+            !canInspectTerminalFailure
+          ) {
             commitAudioDataMutation(
               (current) => current.audioGenerationTaskId === persistedTaskId
                 ? clearAudioGenerationForSemanticChange(current)
@@ -2070,10 +2226,38 @@ function AudioNodeImpl({
           persistedTaskId,
           controller.signal,
           fixtureScopeId,
+          {
+            followReplacementTask: true,
+            retryTransientStatusReads: true,
+          },
         );
         persistedTaskReadPending = false;
       } else return;
       if (controller.signal.aborted || !task) return;
+      if (
+        canInspectTerminalFailure &&
+        task.state === "failed" &&
+        ((persistedOwnershipKey &&
+          persistedOwnershipKey !== rawGenerationInputFingerprint) ||
+          (!persistedOwnershipKey && persistedInputKey &&
+            persistedInputKey !== audioGenerationInputKey))
+      ) {
+        setNewGenerationTaskId(task.id);
+        setNewGenerationAllowed(task.newGenerationAllowed === true);
+        setNewGenerationBlockReason(
+          task.newGenerationBlockReason ??
+            "原任务已结束，当前暂不能重新生成",
+        );
+        setRetryTaskId(undefined);
+        setUploadError(generationFailureMessage(
+          task.errorMessage ?? data.audioGenerationError ??
+            "音频生成失败，请稍后再试",
+          undefined,
+          task.errorCode ?? data.audioGenerationErrorCode,
+          "audio",
+        ));
+        return;
+      }
       // Reading the original task does not need a live catalog. Legacy client
       // result writes do; modern server projection keeps its own full fence.
       if (persistedOwnershipKey && (
@@ -2129,7 +2313,7 @@ function AudioNodeImpl({
         task,
         canvasId,
         id,
-        persistedTaskId ?? task.id,
+        task.id,
         fixtureScopeId,
       )) {
         if (persistedTaskId) {
@@ -2160,7 +2344,8 @@ function AudioNodeImpl({
       );
       if (!ownsGenerationPollingRun(pollingRun)) return;
       if (!graphCommandPort) return;
-      const retainPersistedBlock = task.state === "failed" &&
+      const retainPersistedBlock = task.id === persistedTaskId &&
+        task.state === "failed" &&
         !recoveredIntent && data.audioGenerationRetryAllowed === false;
       const recoveredTask = retainPersistedBlock
         ? {
@@ -2183,6 +2368,16 @@ function AudioNodeImpl({
           "audio",
         ));
         setRetryTaskId(retryAllowed ? recoveredTask.id : undefined);
+        setNewGenerationTaskId(recoveredTask.id);
+        setNewGenerationAllowed(recoveredTask.newGenerationAllowed === true);
+        setNewGenerationBlockReason(
+          recoveredTask.newGenerationBlockReason ??
+            "原任务已结束，当前暂不能重新生成",
+        );
+      } else {
+        setNewGenerationTaskId(undefined);
+        setNewGenerationAllowed(false);
+        setNewGenerationBlockReason("");
       }
       lifecycle = createSingleNodeGenerationLifecycle({
         adapter: createAudioGenerationAdapter({
@@ -2262,9 +2457,21 @@ function AudioNodeImpl({
         throw error;
       }
       if (
+        controller.signal.aborted ||
+        !pollingRun ||
+        !ownsGenerationPollingRun(pollingRun)
+      ) return;
+      if (
         !result.task ||
         result.status === "stale"
-      ) return;
+      ) {
+        setUploadError(result.message ?? (
+          result.status === "stale"
+            ? "生成结果已过期，当前节点未被覆盖"
+            : "恢复任务未返回结果，当前节点未被更新"
+        ));
+        return;
+      }
       // This effect can be aborted by its own terminal graph patch. Clearing
       // the task-specific intent remains safe because taskId CAS will not
       // remove a newer submission intent.
@@ -2279,12 +2486,18 @@ function AudioNodeImpl({
       pollingPausedTaskIdRef.current = undefined;
       setPollingPausedTaskId(undefined);
       if (result.status === "success") {
+        setNewGenerationTaskId(undefined);
+        setNewGenerationAllowed(false);
+        setNewGenerationBlockReason("");
         waveformSourceAttempted.current = undefined;
         setCurrentTime(0);
         setPlaying(false);
         setUploadError("");
         setRetryTaskId(undefined);
       } else if (result.status === "cancelled") {
+        setNewGenerationTaskId(undefined);
+        setNewGenerationAllowed(false);
+        setNewGenerationBlockReason("");
         setUploadError(result.task.errorMessage ?? "音频生成已取消");
         setRetryTaskId(undefined);
       } else {
@@ -2296,6 +2509,22 @@ function AudioNodeImpl({
           "audio",
         ));
         setRetryTaskId(retryAllowed ? result.task.id : undefined);
+        setNewGenerationTaskId(result.task.id);
+        setNewGenerationAllowed(result.task.newGenerationAllowed === true);
+        setNewGenerationBlockReason(
+          result.task.newGenerationBlockReason ??
+            "原任务已结束，当前暂不能重新生成",
+        );
+      }
+      if (result.task.id !== persistedTaskId) {
+        clearGenerationSubmissionIntent(
+          "audio",
+          canvasId,
+          id,
+          persistedTaskId,
+          accountId,
+          fixtureScopeId,
+        );
       }
     })()
       .catch((error) => {
@@ -3054,8 +3283,11 @@ function AudioNodeImpl({
                     ? relayCancellationAvailable
                       ? "停止本地等待；上游任务可能仍在运行"
                       : "Mureka 暂不支持安全取消，任务会继续保存结果"
-                    : canvasRevision === undefined
+                : canvasRevision === undefined
                       ? "画布正在保存"
+                      : existingAudioTaskNeedsDecision
+                        ? newGenerationBlockReason ||
+                          "原任务已结束，当前暂不能重新生成"
                       : inputProblems[0]?.message
             }
             disabled={
@@ -3069,7 +3301,8 @@ function AudioNodeImpl({
                   serverInputProblems.length > 0 ||
                   !selectedAudioModel ||
                   selectedAudioModel.generationAvailable === false ||
-                  canvasRevision === undefined)
+                  canvasRevision === undefined ||
+                  existingAudioTaskNeedsDecision)
             }
             onClick={() =>
               void (generating ? cancelAudioGeneration() : generateAudio())
@@ -3144,14 +3377,22 @@ function AudioNodeImpl({
         data-generated-result={data.audioGeneratedResult || undefined}
         data-testid={`audio-node-${id}`}
       >
-        {(transientUploadError || uploadError) && (
+        {(transientUploadError || uploadError || nodeRecoveryCase) && (
           <div
-            className="image-node-upload-error audio-node-upload-error"
-            role="alert"
+            className={[
+              "image-node-upload-error",
+              "audio-node-upload-error",
+              uploadErrorNeutral && !transientUploadError ? "neutral" : "",
+            ].filter(Boolean).join(" ")}
+            data-error-kind={nodeRecoveryCase ? "recovering" : audioNoticeTone}
+            role={nodeRecoveryCase || audioNoticeTone !== "failed" ? "status" : "alert"}
           >
-            <span className="provider-error-summary">
-              {transientUploadError || uploadError}
-            </span>
+            <ProviderErrorNotice
+              diagnostic={data.audioGenerationError}
+              message={audioNoticeMessage}
+              recoveryTaskId={data.audioGenerationTaskId}
+              tone={audioNoticeTone}
+            />
             {canReconcileAudio && (
               <GenerationReconcileControls
                 busy={reconcileBusy || submitting}

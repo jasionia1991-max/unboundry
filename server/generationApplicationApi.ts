@@ -1,3 +1,5 @@
+import { configureGenerationRecoveryCasePorts, generationRecoveryCasesHandlers } from "./generationRecoveryCaseApplication";
+import { generationRecoveryInspectionActive, inspectGenerationRecoveryCase } from "./generationRecoveryCaseWorker";
 import { assertGenerationMediaDeletionAllowedInTransaction } from "./generationAttemptQueries";
 import {
   adminGenerationSafetyApi,
@@ -19,6 +21,14 @@ import { workflowRunsApi } from "./workflowRunsApi";
 import { workflowRunApplication } from "./workflowRunService";
 
 configureEmergencyStopRunningTaskPolicy(applyEmergencyStopRunningTaskPolicy);
+configureGenerationRecoveryCasePorts({
+  frozen: () => {
+    const safety = generationTaskApplication.generationSafetyStatus();
+    return !safety.globalEnabled || safety.emergencyStop;
+  },
+  inspecting: (taskId) => generationRecoveryInspectionActive(taskId) || generationTaskApplication.recoveryActive(taskId),
+  inspect: inspectGenerationRecoveryCase,
+});
 
 async function imageToolGenerationCapabilityQuery(ownerId: string) {
   const { availability, model } = await generationTaskApplication.imageToolAvailability(ownerId);
@@ -41,6 +51,8 @@ async function imageToolGenerationCapabilityQuery(ownerId: string) {
 
 export const generationApplicationApi = Object.freeze({
   adminGenerationSafetyApi,
+  adminGenerationRecoveryApi: generationRecoveryCasesHandlers.admin,
+  ownerGenerationRecoveryApi: generationRecoveryCasesHandlers.owner,
   assertMediaDeletionAllowedInTransaction:
     assertGenerationMediaDeletionAllowedInTransaction,
   configureRuntimeAdapters: configureGenerationRuntimeAdapters,

@@ -43,7 +43,9 @@ import {
 } from "../../../types/nodeInputs";
 import { UpstreamInputCards } from "./UpstreamInputCards";
 import { GenerationAvailabilityNotice } from "./GenerationAvailabilityNotice";
+import { ProviderErrorNotice } from "../generation/ProviderErrorNotice";
 import { useGenerationCanvas } from "../generation/GenerationCanvasContext";
+import { useGenerationRecoveryFollowUp } from "../generation/GenerationRecoveryContext";
 import { useWorkflowExecution } from "../generation/WorkflowExecutionProvider";
 import {
   effectiveLegacyTerminalGenerationState,
@@ -72,6 +74,10 @@ import {
   generationRetryBlockReason,
 } from "../generation/generationRetry";
 import {
+  generationNoticeTone,
+  visibleGenerationError,
+} from "../generation/generationErrors";
+import {
   clearGenerationSubmissionIntent,
   GENERATION_TASK_RETRY_ACCEPTED_EVENT,
   GenerationRequestError,
@@ -83,6 +89,7 @@ import {
 import { createBrowserSingleNodeGenerationTaskPort } from "../generation/browserSingleNodeGenerationTaskPort";
 import {
   createSingleNodeGenerationLifecycle,
+  markSingleNodeSemanticEdit,
   taskMatchesSingleNodeGenerationIdentity,
   type SingleNodeGenerationAdapter,
   type SingleNodeGenerationBlocked,
@@ -514,13 +521,16 @@ function TextNodeImpl({
   const [pinned, setPinned] = useState(false);
   const [saved, setSaved] = useState(false);
   const [modelSwitchProblem, setModelSwitchProblem] = useState("");
+  const [newGenerationTaskId, setNewGenerationTaskId] = useState<string>();
+  const [newGenerationAllowed, setNewGenerationAllowed] = useState(false);
+  const [newGenerationBlockReason, setNewGenerationBlockReason] = useState("");
   const [pollingPausedTaskId, setPollingPausedTaskId] = useState<string>();
   const pollingPausedTaskIdRef = useRef<string | undefined>(undefined);
   const [unverifiedRecoveryTaskId, setUnverifiedRecoveryTaskId] =
     useState<string>();
   const [recoveryEpoch, setRecoveryEpoch] = useState(0);
   const [generationError, setGenerationError] = useState(
-    data.textGenerationError ?? "",
+    visibleGenerationError(data.textGenerationError ?? ""),
   );
   const [recoveringTask, setRecoveringTask] = useState(
     Boolean(
@@ -551,8 +561,14 @@ function TextNodeImpl({
   const recoveryTaskRef = useRef<{
     controller: AbortController;
     owner: TextTaskOwner;
+    sourceTaskId?: string;
     taskId: string;
   } | null>(null);
+  const nodeRecoveryCase = useGenerationRecoveryFollowUp(
+    data.textGenerationTaskId,
+    Boolean(activeTaskRef.current || recoveryTaskRef.current),
+    () => setRecoveryEpoch((current) => current + 1),
+  );
   useEffect(() => () => {
     const recovery = recoveryTaskRef.current;
     recovery?.controller.abort("text-node-unmounted");
@@ -795,6 +811,13 @@ function TextNodeImpl({
   });
   const bodyControl = useCompositionSafeRichText({
     onCommit: (nextValue) => {
+      if (nextValue.text !== bodyValue.text) {
+        // Record the user's input before its graph mutation waits for another
+        // node's admission. Downstream submissions must not use the old text.
+        markSingleNodeSemanticEdit({
+          accountId, canvasId, fixtureScopeId, kind: "text", nodeId: id,
+        });
+      }
       // Keep the editor's committed value in local state immediately. The
       // durable graph mutation may wait behind another Canvas admission; a
       // late completion from an earlier edit must not overwrite text entered
@@ -1004,10 +1027,17 @@ function TextNodeImpl({
     Boolean(selectedTextModel) &&
     selectedTextModel?.generationAvailable !== false,
   );
+  const newGenerationAvailable = Boolean(
+    newGenerationTaskId &&
+    newGenerationAllowed &&
+    selectedTextModel &&
+    selectedTextModel.generationAvailable !== false,
+  );
   const blockedFailedTask = Boolean(
     data.textGenerationTaskId &&
     data.textGenerationError &&
-    !retryableTask,
+    !retryableTask &&
+    !newGenerationAvailable,
   );
   const generationProblem = generationError
     ? retryBlockReason
@@ -1023,17 +1053,29 @@ function TextNodeImpl({
         { code: "MODEL_UNSUPPORTED", message: modelSwitchProblem },
         ...inputPreflight.problems,
         ...serverInputProblems,
-        ...(generationProblem
-          ? [{ code: "INVALID" as const, message: generationProblem }]
-          : []),
       ]
     : [
         ...inputPreflight.problems,
         ...serverInputProblems,
-        ...(generationProblem
-          ? [{ code: "INVALID" as const, message: generationProblem }]
-          : []),
       ];
+  const textGenerationNoticeMessage = inputProblems.length
+    ? ""
+    : generationProblem || generationError;
+  const textGenerationNoticeTone = generationNoticeTone({
+    code: data.textGenerationErrorCode,
+    inputBlocked: Boolean(
+      modelSwitchProblem ||
+      textModelUnavailableReason ||
+      inputPreflight.problems.length ||
+      serverInputProblems.length,
+    ),
+    message: textGenerationNoticeMessage,
+    recovering: Boolean(
+      recoveringTask ||
+      pollingPausedTaskId ||
+      unverifiedRecoveryTaskId,
+    ),
+  });
   // An empty local Prompt is normal in the accepted 200px creator state.
   // It only becomes part of the expanded upstream area when references exist;
   // actual input/model compatibility problems still expand immediately.
@@ -1045,7 +1087,7 @@ function TextNodeImpl({
   }, [canvasEdges]);
 
   useEffect(() => {
-    setGenerationError(data.textGenerationError ?? "");
+    setGenerationError(visibleGenerationError(data.textGenerationError ?? ""));
   }, [data.textGenerationError]);
 
   useEffect(() => {
@@ -1455,14 +1497,18 @@ function TextNodeImpl({
         pollingPausedTaskIdRef.current = taskId;
         setPollingPausedTaskId(taskId);
         setGenerationError(POLLING_PAUSED_MESSAGE);
-      }, signal, fixtureScopeId);
+      }, signal, fixtureScopeId, { followReplacementTask: true });
     } catch (error) {
       if (signal.aborted || !ownsTextTask(owner)) return;
       if (pollingPausedTaskIdRef.current === taskId) return;
       throw error;
     }
     if (signal.aborted || !ownsTextTask(owner)) return;
-    if (!textTaskMatchesNode(task, canvasId, id, taskId, fixtureScopeId)) {
+    if (task.id !== owner.taskId) {
+      owner.taskId = task.id;
+      activeTaskRef.current = task.id;
+    }
+    if (!textTaskMatchesNode(task, canvasId, id, owner.taskId, fixtureScopeId)) {
       throw new Error("文字任务关联不一致，已停止恢复");
     }
     if (task.state === "success") {
@@ -1475,14 +1521,20 @@ function TextNodeImpl({
     if (task.state === "cancelled") {
       if (signal.aborted || !ownsTextTask(owner)) return false;
       return await persistTextGenerationCancellation(
-        taskId,
+        task.id,
         owner,
         task.errorMessage ?? "文字生成已取消",
       );
     }
     if (signal.aborted || !ownsTextTask(owner)) return false;
+    setNewGenerationTaskId(task.id);
+    setNewGenerationAllowed(task.newGenerationAllowed === true);
+    setNewGenerationBlockReason(
+      task.newGenerationBlockReason ??
+        "原任务已结束，当前暂不能重新生成",
+    );
     return await persistTextGenerationFailure(
-      taskId,
+      task.id,
       owner,
       task.errorMessage ?? "文字生成失败，请稍后再试",
       task.errorCode,
@@ -1506,6 +1558,11 @@ function TextNodeImpl({
     const persistedOwnershipKey = data.textGenerationOwnershipKey;
     const catalogReady = textModelSelection.status === "ready" &&
       Boolean(selectedTextModel);
+    const canInspectTerminalFailure = Boolean(
+      persistedTaskId &&
+      data.textGenerationError &&
+      !data.textGenerating,
+    );
     const settledSuccessProvenance = Boolean(
       persistedTaskId &&
       !data.textGenerating &&
@@ -1516,7 +1573,8 @@ function TextNodeImpl({
     if (
       persistedTaskId &&
       (activeTaskRef.current === persistedTaskId ||
-        recoveryTaskRef.current?.taskId === persistedTaskId)
+        recoveryTaskRef.current?.taskId === persistedTaskId ||
+        recoveryTaskRef.current?.sourceTaskId === persistedTaskId)
     ) return;
     if (
       persistedTaskId &&
@@ -1541,7 +1599,12 @@ function TextNodeImpl({
     const manualEditVersion = textManualEditVersionRef.current;
     let owner: TextTaskOwner | undefined;
     let recovery:
-      | { controller: AbortController; owner: TextTaskOwner; taskId: string }
+      | {
+          controller: AbortController;
+          owner: TextTaskOwner;
+          sourceTaskId?: string;
+          taskId: string;
+        }
       | undefined;
     let lifecycle: ReturnType<typeof createSingleNodeGenerationLifecycle> |
       undefined;
@@ -1551,7 +1614,8 @@ function TextNodeImpl({
       if (persistedTaskId) {
         if (
           persistedOwnershipKey &&
-          persistedOwnershipKey !== rawGenerationInputFingerprint
+          persistedOwnershipKey !== rawGenerationInputFingerprint &&
+          !canInspectTerminalFailure
         ) {
           clearGenerationSubmissionIntent(
             "text",
@@ -1574,8 +1638,12 @@ function TextNodeImpl({
           return;
         }
         if (!persistedOwnershipKey) {
-          if (!catalogReady) return;
-          if (persistedInputKey && persistedInputKey !== generationInputKey) {
+          if (!catalogReady && !canInspectTerminalFailure) return;
+          if (
+            persistedInputKey &&
+            persistedInputKey !== generationInputKey &&
+            !canInspectTerminalFailure
+          ) {
             const identity = {
               inputKey: persistedInputKey,
               ownershipKey: persistedOwnershipKey,
@@ -1594,6 +1662,10 @@ function TextNodeImpl({
           persistedTaskId,
           controller.signal,
           fixtureScopeId,
+          {
+            followReplacementTask: true,
+            retryTransientStatusReads: true,
+          },
         );
         persistedTaskReadPending = false;
       } else return;
@@ -1602,6 +1674,29 @@ function TextNodeImpl({
         textManualEditVersionRef.current !== manualEditVersion ||
         !task
       ) return;
+      if (
+        canInspectTerminalFailure &&
+        task.state === "failed" &&
+        ((persistedOwnershipKey &&
+          persistedOwnershipKey !== rawGenerationInputFingerprint) ||
+          (!persistedOwnershipKey && persistedInputKey &&
+            persistedInputKey !== generationInputKey))
+      ) {
+        setNewGenerationTaskId(task.id);
+        setNewGenerationAllowed(task.newGenerationAllowed === true);
+        setNewGenerationBlockReason(
+          task.newGenerationBlockReason ??
+            "原任务已结束，当前暂不能重新生成",
+        );
+        setGenerationError(generationFailureMessage(
+          task.errorMessage ?? data.textGenerationError ??
+            "文字生成失败，请稍后再试",
+          undefined,
+          task.errorCode ?? data.textGenerationErrorCode,
+          "text",
+        ));
+        return;
+      }
       if (persistedOwnershipKey && (
         boundParameterProofRef.current.state === "changed" ||
         boundSourceProofRef.current === "changed" ||
@@ -1691,7 +1786,7 @@ function TextNodeImpl({
         task,
         canvasId,
         id,
-        persistedTaskId ?? task.id,
+        task.id,
         fixtureScopeId,
       )) {
         if (persistedTaskId) {
@@ -1736,12 +1831,18 @@ function TextNodeImpl({
         recoveredOwnershipKey ?? rawGenerationInputFingerprint,
         persistedInputKey ?? task.generationInputKey,
       );
-      recovery = { controller, owner, taskId: task.id };
+      recovery = {
+        controller,
+        owner,
+        sourceTaskId: persistedTaskId,
+        taskId: task.id,
+      };
       recoveryTaskRef.current = recovery;
       setRecoveringTask(true);
       if (!ownsTextTask(owner)) return;
       if (!graphCommandPort) return;
-      const retainPersistedBlock = task.state === "failed" &&
+      const retainPersistedBlock = task.id === persistedTaskId &&
+        task.state === "failed" &&
         data.textGenerationRetryAllowed === false;
       const recoveredTask = retainPersistedBlock
         ? {
@@ -1755,6 +1856,18 @@ function TextNodeImpl({
             retryBlockReason: data.textGenerationRetryBlockReason,
           }
         : task;
+      if (recoveredTask.state === "failed") {
+        setNewGenerationTaskId(recoveredTask.id);
+        setNewGenerationAllowed(recoveredTask.newGenerationAllowed === true);
+        setNewGenerationBlockReason(
+          recoveredTask.newGenerationBlockReason ??
+            "原任务已结束，当前暂不能重新生成",
+        );
+      } else {
+        setNewGenerationTaskId(undefined);
+        setNewGenerationAllowed(false);
+        setNewGenerationBlockReason("");
+      }
       const recoveryAdapter = createTextGenerationAdapter({
         contractFingerprint: task.modelInputContractFingerprint ??
           data.textGenerationContractFingerprint ??
@@ -1839,10 +1952,20 @@ function TextNodeImpl({
         ) return;
         throw error;
       }
+      if (controller.signal.aborted || !owner || !ownsTextTask(owner)) return;
       if (!result.task || result.status === "stale") {
+        const message = result.message ?? (
+          result.status === "stale"
+            ? "生成结果已过期，当前节点未被覆盖"
+            : "生成任务未创建，当前节点未开始生成"
+        );
+        if (!owner || ownsTextTask(owner)) setGenerationError(message);
         return;
       }
       if (result.status === "success" && result.task.generationIdentityVersion === 2) {
+        setNewGenerationTaskId(undefined);
+        setNewGenerationAllowed(false);
+        setNewGenerationBlockReason("");
         textTerminalPatchPendingTaskRef.current = undefined;
         if (result.task.canvasProjectionState !== "applied") return;
         // The lifecycle refreshed the authoritative document. Never paint the
@@ -1865,6 +1988,16 @@ function TextNodeImpl({
         accountId,
         fixtureScopeId,
       );
+      if (result.task.id !== persistedTaskId) {
+        clearGenerationSubmissionIntent(
+          "text",
+          canvasId,
+          id,
+          persistedTaskId,
+          accountId,
+          fixtureScopeId,
+        );
+      }
       if (textTerminalPatchPendingTaskRef.current === result.task.id) {
         textTerminalPatchPendingTaskRef.current = undefined;
       }
@@ -1875,6 +2008,9 @@ function TextNodeImpl({
       pollingPausedTaskIdRef.current = undefined;
       setPollingPausedTaskId(undefined);
       if (result.status === "success") {
+        setNewGenerationTaskId(undefined);
+        setNewGenerationAllowed(false);
+        setNewGenerationBlockReason("");
         const resultText = result.task.resultText?.trim() ?? "";
         const nextValue = storedRichTextValue(resultText, plainTextHtml(resultText));
         setBodyValue(nextValue);
@@ -1882,6 +2018,18 @@ function TextNodeImpl({
         setEmpty(false);
         setGenerationError("");
         return;
+      }
+      if (result.status === "cancelled") {
+        setNewGenerationTaskId(undefined);
+        setNewGenerationAllowed(false);
+        setNewGenerationBlockReason("");
+      } else {
+        setNewGenerationTaskId(result.task.id);
+        setNewGenerationAllowed(result.task.newGenerationAllowed === true);
+        setNewGenerationBlockReason(
+          result.task.newGenerationBlockReason ??
+            "原任务已结束，当前暂不能重新生成",
+        );
       }
       setGenerationError(generationFailureMessage(
         result.task.errorMessage ?? (
@@ -1975,7 +2123,21 @@ function TextNodeImpl({
       data.textGenerating ||
       isFixture ||
       canvasRevision === undefined
-    ) return { status: "skipped" };
+    ) {
+      if (canvasRevision === undefined) {
+        setGenerationError("画布尚未保存，保存完成后可生成");
+      } else if (
+        !inputPreflight.problems.length &&
+        !serverInputProblems.length &&
+        !textModelUnavailableReason &&
+        !isFixture &&
+        !data.textGenerating &&
+        !submitting
+      ) {
+        setGenerationError("文字生成暂未开始，请检查当前节点状态");
+      }
+      return { status: "skipped" };
+    }
     textDataMutationVersionRef.current += 1;
     setSubmitting(true);
     setGenerationError("");
@@ -1989,7 +2151,11 @@ function TextNodeImpl({
     const requestedModelName = textModelSelection.displayName;
     const requestedParameters = { ...textParameters };
     try {
-      if (!graphCommandPort) return { status: "skipped" };
+      if (!graphCommandPort) {
+        const message = "画布事务尚未就绪，暂未创建文字生成任务";
+        setGenerationError(message);
+        return { status: "skipped" };
+      }
       const lifecycle = createSingleNodeGenerationLifecycle({
         adapter: createTextGenerationAdapter({
           contractFingerprint: inputPreflight.contractFingerprint ?? "",
@@ -2027,12 +2193,18 @@ function TextNodeImpl({
         tasks: createBrowserSingleNodeGenerationTaskPort({
           accountId,
           fixtureScopeId,
+          replacesTaskId: newGenerationAvailable
+            ? newGenerationTaskId
+            : undefined,
           onPollingPaused(taskId) {
             pollingPausedTaskIdRef.current = taskId;
             setPollingPausedTaskId(taskId);
             setGenerationError(POLLING_PAUSED_MESSAGE);
           },
           onTaskObserved(task) {
+            setNewGenerationTaskId(undefined);
+            setNewGenerationAllowed(false);
+            setNewGenerationBlockReason("");
             owner = claimTextTask(
               task.id,
               requestedGenerationOwnershipKey,
@@ -2043,9 +2215,17 @@ function TextNodeImpl({
       });
       const result = await lifecycle.generate();
       if (!result.task) {
-        return { message: "生成输入已修改，已停止本次生成", status: "failed" };
+        const message = result.message ??
+          "生成任务未创建，当前节点未开始生成";
+        setGenerationError(message);
+        return { message, status: "failed" };
       }
-      if (result.status === "stale") return { message: "生成输入已修改，已停止本次生成", status: "failed" };
+      if (result.status === "stale") {
+        const message = result.message ??
+          "生成结果已过期，当前节点未被覆盖";
+        setGenerationError(message);
+        return { message, status: "failed" };
+      }
       if (result.status === "success" && result.task.generationIdentityVersion === 2 &&
         result.task.canvasProjectionState !== "applied") {
         const message = "结果已生成但尚未写入当前画布，原任务已保留";
@@ -2061,6 +2241,12 @@ function TextNodeImpl({
           result.task.errorCode,
           "text",
         ));
+        setNewGenerationTaskId(result.task.id);
+        setNewGenerationAllowed(result.task.newGenerationAllowed === true);
+        setNewGenerationBlockReason(
+          result.task.newGenerationBlockReason ??
+            "原任务已结束，当前暂不能重新生成",
+        );
         return { message, status: "failed" };
       }
       const currentData = result.task.generationIdentityVersion === 2
@@ -2072,6 +2258,9 @@ function TextNodeImpl({
       bodyLocalValue.current = nextValue;
       setEmpty(false);
       setGenerationError("");
+      setNewGenerationTaskId(undefined);
+      setNewGenerationAllowed(false);
+      setNewGenerationBlockReason("");
       return {
         status: "success",
         successProof: {
@@ -2120,6 +2309,9 @@ function TextNodeImpl({
       requestedGenerationOwnershipKey,
       requestedGenerationInputKey,
     );
+    setNewGenerationTaskId(undefined);
+    setNewGenerationAllowed(false);
+    setNewGenerationBlockReason("");
     setSubmitting(true);
     let retryAccepted = false;
     let retrySaveGatePassed = false;
@@ -2175,7 +2367,15 @@ function TextNodeImpl({
         }),
       });
       const result = await lifecycle.retry({ id: taskId });
-      if (!result.task || result.status === "stale") return;
+      if (!result.task || result.status === "stale") {
+        const message = result.message ?? (
+          result.status === "stale"
+            ? "生成结果已过期，当前节点未被覆盖"
+            : "重试任务未返回结果，当前节点未被更新"
+        );
+        if (ownsTextTask(owner)) setGenerationError(message);
+        return;
+      }
       if (result.status === "success" && result.task.generationIdentityVersion === 2 &&
         result.task.canvasProjectionState !== "applied") return;
       clearGenerationSubmissionIntent("text", canvasId, id, taskId, accountId, fixtureScopeId);
@@ -2189,9 +2389,24 @@ function TextNodeImpl({
         bodyLocalValue.current = nextValue;
         setEmpty(false);
         setGenerationError("");
+        setNewGenerationTaskId(undefined);
+        setNewGenerationAllowed(false);
+        setNewGenerationBlockReason("");
         pollingPausedTaskIdRef.current = undefined;
         setPollingPausedTaskId(undefined);
         return;
+      }
+      if (result.status === "cancelled") {
+        setNewGenerationTaskId(undefined);
+        setNewGenerationAllowed(false);
+        setNewGenerationBlockReason("");
+      } else {
+        setNewGenerationTaskId(result.task.id);
+        setNewGenerationAllowed(result.task.newGenerationAllowed === true);
+        setNewGenerationBlockReason(
+          result.task.newGenerationBlockReason ??
+            "原任务已结束，当前暂不能重新生成",
+        );
       }
       setGenerationError(generationFailureMessage(
         result.task.errorMessage ?? (
@@ -2260,7 +2475,9 @@ function TextNodeImpl({
       }
       const finished = getNodes().find((node) => node.id === id);
       if (finished?.data.textGenerationError) {
-        setGenerationError(finished.data.textGenerationError);
+        setGenerationError(
+          visibleGenerationError(finished.data.textGenerationError),
+        );
       }
     } catch (error) {
       if (controller.signal.aborted) return;
@@ -2396,6 +2613,20 @@ function TextNodeImpl({
           })}
           testId="text-upstream-inputs"
         />
+        {(textGenerationNoticeMessage || nodeRecoveryCase) && (
+          <div
+            className="text-node-generation-notice"
+            data-error-kind={nodeRecoveryCase ? "recovering" : textGenerationNoticeTone}
+            role={nodeRecoveryCase || textGenerationNoticeTone !== "failed" ? "status" : "alert"}
+          >
+            <ProviderErrorNotice
+              diagnostic={data.textGenerationError}
+              message={textGenerationNoticeMessage}
+              recoveryTaskId={data.textGenerationTaskId}
+              tone={textGenerationNoticeTone}
+            />
+          </div>
+        )}
         <GenerationAvailabilityNotice
           canvasId={canvasId}
           kind="text"

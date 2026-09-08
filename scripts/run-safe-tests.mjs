@@ -15,6 +15,7 @@ import {
   readSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { createHash, randomInt, randomUUID } from "node:crypto";
@@ -69,12 +70,48 @@ const EXACT_V051_ATTESTATION_CONTRACT =
 const TEMPLATE_ACCEPTANCE_SCRIPT = "scripts/template-acceptance-preview.mjs";
 const TEMPLATE_ACCEPTANCE_TIMEOUT = 2 * 60 * 60 * 1_000 + 60_000;
 const GENERATION_STATUS_ACCEPTANCE_SCENARIO = "generation-status";
+const NODE_RECOVERY_ACCEPTANCE_SCENARIO = "node-recovery";
+const ACCEPTANCE_SCENARIOS = Object.freeze([
+  GENERATION_STATUS_ACCEPTANCE_SCENARIO,
+  NODE_RECOVERY_ACCEPTANCE_SCENARIO,
+  "templates",
+]);
 const GENERATION_STATUS_BASELINE_HEAD = "955b9d2d89f76f8b91e71dd76cfb37ecad32cdc6";
 const GENERATION_STATUS_BASELINE_MANIFEST =
   "tests/fixtures/generation-status-query-baseline.json";
 const GENERATION_STATUS_BASELINE_FILES = Object.freeze([
   "client/src/generation/taskPolling.ts",
   "client/src/generation/generationTasks.ts",
+]);
+const GENERATION_SERVER_ROLLBACK_REHEARSAL_SCRIPT =
+  "tests/generation-server-rollback-rehearsal.spec.mjs";
+const GENERATION_SERVER_ROLLBACK_EVIDENCE_FILE =
+  "generation-server-rollback-rehearsal.json";
+const GENERATION_SERVER_TYPES_BASELINE_MANIFEST =
+  "tests/fixtures/generation-server-types-baseline.json";
+const GENERATION_SERVER_TYPES_BASELINE_HEAD =
+  "d7897a5e6bdd836d3d1685a0a1bbb7760373b20f";
+const GENERATION_SERVER_TYPES_BASELINE_TREE =
+  "3914f3219eb763dea37253077a5dccf1477998fe";
+const GENERATION_SERVER_TYPES_BASELINE_FILE_COUNT = 192;
+const GENERATION_RECOVERY_CASES_ROLLBACK_REHEARSAL_SCRIPT =
+  "tests/generation-recovery-cases-rollback.spec.mjs";
+const GENERATION_RECOVERY_CASES_ROLLBACK_EVIDENCE_FILE =
+  "generation-recovery-cases-rollback.json";
+const GENERATION_RECOVERY_CASES_V3_BASELINE_MANIFEST =
+  "tests/fixtures/generation-recovery-cases-v3-baseline.json";
+const GENERATION_RECOVERY_CASES_V3_BASELINE_CONTRACT =
+  "unboundry-generation-recovery-cases-v3-baseline-v1";
+const GENERATION_RECOVERY_CASES_ROLLBACK_CONTRACT =
+  "unboundry-generation-recovery-cases-rollback-v1";
+const GENERATION_RECOVERY_CASES_V3_BASELINE_HEAD =
+  "d7897a5e6bdd836d3d1685a0a1bbb7760373b20f";
+const GENERATION_RECOVERY_CASES_V3_BASELINE_BRANCH =
+  "codex/v0716-release-closeout";
+const GENERATION_RECOVERY_CASES_V3_BASELINE_FILE_COUNT = 572;
+const GENERATION_RECOVERY_CASES_V3_RUNTIME_SCOPE = Object.freeze([
+  "server",
+  "types",
 ]);
 const scriptPath = fileURLToPath(import.meta.url);
 const repositoryRoot = realpathSync(resolve(dirname(scriptPath), ".."));
@@ -442,15 +479,15 @@ function parseArguments(values) {
       parsed.repeat = value;
     } else if (argument === "--scenario" || argument === "--acceptance-scenario") {
       const value = args.shift();
-      if (![GENERATION_STATUS_ACCEPTANCE_SCENARIO, "templates"].includes(value)) {
-        fail(`--scenario must be ${GENERATION_STATUS_ACCEPTANCE_SCENARIO} or templates`);
+      if (!ACCEPTANCE_SCENARIOS.includes(value)) {
+        fail(`--scenario must be one of ${ACCEPTANCE_SCENARIOS.join(", ")}`);
       }
       parsed.acceptanceScenario = value;
     } else {
       fail(`unknown argument: ${argument}`);
     }
   }
-  if (!["preflight", "list", "run", "full", "acceptance"].includes(parsed.command)) {
+  if (!["preflight", "list", "run", "full", "acceptance", "rehearsal", "recovery-rehearsal"].includes(parsed.command)) {
     fail(`unknown command: ${parsed.command}`);
   }
   if (parsed.command !== "acceptance" && parsed.acceptanceScenario !== GENERATION_STATUS_ACCEPTANCE_SCENARIO) {
@@ -462,6 +499,22 @@ function parseArguments(values) {
     }
     if (parsed.repeatSpecified) {
       fail("acceptance mode runs one persistent session; --repeat is not supported");
+    }
+  }
+  if (parsed.command === "rehearsal") {
+    if (parsed.specs.length > 0) {
+      fail("rehearsal mode is fixed to the generation server rollback spec; --spec is not supported");
+    }
+    if (parsed.repeatSpecified) {
+      fail("rehearsal mode runs one fixed new-old-new session; --repeat is not supported");
+    }
+  }
+  if (parsed.command === "recovery-rehearsal") {
+    if (parsed.specs.length > 0) {
+      fail("recovery-rehearsal mode is fixed to the generation recovery cases rollback spec; --spec is not supported");
+    }
+    if (parsed.repeatSpecified) {
+      fail("recovery-rehearsal mode runs one fixed same-database V4-V3-V4 session; --repeat is not supported");
     }
   }
   return parsed;
@@ -549,6 +602,334 @@ function prepareGenerationStatusBaseline(testRoot) {
   return Object.freeze({
     manifestPath: realpathSync(outputManifest),
     root: realpathSync(baselineRoot),
+  });
+}
+
+function prepareGenerationServerTypesBaseline(testRoot) {
+  const manifestPath = join(repositoryRoot, GENERATION_SERVER_TYPES_BASELINE_MANIFEST);
+  if (!existsSync(manifestPath)) {
+    fail(`generation server/types baseline manifest is missing: ${GENERATION_SERVER_TYPES_BASELINE_MANIFEST}`);
+  }
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  } catch (error) {
+    fail(`generation server/types baseline manifest is invalid: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const manifestFiles = manifest?.files && typeof manifest.files === "object" &&
+    !Array.isArray(manifest.files)
+    ? Object.keys(manifest.files).sort()
+    : [];
+  if (
+    manifest?.schemaVersion !== 1 ||
+    manifest?.contract !== "unboundry-generation-server-types-baseline-v1" ||
+    manifest?.head !== GENERATION_SERVER_TYPES_BASELINE_HEAD ||
+    manifest?.tree !== GENERATION_SERVER_TYPES_BASELINE_TREE ||
+    JSON.stringify(manifest?.scope) !== JSON.stringify(["server", "types"]) ||
+    manifest?.fileCount !== GENERATION_SERVER_TYPES_BASELINE_FILE_COUNT ||
+    manifestFiles.length !== GENERATION_SERVER_TYPES_BASELINE_FILE_COUNT ||
+    manifestFiles.some((file) =>
+      !/^(?:server|types)\/[^/]+(?:\/[^/]+)*$/.test(file) ||
+      file.split("/").some((part) => part === "" || part === "." || part === "..") ||
+      file === "spec/INC_GEN_017_R0_PUBLISHED_MODEL_SNAPSHOT_2026-08-28.json" ||
+      file === "spec/public-templates-director-split-revision.json"
+    )
+  ) {
+    fail("generation server/types baseline manifest does not match its frozen scope");
+  }
+
+  const gitResult = (args, label, maxBuffer = 16 * 1024 * 1024) => {
+    const result = spawnSync("/usr/bin/git", [
+      "--no-replace-objects",
+      "-C",
+      repositoryRoot,
+      ...args,
+    ], {
+      cwd: repositoryRoot,
+      encoding: null,
+      maxBuffer,
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 30_000,
+    });
+    if (result.error) throw result.error;
+    if (result.status !== 0 || !Buffer.isBuffer(result.stdout)) {
+      fail(`could not read the frozen generation server/types baseline (${label})`);
+    }
+    return result.stdout;
+  };
+  const actualTree = gitResult(["rev-parse", "--verify", `${manifest.head}^{tree}`], "tree")
+    .toString("utf8").trim();
+  if (actualTree !== GENERATION_SERVER_TYPES_BASELINE_TREE) {
+    fail(`generation server/types baseline tree changed: ${actualTree}`);
+  }
+  const entries = gitResult([
+    "ls-tree",
+    "-r",
+    "-z",
+    "--full-tree",
+    manifest.head,
+    "--",
+    "server",
+    "types",
+  ], "tree entries").toString("utf8").split("\0").filter(Boolean).map((record) => {
+    const match = /^([0-7]{6}) (blob|tree) ([a-f0-9]{40})\t(.+)$/.exec(record);
+    if (!match) fail("generation server/types baseline tree contains an invalid entry");
+    const [, mode, type, objectId, file] = match;
+    if (
+      mode !== "100644" || type !== "blob" ||
+      !/^(?:server|types)\/[^/]+(?:\/[^/]+)*$/.test(file) ||
+      file.split("/").some((part) => part === "" || part === "." || part === "..")
+    ) {
+      fail(`generation server/types baseline contains an unsupported entry: ${file}`);
+    }
+    return { file, mode, objectId };
+  }).sort((left, right) => left.file.localeCompare(right.file));
+  const actualFiles = entries.map(({ file }) => file).sort();
+  if (
+    entries.length !== GENERATION_SERVER_TYPES_BASELINE_FILE_COUNT ||
+    new Set(actualFiles).size !== actualFiles.length ||
+    actualFiles.join("\n") !== manifestFiles.join("\n")
+  ) {
+    fail("generation server/types baseline file inventory changed");
+  }
+
+  const baselineRoot = join(testRoot, "generation-server-types-baseline");
+  mkdirSync(baselineRoot, { recursive: true, mode: 0o700 });
+  const files = {};
+  const baselineDirectories = new Set([baselineRoot]);
+  for (const file of manifestFiles) {
+    const expected = manifest.files[file];
+    if (!/^[a-f0-9]{64}$/.test(expected)) {
+      fail(`generation server/types baseline SHA-256 is invalid: ${file}`);
+    }
+    // This is the only content read from the historical checkout. The
+    // pathspec and the manifest have already been checked to stay in server/ and
+    // types/; no archive or repository-wide export is permitted here.
+    const bytes = gitResult(["show", `${manifest.head}:${file}`], `blob ${file}`, 32 * 1024 * 1024);
+    const actual = sha256Bytes(bytes);
+    if (actual !== expected) {
+      fail(`generation server/types baseline SHA-256 mismatch for ${file}: ${actual}`);
+    }
+    const destination = join(baselineRoot, file);
+    const destinationDirectory = dirname(destination);
+    mkdirSync(destinationDirectory, { recursive: true, mode: 0o700 });
+    baselineDirectories.add(destinationDirectory);
+    writeFileSync(destination, bytes, { flag: "wx", mode: 0o400 });
+    chmodSync(destination, 0o400);
+    files[file] = actual;
+  }
+  const outputManifest = join(baselineRoot, "manifest.json");
+  const stagedManifest = {
+    schemaVersion: 1,
+    contract: manifest.contract,
+    head: manifest.head,
+    tree: manifest.tree,
+    candidateHead: workspaceBaseline.head,
+    candidateSourceSha256: workspaceBaseline.sha256,
+    scope: ["server", "types"],
+    fileCount: manifestFiles.length,
+    files,
+  };
+  writeFileSync(outputManifest, `${JSON.stringify(stagedManifest, null, 2)}\n`, {
+    flag: "wx",
+    mode: 0o400,
+  });
+  chmodSync(outputManifest, 0o400);
+  for (const directory of [...baselineDirectories].sort((left, right) =>
+    right.length - left.length
+  )) chmodSync(directory, 0o500);
+  return Object.freeze({
+    manifest: Object.freeze(stagedManifest),
+    manifestPath: realpathSync(outputManifest),
+    root: realpathSync(baselineRoot),
+    // Parent-owned cleanup only, after the sandboxed runtime has exited.
+    cleanupDirectories: Object.freeze([...baselineDirectories]),
+  });
+}
+
+function prepareGenerationRecoveryCasesV3Baseline(testRoot, sourceRoot) {
+  const fixturePath = join(
+    sourceRoot,
+    GENERATION_RECOVERY_CASES_V3_BASELINE_MANIFEST,
+  );
+  if (!existsSync(fixturePath)) {
+    fail(`generation recovery cases baseline manifest is missing: ${GENERATION_RECOVERY_CASES_V3_BASELINE_MANIFEST}`);
+  }
+  let fixture;
+  try {
+    fixture = JSON.parse(
+      readRegularFileOnce(fixturePath, "generation recovery cases baseline manifest").bytes.toString("utf8"),
+    );
+  } catch (error) {
+    fail(`generation recovery cases baseline manifest is invalid: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const fixtureFiles = fixture?.files && typeof fixture.files === "object" &&
+    !Array.isArray(fixture.files)
+    ? Object.keys(fixture.files).sort()
+    : [];
+  if (
+    fixture?.schemaVersion !== 1 ||
+    fixture?.contract !== GENERATION_RECOVERY_CASES_V3_BASELINE_CONTRACT ||
+    fixture?.branch !== GENERATION_RECOVERY_CASES_V3_BASELINE_BRANCH ||
+    fixture?.head !== GENERATION_RECOVERY_CASES_V3_BASELINE_HEAD ||
+    fixture?.fileCount !== GENERATION_RECOVERY_CASES_V3_BASELINE_FILE_COUNT ||
+    fixtureFiles.length !== GENERATION_RECOVERY_CASES_V3_BASELINE_FILE_COUNT ||
+    JSON.stringify(fixture?.runtimeScope) !==
+      JSON.stringify(GENERATION_RECOVERY_CASES_V3_RUNTIME_SCOPE) ||
+    fixture?.runtimeFileCount !== fixtureFiles.filter((file) =>
+      file.startsWith("server/") || file.startsWith("types/")
+    ).length ||
+    typeof fixture?.aggregateSha256 !== "string" ||
+    !/^[a-f0-9]{64}$/.test(fixture.aggregateSha256)
+  ) {
+    fail("generation recovery cases baseline manifest does not match the frozen 572-file V3 fixture");
+  }
+  const protectedWorkspaceFiles = new Set([
+    "spec/INC_GEN_017_R0_PUBLISHED_MODEL_SNAPSHOT_2026-08-28.json",
+    "spec/public-templates-director-split-revision.json",
+  ]);
+  if (fixtureFiles.some((file) =>
+    protectedWorkspaceFiles.has(file) ||
+    file.split("/").some((part) => part === "" || part === "." || part === "..") ||
+    !/^(?:[^/]+|[^/]+\/[^/]+(?:\/[^/]+)*)$/.test(file)
+  )) {
+    fail("generation recovery cases baseline manifest contains an unsafe or protected path");
+  }
+  for (const file of fixtureFiles) {
+    if (!/^[a-f0-9]{64}$/.test(fixture.files[file])) {
+      fail(`generation recovery cases baseline SHA-256 is invalid: ${file}`);
+    }
+  }
+
+  const configuredRoot = process.env.UNBOUNDRY_ACCEPTED_V3_ROOT;
+  const configuredReceipt = process.env.UNBOUNDRY_ACCEPTED_V3_RECEIPT;
+  const systemTemporaryRoot = realpathSync(tmpdir());
+  if (!configuredRoot || !configuredReceipt ||
+      !configuredRoot.startsWith(sep) ||
+      !configuredReceipt.startsWith(sep)) {
+    fail("UNBOUNDRY_ACCEPTED_V3_ROOT and UNBOUNDRY_ACCEPTED_V3_RECEIPT must point inside the system temporary root");
+  }
+  let acceptedRoot;
+  let receiptPath;
+  try {
+    acceptedRoot = realpathSync(configuredRoot);
+    receiptPath = realpathSync(configuredReceipt);
+  } catch (error) {
+    fail(`accepted V3 fixture path is not readable: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const acceptedDetails = lstatSync(acceptedRoot);
+  if (
+    !acceptedDetails.isDirectory() || acceptedDetails.isSymbolicLink() ||
+    (acceptedDetails.mode & 0o022) !== 0
+  ) fail("accepted V3 fixture root is not a private directory");
+  if (!isInside(systemTemporaryRoot, acceptedRoot) ||
+      acceptedRoot === systemTemporaryRoot || isInside(USER_HOME, acceptedRoot) ||
+      !isInside(systemTemporaryRoot, receiptPath)) {
+    fail("accepted V3 fixture root is not an isolated child of system temporary storage");
+  }
+  if (basename(receiptPath) !== "accepted-v3-receipt.json") {
+    fail("accepted V3 receipt name is not fixed");
+  }
+  let receipt;
+  try {
+    receipt = JSON.parse(
+      readRegularFileOnce(receiptPath, "accepted V3 receipt").bytes.toString("utf8"),
+    );
+  } catch (error) {
+    fail(`accepted V3 receipt is invalid: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const receiptFiles = receipt?.files && typeof receipt.files === "object" &&
+    !Array.isArray(receipt.files)
+    ? Object.keys(receipt.files).sort()
+    : [];
+  if (
+    receipt?.protectedPathsExcludedBeforeAccess !== true ||
+    receipt?.head !== fixture.head ||
+    receipt?.branch !== fixture.branch ||
+    receipt?.aggregateSha256 !== fixture.aggregateSha256 ||
+    receiptFiles.length !== fixtureFiles.length ||
+    receiptFiles.some((file, index) => file !== fixtureFiles[index])
+  ) {
+    fail("accepted V3 receipt is not the exact protected-path-excluded 572-file fixture");
+  }
+  for (const file of fixtureFiles) {
+    if (protectedWorkspaceFiles.has(file)) {
+      fail(`accepted V3 receipt attempted to include a protected path: ${file}`);
+    }
+    if (receipt.files[file] !== fixture.files[file]) {
+      fail(`accepted V3 receipt hash differs from the checked-in V3 fixture: ${file}`);
+    }
+  }
+
+  const baselineRoot = join(testRoot, "generation-recovery-cases-v3-baseline");
+  mkdirSync(baselineRoot, { recursive: true, mode: 0o700 });
+  const runtimeFiles = fixtureFiles.filter((file) =>
+    file.startsWith("server/") || file.startsWith("types/")
+  );
+  const stagedFiles = {};
+  const stagedDirectories = new Set([baselineRoot]);
+  for (const file of runtimeFiles) {
+    const source = join(acceptedRoot, file);
+    if (!isInside(acceptedRoot, source) || protectedWorkspaceFiles.has(file)) {
+      fail(`accepted V3 runtime path escaped or was protected: ${file}`);
+    }
+    const parent = dirname(source);
+    if (!isInside(acceptedRoot, realpathSync(parent))) {
+      fail(`accepted V3 runtime parent escaped: ${file}`);
+    }
+    const record = readRegularFileOnce(source, `accepted V3 runtime ${file}`);
+    const actual = sha256Bytes(record.bytes);
+    if (actual !== fixture.files[file]) {
+      fail(`accepted V3 runtime hash mismatch: ${file}`);
+    }
+    const destination = join(baselineRoot, file);
+    const destinationDirectory = dirname(destination);
+    mkdirSync(destinationDirectory, { recursive: true, mode: 0o700 });
+    stagedDirectories.add(destinationDirectory);
+    writeFileSync(destination, record.bytes, { flag: "wx", mode: 0o400 });
+    chmodSync(destination, 0o400);
+    stagedFiles[file] = actual;
+  }
+  const stagedManifest = {
+    schemaVersion: 1,
+    contract: fixture.contract,
+    branch: fixture.branch,
+    head: fixture.head,
+    aggregateSha256: fixture.aggregateSha256,
+    fileCount: fixture.fileCount,
+    runtimeScope: [...fixture.runtimeScope],
+    runtimeFileCount: runtimeFiles.length,
+    runtimeFiles: stagedFiles,
+    fullManifestDigest: sha256Bytes(Buffer.from(JSON.stringify(
+      Object.fromEntries(fixtureFiles.map((file) => [file, fixture.files[file]])),
+    ), "utf8")),
+    candidateHead: workspaceBaseline.head,
+    candidateSourceSha256: workspaceBaseline.sha256,
+  };
+  const outputManifest = join(baselineRoot, "manifest.json");
+  writeFileSync(outputManifest, `${JSON.stringify(stagedManifest, null, 2)}\n`, {
+    flag: "wx",
+    mode: 0o400,
+  });
+  chmodSync(outputManifest, 0o400);
+  for (const directory of [...stagedDirectories].sort((left, right) =>
+    right.length - left.length
+  )) chmodSync(directory, 0o500);
+  return Object.freeze({
+    aggregateSha256: fixture.aggregateSha256,
+    branch: fixture.branch,
+    candidateHead: workspaceBaseline.head,
+    candidateSourceSha256: workspaceBaseline.sha256,
+    fileCount: fixture.fileCount,
+    head: fixture.head,
+    manifestDigest: sha256Bytes(Buffer.from(JSON.stringify(
+      Object.fromEntries(fixtureFiles.map((file) => [file, fixture.files[file]])),
+    ), "utf8")),
+    manifestPath: realpathSync(outputManifest),
+    root: realpathSync(baselineRoot),
+    runtimeFileCount: runtimeFiles.length,
+    runtimeFiles: Object.freeze(stagedFiles),
+    cleanupDirectories: Object.freeze([...stagedDirectories]),
   });
 }
 
@@ -767,15 +1148,15 @@ function preflight() {
     new Set(manifested).size !== manifested.length ||
     manifested.join("\n") !== specs.join("\n")
   ) {
-    fail("safe test manifest must be a duplicate-free exact 128-spec partition");
+    fail("safe test manifest must be a duplicate-free exact 134-spec partition");
   }
-  const expectedModeCounts = { dev: 76, hybrid: 4, node: 36, preview: 2, self: 10 };
+  const expectedModeCounts = { dev: 77, hybrid: 4, node: 40, preview: 2, self: 11 };
   for (const mode of expectedModes) {
     if (manifest[mode].length !== expectedModeCounts[mode]) {
       fail(`unexpected ${mode} spec count ${manifest[mode].length}`);
     }
   }
-  if (specs.length !== 128) fail(`expected 128 isolated specs, found ${specs.length}`);
+  if (specs.length !== 134) fail(`expected 134 isolated specs, found ${specs.length}`);
 
   const packageJson = JSON.parse(
     readFileSync(join(repositoryRoot, "package.json"), "utf8"),
@@ -846,12 +1227,28 @@ async function assertPortBindable(port) {
   });
 }
 
-function sandboxProfile(testRoot, sourceRoot, configuredBrowserRoot) {
+function sandboxProfile(
+  testRoot,
+  sourceRoot,
+  configuredBrowserRoot,
+  readOnlyRoots = [],
+) {
   const quote = (value) => value.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
   if (!privateNodeRuntimeRoot || !privateNodePath || !privateNpmCliPath) {
     fail("the isolated Node runtime is not prepared");
   }
   const browserRoot = realpathSync(configuredBrowserRoot);
+  const isolatedReadOnlyRoots = readOnlyRoots.map((configuredRoot) => {
+    const root = realpathSync(configuredRoot);
+    if (
+      root === testRoot ||
+      !isInside(testRoot, root) ||
+      isInside(USER_HOME, root)
+    ) {
+      fail("isolated read-only roots must remain inside the test root and outside the real user home");
+    }
+    return root;
+  });
   if (
     [testRoot, sourceRoot, browserRoot, privateNodeRuntimeRoot].some((path) =>
       isInside(USER_HOME, path)
@@ -893,6 +1290,10 @@ function sandboxProfile(testRoot, sourceRoot, configuredBrowserRoot) {
     ...sourceWritableRoots.map((path) =>
       `(allow file-write* (subpath "${quote(path)}"))`
     ),
+    ...isolatedReadOnlyRoots.flatMap((root) => [
+      `(allow file-read* (subpath "${quote(root)}"))`,
+      `(deny file-write* (subpath "${quote(root)}"))`,
+    ]),
   ];
   if (exactV051Attestation) {
     rules.push(
@@ -1143,7 +1544,12 @@ async function sandboxedNode(sourceRoot, testRoot, env, args, options = {}) {
   const profile = join(testRoot, "sandbox.sb");
   writeFileSync(
     profile,
-    sandboxProfile(testRoot, sourceRoot, env.PLAYWRIGHT_BROWSERS_PATH),
+    sandboxProfile(
+      testRoot,
+      sourceRoot,
+      env.PLAYWRIGHT_BROWSERS_PATH,
+      options.readOnlyRoots ?? [],
+    ),
     "utf8",
   );
   return await runManaged(
@@ -1170,7 +1576,12 @@ async function sandboxedCommand(
   const profile = join(testRoot, "sandbox.sb");
   writeFileSync(
     profile,
-    sandboxProfile(testRoot, sourceRoot, env.PLAYWRIGHT_BROWSERS_PATH),
+    sandboxProfile(
+      testRoot,
+      sourceRoot,
+      env.PLAYWRIGHT_BROWSERS_PATH,
+      options.readOnlyRoots ?? [],
+    ),
     "utf8",
   );
   return await runManaged(
@@ -1192,10 +1603,15 @@ async function runTemplateAcceptancePreview(
   browserRoot,
   acceptanceScenario = GENERATION_STATUS_ACCEPTANCE_SCENARIO,
 ) {
+  const acceptanceTimeout = acceptanceScenario === NODE_RECOVERY_ACCEPTANCE_SCENARIO
+    ? 12 * 60 * 60_000 + 60_000 : TEMPLATE_ACCEPTANCE_TIMEOUT;
   const testRoot = mkdtempSync(join(suiteRoot, "template-acceptance-preview-"));
   const dataDirectory = join(testRoot, "data");
   mkdirSync(dataDirectory, { recursive: true });
-  const generationBaseline = acceptanceScenario === GENERATION_STATUS_ACCEPTANCE_SCENARIO
+  const generationBaseline = [
+    GENERATION_STATUS_ACCEPTANCE_SCENARIO,
+    NODE_RECOVERY_ACCEPTANCE_SCENARIO,
+  ].includes(acceptanceScenario)
     ? prepareGenerationStatusBaseline(testRoot)
     : undefined;
   const auditFile = join(testRoot, "network-audit.jsonl");
@@ -1235,14 +1651,14 @@ async function runTemplateAcceptancePreview(
       join(sourceRoot, "scripts/check-source-coverage.mjs"),
     ]);
     console.log(
-      `[safe-runner] ${acceptanceScenario} acceptance preview (port ${port}, auxiliary ${auxiliaryPort}; max ${TEMPLATE_ACCEPTANCE_TIMEOUT}ms)`,
+      `[safe-runner] ${acceptanceScenario} acceptance preview (port ${port}, auxiliary ${auxiliaryPort}; max ${acceptanceTimeout}ms)`,
     );
     const result = await sandboxedNode(
       sourceRoot,
       testRoot,
       env,
       [script],
-      { allowFailure: true, timeout: TEMPLATE_ACCEPTANCE_TIMEOUT },
+      { allowFailure: true, timeout: acceptanceTimeout },
     );
     await assertPortBindable(port);
     await assertPortBindable(auxiliaryPort);
@@ -1261,6 +1677,487 @@ async function runTemplateAcceptancePreview(
   } finally {
     assertTrackedSnapshotUnchanged();
     rmSync(testRoot, { force: true, recursive: true });
+  }
+}
+
+function validateGenerationServerRollbackEvidence(evidence, baseline) {
+  const shaPattern = /^[a-f0-9]{64}$/;
+  const failEvidence = (message) => fail(`generation server rollback rehearsal ${message}`);
+  if (
+    !evidence || typeof evidence !== "object" || Array.isArray(evidence) ||
+    evidence.contract !== "unboundry-generation-server-rollback-rehearsal-v1" ||
+    evidence.status !== "pass" || evidence.testCount !== 1 ||
+    evidence.sameDatabase !== true ||
+    JSON.stringify(evidence.phaseOrder) !==
+      JSON.stringify(["new-seed", "old-disabled", "new-restored"])
+  ) failEvidence("did not produce its fixed contract");
+  const baselineEvidence = evidence.baseline;
+  if (
+    !baselineEvidence || typeof baselineEvidence !== "object" ||
+    baselineEvidence.head !== GENERATION_SERVER_TYPES_BASELINE_HEAD ||
+    baselineEvidence.tree !== GENERATION_SERVER_TYPES_BASELINE_TREE ||
+    baselineEvidence.fileCount !== GENERATION_SERVER_TYPES_BASELINE_FILE_COUNT ||
+    baselineEvidence.filesVerified !== GENERATION_SERVER_TYPES_BASELINE_FILE_COUNT ||
+    baselineEvidence.manifestDigest !== sha256Bytes(
+      Buffer.from(JSON.stringify(Object.fromEntries(
+        Object.entries(baseline.manifest.files)
+          .sort(([left], [right]) => left.localeCompare(right)),
+      )), "utf8"),
+    )
+  ) failEvidence("did not verify the frozen server/types manifest");
+  if (
+    evidence.candidateHead !== workspaceBaseline.head ||
+    evidence.candidateSourceSha256 !== workspaceBaseline.sha256 ||
+    !shaPattern.test(String(evidence.candidateSourceSha256 ?? ""))
+  ) failEvidence("is not bound to the captured candidate source");
+  const isolation = evidence.phaseIsolation;
+  if (
+    !isolation || typeof isolation !== "object" ||
+    isolation.baselineModuleScope !== "server/types" ||
+    isolation.baselineRuntime !== "accepted-dirty-v3-server-types-only" ||
+    isolation.candidateRuntime !== "workspace-server-types" ||
+    isolation.maintenanceApiExercised !== false ||
+    isolation.moduleGraphsIsolated !== true ||
+    isolation.sameDatabasePath !== true
+  ) failEvidence("did not disclose isolated candidate/baseline module graphs");
+  if (
+    evidence.phaseIsolation?.candidateRuntime !== "workspace-server-types" ||
+    evidence.phaseIsolation?.baselineRuntime !== "frozen-server-types-only" ||
+    evidence.phaseIsolation?.baselineModuleScope !== "server/types" ||
+    evidence.phaseIsolation?.sameDatabasePath !== true ||
+    evidence.phaseIsolation?.moduleGraphsIsolated !== true
+  ) failEvidence("did not isolate candidate and baseline module graphs");
+  const database = evidence.database;
+  if (
+    !database || typeof database !== "object" ||
+    database.relativePath !== "data/unboundry.sqlite" ||
+    database.identityVerified !== true ||
+    typeof database.pathFingerprint !== "string" ||
+    !shaPattern.test(database.pathFingerprint) ||
+    database.absolutePathExposed !== false
+  ) failEvidence("did not prove one synthetic SQLite database");
+  const oldPhase = evidence.oldDisabled;
+  if (
+    !oldPhase || oldPhase.globalGenerationEnabled !== false ||
+    oldPhase.admissionRejected !== true ||
+    oldPhase.admissionCode !== "GLOBAL_DISABLED" ||
+    oldPhase.fingerprintChangedAttempted !== true ||
+    oldPhase.admissionAttempts !== 1 ||
+    oldPhase.generationPostCount !== 0 || oldPhase.providerPostCount !== 0 ||
+    oldPhase.databaseWrites !== 0 ||
+    oldPhase.runtimeScope !== "server/types"
+  ) failEvidence("did not prove old disabled admission and zero Provider posts");
+  const restored = evidence.newRestored;
+  if (
+    !restored || restored.globalGenerationEnabled !== true ||
+    restored.unknownPreserved !== true ||
+    restored.unknownAdmissionRejected !== true ||
+    restored.unknownBlockCode !== "RETRY_OUTCOME_UNKNOWN" ||
+    restored.replacementTaskCreated !== true ||
+    restored.replacesTaskPreserved !== true ||
+    restored.compensationBudgetPreserved !== true ||
+    restored.resultPreserved !== true ||
+    restored.canvasPreserved !== true ||
+    restored.existingLedgerUnchanged !== true ||
+    restored.generationPostCount !== 0 || restored.providerPostCount !== 0 ||
+    restored.providerBoundaryCalls !== 0 ||
+    !shaPattern.test(String(restored.resultDigestBefore ?? "")) ||
+    restored.resultDigestAfter !== restored.resultDigestBefore ||
+    !shaPattern.test(String(restored.canvasDigestBefore ?? "")) ||
+    restored.canvasDigestAfter !== restored.canvasDigestBefore
+  ) failEvidence("did not prove restored unknown/replacement/budget/result preservation");
+  if (
+    evidence.syntheticOnly !== true ||
+    evidence.realProviderPosts !== 0 ||
+    evidence.realProductionDataAccessed !== false
+  ) failEvidence("did not stay within the synthetic no-Provider boundary");
+  return Object.freeze({
+    baselineFiles: baseline.manifest.fileCount,
+    candidateHead: evidence.candidateHead,
+    candidateSourceSha256: evidence.candidateSourceSha256,
+    databasePathFingerprint: database.pathFingerprint,
+    evidence,
+  });
+}
+
+async function runGenerationServerRollbackRehearsal(
+  suiteRoot,
+  sourceRoot,
+  browserRoot,
+) {
+  const testRoot = mkdtempSync(join(suiteRoot, "generation-server-rollback-"));
+  chmodSync(testRoot, 0o700);
+  const dataDirectory = join(testRoot, "data");
+  mkdirSync(dataDirectory, { recursive: true, mode: 0o700 });
+  const baseline = prepareGenerationServerTypesBaseline(testRoot);
+  // Both server versions use the same unchanged locked dependencies. Resolve
+  // them outside the immutable 192-file baseline, inside this owned sandbox.
+  symlinkSync(join(sourceRoot, "node_modules"), join(testRoot, "node_modules"), "dir");
+  const auditFile = join(testRoot, "network-audit.jsonl");
+  const reportFile = join(testRoot, "unused-report.json");
+  const script = join(sourceRoot, GENERATION_SERVER_ROLLBACK_REHEARSAL_SCRIPT);
+  if (!existsSync(script)) {
+    fail(`generation server rollback rehearsal is missing from the isolated source snapshot: ${GENERATION_SERVER_ROLLBACK_REHEARSAL_SCRIPT}`);
+  }
+  writeFileSync(auditFile, "", { encoding: "utf8", mode: 0o600 });
+  chmodSync(auditFile, 0o600);
+  const port = await freePort();
+  const auxiliaryPort = await freePort(new Set([port]));
+  const env = sanitizedEnvironment({
+    auxiliaryPort,
+    auditFile,
+    browserRoot,
+    dataDirectory,
+    port,
+    reportFile,
+    sourceRoot,
+    spec: script,
+    testRoot,
+  });
+  env.UNBOUNDRY_GENERATION_SERVER_BASELINE_ROOT = baseline.root;
+  env.UNBOUNDRY_GENERATION_SERVER_BASELINE_MANIFEST = baseline.manifestPath;
+  env.UNBOUNDRY_GENERATION_SERVER_ROLLBACK_REHEARSAL = "1";
+  env.UNBOUNDRY_GENERATION_SERVER_ROLLBACK_EVIDENCE =
+    join(testRoot, GENERATION_SERVER_ROLLBACK_EVIDENCE_FILE);
+
+  try {
+    await validateFileAndCredentialIsolation(sourceRoot, testRoot, env);
+    await sandboxedNode(sourceRoot, testRoot, env, [
+      join(sourceRoot, "scripts/check-offline-network-guard.mjs"),
+    ]);
+    await validateManagedTimeoutCleanup(sourceRoot, testRoot, env);
+    const result = await sandboxedNode(
+      sourceRoot,
+      testRoot,
+      env,
+      [script],
+      {
+        allowFailure: true,
+        capture: true,
+        readOnlyRoots: [baseline.root],
+        timeout: 20 * 60_000,
+      },
+    );
+    await assertPortBindable(port);
+    await assertPortBindable(auxiliaryPort);
+    const audit = assertAudit(auditFile, new Set([port, auxiliaryPort]));
+    if (result.status !== 0 || result.signal || result.timedOut) {
+      const output = `${result.stdout}\n${result.stderr}`.trim().slice(-4_000);
+      fail(`generation server rollback rehearsal exited unexpectedly (status ${result.status}, signal ${result.signal ?? "none"})${output ? `: ${output}` : ""}`);
+    }
+    const evidenceDetails = lstatSync(env.UNBOUNDRY_GENERATION_SERVER_ROLLBACK_EVIDENCE);
+    if (
+      !evidenceDetails.isFile() || evidenceDetails.isSymbolicLink() ||
+      evidenceDetails.nlink !== 1 || (evidenceDetails.mode & 0o777) !== 0o400
+    ) fail("generation server rollback evidence is not a private immutable file");
+    let evidence;
+    try {
+      evidence = JSON.parse(readFileSync(env.UNBOUNDRY_GENERATION_SERVER_ROLLBACK_EVIDENCE, "utf8"));
+    } catch (error) {
+      fail(`generation server rollback evidence is invalid: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    const validated = validateGenerationServerRollbackEvidence(evidence, baseline);
+    console.log(JSON.stringify({
+      ...audit,
+      evidenceSha256: sha256Bytes(readFileSync(env.UNBOUNDRY_GENERATION_SERVER_ROLLBACK_EVIDENCE)),
+      generationServerRollback: "pass",
+      rehearsalScript: GENERATION_SERVER_ROLLBACK_REHEARSAL_SCRIPT,
+      rehearsalTests: 1,
+      status: "pass",
+      ...validated,
+    }));
+    return Object.freeze({
+      audit,
+      evidence,
+      rehearsalTests: 1,
+      status: "pass",
+    });
+  } finally {
+    try {
+      assertTrackedSnapshotUnchanged();
+    } finally {
+      for (const directory of baseline.cleanupDirectories) {
+        const details = lstatSync(directory);
+        if (!details.isDirectory() || details.isSymbolicLink() ||
+            !(directory === baseline.root || directory.startsWith(`${baseline.root}/`))) {
+          fail("refusing to clean an unexpected rehearsal baseline directory");
+        }
+        chmodSync(directory, 0o700);
+      }
+      rmSync(testRoot, { force: true, recursive: true });
+    }
+  }
+}
+
+function validateGenerationRecoveryCasesRollbackEvidence(evidence, baseline) {
+  const shaPattern = /^[a-f0-9]{64}$/;
+  const failEvidence = (message) => fail(`generation recovery cases rollback rehearsal ${message}`);
+  if (
+    !evidence || typeof evidence !== "object" || Array.isArray(evidence) ||
+    evidence.contract !== GENERATION_RECOVERY_CASES_ROLLBACK_CONTRACT ||
+    evidence.status !== "pass" || evidence.testCount !== 1 ||
+    evidence.sameDatabase !== true ||
+    JSON.stringify(evidence.phaseOrder) !== JSON.stringify([
+      "v4-seeded",
+      "backup-verified",
+      "v3-paused",
+      "v0.7.16-exact-server-types-paused",
+      "v4-restored",
+    ])
+  ) failEvidence("did not produce its fixed contract");
+  const baselineEvidence = evidence.baseline;
+  if (
+    !baselineEvidence || typeof baselineEvidence !== "object" ||
+    baselineEvidence.branch !== GENERATION_RECOVERY_CASES_V3_BASELINE_BRANCH ||
+    baselineEvidence.head !== GENERATION_RECOVERY_CASES_V3_BASELINE_HEAD ||
+    baselineEvidence.fileCount !== GENERATION_RECOVERY_CASES_V3_BASELINE_FILE_COUNT ||
+    baselineEvidence.filesVerified !== GENERATION_RECOVERY_CASES_V3_BASELINE_FILE_COUNT ||
+    baselineEvidence.runtimeFileCount !== baseline.runtimeFileCount ||
+    baselineEvidence.aggregateSha256 !== baseline.aggregateSha256 ||
+    baselineEvidence.manifestDigest !== baseline.manifestDigest
+  ) failEvidence("did not verify the exact accepted dirty V3 manifest");
+  if (
+    evidence.candidateHead !== workspaceBaseline.head ||
+    evidence.candidateSourceSha256 !== workspaceBaseline.sha256 ||
+    !shaPattern.test(String(evidence.candidateSourceSha256 ?? ""))
+  ) failEvidence("is not bound to the captured candidate source");
+  const database = evidence.database;
+  if (
+    !database || typeof database !== "object" ||
+    database.relativePath !== "data/unboundry.sqlite" ||
+    database.absolutePathExposed !== false ||
+    database.identityVerified !== true ||
+    typeof database.pathFingerprint !== "string" ||
+    !shaPattern.test(database.pathFingerprint)
+  ) failEvidence("did not prove one synthetic SQLite database");
+  const backup = evidence.backup;
+  if (
+    !backup || typeof backup !== "object" ||
+    backup.strictSchema43 !== true ||
+    backup.captureMode !== "external-unverified" ||
+    backup.schemaVersion !== 43 ||
+    backup.verifiedSchemaVersion !== 43 ||
+    backup.freshRestore !== true ||
+    backup.restoredSchemaVersion !== 43 ||
+    backup.dataPreserved !== true ||
+    backup.sourceFreezeContractUsed !== false ||
+    typeof backup.sourceLogicalSha256 !== "string" ||
+    !shaPattern.test(backup.sourceLogicalSha256) ||
+    backup.restoredLogicalSha256 !== backup.sourceLogicalSha256 ||
+    typeof backup.sourceSnapshotDigest !== "string" ||
+    !shaPattern.test(backup.sourceSnapshotDigest) ||
+    backup.restoredSnapshotDigest !== backup.sourceSnapshotDigest
+  ) failEvidence("did not prove schema43 backup verify and fresh restore");
+  const oldPhase = evidence.v3Paused;
+  if (
+    !oldPhase || typeof oldPhase !== "object" ||
+    oldPhase.maintenanceMode !== "off" ||
+    oldPhase.maintenanceControl !== "fixture-only-control" ||
+    oldPhase.generationPaused !== true ||
+    oldPhase.globalGenerationEnabled !== false ||
+    oldPhase.admissionRejected !== true ||
+    oldPhase.admissionCode !== "GLOBAL_DISABLED" ||
+    oldPhase.admissionAttempts !== 1 ||
+    oldPhase.unknownAdmissionAttempts !== 1 ||
+    oldPhase.unknownAdmissionCode !== "RETRY_OUTCOME_UNKNOWN" ||
+    oldPhase.databaseWrites !== 0 ||
+    oldPhase.providerPostCount !== 0 ||
+    oldPhase.caseRowsPreserved !== true ||
+    oldPhase.readStatePreserved !== true ||
+    oldPhase.malformedEventPreserved !== true ||
+    oldPhase.ownerSurfaceNoEventJson !== true
+  ) failEvidence("did not prove the paused V3 phase preserves every case record");
+  const exactV0716Phase = evidence.exactV0716Paused;
+  const exactV0716Baseline = exactV0716Phase?.baseline;
+  if (
+    !exactV0716Phase || typeof exactV0716Phase !== "object" ||
+    !exactV0716Baseline || typeof exactV0716Baseline !== "object" ||
+    exactV0716Baseline.contract !== "unboundry-generation-server-types-baseline-v1" ||
+    exactV0716Baseline.head !== GENERATION_SERVER_TYPES_BASELINE_HEAD ||
+    exactV0716Baseline.tree !== GENERATION_SERVER_TYPES_BASELINE_TREE ||
+    exactV0716Baseline.fileCount !== GENERATION_SERVER_TYPES_BASELINE_FILE_COUNT ||
+    exactV0716Baseline.filesVerified !== GENERATION_SERVER_TYPES_BASELINE_FILE_COUNT ||
+    !shaPattern.test(String(exactV0716Baseline.manifestDigest ?? "")) ||
+    exactV0716Phase.runtimeScope !== "server/types" ||
+    exactV0716Phase.runtimeStartupMode !== "default-recoverRunning" ||
+    exactV0716Phase.generationPaused !== true ||
+    exactV0716Phase.globalGenerationEnabled !== false ||
+    exactV0716Phase.admissionRejected !== true ||
+    exactV0716Phase.admissionCode !== "GLOBAL_DISABLED" ||
+    exactV0716Phase.unknownAdmissionRejected !== true ||
+    exactV0716Phase.unknownAdmissionAttempts !== 1 ||
+    exactV0716Phase.unknownAdmissionCode !== "RETRY_OUTCOME_UNKNOWN" ||
+    exactV0716Phase.storeDefaultRecoveryExercised !== true ||
+    exactV0716Phase.fullApplicationStartupExercised !== false ||
+    exactV0716Phase.providerExecutionExercised !== false ||
+    exactV0716Phase.providerPostCountEvidence !== "not-exercised-store-layer" ||
+    exactV0716Phase.databaseWrites !== 0 ||
+    exactV0716Phase.providerPostCount !== 0 ||
+    exactV0716Phase.taskLedgerPreserved !== true ||
+    exactV0716Phase.attemptLedgerPreserved !== true ||
+    exactV0716Phase.eventLedgerPreserved !== true ||
+    exactV0716Phase.resultPreserved !== true ||
+    exactV0716Phase.canvasPreserved !== true ||
+    exactV0716Phase.originalOnlyMarkerPreserved !== true ||
+    exactV0716Phase.originalOnlyTaskPreserved !== true ||
+    exactV0716Phase.originalOnlyAttemptPreserved !== true ||
+    exactV0716Phase.originalOnlyEventPreserved !== true
+  ) failEvidence("did not prove the exact v0.7.16 server/types paused phase");
+  const restored = evidence.v4Restored;
+  if (
+    !restored || typeof restored !== "object" ||
+    restored.globalGenerationEnabled !== true ||
+    restored.caseRowsPreserved !== true ||
+    restored.readStatePreserved !== true ||
+    restored.malformedEventPreserved !== true ||
+    restored.ownerSurfaceNoEventJson !== true ||
+    restored.unknownProtectionPreserved !== true ||
+    restored.unknownBlockCode !== "RETRY_OUTCOME_UNKNOWN" ||
+    restored.originalOnlyGenericResumeBlocked !== true ||
+    restored.originalOnlyMarkerPreserved !== true ||
+    restored.originalOnlySweepClaimBlocked !== true ||
+    restored.originalOnlyTaskPreserved !== true ||
+    restored.compensationBudgetPreserved !== true ||
+    restored.resultPreserved !== true ||
+    restored.canvasPreserved !== true ||
+    restored.ledgerPreserved !== true ||
+    restored.providerPostCount !== 0 ||
+    !shaPattern.test(String(restored.resultDigest ?? "")) ||
+    !shaPattern.test(String(restored.canvasDigest ?? ""))
+  ) failEvidence("did not prove V4 restoration preserves results, protection, and budget");
+  const boundaries = evidence.coverageBoundaries;
+  if (
+    !boundaries || typeof boundaries !== "object" ||
+    boundaries.caseEventsSeededDirectly !== true ||
+    boundaries.eventRepositoryApiExercised !== true ||
+    boundaries.exactV0716ServerTypesExercised !== true ||
+    boundaries.maintenanceHttpExercised !== false ||
+    boundaries.userMaintenanceApiExercised !== false ||
+    boundaries.realProviderPosts !== 0
+  ) failEvidence("did not disclose the fixture-only maintenance/event boundary");
+  if (
+    evidence.syntheticOnly !== true ||
+    evidence.realProviderPosts !== 0 ||
+    evidence.realProductionDataAccessed !== false
+  ) failEvidence("did not stay within the synthetic no-Provider boundary");
+  return Object.freeze({
+    baselineFiles: baselineEvidence.fileCount,
+    candidateHead: evidence.candidateHead,
+    candidateSourceSha256: evidence.candidateSourceSha256,
+    databasePathFingerprint: database.pathFingerprint,
+    evidence,
+  });
+}
+
+async function runGenerationRecoveryCasesRollbackRehearsal(
+  suiteRoot,
+  sourceRoot,
+  browserRoot,
+) {
+  const testRoot = mkdtempSync(join(suiteRoot, "generation-recovery-cases-rollback-"));
+  chmodSync(testRoot, 0o700);
+  const dataDirectory = join(testRoot, "data");
+  mkdirSync(dataDirectory, { recursive: true, mode: 0o700 });
+  const baseline = prepareGenerationRecoveryCasesV3Baseline(testRoot, sourceRoot);
+  const exactV0716Baseline = prepareGenerationServerTypesBaseline(testRoot);
+  symlinkSync(join(sourceRoot, "node_modules"), join(testRoot, "node_modules"), "dir");
+  const auditFile = join(testRoot, "network-audit.jsonl");
+  const reportFile = join(testRoot, "unused-report.json");
+  const script = join(sourceRoot, GENERATION_RECOVERY_CASES_ROLLBACK_REHEARSAL_SCRIPT);
+  if (!existsSync(script)) {
+    fail(`generation recovery cases rollback rehearsal is missing from the isolated source snapshot: ${GENERATION_RECOVERY_CASES_ROLLBACK_REHEARSAL_SCRIPT}`);
+  }
+  writeFileSync(auditFile, "", { encoding: "utf8", mode: 0o600 });
+  chmodSync(auditFile, 0o600);
+  const port = await freePort();
+  const auxiliaryPort = await freePort(new Set([port]));
+  const env = sanitizedEnvironment({
+    auxiliaryPort,
+    auditFile,
+    browserRoot,
+    dataDirectory,
+    port,
+    reportFile,
+    sourceRoot,
+    spec: script,
+    testRoot,
+  });
+  env.UNBOUNDRY_GENERATION_RECOVERY_CASES_BASELINE_ROOT = baseline.root;
+  env.UNBOUNDRY_GENERATION_RECOVERY_CASES_BASELINE_MANIFEST = baseline.manifestPath;
+  env.UNBOUNDRY_GENERATION_RECOVERY_CASES_EXACT_BASELINE_ROOT = exactV0716Baseline.root;
+  env.UNBOUNDRY_GENERATION_RECOVERY_CASES_EXACT_BASELINE_MANIFEST =
+    exactV0716Baseline.manifestPath;
+  env.UNBOUNDRY_GENERATION_RECOVERY_CASES_ROLLBACK = "1";
+  env.UNBOUNDRY_GENERATION_RECOVERY_CASES_ROLLBACK_EVIDENCE =
+    join(testRoot, GENERATION_RECOVERY_CASES_ROLLBACK_EVIDENCE_FILE);
+
+  try {
+    await validateFileAndCredentialIsolation(sourceRoot, testRoot, env);
+    await sandboxedNode(sourceRoot, testRoot, env, [
+      join(sourceRoot, "scripts/check-offline-network-guard.mjs"),
+    ]);
+    await validateManagedTimeoutCleanup(sourceRoot, testRoot, env);
+    const result = await sandboxedNode(
+      sourceRoot,
+      testRoot,
+      env,
+      [script],
+      {
+        allowFailure: true,
+        capture: true,
+        readOnlyRoots: [baseline.root, exactV0716Baseline.root],
+        timeout: 20 * 60_000,
+      },
+    );
+    await assertPortBindable(port);
+    await assertPortBindable(auxiliaryPort);
+    const audit = assertAudit(auditFile, new Set([port, auxiliaryPort]));
+    if (result.status !== 0 || result.signal || result.timedOut) {
+      const output = `${result.stdout}\n${result.stderr}`.trim().slice(-4_000);
+      fail(`generation recovery cases rollback rehearsal exited unexpectedly (status ${result.status}, signal ${result.signal ?? "none"})${output ? `: ${output}` : ""}`);
+    }
+    const evidencePath = env.UNBOUNDRY_GENERATION_RECOVERY_CASES_ROLLBACK_EVIDENCE;
+    const evidenceDetails = lstatSync(evidencePath);
+    if (
+      !evidenceDetails.isFile() || evidenceDetails.isSymbolicLink() ||
+      evidenceDetails.nlink !== 1 || (evidenceDetails.mode & 0o777) !== 0o400
+    ) fail("generation recovery cases rollback evidence is not a private immutable file");
+    let evidence;
+    try {
+      evidence = JSON.parse(readFileSync(evidencePath, "utf8"));
+    } catch (error) {
+      fail(`generation recovery cases rollback evidence is invalid: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    const validated = validateGenerationRecoveryCasesRollbackEvidence(evidence, baseline);
+    console.log(JSON.stringify({
+      ...audit,
+      evidenceSha256: sha256Bytes(readFileSync(evidencePath)),
+      generationRecoveryCasesRollback: "pass",
+      rehearsalScript: GENERATION_RECOVERY_CASES_ROLLBACK_REHEARSAL_SCRIPT,
+      rehearsalTests: 1,
+      status: "pass",
+      ...validated,
+    }));
+    return Object.freeze({ audit, evidence, rehearsalTests: 1, status: "pass" });
+  } finally {
+    try {
+      assertTrackedSnapshotUnchanged();
+    } finally {
+      for (const directory of [
+        ...baseline.cleanupDirectories,
+        ...exactV0716Baseline.cleanupDirectories,
+      ]) {
+        const details = lstatSync(directory);
+        if (
+          !details.isDirectory() || details.isSymbolicLink() ||
+          ![baseline.root, exactV0716Baseline.root].some((root) =>
+            directory === root || directory.startsWith(`${root}/`)
+          )
+        ) fail("refusing to clean an unexpected generation recovery baseline directory");
+        chmodSync(directory, 0o700);
+      }
+      rmSync(testRoot, { force: true, recursive: true });
+    }
   }
 }
 
@@ -2301,8 +3198,8 @@ process.exit(0);
         })}`,
       );
     }
-    if (discovery.tests !== 1288) {
-      fail(`the frozen 1288-test inventory changed to ${discovery.tests}`);
+    if (discovery.tests !== 1368) {
+      fail(`the frozen 1368-test inventory changed to ${discovery.tests}`);
     }
     const idsByFile = {};
     const { entries } = collectReportEntries(reportFile, sourceRoot);
@@ -3947,8 +4844,10 @@ async function main() {
   const { browserRoot, capturedWorkspace, files, sourceRoot } =
     createTrackedSnapshot(
       suiteRoot,
-      options.command !== "acceptance" &&
-        (options.command === "full" || selectedSpecsRequireBrowser(specs)),
+      (options.command === "acceptance" && options.acceptanceScenario === NODE_RECOVERY_ACCEPTANCE_SCENARIO) ||
+        (options.command !== "acceptance" && options.command !== "rehearsal" &&
+          options.command !== "recovery-rehearsal" &&
+          (options.command === "full" || selectedSpecsRequireBrowser(specs))),
     );
   if (
     capturedWorkspace.head !== workspaceBaseline.head ||
@@ -3958,13 +4857,22 @@ async function main() {
     sourceRoot,
     browserRoot,
     suiteRoot,
-    options.command === "run" || options.command === "full" || options.command === "acceptance",
+    options.command === "run" || options.command === "full" ||
+      options.command === "acceptance" || options.command === "rehearsal",
   );
   snapshotSourceRoot = sourceRoot;
   snapshotBaseline = snapshotFingerprint(sourceRoot, files, capturedWorkspace.head);
   assertTrackedSnapshotUnchanged();
   if (options.command === "acceptance") {
     await runTemplateAcceptancePreview(suiteRoot, sourceRoot, browserRoot, options.acceptanceScenario);
+    return;
+  }
+  if (options.command === "rehearsal") {
+    await runGenerationServerRollbackRehearsal(suiteRoot, sourceRoot, browserRoot);
+    return;
+  }
+  if (options.command === "recovery-rehearsal") {
+    await runGenerationRecoveryCasesRollbackRehearsal(suiteRoot, sourceRoot, browserRoot);
     return;
   }
   if (

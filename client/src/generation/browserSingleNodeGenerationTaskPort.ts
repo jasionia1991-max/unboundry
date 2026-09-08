@@ -92,6 +92,7 @@ export function createBrowserSingleNodeGenerationTaskPort(input: {
   fixtureScopeId: string;
   onTaskObserved?: (task: GenerationTaskSummary) => void;
   onPollingPaused?: (taskId: string) => void;
+  replacesTaskId?: string;
 }): SingleNodeGenerationTaskPort {
   let submissionAdmissionDepth = 0;
   return {
@@ -139,6 +140,9 @@ export function createBrowserSingleNodeGenerationTaskPort(input: {
           modelConfigurationRevision: plan.modelConfigurationRevision,
           modelReleaseRevision: plan.modelReleaseRevision,
           fixtureScopeId: input.fixtureScopeId,
+          ...(input.replacesTaskId?.trim()
+            ? { replacesTaskId: input.replacesTaskId.trim() }
+            : {}),
         },
       );
       input.onTaskObserved?.(ensured.task);
@@ -214,6 +218,7 @@ export function createBrowserSingleNodeGenerationTaskPort(input: {
         () => input.onPollingPaused?.(task.id),
         context.signal,
         input.fixtureScopeId,
+        { followReplacementTask: true },
       );
       clearTerminalSubmissionIntent(
         watched,

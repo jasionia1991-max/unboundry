@@ -21,11 +21,13 @@ import {
   discardDeferredCanvasObservability,
   flushDeferredCanvasObservability,
 } from "./canvasObservability";
+import { readPublishedOriginalMediaCandidateIdsCommand } from "./mediaTransactionCommands";
 
 const identifierPattern = /^[a-z0-9._-]+$/i;
 
 type TaskRow = {
   attempt: number;
+  credential_revision?: number | null;
   error_code?: string | null;
   kind: "audio" | "image" | "text" | "video";
   model_configuration?: string;
@@ -37,6 +39,65 @@ type TaskRow = {
   state: string;
 };
 
+const originalPublicationRecoveryErrors = new Set([
+  "OPERATOR_INCIDENT",
+  "OUTCOME_UNKNOWN_BILLING_RISK",
+]);
+
+const originalPublicationRecoveryAttemptOutcomes = new Set([
+  "accepted",
+  "response-received",
+  "completed",
+  "outcome-unknown",
+]);
+
+type PendingProviderAttemptRow = {
+  credential_revision: number;
+  evidence: "historical-execution-attempt" | "provider-boundary";
+  execution_attempt: number;
+  failure_code: string | null;
+  kind: string;
+  outcome: string;
+  owner_id: string | null;
+  provider_model_id: string | null;
+  provider_profile_id: string | null;
+  provider_task_id: string | null;
+};
+
+function isOriginalPublicationRecoveryError(errorCode: string | null | undefined) {
+  return errorCode !== undefined && errorCode !== null &&
+    originalPublicationRecoveryErrors.has(errorCode);
+}
+
+function isExactOriginalPublicationAttempt(
+  task: TaskRow | undefined,
+  attempt: PendingProviderAttemptRow | undefined,
+) {
+  return Boolean(
+    task && attempt &&
+    attempt.execution_attempt === task.attempt &&
+    task.credential_revision !== undefined &&
+    task.credential_revision !== null &&
+    attempt.credential_revision === task.credential_revision &&
+    attempt.evidence === "provider-boundary" &&
+    attempt.owner_id === task.owner_id &&
+    attempt.kind === task.kind &&
+    attempt.provider_model_id === task.provider_model_id &&
+    attempt.provider_profile_id === task.provider_profile_id &&
+    attempt.provider_task_id === task.provider_task_id &&
+    originalPublicationRecoveryAttemptOutcomes.has(attempt.outcome) &&
+    attempt.failure_code !== "PROVIDER_FAILED_CHARGE_SETTLED",
+  );
+}
+
+function isOriginalPublicationRecoveryTask(task: TaskRow | undefined) {
+  return Boolean(
+    task?.state === "failed" &&
+    task.result_asset_id === null &&
+    isOriginalPublicationRecoveryError(task.error_code),
+  );
+}
+
 function isRelayMediaTask(task: TaskRow) {
   if (task.kind === "text" || !task.model_configuration) return false;
   try {
@@ -47,6 +108,33 @@ function isRelayMediaTask(task: TaskRow) {
   } catch {
     return false;
   }
+}
+
+function relayResultCount(task: TaskRow) {
+  if (!task.model_configuration) return undefined;
+  try {
+    const configuration = JSON.parse(task.model_configuration) as {
+      modelResultCount?: unknown;
+    };
+    const value = configuration.modelResultCount;
+    return Number.isSafeInteger(value) && Number(value) >= 1 && Number(value) <= 4
+      ? Number(value)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function publishedGenerationMediaCandidateIds(input: Readonly<{
+  taskId: string; ownerId: string; kind: "audio" | "image" | "video"; executionAttempt: number;
+}>) {
+  const database = openAppDatabase();
+  try {
+    database.exec("BEGIN");
+    const ids = executeTransactionScopedCommand(database, readPublishedOriginalMediaCandidateIdsCommand, input);
+    database.exec("COMMIT");
+    return ids;
+  } finally { database.close(); }
 }
 
 function transaction<T>(database: DatabaseSync, operation: () => T) {
@@ -202,24 +290,29 @@ function matchingProviderAttempt(
   }>,
 ) {
   return database.prepare(`
-    SELECT execution_attempt, kind, outcome, owner_id, provider_model_id,
-           provider_profile_id
+    SELECT execution_attempt, evidence, credential_revision, kind, outcome,
+           failure_code, owner_id, provider_model_id, provider_profile_id,
+           provider_task_id
     FROM generation_provider_attempts
     WHERE task_id = ?
       AND execution_attempt = ?
-      ${input.providerTaskId ? "AND provider_task_id = ?" : ""}
+      AND provider_task_id IS ?
     LIMIT 1
   `).get(
     input.taskId,
     input.executionAttempt,
-    ...(input.providerTaskId ? [input.providerTaskId] : []),
+    input.providerTaskId,
   ) as {
+    credential_revision: number;
+    evidence: "historical-execution-attempt" | "provider-boundary";
     execution_attempt: number;
+    failure_code: string | null;
     kind: string;
     outcome: string;
     owner_id: string | null;
     provider_model_id: string | null;
     provider_profile_id: string | null;
+    provider_task_id: string | null;
   } | undefined;
 }
 
@@ -233,9 +326,17 @@ export function commitGenerationMediaResult(
       if (!taskId) throw new Error("Generation publication task is missing");
       const task = database.prepare(`
         SELECT owner_id, kind, state, attempt, result_asset_id, error_code,
-               provider_model_id, provider_profile_id, provider_task_id
+               provider_model_id, provider_profile_id, provider_task_id,
+               credential_revision, model_configuration
         FROM generation_tasks WHERE id = ?
       `).get(taskId) as TaskRow | undefined;
+      // A failed OPERATOR/unknown task may only become success here when the
+      // caller presents the exact already-created publication reservation.
+      // This is result settlement, never a transition back to execution.
+      const originalRecovery = isOriginalPublicationRecoveryTask(task);
+      if (originalRecovery && task && isRelayMediaTask(task)) {
+        throw new Error("Generation relay output set is required");
+      }
       if (
         task?.state === "success" &&
         task.owner_id === publicationToken.ownerId &&
@@ -265,7 +366,7 @@ export function commitGenerationMediaResult(
         task.kind !== publicationToken.kind ||
         !["running", "recovering"].includes(task.state) && !(
           task.state === "failed" &&
-          task.error_code === "RESULT_SAVE_FAILED_NO_RETRY"
+          (task.error_code === "RESULT_SAVE_FAILED_NO_RETRY" || originalRecovery)
         ) ||
         task.result_asset_id !== null
       ) {
@@ -290,7 +391,7 @@ export function commitGenerationMediaResult(
         taskId,
       });
       if (
-        (task.owner_id !== "__test__" || task.provider_task_id) &&
+        (originalRecovery || task.owner_id !== "__test__" || task.provider_task_id) &&
         !providerAttempt
       ) {
         throw new Error("Generation task has no matching paid attempt");
@@ -304,14 +405,18 @@ export function commitGenerationMediaResult(
       ) {
         throw new Error("Generation Provider attempt ownership changed");
       }
+      if (providerAttempt?.failure_code === "PROVIDER_FAILED_CHARGE_SETTLED") {
+        throw new Error("Generation Provider attempt cannot complete publication");
+      }
+      if (originalRecovery && !isExactOriginalPublicationAttempt(task, providerAttempt)) {
+        throw new Error("Generation original Provider evidence is not exact");
+      }
+      const allowedProviderOutcomes = originalRecovery
+        ? ["accepted", "response-received", "completed", "outcome-unknown"]
+        : ["boundary-claimed", "accepted", "response-received", "completed"];
       if (
         providerAttempt &&
-        ![
-          "boundary-claimed",
-          "accepted",
-          "response-received",
-          "completed",
-        ].includes(providerAttempt.outcome)
+        !allowedProviderOutcomes.includes(providerAttempt.outcome)
       ) {
         throw new Error("Generation Provider attempt cannot complete publication");
       }
@@ -321,10 +426,22 @@ export function commitGenerationMediaResult(
           UPDATE generation_provider_attempts
           SET outcome = 'completed', failure_code = NULL, finished_at = ?
           WHERE task_id = ? AND execution_attempt = ?
-            AND outcome IN (
-              'boundary-claimed', 'accepted', 'response-received', 'completed'
+            AND (
+              outcome IN (
+                'boundary-claimed', 'accepted', 'response-received', 'completed'
+              )
+              OR (outcome = 'outcome-unknown' AND ? = 1)
             )
-        `).run(timestamp, taskId, providerAttempt.execution_attempt);
+            AND provider_task_id IS ?
+            AND credential_revision = ?
+        `).run(
+          timestamp,
+          taskId,
+          providerAttempt.execution_attempt,
+          originalRecovery ? 1 : 0,
+          providerAttempt.provider_task_id,
+          providerAttempt.credential_revision,
+        );
         if (completedAttempt.changes !== 1) {
           throw new Error("Generation Provider attempt changed concurrently");
         }
@@ -339,6 +456,10 @@ export function commitGenerationMediaResult(
           AND (
             state IN ('running', 'recovering')
             OR (state = 'failed' AND error_code = 'RESULT_SAVE_FAILED_NO_RETRY')
+            OR (
+              state = 'failed' AND ? = 1
+              AND error_code IN ('OPERATOR_INCIDENT', 'OUTCOME_UNKNOWN_BILLING_RISK')
+            )
           )
           AND result_asset_id IS NULL
       `).run(
@@ -350,6 +471,7 @@ export function commitGenerationMediaResult(
         evidence.ownerId,
         evidence.kind,
         evidence.executionAttempt,
+        originalRecovery ? 1 : 0,
       );
       if (completedTask.changes !== 1) {
         throw new Error("Generation task changed concurrently");
@@ -462,11 +584,17 @@ export function publishGenerationMediaCandidate(
       if (!taskId) throw new Error("Generation publication task is missing");
       const task = database.prepare(`
         SELECT owner_id, kind, state, attempt, result_asset_id,
-               provider_model_id, provider_profile_id, provider_task_id
+               provider_model_id, provider_profile_id, provider_task_id,
+               error_code, credential_revision, model_configuration
         FROM generation_tasks WHERE id = ?
       `).get(taskId) as TaskRow | undefined;
+      const originalRecovery = isOriginalPublicationRecoveryTask(task);
+      if (originalRecovery && task && !isRelayMediaTask(task)) {
+        throw new Error("Generation candidate is unsupported for original task");
+      }
       if (
-        !task || !["running", "recovering"].includes(task.state) ||
+        !task ||
+        !["running", "recovering"].includes(task.state) && !originalRecovery ||
         task.owner_id !== publicationToken.ownerId ||
         task.kind !== publicationToken.kind || task.result_asset_id !== null
       ) {
@@ -490,7 +618,7 @@ export function publishGenerationMediaCandidate(
         taskId,
       });
       if (
-        (task.owner_id !== "__test__" || task.provider_task_id) &&
+        (originalRecovery || task.owner_id !== "__test__" || task.provider_task_id) &&
         !providerAttempt
       ) {
         throw new Error("Generation candidate has no matching paid attempt");
@@ -500,20 +628,31 @@ export function publishGenerationMediaCandidate(
         (providerAttempt.owner_id !== task.owner_id ||
           providerAttempt.kind !== task.kind ||
           providerAttempt.provider_model_id !== task.provider_model_id ||
-          providerAttempt.provider_profile_id !== task.provider_profile_id ||
-          ![
+          providerAttempt.provider_profile_id !== task.provider_profile_id)
+      ) {
+        throw new Error("Generation candidate Provider ownership changed");
+      }
+      if (originalRecovery && !isExactOriginalPublicationAttempt(task, providerAttempt)) {
+        throw new Error("Generation original Provider evidence is not exact");
+      }
+      if (providerAttempt?.failure_code === "PROVIDER_FAILED_CHARGE_SETTLED") {
+        throw new Error("Generation candidate Provider attempt is charge-settled");
+      }
+      const allowedProviderOutcomes = originalRecovery
+        ? [...originalPublicationRecoveryAttemptOutcomes]
+        : [
             "boundary-claimed",
             "accepted",
             "response-received",
             "completed",
-          ].includes(providerAttempt.outcome))
-      ) {
+          ];
+      if (providerAttempt && !allowedProviderOutcomes.includes(providerAttempt.outcome)) {
         throw new Error("Generation candidate Provider ownership changed");
       }
       executeTransactionScopedCommand(database, deleteMediaHistoryCommand, {
         assetId: evidence.assetId,
         kind: task.kind,
-        ownerId: task.owner_id,
+        ownerId: task.owner_id!,
       });
       return { assetId: evidence.assetId, state: "published" as const, taskId };
     });
@@ -538,9 +677,27 @@ export function commitGenerationMediaOutputSet(input: Readonly<{
     return transaction(database, () => {
       const task = database.prepare(`
         SELECT owner_id, kind, state, attempt, result_asset_id,
-               provider_model_id, provider_profile_id, provider_task_id
+               provider_model_id, provider_profile_id, provider_task_id,
+               error_code, model_configuration, credential_revision
         FROM generation_tasks WHERE id = ?
       `).get(input.taskId) as TaskRow | undefined;
+      const originalRecovery = isOriginalPublicationRecoveryTask(task);
+      const originalRelayRecovery = Boolean(
+        originalRecovery && task && isRelayMediaTask(task),
+      );
+      if (originalRecovery && !originalRelayRecovery) {
+        throw new Error("Generation output set is unsupported for original task");
+      }
+      if (originalRelayRecovery && task && relayResultCount(task) !== input.assetIds.length) {
+        throw new Error("Generation original output set is incomplete");
+      }
+      if (originalRelayRecovery && database.prepare(`SELECT 1 FROM media_publication_attempts
+          WHERE task_id = ? AND (task_execution_attempt IS NOT ? OR owner_id IS NOT ?
+            OR kind <> ? OR state NOT IN ('published', 'failed')
+            OR error_code = 'OSS_IDENTITY_QUARANTINED') LIMIT 1`)
+          .get(input.taskId, input.executionAttempt, input.ownerId, input.kind)) {
+        throw new Error("Generation original publication evidence is not settled");
+      }
       if (
         !task || task.owner_id !== input.ownerId || task.kind !== input.kind ||
         task.attempt !== input.executionAttempt
@@ -585,7 +742,7 @@ export function commitGenerationMediaOutputSet(input: Readonly<{
         taskId: input.taskId,
       });
       if (
-        (task.owner_id !== "__test__" || task.provider_task_id) &&
+        (originalRecovery || task.owner_id !== "__test__" || task.provider_task_id) &&
         !providerAttempt
       ) {
         throw new Error("Generation output set has no matching paid attempt");
@@ -595,14 +752,25 @@ export function commitGenerationMediaOutputSet(input: Readonly<{
         (providerAttempt.owner_id !== task.owner_id ||
           providerAttempt.kind !== task.kind ||
           providerAttempt.provider_model_id !== task.provider_model_id ||
-          providerAttempt.provider_profile_id !== task.provider_profile_id ||
-          ![
+          providerAttempt.provider_profile_id !== task.provider_profile_id)
+      ) {
+        throw new Error("Generation output set Provider ownership changed");
+      }
+      if (originalRelayRecovery && !isExactOriginalPublicationAttempt(task, providerAttempt)) {
+        throw new Error("Generation original Provider evidence is not exact");
+      }
+      if (providerAttempt?.failure_code === "PROVIDER_FAILED_CHARGE_SETTLED") {
+        throw new Error("Generation output set Provider attempt is charge-settled");
+      }
+      const allowedProviderOutcomes = originalRelayRecovery
+        ? [...originalPublicationRecoveryAttemptOutcomes]
+        : [
             "boundary-claimed",
             "accepted",
             "response-received",
             "completed",
-          ].includes(providerAttempt.outcome))
-      ) {
+          ];
+      if (providerAttempt && !allowedProviderOutcomes.includes(providerAttempt.outcome)) {
         throw new Error("Generation output set Provider ownership changed");
       }
       if (task.state === "success") {
@@ -624,7 +792,7 @@ export function commitGenerationMediaOutputSet(input: Readonly<{
         };
       }
       if (
-        !["running", "recovering"].includes(task.state) ||
+        !["running", "recovering"].includes(task.state) && !originalRelayRecovery ||
         task.result_asset_id !== null
       ) {
         throw new Error("Generation output set lost task ownership");
@@ -635,10 +803,22 @@ export function commitGenerationMediaOutputSet(input: Readonly<{
           UPDATE generation_provider_attempts
           SET outcome = 'completed', failure_code = NULL, finished_at = ?
           WHERE task_id = ? AND execution_attempt = ?
-            AND outcome IN (
-              'boundary-claimed', 'accepted', 'response-received', 'completed'
+            AND (
+              outcome IN (
+                'boundary-claimed', 'accepted', 'response-received', 'completed'
+              )
+              OR (outcome = 'outcome-unknown' AND ? = 1)
             )
-        `).run(timestamp, input.taskId, providerAttempt.execution_attempt);
+            AND provider_task_id IS ?
+            AND credential_revision = ?
+        `).run(
+          timestamp,
+          input.taskId,
+          providerAttempt.execution_attempt,
+          originalRelayRecovery ? 1 : 0,
+          providerAttempt.provider_task_id,
+          providerAttempt.credential_revision,
+        );
         if (completedAttempt.changes !== 1) {
           throw new Error("Generation Provider attempt changed concurrently");
         }
@@ -650,7 +830,14 @@ export function commitGenerationMediaOutputSet(input: Readonly<{
             actual_cost_microunits = ?, provider_usage_tokens = ?,
             error_code = NULL, error_message = NULL, updated_at = ?
         WHERE id = ? AND owner_id = ? AND kind = ? AND attempt = ?
-          AND state IN ('running', 'recovering') AND result_asset_id IS NULL
+          AND (
+            state IN ('running', 'recovering')
+            OR (
+              state = 'failed' AND ? = 1
+              AND error_code IN ('OPERATOR_INCIDENT', 'OUTCOME_UNKNOWN_BILLING_RISK')
+            )
+          )
+          AND result_asset_id IS NULL
       `).run(
         primary.asset_id,
         primary.actual_cost_microunits,
@@ -660,6 +847,7 @@ export function commitGenerationMediaOutputSet(input: Readonly<{
         input.ownerId,
         input.kind,
         input.executionAttempt,
+        originalRelayRecovery ? 1 : 0,
       );
       if (completedTask.changes !== 1) {
         throw new Error("Generation task changed concurrently");
@@ -861,6 +1049,37 @@ function failGenerationAlternateMediaResult(
   }
 }
 
+/** Finish an already-published original set after a crash before task settlement.
+ * This is local publication work; it never reads or submits to a Provider.
+ */
+export function recoverPublishedOriginalGenerationResult(taskId: string) {
+  const database = openAppDatabase();
+  let task: TaskRow | undefined;
+  try {
+    task = database.prepare(`SELECT owner_id, kind, state, attempt, result_asset_id,
+      error_code, provider_model_id, provider_profile_id, provider_task_id,
+      model_configuration, credential_revision FROM generation_tasks WHERE id = ?`)
+      .get(taskId) as TaskRow | undefined;
+    if (!isOriginalPublicationRecoveryTask(task) || !task || !isRelayMediaTask(task)) return false;
+    const attempt = matchingProviderAttempt(database, {
+      taskId, executionAttempt: task.attempt, providerTaskId: task.provider_task_id,
+    });
+    if (!isExactOriginalPublicationAttempt(task, attempt)) return false;
+  } finally { database.close(); }
+  const expected = relayResultCount(task);
+  if (expected === undefined || !task.owner_id || task.kind === "text") return false;
+  const assetIds = publishedGenerationMediaCandidateIds({
+    taskId, ownerId: task.owner_id, kind: task.kind, executionAttempt: task.attempt,
+  });
+  if (assetIds.length !== expected) return false;
+  // The command rechecks the complete set and current task/attempt in its
+  // own transaction; edits, cancellation and inconsistent evidence win.
+  commitGenerationMediaOutputSet({
+    taskId, ownerId: task.owner_id, kind: task.kind, executionAttempt: task.attempt, assetIds,
+  });
+  return true;
+}
+
 export async function recoverPendingGenerationMediaResults(options?: {
   prepare?: typeof preparePendingGeneratedMediaPublication;
 }) {
@@ -873,13 +1092,23 @@ export async function recoverPendingGenerationMediaResults(options?: {
     const taskId = row.task_id!;
     const database = openAppDatabase();
     let task: TaskRow | undefined;
+    let providerAttempt: PendingProviderAttemptRow | undefined;
     try {
       task = database.prepare(`
         SELECT owner_id, kind, state, attempt, result_asset_id, error_code,
                provider_model_id, provider_profile_id, provider_task_id,
-               model_configuration
+               model_configuration, credential_revision
         FROM generation_tasks WHERE id = ?
       `).get(taskId) as TaskRow | undefined;
+      if (task) {
+        providerAttempt = database.prepare(`
+          SELECT execution_attempt, evidence, credential_revision,
+                 failure_code, kind, outcome, owner_id, provider_model_id,
+                 provider_profile_id, provider_task_id
+          FROM generation_provider_attempts
+          WHERE task_id = ? AND execution_attempt = ?
+        `).get(taskId, task.attempt) as PendingProviderAttemptRow | undefined;
+      }
     } finally {
       database.close();
     }
@@ -901,10 +1130,14 @@ export async function recoverPendingGenerationMediaResults(options?: {
       task.error_code === "RESULT_SAVE_FAILED_NO_RETRY" &&
       task.result_asset_id === null,
     );
+    const originalPublicationRecovery =
+      isOriginalPublicationRecoveryTask(task) &&
+      isExactOriginalPublicationAttempt(task, providerAttempt);
     const primaryRecovery = Boolean(
       task && (
         ["running", "recovering"].includes(task.state) ||
-        narrowTerminalRecovery
+        narrowTerminalRecovery ||
+        originalPublicationRecovery
       ) &&
       task.result_asset_id === null,
     );
@@ -922,6 +1155,24 @@ export async function recoverPendingGenerationMediaResults(options?: {
       // adjudication; never compensate an otherwise intact generated result.
       outcomes.push({ action: "blocked", assetId: row.asset_id, taskId });
       continue;
+    }
+    const originalRelayRecovery = Boolean(
+      originalPublicationRecovery && primaryRecovery && isRelayMediaTask(task),
+    );
+    if (originalRelayRecovery) {
+      const expected = relayResultCount(task);
+      const published = publishedGenerationMediaCandidateIds({
+        executionAttempt: task.attempt,
+        kind: task.kind as "audio" | "image" | "video",
+        ownerId: task.owner_id!,
+        taskId,
+      });
+      // Publish each exact stored candidate, including the first of a larger
+      // set. Missing outputs still require the bounded original-request path.
+      if (expected === undefined || published.length >= expected) {
+        outcomes.push({ action: "blocked", assetId: row.asset_id, taskId });
+        continue;
+      }
     }
     const prepared = await (
       options?.prepare ?? preparePendingGeneratedMediaPublication
@@ -943,7 +1194,28 @@ export async function recoverPendingGenerationMediaResults(options?: {
       continue;
     }
     if (primaryRecovery && task && isRelayMediaTask(task)) {
-      publishGenerationMediaCandidate(prepared.reservation);
+      if (originalRelayRecovery) {
+        publishGenerationMediaCandidate(prepared.reservation);
+        const expected = relayResultCount(task);
+        const published = publishedGenerationMediaCandidateIds({
+          executionAttempt: task.attempt,
+          kind: task.kind as "audio" | "image" | "video",
+          ownerId: task.owner_id!,
+          taskId,
+        });
+        if (expected === undefined || published.length > expected) {
+          throw new Error("Generation relay output set evidence is incomplete");
+        }
+        if (published.length === expected) commitGenerationMediaOutputSet({
+          assetIds: published,
+          executionAttempt: task.attempt,
+          kind: task.kind as "audio" | "image" | "video",
+          ownerId: task.owner_id!,
+          taskId,
+        });
+      } else {
+        publishGenerationMediaCandidate(prepared.reservation);
+      }
     } else if (alternateRecovery) {
       commitGenerationAlternateMediaResult(prepared.reservation);
     } else {

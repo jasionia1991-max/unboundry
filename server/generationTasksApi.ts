@@ -631,6 +631,11 @@ export async function generationTasks(
       json(response, 404, { error: "Generation task not found" });
       return;
     }
+    if (store.hasOriginalRecoveryOnly(task.id)) {
+      json(response, 409, { code: "RECOVERY_ORIGINAL_ONLY",
+        error: "原任务正在按处理进度核对，不能重复提交或另开核对请求" });
+      return;
+    }
     if (
       task.canvasId !== body.canvasId ||
       task.nodeId !== body.nodeId ||
@@ -927,6 +932,11 @@ export async function generationTasks(
     }
     if (!task) {
       json(response, 404, { error: "Generation task not found" });
+      return;
+    }
+    if (store.hasOriginalRecoveryOnly(task.id)) {
+      json(response, 409, { code: "RECOVERY_ORIGINAL_ONLY",
+        error: "原任务正在按处理进度核对，不能重复提交或另开核对请求" });
       return;
     }
     if (
@@ -1560,6 +1570,7 @@ export async function generationTasks(
           ...(workflowBinding ? { workflowBinding } : {}),
         });
       const generationTaskInput: AuthoritativeGenerationTaskInput = {
+        replacesTaskId: body.replacesTaskId,
         canvasId: String(body.canvasId ?? ""),
         credentialRevision: Number(runtime.credentialVersion),
         expectedCanvasRevision: body.canvasRevision,

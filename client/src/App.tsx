@@ -76,6 +76,9 @@ const CanvasShell = lazy(async () => ({
 const WorkspacePage = lazy(async () => ({
   default: (await import("./projects/WorkspacePage")).WorkspacePage,
 }));
+const GenerationRecoveryPage = lazy(async () => ({
+  default: (await import("./admin/GenerationRecoveryPage")).GenerationRecoveryPage,
+}));
 
 type Fixture = {
   id: string;
@@ -8575,6 +8578,19 @@ function AuthenticatedApplication({
       </AdminRouteGuard>
     );
   }
+  if (pathname === "/admin/generation-recovery") {
+    return (
+      <AdminRouteGuard
+        allowed={hasClientPermission(
+          status.permissions,
+          "manage_generation_recovery",
+          status.user.role,
+        )}
+      >
+        <GenerationRecoveryPage currentUser={status.user} />
+      </AdminRouteGuard>
+    );
+  }
   if (pathname === "/admin/api-contract") {
     return (
       <AdminRouteGuard
@@ -8710,6 +8726,20 @@ function AuthenticatedApplication({
                 type="button"
               >
                 生成安全
+              </button>
+          )}
+          {hasClientPermission(
+            status.permissions,
+            "manage_generation_recovery",
+            status.user.role,
+          ) && (
+              <button
+                onClick={() => {
+                  navigateFromCurrentCanvas("/admin/generation-recovery");
+                }}
+                type="button"
+              >
+                生成维护
               </button>
           )}
           {hasClientPermission(

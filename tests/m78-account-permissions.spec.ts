@@ -80,8 +80,8 @@ function timestamp() {
 }
 
 test("the permission enum is the single whitelist with the current default set", () => {
-  expect(ALL_PERMISSIONS).toHaveLength(12);
-  expect(new Set(ALL_PERMISSIONS).size).toBe(12);
+  expect(ALL_PERMISSIONS).toHaveLength(13);
+  expect(new Set(ALL_PERMISSIONS).size).toBe(13);
   expect(DEFAULT_USER_PERMISSIONS).toEqual([
     "manage_projects",
     "generate",
@@ -92,6 +92,7 @@ test("the permission enum is the single whitelist with the current default set",
   expect(ADMIN_ONLY_PERMISSIONS).toEqual([
     "manage_accounts",
     "manage_permissions",
+    "manage_generation_recovery",
   ]);
   for (const permission of ALL_PERMISSIONS) {
     expect(isAccountPermission(permission)).toBe(true);
@@ -275,6 +276,11 @@ test("hasPermission and setAccountPermissions enforce the extra-grant model", as
     expect(() =>
       setAccountPermissions(store, "perm-admin", "perm-user-a", [
         "manage_permissions",
+      ]),
+    ).toThrow("不能授予普通账号");
+    expect(() =>
+      setAccountPermissions(store, "perm-admin", "perm-user-a", [
+        "manage_generation_recovery",
       ]),
     ).toThrow("不能授予普通账号");
     expect(() =>
@@ -779,7 +785,7 @@ test("admin account page edits permissions with compact checkboxes and persisten
     const section = page.getByTestId(`permissions-${ordinaryId}`);
     await expect(section).toBeVisible();
     const checkboxes = section.getByRole("checkbox");
-    await expect(checkboxes).toHaveCount(12);
+    await expect(checkboxes).toHaveCount(ALL_PERMISSIONS.length);
     for (const checkbox of await checkboxes.all()) {
       expect(await checkbox.getAttribute("class")).toContain(
         "admin-compact-checkbox",
@@ -791,6 +797,8 @@ test("admin account page edits permissions with compact checkboxes and persisten
     await expect(
       section.getByRole("checkbox", { name: /权限管理/ }),
     ).toBeDisabled();
+    await expect(section.getByRole("checkbox", { name: /生成维护/ })).toBeDisabled();
+    await expect(section.getByRole("checkbox", { name: /生成维护/ })).not.toBeChecked();
     await expect(
       section.getByRole("checkbox", { name: /发起生成/ }),
     ).toBeDisabled();

@@ -2,40 +2,37 @@
 
 文档角色：`CURRENT_TASK`。项目现状见 [当前状态](spec/UNBOUNDRY_CURRENT_STATE.md)。
 
-## 当前任务：生成状态查询加固 v0.7.16 发布收尾
+## 当前任务：v0.7.17 节点恢复发布收尾
 
-任务ID：`GENERATION-STATUS-QUERY-LOCAL-001`。状态：`DEPLOYED / TEST_REVIEW_PASS / LOCAL_USER_PASS / PRODUCTION_TECHNICAL_PASS / PRODUCTION_USER_RECHECK`。发布身份、CI、测试、备份、回退、生产验证和限制统一由 [v0.7.16发布回执](spec/V0_7_16_PRODUCTION_RECEIPT_2026-09-07.json) 维护。
+任务ID：`VIDEO-BALANCE-RETRY-20260907`。V3/V4 本地修复、撤销演练、相关回归和用户验收已完成；V4 第1、2、3项均获 `USER_PASS`，仍未上线。证据、未测范围和入口见[恢复方案第10节](spec/VIDEO_BALANCE_SINGLE_NODE_RECOVERY_PLAN_2026-09-07.md#10-第4版本地实施与验证2026-09-08)。
 
-用户授权：2026-09-07明确“允许自行递增一个小版本，完成发布检查、备份和回退演练，通过后上线。”本次版本/GitHub/构建、隔离演练、生产备份和切换已执行。该授权仅覆盖此次发布及其收尾和已核验旧包的失败处置，不扩展为下一版本、真实/付费生成、schema迁移、历史数据或备份删除、云权限变更。每日自动备份及视频/音频空按钮继续暂停。
+用户已授权：发布 v0.7.17；并于 2026-09-09 同意保留旧未知请求的停服备份方案。授权包含发布检查、备份、回退演练及上线，不包含真实付费生成、Provider/OSS 写入、旧任务清账或取消、schema 迁移、备份删除和云权限变更。维护功能继续默认关闭。
 
-## 受影响合同
+## 受影响合同与必须保留的行为
 
-选中 [第2版查询加固方案](spec/GENERATION_STATUS_QUERY_HARDENING_PLAN_2026-09-07.md)第3、5、7节；生成任务、结果发布/投影由 [生成架构](spec/UNBOUNDRY_GENERATION_ARCHITECTURE.md)约束，提示交互由 [UI合同](spec/UNBOUNDRY_UI_DESIGN_SYSTEM.md)5.9、第9节约束；发布/备份按 [发布手册](RELEASE_RUNBOOK.md)执行。
+依据[生成架构合同](spec/UNBOUNDRY_GENERATION_ARCHITECTURE.md)第2节/2.3、[UI合同](spec/UNBOUNDRY_UI_DESIGN_SYSTEM.md)5.9/6.2/6.3，以及发布阶段的[发布手册](RELEASE_RUNBOOK.md)和[备份合同](ops/production/README.md)：
 
-## 必须保留的行为
+- 9个成功节点的结果、素材、位置、连线和既有模板/菜单/白框保持；正常整组自动推进、回填、保存和刷新保持。
+- 四节点有限重查、原结果找回、单节点/工作流互斥、取消、完整身份与模型合同保持；未知或已受理付费边界不得被新任务ID、输入修改或刷新绕过。
+- 失败 run 不复活，不因恢复自动新增 Provider POST；DATA-005 继续保持跨标签最后保存者胜、同标签迟到请求拒绝。
+- 测试只走 `scripts/run-safe-tests.mjs`，使用临时数据和动态 loopback；保护 JSON 必须在访问前按路径排除。
 
-保留取消、观察身份隔离、单节点/工作流互斥、未知付费结果保护、手动检查、结果自动回填、DATA-005和已验收模板/UI行为。只在WithPause原任务GET遇网络错误、超时或5xx时最多额外重查两次，直接wait默认不变。没有新增生成POST、Canvas admission或持久字段。两个永久保护JSON始终按路径排除。
+## 已完成的本地实现与验证
 
-验证方法：仅按受影响范围经safe runner验证，使用系统临时数据、动态loopback；发布按精确包隔离演练与真实冻结备份门分别验证，保留失败记录及独立审查。
+施工根：`/Users/mymy/Documents/unboundry-post-v076-canvas-convergence-2026-09-03`；分支 `codex/v0717-node-recovery-release`；本轮冻结 HEAD `38709d2b878e8546daa06e9ea20d2a82a2ae91b8`，保留 dirty 工作树。
 
-## 已完成
+- V4 持久维护记录、严格 admin、原结果受保护找回、四节点进展、管理页及重启接续已实现；维护开关默认关闭，schema 仍为 43。
+- `quiesced-active-preservation` 已实现：在停服证明与既有 active lease 下保留精确旧 task/attempt 的未知事实，完整核验事件、付费围栏、媒体/secret 和 logical SHA；不改 task 终态，额外活动边界或证据不一致即拒绝。
+- verification-72 安全入口通过：`tests/m10-backup.spec.ts` 21/21、`tests/m93-runtime-role.spec.ts` 8/8，共 29/29；发现清单 134 specs/1368 tests，类型、架构、构建、隔离和 loopback 前置通过。回执：[verification-72](../node-recovery-v0717-release-ops-20260908/verification-72-m10-m93.json)。
+- 已有发布增量 95 项与 71 号存储层演练证据继续有效，范围不扩大；本轮独立后端复审未见待处理 P0/P1，不等于全仓安全审计。
+- 本地用户验收已完成；第3项修复后的真实页面顺序、未知保护、刷新和媒体可读性均按方案10.6记账。
 
-- 工程检查：本地实现、139项受影响回归、类型/架构/构建/文档检查，以及RB01～RB04撤销演练、独立复审通过。产品两模块在用户验收后保持原SHA，未重复跑无关full。
-- 用户验收：三项查询恢复验收通过。后续保存报错已真实复现为helper未登记临时媒体，已用合法本地上传/登记替代模拟路由；缩放/平移/刷新及保存通过，未放宽产品校验。此前失败日志保留。
-- 发布时补齐版本准入和m81负例，定向m38=19、m81=42通过。helper旧基线与候选HEAD分开校验；最终提交后的真实启动和清理通过。
-- PR #171最终head及合并main CI通过，annotated tag和GitHub Release已建立；精确包937份源码独立构建，未复用旧dist或触碰保护文件。
-- RB05精确v0.7.16→v0.7.15→v0.7.16隔离Linux演练通过。同一合成SQLite、草稿、素材和原任务记录保留，三个新浏览器上下文实际加载对应bundle并核对SHA。三次授权布局command与零额外写入分开计数；合成任务由停服后的明确fixture步骤结算，不冒充真实Provider恢复。第一轮布局no-op测试步骤及汇总脚本路径问题均已修正，失败证据保留。
-- 独立复核：正向发布和回退脚本独立复核通过，服务器只读回退身份/保留证据预检通过；正式冻结备份、verify/fresh restore、原子切换和33项静态资源检查通过，原安全设置恢复。仅执行真实正向切换，未执行真实线上回退。
-- 正式Chrome原画布刷新后内容/位置/revision保持，显示已保存，图片视频正常，额外写入及生成请求0。生产用户体验仍待用户确认。
+## 生产事实与发布断点
 
-## 证据与收尾路线
+正式站仍为 `v0.7.16/schema43`。只读核对的唯一旧 task `9c93f308-bb77-4935-a4e3-37dd72e6cd28` 仍是 `recovering/AUTOMATIC_RESULT_RECOVERY`，attempt 为 `outcome-unknown` 且无平台 task ID；原始 Provider code/msg 未保存。充值、`finished_at`、假回执或维护 phase 都不能证明未受理、未扣费或可取消；不得清账、改码或整组重跑。正式站没有本轮生产写入或 Provider 请求。
 
-代码工作树：`/Users/mymy/Documents/unboundry-post-v076-canvas-convergence-2026-09-03`。产品tag身份与文档提交分开；收尾分支为`codex/v0716-release-closeout`，不强制后续任务切回此历史分支。
-
-本地实现的原始证据根由外层`generation-status-query-local-20260907/evidence-location.json`定位；本次发布证据根为外层`status-query-v0716-release-ops-20260907`，内含先前完整任务快照、各轮失败/通过记录及独立审查。服务器证据根为`/var/lib/unboundry-v0716-status-query-20260907/evidence`。回退所需五份RB05原始JSON已额外保留，不依赖临时目录长期存在。
-
-此次收尾文档先按实际代码、运行和用户验收对齐，再按发布手册独立同步。文档main提交、逐文件哈希和同步检查由服务器治理manifest及发布回执所指的governance-sync/CI记录拥有，不能把治理HEAD写成产品commit。文档同步不重新构建或重启产品。
+ops 切换/回退脚本的独立复审正在完成；完整 Linux 真实安装包、真实备份、systemd 停服切换和线上回退尚未执行，不能把本地 29/29、95/71 或合成演练写成生产放行。完成精确身份、CI/tag、停服保留式备份、verify/fresh restore、回退门和文档回执后，才执行提交、PR、CI、tag、部署；任一失败保留旧站和 CURRENT。
 
 ## 下一步
 
-打开正式站已有画布，刷新后确认内容和位置还在、图片视频正常且没有保存报错，然后反馈“通过”或具体问题。无需再操作本地故障注入按钮，也无需为了此次验收付费生成。
+只收口 ops 脚本复审及其真实发布专属证据，保持 v0.7.16 生产、v0.7.17 本地候选和维护默认关闭；不新增产品功能，不改变旧 task/attempt 事实。每日自动备份及视频/音频空工具按钮仍暂缓。

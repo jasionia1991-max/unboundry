@@ -67,6 +67,13 @@ import {
 } from "./fakeOssRecovery.ts";
 import { generationReadinessQuery } from "./generationReadinessQuery.ts";
 import { validateLibraryBackupDatabase } from "./libraryBackup.ts";
+import {
+  assertRuntimeRoleCoordinator,
+  assertStoppedProcessProof,
+  type RuntimeLeaseCaptureProof,
+  type RuntimeRoleCoordinator,
+  type RuntimeStoppedProcessProof,
+} from "./runtimeRole.ts";
 
 export const backupPackageFormatVersion = 2 as const;
 const backupPackageFormat = "unboundry-encrypted-backup" as const;
@@ -97,7 +104,8 @@ export type BackupSchemaVersion = 37 | 38 | 39 | 40 | 41 | 42 | 43;
 
 export type BackupCapturePurpose =
   | "current-schema43"
-  | "historical-recovery";
+  | "historical-recovery"
+  | "quiesced-active-preservation";
 
 export type BackupCheckpointName =
   | "after-backup-reservation"
@@ -134,11 +142,27 @@ export type BackupFrozenSourceContract = Readonly<{
   freezeEvidence: BackupFreezeEvidence;
 }>;
 
+export type BackupQuiescedTaskReference = Readonly<{
+  executionAttempt: number;
+  taskId: string;
+}>;
+
+export type BackupQuiescedSourceContract = BackupFrozenSourceContract & Readonly<{
+  expectedSchemaVersion: 43;
+  preservedTask: BackupQuiescedTaskReference;
+  runtimeDirectory: string;
+  stoppedProcess: RuntimeStoppedProcessProof;
+}>;
+
+export type BackupQuiescedRuntimeLease = RuntimeRoleCoordinator;
+
 export type CreateEncryptedBackupOptions = Readonly<{
   backupRoot: string;
   capturePurpose?: BackupCapturePurpose;
   onCheckpoint?: BackupCheckpoint;
   ossMirrors?: readonly BackupOssMirror[];
+  quiescedRuntimeLease?: BackupQuiescedRuntimeLease;
+  quiescedSourceContract?: BackupQuiescedSourceContract;
   recoveryPublicKey: BackupKeyInput;
   retryBackupId?: string;
   scratchRoot?: string;
@@ -173,7 +197,10 @@ export type InspectFrozenMediaIntegrityOptions = Readonly<{
 
 export type BackupPackageSummary = Readonly<{
   backupId: string;
-  captureMode: "external-unverified" | "locked-exact";
+  captureMode:
+    | "external-unverified"
+    | "locked-exact"
+    | "quiesced-active-preservation";
   databaseLogicalSha256: string;
   finalCandidate: boolean;
   mediaFiles: number;
@@ -294,6 +321,29 @@ type MediaValidation = Readonly<{
   ossReady: readonly OssMediaBinding[];
 }>;
 
+type BackupJsonScalar = string | number | boolean | null;
+type BackupTaskLedgerRow = Readonly<Record<string, BackupJsonScalar>>;
+
+type BackupQuiescedManifestEvidence = Readonly<{
+  dataDirectory: string;
+  leaseDev: string;
+  leaseIno: string;
+  leasePath: string;
+  preservedTask: Readonly<{
+    admissions: readonly BackupTaskLedgerRow[];
+    attempt: BackupTaskLedgerRow;
+    events: readonly BackupTaskLedgerRow[];
+    executionAttempt: number;
+    state: "recovering";
+    task: BackupTaskLedgerRow;
+    taskId: string;
+    unresolvedOutcome: "outcome-unknown";
+  }>;
+  runtimeDirectory: string;
+  stoppedProcess: RuntimeStoppedProcessProof;
+  version: 1;
+}>;
+
 type BackupManifest = Readonly<{
   backupId: string;
   captureMode: BackupPackageSummary["captureMode"];
@@ -305,6 +355,7 @@ type BackupManifest = Readonly<{
   entries: readonly EncryptedEntry[];
   format: typeof backupPackageFormat;
   media: MediaValidation;
+  quiesced?: BackupQuiescedManifestEvidence;
   secrets: Readonly<{
     fileCount: number;
     validation: BackupSecretValidation;
@@ -464,8 +515,11 @@ function capturePurposeFor(
 ): BackupCapturePurpose {
   const purpose = value ?? "current-schema43";
   if (
-    (purpose !== "current-schema43" && purpose !== "historical-recovery") ||
-    (purpose === "historical-recovery" && !contractPresent)
+    (purpose !== "current-schema43" &&
+      purpose !== "historical-recovery" &&
+      purpose !== "quiesced-active-preservation") ||
+    ((purpose === "historical-recovery" ||
+      purpose === "quiesced-active-preservation") && !contractPresent)
   ) {
     fail(
       "BACKUP_CAPTURE_PURPOSE_INVALID",
@@ -483,7 +537,9 @@ function validateFrozenSourceContract(
   const schemaPurposeMatches = Boolean(contract && typeof contract === "object") &&
     (capturePurpose === "current-schema43"
       ? contract.expectedSchemaVersion === currentBackupSchemaVersion
-      : supportedBackupSchemaVersions.has(contract.expectedSchemaVersion) &&
+      : capturePurpose === "quiesced-active-preservation"
+        ? contract.expectedSchemaVersion === currentBackupSchemaVersion
+        : supportedBackupSchemaVersions.has(contract.expectedSchemaVersion) &&
         contract.expectedSchemaVersion !== currentBackupSchemaVersion);
   if (
     !contract ||
@@ -538,13 +594,297 @@ function validateFrozenSourceContract(
   return Object.freeze({ generationFrozenAt, lastProviderAdmissionAt });
 }
 
+const generationTaskEvidenceColumns = Object.freeze([
+  "id", "canvas_id", "node_id", "kind", "prompt", "model", "parameters",
+  "idempotency_key", "request_fingerprint", "state", "attempt", "error_code",
+  "error_message", "created_at", "updated_at", "owner_id",
+  "estimated_cost_microunits", "actual_cost_microunits", "provider_profile_id",
+  "provider_model_id", "result_asset_id", "cost_currency", "provider_task_id",
+  "provider_usage_tokens", "model_configuration", "result_text",
+  "credential_revision",
+] as const);
+const generationAttemptEvidenceColumns = Object.freeze([
+  "id", "task_id", "execution_attempt", "provider_profile_id",
+  "provider_model_id", "kind", "evidence", "created_at", "owner_id",
+  "credential_revision", "outcome", "provider_task_id", "failure_code",
+  "finished_at",
+] as const);
+const generationTaskEventEvidenceColumns = Object.freeze([
+  "id", "task_id", "state", "error_code", "error_message", "created_at",
+] as const);
+const generationAdmissionEvidenceColumns = Object.freeze([
+  "id", "task_id", "execution_attempt", "owner_id", "kind", "admission_type",
+  "created_at",
+] as const);
+const quiescedUnknownTaskErrorCodes = Object.freeze([
+  "AUTOMATIC_RESULT_RECOVERY",
+  "OUTCOME_UNKNOWN_BILLING_RISK",
+] as const);
+
+function backupJsonScalar(
+  value: unknown,
+  label: string,
+): BackupJsonScalar {
+  if (value === null || typeof value === "string" || typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) fail("BACKUP_QUIESCED_EVIDENCE_INVALID", `${label} is invalid`);
+    return value;
+  }
+  if (typeof value === "bigint") {
+    const number = Number(value);
+    if (Number.isSafeInteger(number)) return number;
+    return value.toString();
+  }
+  fail("BACKUP_QUIESCED_EVIDENCE_INVALID", `${label} contains an unsupported value`);
+}
+
+function canonicalBackupRow(
+  value: unknown,
+  columns: readonly string[],
+  label: string,
+): BackupTaskLedgerRow {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    fail("BACKUP_QUIESCED_EVIDENCE_INVALID", `${label} is not a row`);
+  }
+  const source = value as Record<string, unknown>;
+  const sourceKeys = Object.keys(source).sort();
+  const expectedKeys = [...columns].sort();
+  if (
+    sourceKeys.length !== expectedKeys.length ||
+    sourceKeys.some((key, index) => key !== expectedKeys[index])
+  ) {
+    fail("BACKUP_QUIESCED_EVIDENCE_INVALID", `${label} does not match schema43`);
+  }
+  return Object.freeze(Object.fromEntries(columns.map((column) => [
+    column,
+    backupJsonScalar(source[column], `${label}.${column}`),
+  ])));
+}
+
+function rowValue(row: BackupTaskLedgerRow, name: string) {
+  return row[name];
+}
+
+function exactQuiescedTaskReference(
+  reference: BackupQuiescedTaskReference,
+): BackupQuiescedTaskReference {
+  if (
+    !reference || typeof reference !== "object" ||
+    typeof reference.taskId !== "string" ||
+    reference.taskId.length < 1 || reference.taskId.length > 256 ||
+    reference.taskId.includes("\0") ||
+    !Number.isSafeInteger(reference.executionAttempt) ||
+    reference.executionAttempt < 1
+  ) {
+    fail(
+      "BACKUP_QUIESCED_CONTRACT_INVALID",
+      "Quiesced preservation requires one exact task id and execution attempt",
+    );
+  }
+  return Object.freeze({
+    executionAttempt: reference.executionAttempt,
+    taskId: reference.taskId,
+  });
+}
+
+function readQuiescedTaskEvidence(
+  database: DatabaseSync,
+  contract: BackupQuiescedSourceContract,
+): BackupQuiescedManifestEvidence["preservedTask"] {
+  const reference = exactQuiescedTaskReference(contract.preservedTask);
+  const taskRow = database.prepare(
+    "SELECT * FROM generation_tasks WHERE id = ?",
+  ).get(reference.taskId);
+  if (!taskRow) {
+    fail(
+      "BACKUP_QUIESCED_TASK_MISSING",
+      "The explicitly preserved generation task is missing",
+    );
+  }
+  const task = canonicalBackupRow(
+    taskRow,
+    generationTaskEvidenceColumns,
+    "Preserved generation task",
+  );
+  if (
+    rowValue(task, "id") !== reference.taskId ||
+    Number(rowValue(task, "attempt")) !== reference.executionAttempt ||
+    rowValue(task, "state") !== "recovering" ||
+    !quiescedUnknownTaskErrorCodes.includes(
+      rowValue(task, "error_code") as typeof quiescedUnknownTaskErrorCodes[number],
+    ) ||
+    rowValue(task, "provider_task_id") !== null ||
+    rowValue(task, "result_asset_id") !== null ||
+    rowValue(task, "result_text") !== null
+  ) {
+    fail(
+      "BACKUP_QUIESCED_TASK_CHANGED",
+      "The preserved task is not the expected recovering unknown request",
+    );
+  }
+
+  const attemptRow = database.prepare(`
+    SELECT *
+    FROM generation_provider_attempts
+    WHERE task_id = ? AND execution_attempt = ?
+  `).get(reference.taskId, reference.executionAttempt);
+  if (!attemptRow) {
+    fail(
+      "BACKUP_QUIESCED_ATTEMPT_MISSING",
+      "The explicitly preserved Provider attempt is missing",
+    );
+  }
+  const attempt = canonicalBackupRow(
+    attemptRow,
+    generationAttemptEvidenceColumns,
+    "Preserved Provider attempt",
+  );
+  if (
+    rowValue(attempt, "task_id") !== reference.taskId ||
+    Number(rowValue(attempt, "execution_attempt")) !== reference.executionAttempt ||
+    rowValue(attempt, "evidence") !== "provider-boundary" ||
+    rowValue(attempt, "outcome") !== "outcome-unknown" ||
+    rowValue(attempt, "provider_task_id") !== null
+  ) {
+    fail(
+      "BACKUP_QUIESCED_ATTEMPT_CHANGED",
+      "The preserved Provider attempt is not an unresolved unknown boundary",
+    );
+  }
+
+  const events = (database.prepare(`
+    SELECT *
+    FROM generation_task_events
+    WHERE task_id = ?
+    ORDER BY id ASC
+  `).all(reference.taskId) as unknown[]).map((row, index) =>
+    canonicalBackupRow(row, generationTaskEventEvidenceColumns, `Preserved task event ${index}`));
+  if (!events.length) {
+    fail(
+      "BACKUP_QUIESCED_EVIDENCE_INCOMPLETE",
+      "The preserved task has no durable event history",
+    );
+  }
+  if (events.some((event) => rowValue(event, "task_id") !== reference.taskId)) {
+    fail(
+      "BACKUP_QUIESCED_EVIDENCE_INVALID",
+      "The preserved task event history is not bound to the task",
+    );
+  }
+  const admissions = (database.prepare(`
+    SELECT *
+    FROM generation_admission_events
+    WHERE task_id = ?
+    ORDER BY id ASC
+  `).all(reference.taskId) as unknown[]).map((row, index) =>
+    canonicalBackupRow(row, generationAdmissionEvidenceColumns, `Preserved admission ${index}`));
+  if (admissions.some((admission) => rowValue(admission, "task_id") !== reference.taskId)) {
+    fail(
+      "BACKUP_QUIESCED_EVIDENCE_INVALID",
+      "The preserved admission history is not bound to the task",
+    );
+  }
+
+  const activeTasks = database.prepare(`
+    SELECT id, attempt
+    FROM generation_tasks
+    WHERE state IN ('queued', 'running', 'retrying', 'recovering')
+    ORDER BY id ASC
+  `).all() as Array<{ attempt?: number | bigint; id?: unknown }>;
+  if (
+    activeTasks.length !== 1 ||
+    activeTasks[0]?.id !== reference.taskId ||
+    Number(activeTasks[0]?.attempt) !== reference.executionAttempt
+  ) {
+    fail(
+      "BACKUP_QUIESCED_ACTIVITY_CHANGED",
+      "The source contains an activity outside the explicitly preserved task",
+    );
+  }
+
+  const unresolvedBoundaries = database.prepare(`
+    WITH current_attempts AS (
+      SELECT
+        task.id AS task_id,
+        COALESCE(
+          CASE WHEN task.provider_task_id IS NOT NULL THEN (
+            SELECT paid.id
+            FROM generation_provider_attempts AS paid
+            WHERE paid.task_id = task.id
+              AND paid.provider_task_id = task.provider_task_id
+            ORDER BY paid.execution_attempt DESC, paid.id DESC
+            LIMIT 1
+          ) END,
+          (
+            SELECT current_attempt.id
+            FROM generation_provider_attempts AS current_attempt
+            WHERE current_attempt.task_id = task.id
+              AND current_attempt.execution_attempt = task.attempt
+            ORDER BY current_attempt.id DESC
+            LIMIT 1
+          )
+        ) AS attempt_id
+      FROM generation_tasks AS task
+    )
+    SELECT DISTINCT current.task_id
+    FROM current_attempts AS current
+    JOIN generation_provider_attempts AS attempt ON attempt.id = current.attempt_id
+    WHERE attempt.evidence = 'provider-boundary'
+      AND attempt.outcome IN ('boundary-claimed', 'outcome-unknown')
+      AND attempt.finished_at IS NULL
+  `).all() as Array<{ task_id?: unknown }>;
+  const unknownTasks = database.prepare(`
+    SELECT id AS task_id
+    FROM generation_tasks
+    WHERE error_code = 'OUTCOME_UNKNOWN_BILLING_RISK'
+  `).all() as Array<{ task_id?: unknown }>;
+  const unresolvedTaskIds = new Set([
+    ...unresolvedBoundaries.map((row) => row.task_id),
+    ...unknownTasks.map((row) => row.task_id),
+  ]);
+  if (
+    [...unresolvedTaskIds].some((taskId) => taskId !== reference.taskId)
+  ) {
+    fail(
+      "BACKUP_QUIESCED_UNLISTED_BOUNDARY",
+      "The source contains an unresolved Provider boundary outside the preserved task",
+    );
+  }
+  const activeWorkflows = database.prepare(`
+    SELECT COUNT(*) AS count
+    FROM workflow_runs
+    WHERE state IN ('running', 'stopping')
+  `);
+  activeWorkflows.setReadBigInts(true);
+  const workflowRow = activeWorkflows.get() as { count?: bigint } | undefined;
+  if (workflowRow?.count !== 0n) {
+    fail(
+      "BACKUP_ACTIVE_WORKFLOW_RUNS",
+      "Locked preservation source still contains active workflow runs",
+    );
+  }
+  return Object.freeze({
+    admissions: Object.freeze(admissions),
+    attempt,
+    events: Object.freeze(events),
+    executionAttempt: reference.executionAttempt,
+    state: "recovering" as const,
+    task,
+    taskId: reference.taskId,
+    unresolvedOutcome: "outcome-unknown" as const,
+  });
+}
+
 function validateLockedSourceContract(
   database: DatabaseSync,
   inspection: BackupDatabaseInspection,
   contract: BackupFrozenSourceContract,
   capturedNow: number,
   capturePurpose: BackupCapturePurpose,
-) {
+  quiescedContract?: BackupQuiescedSourceContract,
+): BackupQuiescedManifestEvidence["preservedTask"] | undefined {
   const times = validateFrozenSourceContract(
     contract,
     capturedNow,
@@ -562,6 +902,17 @@ function validateLockedSourceContract(
       "Locked backup source does not have the expected logical fingerprint",
     );
   }
+  const quiescedEvidence = capturePurpose === "quiesced-active-preservation"
+    ? (() => {
+        if (!quiescedContract) {
+          fail(
+            "BACKUP_QUIESCED_CONTRACT_INVALID",
+            "Quiesced preservation requires its complete source contract",
+          );
+        }
+        return readQuiescedTaskEvidence(database, quiescedContract);
+      })()
+    : undefined;
   const currentQuietSnapshot = inspection.userVersion >= 39
     ? generationReadinessQuery.operationalQuietSnapshot(database)
     : undefined;
@@ -572,7 +923,7 @@ function validateLockedSourceContract(
       WHERE state IN ('queued', 'running', 'retrying', 'recovering')
     `).get() as { count?: number | bigint } | undefined)?.count ?? 0,
   );
-  if (activeTasks !== 0) {
+  if (!quiescedEvidence && activeTasks !== 0) {
     fail(
       "BACKUP_ACTIVE_GENERATION_TASKS",
       "Locked backup source still contains active generation tasks",
@@ -638,8 +989,11 @@ function validateLockedSourceContract(
     // response-received attempt attached to an already terminal task is data to
     // back up, not a reason to rewrite production before a backup can exist.
     if (
-      currentQuietSnapshot!.currentUnknownBillingTasks !== 0 ||
-      currentQuietSnapshot!.unsettledCurrentProviderBoundaries !== 0
+      !quiescedEvidence &&
+      (
+        currentQuietSnapshot!.currentUnknownBillingTasks !== 0 ||
+        currentQuietSnapshot!.unsettledCurrentProviderBoundaries !== 0
+      )
     ) {
       fail(
         "BACKUP_UNSETTLED_PROVIDER_ATTEMPTS",
@@ -756,6 +1110,7 @@ function validateLockedSourceContract(
       );
     }
   }
+  return quiescedEvidence;
 }
 
 function sameLogicalDatabaseInspection(
@@ -778,7 +1133,14 @@ async function withOptionalFrozenSourceWriteLock<T>(
   inspectionRoot: string,
   contract: BackupFrozenSourceContract | undefined,
   capturePurpose: BackupCapturePurpose,
-  callback: (inspection: BackupDatabaseInspection | undefined) => Promise<T>,
+  callback: (
+    inspection: BackupDatabaseInspection | undefined,
+    quiescedEvidence?: BackupQuiescedManifestEvidence["preservedTask"],
+  ) => Promise<T>,
+  quiescedContext?: Readonly<{
+    runtimeLease: BackupQuiescedRuntimeLease;
+    sourceContract: BackupQuiescedSourceContract;
+  }>,
 ) {
   if (!contract) return callback(undefined);
   const databasePath = join(sourceDirectory, "unboundry.sqlite");
@@ -787,7 +1149,46 @@ async function withOptionalFrozenSourceWriteLock<T>(
   let database: DatabaseSync | undefined;
   let transactionOpen = false;
   let primaryError: unknown;
+  let runtimeProof: RuntimeLeaseCaptureProof | undefined;
+  const assertQuiescedLease = () => {
+    if (capturePurpose !== "quiesced-active-preservation") return;
+    if (!quiescedContext) {
+      fail(
+        "BACKUP_QUIESCED_CONTRACT_INVALID",
+        "Quiesced preservation requires an existing runtime lease",
+      );
+    }
+    assertRuntimeRoleCoordinator(quiescedContext.runtimeLease);
+    const current = quiescedContext.runtimeLease.assertLeaseHeldForBackup();
+    if (!runtimeProof) {
+      runtimeProof = current;
+    } else if (stableJson(current) !== stableJson(runtimeProof)) {
+      fail(
+        "BACKUP_QUIESCED_RUNTIME_CHANGED",
+        "The existing runtime lease changed during preservation capture",
+      );
+    }
+    if (
+      current.dataDirectory !== sourceDirectory ||
+      current.runtimeDirectory !== quiescedContext.sourceContract.runtimeDirectory
+    ) {
+      fail(
+        "BACKUP_QUIESCED_RUNTIME_CHANGED",
+        "The runtime lease is not bound to the frozen source directory",
+      );
+    }
+  };
   try {
+    if (capturePurpose === "quiesced-active-preservation") {
+      if (!quiescedContext) {
+        fail(
+          "BACKUP_QUIESCED_CONTRACT_INVALID",
+          "Quiesced preservation requires an existing runtime lease",
+        );
+      }
+      assertStoppedProcessProof(quiescedContext.sourceContract.stoppedProcess);
+      assertQuiescedLease();
+    }
     // All Provider and storage document writers take this lease before the app
     // database writer lock. Preserve that order to avoid ABBA deadlocks and to
     // cover every secret rename through the complete final-source capture.
@@ -805,14 +1206,18 @@ async function withOptionalFrozenSourceWriteLock<T>(
     }
     const capturedNow = Date.now();
     const inspection = inspectLockedBackupDatabase(database, inspectionRoot);
-    validateLockedSourceContract(
+    const quiescedEvidence = validateLockedSourceContract(
       database,
       inspection,
       contract,
       capturedNow,
       capturePurpose,
+      quiescedContext?.sourceContract,
     );
-    return await callback(inspection);
+    assertQuiescedLease();
+    const result = await callback(inspection, quiescedEvidence);
+    assertQuiescedLease();
+    return result;
   } catch (error) {
     primaryError = error;
     if (error instanceof BackupPackageError || error instanceof BackupInspectionError) {
@@ -851,6 +1256,172 @@ async function withOptionalFrozenSourceWriteLock<T>(
     }
   }
   fail("BACKUP_SOURCE_WRITE_LOCK_FAILED", "Frozen source write lock validation failed");
+}
+
+function manifestJsonScalar(value: unknown, label: string): BackupJsonScalar {
+  if (value === null || typeof value === "string" || typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  fail("BACKUP_MANIFEST_INVALID", `${label} contains an unsupported value`);
+}
+
+function manifestLedgerRow(
+  value: unknown,
+  columns: readonly string[],
+  label: string,
+): BackupTaskLedgerRow {
+  const row = jsonObject(value, "BACKUP_MANIFEST_INVALID");
+  try {
+    exactKeys(row, columns);
+  } catch {
+    fail("BACKUP_MANIFEST_INVALID", `${label} does not match schema43`);
+  }
+  return Object.freeze(Object.fromEntries(columns.map((column) => [
+    column,
+    manifestJsonScalar(row[column], `${label}.${column}`),
+  ])));
+}
+
+function manifestAbsolutePath(value: unknown, label: string) {
+  if (
+    typeof value !== "string" || !value || value.includes("\0") ||
+    !isAbsolute(value) || resolve(value) !== value
+  ) {
+    fail("BACKUP_MANIFEST_INVALID", `${label} is not a normalized absolute path`);
+  }
+  return value;
+}
+
+function validateQuiescedManifestEvidence(
+  value: unknown,
+): BackupQuiescedManifestEvidence {
+  const source = jsonObject(value, "BACKUP_MANIFEST_INVALID");
+  try {
+    exactKeys(source, [
+      "dataDirectory", "leaseDev", "leaseIno", "leasePath", "preservedTask",
+      "runtimeDirectory", "stoppedProcess", "version",
+    ]);
+  } catch {
+    fail("BACKUP_MANIFEST_INVALID", "Quiesced preservation evidence fields are invalid");
+  }
+  const dataDirectory = manifestAbsolutePath(source.dataDirectory, "Quiesced data directory");
+  const runtimeDirectory = manifestAbsolutePath(
+    source.runtimeDirectory,
+    "Quiesced runtime directory",
+  );
+  const leasePath = manifestAbsolutePath(source.leasePath, "Quiesced lease path");
+  if (
+    source.version !== 1 ||
+    typeof source.leaseDev !== "string" ||
+    !/^[1-9][0-9]*$/.test(source.leaseDev) ||
+    typeof source.leaseIno !== "string" ||
+    !/^[1-9][0-9]*$/.test(source.leaseIno) ||
+    leasePath !== join(runtimeDirectory, "active-role.sqlite")
+  ) {
+    fail("BACKUP_MANIFEST_INVALID", "Quiesced runtime lease evidence is invalid");
+  }
+
+  const stopped = jsonObject(source.stoppedProcess, "BACKUP_MANIFEST_INVALID");
+  try {
+    exactKeys(stopped, ["pid", "pidNamespace", "startTicks"]);
+  } catch {
+    fail("BACKUP_MANIFEST_INVALID", "Stopped process proof fields are invalid");
+  }
+  if (
+    typeof stopped.pid !== "number" || !Number.isSafeInteger(stopped.pid) ||
+    stopped.pid <= 1 || typeof stopped.pidNamespace !== "string" ||
+    !stopped.pidNamespace || stopped.pidNamespace.length > 128 ||
+    stopped.pidNamespace.includes("\0") ||
+    typeof stopped.startTicks !== "string" ||
+    !/^[1-9][0-9]*$/.test(stopped.startTicks)
+  ) {
+    fail("BACKUP_MANIFEST_INVALID", "Stopped process proof is invalid");
+  }
+  const preserved = jsonObject(source.preservedTask, "BACKUP_MANIFEST_INVALID");
+  try {
+    exactKeys(preserved, [
+      "admissions", "attempt", "events", "executionAttempt", "state", "task",
+      "taskId", "unresolvedOutcome",
+    ]);
+  } catch {
+    fail("BACKUP_MANIFEST_INVALID", "Preserved task evidence fields are invalid");
+  }
+  const taskId = preserved.taskId;
+  const executionAttempt = preserved.executionAttempt;
+  if (
+    typeof taskId !== "string" || taskId.length < 1 || taskId.length > 256 ||
+    taskId.includes("\0") || typeof executionAttempt !== "number" ||
+    !Number.isSafeInteger(executionAttempt) || executionAttempt < 1 ||
+    preserved.state !== "recovering" || preserved.unresolvedOutcome !== "outcome-unknown" ||
+    !Array.isArray(preserved.admissions) || !Array.isArray(preserved.events)
+  ) {
+    fail("BACKUP_MANIFEST_INVALID", "Preserved task evidence is invalid");
+  }
+  const task = manifestLedgerRow(
+    preserved.task,
+    generationTaskEvidenceColumns,
+    "Preserved generation task",
+  );
+  const attempt = manifestLedgerRow(
+    preserved.attempt,
+    generationAttemptEvidenceColumns,
+    "Preserved Provider attempt",
+  );
+  const events = preserved.events.map((event, index) => manifestLedgerRow(
+    event,
+    generationTaskEventEvidenceColumns,
+    `Preserved task event ${index}`,
+  ));
+  const admissions = preserved.admissions.map((admission, index) => manifestLedgerRow(
+    admission,
+    generationAdmissionEvidenceColumns,
+    `Preserved admission ${index}`,
+  ));
+  if (
+    !events.length ||
+    rowValue(task, "id") !== taskId ||
+    Number(rowValue(task, "attempt")) !== executionAttempt ||
+    rowValue(task, "state") !== "recovering" ||
+    !quiescedUnknownTaskErrorCodes.includes(
+      rowValue(task, "error_code") as typeof quiescedUnknownTaskErrorCodes[number],
+    ) ||
+    rowValue(task, "provider_task_id") !== null ||
+    rowValue(task, "result_asset_id") !== null ||
+    rowValue(task, "result_text") !== null ||
+    rowValue(attempt, "task_id") !== taskId ||
+    Number(rowValue(attempt, "execution_attempt")) !== executionAttempt ||
+    rowValue(attempt, "evidence") !== "provider-boundary" ||
+    rowValue(attempt, "outcome") !== "outcome-unknown" ||
+    rowValue(attempt, "provider_task_id") !== null ||
+    events.some((event) => rowValue(event, "task_id") !== taskId) ||
+    admissions.some((admission) => rowValue(admission, "task_id") !== taskId)
+  ) {
+    fail("BACKUP_MANIFEST_INVALID", "Preserved task evidence identity is inconsistent");
+  }
+  return Object.freeze({
+    dataDirectory,
+    leaseDev: source.leaseDev as string,
+    leaseIno: source.leaseIno as string,
+    leasePath,
+    preservedTask: Object.freeze({
+      admissions: Object.freeze(admissions),
+      attempt,
+      events: Object.freeze(events),
+      executionAttempt,
+      state: "recovering" as const,
+      task,
+      taskId,
+      unresolvedOutcome: "outcome-unknown" as const,
+    }),
+    runtimeDirectory,
+    stoppedProcess: Object.freeze({
+      pid: stopped.pid,
+      pidNamespace: stopped.pidNamespace,
+      startTicks: stopped.startTicks,
+    }),
+    version: 1 as const,
+  });
 }
 
 function requireMediaIntegrityPolicy(
@@ -2428,6 +2999,12 @@ export async function inspectFrozenMediaIntegrity(
     options.capturePurpose,
     Boolean(options.frozenSourceContract),
   );
+  if (capturePurpose === "quiesced-active-preservation") {
+    fail(
+      "BACKUP_CAPTURE_PURPOSE_INVALID",
+      "Media-only inspection cannot authorize quiesced preservation",
+    );
+  }
   const sourceDirectory = normalizedAbsolute(
     options.sourceDirectory,
     "Source directory",
@@ -2589,10 +3166,36 @@ export async function createEncryptedBackup(
   if (options.sourceFrozen !== true) {
     fail("BACKUP_SOURCE_NOT_FROZEN", "Backup source must be explicitly frozen");
   }
+  if (
+    options.quiescedSourceContract &&
+    options.frozenSourceContract
+  ) {
+    fail(
+      "BACKUP_CAPTURE_PURPOSE_INVALID",
+      "A backup cannot combine ordinary and quiesced source contracts",
+    );
+  }
   const capturePurpose = capturePurposeFor(
     options.capturePurpose,
-    Boolean(options.frozenSourceContract),
+    Boolean(options.frozenSourceContract || options.quiescedSourceContract),
   );
+  const quiescedSourceContract = options.quiescedSourceContract;
+  if (capturePurpose === "quiesced-active-preservation") {
+    if (!quiescedSourceContract || !options.quiescedRuntimeLease) {
+      fail(
+        "BACKUP_QUIESCED_CONTRACT_INVALID",
+        "Quiesced preservation requires its source contract and runtime lease",
+      );
+    }
+    normalizedAbsolute(quiescedSourceContract.runtimeDirectory, "Runtime directory");
+    assertStoppedProcessProof(quiescedSourceContract.stoppedProcess);
+  } else if (quiescedSourceContract || options.quiescedRuntimeLease) {
+    fail(
+      "BACKUP_CAPTURE_PURPOSE_INVALID",
+      "Quiesced source data is only valid for quiesced preservation capture",
+    );
+  }
+  const frozenSourceContract = quiescedSourceContract ?? options.frozenSourceContract;
   const sourceDirectory = normalizedAbsolute(options.sourceDirectory, "Source directory");
   const backupRoot = normalizedAbsolute(options.backupRoot, "Backup root");
   const scratchRoot = normalizedAbsolute(options.scratchRoot ?? resolve(tmpdir()), "Scratch root");
@@ -2669,9 +3272,9 @@ export async function createEncryptedBackup(
     const captured = await withOptionalFrozenSourceWriteLock(
       sourceDirectory,
       scratch,
-      options.frozenSourceContract,
+      frozenSourceContract,
       capturePurpose,
-      async (lockedInspection) => {
+      async (lockedInspection, quiescedEvidence) => {
         const databaseBefore = await databaseFilesSnapshot(sourceDirectory);
         const libraryBefore = await libraryDatabaseSnapshot(sourceDirectory);
         const mediaDirectory = join(sourceDirectory, "media");
@@ -2846,11 +3449,18 @@ export async function createEncryptedBackup(
           mediaAfter,
           mediaBefore,
           mediaIntegrity,
+          quiescedEvidence,
           secretValidation,
           secretsAfter,
           secretsBefore,
         });
       },
+      capturePurpose === "quiesced-active-preservation"
+        ? {
+            runtimeLease: options.quiescedRuntimeLease!,
+            sourceContract: quiescedSourceContract!,
+          }
+        : undefined,
     );
     const {
       databaseAfter,
@@ -2862,17 +3472,33 @@ export async function createEncryptedBackup(
       mediaAfter,
       mediaBefore,
       mediaIntegrity,
+      quiescedEvidence,
       secretValidation,
       secretsAfter,
       secretsBefore,
     } = captured;
 
+    const quiescedLeaseProof = capturePurpose === "quiesced-active-preservation"
+      ? options.quiescedRuntimeLease!.assertLeaseHeldForBackup()
+      : undefined;
+    if (
+      capturePurpose === "quiesced-active-preservation" &&
+      (!quiescedEvidence || !quiescedLeaseProof)
+    ) {
+      fail(
+        "BACKUP_QUIESCED_EVIDENCE_INCOMPLETE",
+        "Quiesced preservation did not produce complete lease and task evidence",
+      );
+    }
+
     entries.sort((left, right) => left.logicalPath.localeCompare(right.logicalPath));
     const manifest: BackupManifest = Object.freeze({
       backupId,
-      captureMode: options.frozenSourceContract
-        ? "locked-exact"
-        : "external-unverified",
+      captureMode: capturePurpose === "quiesced-active-preservation"
+        ? "quiesced-active-preservation"
+        : frozenSourceContract
+          ? "locked-exact"
+          : "external-unverified",
       createdAt: new Date().toISOString(),
       database: Object.freeze({
         entryId: databaseEntry.entryId,
@@ -2881,6 +3507,20 @@ export async function createEncryptedBackup(
       entries: Object.freeze(entries),
       format: backupPackageFormat,
       media,
+      ...(capturePurpose === "quiesced-active-preservation"
+          ? {
+            quiesced: Object.freeze({
+              dataDirectory: quiescedLeaseProof!.dataDirectory,
+              leaseDev: quiescedLeaseProof!.leaseDev,
+              leaseIno: quiescedLeaseProof!.leaseIno,
+              leasePath: quiescedLeaseProof!.leasePath,
+              preservedTask: quiescedEvidence!,
+              runtimeDirectory: quiescedLeaseProof!.runtimeDirectory,
+              stoppedProcess: quiescedSourceContract!.stoppedProcess,
+              version: 1 as const,
+            }),
+          }
+        : {}),
       secrets: Object.freeze({
         fileCount: entries.filter((entry) => entry.kind === "secret").length,
         validation: secretValidation,
@@ -3256,10 +3896,20 @@ function validateManifest(
   ) fail("BACKUP_MANIFEST_INVALID", "Encrypted backup manifest is invalid");
   const captureMode = manifest.captureMode === "locked-exact"
     ? "locked-exact"
+    : manifest.captureMode === "quiesced-active-preservation"
+      ? "quiesced-active-preservation"
     : manifest.captureMode === "external-unverified" ||
         manifest.captureMode === undefined
       ? "external-unverified"
       : fail("BACKUP_MANIFEST_INVALID", "Backup capture mode is invalid");
+  const quiesced = captureMode === "quiesced-active-preservation"
+    ? validateQuiescedManifestEvidence(manifest.quiesced)
+    : manifest.quiesced === undefined
+      ? undefined
+      : fail(
+          "BACKUP_MANIFEST_INVALID",
+          "Quiesced preservation evidence is only valid for its capture mode",
+        );
   if (manifest.entries.length > 1_000_000) {
     fail("BACKUP_MANIFEST_INVALID", "Encrypted backup has too many entries");
   }
@@ -3342,6 +3992,12 @@ function validateManifest(
     !validSha(inspection.logicalSha256) ||
     !Array.isArray(inspection.tables) || !Array.isArray(inspection.migrationLedger)
   ) fail("BACKUP_MANIFEST_INVALID", "Backup database inspection is invalid");
+  if (captureMode === "quiesced-active-preservation" && inspection.userVersion !== 43) {
+    fail(
+      "BACKUP_MANIFEST_INVALID",
+      "Quiesced preservation packages must contain schema43",
+    );
+  }
   const source = jsonObject(manifest.source, "BACKUP_MANIFEST_INVALID");
   for (const name of [
     "databaseAfter", "databaseBefore", "mediaAfter", "mediaBefore",
@@ -3517,6 +4173,7 @@ function validateManifest(
       localReady: Object.freeze(localReady),
       ossReady: Object.freeze(ossReady),
     }),
+    ...(quiesced ? { quiesced } : {}),
     secrets: Object.freeze({
       fileCount: secretFileCount,
       validation: Object.freeze({

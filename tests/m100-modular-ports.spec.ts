@@ -3532,10 +3532,12 @@ test("modern single-node terminal state adopts the server document without a bro
                     content: "server result",
                     groupRunSuccessOwnershipKey: "ownership-modern",
                     groupRunSuccessTaskId: "task-modern",
+                    textGenerationError: "旧任务查询失败",
+                    textGenerationErrorCode: "GENERATION_STATUS_UNAVAILABLE",
                     textGenerating: false,
                     textGenerationInputKey: undefined,
                     textGenerationOwnershipKey: undefined,
-                    textGenerationTaskId: "task-modern",
+                    textGenerationTaskId: undefined,
                   },
             }
           : node),
@@ -3666,13 +3668,15 @@ test("modern single-node terminal state adopts the server document without a bro
     refreshes: 2,
     saveFlushes: 1,
     terminalAdapterCalls: 0,
-    viewCommits: 1,
+    viewCommits: 2,
   });
   expect(snapshot.nodes[0]?.data).toMatchObject({
     content: "server result",
     groupRunSuccessTaskId: "task-modern",
     textGenerating: false,
   });
+  expect(snapshot.nodes[0]?.data.textGenerationError).toBeUndefined();
+  expect(snapshot.nodes[0]?.data.textGenerationErrorCode).toBeUndefined();
   expect(graph.applyViewPatch?.({
     kind: "text",
     nodeId: "text-modern",
@@ -3755,4 +3759,67 @@ test("PERF private history previews recheck authorization on cache hits and afte
   expect((await invokeMediaEditSource({ ...dependencies,
     encodePreview: async () => { readable = false; return Buffer.alloc(20); },
   }, "/other-image?preview=320-v1")).status).toBe(404);
+});
+
+test("V3 single-node preparation retains the old binding until authoritative replacement admission", async () => {
+  let snapshot: CanvasGraphSnapshot = {
+    edges: [], revision: undefined,
+    nodes: [{ id: "video-replacement", type: "video", position: { x: 12, y: 34 },
+      data: { label: "replacement fixture", videoGenerationTaskId: "old-failed-task", videoGenerationOwnershipKey: "old-identity" } }],
+  };
+  let waits = 0;
+  let ensures = 0;
+  const task: GenerationTaskSummary = {
+    id: "new-task", state: "queued", attempt: 1, kind: "video", canvasId: "canvas-1",
+    nodeId: "video-replacement", prompt: "changed input", costCurrency: "CNY",
+    createdAt: "2026-09-07T00:00:00Z", updatedAt: "2026-09-07T00:00:00Z",
+    generationIdentityVersion: 2, generationInputKey: "new-input", generationOwnershipKey: "new-identity",
+    modelConfigurationRevision: "config-v3", modelReleaseRevision: "release-v3",
+    modelInputContractFingerprint: "mic2:v3",
+  };
+  const graph = createCanvasGraphCommandPort({
+    snapshot: () => snapshot, persistenceReady: () => true,
+    commit(next) { snapshot = next; },
+    commitView(nodes) { snapshot = { ...snapshot, nodes }; },
+    async refreshAuthoritativeDocument() {
+      snapshot = { ...snapshot, revision: 3, nodes: snapshot.nodes.map(node => ({ ...node,
+        data: { ...node.data, videoGenerationTaskId: task.id, videoGenerationOwnershipKey: task.generationOwnershipKey },
+      })) };
+      return true;
+    },
+  });
+  const lifecycle = createSingleNodeGenerationLifecycle({
+    nodeId: "video-replacement", graph,
+    adapter: {
+      kind: "video",
+      readPlan: () => ({ kind: "video", nodeId: task.nodeId, contractFingerprint: "mic2:v3",
+        modelConfigurationRevision: "config-v3", modelReleaseRevision: "release-v3",
+        inputKey: "new-input", ownershipKey: "new-identity", payload: {} }),
+      applyPrepared: node => ({ ...node, data: { ...node.data, videoModelId: "new-model" } }),
+      applyBinding: () => { throw new Error("Client must not replace an authoritative task binding"); },
+      applyTerminal: () => { throw new Error("No terminal result was returned"); },
+    },
+    save: { async flush() {}, async waitForRevision() {
+      waits += 1; snapshot = { ...snapshot, revision: waits }; return { revision: waits };
+    } },
+    tasks: {
+      async ensure() {
+        ensures += 1;
+        expect(snapshot.nodes[0].data.videoGenerationTaskId).toBe("old-failed-task");
+        expect(snapshot.nodes[0].data.videoGenerationOwnershipKey).toBe("old-identity");
+        expect(snapshot.nodes[0].data.videoModelId).toBe("new-model");
+        return { task, idempotencyKey: "new-user-intent", recovered: false };
+      },
+      async cancel() { throw new Error("unexpected cancel"); },
+      async reconcile() { throw new Error("unexpected reconcile"); },
+      async recover() { throw new Error("unexpected recovery"); },
+      async retry() { throw new Error("Old terminal task must never be revived"); },
+      async watch() { throw new Error("submit does not wait for completion"); },
+    },
+  });
+  await expect(lifecycle.submit()).resolves.toMatchObject({ status: "submitted", task: { id: "new-task" } });
+  expect(ensures).toBe(1);
+  expect(waits).toBe(2);
+  expect(snapshot.nodes[0].data.videoGenerationTaskId).toBe("new-task");
+  expect(snapshot.nodes[0].position).toEqual({ x: 12, y: 34 });
 });
