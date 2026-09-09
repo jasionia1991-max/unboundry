@@ -26,7 +26,7 @@
       "scriptSha256": "1f44bc5650369220fab1854a2d7b549f311c8d4469481f25b9569e15e80e3c94",
       "target": "tests/m10-backup.spec.ts",
       "marker": "HISTORICAL_SCHEMA39_BACKUP_DISABLED",
-      "targetSha256": "c2224ee613b518e6860635d455f14128f073e53ed56cf7a794c087d1d917a7a0",
+      "targetSha256": "5dae9843b29ec73088c907f594603e8a09bac1eb43022d52fcb0824837642272",
       "manualNpmScripts": []
     },
     "ops/production/backup-to-oss-retention.mjs": {
@@ -34,7 +34,7 @@
       "scriptSha256": "695bfa261b80cb89439e64d8af33fc8ec9033e078b9e5c348f1ebb3ff2fbdd05",
       "target": "tests/m10-backup.spec.ts",
       "marker": "locked schema42 backup verifies and restores into a fresh private directory",
-      "targetSha256": "c2224ee613b518e6860635d455f14128f073e53ed56cf7a794c087d1d917a7a0",
+      "targetSha256": "5dae9843b29ec73088c907f594603e8a09bac1eb43022d52fcb0824837642272",
       "manualNpmScripts": [
         "data:backup:oss"
       ]
@@ -102,14 +102,14 @@
       "scriptSha256": "cdc80d4529fed7d86b96759398147bdf19fcb8adad0eccf54b551c42d7171a28",
       "target": "tests/m10-backup.spec.ts",
       "marker": "locked schema42 backup verifies and restores into a fresh private directory",
-      "targetSha256": "c2224ee613b518e6860635d455f14128f073e53ed56cf7a794c087d1d917a7a0"
+      "targetSha256": "5dae9843b29ec73088c907f594603e8a09bac1eb43022d52fcb0824837642272"
     },
     "scripts/backup-final-candidate.mjs": {
       "mode": "behavior-test",
       "scriptSha256": "18679a42eaec6432021f463aad34a01a39e9aaecaeb32f3918a7aabf8a474ad8",
       "target": "tests/m10-backup.spec.ts",
       "marker": "historical exact-v37 recovery chain rehydrates fake OSS offline and validates normal runtime startup",
-      "targetSha256": "c2224ee613b518e6860635d455f14128f073e53ed56cf7a794c087d1d917a7a0"
+      "targetSha256": "5dae9843b29ec73088c907f594603e8a09bac1eb43022d52fcb0824837642272"
     },
     "scripts/backup-to-oss.mjs": {
       "mode": "frozen",
@@ -273,7 +273,7 @@
       "scriptSha256": "dbc1b06fc7ca761b66cde24bf0e1e293951b87de10db2ab959abbf6ac9a20b76",
       "target": "tests/m10-backup.spec.ts",
       "marker": "locked schema42 backup verifies and restores into a fresh private directory",
-      "targetSha256": "c2224ee613b518e6860635d455f14128f073e53ed56cf7a794c087d1d917a7a0"
+      "targetSha256": "5dae9843b29ec73088c907f594603e8a09bac1eb43022d52fcb0824837642272"
     },
     "scripts/run-linux-production-validation.mjs": {
       "mode": "frozen",
@@ -286,7 +286,7 @@
       "scriptSha256": "891d9c3db99cf458f88248e503c221e1f450f78f16b9f4d15af8d2f36f5c0efd",
       "target": "tests/m10-backup.spec.ts",
       "marker": "locked schema42 backup verifies and restores into a fresh private directory",
-      "targetSha256": "c2224ee613b518e6860635d455f14128f073e53ed56cf7a794c087d1d917a7a0"
+      "targetSha256": "5dae9843b29ec73088c907f594603e8a09bac1eb43022d52fcb0824837642272"
     }
   }
 }
