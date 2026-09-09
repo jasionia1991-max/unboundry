@@ -5036,9 +5036,16 @@ test("final-candidate preflight rejects physical path aliases and keys under wor
         });
         expect(notification).toBe(`inventory:${kind}`);
         if (kind === "build") {
+          const bridgeReleaseDirectory = dirname(
+            swapFixture.releaseManifests.bridge,
+          );
+          const bridgeDistDirectory = join(bridgeReleaseDirectory, "dist");
           artifactModes = await makeArtifactPathsWritable([
-            dirname(swapFixture.releaseManifests.bridge),
-            join(dirname(swapFixture.releaseManifests.bridge), "dist"),
+            bridgeReleaseDirectory,
+            bridgeDistDirectory,
+            // Let the synthetic source directory participate in the rename
+            // probe on hosted macOS too; finally restores its original mode.
+            rootToSwap,
           ]);
         }
         await rename(rootToSwap, displacedRoot);
