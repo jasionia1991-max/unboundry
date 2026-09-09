@@ -43,6 +43,6 @@ ops 切换/回退脚本已完成独立窄复审，直接阻断已修复；Linux�
 
 ## 发布恢复进度（2026-09-09）
 
-用户已处理个人GitHub付款并要求继续原发布。精确候选 `aac6899888fd852fcb2eaf3dade7bf3532df4ab3` 的[CI第2次执行](https://github.com/jasionia1991-max/unboundry/actions/runs/34290321344)两个job均已启动，原账单限制已解除。本次lightweight检查通过；备份job因默认浅克隆缺少safe runner强制核验的 `v0.5.1` 历史tag，在备份测试开始前失败。现为两个job补上 `fetch-depth: 0`，保留完整历史标签校验和原有安全门；产品代码不变，等待最终head CI。
+用户已处理个人GitHub付款并要求继续原发布。精确候选 `aac6899888fd852fcb2eaf3dade7bf3532df4ab3` 的[CI第2次执行](https://github.com/jasionia1991-max/unboundry/actions/runs/34290321344)两个job均已启动，原账单限制已解除。本次lightweight检查通过；备份job因默认浅克隆缺少safe runner强制核验的 `v0.5.1` 历史tag，在备份测试开始前失败。已为两个job补上 `fetch-depth: 0`。随后冷环境备份检查发现旧版lock依赖未缓存，离线安装被拒绝；现于隔离测试前，只从精确旧commit取两份package文件，在RUNNER_TEMP预热其依赖缓存。safe runner继续离线、保留完整历史身份校验；产品代码不变，等待最终head CI。
 
 2026-09-09 20:44（北京时间）重新只读核对：正式站仍v0.7.16/schema43、PID1197743/restarts0；一个精确旧未知task/attempt保持，活动工作流和未完成publication均为0。新包/生产运维目录尚未建立，尚未冻结、停服或切换。实测记录由release ops的 `production-readonly-release-resumed.json` 与 `release-review.json` 保存。用户已取消的自托管CI路线保持取消；本次沿用GitHub托管检查，不再索要已有上线授权。

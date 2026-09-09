@@ -94,5 +94,11 @@ jobs:
           echo "NPM_CONFIG_CACHE=$RUNNER_TEMP/unboundry-backup-npm-cache" >> "$GITHUB_ENV"
           echo "UNBOUNDRY_NPM_CONTENT_CACHE=$RUNNER_TEMP/unboundry-backup-npm-cache/_cacache" >> "$GITHUB_ENV"
       - run: npm ci --ignore-scripts
+      - name: Prepare exact legacy backup dependency cache
+        run: |
+          legacy_dependencies="$(mktemp -d "$RUNNER_TEMP/unboundry-v051-deps.XXXXXX")"
+          git --no-replace-objects show 7f7d6177a564056a6f41ff83dfb7ba913b21603b:package.json > "$legacy_dependencies/package.json"
+          git --no-replace-objects show 7f7d6177a564056a6f41ff83dfb7ba913b21603b:package-lock.json > "$legacy_dependencies/package-lock.json"
+          npm ci --prefix "$legacy_dependencies" --cache "$NPM_CONFIG_CACHE" --ignore-scripts --audit=false --fund=false
       - name: Backup and runtime lease preservation (synthetic data only)
         run: node scripts/run-safe-tests.mjs run --spec tests/m10-backup.spec.ts --spec tests/m93-runtime-role.spec.ts
