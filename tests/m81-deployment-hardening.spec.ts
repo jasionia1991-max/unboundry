@@ -42,6 +42,7 @@ import {
   databaseMatchesSchemaContract,
   openAppDatabase,
 } from "../server/database";
+import { resolvePersistedNodeInputs } from "../server/inputPreflight";
 import {
   createGenerationTaskStore,
   GenerationTaskRetryFenceError,
@@ -50,8 +51,10 @@ import { buildAuthoritativeGenerationModelConfiguration } from
   "../server/authoritativeGenerationModelConfiguration";
 import { authoritativeModelConfigurationRevision } from
   "../server/modelConfigurationIdentity";
-import { assertRegisteredModelExecutionTotality } from
-  "../server/modelExecutionRegistry";
+import {
+  assertRegisteredModelExecutionTotality,
+  registeredModelExecution,
+} from "../server/modelExecutionRegistry";
 import { bootstrapPublishedModelContracts } from
   "../server/modelReleaseBootstrap";
 import { modelContractState } from "../server/modelReleaseRevisionStore";
@@ -97,7 +100,15 @@ import {
   legacyProxyRequestHeaders,
   parseLegacyBridgeRequestTarget,
 } from "../server/legacyBridgeRequest";
-import { knownModelParameterSchema } from "../types/modelParameters";
+import {
+  knownModelParameterSchema,
+  providerParameterSchema,
+} from "../types/modelParameters";
+import {
+  generationInputKey,
+  generationOwnershipEvidence,
+  generationOwnershipKey,
+} from "../types/generationIdentity";
 import { expect, test } from "./safe-test";
 
 const port = Number(process.env.UNBOUNDRY_TEST_AUX_PORT);
@@ -212,11 +223,11 @@ test("release role and bridge-mode selection are exact and fail closed", () => {
   expect(() => releaseRoleFromEnvironment("0.7.13", {
     UNBOUNDRY_RELEASE_ROLE: "bridge",
   })).toThrow(/UNBOUNDRY_RELEASE_ROLE_MISMATCH/);
-  for (const version of ["0.7.14", "0.7.14-compat.1", "0.7.15", "0.7.16"]) {
+  for (const version of ["0.7.14", "0.7.14-compat.1", "0.7.15", "0.7.16", "0.7.17"]) {
     expect(releaseRoleFromEnvironment(version, {})).toBe("final");
     expect(() => releaseRoleFromEnvironment(version, { UNBOUNDRY_RELEASE_ROLE: "bridge" })).toThrow();
   }
-  for (const version of ["0.7.17", "0.7.16-hotfix.1", "0.7.16+build.1", "v0.7.16", "0.7.13-hotfix.1", "0.7.13+build.1", "v0.7.13", "0.7.12-hotfix.1", "0.7.12+build.1", "v0.7.12", "0.7.11-hotfix.1", "0.7.11+build.1", "v0.7.11", "0.7.10-hotfix.1", "0.7.10+build.1", "v0.7.10"]) {
+  for (const version of ["0.7.18", "0.7.17-hotfix.1", "0.7.17+build.1", "v0.7.17", "0.7.16-hotfix.1", "0.7.16+build.1", "v0.7.16", "0.7.13-hotfix.1", "0.7.13+build.1", "v0.7.13", "0.7.12-hotfix.1", "0.7.12+build.1", "v0.7.12", "0.7.11-hotfix.1", "0.7.11+build.1", "v0.7.11", "0.7.10-hotfix.1", "0.7.10+build.1", "v0.7.10"]) {
     expect(() => releaseRoleFromEnvironment(version, {})).toThrow(
       /UNBOUNDRY_RELEASE_VERSION_INVALID/,
     );
@@ -1542,6 +1553,194 @@ function outputOf(child: ChildProcess) {
   return capturedOutput.get(child)?.join("") ?? "";
 }
 
+async function writeM81RelayProviderPreload(
+  modulePath: string,
+  providerLog: string,
+) {
+  const targetOrigin = "https://m81-relay.example.test";
+  const childProviderTaskId = "m81-refund-restart-child-provider";
+  await writeFile(modulePath, `
+    import { appendFile } from "node:fs/promises";
+
+    const targetOrigin = ${JSON.stringify(targetOrigin)};
+    const providerLog = ${JSON.stringify(providerLog)};
+    const childProviderTaskId = ${JSON.stringify(childProviderTaskId)};
+    const nativeFetch = globalThis.fetch.bind(globalThis);
+
+    async function record(method, url, status) {
+      await appendFile(providerLog, JSON.stringify({ method, url, status }) + "\\n", {
+        encoding: "utf8",
+        flag: "a",
+      });
+    }
+
+    globalThis.fetch = async function m81RelayProviderFetch(input, init) {
+      const url = new URL(String(input));
+      const method = String(init?.method ?? "GET").toUpperCase();
+      if (url.origin !== targetOrigin) return nativeFetch(input, init);
+      if (
+        method === "POST" &&
+        url.pathname === "/v1/media/generate" &&
+        !url.search && !url.hash
+      ) {
+        await record(method, url.href, 200);
+        return new Response(JSON.stringify({ task_id: childProviderTaskId }), {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+      if (
+        method === "GET" &&
+        (url.pathname === "/v1/skills/task-status" ||
+          url.pathname === "/v1/media/status") &&
+        url.searchParams.get("task_id") === childProviderTaskId &&
+        [...url.searchParams.keys()].length === 1
+      ) {
+        await record(method, url.href, 200);
+        return new Response(JSON.stringify({
+          state: "failed",
+          task_id: childProviderTaskId,
+        }), {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+      throw new Error(
+        "M81 relay preload rejected an unexpected Provider URL: " + url.href,
+      );
+    };
+  `, { encoding: "utf8", mode: 0o600 });
+}
+
+function refundStartupDiagnostics(
+  dataDirectory: string,
+  parentTaskId: string,
+  childOutput: string,
+) {
+  const database = new DatabaseSync(join(dataDirectory, "unboundry.sqlite"), {
+    readOnly: true,
+  });
+  try {
+    const parent = database.prepare(`
+      SELECT id, owner_id, canvas_id, node_id, kind, state, attempt,
+             error_code, error_message, model, provider_profile_id,
+             provider_model_id, parameters, model_configuration, updated_at
+      FROM generation_tasks WHERE id = ?
+    `).get(parentTaskId) as Record<string, unknown> | undefined;
+    const modelConfiguration = parent?.model_configuration
+      ? JSON.parse(String(parent.model_configuration)) as Record<string, unknown>
+      : undefined;
+    const parameters = parent?.parameters
+      ? JSON.parse(String(parent.parameters)) as Record<string, unknown>
+      : undefined;
+    const latestAttempt = database.prepare(`
+      SELECT execution_attempt, outcome, failure_code, provider_task_id,
+             credential_revision, finished_at
+      FROM generation_provider_attempts
+      WHERE task_id = ? ORDER BY execution_attempt DESC LIMIT 1
+    `).get(parentTaskId);
+    const canvas = parent
+      ? database.prepare(`
+          SELECT graph_revision, nodes FROM canvas_documents
+          WHERE owner_id = ? AND id = ?
+        `).get(String(parent.owner_id), String(parent.canvas_id)) as
+          | { graph_revision: number; nodes: string }
+          | undefined
+      : undefined;
+    let bindings: unknown[] = [];
+    if (canvas) {
+      const nodes = JSON.parse(canvas.nodes) as unknown;
+      if (Array.isArray(nodes)) {
+        bindings = nodes
+          .filter((node): node is {
+            data?: Record<string, unknown>;
+            id?: unknown;
+            type?: unknown;
+          } => Boolean(node) && typeof node === "object" && !Array.isArray(node))
+          .map((node) => ({
+            nodeId: node.id,
+            kind: node.type,
+            taskId: node.data?.[`${String(node.type)}GenerationTaskId`],
+            generationInputKey:
+              node.data?.[`${String(node.type)}GenerationInputKey`],
+            generationOwnershipKey:
+              node.data?.[`${String(node.type)}GenerationOwnershipKey`],
+            modelConfigurationRevision:
+              node.data?.[`${String(node.type)}GenerationModelConfigurationRevision`],
+            modelReleaseRevision:
+              node.data?.[`${String(node.type)}GenerationModelReleaseRevision`],
+          }));
+      }
+    }
+    const events = database.prepare(`
+      SELECT id, state, error_code, error_message, created_at
+      FROM generation_task_events WHERE task_id = ? ORDER BY id ASC
+    `).all(parentTaskId);
+    const candidate = database.prepare(`
+      SELECT COUNT(*) AS count FROM generation_tasks AS task
+      WHERE task.id = ? AND task.state = 'failed'
+        AND task.error_code = 'PROVIDER_REFUNDED' AND task.attempt = 1
+        AND EXISTS (
+          SELECT 1 FROM generation_task_events AS event
+          WHERE event.task_id = task.id
+            AND event.error_code = 'USER_GENERATION_INTENT_OPENED_V3'
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM generation_task_events AS event
+          WHERE event.task_id = task.id
+            AND event.error_code IN (
+              'AUTO_REFUND_COMPENSATION_ADMITTED',
+              'AUTO_REFUND_COMPENSATION_CHILD'
+            )
+        )
+    `).get(parentTaskId);
+    const active = database.prepare(`
+      SELECT COUNT(*) AS count FROM generation_tasks
+      WHERE state IN ('queued', 'running', 'recovering', 'retrying')
+    `).get();
+    const safety = database.prepare(`
+      SELECT global_enabled, emergency_stop FROM generation_safety_settings
+      WHERE id = 1
+    `).get();
+    return {
+      childOutput: childOutput.slice(-12_000),
+      parent: parent
+        ? {
+            id: parent.id,
+            ownerId: parent.owner_id,
+            canvasId: parent.canvas_id,
+            nodeId: parent.node_id,
+            kind: parent.kind,
+            state: parent.state,
+            attempt: parent.attempt,
+            errorCode: parent.error_code,
+            model: parent.model,
+            providerProfileId: parent.provider_profile_id,
+            providerModelId: parent.provider_model_id,
+            updatedAt: parent.updated_at,
+            parameters: parameters
+              ? {
+                  inputSchemaVersion: parameters.inputSchemaVersion,
+                  inputCount: Array.isArray(parameters.inputs)
+                    ? parameters.inputs.length
+                    : undefined,
+                }
+              : undefined,
+          }
+        : undefined,
+      modelConfiguration,
+      latestAttempt,
+      bindings: { graphRevision: canvas?.graph_revision, nodes: bindings },
+      events,
+      candidate,
+      active,
+      safety,
+    };
+  } finally {
+    database.close();
+  }
+}
+
 async function lifecycleReadiness(lifecycle: RuntimeLifecycle) {
   const socket = new Socket();
   const incoming = new IncomingMessage(socket);
@@ -2068,6 +2267,297 @@ async function seedQueuedStartupGenerationFixture(
       database.close();
     }
   } finally {
+    if (previousDataDirectory === undefined) {
+      delete process.env.UNBOUNDRY_DATA_DIR;
+    } else {
+      process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
+    }
+  }
+}
+
+/**
+ * A durable crash checkpoint for the startup worker. The base fixture gives
+ * this test the same current schema and safety gates as the other M81 tests;
+ * its active rows are then made unrelated terminal history before one valid
+ * V3 refunded parent is left without the compensation child.
+ */
+async function seedIdleRefundCompensationStartupFixture(
+  dataDirectory: string,
+  fixtureId: string,
+) {
+  const base = await seedQueuedStartupGenerationFixture(dataDirectory, fixtureId);
+  const previousDataDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  process.env.UNBOUNDRY_DATA_DIR = dataDirectory;
+  const ownerId = base.ownerId;
+  const canvasId = `${fixtureId}-refund-canvas`;
+  // Startup's controlled Provider fetcher is wired into text/video launchers;
+  // keep this fixture on the video relay path so it cannot fall through to an
+  // unmocked production audio transport.
+  const nodeId = `${fixtureId}-refund-video-node`;
+  const modelId = `${fixtureId}-relay-video-model`;
+  const providerModelId = "kling-v3-omni-cankao";
+  const prompt = "m81 startup refund compensation after process crash";
+  const requestedParameters = {
+    aspectRatio: "16:9",
+    duration: 5,
+    inputMode: "text",
+    outputCount: 1,
+    videoMode: "standard",
+  };
+  const timestamp = new Date().toISOString();
+  let database: DatabaseSync | undefined;
+  let tasks: ReturnType<typeof createGenerationTaskStore> | undefined;
+  try {
+    database = openAppDatabase(dataDirectory);
+    database.prepare(`
+      UPDATE generation_tasks
+      SET state = 'failed', error_code = 'M81_STARTUP_TERMINAL_HISTORY',
+          error_message = 'unrelated terminal fixture history', updated_at = ?
+      WHERE state IN ('queued', 'running', 'recovering', 'retrying')
+    `).run(timestamp);
+    const profile = await saveProviderProfile({
+      apiKey: "m81-refund-startup-provider-key",
+      baseUrl: "https://m81-relay.example.test/v1",
+      driver: "multi-protocol-relay",
+      label: `M81 startup refund ${fixtureId}`,
+    });
+    database.prepare(`
+      UPDATE provider_profiles
+      SET status = 'enabled', key_status = 'valid', key_checked_at = ?,
+          updated_at = ?
+      WHERE id = ?
+    `).run(timestamp, timestamp, profile.id);
+    const parameterSchema = providerParameterSchema({
+      capability: "video",
+      providerDriver: "multi-protocol-relay",
+      providerModelId,
+    });
+    if (!parameterSchema) {
+      throw new Error("M81 startup refund video schema is missing");
+    }
+    database.prepare(`
+      INSERT INTO model_profiles (
+        id, display_name, provider_profile_id, provider_model_id,
+        capability, status, default_parameters, created_at, updated_at,
+        max_cost_microunits, cost_currency, provider_protocol
+      ) VALUES (?, ?, ?, ?, 'video', 'published', ?, ?, ?, 5000000, 'USD',
+        'media-generate')
+    `).run(
+      modelId,
+      `M81 ${fixtureId} relay video`,
+      profile.id,
+      providerModelId,
+      JSON.stringify(parameterSchema),
+      timestamp,
+      timestamp,
+    );
+    database.prepare(`
+      INSERT INTO node_model_bindings (
+        node_type, model_id, enabled, is_default, sort_order,
+        created_at, updated_at
+      ) VALUES ('video', ?, 1, 0, 999, ?, ?)
+    `).run(modelId, timestamp, timestamp);
+    bootstrapPublishedModelContracts(database, ownerId);
+    const release = modelContractState(database, modelId).active;
+    const execution = registeredModelExecution({
+      capability: "video",
+      providerDriver: "multi-protocol-relay",
+      providerModelId,
+      providerProtocol: "media-generate",
+    });
+    if (!release || !execution) {
+      throw new Error("M81 startup refund model contract is incomplete");
+    }
+    const publishedParameterSchema = release.document.capabilitySchema;
+    const modelConfigurationRevision =
+      authoritativeModelConfigurationRevision({
+        capability: "video",
+        id: modelId,
+        modelConfigurationUpdatedAt: timestamp,
+        parameterSchema: publishedParameterSchema,
+        providerDriver: "multi-protocol-relay",
+        providerModelId,
+      });
+    const credential = await saveAccountCredential(
+      database,
+      ownerId,
+      profile.id,
+      "m81-refund-startup-account-key",
+    );
+    database.prepare(`
+      UPDATE account_provider_credentials
+      SET key_status = 'valid', key_checked_at = ?, updated_at = ?
+      WHERE account_id = ? AND provider_profile_id = ?
+    `).run(timestamp, timestamp, ownerId, profile.id);
+    const initialNode = {
+      data: {
+        videoModelConfigurationRevision: modelConfigurationRevision,
+        videoModelId: modelId,
+        videoParameters: requestedParameters,
+        videoPrompt: prompt,
+        videoPromptReady: true,
+        title: `M81 ${fixtureId} video target`,
+      },
+      id: nodeId,
+      position: { x: 0, y: 0 },
+      type: "video",
+    };
+    database.prepare(`
+      INSERT INTO canvas_documents (
+        owner_id, id, revision, graph_revision, nodes, edges, viewport,
+        updated_at, save_session_id, save_sequence
+      ) VALUES (?, ?, 1, 1, ?, '[]', '{"x":0,"y":0,"zoom":1}', ?, NULL, 0)
+    `).run(
+      ownerId,
+      canvasId,
+      JSON.stringify([initialNode]),
+      timestamp,
+    );
+    const resolved = resolvePersistedNodeInputs({
+      bypass: false,
+      canvasId,
+      database,
+      modelReleaseRevision: release.revisionId,
+      modelSchema: publishedParameterSchema,
+      ownerId,
+      parameters: requestedParameters,
+      targetId: nodeId,
+      targetKind: "video",
+    });
+    if (!resolved.canSubmit || !resolved.contractFingerprint) {
+      throw new Error("M81 startup refund input fixture is not submittable");
+    }
+    const normalizedParameters = {
+      ...(resolved.normalizedParameters ?? requestedParameters),
+    };
+    const inputFingerprint = generationInputKey({
+      inputs: resolved.inputs,
+      modelConfigurationRevision,
+      modelId,
+      modelReleaseRevision: release.revisionId,
+      ownPrompt: resolved.persistedOwnPrompt,
+      parameters: normalizedParameters,
+      prompt: resolved.finalPrompt,
+    });
+    const ownershipKey = generationOwnershipKey(generationOwnershipEvidence({
+      contractFingerprint: resolved.contractFingerprint,
+      inputs: resolved.inputs,
+      kind: "video",
+      modelConfigurationRevision,
+      modelId,
+      modelReleaseRevision: release.revisionId,
+      parameters: normalizedParameters,
+      prompt: resolved.persistedOwnPrompt,
+    }));
+    const modelConfiguration = buildAuthoritativeGenerationModelConfiguration({
+      credentialVersion: credential.credentialVersion,
+      fixtureScopeId: `m81-${fixtureId}-scope`,
+      generationInputKey: inputFingerprint,
+      generationOwnershipKey: ownershipKey,
+      modelCapability: "video",
+      modelConfigurationRevision,
+      modelExecutionAdapterId: execution.adapterId,
+      modelId,
+      modelInputContractFingerprint: resolved.contractFingerprint,
+      modelReleaseRevision: release,
+      modelResultCount: execution.resultCount,
+      parameterSchema: publishedParameterSchema,
+      providerConfigurationVersion: providerConfigurationVersion(profile),
+      providerDriver: "multi-protocol-relay",
+      providerModelId,
+      providerProfileId: profile.id,
+      providerProtocol: "media-generate",
+    });
+    const parameters = {
+      ...normalizedParameters,
+      inputSchemaVersion: 1,
+      inputs: resolved.snapshot,
+    };
+    const requestIntent = {
+      canvasId,
+      fixtureScopeId: `m81-${fixtureId}-scope`,
+      generationIdentityVersion: 2,
+      generationInputKey: inputFingerprint,
+      generationOwnershipKey: ownershipKey,
+      inputSchemaVersion: 1,
+      inputs: resolved.snapshot,
+      kind: "video" as const,
+      model: modelId,
+      modelConfigurationRevision,
+      modelInputContractFingerprint: resolved.contractFingerprint,
+      modelReleaseRevision: release.revisionId,
+      nodeId,
+      parameters: normalizedParameters,
+      prompt: resolved.finalPrompt,
+    };
+    tasks = createGenerationTaskStore(dataDirectory, { recoverRunning: false });
+    const admitted = tasks.admitAuthoritativeOrGet({
+      canvasId,
+      expectedCanvasRevision: 1,
+      costCurrency: "USD",
+      credentialRevision: credential.credentialVersion,
+      estimatedCostMicrounits: 5_000_000,
+      idempotencyKey: `m81-${fixtureId}-refund-parent`,
+      kind: "video",
+      model: modelId,
+      modelConfiguration,
+      nodeId,
+      ownerId,
+      parameters,
+      prompt,
+      providerModelId,
+      providerProfileId: profile.id,
+      requestIntent,
+    });
+    if (!admitted.created) throw new Error("M81 refund parent was not created");
+    const parent = tasks.transition(admitted.task.id, "running");
+    if (!parent) throw new Error("M81 refund parent did not enter running");
+    tasks.recordProviderAttempt(parent.id);
+    tasks.setProviderTaskId(parent.id, `${fixtureId}-parent-provider`);
+    // The V3 automatic-refund admission fence requires the exact terminal
+    // Provider-attempt receipt as well as the task's PROVIDER_REFUNDED state.
+    // A bare task transition leaves the attempt at `accepted`, which correctly
+    // makes startup refuse compensation but describes an invalid fixture.
+    tasks.settleProviderAttempt({
+      executionAttempt: parent.attempt,
+      failureCode: "PROVIDER_REFUNDED",
+      taskId: parent.id,
+      outcome: "provider-failed",
+    });
+    tasks.transition(parent.id, "failed", {
+      code: "PROVIDER_REFUNDED",
+      message: "M81 fixture records a confirmed refund before child admission",
+    });
+    database.prepare(`
+      UPDATE canvas_documents
+      SET nodes = ?, updated_at = ?
+      WHERE owner_id = ? AND id = ?
+    `).run(
+      JSON.stringify([{
+        ...initialNode,
+        data: {
+          ...initialNode.data,
+          videoGenerationContractFingerprint: resolved.contractFingerprint,
+          videoGenerationInputKey: inputFingerprint,
+          videoGenerationModelConfigurationRevision: modelConfigurationRevision,
+          videoGenerationModelReleaseRevision: release.revisionId,
+          videoGenerationOwnershipKey: ownershipKey,
+          videoGenerationTaskId: parent.id,
+        },
+      }]),
+      timestamp,
+      ownerId,
+      canvasId,
+    );
+    return {
+      canvasId,
+      ownerId,
+      parentTaskId: parent.id,
+      providerLog: join(dataDirectory, startupProviderFixtureLogName),
+    };
+  } finally {
+    tasks?.close();
+    database?.close();
     if (previousDataDirectory === undefined) {
       delete process.env.UNBOUNDRY_DATA_DIR;
     } else {
@@ -4594,6 +5084,162 @@ test("listening starts one committed queued task while startup gates keep blocke
       await stopServer(server);
       server = undefined;
     }
+  } finally {
+    if (server) await stopServer(server);
+    await rm(testRoot, { force: true, recursive: true });
+  }
+});
+
+test("restart opens the idle worker for a V3 refund parent left before child admission", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "unboundry-m81-refund-restart-"));
+  const dataDirectory = join(testRoot, "data");
+  const fixtureId = "m81-refund-restart";
+  let server: ChildProcess | undefined;
+  try {
+    const fixture = await seedIdleRefundCompensationStartupFixture(
+      dataDirectory,
+      fixtureId,
+    );
+    makeStandaloneDatabase(dataDirectory);
+    const before = new DatabaseSync(join(dataDirectory, "unboundry.sqlite"), {
+      readOnly: true,
+    });
+    try {
+      expect(before.prepare(`
+        SELECT COUNT(*) AS count FROM generation_tasks
+        WHERE state IN ('queued', 'running', 'recovering', 'retrying')
+      `).get()).toEqual({ count: 0 });
+      expect(before.prepare(`
+        SELECT state, error_code FROM generation_tasks WHERE id = ?
+      `).get(fixture.parentTaskId)).toEqual({
+        error_code: "PROVIDER_REFUNDED",
+        state: "failed",
+      });
+      expect(before.prepare(`
+        SELECT COUNT(*) AS count FROM generation_task_events
+        WHERE task_id = ? AND error_code = 'USER_GENERATION_INTENT_OPENED_V3'
+      `).get(fixture.parentTaskId)).toEqual({ count: 1 });
+      expect(before.prepare(`
+        SELECT COUNT(*) AS count FROM generation_task_events
+        WHERE task_id = ? AND error_code IN (
+          'AUTO_REFUND_COMPENSATION_ADMITTED',
+          'AUTO_REFUND_COMPENSATION_CHILD'
+        )
+      `).get(fixture.parentTaskId)).toEqual({ count: 0 });
+    } finally {
+      before.close();
+    }
+
+    const fakeProviderEnvironment = {
+      UNBOUNDRY_SAFE_TEST: "1",
+      UNBOUNDRY_TEST_GENERATION_STARTUP_FAKE_PROVIDER: "1",
+      UNBOUNDRY_TEST_GENERATION_STARTUP_FAILURE: "1",
+    };
+    // This controlled crash is deliberately after the read-only preflight in
+    // the child process. The old early return reported ready here; the fixed
+    // worker reaches its startup-failure guard because the refund parent is
+    // durable work even though the active/projection counts are both zero.
+    server = await startServer(dataDirectory, {
+      environment: fakeProviderEnvironment,
+      waitPath: "/api/health/live",
+    });
+    const failedReady = await fetch(`${origin}/api/health/ready`);
+    expect(failedReady.status).toBe(503);
+    expect(await failedReady.json()).toMatchObject({
+      code: "DATABASE_UNAVAILABLE",
+    });
+    await stopServer(server);
+    server = undefined;
+
+    const relayProviderPreload = join(
+      testRoot,
+      "m81-relay-provider-preload.mjs",
+    );
+    await writeM81RelayProviderPreload(
+      relayProviderPreload,
+      fixture.providerLog,
+    );
+    server = await startServer(dataDirectory, {
+      environment: {
+        UNBOUNDRY_SAFE_TEST: "1",
+        UNBOUNDRY_TEST_GENERATION_STARTUP_FAKE_PROVIDER: "1",
+        UNBOUNDRY_TEST_RELAY_MEDIA_FETCHER: "1",
+        NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --import=${
+          pathToFileURL(relayProviderPreload).href
+        }`.trim(),
+      },
+      captureOutput: true,
+      waitPath: "/api/health/ready",
+    });
+    let childTaskId: string | undefined;
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      const database = new DatabaseSync(
+        join(dataDirectory, "unboundry.sqlite"),
+        { readOnly: true },
+      );
+      try {
+        const child = database.prepare(`
+          SELECT task_id AS id FROM generation_task_events
+          WHERE task_id <> ? AND error_code = 'AUTO_REFUND_COMPENSATION_CHILD'
+          ORDER BY id ASC LIMIT 1
+        `).get(fixture.parentTaskId) as { id?: string } | undefined;
+        childTaskId = child?.id;
+      } finally {
+        database.close();
+      }
+      if (childTaskId) break;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    if (!childTaskId) {
+      throw new Error(
+        `Startup did not admit the refund compensation child: ${JSON.stringify(
+          refundStartupDiagnostics(dataDirectory, fixture.parentTaskId, outputOf(server)),
+        )}`,
+      );
+    }
+
+    const after = new DatabaseSync(join(dataDirectory, "unboundry.sqlite"), {
+      readOnly: true,
+    });
+    try {
+      expect(after.prepare(`
+        SELECT state, error_code FROM generation_tasks WHERE id = ?
+      `).get(fixture.parentTaskId)).toEqual({
+        error_code: "PROVIDER_REFUNDED",
+        state: "failed",
+      });
+      expect(after.prepare(`
+        SELECT COUNT(*) AS count FROM generation_task_events
+        WHERE task_id = ? AND error_code = 'AUTO_REFUND_COMPENSATION_ADMITTED'
+      `).get(fixture.parentTaskId)).toEqual({ count: 1 });
+      expect(after.prepare(`
+        SELECT COUNT(*) AS count FROM generation_task_events
+        WHERE task_id = ? AND error_code = 'AUTO_REFUND_COMPENSATION_CHILD'
+      `).get(childTaskId)).toEqual({ count: 1 });
+      expect(after.prepare(`
+        SELECT COUNT(*) AS count FROM generation_tasks
+        WHERE state = 'failed' AND error_code = 'PROVIDER_REFUNDED'
+      `).get()).toEqual({ count: 1 });
+    } finally {
+      after.close();
+    }
+    let providerRequests: Array<{ method: string; url: string }> = [];
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      try {
+        providerRequests = (await readFile(fixture.providerLog, "utf8"))
+          .trim()
+          .split("\n")
+          .filter(Boolean)
+          .map((line) => JSON.parse(line) as { method: string; url: string });
+      } catch {}
+      if (providerRequests.some((request) =>
+        request.method === "POST" && request.url.includes("/media/generate")
+      )) break;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    expect(providerRequests.filter((request) =>
+      request.method === "POST" && request.url.includes("/media/generate")
+    )).toHaveLength(1);
   } finally {
     if (server) await stopServer(server);
     await rm(testRoot, { force: true, recursive: true });

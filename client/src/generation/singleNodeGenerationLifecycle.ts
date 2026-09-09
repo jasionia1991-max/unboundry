@@ -61,6 +61,7 @@ export type SingleNodeGenerationBlocked = Readonly<{
 }>;
 
 export type SingleNodeLifecycleResult = Readonly<{
+  message?: string;
   reconcileOutcome?: GenerationReconcileOutcome;
   reason?: "blocked" | "stale";
   status: "cancelled" | "failed" | "stale" | "submitted" | "success";
@@ -153,6 +154,10 @@ function isBlocked(
   return "status" in value && value.status === "blocked";
 }
 
+function blockedResult(value: SingleNodeGenerationBlocked): SingleNodeLifecycleResult {
+  return { message: value.message, reason: "blocked", status: "failed" };
+}
+
 function terminal(task: GenerationTaskSummary) {
   return task.state === "cancelled" || task.state === "failed" ||
     task.state === "success";
@@ -227,12 +232,21 @@ export function createSingleNodeGenerationLifecycle(input: {
     if (!Number.isSafeInteger(expectedRevision)) return false;
     const currentNode = snapshot.nodes.find((node) => node.id === input.nodeId);
     const currentTaskId = currentNode?.data[`${adapter.kind}GenerationTaskId`];
+    const currentOwnershipKey = currentNode?.data[
+      `${adapter.kind}GenerationOwnershipKey`
+    ];
     const result = input.graph.apply({
       fence: {
         expectedRevision: Number(expectedRevision),
         kind: adapter.kind,
         nodeId: input.nodeId,
-        ownershipKey: plan.ownershipKey,
+        // Preparation updates model metadata while retaining the previous
+        // task binding. Fence that existing binding; only server admission
+        // may replace it with the newly compiled generation identity.
+        ownershipKey: phase === "prepare" &&
+            typeof currentOwnershipKey === "string" && currentOwnershipKey
+          ? currentOwnershipKey
+          : plan.ownershipKey,
         runId,
         ...(phase === "terminal" && task
           ? { taskId: task.id }
@@ -374,22 +388,45 @@ export function createSingleNodeGenerationLifecycle(input: {
     task: GenerationTaskSummary,
     signal: AbortSignal,
     runId: string,
+    observedTaskId?: string,
   ) => {
-    if (signal.aborted || !graphStillOwned(plan, task, runId)) return false;
+    if (signal.aborted) return false;
+    const hasCommittedResult = () => {
+      const node = input.graph.snapshot().nodes.find(node => node.id === plan.nodeId);
+      return Boolean(node && node.type === plan.kind &&
+        node.data.groupRunSuccessTaskId === task.id &&
+        node.data.groupRunSuccessOwnershipKey === plan.ownershipKey);
+    };
+    // A replaced/cleared local binding must not be resurrected by a late read.
+    // The initial binding may belong to the verified automatic parent task.
+    if (!graphStillOwned(plan, task, runId) &&
+        !(observedTaskId && graphStillOwned(plan, { ...task, id: observedTaskId }, runId)) &&
+        !hasCommittedResult()) return false;
     if (
       task.state === "success" && task.canvasProjectionState === "applied" &&
       !signal.aborted
     ) {
       try {
-        return Boolean(
-          await input.graph.refreshAuthoritativeDocument?.(signal),
-        );
+        if (!await input.graph.refreshAuthoritativeDocument?.(signal)) return false;
+        const node = input.graph.snapshot().nodes.find((node) => node.id === plan.nodeId);
+        // Automatic refund compensation has a new task id. Its authoritative
+        // result clears the active binding, so verify the committed result
+        // receipt too instead of requiring the former parent binding.
+        const resultStillOwned = graphStillOwned(plan, task, runId) || Boolean(node &&
+          node.type === plan.kind && node.data.groupRunSuccessTaskId === task.id &&
+          node.data.groupRunSuccessOwnershipKey === plan.ownershipKey);
+        if (!resultStillOwned) return false;
+        // The authoritative result clears its active binding. Its exact success
+        // receipt still fences the ephemeral view update, even when that
+        // refresh tears down the node's former recovery observer.
+        return applyTerminalView(plan, task)?.status !== "rejected";
       } catch {
         // The Provider/task result remains successful. A later task poll or
         // page refresh can adopt the already-committed authoritative document.
         return false;
       }
     }
+    if (!graphStillOwned(plan, task, runId)) return false;
     // A terminal view patch can change the node props that own this lifecycle
     // and therefore abort its effect immediately after the synchronous commit.
     // Once the fenced patch is accepted, that abort is expected cleanup rather
@@ -445,7 +482,10 @@ export function createSingleNodeGenerationLifecycle(input: {
       return { reason: "stale", status: "stale" };
     }
     let finalTask = task;
-    if (!terminal(finalTask)) {
+    if (!terminal(finalTask) ||
+      (usesServerTerminalProjection(finalTask) && finalTask.state === "success" &&
+        (finalTask.canvasProjectionState === "pending" ||
+          finalTask.canvasProjectionState === "failed"))) {
       finalTask = await input.tasks.watch(finalTask, {
         assertCurrent: () => assertCurrentPlan(adapter, plan),
         canvasRevision,
@@ -464,6 +504,7 @@ export function createSingleNodeGenerationLifecycle(input: {
           finalTask,
           state.controller.signal,
           runId,
+          task.id,
         )) return { reason: "stale", status: "stale" };
         if (finalTask.state === "success") {
           return { status: "success", task: finalTask };
@@ -506,7 +547,7 @@ export function createSingleNodeGenerationLifecycle(input: {
   ): Promise<SingleNodeLifecycleResult> => {
     const state = begin();
     const planned = readPlan();
-    if (isBlocked(planned)) return { reason: "blocked", status: "failed" };
+    if (isBlocked(planned)) return blockedResult(planned);
     const admissionPlan: SingleNodeGenerationPlan = planned;
     const runId = randomUUID();
     const admitted = await withCanvasAdmission(admissionPlan, prepareAndBind);
@@ -535,10 +576,13 @@ export function createSingleNodeGenerationLifecycle(input: {
       const adapter = await input.prepareSubmissionAdapter?.() ?? input.adapter;
       const preparedPlan = readPlan(adapter);
       if (isBlocked(preparedPlan)) {
-        return { result: { reason: "blocked", status: "failed" } };
+        return { result: blockedResult(preparedPlan) };
       }
       const plan: SingleNodeGenerationPlan = preparedPlan;
       assertCurrentPlan(adapter, plan);
+      if (!Number.isSafeInteger(input.graph.snapshot().revision)) {
+        await waitForCurrentRevision(adapter, plan, state);
+      }
       if (adapter.applyPrepared &&
         !apply(adapter, plan, undefined, "prepare", runId)) {
         return { result: { reason: "stale", status: "stale" } };
@@ -554,7 +598,13 @@ export function createSingleNodeGenerationLifecycle(input: {
         waitForRevision: () => waitForCurrentRevision(adapter, plan, state),
       });
       if (!result) {
-        return { result: { reason: "blocked", status: "failed" } };
+        return {
+          result: {
+            message: "生成任务未创建，当前节点状态不允许提交",
+            reason: "blocked",
+            status: "failed",
+          },
+        };
       }
       const task = "task" in result ? result.task : result;
       assertCurrentPlan(adapter, plan);
@@ -593,7 +643,7 @@ export function createSingleNodeGenerationLifecycle(input: {
   const submit = async (): Promise<SingleNodeLifecycleResult> => {
     const state = begin();
     const planned = readPlan();
-    if (isBlocked(planned)) return { reason: "blocked", status: "failed" };
+    if (isBlocked(planned)) return blockedResult(planned);
     const admissionPlan: SingleNodeGenerationPlan = planned;
     const runId = randomUUID();
     return withCanvasAdmission(admissionPlan, prepareAndSubmit);
@@ -605,10 +655,13 @@ export function createSingleNodeGenerationLifecycle(input: {
       const adapter = await input.prepareSubmissionAdapter?.() ?? input.adapter;
       const preparedPlan = readPlan(adapter);
       if (isBlocked(preparedPlan)) {
-        return { reason: "blocked", status: "failed" };
+        return blockedResult(preparedPlan);
       }
       const plan: SingleNodeGenerationPlan = preparedPlan;
       assertCurrentPlan(adapter, plan);
+      if (!Number.isSafeInteger(input.graph.snapshot().revision)) {
+        await waitForCurrentRevision(adapter, plan, state);
+      }
       if (adapter.applyPrepared &&
         !apply(adapter, plan, undefined, "prepare", runId)) {
         return { reason: "stale", status: "stale" };
@@ -668,7 +721,7 @@ export function createSingleNodeGenerationLifecycle(input: {
   ): Promise<SingleNodeLifecycleResult> => {
     const state = begin();
     const planned = readPlan();
-    if (isBlocked(planned)) return { reason: "blocked", status: "failed" };
+    if (isBlocked(planned)) return blockedResult(planned);
     const snapshot = input.graph.snapshot();
     const runId = randomUUID();
     const context: SingleNodeTaskOperationContext = {
@@ -683,7 +736,13 @@ export function createSingleNodeGenerationLifecycle(input: {
       waitForRevision: () => waitForCurrentRevision(input.adapter, planned, state),
     };
     const actionResult = await action(planned, context);
-    if (!actionResult) return { reason: "blocked", status: "failed" };
+    if (!actionResult) {
+      return {
+        message: "任务结果未返回，当前节点未被更新",
+        reason: "blocked",
+        status: "failed",
+      };
+    }
     let reconcileResult: SingleNodeTaskReconcileResult | undefined;
     let task: GenerationTaskSummary;
     if (isTaskReconcileResult(actionResult)) {
@@ -706,6 +765,14 @@ export function createSingleNodeGenerationLifecycle(input: {
         task,
       };
     }
+    if (usesServerTerminalProjection(task) && task.state === "success" &&
+      (task.canvasProjectionState === "pending" || task.canvasProjectionState === "failed")) {
+      task = await input.tasks.watch(task, context);
+      if (!current(state.operation, state.controller.signal) ||
+        !taskMatchesSingleNodeGenerationIdentity(task, planned)) {
+        return { reason: "stale", status: "stale" };
+      }
+    }
     const committed = await withCanvasAdmission(planned, async () => {
       assertCurrentPlan(input.adapter, planned);
       if (terminal(task) && usesServerTerminalProjection(task)) {
@@ -714,6 +781,7 @@ export function createSingleNodeGenerationLifecycle(input: {
           task,
           state.controller.signal,
           runId,
+          snapshot.nodes.find(node => node.id === planned.nodeId)?.data[`${planned.kind}GenerationTaskId`] as string | undefined,
         )) return { status: "stale" as const };
         return { status: "terminal" as const };
       }

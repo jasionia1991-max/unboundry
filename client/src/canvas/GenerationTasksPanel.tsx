@@ -3,6 +3,7 @@ import {
   abandonGenerationTask,
   cancelGenerationTask,
   GENERATION_TASK_RETRY_ACCEPTED_EVENT,
+  getGenerationTask,
   listGenerationTasks,
   reconcileGenerationTask,
   reconcileOutcomeMessage,
@@ -39,6 +40,11 @@ import {
   stopServerWorkflowRunAndConfirm,
   type ServerWorkflowRun,
 } from "../generation/workflowRuns";
+import {
+  recoveryStatusLabel,
+} from "../generation/generationRecoveryClient";
+import { useGenerationRecovery } from "../generation/GenerationRecoveryContext";
+import type { RecoveryCaseSummary } from "../../../types/generationRecovery";
 
 const kindLabels: Record<GenerationTaskSummary["kind"], string> = {
   audio: "音频",
@@ -91,6 +97,62 @@ function taskDurationLabel(task: GenerationTaskSummary) {
     return relativeTime(task.updatedAt);
   }
   return `用时 ${formatGenerationDuration(ended - started)}`;
+}
+
+function safeTaskResultSource(task: GenerationTaskSummary) {
+  const value = task.resultUrl?.trim();
+  if (!value || !(value.startsWith("/") || /^https?:\/\//i.test(value))) {
+    return undefined;
+  }
+  return value;
+}
+
+function RecoveryTaskResult({ task }: { task: GenerationTaskSummary }) {
+  const source = safeTaskResultSource(task);
+  const text = task.resultText?.trim();
+  return (
+    <div className="tasks-recovery-result-body">
+      <span className="tasks-recovery-result-state">
+        {kindLabels[task.kind]} · {stateLabels[task.state]}
+      </span>
+      {task.kind === "text" && text ? (
+        <pre>{text}</pre>
+      ) : source ? (
+        <a
+          href={source}
+          rel="noreferrer"
+          target="_blank"
+        >
+          打开原任务结果
+        </a>
+      ) : task.state === "success" ? (
+        <p>原任务结果已找回，并保留在这条任务记录中。</p>
+      ) : (
+        <p>原任务仍保留，结果暂时无法读取。</p>
+      )}
+    </div>
+  );
+}
+
+function recoveryHistoryHint(
+  cases: readonly RecoveryCaseSummary[],
+) {
+  if (cases.some((item) => item.status === "result_pending")) {
+    return "结果已找回，系统正在写回画布；你不用重复点击生成。";
+  }
+  if (cases.some((item) => item.status === "recovering" || item.status === "scheduled")) {
+    return "系统会继续自动核对原请求；你不用重复点击生成。";
+  }
+  if (cases.some((item) => item.status === "queued")) {
+    return "这项处理已登记，平台或维护人员会继续跟进；你不用重复点击生成。";
+  }
+  if (cases.some((item) => item.status === "claimed")) {
+    return "维护人员已接手这项处理，原任务记录会保留。";
+  }
+  if (cases.some((item) => item.status === "waiting_provider")) {
+    return "正在等待平台回复，原任务记录会保留。";
+  }
+  return "这里显示已登记的处理结果，原任务记录会保留。";
 }
 
 function TaskRow({
@@ -407,12 +469,26 @@ export function GenerationTasksPanel({
     useState<GroupRunCheckpoint[]>([]);
   const [groupRecoveryPending, setGroupRecoveryPending] = useState(false);
   const [summaryClock, setSummaryClock] = useState(() => Date.now());
+  const [recoveryResultTaskId, setRecoveryResultTaskId] = useState<string>();
+  const [recoveryResultTask, setRecoveryResultTask] =
+    useState<GenerationTaskSummary>();
+  const [recoveryResultLoading, setRecoveryResultLoading] = useState(false);
+  const recovery = useGenerationRecovery();
   const mounted = useRef(false);
   const scope = useRef({ canvasId, canvasScopeId });
   const refreshController = useRef<AbortController | null>(null);
   const refreshEpoch = useRef(0);
   const actionController = useRef<AbortController | null>(null);
+  const recoveryResultController = useRef<AbortController | null>(null);
   scope.current = { canvasId, canvasScopeId };
+
+  const recoveryTaskIdsKey = tasks.map((task) => task.id).join("\u0000");
+  useEffect(() => {
+    const taskIds = tasks.map((task) => task.id);
+    if (taskIds.length === 0) return;
+    recovery.registerTaskIds(taskIds);
+    return () => recovery.unregisterTaskIds(taskIds);
+  }, [recovery.registerTaskIds, recovery.unregisterTaskIds, recoveryTaskIdsKey]);
 
   useEffect(() => {
     mounted.current = true;
@@ -420,6 +496,7 @@ export function GenerationTasksPanel({
       mounted.current = false;
       refreshController.current?.abort("generation-task-panel-unmounted");
       actionController.current?.abort("generation-task-panel-unmounted");
+      recoveryResultController.current?.abort("generation-task-panel-unmounted");
     };
   }, []);
 
@@ -644,9 +721,41 @@ export function GenerationTasksPanel({
     .filter((task) => task.state === "success" || task.state === "cancelled")
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
     .slice(0, 8);
+  const recoveryCases = recovery.cases.filter((item) => item.canvasId === canvasId);
   const changed = () => refresh(canvasScopeId, canvasId);
   const visibleError = actionError || workflowReadError || readError;
   const taskById = new Map(tasks.map((task) => [task.id, task]));
+  const openRecoveryResult = (taskId: string) => {
+    if (!isCurrentScope(canvasScopeId, canvasId)) return;
+    recoveryResultController.current?.abort("generation-recovery-result-superseded");
+    setRecoveryResultTaskId(taskId);
+    const controller = new AbortController();
+    recoveryResultController.current = controller;
+    setRecoveryResultTask(undefined);
+    setRecoveryResultLoading(true);
+    void getGenerationTask(
+      taskId,
+      controller.signal,
+      groupRunScope.fixtureScopeId,
+      { followReplacementTask: true },
+    )
+      .then((task) => {
+        if (!controller.signal.aborted && isCurrentScope(canvasScopeId, canvasId)) {
+          setRecoveryResultTask(task);
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted && isCurrentScope(canvasScopeId, canvasId)) {
+          setActionError("原任务结果暂时无法读取，原任务记录已保留");
+        }
+      })
+      .finally(() => {
+        if (recoveryResultController.current === controller) {
+          recoveryResultController.current = null;
+          if (!controller.signal.aborted) setRecoveryResultLoading(false);
+        }
+      });
+  };
   const stopWorkflowRun = (run: ServerWorkflowRun) => {
     const signal = getActionSignal(canvasScopeId, canvasId);
     if (!signal || stoppingRunIds.has(run.id)) return;
@@ -843,6 +952,106 @@ export function GenerationTasksPanel({
           </button>
         </section>
       ))}
+      {recoveryCases.length > 0 && (
+        <section
+          aria-label="生成处理记录"
+          className="tasks-recovery-history"
+          data-testid="tasks-recovery-history"
+        >
+          <div className="tasks-recovery-history-header">
+            <strong>生成处理记录</strong>
+            <span>{recoveryCases.length}</span>
+          </div>
+          <p>
+            {recoveryHistoryHint(recoveryCases)}
+          </p>
+          <ul>
+            {recoveryCases.map((item) => (
+              <li
+                className="tasks-recovery-row"
+                data-status={item.status}
+                data-testid="tasks-recovery-case"
+                key={item.caseId}
+              >
+                <span className="tasks-recovery-kind">{kindLabels[item.kind]}</span>
+                <span className="tasks-recovery-state">
+                  {recoveryStatusLabel(item.status)}
+                </span>
+                <span className="tasks-recovery-summary">{item.summary}</span>
+                <span className="tasks-recovery-actions">
+                  <button
+                    data-testid="tasks-recovery-locate"
+                    onClick={() => onLocateNode(item.nodeId)}
+                    type="button"
+                  >
+                    查看节点
+                  </button>
+                  {item.action === "view_result" && (
+                    <button
+                      data-testid="tasks-recovery-view-result"
+                      onClick={() => openRecoveryResult(item.taskId)}
+                      type="button"
+                    >
+                      查看原任务结果
+                    </button>
+                  )}
+                  {item.unread && (
+                    <button
+                      data-testid="tasks-recovery-read"
+                      onClick={() => void recovery.markRead(item)}
+                      type="button"
+                    >
+                      标记已读
+                    </button>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {recoveryResultTaskId && (
+            <section
+              aria-label="原任务结果"
+              className="tasks-recovery-result"
+              data-testid="tasks-recovery-result-detail"
+            >
+              <div className="tasks-recovery-result-header">
+                <strong>原任务结果</strong>
+                <button
+                  aria-label="关闭原任务结果"
+                  onClick={() => {
+                    recoveryResultController.current?.abort(
+                      "generation-recovery-result-closed",
+                    );
+                    setRecoveryResultTaskId(undefined);
+                    setRecoveryResultTask(undefined);
+                    setRecoveryResultLoading(false);
+                  }}
+                  type="button"
+                >
+                  ×
+                </button>
+              </div>
+              {recoveryResultLoading && <p>正在读取原任务结果…</p>}
+              {!recoveryResultLoading && recoveryResultTask && (
+                <RecoveryTaskResult task={recoveryResultTask} />
+              )}
+              {!recoveryResultLoading && !recoveryResultTask && (
+                <p>原任务结果暂时无法读取，原任务记录已保留。</p>
+              )}
+            </section>
+          )}
+        </section>
+      )}
+      {recovery.observationState === "unavailable" &&
+        recoveryCases.length === 0 && recovery.trackedTaskCount > 0 && (
+          <p
+            className="tasks-recovery-unavailable"
+            data-testid="tasks-recovery-unavailable"
+            role="status"
+          >
+            {recovery.error ?? "恢复状态暂时无法读取，原任务记录已保留"}
+          </p>
+        )}
       {workflowRuns.length > 0 && (
         <div className="tasks-list" data-testid="workflow-runs-list">
           <section className="tasks-group">
@@ -888,12 +1097,10 @@ export function GenerationTasksPanel({
                     <span className="tasks-row-kind">整组</span>
                     <span
                       className="tasks-row-prompt"
-                      title={`run id: ${run.id}`}
+                      title="整组执行历史"
                     >
-                      {`run id: ${run.id} · 节点 ${run.nodes.length} · 服务端任务已受理 ${acceptedTaskCount} · Provider 任务号已确认 ${providerTaskBound}${providerTaskPending ? ` / 未绑定 ${providerTaskPending}` : ""}${providerTaskUnknown ? ` / 任务记录未载入 ${providerTaskUnknown}` : ""} · 投影 已应用 ${applied} / 待写回 ${projectionPending} / 冲突 ${projectionConflict} / 失败 ${projectionFailed}`}
-                      {(firstFailed?.errorMessage || run.errorMessage) && (
-                        <span>{` · 首错：${firstFailed?.errorMessage ?? run.errorMessage}`}</span>
-                      )}
+                      {`整组执行 · 节点 ${run.nodes.length} · 服务端任务已受理 ${acceptedTaskCount} · 平台任务已确认 ${providerTaskBound}${providerTaskPending ? ` / 未绑定 ${providerTaskPending}` : ""}${providerTaskUnknown ? ` / 任务记录未载入 ${providerTaskUnknown}` : ""} · 投影已应用 ${applied} / 待写回 ${projectionPending} / 冲突 ${projectionConflict} / 失败 ${projectionFailed}`}
+                      {firstFailed && <span> · 有节点未完成</span>}
                     </span>
                     <span className={`tasks-row-state tasks-state-${run.state}`}>
                       {run.state === "running"

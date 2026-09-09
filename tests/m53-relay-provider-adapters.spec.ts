@@ -1,12 +1,14 @@
 import { expect, test } from "./safe-test";
 import {
   pollRelayMediaTask,
+  pollContractRelayMediaTask,
   relayGptImageRequestTimeoutMs,
   relayMediaCancellationBoundary,
   relayProviderSafeSnapshot,
   requestRelayGptImage,
   requestRelayText,
   routeRelayProviderRequest,
+  submitContractRelayMedia,
   submitRelayMedia,
   type RelayGptImageRequest,
   type RelayMediaGenerateRequest,
@@ -22,6 +24,47 @@ const pngFixture = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
   "base64",
 );
+
+const genericMediaContract = {
+  connectorFamily: "generic-async-media",
+  connectorVersion: 1,
+  create: { method: "POST", path: "/v1/media/generate", taskIdPath: "task_id" },
+  modes: [{
+    id: "text-to-video",
+    prompt: "required",
+    roles: [],
+    bindings: [
+      { source: { kind: "model-id" }, target: { location: "json", path: "model" } },
+      { source: { kind: "prompt" }, target: { location: "json", path: "prompt" } },
+    ],
+  }],
+  poll: {
+    method: "GET",
+    path: "/v1/media/status",
+    taskIdTarget: { location: "query", path: "task_id" },
+  },
+  result: {
+    resultPath: "result_url",
+    states: {
+      failed: ["failed"],
+      running: ["pending", "running"],
+      succeeded: ["success"],
+    },
+  },
+  version: 1,
+} as const;
+
+const documentedInsufficientBalanceResponse = {
+  code: 500,
+  data: { "失败数量": 1, "失败原因": ["余额不足"] },
+  msg: "任务创建失败",
+} as const;
+
+const observedBalanceLikeResponse = {
+  code: 500,
+  data: { "差额": 1, "当前余额": 0, "需要金额": 1 },
+  msg: "余额不足",
+} as const;
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -714,6 +757,136 @@ test("generic media submission accepts image, video and audio fixtures only", as
   ]);
 });
 
+test("documented balance rejection carries reason evidence but keeps billing unknown", async () => {
+  const evidence: unknown[] = [];
+  const error = await submitRelayMedia(connection, {
+    capability: "video",
+    model: "relay-video",
+    params: { duration: "6" },
+    prompt: "documented rejection fixture",
+    providerProtocol: "media-generate",
+  }, {
+    fetcher: async () => jsonResponse(documentedInsufficientBalanceResponse, 500),
+    onProviderResponseEvidence: (item) => evidence.push(item),
+  }).catch((caught: unknown) => caught);
+
+  expect(error).toMatchObject({
+    code: "REMOTE",
+    providerTaskMayStillRun: true,
+    rejectionEvidence: {
+      billingDisposition: "unknown",
+      providerCode: 500,
+      providerMessage: "任务创建失败",
+      reason: "INSUFFICIENT_BALANCE",
+      requestDisposition: "rejected",
+    },
+    statusCode: 500,
+  });
+  expect(String(error)).not.toContain(connection.apiKey);
+  expect(String(error)).not.toContain("余额不足");
+  expect(evidence).toHaveLength(1);
+  expect(evidence[0]).toMatchObject({
+    failureStage: "http-status",
+    httpStatus: 500,
+  });
+  expect(JSON.stringify(evidence[0])).not.toContain("余额不足");
+});
+
+test("declarative media submission exposes the same documented rejection evidence", async () => {
+  const error = await submitContractRelayMedia(connection, {
+    capability: "video",
+    model: "relay-video",
+    params: { duration: "6" },
+    prompt: "declarative rejection fixture",
+    providerProtocol: "media-generate",
+  }, genericMediaContract, {
+    fetcher: async () => jsonResponse(documentedInsufficientBalanceResponse, 500),
+  }).catch((caught: unknown) => caught);
+
+  expect(error).toMatchObject({
+    code: "REMOTE",
+    providerTaskMayStillRun: true,
+    rejectionEvidence: {
+      billingDisposition: "unknown",
+      reason: "INSUFFICIENT_BALANCE",
+      requestDisposition: "rejected",
+    },
+    statusCode: 500,
+  });
+
+  const noTaskId = await submitContractRelayMedia(connection, {
+    capability: "video",
+    model: "relay-video",
+    params: { duration: "6" },
+    prompt: "actual-shape-only fixture",
+    providerProtocol: "media-generate",
+  }, genericMediaContract, {
+    fetcher: async () => jsonResponse(observedBalanceLikeResponse),
+  }).catch((caught: unknown) => caught) as {
+    code?: string;
+    providerTaskMayStillRun?: boolean;
+    rejectionEvidence?: unknown;
+  };
+  expect(noTaskId).toMatchObject({
+    code: "FORMAT",
+    providerTaskMayStillRun: true,
+  });
+  expect(noTaskId.rejectionEvidence).toBeUndefined();
+});
+
+test("balance-shaped responses stay unclassified unless the documented envelope matches exactly", async () => {
+  const cases = [
+    {
+      body: documentedInsufficientBalanceResponse,
+      status: 200,
+    },
+    {
+      body: observedBalanceLikeResponse,
+      status: 200,
+    },
+    {
+      body: { ...documentedInsufficientBalanceResponse, code: "500" },
+      status: 500,
+    },
+    {
+      body: {
+        ...documentedInsufficientBalanceResponse,
+        task_id: "remote-task-must-block-classification",
+      },
+      status: 500,
+    },
+    {
+      body: {
+        code: 500,
+        data: { "失败数量": 1, "失败原因": ["余额不足", "其他原因"] },
+        msg: "任务创建失败",
+      },
+      status: 500,
+    },
+  ] as const;
+
+  for (const fixture of cases) {
+    const error = await submitRelayMedia(connection, {
+      capability: "video",
+      model: "relay-video",
+      params: { duration: "6" },
+      prompt: "negative rejection fixture",
+      providerProtocol: "media-generate",
+    }, {
+      fetcher: async () => jsonResponse(fixture.body, fixture.status),
+    }).catch((caught: unknown) => caught) as {
+      code?: string;
+      providerTaskMayStillRun?: boolean;
+      rejectionEvidence?: unknown;
+    };
+    expect(error.rejectionEvidence).toBeUndefined();
+    expect(error.code).toBe(fixture.status === 200 ? "FORMAT" : "REMOTE");
+    if (fixture.status === 200) {
+      expect(error.providerTaskMayStillRun).toBe(true);
+    }
+  }
+});
+
 test("Doubao TTS accepts documented params and rejects unsafe or unknown fields before fetch", async () => {
   const bodies: Record<string, unknown>[] = [];
   let calls = 0;
@@ -916,6 +1089,65 @@ test("unknown task states and mismatched media results fail closed", async () =>
     state: "success",
   })).rejects.toMatchObject({ code: "FORMAT", providerTaskMayStillRun: true });
   expect(calls).toBe(2);
+});
+
+test("media polling fails closed on an explicit task identity conflict or failed result", async () => {
+  const inspect = (body: unknown) => pollRelayMediaTask(connection, {
+    capability: "video",
+    externalTaskId: "task-poll-identity",
+    providerProtocol: "media-generate",
+  }, {
+    fetcher: async () => jsonResponse(body),
+  });
+
+  // Omitting task_id remains compatible with the existing documented status
+  // shape, and a matching explicit value is accepted as the same assertion.
+  await expect(inspect({ refunded: true, state: "failed" }))
+    .resolves.toMatchObject({ refunded: true, state: "failed" });
+  await expect(inspect({
+    state: "failed",
+    task_id: "task-poll-identity",
+  })).resolves.toMatchObject({ state: "failed" });
+
+  for (const body of [
+    { refunded: true, state: "failed", task_id: "some-other-task" },
+    { refunded: true, state: "failed", task_id: { value: "task-poll-identity" } },
+    {
+      refunded: true,
+      result_url: "https://signed.example.test/ambiguous.mp4?signature=short",
+      state: "failed",
+    },
+  ]) {
+    await expect(inspect(body)).rejects.toMatchObject({
+      code: "FORMAT",
+      providerTaskMayStillRun: true,
+    });
+  }
+});
+
+test("declarative media polling applies the same task identity and failed-result fence", async () => {
+  const inspect = (body: unknown) => pollContractRelayMediaTask(connection, {
+    capability: "video",
+    externalTaskId: "contract-poll-identity",
+    providerProtocol: "media-generate",
+  }, genericMediaContract, {
+    fetcher: async () => jsonResponse(body),
+  });
+
+  await expect(inspect({ state: "failed" }))
+    .resolves.toMatchObject({ state: "failed" });
+  for (const body of [
+    { state: "failed", task_id: "contract-other-task" },
+    {
+      result_url: "https://signed.example.test/ambiguous-contract.mp4?signature=short",
+      state: "failed",
+    },
+  ]) {
+    await expect(inspect(body)).rejects.toMatchObject({
+      code: "FORMAT",
+      providerTaskMayStillRun: true,
+    });
+  }
 });
 
 test("registered media polling requires result_type and only falls back on 404 or 405", async () => {

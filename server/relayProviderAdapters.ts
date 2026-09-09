@@ -212,6 +212,21 @@ export type RelayProviderErrorCode =
   | "REMOTE"
   | "TIMEOUT";
 
+/**
+ * A provider response may explain why a create request was rejected without
+ * proving whether any billing boundary was crossed. Keep that distinction
+ * explicit so callers can show the reason without turning it into retry
+ * permission. The adapter only emits this shape for an exact, documented
+ * create-failure envelope; all other responses stay unclassified.
+ */
+export type RelayProviderRejectionEvidence = Readonly<{
+  billingDisposition: "unknown";
+  providerCode: 500;
+  providerMessage: "任务创建失败";
+  reason: "INSUFFICIENT_BALANCE";
+  requestDisposition: "rejected";
+}>;
+
 const errorMessages: Record<RelayProviderErrorCode, string> = {
   AUTH: "中转站API Key无效或已失效，请由管理员更新平台连接",
   CANCELLED: "已停止本地等待；中转站任务可能仍在运行",
@@ -237,6 +252,7 @@ export class RelayProviderError extends Error {
     readonly providerTaskMayStillRun = false,
     message?: string,
     readonly statusCode?: number,
+    readonly rejectionEvidence?: RelayProviderRejectionEvidence,
   ) {
     super(message || errorMessages[code]);
     this.name = "RelayProviderError";
@@ -606,6 +622,10 @@ async function relayJsonRequest(input: {
   path: string;
   protocol: ProviderProtocol;
   providerTaskMayStillRun?: boolean;
+  classifyHttpError?: (
+    statusCode: number,
+    body: unknown,
+  ) => RelayProviderRejectionEvidence | undefined;
 }) {
   const { apiKey, apiRoot } = cleanConnection(input.connection);
   if (input.execution.signal?.aborted) {
@@ -667,12 +687,53 @@ async function relayJsonRequest(input: {
       ),
     };
     if (!response.ok) {
-      input.execution.onProviderResponseEvidence?.({
-        ...baseEvidence,
-        failureStage: "http-status",
-        responseBytes: Number(response.headers.get("content-length")) || undefined,
-      });
-      if (response.body) await response.body.cancel().catch(() => undefined);
+      if (input.classifyHttpError && response.status === 500) {
+        let parsed: Awaited<ReturnType<typeof readLimitedJson>>;
+        try {
+          parsed = await readLimitedJson(
+            response,
+            Math.min(input.maximumResponseBytes, textResponseLimitBytes),
+            (responseBytes, failureStage) =>
+              input.execution.onProviderResponseEvidence?.({
+                ...baseEvidence,
+                failureStage,
+                responseBytes,
+              }),
+          );
+        } catch {
+          throw remoteError(response.status);
+        }
+        const fieldPaths = responseStructure(parsed.body);
+        input.execution.onProviderResponseEvidence?.({
+          ...baseEvidence,
+          failureStage: "http-status",
+          fieldPaths,
+          responseBytes: parsed.responseBytes,
+          structureHash: createHash("sha256")
+            .update(JSON.stringify(fieldPaths))
+            .digest("hex"),
+        });
+        const rejection = input.classifyHttpError(response.status, parsed.body);
+        if (rejection) {
+          // The documented envelope says the create request was rejected, but
+          // it does not prove a no-charge result. Keep the old conservative
+          // may-still-run flag so the caller cannot reopen a paid retry.
+          throw new RelayProviderError(
+            "REMOTE",
+            true,
+            undefined,
+            response.status,
+            rejection,
+          );
+        }
+      } else {
+        input.execution.onProviderResponseEvidence?.({
+          ...baseEvidence,
+          failureStage: "http-status",
+          responseBytes: Number(response.headers.get("content-length")) || undefined,
+        });
+        if (response.body) await response.body.cancel().catch(() => undefined);
+      }
       throw remoteError(response.status);
     }
     let parsed: Awaited<ReturnType<typeof readLimitedJson>>;
@@ -1716,6 +1777,47 @@ function taskIdCandidates(body: Record<string, unknown>) {
   return candidates.filter((value) => value !== undefined && value !== null);
 }
 
+function exactObjectKeys(
+  value: Record<string, unknown>,
+  expected: readonly string[],
+) {
+  const actual = Object.keys(value).sort();
+  const sortedExpected = [...expected].sort();
+  return actual.length === sortedExpected.length &&
+    actual.every((key, index) => key === sortedExpected[index]);
+}
+
+/**
+ * The public media documentation shows this exact create-failure envelope for
+ * an insufficient-balance response. It explains the Provider rejection, but
+ * does not state that a no-charge boundary was crossed, so the returned
+ * evidence deliberately keeps billingDisposition as "unknown".
+ */
+function documentedInsufficientBalanceCreateFailure(
+  statusCode: number,
+  body: unknown,
+): RelayProviderRejectionEvidence | undefined {
+  if (statusCode !== 500 || !isRecord(body) ||
+      !exactObjectKeys(body, ["code", "data", "msg"]) ||
+      body.code !== 500 || body.msg !== "任务创建失败" ||
+      !isRecord(body.data) ||
+      !exactObjectKeys(body.data, ["失败数量", "失败原因"])) {
+    return undefined;
+  }
+  const data = body.data;
+  const reasons = data["失败原因"];
+  if (data["失败数量"] !== 1 || !Array.isArray(reasons) ||
+      reasons.length !== 1 || reasons[0] !== "余额不足" ||
+      taskIdCandidates(body).length !== 0) return undefined;
+  return Object.freeze({
+    billingDisposition: "unknown" as const,
+    providerCode: 500 as const,
+    providerMessage: "任务创建失败" as const,
+    reason: "INSUFFICIENT_BALANCE" as const,
+    requestDisposition: "rejected" as const,
+  });
+}
+
 function declarativeTaskIdCandidates(
   body: Record<string, unknown>,
   apiKey: string,
@@ -1762,6 +1864,7 @@ export async function submitRelayMedia(
     path: "/v1/media/generate",
     protocol: request.providerProtocol,
     providerTaskMayStillRun: true,
+    classifyHttpError: documentedInsufficientBalanceCreateFailure,
   });
   if (!isRecord(body)) throw new RelayProviderError("FORMAT", true);
   let taskIds: string[];
@@ -1810,6 +1913,7 @@ export async function submitContractRelayMedia(
     path: contract.create.path,
     protocol: request.providerProtocol,
     providerTaskMayStillRun: true,
+    classifyHttpError: documentedInsufficientBalanceCreateFailure,
   });
   // The declarative contract owns a finite response normalization rule. Its
   // canonical task_id and the two observed GK array aliases must all resolve
@@ -1868,6 +1972,14 @@ export async function pollContractRelayMediaTask(
     providerTaskMayStillRun: true,
   });
   if (!isRecord(body)) throw new RelayProviderError("FORMAT", true);
+  try {
+    assertMatchingPollTaskId(body, taskId, connection.apiKey);
+  } catch (error) {
+    if (error instanceof RelayProviderError && error.code === "FORMAT") {
+      throw new RelayProviderError("FORMAT", true);
+    }
+    throw error;
+  }
   let state: ReturnType<typeof exactContractState>;
   try {
     state = exactContractState(contract, body.state);
@@ -1882,13 +1994,23 @@ export async function pollContractRelayMediaTask(
     providerProtocol: "media-generate" as const,
     state,
   };
-  if (state === "failed") return {
-    capability: input.capability,
-    code: "REMOTE" as const,
-    message: errorMessages.REMOTE,
-    providerProtocol: "media-generate" as const,
-    state,
-  };
+  if (state === "failed") {
+    try {
+      assertNoResultsOnFailedSnapshot(body);
+    } catch (error) {
+      if (error instanceof RelayProviderError && error.code === "FORMAT") {
+        throw new RelayProviderError("FORMAT", true);
+      }
+      throw error;
+    }
+    return {
+      capability: input.capability,
+      code: "REMOTE" as const,
+      message: errorMessages.REMOTE,
+      providerProtocol: "media-generate" as const,
+      state,
+    };
+  }
   if (contract.result.resultPath !== "result_url") {
     throw new RelayProviderError("FORMAT", true);
   }
@@ -1952,6 +2074,15 @@ function resultUrls(body: Record<string, unknown>) {
     .map(cleanTransientOutputUrl)));
 }
 
+function assertNoResultsOnFailedSnapshot(body: Record<string, unknown>) {
+  // A failed response carrying a result is ambiguous: it cannot safely be
+  // treated as a refunded, retryable rejection. Keep the task in the
+  // unknown-result path until the Provider returns one unambiguous shape.
+  if (resultUrls(body).length > 0) {
+    throw new RelayProviderError("FORMAT");
+  }
+}
+
 function parseMediaTaskSnapshot(
   capability: Exclude<RelayCapability, "text">,
   body: unknown,
@@ -1979,6 +2110,7 @@ function parseMediaTaskSnapshot(
     };
   }
   if (state === "failed") {
+    assertNoResultsOnFailedSnapshot(body);
     const refunded =
       body.refunded === true ||
       body.refunded === 1 ||
@@ -2016,6 +2148,23 @@ function parseMediaTaskSnapshot(
     providerProtocol: "media-generate",
     state: "success",
   };
+}
+
+function assertMatchingPollTaskId(
+  body: Record<string, unknown>,
+  taskId: string,
+  apiKey: string,
+) {
+  // Some documented status responses omit task_id. When it is present, its
+  // value is an identity assertion and must agree with the exact ID queried.
+  if (!Object.hasOwn(body, "task_id")) return;
+  let returnedTaskId: string;
+  try {
+    returnedTaskId = cleanExternalTaskId(body.task_id, apiKey);
+  } catch {
+    throw new RelayProviderError("FORMAT");
+  }
+  if (returnedTaskId !== taskId) throw new RelayProviderError("FORMAT");
 }
 
 export async function pollRelayMediaTask(
@@ -2057,6 +2206,8 @@ export async function pollRelayMediaTask(
     );
   }
   try {
+    if (!isRecord(body)) throw new RelayProviderError("FORMAT");
+    assertMatchingPollTaskId(body, taskId, connection.apiKey);
     return parseMediaTaskSnapshot(
       input.capability,
       body,

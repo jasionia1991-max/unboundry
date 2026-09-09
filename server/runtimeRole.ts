@@ -6,6 +6,8 @@ import {
   lstatSync,
   mkdirSync,
   openSync,
+  readFileSync,
+  readlinkSync,
   realpathSync,
   type BigIntStats,
 } from "node:fs";
@@ -35,7 +37,8 @@ export type RuntimeRoleErrorCode =
   | "RUNTIME_ROLE_DRAINING"
   | "RUNTIME_ROLE_INVALID"
   | "RUNTIME_ROLE_NOT_ACTIVE"
-  | "RUNTIME_ROLE_PATH_UNSAFE";
+  | "RUNTIME_ROLE_PATH_UNSAFE"
+  | "RUNTIME_STOP_PROOF_INVALID";
 
 export class RuntimeRoleError extends Error {
   readonly code: RuntimeRoleErrorCode;
@@ -60,8 +63,28 @@ type OwnedFileIdentity = OwnedDirectoryIdentity & Readonly<{
 
 export type RuntimeRoleCoordinatorOptions = Readonly<{
   dataDirectory: string;
+  /**
+   * Preservation captures may only reuse a lease that already exists.  The
+   * normal active runtime is still allowed to initialize its private runtime
+   * directory and lease file when this is false (the default).
+   */
+  requireExistingLease?: boolean;
   role?: RuntimeRole;
   runtimeDirectory?: string;
+}>;
+
+export type RuntimeStoppedProcessProof = Readonly<{
+  pid: number;
+  pidNamespace: string;
+  startTicks: string;
+}>;
+
+export type RuntimeLeaseCaptureProof = Readonly<{
+  dataDirectory: string;
+  leaseDev: string;
+  leaseIno: string;
+  leasePath: string;
+  runtimeDirectory: string;
 }>;
 
 export type RuntimeRoleSnapshot = Readonly<{
@@ -86,6 +109,8 @@ type RuntimeDrainEntry = Readonly<{
   abort?: () => void;
   promise: Promise<void>;
 }>;
+
+const runtimeRoleCoordinatorInstances = new WeakSet<object>();
 
 export type RuntimeDrainRegistry = ReturnType<
   typeof createRuntimeDrainRegistry
@@ -295,15 +320,27 @@ function exactLeaseSchema(database: DatabaseSync) {
     : "invalid" as const;
 }
 
-function acquireSqliteLease(path: string) {
+function acquireSqliteLease(path: string, requireExistingSchema = false) {
   let database: DatabaseSync | undefined;
   try {
+    if (requireExistingSchema) {
+      // DatabaseSync opens a missing path by creating an empty database.  A
+      // preservation capture must never turn a typo or a stopped service with
+      // a missing lease into a newly provisioned runtime identity.
+      assertLeaseFile(path);
+    }
     database = new DatabaseSync(path, { timeout: 0 });
     database.exec("PRAGMA busy_timeout = 0; PRAGMA journal_mode = DELETE;");
     database.exec("BEGIN IMMEDIATE");
     const schema = exactLeaseSchema(database);
     if (schema === "invalid") {
       fail("RUNTIME_ROLE_PATH_UNSAFE", "Runtime active lease contract is invalid");
+    }
+    if (schema === "empty" && requireExistingSchema) {
+      fail(
+        "RUNTIME_ROLE_PATH_UNSAFE",
+        "Runtime active lease contract is missing from the existing lease file",
+      );
     }
     if (schema === "empty") {
       database.exec(`
@@ -369,6 +406,104 @@ export function runtimeRoleFromEnvironment(
   return role as RuntimeRole;
 }
 
+function currentPidNamespace() {
+  if (process.platform === "linux") {
+    try {
+      const namespace = readlinkSync("/proc/self/ns/pid");
+      if (/^pid:\[\d+\]$/.test(namespace)) return namespace;
+    } catch {
+      // The Linux proof is deliberately fail-closed below.  A PID that is
+      // merely absent from a private namespace is not proof of shutdown.
+    }
+    fail(
+      "RUNTIME_STOP_PROOF_INVALID",
+      "The current Linux PID namespace cannot be verified",
+    );
+  }
+  // macOS and the other supported local development platforms have no
+  // /proc PID namespace handle.  They have one host PID namespace for this
+  // purpose; process.kill(pid, 0) is still used for the actual liveness test.
+  return `${process.platform}:host`;
+}
+
+function processStartTicks(pid: number) {
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    const commandEnd = stat.lastIndexOf(")");
+    if (commandEnd < 0) return undefined;
+    const fields = stat.slice(commandEnd + 2).trim().split(/\s+/);
+    // Fields after the command start at field 3 (state); field 22 is index 19.
+    const startTicks = fields[19];
+    return /^\d+$/.test(startTicks ?? "") ? startTicks : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Verifies a stop receipt in the namespace in which the backup process is
+ * running.  The caller supplies the PID and start token captured before the
+ * stop; a boolean such as `processStopped: true` is intentionally not a
+ * supported input.  A live PID, a PID reused with a different start token, a
+ * namespace mismatch, or an indeterminate liveness result fails closed.
+ */
+export function assertStoppedProcessProof(
+  proof: RuntimeStoppedProcessProof,
+) {
+  if (
+    !proof ||
+    !Number.isSafeInteger(proof.pid) ||
+    proof.pid <= 1 ||
+    proof.pid === process.pid ||
+    !/^\d+$/.test(proof.startTicks) ||
+    proof.startTicks === "0" ||
+    typeof proof.pidNamespace !== "string" ||
+    proof.pidNamespace !== currentPidNamespace()
+  ) {
+    fail(
+      "RUNTIME_STOP_PROOF_INVALID",
+      "The stopped process proof is incomplete or from a different PID namespace",
+    );
+  }
+
+  const observedStartTicks = processStartTicks(proof.pid);
+  if (observedStartTicks !== undefined) {
+    if (observedStartTicks !== proof.startTicks) {
+      fail(
+        "RUNTIME_STOP_PROOF_INVALID",
+        "The stopped process PID was reused before the capture",
+      );
+    }
+    fail(
+      "RUNTIME_STOP_PROOF_INVALID",
+      "The previous runtime process is still alive",
+    );
+  }
+  try {
+    process.kill(proof.pid, 0);
+    fail(
+      "RUNTIME_STOP_PROOF_INVALID",
+      "The previous runtime process is still alive",
+    );
+  } catch (error) {
+    if (error instanceof RuntimeRoleError) throw error;
+    if (
+      !error || typeof error !== "object" ||
+      !("code" in error) || error.code !== "ESRCH"
+    ) {
+      fail(
+        "RUNTIME_STOP_PROOF_INVALID",
+        "The previous runtime process state could not be verified",
+      );
+    }
+  }
+  return Object.freeze({
+    pid: proof.pid,
+    pidNamespace: proof.pidNamespace,
+    startTicks: proof.startTicks,
+  });
+}
+
 export function createRuntimeRoleCoordinator(
   options: RuntimeRoleCoordinatorOptions,
 ) {
@@ -377,6 +512,19 @@ export function createRuntimeRoleCoordinator(
     fail("RUNTIME_ROLE_INVALID", "Runtime role is invalid");
   }
   const dataDirectory = exactAbsolutePath(options.dataDirectory, "Data directory");
+  const requireExistingLease = options.requireExistingLease === true;
+  if (requireExistingLease && role !== "active") {
+    fail(
+      "RUNTIME_ROLE_INVALID",
+      "Existing active lease capture requires the active runtime role",
+    );
+  }
+  if (requireExistingLease && !options.runtimeDirectory) {
+    fail(
+      "RUNTIME_ROLE_PATH_UNSAFE",
+      "Existing active lease capture requires an explicit runtime directory",
+    );
+  }
   // Non-active roles must be able to expose liveness/version and an honest
   // read-only readiness failure without provisioning or otherwise touching a
   // missing persistent directory. Active is the only role that pins it.
@@ -422,11 +570,15 @@ export function createRuntimeRoleCoordinator(
         "Runtime and persistent data directories must not overlap",
       );
     }
-    runtimeIdentity = ensureRuntimeDirectory(runtimeDirectory);
+    runtimeIdentity = requireExistingLease
+      ? assertDirectory(runtimeDirectory, { privateMode: true })
+      : ensureRuntimeDirectory(runtimeDirectory);
     assertDisjointDirectories(dataDirectory, runtimeDirectory);
     const leasePath = join(runtimeDirectory, "active-role.sqlite");
-    leaseIdentity = createLeaseFile(leasePath);
-    leaseDatabase = acquireSqliteLease(leasePath);
+    leaseIdentity = requireExistingLease
+      ? assertLeaseFile(leasePath)
+      : createLeaseFile(leasePath);
+    leaseDatabase = acquireSqliteLease(leasePath, requireExistingLease);
     const finalRuntimeIdentity = assertDirectory(runtimeDirectory, {
       privateMode: true,
     });
@@ -473,6 +625,35 @@ export function createRuntimeRoleCoordinator(
       drainRegistry.freezeAdmission();
       fail("RUNTIME_ACTIVE_LEASE_LOST", "Runtime active lease identity changed");
     }
+  }
+
+  function assertLeaseHeldForBackup(): RuntimeLeaseCaptureProof {
+    if (!requireExistingLease || role !== "active" || leaseState !== "held") {
+      fail(
+        "RUNTIME_ACTIVE_LEASE_UNAVAILABLE",
+        "A preservation capture requires the pre-existing active runtime lease",
+      );
+    }
+    if (!drainRegistry.isDraining() || !drainCompleted || drainRegistry.size() !== 0) {
+      fail(
+        "RUNTIME_ROLE_DRAINING",
+        "A preservation capture requires a completed runtime drain",
+      );
+    }
+    assertPathIdentities();
+    if (!runtimeDirectory || !leaseIdentity) {
+      fail(
+        "RUNTIME_ACTIVE_LEASE_UNAVAILABLE",
+        "The existing runtime lease identity is unavailable",
+      );
+    }
+    return Object.freeze({
+      dataDirectory,
+      leaseDev: leaseIdentity.dev.toString(),
+      leaseIno: leaseIdentity.ino.toString(),
+      leasePath: join(runtimeDirectory, "active-role.sqlite"),
+      runtimeDirectory,
+    });
   }
 
   function assertActive(capability: RuntimeRoleCapability) {
@@ -622,8 +803,9 @@ export function createRuntimeRoleCoordinator(
     }, abort);
   }
 
-  return Object.freeze({
+  const coordinator = Object.freeze({
     assertActive,
+    assertLeaseHeldForBackup,
     beginDrain,
     close,
     dataDirectory: () => dataDirectory,
@@ -633,11 +815,28 @@ export function createRuntimeRoleCoordinator(
     shutdown,
     snapshot,
   });
+  runtimeRoleCoordinatorInstances.add(coordinator);
+  return coordinator;
 }
 
 export type RuntimeRoleCoordinator = ReturnType<
   typeof createRuntimeRoleCoordinator
 >;
+
+/** Only coordinators created by this module can authorize a preservation capture. */
+export function assertRuntimeRoleCoordinator(
+  value: unknown,
+): asserts value is RuntimeRoleCoordinator {
+  if (
+    !value || typeof value !== "object" ||
+    !runtimeRoleCoordinatorInstances.has(value)
+  ) {
+    fail(
+      "RUNTIME_ROLE_PATH_UNSAFE",
+      "Preservation capture requires the runtime coordinator that owns the active lease",
+    );
+  }
+}
 
 /**
  * Tracks detached work that must not outlive an active runtime lease. Calling

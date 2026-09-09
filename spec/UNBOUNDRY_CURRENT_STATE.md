@@ -1,50 +1,39 @@
 # Unboundry 当前状态
 
-文档角色：`CURRENT_STATE`。本页维护项目现状；当前授权、进度和验收见 [当前任务](../TASKS.md)。本地代码、GitHub和生产于2026-09-07实测核对。发布身份、备份、回退与验证数据由 [v0.7.16发布回执](V0_7_16_PRODUCTION_RECEIPT_2026-09-07.json) 维护。
+文档角色：`CURRENT_STATE`。当前授权、进度和验收见[当前任务](../TASKS.md)；本页只维护现状与边界。发布身份、生产观测和回退数据见[发布回执](V0_7_16_PRODUCTION_RECEIPT_2026-09-07.json)。
 
-## 项目现在怎么样
+## 现在怎么样
 
-**最近核验的生产是 v0.7.16 / schema43，发布工程检查通过，等待用户确认正式站体验。** 生成状态查询加固已上线；本地三项查询恢复及保存工具修复均已由用户确认通过。工程检查、生产部署和用户验收分别记账，当前状态为`DEPLOYED / PRODUCTION_TECHNICAL_PASS / LOCAL_USER_PASS / PRODUCTION_USER_RECHECK`。
+**最近核验的生产是 v0.7.16 / schema43**；本地候选为 **v0.7.17**。V3/V4 本地修复、撤销演练、相关回归和三项用户验收均完成，V4 第1/2/3项已获 `USER_PASS`，尚未切换生产。维护功能默认关闭。生产技术验证与本地用户验收分开记录：v0.7.16 为 `PRODUCTION_TECHNICAL_PASS / PRODUCTION_USER_RECHECK`，V3/V4 为 `LOCAL_USER_PASS / NOT_DEPLOYED`。
 
-当前代码包版本：**v0.7.16**
-本地候选代码版本：**v0.7.16**
-当前 schema：**43**
-生产观测日期：2026-09-07。
+本地候选已完成：持久维护记录和严格 admin、原结果受保护找回、四节点进展、重启接续、单节点补跑及第3项视频交互修复。`quiesced-active-preservation` 已实现，用于停服且持有既有 active lease 时保留一个精确旧 task/attempt 的未知事实；它保留原 task、attempt、事件和付费围栏，不改终态，不替代平台证据。
+
+本地备份新模式29/29及独立窄复审通过，既有生成与UI有效证据保持原范围。候选已提交至[PR #173](https://github.com/jasionia1991-max/unboundry/pull/173)；2026-09-09用户处理付款后CI已恢复启动；实际发现冷环境缺少必需历史tag及旧依赖缓存，正在补齐CI准备配置，发布仍停在合并前。精确进度、测试证据和阻断由[当前任务](../TASKS.md)维护。
+
+当前代码包版本：**v0.7.17**（本地源码；正式站仍v0.7.16）
+本地候选代码版本：**v0.7.17**（已授权，尚未上线）
+生产观测日期：2026-09-09（只读核对）
 当前产品验收标记：`CURRENT_V0_7_16_USER_RECHECK`
 
-本次保留原任务，仅在查询网络错误、超时或5xx时有限自动重查；持续失败仍可手动检查。未新增生成提交、持久字段或schema迁移。行为合同见 [生成架构](UNBOUNDRY_GENERATION_ARCHITECTURE.md)，验收和回退范围见 [查询加固方案](GENERATION_STATUS_QUERY_HARDENING_PLAN_2026-09-07.md)。用户遇到的验收画布保存报错来自临时素材未登记，已修复验收工具；没有放宽产品保存校验。
+## 正式站事实
 
-生产已核对：精确tag独立构建，current及健康/租约正常；33项公网与loopback静态资源与安装包一致。冻结切换前后业务表、媒体及secret文件保持；已有画布刷新后27个节点、位置和revision44不变，图片/视频可读，显示已保存到云端，额外Canvas写入和生成请求均0。服务重启导致loadToken/saveEpoch按既有进程合同变化，不是画布内容变化。未执行真实生成。
+2026-09-09 只读核对显示正式站仍 v0.7.16，唯一旧 task `9c93f308-bb77-4935-a4e3-37dd72e6cd28` 保持 `recovering/AUTOMATIC_RESULT_RECOVERY`，attempt 为 `outcome-unknown` 且无平台 task ID。原始 Provider code/msg 未保存；充值、`finished_at`、假回执或维护 phase 都不能证明未受理、未扣费或可取消。该任务未解锁、未改码、未重跑，正式站无本轮生产写入或 Provider 请求。
 
-此前模板保存、其余12项及图片「浏览全部」等修复仍保留v0.7.15的用户通过状态，见 [v0.7.15回执](V0_7_15_PRODUCTION_RECEIPT_2026-09-07.json)；本次不扩大其他历史条目的验收。
+## 发布与未决边界
 
-## 各环境入口
+- v0.7.17 已获发布授权；ops切换/回退脚本独立窄复审完成，直接阻断已修复，完整安装包演练和真实备份仍待执行。
+- 完整 Linux 真实安装包、真实停服备份、systemd 切换和线上回退尚未执行；本地测试、合成数据和撤销演练不能替代这些门。
+- 通过精确身份、CI/tag、停服保留式备份、verify/fresh restore、回退和文档回执后才可上线；失败保持旧站和 CURRENT。不得用 SQL 或清理旧未知任务骗过备份门。
+- 每日自动备份及视频/音频空工具按钮仍按原状态暂缓；正式启用维护入口前仍需明确入口与负责人。
+- v0.7.15模板、其他12项及图片“浏览全部”保持原用户通过记录；历史首次画布性能与维护更新通知仅保留原验证范围，未扩大为本次正式站重测。已暂停功能及依赖告警仍见[验收账本](UNBOUNDRY_ACCEPTANCE_MATRIX.md)。
 
-- 开发工作树：以实际checkout的Git根、HEAD、分支和dirty状态为准，不按历史路径强制切分支。
-- GitHub：`jasionia1991-max/unboundry`，默认分支`main`。产品tag为`v0.7.16`；精确commit/tree由发布回执维护。后续治理提交不改变产品构建身份。
-- 产品current：`/opt/unboundry/releases/v0.7.16-status-query-20260907`。
-- 服务器治理：`/opt/unboundry/AGENTS.md` → `/opt/unboundry/governance/current/AGENTS.md`。镜像根`.governance-manifest.json`拥有实际文档提交和逐项哈希；产品release内文档仅代表构建时点。
-- 本机外层`/Users/mymy/Documents/unboundry`是独立资料Git，仅负责导航；其他历史副本不是当前开发入口。
+## 环境入口
 
-## 未决事项
-
-| 项目 | 当前状态与边界 | 后续入口 |
-| --- | --- | --- |
-| v0.7.16正式站体验 | USER_RECHECK。技术检查已通过，用户尚未确认新版正式站 | [发布回执](V0_7_16_PRODUCTION_RECEIPT_2026-09-07.json) |
-| 每日自动备份 | OPEN / USER_DEFERRED。旧schema41作业未修复，手动发布备份不代表timer生效 | [备份合同](../ops/production/README.md) |
-| 视频/音频空工具按钮 | USER_DEFERRED，继续按用户要求跳过 | [既有修复方案](REMAINING_BUG_UI_REPAIR_PLAN_2026-09-07.md) |
-| 历史图与首次画布性能 | DEPLOYED / LOCAL_TARGET_PASS / LOCAL_USER_PASS；未重测正式站性能基准 | [性能证据7.2](REMAINING_BUG_UI_REPAIR_PLAN_2026-09-07.md#72-性能结论与范围) |
-| 维护后更新通知 | DEPLOYED / LOCAL_USER_PASS；本次人工刷新加载新版，不冒充真实维护后的自动重连通过 | [既有本地证据](REMAINING_BUG_UI_REPAIR_PLAN_2026-09-07.md#7-本地实施与交付2026-09-07) |
-| 依赖告警及已暂停功能 | qs修补已部署；CI的high阈值通过不代表无全部告警。真实Agent、团队、打光、Mureka真实生成、Storyboard等不改变原状态 | [验收账本](UNBOUNDRY_ACCEPTANCE_MATRIX.md)对应条目 |
-
-这些是项目登记，不提供同时施工或新的发布授权。
+- 工作树：`/Users/mymy/Documents/unboundry-post-v076-canvas-convergence-2026-09-03`，分支 `codex/v0717-node-recovery-release`，发布基线为 `38709d2b878e8546daa06e9ea20d2a82a2ae91b8`，候选提交为 `c3d21e39c0ece8ac400b00345b5e2aed13199dbc`；实际dirty以Git核对为准。
+- GitHub：`jasionia1991-max/unboundry`；正式 current 为 `/opt/unboundry/releases/v0.7.16-status-query-20260907`。后续治理提交不改变已发布 v0.7.16 身份。
 
 ## 备份与回退约束
 
-此次最新冻结加密备份、verify和独立fresh restore均通过；云端上传/GET的最终状态、精确计数和路径以发布回执为准。保留98条历史非阻断媒体提示，不宣称所有历史素材完好。
+用户已同意本次 `quiesced-active-preservation` 规则：冻结生成并停服后，由同一既有 runtime lease 持有 secret/DB 锁，核验停服证明、冻结审计、schema43、logical SHA、媒体/secret 和无额外活动边界；签名清单明确保留未结算请求，captureMode为独立模式，`finalCandidate=false`，由当次已授权发布规则单独准入。当前已部署v0.7.16的既定回退包是精确v0.7.15；本次v0.7.17候选的回退目标是精确v0.7.16，完整安装包演练仍待执行。回退仅切代码并保留CURRENT，重新验证当次最新备份和独立恢复；失败保持维护，不自动切回问题包或更老包。
 
-v0.7.16固定回退至本次核验的精确旧v0.7.15，并保留CURRENT数据。RB05隔离Linux新→旧→新、同数据保存/刷新、原合成任务记录和客户端草稿/构建身份已通过；不是实际线上systemd回退或真实Provider恢复。实际回退使用本次回执绑定的操作单和脚本，重新执行当次静默、最新备份与恢复校验；失败维持维护，不自动切回问题新包，不恢复数据库。禁止跳过本次兼容身份直接切更老包，尤其旧v0.7.13。
-
-## 阅读范围
-
-默认只读 [工作规则](../AGENTS.md)、本页、当前任务，再按主题进入合同。旧事实按需见 [历史状态](UNBOUNDRY_CURRENT_STATE.history.md) 或 [查阅报告](PROJECT_DOCUMENTATION_AUDIT_2026-09-06.md)，不以历史记录替代当前事实。
+默认阅读[工作规则](../AGENTS.md)、本页和[当前任务](../TASKS.md)，再按主题读取[生成架构合同](UNBOUNDRY_GENERATION_ARCHITECTURE.md)、[发布手册](../RELEASE_RUNBOOK.md)、[备份合同](../ops/production/README.md)及[恢复方案第10节](VIDEO_BALANCE_SINGLE_NODE_RECOVERY_PLAN_2026-09-07.md#10-第4版本地实施与验证2026-09-08)。

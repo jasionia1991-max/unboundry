@@ -1,6 +1,6 @@
 # Unboundry 版本发布 Runbook
 
-更新日期：2026-09-07。当前授权与进度只看 [TASKS](TASKS.md)，产品现状看 [CURRENT_STATE](spec/UNBOUNDRY_CURRENT_STATE.md)。以下普通代码/构建发布流程与独立文档同步流程分别适用。
+更新日期：2026-09-09。当前授权与进度只看 [TASKS](TASKS.md)，产品现状看 [CURRENT_STATE](spec/UNBOUNDRY_CURRENT_STATE.md)。以下普通代码/构建发布流程与独立文档同步流程分别适用。
 
 ## 1. 识别范围和已有授权
 
@@ -35,7 +35,7 @@
 
 获当次发布授权后，显式文件清单commit/push → PR的最终head CI通过 → 合并 → main CI通过 → annotated tag指向精确merge → GitHub Release。
 
-当前CI源码为`.github/workflows/quality-gates.yml`：macOS15；Node25类型/架构/build、`npm audit --audit-level=high`；随后Node22 safe preflight、ffprobe准备、m104真实HTTP/fake Provider集成、源码覆盖及其行为检查。中等级告警不会使high阈值失败，CI绿色不等于依赖无告警或真实付费验收通过。
+当前CI源码为`.github/workflows/quality-gates.yml`：两个job均完整checkout历史与tag（safe runner校验精确v0.5.1基线），macOS15；Node25类型/架构/build、`npm audit --audit-level=high`；随后Node22 safe preflight、ffprobe准备、m104真实HTTP/fake Provider集成、源码覆盖及其行为检查；新增独立Node22备份/运行锁合成检查（m10/m93）；进入离线safe runner前，在RUNNER_TEMP预热精确v0.5.1旧lock依赖，安装禁用scripts。中等级告警不会使high阈值失败，CI绿色不等于依赖无告警或真实付费验收通过。
 
 记录PR、branch/main CI run、tag object、peeled commit/tree和Release。已发布tag和产品构建不可改写；后续验收文档记录用自己的提交身份，不将文档HEAD冒充生产产品commit。
 
@@ -59,6 +59,23 @@
 - 真实云上传只在已授权范围进行，上传后需要GET哈希/大小核验，PUT成功本身不等于可恢复。
 - `ops/production/backup-to-oss-retention.mjs`可创建当前加密备份并上传；它自身不自动完成verify/fresh restore/远端GET闭环，需要操作方案分别补齐。
 - **当前自动备份故障尚未修好**：systemd仍调用`/opt/unboundry/scripts/backup-to-oss.mjs`，其旧子脚本要求schema41。不得把它作为当前备份入口。更不能仅因应用已升级就宣称每日备份生效。
+
+### 5.1 经当次授权的停服保全备份
+
+2026-09-09用户已明确同意本次v0.7.17使用`quiesced-active-preservation`。此方式保留结果未知的旧请求及防重复提交证据，不把它改成成功、失败、取消或无扣费。`locked-exact`的原有静默要求和`external-unverified`非最终性质保持；不能通过改旧记录或改readiness计数满足门。
+
+只有以下证据全部成立，当前发布才可接受该独立captureMode：
+
+1. 新生成已由真实管理员审计冻结，冻结时间与最后Provider准入匹配并经过至少60秒；无活动工作流和未完成媒体发布。
+2. 已排空并停止旧应用，验证原进程身份确实退出；从精确既有runtime目录取得同一active lease，拒绝缺失、路径偏移、活进程或租约竞争。备份进程保持draining，不启动HTTP或生成worker；租约、secret锁、SQLite锁按既定顺序覆盖采集。
+3. 使用当次明确允许的task ID、attempt身份及完整task/attempt/events摘要。其他活动任务、摘要变化或未列明边界使备份失败；保留全部原始记录及原请求标记，不进行解锁、重试、删改。
+4. 签名加密清单记录该独立模式和保全证据，schema43、logical SHA、媒体与secret验证严格不减。`finalCandidate`不伪装成现有locked-exact的true；发布操作依据本节授权及完整保全证据单独准入。
+5. 新包verify及独立fresh restore验证原始账本摘要、schema、完整性、FK、素材及secret一致。精确新→旧→新完整安装包演练验证原记录、画布及防重复提交保护；开关关闭的演练只能证明相应关闭范围，不扩大成正常开启自动恢复或付费生成证明。
+6. 实现和本次操作脚本经独立复审。实际操作失败保留原数据、已存在备份和旧包；未完成恢复门不得切换。维护状态及恢复服务的处理按本次已核验操作单执行。
+
+该模式的verify/restore使用本次精确v0.7.17包内工具；即使产品回退至v0.7.16，也保留该工具和密钥路径，不使用旧版解析器冒充新模式恢复。回退只切代码，绝不把备份还原覆盖CURRENT。
+
+该规则不授权删除未知请求、付费重发或修复每日备份。每次保全必须重新绑定当前精确数据、任务范围、进程/租约和构建身份，不复用过期停服证明。具体实施状态和当次授权由TASKS维护，最终实测由本次发布回执维护。
 
 ## 6. 切换与回退
 

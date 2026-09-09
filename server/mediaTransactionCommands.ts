@@ -1,5 +1,53 @@
 import type { TransactionScopedCommand } from "./transactionCommand";
 
+/** Ordered existing candidates for local original-result settlement, bounded
+ * one past the supported result count so excess evidence stays detectable. */
+export const readPublishedOriginalMediaCandidateIdsCommand: TransactionScopedCommand<Readonly<{
+  taskId: string; ownerId: string; kind: "audio" | "image" | "video"; executionAttempt: number;
+}>, readonly string[]> = {
+  execute(scope, input) {
+    const rows = scope.prepare(`SELECT publication.asset_id FROM media_publication_attempts AS publication
+      JOIN media_assets AS media ON media.owner_id = publication.owner_id
+        AND media.kind = publication.kind AND media.id = publication.asset_id
+      WHERE publication.source = 'generation' AND publication.state = 'published'
+        AND publication.task_id = ? AND publication.task_execution_attempt = ?
+        AND publication.owner_id = ? AND publication.kind = ? AND media.storage_status = 'ready'
+      ORDER BY publication.created_at, publication.attempt_id LIMIT 5`)
+      .all(input.taskId, input.executionAttempt, input.ownerId, input.kind) as { asset_id: string }[];
+    return rows.map((row) => row.asset_id);
+  },
+};
+
+/** Bounded exact ledger rows, only for original-result concurrency validation. */
+export const readGenerationRecoveryMediaCommand: TransactionScopedCommand<Readonly<{
+  taskId: string; ownerId: string; resultAssetId?: string;
+}>, Readonly<{ publications: readonly Readonly<Record<string, unknown>>[];
+  assets: readonly Readonly<Record<string, unknown>>[] }>> = {
+  execute(scope, input) {
+    const publications = scope.prepare(`SELECT * FROM media_publication_attempts
+      WHERE task_id = ? ORDER BY attempt_id LIMIT 257`).all(input.taskId) as Record<string, unknown>[];
+    if (publications.length > 256) throw new Error("Recovery publication ledger exceeds its safe bound");
+    const ids = [...new Set([...publications.flatMap((row) => typeof row.asset_id === "string" ? [row.asset_id] : []),
+      ...(input.resultAssetId ? [input.resultAssetId] : [])])];
+    const assets = ids.length ? scope.prepare(`SELECT * FROM media_assets
+      WHERE owner_id = ? AND id IN (${ids.map(() => "?").join(",")}) ORDER BY kind,id`)
+      .all(input.ownerId, ...ids) as Record<string, unknown>[] : [];
+    return { publications, assets };
+  },
+};
+
+/** Small Media-owned scan projection; no result bytes or external work. */
+export const readGenerationRecoveryPublicationStateCommand: TransactionScopedCommand<string,
+  Readonly<{ pending: boolean; quarantined: boolean }>> = {
+  execute(scope, taskId) {
+    const row = scope.prepare(`SELECT
+      MAX(CASE WHEN state IN ('reserved','staged','external-ready','compensating') THEN 1 ELSE 0 END) AS pending,
+      MAX(CASE WHEN error_code = 'OSS_IDENTITY_QUARANTINED' THEN 1 ELSE 0 END) AS quarantined
+      FROM media_publication_attempts WHERE task_id = ?`).get(taskId) as { pending: number | null; quarantined: number | null };
+    return { pending: Boolean(row.pending), quarantined: Boolean(row.quarantined) };
+  },
+};
+
 export type ReadyMediaAssetRow = Readonly<{
   byteSize: number;
   checksumSha256: string | null;
@@ -324,5 +372,15 @@ export const failAccountMediaDeletionCommand: TransactionScopedCommand<Readonly<
       WHERE owner_id = ? AND kind = ? AND asset_id = ?
         AND state = 'delete-requested'
     `).run(timestamp, row.owner_id, row.kind, row.id);
+  },
+};
+
+/** Any publication evidence must be reconciled before a paid result is declared absent. */
+export const hasGenerationPublicationEvidenceCommand: TransactionScopedCommand<
+  Readonly<{ taskId: string }>, boolean
+> = {
+  execute(scope, input) {
+    return Boolean(scope.prepare(`SELECT 1 FROM media_publication_attempts
+      WHERE task_id = ? LIMIT 1`).get(input.taskId));
   },
 };

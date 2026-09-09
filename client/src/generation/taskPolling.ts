@@ -1,5 +1,5 @@
 import {
-  GenerationRequestError,
+  isRetryableGenerationStatusReadError,
   waitForGenerationTask,
   type GenerationTaskSummary,
 } from "./generationTasks";
@@ -29,8 +29,7 @@ function isPollingAbortError(error: unknown): boolean {
  */
 export function isTransientPollingError(error: unknown): boolean {
   if (isPollingAbortError(error)) return false;
-  if (!(error instanceof GenerationRequestError)) return true;
-  return error.status === 0 || error.status >= 500;
+  return isRetryableGenerationStatusReadError(error);
 }
 
 export async function waitForGenerationTaskWithPause(
@@ -38,9 +37,13 @@ export async function waitForGenerationTaskWithPause(
   onPause: () => void,
   signal?: AbortSignal,
   fixtureScopeId = "",
+  options: {
+    followReplacementTask?: boolean;
+  } = {},
 ): Promise<GenerationTaskSummary> {
   try {
     const task = await waitForGenerationTask(taskId, signal, fixtureScopeId, {
+      followReplacementTask: options.followReplacementTask,
       retryTransientStatusReads: true,
     });
     if (signal?.aborted) throw new DOMException("Aborted", "AbortError");

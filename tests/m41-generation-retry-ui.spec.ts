@@ -1,3 +1,4 @@
+import { providerErrorParts, sanitizeProviderDiagnostic } from "../client/src/generation/generationErrors";
 import {
   expect,
   test as safeTest,
@@ -14,13 +15,16 @@ import {
 import { generationInputKey } from
   "../client/src/generation/generationRetry";
 import {
+  clearGenerationSubmissionIntent,
   GenerationRequestError,
+  ensureGenerationTask,
   getGenerationTaskByIdempotency,
   listGenerationTasks,
   waitForGenerationTask,
   type GenerationTaskSummary,
 } from "../client/src/generation/generationTasks";
 import {
+  isTransientPollingError,
   POLLING_PAUSED_MESSAGE,
   waitForGenerationTaskWithPause,
   workflowBlocksSingleNodeRecovery,
@@ -440,9 +444,28 @@ function canvasCommandConflictEnvelope(
   };
 }
 
-async function withWindowTimerGlobal<T>(run: () => Promise<T>) {
+function testMemoryStorage(): Storage {
+  const values = new Map<string, string>();
+  return {
+    clear: () => values.clear(),
+    getItem: (key) => values.get(key) ?? null,
+    key: (index) => [...values.keys()][index] ?? null,
+    get length() { return values.size; },
+    removeItem: (key) => values.delete(key),
+    setItem: (key, value) => {
+      values.set(key, value);
+    },
+  };
+}
+
+async function withWindowTimerGlobal<T>(
+  run: () => Promise<T>,
+  localStorage?: Storage,
+) {
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
-  const windowTarget = new EventTarget() as typeof globalThis;
+  const windowTarget = new EventTarget() as typeof globalThis & {
+    localStorage?: Storage;
+  };
   Object.defineProperties(windowTarget, {
     clearTimeout: {
       configurable: true,
@@ -455,6 +478,12 @@ async function withWindowTimerGlobal<T>(run: () => Promise<T>) {
       writable: true,
     },
   });
+  if (localStorage) {
+    Object.defineProperty(windowTarget, "localStorage", {
+      configurable: true,
+      value: localStorage,
+    });
+  }
   Object.defineProperty(globalThis, "window", {
     configurable: true,
     value: windowTarget,
@@ -605,7 +634,7 @@ function directPollingTask(taskId: string): GenerationTaskSummary {
   };
 }
 
-async function installRoutes(page: Page, retryAllowed: boolean) {
+async function installRoutes(page: Page, retryAllowed: boolean, diagnostic?: string) {
   let providerRequests = 0;
   let taskSubmissions = 0;
   const bindingAcks = new Set<Kind>();
@@ -781,9 +810,9 @@ async function installRoutes(page: Page, retryAllowed: boolean) {
         costCurrency: "CNY",
         createdAt: "2026-08-03T08:00:00.000Z",
         errorCode: retryAllowed ? "AUTH" : "SERVICE_RESTARTED",
-        errorMessage: retryAllowed
+        errorMessage: diagnostic ?? (retryAllowed
           ? `${body.kind} 零Provider模拟失败`
-          : `${body.kind} 上次生成结果无法确认`,
+          : `${body.kind} 上次生成结果无法确认`),
         id,
         kind: body.kind,
         model: body.model,
@@ -1183,8 +1212,8 @@ async function generateAndWaitForFailure(page: Page, kind: Kind) {
     .getByRole("button", { name: "Generate" })
     .click();
   const failure = kind === "text"
-    ? page.getByTestId("upstream-input-problem")
-    : page.getByTestId(`${kind}-node-${nodeId(kind)}`).getByRole("alert");
+    ? page.locator(".text-node-generation-notice")
+    : page.getByTestId(`${kind}-node-${nodeId(kind)}`).locator(`.${kind}-node-upload-error`);
   await expect(failure).toContainText(kind);
 }
 
@@ -1760,21 +1789,21 @@ test("status polling retries network and 5xx HTML failures but not definitive re
         ).rejects.toBeTruthy();
       });
       expect(reads, fixture.label).toBe(1);
-      // The external error is outside the status-read classifier. It may
-      // still use the existing pause presentation, but it must not re-read.
-      if (fixture.label !== "external GenerationRequestError 500") {
-        expect(pauses, fixture.label).toBe(0);
-      }
+      // Only the private status-read error can open the pause UI. External
+      // request/processing errors neither re-read nor offer status recovery.
+      expect(pauses, fixture.label).toBe(0);
     }
 
-    const sharedParserTask = directPollingTask(
-      "m41-direct-shared-parser-task",
-    );
+    const sharedParserTask = {
+      ...directPollingTask("m41-direct-shared-parser-task"),
+      idempotencyKey: "m41-by-idempotency-valid",
+    } satisfies GenerationTaskSummary;
     const byIdempotencyCases: Array<{
       body: string;
       contentType: string;
       expected: "task" | "undefined" | "status";
       label: string;
+      requestKey?: string;
       status: number;
     }> = [
       {
@@ -1789,6 +1818,18 @@ test("status polling retries network and 5xx HTML failures but not definitive re
         contentType: "application/json",
         expected: "task",
         label: "by-idempotency valid task",
+        requestKey: sharedParserTask.idempotencyKey,
+        status: 200,
+      },
+      {
+        body: JSON.stringify({
+          ...sharedParserTask,
+          idempotencyKey: "m41-by-idempotency-wrong-key",
+        }),
+        contentType: "application/json",
+        expected: "status",
+        label: "by-idempotency 200 wrong identity",
+        requestKey: "m41-by-idempotency-expected-key",
         status: 200,
       },
       {
@@ -1815,7 +1856,7 @@ test("status polling retries network and 5xx HTML failures but not definitive re
       await withWindowTimerGlobal(async () => {
         const result = getGenerationTaskByIdempotency(
           "default",
-          `m41-${fixture.label}`,
+          fixture.requestKey ?? `m41-${fixture.label}`,
         );
         if (fixture.expected === "status") {
           await expect(result).rejects.toMatchObject({
@@ -1833,7 +1874,7 @@ test("status polling retries network and 5xx HTML failures but not definitive re
     const listCases: Array<{
       body: string;
       contentType: string;
-      expected: "tasks" | "status";
+      expected: "empty" | "tasks" | "status";
       label: string;
       status: number;
     }> = [
@@ -1842,6 +1883,20 @@ test("status polling retries network and 5xx HTML failures but not definitive re
         contentType: "application/json",
         expected: "tasks",
         label: "list valid array",
+        status: 200,
+      },
+      {
+        body: JSON.stringify({ tasks: [] }),
+        contentType: "application/json",
+        expected: "empty",
+        label: "list valid empty array",
+        status: 200,
+      },
+      {
+        body: JSON.stringify({ tasks: null }),
+        contentType: "application/json",
+        expected: "status",
+        label: "list 200 missing array",
         status: 200,
       },
       {
@@ -1874,6 +1929,8 @@ test("status polling retries network and 5xx HTML failures but not definitive re
         const result = listGenerationTasks("default");
         if (fixture.expected === "tasks") {
           await expect(result).resolves.toEqual([sharedParserTask]);
+        } else if (fixture.expected === "empty") {
+          await expect(result).resolves.toEqual([]);
         } else {
           await expect(result).rejects.toMatchObject({
             status: fixture.status,
@@ -1882,6 +1939,108 @@ test("status polling retries network and 5xx HTML failures but not definitive re
       });
       expect(reads, fixture.label).toBe(1);
     }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("malformed 200 authority fails closed before POST and processing errors do not pause", async () => {
+  const originalFetch = globalThis.fetch;
+  const canvasId = "m41-malformed-authority-canvas";
+  const nodeIdValue = "m41-malformed-authority-node";
+  const input = {
+    canvasId,
+    canvasRevision: 1,
+    inputSchemaVersion: 1 as const,
+    inputs: [],
+    model: "m41-malformed-authority-model",
+    nodeId: nodeIdValue,
+    ownPrompt: "malformed authority input",
+    parameters: { thinking: "disabled" },
+    prompt: "malformed authority input",
+  };
+  const storage = testMemoryStorage();
+  let exactReads = 0;
+  let preflightPosts = 0;
+  let generationPosts = 0;
+  globalThis.fetch = async (url, init) => {
+    const parsed = new URL(String(url), "http://safe.invalid");
+    if (parsed.pathname.endsWith("/by-idempotency")) {
+      exactReads += 1;
+      return Response.json(null, { status: 200 });
+    }
+    if (parsed.pathname.endsWith("/preflight")) {
+      preflightPosts += 1;
+      return Response.json({
+        canEnqueue: true,
+        canSubmit: true,
+        canvasRevision: input.canvasRevision,
+        problems: [],
+      });
+    }
+    if (parsed.pathname === "/api/generation-tasks" && init?.method === "POST") {
+      generationPosts += 1;
+      return Response.json(directPollingTask("m41-malformed-post-task"), {
+        status: 202,
+      });
+    }
+    throw new Error(`Unexpected request: ${parsed.pathname}`);
+  };
+  try {
+    await withWindowTimerGlobal(async () => {
+      try {
+        await expect(
+          ensureGenerationTask("text", input),
+        ).rejects.toMatchObject({
+          code: "TASK_STATUS_INVALID_RESPONSE",
+          status: 200,
+        });
+      } finally {
+        clearGenerationSubmissionIntent(
+          "text",
+          canvasId,
+          nodeIdValue,
+          undefined,
+          "",
+          "",
+        );
+      }
+    }, storage);
+    expect(exactReads).toBe(1);
+    expect(preflightPosts).toBe(0);
+    expect(generationPosts).toBe(0);
+
+    let processingReads = 0;
+    let pauses = 0;
+    globalThis.fetch = async () => {
+      processingReads += 1;
+      const response = new Response("{}", {
+        headers: { "Content-Type": "application/json" },
+        status: 200,
+      });
+      Object.defineProperty(response, "json", {
+        configurable: true,
+        value: () => Promise.reject(new Error("status response processing failed")),
+      });
+      return response;
+    };
+    await withWindowTimerGlobal(async () => {
+      await expect(
+        waitForGenerationTaskWithPause(
+          "m41-processing-exception-status-read",
+          () => {
+            pauses += 1;
+          },
+        ),
+      ).rejects.toMatchObject({
+        code: "TASK_STATUS_INVALID_RESPONSE",
+        status: 200,
+      });
+    });
+    expect(processingReads).toBe(1);
+    expect(pauses).toBe(0);
+    expect(isTransientPollingError(new Error("ordinary processing failure")))
+      .toBe(false);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -2551,8 +2710,8 @@ test("four nodes obey server retryAllowed=false before and after refresh", async
     await generateAndWaitForFailure(page, kind);
     await expect(retryButton(page, kind)).toHaveCount(0);
     const failure = kind === "text"
-      ? page.getByTestId("upstream-input-problem")
-      : page.getByTestId(`${kind}-node-${nodeId(kind)}`).getByRole("alert");
+      ? page.locator(".text-node-generation-notice")
+      : page.getByTestId(`${kind}-node-${nodeId(kind)}`).locator(`.${kind}-node-upload-error[role="status"]`);
     await expect(failure).toContainText("不能直接重试");
     await page.reload();
     await expect(page.getByTestId("canvas-world"))
@@ -2602,7 +2761,7 @@ for (const kind of ["image", "video"] as const) {
 
     await cancel.click();
     await expect(
-      page.getByTestId(`${kind}-node-${nodeId(kind)}`).getByRole("alert"),
+      page.getByTestId(`${kind}-node-${nodeId(kind)}`).locator(`.${kind}-node-upload-error[role="status"]`),
     ).toContainText("取消结果无法确认，任务仍在查询中");
 
     await expect(cancel).toBeVisible();
@@ -4119,7 +4278,7 @@ for (const retryPollingCase of [
       }
 
       const node = page.getByTestId(`${kind}-node-${nodeId(kind)}`);
-      await expect(node.getByRole("alert")).toContainText("点击重试重新检查");
+      await expect(node.locator(`.${kind}-node-upload-error[role="status"]`)).toContainText("点击重试重新检查");
       const recheck = node.getByRole("button", { name: "重新检查任务状态" });
       await expect(recheck).toBeVisible();
       await expect.poll(async () => {
@@ -4665,15 +4824,21 @@ for (const ensureFenceCase of [
 
 for (const recoveredPollingPath of [
   "initial-read-failure",
+  "initial-read-pause",
   "watch-read-failure",
   "watch-pause",
+  "refund-child-projection",
 ] as const) {
   for (const kind of kinds) {
     const pathLabel = recoveredPollingPath === "initial-read-failure"
-      ? "initial read failure pauses for manual recovery"
+      ? "initial read failure retries automatically"
+      : recoveredPollingPath === "initial-read-pause"
+        ? "persistent initial read failures pause for manual recovery"
       : recoveredPollingPath === "watch-read-failure"
         ? "watch read failure retries automatically"
-        : "watch read failures pause for manual recovery";
+        : recoveredPollingPath === "watch-pause"
+          ? "watch read failures pause for manual recovery"
+          : "follows refund child and pending projection automatically";
     test(`${kind} recovered polling ${pathLabel} without POST`, async ({
       page,
       request,
@@ -4702,6 +4867,7 @@ for (const recoveredPollingPath of [
     };
     const successTask = {
       ...runningTask,
+      id: recoveredPollingPath === "refund-child-projection" ? `${taskId}-child` : taskId,
       canvasProjectionState: "applied",
       ...(kind === "text"
         ? { resultText }
@@ -4730,6 +4896,7 @@ for (const recoveredPollingPath of [
     let providerRequests = 0;
     let projectionApplied = false;
     let taskReads = 0;
+    let childReads = 0;
     let taskSubmissions = 0;
     let canvasWrites = 0;
 
@@ -4823,12 +4990,28 @@ for (const recoveredPollingPath of [
         await route.fulfill({ json: { tasks: [runningTask] }, status: 200 });
         return;
       }
+      if (recoveredPollingPath === "refund-child-projection" &&
+        url.pathname === `/api/generation-tasks/${taskId}-child` && inbound.method() === "GET") {
+        childReads += 1;
+        projectionApplied = childReads >= 3;
+        await route.fulfill({ status: 200, json: {
+          ...successTask, canvasProjectionState: projectionApplied ? "applied" : "pending",
+        } });
+        return;
+      }
       if (
         url.pathname === `/api/generation-tasks/${taskId}` &&
         inbound.method() === "GET"
       ) {
         taskReads += 1;
-        if (recoveredPollingPath === "initial-read-failure" && taskReads === 1) {
+        if (recoveredPollingPath === "refund-child-projection") {
+          await route.fulfill({ status: 200, json: taskReads === 1 ? runningTask : {
+            ...runningTask, state: "failed", replacementTaskId: `${taskId}-child`,
+          } });
+          return;
+        }
+        if ((recoveredPollingPath === "initial-read-failure" && taskReads === 1) ||
+          (recoveredPollingPath === "initial-read-pause" && taskReads <= 3)) {
           await route.fulfill({
             json: { code: "TEMPORARY", error: "temporary polling outage" },
             status: 500,
@@ -4914,15 +5097,15 @@ for (const recoveredPollingPath of [
         : node;
       if (kind === "text") await selectNode(page, kind);
       if (
-        recoveredPollingPath === "initial-read-failure" ||
+        recoveredPollingPath === "initial-read-pause" ||
         recoveredPollingPath === "watch-pause"
       ) {
         if (kind === "text") {
-          const status = controls.getByTestId("upstream-input-problem");
+          const status = page.locator(".text-node-generation-notice");
           await expect(status).toHaveAttribute("role", "status");
           await expect(status).toContainText("点击重试重新检查");
         } else {
-          await expect(node.getByRole("alert"))
+          await expect(node.locator(`.${kind}-node-upload-error[role="status"]`))
             .toContainText("点击重试重新检查");
         }
         const recheck = controls.getByRole("button", {
@@ -4945,9 +5128,11 @@ for (const recoveredPollingPath of [
       }
       const expectedTaskReads = recoveredPollingPath === "initial-read-failure"
         ? 2
+        : recoveredPollingPath === "initial-read-pause"
+          ? 4
         : recoveredPollingPath === "watch-read-failure"
           ? 3
-          : 5;
+          : recoveredPollingPath === "refund-child-projection" ? 4 : 5;
       await expect.poll(() => taskReads)
         .toBeGreaterThanOrEqual(expectedTaskReads);
       await expect.poll(async () => {
@@ -4965,13 +5150,16 @@ for (const recoveredPollingPath of [
         result: kind === "text"
           ? resultText
           : mediaAssetUrl(kind, resultAssetId),
-        taskId: kind === "text" ? taskId : null,
+        taskId: kind === "text"
+          ? (recoveredPollingPath === "refund-child-projection" ? `${taskId}-child` : taskId)
+          : null,
       });
       expect(taskReads).toBe(expectedTaskReads);
       await expect(controls.getByText(POLLING_PAUSED_MESSAGE, { exact: false }))
         .toHaveCount(0);
       expect(taskSubmissions).toBe(0);
       expect(providerRequests).toBe(0);
+      if (recoveredPollingPath === "refund-child-projection") expect(childReads).toBe(3);
       if (recoveredPollingPath === "watch-pause") {
         expect(canvasWrites).toBe(0);
       }
@@ -8826,3 +9014,744 @@ for (const kind of ["image", "video"] as const) {
     }
   });
 }
+
+
+test("V3 diagnostic text redacts quoted credentials and folds long Chinese messages", () => {
+  const message = '失败 {"api_key":"secretA123","authorization":"Bearer secretB456","token":"secretC789"} Bearer secretD987 https://example.test/result?signature=secretE000 sk-abcdefghijk';
+  const safe = sanitizeProviderDiagnostic(message);
+  for (const value of ['secretA123', 'secretB456', 'secretC789', 'secretD987', 'secretE000', 'sk-abcdefghijk', 'example.test']) {
+    expect(safe).not.toContain(value);
+  }
+  expect(providerErrorParts('中文错误'.repeat(100)).raw.length).toBeGreaterThan(0);
+  expect(sanitizeProviderDiagnostic('x'.repeat(6000)).length).toBeLessThanOrEqual(2001);
+});
+
+test("V3 four error cards keep long diagnostics folded, keyboard accessible and clear of Generate at canvas zoom", async ({ page, request }) => {
+  const diagnostic = 'ProviderDiagnosticFailure Request id: local-test ' +
+    '{"api_key":"never-show-this-key"} https://example.test/private?signature=hidden ' + '详细错误说明'.repeat(180);
+  const routes = await installRoutes(page, true, diagnostic);
+  for (const kind of kinds) {
+    await request.delete('/api/canvas/default');
+    expect((await request.put('/api/canvas/default', { data: {
+      edges: [], nodes: canvasNodes(kind), revision: 0,
+      viewport: { x: 0, y: 0, zoom: kind === 'text' || kind === 'video' ? 0.5 : 1.0 },
+    } })).ok()).toBe(true);
+    await page.goto('/canvas');
+    await expect(page.getByTestId('canvas-world')).toHaveAttribute('data-persistence-ready', 'true');
+    await selectNode(page, kind);
+    const creator = page.getByTestId(`${kind}-creator`);
+    await creator.getByRole('button', { name: 'Generate', exact: true }).click();
+    const notice = kind === 'text' ? page.locator('.text-node-generation-notice') :
+      page.getByTestId(`${kind}-node-${nodeId(kind)}`).locator(`.${kind}-node-upload-error`);
+    await expect(notice).toHaveAttribute('role', 'alert');
+    await expect(notice.locator('.provider-error-detail')).toHaveCount(0);
+    const expand = notice.locator('.provider-error-notice > button');
+    await expect(expand).toHaveAccessibleName('查看平台原文');
+    await expand.focus();
+    await expect(expand).toBeFocused();
+    await expand.press('Enter');
+    await expect(expand).toHaveAttribute('aria-expanded', 'true');
+    const details = notice.locator('.provider-error-detail');
+    await expect(details).toBeVisible();
+    await expect(details).not.toContainText('never-show-this-key');
+    await expect(details).not.toContainText('example.test');
+    const copy = details.getByRole('button', { name: '复制平台原文' });
+    await copy.focus();
+    await expect(copy).toBeFocused();
+    await expect(copy).toBeVisible();
+    const generate = creator.getByRole('button', { name: /^(Generate|Retry generation)$/ });
+    await expect(generate).toBeVisible();
+    expect(await generate.evaluate((button) => {
+      const bounds = button.getBoundingClientRect();
+      const target = document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+      return target === button || Boolean(target && button.contains(target));
+    })).toBe(true);
+    await expand.press('Enter');
+    await expect(details).toHaveCount(0);
+  }
+  expect(routes.taskSubmissions()).toBe(4);
+  expect(routes.providerRequests()).toBe(0);
+});
+
+test("Video ignores a late parent recovery read after a new child is submitted", async ({
+  page,
+  request,
+}) => {
+  const kind = "video" as const;
+  const parentTaskId = "m41-video-late-parent-task";
+  const childTaskId = "m41-video-late-parent-child";
+  const oldError = "父任务迟到错误不得覆盖新视频";
+  const resultAssetId = "m41-video-late-parent-result";
+  const resultUrl = mediaAssetUrl(kind, resultAssetId);
+  const identity = currentStandaloneIdentity(kind);
+  const staleOwnershipKey = compactGenerationOwnershipKey({
+    contractFingerprint: identity.modelInputContractFingerprint,
+    modelConfigurationRevision: identity.modelConfigurationRevision,
+    modelId: modelInputs.video.id,
+    modelReleaseRevision: identity.modelReleaseRevision,
+    parameters: defaultParameterValues(schemas.video),
+    prompt: "video 原始提示词",
+    upstream: [{
+      edgeId: "stale-bound-input",
+      source: "old-source-node",
+      sourceKind: "image",
+      status: "ready",
+    }],
+  });
+  expect(staleOwnershipKey).not.toBe(identity.generationOwnershipKey);
+  const staleIdentity = {
+    ...identity,
+    generationOwnershipKey: staleOwnershipKey,
+  };
+  let childTask = {
+    ...identity,
+    attempt: 1,
+    canvasId: "default",
+    costCurrency: "CNY",
+    createdAt: "2026-08-10T12:00:00.000Z",
+    id: childTaskId,
+    kind,
+    model: String(modelInputs.video.id),
+    nodeId: nodeId(kind),
+    prompt: "video 原始提示词",
+    state: "queued",
+    updatedAt: "2026-08-10T12:00:01.000Z",
+  };
+  const parentTask = {
+    ...staleIdentity,
+    attempt: 1,
+    canvasId: "default",
+    costCurrency: "CNY",
+    createdAt: "2026-08-10T11:59:00.000Z",
+    errorCode: "AUTH",
+    errorMessage: oldError,
+    id: parentTaskId,
+    kind,
+    model: modelInputs.video.id,
+    newGenerationAllowed: true,
+    nodeId: nodeId(kind),
+    prompt: "video 原始提示词",
+    retryAllowed: false,
+    state: "failed",
+    updatedAt: "2026-08-10T11:59:01.000Z",
+  };
+  const successfulChild = () => ({
+    ...childTask,
+    canvasProjectionState: "applied",
+    resultAssetId,
+    resultMedia: {
+      byteSize: 1_024,
+      checksumSha256: "d".repeat(64),
+      contentType: "video/mp4",
+      durationSeconds: 6,
+      durationStatus: "ready",
+      mediaHeight: 720,
+      mediaWidth: 1_280,
+      storageBackend: "local",
+    },
+    resultUrl,
+    state: "success",
+    updatedAt: "2026-08-10T12:00:03.000Z",
+  });
+  let childReads = 0;
+  let releaseChild!: () => void;
+  const childGate = new Promise<void>((resolve) => {
+    releaseChild = resolve;
+  });
+  let childProjectionApplied = false;
+  let taskSubmissions = 0;
+  let preflightPosts = 0;
+  const preflightRevisions: number[] = [];
+  let providerRequests = 0;
+  let boundTask: Record<string, unknown> | undefined;
+  const preSubmitFailure = "当前视频预检拒绝，未创建新任务";
+  const heldTitle = "等待标题保存后生成";
+  let titleSaveHeld = false;
+  let markTitleSaveStarted!: () => void;
+  const titleSaveStarted = new Promise<void>((resolve) => {
+    markTitleSaveStarted = resolve;
+  });
+  let releaseTitleSave!: () => void;
+  const titleSaveGate = new Promise<void>((resolve) => {
+    releaseTitleSave = resolve;
+  });
+
+  page.on("request", (entry) => {
+    if (/volces|openrouter|mureka/i.test(entry.url())) providerRequests += 1;
+  });
+  await page.addInitScript(({ parent, taskId }) => {
+    const state: {
+      parentGets: number;
+      parentReturned: boolean;
+      releaseParent?: () => void;
+    } = {
+      parentGets: 0,
+      parentReturned: false,
+    };
+    (window as typeof window & {
+      __m41VideoLateParent?: typeof state;
+    }).__m41VideoLateParent = state;
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      const raw = typeof input === "string" || input instanceof URL
+        ? String(input)
+        : input.url;
+      const url = new URL(raw, window.location.href);
+      const method = (init?.method ??
+        (input instanceof Request ? input.method : "GET")).toUpperCase();
+      if (
+        method === "GET" &&
+        url.pathname === `/api/generation-tasks/${taskId}`
+      ) {
+        state.parentGets += 1;
+        if (state.parentGets === 1) {
+          return new Promise<Response>((resolve) => {
+            state.releaseParent = () => {
+              state.parentReturned = true;
+              resolve(new Response(JSON.stringify(parent), {
+                headers: { "Content-Type": "application/json" },
+                status: 200,
+              }));
+            };
+          });
+        }
+        state.parentReturned = true;
+        return Promise.resolve(new Response(JSON.stringify(parent), {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        }));
+      }
+      return originalFetch(input, init);
+    }) as typeof window.fetch;
+  }, { parent: parentTask, taskId: parentTaskId });
+
+  await page.route("**/api/models", async (route) => {
+    await route.fulfill({
+      json: {
+        generationEnabled: true,
+        models: [{
+          capability: kind,
+          displayName: "Late parent video",
+          generationAvailable: true,
+          generationUnavailableReason: "",
+          generationUnavailableReasonCode: null,
+          ...modelInputs.video,
+          isDefault: true,
+          parameterSchema: schemas.video,
+        }],
+      },
+      status: 200,
+    });
+  });
+  await page.route("**/api/canvas/default", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const response = await request.get("/api/canvas/default");
+    const document = await response.json() as {
+      nodes?: Array<{ data?: Record<string, unknown>; id?: string }>;
+    };
+    const nodes = document.nodes?.map((node) => {
+      if (node.id !== nodeId(kind) || !boundTask) return node;
+      const task = childProjectionApplied
+        ? successfulChild()
+        : boundTask;
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          ...(childProjectionApplied
+            ? authoritativeGenerationSuccessData(
+                kind,
+                task as unknown as GenerationTaskSummary,
+              )
+            : authoritativeGenerationBindingData(
+                kind,
+                task as unknown as GenerationTaskSummary,
+              )),
+        },
+      };
+    });
+    await route.fulfill({
+      json: { ...document, nodes },
+      status: response.status(),
+    });
+  });
+  await page.route("**/api/generation-tasks**", async (route) => {
+    const inbound = route.request();
+    const url = new URL(inbound.url());
+    if (url.pathname.endsWith("/status")) {
+      await route.fulfill({
+        json: {
+          paidProviderRequests: 0,
+          persistentQueueReady: true,
+          providerConfigured: true,
+          submissionEnabled: true,
+        },
+        status: 200,
+      });
+      return;
+    }
+    if (url.pathname.endsWith("/by-idempotency")) {
+      await route.fulfill({ json: { error: "not found" }, status: 404 });
+      return;
+    }
+    if (url.pathname.endsWith("/preflight") && inbound.method() === "POST") {
+      preflightPosts += 1;
+      const preflightBody = inbound.postDataJSON() as {
+        canvasRevision?: unknown;
+      };
+      if (Number.isSafeInteger(preflightBody.canvasRevision)) {
+        preflightRevisions.push(Number(preflightBody.canvasRevision));
+      }
+      if (preflightPosts === 1) {
+        await route.fulfill({
+          json: {
+            canEnqueue: false,
+            canSubmit: false,
+            canvasRevision: inbound.postDataJSON().canvasRevision,
+            enqueueProblem: {
+              code: "GENERATION_ADMISSION_BLOCKED",
+              message: preSubmitFailure,
+            },
+            problems: [],
+          },
+          status: 200,
+        });
+        return;
+      }
+      await route.fulfill({
+        json: {
+          canEnqueue: true,
+          canSubmit: true,
+          canvasRevision: inbound.postDataJSON().canvasRevision,
+          problems: [],
+        },
+        status: 200,
+      });
+      return;
+    }
+    if (url.pathname === "/api/generation-tasks" && inbound.method() === "GET") {
+      await route.fulfill({
+        json: { tasks: boundTask ? [boundTask] : [] },
+        status: 200,
+      });
+      return;
+    }
+    if (url.pathname === "/api/generation-tasks" && inbound.method() === "POST") {
+      taskSubmissions += 1;
+      const body = inbound.postDataJSON() as SubmittedGenerationIdentity & {
+        model?: string;
+        prompt?: string;
+      };
+      childTask = {
+        ...childTask,
+        ...submittedGenerationIdentity(body),
+        model: body.model ?? childTask.model,
+        prompt: body.prompt ?? childTask.prompt,
+      };
+      boundTask = childTask as unknown as Record<string, unknown>;
+      await route.fulfill({ json: childTask, status: 202 });
+      return;
+    }
+    if (
+      url.pathname === `/api/generation-tasks/${childTaskId}` &&
+      inbound.method() === "GET"
+    ) {
+      childReads += 1;
+      await childGate;
+      childProjectionApplied = true;
+      await route.fulfill({ json: successfulChild(), status: 200 });
+      return;
+    }
+    await route.fulfill({ json: { error: "unexpected" }, status: 404 });
+  });
+
+  await page.route("**/api/canvases/default/commands", async (route) => {
+    if (route.request().method() !== "POST" || titleSaveHeld) {
+      await route.fallback();
+      return;
+    }
+    let body: {
+      changes?: Array<{
+        field?: unknown;
+        nodeId?: unknown;
+        value?: unknown;
+      }>;
+      kind?: unknown;
+    };
+    try {
+      body = route.request().postDataJSON() as typeof body;
+    } catch {
+      await route.fallback();
+      return;
+    }
+    const heldTitleChange = body.kind === "apply-user-field-changes" &&
+      body.changes?.some((change) =>
+        change.nodeId === nodeId(kind) &&
+        change.field === "data.title" &&
+        change.value === heldTitle
+      );
+    if (!heldTitleChange) {
+      await route.fallback();
+      return;
+    }
+    titleSaveHeld = true;
+    markTitleSaveStarted();
+    await titleSaveGate;
+    await route.fallback();
+  });
+
+  await request.delete("/api/canvas/default");
+  const [baseNode] = canvasNodes(kind);
+  expect((await request.put("/api/canvas/default", {
+    data: {
+      edges: [],
+      nodes: [{
+        ...baseNode,
+        data: {
+          ...baseNode.data,
+          ...generationNodeIdentityData(kind, staleIdentity),
+          videoGenerationInputKey: staleIdentity.generationInputKey,
+          videoGenerationOwnershipKey: staleIdentity.generationOwnershipKey,
+          videoGenerationTaskId: parentTaskId,
+          videoGenerating: false,
+          videoPromptReady: true,
+          videoSrc: undefined,
+        },
+      }],
+      revision: 0,
+      viewport: { x: 0, y: 0, zoom: 0.75 },
+    },
+  })).ok()).toBeTruthy();
+
+  try {
+    await page.goto("/canvas");
+    await expect(page.getByTestId("canvas-world"))
+      .toHaveAttribute("data-persistence-ready", "true");
+    await expect.poll(() => page.evaluate(() =>
+      (window as typeof window & {
+        __m41VideoLateParent?: { parentGets: number };
+      }).__m41VideoLateParent?.parentGets ?? 0,
+    )).toBeGreaterThanOrEqual(1);
+    await selectNode(page, kind);
+    const creator = page.getByTestId("video-creator");
+    const generate = creator.getByRole("button", { name: "Generate" });
+    await expect(generate).toBeEnabled();
+    await generate.click();
+    await expect(page.getByTestId(`video-node-${nodeId(kind)}`)
+      .locator(".video-node-upload-error")).toContainText(preSubmitFailure);
+    expect(preflightPosts).toBe(1);
+    expect(taskSubmissions).toBe(0);
+
+    const beforeTitleSave = await request.get("/api/canvas/default").then(
+      async (response) => await response.json() as CanvasReadDocument,
+    );
+    await changeNodeTitle(page, kind, "只改变标题，不改变视频输入");
+    await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
+    const afterTitleSave = await request.get("/api/canvas/default").then(
+      async (response) => await response.json() as CanvasReadDocument,
+    );
+    expect(afterTitleSave.revision).toBeGreaterThan(beforeTitleSave.revision);
+    await expect(page.getByTestId(`video-node-${nodeId(kind)}`)
+      .locator(".video-node-upload-error")).toContainText(preSubmitFailure);
+
+    const beforeHeldTitleSave = await request.get("/api/canvas/default").then(
+      async (response) => await response.json() as CanvasReadDocument,
+    );
+    await changeNodeTitle(page, kind, heldTitle);
+    await titleSaveStarted;
+    expect(titleSaveHeld).toBe(true);
+    const duringHeldTitleSave = await request.get("/api/canvas/default").then(
+      async (response) => await response.json() as CanvasReadDocument,
+    );
+    expect(duringHeldTitleSave.revision).toBe(beforeHeldTitleSave.revision);
+    // generationTasks.preflight.canvasRevision is the persisted input-graph
+    // revision (graph_revision), while a title-only command advances the
+    // complete document revision only.
+    expect(duringHeldTitleSave.graphRevision)
+      .toBe(beforeHeldTitleSave.graphRevision);
+    await expect(generate).toBeEnabled();
+    await generate.click();
+    // The second Generate starts while the title-only Canvas command is still
+    // in flight. Its eventual release advances the authoritative revision;
+    // the video admission must refresh that revision without treating the
+    // unchanged semantic input as stale.
+    expect(taskSubmissions).toBe(0);
+    releaseTitleSave();
+    await expect.poll(() => taskSubmissions).toBe(1);
+    await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
+    const afterHeldTitleSave = await request.get("/api/canvas/default").then(
+      async (response) => await response.json() as CanvasReadDocument,
+    );
+    expect(afterHeldTitleSave.revision)
+      .toBeGreaterThan(beforeHeldTitleSave.revision);
+    expect(afterHeldTitleSave.graphRevision)
+      .toBe(beforeHeldTitleSave.graphRevision);
+    expect(preflightRevisions).toHaveLength(2);
+    expect(preflightRevisions[1])
+      .toBe(afterHeldTitleSave.graphRevision);
+    await page.evaluate(() => {
+      (window as typeof window & {
+        __m41VideoLateParent?: { releaseParent?: () => void };
+      }).__m41VideoLateParent?.releaseParent?.();
+    });
+    await expect.poll(() => page.evaluate(() =>
+      (window as typeof window & {
+        __m41VideoLateParent?: { parentReturned: boolean };
+      }).__m41VideoLateParent?.parentReturned ?? false,
+    )).toBe(true);
+    await expect.poll(() => childReads).toBeGreaterThanOrEqual(1);
+    releaseChild();
+
+    await expect(page.getByTestId("video-node-preview"))
+      .toHaveAttribute("src", resultUrl);
+    const finalCanvas = await readPageCanvas(page);
+    const finalData = finalCanvas.nodes.find(
+      (node) => node.id === nodeId(kind),
+    )?.data ?? {};
+    expect(finalData).toEqual(expect.objectContaining({
+      groupRunSuccessTaskId: childTaskId,
+      groupRunSuccessOwnershipKey: childTask.generationOwnershipKey,
+      videoSrc: resultUrl,
+    }));
+    expect(finalData.videoGenerationError).toBeUndefined();
+    expect(finalData.videoGenerationErrorCode).toBeUndefined();
+    await expect(page.getByTestId(`video-node-${nodeId(kind)}`))
+      .not.toContainText(oldError);
+    expect(preflightPosts).toBe(2);
+    expect(taskSubmissions).toBe(1);
+    expect(providerRequests).toBe(0);
+  } finally {
+    releaseTitleSave();
+    await page.evaluate(() => {
+      (window as typeof window & {
+        __m41VideoLateParent?: { releaseParent?: () => void };
+      }).__m41VideoLateParent?.releaseParent?.();
+    }).catch(() => undefined);
+    releaseChild();
+    await request.delete("/api/canvas/default");
+  }
+});
+
+test("Video blocks generation while metadata is pending and rejects a different returned asset", async ({
+  page,
+  request,
+}) => {
+  const kind = "video" as const;
+  const sourceId = "m41-video-metadata-source";
+  const sourceAssetId = "m41-video-metadata-source-asset";
+  const changedAssetId = "m41-video-metadata-changed-asset";
+  const textSourceId = "m41-video-metadata-text-source";
+  const originalText = "等待元数据时的初始文字来源";
+  const changedText = "等待元数据时修改后的文字来源";
+  const targetId = nodeId(kind);
+  const routes = await installRoutes(page, true);
+  let metadataReads = 0;
+  let metadataRequestedAssetId = "";
+  let metadataGate!: Promise<void>;
+  let releaseMetadata!: () => void;
+  const holdMetadata = () => {
+    metadataGate = new Promise<void>((resolve) => {
+      releaseMetadata = resolve;
+    });
+  };
+  holdMetadata();
+
+  const metadata = (assetId: string) => ({
+    assetId,
+    byteSize: 1_024,
+    contentType: "image/png",
+    durationSeconds: null,
+    durationStatus: "not-applicable" as const,
+    kind: "image" as const,
+    mediaHeight: 720,
+    mediaWidth: 1_280,
+    storageBackend: "local" as const,
+  });
+
+  // The off-screen source is deliberately missing only a trusted width. The
+  // test model keeps the reference contract open so the button can enter the
+  // real submission preparation path; VideoNode must fetch and re-check
+  // metadata before it can create a paid task.
+  const [sourceBase] = canvasNodes("image");
+  const [textSourceBase] = canvasNodes("text");
+  const [targetBase] = canvasNodes(kind);
+  const sourceNode = {
+    ...sourceBase,
+    data: {
+      ...sourceBase.data,
+      assetId: sourceAssetId,
+      imageSrc: mediaAssetUrl("image", sourceAssetId),
+      inputState: "ready",
+      mediaByteSize: 1_024,
+      mediaContentType: "image/png",
+      mediaHeight: 720,
+      mediaMetadataSource: "server",
+      mediaMetadataStatus: "ready",
+      mediaStorageBackend: "local",
+    },
+    id: sourceId,
+    position: { x: 6_000, y: 6_000 },
+    selected: false,
+  };
+  const textSourceNode = {
+    ...textSourceBase,
+    data: {
+      ...textSourceBase.data,
+      content: originalText,
+      contentHtml: `<p>${originalText}</p>`,
+      label: "Text",
+      title: "视频文字来源",
+    },
+    id: textSourceId,
+    position: { x: 620, y: 80 },
+    selected: false,
+  };
+  const upstreamEdge = {
+    data: { inputOrder: 1, inputRole: "reference-image" },
+    id: "m41-video-metadata-edge",
+    source: sourceId,
+    sourceHandle: "source",
+    target: targetId,
+    targetHandle: "target",
+    type: "cuttable",
+  };
+  const textUpstreamEdge = {
+    data: { inputOrder: 2, inputRole: "instruction" },
+    id: "m41-video-metadata-text-edge",
+    source: textSourceId,
+    sourceHandle: "source",
+    target: targetId,
+    targetHandle: "target",
+    type: "cuttable",
+  };
+  const targetNode = {
+    ...targetBase,
+    data: {
+      ...targetBase.data,
+      videoParameters: {
+        ...defaultParameterValues(schemas.video),
+        inputMode: "multimodal",
+      },
+    },
+  };
+
+  await page.route("**/api/models", async (route) => {
+    // Omit model-level file rules so this test reaches the admission metadata
+    // gate independently of the ordinary reference-format preflight.
+    const { referenceMediaRules: _ignored, ...videoSchema } = schemas.video;
+    await route.fulfill({
+      json: {
+        generationEnabled: true,
+        models: [{
+          capability: kind,
+          displayName: "Metadata guarded video",
+          generationAvailable: true,
+          generationUnavailableReason: "",
+          generationUnavailableReasonCode: null,
+          ...modelInputs.video,
+          isDefault: true,
+          parameterSchema: videoSchema,
+        }],
+      },
+      status: 200,
+    });
+  });
+  await page.route("**/api/media-metadata/image/*", async (route) => {
+    metadataReads += 1;
+    metadataRequestedAssetId = decodeURIComponent(
+      new URL(route.request().url()).pathname.split("/").at(-1) ?? "",
+    );
+    await metadataGate;
+    // The first attempt receives a different asset and must fail closed. The
+    // second attempt receives the requested asset, but the connected Text
+    // source is edited while this response is still in flight.
+    await route.fulfill({
+      json: metadata(metadataReads === 1 ? changedAssetId : sourceAssetId),
+      status: 200,
+    });
+  });
+
+  await request.delete("/api/canvas/default");
+  expect((await request.put("/api/canvas/default", {
+    data: {
+      edges: [upstreamEdge, textUpstreamEdge],
+      nodes: [sourceNode, textSourceNode, targetNode],
+      revision: 0,
+      viewport: { x: 0, y: 0, zoom: 0.75 },
+    },
+  })).ok()).toBeTruthy();
+
+  try {
+    await page.goto("/canvas");
+    await expect(page.getByTestId("canvas-world"))
+      .toHaveAttribute("data-persistence-ready", "true");
+    await selectNode(page, kind);
+    const generate = page.getByTestId(`${kind}-creator`)
+      .getByRole("button", { name: "Generate" });
+    await expect(generate).toBeEnabled();
+    await generate.click();
+    await expect.poll(() => metadataReads).toBe(1);
+    expect(metadataRequestedAssetId).toBe(sourceAssetId);
+    // The request is held at the metadata boundary. No task may be created
+    // while that identity check is still unresolved.
+    expect(routes.taskSubmissions()).toBe(0);
+    releaseMetadata();
+    await expect(page.getByTestId(`${kind}-node-${targetId}`)
+      .locator(".video-node-upload-error"))
+      .toContainText("素材信息已变化");
+    expect(routes.taskSubmissions()).toBe(0);
+    expect(routes.providerRequests()).toBe(0);
+
+    // Re-run with the correct image metadata. The request remains unresolved
+    // while the user edits the connected Text node through its real editor;
+    // the changed semantic input must stop before the generation POST.
+    holdMetadata();
+    await selectNode(page, kind);
+    await expect(generate).toBeEnabled();
+    await generate.click();
+    await expect.poll(() => metadataReads).toBe(2);
+    expect(metadataRequestedAssetId).toBe(sourceAssetId);
+    await expect(page.getByTestId("video-creator")
+      .locator("button.video-creator-generate")).toBeDisabled();
+
+    const textSource = page.locator(
+      `.react-flow__node[data-id="${textSourceId}"]`,
+    );
+    await expect(textSource).toBeVisible();
+    await textSource.click({ force: true });
+    await textSource.getByTestId("canvas-node-text-content")
+      .dispatchEvent("dblclick");
+    const textEditor = textSource.getByTestId("text-node-editor");
+    await expect(textEditor).toHaveAttribute("contenteditable", "true");
+    await textEditor.fill(changedText);
+    await textEditor.press("Escape");
+    await expect(textEditor).toHaveText(changedText);
+    releaseMetadata();
+    try {
+      await expect(page.getByTestId(`${kind}-node-${targetId}`)
+        .locator(".video-node-upload-error"))
+        .toContainText("生成输入已修改");
+    } catch (error) {
+      console.log("[metadata-input-change-diagnostic]", JSON.stringify({
+        submissions: routes.taskSubmissions(),
+        providerRequests: routes.providerRequests(),
+        metadataReads,
+        videoCards: await page.locator('[data-testid^="video-node-"]').evaluateAll(
+          (nodes) => nodes.map((node) => ({ id: node.getAttribute("data-testid"), text: node.textContent })),
+        ),
+        notices: await page.locator('.provider-error-notice').allTextContents(),
+        body: (await page.locator('body').innerText()).slice(0, 2500),
+        canvas: await readPageCanvas(page),
+      }));
+      throw error;
+    }
+    expect(routes.taskSubmissions()).toBe(0);
+    expect(routes.providerRequests()).toBe(0);
+  } finally {
+    releaseMetadata();
+    await request.delete("/api/canvas/default");
+  }
+});

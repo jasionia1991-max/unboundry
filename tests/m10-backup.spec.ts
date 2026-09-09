@@ -16,6 +16,7 @@ import {
   open,
   opendir,
   readFile,
+  readlink,
   readdir,
   realpath,
   rename,
@@ -66,6 +67,7 @@ import {
   rehydrateFakeOss,
 } from "../server/fakeOssRecovery";
 import { createRuntimeLifecycle } from "../server/runtimeLifecycle";
+import { createRuntimeRoleCoordinator } from "../server/runtimeRole";
 import { openLibraryDatabase } from
   "../server/library/internal/libraryStore";
 
@@ -1406,6 +1408,143 @@ function backupOptions(fixture: Fixture) {
   };
 }
 
+async function stoppedProcessProofForBackupTest() {
+  const child = spawn(process.execPath, [
+    "-e",
+    "setInterval(() => {}, 1000)",
+  ], { stdio: "ignore" });
+  const pid = child.pid;
+  if (!pid || pid <= 1) throw new Error("backup proof child did not start");
+  let startTicks = "1";
+  let pidNamespace = `${process.platform}:host`;
+  try {
+    if (process.platform === "linux") {
+      const stat = await readFile(`/proc/${pid}/stat`, "utf8");
+      const commandEnd = stat.lastIndexOf(")");
+      const fields = stat.slice(commandEnd + 2).trim().split(/\s+/);
+      startTicks = fields[19] ?? startTicks;
+      pidNamespace = await readlink("/proc/self/ns/pid");
+    }
+  } finally {
+    child.kill("SIGKILL");
+    await new Promise<void>((resolve, reject) => {
+      if (child.exitCode !== null || child.signalCode !== null) {
+        resolve();
+        return;
+      }
+      child.once("error", reject);
+      child.once("exit", () => resolve());
+    });
+  }
+  return Object.freeze({ pid, pidNamespace, startTicks });
+}
+
+async function prepareQuiescedBackupFixture(root: string) {
+  const fixture = await createBackupFixture(root);
+  const providerAttemptAt = "2026-01-01T00:00:00.000Z";
+  const generationFrozenAt = "2026-01-01T00:02:00.000Z";
+  fixture.database.exec("PRAGMA foreign_keys = ON");
+  fixture.database.prepare(`
+    UPDATE generation_tasks
+    SET state = 'recovering', attempt = 1,
+      error_code = 'AUTOMATIC_RESULT_RECOVERY',
+      error_message = 'synthetic unresolved Provider boundary',
+      model = 'synthetic/backup-model', provider_profile_id = 'provider-one',
+      provider_model_id = 'synthetic/backup-model', credential_revision = 0,
+      updated_at = ?
+    WHERE id = 'backup-task'
+  `).run(providerAttemptAt);
+  fixture.database.prepare(`
+    INSERT INTO generation_task_events (
+      task_id, state, error_code, error_message, created_at
+    ) VALUES (?, 'recovering', 'AUTOMATIC_RESULT_RECOVERY', ?, ?)
+  `).run(
+    "backup-task",
+    "synthetic unresolved Provider boundary",
+    providerAttemptAt,
+  );
+  fixture.database.prepare(`
+    INSERT INTO generation_provider_attempts (
+      task_id, execution_attempt, provider_profile_id, provider_model_id,
+      kind, evidence, created_at, owner_id, credential_revision, outcome,
+      provider_task_id, failure_code, finished_at
+    ) VALUES (?, 1, ?, ?, 'image', 'provider-boundary', ?, ?, 0,
+      'outcome-unknown', NULL, 'OUTCOME_UNKNOWN_BILLING_RISK', NULL)
+  `).run(
+    "backup-task",
+    "provider-one",
+    "synthetic/backup-model",
+    providerAttemptAt,
+    "backup-user",
+  );
+  fixture.database.prepare(`
+    INSERT INTO generation_admission_events (
+      task_id, execution_attempt, owner_id, kind, admission_type, created_at
+    ) VALUES (?, 1, ?, 'image', 'initial', ?)
+  `).run("backup-task", "backup-user", providerAttemptAt);
+  fixture.database.prepare(`
+    INSERT INTO generation_tasks (
+      id, canvas_id, node_id, kind, prompt, model, parameters,
+      idempotency_key, request_fingerprint, state, attempt, error_code,
+      error_message, created_at, updated_at, owner_id, provider_profile_id,
+      provider_model_id, provider_task_id, model_configuration, credential_revision
+    ) VALUES (
+      'historical-settled-task', 'backup-project', 'historical-node', 'image',
+      'synthetic historical settled task', 'synthetic/backup-model', '{}',
+      'historical-idempotency', 'historical-fingerprint', 'failed', 1,
+      'PROVIDER_FAILED', 'synthetic historical terminal boundary', ?, ?,
+      'backup-user', 'provider-one', 'synthetic/backup-model',
+      'historical-provider-id', '{}', 0
+    )
+  `).run(providerAttemptAt, providerAttemptAt);
+  fixture.database.prepare(`
+    INSERT INTO generation_task_events (
+      task_id, state, error_code, error_message, created_at
+    ) VALUES ('historical-settled-task', 'failed', 'PROVIDER_FAILED', ?, ?)
+  `).run("synthetic historical terminal boundary", providerAttemptAt);
+  fixture.database.prepare(`
+    INSERT INTO generation_provider_attempts (
+      task_id, execution_attempt, provider_profile_id, provider_model_id,
+      kind, evidence, created_at, owner_id, credential_revision, outcome,
+      provider_task_id, failure_code, finished_at
+    ) VALUES (
+      'historical-settled-task', 1, 'provider-one', 'synthetic/backup-model',
+      'image', 'provider-boundary', ?, 'backup-user', 0, 'response-received',
+      'historical-provider-id', 'GENERATION_FAILED', ?
+    )
+  `).run(providerAttemptAt, providerAttemptAt);
+  fixture.database.prepare(`
+    UPDATE generation_safety_settings
+    SET global_enabled = 0, emergency_stop = 1, updated_at = ?
+    WHERE id = 1
+  `).run(generationFrozenAt);
+  fixture.database.prepare(`
+    INSERT INTO admin_audit_events (
+      actor_user_id, action, details, created_at
+    ) VALUES ('backup-user', 'generation_safety.update', ?, ?)
+  `).run(JSON.stringify({
+    after: {
+      emergencyStop: true,
+      globalEnabled: false,
+      updatedAt: generationFrozenAt,
+    },
+  }), generationFrozenAt);
+  fixture.database.exec("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode = DELETE");
+  const inspection = inspectBackupDatabase(
+    join(fixture.dataDirectory, "unboundry.sqlite"),
+    fixture.dataDirectory,
+  );
+  const runtimeDirectory = join(root, "runtime");
+  await mkdir(runtimeDirectory, { mode: 0o700 });
+  return Object.freeze({
+    ...fixture,
+    expectedDatabaseLogicalSha256: inspection.logicalSha256,
+    generationFrozenAt,
+    providerAttemptAt,
+    runtimeDirectory,
+  });
+}
+
 function finalFrozenContract(
   fixture: Awaited<ReturnType<typeof createFinalSchema37Fixture>>,
 ) {
@@ -1428,6 +1567,231 @@ function verifyOptions(fixture: Fixture, packageDirectory: string) {
     trustedSigningPublicKey: fixture.keys.signing.publicKey,
   };
 }
+
+test("quiesced active preservation keeps one unknown task exact through verify and restore", async () => {
+  const root = await mkdtemp(join(tmpdir(), "unboundry-quiesced-preservation-"));
+  let fixture: Awaited<ReturnType<typeof prepareQuiescedBackupFixture>> | undefined;
+  let coordinator: ReturnType<typeof createRuntimeRoleCoordinator> | undefined;
+  try {
+    fixture = await prepareQuiescedBackupFixture(root);
+    const initialCoordinator = createRuntimeRoleCoordinator({
+      dataDirectory: fixture.dataDirectory,
+      role: "active",
+      runtimeDirectory: fixture.runtimeDirectory,
+    });
+    await expect(initialCoordinator.beginDrain(1_000)).resolves.toEqual({
+      activeExecutions: 0,
+      drained: true,
+    });
+    initialCoordinator.releaseAfterDrain();
+
+    const stoppedProcess = await stoppedProcessProofForBackupTest();
+    const heldCoordinator = createRuntimeRoleCoordinator({
+      dataDirectory: fixture.dataDirectory,
+      requireExistingLease: true,
+      role: "active",
+      runtimeDirectory: fixture.runtimeDirectory,
+    });
+    coordinator = heldCoordinator;
+    await expect(heldCoordinator.beginDrain(1_000)).resolves.toEqual({
+      activeExecutions: 0,
+      drained: true,
+    });
+    const quiescedSourceContract = {
+      expectedDatabaseLogicalSha256: fixture.expectedDatabaseLogicalSha256,
+      expectedSchemaVersion: 43 as const,
+      freezeEvidence: {
+        generationFrozenAt: fixture.generationFrozenAt,
+        lastProviderAdmissionAt: fixture.providerAttemptAt,
+        sourceDatabaseLogicalSha256: fixture.expectedDatabaseLogicalSha256,
+      },
+      preservedTask: {
+        executionAttempt: 1,
+        taskId: "backup-task",
+      },
+      runtimeDirectory: fixture.runtimeDirectory,
+      stoppedProcess,
+    };
+    const backup = await createEncryptedBackup({
+      ...backupOptions(fixture),
+      capturePurpose: "quiesced-active-preservation",
+      mediaWarningAllowlist: ["MEDIA_INTEGRITY_LOCAL_FILE_ORPHAN"],
+      quiescedRuntimeLease: heldCoordinator,
+      quiescedSourceContract,
+    });
+    expect(backup).toMatchObject({
+      captureMode: "quiesced-active-preservation",
+      finalCandidate: false,
+      ossMirrors: 1,
+      schemaVersion: 43,
+    });
+    expect(heldCoordinator.assertLeaseHeldForBackup()).toMatchObject({
+      dataDirectory: fixture.dataDirectory,
+      runtimeDirectory: fixture.runtimeDirectory,
+    });
+    await expect(verifyEncryptedBackup({
+      ...verifyOptions(fixture, backup.packageDirectory),
+    })).resolves.toMatchObject({
+      captureMode: "quiesced-active-preservation",
+      finalCandidate: false,
+      ossMirrors: 1,
+    });
+    expect(heldCoordinator.assertLeaseHeldForBackup()).toBeTruthy();
+
+    const restoredDirectory = join(root, "restored");
+    await expect(restoreEncryptedBackup({
+      ...verifyOptions(fixture, backup.packageDirectory),
+      targetDirectory: restoredDirectory,
+    })).resolves.toMatchObject({
+      captureMode: "quiesced-active-preservation",
+      finalCandidate: false,
+      ossMirrors: 1,
+    });
+    expect(heldCoordinator.assertLeaseHeldForBackup()).toBeTruthy();
+    const restored = new DatabaseSync(join(restoredDirectory, "unboundry.sqlite"), {
+      readOnly: true,
+    });
+    try {
+      expect(restored.prepare(`
+        SELECT state, attempt, error_code, provider_task_id
+        FROM generation_tasks WHERE id = 'backup-task'
+      `).get()).toEqual({
+        attempt: 1,
+        error_code: "AUTOMATIC_RESULT_RECOVERY",
+        provider_task_id: null,
+        state: "recovering",
+      });
+      expect(restored.prepare(`
+        SELECT execution_attempt, evidence, outcome, provider_task_id
+        FROM generation_provider_attempts WHERE task_id = 'backup-task'
+      `).get()).toEqual({
+        execution_attempt: 1,
+        evidence: "provider-boundary",
+        outcome: "outcome-unknown",
+        provider_task_id: null,
+      });
+      expect(restored.prepare(`
+        SELECT COUNT(*) AS count
+        FROM generation_task_events WHERE task_id = 'backup-task'
+      `).get()).toEqual({ count: 2 });
+      expect(restored.prepare(`
+        SELECT COUNT(*) AS count
+        FROM generation_admission_events WHERE task_id = 'backup-task'
+      `).get()).toEqual({ count: 1 });
+      expect(restored.prepare(`
+        SELECT state, attempt, error_code, provider_task_id
+        FROM generation_tasks WHERE id = 'historical-settled-task'
+      `).get()).toEqual({
+        attempt: 1,
+        error_code: "PROVIDER_FAILED",
+        provider_task_id: "historical-provider-id",
+        state: "failed",
+      });
+      expect(restored.prepare(`
+        SELECT outcome, provider_task_id, finished_at
+        FROM generation_provider_attempts
+        WHERE task_id = 'historical-settled-task'
+      `).get()).toEqual({
+        finished_at: fixture.providerAttemptAt,
+        outcome: "response-received",
+        provider_task_id: "historical-provider-id",
+      });
+      expect(restored.prepare(`
+        SELECT storage_backend, object_key, storage_profile_id
+        FROM media_assets WHERE id = 'preserved-oss-image'
+      `).get()).toEqual({
+        object_key: fixture.objectKey,
+        storage_backend: "oss",
+        storage_profile_id: "storage-one",
+      });
+    } finally {
+      restored.close();
+    }
+  } finally {
+    if (coordinator) {
+      try {
+        coordinator.releaseAfterDrain();
+      } catch {}
+    }
+    fixture?.database.close();
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("quiesced active preservation rejects an extra current unresolved boundary", async () => {
+  const root = await mkdtemp(join(tmpdir(), "unboundry-quiesced-boundary-"));
+  let fixture: Awaited<ReturnType<typeof prepareQuiescedBackupFixture>> | undefined;
+  let coordinator: ReturnType<typeof createRuntimeRoleCoordinator> | undefined;
+  try {
+    fixture = await prepareQuiescedBackupFixture(root);
+    fixture.database.prepare(`
+      UPDATE generation_provider_attempts
+      SET outcome = 'outcome-unknown',
+          failure_code = 'OUTCOME_UNKNOWN_BILLING_RISK',
+          finished_at = NULL
+      WHERE task_id = 'historical-settled-task'
+    `).run();
+    const inspection = inspectBackupDatabase(
+      join(fixture.dataDirectory, "unboundry.sqlite"),
+      fixture.dataDirectory,
+    );
+    const initialCoordinator = createRuntimeRoleCoordinator({
+      dataDirectory: fixture.dataDirectory,
+      role: "active",
+      runtimeDirectory: fixture.runtimeDirectory,
+    });
+    await expect(initialCoordinator.beginDrain(1_000)).resolves.toEqual({
+      activeExecutions: 0,
+      drained: true,
+    });
+    initialCoordinator.releaseAfterDrain();
+
+    const stoppedProcess = await stoppedProcessProofForBackupTest();
+    const heldCoordinator = createRuntimeRoleCoordinator({
+      dataDirectory: fixture.dataDirectory,
+      requireExistingLease: true,
+      role: "active",
+      runtimeDirectory: fixture.runtimeDirectory,
+    });
+    coordinator = heldCoordinator;
+    await expect(heldCoordinator.beginDrain(1_000)).resolves.toEqual({
+      activeExecutions: 0,
+      drained: true,
+    });
+    await expectPackageError(
+      createEncryptedBackup({
+        ...backupOptions(fixture),
+        capturePurpose: "quiesced-active-preservation",
+        mediaWarningAllowlist: ["MEDIA_INTEGRITY_LOCAL_FILE_ORPHAN"],
+        quiescedRuntimeLease: heldCoordinator,
+        quiescedSourceContract: {
+          expectedDatabaseLogicalSha256: inspection.logicalSha256,
+          expectedSchemaVersion: 43 as const,
+          freezeEvidence: {
+            generationFrozenAt: fixture.generationFrozenAt,
+            lastProviderAdmissionAt: fixture.providerAttemptAt,
+            sourceDatabaseLogicalSha256: inspection.logicalSha256,
+          },
+          preservedTask: {
+            executionAttempt: 1,
+            taskId: "backup-task",
+          },
+          runtimeDirectory: fixture.runtimeDirectory,
+          stoppedProcess,
+        },
+      }),
+      "BACKUP_QUIESCED_UNLISTED_BOUNDARY",
+    );
+  } finally {
+    if (coordinator) {
+      try {
+        coordinator.releaseAfterDrain();
+      } catch {}
+    }
+    fixture?.database.close();
+    await rm(root, { force: true, recursive: true });
+  }
+});
 
 async function expectPackageError(
   operation: Promise<unknown>,
@@ -2894,6 +3258,25 @@ test("backup CLI requires a freeze confirmation and external regular key files",
       ambiguousFreeze = error as Error & { stderr?: string };
     }
     expect(JSON.parse(ambiguousFreeze?.stderr ?? "{}")).toMatchObject({
+      code: "BACKUP_ARGUMENT_INVALID",
+    });
+    let misplacedQuiescedProof: (Error & { stderr?: string }) | undefined;
+    try {
+      await execute(
+        process.execPath,
+        [
+          ...baseArguments,
+          "--source-frozen",
+          "--external-freeze-non-final",
+          "--previous-pid",
+          "123",
+        ],
+        { cwd: process.cwd() },
+      );
+    } catch (error) {
+      misplacedQuiescedProof = error as Error & { stderr?: string };
+    }
+    expect(JSON.parse(misplacedQuiescedProof?.stderr ?? "{}")).toMatchObject({
       code: "BACKUP_ARGUMENT_INVALID",
     });
 
@@ -4653,9 +5036,16 @@ test("final-candidate preflight rejects physical path aliases and keys under wor
         });
         expect(notification).toBe(`inventory:${kind}`);
         if (kind === "build") {
+          const bridgeReleaseDirectory = dirname(
+            swapFixture.releaseManifests.bridge,
+          );
+          const bridgeDistDirectory = join(bridgeReleaseDirectory, "dist");
           artifactModes = await makeArtifactPathsWritable([
-            dirname(swapFixture.releaseManifests.bridge),
-            join(dirname(swapFixture.releaseManifests.bridge), "dist"),
+            bridgeReleaseDirectory,
+            bridgeDistDirectory,
+            // Let the synthetic source directory participate in the rename
+            // probe on hosted macOS too; finally restores its original mode.
+            rootToSwap,
           ]);
         }
         await rename(rootToSwap, displacedRoot);

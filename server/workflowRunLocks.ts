@@ -218,3 +218,18 @@ export function deleteWorkflowRunsForOwnerInTransaction(
   }
   database.prepare("DELETE FROM workflow_runs WHERE owner_id = ?").run(ownerId);
 }
+
+/** A new single-node admission may replace only the failed node of a terminal run. */
+export function failedWorkflowNodeReplacementInTransaction(input: {
+  database: DatabaseSync; runId: string; taskId: string; nodeId: string;
+  canvasId: string; ownerId: string;
+}) {
+  return Boolean(input.database.prepare(`SELECT 1
+    FROM workflow_runs AS run JOIN workflow_run_nodes AS node ON node.run_id = run.id
+    WHERE run.id = ? AND run.owner_id = ? AND run.canvas_id = ? AND run.state = 'failed'
+      AND node.node_id = ? AND node.task_id = ? AND node.state = 'failed'
+      AND NOT EXISTS (SELECT 1 FROM workflow_run_locks AS lock
+        WHERE lock.owner_id = run.owner_id AND lock.canvas_id = run.canvas_id
+          AND lock.node_id = node.node_id)
+  `).get(input.runId, input.ownerId, input.canvasId, input.nodeId, input.taskId));
+}

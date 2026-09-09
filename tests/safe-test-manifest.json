@@ -75,7 +75,8 @@
     "tests/m86-canvas-load-safety.spec.ts",
     "tests/m9-provider-secret-safety.spec.ts",
     "tests/m98-canvas-ui-recovery.spec.ts",
-    "tests/m102-model-execution-contracts.spec.ts"
+    "tests/m102-model-execution-contracts.spec.ts",
+    "tests/m41-generation-recovery-cases-ui.spec.ts"
   ],
   "hybrid": [
     "tests/m12-model-catalog.spec.ts",
@@ -119,7 +120,11 @@
     "tests/m104-canvas-command-gateway.spec.ts",
     "tests/m105-canvas-writer-manifest.spec.ts",
     "tests/m106-canvas-observability.spec.ts",
-    "tests/m107-performance-reliability.spec.ts"
+    "tests/m107-performance-reliability.spec.ts",
+    "tests/m40-generation-recovery-scheduler.spec.ts",
+    "tests/m5-generation-recovery-cases.spec.ts",
+    "tests/m5-generation-recovery-original-commands.spec.ts",
+    "tests/m40-generation-recovery-worker.spec.ts"
   ],
   "preview": [
     "tests/fixture-production.spec.ts",
@@ -135,6 +140,7 @@
     "tests/m78-account-permissions.spec.ts",
     "tests/m80-storage-read-rule.spec.ts",
     "tests/m81-deployment-hardening.spec.ts",
-    "tests/m92-version-compatibility.spec.ts"
+    "tests/m92-version-compatibility.spec.ts",
+    "tests/m78-generation-recovery-api.spec.ts"
   ]
 }

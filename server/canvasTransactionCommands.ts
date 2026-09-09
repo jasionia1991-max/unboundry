@@ -24,6 +24,31 @@ export type MutableCanvasDocument = {
   viewport: { x: number; y: number; zoom: number };
 };
 
+/** Exact local snapshot for generation maintenance CAS; never a Canvas writer. */
+export const readGenerationRecoveryCanvasCommand: TransactionScopedCommand<Readonly<{
+  ownerId: string; canvasId: string; nodeId: string;
+}>, Readonly<{ canvas?: Readonly<{
+  owner_id: string | null; id: string; revision: number; graph_revision: number;
+  nodes: string; edges: string; viewport: string; updated_at: string;
+  save_session_id: string | null; save_sequence: number;
+}>; canvasNode?: Readonly<Record<string, unknown>> }>> = {
+  execute(scope, input) {
+    const canvas = scope.prepare(`SELECT owner_id,id,revision,graph_revision,nodes,edges,viewport,
+      updated_at,save_session_id,save_sequence FROM canvas_documents WHERE owner_id = ? AND id = ?`)
+      .get(input.ownerId, input.canvasId) as {
+        owner_id: string | null; id: string; revision: number; graph_revision: number;
+        nodes: string; edges: string; viewport: string; updated_at: string;
+        save_session_id: string | null; save_sequence: number;
+      } | undefined;
+    if (!canvas) return {};
+    const nodes: unknown = JSON.parse(canvas.nodes);
+    if (!Array.isArray(nodes)) throw new Error("Recovery Canvas snapshot is damaged");
+    const node: unknown = nodes.find((value) => value && typeof value === "object" && value.id === input.nodeId);
+    return { canvas, ...(node && typeof node === "object" && !Array.isArray(node)
+      ? { canvasNode: node as Readonly<Record<string, unknown>> } : {}) };
+  },
+};
+
 export const readCanvasRevisionCommand: TransactionScopedCommand<Readonly<{
   canvasId: string;
   ownerId: string;

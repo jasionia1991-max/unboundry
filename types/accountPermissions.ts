@@ -7,6 +7,7 @@ export type AccountPermission =
   | "manage_providers"
   | "manage_storage"
   | "manage_generation_safety"
+  | "manage_generation_recovery"
   | "manage_public_templates"
   | "manage_permissions"
   | "manage_projects"
@@ -21,6 +22,7 @@ export const ALL_PERMISSIONS: readonly AccountPermission[] = [
   "manage_providers",
   "manage_storage",
   "manage_generation_safety",
+  "manage_generation_recovery",
   "manage_public_templates",
   "manage_permissions",
   "manage_projects",
@@ -43,6 +45,7 @@ export const DEFAULT_USER_PERMISSIONS: readonly AccountPermission[] = [
 export const ADMIN_ONLY_PERMISSIONS: readonly AccountPermission[] = [
   "manage_accounts",
   "manage_permissions",
+  "manage_generation_recovery",
 ];
 
 export function isAccountPermission(
@@ -61,6 +64,7 @@ export function permissionLabel(permission: AccountPermission): string {
     manage_providers: "平台连接",
     manage_storage: "存储中心",
     manage_generation_safety: "生成安全",
+    manage_generation_recovery: "生成维护",
     manage_public_templates: "公共模板管理",
     manage_permissions: "权限管理",
     manage_projects: "项目管理",

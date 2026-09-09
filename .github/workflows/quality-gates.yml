@@ -27,6 +27,8 @@ jobs:
           echo "NPM_CONFIG_CACHE=$RUNNER_TEMP/unboundry-npm-cache" >> "$GITHUB_ENV"
           echo "UNBOUNDRY_NPM_CONTENT_CACHE=$RUNNER_TEMP/unboundry-npm-cache/_cacache" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v7
         with:
           node-version: 25.9.0
@@ -71,3 +73,32 @@ jobs:
         run: node scripts/check-source-coverage.mjs
       - name: Source coverage behavior
         run: node --test tests/source-coverage-behavior.test.mjs
+
+  backup-preservation:
+    runs-on: macos-15
+    timeout-minutes: 20
+    env:
+      NPM_CONFIG_REGISTRY: https://registry.npmjs.org/
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.23.1
+          cache: npm
+      - name: Backup safety npm
+        run: npm install --global npm@10.9.8
+      - name: Isolated backup test cache
+        run: |
+          echo "NPM_CONFIG_CACHE=$RUNNER_TEMP/unboundry-backup-npm-cache" >> "$GITHUB_ENV"
+          echo "UNBOUNDRY_NPM_CONTENT_CACHE=$RUNNER_TEMP/unboundry-backup-npm-cache/_cacache" >> "$GITHUB_ENV"
+      - run: npm ci --ignore-scripts
+      - name: Prepare exact legacy backup dependency cache
+        run: |
+          legacy_dependencies="$(mktemp -d "$RUNNER_TEMP/unboundry-v051-deps.XXXXXX")"
+          git --no-replace-objects show 7f7d6177a564056a6f41ff83dfb7ba913b21603b:package.json > "$legacy_dependencies/package.json"
+          git --no-replace-objects show 7f7d6177a564056a6f41ff83dfb7ba913b21603b:package-lock.json > "$legacy_dependencies/package-lock.json"
+          npm ci --prefix "$legacy_dependencies" --cache "$NPM_CONFIG_CACHE" --ignore-scripts --audit=false --fund=false
+      - name: Backup and runtime lease preservation (synthetic data only)
+        run: node scripts/run-safe-tests.mjs run --spec tests/m10-backup.spec.ts --spec tests/m93-runtime-role.spec.ts

@@ -285,7 +285,11 @@ test("an existing same-page intent remains exact-GET recoverable when storage be
     }
     if (parsed.pathname === "/api/generation-tasks" && init?.method === "POST") {
       submissionPosts += 1;
-      serverTask = task("image", input.nodeId, "task-memory-intent-recovery");
+      const body = JSON.parse(String(init.body)) as { idempotencyKey: string };
+      serverTask = {
+        ...task("image", input.nodeId, "task-memory-intent-recovery"),
+        idempotencyKey: body.idempotencyKey,
+      };
       return Response.json(serverTask, { status: 202 });
     }
     throw new Error(`Unexpected request: ${parsed.pathname}`);
@@ -358,6 +362,7 @@ test("shared four-node submission recovers a lost Text POST response and never c
       serverTask = {
         ...task(body.kind, body.nodeId, "task-created-before-response-loss"),
         ...identity,
+        idempotencyKey: body.idempotencyKey,
       };
       throw new TypeError("simulated lost POST response");
     }
@@ -503,6 +508,7 @@ test("initial submission reconciles one committed task after its response return
           "queued",
         ),
         ...identity,
+        idempotencyKey: body.idempotencyKey,
       };
       return Response.json({
         code: "GENERATION_TASK_ACCEPTED_RESPONSE_FAILED",
@@ -616,6 +622,7 @@ test("the same ownership key reuses one idempotency intent across catalog-derive
       const created = {
         ...task(body.kind, body.nodeId, "task-ownership-catalog-drift"),
         generationOwnershipKey: body.generationOwnershipKey,
+        idempotencyKey: body.idempotencyKey,
       };
       tasksByKey.set(body.idempotencyKey, created);
       return Response.json(created, { status: 202 });
@@ -1005,6 +1012,7 @@ test("durable failed work keeps one key across semantic drift until terminal cle
     const created = {
       ...task(body.kind, body.nodeId, `task-${postedKeys.length}`, "failed"),
       generationOwnershipKey: body.generationOwnershipKey,
+      idempotencyKey: body.idempotencyKey,
     };
     tasksByKey.set(body.idempotencyKey, created);
     return Response.json(created, { status: 202 });
@@ -1169,6 +1177,7 @@ for (const hungAt of ["fetch", "body"] as const) {
         serverTask = {
           ...task(body.kind, body.nodeId, `task-hung-${hungAt}`),
           ...identity,
+          idempotencyKey: body.idempotencyKey,
           fixtureScopeId: hungAt === "body" ? "fixture-b" : "fixture-a",
         };
         if (hungAt === "fetch") {

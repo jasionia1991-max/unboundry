@@ -4,6 +4,7 @@ import {
   link,
   mkdir,
   mkdtemp,
+  readlink,
   rename,
   rm,
   symlink,
@@ -14,6 +15,7 @@ import { join } from "node:path";
 import { expect, test } from "./safe-test";
 import { createRuntimeLifecycle } from "../server/runtimeLifecycle";
 import {
+  assertStoppedProcessProof,
   createRuntimeDrainRegistry,
   createRuntimeRoleCoordinator,
   RuntimeRoleError,
@@ -298,6 +300,92 @@ test("runtime roles are explicit and every non-active role denies writer capabil
       coordinator.close();
     }
   } finally {
+    await rm(paths.root, { force: true, recursive: true });
+  }
+});
+
+test("quiesced preservation reuses an existing lease and requires a stopped-process proof", async () => {
+  const paths = await privateDirectories();
+  let owner: ChildProcess | undefined;
+  let coordinator: ReturnType<typeof createRuntimeRoleCoordinator> | undefined;
+  try {
+    expect(() => createRuntimeRoleCoordinator({
+      dataDirectory: paths.dataDirectory,
+      requireExistingLease: true,
+      role: "active",
+      runtimeDirectory: paths.runtimeDirectory,
+    })).toThrow(expect.objectContaining({ code: "RUNTIME_ROLE_PATH_UNSAFE" }));
+    const ordinaryCoordinator = createRuntimeRoleCoordinator({
+      dataDirectory: paths.dataDirectory,
+      role: "active",
+      runtimeDirectory: paths.runtimeDirectory,
+    });
+    expect(() => ordinaryCoordinator.assertLeaseHeldForBackup()).toThrow(
+      expect.objectContaining({ code: "RUNTIME_ACTIVE_LEASE_UNAVAILABLE" }),
+    );
+    ordinaryCoordinator.close();
+
+    const initial = startActiveRoleChild(paths.dataDirectory, paths.runtimeDirectory);
+    owner = initial.child;
+    await expect(initial.ready).resolves.toMatchObject({
+      snapshot: { activeLeaseHeld: true, role: "active" },
+      type: "acquired",
+    });
+    owner.kill("SIGTERM");
+    await waitForExit(owner);
+    owner = undefined;
+
+    coordinator = createRuntimeRoleCoordinator({
+      dataDirectory: paths.dataDirectory,
+      requireExistingLease: true,
+      role: "active",
+      runtimeDirectory: paths.runtimeDirectory,
+    });
+    const probe = spawn(process.execPath, [
+      "-e",
+      "setInterval(() => {}, 1000)",
+    ], { stdio: "ignore" });
+    try {
+      const pid = probe.pid;
+      expect(pid).toBeGreaterThan(1);
+      probe.kill("SIGKILL");
+      await waitForExit(probe);
+      const pidNamespace = process.platform === "linux"
+        ? await readlink("/proc/self/ns/pid")
+        : `${process.platform}:host`;
+      expect(() => assertStoppedProcessProof({
+        pid: pid!,
+        pidNamespace: "different-namespace",
+        startTicks: "1",
+      })).toThrow(expect.objectContaining({ code: "RUNTIME_STOP_PROOF_INVALID" }));
+      expect(assertStoppedProcessProof({
+        pid: pid!,
+        pidNamespace,
+        startTicks: "1",
+      })).toMatchObject({ pid, pidNamespace, startTicks: "1" });
+
+      await expect(coordinator.beginDrain(1_000)).resolves.toEqual({
+        activeExecutions: 0,
+        drained: true,
+      });
+      expect(coordinator.assertLeaseHeldForBackup()).toMatchObject({
+        dataDirectory: paths.dataDirectory,
+        runtimeDirectory: paths.runtimeDirectory,
+      });
+    } finally {
+      if (probe.exitCode === null && probe.signalCode === null) probe.kill("SIGKILL");
+      await waitForExit(probe).catch(() => undefined);
+    }
+    coordinator.releaseAfterDrain();
+    coordinator = undefined;
+  } finally {
+    owner?.kill("SIGKILL");
+    if (owner) await waitForExit(owner).catch(() => undefined);
+    if (coordinator) {
+      try {
+        coordinator.close();
+      } catch {}
+    }
     await rm(paths.root, { force: true, recursive: true });
   }
 });

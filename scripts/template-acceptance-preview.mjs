@@ -9,6 +9,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { createServer as createHttpServer } from "node:http";
 import { build as viteBuild, createServer } from "vite";
 import { dirname, extname, join, relative, resolve, sep } from "node:path";
 
@@ -43,10 +44,23 @@ if (!Number.isInteger(port) || port < 42000 || port > 60000 || port === 4173) {
 const origin = `http://127.0.0.1:${port}`;
 const packagedVersion = JSON.parse(readFileSync(join(sourceRoot, "package.json"), "utf8")).version;
 const acceptanceScenario = process.env.UNBOUNDRY_TEST_ACCEPTANCE_SCENARIO ?? "generation-status";
-if (!["generation-status", "templates"].includes(acceptanceScenario)) {
+if (!["generation-status", "node-recovery", "templates"].includes(acceptanceScenario)) {
   throw new Error(`Unknown local acceptance scenario: ${acceptanceScenario}`);
 }
-const generationScenario = acceptanceScenario === "generation-status";
+const nodeRecoveryScenario = acceptanceScenario === "node-recovery";
+const generationScenario = acceptanceScenario === "generation-status" || nodeRecoveryScenario;
+// The node-recovery acceptance uses the real local application commands. The
+// fixture and its loopback provider are still synthetic, but the task/case
+// records, recovery commands, Canvas projection, and one-node retry all use
+// the same server modules as the product.
+const nodeRecoveryProductMode = nodeRecoveryScenario;
+if (nodeRecoveryProductMode) {
+  process.env.UNBOUNDRY_GENERATION_RECOVERY_CASES_ENABLED = "1";
+  // Keep the manual demonstration idle until its control buttons invoke the
+  // real recovery commands. The scheduled worker is covered by its regression suite.
+  process.env.UNBOUNDRY_DISABLE_GENERATION_RECOVERY_SWEEP = "1";
+  process.env.UNBOUNDRY_TEST_RELAY_MEDIA_FETCHER = "1";
+}
 const generationBaselineRoot = generationScenario
   ? realpathSync(required("UNBOUNDRY_GENERATION_STATUS_BASELINE_ROOT"))
   : undefined;
@@ -75,6 +89,26 @@ const generationTasks = new Map();
 // Helper-only observations; never sent as part of a product task response.
 const generationObservations = new Map();
 const generationChecks = { auto: "idle", manual: "idle", media: "idle" };
+const nodeRecoveryChecks = {
+  transient: "idle",
+  save: "idle",
+  retry: "idle",
+  unknown: "idle",
+};
+const nodeRecoveryState = {
+  retryMode: "",
+  retryAccepted: false,
+  saveFaultRemaining: 0,
+  saveFaultStatuses: [],
+};
+const recoveryCaseSummaryKeys = Object.freeze([
+  "taskId", "caseId", "canvasId", "nodeId", "kind", "executionAttempt", "phase",
+  "caseEventId", "progressVersion", "updatedAt", "unread", "reasonCode", "summary",
+  "status", "action",
+]);
+const recoveryCaseSummaryOptionalKeys = Object.freeze(["lastCheckedAt", "nextCheckAt"]);
+const nodeRecoveryRecoveryCases = new Map();
+let nodeRecoveryMaintenanceStage = "queued";
 const generationCounters = {
   browserCanvasCommandWrites: 0,
   browserCanvasWrites: 0,
@@ -95,8 +129,30 @@ let generationProjectionInFlight = false;
 let generationLastWriteSource = "browser";
 let generationDelayNextMs = 0;
 let generationDelayNextTaskId = "";
+let nodeRecoveryFixture;
+let nodeRecoveryProductFixture;
+let nodeRecoveryProductProvider;
+let nodeRecoveryProductNativeFetch;
+let nodeRecoveryProductProviderPort;
+const nodeRecoveryProviderStats = {
+  posts: 0,
+  gets: 0,
+  mediaGets: 0,
+  requests: [],
+};
+const nodeRecoveryProductChecks = {
+  original: "idle",
+  maintenance: "idle",
+  retry: "idle",
+};
+const nodeRecoveryProductStats = {
+  claims: 0,
+  inspections: 0,
+  progress: 0,
+  admissions: 0,
+};
 const startedAt = new Date();
-const expiresAt = new Date(startedAt.getTime() + 2 * 60 * 60_000);
+const expiresAt = new Date(startedAt.getTime() + (nodeRecoveryScenario ? 12 : 2) * 60 * 60_000);
 const digest = (graph) => createHash("sha256").update(JSON.stringify(graph)).digest("hex");
 const generationBaselineFiles = Object.freeze([
   "client/src/generation/taskPolling.ts",
@@ -136,18 +192,120 @@ function validateGenerationBaseline() {
     }
   }
 }
-async function api(path, method = "GET", body, contentType) {
+async function api(path, method = "GET", body, contentType, extraHeaders = {}) {
   const response = await fetch(`${origin}${path}`, {
     method,
     headers: {
       "x-acceptance-setup": setupToken,
       ...(adminCookie ? { Cookie: adminCookie.split(";")[0] } : {}),
+      ...extraHeaders,
       ...(body ? { "Content-Type": contentType ?? (Buffer.isBuffer(body) ? "image/png" : "application/json") } : {}),
     },
     ...(body ? { body: Buffer.isBuffer(body) ? body : JSON.stringify(body) } : {}),
   });
-  if (!response.ok) throw new Error(`Acceptance setup API ${path}: HTTP ${response.status}`);
+  if (!response.ok) {
+    const payload = await response.clone().json().catch(() => null);
+    const code = typeof payload?.code === "string" ? payload.code : typeof payload?.error?.code === "string" ? payload.error.code : "UNKNOWN";
+    throw new Error(`Acceptance setup API ${path}: HTTP ${response.status}, code=${code}`);
+  }
   return response;
+}
+
+const nodeRecoveryProductProviderUrl = "https://node-recovery-relay.example.test";
+const nodeRecoveryProductResultPath = "/node-recovery-result.mp4";
+
+async function startNodeRecoveryProductProvider() {
+  if (!nodeRecoveryProductMode || nodeRecoveryProductProvider) return;
+  nodeRecoveryProductNativeFetch = globalThis.fetch;
+  const resultPath = join(sourceRoot, "client/public/fixtures/video-success.mp4");
+  if (!existsSync(resultPath)) throw new Error("Node recovery loopback result fixture is missing");
+  const resultBytes = readFileSync(resultPath);
+  nodeRecoveryProductProvider = createHttpServer((req, res) => {
+    void (async () => {
+      const requestUrl = new URL(req.url ?? "/", "http://127.0.0.1");
+      const method = req.method ?? "GET";
+      const providerTaskId = requestUrl.searchParams.get("task_id");
+      nodeRecoveryProviderStats.requests.push({ method, path: requestUrl.pathname, taskId: providerTaskId });
+      if (method === "POST" && requestUrl.pathname === "/v1/media/generate") {
+        for await (const chunk of req) void chunk;
+        nodeRecoveryProviderStats.posts += 1;
+        json(res, 200, { task_id: "node-recovery-child-provider" });
+        return;
+      }
+      if (method === "GET" && requestUrl.pathname === "/v1/skills/task-status") {
+        nodeRecoveryProviderStats.gets += 1;
+        if (!providerTaskId) {
+          json(res, 400, { error: "missing task_id" });
+          return;
+        }
+        if (providerTaskId === "node-recovery-maintenance-provider") {
+          json(res, 200, { state: "running", task_id: providerTaskId });
+          return;
+        }
+        if (["node-recovery-original-provider", "node-recovery-maintenance-result-provider", "node-recovery-child-provider"].includes(providerTaskId)) {
+          json(res, 200, {
+            is_final: true,
+            result_type: "video",
+            result_url: `${nodeRecoveryProductProviderUrl}${nodeRecoveryProductResultPath}`,
+            state: "success",
+            task_id: providerTaskId,
+          });
+          return;
+        }
+        json(res, 404, { error: "task not found" });
+        return;
+      }
+      if (method === "GET" && requestUrl.pathname === nodeRecoveryProductResultPath) {
+        nodeRecoveryProviderStats.mediaGets += 1;
+        res.writeHead(200, { "Content-Type": "video/mp4", "Content-Length": resultBytes.byteLength, "Cache-Control": "no-store" });
+        res.end(resultBytes);
+        return;
+      }
+      json(res, 404, { error: "loopback provider route not found" });
+    })().catch((error) => {
+      console.error(error);
+      if (!res.headersSent) json(res, 500, { error: "loopback provider failed" });
+      else res.end();
+    });
+  });
+  await new Promise((resolve, reject) => {
+    nodeRecoveryProductProvider.once("error", reject);
+    nodeRecoveryProductProvider.listen(0, "127.0.0.1", () => resolve());
+  });
+  const address = nodeRecoveryProductProvider.address();
+  if (!address || typeof address === "string" || !Number.isInteger(address.port)) {
+    throw new Error("Node recovery loopback provider did not expose a dynamic port");
+  }
+  nodeRecoveryProductProviderPort = address.port;
+  globalThis.fetch = (input, init) => {
+    let requestUrl;
+    try {
+      requestUrl = typeof input === "string" || input instanceof URL
+        ? new URL(input.toString())
+        : new URL(input.url);
+    } catch {
+      return nodeRecoveryProductNativeFetch(input, init);
+    }
+    if (requestUrl.hostname !== "node-recovery-relay.example.test") {
+      return nodeRecoveryProductNativeFetch(input, init);
+    }
+    const rewritten = `http://127.0.0.1:${nodeRecoveryProductProviderPort}${requestUrl.pathname}${requestUrl.search}`;
+    const rewrittenInput = typeof input === "object" && input instanceof Request
+      ? new Request(rewritten, input)
+      : rewritten;
+    return nodeRecoveryProductNativeFetch(rewrittenInput, init);
+  };
+}
+
+async function stopNodeRecoveryProductProvider() {
+  if (nodeRecoveryProductNativeFetch) {
+    globalThis.fetch = nodeRecoveryProductNativeFetch;
+    nodeRecoveryProductNativeFetch = undefined;
+  }
+  const provider = nodeRecoveryProductProvider;
+  nodeRecoveryProductProvider = undefined;
+  nodeRecoveryProductProviderPort = undefined;
+  if (provider) await new Promise((resolve) => provider.close(() => resolve()));
 }
 
 const generationModelInputs = Object.freeze({
@@ -182,13 +340,13 @@ const generationModelInputs = Object.freeze({
 });
 
 const safeHtmlJson = (value) => JSON.stringify(value).replaceAll("<", "\\u003c");
-const generationStateLabels = Object.freeze({ running: "运行中", success: "成功" });
+const generationStateLabels = Object.freeze({ failed: "明确失败", running: "运行中", success: "成功" });
 
 function generationJournalSnapshot() {
   if (!generationFixture) return undefined;
   return {
     schemaVersion: 1,
-    scenario: "generation-status",
+    scenario: acceptanceScenario,
     canvasId: generationFixture.canvasId,
     phase: generationFixture.phase,
     builds: generationBuilds,
@@ -218,9 +376,23 @@ function generationJournalSnapshot() {
       generationInputKey: task.generationInputKey,
       generationOwnershipKey: task.generationOwnershipKey,
       publicTask: generationTaskPublic(task),
-      projectedNodeData: task.state === "success" ? generationTaskResult(task) : generationNodeData(task.kind, "shared", task, task.identity, true),
+      projectedNodeData: task.state === "success"
+        ? generationTaskResult(task)
+        : task.state === "failed"
+          ? { ...generationNodeData(task.kind, "shared", task, task.identity, false), ...generationTaskFailure(task) }
+          : generationNodeData(task.kind, "shared", task, task.identity, true),
     })),
     sentinels: generationFixture.sentinels,
+    ...(nodeRecoveryScenario
+      ? {
+          checks: { ...nodeRecoveryChecks },
+          retryMode: nodeRecoveryState.retryMode || undefined,
+          retryAccepted: nodeRecoveryState.retryAccepted,
+          saveFaultRemaining: nodeRecoveryState.saveFaultRemaining,
+          preservedSuccessNodeIds: nodeRecoveryFixture?.successNodes?.map((node) => node.id) ?? [],
+          recoveryCases: nodeRecoveryRecoveryPublicCases(),
+        }
+      : {}),
     events: generationFixture.events.slice(-300),
   };
 }
@@ -241,8 +413,185 @@ function generationTaskPublic(task) {
   return base;
 }
 
+function nodeRecoveryRecoveryCasePublic(state) {
+  const value = {
+    taskId: state.taskId,
+    caseId: state.caseId,
+    canvasId: state.canvasId,
+    nodeId: state.nodeId,
+    kind: state.kind,
+    executionAttempt: state.executionAttempt,
+    phase: state.phase,
+    caseEventId: state.caseEventId,
+    progressVersion: state.progressVersion,
+    updatedAt: state.updatedAt,
+    ...(state.lastCheckedAt ? { lastCheckedAt: state.lastCheckedAt } : {}),
+    ...(state.nextCheckAt ? { nextCheckAt: state.nextCheckAt } : {}),
+    unread: state.progressVersion > state.lastReadProgressVersion,
+    reasonCode: state.reasonCode,
+    summary: state.summary,
+    status: state.status,
+    action: state.action,
+  };
+  const keys = Object.keys(value).sort();
+  const allowed = [...recoveryCaseSummaryKeys, ...recoveryCaseSummaryOptionalKeys].sort();
+  if (keys.some((key) => !allowed.includes(key)) ||
+      !recoveryCaseSummaryKeys.every((key) => keys.includes(key))) {
+    throw new Error("Synthetic recovery summary escaped the flat owner DTO");
+  }
+  return value;
+}
+
+function nodeRecoveryRecoveryCaseState(caseKey) {
+  return nodeRecoveryRecoveryCases.get(caseKey);
+}
+
+function updateNodeRecoveryRecoveryCase(caseKey, patch) {
+  const state = nodeRecoveryRecoveryCaseState(caseKey);
+  if (!state) throw new AcceptanceControlError("本地维护案例尚未准备完成。", "NODE_RECOVERY_RECOVERY_NOT_READY", 503);
+  const changed = Object.entries(patch).some(([key, value]) => state[key] !== value);
+  if (!changed) return state;
+  Object.assign(state, patch);
+  state.caseEventId += 1;
+  state.progressVersion += 1;
+  state.updatedAt = new Date().toISOString();
+  return state;
+}
+
+function syncNodeRecoveryRecoveryCases() {
+  if (!nodeRecoveryFixture || nodeRecoveryRecoveryCases.size === 0) return;
+  const original = nodeRecoveryFixture.v4.cases.originalResult;
+  const originalState = nodeRecoveryRecoveryCaseState("originalResult");
+  const originalTask = generationTasks.get(original.taskId);
+  if (originalState && originalTask?.state === "success") {
+    updateNodeRecoveryRecoveryCase("originalResult", {
+      phase: "result_recovered",
+      reasonCode: "result_recovery_pending",
+      summary: "原结果已自动找回，已回到当前节点；无需再点恢复或重新生成",
+      status: "result_recovered",
+      action: "view_result",
+      nextCheckAt: undefined,
+    });
+  }
+  const retry = nodeRecoveryFixture.v4.cases.failedVideo;
+  const retryState = nodeRecoveryRecoveryCaseState("failedVideo");
+  const retryTask = generationTasks.get(retry.taskId);
+  if (retryState && retryTask?.state === "failed" && retryTask.newGenerationAllowed === true) {
+    updateNodeRecoveryRecoveryCase("failedVideo", {
+      phase: "ready_for_user",
+      reasonCode: "operator_incident",
+      summary: "已核实此视频可以继续；只重新生成当前视频，前面9个成功节点保持不变",
+      status: "ready_for_user",
+      action: "regenerate",
+    });
+  }
+}
+
+function nodeRecoveryRecoveryPublicCases(taskIds) {
+  syncNodeRecoveryRecoveryCases();
+  const requested = taskIds?.length ? new Set(taskIds) : undefined;
+  return [...nodeRecoveryRecoveryCases.values()]
+    .filter((state) => !requested || requested.has(state.taskId))
+    .map(nodeRecoveryRecoveryCasePublic);
+}
+
+function nodeRecoveryRecoveryBatch(taskIds) {
+  return { enabled: true, cases: nodeRecoveryRecoveryPublicCases(taskIds) };
+}
+
+function nodeRecoveryRecoveryDetail(taskId) {
+  const summary = nodeRecoveryRecoveryPublicCases().find((item) => item.taskId === taskId) ?? null;
+  return { enabled: true, case: summary };
+}
+
+function acknowledgeNodeRecoveryRecovery(taskId, body) {
+  const state = [...nodeRecoveryRecoveryCases.values()].find((item) => item.taskId === taskId);
+  if (!state) throw new AcceptanceControlError("未找到可访问的本地处理事项。", "RECOVERY_NOT_FOUND", 404);
+  const keys = Object.keys(body ?? {}).sort();
+  if (keys.join(",") !== ["commandId", "expectedCaseEventId", "progressVersion"].sort().join(",") ||
+      typeof body.commandId !== "string" || !/^[A-Za-z0-9._:-]{1,160}$/.test(body.commandId) ||
+      !Number.isSafeInteger(body.expectedCaseEventId) || body.expectedCaseEventId < 1 ||
+      !Number.isSafeInteger(body.progressVersion) || body.progressVersion < 1) {
+    throw new AcceptanceControlError("处理操作参数无效。", "RECOVERY_INVALID_COMMAND", 400);
+  }
+  if (state.caseEventId !== body.expectedCaseEventId || state.progressVersion !== body.progressVersion) {
+    throw new AcceptanceControlError("处理进度已更新，请查看最新状态。", "RECOVERY_CONFLICT", 409);
+  }
+  state.lastReadProgressVersion = state.progressVersion;
+  persistGenerationJournal("nodeRecoveryRecoveryRead", {
+    taskId,
+    caseId: state.caseId,
+    progressVersion: state.progressVersion,
+    commandId: body.commandId,
+  });
+  return nodeRecoveryRecoveryDetail(taskId);
+}
+
+function nodeRecoveryStatusPayload() {
+  if (!generationFixture || !nodeRecoveryFixture) {
+    return { scenario: "node-recovery", ready: false };
+  }
+  syncNodeRecoveryRecoveryCases();
+  return {
+    scenario: "node-recovery",
+    ready,
+    canvasId: generationFixture.canvasId,
+    title: nodeRecoveryFixture.title,
+    tasks: [...generationTasks.values()].map((task) => generationTaskPublic(task)),
+    checks: { ...nodeRecoveryChecks },
+    retryMode: nodeRecoveryState.retryMode || undefined,
+    retryAccepted: nodeRecoveryState.retryAccepted,
+    saveFaultRemaining: nodeRecoveryState.saveFaultRemaining,
+    observations: Object.fromEntries(generationObservations),
+    preserve: {
+      expectedSuccessNodeCount: nodeRecoveryFixture.preservedSuccessNodeCount,
+      successNodeIds: nodeRecoveryFixture.successNodes.map((node) => node.id),
+      successNodesStillPresent: nodeRecoveryFixture.successNodes.every((node) =>
+        generationTasks.get(node.taskId ?? node.id)?.state === "success"),
+    },
+    recovery: {
+      syntheticOnly: true,
+      cases: nodeRecoveryRecoveryPublicCases(),
+    },
+    syntheticLayer: {
+      providerRequests: 0,
+      paidProviderRequests: 0,
+      taskStorage: "temporary acceptance journal and API projection",
+      fixturePath: "tests/fixtures/node-recovery-acceptance.json",
+      retryPath: nodeRecoveryFixture.retry.retryPath,
+    },
+    productLayer: {
+      canvasWrites: generationCounters.browserCanvasWrites,
+      generationPosts: generationCounters.generationPosts,
+      statusReads: generationCounters.statusReads,
+      detailReads: generationCounters.detailReads,
+      maxInFlightDetailReads: generationCounters.maxInFlightDetailReads,
+      canvasCommands: generationCounters.browserCanvasCommandWrites,
+    },
+    counters: {
+      statusReads: generationCounters.statusReads,
+      detailReads: generationCounters.detailReads,
+      generationDeletes: generationCounters.generationDeletes,
+      generationPosts: generationCounters.generationPosts,
+      syntheticProjectionPublications: generationCounters.syntheticProjectionWrites,
+      providerRequests: 0,
+      paidProviderRequests: 0,
+      canvasWrites: {
+        browser: generationCounters.browserCanvasWrites,
+        browserCommands: generationCounters.browserCanvasCommandWrites,
+        control: generationCounters.controlCanvasWrites,
+      },
+    },
+    sentinels: generationFixture.sentinels,
+    journalPath: generationJournalPath,
+    instructions: "V4 三项均在同一页观察；任务/维护案例为本地合成数据，不代表真实后端、Provider 或付款证据。",
+    expiresAt: expiresAt.toISOString(),
+  };
+}
+
 function generationStatusPayload() {
-  if (!generationFixture) return { scenario: "generation-status", ready: false };
+  if (!generationFixture) return { scenario: acceptanceScenario, ready: false };
+  if (nodeRecoveryScenario) return nodeRecoveryStatusPayload();
   return {
     scenario: "generation-status",
     ready,
@@ -352,12 +701,45 @@ function generationTaskResult(task) {
     mediaWidth: task.resultMedia.mediaWidth,
     [`${kind}Src`]: resultUrl,
     ...(kind === "image" ? { imageGeneratedSuccess: true } : {}),
+    ...(kind === "video" ? { videoGeneratedResult: true } : {}),
     ...(kind === "audio" ? { audioGeneratedResult: true, audioResultChoices: [{ ...task.resultMedia, assetId: task.assetId, url: resultUrl, role: "primary" }] } : {}),
+  };
+}
+
+function generationTaskFailure(task) {
+  const kind = task.kind;
+  return {
+    [`${kind}Generating`]: false,
+    [`${kind}GenerationTaskId`]: task.id,
+    [`${kind}GenerationError`]: task.errorMessage,
+    [`${kind}GenerationErrorCode`]: task.errorCode,
+    [`${kind}GenerationInputKey`]: task.generationInputKey,
+    [`${kind}GenerationModelConfigurationRevision`]: task.modelConfigurationRevision,
+    [`${kind}GenerationModelReleaseRevision`]: task.modelReleaseRevision,
+    [`${kind}GenerationOwnershipKey`]: task.generationOwnershipKey,
+    [`${kind}GenerationRetryAllowed`]: task.retryAllowed === true,
+    [`${kind}GenerationRetryBlockCode`]: task.retryBlockCode,
+    [`${kind}GenerationRetryBlockReason`]: task.retryBlockReason,
+    newGenerationAllowed: task.newGenerationAllowed,
+    newGenerationBlockReason: task.newGenerationBlockReason,
+    replacementTaskId: task.replacementTaskId,
+    ...(kind === "video"
+      ? { videoGenerationModelInputContractFingerprint: task.modelInputContractFingerprint }
+      : { [`${kind}GenerationContractFingerprint`]: task.modelInputContractFingerprint }),
+    ...(task.rawProviderMessage
+      ? { providerRawError: task.rawProviderMessage, [`${kind}GenerationRawError`]: task.rawProviderMessage }
+      : {}),
   };
 }
 
 async function persistGenerationProjection(task) {
   if (task.projectionPersisted || task.state !== "success") return;
+  if (nodeRecoveryScenario && task.nodeId === nodeRecoveryFixture?.automaticRecovery.save.id &&
+      nodeRecoveryState.saveFaultRemaining > 0) {
+    nodeRecoveryState.saveFaultRemaining -= 1;
+    persistGenerationJournal('syntheticProjectionDeferred', { taskId: task.id, remaining: nodeRecoveryState.saveFaultRemaining });
+    return;
+  }
   // Model the server publication in this synthetic journal. Never submit a
   // client Canvas PUT to bypass the real authoritative projection contract.
   task.canvasProjectionState = "applied";
@@ -402,9 +784,10 @@ async function generationTaskResponse(task) {
     if (task.state === "running" && task.fault.terminalOnRecovery) {
       task.state = "success";
       task.updatedAt = new Date().toISOString();
-      await persistGenerationProjection(task);
-      persistGenerationJournal("taskSuccess", { taskId: task.id, projectionPersisted: true });
+      if (!nodeRecoveryScenario) await persistGenerationProjection(task);
+      persistGenerationJournal("taskSuccess", { taskId: task.id, projectionPersisted: task.projectionPersisted });
     }
+    if (task.state === 'success' && !task.projectionPersisted) await persistGenerationProjection(task);
     persistGenerationJournal("detailReadEnd", { taskId: task.id, state: task.state, inFlight: generationDetailReadsInFlight });
     observation.successfulReads += 1;
     observation.lastSuccessAt = Date.now();
@@ -440,9 +823,12 @@ function generationNodeData(kind, phase, task, identity, active) {
   const input = generationModelInputs[kind];
   const prompt = `${kind} 原始提示词`;
   const parameters = generationRuntime.defaultParameterValues(generationRuntime.schemas[kind]);
+  const definition = nodeRecoveryScenario && task
+    ? nodeRecoveryFixture?.nodes.find(node => node.id === task.nodeId)
+    : undefined;
   const data = {
-    label: kind[0].toUpperCase() + kind.slice(1),
-    title: `${({text: "文字", image: "图片", video: "视频", audio: "音频"})[kind]}查询验收`,
+    label: definition?.label ?? kind[0].toUpperCase() + kind.slice(1),
+    title: definition?.title ?? `${({text: "文字", image: "图片", video: "视频", audio: "音频"})[kind]}查询验收`,
     [`${kind}ModelId`]: input.id,
     [`${kind}Parameters`]: parameters,
     [`${kind}Prompt`]: prompt,
@@ -462,6 +848,7 @@ function generationNodeData(kind, phase, task, identity, active) {
 }
 
 function generationCanvasNodes() {
+  if (nodeRecoveryScenario) return nodeRecoveryCanvasNodes();
   const nodes = [];
   let index = 0;
   for (const kind of generationKinds) {
@@ -476,6 +863,31 @@ function generationCanvasNodes() {
     index += 1;
   }
   return nodes;
+}
+
+function nodeRecoveryCanvasNodes() {
+  if (!nodeRecoveryFixture) return [];
+  return nodeRecoveryFixture.nodes.map((definition) => {
+    const task = generationTasks.get(definition.id);
+    if (!task) throw new Error(`Node recovery fixture task is missing: ${definition.id}`);
+    const data = {
+      ...generationNodeData(task.kind, "shared", task, task.identity, task.state === "running" || (task.state === "success" && !task.projectionPersisted)),
+      label: definition.label,
+      title: definition.title ?? definition.label,
+      ...(task.state === "success" && task.projectionPersisted ? generationTaskResult(task) : {}),
+      ...(task.state === "failed" ? generationTaskFailure(task) : {}),
+    };
+    return {
+      id: definition.id,
+      type: definition.type,
+      position: definition.position,
+      data,
+      style: definition.style ?? {
+        width: definition.type === "image" ? 300 : 260,
+        height: definition.type === "image" ? 190 : 220,
+      },
+    };
+  });
 }
 
 function generationBuildDigest(root) {
@@ -569,6 +981,12 @@ async function buildGenerationClients() {
     build: { ...buildCommon.build, outDir: candidateRoot },
   });
   const candidateHits = candidatePlugin.assertHits();
+  if (nodeRecoveryScenario) return Object.freeze({
+    candidateLoaded: candidateHits,
+    candidate: { root: realpathSync(candidateRoot), sha256: generationBuildDigest(candidateRoot), manifest: generationBundleManifest(candidateRoot) },
+    candidateSource: Object.fromEntries(generationBaselineFiles.map(file => [file,
+      createHash('sha256').update(readFileSync(join(sourceRoot, file))).digest('hex')])),
+  });
   const baselinePlugin = generationSourcePlugin("baseline", generationBaselineRoot);
   await viteBuild({
     ...buildCommon,
@@ -599,7 +1017,8 @@ async function buildGenerationClients() {
 function generationStaticPath(urlPath) {
   const match = /^\/__acceptance\/client\/(candidate|baseline)(?:\/(.*))?$/.exec(urlPath);
   if (!match || !generationBuilds) return undefined;
-  const root = generationBuilds[match[1]].root;
+  const root = generationBuilds[match[1]]?.root;
+  if (!root) return undefined;
   const requested = match[2] || "index.html";
   const absolute = resolve(root, requested);
   if (!inside(root, absolute) || !existsSync(absolute) || !statSync(absolute).isFile()) return undefined;
@@ -621,7 +1040,62 @@ function generationContentType(path) {
   })[extname(path).toLowerCase()] ?? "application/octet-stream";
 }
 
+function nodeRecoveryGuideHtml() {
+  return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>本地验收 · 失败节点恢复</title>
+<style>*{box-sizing:border-box}body{margin:0;font:15px/1.65 -apple-system,BlinkMacSystemFont,sans-serif;background:#f3f4f4;color:#222}.layout{display:grid;grid-template-columns:350px minmax(600px,1fr);height:100vh}.guide{overflow:auto;padding:20px}h1{font-size:23px;margin:0 0 10px}h2{font-size:18px;margin:0 0 7px}p{margin:8px 0}section{background:#fff;border:1px solid #ddd;border-radius:12px;padding:16px;margin:14px 0}button{font:inherit;border:1px solid #aaa;border-radius:8px;background:white;padding:8px 12px;margin:4px 4px 4px 0;cursor:pointer}button.primary{background:#222;color:white}button:disabled{opacity:.45;cursor:default}button:focus-visible{outline:3px solid #417ca8;outline-offset:2px}.expect{background:#eef4ef;border-radius:7px;padding:10px}.feedback{color:#3d6250}.error{color:#a12424;background:#fff0f0;padding:12px;overflow-wrap:anywhere}.muted{font-size:13px;color:#666}iframe{width:100%;height:100%;border:0;background:#111}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}details{margin-top:16px}</style>
+<div class="layout"><main class="guide"><h1>这次验收3项</h1><p>右边就是测试画布，不用切换标签。<b>全部是模拟任务，不会扣费，本轮还没上线</b>。</p><div id="error" class="error" role="alert" hidden></div><p id="connection" class="feedback" role="status">正在准备画布…</p>
+<section><h2>1. 自动找回原结果</h2><p>点一次按钮。右边会自动移到并选中原节点，模拟短暂查询故障；等待同一节点出现原结果，期间不用点“恢复”或重新生成。</p><button class="primary" data-action="transient">开始自动找回原结果</button><p class="expect">看选中的文字框：先是等待状态，随后同一位置自动出现“短暂故障已自动越过 · 结果已回到当前节点”。不用点重试，也不用复制内容。</p><p id="transient-status" class="feedback" role="status"></p></section>
+<section><h2>2. 维护进度能在重开后看见</h2><p>点一次按钮。左侧会自动展示中文阶段“已登记待处理 → 维护人员已接手 → 正在等待平台回复”，不需要你填写任务号或切换页面。</p><button class="primary" data-action="maintenance-start">开始维护进度演示</button><button data-action="maintenance-reopen">重新打开处理进度</button><p id="maintenance-status" class="feedback" role="status">尚未开始维护进度演示。</p><p class="expect">最后应看到“维护人员已接手，正在等待平台回复”。点“重新打开处理进度”后，这个阶段仍应显示；这里模拟维护人员接手，方便你检查页面显示。</p></section>
+<section><h2>3. 已核实失败，只补当前视频</h2><p>选一种已核实的失败原因，右边会自动定位到失败视频。点击视频，再点节点输入框右下角的白色向上箭头；只观察当前视频出现结果。</p><button class="primary" data-mode="balance-denied">演示：余额问题已核实未受理</button><button data-mode="provider-failed">演示：平台最终失败已核实</button><p class="expect">只补出这个视频；前面的9个成功节点、位置、内容和连线保留。两种原因都是模拟的，不会调用真实模型。</p><button data-action="overview">查看全部</button><p id="retry-status" class="feedback" role="status"></p></section>
+<details id="v3-regression"><summary>已通过的 V3 基础回归（内部保留，不是本轮三项）</summary><p>下面按钮只供工程复核保留：图片保存恢复和未知请求保护仍可复查，用户无需操作。</p><button class="primary" data-action="save">开始图片保存恢复</button><button data-action="refresh">刷新右侧画布</button><button data-action="unknown">查看无法确认的节点</button><p id="save-status" class="feedback" role="status"></p><p class="expect">图片保存恢复后刷新仍在原处；未知请求仍显示保护说明并禁用 Generate，不会重复提交。</p></details>
+<p><b>检查完三项后，回到对话回复“V4 三项通过”，或告诉我哪一项不符合。右侧节点的白框也应完整包住卡片，底边没有缺口。</b></p><details><summary>工程记录（验收不需要读）</summary><p class="muted">右侧运行当前产品代码；任务、故障、结果和维护案例由本地合成服务提供。owner batch/detail/read 只返回严格 flat RecoveryCaseSummary 投影；真实HTTP准入、付费保护、维护接手和撤销演练另有自动测试。模拟状态不能证明真实旧任务已解除未知状态。</p><pre id="evidence"></pre></details><button data-action="finish">结束本次验收</button></main><iframe id="canvas" title="本地测试画布" src="/__acceptance/generation-entry?variant=candidate"></iframe></div>
+<script>
+const el=id=>document.getElementById(id);let state,busy=false,stopped=false;
+const recoveryTaskIds=['node-recovery-auto-transient','node-recovery-text-unknown','node-recovery-video-failed'];
+const phaseLabels={queued:'已登记待处理',claimed:'维护人员已接手',waiting_provider:'正在等待平台回复',result_recovered:'原结果已找回',ready_for_user:'可以只补当前视频'};
+async function request(path,body){const r=await fetch(path,{cache:'no-store',...(body===undefined?{}:{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)})});const d=await r.json();if(!r.ok)throw Error(d.error||'验收服务暂不可用');return d;}
+async function snapshot(){const status=await request('/__acceptance/node-recovery/status');const batch=await request('/api/generation-recovery?taskIds='+encodeURIComponent(recoveryTaskIds.join(',')));return Object.assign(status,{recovery:batch});}
+function focusCanvasNode(nodeId){if(!nodeId)return;const frame=el('canvas');let attempts=0,searchOpened=false;const later=(fn)=>{if(attempts++<150)window.setTimeout(fn,100);};const choose=()=>{const doc=frame.contentDocument;const result=doc&&Array.from(doc.querySelectorAll('[data-testid="node-search-results"] [data-node-id]')).find((entry)=>entry.getAttribute('data-node-id')===nodeId);if(result){result.click();return;}later(choose);};const open=()=>{const doc=frame.contentDocument;const world=doc&&doc.querySelector('[data-testid="canvas-world"][data-persistence-ready="true"]');const search=doc&&doc.querySelector('[data-testid="node-search"]');if(world&&search&&!searchOpened){searchOpened=true;search.click();choose();return;}later(open);};open();}
+function reload(focusNodeId){const frame=el('canvas');if(focusNodeId)frame.addEventListener('load',()=>focusCanvasNode(focusNodeId),{once:true});frame.src='/__acceptance/generation-entry?variant=candidate&reload='+Date.now();}
+function focusIdFor(button){return button.dataset.action==='transient'?'node-recovery-auto-transient':button.dataset.action==='unknown'?'node-recovery-text-unknown':undefined;}
+function render(d){state=d;el('connection').textContent=d.ready?'画布已准备好；三项都在本页观察。页面开放至 '+new Date(d.expiresAt).toLocaleString('zh-CN')+'。':'画布正在准备…';const task=id=>d.tasks.find(t=>t.id===id);const cases=d.recovery?.cases||[];const recovery=(id)=>cases.find(item=>item.taskId===id);const original=recovery('node-recovery-auto-transient');const maintenance=recovery('node-recovery-text-unknown');const failed=recovery('node-recovery-video-failed');el('transient-status').textContent=task('node-recovery-auto-transient')?.state==='success'?(original?.status==='result_recovered'?'原结果已找回并回到当前节点，请核对右侧文字。':'模拟结果已返回，请核对右侧文字。'):'';el('maintenance-status').textContent=maintenance?(phaseLabels[maintenance.phase]+'：'+maintenance.summary):'尚未开始维护进度演示。';el('save-status').textContent=task('node-recovery-auto-save')?.canvasProjectionState==='applied'?'模拟保存已恢复，请刷新右侧检查。':'';el('retry-status').textContent=d.retryAccepted?'本场景已提交新视频任务，请等结果出现。':failed?.status==='ready_for_user'?'已核实失败；只允许当前视频继续。':'';el('evidence').textContent=JSON.stringify({checks:d.checks,recovery:d.recovery,product:d.productLayer,synthetic:d.syntheticLayer,preserve:d.preserve},null,2);document.querySelectorAll('button[data-action="transient"],button[data-action="save"]').forEach(b=>b.disabled=busy||d.checks[b.dataset.action]!=='idle');const maintenanceFinished=maintenance?.phase==='waiting_provider';const maintenanceStart=document.querySelector('button[data-action="maintenance-start"]');if(maintenanceStart)maintenanceStart.disabled=busy||maintenanceFinished;const maintenanceReopen=document.querySelector('button[data-action="maintenance-reopen"]');if(maintenanceReopen)maintenanceReopen.disabled=busy||!maintenance;}
+async function refresh(force=false){if(stopped||(busy&&!force))return;try{render(await snapshot());}catch(e){el('error').hidden=false;el('error').textContent=e.message+'。请回对话告诉我，暂时不用继续操作。';}}
+async function runMaintenanceDemo(){for(const phase of ['queued','claimed','waiting_provider']){await request('/__acceptance/node-recovery/recovery-stage',{phase});await refresh(true);if(phase!=='waiting_provider')await new Promise(resolve=>window.setTimeout(resolve,700));}}
+async function reopenMaintenance(){const detail=await request('/api/generation-recovery/node-recovery-text-unknown');if(detail.case?.unread)await request('/api/generation-recovery/node-recovery-text-unknown/read',{commandId:'local-reopen-'+Date.now(),expectedCaseEventId:detail.case.caseEventId,progressVersion:detail.case.progressVersion});await refresh(true);}
+document.addEventListener('click',async e=>{const b=e.target.closest('button');if(!b||b.disabled||busy)return;busy=true;el('error').hidden=true;try{if(b.dataset.action==='finish'){await request('/__acceptance/stop',{});stopped=true;document.body.textContent='本次验收已结束，可以关闭页面。';return;}if(b.dataset.action==='refresh'){reload();return;}if(b.dataset.action==='maintenance-start'){await runMaintenanceDemo();return;}if(b.dataset.action==='maintenance-reopen'){await reopenMaintenance();return;}if(b.dataset.mode){render(await request('/__acceptance/node-recovery/retry-mode',{mode:b.dataset.mode}));}else if(['transient','save'].includes(b.dataset.action)){render(Object.assign(await request('/__acceptance/node-recovery/start',{action:b.dataset.action}),{recovery:state?.recovery}));}else{await request('/__acceptance/node-recovery/focus',{action:b.dataset.action});}reload(focusIdFor(b));}catch(e){el('error').hidden=false;el('error').textContent=e.message;}finally{busy=false;await refresh();}});
+setInterval(()=>refresh(),1000);refresh();
+</script></html>`;
+}
+
+function nodeRecoveryProductGuideHtml() {
+  return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>本地验收 · 失败节点恢复</title>
+<style>*{box-sizing:border-box}body{margin:0;font:15px/1.65 -apple-system,BlinkMacSystemFont,sans-serif;background:#f3f4f4;color:#222}.layout{display:grid;grid-template-columns:minmax(360px,460px) minmax(600px,1fr);height:100vh}.guide{overflow:auto;padding:20px}h1{font-size:23px;margin:0 0 10px}h2{font-size:18px;margin:0 0 7px}p{margin:8px 0}section{background:#fff;border:1px solid #ddd;border-radius:12px;padding:16px;margin:14px 0}button{font:inherit;border:1px solid #aaa;border-radius:8px;background:white;padding:8px 12px;margin:4px 4px 4px 0;cursor:pointer}button.primary{background:#222;color:white}button:disabled{opacity:.45;cursor:default}button:focus-visible{outline:3px solid #417ca8;outline-offset:2px}.expect{background:#eef4ef;border-radius:7px;padding:10px}.feedback{color:#3d6250}.error{color:#a12424;background:#fff0f0;padding:12px;overflow-wrap:anywhere}.muted{font-size:13px;color:#666}.role{border-top:1px solid #e1e1e1;padding:10px 0}.role:first-child{border-top:0}.role strong{display:block}.role code{font-size:12px;overflow-wrap:anywhere}iframe{width:100%;height:100%;border:0;background:#111}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}details{margin-top:16px}</style>
+<div class="layout"><main class="guide"><p class="muted">本地测试 · 全部使用模拟数据，不扣费 · 尚未上线</p><h1 id="guide-title">这次验收3项</h1><p id="guide-intro">按左侧 1→2→3 操作，右侧会自动定位要看的节点。前面九个“已成功节点”是对照，不用逐个点击。</p><div id="error" class="error" role="alert" hidden></div><p id="connection" class="feedback" role="status">正在准备本地任务…</p>
+<section><h2>1. 原来的视频能自动找回来吗？</h2><p>点“开始找回原结果”，看右侧的“原结果找回（视频）”。等视频出现后，再点“刷新右侧画布”。</p><button class="primary" data-action="original">开始找回原结果</button><p id="original-status" class="feedback" role="status">尚未执行。</p><p class="expect">预期：视频自动出现在原节点里，刷新后还在；前面已成功的内容和连线不变。</p></section>
+<section><h2>2. 维护接手后，能接着工作吗？</h2><p>点“开始维护处理”，看右侧的“维护后找回结果（视频）”。这里模拟维护人员已经拿到结果，你不用做任何技术检查。再点“查看仍未确认的节点”，看另一种暂时没有结论的情况。</p><button class="primary" data-action="maintenance">开始维护处理</button><button data-action="focus-unresolved">查看仍未确认的节点</button><p id="maintenance-status" class="feedback" role="status">尚未执行。</p><p class="expect">预期：右侧“维护后找回结果”节点出现结果；“平台未确认”节点仍显示未解决，不会把等待写成成功。</p></section>
+<section id="single-video-recheck"><h2>3. 能只重新生成失败的视频吗？</h2><p>这个视频已确认生成失败。点“继续当前视频”，等右侧的“失败视频 · 仅此节点补跑”出现视频。</p><button class="primary" data-action="retry">继续当前视频</button><p id="retry-status" class="feedback" role="status">尚未执行。</p><p class="expect">预期：只有这个失败节点重新生成。前面九个已成功节点的内容、位置、连线都不变。</p></section>
+<section><h2>当前演示进度</h2><p id="guide-progress">三个结果都符合上面的说明，就回复“3项通过”。有不符合的，告诉我第几项。</p><button data-action="refresh-canvas">刷新右侧画布</button><div id="roles"></div></section>
+<details><summary>工程证据（用户不需要操作）</summary><pre id="evidence"></pre></details><button data-action="finish">结束本次验收</button></main><iframe id="canvas" title="本地测试画布" src="/__acceptance/generation-entry?variant=candidate"></iframe></div>
+<script>
+const el=id=>document.getElementById(id);const recheckThree=new URLSearchParams(window.location.search).get('recheck')==='3';let state,busy=false,stopped=false,timer,refreshing=false,retryError='';document.documentElement.dataset.acceptanceBusy='false';
+function applyRecheckCopy(){if(!recheckThree)return;el('guide-title').textContent='这次只重验第3项';el('guide-intro').textContent='第1、2项已通过；点继续当前视频，看到视频后刷新确认仍在。';el('guide-progress').textContent='第3项符合后，回复“第3项通过”。有不符合的，告诉我哪一项。';}
+const roleLabels={originalResult:'原结果找回',maintenance:'平台未确认',maintenanceResult:'维护后找回结果',failedVideo:'当前失败视频'};
+const phaseLabels={queued:'已登记待处理',claimed:'维护人员已接手',waiting_provider:'正在等待平台回复',result_recovered:'原结果已找回',ready_for_user:'可继续当前节点',unresolved:'仍未解决'};
+async function request(path,body){const response=await fetch(path,{cache:'no-store',...(body===undefined?{}:{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)})});let data;try{data=await response.json();}catch{throw Error('验收服务返回了无法读取的内容。');}if(!response.ok)throw Error(data.error||'验收服务返回错误。');return data;}
+function esc(value){return String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');}
+function focusCanvasNode(nodeId){return new Promise((resolve,reject)=>{if(!nodeId){reject(Error('没有找到验收节点。'));return;}const frame=el('canvas');let attempts=0,searchOpened=false;const later=fn=>{if(attempts++<150)window.setTimeout(fn,100);else reject(Error('测试画布仍未准备好，请稍后再试。'));};const verify=()=>{const world=frame.contentDocument?.querySelector('[data-testid="canvas-world"]');if(world?.getAttribute('data-persistence-ready')==='true'&&world.getAttribute('data-primary-node')===nodeId&&world.getAttribute('data-selected-node-count')==='1'){resolve();return;}later(verify);};const choose=()=>{const doc=frame.contentDocument;const result=doc&&Array.from(doc.querySelectorAll('[data-testid="node-search-results"] [data-node-id]')).find(entry=>entry.getAttribute('data-node-id')===nodeId);if(result){result.click();verify();return;}later(choose);};const open=()=>{const doc=frame.contentDocument;const world=doc&&doc.querySelector('[data-testid="canvas-world"][data-persistence-ready="true"]');const search=doc&&doc.querySelector('[data-testid="node-search"]');if(world&&search&&!searchOpened){searchOpened=true;search.click();choose();return;}later(open);};open();});}
+async function clickProductVideoGenerate(nodeId){if(!nodeId)throw Error('没有找到当前视频节点。');for(let attempt=0;attempt<100;attempt++){const doc=el('canvas').contentDocument;const world=doc?.querySelector('[data-testid="canvas-world"]');const targetSelected=world?.getAttribute('data-persistence-ready')==='true'&&world.getAttribute('data-primary-node')===nodeId&&world.getAttribute('data-selected-node-count')==='1';const creator=doc&&Array.from(doc.querySelectorAll('[data-testid="video-creator"]')).find(entry=>entry.getAttribute('data-id')?.split(/\s+/).includes(nodeId));const button=creator?.querySelector('button.video-creator-generate[aria-label="Generate"]');if(targetSelected&&button&&!button.disabled){button.click();return;}await new Promise(resolve=>setTimeout(resolve,100));}throw Error('当前视频还不能继续，请保留右侧提示并告诉我。');}
+
+function taskText(item){if(!item)return '任务尚未读取';return ({queued:'等待生成',running:'生成中',recovering:'正在找回结果',success:'结果已保存',failed:'原生成未成功',cancelled:'已取消'})[item.state]||'记录已保留';}
+function render(data){state=data;el('connection').textContent=data.ready?(recheckThree?'画布已准备好，请继续第3项。':'画布已准备好，从第1项开始。'):'本地任务仍在准备。';const roleEntries=Object.entries(data.roles||{});el('roles').innerHTML=roleEntries.map(([role,value])=>{const task=value.childTask??value.currentTask;const item=value.case;return '<div class="role"><strong>'+esc(roleLabels[role]||role)+'</strong><code>任务：'+esc(taskText(task))+'</code><br><code>维护：'+esc(value.childTask?.state==='success'?'本轮已完成，原失败记录保留':item?item.summary:'尚未读取')+'</code></div>';}).join('');const original=data.roles?.originalResult;const maintenance=data.roles?.maintenance;const maintenanceResult=data.roles?.maintenanceResult;const failed=data.roles?.failedVideo;const resultRecovered=data.maintenanceDemonstration?.resultRecovered===true;const unresolved=data.maintenanceDemonstration?.unresolved===true;el('original-status').textContent=data.checks.original==='done'?(original?.currentTask?.state==='success'?'原任务结果已保存；请在右侧确认同一节点。':'检查已执行，请查看右侧原节点。'):'尚未执行。';el('maintenance-status').textContent=data.checks.maintenance==='done'?(resultRecovered&&unresolved?'维护后结果已找回；另一个平台未确认事项仍保留为未解决。':maintenanceResult?.currentTask?.state==='success'?'维护后结果已找回，但未确认事项还需保留检查。':unresolved?'未确认事项已接手并保留为未解决，结果节点请查看右侧。':'维护检查已执行，请查看右侧状态。'):'尚未执行。';const retryStatus=el('retry-status');retryStatus.textContent=retryError||(data.checks.retry==='done'?(failed?.childTaskId?'已为当前视频创建新任务并返回结果；原失败任务仍保留。':'单节点准入已执行，请查看右侧视频。'):'尚未执行。');retryStatus.style.color=retryError?'#a12424':'';el('evidence').textContent=JSON.stringify({checks:data.checks,roles:data.roles,maintenanceDemonstration:data.maintenanceDemonstration,recovery:data.recovery,product:data.productLayer,synthetic:data.syntheticLayer,preserve:data.preserve,results:data.results,counters:data.counters},null,2);const canRetry=failed?.currentTask?.state==='failed'&&failed.currentTask.newGenerationAllowed===true;document.querySelectorAll('button[data-action="original"]').forEach(button=>button.disabled=busy||data.checks.original!=='idle');document.querySelectorAll('button[data-action="maintenance"]').forEach(button=>button.disabled=busy||data.checks.maintenance!=='idle');document.querySelectorAll('button[data-action="retry"]').forEach(button=>button.disabled=busy||data.checks.retry!=='idle'||!canRetry);}
+async function refresh(){clearTimeout(timer);if(stopped||busy||refreshing)return;refreshing=true;try{render(await request('/__acceptance/node-recovery/status'));}catch(error){el('error').hidden=false;el('error').textContent=error.message+' 请把这条提示发回对话。';}finally{refreshing=false;if(!stopped)timer=window.setTimeout(refresh,5000);}}
+document.addEventListener('click',async event=>{const button=event.target.closest('button');if(!button||button.disabled||busy)return;busy=true;document.documentElement.dataset.acceptanceBusy='true';el('error').hidden=true;try{if(button.dataset.action==='finish'){await request('/__acceptance/stop',{});stopped=true;document.body.textContent='本次验收已结束，可以关闭页面。';return;}if(button.dataset.action==='refresh-canvas'){el('canvas').contentWindow.location.reload();return;}if(button.dataset.action==='focus-unresolved'){await focusCanvasNode(state?.roles?.maintenance?.nodeId);return;}if(button.dataset.action==='original'||button.dataset.action==='maintenance'||button.dataset.action==='retry'){const role=button.dataset.action==='original'?'originalResult':button.dataset.action==='maintenance'?'maintenanceResult':'failedVideo';if(button.dataset.action==='retry')retryError='';await focusCanvasNode(state?.roles?.[role]?.nodeId);if(button.dataset.action==='retry')await clickProductVideoGenerate(state?.roles?.[role]?.nodeId);const data=await request('/__acceptance/node-recovery/'+button.dataset.action,{});if(button.dataset.action==='retry')retryError='';render(data);} }catch(error){if(button.dataset.action==='retry')retryError=error.message;el('error').hidden=false;el('error').textContent=error.message;}finally{busy=false;document.documentElement.dataset.acceptanceBusy='false';await refresh();}});window.addEventListener('pagehide',()=>{clearTimeout(timer);});window.addEventListener('pageshow',()=>{if(!stopped)refresh();});applyRecheckCopy();refresh();
+</script></html>`;
+}
+
 function generationGuideHtmlSimple() {
+  if (nodeRecoveryProductMode) return nodeRecoveryProductGuideHtml();
+  if (nodeRecoveryScenario) return nodeRecoveryGuideHtml();
   return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>本地验收 · 按顺序检查三项</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#f5f5f5;color:#242424;font:16px/1.7 -apple-system,BlinkMacSystemFont,sans-serif}main{max-width:860px;margin:30px auto;padding:0 22px}h1{font-size:28px;margin:5px 0}h2{font-size:20px;margin:0 0 8px}p{margin:9px 0}section{background:#fff;border:1px solid #ddd;border-radius:14px;padding:22px;margin:18px 0}.muted{color:#666;font-size:14px}.expect{padding:12px;background:#f3f6f4;border-radius:8px}.feedback{font-weight:600;min-height:28px}.error{color:#9e2323;background:#fff0f0;padding:14px;border-radius:8px}button,a{font:inherit}button{border:1px solid #aaa;border-radius:8px;background:#fff;color:#222;padding:9px 16px;margin:6px 5px 6px 0;cursor:pointer}button.primary{background:#222;color:#fff;border-color:#222}button:disabled{background:#eee;color:#777;border-color:#ddd;cursor:default}button:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid #447daa;outline-offset:3px}details{margin:22px 0}summary{cursor:pointer}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}.card{border:1px solid #ddd;border-radius:8px;padding:12px}.card button{font-size:14px;padding:6px 9px}code{font-size:12px;overflow-wrap:anywhere}a{color:#285b91}
@@ -715,8 +1189,669 @@ refresh();
 </script></html>`;
 }
 
-async function initializeGenerationFixture(canvasId) {
+function readNodeRecoveryFixture() {
+  const fixturePath = join(sourceRoot, "tests/fixtures/node-recovery-acceptance.json");
+  if (!existsSync(fixturePath) || !inside(sourceRoot, realpathSync(fixturePath))) {
+    throw new Error("Node recovery acceptance fixture is missing or outside the source snapshot");
+  }
+  let fixture;
+  try {
+    fixture = JSON.parse(readFileSync(fixturePath, "utf8"));
+  } catch (error) {
+    throw new Error(`Node recovery acceptance fixture is invalid: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const successNodes = Array.isArray(fixture?.successNodes) ? fixture.successNodes : [];
+  const automatic = [fixture?.automaticRecovery?.transient, fixture?.automaticRecovery?.save];
+  const special = [fixture?.retry, fixture?.unknown];
+  const nodes = [...successNodes, ...automatic, ...special];
+  const ids = nodes.map((node) => node?.id);
+  const successIds = new Set(successNodes.map((node) => node?.id));
+  const edges = Array.isArray(fixture?.preservedEdges) ? fixture.preservedEdges : [];
+  const validTypes = new Set(["audio", "image", "text", "video"]);
+  const recoveryCases = fixture?.v4?.cases;
+  const recoveryCaseValues = recoveryCases && typeof recoveryCases === "object"
+    ? Object.values(recoveryCases) : [];
+  const validRecoveryReasons = new Set(["outcome_unknown", "operator_incident", "result_recovery_pending"]);
+  const validMaintenancePhases = ["queued", "claimed", "waiting_provider"];
+  if (fixture?.schemaVersion !== 1 || fixture?.scenario !== "node-recovery" ||
+      fixture.syntheticOnly !== true || fixture.preservedSuccessNodeCount !== 9 ||
+      successNodes.length !== fixture.preservedSuccessNodeCount ||
+      nodes.some((node) => !node || typeof node.id !== "string" ||
+        !/^node-recovery-[a-z0-9-]+$/.test(node.id) || !validTypes.has(node.type) ||
+        !node.position || !Number.isFinite(node.position.x) || !Number.isFinite(node.position.y)) ||
+      new Set(ids).size !== nodes.length ||
+      edges.some((edge) => !edge || typeof edge.id !== "string" || !successIds.has(edge.source) || !successIds.has(edge.target)) ||
+      !fixture.retry || fixture.retry.type !== "video" ||
+      !fixture.retry.modes || typeof fixture.retry.modes !== "object" ||
+      !fixture.retry.modes["balance-denied"] || !fixture.retry.modes["provider-failed"] ||
+      !fixture.unknown || fixture.unknown.type !== "text" ||
+      fixture.unknown.retryAllowed !== false ||
+      fixture.retry.retryPath !== "/api/generation-tasks" ||
+      fixture.v4?.syntheticOnly !== true ||
+      JSON.stringify(fixture.v4?.maintenancePhases) !== JSON.stringify(validMaintenancePhases) ||
+      !recoveryCases || Object.keys(recoveryCases).sort().join(",") !== "failedVideo,maintenance,originalResult" ||
+      recoveryCaseValues.length !== 3 ||
+      recoveryCaseValues.some((item) => !item || typeof item.caseId !== "string" ||
+        !/^node-recovery-case-[a-z0-9-]+$/.test(item.caseId) || typeof item.taskId !== "string" ||
+        !ids.includes(item.nodeId) || !validTypes.has(item.kind) || item.executionAttempt !== 1 ||
+        !validRecoveryReasons.has(item.reasonCode)) ||
+      new Set(recoveryCaseValues.map((item) => item.caseId)).size !== recoveryCaseValues.length ||
+      recoveryCases.originalResult.taskId !== fixture.automaticRecovery.transient.id ||
+      recoveryCases.originalResult.nodeId !== fixture.automaticRecovery.transient.id ||
+      recoveryCases.originalResult.kind !== fixture.automaticRecovery.transient.type ||
+      recoveryCases.maintenance.taskId !== fixture.unknown.id ||
+      recoveryCases.maintenance.nodeId !== fixture.unknown.id ||
+      recoveryCases.maintenance.kind !== fixture.unknown.type ||
+      recoveryCases.failedVideo.taskId !== fixture.retry.id ||
+      recoveryCases.failedVideo.nodeId !== fixture.retry.id ||
+      recoveryCases.failedVideo.kind !== fixture.retry.type) {
+    throw new Error("Node recovery acceptance fixture does not match its narrow schema");
+  }
+  return {
+    ...fixture,
+    nodes: nodes.map((node) => ({ ...node, title: node.title ?? node.label ?? node.id })),
+    successNodes: successNodes.map((node) => ({ ...node })),
+    preservedEdges: edges.map((edge) => ({ ...edge })),
+  };
+}
+
+function ssrModuleUrl(path) {
+  return `/@fs/${path.split(sep).join("/")}`;
+}
+
+function productRole(role) {
+  const value = nodeRecoveryProductFixture?.roles?.[role];
+  if (!value) throw new AcceptanceControlError("本地产品夹具尚未准备完成。", "NODE_RECOVERY_PRODUCT_NOT_READY", 503);
+  return value;
+}
+
+let nodeRecoveryProductPreservedBaseline;
+function preservedSuccessFingerprint(canvas) {
+  const ids = new Set(nodeRecoveryProductFixture.preservedSuccessNodeIds);
+  const nodes = (canvas.nodes ?? []).filter(node => ids.has(node.id)).map(node => ({
+    id: node.id, type: node.type, position: node.position,
+    width: node.style?.width, height: node.style?.height,
+    content: node.data?.content, textPrompt: node.data?.textPrompt, title: node.data?.title,
+  })).sort((a, b) => a.id.localeCompare(b.id));
+  const edges = (canvas.edges ?? []).filter(edge => ids.has(edge.source) && ids.has(edge.target))
+    .map(edge => ({ id: edge.id, source: edge.source, target: edge.target,
+      sourceHandle: edge.sourceHandle ?? "", targetHandle: edge.targetHandle ?? "" }))
+    .sort((a, b) => a.id.localeCompare(b.id));
+  return createHash("sha256").update(JSON.stringify({ nodes, edges })).digest("hex");
+}
+
+async function nodeRecoveryProductStatusPayload() {
+  if (!generationFixture || !nodeRecoveryProductFixture) {
+    return { scenario: "node-recovery", ready: false };
+  }
+  const fixtureScopeId = nodeRecoveryProductFixture.fixtureScopeId;
+  const taskResponse = await api(
+    `/api/generation-tasks?canvasId=${encodeURIComponent(generationFixture.canvasId)}&fixtureScopeId=${encodeURIComponent(fixtureScopeId)}`,
+  );
+  const taskPayload = await taskResponse.json();
+  const tasks = Array.isArray(taskPayload?.tasks) ? taskPayload.tasks : [];
+  const taskIds = Object.values(nodeRecoveryProductFixture.roles).flatMap((role) =>
+    typeof role?.taskId === "string" ? [role.taskId] : []);
+  const recoveryResponse = await api(
+    `/api/generation-recovery?taskIds=${encodeURIComponent([...new Set(taskIds)].join(","))}`,
+  );
+  const recoveryPayload = await recoveryResponse.json();
+  const canvas = await (await api(`/api/canvas/${generationFixture.canvasId}`)).json();
+  const successIds = new Set(nodeRecoveryProductFixture.preservedSuccessNodeIds);
+  const preservedNodes = Array.isArray(canvas?.nodes)
+    ? canvas.nodes.filter((node) => successIds.has(node?.id)) : [];
+  const targetIds = new Set(nodeRecoveryProductFixture.targetNodeIds);
+  const resultNodes = Array.isArray(canvas?.nodes)
+    ? canvas.nodes.filter((node) => targetIds.has(node?.id)).map((node) => ({
+        id: node.id,
+        type: node.type,
+        hasResult: Boolean(node.data?.videoSrc || node.data?.assetId || node.data?.groupRunSuccessResultKey),
+        taskId: node.data?.videoGenerationTaskId ?? node.data?.groupRunSuccessTaskId,
+        videoSrc: node.data?.videoSrc,
+      })) : [];
+  const caseItems = Array.isArray(recoveryPayload?.cases) ? recoveryPayload.cases : [];
+  const roleStatus = Object.fromEntries(Object.entries(nodeRecoveryProductFixture.roles).map(([role, value]) => {
+    const currentTask = tasks.find((task) => task.id === value.taskId) ??
+      tasks.find((task) => task.replacesTaskId === value.taskId && task.nodeId === value.nodeId);
+    const currentCase = caseItems.find((item) => item.taskId === value.taskId);
+    return [role, {
+      case: currentCase,
+      childTaskId: value.childTaskId,
+      childTask: tasks.find(task => task.id === value.childTaskId),
+      currentTask,
+      nodeId: value.nodeId,
+      taskId: value.taskId,
+    }];
+  }));
+  const maintenanceResult = roleStatus.maintenanceResult;
+  const maintenanceUnresolved = roleStatus.maintenance;
+  const maintenanceDemonstration = {
+    resultRecovered: maintenanceResult?.currentTask?.state === "success" &&
+      maintenanceResult?.case?.phase === "result_recovered",
+    resultTaskId: maintenanceResult?.taskId,
+    unresolved: ["failed", "recovering"].includes(maintenanceUnresolved?.currentTask?.state) &&
+      ["waiting_provider", "unresolved"].includes(maintenanceUnresolved?.case?.phase),
+    unresolvedTaskId: maintenanceUnresolved?.taskId,
+  };
+  return {
+    scenario: "node-recovery",
+    ready,
+    actualProductCommands: true,
+    canvasId: generationFixture.canvasId,
+    title: "失败节点恢复 · V4 同页三项本地验收",
+    phase: "candidate",
+    tasks,
+    checks: { ...nodeRecoveryProductChecks },
+    roles: roleStatus,
+    recovery: {
+      syntheticFixture: true,
+      cases: caseItems,
+      endpoint: "/api/generation-recovery",
+    },
+    maintenanceDemonstration,
+    preserve: {
+      expectedSuccessNodeCount: nodeRecoveryProductFixture.preservedSuccessNodeCount,
+      successNodeIds: nodeRecoveryProductFixture.preservedSuccessNodeIds,
+      successNodesPresent: preservedNodes.length === nodeRecoveryProductFixture.preservedSuccessNodeCount,
+      successNodesStillPresent: preservedNodes.length === nodeRecoveryProductFixture.preservedSuccessNodeCount,
+      successContentLayoutAndEdgesUnchanged: preservedSuccessFingerprint(canvas) === nodeRecoveryProductPreservedBaseline,
+    },
+    results: resultNodes,
+    syntheticLayer: {
+      fixturePath: "tests/fixtures/node-recovery-acceptance.json",
+      taskStorage: "temporary application SQLite through real product task/case commands",
+      providerMode: "dynamic loopback fake Provider only",
+      providerRequests: nodeRecoveryProviderStats.posts + nodeRecoveryProviderStats.gets + nodeRecoveryProviderStats.mediaGets,
+      providerPosts: nodeRecoveryProviderStats.posts,
+      providerStatusGets: nodeRecoveryProviderStats.gets,
+      providerMediaGets: nodeRecoveryProviderStats.mediaGets,
+      externalProviderPosts: 0,
+      paidProviderRequests: 0,
+    },
+    productLayer: {
+      actualTaskList: true,
+      actualRecoveryOwnerRead: true,
+      actualCanvasRead: true,
+      recoveryCommands: {
+        claim: nodeRecoveryProductStats.claims,
+        inspect: nodeRecoveryProductStats.inspections,
+        progress: nodeRecoveryProductStats.progress,
+      },
+      newGenerationAdmissions: nodeRecoveryProductStats.admissions,
+      canvasWrites: generationCounters.browserCanvasWrites,
+      generationPosts: generationCounters.generationPosts,
+      statusReads: generationCounters.statusReads,
+      detailReads: generationCounters.detailReads,
+      maxInFlightDetailReads: generationCounters.maxInFlightDetailReads,
+      canvasCommands: generationCounters.browserCanvasCommandWrites,
+    },
+    counters: {
+      statusReads: generationCounters.statusReads,
+      detailReads: generationCounters.detailReads,
+      generationDeletes: generationCounters.generationDeletes,
+      generationPosts: generationCounters.generationPosts,
+      syntheticProjectionPublications: generationCounters.syntheticProjectionWrites,
+      providerRequests: nodeRecoveryProviderStats.posts + nodeRecoveryProviderStats.gets + nodeRecoveryProviderStats.mediaGets,
+      paidProviderRequests: 0,
+      canvasWrites: {
+        browser: generationCounters.browserCanvasWrites,
+        browserCommands: generationCounters.browserCanvasCommandWrites,
+        control: generationCounters.controlCanvasWrites,
+      },
+    },
+    canvas: {
+      revision: canvas?.revision,
+      graphRevision: canvas?.graphRevision,
+      loadToken: canvas?.loadToken,
+      resultNodes,
+    },
+    sentinels: generationFixture.sentinels,
+    journalPath: generationJournalPath,
+    retryPath: "/api/generation-tasks/<taskId> (new POST only after protected admission)",
+    expiresAt: expiresAt.toISOString(),
+    instructions: "三项调用真实本地任务、维护命令、结果保存和单节点准入；数据与假 Provider 仅存在于隔离验收环境，不代表真实平台或付款证据。",
+  };
+}
+
+async function productAdminCase(taskId) {
+  const response = await api(`/api/admin/generation-recovery/${encodeURIComponent(taskId)}`);
+  const body = await response.json();
+  if (!body?.case || !Number.isSafeInteger(body.case.caseEventId)) {
+    throw new AcceptanceControlError("维护事项当前不可读取，请刷新验收页。", "NODE_RECOVERY_CASE_UNAVAILABLE", 503);
+  }
+  return body.case;
+}
+
+async function productRecoveryCommand(taskId, action, caseItem, extra = {}) {
+  const commandId = `node-recovery-product-${action}-${randomUUID()}`;
+  const body = { commandId, expectedCaseEventId: caseItem.caseEventId, ...extra };
+  return api(`/api/admin/generation-recovery/${encodeURIComponent(taskId)}/${action}`, "POST", body, undefined, {
+    "x-unboundry-recovery-command": "v1",
+  });
+}
+
+async function runNodeRecoveryProductOriginal() {
+  if (nodeRecoveryProductChecks.original !== "idle") {
+    throw new AcceptanceControlError("原结果找回已经完成，请到右侧查看同一节点。", "NODE_RECOVERY_PRODUCT_ALREADY_DONE");
+  }
+  const role = productRole("originalResult");
+  let caseItem = await productAdminCase(role.taskId);
+  await productRecoveryCommand(role.taskId, "claim", caseItem);
+  nodeRecoveryProductStats.claims += 1;
+  caseItem = await productAdminCase(role.taskId);
+  nodeRecoveryProductStats.inspections += 1;
+  await productRecoveryCommand(role.taskId, "inspect", caseItem);
+  nodeRecoveryProductChecks.original = "done";
+  persistGenerationJournal("productOriginalRecoveryApplied", {
+    taskId: role.taskId,
+    caseId: role.caseId,
+    actualCommand: "admin inspect -> protected adapter evidence -> original result save",
+    providerPosts: nodeRecoveryProviderStats.posts,
+  });
+  return nodeRecoveryProductStatusPayload();
+}
+
+async function runNodeRecoveryProductMaintenance() {
+  if (nodeRecoveryProductChecks.maintenance !== "idle") {
+    throw new AcceptanceControlError("维护演示已经完成，请查看当前平台未确认状态。", "NODE_RECOVERY_PRODUCT_ALREADY_DONE");
+  }
+  const resultRole = productRole("maintenanceResult");
+  let caseItem = await productAdminCase(resultRole.taskId);
+  await productRecoveryCommand(resultRole.taskId, "claim", caseItem);
+  nodeRecoveryProductStats.claims += 1;
+  caseItem = await productAdminCase(resultRole.taskId);
+  nodeRecoveryProductStats.inspections += 1;
+  try {
+    await productRecoveryCommand(resultRole.taskId, "inspect", caseItem);
+  } catch (error) {
+    let readback;
+    try {
+      readback = await nodeRecoveryProductStatusPayload();
+    } catch {
+      throw error;
+    }
+    const observed = readback.roles?.maintenanceResult;
+    const observedTask = observed?.currentTask;
+    const observedCase = observed?.case;
+    const alreadyRecovered = readback.canvasId === generationFixture.canvasId &&
+      observed?.taskId === resultRole.taskId &&
+      observedTask?.id === resultRole.taskId &&
+      observedTask?.canvasId === generationFixture.canvasId &&
+      observedTask?.nodeId === resultRole.nodeId &&
+      observedTask?.kind === resultRole.kind &&
+      observedTask?.attempt === resultRole.executionAttempt &&
+      observedCase?.caseId === resultRole.caseId &&
+      observedCase?.taskId === resultRole.taskId &&
+      observedCase?.canvasId === generationFixture.canvasId &&
+      observedCase?.nodeId === resultRole.nodeId &&
+      observedCase?.kind === resultRole.kind &&
+      observedCase?.executionAttempt === resultRole.executionAttempt &&
+      observedCase?.phase === "result_recovered" &&
+      observedTask?.state === "success";
+    if (!alreadyRecovered) throw error;
+    persistGenerationJournal("productMaintenanceResultAlreadyRecovered", {
+      taskId: resultRole.taskId,
+      caseId: resultRole.caseId,
+      actualCommand: "inspect conflict -> exact task/case readback",
+      inspectError: String(error),
+      providerPosts: nodeRecoveryProviderStats.posts,
+    });
+  }
+
+  const unresolvedRole = productRole("maintenance");
+  caseItem = await productAdminCase(unresolvedRole.taskId);
+  await productRecoveryCommand(unresolvedRole.taskId, "claim", caseItem);
+  nodeRecoveryProductStats.claims += 1;
+  caseItem = await productAdminCase(unresolvedRole.taskId);
+  await productRecoveryCommand(unresolvedRole.taskId, "progress", caseItem, { phase: "waiting_provider" });
+  nodeRecoveryProductStats.progress += 1;
+  caseItem = await productAdminCase(unresolvedRole.taskId);
+  nodeRecoveryProductStats.inspections += 1;
+  await productRecoveryCommand(unresolvedRole.taskId, "inspect", caseItem);
+  nodeRecoveryProductChecks.maintenance = "done";
+  persistGenerationJournal("productMaintenanceCaseHandled", {
+    resultTaskId: resultRole.taskId,
+    resultCaseId: resultRole.caseId,
+    unresolvedTaskId: unresolvedRole.taskId,
+    unresolvedCaseId: unresolvedRole.caseId,
+    actualCommands: ["claim(result)", "inspect(result)", "claim(unresolved)", "progress(unresolved)", "inspect(unresolved)"],
+    providerPosts: nodeRecoveryProviderStats.posts,
+  });
+  return nodeRecoveryProductStatusPayload();
+}
+
+async function runNodeRecoveryProductRetry() {
+  if (nodeRecoveryProductChecks.retry !== "idle") {
+    throw new AcceptanceControlError("当前视频已开始新一轮，请等待结果出现。", "NODE_RECOVERY_PRODUCT_ALREADY_DONE");
+  }
+  const role = productRole("failedVideo");
+  const status = await nodeRecoveryProductStatusPayload();
+  const current = status.tasks.find((task) => task.id === role.taskId);
+  if (!current || current.state !== "failed") {
+    throw new AcceptanceControlError("当前视频尚未通过受保护的失败结算，未提交新请求。", "NODE_RECOVERY_PRODUCT_NOT_ADMITTED");
+  }
+  // The guide clicks the real Video Creator button. Observe its normal client
+  // lifecycle and product admission instead of submitting a second helper POST.
+  const deadline = Date.now() + 30_000;
+  let last;
+  let observedChild;
+  let childTaskId;
+  while (Date.now() < deadline) {
+    const payload = await (await api(`/api/generation-tasks?canvasId=${encodeURIComponent(generationFixture.canvasId)}&fixtureScopeId=${encodeURIComponent(nodeRecoveryProductFixture.fixtureScopeId)}`)).json();
+    const candidates = (payload.tasks ?? []).filter(task => task.nodeId === role.nodeId && task.kind === "video" && task.id !== role.taskId);
+    if (candidates.length > 1) throw new AcceptanceControlError("当前节点出现多个新任务，验收已停止。", "NODE_RECOVERY_PRODUCT_ADMISSION_INVALID", 503);
+    last = candidates[0];
+    if (last) { observedChild = last; childTaskId = last.id; role.childTaskId = childTaskId; }
+    const child = last ?? observedChild;
+    if (child?.state === "success") break;
+    if (child?.state === "failed" || child?.state === "cancelled") {
+      throw new AcceptanceControlError("单节点新一轮未成功，前面节点没有重新提交。", "NODE_RECOVERY_PRODUCT_RETRY_FAILED", 503);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  if (!observedChild) {
+    throw new AcceptanceControlError(
+      "没有检测到当前视频的新任务，暂未确认产品已提交；请查看右侧生成按钮和本卡提示。",
+      "NODE_RECOVERY_PRODUCT_NOT_SUBMITTED",
+      409,
+    );
+  }
+  if (observedChild.state !== "success") {
+    throw new AcceptanceControlError("当前视频的新任务已提交，结果仍在保存，请刷新验收页查看原任务和新任务。", "NODE_RECOVERY_PRODUCT_RETRY_PENDING", 503);
+  }
+  const fixtureModule = await server.ssrLoadModule(
+    ssrModuleUrl(join(sourceRoot, "scripts/node-recovery-product-fixture.ts")),
+  );
+  let verification;
+  try {
+    verification = await fixtureModule.verifyNodeRecoveryProductRetry({
+      canvasId: generationFixture.canvasId,
+      childTaskId,
+      dataDirectory: dataRoot,
+      expectedChildProviderTaskId: "node-recovery-child-provider",
+      expectedModelId: nodeRecoveryProductFixture.modelId,
+      expectedParentProviderTaskId: role.providerTaskId,
+      expectedProviderModelId: nodeRecoveryProductFixture.providerModelId,
+      expectedProviderProfileId: nodeRecoveryProductFixture.profileId,
+      expectedFixtureScopeId: nodeRecoveryProductFixture.fixtureScopeId,
+      nodeId: role.nodeId,
+      ownerId: nodeRecoveryProductFixture.ownerId,
+      parentTaskId: role.taskId,
+    });
+  } catch {
+    throw new AcceptanceControlError(
+      "单节点新任务未通过临时数据库身份核验，验收已停止。",
+      "NODE_RECOVERY_PRODUCT_ADMISSION_INVALID",
+      503,
+    );
+  }
+  nodeRecoveryProductStats.admissions += 1;
+  nodeRecoveryProductChecks.retry = "done";
+  persistGenerationJournal("productSingleNodeAdmissionApplied", {
+    oldTaskId: role.taskId,
+    taskId: childTaskId,
+    actualCommand: "protected failure settlement -> real Video Creator click -> product admission -> loopback provider result",
+    providerPosts: nodeRecoveryProviderStats.posts,
+    verification,
+  });
+  return nodeRecoveryProductStatusPayload();
+}
+
+async function focusNodeRecoveryProduct(nodeId) {
+  if (typeof nodeId !== "string" || !nodeRecoveryProductFixture.targetNodeIds.includes(nodeId)) {
+    throw new AcceptanceControlError("画布节点定位参数无效。", "NODE_RECOVERY_PRODUCT_FOCUS_INVALID", 400);
+  }
+  return nodeRecoveryProductStatusPayload();
+}
+
+async function initializeNodeRecoveryProductFixture(canvasId, ownerId) {
+  if (typeof ownerId !== "string" || ownerId.length === 0) {
+    throw new Error("Node recovery product fixture requires the bootstrap owner identity");
+  }
+  nodeRecoveryFixture = readNodeRecoveryFixture();
+  const fixtureModule = await server.ssrLoadModule(
+    ssrModuleUrl(join(sourceRoot, "scripts/node-recovery-product-fixture.ts")),
+  );
+  nodeRecoveryProductFixture = await fixtureModule.initializeNodeRecoveryProductFixture({
+    canvasId,
+    ownerId,
+    sourceRoot,
+  });
+  const sentinels = nodeRecoveryProductFixture.preservedSuccessNodeIds.map((id) => ({
+    id,
+    kind: "text",
+    state: "success",
+    binding: `preserved-${id}`,
+  }));
+  generationFixture = {
+    canvasId,
+    events: [],
+    modelCatalog: { generationEnabled: true, models: [] },
+    phase: "candidate",
+    sentinels,
+  };
+  generationTasks.clear();
+  generationObservations.clear();
+  generationBuilds = await buildGenerationClients();
+  nodeRecoveryProductPreservedBaseline = preservedSuccessFingerprint(await (await api(`/api/canvas/${canvasId}`)).json());
+  generationJournalPath = join(dataRoot, "node-recovery-product-acceptance-journal.json");
+  persistGenerationJournal("productFixtureReady", {
+    canvasId,
+    scenario: "node-recovery",
+    taskCount: Object.keys(nodeRecoveryProductFixture.roles).length,
+    preservedSuccessNodeCount: nodeRecoveryProductFixture.preservedSuccessNodeCount,
+    providerMode: "dynamic-loopback",
+  });
+  return nodeRecoveryProductFixture;
+}
+
+async function initializeNodeRecoveryFixture(canvasId, ownerId) {
+  nodeRecoveryFixture = readNodeRecoveryFixture();
+  if (nodeRecoveryProductMode) return initializeNodeRecoveryProductFixture(canvasId, ownerId);
+  const moduleUrl = (path) => `/@fs/${path.split(sep).join("/")}`;
+  const modelParameters = await server.ssrLoadModule(moduleUrl(join(sourceRoot, "types/modelParameters.ts")));
+  const workflow = await server.ssrLoadModule(moduleUrl(join(sourceRoot, "client/src/generation/workflowNodeExecutors.ts")));
+  generationRuntime = {
+    defaultParameterValues: modelParameters.defaultParameterValues,
+    knownModelParameterSchema: modelParameters.knownModelParameterSchema,
+    currentWorkflowGenerationBinding: workflow.currentWorkflowGenerationBinding,
+  };
+  generationRuntime.schemas = Object.fromEntries(generationKinds.map((kind) => [
+    kind,
+    generationRuntime.knownModelParameterSchema({
+      capability: kind,
+      providerDriver: generationModelInputs[kind].providerDriver,
+      providerModelId: generationModelInputs[kind].providerModelId,
+    }),
+  ]));
+  const models = Object.fromEntries(generationKinds.map((kind) => [kind, [{
+    capability: kind,
+    displayName: `Node recovery ${kind}`,
+    generationAvailable: true,
+    generationUnavailableReason: "",
+    generationUnavailableReasonCode: null,
+    ...generationModelInputs[kind],
+    isDefault: true,
+    parameterSchema: generationRuntime.schemas[kind],
+  }]]));
+  const fixtureNodes = nodeRecoveryFixture.nodes.map((definition) => ({
+    id: definition.id,
+    type: definition.type,
+    position: definition.position,
+    data: {
+      ...generationNodeData(definition.type, "shared", undefined, undefined, false),
+      label: definition.label,
+      title: definition.title,
+    },
+    style: definition.style ?? {
+      width: definition.type === "image" ? 300 : 260,
+      height: definition.type === "image" ? 190 : 220,
+    },
+  }));
+  const graph = {
+    apply: () => ({ status: "rejected" }),
+    snapshot: () => ({ edges: [], nodes: fixtureNodes }),
+  };
+  const transientId = nodeRecoveryFixture.automaticRecovery.transient.id;
+  const saveId = nodeRecoveryFixture.automaticRecovery.save.id;
+  const retryId = nodeRecoveryFixture.retry.id;
+  const unknownId = nodeRecoveryFixture.unknown.id;
+  for (const definition of nodeRecoveryFixture.nodes) {
+    const binding = generationRuntime.currentWorkflowGenerationBinding({
+      context: { canvasId, graph, isFixture: true, modelCatalog: { models, status: "ready" } },
+      kind: definition.type,
+      nodeId: definition.id,
+    });
+    if (!binding) throw new Error(`Could not derive node recovery generation binding for ${definition.id}`);
+    const identity = {
+      generationIdentityVersion: 2,
+      generationInputKey: binding.inputFingerprint,
+      generationOwnershipKey: binding.ownershipKey,
+      modelConfigurationRevision: binding.modelConfigurationRevision,
+      modelInputContractFingerprint: binding.inputContractFingerprint,
+      modelReleaseRevision: binding.modelReleaseRevision,
+    };
+    const id = definition.id;
+    const result = generationResultFor(definition.type, id);
+    const mediaBytes = definition.type === "image"
+      ? readFileSync(join(sourceRoot, "spec/reference/upstream-v2.12.2-dense/15-ai-image-creator-result-1280x720.png"))
+      : definition.type === "video"
+        ? readFileSync(join(sourceRoot, "client/public/fixtures/video-success.mp4"))
+        : undefined;
+    let registeredMedia;
+    if (mediaBytes) {
+      await api(result.resultUrl, "POST", mediaBytes, result.mediaContentType);
+      registeredMedia = await (await api(`/api/media-metadata/${definition.type}/${result.assetId}`)).json();
+      const storedBytes = Buffer.from(await (await api(result.resultUrl)).arrayBuffer());
+      const checksumSha256 = createHash("sha256").update(storedBytes).digest("hex");
+      if (checksumSha256 !== createHash("sha256").update(mediaBytes).digest("hex") ||
+          registeredMedia.storageBackend !== "local" || registeredMedia.byteSize !== mediaBytes.length) {
+        throw new Error(`Node recovery media fixture was not registered exactly: ${id}`);
+      }
+      registeredMedia = { ...registeredMedia, checksumSha256 };
+    }
+    const successDefinition = nodeRecoveryFixture.successNodes.find((node) => node.id === id);
+    const mode = id === retryId ? "provider-failed" : undefined;
+    const failure = id === retryId
+      ? nodeRecoveryFixture.retry.modes[mode]
+      : id === unknownId
+        ? nodeRecoveryFixture.unknown
+        : undefined;
+    const initialState = successDefinition ? "success" : (id === transientId || id === saveId ? "running" : "failed");
+    const task = {
+      ...identity,
+      ...result,
+      ...(result.assetId ? {
+        resultAssetId: result.assetId,
+        resultMedia: registeredMedia,
+        resultOutputs: [{
+          assetId: result.assetId,
+          media: registeredMedia,
+          role: "primary",
+          url: result.resultUrl,
+        }],
+      } : {}),
+      attempt: 1,
+      activeReads: 0,
+      canvasId,
+      costCurrency: "CNY",
+      createdAt: new Date().toISOString(),
+      errorCode: failure?.errorCode,
+      errorMessage: failure ? `${failure.errorMessage}\n${failure.rawProviderMessage ?? ""}` : undefined,
+      fixtureScopeId: "",
+      id,
+      kind: definition.type,
+      model: generationModelInputs[definition.type].id,
+      nodeId: definition.id,
+      prompt: `${definition.type} 原始提示词`,
+      retryAllowed: false,
+      retryBlockCode: failure?.retryBlockCode,
+      retryBlockReason: failure?.retryBlockReason,
+      newGenerationAllowed: id === retryId ? true : id === unknownId ? false : undefined,
+      newGenerationBlockReason: id === unknownId ? failure?.retryBlockReason : undefined,
+      replacementTaskId: undefined,
+      rawProviderMessage: failure?.rawProviderMessage,
+      resultText: successDefinition?.resultText ?? definition.resultText ?? result.resultText,
+      state: initialState,
+      updatedAt: new Date().toISOString(),
+      acceptancePhase: "shared",
+      maxInFlightReads: 0,
+      identity,
+      projectionPersisted: initialState === "success",
+      canvasProjectionState: initialState === "success" ? "applied" : "pending",
+      fault: {
+        continuous: false,
+        remainingFailures: 0,
+        statuses: [],
+        terminalOnRecovery: false,
+      },
+    };
+    generationTasks.set(id, task);
+  }
+  const sentinels = nodeRecoveryFixture.successNodes.map((node) => ({
+    id: `${node.id}-sentinel`,
+    kind: node.type,
+    state: "success",
+    binding: `preserved-${node.id}`,
+  }));
+  generationFixture = {
+    canvasId,
+    events: [],
+    modelCatalog: { generationEnabled: true, models: generationKinds.flatMap((kind) => models[kind]) },
+    phase: "candidate",
+    sentinels,
+  };
+  const recoveryOpenedAt = new Date().toISOString();
+  const recoveryDefinitions = nodeRecoveryFixture.v4.cases;
+  nodeRecoveryRecoveryCases.clear();
+  nodeRecoveryMaintenanceStage = "queued";
+  for (const [caseKey, definition] of Object.entries(recoveryDefinitions)) {
+    const initial = caseKey === "failedVideo"
+      ? {
+          phase: "ready_for_user",
+          reasonCode: "operator_incident",
+          summary: "已核实此视频可以继续；只重新生成当前视频，前面9个成功节点保持不变",
+          status: "ready_for_user",
+          action: "regenerate",
+        }
+      : {
+          phase: "queued",
+          reasonCode: caseKey === "maintenance" ? "outcome_unknown" : "result_recovery_pending",
+          summary: caseKey === "maintenance"
+            ? "已登记待处理；你不用查任务号或重复提交"
+            : "系统正在准备原请求的自动找回；你不用点击恢复",
+          status: "queued",
+          action: "view_progress",
+        };
+    nodeRecoveryRecoveryCases.set(caseKey, {
+      ...definition,
+      canvasId,
+      phase: initial.phase,
+      reasonCode: initial.reasonCode,
+      summary: initial.summary,
+      status: initial.status,
+      action: initial.action,
+      caseEventId: 1,
+      progressVersion: 1,
+      lastReadProgressVersion: 0,
+      openedAt: recoveryOpenedAt,
+      updatedAt: recoveryOpenedAt,
+    });
+  }
+  generationBuilds = await buildGenerationClients();
+  generationJournalPath = join(dataRoot, "node-recovery-acceptance-journal.json");
+  persistGenerationJournal("fixtureReady", {
+    canvasId,
+    scenario: "node-recovery",
+    taskCount: generationTasks.size,
+    preservedSuccessNodeCount: nodeRecoveryFixture.preservedSuccessNodeCount,
+  });
+  return models;
+}
+
+async function initializeGenerationFixture(canvasId, ownerId) {
   validateGenerationBaseline();
+  if (nodeRecoveryScenario) return initializeNodeRecoveryFixture(canvasId, ownerId);
   generationRuntime = {};
   const moduleUrl = (path) => `/@fs/${path.split(sep).join("/")}`;
   const modelParameters = await server.ssrLoadModule(moduleUrl(join(sourceRoot, "types/modelParameters.ts")));
@@ -956,6 +2091,604 @@ function runGenerationCheck(action) {
   return generationStatusPayload();
 }
 
+function nodeRecoveryTask(id) {
+  const task = generationTasks.get(id);
+  if (!task) throw new AcceptanceControlError("找不到这个本地验收任务，请刷新验收页。", "NODE_RECOVERY_TASK_NOT_FOUND", 404);
+  return task;
+}
+
+function requireNodeRecoveryObserved(id) {
+  const task = nodeRecoveryTask(id);
+  const observation = generationObservations.get(id);
+  if (!observation || observation.successfulReads < 1 || Date.now() - observation.lastSuccessAt > 30000) {
+    throw new AcceptanceControlError("请先打开同页测试画布，让当前演示任务完成一次正常状态读取。", "NODE_RECOVERY_CANVAS_NOT_READY");
+  }
+  return task;
+}
+
+function armNodeRecoveryTask(task, statuses) {
+  task.state = "running";
+  task.errorCode = undefined;
+  task.errorMessage = undefined;
+  task.retryAllowed = false;
+  task.retryBlockCode = undefined;
+  task.retryBlockReason = undefined;
+  task.projectionPersisted = false;
+  task.canvasProjectionState = "pending";
+  task.fault = {
+    continuous: false,
+    remainingFailures: statuses.length,
+    statuses: [...statuses],
+    terminalOnRecovery: true,
+  };
+  task.updatedAt = new Date().toISOString();
+}
+
+async function startNodeRecoveryDemo(action) {
+  if (!nodeRecoveryFixture) throw new AcceptanceControlError("本地验收夹具尚未准备完成。", "NODE_RECOVERY_NOT_READY", 503);
+  if (!["transient", "save"].includes(action)) {
+    throw new AcceptanceControlError("未知的自动恢复演示。", "NODE_RECOVERY_UNKNOWN_DEMO", 400);
+  }
+  if (nodeRecoveryChecks[action] !== "idle") {
+    throw new AcceptanceControlError("这一项已经启动；请回到测试画布观察结果。", "NODE_RECOVERY_DEMO_STARTED");
+  }
+  const definition = nodeRecoveryFixture.automaticRecovery[action];
+  const task = nodeRecoveryTask(definition.id);
+  armNodeRecoveryTask(task, definition.faultStatuses);
+  const observation = generationObservations.get(task.id) ?? { successfulReads: 0, failedReads: 0, lastSuccessAt: 0 };
+  observation.failedReads = 0;
+  generationObservations.set(task.id, observation);
+  if (action === "save") {
+    nodeRecoveryState.saveFaultRemaining = definition.faultStatuses.length;
+    nodeRecoveryState.saveFaultStatuses = [...definition.faultStatuses];
+  }
+  nodeRecoveryChecks[action] = "started";
+  await focusNodeRecovery(action);
+  persistGenerationJournal("nodeRecoveryDemoStarted", {
+    action,
+    taskId: task.id,
+    faultStatuses: definition.faultStatuses,
+    productMustRecover: true,
+  });
+  return nodeRecoveryStatusPayload();
+}
+
+async function setNodeRecoveryRetryMode(mode) {
+  if (!nodeRecoveryFixture || !nodeRecoveryFixture.retry.modes[mode]) {
+    throw new AcceptanceControlError("请选择余额拒绝或平台最终失败。", "NODE_RECOVERY_UNKNOWN_RETRY_MODE", 400);
+  }
+  // Explicitly prepare another independent synthetic case; never mutate a real task.
+  for (const [id, item] of generationTasks) {
+    if (item.nodeId === nodeRecoveryFixture.retry.id && id !== nodeRecoveryFixture.retry.id) generationTasks.delete(id);
+  }
+  nodeRecoveryState.retryAccepted = false;
+  nodeRecoveryState.newTaskId = undefined;
+  const task = nodeRecoveryTask(nodeRecoveryFixture.retry.id);
+  if (task.state !== "failed" || task.attempt !== 1) {
+    throw new AcceptanceControlError("失败视频状态已变化，请重新准备本地验收数据。", "NODE_RECOVERY_RETRY_TASK_CHANGED");
+  }
+  const modeDefinition = nodeRecoveryFixture.retry.modes[mode];
+  nodeRecoveryState.retryMode = mode;
+  task.errorCode = modeDefinition.errorCode;
+  task.errorMessage = `${modeDefinition.errorMessage}\n${modeDefinition.rawProviderMessage ?? ""}`;
+  task.retryAllowed = false;
+  task.newGenerationAllowed = true;
+  task.retryBlockCode = undefined;
+  task.retryBlockReason = undefined;
+  task.failureMode = mode;
+  nodeRecoveryChecks.retry = "armed";
+  await focusNodeRecovery("retry");
+  persistGenerationJournal("nodeRecoveryRetryMode", { taskId: task.id, mode });
+  return nodeRecoveryStatusPayload();
+}
+
+function markNodeRecoveryUnknown() {
+  const task = nodeRecoveryTask(nodeRecoveryFixture.unknown.id);
+  if (task.state !== "failed" || task.retryAllowed !== false ||
+      task.errorCode !== nodeRecoveryFixture.unknown.errorCode) {
+    throw new AcceptanceControlError("无法确认案例状态已变化，请重新准备本地验收数据。", "NODE_RECOVERY_UNKNOWN_TASK_CHANGED");
+  }
+  nodeRecoveryChecks.unknown = "user-recheck";
+  persistGenerationJournal("nodeRecoveryUnknownViewed", {
+    taskId: task.id,
+    retryAllowed: task.retryAllowed,
+    providerRequests: 0,
+  });
+  return nodeRecoveryStatusPayload();
+}
+
+function setNodeRecoveryMaintenanceStage(phase) {
+  const phases = nodeRecoveryFixture?.v4?.maintenancePhases;
+  if (!Array.isArray(phases) || !phases.includes(phase)) {
+    throw new AcceptanceControlError("维护进度演示阶段无效。", "NODE_RECOVERY_INVALID_MAINTENANCE_PHASE", 400);
+  }
+  const currentIndex = phases.indexOf(nodeRecoveryMaintenanceStage);
+  const nextIndex = phases.indexOf(phase);
+  if (nextIndex < currentIndex) {
+    throw new AcceptanceControlError("维护进度只能向前演示，请重新准备本地验收数据。", "NODE_RECOVERY_MAINTENANCE_PHASE_REWIND");
+  }
+  nodeRecoveryMaintenanceStage = phase;
+  const patch = phase === "queued"
+    ? {
+        phase: "queued",
+        reasonCode: "outcome_unknown",
+        summary: "已登记待处理；你不用查任务号或重复提交",
+        status: "queued",
+        action: "view_progress",
+        lastCheckedAt: undefined,
+        nextCheckAt: undefined,
+      }
+    : phase === "claimed"
+      ? {
+          phase: "claimed",
+          reasonCode: "outcome_unknown",
+          summary: "维护人员已接手，正在核对原请求；原任务仍受保护",
+          status: "claimed",
+          action: "view_progress",
+          lastCheckedAt: undefined,
+          nextCheckAt: undefined,
+        }
+      : {
+          phase: "waiting_provider",
+          reasonCode: "outcome_unknown",
+          summary: "维护人员已接手，正在等待平台回复；原任务仍受保护",
+          status: "waiting_provider",
+          action: "view_progress",
+          lastCheckedAt: new Date().toISOString(),
+          nextCheckAt: new Date(Date.now() + 30000).toISOString(),
+        };
+  updateNodeRecoveryRecoveryCase("maintenance", patch);
+  persistGenerationJournal("nodeRecoveryMaintenanceStage", {
+    taskId: nodeRecoveryFixture.v4.cases.maintenance.taskId,
+    caseId: nodeRecoveryFixture.v4.cases.maintenance.caseId,
+    phase,
+    syntheticOnly: true,
+  });
+  return nodeRecoveryStatusPayload();
+}
+
+async function focusNodeRecovery(action) {
+  const definition = action === 'retry' ? nodeRecoveryFixture.retry
+    : action === 'unknown' ? nodeRecoveryFixture.unknown
+    : nodeRecoveryFixture.automaticRecovery[action];
+  const document = await (await api(`/api/canvas/${generationFixture.canvasId}`)).json();
+  await generationDocumentPut({ ...document,
+    viewport: action === 'overview' ? { x: 160, y: 120, zoom: 0.45 }
+      : { x: 350 - definition.position.x * 0.7, y: 150 - definition.position.y * 0.7, zoom: 0.7 },
+  }, 'control');
+  return nodeRecoveryStatusPayload();
+}
+
+function nodeRecoveryRetryRequest(body) {
+  const task = nodeRecoveryTask(nodeRecoveryFixture.retry.id);
+  if (nodeRecoveryState.retryAccepted) {
+    const admitted = generationTasks.get(nodeRecoveryState.newTaskId);
+    if (admitted?.idempotencyKey === body.idempotencyKey) return generationTaskPublic(admitted);
+    throw new AcceptanceControlError('本场景的视频已提交，请等待结果。', 'NODE_RECOVERY_ALREADY_ADMITTED');
+  }
+  if (!body || body.replacesTaskId !== task.id || task.newGenerationAllowed !== true ||
+      task.state !== 'failed' || !nodeRecoveryState.retryMode ||
+      body.canvasId !== task.canvasId || body.nodeId !== task.nodeId || body.kind !== 'video' ||
+      body.model !== task.model || body.generationInputKey !== task.generationInputKey ||
+      body.generationOwnershipKey !== task.generationOwnershipKey ||
+      body.modelConfigurationRevision !== task.modelConfigurationRevision ||
+      body.modelInputContractFingerprint !== task.modelInputContractFingerprint ||
+      body.modelReleaseRevision !== task.modelReleaseRevision ||
+      typeof body.idempotencyKey !== 'string' || !body.idempotencyKey) {
+    throw new AcceptanceControlError('当前视频的失败任务或输入不匹配，未提交。', 'NODE_RECOVERY_NEW_INTENT_MISMATCH');
+  }
+  const child = { ...task, id: `node-recovery-rerun-${randomUUID()}`, idempotencyKey: body.idempotencyKey,
+    attempt: 1, state: 'running', errorCode: undefined, errorMessage: undefined,
+    newGenerationAllowed: false, retryAllowed: false, retryBlockCode: undefined,
+    retryBlockReason: undefined, newGenerationBlockReason: undefined,
+    rawProviderMessage: undefined, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    projectionPersisted: false, canvasProjectionState: 'pending',
+    canvasRevision: body.canvasRevision,
+    fault: { continuous: false, remainingFailures: 0, statuses: [], terminalOnRecovery: true },
+  };
+  task.newGenerationAllowed = false;
+  task.newGenerationBlockReason = '当前视频已有新一轮任务，正在等待结果';
+  nodeRecoveryState.retryAccepted = true;
+  nodeRecoveryState.newTaskId = child.id;
+  nodeRecoveryChecks.retry = 'accepted';
+  generationTasks.set(child.id, child);
+  persistGenerationJournal('nodeRecoveryNewIntentAccepted', {
+    oldTaskId: task.id, taskId: child.id, oldState: task.state, mode: nodeRecoveryState.retryMode,
+    providerRequests: 0, paidProviderRequests: 0,
+  });
+  return generationTaskPublic(child);
+}
+
+
+let productSmokeStarted = false;
+async function smokeNodeRecoveryProductGuide({ order = "user" } = {}) {
+  if (!['user', 'retry-first'].includes(order)) {
+    throw new AcceptanceControlError("验收顺序参数无效。", "PRODUCT_SMOKE_INVALID_ORDER", 400);
+  }
+  if (productSmokeStarted || Object.values(nodeRecoveryProductChecks).some(value => value !== "idle")) {
+    throw new AcceptanceControlError("请使用新的临时验收实例运行浏览器检查。", "PRODUCT_SMOKE_REQUIRES_FRESH_DATA", 409);
+  }
+  productSmokeStarted = true;
+  const { chromium, expect } = await import('@playwright/test');
+  let browser, context, page;
+  let smokeStage = 'launch';
+  const forbidden = [], pageErrors = [];
+  try {
+    browser = await chromium.launch({ headless: true });
+    context = await browser.newContext({ viewport: { width: 1600, height: 1050 }, serviceWorkers: 'block' });
+    await context.route('**/*', async route => {
+      const url = new URL(route.request().url());
+      if (url.origin === origin || ['data:', 'blob:'].includes(url.protocol)) return route.continue();
+      forbidden.push(url.origin);
+      return route.abort('blockedbyclient');
+    });
+    page = await context.newPage();
+    page.setDefaultTimeout(15_000);
+    page.on('pageerror', error => pageErrors.push(error.message));
+    const frame = page.frameLocator('#canvas');
+    const node = role => frame.locator(`.react-flow__node[data-id="${productRole(role).nodeId}"]`);
+    const waitForGuideIdle = async (stage, timeout = 15_000) => {
+      smokeStage = stage;
+      await page.waitForFunction(
+        () => document.documentElement.dataset.acceptanceBusy === 'false',
+        undefined,
+        { timeout },
+      );
+    };
+    const clickGuideButton = async (name, stage) => {
+      await waitForGuideIdle(`${stage}:before-click-idle`);
+      smokeStage = `${stage}:connection`;
+      await expect(page.locator('#connection')).toContainText('画布已准备好', { timeout: 15_000 });
+      smokeStage = `${stage}:button-enabled`;
+      const button = page.getByRole('button', { name, exact: true });
+      await expect(button).toBeEnabled({ timeout: 15_000 });
+      smokeStage = `${stage}:click`;
+      await button.click();
+    };
+    const select = async role => {
+      smokeStage = `select:${role}:open-search`;
+      await frame.getByTestId('node-search').click();
+      smokeStage = `select:${role}:choose-result`;
+      await frame.locator(`[data-testid="node-search-results"] [data-node-id="${productRole(role).nodeId}"]`).click();
+      smokeStage = `select:${role}:identity`;
+      await expect(frame.getByTestId('canvas-world')).toHaveAttribute('data-primary-node', productRole(role).nodeId, { timeout: 15_000 });
+      await expect(frame.getByTestId('canvas-world')).toHaveAttribute('data-selected-node-count', '1', { timeout: 15_000 });
+    };
+    const videoVisible = async role => {
+      const video = node(role).getByTestId('video-node-preview');
+      await expect(video).toBeVisible({ timeout: 30_000 });
+      await expect.poll(() => video.evaluate(element => Boolean(
+        element.readyState >= 2 && element.currentSrc && !element.error &&
+        element.videoWidth > 0 && Number.isFinite(element.duration) && element.duration > 0
+      )), { timeout: 30_000 }).toBe(true);
+      await expect(node(role).locator('.media-load-fallback')).toHaveCount(0);
+      await expect(node(role).locator('.provider-error-notice')).toHaveCount(0);
+    };
+    const assertUnknownCreator = async stage => {
+      smokeStage = `${stage}:creator`;
+      const unknownCreator = frame.locator(`[data-testid="video-creator"][data-id~="${productRole('maintenance').nodeId}"]`);
+      await expect(unknownCreator).toHaveCount(1, { timeout: 15_000 });
+      const unknownGenerate = unknownCreator.locator('button.video-creator-generate');
+      await expect(unknownGenerate).toHaveCount(1, { timeout: 15_000 });
+      const buttonState = await unknownGenerate.evaluate(button => ({
+        ariaLabel: button.getAttribute('aria-label'),
+        disabled: button.disabled,
+      }));
+      const allowedBusyLabels = new Set(['取消生成', 'Generating...', 'Submitting...', '正在保存画布…']);
+      smokeStage = `${stage}:button-state`;
+      if (buttonState.ariaLabel === 'Generate') {
+        await expect(unknownGenerate).toBeDisabled({ timeout: 15_000 });
+      } else if (!allowedBusyLabels.has(buttonState.ariaLabel) ||
+        (buttonState.ariaLabel !== '取消生成' && !buttonState.disabled)) {
+        throw new Error(`平台未确认节点的生成按钮状态不安全：${buttonState.ariaLabel ?? '无aria-label'}`);
+      }
+    };
+    const runOriginal = async () => {
+      await clickGuideButton('开始找回原结果', '1:original');
+      await waitForGuideIdle('1:after-click-idle');
+      smokeStage = '1:original-status';
+      await expect(page.locator('#original-status')).toContainText('原任务结果已保存', { timeout: 30_000 });
+      smokeStage = '1:original-media';
+      await videoVisible('originalResult');
+    };
+    const runMaintenance = async () => {
+      await clickGuideButton('开始维护处理', '2:maintenance');
+      await waitForGuideIdle('2:after-click-idle');
+      smokeStage = '2:maintenance-status';
+      await expect(page.locator('#maintenance-status')).toContainText('维护后结果已找回', { timeout: 30_000 });
+      smokeStage = '2:maintenance-media';
+      await videoVisible('maintenanceResult');
+    };
+    const runRetry = async () => {
+      await clickGuideButton('继续当前视频', '3:retry');
+      await waitForGuideIdle('3:after-click-idle', 45_000);
+      smokeStage = '3:retry-status';
+      await expect(page.locator('#retry-status')).toContainText('已为当前视频创建新任务', { timeout: 30_000 });
+      smokeStage = '3:retry-media';
+      await videoVisible('failedVideo');
+    };
+    const assertUnknown = async () => {
+      await clickGuideButton('查看仍未确认的节点', 'unknown');
+      await waitForGuideIdle('unknown:after-click-idle');
+      smokeStage = 'unknown:status';
+      await expect(node('maintenance')).toContainText('正在等待平台回复', { timeout: 30_000 });
+      await assertUnknownCreator('unknown');
+    };
+    const refreshAndAssert = async roles => {
+      await waitForGuideIdle(`refresh:${roles.join(',')}:before-click-idle`);
+      await expect(page.locator('#connection')).toContainText('画布已准备好', { timeout: 15_000 });
+      smokeStage = `refresh:${roles.join(',')}:click`;
+      const reloadMarker = `${Date.now()}-${Math.random()}`;
+      await page.locator('#canvas').evaluate((iframe, marker) => {
+        iframe.setAttribute('data-acceptance-reload', marker);
+        iframe.addEventListener('load', () => {
+          if (iframe.getAttribute('data-acceptance-reload') === marker) {
+            iframe.setAttribute('data-acceptance-reload', `${marker}:loaded`);
+          }
+        }, { once: true });
+      }, reloadMarker);
+      await page.getByRole('button', { name: '刷新右侧画布', exact: true }).click();
+      await page.waitForFunction(
+        marker => document.querySelector('#canvas')?.getAttribute('data-acceptance-reload') === `${marker}:loaded`,
+        reloadMarker,
+        { timeout: 30_000 },
+      );
+      await waitForGuideIdle(`refresh:${roles.join(',')}:guide-idle`);
+      smokeStage = `refresh:${roles.join(',')}:ready`;
+      await expect(frame.getByTestId('canvas-world')).toHaveAttribute('data-persistence-ready', 'true', { timeout: 30_000 });
+      for (const role of roles) {
+        smokeStage = `refresh:${roles.join(',')}:select:${role}`;
+        await select(role);
+        smokeStage = `refresh:${roles.join(',')}:media:${role}`;
+        await videoVisible(role);
+      }
+      smokeStage = `refresh:${roles.join(',')}:unknown`;
+      await select('maintenance');
+      await expect(node('maintenance')).toContainText('正在等待平台回复');
+      await assertUnknownCreator(`refresh:${roles.join(',')}:unknown`);
+    };
+    smokeStage = 'initial:goto';
+    await page.goto(`${origin}/__acceptance`);
+    smokeStage = 'initial:ready';
+    await expect(frame.getByTestId('canvas-world')).toHaveAttribute('data-persistence-ready', 'true', { timeout: 30_000 });
+    if (order === 'retry-first') {
+      await runRetry();
+      await runOriginal();
+      await runMaintenance();
+      await refreshAndAssert(['failedVideo', 'originalResult', 'maintenanceResult']);
+    } else {
+      await runOriginal();
+      await runMaintenance();
+      await assertUnknown();
+      await refreshAndAssert(['originalResult', 'maintenanceResult']);
+      await runRetry();
+      await refreshAndAssert(['failedVideo', 'originalResult', 'maintenanceResult']);
+    }
+    await select('maintenanceResult');
+    const status = await nodeRecoveryProductStatusPayload();
+    expect(status.preserve.successContentLayoutAndEdgesUnchanged).toBe(true);
+    expect(status.maintenanceDemonstration).toMatchObject({ resultRecovered: true, unresolved: true });
+    expect(nodeRecoveryProviderStats.posts).toBe(1);
+    expect(generationCounters.generationPosts).toBe(1);
+    expect(pageErrors).toEqual([]);
+    expect(forbidden).toEqual([]);
+    const screenshotPath = join(testRoot, 'node-recovery-product-smoke.png');
+    await page.screenshot({ path: screenshotPath, fullPage: true });
+    const report = { status: 'TECHNICAL_PASS', syntheticOnly: true, browser: 'isolated-headless',
+      order: order === 'retry-first' ? '3-1-2' : '1-2-refresh-unknown-3',
+      childTestedBeforeOtherRefresh: order === 'retry-first', retryAfterRefreshTested: order === 'user',
+      originalResultVisible: true, maintenanceResultVisible: true,
+      unresolvedPreserved: true, refreshPreserved: true, successNodesUnchanged: true,
+      actualProductButtons: true, providerPosts: nodeRecoveryProviderStats.posts,
+      pageErrors, forbidden, screenshotPath, product: status.productLayer, synthetic: status.syntheticLayer };
+    writeFileSync(join(testRoot, 'node-recovery-product-smoke.json'), `${JSON.stringify(report, null, 2)}\n`);
+    console.log(`[node-recovery-product-smoke-pass] ${JSON.stringify(report)}`);
+    return report;
+  } catch (error) {
+    const iframeDiagnostics = page
+      ? await page.locator('#canvas').evaluate((iframe, targetNodeId) => {
+        const doc = iframe.contentDocument;
+        const visible = element => Boolean(element && element.getClientRects().length > 0 &&
+          getComputedStyle(element).visibility !== 'hidden' && getComputedStyle(element).display !== 'none');
+        const world = doc?.querySelector('[data-testid="canvas-world"]');
+        const creators = Array.from(doc?.querySelectorAll('[data-testid="video-creator"]') ?? [])
+          .filter(creator => creator.getAttribute('data-id')?.split(/\s+/).includes(targetNodeId));
+        const errors = Array.from(doc?.querySelectorAll('.video-node-upload-error,.provider-error-notice') ?? [])
+          .filter(visible)
+          .map(element => ({ className: String(element.className), text: element.textContent?.trim().slice(0, 500) }));
+        return {
+          world: world ? {
+            persistenceReady: world.getAttribute('data-persistence-ready'),
+            primaryNode: world.getAttribute('data-primary-node'),
+            selectedNodeCount: world.getAttribute('data-selected-node-count'),
+          } : null,
+          targetNodeId,
+          targetCreators: creators.map(creator => {
+            const button = creator.querySelector('button.video-creator-generate');
+            return {
+              creatorDataId: creator.getAttribute('data-id'),
+              creatorVisible: visible(creator),
+              ariaLabel: button?.getAttribute('aria-label') ?? null,
+              disabled: button?.disabled ?? null,
+              buttonVisible: visible(button),
+            };
+          }),
+          visibleErrors: errors,
+        };
+      }, nodeRecoveryProductFixture?.roles?.failedVideo?.nodeId ?? null).catch(diagnosticError => ({
+        error: String(diagnosticError),
+      }))
+      : null;
+    console.error('[node-recovery-product-smoke-failed]', JSON.stringify({ message: String(error),
+      stage: smokeStage,
+      iframeDiagnostics,
+      text: page ? await page.locator('body').innerText({ timeout: 1000 }).then(text => text.slice(0, 2000)).catch(() => '') : '',
+      pageErrors, forbidden }));
+    throw error;
+  } finally {
+    try {
+      await context?.close();
+    } finally {
+      await browser?.close();
+    }
+  }
+}
+
+async function smokeNodeRecoveryGuide() {
+  const { chromium, expect } = await import('@playwright/test');
+  const savedTasks = structuredClone([...generationTasks]);
+  const savedChecks = { ...nodeRecoveryChecks };
+  const savedState = structuredClone(nodeRecoveryState);
+  const savedRecoveryCases = structuredClone([...nodeRecoveryRecoveryCases]);
+  const savedMaintenanceStage = nodeRecoveryMaintenanceStage;
+  const savedCounters = { ...generationCounters };
+  const savedCanvas = await (await api(`/api/canvas/${generationFixture.canvasId}`)).json();
+  const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext({ viewport: { width: 1600, height: 1000 }, serviceWorkers: 'block' });
+  const forbidden = [];
+  const pageErrors = [];
+  await context.route('**/*', async route => {
+    const url = new URL(route.request().url());
+    if (url.origin === origin || ['data:', 'blob:'].includes(url.protocol)) return route.continue();
+    forbidden.push(url.origin);
+    return route.abort('blockedbyclient');
+  });
+  const page = await context.newPage();
+  page.on('pageerror', error => pageErrors.push(error.message));
+  page.setDefaultTimeout(15000);
+  const frame = page.frameLocator('#canvas');
+  const loaded = () => expect(frame.getByTestId('canvas-world')).toHaveAttribute('data-persistence-ready', 'true', { timeout: 20000 });
+  const nodeIsInVisibleWorld = (node) => node.evaluate((element) => {
+    const world = element.ownerDocument.querySelector('[data-testid="canvas-world"]');
+    if (!world) return false;
+    const nodeRect = element.getBoundingClientRect();
+    const worldRect = world.getBoundingClientRect();
+    const visibleWidth = Math.min(nodeRect.right, worldRect.right) - Math.max(nodeRect.left, worldRect.left);
+    const visibleHeight = Math.min(nodeRect.bottom, worldRect.bottom) - Math.max(nodeRect.top, worldRect.top);
+    return nodeRect.width > 0 && nodeRect.height > 0 &&
+      visibleWidth >= Math.min(32, nodeRect.width) && visibleHeight >= Math.min(32, nodeRect.height);
+  });
+  const report = { steps: [], generationPosts: 0, providerRequests: 0, pageErrors, forbidden };
+  try {
+    await page.goto(`${origin}/__acceptance`);
+    await loaded();
+    await expect(page.getByRole('heading', { name: '这次验收3项', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '1. 自动找回原结果', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '2. 维护进度能在重开后看见', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '3. 已核实失败，只补当前视频', exact: true })).toBeVisible();
+    await expect(page.getByText('全部是模拟任务，不会扣费，本轮还没上线', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: '开始自动找回原结果', exact: true }).click();
+    await loaded();
+    const transientNode = frame.locator('.react-flow__node[data-id="node-recovery-auto-transient"]');
+    await expect(transientNode).toBeVisible({ timeout: 20000 });
+    await expect.poll(() => nodeIsInVisibleWorld(transientNode)).toBe(true);
+    await expect(frame.getByTestId('canvas-world')).toHaveAttribute('data-primary-node', 'node-recovery-auto-transient');
+    await expect(frame.getByTestId('canvas-world')).toHaveAttribute('data-selected-node-count', '1');
+    await expect(transientNode).toHaveClass(/selected/);
+    await expect(transientNode).not.toContainText('短暂故障已自动越过');
+    report.steps.push('transient-focused-before-result');
+    await expect(transientNode).toContainText('短暂故障已自动越过', { timeout: 20000 });
+    expect(generationObservations.get('node-recovery-auto-transient')?.failedReads).toBe(2);
+    expect(generationCounters.generationPosts).toBe(0);
+    report.steps.push('transient-focused-visible-and-recovered');
+    const summaryKeys = [...recoveryCaseSummaryKeys, ...recoveryCaseSummaryOptionalKeys];
+    const ownerBatch = await (await fetch(`${origin}/api/generation-recovery?taskIds=node-recovery-auto-transient,node-recovery-text-unknown,node-recovery-video-failed`)).json();
+    expect(ownerBatch.enabled).toBe(true);
+    expect(ownerBatch.cases).toHaveLength(3);
+    for (const item of ownerBatch.cases) {
+      expect(Object.keys(item).every((key) => summaryKeys.includes(key))).toBe(true);
+      expect(recoveryCaseSummaryKeys.every((key) => Object.hasOwn(item, key))).toBe(true);
+    }
+    expect(ownerBatch.cases.find((item) => item.taskId === 'node-recovery-auto-transient')?.status).toBe('result_recovered');
+    report.steps.push('owner-flat-summary-original-result');
+    await page.getByRole('button', { name: '开始维护进度演示', exact: true }).click();
+    await expect(page.locator('#maintenance-status')).toContainText('正在等待平台回复');
+    await page.getByRole('button', { name: '重新打开处理进度', exact: true }).click();
+    await expect(page.locator('#maintenance-status')).toContainText('正在等待平台回复');
+    const reopened = await (await fetch(`${origin}/api/generation-recovery/node-recovery-text-unknown`)).json();
+    expect(reopened.case?.phase).toBe('waiting_provider');
+    report.steps.push('maintenance-progress-reopened');
+    await page.locator('#v3-regression').locator('summary').click();
+    await page.getByRole('button', { name: '开始图片保存恢复', exact: true }).click();
+    await loaded();
+    const image = frame.getByTestId('image-node-node-recovery-auto-save').locator('img').first();
+    await expect(image).toBeVisible({ timeout: 20000 });
+    await expect.poll(() => generationTasks.get('node-recovery-auto-save')?.projectionPersisted).toBe(true);
+    await page.getByRole('button', { name: '刷新右侧画布', exact: true }).click();
+    await loaded();
+    await expect(image).toBeVisible();
+    expect(generationCounters.generationPosts).toBe(0);
+    report.steps.push('same-result-save-and-refresh');
+    for (const label of ['演示：余额问题已核实未受理', '演示：平台最终失败已核实']) {
+      await page.getByRole('button', { name: label, exact: true }).click();
+      await loaded();
+      const node = frame.locator('.react-flow__node[data-id="node-recovery-video-failed"]');
+      await node.click({ position: { x: 8, y: 8 } });
+      const creator = frame.getByTestId('video-creator');
+      const generate = creator.getByRole('button', { name: 'Generate', exact: true });
+      await expect(generate).toBeEnabled();
+      const beforePosts = generationCounters.generationPosts;
+      await generate.click();
+      await expect.poll(() => generationCounters.generationPosts).toBe(beforePosts + 1);
+      await expect(node.locator('video')).toHaveAttribute('src', /video-assets/, { timeout: 20000 });
+      await page.getByRole('button', { name: '刷新右侧画布', exact: true }).click();
+      await loaded();
+      await expect(node.locator('video')).toHaveAttribute('src', /video-assets/);
+      report.steps.push(label);
+    }
+    await page.getByRole('button', { name: '查看无法确认的节点', exact: true }).click();
+    await loaded();
+    const unknownNode = frame.locator('.react-flow__node[data-id="node-recovery-text-unknown"]');
+    await expect(unknownNode).toBeVisible({ timeout: 20000 });
+    await expect.poll(() => nodeIsInVisibleWorld(unknownNode)).toBe(true);
+    await expect(frame.getByTestId('canvas-world')).toHaveAttribute('data-primary-node', 'node-recovery-text-unknown');
+    await expect(frame.getByTestId('canvas-world')).toHaveAttribute('data-selected-node-count', '1');
+    await expect(unknownNode).toHaveClass(/selected/);
+    await expect(unknownNode.getByRole('textbox', { name: 'Text 标题', exact: true })).toHaveValue('无法确认的旧请求');
+    const unknownCreator = frame.getByTestId('text-creator');
+    await expect(unknownCreator).toBeVisible();
+    await expect.poll(() => nodeIsInVisibleWorld(unknownCreator)).toBe(true);
+    await expect(unknownCreator.getByText(/为避免重复付费/)).toBeInViewport({ ratio: 1 });
+    await expect(unknownCreator.getByRole('button', { name: 'Generate', exact: true })).toBeInViewport({ ratio: 1 });
+    await expect(unknownCreator).toContainText('为避免重复付费');
+    await expect(unknownCreator.getByRole('button', { name: 'Generate', exact: true })).toBeDisabled();
+    await expect(frame.locator('.text-node-generation-notice')).toContainText(/原请求|原任务|无法确认|不能重新/);
+    report.steps.push('unknown-focused-visible-creator-protected');
+    const currentCanvas = await (await api(`/api/canvas/${generationFixture.canvasId}`)).json();
+    const successIds = new Set(nodeRecoveryFixture.successNodes.map(node => node.id));
+    expect(currentCanvas.nodes.filter(node => successIds.has(node.id))).toEqual(savedCanvas.nodes.filter(node => successIds.has(node.id)));
+    expect(currentCanvas.edges).toEqual(savedCanvas.edges);
+    expect(pageErrors).toEqual([]);
+    expect(forbidden).toEqual([]);
+    expect(generationCounters.generationPosts).toBe(2);
+    report.generationPosts = generationCounters.generationPosts;
+    console.log(`[node-recovery-guide-smoke-pass] ${JSON.stringify(report)}`);
+  } catch (error) {
+    console.error('[node-recovery-guide-smoke-failed]', JSON.stringify({ report,
+      pageText: (await page.locator('body').innerText()).slice(0, 12000),
+      frames: await Promise.all(page.frames().map(async frame => ({ url: frame.url(), text: (await frame.locator('body').innerText()).slice(0, 12000) }))),
+      status: nodeRecoveryStatusPayload(),
+    }));
+    throw error;
+  } finally {
+    await context.close();
+    await browser.close();
+    generationTasks.clear();
+    for (const [key, task] of savedTasks) generationTasks.set(key, task);
+    generationObservations.clear();
+    Object.assign(nodeRecoveryChecks, savedChecks);
+    Object.assign(nodeRecoveryState, savedState);
+    nodeRecoveryRecoveryCases.clear();
+    for (const [key, state] of savedRecoveryCases) nodeRecoveryRecoveryCases.set(key, state);
+    nodeRecoveryMaintenanceStage = savedMaintenanceStage;
+    const currentCanvas = await (await api(`/api/canvas/${generationFixture.canvasId}`)).json();
+    await generationDocumentPut({ ...currentCanvas, nodes: savedCanvas.nodes,
+      edges: savedCanvas.edges, viewport: savedCanvas.viewport }, 'control');
+    Object.assign(generationCounters, savedCounters);
+    persistGenerationJournal('guideSmokeReset', { syntheticOnly: true, userAcceptance: 'NOT_RUN' });
+  }
+}
+
 const guide = `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>剩余修复 · 本地验收</title>
 <style>body{margin:0;background:#f5f5f5;color:#242424;font:16px/1.65 -apple-system,BlinkMacSystemFont,sans-serif}main{max-width:900px;margin:40px auto;padding:0 24px}h1{font-size:30px;margin:8px 0}h2{font-size:19px}p{color:#565656}section{background:white;border:1px solid #ddd;border-radius:14px;padding:22px;margin:18px 0}button,a.primary{font:inherit;display:inline-block;border:1px solid #aaa;border-radius:8px;padding:9px 16px;background:white;color:#222;cursor:pointer;text-decoration:none}a.primary{background:#222;color:#fff;border-color:#222}.badge{font-size:13px;letter-spacing:1px}li{margin:10px 0}table{width:100%;border-collapse:collapse;text-align:left}td,th{padding:10px;border-bottom:1px solid #eee;overflow-wrap:anywhere}.tools{display:flex;gap:12px;align-items:center;flex-wrap:wrap}#result{overflow:auto}small{color:#777}button:focus-visible,a:focus-visible{outline:3px solid #555;outline-offset:3px}</style>
 <main><span class="badge">本地验收 · 独立测试数据</span><h1>只需复验图片菜单遮挡</h1><p>你已确认其他项目通过。这次只检查图片顶部「浏览全部」菜单是否完整显示、能够点击。这里使用独立测试数据，修复尚未上线。</p>
@@ -964,16 +2697,29 @@ const guide = `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta nam
 <script>const slowButton=document.getElementById('slow'), mode=document.getElementById('mode');async function status(){const r=await fetch('/__acceptance/status');if(!r.ok)throw Error('验收服务已停止');const d=await r.json();slowButton.textContent=d.slow?'关闭慢速演示':'开启慢速演示';slowButton.setAttribute('aria-pressed',String(d.slow));mode.textContent=d.slow?'慢速演示已开启':'正常速度';document.getElementById('expiry').textContent='本次临时页面开放至 '+new Date(d.expiresAt).toLocaleTimeString('zh-CN')+'。到时自动关闭。';}slowButton.onclick=async()=>{slowButton.disabled=true;try{const r=await fetch('/__acceptance/toggle-slow',{method:'POST'});if(!r.ok)throw Error('切换失败');await status();}catch(e){mode.textContent=e.message;}finally{slowButton.disabled=false;}};document.getElementById('check').onclick=async()=>{const box=document.getElementById('result');box.textContent='正在读取…';try{const r=await fetch('/__acceptance/results');if(!r.ok)throw Error('读取失败');const d=await r.json();const table=document.createElement('table'),head=table.insertRow();['原模板','当前名称','当前说明','图内容'].forEach(t=>{const th=document.createElement('th');th.textContent=t;head.append(th);});d.items.forEach(item=>{const row=table.insertRow();[item.label,item.title??'模板未找到',item.description??'',item.graphUnchanged?'与初始相同，已保留':'与初始不同，请核对'].forEach(t=>row.insertCell().textContent=t);});box.replaceChildren(table);}catch(e){box.textContent=e.message;}};status().catch(e=>mode.textContent=e.message);</script><script>async function refreshScenarios(){const d=await(await fetch('/__acceptance/status')).json();document.getElementById('canvas-link').href=d.projects[1].url;document.getElementById('tools-mode').textContent=d.toolsAvailable?'可用入口演示（生成未开放）':'不可用演示';}async function toggleScenario(path,box,onSuccess){try{const r=await fetch(path,{method:'POST'});if(!r.ok)throw Error('切换失败，验收服务可能已停止');await onSuccess();}catch(e){document.getElementById(box).textContent=e.message;}}document.getElementById('tools').onclick=()=>toggleScenario('/__acceptance/toggle-tools','tools-mode',refreshScenarios);document.getElementById('maintenance').onclick=()=>toggleScenario('/__acceptance/toggle-maintenance','maintenance-mode',async()=>{document.getElementById('maintenance-mode').textContent='模拟维护中。请回到画布等待，开始后约35～65秒出现更新提示。';});refreshScenarios().catch(e=>document.getElementById('tools-mode').textContent=e.message);document.getElementById('finish').onclick=async()=>{const r=await fetch('/__acceptance/stop',{method:'POST'});if(r.ok)document.body.textContent='本次验收已结束。你可以关闭这些验收标签页；再次双击启动文件会准备一份新的测试数据。';};</script></html>`;
 
 // A second restrictive policy also fences the user's unsandboxed browser.
-const browserPolicy = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'";
+const browserPolicy = `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; frame-src ${nodeRecoveryScenario ? "'self'" : "'none'"}; object-src 'none'; base-uri 'self'; form-action 'self'`;
 const plugin = {
   name: "isolated-template-manual-acceptance",
   enforce: "pre",
   configureServer(server) {
     server.middlewares.use((req, res, next) => {
       const originalSetHeader = res.setHeader.bind(res);
-      res.setHeader = (name, value) => originalSetHeader(name,
-        name.toLowerCase() === "content-security-policy" ? [...(Array.isArray(value) ? value : [value]), browserPolicy] : value);
+      res.setHeader = (name, value) => {
+        const header = name.toLowerCase();
+        if (nodeRecoveryScenario && header === "x-frame-options") {
+          return originalSetHeader(name, "SAMEORIGIN");
+        }
+        if (header === "content-security-policy") {
+          const policies = (Array.isArray(value) ? value : [value]).map(policy =>
+            nodeRecoveryScenario
+              ? String(policy).replace(/frame-ancestors\s+[^;]+/g, "frame-ancestors 'self'")
+              : policy);
+          return originalSetHeader(name, [...policies, browserPolicy]);
+        }
+        return originalSetHeader(name, value);
+      };
       originalSetHeader("Content-Security-Policy", browserPolicy);
+      if (nodeRecoveryScenario) originalSetHeader("X-Frame-Options", "SAMEORIGIN");
       originalSetHeader("Cache-Control", "no-store");
       const url = new URL(req.url ?? "/", origin);
       if (req.headers.host !== `127.0.0.1:${port}` || url.origin !== origin ||
@@ -984,6 +2730,16 @@ const plugin = {
       const setup = req.headers["x-acceptance-setup"] === setupToken;
       const method = req.method ?? "GET";
       const templatePath = /^\/api\/admin\/templates(?:\/[a-f0-9-]+)?$/.test(url.pathname);
+      const nodeRecoveryRetryMatch = nodeRecoveryScenario && !nodeRecoveryProductMode && method === "POST" && url.pathname === "/api/generation-tasks";
+      const nodeRecoveryPreflight = nodeRecoveryScenario && !nodeRecoveryProductMode && method === "POST" && url.pathname === "/api/generation-tasks/preflight";
+      const nodeRecoveryRecoveryReadMatch = nodeRecoveryScenario && !nodeRecoveryProductMode && method === "POST" &&
+        /^\/api\/generation-recovery\/[^/]+\/read$/.test(url.pathname);
+      const nodeRecoveryProductWrite = nodeRecoveryProductMode && method === "POST" && (
+        url.pathname === "/api/generation-tasks" || url.pathname === "/api/generation-tasks/preflight" ||
+        /^\/api\/generation-recovery\/[^/]+\/read$/.test(url.pathname)
+      );
+      const nodeRecoveryProductControl = nodeRecoveryProductMode && method === "POST" &&
+        /^\/__acceptance\/node-recovery\/(?:original|maintenance|retry|focus|product-smoke)$/.test(url.pathname);
       const localEdit = templatePath ||
         (url.pathname === "/api/projects" && method === "POST") ||
         (/^\/api\/projects\/[a-z0-9._-]+(?:\/clone)?$/i.test(url.pathname) && ["POST", "DELETE"].includes(method)) ||
@@ -993,15 +2749,22 @@ const plugin = {
         (/^\/api\/history\/[a-z0-9._-]+$/i.test(url.pathname) && method === "POST") ||
         (url.pathname === "/__acceptance/stop" && method === "POST") ||
         (/^\/__acceptance\/toggle-(?:slow|tools|maintenance)$/.test(url.pathname) && method === "POST") ||
-        (generationScenario && /^\/__acceptance\/generation\/(?:activate|plan|restore|complete|delay|check)$/.test(url.pathname) && method === "POST");
+        (generationScenario && /^\/__acceptance\/generation\/(?:activate|plan|restore|complete|delay|check)$/.test(url.pathname) && method === "POST") ||
+        (nodeRecoveryScenario && !nodeRecoveryProductMode && /^\/__acceptance\/node-recovery\/(?:start|retry-mode|mark-unknown|focus|recovery-stage)$/.test(url.pathname) && method === "POST") ||
+        Boolean(nodeRecoveryRetryMatch || nodeRecoveryPreflight || nodeRecoveryRecoveryReadMatch || nodeRecoveryProductControl || nodeRecoveryProductWrite);
       if (!setup && generationScenario && method === "PUT" && /^\/api\/canvas\/[a-z0-9._-]+$/i.test(url.pathname)) {
         generationCounters.browserCanvasWrites += 1;
         persistGenerationJournal("browserCanvasWrite", { path: url.pathname, source: generationLastWriteSource });
       }
-      if (!setup && generationScenario && ["POST", "DELETE"].includes(method) && /^\/api\/generation-tasks(?:\/|$)/.test(url.pathname)) {
+      if (!setup && generationScenario && ["POST", "DELETE"].includes(method) && /^\/api\/generation-tasks(?:\/|$)/.test(url.pathname) &&
+          !nodeRecoveryRetryMatch && !nodeRecoveryPreflight && !nodeRecoveryProductWrite) {
         generationCounters.generationPosts += method === "POST" ? 1 : 0;
         generationCounters.generationDeletes += method === "DELETE" ? 1 : 0;
         persistGenerationJournal("generationMutationAttemptRejected", { method, path: url.pathname });
+      }
+      if (!setup && nodeRecoveryProductMode && method === "POST" && url.pathname === "/api/generation-tasks") {
+        generationCounters.generationPosts += 1;
+        persistGenerationJournal("productBrowserGenerationSubmission", { method, path: url.pathname });
       }
       if (!setup && generationScenario && method === "POST" && /^\/api\/canvases\/[a-z0-9._-]+\/commands$/i.test(url.pathname)) {
         generationCounters.browserCanvasCommandWrites += 1;
@@ -1009,6 +2772,29 @@ const plugin = {
       }
       if (!setup && !["GET", "HEAD"].includes(method) && !localEdit) {
         json(res, 403, { error: "本地验收只开放测试数据编辑，生成与外部操作未开放" }); return;
+      }
+      if (!setup && nodeRecoveryPreflight) {
+        void readRequestJson(req).then(async body => {
+          const canvas = await (await api(`/api/canvas/${generationFixture.canvasId}`)).json();
+          const canvasRevision = canvas.graphRevision ?? canvas.revision;
+          const allowed = body.canvasId === generationFixture.canvasId && body.nodeId === nodeRecoveryFixture.retry.id && body.kind === 'video' && body.canvasRevision === canvasRevision;
+          json(res, 200, { canvasRevision, canSubmit: allowed, canEnqueue: allowed, problems: allowed ? [] : [{ code: 'FIXTURE_ONLY', message: '只开放当前画布版本的本地失败视频案例' }] });
+        }).catch(() => json(res, 400, { error: '预检请求无效' }));
+        return;
+      }
+      if (!setup && nodeRecoveryRetryMatch) {
+        const taskId = nodeRecoveryFixture.retry.id;
+        generationCounters.generationPosts += 1;
+        persistGenerationJournal("nodeRecoveryRetryPost", { taskId, path: url.pathname, providerRequests: 0 });
+        void readRequestJson(req).then((body) => json(res, 200, nodeRecoveryRetryRequest(body))).catch((error) => {
+          if (error instanceof AcceptanceControlError) {
+            json(res, error.status, { error: error.message, code: error.code });
+            return;
+          }
+          console.error(error);
+          json(res, 500, { error: "本地验收补跑请求无法解析", code: "NODE_RECOVERY_RETRY_REQUEST_INVALID" });
+        });
+        return;
       }
       if (!setup && url.pathname === "/api/updates" && method === "GET") {
         if (Date.now() < maintenanceUntil) {
@@ -1024,28 +2810,42 @@ const plugin = {
       }
       // Synthetic task projection is owned by the persistent acceptance journal.
       // The real Canvas save contract correctly strips client-supplied task state.
-      if (!setup && generationScenario && method === "GET" && url.pathname === `/api/canvas/${generationFixture?.canvasId}`) {
+      if (!setup && generationScenario && !nodeRecoveryProductMode && method === "GET" && url.pathname === `/api/canvas/${generationFixture?.canvasId}`) {
         void api(url.pathname).then((response) => response.json()).then((document) => {
           const seen = new Set();
           const nodes = document.nodes.map((node) => {
-            const task = [...generationTasks.values()].find((candidate) => candidate.nodeId === node.id);
+            const task = [...generationTasks.values()].reverse().find((candidate) => candidate.nodeId === node.id);
             if (!task) return node;
             if (seen.has(task.id) || node.type !== task.kind || task.canvasId !== generationFixture.canvasId) throw new Error("Synthetic canvas identity mismatch");
+            if (nodeRecoveryScenario && nodeRecoveryFixture?.successNodes.some((definition) =>
+              definition.id === node.id &&
+              (node.position?.x !== definition.position.x || node.position?.y !== definition.position.y))) {
+              throw new Error("Node recovery changed a preserved success node position");
+            }
             seen.add(task.id);
             return { ...node, data: { ...node.data,
-              ...generationNodeData(task.kind, "shared", task, task.identity, task.state === "running"),
-              ...(task.state === "success" ? generationTaskResult(task) : {}),
+              ...generationNodeData(task.kind, "shared", task, task.identity, task.state === "running" || (task.state === "success" && !task.projectionPersisted)),
+              ...(task.state === "success" && task.projectionPersisted ? generationTaskResult(task) : {}),
+              ...(task.state === "failed" ? generationTaskFailure(task) : {}),
             } };
           });
-          if (seen.size !== generationTasks.size) throw new Error("Synthetic canvas lost a task node");
+          if (seen.size !== new Set([...generationTasks.values()].map(task => task.nodeId)).size) throw new Error("Synthetic canvas lost a task node");
+          if (nodeRecoveryScenario) {
+            const actualEdges = (document.edges ?? []).map((edge) => `${edge.id}:${edge.source}:${edge.target}`).sort();
+            const expectedEdges = nodeRecoveryFixture.preservedEdges
+              .map((edge) => `${edge.id}:${edge.source}:${edge.target}`).sort();
+            if (actualEdges.join("\n") !== expectedEdges.join("\n")) {
+              throw new Error("Node recovery changed a preserved success edge");
+            }
+          }
           json(res, 200, { ...document, nodes });
         }).catch((error) => { console.error(error); if (!res.headersSent) json(res, 500, { error: "synthetic canvas read failed" }); });
         return;
       }
-      if (!setup && generationScenario && url.pathname === "/api/models" && method === "GET") {
+      if (!setup && generationScenario && !nodeRecoveryProductMode && url.pathname === "/api/models" && method === "GET") {
         json(res, 200, generationFixture?.modelCatalog ?? { generationEnabled: false, models: [] }); return;
       }
-      if (!setup && generationScenario && url.pathname === "/api/generation-tasks/status" && method === "GET") {
+      if (!setup && generationScenario && !nodeRecoveryProductMode && url.pathname === "/api/generation-tasks/status" && method === "GET") {
         generationCounters.statusReads += 1;
         persistGenerationJournal("capabilityStatusRead");
         json(res, 200, {
@@ -1063,10 +2863,47 @@ const plugin = {
           videoSubmissionEnabled: true,
         }); return;
       }
-      if (!setup && generationScenario && url.pathname === "/api/generation-tasks" && method === "GET") {
+      if (!setup && generationScenario && !nodeRecoveryProductMode && url.pathname === "/api/generation-tasks" && method === "GET") {
         json(res, 200, { tasks: [...generationTasks.values()].map(generationTaskPublic) }); return;
       }
-      if (!setup && generationScenario && /^\/api\/generation-tasks\/[^/]+$/.test(url.pathname) && method === "GET") {
+      if (!setup && nodeRecoveryScenario && !nodeRecoveryProductMode && url.pathname === "/api/generation-recovery" && method === "GET") {
+        const keys = [...url.searchParams.keys()];
+        if (keys.some((key) => key !== "taskIds")) {
+          json(res, 400, { error: "处理操作参数无效。", code: "RECOVERY_INVALID_COMMAND" }); return;
+        }
+        const rawTaskIds = url.searchParams.get("taskIds");
+        const taskIds = rawTaskIds === null || rawTaskIds.trim() === ""
+          ? undefined
+          : [...new Set(rawTaskIds.split(",").filter(Boolean))];
+        if (taskIds && (taskIds.length > 50 || taskIds.some((id) => !/^[A-Za-z0-9._-]{1,120}$/.test(id)))) {
+          json(res, 400, { error: "处理操作参数无效。", code: "RECOVERY_INVALID_COMMAND" }); return;
+        }
+        json(res, 200, nodeRecoveryRecoveryBatch(taskIds)); return;
+      }
+      if (!setup && nodeRecoveryScenario && !nodeRecoveryProductMode && /^\/api\/generation-recovery\/[^/]+(?:\/read)?$/.test(url.pathname) &&
+          url.pathname !== "/api/generation-recovery" && url.searchParams.size === 0) {
+        const parts = url.pathname.split("/");
+        const taskId = decodeURIComponent(parts[parts.length - (parts.at(-1) === "read" ? 2 : 1)]);
+        if (method === "GET" && parts.at(-1) !== "read") {
+          json(res, 200, nodeRecoveryRecoveryDetail(taskId)); return;
+        }
+        if (method === "POST" && parts.at(-1) === "read") {
+          void readRequestJson(req).then((body) => json(res, 200, acknowledgeNodeRecoveryRecovery(taskId, body))).catch((error) => {
+            if (error instanceof AcceptanceControlError) {
+              json(res, error.status, { error: error.message, code: error.code }); return;
+            }
+            json(res, 400, { error: "处理操作参数无效。", code: "RECOVERY_INVALID_COMMAND" });
+          });
+          return;
+        }
+      }
+      if (!setup && nodeRecoveryScenario && !nodeRecoveryProductMode && url.pathname === '/api/generation-tasks/by-idempotency' && method === 'GET') {
+        const task = [...generationTasks.values()].find(task => task.idempotencyKey === url.searchParams.get('idempotencyKey'));
+        if (task) json(res, 200, generationTaskPublic(task));
+        else json(res, 404, { error: 'synthetic task not found', code: 'TASK_NOT_FOUND' });
+        return;
+      }
+      if (!setup && generationScenario && !nodeRecoveryProductMode && /^\/api\/generation-tasks\/[^/]+$/.test(url.pathname) && method === "GET") {
         const taskId = decodeURIComponent(url.pathname.split("/").at(-1));
         const task = generationTasks.get(taskId);
         if (!task) { json(res, 404, { error: "synthetic task not found", code: "TASK_NOT_FOUND" }); return; }
@@ -1095,7 +2932,7 @@ const plugin = {
       }
       if (generationScenario && method === "GET" && url.pathname === "/__acceptance/generation-entry") {
         const variant = url.searchParams.get("variant");
-        if (!["candidate", "baseline"].includes(variant)) { json(res, 400, { error: "未知 client variant" }); return; }
+        if (!(nodeRecoveryScenario ? ["candidate"] : ["candidate", "baseline"]).includes(variant)) { json(res, 400, { error: "未知 client variant" }); return; }
         const cookie = `unboundry_generation_client=${variant}; Path=/; SameSite=Lax`;
         res.writeHead(302, { Location: `/canvas/${generationFixture?.canvasId ?? ""}`, "Set-Cookie": [adminCookie, cookie], "Cache-Control": "no-store" });
         res.end(); return;
@@ -1104,7 +2941,7 @@ const plugin = {
         const staticPath = generationStaticPath(url.pathname);
         const canvasEntry = /^\/canvas(?:\/[^/]+)?$/.test(url.pathname) || url.pathname === "/canvas/projects";
         const cookieMatch = /(?:^|;\s*)unboundry_generation_client=(candidate|baseline)/.exec(String(req.headers.cookie ?? ""));
-        const entryPath = canvasEntry && cookieMatch && generationBuilds
+        const entryPath = canvasEntry && cookieMatch && generationBuilds?.[cookieMatch[1]]
           ? join(generationBuilds[cookieMatch[1]].root, "index.html")
           : undefined;
         const file = staticPath ?? entryPath;
@@ -1120,13 +2957,64 @@ const plugin = {
             res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Set-Cookie": adminCookie, "Cache-Control": "no-store" });
             res.end(generationScenario ? generationGuideHtmlSimple() : guide); return;
           }
+          if (nodeRecoveryProductMode && url.pathname === "/__acceptance/node-recovery/status" && method === "GET") {
+            json(res, 200, await nodeRecoveryProductStatusPayload()); return;
+          }
+          if (nodeRecoveryProductMode && url.pathname === "/__acceptance/node-recovery/product-smoke" && method === "POST") {
+            const body = await readRequestJson(req);
+            json(res, 200, await smokeNodeRecoveryProductGuide({ order: body.order ?? "user" })); return;
+          }
+          if (nodeRecoveryProductMode && url.pathname === "/__acceptance/node-recovery/original" && method === "POST") {
+            await readRequestJson(req);
+            json(res, 200, await runNodeRecoveryProductOriginal()); return;
+          }
+          if (nodeRecoveryProductMode && url.pathname === "/__acceptance/node-recovery/maintenance" && method === "POST") {
+            await readRequestJson(req);
+            json(res, 200, await runNodeRecoveryProductMaintenance()); return;
+          }
+          if (nodeRecoveryProductMode && url.pathname === "/__acceptance/node-recovery/retry" && method === "POST") {
+            await readRequestJson(req);
+            json(res, 200, await runNodeRecoveryProductRetry()); return;
+          }
+          if (nodeRecoveryProductMode && url.pathname === "/__acceptance/node-recovery/focus" && method === "POST") {
+            const body = await readRequestJson(req);
+            json(res, 200, await focusNodeRecoveryProduct(body.nodeId)); return;
+          }
           if (url.pathname === "/__acceptance/status" && method === "GET") {
             json(res, 200, generationScenario
-              ? { ...generationStatusPayload(), slow, toolsAvailable, maintenanceUntil }
+              ? nodeRecoveryProductMode
+                ? { ...await nodeRecoveryProductStatusPayload(), slow, toolsAvailable, maintenanceUntil }
+                : { ...generationStatusPayload(), slow, toolsAvailable, maintenanceUntil }
               : { slow, toolsAvailable, maintenanceUntil, projects, expiresAt: expiresAt.toISOString() }); return;
           }
           if (generationScenario && url.pathname === "/__acceptance/generation/status" && method === "GET") {
-            json(res, 200, generationStatusPayload()); return;
+            json(res, 200, nodeRecoveryProductMode
+              ? await nodeRecoveryProductStatusPayload()
+              : generationStatusPayload()); return;
+          }
+          if (nodeRecoveryScenario && !nodeRecoveryProductMode && url.pathname === "/__acceptance/node-recovery/status" && method === "GET") {
+            json(res, 200, nodeRecoveryStatusPayload()); return;
+          }
+          if (nodeRecoveryScenario && !nodeRecoveryProductMode && url.pathname === "/__acceptance/node-recovery/start" && method === "POST") {
+            const body = await readRequestJson(req);
+            json(res, 200, await startNodeRecoveryDemo(body.action)); return;
+          }
+          if (nodeRecoveryScenario && !nodeRecoveryProductMode && url.pathname === "/__acceptance/node-recovery/retry-mode" && method === "POST") {
+            const body = await readRequestJson(req);
+            json(res, 200, await setNodeRecoveryRetryMode(body.mode)); return;
+          }
+          if (nodeRecoveryScenario && !nodeRecoveryProductMode && url.pathname === "/__acceptance/node-recovery/mark-unknown" && method === "POST") {
+            await readRequestJson(req);
+            json(res, 200, markNodeRecoveryUnknown()); return;
+          }
+          if (nodeRecoveryScenario && !nodeRecoveryProductMode && url.pathname === "/__acceptance/node-recovery/focus" && method === "POST") {
+            const body = await readRequestJson(req);
+            if (!['unknown', 'overview'].includes(body.action)) throw new AcceptanceControlError('未知画布定位', 'INVALID_FOCUS', 400);
+            json(res, 200, await focusNodeRecovery(body.action)); return;
+          }
+          if (nodeRecoveryScenario && !nodeRecoveryProductMode && url.pathname === "/__acceptance/node-recovery/recovery-stage" && method === "POST") {
+            const body = await readRequestJson(req);
+            json(res, 200, setNodeRecoveryMaintenanceStage(body.phase)); return;
           }
           if (generationScenario && url.pathname === "/__acceptance/generation/check" && method === "POST") {
             const body = await readRequestJson(req);
@@ -1209,6 +3097,7 @@ let stopping;
 async function stop() {
   if (!stopping) {
     for (const stream of [...updateStreams]) stream.end();
+    await stopNodeRecoveryProductProvider();
     stopping = server.close();
   }
   await stopping;
@@ -1222,14 +3111,33 @@ try {
   });
   adminCookie = bootstrap.headers.get("set-cookie");
   if (!adminCookie) throw new Error("Temporary admin session was not created");
+  const bootstrapBody = await bootstrap.clone().json();
+  const ownerId = bootstrapBody?.user?.id;
+  if (generationScenario && (typeof ownerId !== "string" || ownerId.length === 0)) {
+    throw new Error("Temporary generation acceptance session did not return its owner identity");
+  }
   if (generationScenario) {
-    const title = "状态查询验收 · 四类节点与回退演练";
+    const title = nodeRecoveryScenario
+      ? "失败节点恢复 · V4 同页三项本地验收"
+      : "状态查询验收 · 四类节点与回退演练";
     const item = await (await api("/api/projects", "POST", { title })).json();
     projects.push({ id: item.id, title, url: `/canvas/${item.id}` });
-    await initializeGenerationFixture(item.id);
-    const baseline = await (await api(`/api/canvas/${item.id}`)).json();
-    await generationDocumentPut({ ...baseline, nodes: generationCanvasNodes(), edges: [] }, "control");
-    persistGenerationJournal("canvasSeed", { nodeCount: 4, phase: "candidate", sharedTaskIds: [...generationTasks.keys()] });
+    if (nodeRecoveryProductMode) await startNodeRecoveryProductProvider();
+    await initializeGenerationFixture(item.id, ownerId);
+    if (!nodeRecoveryProductMode) {
+      const baseline = await (await api(`/api/canvas/${item.id}`)).json();
+      await generationDocumentPut({
+        ...baseline,
+        nodes: generationCanvasNodes(),
+        edges: nodeRecoveryScenario ? nodeRecoveryFixture.preservedEdges : [],
+      }, "control");
+      persistGenerationJournal("canvasSeed", {
+        nodeCount: generationTasks.size,
+        phase: "candidate",
+        sharedTaskIds: [...generationTasks.keys()],
+        preservedSuccessNodeCount: nodeRecoveryScenario ? nodeRecoveryFixture.preservedSuccessNodeCount : undefined,
+      });
+    }
   } else {
   const simpleGraph = (marker) => ({ version: 1, nodes: [{ id: `text-${marker}`, type: "text", position: { x: 350, y: 160 }, data: { title: marker, label: "Text", textPrompt: `这是${marker}的独立图内容` }, style: { width: 250, height: 250 } }], edges: [] });
   for (let index = 1; index <= 201; index += 1) {
@@ -1273,26 +3181,50 @@ try {
   }
   }
   ready = true;
+  if (nodeRecoveryScenario && !nodeRecoveryProductMode) await smokeNodeRecoveryGuide();
   const receipt = generationScenario
-    ? {
+      ? {
         status: "USER_RECHECK",
-        scenario: "generation-status",
+        scenario: acceptanceScenario,
         url: `${origin}/__acceptance`,
         appUrl: `${origin}/__acceptance/generation-entry?variant=candidate`,
         guideUrl: `${origin}/__acceptance`,
         expiresAt: expiresAt.toISOString(), pid: process.pid, dataRoot, projects,
         canvasId: generationFixture.canvasId,
-        taskIds: [...generationTasks.keys()],
+        taskIds: nodeRecoveryProductMode
+          ? Object.values(nodeRecoveryProductFixture.roles).map((role) => role.taskId)
+          : [...generationTasks.keys()],
         sentinels: generationFixture.sentinels,
         syntheticOnly: true,
-    taskStorage: "acceptance journal and API projection; not generation_tasks SQLite or Provider evidence",
-        providerPolicy: "external calls blocked; verify safe-runner network audit",
+        taskStorage: nodeRecoveryProductMode
+          ? "temporary application SQLite through real product task/case commands"
+          : "acceptance journal and API projection; not generation_tasks SQLite or Provider evidence",
+        providerPolicy: nodeRecoveryProductMode
+          ? "dynamic loopback fake Provider only; external calls blocked; verify safe-runner network audit"
+          : "external calls blocked; verify safe-runner network audit",
         journalPath: generationJournalPath,
         builds: generationBuilds,
         sourceModules: {
           candidate: generationBuilds.candidateSource,
           baseline: generationBuilds.baselineSource,
         },
+        ...(nodeRecoveryScenario
+          ? nodeRecoveryProductMode
+            ? {
+                actualProductCommands: true,
+                preservedSuccessNodeCount: nodeRecoveryProductFixture.preservedSuccessNodeCount,
+                retryPath: "/api/generation-tasks (new POST only after protected admission)",
+                providerRequests: nodeRecoveryProviderStats.posts + nodeRecoveryProviderStats.gets + nodeRecoveryProviderStats.mediaGets,
+                providerPosts: nodeRecoveryProviderStats.posts,
+                paidProviderRequests: 0,
+              }
+            : {
+                preservedSuccessNodeCount: nodeRecoveryFixture.preservedSuccessNodeCount,
+                retryPath: nodeRecoveryFixture.retry.retryPath,
+                providerRequests: 0,
+                paidProviderRequests: 0,
+              }
+          : {}),
       }
     : { status: "USER_RECHECK", url: `${origin}/__acceptance`, appUrl: `${origin}/admin/templates`,
         expiresAt: expiresAt.toISOString(), pid: process.pid, dataRoot, fixtures, projects, mediaIds,

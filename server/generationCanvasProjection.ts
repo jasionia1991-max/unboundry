@@ -1,3 +1,4 @@
+import { failedWorkflowNodeReplacementInTransaction } from "./workflowRunLocks";
 import type { DatabaseSync } from "node:sqlite";
 import {
   generationInputKey,
@@ -405,9 +406,30 @@ function currentBindingMatches(input: {
     const currentTaskId = data[`${task.kind}GenerationTaskId`];
     const currentGenerating = data[`${task.kind}Generating`] === true;
     const currentWorkflowRunId = data.workflowExecutionRunId;
+    // This relation is written by atomic admission after the full node ledger
+    // gate. A client-owned stale task id alone cannot grant binding authority.
+    const replacementEvent = input.scope === 'single-node' && task.state === 'queued'
+      ? database.prepare(`SELECT error_message FROM generation_task_events
+          WHERE task_id = ? AND error_code = 'NEW_GENERATION_REPLACES_FAILED_TASK'
+          ORDER BY id DESC LIMIT 1`).get(task.id) as { error_message: string } | undefined
+      : undefined;
+    const predecessorId = replacementEvent
+      ? parseRecord(replacementEvent.error_message)?.taskId : undefined;
+    const predecessor = typeof predecessorId === 'string'
+      ? database.prepare(`SELECT state FROM generation_tasks
+          WHERE id = ? AND owner_id = ? AND canvas_id = ? AND node_id = ? AND kind = ?
+        `).get(predecessorId, task.owner_id, task.canvas_id, task.node_id, task.kind) as
+          { state: string } | undefined : undefined;
+    const replacesFailedBinding = predecessor?.state === 'failed' &&
+      (!currentTaskId || currentTaskId === predecessorId) &&
+      (!currentWorkflowRunId || (typeof currentWorkflowRunId === 'string' &&
+        failedWorkflowNodeReplacementInTransaction({ database,
+          runId: currentWorkflowRunId, taskId: String(predecessorId),
+          ownerId: task.owner_id!, canvasId: task.canvas_id, nodeId: task.node_id,
+        })));
     if (
       input.scope === "single-node" &&
-      typeof currentWorkflowRunId === "string" && currentWorkflowRunId
+      typeof currentWorkflowRunId === "string" && currentWorkflowRunId && !replacesFailedBinding
     ) return false;
     if (
       input.scope === "workflow" &&
@@ -416,7 +438,7 @@ function currentBindingMatches(input: {
     ) return false;
     if (
       currentGenerating &&
-      (typeof currentTaskId !== "string" || currentTaskId !== task.id)
+      (typeof currentTaskId !== "string" || currentTaskId !== task.id) && !replacesFailedBinding
     ) return false;
     if (
       typeof currentTaskId === "string" && currentTaskId &&
@@ -433,10 +455,10 @@ function currentBindingMatches(input: {
         task.kind,
       ) as { state?: unknown } | undefined;
       if (
-        data.groupRunSuccessTaskId !== currentTaskId ||
+        !replacesFailedBinding && (data.groupRunSuccessTaskId !== currentTaskId ||
         !previous || !["success", "failed", "cancelled"].includes(
           String(previous.state ?? ""),
-        )
+        ))
       ) return false;
     }
     const currentModel = targetModelId(task.kind, data);
