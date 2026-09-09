@@ -1,0 +1,576 @@
+{
+  "version": "0.7.17",
+  "status": "PRODUCTION_TECHNICAL_PASS_USER_RECHECK",
+  "date": "2026-09-09",
+  "commit": "de766b2b61461e3a5121d489f8df53d198aea9a0",
+  "tree": "4e47eb03af139657af0a0bfd579cd7be39e83106",
+  "tag": "v0.7.17",
+  "tagObject": "3ff1f9c974e60843c4fde81e775c7cc99db4370b",
+  "pr": 173,
+  "releaseUrl": "https://github.com/jasionia1991-max/unboundry/releases/tag/v0.7.17",
+  "site": "https://canvas.mymy.ltd",
+  "schema": 43,
+  "ci": {
+    "pullRequest": {
+      "runId": 34355267055,
+      "head": "3fbf684cfdb08f52caa89827732c96d8311023e8",
+      "status": "PASS"
+    },
+    "main": {
+      "runId": 34356179448,
+      "head": "de766b2b61461e3a5121d489f8df53d198aea9a0",
+      "status": "PASS"
+    }
+  },
+  "localValidation": {
+    "localUserAcceptance": "V3/V4 USER_PASS including repaired item3",
+    "relatedAcceptedCoverage": 311,
+    "coverageScope": "113 rerun plus 198 unchanged evidence, not full repository audit; overlapping later CI counts are not summed",
+    "releaseChecks": 95,
+    "backupRuntimeLeaseChecks": 29,
+    "currentCiChecks": {
+      "m104_m38": 35,
+      "m10_m93": 29
+    },
+    "fullSuiteRun": false,
+    "acceptedProductSourceUnchangedAfterCiRepairs": true
+  },
+  "build": {
+    "status": "EXACT_TAG_FRESH_BUILD_PASS",
+    "release": "/opt/unboundry/releases/v0.7.17-node-recovery-20260908",
+    "version": "0.7.17",
+    "tag": "v0.7.17",
+    "commit": "de766b2b61461e3a5121d489f8df53d198aea9a0",
+    "tree": "4e47eb03af139657af0a0bfd579cd7be39e83106",
+    "tagObject": "3ff1f9c974e60843c4fde81e775c7cc99db4370b",
+    "exportIdentitySha256": "e062ae4bbd500e044b0e8f48e54f636100094c34f1e422bc76856e09f1228ad3",
+    "ciVerification": {
+      "repository": "jasionia1991-max/unboundry",
+      "source": "github-api",
+      "runId": 34356179448,
+      "runUrl": "https://github.com/jasionia1991-max/unboundry/actions/runs/34356179448",
+      "headSha": "de766b2b61461e3a5121d489f8df53d198aea9a0",
+      "headBranch": "main",
+      "event": "push",
+      "workflowPath": ".github/workflows/quality-gates.yml",
+      "conclusion": "success",
+      "remoteAnnotatedTagVerified": true
+    },
+    "archiveSha256": "3af53c360b7ba1d98ae1c888e7e08ec3281cc7c5d4642f8784f543390389093e",
+    "sourceFiles": 966,
+    "nodeVersion": "22.23.2",
+    "npmVersion": "10.9.8",
+    "sourceUnchanged": true,
+    "builtFresh": true,
+    "protectedEntriesExcluded": [
+      "spec/INC_GEN_017_R0_PUBLISHED_MODEL_SNAPSHOT_2026-08-28.json",
+      "spec/public-templates-director-split-revision.json"
+    ]
+  },
+  "independentReview": {
+    "product": "Existing narrow frontend/backend independent reviews retained; no unresolved P0/P1 in scope",
+    "ciRepair": "frontend_recovery_ui reviewed exact six-file delta and coverage SHA synchronization",
+    "operatorCorrections": {
+      "inventory": "frontend_recovery_ui; 9 synthetic checks and actual old/new inventories",
+      "mirrorOutputsAndServiceUser": "query_regression_tests; actual 657 objects verified",
+      "freezeWaitLedger": "frontend_recovery_ui and query_regression_tests; 17 snapshot guard + 7 SQLite memory helper checks",
+      "scope": "External release operation scripts only; product tagged bytes unchanged",
+      "loader": "frontend_recovery_ui; exact Linux module graph/body-entry proof without live DATA/keys",
+      "compensationRetry": "query_regression_tests authored; frontend_recovery_ui reviewed per-attempt old-pointer+health gate; three pure checks",
+      "publicCheckCli": "query_regression_tests authored; frontend_recovery_ui reviewed explicit commit/tree arguments"
+    }
+  },
+  "firstCutover": {
+    "status": "ABORTED_BEFORE_BACKUP_AND_SWITCH_OLD_SERVICE_RESTORED",
+    "operationRoot": "/var/lib/unboundry-v0717-node-recovery-20260908",
+    "frozenAt": "2026-09-09T13:31:08.213Z",
+    "cause": "BUSINESS_CHANGED_DURING_FREEZE",
+    "changedTables": [
+      "generation_tasks",
+      "generation_task_events"
+    ],
+    "newEventCount": 3,
+    "sourceTaskId": "a6bd74a5-79a8-47d8-acce-f735bfca811e",
+    "source": "pre-existing background status recovery during admission-freeze wait",
+    "preservedUnknownUnchanged": true,
+    "materialDigestUnchanged": true,
+    "oldServiceRestoredPid": 1891413,
+    "oldServiceRestoredVersion": "0.7.16",
+    "globalEnabledRestored": true,
+    "compensationErrors": [],
+    "backupCreated": false,
+    "codeSwitched": false,
+    "evidencePreservedInPlace": true
+  },
+  "secondCutover": {
+    "status": "ABORTED_BEFORE_CAPTURE_AND_SWITCH_OLD_SERVICE_AND_ADMISSION_RESTORED",
+    "operationRoot": "/var/lib/unboundry-v0717-node-recovery-20260909-attempt2",
+    "cause": "Node 22 static TypeScript import loader was not preloaded",
+    "backupCreated": false,
+    "codeSwitched": false,
+    "initialRecovery": {
+      "errors": [
+        "safety: failure-restore-safety_FAILED"
+      ],
+      "current": "/opt/unboundry/releases/v0.7.16-status-query-20260907",
+      "state": {
+        "MainPID": "1898461",
+        "NRestarts": "0",
+        "ActiveState": "active",
+        "SubState": "running"
+      }
+    },
+    "followupRecovery": {
+      "status": "OLD_SERVICE_AND_ADMISSION_RESTORED",
+      "time": "2026-09-09T14:07:23.438862+00:00",
+      "current": "/opt/unboundry/releases/v0.7.16-status-query-20260907",
+      "state": {
+        "MainPID": "1898461",
+        "NRestarts": "0",
+        "ActiveState": "active",
+        "SubState": "running"
+      },
+      "globalEnabled": true,
+      "method": "Same guarded restore-safety rerun; no direct SQL bypass",
+      "initialFailureRetained": "recovery-result.json"
+    },
+    "moduleStartupCorrectionProof": {
+      "status": "BACKUP_SESSION_MODULE_GRAPH_AND_BODY_ENTRY_PASS",
+      "source": "exact immutable v0.7.17 and reviewed backup-session.mjs",
+      "expectedStop": "CAPTURE_ENVIRONMENT_INVALID",
+      "productionDataMounted": false,
+      "keysMounted": false,
+      "leaseAccessed": false,
+      "networkNamespace": "isolated",
+      "scriptReturnCode": 1
+    }
+  },
+  "paidGeneration": 0,
+  "userAcceptance": {
+    "local": "USER_PASS",
+    "production": "USER_RECHECK_AFTER_TECHNICAL_PASS"
+  },
+  "limitations": [
+    "Automatic daily backup remains USER_DEFERRED; manual release backup does not implement it.",
+    "Previously deferred empty video/audio toolbar buttons remain USER_DEFERRED.",
+    "New maintenance entry remains disabled until an operating entrypoint and owner are defined.",
+    "The exact old outcome-unknown task is preserved, not cancelled, settled or declared unbilled.",
+    "No real paid Provider generation is performed by this release."
+  ],
+  "governance": {
+    "procedure": "After factual receipt, final docs PR/main CI and separate private mirror",
+    "verificationEvidenceOwner": "/var/lib/unboundry-v0717-node-recovery-20260909-attempt4/evidence/governance-sync.json",
+    "sourceIdentityOwner": "/opt/unboundry/governance/current/.governance-manifest.json",
+    "notSelfAttestedInThisReceipt": true,
+    "productRebuildRequired": false,
+    "productRestartRequired": false
+  },
+  "evidenceDirectory": "/Users/mymy/Documents/unboundry/node-recovery-v0717-release-ops-20260908",
+  "serverEvidenceDirectory": "/var/lib/unboundry-v0717-node-recovery-20260909-attempt4/evidence",
+  "thirdCutover": {
+    "status": "ACTUAL_NEW_START_PASS_PUBLIC_CHECK_INVOKE_FAILED_OLD_SERVICE_RESTORED",
+    "operationRoot": "/var/lib/unboundry-v0717-node-recovery-20260909-attempt3",
+    "failure": {
+      "stage": 4,
+      "error": "public-assets-execution_FAILED",
+      "current": "/opt/unboundry/releases/v0.7.17-node-recovery-20260908"
+    },
+    "cause": "Public checker CLI missing exact commit/tree arguments; checker did not run",
+    "recovery": {
+      "errors": [],
+      "current": "/opt/unboundry/releases/v0.7.16-status-query-20260907",
+      "state": {
+        "MainPID": "1905641",
+        "NRestarts": "0",
+        "ActiveState": "active",
+        "SubState": "running"
+      }
+    },
+    "safety": {
+      "globalEnabled": true,
+      "emergencyStop": false,
+      "perUserConcurrency": 20,
+      "requestsPerMinute": 120,
+      "textConcurrency": 10,
+      "imageConcurrency": 10,
+      "videoConcurrency": 2,
+      "audioConcurrency": 2,
+      "failureThreshold": 3,
+      "cooldownMinutes": 30,
+      "runningTaskPolicy": "wait",
+      "updatedAt": "2026-09-09T14:20:05.181Z"
+    },
+    "actualSystemdNewToOldRollbackExecuted": true,
+    "schemaChanged": false,
+    "databaseReplaced": false,
+    "backupId": "42b68849-d933-46bf-a6e9-cd765bf68dd0",
+    "backupCaptureVerifyFreshRestore": "PASS",
+    "backup": "/var/lib/unboundry-v0717-node-recovery-20260909-attempt3/backup43/42b68849-d933-46bf-a6e9-cd765bf68dd0.ubbackup",
+    "captureMode": "quiesced-active-preservation",
+    "finalCandidate": false,
+    "unknownTaskPreserved": true,
+    "productionDataFullComparisonBeforeSwitchAndAfterNewStartup": "PASS"
+  },
+  "production": {
+    "status": "V0717_ACTIVE_CODE_SWITCH_PASS",
+    "current": "/opt/unboundry/releases/v0.7.17-node-recovery-20260908",
+    "version": "0.7.17",
+    "commit": "de766b2b61461e3a5121d489f8df53d198aea9a0",
+    "tree": "4e47eb03af139657af0a0bfd579cd7be39e83106",
+    "schemaVersion": 43,
+    "state": {
+      "MainPID": "1909187",
+      "NRestarts": "0",
+      "ActiveState": "active",
+      "SubState": "running"
+    },
+    "providerRequestsIssuedByScript": 0,
+    "databaseReplaced": false,
+    "schemaChanged": false,
+    "operationRoot": "/var/lib/unboundry-v0717-node-recovery-20260909-attempt4",
+    "generationSafety": {
+      "globalEnabled": true,
+      "emergencyStop": false,
+      "perUserConcurrency": 20,
+      "requestsPerMinute": 120,
+      "textConcurrency": 10,
+      "imageConcurrency": 10,
+      "videoConcurrency": 2,
+      "audioConcurrency": 2,
+      "failureThreshold": 3,
+      "cooldownMinutes": 30,
+      "runningTaskPolicy": "wait",
+      "updatedAt": "2026-09-09T14:31:16.413Z"
+    },
+    "recoveryFlags": {
+      "UNBOUNDRY_DISABLE_GENERATION_RECOVERY_SWEEP": null,
+      "UNBOUNDRY_GENERATION_RECOVERY_CASES_ENABLED": null,
+      "UNBOUNDRY_MODEL_INPUT_CONTRACT_V2": null,
+      "UNBOUNDRY_WORKFLOW_SELF_HEALING_V2": null
+    },
+    "recoveryFlagsUnchanged": true
+  },
+  "backup": {
+    "status": "CAPTURE_VERIFY_FRESH_RESTORE_AND_PRIVATE_CLOUD_GET_PASS",
+    "policy": "RELEASE_RUNBOOK_5_1_USER_APPROVED_20260909",
+    "path": "/var/lib/unboundry-v0717-node-recovery-20260909-attempt4/backup43/10a31a43-2d30-4846-a9a1-c11df8f500ba.ubbackup",
+    "capture": {
+      "backupId": "10a31a43-2d30-4846-a9a1-c11df8f500ba",
+      "captureMode": "quiesced-active-preservation",
+      "databaseLogicalSha256": "f66598994f187ca4cf838a0ef9d212a69393c175e538ed40f74d67d221393b71",
+      "finalCandidate": false,
+      "mediaFiles": 355,
+      "mediaIntegrity": {
+        "backupBlockingIssues": 0,
+        "clean": false,
+        "evidenceSha256": "89dea1d12f6ef3af397552f7cf92c83c3a41d87f49905b745a35e6f21cdd7752",
+        "issues": 98,
+        "sha256": "55fca78b3482ddaab070e769b6bed18f60377411485eac41c0b11b4750d48b66"
+      },
+      "ossMirrors": 657,
+      "packageDirectory": "/work/backup43/10a31a43-2d30-4846-a9a1-c11df8f500ba.ubbackup",
+      "schemaVersion": 43,
+      "secretFiles": 3
+    },
+    "verify": {
+      "backupId": "10a31a43-2d30-4846-a9a1-c11df8f500ba",
+      "captureMode": "quiesced-active-preservation",
+      "databaseLogicalSha256": "f66598994f187ca4cf838a0ef9d212a69393c175e538ed40f74d67d221393b71",
+      "finalCandidate": false,
+      "mediaFiles": 355,
+      "mediaIntegrity": {
+        "backupBlockingIssues": 0,
+        "clean": false,
+        "evidenceSha256": "89dea1d12f6ef3af397552f7cf92c83c3a41d87f49905b745a35e6f21cdd7752",
+        "issues": 98,
+        "sha256": "55fca78b3482ddaab070e769b6bed18f60377411485eac41c0b11b4750d48b66"
+      },
+      "ossMirrors": 657,
+      "packageDirectory": "/work/backup43/10a31a43-2d30-4846-a9a1-c11df8f500ba.ubbackup",
+      "schemaVersion": 43,
+      "secretFiles": 3
+    },
+    "freshRestore": {
+      "backupId": "10a31a43-2d30-4846-a9a1-c11df8f500ba",
+      "captureMode": "quiesced-active-preservation",
+      "databaseLogicalSha256": "f66598994f187ca4cf838a0ef9d212a69393c175e538ed40f74d67d221393b71",
+      "finalCandidate": false,
+      "mediaFiles": 355,
+      "mediaIntegrity": {
+        "backupBlockingIssues": 0,
+        "clean": false,
+        "evidenceSha256": "89dea1d12f6ef3af397552f7cf92c83c3a41d87f49905b745a35e6f21cdd7752",
+        "issues": 98,
+        "sha256": "55fca78b3482ddaab070e769b6bed18f60377411485eac41c0b11b4750d48b66"
+      },
+      "ossMirrors": 657,
+      "packageDirectory": "/work/backup43/10a31a43-2d30-4846-a9a1-c11df8f500ba.ubbackup",
+      "schemaVersion": 43,
+      "secretFiles": 3
+    },
+    "leaseHeldThroughRestore": true,
+    "preservedUnknown": {
+      "taskId": "9c93f308-bb77-4935-a4e3-37dd72e6cd28",
+      "executionAttempt": 1,
+      "taskSha256": "dddac03223abe86b75d56aa48b2723cbf1efe0a94681706c2bba59ab9b9b9482",
+      "attemptsSha256": "a9d3f6c8fcdfaaaf4675b544b7b046215012914a2c46dbfd3ff6a09b6e2eb520",
+      "eventsSha256": "ae4d11fcb3f324fc2893efd8da9f7aa21710509c356385e81919320743500fc7",
+      "attemptCount": 1,
+      "eventCount": 4
+    },
+    "cloud": {
+      "status": "ENCRYPTED_BACKUP_OSS_UPLOAD_GET_VERIFY_PASS",
+      "backupId": "10a31a43-2d30-4846-a9a1-c11df8f500ba",
+      "profileId": "5dd96684-6c16-4fff-ac90-f6e8b8502829",
+      "prefix": "objects/backups/unboundry-schema43/10a31a43-2d30-4846-a9a1-c11df8f500ba",
+      "verifiedEncryptedFiles": 1019,
+      "verifiedEncryptedBytes": 1989754359,
+      "privateNoOverwrite": true,
+      "manifestAlsoUploadedAndGETVerified": true,
+      "receiptSha256": "d91e827763d113a8d9e7438d39273148fefa2caae7b73ecd21cb9b094c0b7f70",
+      "receiptPath": "/var/lib/unboundry-v0717-node-recovery-20260909-attempt4/evidence/oss-backup-upload.json",
+      "retentionDeletes": 0,
+      "mediaWrites": 0,
+      "providerRequests": 0
+    }
+  },
+  "staticResources": {
+    "status": "PASS",
+    "assetCount": 35,
+    "allPublicAndLoopbackBytesExact": true,
+    "method": "READ_ONLY_GET",
+    "identity": {
+      "version": "0.7.17",
+      "tag": "v0.7.17",
+      "commit": "de766b2b61461e3a5121d489f8df53d198aea9a0",
+      "tree": "4e47eb03af139657af0a0bfd579cd7be39e83106",
+      "nodeVersion": "22.23.2",
+      "npmVersion": "10.9.8",
+      "sourceUnchanged": true,
+      "builtFresh": true
+    }
+  },
+  "rollback": {
+    "exactOld": {
+      "version": "0.7.16",
+      "tag": "v0.7.16",
+      "commit": "b40bca8cf7b6e09faac4d1a449a65a060b10a0b6",
+      "tree": "a85a742f782fee75d965f283fe40bb44a0f83ac8",
+      "archiveSha256": "e9f7820fa5ce70e62ce64ca3ba978c9a0aaf4a20414458f3206df1fcbe69fa9a",
+      "sourceFiles": 937,
+      "nodeVersion": "22.23.2",
+      "npmVersion": "10.9.8",
+      "sourceUnchanged": true,
+      "builtFresh": true,
+      "protectedEntriesExcluded": [
+        "spec/INC_GEN_017_R0_PUBLISHED_MODEL_SNAPSHOT_2026-08-28.json",
+        "spec/public-templates-director-split-revision.json"
+      ]
+    },
+    "retainedRb05": {
+      "status": "PASS",
+      "schemaVersion": 43,
+      "isolatedLinux": true,
+      "liveDataMounted": false,
+      "sourceEvidenceRoot": "/tmp/unboundry-v0717-rb05.20260909-run1",
+      "sourceEvidence": [
+        {
+          "path": "/tmp/unboundry-v0717-rb05.20260909-run1/rb05-evidence/rb05-execution.json",
+          "sha256": "88f92b343655300761d01b278bca9dfbbd21451c4c879d70f39e40480e42b899"
+        },
+        {
+          "path": "/tmp/unboundry-v0717-rb05.20260909-run1/rb05-evidence/rb05-paired-runtime.json",
+          "sha256": "b5a6d3945af3fe1ad3809bf17aa34a74e86d52e540f7d53e46cb531246e9ded3"
+        },
+        {
+          "path": "/tmp/unboundry-v0717-rb05.20260909-run1/rb05-evidence/rb05-browser-forward-new.json",
+          "sha256": "51047a7856d22d3b8bb9bc6e7cd10c8bce2c23349dc80ea8bde6ff82facad620"
+        },
+        {
+          "path": "/tmp/unboundry-v0717-rb05.20260909-run1/rb05-evidence/rb05-browser-rollback-old.json",
+          "sha256": "31e8c8ad7b0130cd561f5ece4bf18cf1c4a67af4790c771bd62bacde7567c1d4"
+        },
+        {
+          "path": "/tmp/unboundry-v0717-rb05.20260909-run1/rb05-evidence/rb05-browser-forward-new-final.json",
+          "sha256": "8d1d138bdfdff07f62c02945fc41bad4bd31225494077aeac72d2622eccc963f"
+        }
+      ],
+      "candidate": {
+        "version": "0.7.17",
+        "commit": "de766b2b61461e3a5121d489f8df53d198aea9a0",
+        "tree": "4e47eb03af139657af0a0bfd579cd7be39e83106"
+      },
+      "rollback": {
+        "version": "0.7.16",
+        "commit": "b40bca8cf7b6e09faac4d1a449a65a060b10a0b6",
+        "tree": "a85a742f782fee75d965f283fe40bb44a0f83ac8"
+      },
+      "checks": {
+        "sameDataPreserved": true,
+        "persistedSyntheticTaskTransitioned": true,
+        "clientLoadedRollback": true,
+        "draftPreserved": true,
+        "assetPreserved": true,
+        "staticAssetsMatch": true,
+        "providerAttemptRowsSeeded": 2,
+        "providerAttemptRowsAdded": 0,
+        "generationAdmissionEventsAtSeed": 0,
+        "generationAdmissionEventsAdded": 0,
+        "networkIsolation": "bwrap --unshare-net; loopback only",
+        "outboundProviderAudit": {
+          "status": "COLLECTED",
+          "transports": [
+            "fetch",
+            "http",
+            "https"
+          ],
+          "postRequests": 0,
+          "positiveControl": {
+            "status": "PASS",
+            "syntheticPostControlsObserved": 2,
+            "port": 35383,
+            "scope": "fetch and native HTTP loopback positive controls; no Provider task"
+          },
+          "scope": "Generation adapter HTTP transports observed in each application process; raw sockets and unrelated processes are outside scope."
+        },
+        "publicationAttemptsUnchanged": true,
+        "idlessOutcomeUnknownPreserved": true,
+        "originalOnlyMarkerPreserved": true,
+        "generationRecoveryCasesEnabled": false,
+        "globalGenerationEnabled": false,
+        "startupTaskAttemptEventLedgerUnchanged": true,
+        "unexpectedSyntheticWrites": 0,
+        "databaseRestored": false
+      },
+      "authorizedSyntheticWrites": [
+        {
+          "method": "POST",
+          "path": "/api/assets/rb05-reference-image",
+          "count": 1
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/bootstrap",
+          "count": 1
+        },
+        {
+          "method": "POST",
+          "path": "/api/canvases/a5ae6c38-2ac4-44f2-b7c9-10bb275d5a25/commands",
+          "count": 3
+        },
+        {
+          "method": "POST",
+          "path": "/api/projects",
+          "count": 1
+        },
+        {
+          "method": "PUT",
+          "path": "/api/canvas/a5ae6c38-2ac4-44f2-b7c9-10bb275d5a25",
+          "count": 1
+        }
+      ],
+      "databaseCounts": {
+        "generation_tasks": 2,
+        "generation_provider_attempts": 2,
+        "generation_admission_events": 0,
+        "generation_task_events": 4,
+        "media_assets": 1,
+        "media_publication_attempts": 1,
+        "schemaVersion": 43,
+        "generationAdmissionEvents": 0,
+        "providerAttemptRows": 2,
+        "providerAttemptsWithoutProviderId": 1,
+        "providerAttemptsWithProviderId": 1,
+        "originalOnlyMarkers": 1
+      },
+      "scope": "Exact Linux package new 0.7.17 -> old 0.7.16 -> new 0.7.17 with a saved draft, local asset, two synthetic unresolved task ledger shapes (one outcome-unknown without a Provider ID and one RECOVERY_ORIGINAL_ONLY_V1 marker with a Provider ID), three fresh browser contexts and loaded bundle identities. Startup/read ledger snapshots and provider-attempt rows remain unchanged; the stopped-process task transition is synthetic and does not prove Provider execution or full generation recovery.",
+      "realSystemdRollbackExecuted": false
+    },
+    "actualSystemdNewToOldCompensation": "PASS during attempt3 after public-check CLI invocation failure",
+    "formalRollbackPyExecuted": false,
+    "productionDatabaseRestoredFromBackup": false,
+    "rule": "Code-only rollback to exact v0.7.16; latest stopped preservation capture plus verify/fresh restore required; keep v0.7.17 backup tools for this mode"
+  },
+  "operationScripts": {
+    "build.py": "66b9b99ce7957cdc2d15b1389d70d83b0827e55be76625320d09a1c38063bd9a",
+    "prepare.py": "f00968f26c7dd215176546a114d7b1ff20d753c8904ae0922f6216ae4c55fe95",
+    "prepare-mirrors.mjs": "c21f05c165ea1ebcfd5e588c0c849062b6f0343c05689d2e9cc8548d67169994",
+    "data-ops.mjs": "16b0810a5854b8aa717cbe1c386a437f51c14d1b8df5bdeb27539e2130a86a90",
+    "backup-session.mjs": "9729a68c67ae2bfeef8f47d53106d4013fe13a413a8fe851f956422c0e82a002",
+    "preservation-session.py": "138c6236c9146b8f13ec8cb6f2ee01c9523d783c99aada3e141273988d000611",
+    "cutover.py": "0f3f4803e1b2fe575a1f7f73358d30a2e0a1861ecb2e4d91798ae2fabe82773d",
+    "rollback.py": "f07c7bd0366b2a35b6a7cb3a4a25050914d758566360b12eb07ec2ed502e7b3c",
+    "verify-public.py": "e677c1d434812584a7464d0cda6cccdfc79f80bc8881cc562bb734d41b9cce23",
+    "production-ui-snapshot.py": "b30369d323f542bd0ed800e2ba27c71e466374c22cdd5d4b90949c126436ede7",
+    "upload-backup.mjs": "c1d1403b79c496ffae2ed0dd2a52b337e2f55786c983f81db9276986457ede02",
+    "rb05-run-paired.py": "7a2d9659ad058c4ed412a81ebd346a7ca883a2bf510676cdbfd1a5b68baa533d",
+    "rb05-paired-runtime.py": "fc71248977252ac6a4687cc11f67321b81567f4100aed966f900bf9d339080c1",
+    "rb05-verify.py": "2299e2fca51f188ba27985c3d7aebb5d4482c3670c005bd0960f3e9ea9043526",
+    "rb05-summarize.py": "b1331a8fcb1fa0a71349d2034cbe24fde548b12199c5273cd356aaa6d97cb744",
+    "rb05-browser-client.mjs": "bdf4bb2812c02b918070614055f93e9424f552b2ef6b5c26d7743ed3b2fd88ef",
+    "rb05-provider-audit.mjs": "7ae78cfe233fe1338ace28034ae8f869a692263061f84c25cffdacbcd4588073",
+    "rb05-provider-audit-selfcheck.mjs": "82e1afd8e785be94f673f761c7c9a3047425901c3a5cbb5f3fbcd40da0e9cdbe",
+    "rb05-retain.py": "ba8eeee93d286f9ac7f1426dae8fa9eb3c9fc913bc3be5124424b0f8b26a7b6d",
+    "stage-operations.py": "cb729e944b82e36045819a6fec7df338d876d056a9666cf83769554fb64931b2",
+    "release-inventory.py": "fc299e786f151bc4895b393c16b3aa3d2144e68d475144f6b294e222fc268942"
+  },
+  "productionUi": {
+    "status": "PRODUCTION_CANVAS_READ_ONLY_PASS",
+    "checkedAt": "2026-09-09T14:41:41.894354+00:00",
+    "canvasId": "837344f0-5988-4408-9651-0b0cebe0f6fa",
+    "canvasSha256": "de2b5cce6dba2aedff08d350013e856b14493825cd8111ba8820b79029c65ae7",
+    "canvasUnchanged": true,
+    "countsBefore": {
+      "generation_tasks": 1129,
+      "generation_provider_attempts": 1140,
+      "canvas_operation_receipts": 143
+    },
+    "countsAfter": {
+      "generation_tasks": 1129,
+      "generation_provider_attempts": 1140,
+      "canvas_operation_receipts": 143
+    },
+    "newTaskProviderAttemptOrCanvasReceipt": false,
+    "actions": "Ordinary authenticated Chrome open and refresh only; no editing, generating or playing",
+    "dom": {
+      "savedToCloud": true,
+      "loadedImageCount": 5,
+      "decodedVideoCount": 1,
+      "videoSize": [
+        720,
+        1280
+      ],
+      "videoReadyState": 4,
+      "mediaErrors": 0
+    },
+    "network": {
+      "method": "CDP continuously sampled final refresh; earlier truncated samples discarded",
+      "boundedSeconds": 4,
+      "requestEvents": 19,
+      "nonGETRequests": 0,
+      "httpErrors": 0,
+      "runtimeErrors": 0,
+      "truncated": false
+    },
+    "paidGeneration": 0,
+    "scope": "Existing selected Canvas only; no real generation acceptance"
+  },
+  "evidenceHashes": {
+    "attempt4-cutover-complete.json": "5946a3d7d49afe9cff9382bed5ae58a50247e945d8f1aba9f2dae04593534985",
+    "attempt4-latest-backup-complete.json": "71676c31db4c6d3821d9f3dfb3099008e97a972c7ec154febec37ab291745624",
+    "attempt4-public-assets.json": "950615497e3cc2774c4659b86ce725153f2267905519e17ea0a3c8ce47ab22b0",
+    "attempt4-production-ui-pass.json": "df4901e7628463f495634dabeec0ee34bd0c7ced46beeebbdcf6c8b874cbec92",
+    "attempt4-oss-backup-upload.json": "d91e827763d113a8d9e7438d39273148fefa2caae7b73ecd21cb9b094c0b7f70",
+    "attempt4-rb05-retention.json": "272afd2fe1b6a2cd6e7483422fc0871948a47f7dcfbbcd578e44aff37c05bf80",
+    "attempt3-recovery-result.json": "e671333f0f1397ac60dbfbe776bae622914825c285ec365e112d8b995328297d"
+  },
+  "documentationValidation": {
+    "independentReviewer": "query_regression_tests",
+    "reviewScope": "10 changed governance documents/receipt only; no product edits",
+    "requiredMarkerCorrection": "CURRENT_STATE production observation phrase restored to the m38 contract",
+    "localAttempt": "Mac safe preflight and architecture passed; isolated Node process aborted before test execution during dependency preparation; m38 not run in that attempt",
+    "localAttemptEvidenceSha256": "26dc78e30864f51ea5781e0f3d3745d202f75fff6689fdc27e834297b66a9e68",
+    "requiredFinalGate": "Final documentation PR head and merged main GitHub Quality gates, with exact run records retained in operation evidence; final doc source identity lives in governance manifest"
+  },
+  "updatedAt": "2026-09-09T15:09:08.131091+00:00"
+}

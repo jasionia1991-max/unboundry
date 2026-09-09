@@ -4,7 +4,7 @@
 
 ## 当前任务：v0.7.17 节点恢复发布收尾
 
-任务ID：`VIDEO-BALANCE-RETRY-20260907`。V3/V4 本地修复、撤销演练、相关回归和用户验收已完成；V4 第1、2、3项均获 `USER_PASS`，仍未上线。证据、未测范围和入口见[恢复方案第10节](spec/VIDEO_BALANCE_SINGLE_NODE_RECOVERY_PLAN_2026-09-07.md#10-第4版本地实施与验证2026-09-08)。
+任务ID：`VIDEO-BALANCE-RETRY-20260907`。V3/V4 本地修复、撤销演练、相关回归和用户验收已完成；V4 第1、2、3项均获 `USER_PASS`，已上线，生产用户确认另记。证据、未测范围和入口见[恢复方案第10节](spec/VIDEO_BALANCE_SINGLE_NODE_RECOVERY_PLAN_2026-09-07.md#10-第4版本地实施与验证2026-09-08)。
 
 用户授权：发布 v0.7.17；并于 2026-09-09 同意保留旧未知请求的停服备份方案。授权包含发布检查、备份、回退演练及上线，不包含真实付费生成、旧任务清账或取消、schema 迁移、备份/历史素材删除和云权限变更；本次新加密备份的私有上传及下载哈希核验属于已授权发布备份范围。维护功能继续默认关闭。
 
@@ -23,7 +23,7 @@
 
 ## 已完成的本地实现与验证
 
-施工根：`/Users/mymy/Documents/unboundry-post-v076-canvas-convergence-2026-09-03`；分支 `codex/v0717-node-recovery-release`；发布基线 HEAD `38709d2b878e8546daa06e9ea20d2a82a2ae91b8`；91份已验收及发布增量文件已提交为 `c3d21e39c0ece8ac400b00345b5e2aed13199dbc`。后续文档提交属于发布收尾，最终head以PR实际记录为准，不改变已验收产品行为。
+施工根：`/Users/mymy/Documents/unboundry-post-v076-canvas-convergence-2026-09-03`；原实施分支 `codex/v0717-node-recovery-release`；发布基线 HEAD `38709d2b878e8546daa06e9ea20d2a82a2ae91b8`；91份已验收及发布增量文件已提交为 `c3d21e39c0ece8ac400b00345b5e2aed13199dbc`。后续文档提交属于发布收尾，最终head以PR实际记录为准，不改变已验收产品行为。
 
 - V4 持久维护记录、严格 admin、原结果受保护找回、四节点进展、管理页及重启接续已实现；维护开关默认关闭，schema 仍为 43。
 - `quiesced-active-preservation` 已实现：在停服证明与既有 active lease 下保留精确旧 task/attempt 的未知事实，完整核验事件、付费围栏、媒体/secret 和 logical SHA；不改 task 终态，额外活动边界或证据不一致即拒绝。
@@ -31,18 +31,16 @@
 - 已有发布增量 95 项与 71 号存储层演练证据继续有效，范围不扩大；独立复核：本轮独立后端复审未见待处理 P0/P1，不等于全仓安全审计。
 - 用户验收：本地用户验收已完成；第3项修复后的真实页面顺序、未知保护、刷新和媒体可读性均按方案10.6记账。
 
-## 生产事实与发布断点
+## 生产发布与收尾断点
 
-正式站仍为 `v0.7.16/schema43`。只读核对的唯一旧 task `9c93f308-bb77-4935-a4e3-37dd72e6cd28` 仍是 `recovering/AUTOMATIC_RESULT_RECOVERY`，attempt 为 `outcome-unknown` 且无平台 task ID；原始 Provider code/msg 未保存。充值、`finished_at`、假回执或维护 phase 都不能证明未受理、未扣费或可取消；不得清账、改码或整组重跑。正式站没有本轮生产写入或 Provider 请求。
+GitHub付费限制已解除；PR #173及合并main检查通过，精确v0.7.17 tag/Release、Linux不可变包构建和完整隔离新→旧→新演练通过。第四次生产切换已成功，正式站为v0.7.17/schema43。最新停服保全备份、verify/fresh restore、静态资源逐字节检查与原画布只读打开/刷新通过。新加密备份私有上传及GET哈希/大小核验已通过；正式站工程结果为PRODUCTION_TECHNICAL_PASS，生产用户验收仍USER_RECHECK。
 
-ops 切换/回退脚本已完成独立窄复审，直接阻断已修复；Linux隔离模块自检与共享锁争用/重取检查通过。真实完整包证据转存步骤已补齐并复审，尚未实跑。完整 Linux 真实安装包、真实备份、systemd 停服切换和线上回退尚未执行，不能把本地 29/29、95/71 或合成演练写成生产放行。候选已提交并创建PR；须先通过最终head及合并后的main CI，再打精确tag并构建。完整隔离Linux新→旧→新、最新停服备份及verify/fresh restore通过后才切换；任一失败保留旧站和CURRENT。
+前三次失败及补偿保留：等待期间原后台查询事件、Node loader启动顺序、网页检查命令缺少身份参数。外层工具已修复并独立复核；第三次实际新→旧systemd补偿通过，第四次成功；这些不是产品功能变更，也不构成已执行正式rollback.py。精确日志、哈希、范围和回退身份统一见[本次发布回执](spec/V0_7_17_PRODUCTION_RECEIPT_2026-09-09.json)。
 
 ## 下一步
 
-补齐checkout历史标签后，通过最终head/main CI并继续真实发布专属证据门，保持 v0.7.16 生产、v0.7.17 本地候选和维护默认关闭；不新增产品功能，不改变旧 task/attempt 事实。每日自动备份及视频/音频空工具按钮仍暂缓。
+本次文档按实测更新并经独立复核；文档提交必须通过最终PR head/main CI后同步私有治理镜像，不重建或重启产品包。当前收尾分支为`codex/v0717-production-receipt`；精确文档身份由服务器`.governance-manifest.json`拥有，同步检查由本次运维目录`evidence/governance-sync.json`拥有，本页不自证自身提交已经同步。
 
-## 发布恢复进度（2026-09-09）
+用户下一步：刷新正式站并继续原画布工作，确认已完成节点保持、失败节点仍可按真实状态单独继续；不要求为验收额外付费生成。未确认前保持生产USER_RECHECK。
 
-用户已处理个人GitHub付款并要求继续原发布。精确候选 `aac6899888fd852fcb2eaf3dade7bf3532df4ab3` 的[CI第2次执行](https://github.com/jasionia1991-max/unboundry/actions/runs/34290321344)两个job均已启动，原账单限制已解除。本次lightweight检查通过；备份job因默认浅克隆缺少safe runner强制核验的 `v0.5.1` 历史tag，在备份测试开始前失败。已为两个job补上 `fetch-depth: 0`。随后冷环境备份检查发现旧版lock依赖未缓存，离线安装被拒绝；现于隔离测试前，只从精确旧commit取两份package文件，在RUNNER_TEMP预热其依赖缓存。safe runner继续离线、保留完整历史身份校验。实际29项中28通过，1项合成目录替换夹具因只读源目录无法rename而失败；现补齐该夹具的临时权限并在finally恢复，原攻击断言保留。产品代码不变，等待最终head CI。
-
-2026-09-09 20:44（北京时间）重新只读核对：正式站仍v0.7.16/schema43、PID1197743/restarts0；一个精确旧未知task/attempt保持，活动工作流和未完成publication均为0。新包/生产运维目录尚未建立，尚未冻结、停服或切换。实测记录由release ops的 `production-readonly-release-resumed.json` 与 `release-review.json` 保存。用户已取消的自托管CI路线保持取消；本次沿用GitHub托管检查，不再索要已有上线授权。
+本地验收为USER_PASS；生产用户确认仍为USER_RECHECK，本轮不执行真实付费生成。每日自动备份、视频/音频空工具按钮仍暂缓，维护功能默认关闭。用户取消的自托管CI路线保持取消，不重复索要现有发布授权。

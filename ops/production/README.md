@@ -1,12 +1,12 @@
 # Production backup contracts
 
-Current snapshot: 2026-09-07, `v0.7.16/schema43`. Product state, release identity and exact backup results are owned by [current authority](../../spec/UNBOUNDRY_CURRENT_STATE.md) and the [v0.7.16 release receipt](../../spec/V0_7_16_PRODUCTION_RECEIPT_2026-09-07.json). The presence of operation sources in a release does not mean the systemd timer uses them.
+Current snapshot: 2026-09-09, `v0.7.17/schema43`. Product state, release identity and exact backup results are owned by [current authority](../../spec/UNBOUNDRY_CURRENT_STATE.md) and the [v0.7.17 release receipt](../../spec/V0_7_17_PRODUCTION_RECEIPT_2026-09-09.json). The presence of operation sources in a release does not mean the systemd timer uses them.
 
 ## Observed production state
 
-- The application was switched to the exact v0.7.16 package; actual pointer, PID, restart count and verification are in the release receipt rather than duplicated here.
+- The application was switched to the exact v0.7.17 package; actual pointer, PID, restart count and verification are in the release receipt rather than duplicated here.
 - Daily backup failure remains `USER_DEFERRED`: installed ExecStart still uses `/opt/unboundry/scripts/backup-to-oss.mjs` and its old schema41 validation. The application is schema43; this release did not alter that job.
-- The new manual frozen schema43 backup, verify and independent fresh restore passed. Cloud upload/GET completion and all counts are owned by the current release receipt. The 98 pre-existing nonblocking media warnings remain; a manual backup does not repair or validate the daily timer.
+- The latest stopped-preservation schema43 backup, verify and independent fresh restore passed. Cloud upload/GET status and all counts are owned by the current release receipt; this document does not predeclare cloud completion. The pre-existing nonblocking media warnings remain; a manual backup does not repair or validate the daily timer.
 
 The daily job needs a separately implemented and verified current-schema freeze/backup/restore/upload pipeline and an exact installed-unit receipt. Replacing only a path or schema constant does not provide dynamic freeze and logical-SHA evidence.
 
@@ -26,7 +26,7 @@ A separately authorized release may use `quiesced-active-preservation` under [Ru
 
 Before installing or changing a job, record immutable release commit/tree, wrapper and unit hashes, owner/mode, current-schema freeze/SHA evidence, key identities without key bytes, verify/fresh-restore result, upload/GET verification and timer next-run. Use isolated synthetic/fake tests first. Do not replace CURRENT with a backup or rewrite historical task/attempt records to satisfy quiet gates.
 
-Previous recovery packages and exact old v0.7.15 code are retained. The current rollback identity, latest backup location and reviewed operation script are recorded in the v0.7.16 receipt. Do not restore any backup into CURRENT or substitute old v0.7.14/v0.7.13 evidence for the present release.
+Previous recovery packages and exact old v0.7.16 code are retained. The current rollback identity, latest backup location and reviewed operation script are recorded in the v0.7.17 receipt. Do not restore any backup into CURRENT or substitute old v0.7.14/v0.7.13 evidence for the present release.
 
 ## Historical tools and authorization
 
