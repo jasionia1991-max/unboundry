@@ -39,8 +39,10 @@ ops 切换/回退脚本已完成独立窄复审，直接阻断已修复；Linux�
 
 ## 下一步
 
-GitHub账号恢复后，重跑最终head CI并继续真实发布专属证据门，保持 v0.7.16 生产、v0.7.17 本地候选和维护默认关闭；不新增产品功能，不改变旧 task/attempt 事实。每日自动备份及视频/音频空工具按钮仍暂缓。
+补齐checkout历史标签后，通过最终head/main CI并继续真实发布专属证据门，保持 v0.7.16 生产、v0.7.17 本地候选和维护默认关闭；不新增产品功能，不改变旧 task/attempt 事实。每日自动备份及视频/音频空工具按钮仍暂缓。
 
-## 当前外部阻断（2026-09-09）
+## 发布恢复进度（2026-09-09）
 
-[PR #173](https://github.com/jasionia1991-max/unboundry/pull/173)已提交，后续文档检查19/19通过；精确head以该PR记录为准。首次产品候选为`c3d21e39c0ece8ac400b00345b5e2aed13199dbc`。[首次CI](https://github.com/jasionia1991-max/unboundry/actions/runs/34288124306)两个job均被GitHub账号付款/额度限制拒绝启动；没有本次远端测试结果，不是观察到代码测试失败。原始注释见release ops的`github-ci-blocker.json`。用户需处理GitHub Billing/Actions额度，随后重跑最终head CI；不改账单设置、不绕过发布门，不重新索要已有上线授权。当前未合并/tag/构建/冻结/停服/切换；生产仍v0.7.16。维护默认关闭。后续文档提交触发的CI也因同一账单提示未启动，最新注释和检查身份由`github-ci-blocker.json`保留。断点已随PR同步；main及服务器治理镜像尚未更新。
+用户已处理个人GitHub付款并要求继续原发布。精确候选 `aac6899888fd852fcb2eaf3dade7bf3532df4ab3` 的[CI第2次执行](https://github.com/jasionia1991-max/unboundry/actions/runs/34290321344)两个job均已启动，原账单限制已解除。本次lightweight检查通过；备份job因默认浅克隆缺少safe runner强制核验的 `v0.5.1` 历史tag，在备份测试开始前失败。现为两个job补上 `fetch-depth: 0`，保留完整历史标签校验和原有安全门；产品代码不变，等待最终head CI。
+
+2026-09-09 20:44（北京时间）重新只读核对：正式站仍v0.7.16/schema43、PID1197743/restarts0；一个精确旧未知task/attempt保持，活动工作流和未完成publication均为0。新包/生产运维目录尚未建立，尚未冻结、停服或切换。实测记录由release ops的 `production-readonly-release-resumed.json` 与 `release-review.json` 保存。用户已取消的自托管CI路线保持取消；本次沿用GitHub托管检查，不再索要已有上线授权。

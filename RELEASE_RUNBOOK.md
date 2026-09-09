@@ -35,7 +35,7 @@
 
 获当次发布授权后，显式文件清单commit/push → PR的最终head CI通过 → 合并 → main CI通过 → annotated tag指向精确merge → GitHub Release。
 
-当前CI源码为`.github/workflows/quality-gates.yml`：macOS15；Node25类型/架构/build、`npm audit --audit-level=high`；随后Node22 safe preflight、ffprobe准备、m104真实HTTP/fake Provider集成、源码覆盖及其行为检查；新增独立Node22备份/运行锁合成检查（m10/m93）。中等级告警不会使high阈值失败，CI绿色不等于依赖无告警或真实付费验收通过。
+当前CI源码为`.github/workflows/quality-gates.yml`：两个job均完整checkout历史与tag（safe runner校验精确v0.5.1基线），macOS15；Node25类型/架构/build、`npm audit --audit-level=high`；随后Node22 safe preflight、ffprobe准备、m104真实HTTP/fake Provider集成、源码覆盖及其行为检查；新增独立Node22备份/运行锁合成检查（m10/m93）。中等级告警不会使high阈值失败，CI绿色不等于依赖无告警或真实付费验收通过。
 
 记录PR、branch/main CI run、tag object、peeled commit/tree和Release。已发布tag和产品构建不可改写；后续验收文档记录用自己的提交身份，不将文档HEAD冒充生产产品commit。
 
