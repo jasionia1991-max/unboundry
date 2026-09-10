@@ -1,12 +1,12 @@
 # Production backup contracts
 
-Current snapshot: 2026-09-09, `v0.7.17/schema43`. Product state, release identity and exact backup results are owned by [current authority](../../spec/UNBOUNDRY_CURRENT_STATE.md) and the [v0.7.17 release receipt](../../spec/V0_7_17_PRODUCTION_RECEIPT_2026-09-09.json). The presence of operation sources in a release does not mean the systemd timer uses them.
+Current snapshot: 2026-09-11, `v0.7.18/schema44`. Product state, release identity and exact backup results are owned by [current authority](../../spec/UNBOUNDRY_CURRENT_STATE.md) and the [v0.7.18 release receipt](../../spec/V0_7_18_PRODUCTION_RECEIPT_2026-09-11.json). The presence of operation sources in a release does not mean the systemd timer uses them.
 
 ## Observed production state
 
-- The application was switched to the exact v0.7.17 package; actual pointer, PID, restart count and verification are in the release receipt rather than duplicated here.
-- Daily backup failure remains `USER_DEFERRED`: installed ExecStart still uses `/opt/unboundry/scripts/backup-to-oss.mjs` and its old schema41 validation. The application is schema43; this release did not alter that job.
-- The latest stopped-preservation schema43 backup, verify and independent fresh restore passed. Cloud upload/GET status and all counts are owned by the current release receipt; this document does not predeclare cloud completion. The pre-existing nonblocking media warnings remain; a manual backup does not repair or validate the daily timer.
+- The application was switched to the exact v0.7.18 package; actual pointer, PID, restart count and verification are in the release receipt rather than duplicated here.
+- Daily backup failure remains `USER_DEFERRED`: installed ExecStart still uses `/opt/unboundry/scripts/backup-to-oss.mjs` and its old schema41 validation. The application is schema44; this release did not alter that job.
+- Both the pre-migration schema43 and post-migration schema44 stopped-preservation backups, verify and independent fresh restores passed. Cloud upload/GET status and all counts are owned by the current release receipt; this document does not predeclare cloud completion. The pre-existing nonblocking media warnings remain; a manual backup does not repair or validate the daily timer.
 
 The daily job needs a separately implemented and verified current-schema freeze/backup/restore/upload pipeline and an exact installed-unit receipt. Replacing only a path or schema constant does not provide dynamic freeze and logical-SHA evidence.
 
@@ -14,7 +14,7 @@ The daily job needs a separately implemented and verified current-schema freeze/
 
 `backup-to-oss-retention.mjs` resolves `scripts/backup-data.mjs` and `server/secureStorageProfiles.ts` from its own immutable release root. Keep it in `ops/production/` within the complete release; do not copy it to a standalone `/opt/unboundry/scripts` path.
 
-Required arguments explicitly identify source, backup root, scratch root, signing-private-key and recovery-public-key paths, storage profile, schema, database logical SHA, generation freeze and last Provider admission. The source schema must match the actual capture and the exact tool contract: quiesced preservation supports explicit schema43/schema44; ordinary current capture is schema44 and older modes remain historical. A production snapshot below does not override these mode boundaries. Unknown/missing/duplicate arguments fail closed. Media warnings and OSS mirrors are explicit repeatable arguments.
+Required arguments explicitly identify source, backup root, scratch root, signing-private-key and recovery-public-key paths, storage profile, schema, database logical SHA, generation freeze and last Provider admission. The wrapper accepts only locked-exact capture: schema44 is current/final and schema42/schema43 use historical recovery. It does not expose quiesced preservation. For unresolved tasks, the reviewed operation must invoke backup-data.mjs directly with explicit schema43/schema44 quiesced capture, then verify/fresh restore and separately upload the validated encrypted package. A historical production snapshot does not override these tool boundaries. Unknown/missing/duplicate arguments fail closed. Media warnings and OSS mirrors are explicit repeatable arguments.
 
 Without `--apply-upload`, it creates a local encrypted package and reports an upload inventory; this is not a zero-write dry-run of the local filesystem. It reads the selected source's encrypted storage profile, never an inherited unrelated data directory. With upload authorization, `--apply-upload` writes private no-overwrite objects and a manifest. The wrapper does not itself run separate verify/fresh-restore or GET content verification; the operation must supply these gates. Retention deletion is blocked pending an exact reviewed remote deletion manifest; this is not an active automatic deletion policy.
 
@@ -24,7 +24,7 @@ A separately authorized release may use `quiesced-active-preservation` under [Ru
 
 ## Schema43 to schema44 release preservation bridge
 
-Production remains on the last observed version until an actual release receipt confirms migration. Release approval, including the necessary schema43 to schema44 migration and maintenance-only fallback, is owned by TASKS. This contract is not evidence that production has migrated.
+Production migration to schema44 is confirmed by the current release receipt. Release approval, including the necessary schema43 to schema44 migration and maintenance-only fallback, is owned by TASKS. This contract is not evidence that production has migrated.
 
 - A schema44 candidate backup must be captured only after the schema43→44 transaction has passed the freeze, lease, logical-SHA, integrity, foreign-key, full-ledger and media checks. The quiesced preservation branch accepts an explicit schema43 source or the current schema44 source and keeps unresolved Provider evidence unchanged.
 - The standalone compatibility package contains exactly `preservation-manifest.json`, `maintenance.html`, and `schema44-readonly-preservation-runtime.mjs`. The manifest binds the original CURRENT data directory, database identity, database SHA, media-tree SHA, maintenance-page SHA, and executable SHA. The package contains no `unboundry.sqlite`, `media/`, secret or application bootstrap.
@@ -38,7 +38,7 @@ The exact package and operation scripts must pass independent release review and
 
 Before installing or changing a job, record immutable release commit/tree, wrapper and unit hashes, owner/mode, current-schema freeze/SHA evidence, key identities without key bytes, verify/fresh-restore result, upload/GET verification and timer next-run. Use isolated synthetic/fake tests first. Do not replace CURRENT with a backup or rewrite historical task/attempt records to satisfy quiet gates.
 
-Previous recovery packages and exact old v0.7.16 code are retained. The current rollback identity, latest backup location and reviewed operation script are recorded in the v0.7.17 receipt. Do not restore any backup into CURRENT or substitute old v0.7.14/v0.7.13 evidence for the present release.
+Previous recovery packages and exact old v0.7.16 code are retained. Current schema44 rollback uses the independently packaged read-only maintenance bridge, rebound to the latest stopped CURRENT before use; old schema43 application packages cannot be started. Exact identities, backup locations and reviewed operation scripts are recorded in the v0.7.18 receipt. Do not restore any backup into CURRENT or substitute old v0.7.14/v0.7.13 evidence for the present release.
 
 ## Historical tools and authorization
 
