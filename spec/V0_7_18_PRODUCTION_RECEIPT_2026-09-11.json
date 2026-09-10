@@ -1,0 +1,775 @@
+{
+  "version": "0.7.18",
+  "date": "2026-09-11",
+  "commit": "0eddf365573cc47e535aa92b95e68f3c577479e6",
+  "tree": "b7ea9c637f3ae0f31a2392f9e3d42bbc1f9c2d7b",
+  "tag": "v0.7.18",
+  "tagObject": "1b92050fa7c0251076411e18246692532c752c12",
+  "releaseUrl": "https://github.com/jasionia1991-max/unboundry/releases/tag/v0.7.18",
+  "site": "https://canvas.mymy.ltd",
+  "schema": 44,
+  "ci": {
+    "pullRequest": {
+      "runId": 34505564475,
+      "head": "2497db096ddf7e443f292d9ff1c7ab2e1125103a",
+      "status": "PASS",
+      "conclusion": "success",
+      "event": "pull_request",
+      "jobs": [
+        {
+          "name": "backup-preservation",
+          "databaseId": 102966780683,
+          "conclusion": "success"
+        },
+        {
+          "name": "lightweight",
+          "databaseId": 102966780956,
+          "conclusion": "success"
+        }
+      ],
+      "url": "https://github.com/jasionia1991-max/unboundry/actions/runs/34505564475"
+    },
+    "main": {
+      "runId": 34506035015,
+      "head": "0eddf365573cc47e535aa92b95e68f3c577479e6",
+      "status": "PASS",
+      "conclusion": "success",
+      "event": "push",
+      "jobs": [
+        {
+          "name": "backup-preservation",
+          "databaseId": 102968347945,
+          "conclusion": "success"
+        },
+        {
+          "name": "lightweight",
+          "databaseId": 102968348263,
+          "conclusion": "success"
+        }
+      ],
+      "url": "https://github.com/jasionia1991-max/unboundry/actions/runs/34506035015"
+    }
+  },
+  "build": {
+    "status": "EXACT_TAG_FRESH_BUILD_PASS",
+    "release": "/opt/unboundry/releases/v0.7.18-media-publication-20260911",
+    "version": "0.7.18",
+    "tag": "v0.7.18",
+    "commit": "0eddf365573cc47e535aa92b95e68f3c577479e6",
+    "tree": "b7ea9c637f3ae0f31a2392f9e3d42bbc1f9c2d7b",
+    "tagObject": "1b92050fa7c0251076411e18246692532c752c12",
+    "exportIdentitySha256": "7613f390427457ceacb7b4ce67ab9efd8e57e6a7168c8626ced5f07fb767bd54",
+    "ciVerification": {
+      "repository": "jasionia1991-max/unboundry",
+      "source": "github-api",
+      "runId": 34506035015,
+      "runUrl": "https://github.com/jasionia1991-max/unboundry/actions/runs/34506035015",
+      "headSha": "0eddf365573cc47e535aa92b95e68f3c577479e6",
+      "headBranch": "main",
+      "event": "push",
+      "workflowPath": ".github/workflows/quality-gates.yml",
+      "conclusion": "success",
+      "remoteAnnotatedTagVerified": true
+    },
+    "archiveSha256": "29de3e3b2d71c8a89a72c2ac5252c5cc2d567c3eecf8cd68b4d2f07f3ddd40bd",
+    "sourceFiles": 984,
+    "nodeVersion": "22.23.2",
+    "npmVersion": "10.9.8",
+    "sourceUnchanged": true,
+    "builtFresh": true,
+    "protectedEntriesExcluded": [
+      "spec/INC_GEN_017_R0_PUBLISHED_MODEL_SNAPSHOT_2026-08-28.json",
+      "spec/public-templates-director-split-revision.json"
+    ],
+    "installedInventory": {
+      "evidence": {
+        "path": "/tmp/unboundry-v0718-installed-inventory-20260911.json",
+        "sha256": "97b0d67530cef967b5065344cb8c0d9ad1a4c2c9467feba4d81ca6616aa0080e"
+      },
+      "result": {
+        "status": "EXACT_INSTALLED_INVENTORY_PASS",
+        "release": "/opt/unboundry/releases/v0.7.18-media-publication-20260911",
+        "filesVerified": 6215,
+        "sourceFiles": 984,
+        "inventorySha256": "858b4c6c3566df3fa6fb5611c7d9c75ba147298e134fa1ef2c57e5dcead58036",
+        "identity": {
+          "version": "0.7.18",
+          "tag": "v0.7.18",
+          "commit": "0eddf365573cc47e535aa92b95e68f3c577479e6",
+          "tree": "b7ea9c637f3ae0f31a2392f9e3d42bbc1f9c2d7b",
+          "tagObject": "1b92050fa7c0251076411e18246692532c752c12",
+          "exportIdentitySha256": "7613f390427457ceacb7b4ce67ab9efd8e57e6a7168c8626ced5f07fb767bd54",
+          "ciVerification": {
+            "repository": "jasionia1991-max/unboundry",
+            "source": "github-api",
+            "runId": 34506035015,
+            "runUrl": "https://github.com/jasionia1991-max/unboundry/actions/runs/34506035015",
+            "headSha": "0eddf365573cc47e535aa92b95e68f3c577479e6",
+            "headBranch": "main",
+            "event": "push",
+            "workflowPath": ".github/workflows/quality-gates.yml",
+            "conclusion": "success",
+            "remoteAnnotatedTagVerified": true
+          },
+          "archiveSha256": "29de3e3b2d71c8a89a72c2ac5252c5cc2d567c3eecf8cd68b4d2f07f3ddd40bd",
+          "sourceFiles": 984,
+          "nodeVersion": "22.23.2",
+          "npmVersion": "10.9.8",
+          "sourceUnchanged": true,
+          "builtFresh": true,
+          "protectedEntriesExcluded": [
+            "spec/INC_GEN_017_R0_PUBLISHED_MODEL_SNAPSHOT_2026-08-28.json",
+            "spec/public-templates-director-split-revision.json"
+          ]
+        }
+      }
+    }
+  },
+  "status": "PRODUCTION_TECHNICAL_PASS / PRODUCTION_USER_RECHECK",
+  "authorization": {
+    "localUserPass": "2026-09-11 全部通过 (four local synthetic acceptance items)",
+    "release": "2026-09-11 授权",
+    "databaseAndMaintenanceFallback": "2026-09-11 同意 数据库也得对齐的",
+    "excluded": [
+      "paid generation",
+      "manual adoption or retry of historical production tasks",
+      "deletion of historical data/backups/media",
+      "cloud permission changes",
+      "deferred daily timer and video/audio toolbar"
+    ]
+  },
+  "production": {
+    "current": "/opt/unboundry/releases/v0.7.18-media-publication-20260911",
+    "serviceAtVerification": {
+      "ActiveState": "active",
+      "MainPID": "2318893",
+      "NRestarts": "0",
+      "SubState": "running"
+    },
+    "api": {
+      "/api/health/live": {
+        "requestId": "d11bb1e0-f115-434c-b1af-ce242b9630c3",
+        "status": "live"
+      },
+      "/api/health/ready": {
+        "activeLeaseHeld": true,
+        "databaseProbe": "read-only",
+        "mode": "active",
+        "mutationsAccepted": true,
+        "requestId": "8737f0a8-a3a8-45d8-9237-77b9937dc7b6",
+        "runtimeRole": "active",
+        "schemaVersion": 44,
+        "status": "ready"
+      },
+      "/api/version": {
+        "version": "0.7.18"
+      }
+    },
+    "dataDirectory": "/var/lib/unboundry",
+    "schemaVersion": 44,
+    "databaseReplaced": false,
+    "migration": {
+      "mode": "apply",
+      "ok": true,
+      "preservationMode": "quiesced-active-preservation",
+      "sourceLogicalSha256": "880888346bdf59a7ea5c5f7af676416780b4f03dea8e80099bc41624d852f8c9",
+      "sourceVersion": 43,
+      "status": "complete",
+      "targetLogicalSha256": "e143df9fc8dce15246311d7e2aa13f93fd2f7439bfc8f12eb53bb94d73e7d1b4",
+      "targetVersion": 44
+    },
+    "migrationDryRun": {
+      "path": "/var/lib/unboundry-v0718-media-publication-20260911-attempt2/evidence/schema43-to44-dry-run.json",
+      "sha256": "74f50dcd2c85b2f18aba921ea93c9873ef6e6e174afb4dc02ca3176ca9246e11",
+      "status": "verified"
+    },
+    "migrationApply": {
+      "path": "/var/lib/unboundry-v0718-media-publication-20260911-attempt2/evidence/schema43-to44-apply.json",
+      "sha256": "1908f76aa3e0452c1634454b943ea1da99bca9ad0304ad2ed5ee4edbe36c3989",
+      "status": "SCHEMA43_TO_44_APPLY_PASS"
+    },
+    "finalVerification": {
+      "path": "/var/lib/unboundry-v0718-media-publication-20260911-attempt2/evidence/verify-complete.json",
+      "sha256": "dba8f3f2b3d2ce020ec359e8761f988092fb99e7c5ce65c17552cff1bc0c5fd9",
+      "status": "V0718_RELEASE_VERIFY_PASS_TRAFFIC_STILL_HELD"
+    },
+    "trafficRestore": {
+      "path": "/var/lib/unboundry-v0718-media-publication-20260911-attempt2/evidence/traffic-restore-new.json",
+      "sha256": "cf1c5db455162af4d42627a6b58a29fd96910718ef540892da7e3607e7030195",
+      "status": "PUBLIC_TRAFFIC_RESTORED"
+    },
+    "publicAvailable": true,
+    "maintenanceStartedAt": "2026-09-10T18:24:35.654082+00:00",
+    "trafficRestoredAt": "2026-09-10T19:24:08.706276+00:00",
+    "safety": {
+      "globalEnabled": true,
+      "status": "SAFETY_RESTORED"
+    },
+    "operationRoot": "/var/lib/unboundry-v0718-media-publication-20260911-attempt2"
+  },
+  "backups": {
+    "43": {
+      "evidence": {
+        "path": "/var/lib/unboundry-v0718-media-publication-20260911-attempt2/evidence/schema43-backup-complete.json",
+        "sha256": "74bc2973f8a480147093fdccb1fb44a4efa8ad2bd0fee9d5723b2c52cacd6011",
+        "status": "SCHEMA43_BACKUP_VERIFY_FRESHRESTORE_PASS"
+      },
+      "packageDirectory": "/var/lib/unboundry-v0718-media-publication-20260911-attempt2/backup43-schema43-work/backup43/d91f6d26-c77b-4a5c-9b6f-fa3c5cb439ce.ubbackup",
+      "receipt": {
+        "backupId": "d91f6d26-c77b-4a5c-9b6f-fa3c5cb439ce",
+        "captureMode": "quiesced-active-preservation",
+        "databaseLogicalSha256": "880888346bdf59a7ea5c5f7af676416780b4f03dea8e80099bc41624d852f8c9",
+        "finalCandidate": false,
+        "mediaFiles": 355,
+        "mediaIntegrity": {
+          "backupBlockingIssues": 0,
+          "clean": false,
+          "evidenceSha256": "f524bd3743ee70c6d7f6b9fb73696a37a3a358bd61af3a706f3cfa7b4aea8286",
+          "issues": 100,
+          "sha256": "f1100067a29dec362a9e1e9a22a02d707e65c2bf16c9c77228ee77035f37f356"
+        },
+        "ossMirrors": 660,
+        "packageDirectory": "/work/backup43/d91f6d26-c77b-4a5c-9b6f-fa3c5cb439ce.ubbackup",
+        "schemaVersion": 43,
+        "secretFiles": 3
+      },
+      "verify": {
+        "backupId": "d91f6d26-c77b-4a5c-9b6f-fa3c5cb439ce",
+        "captureMode": "quiesced-active-preservation",
+        "databaseLogicalSha256": "880888346bdf59a7ea5c5f7af676416780b4f03dea8e80099bc41624d852f8c9",
+        "finalCandidate": false,
+        "mediaFiles": 355,
+        "mediaIntegrity": {
+          "backupBlockingIssues": 0,
+          "clean": false,
+          "evidenceSha256": "f524bd3743ee70c6d7f6b9fb73696a37a3a358bd61af3a706f3cfa7b4aea8286",
+          "issues": 100,
+          "sha256": "f1100067a29dec362a9e1e9a22a02d707e65c2bf16c9c77228ee77035f37f356"
+        },
+        "ossMirrors": 660,
+        "packageDirectory": "/work/backup43/d91f6d26-c77b-4a5c-9b6f-fa3c5cb439ce.ubbackup",
+        "schemaVersion": 43,
+        "secretFiles": 3
+      },
+      "freshRestore": {
+        "backupId": "d91f6d26-c77b-4a5c-9b6f-fa3c5cb439ce",
+        "captureMode": "quiesced-active-preservation",
+        "databaseLogicalSha256": "880888346bdf59a7ea5c5f7af676416780b4f03dea8e80099bc41624d852f8c9",
+        "finalCandidate": false,
+        "mediaFiles": 355,
+        "mediaIntegrity": {
+          "backupBlockingIssues": 0,
+          "clean": false,
+          "evidenceSha256": "f524bd3743ee70c6d7f6b9fb73696a37a3a358bd61af3a706f3cfa7b4aea8286",
+          "issues": 100,
+          "sha256": "f1100067a29dec362a9e1e9a22a02d707e65c2bf16c9c77228ee77035f37f356"
+        },
+        "ossMirrors": 660,
+        "packageDirectory": "/work/backup43/d91f6d26-c77b-4a5c-9b6f-fa3c5cb439ce.ubbackup",
+        "schemaVersion": 43,
+        "secretFiles": 3
+      },
+      "leaseHeldThroughRestore": true,
+      "stoppedProcess": {
+        "pid": 2312530,
+        "pidNamespace": "pid:[4026531836]",
+        "startTicks": "161519051"
+      },
+      "preservation": {
+        "attemptCount": 1,
+        "attemptsSha256": "a9d3f6c8fcdfaaaf4675b544b7b046215012914a2c46dbfd3ff6a09b6e2eb520",
+        "eventCount": 4,
+        "eventsSha256": "ae4d11fcb3f324fc2893efd8da9f7aa21710509c356385e81919320743500fc7",
+        "executionAttempt": 1,
+        "taskId": "9c93f308-bb77-4935-a4e3-37dd72e6cd28",
+        "taskSha256": "dddac03223abe86b75d56aa48b2723cbf1efe0a94681706c2bba59ab9b9b9482"
+      },
+      "cloud": {
+        "evidence": {
+          "path": "/var/lib/unboundry-v0718-media-publication-20260911-attempt2/evidence/schema43-cloud-backup.json",
+          "sha256": "8af71de9d1a7e68df8191b9d3f5d267cb84615a979802ea669b5c9b10d4dfa4b",
+          "status": "ENCRYPTED_BACKUP_OSS_UPLOAD_GET_VERIFY_PASS"
+        },
+        "result": {
+          "status": "ENCRYPTED_BACKUP_OSS_UPLOAD_GET_VERIFY_PASS",
+          "backupId": "d91f6d26-c77b-4a5c-9b6f-fa3c5cb439ce",
+          "schemaVersion": 43,
+          "captureMode": "quiesced-active-preservation",
+          "finalCandidate": false,
+          "databaseLogicalSha256": "880888346bdf59a7ea5c5f7af676416780b4f03dea8e80099bc41624d852f8c9",
+          "packageDirectory": "/var/lib/unboundry-v0718-media-publication-20260911-attempt2/backup43-schema43-work/backup43/d91f6d26-c77b-4a5c-9b6f-fa3c5cb439ce.ubbackup",
+          "profileId": "5dd96684-6c16-4fff-ac90-f6e8b8502829",
+          "prefix": "objects/backups/unboundry-schema43/v0718-20260911/d91f6d26-c77b-4a5c-9b6f-fa3c5cb439ce",
+          "retentionDeletes": 0,
+          "providerRequests": 0,
+          "mediaWrites": 0,
+          "releaseIdentity": {
+            "version": "0.7.18",
+            "tag": "v0.7.18",
+            "commit": "0eddf365573cc47e535aa92b95e68f3c577479e6",
+            "tree": "b7ea9c637f3ae0f31a2392f9e3d42bbc1f9c2d7b",
+            "tagObject": "1b92050fa7c0251076411e18246692532c752c12",
+            "archiveSha256": "29de3e3b2d71c8a89a72c2ac5252c5cc2d567c3eecf8cd68b4d2f07f3ddd40bd",
+            "exportIdentitySha256": "7613f390427457ceacb7b4ce67ab9efd8e57e6a7168c8626ced5f07fb767bd54",
+            "markerSha256": "2601eac82e3595be6031ea561104c9655f9e36419b8de1268d396ed8cfcc2b0d",
+            "inventorySha256": "858b4c6c3566df3fa6fb5611c7d9c75ba147298e134fa1ef2c57e5dcead58036"
+          },
+          "manifestObjectKey": "objects/backups/unboundry-schema43/v0718-20260911/d91f6d26-c77b-4a5c-9b6f-fa3c5cb439ce/oss-backup-manifest.json"
+        },
+        "verifiedObjectCount": 1022,
+        "verifiedBytes": 1995884556,
+        "allObjectChecksumsSource": "full phase receipt referenced by SHA; private PUT then full GET size/hash for every object and manifest"
+      }
+    },
+    "44": {
+      "evidence": {
+        "path": "/var/lib/unboundry-v0718-media-publication-20260911-attempt2/evidence/schema44-backup-complete.json",
+        "sha256": "535d5c2766f206bcf16b5f8cdec1c0a8e96a9cf3c50b1f869893be08cbdc56d9",
+        "status": "SCHEMA44_BACKUP_VERIFY_FRESHRESTORE_PASS"
+      },
+      "packageDirectory": "/var/lib/unboundry-v0718-media-publication-20260911-attempt2/backup44-schema44-work/backup44/e060c138-6d2b-4005-aee2-5778aaca2a2b.ubbackup",
+      "receipt": {
+        "backupId": "e060c138-6d2b-4005-aee2-5778aaca2a2b",
+        "captureMode": "quiesced-active-preservation",
+        "databaseLogicalSha256": "e143df9fc8dce15246311d7e2aa13f93fd2f7439bfc8f12eb53bb94d73e7d1b4",
+        "finalCandidate": false,
+        "mediaFiles": 355,
+        "mediaIntegrity": {
+          "backupBlockingIssues": 0,
+          "clean": false,
+          "evidenceSha256": "f524bd3743ee70c6d7f6b9fb73696a37a3a358bd61af3a706f3cfa7b4aea8286",
+          "issues": 100,
+          "sha256": "d687ecaa03b0feb31bc8012b26e21ee77e36fb4a379453a2b413bf207be7dcb8"
+        },
+        "ossMirrors": 660,
+        "packageDirectory": "/work/backup44/e060c138-6d2b-4005-aee2-5778aaca2a2b.ubbackup",
+        "schemaVersion": 44,
+        "secretFiles": 3
+      },
+      "verify": {
+        "backupId": "e060c138-6d2b-4005-aee2-5778aaca2a2b",
+        "captureMode": "quiesced-active-preservation",
+        "databaseLogicalSha256": "e143df9fc8dce15246311d7e2aa13f93fd2f7439bfc8f12eb53bb94d73e7d1b4",
+        "finalCandidate": false,
+        "mediaFiles": 355,
+        "mediaIntegrity": {
+          "backupBlockingIssues": 0,
+          "clean": false,
+          "evidenceSha256": "f524bd3743ee70c6d7f6b9fb73696a37a3a358bd61af3a706f3cfa7b4aea8286",
+          "issues": 100,
+          "sha256": "d687ecaa03b0feb31bc8012b26e21ee77e36fb4a379453a2b413bf207be7dcb8"
+        },
+        "ossMirrors": 660,
+        "packageDirectory": "/work/backup44/e060c138-6d2b-4005-aee2-5778aaca2a2b.ubbackup",
+        "schemaVersion": 44,
+        "secretFiles": 3
+      },
+      "freshRestore": {
+        "backupId": "e060c138-6d2b-4005-aee2-5778aaca2a2b",
+        "captureMode": "quiesced-active-preservation",
+        "databaseLogicalSha256": "e143df9fc8dce15246311d7e2aa13f93fd2f7439bfc8f12eb53bb94d73e7d1b4",
+        "finalCandidate": false,
+        "mediaFiles": 355,
+        "mediaIntegrity": {
+          "backupBlockingIssues": 0,
+          "clean": false,
+          "evidenceSha256": "f524bd3743ee70c6d7f6b9fb73696a37a3a358bd61af3a706f3cfa7b4aea8286",
+          "issues": 100,
+          "sha256": "d687ecaa03b0feb31bc8012b26e21ee77e36fb4a379453a2b413bf207be7dcb8"
+        },
+        "ossMirrors": 660,
+        "packageDirectory": "/work/backup44/e060c138-6d2b-4005-aee2-5778aaca2a2b.ubbackup",
+        "schemaVersion": 44,
+        "secretFiles": 3
+      },
+      "leaseHeldThroughRestore": true,
+      "stoppedProcess": {
+        "pid": 2312530,
+        "pidNamespace": "pid:[4026531836]",
+        "startTicks": "161519051"
+      },
+      "preservation": {
+        "attemptCount": 1,
+        "attemptsSha256": "a9d3f6c8fcdfaaaf4675b544b7b046215012914a2c46dbfd3ff6a09b6e2eb520",
+        "eventCount": 4,
+        "eventsSha256": "ae4d11fcb3f324fc2893efd8da9f7aa21710509c356385e81919320743500fc7",
+        "executionAttempt": 1,
+        "taskId": "9c93f308-bb77-4935-a4e3-37dd72e6cd28",
+        "taskSha256": "dddac03223abe86b75d56aa48b2723cbf1efe0a94681706c2bba59ab9b9b9482"
+      },
+      "cloud": {
+        "evidence": {
+          "path": "/var/lib/unboundry-v0718-media-publication-20260911-attempt2/evidence/schema44-cloud-backup.json",
+          "sha256": "7ba9578197612d313690f7f83a0821040a0a63abc3aae49fe0e96c6f363cedec",
+          "status": "ENCRYPTED_BACKUP_OSS_UPLOAD_GET_VERIFY_PASS"
+        },
+        "result": {
+          "status": "ENCRYPTED_BACKUP_OSS_UPLOAD_GET_VERIFY_PASS",
+          "backupId": "e060c138-6d2b-4005-aee2-5778aaca2a2b",
+          "schemaVersion": 44,
+          "captureMode": "quiesced-active-preservation",
+          "finalCandidate": false,
+          "databaseLogicalSha256": "e143df9fc8dce15246311d7e2aa13f93fd2f7439bfc8f12eb53bb94d73e7d1b4",
+          "packageDirectory": "/var/lib/unboundry-v0718-media-publication-20260911-attempt2/backup44-schema44-work/backup44/e060c138-6d2b-4005-aee2-5778aaca2a2b.ubbackup",
+          "profileId": "5dd96684-6c16-4fff-ac90-f6e8b8502829",
+          "prefix": "objects/backups/unboundry-schema44/v0718-20260911/e060c138-6d2b-4005-aee2-5778aaca2a2b",
+          "retentionDeletes": 0,
+          "providerRequests": 0,
+          "mediaWrites": 0,
+          "releaseIdentity": {
+            "version": "0.7.18",
+            "tag": "v0.7.18",
+            "commit": "0eddf365573cc47e535aa92b95e68f3c577479e6",
+            "tree": "b7ea9c637f3ae0f31a2392f9e3d42bbc1f9c2d7b",
+            "tagObject": "1b92050fa7c0251076411e18246692532c752c12",
+            "archiveSha256": "29de3e3b2d71c8a89a72c2ac5252c5cc2d567c3eecf8cd68b4d2f07f3ddd40bd",
+            "exportIdentitySha256": "7613f390427457ceacb7b4ce67ab9efd8e57e6a7168c8626ced5f07fb767bd54",
+            "markerSha256": "2601eac82e3595be6031ea561104c9655f9e36419b8de1268d396ed8cfcc2b0d",
+            "inventorySha256": "858b4c6c3566df3fa6fb5611c7d9c75ba147298e134fa1ef2c57e5dcead58036"
+          },
+          "manifestObjectKey": "objects/backups/unboundry-schema44/v0718-20260911/e060c138-6d2b-4005-aee2-5778aaca2a2b/oss-backup-manifest.json"
+        },
+        "verifiedObjectCount": 1022,
+        "verifiedBytes": 1996368344,
+        "allObjectChecksumsSource": "full phase receipt referenced by SHA; private PUT then full GET size/hash for every object and manifest"
+      }
+    }
+  },
+  "preservation": {
+    "status": "PASS",
+    "task": {
+      "attemptCount": 1,
+      "attemptsSha256": "a9d3f6c8fcdfaaaf4675b544b7b046215012914a2c46dbfd3ff6a09b6e2eb520",
+      "eventCount": 4,
+      "eventsSha256": "ae4d11fcb3f324fc2893efd8da9f7aa21710509c356385e81919320743500fc7",
+      "executionAttempt": 1,
+      "taskId": "9c93f308-bb77-4935-a4e3-37dd72e6cd28",
+      "taskSha256": "dddac03223abe86b75d56aa48b2723cbf1efe0a94681706c2bba59ab9b9b9482"
+    },
+    "immutableTasksSha256": "44f65821998e86abe4c93db7ce1c21264aeb7101a8827905f8c8d6fd238ce988",
+    "eventPrefix": {
+      "eventPrefixAnchor": 88261,
+      "eventPrefixCount": 88176,
+      "eventPrefixSha256": "74089986a3e5a498620da3b9222073086ca2746312c81f7dca2363e51fcae187"
+    },
+    "unchangedDataFiles": {
+      "count": 359,
+      "sha256": "8c096064057d7ebf83e1f81d87fe753cfb399f0d860a57c887030dc257136f9b"
+    },
+    "newProviderAdmissionsDuringMaintenance": 0,
+    "lastProviderAdmissionAt": "2026-09-09T16:52:25.731Z",
+    "resultAdoptions": 0,
+    "workflowContinuations": 0,
+    "observedRuntimeDifferences": [
+      {
+        "after": "GENERATION_FAILED",
+        "attemptId": 1167,
+        "before": "PROVIDER_RESULT_FORMAT",
+        "comparisonOnly": true,
+        "databaseWrites": 0,
+        "scope": "one existing error classification; all other rows and columns exact",
+        "taskId": "216afbcc-98f2-4de7-b053-abfc2776bc50"
+      },
+      {
+        "databaseWrites": 0,
+        "executionAttempt": 1,
+        "rowCount": 1,
+        "rowSha256": "ea86590985bb54829c0d569f93731a2dc00c59ae6cbdbcc17e100da0e056c251",
+        "scope": "existing failed image background save ownership; no result adoption",
+        "state": "released",
+        "taskId": "216afbcc-98f2-4de7-b053-abfc2776bc50"
+      }
+    ],
+    "rowGuardEvidence": {
+      "path": "/var/lib/unboundry-v0718-media-publication-20260911-attempt2/evidence/schema44-started-rows.json",
+      "sha256": "fd7e4bad172b42405f2bb1c1a650ac1fb7ffe71bc2b512507d0e38f9528ae6dd",
+      "status": "OBSERVED_ROW_GUARD_EVIDENCE_ACCEPTED_BY_FINAL_VERIFY"
+    },
+    "boundary": "Old failed image remains failed; background query changed only its existing attempt error classification and released a save-ownership lease. The release did not adopt either duplicate original or run nine blocked successors. No attempt/event evidence for the protected unknown task changed.",
+    "otherExpectedRuntimeChanges": [
+      "safety restoration audit append",
+      "generation task mutable runtime fields; immutable task hash preserved",
+      "generation event append with frozen old prefix unchanged",
+      "SQLite sequence values for those appends"
+    ]
+  },
+  "validationFailures": [
+    {
+      "scope": "read-only public static assets",
+      "status": "first read timed out; not a content mismatch",
+      "evidence": {
+        "path": "/tmp/unboundry-v0718-final-production-evidence-20260911/public-assets-first-attempt.txt",
+        "sha256": "68ed8acad538f082c3f60cb59e1814846cd5ea6117e61ed469991fee9a118634"
+      },
+      "thirdFailureEvidence": {
+        "path": "/tmp/unboundry-v0718-final-production-evidence-20260911/public-assets-third-attempt.txt",
+        "sha256": "a5b812ac297d55527ac95768d1fbf0486c042b7eeefb067b7d80f47a66b408e3"
+      },
+      "singleTemplateFollowup": {
+        "path": "/tmp/unboundry-v0718-final-production-evidence-20260911/template-static-diagnostic.json",
+        "sha256": "70010650510dfbac59d826b340a77c73cb29e80ade26c5c72e430e7379be7a5f"
+      },
+      "secondFailureEvidence": {
+        "path": "/tmp/unboundry-v0718-final-production-evidence-20260911/public-assets-second-attempt.txt",
+        "sha256": "aa74aea714e8f0b62efe4520cea010d78b1300d5f305cbdcead8e3695346fbe7"
+      },
+      "verifierWithReadTimeout120": {
+        "path": "/tmp/unboundry-v0718-public-verify-20260911/verify-public-v0718-read120.py",
+        "sha256": "da752a4ee719e11c39b8026584bbd841df9d5a764d4705ba75888c29c3446024"
+      },
+      "followup": "single failed asset subsequently returned HTTP200 and all1099657 bytes in36.909711 seconds. Second full attempt timed out on CSS. Final standalone verifier changes only socket read timeout30 to120; identity/status/exact-byte requirements unchanged. No claim of public performance acceptance."
+    }
+  ],
+  "rollback": {
+    "strategy": "schema44 read-only maintenance bridge; keep CURRENT, no schema downgrade",
+    "isolatedRealLinuxRehearsal": {
+      "status": "PASS_REAL_PRODUCT_ISOLATED_REHEARSAL",
+      "guestEvidence": {
+        "path": "/tmp/unboundry-v0718-linux-real-evidence-20260911/real-schema44-product-rehearsal.json",
+        "sha256": "acba4956b0e215d368a6ffb70a78b7e311c8bec44963930e911bda339e07e872",
+        "status": "PASS_REAL_PRODUCT_ISOLATED_REHEARSAL"
+      },
+      "hostEvidence": {
+        "path": "/tmp/unboundry-v0718-linux-real-evidence-20260911/host-execution.json",
+        "sha256": "dffe70a0b99a827a853bf8fbbea416b8fe3bff25e7e8083b0b379d5ed1f46123",
+        "status": "PASS",
+        "commandSha256": "a6104062686ccb17463336bc3278223b39f5b188f9bc38cf749134e9804d8234",
+        "realApplicationBootstrap": true,
+        "normalRecoverySweep": true,
+        "productionDataMounted": false,
+        "providerOrOssMounted": false,
+        "productionPort4173Opened": false,
+        "network": "bwrap --unshare-net; namespace-local loopback only"
+      },
+      "scope": "synthetic-data-only; exact candidate; real Vite/application composition; real startup worker settlement",
+      "providerPostCount": 0,
+      "networkNamespacesDiffer": true,
+      "migrationDryRun": "verified",
+      "migrationApply": "complete",
+      "targetVersion": 44
+    },
+    "initialBinding": {
+      "path": "/var/lib/unboundry-v0718-media-publication-20260911-attempt2/evidence/bridge-initial.json",
+      "sha256": "a0ea48847223e78f0bbd9a706264a17abc60addfb9cb31bc8485bb2211c86773",
+      "status": "BRIDGE_BOUND"
+    },
+    "initialInstallation": {
+      "evidence": {
+        "path": "/var/lib/unboundry-v0718-media-publication-20260911-attempt2/evidence/bridge-unit-initial-installed.json",
+        "sha256": "95312cfd04e6e6a149494cc94d3e588a8dcaea7f62fb733beb32861c3107f6ad",
+        "status": "INSTALLED_INACTIVE"
+      },
+      "result": {
+        "status": "INSTALLED_INACTIVE",
+        "role": "initial",
+        "unit": "/etc/systemd/system/unboundry-schema44-readonly-bridge.service",
+        "packageDir": "/var/lib/unboundry-v0718-media-publication-20260911-attempt2/bridges/schema44-preservation-initial",
+        "manifestSha256": "5610711da0202a931564ec0c13c216cb7ae84fbf486f399014d4fc5c68af9c7c",
+        "port": 49977,
+        "serviceUid": 1000,
+        "serviceGid": 1001,
+        "writes": [
+          "/etc/systemd/system/unboundry-schema44-readonly-bridge.service",
+          "/var/lib/unboundry-v0718-media-publication-20260911-attempt2/evidence/bridge-port.json"
+        ],
+        "startsOrStops": false,
+        "currentChanged": false,
+        "unitSha256": "34765b8abffa6e73efb946aa9b52d54fd3dab93bbc1ba79d3dd2d544baf6dac5",
+        "state": {
+          "ExecStart": "{ path=/opt/node22/bin/node ; argv[]=/opt/node22/bin/node /var/lib/unboundry-v0718-media-publication-20260911-attempt2/bridges/schema44-preservation-initial/schema44-readonly-preservation-runtime.mjs serve --package-dir /var/lib/unboundry-v0718-media-publication-20260911-attempt2/bridges/schema44-preservation-initial --port 49977 ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }",
+          "User": "1000",
+          "Group": "1001",
+          "LoadState": "loaded",
+          "ActiveState": "inactive",
+          "SubState": "dead"
+        },
+        "daemonReloadReturncode": 0
+      }
+    },
+    "productionBridgeStarted": false,
+    "productionRollbackExecuted": false,
+    "beforeAnyFutureBridgeStart": "Stop the new application, capture and verify the latest CURRENT, create a fresh bound package and update the unit; initial binding predates ordinary worker mutations and cannot be reused.",
+    "forbidden": [
+      "schema44 to schema43 downgrade",
+      "restore backup over CURRENT",
+      "start v0.7.17 or v0.7.16 on schema44"
+    ]
+  },
+  "validation": {
+    "localScope": "Relevant final grouped regressions and four synthetic USER_PASS remain valid; no business source changes during production operations.",
+    "documentationCandidateCheck": {
+      "status": "PASS",
+      "count": 19,
+      "scope": "document structure and generated error regressions before final cloud/static receipt aggregation; final submitted documentation requires PR/main CI before governance synchronization",
+      "sourceSha256": "bfea0313ae72094d526f995bac5d450c0c806f95aa64a5f152804dc1e3e2e7a3",
+      "evidence": {
+        "path": "/tmp/unboundry-v0718-production-docs-20260911.log",
+        "sha256": "dd140db1aa95763c02577a7c0187f4b9b8ee6e6d49def4808c3412f4d63010c3"
+      }
+    },
+    "releaseTests": {
+      "count": 62,
+      "evidence": {
+        "path": "/tmp/unboundry-v0718-release-checks-20260911.log",
+        "sha256": "2c7b48e33a9c05aa91c4531bf3a7503769958ccb2878b6284b07131de5783c1e"
+      }
+    },
+    "backupCliTests": {
+      "count": 23,
+      "scope": "includes real CLI backup/verify/fresh restore with unknown tasks in schema43 and schema44",
+      "evidence": {
+        "path": "/tmp/unboundry-v0718-backup-cli-20260911.log",
+        "sha256": "0aff0cf3c29fac1e33a88ff5036bf6792ef75e6804b32d44e1219f86343f3184"
+      }
+    },
+    "finalOperatorSyntheticGuards": {
+      "count": 14,
+      "evidence": {
+        "path": "/tmp/unboundry-v0718-host-prep-20260911/check-released-runtime-lease.py",
+        "sha256": "a98845ab5fcd33e7be611019051dd9b3afcb49cac7fac3d5286b99e7e8bd1316"
+      }
+    },
+    "independentDataReview": {
+      "path": "/tmp/unboundry-v0718-schema43-44-data-audit-20260911.md",
+      "sha256": "11c4fa4d86e3e8d0c464400e964c8de23186891957f1b8321b296ee6f39ea435"
+    },
+    "publicAssets": {
+      "evidence": {
+        "path": "/var/lib/unboundry-v0718-media-publication-20260911-attempt2/evidence/public-assets.json",
+        "sha256": "34b93a46ce0c5bd604d376c60c16415ca0b46021756617e16e4c00613da776ee",
+        "status": "PASS"
+      },
+      "count": 35,
+      "allExact": true,
+      "checkedAssetCount": 35,
+      "transientFailures": [],
+      "verifier": {
+        "path": "/tmp/unboundry-v0718-public-verify-20260911/verify-public-v0718-resilient.py",
+        "sha256": "df76a4c21d592c02465baeb64ad51963f407c1d848b3abbfd30f021f3ce941e6"
+      },
+      "syntheticChecks": {
+        "path": "/tmp/unboundry-v0718-public-verify-20260911/resilient-synthetic-result.json",
+        "sha256": "23f2eb795043b58ea78279eb09e27b25f143069b1b0dffca1ab4b78d893c944d"
+      }
+    },
+    "browser": {
+      "evidence": {
+        "path": "/tmp/unboundry-v0718-final-production-evidence-20260911/browser-readonly.json",
+        "sha256": "bb34ba5f02b8bf5b26770ee9b6ceb8b7d02d414f1a14b5126bc0c6d7477796e8"
+      },
+      "status": "READ_ONLY_DATA_PRESERVED_AUTHENTICATED_UI_USER_RECHECK",
+      "canvasSha256": "9078647cfaf8af52204004b2ee96fb978cafac70fbcc3e1e078179207746200a",
+      "countsUnchanged": {
+        "generation_tasks": 1131,
+        "generation_provider_attempts": 1142,
+        "canvas_operation_receipts": 148
+      },
+      "observed": {
+        "tool": "mcp__cua_repl",
+        "action": "reload existing Chrome canvas tab and read DOM",
+        "target": "https://canvas.mymy.ltd/canvas/837344f0-5988-4408-9651-0b0cebe0f6fa",
+        "observedHeading": "登录 Unboundry 画布",
+        "observedInputs": [
+          "登录账号",
+          "密码"
+        ],
+        "authenticatedCanvasVerified": false,
+        "credentialsEntered": false,
+        "generationClicked": false
+      },
+      "limitation": "The previous cached canvas is not accepted as a refreshed authenticated view; user login and visual recheck remain."
+    },
+    "paidProviderGeneration": "NOT_RUN",
+    "productionUserAcceptance": "USER_RECHECK"
+  },
+  "operators": {
+    "driver": {
+      "path": "/tmp/unboundry-v0718-release-ops-20260911-cTDdTN/v0718-production-ops.py",
+      "sha256": "d218720403053a4195548769e0bc6f5bb927278dae2406e903b751914feb3b6f"
+    },
+    "dataHelper": {
+      "path": "/tmp/unboundry-v0718-release-ops-20260911-cTDdTN/data-ops-v0718.mjs",
+      "sha256": "45e25599513aeb8011d3459b36653fff30e0f2009f6769bda0a6dcca78896ddd"
+    },
+    "trafficController": {
+      "path": "/tmp/unboundry-v0718-traffic-ops-20260911/traffic-control.py",
+      "sha256": "75a4510e6b23aa9bf9e54bfb23f2698ff1703f6c38f9d42d36d990ed0ccb6958"
+    },
+    "uploadHelper": {
+      "path": "/tmp/unboundry-v0718-release-ops-20260911-cTDdTN/upload-quiesced-backup-v0718.mjs",
+      "sha256": "c2277ef993972b43ec5d3525f5a0f242d96978ddde0d3920b5f82c65626b9d0b"
+    },
+    "uploadWrapper": {
+      "path": "/tmp/unboundry-v0718-release-ops-20260911-cTDdTN/upload-schema-v0718-wrapper.mjs",
+      "sha256": "090fb6f32c68d2d2727c012a33622bc4bcf203c57ee9e91d51554c6240e24f08"
+    },
+    "bridgeUnitInstaller": {
+      "path": "/tmp/unboundry-v0718-host-prep-20260911/install-schema44-bridge-unit-v0718.py",
+      "sha256": "765e788891f8ff1f4168715e3ffc9508078c9a2d82e5e375472d6f3e57bf08f7"
+    }
+  },
+  "independentReview": {
+    "status": "PASS_AFFECTED_SCOPE",
+    "reviewers": [
+      "release_policy_review",
+      "release_preflight_audit",
+      "schema44_release_operations"
+    ],
+    "scope": [
+      "schema43/44 backup CLI non-author review",
+      "real Linux product rehearsal evidence",
+      "production data migration and both local restores",
+      "selected driver and traffic controller",
+      "exact old error-cell and released-lease comparison allowances with no DB writes",
+      "service-UID private encrypted backup uploader"
+    ],
+    "boundary": "Cross review does not assert entire repository or paid production behavior passed."
+  },
+  "attemptHistory": [
+    {
+      "root": "/var/lib/unboundry-v0718-media-publication-20260911-attempt1",
+      "status": "ABORTED_BEFORE_MIGRATION",
+      "preservedFailures": [
+        "absolute runuser path",
+        "event-prefix comparison guard",
+        "shutdown evidence prefix guard",
+        "freeze audit field casing",
+        "temporary helper database constructor error; independent integrity check remained ok"
+      ],
+      "compensation": "Exact v0.7.17/schema43 and safety restored behind continuous Nginx maintenance; no schema downgrade or production data restore.",
+      "abortEvidence": {
+        "path": "/tmp/unboundry-v0718-host-prep-20260911/abort-before-migration-20260910T185617059737Z.log",
+        "sha256": "4e186ca3df6542976009b22978e2b63a784549502bc5c89cb5c668940422ae96"
+      }
+    },
+    {
+      "root": "/var/lib/unboundry-v0718-media-publication-20260911-attempt2",
+      "status": "DEPLOYED",
+      "preservedOperatorFailures": [
+        "private mirror-list mode corrected only in operation evidence",
+        "Node executable ownership assumption corrected to verified UID1001 and pinned SHA",
+        "final row guard initially rejected observed old error classification and released recovery lease; exact comparison-only exceptions independently reviewed and 14 fixtures passed",
+        "cloud profile read rejected root UID before any PUT; helper now drops to existing service UID without changing source secret permissions"
+      ],
+      "finalVerifyLog": {
+        "path": "/tmp/unboundry-v0718-host-prep-20260911/verify-20260910T191844642278Z.log",
+        "sha256": "119fdfb2b28df8df65313887229517972a21eca9dd8892e93a61e1c50c1d9c93"
+      }
+    }
+  ],
+  "limitations": [
+    "100 pre-existing nonblocking media integrity issues, blocking=0; historical media are not declared universally clean.",
+    "Existing protected unknown task and previously failed production workflow are retained, not automatically declared recovered by deployment.",
+    "Authenticated production canvas recheck remains pending because the existing browser session requires login; cached canvas is not fresh UI evidence.",
+    "No paid generation, manual original adoption or workflow continuation was triggered.",
+    "Daily backup and empty video/audio tool buttons remain USER_DEFERRED.",
+    "Product tag stays bound to exact product commit; final documentation identity and synchronization result belong to server governance manifest and operation receipts."
+  ],
+  "documentation": {
+    "identityOwner": "/opt/unboundry/governance/current/.governance-manifest.json",
+    "installationEvidenceOwner": "/opt/unboundry/governance/deployment-receipts/<documentation-commit>.json",
+    "productTagRebuiltOrMoved": false,
+    "scope": "Current authority, current task, release/rollback rules and this receipt are aligned to observed production before governance synchronization."
+  },
+  "pendingEvidence": []
+}

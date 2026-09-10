@@ -1,38 +1,34 @@
 # Unboundry 当前状态
 
-文档角色：`CURRENT_STATE`。授权与收尾进度见[当前任务](../TASKS.md)；精确发布、备份、回退和验证证据由[v0.7.17发布回执](V0_7_17_PRODUCTION_RECEIPT_2026-09-09.json)维护。
+文档角色：`CURRENT_STATE`。授权与收尾进度见[当前任务](../TASKS.md)；精确发布、数据库迁移、备份和回退证据由[v0.7.18发布回执](V0_7_18_PRODUCTION_RECEIPT_2026-09-11.json)维护。
 
 ## 现在怎么样
 
-**最近核验的生产是 v0.7.17 / schema43**。正式站已完成切换。V3/V4节点恢复修复已部署，原自动恢复、成功节点保护、单节点补跑、错误UI与既有画布行为保留。维护功能继续默认关闭；正式启用前仍需明确入口与负责人。
+**最近核验的生产是 v0.7.18 / schema44**。正式站已切换并恢复公网访问；图片保存与后台恢复竞争的修复，以及原结果采用、仅继续未完成节点的功能已部署。程序与所需数据库结构已配套升级，原自动恢复、成功节点保护、错误UI及画布行为保留。
 
-本地V3/V4及第3项视频交互修复已获 `LOCAL_USER_PASS`。精确安装包、最新停服备份的verify/fresh restore、正式站静态资源及原画布打开/刷新检查通过；最新私有备份上传及GET核验也已通过，当前为`PRODUCTION_TECHNICAL_PASS / PRODUCTION_USER_RECHECK`。独立文档同步身份与校验结果由服务器治理manifest和运维回执拥有。本地用户验收、生产工程检查与生产用户确认分开，不能把未执行的真实付费生成记为通过。
+本次四项本地验收为 `LOCAL_USER_PASS`。迁移前后两份停服备份、verify、独立fresh restore，真实Linux隔离新→只读维护→新演练及生产数据核对已通过。公网35个资源已全部逐字节核对通过；迁移前后两份私有加密云备份均完成全部对象和清单GET哈希核验，发布工程检查为 `PRODUCTION_TECHNICAL_PASS`。浏览器刷新后需要登录，未把原缓存画布当作新版本认证画布复验；`PRODUCTION_USER_RECHECK` 保留，未执行真实付费生成。
 
-当前代码包版本：**v0.7.18**（本地发布候选；正式站仍v0.7.17）
-本地候选代码版本：**v0.7.18**（本地验收已通过，发布进行中；GitHub与部署实测由当前任务维护）
-生产观测日期：2026-09-11（只读复核；最近正式发布仍是9月9日）
-当前产品验收标记：`CURRENT_V0_7_17_USER_RECHECK`
+当前代码包版本：**v0.7.18**（已部署）
+本地候选代码版本：**v0.7.18**（已发布同一产品包，后续文档提交不改变产品身份）
+生产观测日期：2026-09-11
+当前产品验收标记：`CURRENT_V0_7_18_USER_RECHECK`
 
-## 当前生产故障（2026-09-10）
+## 数据与已有故障边界
 
-用户实际整组生成触发“生成结果未能安全发布”。已只读确认：文字成功，图片保存/后台恢复发生冲突；同一task/attempt登记了两份同哈希的已发布素材，任务最终为`PROVIDER_RESULT_FORMAT`，工作流失败且后续9节点未准入。仅有1条Provider attempt记录。不能把素材登记成功说成画布已恢复，也不能把9月9日发布工程通过说成本次工作流通过。生产运行仍是v0.7.17，未重启或修改。精确任务、时间与代码线索见[当前任务](../TASKS.md)，[修复方案](MEDIA_PUBLICATION_RECOVERY_REPAIR_PLAN_2026-09-10.md)已通过修订3方案评审；现已获本地施工授权，保存竞争、原结果采用、仅执行未完成节点及自动核对已在本地实现，相关新旧功能回归分组通过。本地新→只读保全→新撤销演练及空闲启动清理已通过，历史启动及文档回归也已通过；四项同页辅助脚本已完成真实操作及独立复核，四项本地用户验收已通过（LOCAL_TECHNICAL_PASS / LOCAL_USER_PASS / NOT_DEPLOYED），确认原文和范围由[验收账本](UNBOUNDRY_ACCEPTANCE_MATRIX.md)维护；精确进度与证据只由当前任务及方案第11节维护。生产处理未执行，本次问题尚未在生产修复。
-
-## 发布与数据边界
-
-- 正式站current：`/opt/unboundry/releases/v0.7.17-node-recovery-20260908`；产品tag/commit/tree以发布回执为准，后续文档提交不改变不可变产品包。
-- 备份使用当次已授权的`quiesced-active-preservation`：停服并持有既有active lease，保留精确旧task/attempt及事件、计费保护和媒体/secret；`finalCandidate=false`，不冒充已结算或普通locked-exact模式。
-- 精确旧任务`9c93f308-bb77-4935-a4e3-37dd72e6cd28`仍为`recovering/AUTOMATIC_RESULT_RECOVERY`，attempt为`outcome-unknown`且无平台task ID。其原始Provider code/msg未保存；未解锁、改终态、取消或付费重发。充值、等待时间和维护phase不能证明未受理或未扣费。
-- 前三次发布尝试的失败与补偿证据保留。第三次已实际新包启动并退回旧包；这是故障补偿，不等于正式执行rollback.py。第四次切换通过；未覆盖CURRENT数据库，schema未变。
-- 现有98项非阻断媒体提示保留，具体备份计数和完整性证据见发布回执；不宣称历史媒体全部无问题。
+- 正式current为`/opt/unboundry/releases/v0.7.18-media-publication-20260911`。数据库43→44事务迁移、完整性、外键、旧列与账本、素材保护检查通过；未用备份覆盖CURRENT。
+- 原未知视频任务仍保留其task/attempt/四条事件完整证据，未解锁、改终态或付费重发。充值、等待和维护phase不能证明平台未受理或未扣费。
+- 原失败图片及两份同哈希素材仍保留，原失败工作流和9个未准入后继未由本次发布人为恢复。新程序启动后正常后台查询更改了该旧attempt的一格错误分类，并留下已释放的保存锁记录；独立精确比对通过，未新增Provider attempt、采用或续跑。不能把“修复已部署”写成“历史失败内容已全部找回”。
+- 迁移前后使用`quiesced-active-preservation`保全模式，`finalCandidate=false`；未把未知任务改为已结算以满足普通备份条件。100项非阻断媒体提示保留，阻断项0，不宣称历史媒体全部无问题。
+- 第一次生产操作在迁移前被操作检查拦截并补偿，旧程序及安全开关恢复；第二次完成迁移和切换。失败、修正及精确证据保留在本次回执，不改写成一次无故障发布。
 
 ## 回退与暂停项
 
-固定回退目标为精确v0.7.16包`/opt/unboundry/releases/v0.7.16-status-query-20260907`。完整Linux隔离新→旧→新演练已通过，范围和运行开关限制见回执。正式回退仍须按[发布手册第6节](../RELEASE_RUNBOOK.md)重新核验最新数据、冻结备份与独立恢复，只切代码并保留CURRENT；该保全格式继续使用精确v0.7.17工具，失败保持维护，不跳更老版本。
+数据库现为schema44，不能启动旧schema43程序或倒灌旧库。当前备用方案为独立schema44只读维护桥；真实Linux隔离演练已通过，生产只安装初始桥包，未执行生产桥回退。若将来需要回退，必须先停止新程序、重新保全最新CURRENT并重新绑定桥包；现初始manifest不能复用于已变化的数据。具体流程见[发布手册第6节](../RELEASE_RUNBOOK.md)。
 
-每日自动备份和视频/音频空工具按钮仍`USER_DEFERRED`。v0.7.15模板、其他12项及图片“浏览全部”保持原用户通过记录；历史性能和更新通知不扩大为本次重测，其他暂停项见[验收账本](UNBOUNDRY_ACCEPTANCE_MATRIX.md)。
+每日自动备份和视频/音频空工具按钮仍 `USER_DEFERRED`，本次手动备份不代表每日任务已修复。维护功能继续默认关闭。v0.7.15模板及其他既有用户通过记录保留；其他暂停项见[验收账本](UNBOUNDRY_ACCEPTANCE_MATRIX.md)。
 
 ## 环境入口
 
-工作树：`/Users/mymy/Documents/unboundry-post-v076-canvas-convergence-2026-09-03`；GitHub：`jasionia1991-max/unboundry`。当前发布分支`codex/v0718-media-publication-release`；实际HEAD和工作区以Git核对为准。服务器治理文档独立于产品包，精确文档提交由`/opt/unboundry/governance/current/.governance-manifest.json`拥有。
+工作树：`/Users/mymy/Documents/unboundry-post-v076-canvas-convergence-2026-09-03`；GitHub：`jasionia1991-max/unboundry`。实际分支/HEAD以Git核对为准。服务器文档与不可变产品包分开，精确文档提交由`/opt/unboundry/governance/current/.governance-manifest.json`拥有。
 
-默认读取[AGENTS](../AGENTS.md)、本页和[当前任务](../TASKS.md)，再按主题读取[生成合同](UNBOUNDRY_GENERATION_ARCHITECTURE.md)、[发布手册](../RELEASE_RUNBOOK.md)、[备份合同](../ops/production/README.md)及[恢复方案第10节](VIDEO_BALANCE_SINGLE_NODE_RECOVERY_PLAN_2026-09-07.md#10-第4版本地实施与验证2026-09-08)。
+默认读取[AGENTS](../AGENTS.md)、本页和[当前任务](../TASKS.md)，再按主题读取[生成合同](UNBOUNDRY_GENERATION_ARCHITECTURE.md)、[发布手册](../RELEASE_RUNBOOK.md)、[备份合同](../ops/production/README.md)及[本次方案](MEDIA_PUBLICATION_RECOVERY_REPAIR_PLAN_2026-09-10.md)。

@@ -1,14 +1,14 @@
-> **当前验收增量（2026-09-11）**：本矩阵为`AUTHORITATIVE_ACCEPTANCE_LEDGER`。媒体保存恢复本地四项已获用户通过，尚未发布；此前生产验收边界保留。v0.7.17节点恢复发布已通过本次安装包、备份、verify与fresh restore技术门；正式站资源与原画布只读核验、私有备份上传GET均已通过，生产用户仍待实页复验。v0.7.16及此前修复的用户通过状态保留。生产工程证据与用户验收分别记录，其余历史条目不自动升级。当前生产/待办以 [CURRENT_STATE](UNBOUNDRY_CURRENT_STATE.md) 为准，下面旧INC段落是各自日期的历史验收，不提供当前执行授权。
+> **当前验收增量（2026-09-11）**：本矩阵为`AUTHORITATIVE_ACCEPTANCE_LEDGER`。媒体保存恢复四项本地用户验收通过，v0.7.18/schema44已部署；精确生产工程状态见[v0.7.18回执](V0_7_18_PRODUCTION_RECEIPT_2026-09-11.json)，不把本地通过扩大为认证后的生产画布或付费生成通过。v0.7.17及此前条目保留各自发布时的证据和未验范围，不自动升级为本次复验。当前生产/待办以[CURRENT_STATE](UNBOUNDRY_CURRENT_STATE.md)为准，下面旧INC段落是各自日期的历史验收，不提供当前执行授权。
 
 | 当前项目 | 判定 | 证据边界 |
 | --- | --- | --- |
-| 媒体保存与自动恢复冲突修复（MEDIA-PUBLICATION-RACE-20260910） | LOCAL_TECHNICAL_PASS / LOCAL_USER_PASS / NOT_DEPLOYED | 2026-09-11用户在本对话明确回复“全部通过”，覆盖交付页四项：保存恢复视频、原图片找回及刷新、只继续两个未完成视频、原画布白框/菜单/拖线/刷新。工程证据和范围见[方案第8、11节](MEDIA_PUBLICATION_RECOVERY_REPAIR_PLAN_2026-09-10.md#8-本地验收给用户看的四项)。仅本地合成数据，不升级为生产通过，不授权真实数据采用、付费生成或发布 |
+| 媒体保存与自动恢复冲突修复（MEDIA-PUBLICATION-RACE-20260910） | LOCAL_TECHNICAL_PASS / LOCAL_USER_PASS / PRODUCTION_TECHNICAL_PASS / PRODUCTION_USER_RECHECK | 2026-09-11用户在本对话明确回复“全部通过”，覆盖交付页四项：保存恢复视频、原图片找回及刷新、只继续两个未完成视频、原画布白框/菜单/拖线/刷新。工程证据和范围见[方案第8、11节](MEDIA_PUBLICATION_RECOVERY_REPAIR_PLAN_2026-09-10.md#8-本地验收给用户看的四项)。该用户通过仅针对本地合成数据。后续另获本次发布与必要数据库迁移授权，实际部署/备份/回退证据见[v0.7.18回执](V0_7_18_PRODUCTION_RECEIPT_2026-09-11.json)；正式站登录后画布复验与付费生成未执行，不扩大本地USER_PASS |
 | v0.7.17 节点恢复发布 | DEPLOYED / LOCAL_USER_PASS / PRODUCTION_TECHNICAL_PASS / PRODUCTION_USER_RECHECK | v0.7.17/schema43、35个静态资源文件及备份/verify/fresh restore技术证据见[v0.7.17生产回执](V0_7_17_PRODUCTION_RECEIPT_2026-09-09.json)；正式站原画布打开/刷新保持数据、媒体可读；用户实页验收仍待确认。维护功能默认关闭，真实Provider/付费生成不列入本项判定 |
 | 生成状态查询加固 | DEPLOYED / LOCAL_USER_PASS / PRODUCTION_TECHNICAL_PASS / USER_RECHECK | 139项本地回归、独立复审及精确包RB05通过；正式站只读打开/刷新保持原数据，未做真实生成；详见[v0.7.16回执](V0_7_16_PRODUCTION_RECEIPT_2026-09-07.json) |
 | 本轮模板保存、其余12项及验收反馈修复 | DEPLOYED / LOCAL_USER_PASS / PRODUCTION_USER_PASS | 用户本地全部通过；2026-09-07用户在正式站确认“通过”；发布及技术证据见[v0.7.15回执](V0_7_15_PRODUCTION_RECEIPT_2026-09-07.json)和[方案7～10节](REMAINING_BUG_UI_REPAIR_PLAN_2026-09-07.md) |
 | 图片「浏览全部」及模板筛选UI | PRODUCTION_TECHNICAL_PASS / LOCAL_USER_PASS / PRODUCTION_USER_PASS | 原生Chrome九项无遮挡、快速切分可打开/取消、46px项目筛选控件；2026-09-07用户在正式站确认相关体验“通过”；原画布与生成记录不变 |
 | 视频完整预览、媒体原比例/手动/撤销、模板置前 | USER_PASS（v0.7.14已验收范围） | 原用户状态继承；新发布不扩展到其他历史暂停功能 |
-| 发布手动加密备份 | BACKUP_RESTORE_TECHNICAL_PASS | v0.7.17最新停服保全包verify/fresh restore及私有云端GET通过；独立captureMode、finalCandidate=false与精确计数由[v0.7.17回执](V0_7_17_PRODUCTION_RECEIPT_2026-09-09.json)维护，不修复每日timer |
+| 发布手动加密备份 | BACKUP_RESTORE_TECHNICAL_PASS | v0.7.18/schema43→44迁移前后两份停服保全包verify/fresh restore、私有云端全部对象及清单GET核验通过；独立captureMode、finalCandidate=false、100项非阻断媒体提示和精确计数由[v0.7.18回执](V0_7_18_PRODUCTION_RECEIPT_2026-09-11.json)维护，不修复每日timer |
 | 历史图与首次画布性能 | DEPLOYED / LOCAL_TARGET_PASS / LOCAL_USER_PASS | 本地180样本达标；未重做正式站基准，不等于全站竞品对标通过 |
 | 维护后更新通知、qs修补 | DEPLOYED / LOCAL_TEST_REVIEW_PASS | 本地重连/草稿保护和依赖验证完成；旧v0.7.14页面维护后仍需人工刷新，不冒充新客户端真实维护通过 |
 | 每日自动备份、视频/音频空按钮 | OPEN / USER_DEFERRED | 按用户要求跳过；手动发布备份不表示每日作业修复 |

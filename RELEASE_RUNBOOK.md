@@ -11,7 +11,7 @@
 - 两份永久保护JSON不得读取、hash、复制、移动、修改、删除或暂存：`spec/public-templates-director-split-revision.json`、`spec/INC_GEN_017_R0_PUBLISHED_MODEL_SNAPSHOT_2026-08-28.json`。所有源码导出/检查使用显式排除。
 - 纯模板数据发布走`上线规矩.md`轻量路径；纯文档同步按下节发布独立文档镜像，不替换产品构建或 bump 产品版本。
 
-当前发布身份、备份与验证状态统一见 [v0.7.17发布回执](spec/V0_7_17_PRODUCTION_RECEIPT_2026-09-09.json)；当前回退约束见第6节。每日自动备份仍USER_DEFERRED，不以手动发布备份代替该项验收。
+当前 v0.7.18/schema44 发布身份、迁移、备份与验证状态统一见 [v0.7.18发布回执](spec/V0_7_18_PRODUCTION_RECEIPT_2026-09-11.json)；旧 v0.7.17 回执只作历史证据，当前回退约束见第6节。每日自动备份仍USER_DEFERRED，不以手动发布备份代替该项验收。
 
 ## 独立文档同步
 
@@ -58,12 +58,12 @@
 - verify通过后fresh restore，再核对该备份来源schema、integrity、FK、logical SHA及计数/媒体/secret清单。日志模式包含实际生产DELETE，不能只测WAL。
 - 允许的历史媒体 warning 精确列入证据，不能写成“无媒体问题”；历史 v0.7.16 的非阻断提示和本次最终媒体计数以对应发布回执为准。
 - 真实云上传只在已授权范围进行，上传后需要GET哈希/大小核验，PUT成功本身不等于可恢复。
-- `ops/production/backup-to-oss-retention.mjs`可创建当前加密备份并上传；它自身不自动完成verify/fresh restore/远端GET闭环，需要操作方案分别补齐。
+- `ops/production/backup-to-oss-retention.mjs`只接受普通locked-exact模式；结果未知任务走第5.1节精确quiesced备份CLI和独立已审上传器。该wrapper自身不自动完成verify/fresh restore/远端GET闭环，需要操作方案分别补齐。
 - **当前自动备份故障尚未修好**：systemd仍调用`/opt/unboundry/scripts/backup-to-oss.mjs`，其旧子脚本要求schema41。不得把它作为当前备份入口。更不能仅因应用已升级就宣称每日备份生效。
 
 ### 5.1 经当次授权的停服保全备份
 
-v0.7.17于2026-09-09首次经当次授权使用`quiesced-active-preservation`，该历史授权已消费。后续发布的授权、精确schema与保全任务以当前TASKS为准。此方式保留结果未知的旧请求及防重复提交证据，不把它改成成功、失败、取消或无扣费。`locked-exact`的原有静默要求和`external-unverified`非最终性质保持；不能通过改旧记录或改readiness计数满足门。
+v0.7.17于2026-09-09首次经当次授权使用`quiesced-active-preservation`，该历史授权已消费。v0.7.18/schema44 本次使用的精确来源、任务范围和保全证据以当前发布回执为准。此方式保留结果未知的旧请求及防重复提交证据，不把它改成成功、失败、取消或无扣费。`locked-exact`的原有静默要求和`external-unverified`非最终性质保持；不能通过改旧记录或改readiness计数满足门。
 
 只有以下证据全部成立，当前发布才可接受该独立captureMode：
 
@@ -82,7 +82,7 @@ v0.7.17于2026-09-09首次经当次授权使用`quiesced-active-preservation`，
 
 ### 5.2 schema43→44发布的保全与兼容回退
 
-本节约束schema43→44配套发布，执行授权与进度由TASKS维护。生产是否已经迁移只能依据实际回执更新CURRENT_STATE，不能把方案或本地通过写成生产完成。迁移前须通过精确新包Linux隔离演练、操作脚本独立复审及最新schema43备份/verify/fresh restore；迁移后须完成schema44备份/verify/fresh restore再启动新应用。
+本节约束 v0.7.18/schema43→44 配套发布，执行授权与进度由TASKS维护。本次 schema43→44 dry-run/apply 及迁移后 schema44 backup/verify/fresh restore 已有实际阶段回执；生产程序切换、资源核对、解除维护和用户验收仍只能按最终发布回执确认，不能把方案或本地通过写成这些阶段已完成。迁移前须通过精确新包Linux隔离演练、操作脚本独立复审及最新schema43备份/verify/fresh restore；迁移后须完成schema44备份/verify/fresh restore再启动新应用。
 
 - schema44 当前候选必须通过 `schema43To44Migration` 的原子迁移、integrity/FK、结构合同、logical SHA、全账本和媒体关联核对。迁移只增加输出槽、保存租约、adoption receipt、continuation 表及其约束；不把未知结果改成终态，不删除事件/素材，不调用 Provider/OSS。
 - schema44 的 quiesced-active-preservation 备份可以保留旧 schema43 或当前 schema44 的明确来源版本。verify/fresh restore 必须保留 `media_publication_attempts` 的旧 nullable 槽、新槽记录、`generation_result_save_leases`、`generation_result_adoptions`、`workflow_run_continuations` 以及 outcome-unknown 账本，恢复后重新执行 FK、integrity、logical SHA 和媒体清单核对。
@@ -91,18 +91,23 @@ v0.7.17于2026-09-09首次经当次授权使用`quiesced-active-preservation`，
 - 回退禁止 schema44→43 数据库降级、覆盖 CURRENT 或用 schema43 旧解析器打开新表。回退演练只切换代码指针：先停止新应用并保留 CURRENT，再运行只读桥接，确认维护状态，最后启动 schema44 新应用正常 worker；若新应用恢复 staged 结果，只允许使用已有持久证据完成本地保存，不产生第二次 Provider POST。
 - 独立演练必须按“新应用 worker 启动并停止 → 同一 CURRENT 运行只读桥接 → 桥接停止 → 同一 CURRENT 启动新应用 worker”顺序执行，至少核验一个 staged synthetic 结果自动恢复，同时核验 Canvas 草稿、媒体、publication 槽、lease、adoption、continuation 和 outcome-unknown 账本保持约束；Provider POST 计数必须为零。
 
-本节对应 `m110-schema44-readonly-preservation` 和独立桥接脚本。每次新应用运行并停服后均须重新绑定最新CURRENT与桥接manifest；桥接失败保持静态维护，禁止启动schema43应用。本地测试不能替代精确包Linux演练或真实systemd切换，发布技术通过也不等于真实Provider验收。
+本节对应 `m110-schema44-readonly-preservation` 和独立桥接脚本。每次新应用运行并停服后均须重新绑定最新CURRENT与桥接manifest；桥接失败保持静态维护，禁止启动schema43应用。当前生产是否已完成新包启动及公网切换仍以 v0.7.18 最终回执为准；本地测试和迁移回执不能替代真实systemd切换或真实Provider验收。
 
 ## 6. 切换与回退
 
 先准备本次精确新包、精确兼容回退包及数据保持策略，在隔离副本完成真实Linux HTTP保存/刷新和forward→rollback→forward；记录其与真实systemd切换测试的区别。正式维护中保留旧current身份，排空再原子切换；核对服务、版本、ready、数据及静态资源后解除维护。
 
-v0.7.17当前回退约束：
+v0.7.18/schema44 当前回退约束：
 
-- 当前新包：`/opt/unboundry/releases/v0.7.17-node-recovery-20260908`；固定回退包：`/opt/unboundry/releases/v0.7.16-status-query-20260907`。精确commit/tree、操作单和脚本SHA由本次发布回执拥有。
-- 回退前确认当前仍是精确v0.7.17，按本次rollback.py重新执行静默、最新冻结备份/verify/fresh restore；只原子切换代码指针，保留CURRENT，不迁移schema或清理持久字段。
-- RB05隔离Linux新→旧→新、原合成任务/草稿/素材和真实客户端bundle身份通过。此前新→旧systemd补偿曾成功，但不等于本次rollback.py正式演练或真实Provider恢复。新素材必须在当前备份镜像中严格对应，缺失时停止；回退失败保持维护，不自动切回问题新包。
-- v0.7.16→v0.7.15及其DELETE演练是历史证据，不替代本次身份。禁止跳过已核验回退候选直接切更老包；旧v0.7.13的parser/resize语义不兼容，v0.7.11代码检查点也不是数据库备份。
+- 当前新包：`/opt/unboundry/releases/v0.7.18-media-publication-20260911`。数据库已按本次配套迁移进入 schema44；精确 commit/tree、操作单、备份/恢复和脚本 SHA 由 v0.7.18 最终发布回执拥有。
+- 当前回退路径是代码层回到 schema44 只读维护桥：停止 v0.7.18 应用，保留 CURRENT 和 schema44 数据，按当次最新停服数据重新生成并绑定 `schema44-preservation-<label>` 桥接包，由 `unboundry-schema44-readonly-bridge.service` 提供维护页；每次新应用停服后都要重新绑定最新数据库/媒体 manifest。桥接包只读，不运行 worker、不调用 Provider/OSS、不接收 POST/写请求。
+- 生产桥接回退是否已经实际执行，必须由本次回执中的 `bridge-rollback-complete.json` 及公网/服务核验确认；本手册不预写该事实。桥接重绑或启动失败时继续保持静态维护，不能启动旧 schema43 应用。
+- 禁止 schema44→43 数据库降级、把备份还原覆盖 CURRENT，或让 v0.7.17 直接打开 schema44。恢复正常服务只能启动支持 schema44 的新应用，并重新核验数据与服务状态；旧未知任务和已有媒体不得借回退改写。
+
+历史 v0.7.17→v0.7.16 普通代码回退（不适用于当前 schema44）：
+
+- `/opt/unboundry/releases/v0.7.17-node-recovery-20260908` 与 `/opt/unboundry/releases/v0.7.16-status-query-20260907` 只保留为上一轮 schema43 的历史身份和证据。它们不能作为当前 schema44 的在线回退候选，除非另有明确的 schema44 兼容性证据。
+- 旧 RB05 隔离 Linux 新→旧→新、此前 systemd 补偿和 v0.7.16→v0.7.15 DELETE 演练均不替代本次 schema44 桥接路径或 v0.7.18 正式回执。禁止跳过当前已核验候选切更老包；旧 v0.7.13 parser/resize 语义不兼容，v0.7.11 代码检查点也不是数据库备份。
 
 ### 历史 v0.7.14 兼容约束（非当前回退身份）
 
@@ -119,7 +124,7 @@ v0.7.17当前回退约束：
 
 ## 8. 收尾
 
-生产回执分别记录源码/CI、定向或full范围、备份/恢复/云端验证、生产数据和UI、未决风险、用户验收；本轮最终状态见 [v0.7.17 发布回执](spec/V0_7_17_PRODUCTION_RECEIPT_2026-09-09.json)。先是技术结果，只有用户明确通过才记对应范围USER_PASS。
+生产回执分别记录源码/CI、定向或full范围、备份/恢复/云端验证、生产数据和UI、未决风险、用户验收；本轮最终状态见 [v0.7.18 发布回执](spec/V0_7_18_PRODUCTION_RECEIPT_2026-09-11.json)，旧 v0.7.17 回执保留为历史。先是技术结果，只有用户明确通过才记对应范围USER_PASS。
 
 更新CURRENT_STATE、TASKS、主题checkpoint、总矩阵及必要架构/操作文档。固定历史JSON、失败记录和tag不改写；演进中的当前回执补上后续验收事实。文档是否commit/push按用户当次授权，不能把旧发布授权扩为永久权限。
 
