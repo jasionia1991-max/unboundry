@@ -2180,9 +2180,10 @@ test("modern single-node admission atomically binds Canvas before launch and rol
       `).get(generationOwnerId, staleFingerprint.input.canvasId)).toEqual({ count: 0 });
     } finally {
       if (applicationStoreStarted) {
-        try {
-          resetGenerationTaskStoreForRuntimeTest();
-        } catch {}
+        await expect.poll(() => {
+          try { resetGenerationTaskStoreForRuntimeTest(); return "released"; }
+          catch (error) { return error instanceof Error ? error.message : String(error); }
+        }, { timeout: 5_000 }).toBe("released");
       }
       if (previousDataDirectory === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
       else process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
@@ -2368,9 +2369,10 @@ test("single-node result success survives projection rollback and retries once a
         setGenerationProjectionReceiptFaultForTests(undefined);
       } catch {}
       if (applicationStoreStarted) {
-        try {
-          resetGenerationTaskStoreForRuntimeTest();
-        } catch {}
+        await expect.poll(() => {
+          try { resetGenerationTaskStoreForRuntimeTest(); return "released"; }
+          catch (error) { return error instanceof Error ? error.message : String(error); }
+        }, { timeout: 5_000 }).toBe("released");
       }
       if (previousDataDirectory === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
       else process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
@@ -2521,9 +2523,10 @@ test("single-node success reports settlement unavailable and remains retryable w
         setSingleNodeProjectionSettlementFaultForTests(undefined);
       } catch {}
       if (applicationStoreStarted) {
-        try {
-          resetGenerationTaskStoreForRuntimeTest();
-        } catch {}
+        await expect.poll(() => {
+          try { resetGenerationTaskStoreForRuntimeTest(); return "released"; }
+          catch (error) { return error instanceof Error ? error.message : String(error); }
+        }, { timeout: 5_000 }).toBe("released");
       }
       if (previousDataDirectory === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
       else process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
@@ -2646,8 +2649,8 @@ test("AR sizing mode, adoption and layout have one durable authority", async () 
       const contentType = kind === "image" ? "image/png" : "video/mp4";
       database.prepare(`INSERT INTO media_assets (kind,id,owner_id,storage_name,byte_size,created_at,updated_at,storage_backend,object_key,content_type,checksum_sha256,storage_status,duration_status,media_width,media_height,duration_seconds)
         VALUES (?,'ar-output',?,?,16,?,?,'local',?,?,?,'ready',?,816,1104,2)`).run(kind,generationOwnerId,storageName,stamp,stamp,storageName,contentType,'a'.repeat(64),kind === 'image' ? 'not-applicable' : 'ready');
-      database.prepare(`INSERT INTO media_publication_attempts (attempt_id,owner_id,kind,asset_id,source,state,storage_backend,final_storage_name,object_key,staging_name,task_id,task_execution_attempt,content_type,created_at,updated_at)
-        VALUES ('ar-pub',?,?,'ar-output','generation','published','local',?,?,'ar-stage','ar-task',1,?,?,?)`).run(generationOwnerId,kind,storageName,storageName,contentType,stamp,stamp);
+      database.prepare(`INSERT INTO media_publication_attempts (attempt_id,owner_id,kind,asset_id,source,state,storage_backend,final_storage_name,object_key,staging_name,task_id,task_execution_attempt,content_type,created_at,updated_at,output_slot,output_set_count)
+        VALUES ('ar-pub',?,?,'ar-output','generation','published','local',?,?,'ar-stage','ar-task',1,?,?,?,0,1)`).run(generationOwnerId,kind,storageName,storageName,contentType,stamp,stamp);
       try {
         const built = buildCanvasProjectionIdentity({ database,canvasId,kind,nodeId,ownerId:generationOwnerId,taskId:"ar-task",...(scope === "workflow" ? {runId:"ar-run"} : {}) });
         expect(built).toMatchObject({status:"ready",projection:{bindingMatches:true}});

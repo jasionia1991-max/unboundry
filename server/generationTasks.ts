@@ -1,3 +1,9 @@
+import { bindGenerationOutputSet, reserveGenerationMediaPublication, GenerationOutputSlotBlockedError } from "./generationOutputSlots";
+import { configureGeneratedMediaReservation } from "./mediaPublicationService";
+import {
+  withGenerationResultSave, registerGenerationSaveRuntime, GenerationSaveBusyError,
+  type GenerationSaveToken,
+} from "./generationResultSaveOwnership";
 import { createGenerationRecoveryCaseStore, GenerationRecoveryCaseError } from "./generationRecoveryCaseStore";
 import { readOriginalGenerationRecoveryLedgers } from "./generationRecoveryLedgerQueries";
 import { generationRecoveryCasesEnabled } from "./generationRecoveryFeatureFlags";
@@ -51,6 +57,7 @@ import {
 } from "./generationSafety";
 import {
   createGenerationTaskStore,
+  readGenerationTaskInTransaction,
   failRecoveredGenerationTasks,
   generationProviderAttemptCounts,
   GenerationProviderAttemptBlockedError,
@@ -223,6 +230,7 @@ import {
   recoverPendingMediaDeletions,
   recoverPendingUploadMediaPublications,
   cleanupPublicationStaging,
+  cleanupPublishedGeneratedMediaStaging,
   type MediaPublicationReservation,
 } from "./mediaPublicationService";
 import {
@@ -366,6 +374,8 @@ export function registerGenerationTaskSettlementObserver(
 ) {
   generationTaskSettlementObserver = observer;
 }
+configureGeneratedMediaReservation(reserveGenerationMediaPublication);
+let unregisterGenerationSaveRuntime: (() => void) | undefined;
 const launchedGenerationTasks = new Set<string>();
 const pendingGenerationRelaunches = new Map<string, GenerationTask["kind"]>();
 const runningImageRequests = new Map<string, AbortController>();
@@ -387,6 +397,7 @@ export function registerGenerationRuntimeRoleCoordinator(
   }
   runtimeRoleRegistrationRequired = true;
   runtimeRoleCoordinator = coordinator;
+  unregisterGenerationSaveRuntime = registerGenerationSaveRuntime(coordinator);
   preparedRuntimeRoleCoordinator = undefined;
   return () => {
     if (runtimeRoleCoordinator !== coordinator) return;
@@ -395,6 +406,8 @@ export function registerGenerationRuntimeRoleCoordinator(
         "Generation runtime role coordinator cannot unregister before teardown",
       );
     }
+    unregisterGenerationSaveRuntime?.();
+    unregisterGenerationSaveRuntime = undefined;
     runtimeRoleCoordinator = undefined;
     preparedRuntimeRoleCoordinator = undefined;
   };
@@ -459,6 +472,8 @@ export function unregisterGenerationRuntimeRoleCoordinatorBeforeStartup(
   }
   closeRuntimeDatabaseTransactions();
   preparedRuntimeRoleCoordinator = coordinator;
+  unregisterGenerationSaveRuntime?.();
+  unregisterGenerationSaveRuntime = undefined;
   runtimeRoleCoordinator = undefined;
   preparedRuntimeRoleCoordinator = undefined;
 }
@@ -926,7 +941,19 @@ function abortUnmatchedRecoveryLookups() {
   for (const controller of unmatchedLookupControllers.values()) controller.abort();
 }
 
-export async function runGenerationRecoverySweep(options?: {
+let generationRecoverySweepPromise: Promise<void> | undefined;
+export function runGenerationRecoverySweep(options?: Parameters<typeof runGenerationRecoverySweepOnce>[0]) {
+  if (options?.store) return runGenerationRecoverySweepOnce(options);
+  if (generationRecoverySweepPromise) return generationRecoverySweepPromise;
+  const execution = runRegisteredGenerationApplicationWork(() => runGenerationRecoverySweepOnce(options));
+  generationRecoverySweepPromise = execution;
+  void execution.finally(() => {
+    if (generationRecoverySweepPromise === execution) generationRecoverySweepPromise = undefined;
+  }).catch(() => undefined);
+  return execution;
+}
+
+async function runGenerationRecoverySweepOnce(options?: {
   hasPendingGenerated?: () => boolean;
   launchOptions?: GenerationLaunchOptions;
   launch?: (taskId: string, kind: GenerationTask["kind"]) => void;
@@ -942,6 +969,12 @@ export async function runGenerationRecoverySweep(options?: {
   const store = options?.store ?? taskStore();
   const hasPendingGenerated = options?.hasPendingGenerated ??
     (options?.store ? () => false : hasPendingGeneratedMediaPublications);
+  try {
+    await cleanupPublishedGeneratedMediaStaging();
+  } catch {
+    // Published media remains intact; the next bounded sweep retries only its
+    // exact staging path and never performs another Provider operation.
+  }
   if (hasPendingGenerated()) {
     try {
       const outcomes = await (
@@ -3013,7 +3046,8 @@ export async function attemptProviderResultSave(input: {
   backoffMs?: readonly number[];
   synchronousResponseExecutionAttempt?: number;
   taskId: string;
-  save: () => Promise<unknown>;
+  save: (saveToken?: GenerationSaveToken) => Promise<unknown>;
+  saveToken?: GenerationSaveToken;
   settleSynchronousResultSave?: typeof settleSynchronousResultSaveExhaustion;
   sleep?: (milliseconds: number) => Promise<void>;
   store?: Pick<
@@ -3021,16 +3055,29 @@ export async function attemptProviderResultSave(input: {
     "get" | "transition"
   >;
 }): Promise<boolean> {
+  if (!input.saveToken && !input.store) {
+    const current = taskStore().get(input.taskId);
+    if (current?.ownerId && current.kind !== "text") {
+      try {
+        return await withGenerationResultSave({ taskId: current.id,
+          executionAttempt: current.attempt, ownerId: current.ownerId, kind: current.kind },
+        (saveToken) => attemptProviderResultSave({ ...input, saveToken })) ?? false;
+      } catch (error) {
+        if (error instanceof GenerationSaveBusyError) return false;
+        throw error;
+      }
+    }
+  }
   const backoffMs = input.backoffMs ??
     [1_000, 2_000, 4_000, 8_000, 15_000];
   const sleep = input.sleep ??
     ((milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds)));
   for (let attempt = 0; ; attempt += 1) {
     try {
-      await input.save();
+      await input.save(input.saveToken);
       return true;
     } catch (error) {
-      if (error instanceof MediaPublicationDeferredError) {
+      if (error instanceof MediaPublicationDeferredError || error instanceof GenerationOutputSlotBlockedError) {
         logGenerationDiagnostic(input.taskId, "save-deferred", error);
         try {
           const store = input.store ?? taskStore();
@@ -3061,6 +3108,7 @@ export async function attemptProviderResultSave(input: {
           (input.settleSynchronousResultSave ??
             settleSynchronousResultSaveExhaustion)({
             executionAttempt: input.synchronousResponseExecutionAttempt,
+            saveToken: input.saveToken,
             taskId: input.taskId,
           });
         }
@@ -3475,8 +3523,9 @@ function startupWorkerTestProviderFetcher(): typeof fetch | undefined {
 
 /**
  * Starts or recovers durable active work once per process. The first pass only
- * counts active tasks and the exact V3 refund-compensation queue; an idle
- * non-allowlisted database never opens a writer.
+ * counts active tasks and the exact V3 refund-compensation queue. An idle
+ * runtime only opens a writer if an exact published staging remnant needs
+ * cleanup; otherwise the generation task store remains closed.
  * An allowlisted idle runtime may open only the short-lived Canvas detach writer,
  * while the generation task store remains closed.
  */
@@ -3512,15 +3561,32 @@ export function initializePersistentGenerationTaskWorker() {
       committedRefundCompensationCandidateCount();
     const terminalDetachSweepEnabled =
       allowlistedLegacyTerminalDetachSweepEnabled();
+    if (!incGen017GenerationEnabled()) {
+      return { activeTaskCount, projectionCandidateCount, writerOpened: false };
+    }
     if (
       activeTaskCount === 0 && projectionCandidateCount === 0 &&
       refundCompensationCandidateCount === 0 &&
       !terminalDetachSweepEnabled && !generationRecoveryCasesEnabled()
     ) {
-      return { activeTaskCount, projectionCandidateCount, writerOpened: false };
-    }
-    if (!incGen017GenerationEnabled()) {
-      return { activeTaskCount, projectionCandidateCount, writerOpened: false };
+      // Published generation rows are deliberately excluded from the pending
+      // task count, but their local staging file can survive a crash after the
+      // final media became ready. Give an otherwise idle active process one
+      // bounded, exact-identity cleanup pass at startup. If cleanup is blocked
+      // or the batch is full, the existing bounded sweep retries it; no task
+      // launch or Provider operation is introduced by this path.
+      try {
+        const cleanup = await cleanupPublishedGeneratedMediaStaging();
+        if (cleanup.blocked > 0 || cleanup.hasMore) ensureGenerationRecoverySweep();
+        return {
+          activeTaskCount,
+          projectionCandidateCount,
+          writerOpened: cleanup.cleaned > 0,
+        };
+      } catch {
+        ensureGenerationRecoverySweep();
+        return { activeTaskCount, projectionCandidateCount, writerOpened: false };
+      }
     }
     if (
       process.env.UNBOUNDRY_SAFE_TEST === "1" &&
@@ -4412,6 +4478,9 @@ async function commitSavedGenerationMedia(saved: {
 }
 
 async function saveRelayMediaOutput(input: {
+  saveToken?: GenerationSaveToken;
+  outputSlot?: number;
+  outputSetCount?: number;
   actualCostMicrounits: number;
   executionAttempt: number;
   expectedAudioContentType?: string;
@@ -4434,6 +4503,7 @@ async function saveRelayMediaOutput(input: {
       label: input.prompt.slice(0, 120),
       ownerId: input.ownerId,
       task: {
+      saveToken: input.saveToken, outputSlot: input.outputSlot ?? 0, outputSetCount: input.outputSetCount ?? 1,
         actualCostMicrounits: input.actualCostMicrounits,
         executionAttempt: input.executionAttempt,
         taskId: input.taskId,
@@ -4463,6 +4533,7 @@ async function saveRelayMediaOutput(input: {
       label: input.prompt.slice(0, 120),
       ownerId: input.ownerId,
       task: {
+      saveToken: input.saveToken, outputSlot: input.outputSlot ?? 0, outputSetCount: input.outputSetCount ?? 1,
         actualCostMicrounits: input.actualCostMicrounits,
         executionAttempt: input.executionAttempt,
         taskId: input.taskId,
@@ -4476,6 +4547,7 @@ async function saveRelayMediaOutput(input: {
       label: input.prompt.slice(0, 120),
       ownerId: input.ownerId,
       task: {
+      saveToken: input.saveToken, outputSlot: input.outputSlot ?? 0, outputSetCount: input.outputSetCount ?? 1,
         actualCostMicrounits: input.actualCostMicrounits,
         executionAttempt: input.executionAttempt,
         taskId: input.taskId,
@@ -4494,6 +4566,7 @@ async function saveRelayMediaOutput(input: {
     label: input.prompt.slice(0, 120),
     ownerId: input.ownerId,
     task: {
+      saveToken: input.saveToken, outputSlot: input.outputSlot ?? 0, outputSetCount: input.outputSetCount ?? 1,
       actualCostMicrounits: input.actualCostMicrounits,
       executionAttempt: input.executionAttempt,
       taskId: input.taskId,
@@ -4530,50 +4603,26 @@ async function saveRelayMediaOutputs(input: {
 }) {
   assertRelayMediaOutputCardinality(input);
   const kind = input.outputs[0].kind;
-  const published = publishedGenerationMediaCandidateIds({
-    executionAttempt: input.executionAttempt,
-    kind,
-    ownerId: input.ownerId,
-    taskId: input.taskId,
-  });
-  if (published.length > input.outputs.length) {
-    throw new RelayProviderError("PROVIDER_RESULT_FORMAT", true);
-  }
-  for (const output of input.outputs.slice(published.length)) {
-    const saved = await attemptProviderResultSave({
-      taskId: input.taskId,
-      save: () => saveRelayMediaOutput({
-        actualCostMicrounits: input.actualCostMicrounits,
-        executionAttempt: input.executionAttempt,
-        expectedAudioContentType: input.expectedAudioContentType,
-        output,
-        ownerId: input.ownerId,
-        profile: input.profile,
-        prompt: input.prompt,
-        signal: input.signal,
-        taskId: input.taskId,
-      }),
+  return await withGenerationResultSave({ taskId: input.taskId, ownerId: input.ownerId,
+    kind, executionAttempt: input.executionAttempt }, async (saveToken) => {
+    bindGenerationOutputSet({ ...input, kind, token: saveToken });
+    for (let outputSlot = 0; outputSlot < input.outputs.length; outputSlot += 1) {
+      const saved = await attemptProviderResultSave({
+        taskId: input.taskId, saveToken,
+        save: (saveToken) => saveRelayMediaOutput({
+        ...input, output: input.outputs[outputSlot],
+          outputSlot, outputSetCount: input.outputs.length, saveToken }),
+      });
+      if (!saved) return false;
+    }
+    const published = publishedGenerationMediaCandidateIds({
+      taskId: input.taskId, ownerId: input.ownerId, kind, executionAttempt: input.executionAttempt,
     });
-    if (!saved) return false;
-    const current = publishedGenerationMediaCandidateIds({
-      executionAttempt: input.executionAttempt,
-      kind,
-      ownerId: input.ownerId,
-      taskId: input.taskId,
+    return attemptProviderResultSave({ taskId: input.taskId, saveToken,
+      save: async () => commitGenerationMediaOutputSet({ assetIds: published, saveToken,
+        taskId: input.taskId, ownerId: input.ownerId, kind, executionAttempt: input.executionAttempt }),
     });
-    published.splice(0, published.length, ...current);
-  }
-  if (published.length !== input.outputs.length) return false;
-  return attemptProviderResultSave({
-    taskId: input.taskId,
-    save: async () => commitGenerationMediaOutputSet({
-      assetIds: published,
-      executionAttempt: input.executionAttempt,
-      kind,
-      ownerId: input.ownerId,
-      taskId: input.taskId,
-    }),
-  });
+  }, { nonBlocking: true }) ?? false;
 }
 
 function frozenModelResultCount(task: GenerationTask) {
@@ -5503,7 +5552,8 @@ async function executeRelayGptImageTask(
     const saved = await attemptProviderResultSave({
       synchronousResponseExecutionAttempt: running.attempt,
       taskId,
-      save: () => saveRelayMediaOutput({
+      save: (saveToken) => saveRelayMediaOutput({
+        saveToken,
         actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
         commitMode: "primary",
         executionAttempt: running.attempt,
@@ -5598,12 +5648,13 @@ async function executeImageTask(taskId: string) {
       const saved = await attemptProviderResultSave({
         synchronousResponseExecutionAttempt: running.attempt,
         taskId,
-        save: async () => {
+        save: async (saveToken) => {
           const savedMedia = await saveGeneratedPng({
             bytes: result.bytes,
             label: running.prompt.slice(0, 120),
             ownerId: current.ownerId!,
             task: {
+              saveToken,
               actualCostMicrounits: result.actualCostMicrounits,
               executionAttempt: running.attempt,
               taskId,
@@ -5708,6 +5759,7 @@ async function saveVolcengineVideoResult(
   profile: ProviderProfile,
   output: NormalizedMediaProviderOutput,
   signal: AbortSignal,
+  saveToken?: GenerationSaveToken,
 ) {
   taskStore().markProviderResponseReceivedForTask(taskId);
   if (
@@ -5732,6 +5784,7 @@ async function saveVolcengineVideoResult(
     label: running.prompt.slice(0, 120),
     ownerId: running.ownerId!,
     task: {
+      saveToken,
       actualCostMicrounits,
       executionAttempt: running.attempt,
       providerUsageTokens: output.providerUsageTokens,
@@ -5805,12 +5858,12 @@ async function recoverNativeVideoAfterPoll(
       ).outputs[0];
       const saved = await attemptProviderResultSave({
         taskId,
-        save: () => saveVolcengineVideoResult(
+        save: (saveToken) => saveVolcengineVideoResult(
           taskId,
           running,
           profile,
           output,
-          controller.signal,
+          controller.signal, saveToken,
         ),
       });
       if (saved) return;
@@ -6243,12 +6296,12 @@ async function executeVideoTask(
         ).outputs[0];
         const saved = await attemptProviderResultSave({
           taskId,
-          save: () => saveVolcengineVideoResult(
+          save: (saveToken) => saveVolcengineVideoResult(
             taskId,
             running,
             profile,
             output,
-            controller.signal,
+            controller.signal, saveToken,
           ),
         });
         if (saved) return;
@@ -6453,7 +6506,7 @@ async function executeAudioTask(taskId: string) {
         const audioUrl = output.transientUrl;
         const saved = await attemptProviderResultSave({
           taskId,
-          save: async () => {
+          save: async (saveToken) => {
             const audioBody = await downloadMurekaAudioResult(
               profile,
               audioUrl,
@@ -6464,6 +6517,7 @@ async function executeAudioTask(taskId: string) {
               label: running.prompt.slice(0, 120),
               ownerId: running.ownerId!,
               task: {
+                saveToken,
                 // Mureka does not return a per-task bill. Record the configured
                 // protected maximum so budget accounting remains conservative.
                 actualCostMicrounits: running.estimatedCostMicrounits ?? 0,
@@ -7147,16 +7201,16 @@ export async function saveOriginalGenerationProviderResult(input: Readonly<{
     });
   }
   if (protocol === "native" && current.kind === "video" && inspection.normalized.outputs.length === 1) {
-    return attemptProviderResultSave({ taskId: current.id, save: () =>
-      saveVolcengineVideoResult(current.id, current, profile, inspection.normalized!.outputs[0], signal) });
+    return attemptProviderResultSave({ taskId: current.id, save: (saveToken) =>
+      saveVolcengineVideoResult(current.id, current, profile, inspection.normalized!.outputs[0], signal, saveToken) });
   }
   if (protocol === "native" && current.kind === "audio" && inspection.normalized.outputs.length === 1) {
     const output = inspection.normalized.outputs[0];
     if (!output.transientUrl) throw new Error("Original audio result is unavailable");
-    return attemptProviderResultSave({ taskId: current.id, save: async () => {
+    return attemptProviderResultSave({ taskId: current.id, save: async (saveToken) => {
       const body = await downloadMurekaAudioResult(profile, output.transientUrl!, { signal });
       const saved = await saveGeneratedMp3({ body, label: current.prompt.slice(0, 120), ownerId: task.ownerId!,
-        task: { actualCostMicrounits: current.estimatedCostMicrounits ?? 0, executionAttempt: current.attempt, taskId: current.id } });
+        task: { saveToken, actualCostMicrounits: current.estimatedCostMicrounits ?? 0, executionAttempt: current.attempt, taskId: current.id } });
       await commitSavedGenerationMedia(saved);
     } });
   }
@@ -7436,6 +7490,7 @@ async function pollReconcileProviderTask(
  * mapping replaceable without exposing Provider/runtime internals to Vite.
  */
 export const generationTaskApplication = Object.freeze({
+  readGenerationTaskInTransaction,
   GenerationProviderAttemptBlockedError,
   GenerationTaskAbandonError,
   GenerationTaskAdmissionError,

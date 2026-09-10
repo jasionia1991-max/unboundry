@@ -127,9 +127,9 @@ const applyUpload = parsedArguments.flags.has("--apply-upload");
 const applyRetention = parsedArguments.flags.has("--apply-retention");
 const retainDays = Number(valuesFor("--retain-days")[0] ?? "0");
 
-if (!["42", "43"].includes(expectedSchemaVersion) || !/^[a-f0-9]{64}$/.test(expectedDatabaseLogicalSha256)) {
+if (!["42", "43", "44"].includes(expectedSchemaVersion) || !/^[a-f0-9]{64}$/.test(expectedDatabaseLogicalSha256)) {
   throw new Error(
-    "SCHEMA42_OSS_BACKUP_ARGUMENT_INVALID: exact schema42 or schema43 and logical SHA are required",
+    "SCHEMA42_OSS_BACKUP_ARGUMENT_INVALID: exact schema42, schema43 or schema44 and logical SHA are required",
   );
 }
 if (!Number.isSafeInteger(retainDays) || retainDays < 0 || retainDays > 3650) {
@@ -169,7 +169,7 @@ const storageProfileModule = join(
 const backupArguments = [
   backupScript,
   "--source-frozen",
-  ...(expectedSchemaVersion === "42" ? ["--historical-recovery"] : []),
+  ...(expectedSchemaVersion !== "44" ? ["--historical-recovery"] : []),
   "--data-dir", dataDirectory,
   "--backup-root", backupRoot,
   "--scratch-root", scratchRoot,
@@ -193,7 +193,7 @@ const backupOutput = execFileSync(process.execPath, backupArguments, {
 });
 const backup = JSON.parse(backupOutput.trim());
 if (
-  backup?.captureMode !== "locked-exact" || backup?.finalCandidate !== (expectedSchemaVersion === "43") ||
+  backup?.captureMode !== "locked-exact" || backup?.finalCandidate !== (expectedSchemaVersion === "44") ||
   backup?.schemaVersion !== Number(expectedSchemaVersion) ||
   backup?.databaseLogicalSha256 !== expectedDatabaseLogicalSha256 ||
   typeof backup?.packageDirectory !== "string"

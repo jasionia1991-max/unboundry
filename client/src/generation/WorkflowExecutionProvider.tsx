@@ -86,8 +86,11 @@ import {
 import { listGenerationTasks } from "./generationTasks";
 import {
   activeServerWorkflowNodeIds,
+  continueServerWorkflowRun,
   createServerWorkflowRun,
+  getServerWorkflowRun,
   listServerWorkflowRuns,
+  reattachSubmittedServerWorkflowContinuation,
   reattachSubmittedServerWorkflowRun,
   SERVER_WORKFLOW_RUN_UPDATED_EVENT,
   stopServerWorkflowRunAndConfirm,
@@ -249,6 +252,12 @@ async function runRegisteredNodeWithRefreshRecovery(input: {
 
 type WorkflowExecutionValue = {
   cancelGroup: (groupId: string) => void;
+  continueFailedWorkflow: (input: {
+    groupId: string;
+    intentId: string;
+    parentRunId: string;
+    previewDigest: string;
+  }) => Promise<ServerWorkflowRun>;
   executeGroup: (
     groupId: string,
     checkpoint?: GroupRunCheckpoint,
@@ -266,6 +275,9 @@ export type WorkflowGroupExecutionPhase =
 
 const WorkflowExecutionContext = createContext<WorkflowExecutionValue>({
   cancelGroup: () => undefined,
+  continueFailedWorkflow: async () => {
+    throw new Error("当前页面无法继续未完成节点");
+  },
   executeGroup: async () => undefined,
   executingGroupIds: new Set(),
   groupExecutionPhases: new Map(),
@@ -354,6 +366,7 @@ export function WorkflowExecutionProvider({
     stopController?: AbortController;
     stopping?: boolean;
   }>());
+  const continuationReconciliationControllers = useRef(new Set<AbortController>());
   const serverPreparingGroups = useRef(new Map<string, {
     abortController: AbortController;
     clientSemanticFingerprint: string;
@@ -363,6 +376,22 @@ export function WorkflowExecutionProvider({
     stopRequested: boolean;
     submitted: boolean;
   }>());
+  useEffect(() => () => {
+    for (const controller of continuationReconciliationControllers.current) {
+      controller.abort("workflow-execution-provider-unmounted");
+    }
+    continuationReconciliationControllers.current.clear();
+  }, []);
+  const continuationScopeKey = `${accountId}\u0000${canvasId}\u0000${fixtureScopeId}`;
+  const continuationScopeKeyRef = useRef(continuationScopeKey);
+  useEffect(() => {
+    if (continuationScopeKeyRef.current === continuationScopeKey) return;
+    continuationScopeKeyRef.current = continuationScopeKey;
+    for (const controller of continuationReconciliationControllers.current) {
+      controller.abort("workflow-continuation-scope-changed");
+    }
+    continuationReconciliationControllers.current.clear();
+  }, [continuationScopeKey]);
   const runLocks = useRef(new Map<string, ReadonlySet<string>>());
   const automaticRecoveryScopeKey = useRef<string | undefined>(undefined);
   const legacyReconciliationRunToken = useRef(0);
@@ -951,6 +980,164 @@ export function WorkflowExecutionProvider({
       `已停止后续节点；当前已开始的 ${activeCount} 个节点仍会继续处理，已经提交的任务会继续并保存结果。`,
     );
   }, [accountId, canvasId, fixtureScopeId, notify, publishActiveRunState]);
+
+  const continueFailedWorkflow = useCallback(async (input: {
+    groupId: string;
+    intentId: string;
+    parentRunId: string;
+    previewDigest: string;
+  }) => {
+    if (isFixture) {
+      throw new Error("验收页面不会触发真实生成");
+    }
+    if (
+      serverPreparingGroups.current.has(input.groupId) ||
+      serverWorkflowRuns.current.has(input.groupId) ||
+      startingGroups.current.has(input.groupId) ||
+      runningGroups.current.has(input.groupId)
+    ) {
+      throw new Error("当前组已有执行正在收口，请等待它完成");
+    }
+
+    const submissionController = new AbortController();
+    continuationReconciliationControllers.current.add(submissionController);
+    let postStarted = false;
+    let created: ServerWorkflowRun;
+    try {
+      try {
+        const response = await runExclusiveServerWorkflowSubmit(
+          canvasId,
+          async () => {
+            await flushCanvasSave(submissionController.signal);
+            if (submissionController.signal.aborted) {
+              throw submissionController.signal.reason;
+            }
+            postStarted = true;
+            return continueServerWorkflowRun({
+              intentId: input.intentId,
+              parentRunId: input.parentRunId,
+              previewDigest: input.previewDigest,
+              signal: submissionController.signal,
+            });
+          },
+          submissionController.signal,
+        );
+        created = response.run;
+      } catch (error) {
+        if (!postStarted || !workflowRunCreateOutcomeIsUncertain(error)) {
+          throw error;
+        }
+        // The continuation POST may already have committed. Reconcile with
+        // bounded/backoff GET-only reads; never issue a second POST for the
+        // same user intent when the first response is uncertain.
+        created = await reattachSubmittedServerWorkflowContinuation({
+          parentRunId: input.parentRunId,
+          previewDigest: input.previewDigest,
+          signal: submissionController.signal,
+        });
+      }
+    } finally {
+      continuationReconciliationControllers.current.delete(submissionController);
+      submissionController.abort("workflow-continuation-submitted");
+    }
+
+    if (
+      created.canvasId !== canvasId ||
+      created.groupId !== input.groupId ||
+      created.id.length < 1
+    ) {
+      throw new Error("服务端返回的后继整组身份与当前画布不一致");
+    }
+
+    const pollController = new AbortController();
+    const tracked = {
+      activeNodeIds: activeServerWorkflowNodeIds(created),
+      abortController: pollController,
+      nodeIds: [...new Set([created.groupId, ...created.lockedNodeIds])],
+      runId: created.id,
+      state: created.state,
+    };
+    serverWorkflowRuns.current.set(created.groupId, tracked);
+    publishActiveRunState();
+    publishServerRunUpdate(created);
+
+    void (async () => {
+      try {
+        const terminal = ["success", "failed", "cancelled"].includes(created.state)
+          ? created
+          : await waitForServerWorkflowRun(
+              created.id,
+              pollController.signal,
+              undefined,
+              updateTrackedServerRun,
+            );
+        if (
+          terminal.canvasId !== canvasId ||
+          terminal.groupId !== input.groupId ||
+          terminal.id !== created.id
+        ) {
+          throw new Error("后继整组执行状态与当前画布不一致");
+        }
+        let refreshed = false;
+        let refreshError: unknown;
+        try {
+          refreshed = await publishServerTerminal(terminal, pollController.signal);
+        } catch (error) {
+          if (pollController.signal.aborted) return;
+          refreshError = error;
+        }
+        if (terminal.state === "success") {
+          const projectionPending = terminal.nodes.some(({ projectionState }) =>
+            projectionState !== "applied"
+          );
+          notify(
+            projectionPending
+              ? "继续执行已完成；部分结果写回遇到画布编辑冲突，原结果已安全保留"
+              : refreshError
+                ? "继续执行已完成并保存；当前画布同步失败，请刷新页面后重试"
+                : refreshed
+                  ? "继续执行完成，结果已保存并同步到当前画布"
+                  : "继续执行完成，结果已保存；当前未保存编辑已保留",
+            refreshError ? "error" : refreshed ? "success" : "info",
+          );
+        } else if (terminal.state === "failed") {
+          const first = terminal.nodes.find(({ state }) => state === "failed");
+          notify(
+            first?.errorMessage ?? terminal.errorMessage ??
+              "继续执行未完成节点失败；原整组结果已保留",
+            "error",
+          );
+        } else {
+          notify("已停止继续执行；原整组结果已保留", "info");
+        }
+      } catch (error) {
+        if (!pollController.signal.aborted) {
+          notify(
+            error instanceof Error
+              ? error.message
+              : "暂时无法核对继续执行状态；服务端仍会保留后继任务",
+            "error",
+          );
+        }
+      } finally {
+        if (serverWorkflowRuns.current.get(created.groupId)?.runId === created.id) {
+          serverWorkflowRuns.current.delete(created.groupId);
+        }
+        pollController.abort("workflow-continuation-terminal");
+        publishActiveRunState();
+      }
+    })();
+    return created;
+  }, [
+    canvasId,
+    flushCanvasSave,
+    isFixture,
+    notify,
+    publishActiveRunState,
+    publishServerRunUpdate,
+    publishServerTerminal,
+    updateTrackedServerRun,
+  ]);
 
   const waitForCanvasStable = useCallback(async (
     groupId: string,
@@ -3418,6 +3605,7 @@ export function WorkflowExecutionProvider({
   const value = useMemo<WorkflowExecutionValue>(
     () => ({
       cancelGroup,
+      continueFailedWorkflow,
       executeGroup,
       executingGroupIds,
       groupExecutionPhases,
@@ -3426,6 +3614,7 @@ export function WorkflowExecutionProvider({
     [
       cancelGroup,
       effectiveLockedNodeIds,
+      continueFailedWorkflow,
       executeGroup,
       executingGroupIds,
       groupExecutionPhases,

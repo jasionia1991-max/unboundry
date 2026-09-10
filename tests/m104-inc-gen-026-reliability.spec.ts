@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { DatabaseSync } from "node:sqlite";
 import { expect, test } from "./safe-test";
+import { freezeSyntheticSchema43 } from "./schema-fixtures";
 import { createServer as createViteServer, type ViteDevServer } from "vite";
 import {
   openAppDatabase,
@@ -1454,7 +1455,7 @@ async function waitForTerminalRun(runId: string, deadlineMs = 30_000) {
       state: string;
     };
     lastState = run.state;
-    lastNodeStates = run.nodes.map(({ state }) => state);
+    lastNodeStates = run.nodes.map(({ state, errorCode }) => `${state}${errorCode ? `:${errorCode}` : ""}`);
     if (["success", "failed", "cancelled"].includes(run.state)) return run;
     // Poll four times faster than the real client's 1-second interval so this
     // path remains a deliberate read/write-isolation stress test on slow CI.
@@ -1600,7 +1601,7 @@ test("CWB Doubao TTS browser submission uses canonical parameters and restores o
     releaseResult();
     await expect.poll(async () => {
       const task = await (await request(`/api/generation-tasks/${taskId}`)).json();
-      return { state: task.state, projection: task.canvasProjectionState, attempt: task.attempt };
+      return { state: task.state, projection: task.canvasProjectionState, attempt: task.attempt, ...(task.state === "failed" ? { errorCode: task.errorCode } : {}) };
     }, { timeout: 60_000 }).toEqual({ state: "success", projection: "applied", attempt: 1 });
     await expect(node.getByTestId("audio-node-media")).toHaveAttribute("src", /\/api\/(?:media|audio-assets)\//);
     const before = await (await request(`/api/canvas/${canvasId}`)).json();
@@ -3004,6 +3005,9 @@ test("INC-GEN-026 historical terminal settlement is manifest-fenced and repeat a
         ON attempt.task_id = task.id AND attempt.execution_attempt = task.attempt
       WHERE task.id = ?
     `).get(task.id, task.id);
+    // The historical incident tool retains its exact schema43 authorization
+    // contract. Seed that old format explicitly instead of widening the tool.
+    freezeSyntheticSchema43(database);
     database.close();
     store.close();
     const databaseDetails = await stat(databasePath, { bigint: true });

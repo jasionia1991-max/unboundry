@@ -986,14 +986,20 @@ async function validateRelease(
     ]).has(manifest.admission?.rule)
   ) fail("RELEASE_MANIFEST_INVALID", "Release manifest identity or admission is invalid");
   if (!exactLegacy) {
+    const targetSchemaVersion = releaseRole === "bridge"
+      ? manifest.databaseCompatibility?.rollbackTargetForSchemaVersion
+      : manifest.databaseCompatibility?.activeSchemaVersions?.[0];
+    if (![43, 44].includes(targetSchemaVersion)) {
+      fail("RELEASE_MANIFEST_INVALID", "Release schema contract is unsupported");
+    }
     const expectedCompatibility = releaseRole === "bridge"
       ? {
-          activeSchemaVersions: [37, 43],
+          activeSchemaVersions: [37, targetSchemaVersion],
           migrationMode: "external-one-shot-only",
-          rollbackTargetForSchemaVersion: 43,
+          rollbackTargetForSchemaVersion: targetSchemaVersion,
         }
       : {
-          activeSchemaVersions: [43],
+          activeSchemaVersions: [targetSchemaVersion],
           migrationMode: "forbidden-from-final-runtime",
           standbySchemaVersions: [37],
         };
@@ -1030,6 +1036,9 @@ async function validateRelease(
   if (JSON.stringify(inventory) !== JSON.stringify(manifest.files)) {
     fail("RELEASE_MANIFEST_INVALID", "Release inventory does not match its immutable manifest");
   }
+  const migrationScriptPaths = manifest.databaseCompatibility?.rollbackTargetForSchemaVersion === 44
+    ? [...exactMigrationScriptPaths, "scripts/migrate-schema43-to44.mjs"]
+    : exactMigrationScriptPaths;
   const expectedRuntimeRoots = exactLegacy
     ? [
         "dist",
@@ -1051,7 +1060,7 @@ async function validateRelease(
         "package.json",
         ...(releaseRole === "bridge"
           ? [
-              ...exactMigrationScriptPaths,
+              ...migrationScriptPaths,
               "scripts/node-typescript-runtime.mjs",
             ]
           : []),
@@ -1075,7 +1084,7 @@ async function validateRelease(
   ) fail("RELEASE_MANIFEST_INVALID", "Release runtime dependency closure is invalid");
   let migrationArtifactSha256;
   if (releaseRole === "bridge") {
-    const migrationEntries = exactMigrationScriptPaths.map((path) =>
+    const migrationEntries = migrationScriptPaths.map((path) =>
       inventory.find((entry) => entry.type === "file" && entry.path === path)
     );
     const migrationEntry = migrationEntries[0];

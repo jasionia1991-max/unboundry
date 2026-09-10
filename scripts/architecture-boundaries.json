@@ -8,8 +8,13 @@
     "types/**/*.ts",
     "vite.config.ts"
   ],
-  "uiSources": ["client/src/**"],
-  "serverTargets": ["server/**", "vite.config.ts"],
+  "uiSources": [
+    "client/src/**"
+  ],
+  "serverTargets": [
+    "server/**",
+    "vite.config.ts"
+  ],
   "providerAdapterSources": [
     "server/arkFileUploader.ts",
     "server/multiProtocolRelay.ts",
@@ -62,11 +67,16 @@
         "server/generationSafety.ts",
         "server/generationTaskStore.ts"
       ],
-      "ownerSources": ["server/generation*.ts"]
+      "ownerSources": [
+        "server/generation*.ts"
+      ]
     },
     {
       "name": "media",
-      "internalTargets": ["server/mediaLifecycle.ts", "server/mediaRegistry.ts"],
+      "internalTargets": [
+        "server/mediaLifecycle.ts",
+        "server/mediaRegistry.ts"
+      ],
       "ownerSources": [
         "server/assetStorage.ts",
         "server/audioStorage.ts",
@@ -99,22 +109,36 @@
     },
     {
       "name": "canvas",
-      "internalTargets": ["server/canvasPersistence.ts"],
-      "ownerSources": ["server/canvas*.ts"]
+      "internalTargets": [
+        "server/canvasPersistence.ts"
+      ],
+      "ownerSources": [
+        "server/canvas*.ts"
+      ]
     },
     {
       "name": "image-tools-server",
-      "internalTargets": ["server/imageTools/internal/**"],
-      "ownerSources": ["server/imageTools/**"]
+      "internalTargets": [
+        "server/imageTools/internal/**"
+      ],
+      "ownerSources": [
+        "server/imageTools/**"
+      ]
     },
     {
       "name": "image-tools-client",
-      "internalTargets": ["client/src/imageTools/internal/**"],
-      "ownerSources": ["client/src/imageTools/**"]
+      "internalTargets": [
+        "client/src/imageTools/internal/**"
+      ],
+      "ownerSources": [
+        "client/src/imageTools/**"
+      ]
     },
     {
       "name": "library",
-      "internalTargets": ["server/library/internal/**"],
+      "internalTargets": [
+        "server/library/internal/**"
+      ],
       "ownerSources": [
         "server/library/**",
         "server/libraryApplicationApi.ts",
@@ -124,17 +148,84 @@
     }
   ],
   "sqlDomains": [
-    { "domain": "auth", "sources": ["server/auth.ts", "server/permissions.ts", "server/account*.ts"] },
-    { "domain": "canvas", "sources": ["server/canvas*.ts"] },
-    { "domain": "generation", "sources": ["server/generation*.ts", "server/inputPreflight.ts"] },
-    { "domain": "image-tools", "sources": ["server/imageTools/**"] },
-    { "domain": "library", "sources": ["server/library/**"] },
-    { "domain": "media", "sources": ["server/media*.ts", "server/assetStorage.ts", "server/audioStorage.ts", "server/videoStorage.ts", "server/generatedMediaCleanup.ts", "server/groupDownload.ts"] },
-    { "domain": "models", "sources": ["server/model*.ts", "server/agentConfiguration.ts"] },
-    { "domain": "projects", "sources": ["server/project*.ts"] },
-    { "domain": "provider", "sources": ["server/provider*.ts", "server/secureStorageProfiles.ts", "server/storageAdmin.ts"] },
-    { "domain": "templates", "sources": ["server/template*.ts", "server/adminTemplates.ts"] },
-    { "domain": "workflow", "sources": ["server/workflow*.ts"] }
+    {
+      "domain": "auth",
+      "sources": [
+        "server/auth.ts",
+        "server/permissions.ts",
+        "server/account*.ts"
+      ]
+    },
+    {
+      "domain": "canvas",
+      "sources": [
+        "server/canvas*.ts"
+      ]
+    },
+    {
+      "domain": "generation",
+      "sources": [
+        "server/generation*.ts",
+        "server/inputPreflight.ts"
+      ]
+    },
+    {
+      "domain": "image-tools",
+      "sources": [
+        "server/imageTools/**"
+      ]
+    },
+    {
+      "domain": "library",
+      "sources": [
+        "server/library/**"
+      ]
+    },
+    {
+      "domain": "media",
+      "sources": [
+        "server/media*.ts",
+        "server/assetStorage.ts",
+        "server/audioStorage.ts",
+        "server/videoStorage.ts",
+        "server/generatedMediaCleanup.ts",
+        "server/groupDownload.ts"
+      ]
+    },
+    {
+      "domain": "models",
+      "sources": [
+        "server/model*.ts",
+        "server/agentConfiguration.ts"
+      ]
+    },
+    {
+      "domain": "projects",
+      "sources": [
+        "server/project*.ts"
+      ]
+    },
+    {
+      "domain": "provider",
+      "sources": [
+        "server/provider*.ts",
+        "server/secureStorageProfiles.ts",
+        "server/storageAdmin.ts"
+      ]
+    },
+    {
+      "domain": "templates",
+      "sources": [
+        "server/template*.ts",
+        "server/adminTemplates.ts"
+      ]
+    },
+    {
+      "domain": "workflow",
+      "sources": [
+        "server/workflow*.ts"
+      ]
+    }
   ],
   "sqlExemptSources": [
     "server/backupInspection.ts",
@@ -147,19 +238,94 @@
     "server/schema39To40Migration.ts",
     "server/schema40To41Migration.ts",
     "server/schema41To42Migration.ts",
-    "server/schema42To43Migration.ts"
+    "server/schema42To43Migration.ts",
+    "server/schema43To44Migration.ts"
   ],
   "tableOwners": [
-    { "owner": "auth", "tables": ["account_consumption_limits", "account_delete_intents", "account_permissions", "account_provider_credential_epochs", "account_provider_credentials", "sessions", "users"] },
-    { "owner": "canvas", "tables": ["asset_history", "canvas_documents", "canvas_operation_receipts", "canvas_save_session_high_water"] },
-    { "owner": "generation", "tables": ["generation_admission_events", "generation_provider_attempts", "generation_safety_settings", "generation_task_events", "generation_tasks"] },
-    { "owner": "library", "tables": ["library_entries"] },
-    { "owner": "media", "tables": ["media_assets", "media_capacity_reservations", "media_delete_intents", "media_publication_attempts"] },
-    { "owner": "models", "tables": ["model_profiles", "node_model_bindings"] },
-    { "owner": "projects", "tables": ["project_metadata"] },
-    { "owner": "provider", "tables": ["provider_profile_write_lock", "provider_profiles"] },
-    { "owner": "templates", "tables": ["public_templates", "user_templates"] },
-    { "owner": "workflow", "tables": ["workflow_run_locks", "workflow_run_nodes", "workflow_runs"] }
+    {
+      "owner": "auth",
+      "tables": [
+        "account_consumption_limits",
+        "account_delete_intents",
+        "account_permissions",
+        "account_provider_credential_epochs",
+        "account_provider_credentials",
+        "sessions",
+        "users"
+      ]
+    },
+    {
+      "owner": "canvas",
+      "tables": [
+        "asset_history",
+        "canvas_documents",
+        "canvas_operation_receipts",
+        "canvas_save_session_high_water"
+      ]
+    },
+    {
+      "owner": "generation",
+      "tables": [
+        "generation_admission_events",
+        "generation_provider_attempts",
+        "generation_result_adoptions",
+        "generation_result_save_leases",
+        "generation_safety_settings",
+        "generation_task_events",
+        "generation_tasks"
+      ]
+    },
+    {
+      "owner": "library",
+      "tables": [
+        "library_entries"
+      ]
+    },
+    {
+      "owner": "media",
+      "tables": [
+        "media_assets",
+        "media_capacity_reservations",
+        "media_delete_intents",
+        "media_publication_attempts"
+      ]
+    },
+    {
+      "owner": "models",
+      "tables": [
+        "model_profiles",
+        "node_model_bindings"
+      ]
+    },
+    {
+      "owner": "projects",
+      "tables": [
+        "project_metadata"
+      ]
+    },
+    {
+      "owner": "provider",
+      "tables": [
+        "provider_profile_write_lock",
+        "provider_profiles"
+      ]
+    },
+    {
+      "owner": "templates",
+      "tables": [
+        "public_templates",
+        "user_templates"
+      ]
+    },
+    {
+      "owner": "workflow",
+      "tables": [
+        "workflow_run_continuations",
+        "workflow_run_locks",
+        "workflow_run_nodes",
+        "workflow_runs"
+      ]
+    }
   ],
   "baseline": [
     {

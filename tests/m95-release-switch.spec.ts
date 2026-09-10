@@ -78,6 +78,7 @@ const exactMigrationScriptPaths = [
   "scripts/migrate-schema40-to41.mjs",
   "scripts/migrate-schema41-to42.mjs",
   "scripts/migrate-schema42-to43.mjs",
+  "scripts/migrate-schema43-to44.mjs",
 ] as const;
 const exactMigrationArguments = [
   "scripts/migrate-schema37-to39.mjs",
@@ -265,13 +266,13 @@ async function createRelease(
     : exactPlaceholders;
   const databaseCompatibility = releaseRole === "bridge"
     ? {
-        activeSchemaVersions: [37, 43],
+        activeSchemaVersions: [37, 44],
         migrationMode: "external-one-shot-only",
-        rollbackTargetForSchemaVersion: 43,
+        rollbackTargetForSchemaVersion: 44,
       }
     : releaseRole === "final"
       ? {
-          activeSchemaVersions: [43],
+          activeSchemaVersions: [44],
           migrationMode: "forbidden-from-final-runtime",
           standbySchemaVersions: [37],
         }

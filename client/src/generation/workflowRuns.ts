@@ -1,6 +1,12 @@
 import {
+  parseWorkflowContinuationCreateResponse,
+  parseWorkflowContinuationPreview,
+  parseWorkflowContinuationRelationResponse,
   parseWorkflowRunSummary,
   parseWorkflowRunsEnvelope,
+  type WorkflowContinuationCreateResponse,
+  type WorkflowContinuationPreview,
+  type WorkflowContinuationRelationResponse,
   type WorkflowRunSummary as ServerWorkflowRun,
 } from "../../../types/workflowRuns";
 
@@ -164,6 +170,197 @@ export async function getServerWorkflowRun(runId: string, signal?: AbortSignal) 
   const run = parseWorkflowRunSummary(body);
   if (run.id !== runId) throw new Error("Workflow get response identity is invalid");
   return run;
+}
+
+export async function getServerWorkflowContinuationPreview(
+  parentRunId: string,
+  signal?: AbortSignal,
+): Promise<WorkflowContinuationPreview> {
+  const body = await boundedWorkflowRequest(
+    `/api/workflow-runs/${encodeURIComponent(parentRunId)}/continuation-preview`,
+    {
+      cache: "no-store",
+      credentials: "same-origin",
+    },
+    signal,
+  );
+  const preview = parseWorkflowContinuationPreview(body);
+  if (preview.parentRunId !== parentRunId) {
+    throw new Error("Workflow continuation preview identity is invalid");
+  }
+  return preview;
+}
+
+export async function getServerWorkflowContinuation(
+  parentRunId: string,
+  signal?: AbortSignal,
+): Promise<WorkflowContinuationRelationResponse> {
+  const body = await boundedWorkflowRequest(
+    `/api/workflow-runs/${encodeURIComponent(parentRunId)}/continuation`,
+    {
+      cache: "no-store",
+      credentials: "same-origin",
+    },
+    signal,
+  );
+  const relation = parseWorkflowContinuationRelationResponse(body);
+  if (
+    relation.continuation &&
+    relation.continuation.parentRunId !== parentRunId
+  ) throw new Error("Workflow continuation relation identity is invalid");
+  return relation;
+}
+
+const CONTINUATION_RECONCILIATION_RETRY_DELAYS_MS = [
+  250,
+  750,
+  1_500,
+  3_000,
+] as const;
+const CONTINUATION_RECONCILIATION_SLOW_RECHECK_MS = 15_000;
+
+function waitForContinuationReconciliation(
+  signal: AbortSignal,
+  delayMs: number,
+) {
+  if (signal.aborted) {
+    return Promise.reject(
+      signal.reason ?? new DOMException("Aborted", "AbortError"),
+    );
+  }
+  return new Promise<void>((resolve, reject) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onAbort = () => {
+      if (timer !== undefined) clearTimeout(timer);
+      reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+    };
+    timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, Math.max(1, delayMs));
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+/**
+ * Reconcile an uncertain continuation POST using GET-only reads.
+ *
+ * Once the POST may have reached the server, retrying POST could create a
+ * second downstream run. The submit lock is owned by the caller's POST
+ * window; this helper keeps the caller-owned scope signal, follows the
+ * durable parent->child relation, and only performs bounded/backoff GETs. A
+ * caller-owned signal ends the loop when the component/account/canvas scope
+ * is gone. With no explicit deadline the slow read-only recheck continues
+ * until that scope ends, so a long backend restart does not become a manual
+ * retry request.
+ */
+export async function reattachSubmittedServerWorkflowContinuation(input: {
+  parentRunId: string;
+  previewDigest: string;
+  deadlineMs?: number;
+  pollIntervalMs?: number;
+  signal?: AbortSignal;
+}) {
+  const unknownError = new Error(
+    "继续请求已提交，系统正在自动核对；原整组记录已保留，暂时不用重试",
+  );
+  const deadlineMs = input.deadlineMs === undefined
+    ? undefined
+    : Math.max(1, Math.min(input.deadlineMs, 90_000));
+  const controller = new AbortController();
+  const relayAbort = () => controller.abort(
+    input.signal?.reason ?? new DOMException("Aborted", "AbortError"),
+  );
+  if (input.signal?.aborted) relayAbort();
+  else input.signal?.addEventListener("abort", relayAbort, { once: true });
+  const deadlineTimer = deadlineMs === undefined
+    ? undefined
+    : setTimeout(() => controller.abort(unknownError), deadlineMs);
+  const startedAt = Date.now();
+  const throwForAbort = (error: unknown): never => {
+    if (input.signal?.aborted) {
+      throw input.signal.reason ?? error;
+    }
+    if (controller.signal.aborted) throw unknownError;
+    throw error;
+  };
+  let attempt = 0;
+  try {
+    for (;;) {
+      if (deadlineMs !== undefined && Date.now() - startedAt >= deadlineMs) {
+        throw unknownError;
+      }
+      try {
+        const relation = await getServerWorkflowContinuation(
+          input.parentRunId,
+          controller.signal,
+        );
+        const continuation = relation.continuation;
+        if (continuation) {
+          if (continuation.previewDigest !== input.previewDigest) {
+            throw new Error("继续请求的画布身份已变化，原记录已保留");
+          }
+          const child = await getServerWorkflowRun(
+            continuation.childRunId,
+            controller.signal,
+          );
+          if (
+            child.id !== continuation.childRunId ||
+            child.canvasId.length < 1
+          ) throw new Error("继续请求返回的后继任务身份无效");
+          return child;
+        }
+      } catch (error) {
+        if (controller.signal.aborted) throwForAbort(error);
+        if (!workflowRunStatusReadIsRetryable(error)) throw error;
+      }
+      const delay = CONTINUATION_RECONCILIATION_RETRY_DELAYS_MS[attempt] ??
+        input.pollIntervalMs ?? CONTINUATION_RECONCILIATION_SLOW_RECHECK_MS;
+      attempt += 1;
+      try {
+        await waitForContinuationReconciliation(controller.signal, delay);
+      } catch (error) {
+        throwForAbort(error);
+      }
+    }
+  } finally {
+    if (deadlineTimer !== undefined) clearTimeout(deadlineTimer);
+    input.signal?.removeEventListener("abort", relayAbort);
+  }
+}
+
+export async function continueServerWorkflowRun(input: {
+  intentId: string;
+  parentRunId: string;
+  previewDigest: string;
+  signal?: AbortSignal;
+}): Promise<WorkflowContinuationCreateResponse> {
+  if (!input.intentId || input.intentId.length > 256 ||
+      !input.previewDigest || input.previewDigest.length > 256) {
+    throw new Error("Workflow continuation intent is invalid");
+  }
+  const body = await boundedWorkflowRequest(
+    `/api/workflow-runs/${encodeURIComponent(input.parentRunId)}/continue`,
+    {
+      body: JSON.stringify({
+        intentId: input.intentId,
+        previewDigest: input.previewDigest,
+      }),
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    },
+    input.signal,
+  );
+  const result = parseWorkflowContinuationCreateResponse(body);
+  if (
+    result.continuation.parentRunId !== input.parentRunId ||
+    result.continuation.previewDigest !== input.previewDigest ||
+    result.run.id !== result.continuation.childRunId ||
+    result.run.canvasId.length < 1
+  ) throw new Error("Workflow continuation response identity is invalid");
+  return result;
 }
 
 export async function listServerWorkflowRuns(

@@ -7525,6 +7525,30 @@ sup {
   gap: 4px;
 }
 
+.tasks-row-continuation {
+  display: flex;
+  max-width: 360px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+}
+
+.tasks-row-continuation-hint,
+.tasks-row-continuation-status {
+  color: #a1a1aa;
+  font-size: var(--tap-font-secondary);
+  line-height: 1.35;
+  white-space: normal;
+}
+
+.tasks-row-continuation-status {
+  color: #86efac;
+}
+
+.tasks-row-continuation-status-unavailable {
+  color: #facc15;
+}
+
 .tasks-row-actions button {
   padding: 3px 8px;
   border: 1px solid rgba(255, 255, 255, 0.12);

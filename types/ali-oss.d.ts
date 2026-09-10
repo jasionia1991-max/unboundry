@@ -21,7 +21,7 @@ declare module "ali-oss" {
 
   export default class OSS {
     constructor(options: ClientOptions);
-    delete(name: string): Promise<RequestResult>;
+    delete(name: string, options?: { versionId?: string }): Promise<RequestResult>;
     head(name: string): Promise<RequestResult>;
     put(
       name: string,

@@ -9,9 +9,11 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { createServer as createHttpServer } from "node:http";
 import { build as viteBuild, createServer } from "vite";
 import { dirname, extname, join, relative, resolve, sep } from "node:path";
+import { MEDIA_PUBLICATION_FIXTURE, seedMediaPublicationLegacyDatabase } from "./media-publication-product-fixture.mjs";
 
 const required = (name) => {
   const value = process.env[name];
@@ -44,21 +46,29 @@ if (!Number.isInteger(port) || port < 42000 || port > 60000 || port === 4173) {
 const origin = `http://127.0.0.1:${port}`;
 const packagedVersion = JSON.parse(readFileSync(join(sourceRoot, "package.json"), "utf8")).version;
 const acceptanceScenario = process.env.UNBOUNDRY_TEST_ACCEPTANCE_SCENARIO ?? "generation-status";
-if (!["generation-status", "node-recovery", "templates"].includes(acceptanceScenario)) {
+const mediaPublicationScenario = acceptanceScenario === "media-publication";
+if (!["generation-status", "node-recovery", "media-publication", "templates"].includes(acceptanceScenario)) {
   throw new Error(`Unknown local acceptance scenario: ${acceptanceScenario}`);
 }
 const nodeRecoveryScenario = acceptanceScenario === "node-recovery";
-const generationScenario = acceptanceScenario === "generation-status" || nodeRecoveryScenario;
+const generationScenario = acceptanceScenario === "generation-status" || nodeRecoveryScenario || mediaPublicationScenario;
 // The node-recovery acceptance uses the real local application commands. The
 // fixture and its loopback provider are still synthetic, but the task/case
 // records, recovery commands, Canvas projection, and one-node retry all use
 // the same server modules as the product.
 const nodeRecoveryProductMode = nodeRecoveryScenario;
+const mediaPublicationProductMode = mediaPublicationScenario;
+if (nodeRecoveryProductMode || mediaPublicationProductMode) {
+  process.env.UNBOUNDRY_TEST_AUTH_BYPASS = "1";
+}
 if (nodeRecoveryProductMode) {
   process.env.UNBOUNDRY_GENERATION_RECOVERY_CASES_ENABLED = "1";
   // Keep the manual demonstration idle until its control buttons invoke the
   // real recovery commands. The scheduled worker is covered by its regression suite.
   process.env.UNBOUNDRY_DISABLE_GENERATION_RECOVERY_SWEEP = "1";
+  process.env.UNBOUNDRY_TEST_RELAY_MEDIA_FETCHER = "1";
+}
+if (mediaPublicationProductMode) {
   process.env.UNBOUNDRY_TEST_RELAY_MEDIA_FETCHER = "1";
 }
 const generationBaselineRoot = generationScenario
@@ -140,6 +150,22 @@ const nodeRecoveryProviderStats = {
   mediaGets: 0,
   requests: [],
 };
+const mediaPublicationProviderUrl = "https://media-publication-relay.example.test";
+const mediaPublicationProviderResultPath = "/media-publication-child-result.mp4";
+let mediaPublicationProvider;
+let mediaPublicationNativeFetch;
+let mediaPublicationProviderPort;
+const mediaPublicationProviderStats = {
+  posts: 0,
+  videoPosts: 0,
+  imagePosts: 0,
+  unknownPosts: 0,
+  postsByModel: {},
+  gets: 0,
+  mediaGets: 0,
+  requests: [],
+};
+let mediaPublicationInitialVideoProviderPosts = 0;
 const nodeRecoveryProductChecks = {
   original: "idle",
   maintenance: "idle",
@@ -151,8 +177,14 @@ const nodeRecoveryProductStats = {
   progress: 0,
   admissions: 0,
 };
+const mediaPublicationChecks = { saveRace: "idle", adoption: "idle", continuation: "idle", normal: "idle" };
+const mediaPublicationCounters = { providerPosts: 0, providerStatusGets: 0, providerMediaGets: 0, taskSuccesses: 0 };
+let mediaPublicationFixture;
+let mediaPublicationAdapter;
+let mediaPublicationProductModules;
+let mediaPublicationLastResults = {};
 const startedAt = new Date();
-const expiresAt = new Date(startedAt.getTime() + (nodeRecoveryScenario ? 12 : 2) * 60 * 60_000);
+const expiresAt = new Date(startedAt.getTime() + (mediaPublicationScenario ? 24 : nodeRecoveryScenario ? 12 : 2) * 60 * 60_000);
 const digest = (graph) => createHash("sha256").update(JSON.stringify(graph)).digest("hex");
 const generationBaselineFiles = Object.freeze([
   "client/src/generation/taskPolling.ts",
@@ -305,6 +337,114 @@ async function stopNodeRecoveryProductProvider() {
   const provider = nodeRecoveryProductProvider;
   nodeRecoveryProductProvider = undefined;
   nodeRecoveryProductProviderPort = undefined;
+  if (provider) await new Promise((resolve) => provider.close(() => resolve()));
+}
+
+async function startMediaPublicationProvider() {
+  if (!mediaPublicationProductMode || mediaPublicationProvider) return;
+  mediaPublicationNativeFetch = globalThis.fetch;
+  const resultPath = join(sourceRoot, "client/public/fixtures/video-success.mp4");
+  if (!existsSync(resultPath)) throw new Error("Media publication loopback result fixture is missing");
+  const resultBytes = readFileSync(resultPath);
+  mediaPublicationProvider = createHttpServer((req, res) => {
+    void (async () => {
+      const requestUrl = new URL(req.url ?? "/", "http://127.0.0.1");
+      const method = req.method ?? "GET";
+      const providerTaskId = requestUrl.searchParams.get("task_id");
+      const request = { method, path: requestUrl.pathname, taskId: providerTaskId };
+      if (method === "POST" && requestUrl.pathname === "/v1/media/generate") {
+        const chunks = [];
+        for await (const chunk of req) chunks.push(Buffer.from(chunk));
+        const raw = Buffer.concat(chunks).toString("utf8");
+        let body;
+        try { body = JSON.parse(raw); } catch { body = undefined; }
+        const model = typeof body?.model === "string" ? body.model : "";
+        const capability = model === mediaPublicationFixture.models.video.providerModelId
+          ? "video"
+          : model === mediaPublicationFixture.models.image.providerModelId
+            ? "image"
+            : "unknown";
+        request.model = model || "<missing>";
+        request.capability = capability;
+        mediaPublicationProviderStats.posts += 1;
+        mediaPublicationProviderStats[`${capability}Posts`] += 1;
+        const modelKey = model || "<missing>";
+        mediaPublicationProviderStats.postsByModel[modelKey] =
+          (mediaPublicationProviderStats.postsByModel[modelKey] ?? 0) + 1;
+        mediaPublicationProviderStats.requests.push(request);
+        json(res, 200, { task_id: `media-publication-child-provider-${mediaPublicationProviderStats.posts}` });
+        return;
+      }
+      mediaPublicationProviderStats.requests.push(request);
+      if (method === "GET" && requestUrl.pathname === "/v1/media/status") {
+        mediaPublicationProviderStats.gets += 1;
+        if (!providerTaskId || !/^media-publication-child-provider-\d+$/.test(providerTaskId)) {
+          json(res, 404, { error: "task not found" });
+          return;
+        }
+        json(res, 200, {
+          is_final: true,
+          result_type: "video",
+          result_url: `${mediaPublicationProviderUrl}${mediaPublicationProviderResultPath}`,
+          state: "success",
+          task_id: providerTaskId,
+        });
+        return;
+      }
+      if (method === "GET" && requestUrl.pathname === mediaPublicationProviderResultPath) {
+        mediaPublicationProviderStats.mediaGets += 1;
+        res.writeHead(200, {
+          "Cache-Control": "no-store",
+          "Content-Length": resultBytes.byteLength,
+          "Content-Type": "video/mp4",
+        });
+        res.end(resultBytes);
+        return;
+      }
+      json(res, 404, { error: "loopback provider route not found" });
+    })().catch((error) => {
+      console.error(error);
+      if (!res.headersSent) json(res, 500, { error: "loopback provider failed" });
+      else res.end();
+    });
+  });
+  await new Promise((resolve, reject) => {
+    mediaPublicationProvider.once("error", reject);
+    mediaPublicationProvider.listen(0, "127.0.0.1", () => resolve());
+  });
+  const address = mediaPublicationProvider.address();
+  if (!address || typeof address === "string" || !Number.isInteger(address.port)) {
+    throw new Error("Media publication loopback provider did not expose a dynamic port");
+  }
+  mediaPublicationProviderPort = address.port;
+  globalThis.fetch = (input, init) => {
+    let requestUrl;
+    try {
+      requestUrl = typeof input === "string" || input instanceof URL
+        ? new URL(input.toString())
+        : new URL(input.url);
+    } catch {
+      return mediaPublicationNativeFetch(input, init);
+    }
+    if (requestUrl.hostname !== "media-publication-relay.example.test") {
+      return mediaPublicationNativeFetch(input, init);
+    }
+    const rewritten = `http://127.0.0.1:${mediaPublicationProviderPort}${requestUrl.pathname}${requestUrl.search}`;
+    const rewrittenInput = typeof input === "object" && input instanceof Request
+      ? new Request(rewritten, input)
+      : rewritten;
+    return mediaPublicationNativeFetch(rewrittenInput, init);
+  };
+}
+
+async function stopMediaPublicationProvider() {
+  if (mediaPublicationNativeFetch) {
+    globalThis.fetch = mediaPublicationNativeFetch;
+    mediaPublicationNativeFetch = undefined;
+  }
+  const provider = mediaPublicationProvider;
+  mediaPublicationProvider = undefined;
+  mediaPublicationProviderPort = undefined;
   if (provider) await new Promise((resolve) => provider.close(() => resolve()));
 }
 
@@ -655,6 +795,529 @@ function generationDocumentPut(document, source) {
   }).finally(() => {
     generationProjectionInFlight = false;
   });
+}
+
+async function loadMediaPublicationSourceModules() {
+  if (mediaPublicationAdapter && mediaPublicationProductModules) return;
+  const modulePath = (name) => ssrModuleUrl(join(sourceRoot, name));
+  mediaPublicationAdapter ??= await server.ssrLoadModule(modulePath("server/generationResultAdoptionWorkflowAdapter.ts"));
+  mediaPublicationProductModules ??= {
+    generationResultCommit: await server.ssrLoadModule(modulePath("server/generationResultCommit.ts")),
+    generationCanvasProjection: await server.ssrLoadModule(modulePath("server/generationCanvasProjection.ts")),
+    generationTaskStore: await server.ssrLoadModule(modulePath("server/generationTaskStore.ts")),
+    generationTasks: await server.ssrLoadModule(modulePath("server/generationTasks.ts")),
+    videoStorage: await server.ssrLoadModule(modulePath("server/videoStorage.ts")),
+  };
+}
+
+async function readMediaPublicationDatabase(read) {
+  const databaseModule = await server.ssrLoadModule(ssrModuleUrl(join(sourceRoot, "server/database.ts")));
+  const database = databaseModule.openAppDatabase(dataRoot);
+  try { return await read(database); }
+  finally { database.close(); }
+}
+
+async function mediaPublicationTaskSnapshot() {
+  return readMediaPublicationDatabase((database) => {
+    const tasks = database.prepare(`
+      SELECT id, node_id AS nodeId, kind, state, attempt, result_asset_id AS resultAssetId,
+        error_code AS errorCode, provider_task_id AS providerTaskId
+      FROM generation_tasks WHERE owner_id = ? AND canvas_id = ? ORDER BY id
+    `).all(MEDIA_PUBLICATION_FIXTURE.ownerId, MEDIA_PUBLICATION_FIXTURE.canvasId);
+    const canvas = database.prepare(`
+      SELECT revision, graph_revision AS graphRevision, nodes, edges, viewport
+      FROM canvas_documents WHERE owner_id = ? AND id = ?
+    `).get(MEDIA_PUBLICATION_FIXTURE.ownerId, MEDIA_PUBLICATION_FIXTURE.canvasId);
+    const parent = database.prepare(`
+      SELECT id, state, graph_revision AS graphRevision FROM workflow_runs
+      WHERE owner_id = ? AND id = ?
+    `).get(MEDIA_PUBLICATION_FIXTURE.ownerId, MEDIA_PUBLICATION_FIXTURE.parentRunId);
+    const child = database.prepare(`
+      SELECT child_run_id AS childRunId, preview_digest AS previewDigest,
+        selected_node_ids_json AS selectedNodeIds, frozen_external_inputs_json AS externalInputs
+      FROM workflow_run_continuations WHERE owner_id = ? AND parent_run_id = ?
+    `).get(MEDIA_PUBLICATION_FIXTURE.ownerId, MEDIA_PUBLICATION_FIXTURE.parentRunId);
+    const childNodes = child
+      ? database.prepare(`
+          SELECT run_id AS runId, node_id AS nodeId, kind, plan_index AS planIndex,
+            state, task_id AS taskId, projection_state AS projectionState,
+            error_code AS errorCode, error_message AS errorMessage
+          FROM workflow_run_nodes WHERE run_id = ? ORDER BY plan_index
+        `).all(child.childRunId)
+      : [];
+    const canvasNodes = canvas?.nodes ? JSON.parse(canvas.nodes) : [];
+    const pngNode = canvasNodes.find((node) => node.id === MEDIA_PUBLICATION_FIXTURE.pngNodeId);
+    const saveRaceNode = canvasNodes.find((node) => node.id === MEDIA_PUBLICATION_FIXTURE.saveRaceNodeId);
+    const successNodeIds = tasks.filter((task) => task.state === "success").map((task) => task.nodeId);
+    return {
+      tasks,
+      canvas: canvas ? { ...canvas, nodes: canvasNodes, edges: JSON.parse(canvas.edges), viewport: JSON.parse(canvas.viewport) } : null,
+      parent: parent ?? null,
+      child: child ? { ...child, selectedNodeIds: JSON.parse(child.selectedNodeIds), externalInputs: JSON.parse(child.externalInputs) } : null,
+      childNodes,
+      pngNode: pngNode ? { id: pngNode.id, assetId: pngNode.data?.assetId ?? null, imageSrc: pngNode.data?.imageSrc ?? null } : null,
+      saveRaceNode: saveRaceNode ? {
+        id: saveRaceNode.id,
+        assetId: saveRaceNode.data?.assetId ?? null,
+        videoSrc: saveRaceNode.data?.videoSrc ?? null,
+      } : null,
+      successNodeIds,
+    };
+  });
+}
+
+const acceptanceDelay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+async function waitForMediaPublicationChild(childRunId) {
+  const deadline = Date.now() + 45_000;
+  let lastSnapshot;
+  while (Date.now() < deadline) {
+    lastSnapshot = await mediaPublicationTaskSnapshot();
+    const candidateNodes = lastSnapshot.childNodes.filter((node) =>
+      [MEDIA_PUBLICATION_FIXTURE.pendingNodeId, MEDIA_PUBLICATION_FIXTURE.pendingTailNodeId]
+        .includes(node.nodeId),
+    );
+    const candidateTasks = candidateNodes
+      .map((node) => lastSnapshot.tasks.find((task) => task.id === node.taskId))
+      .filter(Boolean);
+    const failure = candidateNodes.find((node) =>
+      ["failed", "blocked", "cancelled"].includes(node.state),
+    ) ?? candidateTasks.find((task) => ["failed", "cancelled"].includes(task.state));
+    if (failure) {
+      throw new AcceptanceControlError(
+        `下游视频未能自动完成：${failure.errorMessage ?? failure.errorCode ?? failure.state}`,
+        "MEDIA_CONTINUATION_CHILD_FAILED",
+        503,
+      );
+    }
+    const projected = candidateNodes.length === 2 &&
+      candidateNodes.every((node) => node.state === "success" && node.projectionState === "applied") &&
+      candidateTasks.length === 2 && candidateTasks.every((task) => task.state === "success");
+    const canvasNodes = new Map((lastSnapshot.canvas?.nodes ?? []).map((node) => [node.id, node]));
+    const visible = [MEDIA_PUBLICATION_FIXTURE.pendingNodeId, MEDIA_PUBLICATION_FIXTURE.pendingTailNodeId]
+      .every((nodeId) => {
+        const node = canvasNodes.get(nodeId);
+        return typeof node?.data?.assetId === "string" &&
+          node.data.assetId.length > 0 &&
+          typeof node.data?.videoSrc === "string" &&
+          node.data.videoSrc.length > 0;
+      });
+    if (String(lastSnapshot.child?.childRunId ?? "") === childRunId && projected && visible) {
+      return lastSnapshot;
+    }
+    await acceptanceDelay(250);
+  }
+  const state = lastSnapshot?.childNodes.map((node) => `${node.nodeId}:${node.state}/${node.projectionState}`).join(", ") ?? "无节点状态";
+  throw new AcceptanceControlError(
+    `下游视频仍在自动保存，暂未完成（${state}）。请稍后查看本页状态。`,
+    "MEDIA_CONTINUATION_CHILD_PENDING",
+    503,
+  );
+}
+
+function mediaPublicationPreservedFingerprint(canvas) {
+  const ids = new Set(MEDIA_PUBLICATION_FIXTURE.preservedNodeIds);
+  const nodes = (canvas?.nodes ?? []).filter((node) => ids.has(node.id)).map((node) => ({
+    id: node.id, type: node.type, parentId: node.parentId ?? null,
+    position: node.position, style: node.style, data: node.data,
+  })).sort((left, right) => left.id.localeCompare(right.id));
+  const edges = (canvas?.edges ?? []).filter((edge) => ids.has(edge.source) && ids.has(edge.target))
+    .map((edge) => ({ id: edge.id, source: edge.source, target: edge.target, sourceHandle: edge.sourceHandle ?? "", targetHandle: edge.targetHandle ?? "" }))
+    .sort((left, right) => left.id.localeCompare(right.id));
+  return digest({ nodes, edges });
+}
+
+async function mediaPublicationStatusPayload() {
+  if (!mediaPublicationFixture || !generationFixture) return { scenario: "media-publication", ready: false };
+  const snapshot = await mediaPublicationTaskSnapshot();
+  const preserveFingerprint = mediaPublicationPreservedFingerprint(snapshot.canvas);
+  const successNodeIds = snapshot.successNodeIds.filter((id) => MEDIA_PUBLICATION_FIXTURE.preservedNodeIds.includes(id));
+  const adoptionTask = snapshot.tasks.find((task) => task.id === MEDIA_PUBLICATION_FIXTURE.adoptionTaskId);
+  const child = snapshot.child;
+  return {
+    scenario: "media-publication",
+    ready,
+    syntheticOnly: true,
+    actualProductCommands: true,
+    paidProviderRequests: 0,
+    canvasId: MEDIA_PUBLICATION_FIXTURE.canvasId,
+    groupId: MEDIA_PUBLICATION_FIXTURE.groupId,
+    checks: { ...mediaPublicationChecks },
+    counters: {
+      ...mediaPublicationCounters,
+      taskSuccesses: snapshot.tasks.filter((task) => task.state === "success").length,
+      providerPosts: mediaPublicationProviderStats.posts,
+      videoProviderPosts: mediaPublicationProviderStats.videoPosts,
+      imageProviderPosts: mediaPublicationProviderStats.imagePosts,
+      unknownProviderPosts: mediaPublicationProviderStats.unknownPosts,
+      providerPostsByModel: mediaPublicationProviderStats.postsByModel,
+      providerStatusGets: mediaPublicationProviderStats.gets,
+      providerMediaGets: mediaPublicationProviderStats.mediaGets,
+    },
+    workflow: {
+      parentRunId: MEDIA_PUBLICATION_FIXTURE.parentRunId,
+      parentState: snapshot.parent?.state ?? "unknown",
+      childRunId: child?.childRunId ?? null,
+      candidateNodeIds: [MEDIA_PUBLICATION_FIXTURE.pendingNodeId, MEDIA_PUBLICATION_FIXTURE.pendingTailNodeId],
+      preservedNodeIds: MEDIA_PUBLICATION_FIXTURE.preservedNodeIds,
+      childExternalNodeIds: (child?.externalInputs ?? []).map((item) => item.nodeId),
+      childSelectedNodeIds: child?.selectedNodeIds ?? [],
+      childNodes: snapshot.childNodes,
+    },
+    adoption: {
+      taskId: MEDIA_PUBLICATION_FIXTURE.adoptionTaskId,
+      state: adoptionTask?.state ?? "unknown",
+      canonicalAssetId: adoptionTask?.resultAssetId ?? null,
+      projection: mediaPublicationLastResults.adoption?.projection ?? null,
+      idempotentReplay: mediaPublicationLastResults.adoption?.idempotentReplay ?? false,
+    },
+    preserve: {
+      expectedSuccessNodeCount: MEDIA_PUBLICATION_FIXTURE.preservedNodeIds.length,
+      successNodeCount: successNodeIds.length,
+      successNodeIds,
+      successNodesStillPresent: successNodeIds.length === MEDIA_PUBLICATION_FIXTURE.preservedNodeIds.length,
+      successContentLayoutAndEdgesUnchanged: preserveFingerprint === mediaPublicationFixture.initialPreservedFingerprint,
+    },
+    canvas: {
+      revision: snapshot.canvas?.revision ?? null,
+      graphRevision: snapshot.canvas?.graphRevision ?? null,
+      adoptionNodeAssetId: snapshot.canvas?.nodes?.find((node) => node.id === MEDIA_PUBLICATION_FIXTURE.adoptionNodeId)?.data?.assetId ?? null,
+      adoptionNodeImageSrc: snapshot.canvas?.nodes?.find((node) => node.id === MEDIA_PUBLICATION_FIXTURE.adoptionNodeId)?.data?.imageSrc ?? null,
+      continuationVideoNodes: [MEDIA_PUBLICATION_FIXTURE.pendingNodeId, MEDIA_PUBLICATION_FIXTURE.pendingTailNodeId]
+        .map((nodeId) => {
+          const node = snapshot.canvas?.nodes?.find((candidate) => candidate.id === nodeId);
+          return {
+            nodeId,
+            assetId: node?.data?.assetId ?? null,
+            videoSrc: node?.data?.videoSrc ?? null,
+          };
+        }),
+      pngNodeAssetId: snapshot.pngNode?.assetId ?? null,
+      pngNodeImageSrc: snapshot.pngNode?.imageSrc ?? null,
+      saveRaceNodeAssetId: snapshot.saveRaceNode?.assetId ?? null,
+      saveRaceNodeVideoSrc: snapshot.saveRaceNode?.videoSrc ?? null,
+    },
+    evidence: {
+      initialVideoProviderPosts: mediaPublicationInitialVideoProviderPosts,
+      videoProviderPosts: mediaPublicationProviderStats.videoPosts,
+      imageProviderPosts: mediaPublicationProviderStats.imagePosts,
+      unknownProviderPosts: mediaPublicationProviderStats.unknownPosts,
+      providerPostsByModel: mediaPublicationProviderStats.postsByModel,
+      continuationVideoPostCount: mediaPublicationLastResults.continuation?.downstreamVideoProviderPosts ?? null,
+      continuationVideoPostCountMatches: mediaPublicationChecks.continuation !== "done" ||
+        mediaPublicationLastResults.continuation?.downstreamVideoProviderPosts === 2,
+      noDuplicateContinuationVideoPost: mediaPublicationChecks.continuation !== "done" ||
+        mediaPublicationProviderStats.videoPosts <= mediaPublicationInitialVideoProviderPosts + 2,
+      noWholeGroupReplay: successNodeIds.length === MEDIA_PUBLICATION_FIXTURE.preservedNodeIds.length,
+      parentImmutableAfterContinuation: snapshot.parent?.state === "failed",
+      childResultsProjected: [MEDIA_PUBLICATION_FIXTURE.pendingNodeId, MEDIA_PUBLICATION_FIXTURE.pendingTailNodeId]
+        .every((nodeId) => {
+          const node = snapshot.canvas?.nodes?.find((candidate) => candidate.id === nodeId);
+          return typeof node?.data?.assetId === "string" && typeof node?.data?.videoSrc === "string";
+        }),
+      pngImageReferencePresent: snapshot.pngNode?.assetId === MEDIA_PUBLICATION_FIXTURE.pngAssetId &&
+        snapshot.pngNode?.imageSrc === `/api/assets/${MEDIA_PUBLICATION_FIXTURE.pngAssetId}`,
+      adoptedPngVisible: snapshot.canvas?.nodes?.some((node) =>
+        node.id === MEDIA_PUBLICATION_FIXTURE.adoptionNodeId &&
+        node.data?.assetId === MEDIA_PUBLICATION_FIXTURE.canonicalAssetId &&
+        node.data?.imageSrc === `/api/assets/${MEDIA_PUBLICATION_FIXTURE.canonicalAssetId}`,
+      ) === true,
+      saveRaceVideoVisible: mediaPublicationChecks.saveRace !== "done" ||
+        (typeof snapshot.saveRaceNode?.assetId === "string" &&
+          snapshot.saveRaceNode.videoSrc === `/api/video-assets/${snapshot.saveRaceNode.assetId}`),
+    },
+    expiresAt: expiresAt.toISOString(),
+  };
+}
+
+async function runMediaPublicationSaveRace() {
+  if (mediaPublicationChecks.saveRace !== "idle") return mediaPublicationStatusPayload();
+  await loadMediaPublicationSourceModules();
+  const before = await (await api(`/api/canvas/${MEDIA_PUBLICATION_FIXTURE.canvasId}`)).json();
+  const beforeFingerprint = mediaPublicationPreservedFingerprint(before);
+  const video = await readFile(join(sourceRoot, "client", "public", "fixtures", "video-success.mp4"));
+  const modules = mediaPublicationProductModules;
+  const store = modules.generationTaskStore.createGenerationTaskStore(dataRoot, { recoverRunning: false });
+  let savePromise;
+  let releaseBody;
+  try {
+    const created = store.create({
+      canvasId: MEDIA_PUBLICATION_FIXTURE.canvasId,
+      credentialRevision: mediaPublicationFixture.videoCredentialVersion,
+      idempotencyKey: `media-acceptance-save-race-${randomUUID()}`,
+      kind: "video",
+      model: mediaPublicationFixture.saveRaceModelConfiguration.modelId,
+      modelConfiguration: mediaPublicationFixture.saveRaceModelConfiguration,
+      nodeId: MEDIA_PUBLICATION_FIXTURE.saveRaceNodeId,
+      ownerId: MEDIA_PUBLICATION_FIXTURE.ownerId,
+      parameters: mediaPublicationFixture.saveRaceParameters,
+      prompt: mediaPublicationFixture.saveRacePrompt,
+      providerModelId: mediaPublicationFixture.models.video.providerModelId,
+      providerProfileId: mediaPublicationFixture.models.video.providerProfileId,
+    }).task;
+    const running = store.transition(created.id, "running");
+    if (!running) throw new Error("保存竞争验收任务没有进入运行中");
+    store.recordProviderAttempt(created.id);
+
+    let pulled;
+    const pulledPromise = new Promise((resolve) => { pulled = resolve; });
+    let release;
+    const released = new Promise((resolve) => { release = resolve; });
+    let delivered = false;
+    const body = new ReadableStream({
+      pull(controller) {
+        if (delivered) return;
+        delivered = true;
+        pulled();
+        return released.then(() => {
+          controller.enqueue(new Uint8Array(video));
+          controller.close();
+        });
+      },
+    }, { highWaterMark: 0 });
+    releaseBody = () => release?.();
+    savePromise = modules.videoStorage.saveGeneratedMp4({
+      body,
+      label: "媒体保存竞争视频",
+      ownerId: MEDIA_PUBLICATION_FIXTURE.ownerId,
+      task: {
+        actualCostMicrounits: 0,
+        executionAttempt: running.attempt,
+        outputSetCount: 1,
+        outputSlot: 0,
+        taskId: created.id,
+      },
+    });
+    await Promise.race([pulledPromise, savePromise]);
+
+    const readLiveState = () => readMediaPublicationDatabase((database) => ({
+      task: database.prepare(`
+        SELECT state, result_asset_id AS resultAssetId
+        FROM generation_tasks WHERE id = ?
+      `).get(created.id),
+      publication: database.prepare(`
+        SELECT attempt_id AS attemptId, state, asset_id AS assetId
+        FROM media_publication_attempts
+        WHERE task_id = ? AND task_execution_attempt = ?
+      `).get(created.id, running.attempt),
+    }));
+    const duringBefore = await readLiveState();
+    await modules.generationTasks.runGenerationRecoverySweep({
+      hasPendingGenerated: () => true,
+      recoverPending: () => modules.generationResultCommit.recoverPendingGenerationMediaResults(),
+      store,
+    });
+    const duringAfter = await readLiveState();
+    if (duringBefore.task?.state !== "running" || duringBefore.publication?.state !== "reserved" ||
+        duringAfter.task?.state !== "running" || duringAfter.publication?.state !== "reserved") {
+      throw new AcceptanceControlError(
+        "视频仍在保存时，自动恢复扫描改变了任务或预留记录。",
+        "MEDIA_SAVE_RACE_LIVE_LEASE_BROKEN",
+        503,
+      );
+    }
+
+    releaseBody();
+    const saved = await savePromise;
+    if (!saved?.publicationToken) throw new Error("保存竞争没有返回发布凭据");
+    const published = modules.generationResultCommit.publishGenerationMediaCandidate(saved.publicationToken);
+    if (published.state !== "published") throw new Error("保存竞争候选视频没有发布");
+    const committed = modules.generationResultCommit.commitGenerationMediaOutputSet({
+      assetIds: [saved.assetId],
+      executionAttempt: running.attempt,
+      kind: "video",
+      ownerId: MEDIA_PUBLICATION_FIXTURE.ownerId,
+      taskId: created.id,
+    });
+    if (committed.state !== "success" || committed.projectionState !== "applied") {
+      const diagnostic = await readMediaPublicationDatabase((database) => {
+        database.exec("BEGIN DEFERRED");
+        try {
+          const built = modules.generationCanvasProjection.buildCanvasProjectionIdentity({
+            database, taskId: created.id, kind: "video",
+            canvasId: MEDIA_PUBLICATION_FIXTURE.canvasId,
+            nodeId: MEDIA_PUBLICATION_FIXTURE.saveRaceNodeId,
+            ownerId: MEDIA_PUBLICATION_FIXTURE.ownerId,
+          });
+          return built.status === "failed" ? built.reason : `bindingMatches=${built.projection.bindingMatches}`;
+        } finally { database.exec("ROLLBACK"); }
+      });
+      console.error(`[media-publication-acceptance] projection diagnostic: ${diagnostic}`);
+      throw new AcceptanceControlError(
+        `视频保存完成但画布投影未成功（${committed.projectionState}）。`,
+        "MEDIA_SAVE_RACE_PROJECTION_FAILED",
+        503,
+      );
+    }
+    const after = await (await api(`/api/canvas/${MEDIA_PUBLICATION_FIXTURE.canvasId}`)).json();
+    const node = after.nodes.find((candidate) => candidate.id === MEDIA_PUBLICATION_FIXTURE.saveRaceNodeId);
+    const localVideoResponse = await fetch(`${origin}/api/video-assets/${encodeURIComponent(saved.assetId)}`, {
+      headers: { Cookie: adminCookie },
+      redirect: "manual",
+    });
+    const downloadedVideo = Buffer.from(await localVideoResponse.arrayBuffer());
+    const localVideoVisible = localVideoResponse.status === 200 &&
+      localVideoResponse.headers.get("content-type")?.startsWith("video/mp4") === true &&
+      downloadedVideo.equals(video);
+    if (mediaPublicationPreservedFingerprint(after) !== beforeFingerprint ||
+        node?.data?.assetId !== saved.assetId ||
+        node?.data?.videoSrc !== `/api/video-assets/${saved.assetId}` ||
+        !localVideoVisible) {
+      throw new AcceptanceControlError(
+        "保存完成后视频没有安全投影到预置节点，或原成功节点内容发生变化。",
+        "MEDIA_SAVE_RACE_PRESERVE_FAILED",
+        503,
+      );
+    }
+    const finalState = await readMediaPublicationDatabase((database) => ({
+      task: database.prepare(`
+        SELECT state, result_asset_id AS resultAssetId
+        FROM generation_tasks WHERE id = ?
+      `).get(created.id),
+      publication: database.prepare(`
+        SELECT attempt_id AS attemptId, state, asset_id AS assetId
+        FROM media_publication_attempts
+        WHERE task_id = ? AND task_execution_attempt = ?
+      `).get(created.id, running.attempt),
+      media: database.prepare(`
+        SELECT storage_status AS storageStatus, storage_backend AS storageBackend,
+          byte_size AS byteSize, checksum_sha256 AS checksumSha256,
+          duration_seconds AS durationSeconds
+        FROM media_assets WHERE owner_id = ? AND kind = 'video' AND id = ?
+      `).get(MEDIA_PUBLICATION_FIXTURE.ownerId, saved.assetId),
+    }));
+    mediaPublicationLastResults.saveRace = {
+      afterRevision: after.revision,
+      assetId: saved.assetId,
+      localVideoStatus: localVideoResponse.status,
+      automatic: true,
+      beforeRevision: before.revision,
+      duringRecovery: { before: duringBefore, after: duringAfter },
+      finalState,
+      videoByteSize: video.length,
+      videoChecksumSha256: createHash("sha256").update(video).digest("hex"),
+      productSaveAndRecoveryRace: true,
+    };
+    mediaPublicationChecks.saveRace = "done";
+    return mediaPublicationStatusPayload();
+  } finally {
+    releaseBody?.();
+    if (savePromise) await savePromise.catch(() => undefined);
+    store.close();
+  }
+}
+
+async function runMediaPublicationAdoption() {
+  if (mediaPublicationChecks.adoption !== "idle") return mediaPublicationStatusPayload();
+  await loadMediaPublicationSourceModules();
+  const input = {
+    ownerId: MEDIA_PUBLICATION_FIXTURE.ownerId,
+    taskId: MEDIA_PUBLICATION_FIXTURE.adoptionTaskId,
+    executionAttempt: 1,
+    kind: "image",
+    incidentDigest: "d".repeat(64),
+    canonicalAttemptId: MEDIA_PUBLICATION_FIXTURE.canonicalAttemptId,
+    aliasAttemptId: MEDIA_PUBLICATION_FIXTURE.aliasAttemptId,
+    mode: "apply",
+  };
+  const first = await mediaPublicationAdapter.applyRealGenerationResultAdoption(input);
+  const second = await mediaPublicationAdapter.applyRealGenerationResultAdoption(input);
+  if (!first || first.projection !== "project-canonical" || !second?.idempotent || second.providerPostCount !== 0) {
+    throw new AcceptanceControlError("原 PNG 结果没有通过真实采用与幂等复核，未继续提交新请求。", "MEDIA_ADOPTION_VERIFY_FAILED", 503);
+  }
+  const canvas = await (await api(`/api/canvas/${MEDIA_PUBLICATION_FIXTURE.canvasId}`)).json();
+  const node = canvas.nodes.find((candidate) => candidate.id === MEDIA_PUBLICATION_FIXTURE.adoptionNodeId);
+  if (node?.data?.assetId !== MEDIA_PUBLICATION_FIXTURE.canonicalAssetId ||
+      node?.data?.imageSrc !== `/api/assets/${MEDIA_PUBLICATION_FIXTURE.canonicalAssetId}`) {
+    throw new AcceptanceControlError("原 PNG 结果已核对，但画布节点没有指向已保存素材。", "MEDIA_ADOPTION_PROJECTION_FAILED", 503);
+  }
+  mediaPublicationCounters.taskSuccesses = 1;
+  mediaPublicationLastResults.adoption = { first, second, projection: first.projection, idempotentReplay: second.idempotent };
+  mediaPublicationChecks.adoption = "done";
+  return mediaPublicationStatusPayload();
+}
+
+async function runMediaPublicationContinuation() {
+  if (mediaPublicationChecks.continuation !== "idle") return mediaPublicationStatusPayload();
+  if (mediaPublicationChecks.adoption !== "done") {
+    throw new AcceptanceControlError("请先点第2项，系统会先自动找回原 PNG 结果。", "MEDIA_CONTINUATION_ADOPTION_REQUIRED", 409);
+  }
+  const providerPostsBefore = mediaPublicationProviderStats.posts;
+  const videoProviderPostsBefore = mediaPublicationProviderStats.videoPosts;
+  const previewResponse = await api(`/api/workflow-runs/${MEDIA_PUBLICATION_FIXTURE.parentRunId}/continuation-preview`);
+  const preview = await previewResponse.json();
+  if (preview.parentState !== "failed" || preview.candidateNodeIds.length !== 2 || preview.externalInputs.length !== 1 || preview.externalInputs[0].nodeId !== MEDIA_PUBLICATION_FIXTURE.adoptionNodeId) {
+    throw new AcceptanceControlError("系统没有形成只继续未完成节点的安全预览，未提交。", "MEDIA_CONTINUATION_PREVIEW_FAILED", 503);
+  }
+  const intentId = `media-acceptance-${randomUUID()}`;
+  const createdResponse = await api(`/api/workflow-runs/${MEDIA_PUBLICATION_FIXTURE.parentRunId}/continue`, "POST", { intentId, previewDigest: preview.previewDigest });
+  const created = await createdResponse.json();
+  const relation = await (await api(`/api/workflow-runs/${MEDIA_PUBLICATION_FIXTURE.parentRunId}/continuation`)).json();
+  if (relation.continuation?.previewDigest !== preview.previewDigest || relation.continuation?.childRunId !== created.run?.id) {
+    throw new AcceptanceControlError("继续任务已经提交，但系统找回的关系与本次预览不一致。", "MEDIA_CONTINUATION_RELATION_MISMATCH", 503);
+  }
+  const settled = await waitForMediaPublicationChild(created.run.id);
+  const downstreamProviderPosts = mediaPublicationProviderStats.posts - providerPostsBefore;
+  const downstreamVideoProviderPosts = mediaPublicationProviderStats.videoPosts - videoProviderPostsBefore;
+  const expectedVideoProviderPosts = mediaPublicationInitialVideoProviderPosts + 2;
+  if (downstreamVideoProviderPosts !== 2 ||
+      mediaPublicationProviderStats.videoPosts !== expectedVideoProviderPosts ||
+      mediaPublicationProviderStats.imagePosts !== 0 ||
+      mediaPublicationProviderStats.unknownPosts !== 0 ||
+      downstreamProviderPosts !== 2) {
+    throw new AcceptanceControlError(
+      `下游视频提交次数不符合预期（按请求模型识别：本次视频 ${downstreamVideoProviderPosts}，累计视频 ${mediaPublicationProviderStats.videoPosts}，图片 ${mediaPublicationProviderStats.imagePosts}，未知 ${mediaPublicationProviderStats.unknownPosts}）。`,
+      "MEDIA_CONTINUATION_PROVIDER_COUNT",
+      503,
+    );
+  }
+  mediaPublicationLastResults.continuation = {
+    preview,
+    created,
+    relation,
+    settledChild: settled.childNodes,
+    providerPostsBefore,
+    videoProviderPostsBefore,
+    providerPosts: mediaPublicationProviderStats.posts,
+    downstreamProviderPosts,
+    downstreamVideoProviderPosts,
+    providerPostsByModel: { ...mediaPublicationProviderStats.postsByModel },
+    getOnlyReconciliation: true,
+  };
+  mediaPublicationChecks.continuation = "done";
+  return mediaPublicationStatusPayload();
+}
+
+async function runMediaPublicationNormal() {
+  if (mediaPublicationChecks.normal !== "idle") return mediaPublicationStatusPayload();
+  const snapshot = await mediaPublicationTaskSnapshot();
+  if (snapshot.parent?.state !== "failed" || mediaPublicationChecks.continuation !== "done") {
+    throw new AcceptanceControlError("请先完成前3项，系统才能核对正常功能仍保留。", "MEDIA_NORMAL_REGRESSION_ORDER", 409);
+  }
+  const continuationResultsVisible = [MEDIA_PUBLICATION_FIXTURE.pendingNodeId, MEDIA_PUBLICATION_FIXTURE.pendingTailNodeId]
+    .every((nodeId) => {
+      const node = snapshot.canvas?.nodes?.find((candidate) => candidate.id === nodeId);
+      return typeof node?.data?.assetId === "string" && typeof node.data?.videoSrc === "string";
+    });
+  const adoptedPngVisible = snapshot.canvas?.nodes?.some((node) =>
+    node.id === MEDIA_PUBLICATION_FIXTURE.adoptionNodeId &&
+    node.data?.assetId === MEDIA_PUBLICATION_FIXTURE.canonicalAssetId &&
+    node.data?.imageSrc === `/api/assets/${MEDIA_PUBLICATION_FIXTURE.canonicalAssetId}`,
+  ) === true;
+  if (mediaPublicationPreservedFingerprint(snapshot.canvas) !== mediaPublicationFixture.initialPreservedFingerprint || snapshot.successNodeIds.filter((id) => MEDIA_PUBLICATION_FIXTURE.preservedNodeIds.includes(id)).length !== MEDIA_PUBLICATION_FIXTURE.preservedNodeIds.length || snapshot.pngNode?.assetId !== MEDIA_PUBLICATION_FIXTURE.pngAssetId || snapshot.pngNode?.imageSrc !== `/api/assets/${MEDIA_PUBLICATION_FIXTURE.pngAssetId}` || !adoptedPngVisible || !continuationResultsVisible) {
+    throw new AcceptanceControlError("正常功能核对失败：成功节点没有完整保留。", "MEDIA_NORMAL_REGRESSION_FAILED", 503);
+  }
+  mediaPublicationLastResults.normal = { canvasRead: true, preservedSuccessNodes: true, continuationResultsVisible: true, parentImmutable: true };
+  mediaPublicationChecks.normal = "done";
+  return mediaPublicationStatusPayload();
+}
+
+async function startMediaPublicationAction(action) {
+  if (action === "save-race") return runMediaPublicationSaveRace();
+  if (action === "adoption") return runMediaPublicationAdoption();
+  if (action === "continuation") return runMediaPublicationContinuation();
+  if (action === "normal") return runMediaPublicationNormal();
+  throw new AcceptanceControlError("未知验收项目。", "MEDIA_ACCEPTANCE_ACTION_INVALID", 400);
 }
 
 function generationTaskResult(task) {
@@ -1093,7 +1756,34 @@ document.addEventListener('click',async event=>{const button=event.target.closes
 </script></html>`;
 }
 
+
+function mediaPublicationGuideHtml() {
+  return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>图片保存恢复 · 本地验收</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f4f5f6;color:#262626;font:16px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.layout{display:grid;grid-template-columns:390px 1fr;height:100vh}.guide{overflow:auto;padding:22px}.canvas-area{min-width:0;background:#050505}iframe{border:0;width:100%;height:100%;display:block}h1{font-size:25px;line-height:1.4;margin:0 0 12px}h2{font-size:18px;margin:0 0 8px}p{margin:8px 0}.muted{font-size:14px;color:#666}.safe,.expect{background:#eaf3ed;padding:12px;border-radius:9px}.card{padding:18px;background:white;border:1px solid #ddd;border-radius:12px;margin:16px 0}.card.done{border-color:#80a990}.status{font-size:14px;color:#37644a}.error{padding:12px;background:#fff0ed;color:#9b2929;border-radius:8px;overflow-wrap:anywhere}button{font:inherit;cursor:pointer;padding:9px 12px;border-radius:8px;background:#fff;border:1px solid #aaa;margin:5px 5px 5px 0}button.primary{background:#242424;border-color:#242424;color:white}button:disabled{opacity:.5;cursor:default}button:focus-visible{outline:3px solid #5486c0;outline-offset:3px}details{font-size:13px;color:#666}pre{white-space:pre-wrap;overflow-wrap:anywhere}summary{cursor:pointer}@media(max-width:800px){.layout{grid-template-columns:320px minmax(400px,1fr)}.guide{padding:14px}}
+</style><div class="layout"><main class="guide"><h1>这次检查四项</h1><p class="safe">右边就是测试画布，不用换标签页。演示完成后右侧会自动重新读取画布。全部使用模拟任务和素材，<b>不会扣费，尚未上线。</b></p><p id="ready" class="muted">正在准备测试画布…</p><div id="error" class="error" role="alert" hidden></div>
+<section class="card" id="card-saveRace"><h2>1. 保存遇到后台检查，视频还能正常出现吗？</h2><p>点下面按钮，右边会定位到「保存恢复演示」。等视频出现，期间不用点重试。</p><button class="primary" data-action="save-race">开始保存恢复演示</button><p class="expect"><b>你要看：</b>视频自动出现并能播放，没有停在红色失败提示。</p><p class="status" id="text-saveRace">尚未开始。</p></section>
+<section class="card" id="card-adoption"><h2>2. 以前失败的图片能找回来吗？</h2><p>点下面按钮，查看右边「找回已有图片」节点。</p><button class="primary" data-action="adoption" disabled>找回已有图片</button><p class="expect"><b>你要看：</b>原来的空框出现图片。再点「刷新右侧画布」，图片仍在，没有重复结果。</p><button data-action="refresh-canvas">刷新右侧画布</button><p class="status" id="text-adoption">请先完成第1项。</p></section>
+<section class="card" id="card-continuation"><h2>3. 能只做完后面的节点吗？</h2><p>点下面按钮，等右边两个未完成的视频出现结果。它们使用第2项找回的图片。</p><button class="primary" data-action="continuation" disabled>继续未完成节点</button><p class="expect"><b>你要看：</b>两个视频自动完成，前面已成功的文字、图片没有重新生成，也没有移动。</p><p class="status" id="text-continuation">请先完成第2项。</p></section>
+<section class="card" id="card-normal"><h2>4. 原来的画布操作还正常吗？</h2><p>先点下面「核对原内容是否保留」定位图片，再打开顶部「浏览全部」。从右侧加号拖到空白处，选「文本生成」；再拖动画布、缩放并刷新。这里只检查创建节点，不用点生成箭头。</p><p class="expect"><b>你要看：</b>白框完整，菜单没有被输入框挡住，拖线菜单能操作，刷新后内容、位置和连线仍在。</p><button data-action="refresh-canvas">刷新右侧画布</button><button class="primary" data-action="normal" disabled>核对原内容是否保留</button><p class="status" id="text-normal">请先完成第3项。</p></section>
+<p id="summary" class="muted"></p><p><b>四项都符合后，在对话里回复「四项通过」。不符合就告诉我第几项。</b></p><p class="muted">页面上的完成提示只表示系统操作已完成，实际体验仍由你确认。</p><details><summary>工程记录（你不用操作）</summary><pre id="evidence"></pre></details><button id="finish">结束本次验收</button></main><div class="canvas-area"><iframe id="canvas" title="本地测试画布" src="/__acceptance/generation-entry?variant=candidate"></iframe></div></div>
+<script>
+let state,busy=false,stopped=false,timer;
+const byId=id=>document.getElementById(id);
+const keys={'save-race':'saveRace',adoption:'adoption',continuation:'continuation',normal:'normal'};
+const labels={saveRace:'演示已完成，请确认右侧视频可以播放。',adoption:'原图片已接回，请确认并刷新右侧画布。',continuation:'后面的两个视频已完成，请确认原成功节点仍在。',normal:'原内容核对完成，请确认上面的画布操作也正常。'};
+const targets={'save-race':'media-publication-save-race-video',adoption:'media-publication-adoption-image',continuation:'media-publication-pending-video',normal:'media-publication-normal-png'};
+async function request(path,body){const r=await fetch(path,{cache:'no-store',...(body===undefined?{}:{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)})});const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||d.message||'本地验收服务暂时不可用');return d;}
+function render(data){state=data;const checks=data.checks||{};byId('ready').textContent=data.ready?'画布已准备好。页面开放至 '+new Date(data.expiresAt).toLocaleString('zh-CN')+'。':'正在准备测试画布…';for(const [key,label] of Object.entries(labels)){const done=checks[key]==='done';byId('card-'+key).classList.toggle('done',done);if(done)byId('text-'+key).textContent=label;else if(key==='adoption'&&checks.saveRace==='done')byId('text-'+key).textContent='可以开始第2项。';else if(key==='continuation'&&checks.adoption==='done')byId('text-'+key).textContent='可以开始第3项。';else if(key==='normal'&&checks.continuation==='done')byId('text-'+key).textContent='现在可以检查画布操作。';}document.querySelector('[data-action="save-race"]').disabled=busy||!data.ready||checks.saveRace==='done';document.querySelector('[data-action="adoption"]').disabled=busy||checks.saveRace!=='done'||checks.adoption==='done';document.querySelector('[data-action="continuation"]').disabled=busy||checks.adoption!=='done'||checks.continuation==='done';document.querySelector('[data-action="normal"]').disabled=busy||checks.continuation!=='done';byId('summary').textContent=data.preserve?.successContentLayoutAndEdgesUnchanged?'已核对：原成功节点的内容、位置和连线保持。':'';byId('evidence').textContent=JSON.stringify(data,null,2);}
+function focusCanvasNode(id){return new Promise((resolve,reject)=>{let attempts=0;const tick=()=>{const doc=byId('canvas').contentDocument;const world=doc?.querySelector('[data-testid="canvas-world"][data-persistence-ready="true"]');if(world){const dialog=doc.querySelector('[data-testid="node-search-dialog"]');if(!dialog){doc.querySelector('[data-testid="node-search"]')?.click();}else{const all=Array.from(dialog.querySelectorAll('[aria-label="节点类型"] button')).find(el=>el.textContent.trim()==='全部');const input=dialog.querySelector('input[type="search"]');let changed=false;if(all?.getAttribute('aria-pressed')!=='true'){all?.click();changed=true;}if(input?.value){const win=doc.defaultView;Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype,'value').set.call(input,'');input.dispatchEvent(new win.Event('input',{bubbles:true}));changed=true;}if(!changed){const result=Array.from(dialog.querySelectorAll('[data-testid="node-search-results"] [data-node-id]')).find(el=>el.getAttribute('data-node-id')===id);if(result){result.click();resolve();return;}}}}if(++attempts<100)setTimeout(tick,100);else reject(Error('未能定位到测试节点，画布可能仍在加载。请稍后再点本项。'));};tick();});}
+async function reloadCanvas(){const frame=byId('canvas');await new Promise((resolve,reject)=>{const timeout=setTimeout(()=>{frame.removeEventListener('load',loaded);reject(Error('测试画布重新加载超时，请刷新右侧画布。'));},15000);const loaded=()=>{clearTimeout(timeout);resolve();};frame.addEventListener('load',loaded,{once:true});frame.contentWindow.location.reload();});}
+async function refresh(){clearTimeout(timer);if(stopped||busy)return;try{render(await request('/__acceptance/media-publication/status'));if(byId('error').dataset.kind==='read')byId('error').hidden=true;}catch(e){byId('error').hidden=false;byId('error').textContent=e.message;byId('error').dataset.kind='read';}finally{if(!stopped)timer=setTimeout(refresh,3000);}}
+document.addEventListener('click',async event=>{const button=event.target.closest('button');if(!button||button.disabled||busy)return;if(button.id==='finish'){await request('/__acceptance/stop',{});stopped=true;document.body.textContent='本次验收已结束，可以关闭页面。';return;}const action=button.dataset.action;if(action==='refresh-canvas'){byId('canvas').contentWindow.location.reload();return;}if(!keys[action])return;busy=true;clearTimeout(timer);byId('error').hidden=true;const original=button.textContent;button.textContent='系统处理中…';render(state||{});try{const data=await request('/__acceptance/media-publication/start',{action});render(data);if(action!=='normal')await reloadCanvas();await focusCanvasNode(targets[action]);}catch(e){byId('error').hidden=false;byId('error').textContent=e.message;byId('error').dataset.kind='action';}finally{button.textContent=original;busy=false;await refresh();}});window.addEventListener('pagehide',()=>clearTimeout(timer));refresh();
+</script></html>`;
+}
+
 function generationGuideHtmlSimple() {
+  if (mediaPublicationScenario) return mediaPublicationGuideHtml();
   if (nodeRecoveryProductMode) return nodeRecoveryProductGuideHtml();
   if (nodeRecoveryScenario) return nodeRecoveryGuideHtml();
   return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>本地验收 · 按顺序检查三项</title>
@@ -2697,7 +3387,7 @@ const guide = `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta nam
 <script>const slowButton=document.getElementById('slow'), mode=document.getElementById('mode');async function status(){const r=await fetch('/__acceptance/status');if(!r.ok)throw Error('验收服务已停止');const d=await r.json();slowButton.textContent=d.slow?'关闭慢速演示':'开启慢速演示';slowButton.setAttribute('aria-pressed',String(d.slow));mode.textContent=d.slow?'慢速演示已开启':'正常速度';document.getElementById('expiry').textContent='本次临时页面开放至 '+new Date(d.expiresAt).toLocaleTimeString('zh-CN')+'。到时自动关闭。';}slowButton.onclick=async()=>{slowButton.disabled=true;try{const r=await fetch('/__acceptance/toggle-slow',{method:'POST'});if(!r.ok)throw Error('切换失败');await status();}catch(e){mode.textContent=e.message;}finally{slowButton.disabled=false;}};document.getElementById('check').onclick=async()=>{const box=document.getElementById('result');box.textContent='正在读取…';try{const r=await fetch('/__acceptance/results');if(!r.ok)throw Error('读取失败');const d=await r.json();const table=document.createElement('table'),head=table.insertRow();['原模板','当前名称','当前说明','图内容'].forEach(t=>{const th=document.createElement('th');th.textContent=t;head.append(th);});d.items.forEach(item=>{const row=table.insertRow();[item.label,item.title??'模板未找到',item.description??'',item.graphUnchanged?'与初始相同，已保留':'与初始不同，请核对'].forEach(t=>row.insertCell().textContent=t);});box.replaceChildren(table);}catch(e){box.textContent=e.message;}};status().catch(e=>mode.textContent=e.message);</script><script>async function refreshScenarios(){const d=await(await fetch('/__acceptance/status')).json();document.getElementById('canvas-link').href=d.projects[1].url;document.getElementById('tools-mode').textContent=d.toolsAvailable?'可用入口演示（生成未开放）':'不可用演示';}async function toggleScenario(path,box,onSuccess){try{const r=await fetch(path,{method:'POST'});if(!r.ok)throw Error('切换失败，验收服务可能已停止');await onSuccess();}catch(e){document.getElementById(box).textContent=e.message;}}document.getElementById('tools').onclick=()=>toggleScenario('/__acceptance/toggle-tools','tools-mode',refreshScenarios);document.getElementById('maintenance').onclick=()=>toggleScenario('/__acceptance/toggle-maintenance','maintenance-mode',async()=>{document.getElementById('maintenance-mode').textContent='模拟维护中。请回到画布等待，开始后约35～65秒出现更新提示。';});refreshScenarios().catch(e=>document.getElementById('tools-mode').textContent=e.message);document.getElementById('finish').onclick=async()=>{const r=await fetch('/__acceptance/stop',{method:'POST'});if(r.ok)document.body.textContent='本次验收已结束。你可以关闭这些验收标签页；再次双击启动文件会准备一份新的测试数据。';};</script></html>`;
 
 // A second restrictive policy also fences the user's unsandboxed browser.
-const browserPolicy = `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; frame-src ${nodeRecoveryScenario ? "'self'" : "'none'"}; object-src 'none'; base-uri 'self'; form-action 'self'`;
+const browserPolicy = `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self'; worker-src 'self' blob:; frame-src ${nodeRecoveryScenario || mediaPublicationScenario ? "'self'" : "'none'"}; object-src 'none'; base-uri 'self'; form-action 'self'`;
 const plugin = {
   name: "isolated-template-manual-acceptance",
   enforce: "pre",
@@ -2706,12 +3396,12 @@ const plugin = {
       const originalSetHeader = res.setHeader.bind(res);
       res.setHeader = (name, value) => {
         const header = name.toLowerCase();
-        if (nodeRecoveryScenario && header === "x-frame-options") {
+        if ((nodeRecoveryScenario || mediaPublicationScenario) && header === "x-frame-options") {
           return originalSetHeader(name, "SAMEORIGIN");
         }
         if (header === "content-security-policy") {
           const policies = (Array.isArray(value) ? value : [value]).map(policy =>
-            nodeRecoveryScenario
+            (nodeRecoveryScenario || mediaPublicationScenario)
               ? String(policy).replace(/frame-ancestors\s+[^;]+/g, "frame-ancestors 'self'")
               : policy);
           return originalSetHeader(name, [...policies, browserPolicy]);
@@ -2719,7 +3409,7 @@ const plugin = {
         return originalSetHeader(name, value);
       };
       originalSetHeader("Content-Security-Policy", browserPolicy);
-      if (nodeRecoveryScenario) originalSetHeader("X-Frame-Options", "SAMEORIGIN");
+      if (nodeRecoveryScenario || mediaPublicationScenario) originalSetHeader("X-Frame-Options", "SAMEORIGIN");
       originalSetHeader("Cache-Control", "no-store");
       const url = new URL(req.url ?? "/", origin);
       if (req.headers.host !== `127.0.0.1:${port}` || url.origin !== origin ||
@@ -2740,6 +3430,8 @@ const plugin = {
       );
       const nodeRecoveryProductControl = nodeRecoveryProductMode && method === "POST" &&
         /^\/__acceptance\/node-recovery\/(?:original|maintenance|retry|focus|product-smoke)$/.test(url.pathname);
+      const mediaPublicationControl = mediaPublicationScenario && method === "POST" &&
+        /^\/__acceptance\/media-publication\/(?:start)$/.test(url.pathname);
       const localEdit = templatePath ||
         (url.pathname === "/api/projects" && method === "POST") ||
         (/^\/api\/projects\/[a-z0-9._-]+(?:\/clone)?$/i.test(url.pathname) && ["POST", "DELETE"].includes(method)) ||
@@ -2751,7 +3443,7 @@ const plugin = {
         (/^\/__acceptance\/toggle-(?:slow|tools|maintenance)$/.test(url.pathname) && method === "POST") ||
         (generationScenario && /^\/__acceptance\/generation\/(?:activate|plan|restore|complete|delay|check)$/.test(url.pathname) && method === "POST") ||
         (nodeRecoveryScenario && !nodeRecoveryProductMode && /^\/__acceptance\/node-recovery\/(?:start|retry-mode|mark-unknown|focus|recovery-stage)$/.test(url.pathname) && method === "POST") ||
-        Boolean(nodeRecoveryRetryMatch || nodeRecoveryPreflight || nodeRecoveryRecoveryReadMatch || nodeRecoveryProductControl || nodeRecoveryProductWrite);
+        Boolean(nodeRecoveryRetryMatch || nodeRecoveryPreflight || nodeRecoveryRecoveryReadMatch || nodeRecoveryProductControl || nodeRecoveryProductWrite || mediaPublicationControl);
       if (!setup && generationScenario && method === "PUT" && /^\/api\/canvas\/[a-z0-9._-]+$/i.test(url.pathname)) {
         generationCounters.browserCanvasWrites += 1;
         persistGenerationJournal("browserCanvasWrite", { path: url.pathname, source: generationLastWriteSource });
@@ -2796,7 +3488,7 @@ const plugin = {
         });
         return;
       }
-      if (!setup && url.pathname === "/api/updates" && method === "GET") {
+      if (!setup && !mediaPublicationProductMode && url.pathname === "/api/updates" && method === "GET") {
         if (Date.now() < maintenanceUntil) {
           res.setHeader("Retry-After", "5"); json(res, 503, { error: "模拟维护中" }); return;
         }
@@ -2810,7 +3502,7 @@ const plugin = {
       }
       // Synthetic task projection is owned by the persistent acceptance journal.
       // The real Canvas save contract correctly strips client-supplied task state.
-      if (!setup && generationScenario && !nodeRecoveryProductMode && method === "GET" && url.pathname === `/api/canvas/${generationFixture?.canvasId}`) {
+      if (!setup && generationScenario && !nodeRecoveryProductMode && !mediaPublicationProductMode && method === "GET" && url.pathname === `/api/canvas/${generationFixture?.canvasId}`) {
         void api(url.pathname).then((response) => response.json()).then((document) => {
           const seen = new Set();
           const nodes = document.nodes.map((node) => {
@@ -2842,10 +3534,10 @@ const plugin = {
         }).catch((error) => { console.error(error); if (!res.headersSent) json(res, 500, { error: "synthetic canvas read failed" }); });
         return;
       }
-      if (!setup && generationScenario && !nodeRecoveryProductMode && url.pathname === "/api/models" && method === "GET") {
+      if (!setup && generationScenario && !nodeRecoveryProductMode && !mediaPublicationProductMode && url.pathname === "/api/models" && method === "GET") {
         json(res, 200, generationFixture?.modelCatalog ?? { generationEnabled: false, models: [] }); return;
       }
-      if (!setup && generationScenario && !nodeRecoveryProductMode && url.pathname === "/api/generation-tasks/status" && method === "GET") {
+      if (!setup && generationScenario && !nodeRecoveryProductMode && !mediaPublicationProductMode && url.pathname === "/api/generation-tasks/status" && method === "GET") {
         generationCounters.statusReads += 1;
         persistGenerationJournal("capabilityStatusRead");
         json(res, 200, {
@@ -2863,7 +3555,7 @@ const plugin = {
           videoSubmissionEnabled: true,
         }); return;
       }
-      if (!setup && generationScenario && !nodeRecoveryProductMode && url.pathname === "/api/generation-tasks" && method === "GET") {
+      if (!setup && generationScenario && !nodeRecoveryProductMode && !mediaPublicationProductMode && url.pathname === "/api/generation-tasks" && method === "GET") {
         json(res, 200, { tasks: [...generationTasks.values()].map(generationTaskPublic) }); return;
       }
       if (!setup && nodeRecoveryScenario && !nodeRecoveryProductMode && url.pathname === "/api/generation-recovery" && method === "GET") {
@@ -2903,7 +3595,7 @@ const plugin = {
         else json(res, 404, { error: 'synthetic task not found', code: 'TASK_NOT_FOUND' });
         return;
       }
-      if (!setup && generationScenario && !nodeRecoveryProductMode && /^\/api\/generation-tasks\/[^/]+$/.test(url.pathname) && method === "GET") {
+      if (!setup && generationScenario && !nodeRecoveryProductMode && !mediaPublicationProductMode && /^\/api\/generation-tasks\/[^/]+$/.test(url.pathname) && method === "GET") {
         const taskId = decodeURIComponent(url.pathname.split("/").at(-1));
         const task = generationTasks.get(taskId);
         if (!task) { json(res, 404, { error: "synthetic task not found", code: "TASK_NOT_FOUND" }); return; }
@@ -2980,17 +3672,28 @@ const plugin = {
             const body = await readRequestJson(req);
             json(res, 200, await focusNodeRecoveryProduct(body.nodeId)); return;
           }
+          if (mediaPublicationScenario && url.pathname === "/__acceptance/media-publication/status" && method === "GET") {
+            json(res, 200, await mediaPublicationStatusPayload()); return;
+          }
+          if (mediaPublicationScenario && url.pathname === "/__acceptance/media-publication/start" && method === "POST") {
+            const body = await readRequestJson(req);
+            json(res, 200, await startMediaPublicationAction(body.action)); return;
+          }
           if (url.pathname === "/__acceptance/status" && method === "GET") {
             json(res, 200, generationScenario
               ? nodeRecoveryProductMode
                 ? { ...await nodeRecoveryProductStatusPayload(), slow, toolsAvailable, maintenanceUntil }
-                : { ...generationStatusPayload(), slow, toolsAvailable, maintenanceUntil }
+                : mediaPublicationScenario
+                  ? { ...await mediaPublicationStatusPayload(), slow, toolsAvailable, maintenanceUntil }
+                  : { ...generationStatusPayload(), slow, toolsAvailable, maintenanceUntil }
               : { slow, toolsAvailable, maintenanceUntil, projects, expiresAt: expiresAt.toISOString() }); return;
           }
           if (generationScenario && url.pathname === "/__acceptance/generation/status" && method === "GET") {
             json(res, 200, nodeRecoveryProductMode
               ? await nodeRecoveryProductStatusPayload()
-              : generationStatusPayload()); return;
+              : mediaPublicationScenario
+                ? await mediaPublicationStatusPayload()
+                : generationStatusPayload()); return;
           }
           if (nodeRecoveryScenario && !nodeRecoveryProductMode && url.pathname === "/__acceptance/node-recovery/status" && method === "GET") {
             json(res, 200, nodeRecoveryStatusPayload()); return;
@@ -3088,6 +3791,18 @@ const plugin = {
   },
 };
 
+// Seed the deliberately old-schema fixture before the real application opens
+// its current-schema database and starts workers. This loader has no app plugin.
+if (mediaPublicationScenario) {
+  const seedLoader = await createServer({
+    configFile: false,
+    root: sourceRoot,
+    server: { middlewareMode: true, host: "127.0.0.1", hmr: false, ws: false, watch: null },
+    appType: "custom",
+  });
+  try { await prepareMediaPublicationAcceptance(seedLoader); }
+  finally { await seedLoader.close(); }
+}
 const server = await createServer({
   configFile: join(sourceRoot, "vite.config.ts"),
   plugins: [plugin],
@@ -3098,25 +3813,83 @@ async function stop() {
   if (!stopping) {
     for (const stream of [...updateStreams]) stream.end();
     await stopNodeRecoveryProductProvider();
+    await stopMediaPublicationProvider();
     stopping = server.close();
   }
   await stopping;
+}
+async function prepareMediaPublicationAcceptance(seedLoader) {
+  // Seed the legacy-to-44 fixture before the browser can read it. The
+  // fixture only uses local SQLite and local media bytes; no provider call is
+  // made by this setup path.
+  const moduleUrl = (path) => ssrModuleUrl(path.split(sep).join("/"));
+  const databaseModule = await seedLoader.ssrLoadModule(moduleUrl(join(sourceRoot, "server/database.ts")));
+  const semanticModule = await seedLoader.ssrLoadModule(moduleUrl(join(sourceRoot, "types/workflowSemanticPlan.ts")));
+  const releaseDefaultsModule = await seedLoader.ssrLoadModule(moduleUrl(join(sourceRoot, "server/modelReleaseDefaults.ts")));
+  const releaseRevisionModule = await seedLoader.ssrLoadModule(moduleUrl(join(sourceRoot, "server/modelReleaseRevisionStore.ts")));
+  const modelParametersModule = await seedLoader.ssrLoadModule(moduleUrl(join(sourceRoot, "types/modelParameters.ts")));
+  const providerProfilesModule = await seedLoader.ssrLoadModule(moduleUrl(join(sourceRoot, "server/providerProfiles.ts")));
+  const accountCredentialsModule = await seedLoader.ssrLoadModule(moduleUrl(join(sourceRoot, "server/accountCredentials.ts")));
+  const modelReleaseBootstrapModule = await seedLoader.ssrLoadModule(moduleUrl(join(sourceRoot, "server/modelReleaseBootstrap.ts")));
+  const modelCatalogModule = await seedLoader.ssrLoadModule(moduleUrl(join(sourceRoot, "server/modelCatalog.ts")));
+  const inputPreflightModule = await seedLoader.ssrLoadModule(moduleUrl(join(sourceRoot, "server/inputPreflight.ts")));
+  const identityModule = await seedLoader.ssrLoadModule(moduleUrl(join(sourceRoot, "types/generationIdentity.ts")));
+  const seeded = await seedMediaPublicationLegacyDatabase({
+    databaseModule,
+    semanticModule,
+    releaseDefaultsModule,
+    releaseRevisionModule,
+    modelParametersModule,
+    providerProfilesModule,
+    accountCredentialsModule,
+    modelReleaseBootstrapModule,
+    modelCatalogModule,
+    inputPreflightModule,
+    identityModule,
+    dataDirectory: dataRoot,
+  });
+  mediaPublicationFixture = Object.freeze({
+    ...seeded,
+    initialPreservedFingerprint: mediaPublicationPreservedFingerprint(seeded.graph),
+  });
+  projects.push({
+    id: MEDIA_PUBLICATION_FIXTURE.canvasId,
+    title: "媒体发布恢复 · 四项同页验收",
+    url: `/canvas/${MEDIA_PUBLICATION_FIXTURE.canvasId}`,
+  });
+  generationFixture = {
+    canvasId: MEDIA_PUBLICATION_FIXTURE.canvasId,
+    events: [],
+    modelCatalog: { generationEnabled: true, models: [] },
+    phase: "candidate",
+    sentinels: [],
+  };
+  generationBuilds = await buildGenerationClients();
+  generationJournalPath = join(dataRoot, "media-publication-acceptance-journal.json");
+  adminCookie = "unboundry-media-acceptance=bypass; Path=/; SameSite=Lax";
 }
 process.once("SIGTERM", () => { void stop().finally(() => process.exit(0)); });
 process.once("SIGINT", () => { void stop().finally(() => process.exit(0)); });
 try {
   await server.listen();
-  const bootstrap = await api("/api/auth/bootstrap", "POST", {
-    displayName: "本地验收管理员", loginName: "acceptance", password: `local-${randomUUID()}`,
-  });
-  adminCookie = bootstrap.headers.get("set-cookie");
-  if (!adminCookie) throw new Error("Temporary admin session was not created");
-  const bootstrapBody = await bootstrap.clone().json();
-  const ownerId = bootstrapBody?.user?.id;
+  if (mediaPublicationScenario) {
+    await startMediaPublicationProvider();
+    mediaPublicationInitialVideoProviderPosts = mediaPublicationProviderStats.videoPosts;
+  }
+  let ownerId = MEDIA_PUBLICATION_FIXTURE.ownerId;
+  if (!mediaPublicationScenario) {
+    const bootstrap = await api("/api/auth/bootstrap", "POST", {
+      displayName: "本地验收管理员", loginName: "acceptance", password: `local-${randomUUID()}`,
+    });
+    adminCookie = bootstrap.headers.get("set-cookie");
+    if (!adminCookie) throw new Error("Temporary admin session was not created");
+    const bootstrapBody = await bootstrap.clone().json();
+    ownerId = bootstrapBody?.user?.id;
+  }
   if (generationScenario && (typeof ownerId !== "string" || ownerId.length === 0)) {
     throw new Error("Temporary generation acceptance session did not return its owner identity");
   }
-  if (generationScenario) {
+  if (generationScenario && !mediaPublicationScenario) {
     const title = nodeRecoveryScenario
       ? "失败节点恢复 · V4 同页三项本地验收"
       : "状态查询验收 · 四类节点与回退演练";
@@ -3138,7 +3911,7 @@ try {
         preservedSuccessNodeCount: nodeRecoveryScenario ? nodeRecoveryFixture.preservedSuccessNodeCount : undefined,
       });
     }
-  } else {
+  } else if (!generationScenario) {
   const simpleGraph = (marker) => ({ version: 1, nodes: [{ id: `text-${marker}`, type: "text", position: { x: 350, y: 160 }, data: { title: marker, label: "Text", textPrompt: `这是${marker}的独立图内容` }, style: { width: 250, height: 250 } }], edges: [] });
   for (let index = 1; index <= 201; index += 1) {
     await api("/api/admin/templates", "POST", { title: `分页验收${String(index).padStart(3, "0")}`, graph: simpleGraph(`page-${index}`), status: "draft" });
@@ -3193,22 +3966,41 @@ try {
         canvasId: generationFixture.canvasId,
         taskIds: nodeRecoveryProductMode
           ? Object.values(nodeRecoveryProductFixture.roles).map((role) => role.taskId)
-          : [...generationTasks.keys()],
+          : mediaPublicationScenario
+            ? [
+                ...MEDIA_PUBLICATION_FIXTURE.preservedNodeIds.map((nodeId) =>
+                  `media-publication-preserved-task-${nodeId.slice(-2)}`),
+                MEDIA_PUBLICATION_FIXTURE.adoptionTaskId,
+              ]
+            : [...generationTasks.keys()],
         sentinels: generationFixture.sentinels,
         syntheticOnly: true,
         taskStorage: nodeRecoveryProductMode
           ? "temporary application SQLite through real product task/case commands"
-          : "acceptance journal and API projection; not generation_tasks SQLite or Provider evidence",
+          : mediaPublicationScenario
+            ? "temporary application SQLite through real workflow/adoption commands"
+            : "acceptance journal and API projection; not generation_tasks SQLite or Provider evidence",
         providerPolicy: nodeRecoveryProductMode
           ? "dynamic loopback fake Provider only; external calls blocked; verify safe-runner network audit"
-          : "external calls blocked; verify safe-runner network audit",
+          : mediaPublicationScenario
+            ? "dynamic loopback fake Provider only; external/paid calls blocked; upstream 0 and continuation downstream 2"
+            : "external calls blocked; verify safe-runner network audit",
         journalPath: generationJournalPath,
         builds: generationBuilds,
         sourceModules: {
           candidate: generationBuilds.candidateSource,
           baseline: generationBuilds.baselineSource,
         },
-        ...(nodeRecoveryScenario
+        ...(mediaPublicationScenario
+          ? {
+              actualProductCommands: true,
+              preservedSuccessNodeCount: MEDIA_PUBLICATION_FIXTURE.preservedNodeIds.length,
+              continuationPath: "/api/workflow-runs/:parentRunId/continue (one child, GET-only reattach)",
+              providerRequests: mediaPublicationProviderStats.posts + mediaPublicationProviderStats.gets + mediaPublicationProviderStats.mediaGets,
+              providerPosts: mediaPublicationProviderStats.posts,
+              paidProviderRequests: 0,
+            }
+          : nodeRecoveryScenario
           ? nodeRecoveryProductMode
             ? {
                 actualProductCommands: true,

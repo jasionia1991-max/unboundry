@@ -1049,6 +1049,7 @@ test("GenerationTasksPanel discards a late old-canvas list after scope navigatio
     markOldListStarted = resolve;
   });
   let nextListReads = 0;
+  let returnForeignList = true;
   let releaseOldList!: () => void;
   const oldListGate = new Promise<void>((resolve) => {
     releaseOldList = resolve;
@@ -1091,7 +1092,7 @@ test("GenerationTasksPanel discards a late old-canvas list after scope navigatio
         nextListReads += 1;
         await route.fulfill({
           json: {
-            tasks: [
+            tasks: returnForeignList ? [
               panelRetryTask("default"),
               {
                 ...panelRetryTask("default"),
@@ -1101,7 +1102,7 @@ test("GenerationTasksPanel discards a late old-canvas list after scope navigatio
                 retryAllowed: false,
                 state: "running",
               },
-            ],
+            ] : [],
           },
           status: 200,
         });
@@ -1174,6 +1175,10 @@ test("GenerationTasksPanel discards a late old-canvas list after scope navigatio
   await expect(page.getByTestId(`tasks-row-${PANEL_RETRY_TASK_ID}`))
     .toHaveCount(0);
   await expect(page.getByTestId(`tasks-row-${oldActiveTaskId}`)).toHaveCount(0);
+  // A current response containing another canvas is invalid authority, not
+  // an empty list. Keep actions closed, then recover on the normal next GET.
+  await expect(page.getByTestId("tasks-panel")).toContainText("生成任务读取失败");
+  returnForeignList = false;
   await expect(page.getByTestId("tasks-empty")).toBeVisible();
   expect(cancelDeletes).toBe(0);
   expect(retryPosts).toBe(0);

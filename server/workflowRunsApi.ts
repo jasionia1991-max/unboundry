@@ -2,7 +2,10 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { requestIdentity } from "./auth";
 import { decodedRequestPath, readJsonBody } from "./httpRequest";
 import { ResourceBudgetError } from "./resourceBudget";
-import { workflowRunApplication } from "./workflowRunService";
+import {
+  WorkflowContinuationError,
+  workflowRunApplication,
+} from "./workflowRunService";
 
 function json(response: ServerResponse, status: number, body: unknown) {
   response.statusCode = status;
@@ -72,6 +75,54 @@ export async function workflowRunsApi(
       json(response, 200, run);
       return;
     }
+    const continuationPreview = path.match(
+      /^([a-z0-9-]{36})\/continuation-preview$/i,
+    );
+    if (request.method === "GET" && continuationPreview) {
+      const preview = workflowRunApplication.continuationPreview(
+        ownerId,
+        continuationPreview[1],
+      );
+      json(response, 200, preview);
+      return;
+    }
+    const continuationRelation = path.match(
+      /^([a-z0-9-]{36})\/continuation$/i,
+    );
+    if (request.method === "GET" && continuationRelation) {
+      json(response, 200, workflowRunApplication.continuation(
+        ownerId,
+        continuationRelation[1],
+      ));
+      return;
+    }
+    const continueRun = path.match(/^([a-z0-9-]{36})\/continue$/i);
+    if (request.method === "POST" && continueRun) {
+      const body = await readJsonBody<{
+        intentId?: unknown;
+        previewDigest?: unknown;
+      }>(request, 8 * 1_024);
+      if (
+        typeof body.intentId !== "string" ||
+        !/^[a-zA-Z0-9._:-]{1,256}$/.test(body.intentId) ||
+        typeof body.previewDigest !== "string" ||
+        !/^[a-zA-Z0-9._:-]{1,256}$/.test(body.previewDigest)
+      ) {
+        json(response, 400, {
+          code: "WORKFLOW_CONTINUATION_INTENT_INVALID",
+          error: "继续整组执行的意图无效",
+        });
+        return;
+      }
+      const created = await workflowRunApplication.continue({
+        intentId: body.intentId,
+        ownerId,
+        parentRunId: continueRun[1],
+        previewDigest: body.previewDigest,
+      });
+      json(response, 202, created);
+      return;
+    }
     if (request.method === "GET" && /^[a-z0-9-]{36}$/i.test(path)) {
       const run = workflowRunApplication.get(ownerId, path);
       if (!run) {
@@ -84,6 +135,10 @@ export async function workflowRunsApi(
     response.setHeader("Allow", "GET, POST");
     json(response, 404, { code: "WORKFLOW_ROUTE_NOT_FOUND", error: "Workflow endpoint not found" });
   } catch (error) {
+    if (error instanceof WorkflowContinuationError) {
+      json(response, error.statusCode, { code: error.code, error: error.message });
+      return;
+    }
     if (error instanceof ResourceBudgetError) {
       json(response, error.statusCode, { code: error.code, error: error.message });
       return;

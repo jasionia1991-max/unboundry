@@ -1,4 +1,4 @@
-import type { AuthoritativeGenerationTaskInput } from "./generationTaskStore";
+import type { AuthoritativeGenerationTaskInput, GenerationTaskAdmissionOptions } from "./generationTaskStore";
 import { generationTaskApplication } from "./generationTasks";
 import type { ImageGenerationToolInput } from "../types/imageTools";
 import { admitPreparedGenerationTransaction } from "./generationAdmissionTransaction";
@@ -26,9 +26,10 @@ export class GenerationAdmissionPostCommitError extends Error {
  */
 export function admitPreparedGenerationTask(
   prepared: PreparedGenerationAdmission,
+  options: GenerationTaskAdmissionOptions = {},
 ) {
   const admitted = admitPreparedGenerationTransaction(
-    generationTaskApplication.taskStore(), prepared,
+    generationTaskApplication.taskStore(), prepared, options,
   );
   try {
     prepared.afterCommit?.();

@@ -253,13 +253,17 @@ function seedPublishedRelayCandidate(fixture: Fixture, suffix: string) {
       byte_size, checksum_sha256, content_type, duration_seconds,
       duration_source, media_width, media_height, actual_cost_microunits,
       provider_usage_tokens, error_code, retry_count, adopted_at,
-      adopted_canvas_id, created_at, updated_at
+      adopted_canvas_id, created_at, updated_at, output_slot, output_set_count
     ) VALUES (?, ?, 'video', ?, 'generation', 'published', 'local', ?, ?, NULL,
       ?, ?, 1, 'safe relay candidate', 1, ?, 'video/mp4', 1, 'provider-task',
-      1, 1, 0, NULL, NULL, 0, NULL, NULL, ?, ?)
+      1, 1, 0, NULL, NULL, 0, NULL, NULL, ?, ?, ?, ?)
   `).run(
     attemptId, ownerId, assetId, storageName, objectKey, stagingName,
     fixture.taskId, checksum, baseTime, baseTime,
+    Number((fixture.database.prepare("SELECT COUNT(*) AS count FROM media_publication_attempts WHERE task_id = ?")
+      .get(fixture.taskId) as { count: number }).count),
+    Number(JSON.parse(String((fixture.database.prepare("SELECT model_configuration FROM generation_tasks WHERE id = ?")
+      .get(fixture.taskId) as { model_configuration: string }).model_configuration)).modelResultCount ?? 1),
   );
   return assetId;
 }

@@ -43,6 +43,7 @@ import {
   databaseMatchesSchema40Contract,
   databaseMatchesSchema41Contract,
   databaseMatchesSchema42Contract,
+  databaseMatchesSchema43Contract,
   databaseMatchesSchemaContract,
   migrationIncompleteMarker,
   openAppDatabase,
@@ -454,7 +455,7 @@ test("schema 42 to 43 preserves terminal Provider billing history while migratin
       targetVersion: 43,
     });
     const migrated = new DatabaseSync(databasePath, { readOnly: true });
-    expect(databaseMatchesSchemaContract(migrated)).toBe(true);
+    expect(databaseMatchesSchema43Contract(migrated)).toBe(true);
     expect(migrated.prepare("PRAGMA user_version").get()).toEqual({
       user_version: 43,
     });

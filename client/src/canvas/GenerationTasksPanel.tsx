@@ -37,14 +37,19 @@ import {
   mergeServerWorkflowRuns,
   parseServerWorkflowRunUpdatedEventDetail,
   SERVER_WORKFLOW_RUN_UPDATED_EVENT,
+  getServerWorkflowContinuation,
+  getServerWorkflowContinuationPreview,
   stopServerWorkflowRunAndConfirm,
+  workflowRunStatusReadIsRetryable,
   type ServerWorkflowRun,
 } from "../generation/workflowRuns";
 import {
   recoveryStatusLabel,
 } from "../generation/generationRecoveryClient";
 import { useGenerationRecovery } from "../generation/GenerationRecoveryContext";
+import { useWorkflowExecution } from "../generation/WorkflowExecutionProvider";
 import type { RecoveryCaseSummary } from "../../../types/generationRecovery";
+import type { WorkflowContinuationPreview } from "../../../types/workflowRuns";
 
 const kindLabels: Record<GenerationTaskSummary["kind"], string> = {
   audio: "音频",
@@ -69,6 +74,32 @@ const activeStates = new Set<GenerationTaskSummary["state"]>([
   "retrying",
   "running",
 ]);
+
+// Continuation reads are GET-only and may safely retry a transient transport
+// failure. Keep each burst bounded, then leave a slow read-only recheck alive
+// so a brief backend restart does not strand the action until the user reloads
+// the page.
+const continuationReadRetryDelaysMs = [250, 750, 1_500] as const;
+const continuationReadRecheckDelayMs = 15_000;
+
+function waitForContinuationReadRetry(signal: AbortSignal, delayMs: number) {
+  if (signal.aborted) {
+    return Promise.reject(
+      signal.reason ?? new DOMException("Aborted", "AbortError"),
+    );
+  }
+  return new Promise<void>((resolve, reject) => {
+    const onAbort = () => {
+      window.clearTimeout(timer);
+      reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+    };
+    const timer = window.setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, delayMs);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
 
 function visibleGroupRunSummary(summary: GroupRunSummary | undefined) {
   return summary && (
@@ -473,16 +504,51 @@ export function GenerationTasksPanel({
   const [recoveryResultTask, setRecoveryResultTask] =
     useState<GenerationTaskSummary>();
   const [recoveryResultLoading, setRecoveryResultLoading] = useState(false);
+  const [continuationPreviews, setContinuationPreviews] = useState<
+    Readonly<Record<string, WorkflowContinuationPreview | undefined>>
+  >({});
+  const [continuationLoading, setContinuationLoading] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
+  const [continuationReadFailures, setContinuationReadFailures] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
+  const [continuationReadAutoRetrying, setContinuationReadAutoRetrying] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
+  const [continuationCreated, setContinuationCreated] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
+  const [continuationSubmitting, setContinuationSubmitting] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
   const recovery = useGenerationRecovery();
+  const workflowExecution = useWorkflowExecution();
   const mounted = useRef(false);
-  const scope = useRef({ canvasId, canvasScopeId });
+  const scope = useRef({
+    accountId: groupRunScope.accountId,
+    canvasId,
+    canvasScopeId,
+  });
   const refreshController = useRef<AbortController | null>(null);
   const refreshEpoch = useRef(0);
   const actionController = useRef<AbortController | null>(null);
   const recoveryResultController = useRef<AbortController | null>(null);
-  scope.current = { canvasId, canvasScopeId };
+  const continuationPreviewController = useRef<AbortController | null>(null);
+  const continuationPreviewRetryTimers = useRef<Map<string, number>>(new Map());
+  const continuationPreviewRetryCounts = useRef<Record<string, number>>({});
+  const [continuationPreviewRetryTick, setContinuationPreviewRetryTick] = useState(0);
+  scope.current = {
+    accountId: groupRunScope.accountId,
+    canvasId,
+    canvasScopeId,
+  };
 
   const recoveryTaskIdsKey = tasks.map((task) => task.id).join("\u0000");
+  const failedWorkflowRunsKey = workflowRuns
+    .filter((run) => run.state === "failed")
+    .map((run) => `${run.id}:${run.updatedAt}`)
+    .join("\u0000");
   useEffect(() => {
     const taskIds = tasks.map((task) => task.id);
     if (taskIds.length === 0) return;
@@ -491,17 +557,194 @@ export function GenerationTasksPanel({
   }, [recovery.registerTaskIds, recovery.unregisterTaskIds, recoveryTaskIdsKey]);
 
   useEffect(() => {
+    continuationPreviewController.current?.abort("workflow-continuation-preview-superseded");
+    for (const timer of continuationPreviewRetryTimers.current.values()) {
+      window.clearTimeout(timer);
+    }
+    continuationPreviewRetryTimers.current.clear();
+    const requestedAccountId = groupRunScope.accountId;
+    const failedRuns = workflowRuns.filter((run) => run.state === "failed");
+    if (
+      !open ||
+      !canvasId ||
+      groupRunScope.fixtureScopeId ||
+      failedRuns.length === 0
+    ) {
+      setContinuationLoading(new Set());
+      return;
+    }
+    const controller = new AbortController();
+    continuationPreviewController.current = controller;
+    const failedRunIds = failedRuns.map((run) => run.id);
+    for (const runId of Object.keys(continuationPreviewRetryCounts.current)) {
+      if (!failedRunIds.includes(runId)) {
+        delete continuationPreviewRetryCounts.current[runId];
+      }
+    }
+    setContinuationLoading((current) => new Set([...current, ...failedRunIds]));
+    const scheduleReadRetry = (runId: string) => {
+      const previousAttempts = continuationPreviewRetryCounts.current[runId] ?? 0;
+      const nextAttempt = previousAttempts + 1;
+      continuationPreviewRetryCounts.current[runId] = nextAttempt;
+      const delay = continuationReadRetryDelaysMs[nextAttempt - 1] ??
+        continuationReadRecheckDelayMs;
+      // A slow, read-only recheck is retained after the short bounded burst.
+      // Resetting the burst counter keeps the retry budget bounded per cycle
+      // without turning a backend restart into a permanent stuck panel.
+      if (nextAttempt > continuationReadRetryDelaysMs.length) {
+        continuationPreviewRetryCounts.current[runId] = 0;
+      }
+      const existing = continuationPreviewRetryTimers.current.get(runId);
+      if (existing !== undefined) window.clearTimeout(existing);
+      const timer = window.setTimeout(() => {
+        continuationPreviewRetryTimers.current.delete(runId);
+        setContinuationPreviewRetryTick((current) => current + 1);
+      }, delay);
+      continuationPreviewRetryTimers.current.set(runId, timer);
+    };
+    const readWithRetry = async <T,>(read: () => Promise<T>, runId: string) => {
+      let lastError: unknown;
+      for (let attempt = 0; attempt <= continuationReadRetryDelaysMs.length; attempt += 1) {
+        try {
+          const value = await read();
+          return value;
+        } catch (error) {
+          lastError = error;
+          if (
+            controller.signal.aborted ||
+            !workflowRunStatusReadIsRetryable(error) ||
+            attempt === continuationReadRetryDelaysMs.length
+          ) throw error;
+          await waitForContinuationReadRetry(
+            controller.signal,
+            continuationReadRetryDelaysMs[attempt],
+          );
+        }
+      }
+      throw lastError instanceof Error ? lastError : new Error("继续状态读取失败");
+    };
+    void Promise.allSettled(failedRuns.map(async (run) => {
+      try {
+        const relation = await readWithRetry(
+          () => getServerWorkflowContinuation(run.id, controller.signal),
+          run.id,
+        );
+        if (
+          controller.signal.aborted ||
+          !isCurrentScope(canvasScopeId, canvasId, requestedAccountId)
+        ) {
+          return;
+        }
+        if (relation.continuation) {
+          continuationPreviewRetryCounts.current[run.id] = 0;
+          setContinuationCreated((current) => new Set([...current, run.id]));
+          setContinuationPreviews((current) => {
+            if (!(run.id in current)) return current;
+            const next = { ...current };
+            delete next[run.id];
+            return next;
+          });
+          setContinuationReadFailures((current) => {
+            if (!current.has(run.id)) return current;
+            const next = new Set(current);
+            next.delete(run.id);
+            return next;
+          });
+          setContinuationReadAutoRetrying((current) => {
+            if (!current.has(run.id)) return current;
+            const next = new Set(current);
+            next.delete(run.id);
+            return next;
+          });
+          return;
+        }
+        const preview = await readWithRetry(
+          () => getServerWorkflowContinuationPreview(run.id, controller.signal),
+          run.id,
+        );
+        if (
+          controller.signal.aborted ||
+          !isCurrentScope(canvasScopeId, canvasId, requestedAccountId)
+        ) {
+          return;
+        }
+        continuationPreviewRetryCounts.current[run.id] = 0;
+        setContinuationPreviews((current) => ({ ...current, [run.id]: preview }));
+        setContinuationReadFailures((current) => {
+          if (!current.has(run.id)) return current;
+          const next = new Set(current);
+          next.delete(run.id);
+          return next;
+        });
+        setContinuationReadAutoRetrying((current) => {
+          if (!current.has(run.id)) return current;
+          const next = new Set(current);
+          next.delete(run.id);
+          return next;
+        });
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          const retryable = workflowRunStatusReadIsRetryable(error);
+          setContinuationReadFailures((current) => new Set([...current, run.id]));
+          setContinuationReadAutoRetrying((current) => {
+            const next = new Set(current);
+            if (retryable) next.add(run.id);
+            else next.delete(run.id);
+            return next;
+          });
+          if (retryable) scheduleReadRetry(run.id);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setContinuationLoading((current) => {
+            const next = new Set(current);
+            next.delete(run.id);
+            return next;
+          });
+        }
+      }
+    })).finally(() => {
+      if (continuationPreviewController.current === controller) {
+        continuationPreviewController.current = null;
+      }
+    });
+    return () => controller.abort("workflow-continuation-preview-scope-changed");
+    // The key prevents the 3-second task refresh from restarting identical
+    // preview reads while the bounded read-only retry tick handles a transient
+    // backend restart even when the failed run's updatedAt is unchanged.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    canvasId,
+    canvasScopeId,
+    failedWorkflowRunsKey,
+    groupRunScope.accountId,
+    groupRunScope.fixtureScopeId,
+    open,
+    continuationPreviewRetryTick,
+  ]);
+
+  useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
       refreshController.current?.abort("generation-task-panel-unmounted");
       actionController.current?.abort("generation-task-panel-unmounted");
       recoveryResultController.current?.abort("generation-task-panel-unmounted");
+      continuationPreviewController.current?.abort("generation-task-panel-unmounted");
+      for (const timer of continuationPreviewRetryTimers.current.values()) {
+        window.clearTimeout(timer);
+      }
+      continuationPreviewRetryTimers.current.clear();
     };
   }, []);
 
-  const isCurrentScope = (scopeId: string, targetCanvasId: string) =>
+  const isCurrentScope = (
+    scopeId: string,
+    targetCanvasId: string,
+    targetAccountId?: string,
+  ) =>
     mounted.current &&
+    (targetAccountId === undefined || scope.current.accountId === targetAccountId) &&
     scope.current.canvasScopeId === scopeId &&
     scope.current.canvasId === targetCanvasId;
 
@@ -598,6 +841,7 @@ export function GenerationTasksPanel({
     refreshController.current?.abort("generation-task-scope-changed");
     refreshEpoch.current += 1;
     actionController.current?.abort("generation-task-scope-changed");
+    continuationPreviewController.current?.abort("generation-task-scope-changed");
     const currentActionController = new AbortController();
     actionController.current = currentActionController;
     setTasks([]);
@@ -606,6 +850,17 @@ export function GenerationTasksPanel({
     setActionError("");
     setReadError("");
     setWorkflowReadError("");
+    setContinuationPreviews({});
+    setContinuationLoading(new Set());
+    setContinuationReadFailures(new Set());
+    setContinuationReadAutoRetrying(new Set());
+    setContinuationCreated(new Set());
+    setContinuationSubmitting(new Set());
+    continuationPreviewRetryCounts.current = {};
+    for (const timer of continuationPreviewRetryTimers.current.values()) {
+      window.clearTimeout(timer);
+    }
+    continuationPreviewRetryTimers.current.clear();
     const checkpointState = checkpointRecoveryPending();
     const checkpoints = checkpointState.checkpoints;
     setGroupRecoveryPending(checkpointState.pending);
@@ -784,6 +1039,71 @@ export function GenerationTasksPanel({
       .finally(() => {
         if (!isCurrentScope(canvasScopeId, canvasId)) return;
         setStoppingRunIds((current) => {
+          const next = new Set(current);
+          next.delete(run.id);
+          return next;
+        });
+      });
+  };
+  const continueWorkflowRun = (
+    run: ServerWorkflowRun,
+    preview: WorkflowContinuationPreview,
+  ) => {
+    if (
+      !isCurrentScope(canvasScopeId, canvasId) ||
+      continuationSubmitting.has(run.id) ||
+      continuationCreated.has(run.id) ||
+      preview.candidateNodeIds.length === 0
+    ) return;
+    const intentId = crypto.randomUUID();
+    setContinuationSubmitting((current) => new Set([...current, run.id]));
+    void workflowExecution.continueFailedWorkflow({
+      groupId: run.groupId,
+      intentId,
+      parentRunId: run.id,
+      previewDigest: preview.previewDigest,
+    })
+      .then((child) => {
+        if (!isCurrentScope(canvasScopeId, canvasId)) return;
+        setContinuationCreated((current) => new Set([...current, run.id]));
+        setContinuationPreviews((current) => {
+          if (!(run.id in current)) return current;
+          const next = { ...current };
+          delete next[run.id];
+          return next;
+        });
+        setContinuationReadFailures((current) => {
+          if (!current.has(run.id)) return current;
+          const next = new Set(current);
+          next.delete(run.id);
+          return next;
+        });
+        setWorkflowRuns((current) => mergeServerWorkflowRuns(current, [child]));
+        setActionError("");
+      })
+      .catch((error: unknown) => {
+        if (!isCurrentScope(canvasScopeId, canvasId)) return;
+        // A stale preview is only a read fence failure. Drop it so the next
+        // automatic read obtains the current graph before another user intent.
+        if (
+          error instanceof Error &&
+          /画布|输入|预览|身份|变化|核对/.test(error.message)
+        ) {
+          setContinuationPreviews((current) => {
+            if (!(run.id in current)) return current;
+            const next = { ...current };
+            delete next[run.id];
+            return next;
+          });
+          setContinuationPreviewRetryTick((current) => current + 1);
+        }
+        setActionError(
+          error instanceof Error ? error.message : "继续未完成节点失败，请稍后再试",
+        );
+      })
+      .finally(() => {
+        if (!isCurrentScope(canvasScopeId, canvasId)) return;
+        setContinuationSubmitting((current) => {
           const next = new Set(current);
           next.delete(run.id);
           return next;
@@ -1087,6 +1407,10 @@ export function GenerationTasksPanel({
                   ({ projectionState }) => projectionState === "failed",
                 ).length;
                 const activeRun = run.state === "running" || run.state === "stopping";
+                const continuationPreview = continuationPreviews[run.id];
+                const continuationIsLoading = continuationLoading.has(run.id);
+                const continuationIsSubmitting = continuationSubmitting.has(run.id);
+                const continuationHasCreated = continuationCreated.has(run.id);
                 return (
                   <li
                     className="tasks-row"
@@ -1126,6 +1450,55 @@ export function GenerationTasksPanel({
                             ? "正在停止"
                             : "停止后续节点"}
                         </button>
+                      )}
+                      {run.state === "failed" && !groupRunScope.fixtureScopeId && (
+                        <span
+                          className="tasks-row-continuation"
+                          data-testid={`workflow-run-continuation-${run.id}`}
+                        >
+                          {continuationHasCreated ? (
+                            <span className="tasks-row-continuation-status" role="status">
+                              已有后继执行，正在继续未完成节点
+                            </span>
+                          ) : continuationPreview ? (
+                            continuationPreview.candidateNodeIds.length > 0 ? (
+                              <>
+                                <button
+                                  data-testid={`workflow-run-continue-${run.id}`}
+                                  disabled={continuationIsSubmitting}
+                                  onClick={() => continueWorkflowRun(run, continuationPreview)}
+                                  type="button"
+                                >
+                                  {continuationIsSubmitting
+                                    ? "正在继续…"
+                                    : "继续未完成节点"}
+                                </button>
+                                <span className="tasks-row-continuation-hint">
+                                  保留 {continuationPreview.preservedNodeIds.length} 个已完成节点，
+                                  只继续 {continuationPreview.candidateNodeIds.length} 个未完成节点；
+                                  后续生成可能产生费用。
+                                </span>
+                              </>
+                            ) : (
+                              <span className="tasks-row-continuation-status" role="status">
+                                当前没有可以安全继续的节点
+                              </span>
+                            )
+                          ) : continuationIsLoading ? (
+                            <span className="tasks-row-continuation-status" role="status">
+                              正在读取可继续的节点…
+                            </span>
+                          ) : continuationReadFailures.has(run.id) ? (
+                            <span
+                              className="tasks-row-continuation-status tasks-row-continuation-status-unavailable"
+                              role="status"
+                            >
+                              {continuationReadAutoRetrying.has(run.id)
+                                ? "继续状态暂时无法读取，系统会自动再试"
+                                : "继续状态暂时无法读取，请稍后再试"}
+                            </span>
+                          ) : null}
+                        </span>
                       )}
                     </span>
                   </li>

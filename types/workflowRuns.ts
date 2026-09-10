@@ -91,6 +91,66 @@ export type WorkflowRunSummary = Readonly<{
   updatedAt: string;
 }>;
 
+/**
+ * A read-only preview of the one explicit user action that may create a
+ * successor run for a failed workflow.  It deliberately lives outside the
+ * immutable v1 plan so old workflow plan parsers keep their narrow contract.
+ */
+export type WorkflowContinuationExternalInput = Readonly<{
+  adoptionReceiptId?: string;
+  kind: NodeInputKind;
+  nodeId: string;
+  source: "adopted-result" | "parent-external" | "successful-task";
+  sourceAssetByteSize?: number;
+  sourceAssetContentType?: string;
+  sourceAssetId?: string;
+  sourceAssetObjectKey?: string;
+  sourceAssetSha256?: string;
+  sourceAssetStorageBackend?: "local" | "oss";
+  sourceAssetStorageName?: string;
+  sourceAssetStorageProfileId?: string | null;
+  sourceRunId?: string;
+  sourceTaskId?: string;
+  sourceTextSha256?: string;
+}>;
+
+export type WorkflowContinuationPreview = Readonly<{
+  blockedNodeIds: readonly string[];
+  candidateNodeIds: readonly string[];
+  canvasId: string;
+  currentGraphRevision: number;
+  estimatedNewNodeCount: number;
+  externalInputs: readonly WorkflowContinuationExternalInput[];
+  groupId: string;
+  parentGraphRevision: number;
+  parentPlanDigest: string;
+  parentRunId: string;
+  parentState: "failed";
+  preservedNodeIds: readonly string[];
+  previewDigest: string;
+  reason?: string;
+  requiresUserIntent: true;
+}>;
+
+export type WorkflowContinuationSummary = Readonly<{
+  childRunId: string;
+  continuationId: string;
+  createdAt: string;
+  intentId: string;
+  parentRunId: string;
+  previewDigest: string;
+  updatedAt: string;
+}>;
+
+export type WorkflowContinuationCreateResponse = Readonly<{
+  continuation: WorkflowContinuationSummary;
+  run: WorkflowRunSummary;
+}>;
+
+export type WorkflowContinuationRelationResponse = Readonly<{
+  continuation: WorkflowContinuationSummary | null;
+}>;
+
 export class WorkflowPlanValidationError extends Error {
   readonly code = "WORKFLOW_PLAN_MALFORMED";
 
@@ -703,4 +763,179 @@ export function parseWorkflowRunsEnvelope(value: unknown) {
     throw new Error("Workflow runs response is invalid");
   }
   return Object.freeze({ runs: Object.freeze(value.runs.map(parseWorkflowRunSummary)) });
+}
+
+function boundedContinuationInteger(value: unknown, label: string, maximum = 2_000_000_000) {
+  if (!Number.isSafeInteger(value) || Number(value) < 0 || Number(value) > maximum) {
+    throw new Error(`${label} is invalid`);
+  }
+  return Number(value);
+}
+
+function parseContinuationExternalInput(value: unknown): WorkflowContinuationExternalInput {
+  const mediaEvidenceKeys = [
+    "sourceAssetByteSize", "sourceAssetContentType", "sourceAssetObjectKey",
+    "sourceAssetSha256", "sourceAssetStorageBackend", "sourceAssetStorageName",
+    "sourceAssetStorageProfileId",
+  ] as const;
+  if (!record(value) || !exactKeys(value, [
+    "adoptionReceiptId", "kind", "nodeId", "source", "sourceAssetByteSize",
+    "sourceAssetContentType", "sourceAssetId", "sourceAssetObjectKey", "sourceAssetSha256",
+    "sourceAssetStorageBackend", "sourceAssetStorageName", "sourceAssetStorageProfileId",
+    "sourceRunId",
+    "sourceTaskId", "sourceTextSha256",
+  ])) throw new Error("Workflow continuation external input is invalid");
+  const source = value.source === "adopted-result" ||
+    value.source === "parent-external" || value.source === "successful-task"
+    ? value.source
+    : (() => { throw new Error("Workflow continuation source is invalid"); })();
+  const kind = nodeKind(value.kind);
+  const result = {
+    ...(optionalSummaryText(value, "adoptionReceiptId", "continuation adoption receipt id", 256)
+      ? { adoptionReceiptId: String(value.adoptionReceiptId) } : {}),
+    kind,
+    nodeId: boundedText(value.nodeId, "continuation external node id", 200),
+    source,
+    ...(optionalSummaryText(value, "sourceAssetId", "continuation source asset id", 256)
+      ? { sourceAssetId: String(value.sourceAssetId) } : {}),
+    ...(optionalSummaryText(value, "sourceRunId", "continuation source run id", 256)
+      ? { sourceRunId: String(value.sourceRunId) } : {}),
+    ...(optionalSummaryText(value, "sourceTaskId", "continuation source task id", 256)
+      ? { sourceTaskId: String(value.sourceTaskId) } : {}),
+    ...(optionalSummaryText(value, "sourceTextSha256", "continuation source text digest", 128)
+      ? { sourceTextSha256: String(value.sourceTextSha256) } : {}),
+  } satisfies WorkflowContinuationExternalInput;
+  const hasMediaEvidence = mediaEvidenceKeys.some((key) =>
+    Object.prototype.hasOwnProperty.call(value, key)
+  );
+  if (kind === "text") {
+    if (result.sourceAssetId || hasMediaEvidence) {
+      throw new Error("Text continuation input cannot contain media evidence");
+    }
+    if (result.sourceTextSha256 && !/^[0-9a-f]{64}$/i.test(result.sourceTextSha256)) {
+      throw new Error("Text continuation source digest is invalid");
+    }
+    return Object.freeze(result);
+  }
+  if (!result.sourceAssetId || result.sourceTextSha256 || !hasMediaEvidence ||
+      !Number.isSafeInteger(value.sourceAssetByteSize) ||
+      Number(value.sourceAssetByteSize) < 1 ||
+      typeof value.sourceAssetContentType !== "string" ||
+      value.sourceAssetContentType.length < 1 || value.sourceAssetContentType.length > 200 ||
+      /[\u0000\r\n]/.test(value.sourceAssetContentType) ||
+      typeof value.sourceAssetObjectKey !== "string" ||
+      value.sourceAssetObjectKey.length < 1 || value.sourceAssetObjectKey.length > 2_000 ||
+      /[\u0000\r\n]/.test(value.sourceAssetObjectKey) ||
+      typeof value.sourceAssetStorageName !== "string" ||
+      value.sourceAssetStorageName.length < 1 || value.sourceAssetStorageName.length > 255 ||
+      /[/\\\u0000\r\n]/.test(value.sourceAssetStorageName) ||
+      typeof value.sourceAssetSha256 !== "string" ||
+      !/^[0-9a-f]{64}$/i.test(value.sourceAssetSha256) ||
+      (value.sourceAssetStorageBackend !== "local" && value.sourceAssetStorageBackend !== "oss") ||
+      (value.sourceAssetStorageProfileId !== null &&
+        typeof value.sourceAssetStorageProfileId !== "string") ||
+      (value.sourceAssetStorageProfileId !== null &&
+        (value.sourceAssetStorageProfileId.length < 1 || value.sourceAssetStorageProfileId.length > 200)) ||
+      value.sourceAssetStorageBackend === "oss" && !value.sourceAssetStorageProfileId) {
+    throw new Error("Media continuation source identity is invalid");
+  }
+  return Object.freeze({
+    ...result,
+    sourceAssetByteSize: Number(value.sourceAssetByteSize),
+    sourceAssetContentType: value.sourceAssetContentType,
+    sourceAssetObjectKey: value.sourceAssetObjectKey,
+    sourceAssetSha256: value.sourceAssetSha256.toLowerCase(),
+    sourceAssetStorageBackend: value.sourceAssetStorageBackend,
+    sourceAssetStorageName: value.sourceAssetStorageName,
+    sourceAssetStorageProfileId: value.sourceAssetStorageProfileId,
+  });
+}
+
+function continuationIdArray(value: unknown, label: string) {
+  if (!Array.isArray(value) || value.length > 500) {
+    throw new Error(`${label} is invalid`);
+  }
+  const ids = value.map((item) => boundedText(item, label, 200));
+  unique(ids, label);
+  return Object.freeze(ids);
+}
+
+export function parseWorkflowContinuationPreview(value: unknown): WorkflowContinuationPreview {
+  if (!record(value) || !exactKeys(value, [
+    "blockedNodeIds", "candidateNodeIds", "canvasId", "currentGraphRevision",
+    "estimatedNewNodeCount", "externalInputs", "groupId", "parentGraphRevision",
+    "parentPlanDigest", "parentRunId", "parentState", "preservedNodeIds",
+    "previewDigest", "reason", "requiresUserIntent",
+  ])) throw new Error("Workflow continuation preview is invalid");
+  if (value.parentState !== "failed" || value.requiresUserIntent !== true) {
+    throw new Error("Workflow continuation preview state is invalid");
+  }
+  if (!Array.isArray(value.externalInputs) || value.externalInputs.length > 500) {
+    throw new Error("Workflow continuation external inputs are invalid");
+  }
+  const candidateNodeIds = continuationIdArray(value.candidateNodeIds, "continuation candidate node id");
+  const preservedNodeIds = continuationIdArray(value.preservedNodeIds, "continuation preserved node id");
+  const blockedNodeIds = continuationIdArray(value.blockedNodeIds, "continuation blocked node id");
+  const overlap = new Set([...candidateNodeIds, ...preservedNodeIds, ...blockedNodeIds]);
+  if (overlap.size !== candidateNodeIds.length + preservedNodeIds.length + blockedNodeIds.length) {
+    throw new Error("Workflow continuation node lists overlap");
+  }
+  const externalInputs = Object.freeze(value.externalInputs.map(parseContinuationExternalInput));
+  unique(externalInputs.map(({ nodeId }) => nodeId), "continuation external node id");
+  return Object.freeze({
+    blockedNodeIds,
+    candidateNodeIds,
+    canvasId: boundedText(value.canvasId, "continuation canvas id", 200),
+    currentGraphRevision: boundedContinuationInteger(value.currentGraphRevision, "continuation current graph revision"),
+    estimatedNewNodeCount: boundedContinuationInteger(value.estimatedNewNodeCount, "continuation node count", 500),
+    externalInputs,
+    groupId: boundedText(value.groupId, "continuation group id", 200),
+    parentGraphRevision: boundedContinuationInteger(value.parentGraphRevision, "continuation parent graph revision"),
+    parentPlanDigest: boundedText(value.parentPlanDigest, "continuation parent plan digest", 256),
+    parentRunId: boundedText(value.parentRunId, "continuation parent run id", 256),
+    parentState: "failed" as const,
+    preservedNodeIds,
+    previewDigest: boundedText(value.previewDigest, "continuation preview digest", 256),
+    ...(optionalSummaryText(value, "reason", "continuation reason", 2_000)
+      ? { reason: String(value.reason) } : {}),
+    requiresUserIntent: true as const,
+  });
+}
+
+function parseWorkflowContinuationSummary(value: unknown): WorkflowContinuationSummary {
+  if (!record(value) || !exactKeys(value, [
+    "childRunId", "continuationId", "createdAt", "intentId", "parentRunId",
+    "previewDigest", "updatedAt",
+  ])) throw new Error("Workflow continuation response is invalid");
+  return Object.freeze({
+    childRunId: boundedText(value.childRunId, "continuation child run id", 256),
+    continuationId: boundedText(value.continuationId, "continuation id", 256),
+    createdAt: summaryTimestamp(value.createdAt, "continuation created timestamp"),
+    intentId: boundedText(value.intentId, "continuation intent id", 256),
+    parentRunId: boundedText(value.parentRunId, "continuation parent run id", 256),
+    previewDigest: boundedText(value.previewDigest, "continuation preview digest", 256),
+    updatedAt: summaryTimestamp(value.updatedAt, "continuation updated timestamp"),
+  });
+}
+
+export function parseWorkflowContinuationRelationResponse(
+  value: unknown,
+): WorkflowContinuationRelationResponse {
+  if (!record(value) || !exactKeys(value, ["continuation"])) {
+    throw new Error("Workflow continuation relation response is invalid");
+  }
+  if (value.continuation === null) return Object.freeze({ continuation: null });
+  return Object.freeze({ continuation: parseWorkflowContinuationSummary(value.continuation) });
+}
+
+export function parseWorkflowContinuationCreateResponse(
+  value: unknown,
+): WorkflowContinuationCreateResponse {
+  if (!record(value) || !exactKeys(value, ["continuation", "run"])) {
+    throw new Error("Workflow continuation create response is invalid");
+  }
+  return Object.freeze({
+    continuation: parseWorkflowContinuationSummary(value.continuation),
+    run: parseWorkflowRunSummary(value.run),
+  });
 }

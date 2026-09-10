@@ -1,3 +1,11 @@
+import { withGenerationResultSave, GenerationSaveBusyError } from "./generationResultSaveOwnership";
+import {
+  resumeGeneratedMediaReservation,
+  assertMediaPublicationIo,
+  syncMediaPublicationStaging,
+  prepareReservedMediaStaging,
+  MediaPublicationEvidenceConflictError,
+} from "./mediaLifecycle";
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
@@ -47,6 +55,7 @@ import {
 } from "./mediaPublicationService";
 import {
   storageProfileForMedia,
+  storageProfileById,
   storageProfileForDestructiveMedia,
   withStorageMediaRoutingReservation,
   type AliyunStorageProfile,
@@ -324,14 +333,27 @@ export function pngHasTransparency(bytes: Buffer) {
   }
 }
 
-export async function saveGeneratedPng(input: {
+type saveGeneratedPngInput = {
   bytes: Buffer;
   label: string;
   ownerId: string;
   task?: GeneratedPublicationTask;
   /** Test seam for the external-object write; production uses private OSS. */
   uploadObject?: typeof uploadPrivateAliyunOssObject;
-}) {
+};
+
+export async function saveGeneratedPng(input: saveGeneratedPngInput) {
+  if (!input.task) return saveGeneratedPngOwned(input);
+  const saved = await withGenerationResultSave({
+    ownerId: input.ownerId, taskId: input.task.taskId,
+    executionAttempt: input.task.executionAttempt, kind: "image",
+  }, (saveToken) => saveGeneratedPngOwned({ ...input, task: { ...input.task!, saveToken } }),
+  { token: input.task.saveToken });
+  if (!saved) throw new GenerationSaveBusyError();
+  return saved;
+}
+
+async function saveGeneratedPngOwned(input: saveGeneratedPngInput) {
   if (input.bytes.length < 1 || input.bytes.length > maxImageBytes) {
     throw new Error("Generated PNG image size is invalid");
   }
@@ -375,13 +397,29 @@ export async function saveGeneratedPng(input: {
         routing,
       };
     });
+    const reused = await resumeGeneratedMediaReservation(publication.reservation, checksumSha256);
+    if (reused) {
+
+      return reused;
+    }
+  if (publication.reservation.disposition !== "created") {
+    const prior = publication.reservation;
+    const profile = prior.storageBackend === "oss"
+      ? await storageProfileById(prior.storageProfileId) : undefined;
+    if (prior.storageBackend === "oss" && !profile) throw new MediaPublicationDeferredError();
+    publication.routing = { enabled: prior.storageBackend === "oss", profile };
+    publication.objectKey = prior.objectKey;
+  }
     const { objectKey, reservation, routing } = publication;
     await mkdir(path.directory, { recursive: true });
     await resourceReservation.verifyLocalStorage(path.directory);
     const dimensions = validatePng(input.bytes);
+    await prepareReservedMediaStaging(reservation);
+    assertMediaPublicationIo(reservation);
     await writeFile(mediaPublicationStagingPath(reservation), input.bytes, {
       flag: "wx",
     });
+    await syncMediaPublicationStaging(reservation);
     stageMediaPublication(reservation, {
       byteSize: input.bytes.length,
       checksumSha256,
@@ -407,18 +445,18 @@ export async function saveGeneratedPng(input: {
     }
     if (input.task) {
       return {
-        assetId: id,
+        assetId: reservation.id,
         ...dimensions,
         publicationToken: reservation,
-        url: `/api/assets/${id}`,
+        url: `/api/assets/${reservation.id}`,
       };
     }
     finalizeMediaPublication(reservation);
     await cleanupPublicationStaging(reservation).catch(() => undefined);
-    return { assetId: id, ...dimensions, url: `/api/assets/${id}` };
+    return { assetId: reservation.id, ...dimensions, url: `/api/assets/${reservation.id}` };
   } catch (error) {
     if (publication) {
-      if (input.task && staged) {
+      if (input.task && (staged || error instanceof MediaPublicationEvidenceConflictError)) {
         throw new MediaPublicationDeferredError();
       }
       await compensateMediaPublication(publication.reservation, {

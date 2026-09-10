@@ -217,3 +217,23 @@ export const claimLegacyGenerationDataCommand: TransactionScopedCommand<string, 
       .run(ownerId);
   },
 };
+
+/** Exact original-request identity for Media's reserved-result recovery fence. */
+export const canResumeReservedGenerationRequestCommand: TransactionScopedCommand<Readonly<{
+  taskId: string;
+  executionAttempt: number;
+  ownerId: string;
+  kind: "audio" | "image" | "video";
+}>, boolean> = {
+  execute(scope, input) {
+    return Boolean(scope.prepare(`
+      SELECT 1 FROM generation_tasks AS task
+      LEFT JOIN generation_provider_attempts AS attempt
+        ON attempt.task_id = task.id AND attempt.execution_attempt = task.attempt
+          AND attempt.owner_id = task.owner_id AND attempt.kind = task.kind
+      WHERE task.id = ? AND task.owner_id = ? AND task.kind = ?
+        AND task.attempt = ? AND task.state IN ('running', 'recovering')
+        AND (task.provider_task_id IS NOT NULL OR attempt.provider_task_id IS NOT NULL)
+    `).get(input.taskId, input.ownerId, input.kind, input.executionAttempt));
+  },
+};

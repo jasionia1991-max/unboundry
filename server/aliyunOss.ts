@@ -546,6 +546,54 @@ export async function deletePrivateAliyunOssObject(
   await configuredClient(credentials, network).delete(objectKey);
 }
 
+/**
+ * Delete a generated object only after proving that the object still belongs
+ * to the exact publication attempt. OSS DeleteObject has no If-Match
+ * contract; when versioning is enabled the version id is the server-side
+ * identity fence. A missing object is already clean; an unreadable, changed,
+ * or unversioned object is quarantined by the caller instead of being removed
+ * by key alone.
+ */
+export async function deleteExactAliyunOssGenerationObject(
+  identity: AliyunOssGenerationObjectIdentity,
+  credentials: AliyunOssCredentials,
+  network?: AliyunOssNetworkDependencies,
+) {
+  assertAliyunOssGenerationIdentity(identity, identity);
+  const client = configuredClient(credentials, network);
+  let head: unknown;
+  try {
+    head = await client.head(identity.objectKey);
+  } catch (error) {
+    if (aliyunOssObjectMissing(error)) return;
+    throw new AliyunOssPublicationQuarantineError(
+      "HEAD_UNKNOWN",
+      "OSS generated object identity could not be read; object retained",
+    );
+  }
+  // This verifies every durable generation identity field, size and type
+  // before the delete request is even constructed.
+  assertExactAliyunOssGenerationHead(identity, head);
+  const versionId = normalizedHeadValue(head, "x-oss-version-id").trim();
+  if (!versionId || versionId.toLowerCase() === "null") {
+    throw new AliyunOssPublicationQuarantineError(
+      "HEAD_UNKNOWN",
+      "OSS generated object has no verifiable version id; object retained",
+    );
+  }
+  try {
+    await client.delete(identity.objectKey, { versionId });
+  } catch (error) {
+    if (aliyunOssObjectMissing(error)) return;
+    // Unknown network outcomes retain the bytes. The caller records the
+    // quarantine so a later worker cannot retry a blind delete.
+    throw new AliyunOssPublicationQuarantineError(
+      "IDENTITY_MISMATCH",
+      "OSS generated object changed or could not be version-deleted; object retained",
+    );
+  }
+}
+
 export async function createPrivateAliyunOssReadUrl(
   objectKey: string,
   credentials: AliyunOssCredentials,

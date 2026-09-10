@@ -1,6 +1,7 @@
 import {
   adoptUploadedMediaReferences as adoptUploadedMediaReferencesImpl,
   cleanupPublicationStaging as cleanupPublicationStagingImpl,
+  cleanupPublishedGeneratedMediaStaging as cleanupPublishedGeneratedMediaStagingImpl,
   compensateMediaPublication as compensateMediaPublicationImpl,
   finalizeMediaPublication as finalizeMediaPublicationImpl,
   hasPendingGeneratedMediaPublications as hasPendingGeneratedMediaPublicationsImpl,
@@ -35,6 +36,11 @@ import {
 import { readyMediaForOwner } from "./mediaRegistry";
 
 export {
+  configureGeneratedMediaReservation,
+  reserveMediaPublicationInTransaction,
+  reservationFromAttempt,
+  requestOriginalMediaRedownload,
+  type MediaPublicationReservationInput,
   MediaPublicationConflictError,
   MediaPublicationDeferredError,
   MediaPublicationStateError,
@@ -55,6 +61,7 @@ export interface MediaPublicationService {
   adoptUploadedReferences: typeof adoptUploadedMediaReferencesImpl;
   beginDeletion: typeof beginMediaDeletionImpl;
   cleanupStaging: typeof cleanupPublicationStagingImpl;
+  cleanupPublishedStaging: typeof cleanupPublishedGeneratedMediaStagingImpl;
   compensate: typeof compensateMediaPublicationImpl;
   failDeletion: typeof markMediaDeletionFailedImpl;
   finalPath: typeof mediaPublicationFinalPathImpl;
@@ -86,6 +93,7 @@ export const mediaPublicationService = createMediaPublicationService({
   adoptUploadedReferences: adoptUploadedMediaReferencesImpl,
   beginDeletion: beginMediaDeletionImpl,
   cleanupStaging: cleanupPublicationStagingImpl,
+  cleanupPublishedStaging: cleanupPublishedGeneratedMediaStagingImpl,
   compensate: compensateMediaPublicationImpl,
   failDeletion: markMediaDeletionFailedImpl,
   finalPath: mediaPublicationFinalPathImpl,
@@ -113,6 +121,7 @@ export const adoptUploadedMediaReferences =
   mediaPublicationService.adoptUploadedReferences;
 export const beginMediaDeletion = mediaPublicationService.beginDeletion;
 export const cleanupPublicationStaging = mediaPublicationService.cleanupStaging;
+export const cleanupPublishedGeneratedMediaStaging = mediaPublicationService.cleanupPublishedStaging;
 export const compensateMediaPublication = mediaPublicationService.compensate;
 export const finalizeMediaPublication = mediaPublicationService.finalize;
 export const finishMediaDeletion = mediaPublicationService.finishDeletion;

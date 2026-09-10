@@ -1,7 +1,8 @@
-> **当前验收增量（2026-09-09）**：本矩阵为`AUTHORITATIVE_ACCEPTANCE_LEDGER`。v0.7.17节点恢复发布已通过本次安装包、备份、verify与fresh restore技术门；正式站资源与原画布只读核验、私有备份上传GET均已通过，生产用户仍待实页复验。v0.7.16及此前修复的用户通过状态保留。生产工程证据与用户验收分别记录，其余历史条目不自动升级。当前生产/待办以 [CURRENT_STATE](UNBOUNDRY_CURRENT_STATE.md) 为准，下面旧INC段落是各自日期的历史验收，不提供当前执行授权。
+> **当前验收增量（2026-09-11）**：本矩阵为`AUTHORITATIVE_ACCEPTANCE_LEDGER`。媒体保存恢复本地四项已获用户通过，尚未发布；此前生产验收边界保留。v0.7.17节点恢复发布已通过本次安装包、备份、verify与fresh restore技术门；正式站资源与原画布只读核验、私有备份上传GET均已通过，生产用户仍待实页复验。v0.7.16及此前修复的用户通过状态保留。生产工程证据与用户验收分别记录，其余历史条目不自动升级。当前生产/待办以 [CURRENT_STATE](UNBOUNDRY_CURRENT_STATE.md) 为准，下面旧INC段落是各自日期的历史验收，不提供当前执行授权。
 
 | 当前项目 | 判定 | 证据边界 |
 | --- | --- | --- |
+| 媒体保存与自动恢复冲突修复（MEDIA-PUBLICATION-RACE-20260910） | LOCAL_TECHNICAL_PASS / LOCAL_USER_PASS / NOT_DEPLOYED | 2026-09-11用户在本对话明确回复“全部通过”，覆盖交付页四项：保存恢复视频、原图片找回及刷新、只继续两个未完成视频、原画布白框/菜单/拖线/刷新。工程证据和范围见[方案第8、11节](MEDIA_PUBLICATION_RECOVERY_REPAIR_PLAN_2026-09-10.md#8-本地验收给用户看的四项)。仅本地合成数据，不升级为生产通过，不授权真实数据采用、付费生成或发布 |
 | v0.7.17 节点恢复发布 | DEPLOYED / LOCAL_USER_PASS / PRODUCTION_TECHNICAL_PASS / PRODUCTION_USER_RECHECK | v0.7.17/schema43、35个静态资源文件及备份/verify/fresh restore技术证据见[v0.7.17生产回执](V0_7_17_PRODUCTION_RECEIPT_2026-09-09.json)；正式站原画布打开/刷新保持数据、媒体可读；用户实页验收仍待确认。维护功能默认关闭，真实Provider/付费生成不列入本项判定 |
 | 生成状态查询加固 | DEPLOYED / LOCAL_USER_PASS / PRODUCTION_TECHNICAL_PASS / USER_RECHECK | 139项本地回归、独立复审及精确包RB05通过；正式站只读打开/刷新保持原数据，未做真实生成；详见[v0.7.16回执](V0_7_16_PRODUCTION_RECEIPT_2026-09-07.json) |
 | 本轮模板保存、其余12项及验收反馈修复 | DEPLOYED / LOCAL_USER_PASS / PRODUCTION_USER_PASS | 用户本地全部通过；2026-09-07用户在正式站确认“通过”；发布及技术证据见[v0.7.15回执](V0_7_15_PRODUCTION_RECEIPT_2026-09-07.json)和[方案7～10节](REMAINING_BUG_UI_REPAIR_PLAN_2026-09-07.md) |

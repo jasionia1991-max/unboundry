@@ -21,6 +21,7 @@ import {
 } from "../server/backupInspection";
 import { currentSchemaVersion, openAppDatabase } from "../server/database";
 import { inspectMediaIntegrity } from "../server/mediaIntegrity";
+import { freezeSyntheticSchema43 } from "./schema-fixtures";
 
 const execute = promisify(execFile);
 const timestamp = "2026-08-09T00:00:00.000Z";
@@ -57,6 +58,7 @@ function encryptedDocument(
 }
 
 function rollbackMigration43To42(database: DatabaseSync) {
+  freezeSyntheticSchema43(database);
   if (Number((database.prepare("PRAGMA user_version").get() as {
     user_version: number;
   }).user_version) !== 43) return;
@@ -592,10 +594,10 @@ function insertPublishedGeneration(
       attempt_id, owner_id, kind, asset_id, source, state, storage_backend,
       final_storage_name, object_key, staging_name, task_id,
       task_execution_attempt, history_label, byte_size, checksum_sha256,
-      content_type, media_width, media_height, created_at, updated_at
+      content_type, media_width, media_height, created_at, updated_at, output_slot, output_set_count
     ) VALUES (
       ?, 'media-user', 'image', ?, 'generation', 'published', 'local',
-      ?, ?, ?, ?, 1, 'Generated image', 5, ?, 'image/png', 1, 1, ?, ?
+      ?, ?, ?, ?, 1, 'Generated image', 5, ?, 'image/png', 1, 1, ?, ?, 0, 1
     )
   `).run(
     `publication-${input.assetId}`,

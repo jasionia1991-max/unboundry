@@ -78,6 +78,7 @@ import {
   bridgeRuntimeMode,
   releaseRoleFromEnvironment,
 } from "../server/bridgeRuntimeMode";
+import { freezeSyntheticSchema43 } from "./schema-fixtures";
 import {
   createLegacyRuntimeSupervisor,
   inspectLegacyActiveGenerationTasks,
@@ -223,11 +224,11 @@ test("release role and bridge-mode selection are exact and fail closed", () => {
   expect(() => releaseRoleFromEnvironment("0.7.13", {
     UNBOUNDRY_RELEASE_ROLE: "bridge",
   })).toThrow(/UNBOUNDRY_RELEASE_ROLE_MISMATCH/);
-  for (const version of ["0.7.14", "0.7.14-compat.1", "0.7.15", "0.7.16", "0.7.17"]) {
+  for (const version of ["0.7.14", "0.7.14-compat.1", "0.7.15", "0.7.16", "0.7.17", "0.7.18"]) {
     expect(releaseRoleFromEnvironment(version, {})).toBe("final");
     expect(() => releaseRoleFromEnvironment(version, { UNBOUNDRY_RELEASE_ROLE: "bridge" })).toThrow();
   }
-  for (const version of ["0.7.18", "0.7.17-hotfix.1", "0.7.17+build.1", "v0.7.17", "0.7.16-hotfix.1", "0.7.16+build.1", "v0.7.16", "0.7.13-hotfix.1", "0.7.13+build.1", "v0.7.13", "0.7.12-hotfix.1", "0.7.12+build.1", "v0.7.12", "0.7.11-hotfix.1", "0.7.11+build.1", "v0.7.11", "0.7.10-hotfix.1", "0.7.10+build.1", "v0.7.10"]) {
+  for (const version of ["0.7.19", "0.7.18-hotfix.1", "0.7.18+build.1", "v0.7.18", "0.7.17-hotfix.1", "0.7.17+build.1", "v0.7.17", "0.7.16-hotfix.1", "0.7.16+build.1", "v0.7.16", "0.7.13-hotfix.1", "0.7.13+build.1", "v0.7.13", "0.7.12-hotfix.1", "0.7.12+build.1", "v0.7.12", "0.7.11-hotfix.1", "0.7.11+build.1", "v0.7.11", "0.7.10-hotfix.1", "0.7.10+build.1", "v0.7.10"]) {
     expect(() => releaseRoleFromEnvironment(version, {})).toThrow(
       /UNBOUNDRY_RELEASE_VERSION_INVALID/,
     );
@@ -2686,6 +2687,7 @@ async function writeOldLocalUploadCandidate(
 }
 
 function rollbackMigration39To38(database: DatabaseSync) {
+  freezeSyntheticSchema43(database);
   if (Number((database.prepare("PRAGMA user_version").get() as {
     user_version: number;
   }).user_version) === 43) {
@@ -4332,8 +4334,8 @@ test("bridge schema-37 routing and exact schema-38 startup never run implicit mi
       expect(migrated38.prepare(`
         SELECT version, name FROM schema_migrations ORDER BY version DESC LIMIT 1
       `).get()).toEqual({
-        name: "durable-canvas-operation-receipts",
-        version: 43,
+        name: "media-publication-output-slots-and-recovery",
+        version: 44,
       });
       expect(migrated38.prepare(`
         SELECT credential_revision FROM account_provider_credential_epochs

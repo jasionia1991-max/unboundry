@@ -249,9 +249,9 @@ function seedPublicationState(
         storage_backend, final_storage_name, object_key,
         storage_profile_id, staging_name, task_id,
         task_execution_attempt, content_type, created_at, updated_at,
-        error_code
+        error_code, output_slot, output_set_count
       ) VALUES (?, ?, ?, ?, 'generation', 'staged',
-        'local', ?, ?, NULL, ?, ?, ?, 'video/mp4', ?, ?, ?)
+        'local', ?, ?, NULL, ?, ?, ?, 'video/mp4', ?, ?, ?, 0, 1)
     `).run(
       `worker-publication-${task.id}`,
       ownerId,
