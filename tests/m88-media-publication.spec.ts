@@ -95,7 +95,9 @@ import {
 import { saveGeneratedMp4, videoStorage } from "../server/videoStorage";
 import { expect, test } from "./safe-test";
 
-test.describe.configure({ mode: "serial" });
+// Every case owns its temporary DATA. Keep sequential execution, but continue
+// independent cases after a failure instead of skipping their coverage.
+test.describe.configure({ mode: "default" });
 
 type GenerationStore = ReturnType<typeof createGenerationTaskStore>;
 
@@ -215,6 +217,7 @@ function reserveGeneratedImage(
   store: GenerationStore,
   ownerId: string,
   suffix: string,
+  outputSetCount = 1,
 ) {
   const task = store.create({
     canvasId: `m88-canvas-${suffix}`,
@@ -222,6 +225,7 @@ function reserveGeneratedImage(
     idempotencyKey: `m88-publication-${suffix}`,
     kind: "image",
     model: "m88-image-model",
+    modelConfiguration: outputSetCount > 1 ? { modelResultCount: outputSetCount, providerProtocol: "media-generate" } : undefined,
     nodeId: `m88-node-${suffix}`,
     ownerId,
     parameters: {},
@@ -233,6 +237,7 @@ function reserveGeneratedImage(
     attempt: 1,
     state: "running",
   });
+  recordProviderAttemptFixture(process.env.UNBOUNDRY_DATA_DIR!, task.id);
   const assetId = `m88-asset-${suffix}`;
   const reservation = reserveMediaPublication({
     contentType: "image/png",
@@ -276,6 +281,7 @@ function recordProviderAttemptFixture(
         NULL, NULL, NULL
       FROM generation_tasks
       WHERE id = ? AND state = 'running' AND attempt >= 1
+      ON CONFLICT(task_id, execution_attempt) DO UPDATE SET outcome = excluded.outcome
     `).run(new Date().toISOString(), outcome, taskId);
     expect(inserted.changes).toBe(1);
   } finally {
@@ -462,13 +468,13 @@ test("current schema grants exactly one reservation before either same-ID conten
   await withDataDirectory("reservation-races", async (directory) => {
     addOwner(directory, "m88-owner-a");
     addOwner(directory, "m88-owner-b");
-    expect(currentSchemaVersion).toBe(43);
+    expect(currentSchemaVersion).toBe(44);
     const schema = openAppDatabase(directory);
     try {
       expect(
         (schema.prepare("PRAGMA user_version").get() as { user_version: number })
           .user_version,
-      ).toBe(43);
+      ).toBe(44);
     } finally {
       schema.close();
     }
@@ -1065,6 +1071,11 @@ test("generated finalize atomically settles Provider evidence with task, media, 
         ownerId,
         "real-owner-without-provider-ledger",
       );
+      // Admission now requires a Provider ledger. Remove it after reservation
+      // to keep this test exercising settlement-time ledger loss.
+      const missingLedgerDatabase = openAppDatabase(directory);
+      missingLedgerDatabase.prepare("DELETE FROM generation_provider_attempts WHERE task_id = ?").run(noLedger.task.id);
+      missingLedgerDatabase.close();
       await publishFixture(directory, noLedger.reservation);
       expect(() => commitGenerationMediaResult(noLedger.reservation)).toThrow(
         "Generation task has no matching paid attempt",
@@ -1098,7 +1109,7 @@ test("one paid task publishes its complete restart-safe ordered output set", asy
     addOwner(directory, ownerId);
     const store = createGenerationTaskStore(directory);
     try {
-      const primary = reserveGeneratedImage(store, ownerId, "primary-output");
+      const primary = reserveGeneratedImage(store, ownerId, "primary-output", 2);
       recordProviderAttemptFixture(directory, primary.task.id);
       store.setProviderTaskId(
         primary.task.id,
@@ -1114,17 +1125,6 @@ test("one paid task publishes its complete restart-safe ordered output set", asy
         state: "published",
         taskId: primary.task.id,
       });
-      const setup = openAppDatabase(directory);
-      try {
-        setup.prepare(`
-          UPDATE generation_tasks
-          SET model_configuration = ?
-          WHERE id = ?
-        `).run(JSON.stringify({ providerProtocol: "media-generate" }), primary.task.id);
-      } finally {
-        setup.close();
-      }
-
       const alternateId = "m88-asset-alternate-output";
       const alternate = reserveMediaPublication({
         contentType: "image/png",
@@ -1140,6 +1140,7 @@ test("one paid task publishes its complete restart-safe ordered output set", asy
           executionAttempt: 1,
           providerUsageTokens: 7,
           taskId: primary.task.id,
+          outputSlot: 1, outputSetCount: 2,
         },
       });
       await publishFixture(directory, alternate);
@@ -1147,15 +1148,15 @@ test("one paid task publishes its complete restart-safe ordered output set", asy
         { action: "finalized", assetId: alternateId, taskId: primary.task.id },
       ]);
       expect(store.get(primary.task.id)).toMatchObject({
-        resultAssetId: undefined,
-        state: "running",
+        resultAssetId: primary.reservation.id,
+        state: "success",
       });
       const candidateDatabase = openAppDatabase(directory);
       try {
         expect(candidateDatabase.prepare(`
           SELECT COUNT(*) AS count FROM asset_history
           WHERE owner_id = ? AND id IN (?, ?)
-        `).get(ownerId, primary.reservation.id, alternateId)).toEqual({ count: 0 });
+        `).get(ownerId, primary.reservation.id, alternateId)).toEqual({ count: 2 });
       } finally {
         candidateDatabase.close();
       }
@@ -1169,8 +1170,9 @@ test("one paid task publishes its complete restart-safe ordered output set", asy
       let commitAttempts = 0;
       expect(await attemptProviderResultSave({
         backoffMs: [0],
-        save: async () => {
+        save: async (saveToken) => {
           const committed = commitGenerationMediaOutputSet({
+            saveToken,
             assetIds: outputSet,
             executionAttempt: 1,
             kind: "image",
@@ -1290,7 +1292,7 @@ test("cancel and generated finalize preserve the winner in both transaction orde
         "cancel-first",
       );
       await publishFixture(directory, cancelFirst.reservation);
-      expect(store.cancelBeforeProviderAttempt(cancelFirst.task.id, {
+      expect(store.transition(cancelFirst.task.id, "cancelled", {
         code: "USER_CANCELLED",
         message: "m88 cancel wins",
       })).toMatchObject({ state: "cancelled" });
@@ -1613,21 +1615,7 @@ test("failed relay recovery commits the complete original output set", async () 
     addOwner(directory, ownerId);
     const store = createGenerationTaskStore(directory);
     try {
-      const first = reserveGeneratedImage(store, ownerId, "failed-relay-first");
-      const setup = openAppDatabase(directory);
-      try {
-        const updated = setup.prepare(`
-          UPDATE generation_tasks
-          SET model_configuration = ?
-          WHERE id = ?
-        `).run(JSON.stringify({
-          modelResultCount: 2,
-          providerProtocol: "media-generate",
-        }), first.task.id);
-        expect(updated.changes).toBe(1);
-      } finally {
-        setup.close();
-      }
+      const first = reserveGeneratedImage(store, ownerId, "failed-relay-first", 2);
       recordProviderAttemptFixture(directory, first.task.id, "response-received");
       const firstBytes = await publishFixture(directory, first.reservation);
 
@@ -1660,6 +1648,7 @@ test("failed relay recovery commits the complete original output set", async () 
           executionAttempt: 1,
           providerUsageTokens: 7,
           taskId: first.task.id,
+          outputSlot: 1, outputSetCount: 2,
         },
       });
       const secondBytes = await publishFixture(directory, second);
@@ -2846,6 +2835,7 @@ test("project and account deletion return 409 while schema triggers preserve act
       providerProfileId: "m88-provider-profile",
     }).task;
     generationStore.transition(task.id, "running");
+    recordProviderAttemptFixture(directory, task.id);
     const taskReservation = reserveMediaPublication({
       contentType: "image/png",
       finalStorageName: "m88-project-delete-asset.png",
@@ -5215,7 +5205,8 @@ test("generated image video and audio survive OSS failure without Provider resub
       await rm(quarantinedStagingPath, { force: true });
       let quarantinedUploads = 0;
       expect(await recoverPendingGenerationMediaResults({
-        prepare: (row) => preparePendingGeneratedMediaPublication(row, {
+        prepare: (row, ownership) => preparePendingGeneratedMediaPublication(row, {
+            ...ownership,
           uploadObject: async () => {
             quarantinedUploads += 1;
             throw new Error("quarantined publication must not upload");
@@ -5257,7 +5248,8 @@ test("generated image video and audio survive OSS failure without Provider resub
       await runGenerationRecoverySweep({
         hasPendingGenerated: () => true,
         recoverPending: () => recoverPendingGenerationMediaResults({
-          prepare: (row) => preparePendingGeneratedMediaPublication(row, {
+          prepare: (row, ownership) => preparePendingGeneratedMediaPublication(row, {
+            ...ownership,
             uploadObject: async (input) => {
               recoveredUploads += 1;
               expect(input.credentials.bucket).toBe(profile.bucket);
@@ -5337,7 +5329,8 @@ test("generated image video and audio survive OSS failure without Provider resub
       await runGenerationRecoverySweep({
         hasPendingGenerated: () => true,
         recoverPending: () => recoverPendingGenerationMediaResults({
-          prepare: (row) => preparePendingGeneratedMediaPublication(row, {
+          prepare: (row, ownership) => preparePendingGeneratedMediaPublication(row, {
+            ...ownership,
             uploadObject: async (input) => {
               recoveredVideoUploads += 1;
               expect(input.credentials.bucket).toBe(profile.bucket);
@@ -5415,7 +5408,8 @@ test("generated image video and audio survive OSS failure without Provider resub
       await runGenerationRecoverySweep({
         hasPendingGenerated: () => true,
         recoverPending: () => recoverPendingGenerationMediaResults({
-          prepare: (row) => preparePendingGeneratedMediaPublication(row, {
+          prepare: (row, ownership) => preparePendingGeneratedMediaPublication(row, {
+            ...ownership,
             uploadObject: async (input) => {
               recoveredAudioUploads += 1;
               expect(input.credentials.bucket).toBe(profile.bucket);
@@ -5447,6 +5441,255 @@ test("generated image video and audio survive OSS failure without Provider resub
     }
   });
 });
+
+/**
+ * R01 red reproduction for the publication/recovery race.  The generated
+ * video path reserves its durable publication before it starts consuming the
+ * Provider body.  Holding that first body pull leaves the row in `reserved`
+ * while the foreground save still owns the live work.  The pre-fix recovery
+ * sweep treats that live reservation as abandoned, compensates it, and makes
+ * the foreground save fail after the body is released.
+ *
+ * The control intentionally runs the same foreground save without a sweep;
+ * it must publish and settle one result.  The red assertion below is the
+ * behavior the implementation must make green without changing the control.
+ */
+test("live reserved save survives a concurrent recovery scan and settles one original result", runR01ReservedRace);
+
+async function runR01ReservedRace() {
+  const video = await readFile(join(
+    process.cwd(),
+    "client",
+    "public",
+    "fixtures",
+    "video-success.mp4",
+  ));
+
+  function controlledVideoBody() {
+    let pulled!: () => void;
+    const pulledPromise = new Promise<void>((resolve) => {
+      pulled = resolve;
+    });
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let delivered = false;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (delivered) return;
+        delivered = true;
+        pulled();
+        return released.then(() => {
+          controller.enqueue(new Uint8Array(video));
+          controller.close();
+        });
+      },
+    }, { highWaterMark: 0 });
+    return { body, pulledPromise, release };
+  }
+
+  async function createTask(
+    directory: string,
+    store: GenerationStore,
+    suffix: string,
+  ) {
+    const task = store.create({
+      canvasId: `m88-r01-canvas-${suffix}`,
+      idempotencyKey: `m88-r01-task-${suffix}`,
+      kind: "video",
+      model: "m88-r01-model",
+      modelConfiguration: {
+        modelId: "m88-r01-model",
+        modelResultCount: 1,
+        providerDriver: "fixture",
+        providerModelId: "m88-r01-provider-model",
+        providerProfileId: "m88-r01-provider-profile",
+        providerProtocol: "media-generate",
+      },
+      nodeId: `m88-r01-node-${suffix}`,
+      ownerId: "__test__",
+      parameters: {},
+      prompt: `m88 R01 ${suffix}`,
+      providerModelId: "m88-r01-provider-model",
+      providerProfileId: "m88-r01-provider-profile",
+    }).task;
+    expect(store.transition(task.id, "running")).toMatchObject({
+      attempt: 1,
+      state: "running",
+    });
+    recordProviderAttemptFixture(directory, task.id, "response-received");
+    return task;
+  }
+
+  await withDataDirectory("r01-reserved-race", async (directory) => {
+    addOwner(directory, "__test__");
+    const store = createGenerationTaskStore(directory);
+    try {
+      // Control: no recovery scanner is allowed to inspect the live reserved
+      // row.  The exact same foreground path must finish normally.
+      const controlTask = await createTask(directory, store, "control");
+      const controlBody = controlledVideoBody();
+      const controlSave = saveGeneratedMp4({
+        body: controlBody.body,
+        label: "m88 R01 control",
+        ownerId: "__test__",
+        task: {
+          actualCostMicrounits: 321,
+          executionAttempt: 1,
+          taskId: controlTask.id,
+        },
+      });
+      const controlSettled = controlSave.then(
+        (value) => ({ ok: true as const, value }),
+        (error) => ({ ok: false as const, error }),
+      );
+      await controlBody.pulledPromise;
+      const controlReserved = openAppDatabase(directory);
+      try {
+        expect(controlReserved.prepare(`
+          SELECT state FROM media_publication_attempts
+          WHERE task_id = ? AND task_execution_attempt = 1
+        `).get(controlTask.id)).toEqual({ state: "reserved" });
+      } finally {
+        controlReserved.close();
+      }
+      controlBody.release();
+      const controlResult = await controlSettled;
+      if (!controlResult.ok) throw controlResult.error;
+      const controlSaved = controlResult.value;
+      if (!("publicationToken" in controlSaved)) {
+        throw new Error("R01 control did not return a task publication token");
+      }
+      publishGenerationMediaCandidate(controlSaved.publicationToken);
+      commitGenerationMediaOutputSet({
+        assetIds: [controlSaved.assetId],
+        executionAttempt: 1,
+        kind: "video",
+        ownerId: "__test__",
+        taskId: controlTask.id,
+      });
+      expect(store.get(controlTask.id)).toMatchObject({
+        resultAssetId: controlSaved.assetId,
+        state: "success",
+      });
+
+      // Reproduction: start an identical live save, then let the old
+      // recovery sweep inspect its reserved row before the Provider body is
+      // released.  The expected post-fix result is a successful save; on the
+      // old code the sweep fails the task and deletes its publication first.
+      const raceTask = await createTask(directory, store, "race");
+      const raceBody = controlledVideoBody();
+      const raceSave = saveGeneratedMp4({
+        body: raceBody.body,
+        label: "m88 R01 race",
+        ownerId: "__test__",
+        task: {
+          actualCostMicrounits: 654,
+          executionAttempt: 1,
+          taskId: raceTask.id,
+        },
+      });
+      const raceSettled = raceSave.then(
+        (value) => ({ ok: true as const, value }),
+        (error) => ({ ok: false as const, error }),
+      );
+      await raceBody.pulledPromise;
+      const atReservedBarrier = openAppDatabase(directory);
+      try {
+        expect(atReservedBarrier.prepare(`
+          SELECT state FROM media_publication_attempts
+          WHERE task_id = ? AND task_execution_attempt = 1
+        `).get(raceTask.id)).toEqual({ state: "reserved" });
+      } finally {
+        atReservedBarrier.close();
+      }
+
+      await runGenerationRecoverySweep({
+        hasPendingGenerated: () => true,
+        recoverPending: () => recoverPendingGenerationMediaResults(),
+        store,
+      });
+
+      // Capture the durable state while the foreground body is still held.
+      // A fixed recovery sweep must leave the live reservation and task alone;
+      // the pre-fix sweep has already failed the task and compensated it here.
+      const raceDuringSweep = openAppDatabase(directory);
+      let raceDuringTask: { state: string } | undefined;
+      let raceDuringPublication: { state: string } | undefined;
+      try {
+        raceDuringTask = raceDuringSweep.prepare(`
+          SELECT state FROM generation_tasks WHERE id = ?
+        `).get(raceTask.id) as { state: string } | undefined;
+        raceDuringPublication = raceDuringSweep.prepare(`
+          SELECT state FROM media_publication_attempts
+          WHERE task_id = ? AND task_execution_attempt = 1
+        `).get(raceTask.id) as { state: string } | undefined;
+      } finally {
+        raceDuringSweep.close();
+      }
+      raceBody.release();
+
+      let raceError: unknown;
+      let raceSaved: Awaited<ReturnType<typeof saveGeneratedMp4>> | undefined;
+      const raceResult = await raceSettled;
+      if (raceResult.ok) raceSaved = raceResult.value;
+      else raceError = raceResult.error;
+
+      console.info("[R01] reserved-race snapshot", JSON.stringify({
+        duringSweep: {
+          publication: raceDuringPublication,
+          task: raceDuringTask,
+        },
+        saveError: raceError instanceof Error
+          ? { message: raceError.message, name: raceError.name }
+          : raceError === undefined ? undefined : String(raceError),
+      }));
+      // These are deliberately ordered before the save-error assertion so the
+      // old implementation's durable mutation is the primary red evidence:
+      // a live foreground save must leave its task running and reservation
+      // intact while the recovery sweep is in progress.
+      expect(raceDuringTask).toEqual({ state: "running" });
+      expect(raceDuringPublication).toEqual({ state: "reserved" });
+      expect(raceError).toBeUndefined();
+      if (!raceSaved || !("publicationToken" in raceSaved)) {
+        throw new Error("R01 race did not return a task publication token");
+      }
+      // The normal foreground completion owns candidate publication and task
+      // settlement.  Keep this explicit so the green oracle covers the whole
+      // save -> publish -> output-set chain, not just the body save promise.
+      publishGenerationMediaCandidate(raceSaved.publicationToken);
+      commitGenerationMediaOutputSet({
+        assetIds: [raceSaved.assetId],
+        executionAttempt: 1,
+        kind: "video",
+        ownerId: "__test__",
+        taskId: raceTask.id,
+      });
+
+      const raceAfterSweep = openAppDatabase(directory);
+      let raceTaskSnapshot: { error_code: string | null; state: string };
+      let racePublicationSnapshot: { state: string } | undefined;
+      try {
+        raceTaskSnapshot = raceAfterSweep.prepare(`
+          SELECT state, error_code FROM generation_tasks WHERE id = ?
+        `).get(raceTask.id) as { error_code: string | null; state: string };
+        racePublicationSnapshot = raceAfterSweep.prepare(`
+          SELECT state FROM media_publication_attempts
+          WHERE task_id = ? AND task_execution_attempt = 1
+        `).get(raceTask.id) as { state: string } | undefined;
+      } finally {
+        raceAfterSweep.close();
+      }
+      expect(raceTaskSnapshot).toMatchObject({
+        state: "success",
+      });
+      expect(racePublicationSnapshot).toEqual({ state: "published" });
+    } finally {
+      store.close();
+    }
+  });
+}
 
 test("storage routing read and media reservation hold one profile mutation lock", async () => {
   await withDataDirectory("routing-reservation-lock", async (directory) => {

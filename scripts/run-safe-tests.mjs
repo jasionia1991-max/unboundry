@@ -71,9 +71,11 @@ const TEMPLATE_ACCEPTANCE_SCRIPT = "scripts/template-acceptance-preview.mjs";
 const TEMPLATE_ACCEPTANCE_TIMEOUT = 2 * 60 * 60 * 1_000 + 60_000;
 const GENERATION_STATUS_ACCEPTANCE_SCENARIO = "generation-status";
 const NODE_RECOVERY_ACCEPTANCE_SCENARIO = "node-recovery";
+const MEDIA_PUBLICATION_ACCEPTANCE_SCENARIO = "media-publication";
 const ACCEPTANCE_SCENARIOS = Object.freeze([
   GENERATION_STATUS_ACCEPTANCE_SCENARIO,
   NODE_RECOVERY_ACCEPTANCE_SCENARIO,
+  MEDIA_PUBLICATION_ACCEPTANCE_SCENARIO,
   "templates",
 ]);
 const GENERATION_STATUS_BASELINE_HEAD = "955b9d2d89f76f8b91e71dd76cfb37ecad32cdc6";
@@ -1148,15 +1150,15 @@ function preflight() {
     new Set(manifested).size !== manifested.length ||
     manifested.join("\n") !== specs.join("\n")
   ) {
-    fail("safe test manifest must be a duplicate-free exact 134-spec partition");
+    fail("safe test manifest must be a duplicate-free exact 139-spec partition");
   }
-  const expectedModeCounts = { dev: 77, hybrid: 4, node: 40, preview: 2, self: 11 };
+  const expectedModeCounts = { dev: 77, hybrid: 4, node: 45, preview: 2, self: 11 };
   for (const mode of expectedModes) {
     if (manifest[mode].length !== expectedModeCounts[mode]) {
       fail(`unexpected ${mode} spec count ${manifest[mode].length}`);
     }
   }
-  if (specs.length !== 134) fail(`expected 134 isolated specs, found ${specs.length}`);
+  if (specs.length !== 139) fail(`expected 139 isolated specs, found ${specs.length}`);
 
   const packageJson = JSON.parse(
     readFileSync(join(repositoryRoot, "package.json"), "utf8"),
@@ -1603,14 +1605,17 @@ async function runTemplateAcceptancePreview(
   browserRoot,
   acceptanceScenario = GENERATION_STATUS_ACCEPTANCE_SCENARIO,
 ) {
-  const acceptanceTimeout = acceptanceScenario === NODE_RECOVERY_ACCEPTANCE_SCENARIO
-    ? 12 * 60 * 60_000 + 60_000 : TEMPLATE_ACCEPTANCE_TIMEOUT;
+  const acceptanceTimeout = acceptanceScenario === MEDIA_PUBLICATION_ACCEPTANCE_SCENARIO
+    ? 24 * 60 * 60_000 + 60_000
+    : acceptanceScenario === NODE_RECOVERY_ACCEPTANCE_SCENARIO
+      ? 12 * 60 * 60_000 + 60_000 : TEMPLATE_ACCEPTANCE_TIMEOUT;
   const testRoot = mkdtempSync(join(suiteRoot, "template-acceptance-preview-"));
   const dataDirectory = join(testRoot, "data");
   mkdirSync(dataDirectory, { recursive: true });
   const generationBaseline = [
     GENERATION_STATUS_ACCEPTANCE_SCENARIO,
     NODE_RECOVERY_ACCEPTANCE_SCENARIO,
+    MEDIA_PUBLICATION_ACCEPTANCE_SCENARIO,
   ].includes(acceptanceScenario)
     ? prepareGenerationStatusBaseline(testRoot)
     : undefined;
@@ -2449,11 +2454,11 @@ function validateExactV051RawEvidence(raw, nonce) {
     schema39.rollbackBaselineNormalizedByCurrent !== true ||
     JSON.stringify(schema39.rollbackCheckpoint) !==
       JSON.stringify({ busy: 0, checkpointed: 0, log: 0 }) ||
-    schema39.userVersion !== 43 ||
+    schema39.userVersion !== 44 ||
     schema39.versionEndpointBeforeDatabaseOpen !== true ||
-    schema39.latestMigration?.version !== 43 ||
+    schema39.latestMigration?.version !== 44 ||
     schema39.latestMigration?.name !==
-      "durable-canvas-operation-receipts"
+      "media-publication-output-slots-and-recovery"
   ) fail("exact v0.5.1 current-schema rejection rehearsal is incomplete");
 }
 
@@ -3198,8 +3203,8 @@ process.exit(0);
         })}`,
       );
     }
-    if (discovery.tests !== 1368) {
-      fail(`the frozen 1368-test inventory changed to ${discovery.tests}`);
+    if (discovery.tests !== 1409) {
+      fail(`the frozen 1409-test inventory changed to ${discovery.tests}`);
     }
     const idsByFile = {};
     const { entries } = collectReportEntries(reportFile, sourceRoot);
@@ -3432,6 +3437,7 @@ async function createImmutableReleaseFixture(
     "migrate-schema40-to41.mjs",
     "migrate-schema41-to42.mjs",
     "migrate-schema42-to43.mjs",
+    "migrate-schema43-to44.mjs",
   ]) {
     writeImmutableReleaseFixtureFile(
       join(repository, `scripts/${name}`),
@@ -4534,7 +4540,7 @@ async function runImmutableReleaseOperationalCheck(
       manifest.expectedVersion !== "0.6.0" || manifest.releaseId !== "v0.6.0" ||
       manifest.formalReleaseCommit !== false ||
       JSON.stringify(manifest.databaseCompatibility) !== JSON.stringify({
-        activeSchemaVersions: [43],
+        activeSchemaVersions: [44],
         migrationMode: "forbidden-from-final-runtime",
         standbySchemaVersions: [37],
       }) ||
@@ -4703,6 +4709,7 @@ async function runImmutableReleaseOperationalCheck(
       "scripts/migrate-schema40-to41.mjs",
       "scripts/migrate-schema41-to42.mjs",
       "scripts/migrate-schema42-to43.mjs",
+      "scripts/migrate-schema43-to44.mjs",
       "scripts/node-typescript-runtime.mjs",
     ]) {
       if (!bridgeManifestPaths.has(required)) {
@@ -4844,7 +4851,10 @@ async function main() {
   const { browserRoot, capturedWorkspace, files, sourceRoot } =
     createTrackedSnapshot(
       suiteRoot,
-      (options.command === "acceptance" && options.acceptanceScenario === NODE_RECOVERY_ACCEPTANCE_SCENARIO) ||
+      (options.command === "acceptance" && [
+        NODE_RECOVERY_ACCEPTANCE_SCENARIO,
+        MEDIA_PUBLICATION_ACCEPTANCE_SCENARIO,
+      ].includes(options.acceptanceScenario)) ||
         (options.command !== "acceptance" && options.command !== "rehearsal" &&
           options.command !== "recovery-rehearsal" &&
           (options.command === "full" || selectedSpecsRequireBrowser(specs))),

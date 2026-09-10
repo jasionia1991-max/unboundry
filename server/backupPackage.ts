@@ -84,8 +84,8 @@ const reservationMarkerMaximumBytes = 64 * 1024;
 const secretDocumentLockMaximumBytes = 1024 * 1024;
 const backupIncompleteMarker = ".unboundry-backup-incomplete";
 const restoreIncompleteMarker = ".unboundry-restore-incomplete";
-const supportedBackupSchemaVersions = new Set([37, 38, 39, 40, 41, 42, 43]);
-const currentBackupSchemaVersion = 43 as const;
+const supportedBackupSchemaVersions = new Set([37, 38, 39, 40, 41, 42, 43, 44]);
+const currentBackupSchemaVersion = 44 as const;
 const minimumProviderQuietMilliseconds = 60_000;
 const restorableSecretFiles = new Set([
   "config-master.key",
@@ -100,9 +100,10 @@ const transientSecretFiles = new Set([
 
 export type BackupKeyInput = KeyObject | string | Buffer;
 
-export type BackupSchemaVersion = 37 | 38 | 39 | 40 | 41 | 42 | 43;
+export type BackupSchemaVersion = 37 | 38 | 39 | 40 | 41 | 42 | 43 | 44;
 
 export type BackupCapturePurpose =
+  | "current-schema44"
   | "current-schema43"
   | "historical-recovery"
   | "quiesced-active-preservation";
@@ -148,7 +149,7 @@ export type BackupQuiescedTaskReference = Readonly<{
 }>;
 
 export type BackupQuiescedSourceContract = BackupFrozenSourceContract & Readonly<{
-  expectedSchemaVersion: 43;
+  expectedSchemaVersion: 43 | 44;
   preservedTask: BackupQuiescedTaskReference;
   runtimeDirectory: string;
   stoppedProcess: RuntimeStoppedProcessProof;
@@ -513,9 +514,10 @@ function capturePurposeFor(
   value: BackupCapturePurpose | undefined,
   contractPresent: boolean,
 ): BackupCapturePurpose {
-  const purpose = value ?? "current-schema43";
+  const purpose = value ?? "current-schema44";
   if (
-    (purpose !== "current-schema43" &&
+    (purpose !== "current-schema44" &&
+      purpose !== "current-schema43" &&
       purpose !== "historical-recovery" &&
       purpose !== "quiesced-active-preservation") ||
     ((purpose === "historical-recovery" ||
@@ -535,12 +537,15 @@ function validateFrozenSourceContract(
   capturePurpose: BackupCapturePurpose,
 ) {
   const schemaPurposeMatches = Boolean(contract && typeof contract === "object") &&
-    (capturePurpose === "current-schema43"
+    (capturePurpose === "current-schema44"
       ? contract.expectedSchemaVersion === currentBackupSchemaVersion
+      : capturePurpose === "current-schema43"
+        ? contract.expectedSchemaVersion === 43
       : capturePurpose === "quiesced-active-preservation"
-        ? contract.expectedSchemaVersion === currentBackupSchemaVersion
+        ? (contract.expectedSchemaVersion === 43 ||
+          contract.expectedSchemaVersion === currentBackupSchemaVersion)
         : supportedBackupSchemaVersions.has(contract.expectedSchemaVersion) &&
-        contract.expectedSchemaVersion !== currentBackupSchemaVersion);
+        contract.expectedSchemaVersion <= 43);
   if (
     !contract ||
     typeof contract !== "object" ||
@@ -875,6 +880,23 @@ function readQuiescedTaskEvidence(
     taskId: reference.taskId,
     unresolvedOutcome: "outcome-unknown" as const,
   });
+}
+
+/**
+ * The schema migration uses the same narrow preservation contract as the
+ * encrypted backup path.  Keep the evidence reader in one place so a future
+ * change cannot make migration accept a recovering Provider boundary that a
+ * quiesced backup would reject (or vice versa).
+ *
+ * This assertion deliberately returns no ledger object.  The migration only
+ * needs the proof that the explicitly named task, its attempt, and its event
+ * history are exact; the migration itself must leave that ledger untouched.
+ */
+export function assertSchema43QuiescedTaskEvidence(
+  database: DatabaseSync,
+  contract: BackupQuiescedSourceContract,
+) {
+  readQuiescedTaskEvidence(database, contract);
 }
 
 function validateLockedSourceContract(
@@ -3992,10 +4014,14 @@ function validateManifest(
     !validSha(inspection.logicalSha256) ||
     !Array.isArray(inspection.tables) || !Array.isArray(inspection.migrationLedger)
   ) fail("BACKUP_MANIFEST_INVALID", "Backup database inspection is invalid");
-  if (captureMode === "quiesced-active-preservation" && inspection.userVersion !== 43) {
+  if (
+    captureMode === "quiesced-active-preservation" &&
+    inspection.userVersion !== 43 &&
+    inspection.userVersion !== currentBackupSchemaVersion
+  ) {
     fail(
       "BACKUP_MANIFEST_INVALID",
-      "Quiesced preservation packages must contain schema43",
+      "Quiesced preservation packages must contain schema43 or schema44",
     );
   }
   const source = jsonObject(manifest.source, "BACKUP_MANIFEST_INVALID");

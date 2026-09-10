@@ -31,6 +31,7 @@ import { Readable, Writable } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { promisify } from "node:util";
 import { expect, test } from "./safe-test";
+import { freezeSyntheticSchema43 } from "./schema-fixtures";
 import {
   applyPendingSchemaMigrationsInTransaction,
   currentSchemaVersion,
@@ -207,6 +208,7 @@ function createKeys() {
 }
 
 function rollbackMigration43To42(database: DatabaseSync) {
+  freezeSyntheticSchema43(database);
   if (Number((database.prepare("PRAGMA user_version").get() as {
     user_version: number;
   }).user_version) !== 43) return;
@@ -1439,7 +1441,10 @@ async function stoppedProcessProofForBackupTest() {
   return Object.freeze({ pid, pidNamespace, startTicks });
 }
 
-async function prepareQuiescedBackupFixture(root: string) {
+async function prepareQuiescedBackupFixture(
+  root: string,
+  targetSchemaVersion: 43 | 44 = 43,
+) {
   const fixture = await createBackupFixture(root);
   const providerAttemptAt = "2026-01-01T00:00:00.000Z";
   const generationFrozenAt = "2026-01-01T00:02:00.000Z";
@@ -1530,6 +1535,7 @@ async function prepareQuiescedBackupFixture(root: string) {
     },
   }), generationFrozenAt);
   fixture.database.exec("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode = DELETE");
+  if (targetSchemaVersion === 43) freezeSyntheticSchema43(fixture.database);
   const inspection = inspectBackupDatabase(
     join(fixture.dataDirectory, "unboundry.sqlite"),
     fixture.dataDirectory,
@@ -1715,6 +1721,338 @@ test("quiesced active preservation keeps one unknown task exact through verify a
     }
     fixture?.database.close();
     await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("schema44 quiesced preservation verifies, restores, and keeps recovery ledgers", async () => {
+  const root = await mkdtemp(join(tmpdir(), "unboundry-schema44-quiesced-backup-"));
+  let fixture: Awaited<ReturnType<typeof prepareQuiescedBackupFixture>> | undefined;
+  let coordinator: ReturnType<typeof createRuntimeRoleCoordinator> | undefined;
+  try {
+    fixture = await prepareQuiescedBackupFixture(root, 44);
+    const timestamp = "2026-01-01T00:00:00.000Z";
+    fixture.database.prepare(`
+      INSERT INTO generation_result_save_leases (
+        task_id, execution_attempt, owner_id, kind, runtime_instance_id,
+        fence_epoch, holder_token, phase, heartbeat_at, lease_until, released_at
+      ) VALUES (
+        'backup-task', 1, 'backup-user', 'image',
+        'schema44-test:00000000-0000-0000-0000-000000000000', 1,
+        'schema44-test-holder-token', 'released', ?, ?, ?
+      )
+    `).run(timestamp, timestamp, timestamp);
+    fixture.database.prepare(`
+      INSERT INTO generation_result_adoptions (
+        id, owner_id, task_id, execution_attempt, incident_digest,
+        receipt_version, receipt_json, created_at
+      ) VALUES (
+        'schema44-adoption-receipt', 'backup-user', 'backup-task', 1,
+        'schema44-incident-digest', 1,
+        '{"kind":"schema44-test","providerPostCount":0}', ?
+      )
+    `).run(timestamp);
+    for (const [id, state] of [
+      ["schema44-parent-run", "success"],
+      ["schema44-child-run", "success"],
+    ] as const) {
+      fixture.database.prepare(`
+        INSERT INTO workflow_runs (
+          id, owner_id, canvas_id, group_id, graph_revision,
+          semantic_fingerprint, plan_json, state, stop_requested,
+          created_at, updated_at
+        ) VALUES (?, 'backup-user', 'backup-project', ?, 7, ?,
+          '{"version":1}', ?, 0, ?, ?)
+      `).run(id, id, `${id}-fingerprint`, state, timestamp, timestamp);
+    }
+    fixture.database.prepare(`
+      INSERT INTO workflow_run_continuations (
+        id, owner_id, parent_run_id, child_run_id, intent_id,
+        preview_digest, parent_graph_revision, child_graph_revision,
+        parent_plan_digest, child_plan_digest, selected_node_ids_json,
+        frozen_external_inputs_json, canonical_adoption_receipt_id,
+        created_at, updated_at
+      ) VALUES (
+        'schema44-continuation', 'backup-user', 'schema44-parent-run',
+        'schema44-child-run', 'schema44-intent', 'schema44-preview', 7, 7,
+        'schema44-parent-plan', 'schema44-child-plan', '["backup-node"]',
+        '[{"nodeId":"backup-node"}]', 'schema44-adoption-receipt', ?, ?
+      )
+    `).run(timestamp, timestamp);
+    fixture.database.exec("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode = DELETE");
+    const sourceInspection = inspectBackupDatabase(
+      join(fixture.dataDirectory, "unboundry.sqlite"),
+      fixture.dataDirectory,
+    );
+
+    const initialCoordinator = createRuntimeRoleCoordinator({
+      dataDirectory: fixture.dataDirectory,
+      role: "active",
+      runtimeDirectory: fixture.runtimeDirectory,
+    });
+    await expect(initialCoordinator.beginDrain(1_000)).resolves.toEqual({
+      activeExecutions: 0,
+      drained: true,
+    });
+    initialCoordinator.releaseAfterDrain();
+    const stoppedProcess = await stoppedProcessProofForBackupTest();
+    const heldCoordinator = createRuntimeRoleCoordinator({
+      dataDirectory: fixture.dataDirectory,
+      requireExistingLease: true,
+      role: "active",
+      runtimeDirectory: fixture.runtimeDirectory,
+    });
+    coordinator = heldCoordinator;
+    await expect(heldCoordinator.beginDrain(1_000)).resolves.toEqual({
+      activeExecutions: 0,
+      drained: true,
+    });
+    const contract = {
+      expectedDatabaseLogicalSha256: sourceInspection.logicalSha256,
+      expectedSchemaVersion: 44 as const,
+      freezeEvidence: {
+        generationFrozenAt: fixture.generationFrozenAt,
+        lastProviderAdmissionAt: fixture.providerAttemptAt,
+        sourceDatabaseLogicalSha256: sourceInspection.logicalSha256,
+      },
+      preservedTask: { executionAttempt: 1, taskId: "backup-task" },
+      runtimeDirectory: fixture.runtimeDirectory,
+      stoppedProcess,
+    };
+    const backup = await createEncryptedBackup({
+      ...backupOptions(fixture),
+      capturePurpose: "quiesced-active-preservation",
+      mediaWarningAllowlist: ["MEDIA_INTEGRITY_LOCAL_FILE_ORPHAN"],
+      quiescedRuntimeLease: heldCoordinator,
+      quiescedSourceContract: contract,
+    });
+    expect(backup).toMatchObject({
+      captureMode: "quiesced-active-preservation",
+      finalCandidate: false,
+      schemaVersion: 44,
+    });
+    await expect(verifyEncryptedBackup(verifyOptions(fixture, backup.packageDirectory)))
+      .resolves.toMatchObject({
+        captureMode: "quiesced-active-preservation",
+        finalCandidate: false,
+      });
+
+    const restoredDirectory = join(root, "restored");
+    await expect(restoreEncryptedBackup({
+      ...verifyOptions(fixture, backup.packageDirectory),
+      targetDirectory: restoredDirectory,
+    })).resolves.toMatchObject({
+      captureMode: "quiesced-active-preservation",
+      schemaVersion: 44,
+    });
+    const restored = new DatabaseSync(join(restoredDirectory, "unboundry.sqlite"), {
+      readOnly: true,
+    });
+    try {
+      expect(restored.prepare(`
+        SELECT runtime_instance_id, fence_epoch, phase, released_at
+        FROM generation_result_save_leases
+        WHERE task_id = 'backup-task' AND execution_attempt = 1
+      `).get()).toMatchObject({
+        fence_epoch: 1,
+        phase: "released",
+        runtime_instance_id: "schema44-test:00000000-0000-0000-0000-000000000000",
+        released_at: timestamp,
+      });
+      expect(restored.prepare(`
+        SELECT id, task_id, incident_digest, receipt_version, receipt_json
+        FROM generation_result_adoptions WHERE id = 'schema44-adoption-receipt'
+      `).get()).toEqual({
+        id: "schema44-adoption-receipt",
+        incident_digest: "schema44-incident-digest",
+        receipt_json: '{"kind":"schema44-test","providerPostCount":0}',
+        receipt_version: 1,
+        task_id: "backup-task",
+      });
+      expect(restored.prepare(`
+        SELECT parent_run_id, child_run_id, canonical_adoption_receipt_id
+        FROM workflow_run_continuations WHERE id = 'schema44-continuation'
+      `).get()).toEqual({
+        canonical_adoption_receipt_id: "schema44-adoption-receipt",
+        child_run_id: "schema44-child-run",
+        parent_run_id: "schema44-parent-run",
+      });
+      expect(restored.prepare("PRAGMA user_version").get()).toEqual({ user_version: 44 });
+    } finally {
+      restored.close();
+    }
+  } finally {
+    if (coordinator) {
+      try { coordinator.releaseAfterDrain(); } catch {}
+    }
+    fixture?.database.close();
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("quiesced backup CLI preserves schema43 and schema44 unknown tasks through verify and fresh restore", async () => {
+  for (const schemaVersion of [43, 44] as const) {
+    const root = await mkdtemp(join(
+      tmpdir(),
+      `unboundry-quiesced-cli-schema${schemaVersion}-`,
+    ));
+    let fixture: Awaited<ReturnType<typeof prepareQuiescedBackupFixture>> | undefined;
+    try {
+      fixture = await prepareQuiescedBackupFixture(root, schemaVersion);
+      const sourceInspection = inspectBackupDatabase(
+        join(fixture.dataDirectory, "unboundry.sqlite"),
+        fixture.dataDirectory,
+      );
+      expect(sourceInspection.userVersion).toBe(schemaVersion);
+      const sourceBefore = await treeFingerprint(fixture.dataDirectory);
+
+      const initialCoordinator = createRuntimeRoleCoordinator({
+        dataDirectory: fixture.dataDirectory,
+        role: "active",
+        runtimeDirectory: fixture.runtimeDirectory,
+      });
+      await expect(initialCoordinator.beginDrain(1_000)).resolves.toEqual({
+        activeExecutions: 0,
+        drained: true,
+      });
+      initialCoordinator.releaseAfterDrain();
+      const stoppedProcess = await stoppedProcessProofForBackupTest();
+      const backupResult = await execute(process.execPath, [
+        "scripts/backup-data.mjs",
+        "--source-frozen",
+        "--quiesced-active-preservation",
+        "--data-dir",
+        fixture.dataDirectory,
+        "--backup-root",
+        fixture.backupRoot,
+        "--scratch-root",
+        fixture.scratchRoot,
+        "--expected-database-logical-sha256",
+        sourceInspection.logicalSha256,
+        "--expected-schema-version",
+        String(schemaVersion),
+        "--generation-frozen-at",
+        fixture.generationFrozenAt,
+        "--last-provider-admission-at",
+        fixture.providerAttemptAt,
+        "--previous-pid",
+        String(stoppedProcess.pid),
+        "--previous-pid-namespace",
+        stoppedProcess.pidNamespace,
+        "--previous-pid-start-ticks",
+        stoppedProcess.startTicks,
+        "--preserved-task-attempt",
+        "1",
+        "--preserved-task-id",
+        "backup-task",
+        "--runtime-directory",
+        fixture.runtimeDirectory,
+        "--allow-media-warning",
+        "MEDIA_INTEGRITY_LOCAL_FILE_ORPHAN",
+        "--recovery-public-key",
+        fixture.paths.recoveryPublic,
+        "--signing-private-key",
+        fixture.paths.signingPrivate,
+        "--oss-mirror",
+        JSON.stringify({
+          filePath: fixture.mirrorPath,
+          objectKey: fixture.objectKey,
+          versionId: `fake-version-schema${schemaVersion}`,
+        }),
+      ], { cwd: process.cwd() });
+      const backup = JSON.parse(backupResult.stdout.trim()) as {
+        captureMode: string;
+        databaseLogicalSha256: string;
+        finalCandidate: boolean;
+        packageDirectory: string;
+        schemaVersion: number;
+      };
+      expect(backup).toMatchObject({
+        captureMode: "quiesced-active-preservation",
+        databaseLogicalSha256: sourceInspection.logicalSha256,
+        finalCandidate: false,
+        schemaVersion,
+      });
+      expect(await packageContains(backup.packageDirectory, fixtureSentinel)).toBe(false);
+      expect(await treeFingerprint(fixture.dataDirectory)).toBe(sourceBefore);
+
+      const verifiedResult = await execute(process.execPath, [
+        "scripts/verify-backup.mjs",
+        "--backup-dir",
+        backup.packageDirectory,
+        "--scratch-root",
+        fixture.scratchRoot,
+        "--recovery-private-key",
+        fixture.paths.recoveryPrivate,
+        "--trusted-signing-public-key",
+        fixture.paths.signingPublic,
+      ], { cwd: process.cwd() });
+      const verified = JSON.parse(verifiedResult.stdout.trim()) as typeof backup;
+      expect(verified).toMatchObject({
+        captureMode: "quiesced-active-preservation",
+        databaseLogicalSha256: sourceInspection.logicalSha256,
+        finalCandidate: false,
+        schemaVersion,
+      });
+
+      const targetDirectory = join(root, "fresh-restore");
+      const restoredResult = await execute(process.execPath, [
+        "scripts/restore-backup.mjs",
+        "--backup-dir",
+        backup.packageDirectory,
+        "--target-data-dir",
+        targetDirectory,
+        "--scratch-root",
+        fixture.scratchRoot,
+        "--recovery-private-key",
+        fixture.paths.recoveryPrivate,
+        "--trusted-signing-public-key",
+        fixture.paths.signingPublic,
+      ], { cwd: process.cwd() });
+      const restored = JSON.parse(restoredResult.stdout.trim()) as typeof backup;
+      expect(restored).toMatchObject({
+        captureMode: "quiesced-active-preservation",
+        databaseLogicalSha256: sourceInspection.logicalSha256,
+        finalCandidate: false,
+        schemaVersion,
+      });
+      expect(inspectBackupDatabase(
+        join(targetDirectory, "unboundry.sqlite"),
+        targetDirectory,
+      )).toMatchObject({
+        foreignKeyViolations: 0,
+        integrityCheck: "ok",
+        logicalSha256: sourceInspection.logicalSha256,
+        userVersion: schemaVersion,
+      });
+      const restoredDatabase = new DatabaseSync(
+        join(targetDirectory, "unboundry.sqlite"),
+        { readOnly: true },
+      );
+      try {
+        expect(restoredDatabase.prepare(`
+          SELECT state, attempt, error_code, provider_task_id
+          FROM generation_tasks WHERE id = 'backup-task'
+        `).get()).toEqual({
+          attempt: 1,
+          error_code: "AUTOMATIC_RESULT_RECOVERY",
+          provider_task_id: null,
+          state: "recovering",
+        });
+        expect(restoredDatabase.prepare(`
+          SELECT outcome, failure_code, provider_task_id
+          FROM generation_provider_attempts WHERE task_id = 'backup-task'
+        `).get()).toEqual({
+          failure_code: "OUTCOME_UNKNOWN_BILLING_RISK",
+          outcome: "outcome-unknown",
+          provider_task_id: null,
+        });
+      } finally {
+        restoredDatabase.close();
+      }
+    } finally {
+      fixture?.database.close();
+      await rm(root, { force: true, recursive: true });
+    }
   }
 });
 
@@ -4217,11 +4555,13 @@ test("historical exact-v37 recovery chain rehydrates fake OSS offline and valida
     "scripts/migrate-schema40-to41.mjs",
     "scripts/migrate-schema41-to42.mjs",
     "scripts/migrate-schema42-to43.mjs",
+    "scripts/migrate-schema43-to44.mjs",
     "server/schemaMigration.ts",
     "server/schema39To40Migration.ts",
     "server/schema40To41Migration.ts",
     "server/schema41To42Migration.ts",
     "server/schema42To43Migration.ts",
+    "server/schema43To44Migration.ts",
   ].map((path) => readFile(join(process.cwd(), path), "utf8")));
   const migrationCodes = [...new Set(
     [...migrationSources.join("\n").matchAll(
@@ -4501,7 +4841,7 @@ test("historical exact-v37 recovery chain rehydrates fake OSS offline and valida
           servedStaticAssetSha256: string;
           version: string;
         };
-        bridgeSchema43: {
+        bridgeCurrentSchema: {
           externalNetworkAttempts: number;
           readiness: {
             mode: string;
@@ -4561,8 +4901,8 @@ test("historical exact-v37 recovery chain rehydrates fake OSS offline and valida
         targetVersion: 39,
       },
       migrationFinalApplied: {
-        sourceVersion: 42,
-        targetVersion: 43,
+        sourceVersion: 43,
+        targetVersion: 44,
       },
       migrationNativeAudit: {
         externalNetworkAttempts: 0,
@@ -4593,12 +4933,12 @@ test("historical exact-v37 recovery chain rehydrates fake OSS offline and valida
           releaseId: "v0.5.2",
           version: "0.5.2",
         },
-        bridgeSchema43: {
+        bridgeCurrentSchema: {
           externalNetworkAttempts: 0,
           readiness: {
             mode: "active",
             mutationsAccepted: true,
-            schemaVersion: 43,
+            schemaVersion: currentSchemaVersion,
             status: "ready",
           },
           releaseId: "v0.5.2",
@@ -4677,6 +5017,11 @@ test("historical exact-v37 recovery chain rehydrates fake OSS offline and valida
         sourceVersion: 42,
         targetVersion: 43,
       },
+      {
+        scriptName: "migrate-schema43-to44.mjs",
+        sourceVersion: 43,
+        targetVersion: 44,
+      },
     ]);
     for (let index = 1; index < summary.migrationStages.length; index += 1) {
       expect(summary.migrationStages[index]!.sourceLogicalSha256).toBe(
@@ -4745,10 +5090,10 @@ test("historical exact-v37 recovery chain rehydrates fake OSS offline and valida
     ).toMatch(/^[a-f0-9]{64}$/);
     expect(summary.startupValidation.bridgeSchema37.servedStaticAssetSha256)
       .toMatch(/^[a-f0-9]{64}$/);
-    expect(summary.startupValidation.bridgeSchema43.servedStaticAssetSha256)
+    expect(summary.startupValidation.bridgeCurrentSchema.servedStaticAssetSha256)
       .toMatch(/^[a-f0-9]{64}$/);
     expect(summary.startupValidation.bridgeSchema37.servedStaticAssetSha256)
-      .not.toBe(summary.startupValidation.bridgeSchema43.servedStaticAssetSha256);
+      .not.toBe(summary.startupValidation.bridgeCurrentSchema.servedStaticAssetSha256);
     expect(summary.fakeOssRecovery.objects).toHaveLength(1);
     expect(summary.fakeOssRecovery.objects[0]).toMatchObject({
       objectKey: fixture.objectKey,
@@ -5954,7 +6299,7 @@ test("logical fingerprints cover every table and sqlite_sequence independent of 
     const before = inspectBackupDatabase(original, inspectionRoot);
     const afterVacuum = inspectBackupDatabase(reorganized, inspectionRoot);
     expect(afterVacuum.logicalSha256).toBe(before.logicalSha256);
-    expect(before.tables).toHaveLength(38);
+    expect(before.tables).toHaveLength(41);
     expect(before.tables.map(({ name }) => name)).toEqual([
       "account_delete_intents",
       "account_permissions",
@@ -5967,6 +6312,8 @@ test("logical fingerprints cover every table and sqlite_sequence independent of 
       "generation_admission_events",
       "generation_canvas_projection_states",
       "generation_provider_attempts",
+      "generation_result_adoptions",
+      "generation_result_save_leases",
       "generation_safety_settings",
       "generation_task_events",
       "generation_tasks",
@@ -5991,11 +6338,12 @@ test("logical fingerprints cover every table and sqlite_sequence independent of 
       "sqlite_sequence",
       "user_templates",
       "users",
+      "workflow_run_continuations",
       "workflow_run_locks",
       "workflow_run_nodes",
       "workflow_runs",
     ]);
-    expect(before.schema.objectCounts.trigger).toBe(15);
+    expect(before.schema.objectCounts.trigger).toBe(17);
 
     const damaged = join(inspectionRoot, "damaged.sqlite");
     await copyFile(original, damaged);
@@ -6042,11 +6390,13 @@ test("logical fingerprints cover every table and sqlite_sequence independent of 
   }
 });
 
-test("PERF schema43 OSS wrapper prepares locally and its package restores exactly without remote upload", async () => {
+test("PERF schema43 and schema44 OSS wrapper packages restore exactly without remote upload", async () => {
+ for (const schemaVersion of [43, 44]) {
   const root = await mkdtemp(join(tmpdir(), "unboundry-perf-schema43-backup-"));
   let fixture: Fixture | undefined;
   try {
     fixture = await createBackupFixture(root);
+    if (schemaVersion === 43) freezeSyntheticSchema43(fixture.database);
     const generationFrozenAt = "2026-01-01T00:02:00.000Z";
     fixture.database.prepare(`
       UPDATE generation_tasks
@@ -6082,7 +6432,7 @@ test("PERF schema43 OSS wrapper prepares locally and its package restores exactl
       join(fixture.dataDirectory, "unboundry.sqlite"),
       fixture.dataDirectory,
     );
-    expect(sourceInspection.userVersion).toBe(43);
+    expect(sourceInspection.userVersion).toBe(schemaVersion);
     const before = await treeFingerprint(fixture.dataDirectory);
     const wrapperScript = join(process.cwd(), "ops/production/backup-to-oss-retention.mjs");
     const wrapperArguments = [
@@ -6100,7 +6450,7 @@ test("PERF schema43 OSS wrapper prepares locally and its package restores exactl
       "--expected-database-logical-sha256",
       sourceInspection.logicalSha256,
       "--expected-schema-version",
-      "43",
+      String(schemaVersion),
       "--generation-frozen-at",
       generationFrozenAt,
       "--last-provider-admission-at",
@@ -6118,8 +6468,8 @@ test("PERF schema43 OSS wrapper prepares locally and its package restores exactl
     ];
     const result = await execute(process.execPath, wrapperArguments, { cwd: process.cwd() });
     const receipt = JSON.parse(result.stdout.trim());
-    expect(receipt).toMatchObject({ applyUpload: false, applyRetention: false, schemaVersion: 43 });
-    expect(receipt.manifestObjectKey).toContain("unboundry-schema43/");
+    expect(receipt).toMatchObject({ applyUpload: false, applyRetention: false, schemaVersion });
+    expect(receipt.manifestObjectKey).toContain(`unboundry-schema${schemaVersion}/`);
     const packageDirectory = join(fixture.backupRoot, receipt.backupId);
     await execute(process.execPath, ["scripts/verify-backup.mjs", "--backup-dir", packageDirectory,
       "--scratch-root", fixture.scratchRoot, "--recovery-private-key", fixture.paths.recoveryPrivate,
@@ -6130,7 +6480,7 @@ test("PERF schema43 OSS wrapper prepares locally and its package restores exactl
       "--recovery-private-key", fixture.paths.recoveryPrivate,
       "--trusted-signing-public-key", fixture.paths.signingPublic], { cwd: process.cwd() });
     expect(inspectBackupDatabase(join(target, "unboundry.sqlite"), target)).toMatchObject({
-      userVersion: 43, logicalSha256: sourceInspection.logicalSha256,
+      userVersion: schemaVersion, logicalSha256: sourceInspection.logicalSha256,
       foreignKeyViolations: 0, integrityCheck: "ok",
     });
     expect(await treeFingerprint(fixture.dataDirectory)).toBe(before);
@@ -6138,4 +6488,5 @@ test("PERF schema43 OSS wrapper prepares locally and its package restores exactl
     fixture?.database.close();
     await rm(root, { recursive: true, force: true });
   }
+ }
 });

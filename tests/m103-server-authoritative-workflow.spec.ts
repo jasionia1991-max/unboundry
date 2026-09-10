@@ -1,7 +1,14 @@
 import { DatabaseSync } from "node:sqlite";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readlinkSync,
+  rmSync,
+} from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { expect, test } from "./safe-test";
@@ -11,6 +18,7 @@ import {
   databaseMatchesMigrationManifest,
   databaseMatchesSchema41Contract,
   databaseMatchesSchema42Contract,
+  databaseMatchesSchema43Contract,
   databaseMatchesSchemaContract,
   openAppDatabase,
 } from "../server/database";
@@ -47,8 +55,10 @@ import {
   reserveWorkflowMediaCapacityInTransaction,
 } from "../server/mediaCapacityReservations";
 import { inspectLockedBackupDatabase } from "../server/backupInspection";
+import { createRuntimeRoleCoordinator } from "../server/runtimeRole";
 import { migrateSchema41To42 } from "../server/schema41To42Migration";
 import { migrateSchema42To43 } from "../server/schema42To43Migration";
+import { migrateSchema43To44 } from "../server/schema43To44Migration";
 import {
   workflowRecoveryPolicy,
   type ModelExecutionAdapterId,
@@ -86,6 +96,34 @@ import {
 } from "../server/canvasObservability";
 
 const executeFile = promisify(execFile);
+
+async function stoppedProcessProofForSchemaMigrationTest() {
+  const child = spawn(process.execPath, [
+    "-e",
+    "setInterval(() => {}, 1000)",
+  ], { stdio: "ignore" });
+  const pid = child.pid;
+  if (!pid || pid <= 1) throw new Error("schema migration proof child did not start");
+  let startTicks = "1";
+  let pidNamespace = `${process.platform}:host`;
+  if (process.platform === "linux") {
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    const commandEnd = stat.lastIndexOf(")");
+    const fields = stat.slice(commandEnd + 2).trim().split(/\s+/);
+    startTicks = fields[19] ?? startTicks;
+    pidNamespace = readlinkSync("/proc/self/ns/pid");
+  }
+  child.kill("SIGKILL");
+  await new Promise<void>((resolve, reject) => {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      resolve();
+      return;
+    }
+    child.once("error", reject);
+    child.once("exit", () => resolve());
+  });
+  return Object.freeze({ pid, pidNamespace, startTicks });
+}
 
 function workflowReleaseFixture(input: {
   index: number;
@@ -227,9 +265,9 @@ test("INC-GEN-025 semantic compiler rejects cyclic executable DAGs", () => {
   expect(() => compileFrozenWorkflowSemanticPlan(graph)).toThrow("循环依赖");
 });
 
-test("schema 43 is exact and a schema 42 database is refused without mutation", () => {
+test("schema 44 is exact and a schema 42 database is refused without mutation", () => {
   const current = migrateMemory();
-  expect(currentSchemaVersion).toBe(43);
+  expect(currentSchemaVersion).toBe(44);
   expect(databaseMatchesMigrationManifest(current)).toBe(true);
   expect(databaseMatchesSchemaContract(current)).toBe(true);
   current.close();
@@ -431,7 +469,7 @@ test("schema 42 dry-run and apply migrate exactly to durable receipt schema 43",
     const migrated = new DatabaseSync(databasePath);
     migrated.exec("PRAGMA foreign_keys = ON");
     expect(databaseMatchesMigrationManifest(migrated, 43)).toBe(true);
-    expect(databaseMatchesSchemaContract(migrated)).toBe(true);
+    expect(databaseMatchesSchema43Contract(migrated)).toBe(true);
     const timestamp = new Date().toISOString();
     migrated.prepare(`
       INSERT INTO users (
@@ -475,6 +513,350 @@ test("schema 42 dry-run and apply migrate exactly to durable receipt schema 43",
     expect(migrated.prepare(`
       SELECT COUNT(*) AS count FROM canvas_operation_receipts
     `).get()).toEqual({ count: 0 });
+    migrated.close();
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test("schema 43 to 44 preserves the frozen source and admits durable output slots", async () => {
+  const root = mkdtempSync(join(tmpdir(), "unboundry-schema43-to44-"));
+  chmodSync(root, 0o700);
+  const dataDirectory = join(root, "data");
+  const runtimeDirectory = join(root, "runtime");
+  const inspectionRoot = join(root, "inspection");
+  mkdirSync(dataDirectory, { mode: 0o700 });
+  mkdirSync(runtimeDirectory, { mode: 0o700 });
+  mkdirSync(inspectionRoot, { mode: 0o700 });
+  const databasePath = join(dataDirectory, "unboundry.sqlite");
+  try {
+    const source = new DatabaseSync(databasePath);
+    source.exec(`
+      PRAGMA foreign_keys = ON;
+      CREATE TABLE schema_migrations (
+      version INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      applied_at TEXT NOT NULL
+    );
+      BEGIN IMMEDIATE;
+    `);
+    applyPendingSchemaMigrationsInTransaction(source, {
+      sourceVersion: 0,
+      targetVersion: 43,
+    });
+    source.exec("COMMIT; PRAGMA journal_mode = DELETE; BEGIN IMMEDIATE");
+    const sourceInspection = inspectLockedBackupDatabase(source, inspectionRoot);
+    expect(databaseMatchesSchema43Contract(source)).toBe(true);
+    expect(sourceInspection.userVersion).toBe(43);
+    source.exec("ROLLBACK");
+    source.close();
+    chmodSync(databasePath, 0o600);
+
+    const dryRun = await migrateSchema43To44({
+      dataDirectory,
+      expectedSourceLogicalSha256: sourceInspection.logicalSha256,
+      mode: "dry-run",
+      runtimeDirectory,
+      scratchRoot: root,
+    });
+    expect(dryRun).toMatchObject({
+      mode: "dry-run",
+      sourceVersion: 43,
+      status: "verified",
+      targetVersion: 44,
+    });
+    const unchanged = new DatabaseSync(databasePath, { readOnly: true });
+    expect(databaseMatchesMigrationManifest(unchanged, 43)).toBe(true);
+    expect(databaseMatchesSchema43Contract(unchanged)).toBe(true);
+    expect(unchanged.prepare("PRAGMA user_version").get()).toEqual({ user_version: 43 });
+    unchanged.close();
+
+    const cli = await executeFile(process.execPath, [
+      join(process.cwd(), "scripts/migrate-schema43-to44.mjs"),
+      "--dry-run",
+      "--data-dir",
+      dataDirectory,
+      "--runtime-dir",
+      runtimeDirectory,
+      "--scratch-root",
+      root,
+      "--expected-logical-sha256",
+      sourceInspection.logicalSha256,
+    ], { cwd: process.cwd(), env: process.env });
+    expect(JSON.parse(cli.stdout)).toMatchObject({
+      ok: true,
+      sourceVersion: 43,
+      targetVersion: 44,
+    });
+
+    const applied = await migrateSchema43To44({
+      dataDirectory,
+      expectedSourceLogicalSha256: sourceInspection.logicalSha256,
+      mode: "apply",
+      runtimeDirectory,
+      scratchRoot: root,
+    });
+    expect(applied).toMatchObject({
+      mode: "apply",
+      sourceVersion: 43,
+      status: "complete",
+      targetVersion: 44,
+    });
+    const migrated = new DatabaseSync(databasePath);
+    migrated.exec("PRAGMA foreign_keys = ON");
+    expect(databaseMatchesMigrationManifest(migrated, 44)).toBe(true);
+    expect(databaseMatchesSchemaContract(migrated)).toBe(true);
+    expect(migrated.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    const timestamp = new Date().toISOString();
+    migrated.prepare(`
+      INSERT INTO users (
+        id, login_name, display_name, password_hash, role, status,
+        created_at, updated_at
+      ) VALUES ('schema44-owner', 'schema44-owner', 'Owner', 'test', 'user',
+        'active', ?, ?)
+    `).run(timestamp, timestamp);
+    migrated.prepare(`
+      INSERT INTO generation_tasks (
+        id, canvas_id, node_id, kind, prompt, parameters, idempotency_key,
+        request_fingerprint, state, attempt, error_code, error_message,
+        created_at, updated_at, owner_id, cost_currency, model_configuration
+      ) VALUES (
+        'schema44-task', 'schema44-canvas', 'schema44-node', 'image', 'test', '{}',
+        'schema44-idempotency', 'schema44-request', 'running', 1, NULL, NULL,
+        ?, ?, 'schema44-owner', 'CNY', '{}'
+      )
+    `).run(timestamp, timestamp);
+    migrated.prepare(`
+      INSERT INTO generation_result_save_leases (
+        task_id, execution_attempt, owner_id, kind, runtime_instance_id,
+        fence_epoch, holder_token, phase, heartbeat_at, lease_until
+      ) VALUES ('schema44-task', 1, 'schema44-owner', 'image', '1:00000000-0000-0000-0000-000000000000',
+        1, '1234567890abcdef', 'saving', ?, ?)
+    `).run(timestamp, timestamp);
+    expect(() => migrated.prepare(`
+      INSERT INTO media_publication_attempts (
+        attempt_id, owner_id, kind, asset_id, source, state, storage_backend,
+        final_storage_name, object_key, staging_name, task_id,
+        task_execution_attempt, content_type, created_at, updated_at
+      ) VALUES (
+        'schema44-pub-invalid', 'schema44-owner', 'image', 'schema44-asset',
+        'generation', 'reserved', 'local', 'final', 'object', 'staging',
+        'schema44-task', 1, 'image/png', ?, ?
+      )
+    `).run(timestamp, timestamp)).toThrow();
+    migrated.close();
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test("schema 43 quiesced preservation takes over an existing lease without settling an unknown task", async () => {
+  const root = mkdtempSync(join(tmpdir(), "unboundry-schema43-quiesced-to44-"));
+  chmodSync(root, 0o700);
+  const dataDirectory = join(root, "data");
+  const runtimeDirectory = join(root, "runtime");
+  const inspectionRoot = join(root, "inspection");
+  mkdirSync(dataDirectory, { mode: 0o700 });
+  mkdirSync(runtimeDirectory, { mode: 0o700 });
+  mkdirSync(inspectionRoot, { mode: 0o700 });
+  const databasePath = join(dataDirectory, "unboundry.sqlite");
+  const providerAt = "2026-01-01T00:00:00.000Z";
+  const freezeAt = "2026-01-01T00:02:00.000Z";
+  try {
+    const source = new DatabaseSync(databasePath);
+    source.exec(`
+      PRAGMA foreign_keys = ON;
+      CREATE TABLE schema_migrations (
+      version INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      applied_at TEXT NOT NULL
+    );
+      BEGIN IMMEDIATE;
+    `);
+    applyPendingSchemaMigrationsInTransaction(source, {
+      sourceVersion: 0,
+      targetVersion: 43,
+    });
+    source.exec("COMMIT; PRAGMA journal_mode = DELETE");
+    source.prepare(`
+      INSERT INTO users (
+        id, login_name, display_name, password_hash, role, status,
+        created_at, updated_at
+      ) VALUES ('quiesced-owner', 'quiesced-owner', 'Owner', 'test',
+        'user', 'active', ?, ?)
+    `).run(providerAt, providerAt);
+    source.prepare(`
+      INSERT INTO generation_tasks (
+        id, canvas_id, node_id, kind, prompt, model, parameters,
+        idempotency_key, request_fingerprint, state, attempt, error_code,
+        error_message, created_at, updated_at, owner_id,
+        provider_profile_id, provider_model_id, cost_currency,
+        model_configuration, credential_revision
+      ) VALUES (
+        'quiesced-task', 'quiesced-canvas', 'quiesced-node', 'video',
+        'prompt', 'model', '{}', 'quiesced-idempotency',
+        'quiesced-fingerprint', 'recovering', 1,
+        'AUTOMATIC_RESULT_RECOVERY', 'preserve unknown outcome', ?, ?,
+        'quiesced-owner', 'quiesced-profile', 'quiesced-provider',
+        'CNY', '{}', 0)
+    `).run(providerAt, providerAt);
+    source.prepare(`
+      INSERT INTO generation_task_events (
+        task_id, state, error_code, error_message, created_at
+      ) VALUES ('quiesced-task', 'recovering',
+        'AUTOMATIC_RESULT_RECOVERY', 'preserve unknown outcome', ?)
+    `).run(providerAt);
+    source.prepare(`
+      INSERT INTO generation_provider_attempts (
+        task_id, execution_attempt, provider_profile_id, provider_model_id,
+        kind, evidence, created_at, owner_id, credential_revision, outcome,
+        provider_task_id, failure_code, finished_at
+      ) VALUES ('quiesced-task', 1, 'quiesced-profile', 'quiesced-provider',
+        'video', 'provider-boundary', ?, 'quiesced-owner', 0,
+        'outcome-unknown', NULL, 'OUTCOME_UNKNOWN_BILLING_RISK', NULL)
+    `).run(providerAt);
+    source.prepare(`
+      INSERT INTO generation_admission_events (
+        task_id, execution_attempt, owner_id, kind, admission_type, created_at
+      ) VALUES ('quiesced-task', 1, 'quiesced-owner', 'video', 'initial', ?)
+    `).run(providerAt);
+    source.prepare(`
+      INSERT INTO media_publication_attempts (
+        attempt_id, owner_id, kind, asset_id, source, state,
+        storage_backend, final_storage_name, object_key, staging_name,
+        task_id, task_execution_attempt, content_type, created_at, updated_at
+      ) VALUES ('quiesced-publication', 'quiesced-owner', 'video',
+        'quiesced-asset', 'generation', 'reserved', 'local', 'final-name',
+        'object-key', 'staging-name', 'quiesced-task', 1, 'video/mp4', ?, ?)
+    `).run(providerAt, providerAt);
+    source.prepare(`
+      UPDATE generation_safety_settings
+      SET global_enabled = 0, emergency_stop = 1, updated_at = ?
+      WHERE id = 1
+    `).run(freezeAt);
+    source.prepare(`
+      INSERT INTO admin_audit_events (
+        actor_user_id, action, details, created_at
+      ) VALUES ('quiesced-owner', 'generation_safety.update', ?, ?)
+    `).run(JSON.stringify({
+      after: {
+        emergencyStop: true,
+        globalEnabled: false,
+        updatedAt: freezeAt,
+      },
+    }), freezeAt);
+    source.exec("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode = DELETE; BEGIN IMMEDIATE");
+    const sourceInspection = inspectLockedBackupDatabase(source, inspectionRoot);
+    expect(databaseMatchesSchema43Contract(source)).toBe(true);
+    source.exec("ROLLBACK");
+    source.close();
+    chmodSync(databasePath, 0o600);
+
+    const prepareExistingLease = async () => {
+      const initial = createRuntimeRoleCoordinator({
+        dataDirectory,
+        role: "active",
+        runtimeDirectory,
+      });
+      await expect(initial.beginDrain(1_000)).resolves.toMatchObject({
+        activeExecutions: 0,
+        drained: true,
+      });
+      initial.releaseAfterDrain();
+    };
+    const makeContract = async () => ({
+      expectedDatabaseLogicalSha256: sourceInspection.logicalSha256,
+      expectedSchemaVersion: 43 as const,
+      freezeEvidence: {
+        generationFrozenAt: freezeAt,
+        lastProviderAdmissionAt: providerAt,
+        sourceDatabaseLogicalSha256: sourceInspection.logicalSha256,
+      },
+      preservedTask: {
+        executionAttempt: 1,
+        taskId: "quiesced-task",
+      },
+      runtimeDirectory,
+      stoppedProcess: await stoppedProcessProofForSchemaMigrationTest(),
+    });
+
+    await prepareExistingLease();
+    const dryContract = await makeContract();
+    const cli = await executeFile(process.execPath, [
+      join(process.cwd(), "scripts/migrate-schema43-to44.mjs"),
+      "--dry-run",
+      "--quiesced-active-preservation",
+      "--data-dir", dataDirectory,
+      "--runtime-dir", runtimeDirectory,
+      "--scratch-root", root,
+      "--expected-logical-sha256", sourceInspection.logicalSha256,
+      "--freeze-at", freezeAt,
+      "--last-provider-admission-at", providerAt,
+      "--preserved-task-id", "quiesced-task",
+      "--preserved-task-attempt", "1",
+      "--previous-pid", String(dryContract.stoppedProcess.pid),
+      "--previous-pid-namespace", dryContract.stoppedProcess.pidNamespace,
+      "--previous-pid-start-ticks", dryContract.stoppedProcess.startTicks,
+    ], { cwd: process.cwd(), env: process.env });
+    expect(JSON.parse(cli.stdout)).toMatchObject({
+      ok: true,
+      preservationMode: "quiesced-active-preservation",
+      sourceVersion: 43,
+      status: "verified",
+      targetVersion: 44,
+    });
+    const unchanged = new DatabaseSync(databasePath, { readOnly: true });
+    expect(databaseMatchesSchema43Contract(unchanged)).toBe(true);
+    expect(unchanged.prepare(`
+      SELECT state, error_code, attempt
+      FROM generation_tasks WHERE id = 'quiesced-task'
+    `).get()).toEqual({
+      attempt: 1,
+      error_code: "AUTOMATIC_RESULT_RECOVERY",
+      state: "recovering",
+    });
+    unchanged.close();
+
+    await prepareExistingLease();
+    const applied = await migrateSchema43To44({
+      dataDirectory,
+      expectedSourceLogicalSha256: sourceInspection.logicalSha256,
+      mode: "apply",
+      runtimeDirectory,
+      scratchRoot: root,
+      quiescedSourceContract: await makeContract(),
+    });
+    expect(applied).toMatchObject({
+      preservationMode: "quiesced-active-preservation",
+      sourceVersion: 43,
+      status: "complete",
+      targetVersion: 44,
+    });
+    const migrated = new DatabaseSync(databasePath, { readOnly: true });
+    expect(databaseMatchesMigrationManifest(migrated, 44)).toBe(true);
+    expect(databaseMatchesSchemaContract(migrated)).toBe(true);
+    expect(migrated.prepare(`
+      SELECT state, error_code, attempt, provider_task_id, result_asset_id
+      FROM generation_tasks WHERE id = 'quiesced-task'
+    `).get()).toEqual({
+      attempt: 1,
+      error_code: "AUTOMATIC_RESULT_RECOVERY",
+      provider_task_id: null,
+      result_asset_id: null,
+      state: "recovering",
+    });
+    expect(migrated.prepare(`
+      SELECT state, task_id, task_execution_attempt, output_slot,
+        output_set_count
+      FROM media_publication_attempts
+      WHERE attempt_id = 'quiesced-publication'
+    `).get()).toEqual({
+      output_set_count: null,
+      output_slot: null,
+      state: "reserved",
+      task_execution_attempt: 1,
+      task_id: "quiesced-task",
+    });
     migrated.close();
   } finally {
     rmSync(root, { force: true, recursive: true });

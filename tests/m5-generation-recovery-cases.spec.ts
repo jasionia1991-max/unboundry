@@ -453,9 +453,9 @@ test("terminal publication or projection quarantine requires a real ledger confl
             attempt_id, owner_id, kind, asset_id, source, state,
             storage_backend, final_storage_name, object_key, staging_name,
             task_id, task_execution_attempt, content_type, created_at, updated_at,
-            error_code
+            error_code, output_slot, output_set_count
           ) VALUES (?, ?, 'video', ?, 'generation', 'failed', 'local', ?, ?, ?,
-            ?, 1, 'video/mp4', ?, ?, 'OSS_IDENTITY_QUARANTINED')
+            ?, 1, 'video/mp4', ?, ?, 'OSS_IDENTITY_QUARANTINED', 0, 1)
         `).run(
           `quarantine-publication-${fixture.task.id}`,
           ownerId,
@@ -596,9 +596,9 @@ test("a local publication conflict escalates an existing operator case without r
         attempt_id, owner_id, kind, asset_id, source, state,
         storage_backend, final_storage_name, object_key, staging_name,
         task_id, task_execution_attempt, content_type, created_at, updated_at,
-        error_code
+        error_code, output_slot, output_set_count
       ) VALUES (?, ?, 'video', ?, 'generation', 'failed', 'local', ?, ?, ?,
-        ?, 1, 'video/mp4', ?, ?, 'OSS_IDENTITY_QUARANTINED')
+        ?, 1, 'video/mp4', ?, ?, 'OSS_IDENTITY_QUARANTINED', 0, 1)
     `).run(
       `operator-quarantine-publication-${fixture.task.id}`,
       ownerId,

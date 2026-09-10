@@ -1,3 +1,11 @@
+import { withGenerationResultSave, GenerationSaveBusyError } from "./generationResultSaveOwnership";
+import {
+  resumeGeneratedMediaReservation,
+  assertMediaPublicationIo,
+  syncMediaPublicationStaging,
+  prepareReservedMediaStaging,
+  MediaPublicationEvidenceConflictError,
+} from "./mediaLifecycle";
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { mkdir, open, rm, stat } from "node:fs/promises";
@@ -27,6 +35,7 @@ import {
 } from "./httpRequest";
 import {
   storageProfileForMedia,
+  storageProfileById,
   storageProfileForDestructiveMedia,
   withStorageMediaRoutingReservation,
   type AliyunStorageProfile,
@@ -72,14 +81,27 @@ function json(response: ServerResponse, status: number, body: unknown) {
   response.end(JSON.stringify(body));
 }
 
-export async function saveGeneratedMp4(input: {
+type saveGeneratedMp4Input = {
   body: ReadableStream<Uint8Array>;
   label: string;
   ownerId: string;
   task?: GeneratedPublicationTask;
   /** Test seam for the external-object write; production uses private OSS. */
   uploadObject?: typeof uploadPrivateAliyunOssObject;
-}) {
+};
+
+export async function saveGeneratedMp4(input: saveGeneratedMp4Input) {
+  if (!input.task) return saveGeneratedMp4Owned(input);
+  const saved = await withGenerationResultSave({
+    ownerId: input.ownerId, taskId: input.task.taskId,
+    executionAttempt: input.task.executionAttempt, kind: "video",
+  }, (saveToken) => saveGeneratedMp4Owned({ ...input, task: { ...input.task!, saveToken } }),
+  { token: input.task.saveToken });
+  if (!saved) throw new GenerationSaveBusyError();
+  return saved;
+}
+
+async function saveGeneratedMp4Owned(input: saveGeneratedMp4Input) {
   const id = `${randomUUID()}.mp4`;
   const path = videoPath(id);
   const checksum = createHash("sha256");
@@ -121,13 +143,30 @@ export async function saveGeneratedMp4(input: {
     releaseResources?.();
     throw error;
   }
-  const { objectKey, reservation, routing } = publication;
+  const { reservation } = publication;
   let handle: Awaited<ReturnType<typeof open>> | undefined;
   let size = 0;
   let header = Buffer.alloc(0);
   let bodyConsumptionStarted = false;
   let staged = false;
   try {
+  if (publication.reservation.disposition !== "created") {
+    const prior = publication.reservation;
+    const profile = prior.storageBackend === "oss"
+      ? await storageProfileById(prior.storageProfileId) : undefined;
+    if (prior.storageBackend === "oss" && !profile) throw new MediaPublicationDeferredError();
+    publication.routing = { enabled: prior.storageBackend === "oss", profile };
+    publication.objectKey = prior.objectKey;
+  }
+
+    const reused = await resumeGeneratedMediaReservation(publication.reservation);
+    if (reused) {
+      await input.body.cancel().catch(() => undefined);
+      return reused;
+    }
+    const { routing } = publication;
+    await prepareReservedMediaStaging(reservation);
+    assertMediaPublicationIo(reservation);
     await mkdir(path.directory, { recursive: true });
     handle = await open(mediaPublicationStagingPath(reservation), "wx");
     const output = handle;
@@ -140,10 +179,14 @@ export async function saveGeneratedMp4(input: {
         header = Buffer.concat([header, bytes]).subarray(0, 32);
       }
       checksum.update(bytes);
+      assertMediaPublicationIo(reservation);
       await output.writeFile(bytes);
+      assertMediaPublicationIo(reservation);
       },
     );
+    await handle.sync();
     await handle.close();
+    await syncMediaPublicationStaging(reservation);
     handle = undefined;
     if (size < 12 || header.toString("ascii", 4, 8) !== "ftyp") {
       throw new Error("Invalid generated MP4 video");
@@ -176,12 +219,12 @@ export async function saveGeneratedMp4(input: {
       await publishLocalMediaPublication(reservation);
     }
     const saved = {
-      assetId: id,
+      assetId: reservation.id,
       byteSize: size,
       contentType: "video/mp4",
       durationSeconds: metadata.durationSeconds,
       storageBackend: routing.enabled && routing.profile ? "oss" as const : "local" as const,
-      url: `/api/video-assets/${id}`,
+      url: `/api/video-assets/${reservation.id}`,
     };
     if (input.task) return { ...saved, publicationToken: reservation };
     finalizeMediaPublication(reservation);
@@ -192,10 +235,10 @@ export async function saveGeneratedMp4(input: {
       await input.body.cancel().catch(() => undefined);
     }
     await handle?.close().catch(() => undefined);
-    if (input.task && staged) {
+    if (input.task && (staged || error instanceof MediaPublicationEvidenceConflictError)) {
       throw new MediaPublicationDeferredError();
     }
-    await compensateMediaPublication(reservation, { profile: routing.profile });
+    await compensateMediaPublication(reservation, { profile: publication.routing.profile });
     throw error;
   } finally {
     releaseResources?.();

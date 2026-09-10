@@ -481,6 +481,9 @@ async function inventoryRelease(releaseDirectory) {
 }
 
 function validateRoleClosure(manifest, inventory, releaseRole, artifactClass) {
+  const migrationScriptPaths = manifest.databaseCompatibility?.rollbackTargetForSchemaVersion === 44
+    ? [...exactMigrationScriptPaths, "scripts/migrate-schema43-to44.mjs"]
+    : exactMigrationScriptPaths;
   const inventoryPaths = new Set(inventory.map((entry) => entry.path));
   const expectedRuntimeRoots = [
     "client",
@@ -490,7 +493,7 @@ function validateRoleClosure(manifest, inventory, releaseRole, artifactClass) {
     "package-lock.json",
     "package.json",
     ...(releaseRole === "bridge"
-      ? [...exactMigrationScriptPaths, "scripts/node-typescript-runtime.mjs"]
+      ? [...migrationScriptPaths, "scripts/node-typescript-runtime.mjs"]
       : []),
     "server",
     "spec/unboundry-state-fixtures.json",
@@ -513,7 +516,7 @@ function validateRoleClosure(manifest, inventory, releaseRole, artifactClass) {
 
   let migrationArtifactSha256;
   if (releaseRole === "bridge") {
-    const migrationEntries = exactMigrationScriptPaths.map((path) =>
+    const migrationEntries = migrationScriptPaths.map((path) =>
       inventory.find((entry) => entry.type === "file" && entry.path === path)
     );
     const migrationEntry = migrationEntries[0];
@@ -667,14 +670,20 @@ export async function validateAdmittedRelease({
     typeof expected.formalReleaseCommit !== "boolean" ||
     !isAbsolute(expected.runtimeCommand) || resolve(expected.runtimeCommand) !== expected.runtimeCommand
   ) fail("ADMITTED_RELEASE_INVALID", "Release expectation is invalid");
+  const targetSchemaVersion = expectedRole === "bridge"
+    ? manifest.databaseCompatibility?.rollbackTargetForSchemaVersion
+    : manifest.databaseCompatibility?.activeSchemaVersions?.[0];
+  if (![43, 44].includes(targetSchemaVersion)) {
+    fail("ADMITTED_RELEASE_INVALID", "Release schema contract is unsupported");
+  }
   const compatibility = expectedRole === "bridge"
     ? {
-        activeSchemaVersions: [37, 43],
+        activeSchemaVersions: [37, targetSchemaVersion],
         migrationMode: "external-one-shot-only",
-        rollbackTargetForSchemaVersion: 43,
+        rollbackTargetForSchemaVersion: targetSchemaVersion,
       }
     : {
-        activeSchemaVersions: [43],
+        activeSchemaVersions: [targetSchemaVersion],
         migrationMode: "forbidden-from-final-runtime",
         standbySchemaVersions: [37],
       };

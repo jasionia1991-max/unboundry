@@ -293,7 +293,7 @@ type V051RunnerAttestation = Readonly<{
       integrityCheck: "ok";
       journalModeAfter: "wal";
       journalModeBefore: "delete";
-      latestMigration: Readonly<{ name: string; version: 43 }>;
+      latestMigration: Readonly<{ name: string; version: 44 }>;
       logicalRowsUnchanged: true;
       migrationJournalModeBeforeNormalization: "wal";
       processExitCode: number;
@@ -308,7 +308,7 @@ type V051RunnerAttestation = Readonly<{
       sidecarsAfterExit: readonly (
         "unboundry.sqlite-shm" | "unboundry.sqlite-wal"
       )[];
-      userVersion: 43;
+      userVersion: 44;
       versionEndpointBeforeDatabaseOpen: true;
     }>;
   }>;
@@ -668,8 +668,8 @@ async function readRunnerAttestation(contract: V051Contract) {
         journalModeAfter: "wal",
         journalModeBefore: "delete",
         latestMigration: {
-          name: "durable-canvas-operation-receipts",
-          version: 43,
+          name: "media-publication-output-slots-and-recovery",
+          version: 44,
         },
         logicalRowsUnchanged: contract.schema39ExactTagRuntime
           .logicalRowsUnchanged,
@@ -685,7 +685,7 @@ async function readRunnerAttestation(contract: V051Contract) {
           log: 0,
         },
         sidecarsAfterExit,
-        userVersion: 43,
+        userVersion: 44,
         versionEndpointBeforeDatabaseOpen: contract.schema39ExactTagRuntime
           .versionEndpointReturns200BeforeDatabaseOpen,
       },
@@ -1267,6 +1267,7 @@ async function runBridgeMigration(
       ["migrate-schema40-to41.mjs", 40, 41],
       ["migrate-schema41-to42.mjs", 41, 42],
       ["migrate-schema42-to43.mjs", 42, 43],
+      ["migrate-schema43-to44.mjs", 43, 44],
     ].map(([scriptName, sourceVersion, targetVersion]) => Object.freeze({
       scriptName: String(scriptName),
       sourceVersion: Number(sourceVersion),
@@ -1339,7 +1340,7 @@ async function runBridgeMigration(
   return Object.freeze({
     ...finalResult,
     sourceVersion: 37,
-    targetVersion: 43,
+    targetVersion: 44,
   });
 }
 
@@ -1905,7 +1906,7 @@ test("runner-attested exact tag precedes attested bridge, migration, and final r
       mode: "apply",
       sourceVersion: 37,
       status: "complete",
-      targetVersion: 43,
+      targetVersion: 44,
     });
 
     runtime = await startReleaseRuntime(
@@ -1919,7 +1920,7 @@ test("runner-attested exact tag precedes attested bridge, migration, and final r
       body: {
         mode: "active",
         mutationsAccepted: true,
-        schemaVersion: 43,
+        schemaVersion: 44,
         status: "ready",
       },
       status: 200,
@@ -2123,14 +2124,14 @@ test("runner-attested exact tag precedes attested bridge, migration, and final r
     const finalDatabase = new DatabaseSync(databasePath, { readOnly: true });
     try {
       expect(finalDatabase.prepare("PRAGMA user_version").get()).toEqual({
-        user_version: 43,
+        user_version: 44,
       });
       expect(finalDatabase.prepare(`
         SELECT version, name FROM schema_migrations
         ORDER BY version DESC LIMIT 1
       `).get()).toEqual({
-        name: "durable-canvas-operation-receipts",
-        version: 43,
+        name: "media-publication-output-slots-and-recovery",
+        version: 44,
       });
       expect(finalDatabase.prepare(`
       SELECT revision, graph_revision, nodes

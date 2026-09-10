@@ -208,16 +208,24 @@ function parseQuiescedSourceContract(values, frozenSourceContract) {
     values.get("--preserved-task-attempt"),
     "--preserved-task-attempt",
   );
+  if (![43, 44].includes(frozenSourceContract.expectedSchemaVersion)) {
+    fail(
+      "BACKUP_ARGUMENT_INVALID",
+      "Quiesced preservation requires schema43 or schema44",
+    );
+  }
   return {
     ...frozenSourceContract,
-    expectedSchemaVersion: 43,
     preservedTask: { executionAttempt, taskId },
     runtimeDirectory,
     stoppedProcess: { pid, pidNamespace, startTicks },
   };
 }
 
-function parseFrozenSourceContract(values, historicalRecovery) {
+function parseFrozenSourceContract(
+  values,
+  { historicalRecovery, quiescedActivePreservation },
+) {
   const names = [
     "--expected-database-logical-sha256",
     "--expected-schema-version",
@@ -239,9 +247,14 @@ function parseFrozenSourceContract(values, historicalRecovery) {
   const expectedSchemaVersion = Number(schemaText);
   const generationFrozenAt = values.get("--generation-frozen-at");
   const admissionText = values.get("--last-provider-admission-at");
+  // Historical recovery accepts the retained 37-43 contracts.  A quiesced
+  // preservation capture is the migration boundary and accepts only 43 or
+  // the current 44 contract.  Ordinary current captures stay exact-schema44.
   const schemaAccepted = historicalRecovery
-    ? [37, 38, 39, 40, 41, 42].includes(expectedSchemaVersion)
-    : expectedSchemaVersion === 43;
+    ? [37, 38, 39, 40, 41, 42, 43].includes(expectedSchemaVersion)
+    : quiescedActivePreservation
+      ? [43, 44].includes(expectedSchemaVersion)
+      : expectedSchemaVersion === 44;
   if (
     !/^[a-f0-9]{64}$/.test(expectedDatabaseLogicalSha256) ||
     !schemaAccepted ||
@@ -429,7 +442,10 @@ try {
   const signingPrivateKeyPath = value("--signing-private-key");
   const frozenSourceContract = parseFrozenSourceContract(
     parsed.values,
-    parsed.historicalRecovery,
+    {
+      historicalRecovery: parsed.historicalRecovery,
+      quiescedActivePreservation: parsed.quiescedActivePreservation,
+    },
   );
   if (
     parsed.quiescedActivePreservation &&
@@ -536,7 +552,7 @@ try {
       ? "historical-recovery"
       : parsed.quiescedActivePreservation
         ? "quiesced-active-preservation"
-        : "current-schema43",
+        : "current-schema44",
     ...(parsed.quiescedActivePreservation
       ? {
           quiescedRuntimeLease: runtimeCoordinator,

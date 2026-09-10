@@ -42,6 +42,7 @@ const { migrateSchema39To40 } = await import("../server/schema39To40Migration.ts
 const { migrateSchema40To41 } = await import("../server/schema40To41Migration.ts");
 const { migrateSchema41To42 } = await import("../server/schema41To42Migration.ts");
 const { migrateSchema42To43 } = await import("../server/schema42To43Migration.ts");
+const { migrateSchema43To44 } = await import("../server/schema43To44Migration.ts");
 
 const contract = "unboundry-v051-exact-runtime-rehearsal-v3";
 const timestamp = "2026-08-12T00:00:00.000Z";
@@ -576,15 +577,22 @@ async function rehearse(input) {
     runtimeDirectory: migrationRuntimeDirectory,
     scratchRoot: input.workRoot,
   });
-  const migrated = await migrateSchema42To43({
+  const schema43 = await migrateSchema42To43({
     dataDirectory,
     expectedSourceLogicalSha256: schema42.targetLogicalSha256,
     mode: "apply",
     runtimeDirectory: migrationRuntimeDirectory,
     scratchRoot: input.workRoot,
   });
+  const migrated = await migrateSchema43To44({
+    dataDirectory,
+    expectedSourceLogicalSha256: schema43.targetLogicalSha256,
+    mode: "apply",
+    runtimeDirectory: migrationRuntimeDirectory,
+    scratchRoot: input.workRoot,
+  });
   if (
-    migrated.status !== "complete" || migrated.sourceVersion !== 42 ||
+    migrated.status !== "complete" || migrated.sourceVersion !== 43 ||
     migrated.targetVersion !== currentSchemaVersion || !migrated.targetLogicalSha256
   ) fail("staged migration did not publish the exact current schema");
 

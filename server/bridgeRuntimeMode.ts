@@ -82,6 +82,7 @@ export function releaseRoleFromEnvironment(
         packageVersion === "0.7.15" ||
         packageVersion === "0.7.16" ||
         packageVersion === "0.7.17" ||
+        packageVersion === "0.7.18" ||
         packageVersion === "0.7.14-compat.1"
       ? "final"
       : undefined;

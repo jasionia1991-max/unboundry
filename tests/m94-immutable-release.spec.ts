@@ -159,6 +159,7 @@ async function createSyntheticRepository(options: {
     "migrate-schema40-to41.mjs",
     "migrate-schema41-to42.mjs",
     "migrate-schema42-to43.mjs",
+    "migrate-schema43-to44.mjs",
   ]) {
     await write(
       join(repository, `scripts/${name}`),

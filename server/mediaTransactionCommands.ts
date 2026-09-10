@@ -1,5 +1,27 @@
 import type { TransactionScopedCommand } from "./transactionCommand";
 
+export const readGenerationPublicationSlotsCommand: TransactionScopedCommand<Readonly<{
+  taskId: string; executionAttempt: number;
+}>, readonly Record<string, unknown>[]> = {
+  execute(scope, input) {
+    const rows = scope.prepare(`SELECT publication.*, media.storage_status AS media_storage_status,
+      media.byte_size AS asset_byte_size, media.checksum_sha256 AS asset_checksum_sha256,
+      media.content_type AS asset_content_type, media.storage_backend AS asset_storage_backend,
+      media.storage_profile_id AS asset_storage_profile_id, media.object_key AS asset_object_key,
+      deletion.state AS deletion_state
+      FROM media_publication_attempts AS publication
+      LEFT JOIN media_assets AS media ON media.owner_id = publication.owner_id
+        AND media.kind = publication.kind AND media.id = publication.asset_id
+      LEFT JOIN media_delete_intents AS deletion ON deletion.owner_id = publication.owner_id
+        AND deletion.kind = publication.kind AND deletion.asset_id = publication.asset_id
+      WHERE publication.task_id = ? AND publication.task_execution_attempt = ?
+      ORDER BY publication.output_slot, publication.attempt_id LIMIT 257`)
+      .all(input.taskId, input.executionAttempt) as Record<string, unknown>[];
+    if (rows.length > 256) throw new Error("Publication evidence exceeds its safe bound");
+    return rows;
+  },
+};
+
 /** Ordered existing candidates for local original-result settlement, bounded
  * one past the supported result count so excess evidence stays detectable. */
 export const readPublishedOriginalMediaCandidateIdsCommand: TransactionScopedCommand<Readonly<{
@@ -10,9 +32,10 @@ export const readPublishedOriginalMediaCandidateIdsCommand: TransactionScopedCom
       JOIN media_assets AS media ON media.owner_id = publication.owner_id
         AND media.kind = publication.kind AND media.id = publication.asset_id
       WHERE publication.source = 'generation' AND publication.state = 'published'
+        AND publication.output_slot IS NOT NULL
         AND publication.task_id = ? AND publication.task_execution_attempt = ?
         AND publication.owner_id = ? AND publication.kind = ? AND media.storage_status = 'ready'
-      ORDER BY publication.created_at, publication.attempt_id LIMIT 5`)
+      ORDER BY publication.output_slot LIMIT 5`)
       .all(input.taskId, input.executionAttempt, input.ownerId, input.kind) as { asset_id: string }[];
     return rows.map((row) => row.asset_id);
   },
@@ -124,6 +147,80 @@ export const readReadyMediaAssetCommand: TransactionScopedCommand<Readonly<{
   },
 };
 
+export type ReadyMediaAssetIdentityRow = Readonly<{
+  byteSize: number;
+  checksumSha256: string | null;
+  contentType: string | null;
+  durationSeconds: number | null;
+  durationStatus: "failed" | "not-applicable" | "pending" | "ready";
+  id: string;
+  kind: "audio" | "image" | "video";
+  mediaHeight: number | null;
+  mediaWidth: number | null;
+  objectKey: string | null;
+  storageBackend: "local" | "oss";
+  storageName: string;
+  storageProfileId: string | null;
+  storageStatus: "ready";
+}>;
+
+/**
+ * Media-owned transaction read for a complete frozen external identity.
+ * Unlike the compatibility ready read above, this intentionally returns
+ * nullable legacy metadata so the caller can fail closed without guessing.
+ */
+export const readReadyMediaAssetIdentityCommand: TransactionScopedCommand<Readonly<{
+  assetId: string;
+  kind: "audio" | "image" | "video";
+  ownerId: string;
+}>, ReadyMediaAssetIdentityRow | undefined> = {
+  execute(scope, input) {
+    const row = scope.prepare(`
+      SELECT id, kind, byte_size, checksum_sha256, content_type,
+             duration_seconds, duration_status, media_height, media_width,
+             object_key, storage_backend, storage_name, storage_profile_id,
+             storage_status
+      FROM media_assets
+      WHERE owner_id = ? AND kind = ? AND id = ?
+        AND storage_status = 'ready'
+    `).get(input.ownerId, input.kind, input.assetId) as
+      | {
+          byte_size: number;
+          checksum_sha256: string | null;
+          content_type: string | null;
+          duration_seconds: number | null;
+          duration_status: "failed" | "not-applicable" | "pending" | "ready";
+          id: string;
+          kind: "audio" | "image" | "video";
+          media_height: number | null;
+          media_width: number | null;
+          object_key: string | null;
+          storage_backend: "local" | "oss";
+          storage_name: string;
+          storage_profile_id: string | null;
+          storage_status: "ready";
+        }
+      | undefined;
+    if (!row) return undefined;
+    return Object.freeze({
+      byteSize: Number(row.byte_size),
+      checksumSha256: row.checksum_sha256,
+      contentType: row.content_type,
+      durationSeconds: row.duration_seconds,
+      durationStatus: row.duration_status,
+      id: row.id,
+      kind: row.kind,
+      mediaHeight: row.media_height,
+      mediaWidth: row.media_width,
+      objectKey: row.object_key,
+      storageBackend: row.storage_backend,
+      storageName: row.storage_name,
+      storageProfileId: row.storage_profile_id,
+      storageStatus: row.storage_status,
+    });
+  },
+};
+
 export type PublishedGenerationMediaProjectionRow = Readonly<{
   assetId: string;
   attemptId: string;
@@ -165,13 +262,19 @@ export const readPublishedGenerationMediaProjectionCommand:
           AND image_metadata.asset_id = media.id
         WHERE publication.source = 'generation'
           AND publication.state = 'published'
+          AND (publication.output_slot IS NOT NULL OR NOT EXISTS (
+        SELECT 1 FROM media_publication_attempts AS mapped
+        WHERE mapped.task_id = publication.task_id
+          AND mapped.task_execution_attempt = publication.task_execution_attempt
+          AND mapped.output_slot IS NOT NULL AND mapped.state = 'published'
+      ))
           AND publication.task_id = ?
           AND publication.task_execution_attempt = ?
           AND publication.owner_id = ?
           AND publication.kind = ?
           AND media.storage_status = 'ready'
         ORDER BY CASE WHEN publication.asset_id = ? THEN 0 ELSE 1 END,
-                 publication.created_at, publication.attempt_id
+                 publication.output_slot, publication.created_at, publication.attempt_id
       `).all(
         input.taskId,
         input.executionAttempt,
@@ -233,6 +336,59 @@ export const transferAccountMediaCommand: TransactionScopedCommand<Readonly<{
       input.kind,
       input.assetId,
     ).changes);
+  },
+};
+
+/** Promote only the verified canonical row; all duplicate evidence remains intact. */
+export const promoteGenerationPublicationCanonicalSlotCommand: TransactionScopedCommand<Readonly<{
+  ownerId: string; taskId: string; executionAttempt: number;
+  kind: "image" | "video" | "audio"; adoptionReceiptId: string;
+  canonicalAttemptId: string; canonicalAssetId: string;
+  aliasAttemptId: string; aliasAssetId: string; outputSetCount: 1;
+}>, void> = {
+  execute(scope, input) {
+    const rows = scope.prepare(`SELECT publication.*, media.storage_status,
+      media.byte_size AS media_byte_size, media.checksum_sha256 AS media_checksum,
+      media.content_type AS media_content_type, media.storage_backend AS media_storage_backend,
+      media.storage_profile_id AS media_storage_profile_id, media.object_key AS media_object_key
+      FROM media_publication_attempts AS publication
+      LEFT JOIN media_assets AS media ON media.owner_id = publication.owner_id
+        AND media.kind = publication.kind AND media.id = publication.asset_id
+      WHERE publication.task_id = ? AND publication.task_execution_attempt = ?`)
+      .all(input.taskId, input.executionAttempt) as Array<Record<string, unknown>>;
+    const canonical = rows.find((row) => row.attempt_id === input.canonicalAttemptId);
+    const alias = rows.find((row) => row.attempt_id === input.aliasAttemptId);
+    if (rows.length !== 3 || !canonical || !alias || canonical === alias ||
+        canonical.asset_id !== input.canonicalAssetId || alias.asset_id !== input.aliasAssetId ||
+        canonical.asset_id === alias.asset_id || input.outputSetCount !== 1 ||
+        rows.some((row) => row.owner_id !== input.ownerId || row.kind !== input.kind ||
+          row.source !== "generation" || row.error_code === "OSS_IDENTITY_QUARANTINED") ||
+        rows.filter((row) => row.state === "failed" && row.byte_size === 0).length !== 1 ||
+        [canonical, alias].some((row) => row.state !== "published" ||
+          row.storage_status !== "ready" || Number(row.byte_size) < 1 ||
+          row.byte_size !== row.media_byte_size || row.checksum_sha256 !== row.media_checksum ||
+          row.content_type !== row.media_content_type || row.storage_backend !== row.media_storage_backend ||
+          row.storage_profile_id !== row.media_storage_profile_id || row.object_key !== row.media_object_key) ||
+        canonical.checksum_sha256 !== alias.checksum_sha256 || canonical.byte_size !== alias.byte_size ||
+        alias.output_slot !== null || alias.output_set_count !== null ||
+        !(canonical.output_slot === null && canonical.output_set_count === null ||
+          canonical.output_slot === 0 && canonical.output_set_count === 1)) {
+      throw new Error("Canonical publication promotion evidence changed");
+    }
+    if (scope.prepare(`SELECT 1 FROM media_delete_intents WHERE owner_id = ?
+        AND kind = ? AND asset_id IN (?, ?)`)
+        .get(input.ownerId, input.kind, input.canonicalAssetId, input.aliasAssetId)) {
+      throw new Error("Canonical publication deletion is pending");
+    }
+    if (canonical.output_slot === 0) return;
+    const changed = scope.prepare(`UPDATE media_publication_attempts
+      SET output_slot = 0, output_set_count = 1
+      WHERE attempt_id = ? AND owner_id = ? AND kind = ? AND asset_id = ?
+        AND task_id = ? AND task_execution_attempt = ? AND state = 'published'
+        AND output_slot IS NULL AND output_set_count IS NULL`)
+      .run(input.canonicalAttemptId, input.ownerId, input.kind, input.canonicalAssetId,
+        input.taskId, input.executionAttempt);
+    if (changed.changes !== 1) throw new Error("Canonical publication promotion lost ownership");
   },
 };
 

@@ -4,7 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 
 const checksumPattern = /^[a-f0-9]{64}$/i;
 const mediaKinds = new Set(["audio", "image", "video"]);
-const supportedSchemaVersions = new Set([37, 38, 39, 40, 41, 42, 43]);
+const supportedSchemaVersions = new Set([37, 38, 39, 40, 41, 42, 43, 44]);
 const activePublicationStates = new Set([
   "reserved",
   "staged",
@@ -42,6 +42,9 @@ export type MediaIntegrityIssueCode =
   | "MEDIA_INTEGRITY_PUBLICATION_MEDIA_MISSING"
   | "MEDIA_INTEGRITY_PUBLICATION_STAGING_MISMATCH"
   | "MEDIA_INTEGRITY_PUBLICATION_STAGING_MISSING"
+  | "MEDIA_INTEGRITY_PUBLICATION_SLOT_DUPLICATE"
+  | "MEDIA_INTEGRITY_PUBLICATION_SLOT_GAP"
+  | "MEDIA_INTEGRITY_PUBLICATION_SLOT_INVALID"
   | "MEDIA_INTEGRITY_PUBLICATION_TASK_MISMATCH"
   | "MEDIA_INTEGRITY_PUBLICATION_TASK_MISSING"
   | "MEDIA_INTEGRITY_READY_METADATA_INVALID"
@@ -187,6 +190,8 @@ type PublicationRow = Readonly<{
   media_width: bigint | null;
   object_key: string;
   owner_id: string;
+  output_set_count: bigint | null;
+  output_slot: bigint | null;
   source: string;
   staging_name: string;
   state: string;
@@ -437,7 +442,7 @@ export function inspectMediaIntegrity(input: Readonly<{
     if (schemaVersion === undefined || !supportedSchemaVersions.has(schemaVersion)) {
       fail(
         "MEDIA_REPORT_SCHEMA_UNSUPPORTED",
-        "Media report requires schema 37, 38, 39, 40, 41, 42 or 43",
+        "Media report requires schema 37, 38, 39, 40, 41, 42, 43 or 44",
       );
     }
     const media = queryRows<MediaRow>(database, `
@@ -467,14 +472,28 @@ export function inspectMediaIntegrity(input: Readonly<{
       ORDER BY owner_id, id
     `);
     const publications = schemaVersion >= 38
-      ? queryRows<PublicationRow>(database, `
+      ? queryRows<PublicationRow>(database, schemaVersion >= 44
+        ? `
           SELECT
             attempt_id, owner_id, kind, asset_id, source, state,
             storage_backend, final_storage_name, object_key,
             storage_profile_id, staging_name, task_id,
-            task_execution_attempt, byte_size, checksum_sha256,
-            content_type, duration_seconds, duration_source,
-            media_width, media_height, adopted_at, adopted_canvas_id
+            task_execution_attempt, output_slot, output_set_count,
+            byte_size, checksum_sha256, content_type, duration_seconds,
+            duration_source, media_width, media_height, adopted_at,
+            adopted_canvas_id
+          FROM media_publication_attempts
+          ORDER BY attempt_id
+        `
+        : `
+          SELECT
+            attempt_id, owner_id, kind, asset_id, source, state,
+            storage_backend, final_storage_name, object_key,
+            storage_profile_id, staging_name, task_id,
+            task_execution_attempt, NULL AS output_slot,
+            NULL AS output_set_count, byte_size, checksum_sha256,
+            content_type, duration_seconds, duration_source, media_width,
+            media_height, adopted_at, adopted_canvas_id
           FROM media_publication_attempts
           ORDER BY attempt_id
         `)
@@ -518,6 +537,103 @@ export function inspectMediaIntegrity(input: Readonly<{
     );
     const referencedFiles = new Set<string>();
     const usedOssEvidence = new Set<string>();
+
+    // Schema 44 records the logical output slot on each generation
+    // publication.  A live task may expose only a contiguous prefix while
+    // the remaining Provider outputs are still being saved; a successful
+    // task, however, must expose the complete 0..count-1 set.  Legacy
+    // schema43 rows are represented as null/null and remain readable without
+    // being guessed into a slot.
+    if (schemaVersion >= 44) {
+      const groups = new Map<string, PublicationRow[]>();
+      for (const publication of publications) {
+        if (publication.source !== "generation" || !publication.task_id) continue;
+        const key = `${publication.task_id}\0${publication.task_execution_attempt ?? ""}`;
+        const rows = groups.get(key) ?? [];
+        rows.push(publication);
+        groups.set(key, rows);
+      }
+      for (const rows of groups.values()) {
+        const first = rows[0]!;
+        const task = first.task_id ? tasksById.get(first.task_id) : undefined;
+        const context = {
+          attemptId: first.attempt_id,
+          backupBlocking: true,
+          kind: first.kind,
+          ownerId: first.owner_id,
+          severity: "error" as const,
+          taskId: first.task_id ?? undefined,
+        };
+        const mapped = rows.filter((row) => row.output_slot !== null);
+        const legacy = rows.filter((row) => row.output_slot === null);
+        const invalidPair = rows.some((row) =>
+          (row.output_slot === null) !== (row.output_set_count === null));
+        if (invalidPair) {
+          add({
+            ...context,
+            code: "MEDIA_INTEGRITY_PUBLICATION_SLOT_INVALID",
+          });
+          continue;
+        }
+        const counts = new Set(mapped.map((row) => safeInteger(row.output_set_count!)));
+        const invalidCount = mapped.some((row) => {
+          const count = safeInteger(row.output_set_count!);
+          const slot = safeInteger(row.output_slot!);
+          return count === undefined || count < 1 || count > 4 ||
+            slot === undefined || slot < 0 || slot >= count;
+        }) || counts.size > 1;
+        if (invalidCount) {
+          add({
+            ...context,
+            code: "MEDIA_INTEGRITY_PUBLICATION_SLOT_INVALID",
+          });
+        }
+        const bySlot = new Map<number, PublicationRow[]>();
+        for (const row of mapped) {
+          const slot = safeInteger(row.output_slot!);
+          if (slot === undefined) continue;
+          const slotRows = bySlot.get(slot) ?? [];
+          slotRows.push(row);
+          bySlot.set(slot, slotRows);
+        }
+        for (const [slot, slotRows] of bySlot) {
+          if (slotRows.length < 2) continue;
+          add({
+            ...context,
+            attemptId: slotRows[0]?.attempt_id ?? first.attempt_id,
+            code: "MEDIA_INTEGRITY_PUBLICATION_SLOT_DUPLICATE",
+          });
+        }
+        if (legacy.some((row) => row.state === "published") && mapped.length > 0) {
+          add({
+            ...context,
+            code: "MEDIA_INTEGRITY_PUBLICATION_SLOT_INVALID",
+          });
+        }
+        const slots = [...bySlot.keys()].sort((left, right) => left - right);
+        const contiguousPrefix = slots.every((slot, index) => slot === index);
+        if (mapped.length > 0 && !contiguousPrefix) {
+          add({
+            ...context,
+            code: "MEDIA_INTEGRITY_PUBLICATION_SLOT_GAP",
+          });
+        }
+        if (task?.state === "success" && mapped.length > 0) {
+          const count = safeInteger(first.output_set_count!);
+          if (
+            count === undefined ||
+            slots.length !== count ||
+            slots.some((slot, index) => slot !== index) ||
+            mapped.some((row) => row.state !== "published")
+          ) {
+            add({
+              ...context,
+              code: "MEDIA_INTEGRITY_PUBLICATION_SLOT_GAP",
+            });
+          }
+        }
+      }
+    }
 
     for (const row of media) {
       const context = {

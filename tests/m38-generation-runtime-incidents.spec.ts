@@ -2450,9 +2450,13 @@ test("only capability success or an explicit Provider/model update clears an aut
 });
 
 test("provider result save treats SQLite lock contention as bounded transient failure", async () => {
+  // This unit exercises backoff classification; ownership is covered by m108.
+  // Supply its explicit store port instead of inheriting a prior fixture runtime.
+  const store = { get: () => undefined, transition: () => undefined };
   let busyAttempts = 0;
   const busyBackoffs: number[] = [];
   const saved = await attemptProviderResultSave({
+    store,
     backoffMs: [1_000, 2_000, 4_000, 8_000, 15_000],
     save: async () => {
       busyAttempts += 1;
@@ -2469,6 +2473,7 @@ test("provider result save treats SQLite lock contention as bounded transient fa
 
   let lockAttempts = 0;
   const lockSaved = await attemptProviderResultSave({
+    store,
     backoffMs: [0, 0, 0, 0, 0],
     save: async () => {
       lockAttempts += 1;
@@ -2481,6 +2486,7 @@ test("provider result save treats SQLite lock contention as bounded transient fa
 
   let definitiveAttempts = 0;
   await expect(attemptProviderResultSave({
+    store,
     backoffMs: [0, 0, 0, 0, 0],
     save: async () => {
       definitiveAttempts += 1;

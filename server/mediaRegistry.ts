@@ -44,11 +44,12 @@ export function publishedGenerationMediaCandidateIds(input: Readonly<{
       AND media.id = publication.asset_id
     WHERE publication.source = 'generation'
       AND publication.state = 'published'
+      AND publication.output_slot IS NOT NULL
       AND publication.task_id = ?
       AND publication.task_execution_attempt = ?
       AND publication.owner_id = ? AND publication.kind = ?
       AND media.storage_status = 'ready'
-    ORDER BY publication.created_at, publication.attempt_id
+    ORDER BY publication.output_slot
   `).all(
     input.taskId,
     input.executionAttempt,
@@ -73,6 +74,12 @@ export function readyGenerationMediaOutputs(input: Readonly<{
       AND media.id = publication.asset_id
     WHERE publication.source = 'generation'
       AND publication.state = 'published'
+      AND (publication.output_slot IS NOT NULL OR NOT EXISTS (
+        SELECT 1 FROM media_publication_attempts AS mapped
+        WHERE mapped.task_id = publication.task_id
+          AND mapped.task_execution_attempt = publication.task_execution_attempt
+          AND mapped.output_slot IS NOT NULL AND mapped.state = 'published'
+      ))
       AND publication.task_id = ?
       AND publication.task_execution_attempt = ?
       AND publication.owner_id = ?
@@ -80,6 +87,7 @@ export function readyGenerationMediaOutputs(input: Readonly<{
       AND media.storage_status = 'ready'
     ORDER BY
       CASE WHEN media.id = ? THEN 0 ELSE 1 END,
+      publication.output_slot,
       publication.created_at,
       publication.attempt_id
   `).all(

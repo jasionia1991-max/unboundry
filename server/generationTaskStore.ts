@@ -827,6 +827,24 @@ function toTask(row: GenerationTaskRow): GenerationTask {
   };
 }
 
+/**
+ * Read a task through a caller-owned transaction.  Adoption and projection
+ * commands may settle a task earlier in that same transaction; reopening the
+ * process singleton here would use another SQLite snapshot and miss the new
+ * success state.
+ */
+export function readGenerationTaskInTransaction(
+  database: DatabaseSync,
+  taskId: string,
+) {
+  if (!database.isTransaction) {
+    throw new Error("Generation task transaction read requires an active transaction");
+  }
+  const row = database.prepare("SELECT * FROM generation_tasks WHERE id = ?")
+    .get(taskId) as GenerationTaskRow | undefined;
+  return row ? toTask(row) : undefined;
+}
+
 function toEvent(row: GenerationTaskEventRow): GenerationTaskEvent {
   return {
     createdAt: row.created_at,

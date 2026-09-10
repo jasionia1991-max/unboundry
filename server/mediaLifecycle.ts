@@ -1,4 +1,10 @@
+import { canResumeReservedGenerationRequestCommand } from "./generationTransactionCommands";
 import { readAppDatabaseSnapshot } from "./database";
+import {
+  assertGenerationSaveToken, assertGenerationSaveTokenInTransaction,
+  assertNoConcurrentGenerationSaveInTransaction, assertGenerationSaveSettlementInTransaction,
+  generationSaveTokenIsActive, withGenerationResultSave, type GenerationSaveToken,
+} from "./generationResultSaveOwnership";
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, realpathSync } from "node:fs";
 import { link, lstat, mkdir, open, rm, stat } from "node:fs/promises";
@@ -7,6 +13,7 @@ import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
 import {
   AliyunOssPublicationQuarantineError,
+  deleteExactAliyunOssGenerationObject,
   deletePrivateAliyunOssObject,
   uploadPrivateAliyunOssObject,
 } from "./aliyunOss";
@@ -79,6 +86,21 @@ export class MediaPublicationDeferredError extends Error {
   }
 }
 
+/**
+ * A prior staged result is present but cannot be proven to match the durable
+ * publication metadata. Keep that evidence for recovery/maintenance instead
+ * of treating the conflict as a fresh reservation that may be compensated.
+ */
+export class MediaPublicationEvidenceConflictError extends MediaPublicationDeferredError {
+  constructor() {
+    super();
+    this.name = "MediaPublicationEvidenceConflictError";
+  }
+}
+
+/** Existing synchronous save-settlement code used for an explicit local fence. */
+export const generatedMediaSaveMaintenanceCode = "RESULT_SAVE_FAILED_NO_RETRY" as const;
+
 function mediaPublicationTestFaultAllowed() {
   if (process.env.UNBOUNDRY_SAFE_TEST !== "1") return false;
   try {
@@ -110,6 +132,9 @@ export function setMediaPublicationFinalizeFaultForTests(
 }
 
 export type GeneratedPublicationTask = {
+  outputSlot?: number;
+  outputSetCount?: number;
+  saveToken?: GenerationSaveToken;
   actualCostMicrounits: number;
   executionAttempt: number;
   providerUsageTokens?: number;
@@ -117,6 +142,10 @@ export type GeneratedPublicationTask = {
 };
 
 export type MediaPublicationReservation = {
+  disposition?: "created" | "reused-active" | "reused-published";
+  outputSlot?: number;
+  outputSetCount?: number;
+  saveToken?: GenerationSaveToken;
   attemptId: string;
   finalStorageName: string;
   id: string;
@@ -168,11 +197,19 @@ export type MediaPublicationExecution = Readonly<{
   }>) => Promise<void> | void;
   beforeReservation?: () => Promise<void> | void;
   deleteExternalObject?: typeof deletePrivateAliyunOssObject;
+  deleteGeneratedExternalObject?: typeof deleteExactAliyunOssGenerationObject;
   afterTransition?: (
     state: "external-ready" | "staged",
     reservation: MediaPublicationReservation,
   ) => Promise<void> | void;
 }>;
+
+/** Generation owns task state; Media receives this same-transaction verifier
+ * instead of reaching across the domain and querying generation tables. */
+export type CancelledGenerationTaskVerifier = (
+  database: DatabaseSync,
+  reservation: MediaPublicationReservation,
+) => boolean;
 
 type AttemptRow = {
   actual_cost_microunits: number | null;
@@ -203,6 +240,8 @@ type AttemptRow = {
   task_execution_attempt: number | null;
   task_id: string | null;
   updated_at: string;
+  output_slot: number | null;
+  output_set_count: number | null;
 };
 
 export type PendingGeneratedMediaPublication = Readonly<AttemptRow & {
@@ -275,7 +314,7 @@ function isConstraintError(error: unknown) {
       error.message.includes("constraint failed"));
 }
 
-export function reserveMediaPublication(input: {
+export type MediaPublicationReservationInput = {
   contentType: string;
   finalStorageName: string;
   historyLabel?: string;
@@ -286,7 +325,32 @@ export function reserveMediaPublication(input: {
   storageBackend: MediaStorageBackend;
   storageProfileId?: string;
   task?: GeneratedPublicationTask;
-}): MediaPublicationReservation {
+};
+let generatedReservationCommand:
+  ((input: MediaPublicationReservationInput) => MediaPublicationReservation) | undefined;
+
+export function configureGeneratedMediaReservation(
+  command: (input: MediaPublicationReservationInput) => MediaPublicationReservation,
+) {
+  if (generatedReservationCommand && generatedReservationCommand !== command) {
+    throw new Error("Generated media reservation command is already configured");
+  }
+  generatedReservationCommand = command;
+}
+
+export function reserveMediaPublication(input: MediaPublicationReservationInput): MediaPublicationReservation {
+  if (input.task) {
+    if (!generatedReservationCommand) throw new Error("Generation reservation is unavailable");
+    return generatedReservationCommand(input);
+  }
+  return withDatabase((database) => transaction(database, () =>
+    reserveMediaPublicationInTransaction(database, input)));
+}
+
+/** Media-only insertion, called inside Generation's identity/slot transaction. */
+export function reserveMediaPublicationInTransaction(
+  database: DatabaseSync, input: MediaPublicationReservationInput,
+): MediaPublicationReservation {
   assertReservationInput(input);
   if (
     input.historyLabel !== undefined && input.historyLabel.length > 120 ||
@@ -305,7 +369,8 @@ export function reserveMediaPublication(input: {
   const attemptId = randomUUID();
   const stagingName = `.publication-${attemptId}.generating`;
   const timestamp = new Date().toISOString();
-  return withDatabase((database) => transaction(database, () => {
+  if (!database.isTransaction) throw new Error("Media reservation requires a transaction");
+  {
     if (database.prepare(`
       SELECT 1 FROM account_delete_intents
       WHERE owner_id = ?
@@ -340,8 +405,8 @@ export function reserveMediaPublication(input: {
           storage_backend, final_storage_name, object_key, storage_profile_id,
           staging_name, task_id, task_execution_attempt, history_label,
           content_type, actual_cost_microunits, provider_usage_tokens,
-          created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, 'reserved', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          created_at, updated_at, output_slot, output_set_count
+        ) VALUES (?, ?, ?, ?, ?, 'reserved', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         attemptId, input.ownerId, input.kind, input.id,
         input.task ? "generation" : "upload",
@@ -351,6 +416,7 @@ export function reserveMediaPublication(input: {
         input.historyLabel?.trim().slice(0, 120) || null,
         input.contentType, input.task?.actualCostMicrounits ?? null,
         input.task?.providerUsageTokens ?? null, timestamp, timestamp,
+        input.task?.outputSlot ?? null, input.task?.outputSetCount ?? null,
       );
     } catch (error) {
       if (isConstraintError(error)) throw new MediaPublicationConflictError();
@@ -358,6 +424,10 @@ export function reserveMediaPublication(input: {
     }
     return {
       attemptId,
+      disposition: "created",
+      outputSlot: input.task?.outputSlot,
+      outputSetCount: input.task?.outputSetCount,
+      saveToken: input.task?.saveToken,
       finalStorageName: input.finalStorageName,
       id: input.id,
       kind: input.kind,
@@ -369,7 +439,7 @@ export function reserveMediaPublication(input: {
       taskExecutionAttempt: input.task?.executionAttempt,
       taskId: input.task?.taskId,
     };
-  }));
+  }
 }
 
 function reservationTuple(reservation: MediaPublicationReservation) {
@@ -384,7 +454,28 @@ function reservationTuple(reservation: MediaPublicationReservation) {
 function readAttempt(
   database: DatabaseSync,
   reservation: MediaPublicationReservation,
+  options: Readonly<{
+    allowCancelled?: boolean;
+    newIo?: boolean;
+  }> = {},
 ) {
+  if (reservation.taskId && reservation.taskExecutionAttempt) {
+    if (reservation.saveToken) {
+      if (options.newIo) {
+        assertGenerationSaveTokenInTransaction(database, reservation.saveToken, {
+          newIo: true,
+          allowCancelled: options.allowCancelled,
+        });
+      } else {
+        assertGenerationSaveSettlementInTransaction(database, reservation.saveToken);
+      }
+    } else {
+      assertNoConcurrentGenerationSaveInTransaction(database, {
+        taskId: reservation.taskId, executionAttempt: reservation.taskExecutionAttempt,
+        ownerId: reservation.ownerId, kind: reservation.kind,
+      });
+    }
+  }
   return database.prepare(`
     SELECT * FROM media_publication_attempts
     WHERE attempt_id = ? AND owner_id = ? AND kind = ? AND asset_id = ?
@@ -392,6 +483,49 @@ function readAttempt(
       AND final_storage_name = ? AND staging_name = ?
       AND task_id IS ? AND task_execution_attempt IS ?
   `).get(...reservationTuple(reservation)) as AttemptRow | undefined;
+}
+
+/**
+ * Close a reserved generation publication whose synchronous result bytes were
+ * lost. This is a metadata-only fence: it never deletes the media row or its
+ * staging path, and it refuses to overwrite another durable error marker.
+ */
+export function markReservedGeneratedMediaPublicationForMaintenanceInTransaction(
+  database: DatabaseSync,
+  reservation: MediaPublicationReservation,
+  code: typeof generatedMediaSaveMaintenanceCode = generatedMediaSaveMaintenanceCode,
+) {
+  const row = readAttempt(database, reservation);
+  if (!row || row.source !== "generation" || row.state !== "reserved") return false;
+  if (row.error_code !== null && row.error_code !== code) return false;
+  if (row.error_code === code) return true;
+  const changed = database.prepare(`
+    UPDATE media_publication_attempts
+    SET error_code = ?, updated_at = ?
+    WHERE attempt_id = ? AND owner_id = ? AND kind = ? AND asset_id = ?
+      AND storage_backend = ? AND storage_profile_id IS ? AND object_key = ?
+      AND final_storage_name = ? AND staging_name = ?
+      AND task_id IS ? AND task_execution_attempt IS ?
+      AND source = 'generation' AND state = 'reserved' AND error_code IS NULL
+  `).run(
+    code, new Date().toISOString(), reservation.attemptId,
+    reservation.ownerId, reservation.kind, reservation.id,
+    reservation.storageBackend, reservation.storageProfileId, reservation.objectKey,
+    reservation.finalStorageName, reservation.stagingName,
+    reservation.taskId ?? null, reservation.taskExecutionAttempt ?? null,
+  );
+  return changed.changes === 1;
+}
+
+/** Same exact reservation fence for recovery callers outside an open transaction. */
+export function markReservedGeneratedMediaPublicationForMaintenance(
+  reservation: MediaPublicationReservation,
+  code: typeof generatedMediaSaveMaintenanceCode = generatedMediaSaveMaintenanceCode,
+) {
+  return withDatabase((database) => transaction(database, () =>
+    markReservedGeneratedMediaPublicationForMaintenanceInTransaction(
+      database, reservation, code,
+    )));
 }
 
 function assertAttemptState(
@@ -420,7 +554,10 @@ export function stageMediaPublication(
       (!Number.isSafeInteger(metadata.mediaHeight) || metadata.mediaHeight < 1)
   ) throw new Error("Invalid staged media metadata");
   withDatabase((database) => transaction(database, () => {
-    assertAttemptState(readAttempt(database, reservation), "reserved");
+    const prior = assertAttemptState(readAttempt(database, reservation), "reserved", "staged");
+    if (prior.state === "staged" && (prior.error_code !== "MEDIA_ORIGINAL_DOWNLOAD_REQUIRED" ||
+        prior.byte_size !== metadata.byteSize || prior.checksum_sha256 !== metadata.checksumSha256 ||
+        prior.content_type !== metadata.contentType)) throw new MediaPublicationEvidenceConflictError();
     const timestamp = new Date().toISOString();
     const media = database.prepare(`
       UPDATE media_assets
@@ -465,8 +602,8 @@ export function stageMediaPublication(
       UPDATE media_publication_attempts
       SET state = 'staged', byte_size = ?, checksum_sha256 = ?,
           content_type = ?, duration_seconds = ?, duration_source = ?,
-          media_width = ?, media_height = ?, updated_at = ?
-      WHERE attempt_id = ? AND state = 'reserved'
+          media_width = ?, media_height = ?, updated_at = ?, error_code = NULL
+      WHERE attempt_id = ? AND state IN ('reserved', 'staged')
     `).run(
       metadata.byteSize, metadata.checksumSha256, metadata.contentType,
       metadata.durationSeconds ?? null,
@@ -501,6 +638,50 @@ async function fsyncPath(path: string) {
   }
 }
 
+/** Physical work always requires a live owner; released tokens only settle metadata. */
+export function assertMediaPublicationIo(reservation: MediaPublicationReservation) {
+  withDatabase((database) => {
+    readAttempt(database, reservation, { newIo: true });
+  });
+}
+
+/** Cleanup may finish a cancelled attempt, but only through its exact lease or
+ * with no competing generation lease. It never widens the identity tuple. */
+function assertMediaPublicationCleanup(reservation: MediaPublicationReservation) {
+  withDatabase((database) => {
+    readAttempt(database, reservation, { allowCancelled: true, newIo: true });
+  });
+}
+
+export async function syncMediaPublicationStaging(reservation: MediaPublicationReservation) {
+  assertMediaPublicationIo(reservation);
+  await fsyncPath(mediaPublicationStagingPath(reservation));
+  await fsyncPath(join(appDataDirectory(), "media"));
+  assertMediaPublicationIo(reservation);
+}
+
+/** A reserved row has no committed bytes. Only its fenced successor can discard partial bytes. */
+export async function prepareReservedMediaStaging(reservation: MediaPublicationReservation) {
+  assertMediaPublicationIo(reservation);
+  if (reservation.disposition !== "reused-active") return;
+  const row = withDatabase((database) => assertAttemptState(readAttempt(database, reservation), "reserved", "staged"));
+  if (row.state === "staged") {
+    if (row.error_code !== "MEDIA_ORIGINAL_DOWNLOAD_REQUIRED") {
+      throw new MediaPublicationEvidenceConflictError();
+    }
+    // Committed staging evidence is never overwritten. A missing file can be
+    // reconstructed only if the downloaded bytes later match its stored hash.
+    try { await lstat(mediaPublicationStagingPath(reservation)); }
+    catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") return;
+      throw error;
+    }
+    throw new MediaPublicationEvidenceConflictError();
+  }
+  await rm(mediaPublicationStagingPath(reservation), { force: true });
+  assertMediaPublicationIo(reservation);
+}
+
 export async function publishLocalMediaPublication(
   reservation: MediaPublicationReservation,
 ) {
@@ -509,8 +690,10 @@ export async function publishLocalMediaPublication(
     assertAttemptState(readAttempt(database, reservation), "staged", "external-ready");
   });
   const directory = join(appDataDirectory(), "media");
+  assertMediaPublicationIo(reservation);
   await mkdir(directory, { recursive: true });
   await fsyncPath(mediaPublicationStagingPath(reservation));
+  assertMediaPublicationIo(reservation);
   try {
     await link(
       mediaPublicationStagingPath(reservation),
@@ -529,6 +712,7 @@ export async function publishLocalMediaPublication(
     ) throw new MediaPublicationConflictError();
   }
   await fsyncPath(directory);
+  assertMediaPublicationIo(reservation);
   markExternalMediaPublicationReady(reservation);
 }
 
@@ -720,9 +904,14 @@ export function adoptUploadedMediaReferences(
 export function failMediaPublication(
   reservation: MediaPublicationReservation,
   code = "MEDIA_PUBLICATION_FAILED",
+  options: Readonly<{
+    allowCancelled?: boolean;
+    assertCancelledTask?: CancelledGenerationTaskVerifier;
+    requireCancelledTask?: boolean;
+  }> = {},
 ) {
   return withDatabase((database) => transaction(database, () =>
-    failMediaPublicationInTransaction(database, reservation, code)
+    failMediaPublicationInTransaction(database, reservation, code, options)
   ));
 }
 
@@ -730,10 +919,22 @@ export function failMediaPublicationInTransaction(
   database: DatabaseSync,
   reservation: MediaPublicationReservation,
   code = "MEDIA_PUBLICATION_FAILED",
+  options: Readonly<{
+    allowCancelled?: boolean;
+    assertCancelledTask?: CancelledGenerationTaskVerifier;
+    requireCancelledTask?: boolean;
+  }> = {},
 ) {
-    const attempt = readAttempt(database, reservation);
+    const attempt = readAttempt(database, reservation, {
+      allowCancelled: options.allowCancelled || options.requireCancelledTask,
+    });
     if (!attempt || attempt.state === "failed") return false;
     if (attempt.state === "published") return false;
+    if (attempt.error_code === "OSS_IDENTITY_QUARANTINED") return false;
+    if (options.requireCancelledTask &&
+        !options.assertCancelledTask?.(database, reservation)) {
+      return false;
+    }
     if (attempt.state === "compensating") return true;
     const timestamp = new Date().toISOString();
     const marked = database.prepare(`
@@ -759,31 +960,79 @@ export function failMediaPublicationInTransaction(
     return true;
 }
 
+function quarantineCompensatingMediaPublication(
+  reservation: MediaPublicationReservation,
+) {
+  withDatabase((database) => transaction(database, () => {
+    const attempt = readAttempt(database, reservation, { allowCancelled: true });
+    if (!attempt || attempt.state === "published" || attempt.state === "failed") return;
+    database.prepare(`
+      UPDATE media_publication_attempts
+      SET error_code = 'OSS_IDENTITY_QUARANTINED', updated_at = ?
+      WHERE attempt_id = ? AND state = 'compensating'
+    `).run(new Date().toISOString(), reservation.attemptId);
+  }));
+}
+
 async function removeExternal(
   reservation: MediaPublicationReservation,
   media?: MediaRecord,
   profile?: AliyunStorageProfile,
   deleteExternalObject: typeof deletePrivateAliyunOssObject =
     deletePrivateAliyunOssObject,
+  deleteGeneratedExternalObject: typeof deleteExactAliyunOssGenerationObject =
+    deleteExactAliyunOssGenerationObject,
 ) {
+  assertMediaPublicationCleanup(reservation);
   if (reservation.storageBackend === "oss") {
     const credentials = profile ??
       await storageProfileById(reservation.storageProfileId);
     if (!credentials || !reservation.objectKey) {
       throw new Error("OSS unavailable");
     }
-    await deleteExternalObject(reservation.objectKey, credentials);
+    assertMediaPublicationCleanup(reservation);
+    if (reservation.taskId) {
+      const attempt = readAppDatabaseSnapshot((database) =>
+        readAttempt(database, reservation, { allowCancelled: true }));
+      if (
+        !attempt?.checksum_sha256 || attempt.byte_size < 1 ||
+        reservation.taskExecutionAttempt === undefined ||
+        !reservation.storageProfileId
+      ) throw new MediaPublicationStateError("OSS generated identity is incomplete");
+      await deleteGeneratedExternalObject({
+        byteSize: attempt.byte_size,
+        checksumSha256: attempt.checksum_sha256,
+        contentType: attempt.content_type,
+        executionAttempt: reservation.taskExecutionAttempt,
+        format: generatedMediaFormat(reservation),
+        kind: reservation.kind,
+        objectKey: reservation.objectKey,
+        ownerId: reservation.ownerId,
+        publicationId: reservation.attemptId,
+        storageProfileId: reservation.storageProfileId,
+        taskId: reservation.taskId,
+      }, credentials);
+    } else {
+      // Upload/account cleanup keeps its historical typed seam. Generated
+      // publications always use the identity + version guarded path above.
+      await deleteExternalObject(reservation.objectKey, credentials);
+    }
+    assertMediaPublicationCleanup(reservation);
   } else {
-    const attempt = readAppDatabaseSnapshot((database) => readAttempt(database, reservation));
+    const attempt = readAppDatabaseSnapshot((database) =>
+      readAttempt(database, reservation, { allowCancelled: true }));
     if (
       attempt?.checksum_sha256 &&
       attempt.byte_size > 0 &&
       await validFile(mediaPublicationFinalPath(reservation), attempt)
     ) {
+      assertMediaPublicationCleanup(reservation);
       await rm(mediaPublicationFinalPath(reservation), { force: true });
     }
   }
+  assertMediaPublicationCleanup(reservation);
   await rm(mediaPublicationStagingPath(reservation), { force: true });
+  assertMediaPublicationCleanup(reservation);
 }
 
 export async function compensateMediaPublication(
@@ -791,11 +1040,18 @@ export async function compensateMediaPublication(
   input?: {
     code?: string;
     deleteExternalObject?: typeof deletePrivateAliyunOssObject;
+    deleteGeneratedExternalObject?: typeof deleteExactAliyunOssGenerationObject;
     media?: MediaRecord;
     profile?: AliyunStorageProfile;
+    assertCancelledTask?: CancelledGenerationTaskVerifier;
+    requireCancelledTask?: boolean;
   },
 ) {
-  const compensating = failMediaPublication(reservation, input?.code);
+  const compensating = failMediaPublication(reservation, input?.code, {
+    allowCancelled: true,
+    assertCancelledTask: input?.assertCancelledTask,
+    requireCancelledTask: input?.requireCancelledTask,
+  });
   if (!compensating) return false;
   try {
     await removeExternal(
@@ -803,8 +1059,12 @@ export async function compensateMediaPublication(
       input?.media,
       input?.profile,
       input?.deleteExternalObject,
+      input?.deleteGeneratedExternalObject,
     );
-  } catch {
+  } catch (error) {
+    if (error instanceof AliyunOssPublicationQuarantineError) {
+      try { quarantineCompensatingMediaPublication(reservation); } catch {}
+    }
     return false;
   }
   return finishCompensatingMediaPublication(reservation);
@@ -815,7 +1075,7 @@ function finishCompensatingMediaPublication(
 ) {
   return withDatabase((database) => transaction(database, () => {
     const attempt = assertAttemptState(
-      readAttempt(database, reservation),
+      readAttempt(database, reservation, { allowCancelled: true }),
       "compensating",
       "failed",
     );
@@ -843,13 +1103,112 @@ function finishCompensatingMediaPublication(
 export async function cleanupPublicationStaging(
   reservation: MediaPublicationReservation,
 ) {
+  // Standalone storage callers settle after their initial save lease ends.
+  // Take a fresh exact lease for cleanup; a released token cannot authorize I/O.
+  if (reservation.taskId && reservation.taskExecutionAttempt &&
+      (!reservation.saveToken || !generationSaveTokenIsActive(reservation.saveToken))) {
+    await withGenerationResultSave({
+      taskId: reservation.taskId, executionAttempt: reservation.taskExecutionAttempt,
+      ownerId: reservation.ownerId, kind: reservation.kind,
+    }, (saveToken) => cleanupPublicationStaging({ ...reservation, saveToken }));
+    return;
+  }
+  assertMediaPublicationIo(reservation);
   await rm(mediaPublicationStagingPath(reservation), { force: true });
+  assertMediaPublicationIo(reservation);
+}
+
+/**
+ * Remove only abandoned staging files for already-published generation
+ * attempts. A fresh exact save lease is acquired by cleanupPublicationStaging;
+ * the published media row and final object are never candidates for removal.
+ */
+let publishedStagingCursor = "";
+export async function cleanupPublishedGeneratedMediaStaging() {
+  const rows = readAppDatabaseSnapshot((database) => database.prepare(`
+    SELECT publication.*, media.storage_status AS media_storage_status
+    FROM media_publication_attempts AS publication
+    LEFT JOIN media_assets AS media
+      ON media.owner_id = publication.owner_id
+      AND media.kind = publication.kind
+      AND media.id = publication.asset_id
+    WHERE publication.source = 'generation'
+      AND publication.state = 'published'
+      AND publication.task_id IS NOT NULL
+      AND publication.task_execution_attempt IS NOT NULL
+      AND media.storage_status = 'ready' AND publication.attempt_id > ?
+    ORDER BY publication.attempt_id LIMIT 64
+  `).all(publishedStagingCursor) as PendingGeneratedMediaPublication[]);
+  const hasMore = rows.length === 64;
+  publishedStagingCursor = hasMore ? rows[rows.length - 1].attempt_id : "";
+  let cleaned = 0;
+  let blocked = 0;
+  for (const row of rows) {
+    const reservation = reservationFromAttempt(row);
+    try {
+      await lstat(mediaPublicationStagingPath(reservation));
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+        continue;
+      }
+      blocked += 1;
+      continue;
+    }
+    try {
+      await cleanupPublicationStaging(reservation);
+      cleaned += 1;
+    } catch {
+      // The next bounded recovery sweep retries the exact staging path.
+      blocked += 1;
+    }
+  }
+  return { blocked, cleaned, hasMore } as const;
 }
 
 export function pendingGeneratedPublicationTaskIds() {
-  return new Set(pendingGeneratedMediaPublications()
-    .map(({ task_id }) => task_id)
-    .filter((taskId): taskId is string => Boolean(taskId)));
+  return readAppDatabaseSnapshot((database) => {
+    const rows = database.prepare(`
+      SELECT task_id, task_execution_attempt, owner_id, kind, state, output_slot, error_code
+      FROM media_publication_attempts
+      WHERE source = 'generation'
+        AND state IN ('reserved', 'staged', 'external-ready', 'compensating')
+    `).all() as Array<Pick<AttemptRow, "task_id" | "task_execution_attempt" | "owner_id" | "kind" | "state" | "output_slot" | "error_code">>;
+    const pending = new Set<string>();
+    for (const row of rows) {
+      if (!row.task_id || !row.task_execution_attempt) continue;
+      // The original-request worker must be allowed to reconstruct this exact
+      // mapped slot after the publication worker verified its staged file is
+      // missing. The immutable metadata still fences the downloaded bytes.
+      if (row.state === "staged" && row.error_code === "MEDIA_ORIGINAL_DOWNLOAD_REQUIRED" &&
+          row.output_slot !== null && executeTransactionScopedCommand(
+            database, canResumeReservedGenerationRequestCommand, {
+              taskId: row.task_id, executionAttempt: row.task_execution_attempt,
+              ownerId: row.owner_id, kind: row.kind,
+            },
+          )) continue;
+      if (row.state === "reserved" && (
+        row.error_code === generatedMediaSaveMaintenanceCode || row.output_slot !== null ||
+        executeTransactionScopedCommand(database, canResumeReservedGenerationRequestCommand, {
+          taskId: row.task_id, executionAttempt: row.task_execution_attempt,
+          ownerId: row.owner_id, kind: row.kind,
+        })
+      )) continue;
+      pending.add(row.task_id);
+    }
+    return pending;
+  });
+}
+
+export function requestOriginalMediaRedownload(reservation: MediaPublicationReservation) {
+  return withDatabase((database) => transaction(database, () => {
+    const row = assertAttemptState(readAttempt(database, reservation), "staged");
+    if (row.output_slot === null || row.error_code === "OSS_IDENTITY_QUARANTINED" ||
+        !row.checksum_sha256 || row.byte_size < 1) throw new MediaPublicationConflictError();
+    database.prepare(`UPDATE media_publication_attempts
+      SET error_code = 'MEDIA_ORIGINAL_DOWNLOAD_REQUIRED', updated_at = ?
+      WHERE attempt_id = ? AND state = 'staged'`)
+      .run(new Date().toISOString(), row.attempt_id);
+  }));
 }
 
 export function hasPendingGeneratedMediaPublications() {
@@ -857,6 +1216,7 @@ export function hasPendingGeneratedMediaPublications() {
     SELECT 1 FROM media_publication_attempts
     WHERE source = 'generation'
       AND state IN ('reserved', 'staged', 'external-ready', 'compensating')
+      AND NOT (state = 'reserved' AND error_code = 'RESULT_SAVE_FAILED_NO_RETRY')
     LIMIT 1
   `).get()));
 }
@@ -1207,13 +1567,19 @@ export function pendingGeneratedMediaPublications() {
       AND publication.state IN (
         'reserved', 'staged', 'external-ready', 'compensating'
       )
+      AND NOT (
+        publication.state = 'reserved'
+        AND publication.error_code = 'RESULT_SAVE_FAILED_NO_RETRY'
+      )
     ORDER BY publication.created_at, publication.attempt_id
   `).all() as PendingGeneratedMediaPublication[]);
 }
 
-function reservationFromAttempt(row: AttemptRow): MediaPublicationReservation {
+export function reservationFromAttempt(row: AttemptRow): MediaPublicationReservation {
   return {
     attemptId: row.attempt_id,
+    outputSlot: row.output_slot ?? undefined,
+    outputSetCount: row.output_set_count ?? undefined,
     finalStorageName: row.final_storage_name,
     id: row.asset_id,
     kind: row.kind,
@@ -1224,6 +1590,44 @@ function reservationFromAttempt(row: AttemptRow): MediaPublicationReservation {
     storageProfileId: row.storage_profile_id,
     taskExecutionAttempt: row.task_execution_attempt ?? undefined,
     taskId: row.task_id ?? undefined,
+  };
+}
+
+/** Resume the exact durable reservation before allocating/writing any bytes. */
+export async function resumeGeneratedMediaReservation(
+  reservation: MediaPublicationReservation, checksumSha256?: string,
+) {
+  if (!reservation.taskId || reservation.disposition === "created") return undefined;
+  if (reservation.saveToken) assertGenerationSaveToken(reservation.saveToken);
+  const row = withDatabase((database) => {
+    const attempt = readAttempt(database, reservation);
+    if (!attempt) throw new MediaPublicationStateError();
+    return { ...attempt, media_storage_status: database.prepare(`SELECT storage_status
+      FROM media_assets WHERE owner_id = ? AND kind = ? AND id = ?`)
+      .get(reservation.ownerId, reservation.kind, reservation.id)?.storage_status as string | undefined };
+  });
+  if (row.checksum_sha256 && checksumSha256 && row.checksum_sha256 !== checksumSha256) {
+    throw new MediaPublicationEvidenceConflictError();
+  }
+  if (row.state === "reserved" || row.state === "staged" &&
+      row.error_code === "MEDIA_ORIGINAL_DOWNLOAD_REQUIRED") return undefined;
+  if (row.state !== "published") {
+    const prepared = await preparePendingGeneratedMediaPublication(
+      { ...row, media_storage_status: row.media_storage_status ?? null },
+      { saveToken: reservation.saveToken },
+    );
+    if (prepared.action !== "ready") throw new MediaPublicationDeferredError();
+  }
+  return {
+    assetId: reservation.id,
+    byteSize: row.byte_size,
+    contentType: row.content_type,
+    durationSeconds: row.duration_seconds,
+    width: row.media_width ?? 0,
+    height: row.media_height ?? 0,
+    storageBackend: reservation.storageBackend,
+    publicationToken: reservation,
+    url: previewFor(reservation.kind, reservation.id),
   };
 }
 
@@ -1271,7 +1675,9 @@ export async function publishGeneratedOssMediaPublication(input: {
     !reservation.taskExecutionAttempt
   ) throw new Error("Generated OSS publication identity is incomplete");
   try {
-    return await (input.uploadObject ?? uploadPrivateAliyunOssObject)({
+    assertMediaPublicationIo(reservation);
+    if (input.credentials.id !== reservation.storageProfileId) throw new MediaPublicationConflictError();
+    const result = await (input.uploadObject ?? uploadPrivateAliyunOssObject)({
       byteSize: input.byteSize,
       checksumSha256: input.checksumSha256,
       contentType: input.contentType,
@@ -1292,6 +1698,8 @@ export async function publishGeneratedOssMediaPublication(input: {
       },
       objectKey: reservation.objectKey,
     });
+    assertMediaPublicationIo(reservation);
+    return result;
   } catch (error) {
     if (error instanceof AliyunOssPublicationQuarantineError) {
       quarantineGeneratedMediaPublication(reservation);
@@ -1321,9 +1729,19 @@ export async function preparePendingGeneratedMediaPublication(
   row: PendingGeneratedMediaPublication,
   input?: {
     uploadObject?: typeof uploadPrivateAliyunOssObject;
+    saveToken?: GenerationSaveToken;
   },
-) {
-    const reservation = reservationFromAttempt(row);
+): Promise<{ action: "blocked" | "failed" | "ready"; reservation: MediaPublicationReservation }> {
+    if (!input?.saveToken) {
+      const result = await withGenerationResultSave({
+        ownerId: row.owner_id, taskId: row.task_id!,
+        executionAttempt: row.task_execution_attempt!, kind: row.kind,
+      }, (saveToken) => preparePendingGeneratedMediaPublication(row, { ...input, saveToken }),
+      { nonBlocking: true, phase: "recovery" });
+      return result ?? { action: "blocked" as const, reservation: reservationFromAttempt(row) };
+    }
+    assertGenerationSaveToken(input.saveToken);
+    const reservation = { ...reservationFromAttempt(row), saveToken: input.saveToken };
     if (row.state === "compensating" || row.media_storage_status !== "pending") {
       return { action: "failed" as const, reservation };
     }

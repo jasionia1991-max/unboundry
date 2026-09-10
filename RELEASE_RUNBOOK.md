@@ -1,12 +1,13 @@
 # Unboundry 版本发布 Runbook
 
-更新日期：2026-09-09。当前授权与进度只看 [TASKS](TASKS.md)，产品现状看 [CURRENT_STATE](spec/UNBOUNDRY_CURRENT_STATE.md)。以下普通代码/构建发布流程与独立文档同步流程分别适用。
+更新日期：2026-09-11。当前授权与进度只看 [TASKS](TASKS.md)，产品现状看 [CURRENT_STATE](spec/UNBOUNDRY_CURRENT_STATE.md)。以下普通代码/构建发布流程与独立文档同步流程分别适用。
 
 ## 1. 识别范围和已有授权
 
 - 先核对实际Git root、branch、HEAD、dirty范围、origin及live current指针、版本/schema；外层资料目录和历史app路径不能替代真实源码树。
 - 版本与发布授权须明确。用户已明确委托自行增加patch时直接核对未占用版本，不再次索要版本确认。其他情况下按`上线规矩.md`补齐缺失范围。
-- 发布授权不自动包含付费生成、历史数据/备份删除、schema迁移或云权限变更；已有明确授权则在原范围内继续，不重复确认。
+- 发布包含已审方案中与该代码版本配套的必要schema迁移；代码、数据库版本、备份/恢复工具和回退能力须一起核对。用户已批准相应发布范围及已说明的影响后直接执行，不因涉及数据库而重复索要确认。若发现未覆盖的破坏性数据变更、额外停服或回退能力变化，先完成可审查准备，再仅确认新增影响。
+- 发布授权不自动包含付费生成、历史数据/备份删除、无关数据修复或云权限变更；已有明确授权则在原范围内继续。
 - 两份永久保护JSON不得读取、hash、复制、移动、修改、删除或暂存：`spec/public-templates-director-split-revision.json`、`spec/INC_GEN_017_R0_PUBLISHED_MODEL_SNAPSHOT_2026-08-28.json`。所有源码导出/检查使用显式排除。
 - 纯模板数据发布走`上线规矩.md`轻量路径；纯文档同步按下节发布独立文档镜像，不替换产品构建或 bump 产品版本。
 
@@ -47,14 +48,14 @@
 - `scripts/deploy.mjs`已立即抛`LEGACY_DEPLOY_DISABLED`，不得执行旧rsync一键上线流程。
 - `scripts/build-release.mjs`、`lib/release-source-pair.mjs`及配对演练工具绑定历史0.5.2/0.6.0合同，不是任意patch发布器；不要为了新版本改写历史工具。
 
-## 5. 当前schema43备份门
+## 5. 与来源schema配套的备份门
 
-当前使用不可变release内`backup-data.mjs` → `verify-backup.mjs` → `restore-backup.mjs`合同。正式切换前最新快照须持有真实冻结/静默证据并满足locked-exact：显式schema43、logical SHA、冻结时间、last Provider admission、独立scratch、外置签名/恢复key路径及精确媒体策略。
+当前使用不可变release内`backup-data.mjs` → `verify-backup.mjs` → `restore-backup.mjs`合同。正式切换前最新快照须持有真实冻结/静默证据并满足locked-exact或已审的第5.1节独立保全模式：显式来源schema、logical SHA、冻结时间、last Provider admission、独立scratch、外置签名/恢复key路径及精确媒体策略。跨schema发布在迁移前后分别备份、verify和fresh restore；旧来源及目标schema必须由当次精确工具明确支持，不能让代码先启动后隐式迁移。
 
 必须先核对当前活动任务、计费结果不明边界和publication，不伪造冻结时间或为通过门清理历史终态记录。备份不通过就不切换。`--external-freeze-non-final`不能冒充final candidate；schema42仅历史恢复，不能作为当前验收schema。
 
 - 私钥内容不得输出或进仓库；新恢复目录私有且独立，不能覆盖CURRENT。
-- verify通过后fresh restore，再核对schema43、integrity、FK、logical SHA及计数/媒体/secret清单。日志模式包含实际生产DELETE，不能只测WAL。
+- verify通过后fresh restore，再核对该备份来源schema、integrity、FK、logical SHA及计数/媒体/secret清单。日志模式包含实际生产DELETE，不能只测WAL。
 - 允许的历史媒体 warning 精确列入证据，不能写成“无媒体问题”；历史 v0.7.16 的非阻断提示和本次最终媒体计数以对应发布回执为准。
 - 真实云上传只在已授权范围进行，上传后需要GET哈希/大小核验，PUT成功本身不等于可恢复。
 - `ops/production/backup-to-oss-retention.mjs`可创建当前加密备份并上传；它自身不自动完成verify/fresh restore/远端GET闭环，需要操作方案分别补齐。
@@ -62,22 +63,35 @@
 
 ### 5.1 经当次授权的停服保全备份
 
-2026-09-09用户已明确同意本次v0.7.17使用`quiesced-active-preservation`。此方式保留结果未知的旧请求及防重复提交证据，不把它改成成功、失败、取消或无扣费。`locked-exact`的原有静默要求和`external-unverified`非最终性质保持；不能通过改旧记录或改readiness计数满足门。
+v0.7.17于2026-09-09首次经当次授权使用`quiesced-active-preservation`，该历史授权已消费。后续发布的授权、精确schema与保全任务以当前TASKS为准。此方式保留结果未知的旧请求及防重复提交证据，不把它改成成功、失败、取消或无扣费。`locked-exact`的原有静默要求和`external-unverified`非最终性质保持；不能通过改旧记录或改readiness计数满足门。
 
 只有以下证据全部成立，当前发布才可接受该独立captureMode：
 
 1. 新生成已由真实管理员审计冻结，冻结时间与最后Provider准入匹配并经过至少60秒；无活动工作流和未完成媒体发布。
 2. 已排空并停止旧应用，验证原进程身份确实退出；从精确既有runtime目录取得同一active lease，拒绝缺失、路径偏移、活进程或租约竞争。备份进程保持draining，不启动HTTP或生成worker；租约、secret锁、SQLite锁按既定顺序覆盖采集。
 3. 使用当次明确允许的task ID、attempt身份及完整task/attempt/events摘要。其他活动任务、摘要变化或未列明边界使备份失败；保留全部原始记录及原请求标记，不进行解锁、重试、删改。
-4. 签名加密清单记录该独立模式和保全证据，schema43、logical SHA、媒体与secret验证严格不减。`finalCandidate`不伪装成现有locked-exact的true；发布操作依据本节授权及完整保全证据单独准入。
-5. 新包verify及独立fresh restore验证原始账本摘要、schema、完整性、FK、素材及secret一致。精确新→旧→新完整安装包演练验证原记录、画布及防重复提交保护；开关关闭的演练只能证明相应关闭范围，不扩大成正常开启自动恢复或付费生成证明。
+4. 签名加密清单记录该独立模式和保全证据，精确来源schema、logical SHA、媒体与secret验证严格不减。`finalCandidate`不伪装成现有locked-exact的true；发布操作依据本节授权及完整保全证据单独准入。
+5. 新包verify及独立fresh restore验证原始账本摘要、schema、完整性、FK、素材及secret一致。精确新→兼容回退包→新完整安装包演练验证原记录、画布及防重复提交保护；开关关闭的演练只能证明相应关闭范围，不扩大成正常开启自动恢复或付费生成证明。
 6. 实现和本次操作脚本经独立复审。实际操作失败保留原数据、已存在备份和旧包；未完成恢复门不得切换。维护状态及恢复服务的处理按本次已核验操作单执行。
 
 冻结等待期间只允许非目标历史任务推进状态并追加查询事件；所有任务的身份、输入与Provider证据及既有事件前缀必须保持，禁止改写或删掉旧事件。目标未知task/attempt及其全部事件摘要保持一致，其他业务表和媒体/secret保持。停服前重新采集完整快照；停服、备份和新进程启动后逐表核对，不豁免生成表。
 
-该模式的verify/restore使用本次精确v0.7.17包内工具；即使产品回退至v0.7.16，也保留该工具和密钥路径，不使用旧版解析器冒充新模式恢复。回退只切代码，绝不把备份还原覆盖CURRENT。
+该模式的verify/restore使用支持本次精确schema和备份格式的不可变包内工具；产品回退时也保留该工具和密钥路径，不使用旧版解析器冒充新格式恢复。回退只切代码，绝不把备份还原覆盖CURRENT。
 
 该规则不授权删除未知请求、付费重发或修复每日备份。每次保全必须重新绑定当前精确数据、任务范围、进程/租约和构建身份，不复用过期停服证明。具体实施状态和当次授权由TASKS维护，最终实测由本次发布回执维护。
+
+### 5.2 schema43→44发布的保全与兼容回退
+
+本节约束schema43→44配套发布，执行授权与进度由TASKS维护。生产是否已经迁移只能依据实际回执更新CURRENT_STATE，不能把方案或本地通过写成生产完成。迁移前须通过精确新包Linux隔离演练、操作脚本独立复审及最新schema43备份/verify/fresh restore；迁移后须完成schema44备份/verify/fresh restore再启动新应用。
+
+- schema44 当前候选必须通过 `schema43To44Migration` 的原子迁移、integrity/FK、结构合同、logical SHA、全账本和媒体关联核对。迁移只增加输出槽、保存租约、adoption receipt、continuation 表及其约束；不把未知结果改成终态，不删除事件/素材，不调用 Provider/OSS。
+- schema44 的 quiesced-active-preservation 备份可以保留旧 schema43 或当前 schema44 的明确来源版本。verify/fresh restore 必须保留 `media_publication_attempts` 的旧 nullable 槽、新槽记录、`generation_result_save_leases`、`generation_result_adoptions`、`workflow_run_continuations` 以及 outcome-unknown 账本，恢复后重新执行 FK、integrity、logical SHA 和媒体清单核对。
+- 兼容回退包是独立的只读维护桥接包，目录只包含 `preservation-manifest.json`、`maintenance.html` 和 `schema44-readonly-preservation-runtime.mjs`。它绑定原 CURRENT 数据目录的路径、数据库身份、数据库/媒体 SHA 和自身运行文件 SHA；不复制数据库、媒体、secret，也不导入应用 bootstrap。
+- 维护桥接进程以原 CURRENT 为唯一数据源，只读打开 schema44 数据库。维护页可读；`/health`、`/api/health`、`/results`、媒体、认证及所有 POST/写路由统一返回 503，不暴露任务或账本内容。桥接进程退出后，CURRENT 数据 SHA 和账本快照必须完全一致。
+- 回退禁止 schema44→43 数据库降级、覆盖 CURRENT 或用 schema43 旧解析器打开新表。回退演练只切换代码指针：先停止新应用并保留 CURRENT，再运行只读桥接，确认维护状态，最后启动 schema44 新应用正常 worker；若新应用恢复 staged 结果，只允许使用已有持久证据完成本地保存，不产生第二次 Provider POST。
+- 独立演练必须按“新应用 worker 启动并停止 → 同一 CURRENT 运行只读桥接 → 桥接停止 → 同一 CURRENT 启动新应用 worker”顺序执行，至少核验一个 staged synthetic 结果自动恢复，同时核验 Canvas 草稿、媒体、publication 槽、lease、adoption、continuation 和 outcome-unknown 账本保持约束；Provider POST 计数必须为零。
+
+本节对应 `m110-schema44-readonly-preservation` 和独立桥接脚本。每次新应用运行并停服后均须重新绑定最新CURRENT与桥接manifest；桥接失败保持静态维护，禁止启动schema43应用。本地测试不能替代精确包Linux演练或真实systemd切换，发布技术通过也不等于真实Provider验收。
 
 ## 6. 切换与回退
 

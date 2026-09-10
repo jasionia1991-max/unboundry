@@ -2832,6 +2832,265 @@ const migrations: readonly Migration[] = [
       ) WITHOUT ROWID;
     `,
   },
+  {
+    version: 44,
+    name: "media-publication-output-slots-and-recovery",
+    sql: `
+      DROP INDEX media_publication_attempts_active_asset;
+      DROP INDEX media_publication_attempts_active_task;
+      DROP INDEX media_publication_attempts_owner_state_updated;
+      DROP TRIGGER media_publication_guard_task_delete;
+      DROP TRIGGER media_publication_guard_owner_delete;
+
+      ALTER TABLE media_publication_attempts
+        RENAME TO media_publication_attempts_schema43;
+
+      CREATE TABLE media_publication_attempts (
+        attempt_id TEXT PRIMARY KEY,
+        owner_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('image', 'video', 'audio')),
+        asset_id TEXT NOT NULL,
+        source TEXT NOT NULL CHECK (source IN ('upload', 'generation')),
+        state TEXT NOT NULL CHECK (
+          state IN (
+            'reserved', 'staged', 'external-ready',
+            'compensating', 'published', 'failed'
+          )
+        ),
+        storage_backend TEXT NOT NULL CHECK (storage_backend IN ('local', 'oss')),
+        final_storage_name TEXT NOT NULL,
+        object_key TEXT NOT NULL,
+        storage_profile_id TEXT,
+        staging_name TEXT NOT NULL UNIQUE,
+        task_id TEXT,
+        task_execution_attempt INTEGER CHECK (
+          task_execution_attempt IS NULL OR task_execution_attempt >= 1
+        ),
+        output_slot INTEGER CHECK (
+          output_slot IS NULL OR output_slot BETWEEN 0 AND 3
+        ),
+        output_set_count INTEGER CHECK (
+          output_set_count IS NULL OR output_set_count BETWEEN 1 AND 4
+        ),
+        history_label TEXT,
+        byte_size INTEGER NOT NULL DEFAULT 0 CHECK (byte_size >= 0),
+        checksum_sha256 TEXT,
+        content_type TEXT NOT NULL,
+        duration_seconds REAL,
+        duration_source TEXT CHECK (
+          duration_source IS NULL
+          OR duration_source IN ('server-probe', 'provider-task')
+        ),
+        media_width INTEGER CHECK (media_width IS NULL OR media_width > 0),
+        media_height INTEGER CHECK (media_height IS NULL OR media_height > 0),
+        actual_cost_microunits INTEGER CHECK (
+          actual_cost_microunits IS NULL OR actual_cost_microunits >= 0
+        ),
+        provider_usage_tokens INTEGER CHECK (
+          provider_usage_tokens IS NULL OR provider_usage_tokens >= 0
+        ),
+        error_code TEXT,
+        retry_count INTEGER NOT NULL DEFAULT 0 CHECK (retry_count >= 0),
+        adopted_at TEXT,
+        adopted_canvas_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (task_id) REFERENCES generation_tasks(id) ON DELETE CASCADE,
+        CHECK (
+          (source = 'upload' AND task_id IS NULL AND task_execution_attempt IS NULL)
+          OR
+          (source = 'generation' AND task_id IS NOT NULL AND task_execution_attempt IS NOT NULL)
+        ),
+        CHECK (
+          (output_slot IS NULL AND output_set_count IS NULL)
+          OR (
+            output_slot IS NOT NULL AND output_set_count IS NOT NULL
+            AND output_slot < output_set_count
+          )
+        ),
+        CHECK (
+          (source = 'upload' AND output_slot IS NULL AND output_set_count IS NULL)
+          OR source = 'generation'
+        ),
+        CHECK (
+          (adopted_at IS NULL AND adopted_canvas_id IS NULL)
+          OR
+          (source = 'upload' AND adopted_at IS NOT NULL AND adopted_canvas_id IS NOT NULL)
+        )
+      );
+
+      INSERT INTO media_publication_attempts (
+        attempt_id, owner_id, kind, asset_id, source, state,
+        storage_backend, final_storage_name, object_key, storage_profile_id,
+        staging_name, task_id, task_execution_attempt, output_slot,
+        output_set_count, history_label, byte_size, checksum_sha256,
+        content_type, duration_seconds, duration_source, media_width,
+        media_height, actual_cost_microunits, provider_usage_tokens,
+        error_code, retry_count, adopted_at, adopted_canvas_id, created_at,
+        updated_at
+      )
+      SELECT
+        attempt_id, owner_id, kind, asset_id, source, state,
+        storage_backend, final_storage_name, object_key, storage_profile_id,
+        staging_name, task_id, task_execution_attempt, NULL, NULL,
+        history_label, byte_size, checksum_sha256, content_type,
+        duration_seconds, duration_source, media_width, media_height,
+        actual_cost_microunits, provider_usage_tokens, error_code,
+        retry_count, adopted_at, adopted_canvas_id, created_at, updated_at
+      FROM media_publication_attempts_schema43;
+      DROP TABLE media_publication_attempts_schema43;
+
+      CREATE UNIQUE INDEX media_publication_attempts_active_asset
+        ON media_publication_attempts (kind, asset_id)
+        WHERE state IN ('reserved', 'staged', 'external-ready', 'compensating');
+      CREATE UNIQUE INDEX media_publication_attempts_active_task
+        ON media_publication_attempts (task_id, task_execution_attempt)
+        WHERE task_id IS NOT NULL
+          AND state IN ('reserved', 'staged', 'external-ready', 'compensating');
+      CREATE INDEX media_publication_attempts_owner_state_updated
+        ON media_publication_attempts (owner_id, state, updated_at DESC);
+      CREATE UNIQUE INDEX media_publication_attempts_task_slot
+        ON media_publication_attempts (
+          task_id, task_execution_attempt, output_slot
+        )
+        WHERE source = 'generation'
+          AND output_slot IS NOT NULL
+          AND state IN (
+            'reserved', 'staged', 'external-ready', 'compensating', 'published'
+          );
+
+      CREATE TRIGGER media_publication_guard_task_delete
+        BEFORE DELETE ON generation_tasks
+        WHEN EXISTS (
+          SELECT 1 FROM media_publication_attempts
+          WHERE task_id = OLD.id
+            AND state IN ('reserved', 'staged', 'external-ready', 'compensating')
+        )
+      BEGIN
+        SELECT RAISE(ABORT, 'active media publication blocks task deletion');
+      END;
+      CREATE TRIGGER media_publication_guard_owner_delete
+        BEFORE DELETE ON users
+        WHEN EXISTS (
+          SELECT 1 FROM media_publication_attempts
+          WHERE owner_id = OLD.id
+            AND state IN ('reserved', 'staged', 'external-ready', 'compensating')
+        )
+      BEGIN
+        SELECT RAISE(ABORT, 'active media publication blocks owner deletion');
+      END;
+      CREATE TRIGGER media_publication_guard_generation_output_slot_insert
+        BEFORE INSERT ON media_publication_attempts
+        WHEN NEW.source = 'generation'
+          AND (NEW.output_slot IS NULL OR NEW.output_set_count IS NULL)
+      BEGIN
+        SELECT RAISE(ABORT, 'generation publication requires output slot');
+      END;
+      CREATE TRIGGER media_publication_guard_generation_output_slot_update
+        BEFORE UPDATE OF source, output_slot, output_set_count
+        ON media_publication_attempts
+        WHEN NEW.source = 'generation'
+          AND (NEW.output_slot IS NULL OR NEW.output_set_count IS NULL)
+      BEGIN
+        SELECT RAISE(ABORT, 'generation publication requires output slot');
+      END;
+
+      CREATE TABLE generation_result_save_leases (
+        task_id TEXT NOT NULL,
+        execution_attempt INTEGER NOT NULL CHECK (execution_attempt >= 1),
+        owner_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('image', 'video', 'audio')),
+        runtime_instance_id TEXT NOT NULL CHECK (
+          length(runtime_instance_id) BETWEEN 1 AND 256
+        ),
+        fence_epoch INTEGER NOT NULL CHECK (fence_epoch > 0),
+        holder_token TEXT NOT NULL CHECK (
+          length(holder_token) BETWEEN 16 AND 256
+        ),
+        phase TEXT NOT NULL CHECK (length(phase) BETWEEN 1 AND 80),
+        heartbeat_at TEXT NOT NULL CHECK (length(heartbeat_at) BETWEEN 20 AND 40),
+        lease_until TEXT NOT NULL CHECK (length(lease_until) BETWEEN 20 AND 40),
+        released_at TEXT CHECK (
+          released_at IS NULL OR length(released_at) BETWEEN 20 AND 40
+        ),
+        PRIMARY KEY (task_id, execution_attempt),
+        FOREIGN KEY (task_id) REFERENCES generation_tasks(id) ON DELETE CASCADE,
+        FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+      CREATE INDEX generation_result_save_leases_active_until
+        ON generation_result_save_leases (lease_until)
+        WHERE released_at IS NULL;
+
+      CREATE TABLE generation_result_adoptions (
+        id TEXT PRIMARY KEY CHECK (length(id) BETWEEN 1 AND 256),
+        owner_id TEXT NOT NULL,
+        task_id TEXT NOT NULL,
+        execution_attempt INTEGER NOT NULL CHECK (execution_attempt >= 1),
+        incident_digest TEXT NOT NULL CHECK (
+          length(incident_digest) BETWEEN 1 AND 256
+        ),
+        receipt_version INTEGER NOT NULL DEFAULT 1 CHECK (receipt_version = 1),
+        receipt_json TEXT NOT NULL CHECK (
+          length(receipt_json) BETWEEN 2 AND 262144
+          AND json_valid(receipt_json)
+          AND json_type(receipt_json) = 'object'
+        ),
+        created_at TEXT NOT NULL CHECK (length(created_at) BETWEEN 20 AND 40),
+        FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (task_id) REFERENCES generation_tasks(id) ON DELETE CASCADE
+      );
+      CREATE UNIQUE INDEX generation_result_adoptions_identity
+        ON generation_result_adoptions (
+          owner_id, task_id, execution_attempt, incident_digest
+        );
+
+      CREATE TABLE workflow_run_continuations (
+        id TEXT PRIMARY KEY CHECK (length(id) BETWEEN 1 AND 256),
+        owner_id TEXT NOT NULL,
+        parent_run_id TEXT NOT NULL,
+        child_run_id TEXT NOT NULL,
+        intent_id TEXT NOT NULL CHECK (length(intent_id) BETWEEN 1 AND 256),
+        preview_digest TEXT NOT NULL CHECK (
+          length(preview_digest) BETWEEN 1 AND 256
+        ),
+        parent_graph_revision INTEGER NOT NULL CHECK (parent_graph_revision >= 0),
+        child_graph_revision INTEGER NOT NULL CHECK (child_graph_revision >= 0),
+        parent_plan_digest TEXT NOT NULL CHECK (
+          length(parent_plan_digest) BETWEEN 1 AND 256
+        ),
+        child_plan_digest TEXT NOT NULL CHECK (
+          length(child_plan_digest) BETWEEN 1 AND 256
+        ),
+        selected_node_ids_json TEXT NOT NULL CHECK (
+          length(selected_node_ids_json) BETWEEN 2 AND 1048576
+          AND json_valid(selected_node_ids_json)
+          AND json_type(selected_node_ids_json) = 'array'
+        ),
+        frozen_external_inputs_json TEXT NOT NULL CHECK (
+          length(frozen_external_inputs_json) BETWEEN 2 AND 4194304
+          AND json_valid(frozen_external_inputs_json)
+          AND json_type(frozen_external_inputs_json) = 'array'
+        ),
+        canonical_adoption_receipt_id TEXT,
+        created_at TEXT NOT NULL CHECK (length(created_at) BETWEEN 20 AND 40),
+        updated_at TEXT NOT NULL CHECK (length(updated_at) BETWEEN 20 AND 40),
+        FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (parent_run_id, owner_id)
+          REFERENCES workflow_runs(id, owner_id) ON DELETE CASCADE,
+        FOREIGN KEY (child_run_id, owner_id)
+          REFERENCES workflow_runs(id, owner_id) ON DELETE CASCADE,
+        FOREIGN KEY (canonical_adoption_receipt_id)
+          REFERENCES generation_result_adoptions(id) ON DELETE RESTRICT
+      );
+      CREATE UNIQUE INDEX workflow_run_continuations_owner_parent
+        ON workflow_run_continuations (owner_id, parent_run_id);
+      CREATE UNIQUE INDEX workflow_run_continuations_child
+        ON workflow_run_continuations (child_run_id);
+      CREATE UNIQUE INDEX workflow_run_continuations_owner_intent
+        ON workflow_run_continuations (owner_id, intent_id);
+    `,
+  },
 ];
 
 export const currentSchemaManifest = Object.freeze(
@@ -2845,7 +3104,7 @@ export const currentSchemaVersion = currentSchemaManifest.at(-1)?.version ?? 0;
 // checks order-independent so the finite documented v21 catalog repairs and
 // v31/v32 template repair can each be admitted only by an exact sqlite_schema
 // fingerprint.
-export const currentSchemaContract = Object.freeze({
+export const schema43Contract = Object.freeze({
   tables: Object.freeze({
     account_delete_intents: Object.freeze([
       "owner_id", "state", "error_code", "retry_count", "created_at",
@@ -3568,6 +3827,103 @@ export const currentSchemaContract = Object.freeze({
   }),
 });
 
+// Schema 43 remains a separately addressable historical contract.  The
+// current schema is additive: legacy publication rows keep nullable slot
+// columns, while every new generation publication is forced through the
+// durable slot and recovery ledgers below.
+export const currentSchemaContract = Object.freeze({
+  ...schema43Contract,
+  tables: Object.freeze({
+    ...schema43Contract.tables,
+    media_publication_attempts: Object.freeze([
+      ...schema43Contract.tables.media_publication_attempts,
+      "output_slot", "output_set_count",
+    ]),
+    generation_result_save_leases: Object.freeze([
+      "task_id", "execution_attempt", "owner_id", "kind",
+      "runtime_instance_id", "fence_epoch", "holder_token", "phase",
+      "heartbeat_at", "lease_until", "released_at",
+    ]),
+    generation_result_adoptions: Object.freeze([
+      "id", "owner_id", "task_id", "execution_attempt", "incident_digest",
+      "receipt_version", "receipt_json", "created_at",
+    ]),
+    workflow_run_continuations: Object.freeze([
+      "id", "owner_id", "parent_run_id", "child_run_id", "intent_id",
+      "preview_digest", "parent_graph_revision", "child_graph_revision",
+      "parent_plan_digest", "child_plan_digest", "selected_node_ids_json",
+      "frozen_external_inputs_json", "canonical_adoption_receipt_id",
+      "created_at", "updated_at",
+    ]),
+  }),
+  indexes: Object.freeze({
+    ...schema43Contract.indexes,
+    media_publication_attempts_task_slot: Object.freeze({
+      columns: Object.freeze([
+        "task_id", "task_execution_attempt", "output_slot",
+      ]),
+      partial: true,
+      sqlHash: "d31dcd1a1d6b833fd34d9c22135eeadb0f28391471f454725dc523f680eba716",
+      table: "media_publication_attempts",
+      unique: true,
+    }),
+  }),
+  explicitIndexes: Object.freeze({
+    ...schema43Contract.explicitIndexes,
+    media_publication_attempts_task_slot: Object.freeze({
+      sqlHash: "d31dcd1a1d6b833fd34d9c22135eeadb0f28391471f454725dc523f680eba716",
+      table: "media_publication_attempts",
+    }),
+    generation_result_save_leases_active_until: Object.freeze({
+      sqlHash: "d71da8eb3b4a575e32f6f83506c03a47194f39c1a0758e16fd0bfeba5e8ae410",
+      table: "generation_result_save_leases",
+    }),
+    generation_result_adoptions_identity: Object.freeze({
+      sqlHash: "0342b0d10f27a120b01202aaf7cd1d2f56bf6fa733e81abcbc77e9d3959d4c9a",
+      table: "generation_result_adoptions",
+    }),
+    workflow_run_continuations_owner_parent: Object.freeze({
+      sqlHash: "819b550e06adecebc5e83f78a7434dfaaf5594f6736467b1425f1841733ba631",
+      table: "workflow_run_continuations",
+    }),
+    workflow_run_continuations_child: Object.freeze({
+      sqlHash: "d00c6b717ef19dc974803e6b7e5bfec576264afbe7d9c2855e5acce8352ffc21",
+      table: "workflow_run_continuations",
+    }),
+    workflow_run_continuations_owner_intent: Object.freeze({
+      sqlHash: "8ebbcee183560f4ed01e4e178dfb64a46b2b315b2108e1217dd3c5b71b343362",
+      table: "workflow_run_continuations",
+    }),
+  }),
+  conditionallyOptionalExplicitIndexes: schema43Contract.conditionallyOptionalExplicitIndexes,
+  tableSqlHashes: Object.freeze({
+    ...schema43Contract.tableSqlHashes,
+    media_publication_attempts: Object.freeze([
+      "393a24ba79c9b92a9c161ca00b0b9f9678b2e1f95fc756932fef60d0b29b2920",
+    ]),
+    generation_result_save_leases: Object.freeze([
+      "c378cd0f80ef2ade41323a81b88d34a79197c9476208353fd3f2a36242015f5f",
+    ]),
+    generation_result_adoptions: Object.freeze([
+      "956298b358bfc39abbd6c12d5a55ee3af63f60bec970f9ec0102c31b2aa0e8e2",
+    ]),
+    workflow_run_continuations: Object.freeze([
+      "6bdd648b2b8175cd1133fa4cdf777ef457340a5a5826dff1cf497d01941a895b",
+    ]),
+  }),
+  triggers: Object.freeze({
+    ...schema43Contract.triggers,
+    media_publication_guard_generation_output_slot_insert: Object.freeze({
+      sqlHash: "95817d6485ad21477cb6f4a1bf136f09bd0e4a0137322b6353b6b7fee10fed4b",
+      table: "media_publication_attempts",
+    }),
+    media_publication_guard_generation_output_slot_update: Object.freeze({
+      sqlHash: "e1ad8e6abcfa1117ca393722475d36647540eec2c1377d5d7248064d8002c68f",
+      table: "media_publication_attempts",
+    }),
+  }),
+});
+
 function sameSchemaStrings(left: readonly string[], right: readonly string[]) {
   return left.length === right.length &&
     left.every((value, index) => value === right[index]);
@@ -3645,8 +4001,9 @@ function databaseMatchesSchemaContractExceptTables(
   database: DatabaseSync,
   excludedTables: ReadonlySet<string>,
   excludedExplicitIndexes: ReadonlySet<string> = new Set(),
+  contract: typeof schema43Contract = currentSchemaContract,
 ) {
-  const expectedTables = Object.keys(currentSchemaContract.tables)
+  const expectedTables = Object.keys(contract.tables)
     .filter((tableName) => !excludedTables.has(tableName))
     .sort();
   const actualTables = (database.prepare(`
@@ -3660,8 +4017,8 @@ function databaseMatchesSchemaContractExceptTables(
   for (const tableName of expectedTables) {
     if (!/^[a-z][a-z0-9_]*$/.test(tableName)) return false;
     const expectedColumns = [
-      ...currentSchemaContract.tables[
-        tableName as keyof typeof currentSchemaContract.tables
+      ...contract.tables[
+        tableName as keyof typeof contract.tables
       ],
     ].sort();
     const actualColumns = (database
@@ -3670,8 +4027,8 @@ function databaseMatchesSchemaContractExceptTables(
       .sort();
     if (!sameSchemaStrings(actualColumns, expectedColumns)) return false;
     const table = schemaObject(database, "table", tableName);
-    const acceptedSqlHashes = currentSchemaContract.tableSqlHashes[
-      tableName as keyof typeof currentSchemaContract.tableSqlHashes
+    const acceptedSqlHashes = contract.tableSqlHashes[
+      tableName as keyof typeof contract.tableSqlHashes
     ];
     if (!table || !acceptedSqlHashes.includes(schemaSqlHash(table.sql))) {
       return false;
@@ -3679,18 +4036,18 @@ function databaseMatchesSchemaContractExceptTables(
   }
 
   const expectedExplicitIndexNames = Object.keys(
-    currentSchemaContract.explicitIndexes,
+    contract.explicitIndexes,
   ).filter((indexName) => (
     !excludedExplicitIndexes.has(indexName) &&
     !excludedTables.has(
-      currentSchemaContract.explicitIndexes[
-        indexName as keyof typeof currentSchemaContract.explicitIndexes
+      contract.explicitIndexes[
+        indexName as keyof typeof contract.explicitIndexes
       ].table,
     )
   )).sort();
   const optionalExplicitIndexNames = new Set<string>();
   for (const [indexName, condition] of Object.entries(
-    currentSchemaContract.conditionallyOptionalExplicitIndexes,
+    contract.conditionallyOptionalExplicitIndexes,
   )) {
     if (excludedTables.has(condition.table)) continue;
     const table = schemaObject(database, "table", condition.table);
@@ -3716,8 +4073,8 @@ function databaseMatchesSchemaContractExceptTables(
     )
   ) return false;
   for (const indexName of actualExplicitIndexNames) {
-    const expected = currentSchemaContract.explicitIndexes[
-      indexName as keyof typeof currentSchemaContract.explicitIndexes
+    const expected = contract.explicitIndexes[
+      indexName as keyof typeof contract.explicitIndexes
     ];
     const index = schemaObject(database, "index", indexName);
     if (
@@ -3727,7 +4084,7 @@ function databaseMatchesSchemaContractExceptTables(
   }
 
   for (const [indexName, expected] of Object.entries(
-    currentSchemaContract.indexes,
+    contract.indexes,
   )) {
     if (excludedExplicitIndexes.has(indexName)) continue;
     if (excludedTables.has(expected.table)) continue;
@@ -3754,8 +4111,8 @@ function databaseMatchesSchemaContractExceptTables(
       ).map((column) => String(column.name));
     if (!sameSchemaStrings(columns, expected.columns)) return false;
     const schemaIndex = schemaObject(database, "index", indexName);
-    const explicitIndex = currentSchemaContract.explicitIndexes[
-      indexName as keyof typeof currentSchemaContract.explicitIndexes
+    const explicitIndex = contract.explicitIndexes[
+      indexName as keyof typeof contract.explicitIndexes
     ];
     if (
       String(schemaIndex?.tbl_name ?? "") !== expected.table ||
@@ -3765,10 +4122,10 @@ function databaseMatchesSchemaContractExceptTables(
     ) return false;
   }
 
-  const expectedTriggerNames = Object.keys(currentSchemaContract.triggers)
+  const expectedTriggerNames = Object.keys(contract.triggers)
     .filter((triggerName) => !excludedTables.has(
-      currentSchemaContract.triggers[
-        triggerName as keyof typeof currentSchemaContract.triggers
+      contract.triggers[
+        triggerName as keyof typeof contract.triggers
       ].table,
     ))
     .sort();
@@ -3780,7 +4137,7 @@ function databaseMatchesSchemaContractExceptTables(
   `).all() as Array<{ name?: unknown }>).map((row) => String(row.name));
   if (!sameSchemaStrings(actualTriggerNames, expectedTriggerNames)) return false;
   for (const [triggerName, expected] of Object.entries(
-    currentSchemaContract.triggers,
+    contract.triggers,
   )) {
     if (excludedTables.has(expected.table)) continue;
     const trigger = schemaObject(database, "trigger", triggerName);
@@ -3803,28 +4160,55 @@ export function databaseMatchesSchemaContract(database: DatabaseSync) {
   return databaseMatchesSchemaContractExceptTables(database, new Set());
 }
 
+/** Frozen v43 guard used by the schema43-to44 migration source gate and
+ * historical backup inspection. */
+export function databaseMatchesSchema43Contract(database: DatabaseSync) {
+  return databaseMatchesSchemaContractExceptTables(
+    database,
+    new Set(),
+    new Set(),
+    schema43Contract,
+  );
+}
+
 /** Frozen v39 guard used only by the authorized v39-to-v40 release migration. */
 export function databaseMatchesSchema39Contract(database: DatabaseSync) {
   return databaseMatchesSchemaContractExceptTables(
     database,
     schema39ExcludedTables,
     schema39ExcludedExplicitIndexes,
+    schema43Contract,
   );
 }
 
 /** Frozen v40 guard used only by the authorized v40-to-v41 release migration. */
 export function databaseMatchesSchema40Contract(database: DatabaseSync) {
-  return databaseMatchesSchemaContractExceptTables(database, schema40ExcludedTables);
+  return databaseMatchesSchemaContractExceptTables(
+    database,
+    schema40ExcludedTables,
+    new Set(),
+    schema43Contract,
+  );
 }
 
 /** Frozen v41 guard used only by the authorized v41-to-v42 release migration. */
 export function databaseMatchesSchema41Contract(database: DatabaseSync) {
-  return databaseMatchesSchemaContractExceptTables(database, schema41ExcludedTables);
+  return databaseMatchesSchemaContractExceptTables(
+    database,
+    schema41ExcludedTables,
+    new Set(),
+    schema43Contract,
+  );
 }
 
 /** Frozen v42 guard used only by the authorized v42-to-v43 release migration. */
 export function databaseMatchesSchema42Contract(database: DatabaseSync) {
-  return databaseMatchesSchemaContractExceptTables(database, schema43Tables);
+  return databaseMatchesSchemaContractExceptTables(
+    database,
+    schema43Tables,
+    new Set(),
+    schema43Contract,
+  );
 }
 
 export function appDataDirectory() {

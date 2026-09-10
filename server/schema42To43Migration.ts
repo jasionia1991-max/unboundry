@@ -16,7 +16,7 @@ import {
   applyPendingSchemaMigrationsInTransaction,
   databaseMatchesMigrationManifest,
   databaseMatchesSchema42Contract,
-  databaseMatchesSchemaContract,
+  databaseMatchesSchema43Contract,
 } from "./database";
 import { createRuntimeRoleCoordinator } from "./runtimeRole";
 
@@ -149,7 +149,7 @@ function migrateLocked(database: DatabaseSync) {
   });
   if (
     !databaseMatchesMigrationManifest(database, targetSchemaVersion) ||
-    !databaseMatchesSchemaContract(database) ||
+    !databaseMatchesSchema43Contract(database) ||
     database.prepare("PRAGMA foreign_key_check").all().length !== 0
   ) fail("SCHEMA_MIGRATION_TARGET_INVALID", "Migrated database is not exact schema 43");
 }

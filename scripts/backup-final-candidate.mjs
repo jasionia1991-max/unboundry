@@ -69,7 +69,7 @@ const maximumBuildArtifactNameBytes = 255;
 const maximumBuildArtifactPathBytes = 16 * 1024;
 const maximumBuildArtifactInventoryPathBytes = 16 * 1024 * 1024;
 const maximumRestoredStateBytes = 1024 * 1024 * 1024 * 1024;
-const currentStartupSchemaVersion = 43;
+const currentStartupSchemaVersion = 44;
 const startupShutdownDiagnosticMarkers = Object.freeze([
   "LEGACY_CHILD_GUARDIAN_LOST",
   "LEGACY_RUNTIME_DRAIN_TIMEOUT",
@@ -957,6 +957,7 @@ const releaseMigrationScripts = new Set([
   "migrate-schema40-to41.mjs",
   "migrate-schema41-to42.mjs",
   "migrate-schema42-to43.mjs",
+  "migrate-schema43-to44.mjs",
 ]);
 
 async function runReleaseMigrationScript(
@@ -4160,6 +4161,11 @@ try {
         sourceVersion: 42,
         targetVersion: 43,
       }),
+      Object.freeze({
+        scriptName: "migrate-schema43-to44.mjs",
+        sourceVersion: 43,
+        targetVersion: 44,
+      }),
     ]);
     let expectedStageSourceSha256 = postBridge37LogicalSha256;
     for (const [stageIndex, definition] of stageDefinitions.entries()) {
@@ -4311,7 +4317,7 @@ try {
       "Migrated restore is not exact current schema for normal startup",
     );
   }
-  const bridgeSchema43 = await validateReleaseStartup({
+  const bridgeCurrentSchema = await validateReleaseStartup({
     expected: Object.freeze({
       mode: "active",
       mutationsAccepted: true,
@@ -4406,9 +4412,9 @@ try {
     ...startupRuntime,
     bridgeRollback,
     bridgeSchema37,
-    bridgeSchema43,
+    bridgeCurrentSchema,
     finalReswitch,
-    finalSchema43: startupRuntime,
+    finalCurrentSchema: startupRuntime,
     postBridge37LogicalSha256,
     runtimeSequence: Object.freeze([
       Object.freeze({ releaseRole: "bridge", schemaVersion: 37 }),
