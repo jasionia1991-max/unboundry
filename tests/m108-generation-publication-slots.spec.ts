@@ -24,10 +24,11 @@ import {
 } from "../server/mediaPublicationService";
 import {
   assertMediaPublicationIo, prepareReservedMediaStaging,
-  MediaPublicationEvidenceConflictError,
+  MediaPublicationEvidenceConflictError, failMediaPublication,
 } from "../server/mediaLifecycle";
-import { AliyunOssPublicationQuarantineError, deleteExactAliyunOssGenerationObject,
-  aliyunOssGenerationIdentityHeaders, type AliyunOssUrllib } from "../server/aliyunOss";
+import { AliyunOssPublicationQuarantineError, assertUnstagedAliyunOssGenerationObjectAbsent,
+  deleteExactAliyunOssGenerationObject, aliyunOssGenerationIdentityHeaders,
+  type AliyunOssUrllib } from "../server/aliyunOss";
 import type { DatabaseSync } from "node:sqlite";
 import { publishedGenerationMediaCandidateIds as candidates } from "../server/mediaRegistry";
 import { recoverGenerationTasksAtStartupForRuntimeTest } from "../server/generationTasks";
@@ -37,6 +38,15 @@ const ownerId = "m108-owner";
 const model = "m108-model";
 const profile = "m108-profile";
 type Store = ReturnType<typeof createGenerationTaskStore>;
+
+function fixtureOssProfile() {
+  return {
+    accessKeyId: "fixture", accessKeySecret: "fixture", bucket: "fixture-bucket",
+    createdAt: new Date().toISOString(), endpoint: "https://oss-cn-hangzhou.aliyuncs.com",
+    id: "m108-storage", label: "fixture", provider: "aliyun-oss" as const, region: "cn-hangzhou",
+    status: "verified" as const, updatedAt: new Date().toISOString(),
+  };
+}
 
 async function fixture(work: (directory: string, store: Store) => Promise<void>) {
   const directory = await mkdtemp(join(tmpdir(), "unboundry-m108-"));
@@ -161,6 +171,429 @@ test("OSS cleanup sends an exact version DELETE and never deletes an unversioned
       expect(requests.map(({ method }) => method)).toEqual(["HEAD"]);
     }
   }
+});
+
+test("unstaged OSS absence requires a signed bounded range read of the same object", async () => {
+  const identity = {
+    contentType: "video/mp4",
+    executionAttempt: 1,
+    format: "mp4",
+    kind: "video" as const,
+    objectKey: "objects/m108/unstaged-video.mp4",
+    ownerId,
+    publicationId: "m108-publication",
+    storageProfileId: "m108-storage",
+    taskId: "m108-task",
+  };
+  const credentials = {
+    accessKeyId: "fixture", accessKeySecret: "fixture", bucket: "fixture-bucket",
+    endpoint: "https://oss-cn-hangzhou.aliyuncs.com", region: "oss-cn-hangzhou",
+  };
+  const errorXml = (code: string) => Buffer.from(
+    `<Error><Code>${code}</Code><Message>fixture</Message><RequestId>fixture</RequestId></Error>`,
+  );
+  const scenarios = [
+    { name: "object-absent", result: "absent", headStatus: 404, getStatus: 404, getBody: errorXml("NoSuchKey"), getError: undefined },
+    { name: "head-object-exists", result: "quarantine", headStatus: 200, getStatus: undefined, getBody: undefined, getError: undefined },
+    { name: "object-exists-200", result: "quarantine", headStatus: 404, getStatus: 200, getBody: undefined, getError: undefined },
+    { name: "object-exists-206", result: "quarantine", headStatus: 404, getStatus: 206, getBody: undefined, getError: undefined },
+    { name: "empty-404", result: "unknown", headStatus: 404, getStatus: 404, getBody: Buffer.alloc(0), getError: undefined },
+    { name: "wrong-code", result: "unknown", headStatus: 404, getStatus: 404, getBody: errorXml("NoSuchBucket"), getError: undefined },
+    { name: "malformed-xml", result: "unknown", headStatus: 404, getStatus: 404, getBody: Buffer.from("<Error><Code>NoSuchKey</Code>"), getError: undefined },
+    { name: "oversized-error", result: "unknown", headStatus: 404, getStatus: 404, getBody: Buffer.alloc(16 * 1024 + 1, "x"), getError: undefined },
+    { name: "get-403", result: "unknown", headStatus: 404, getStatus: 403, getBody: errorXml("AccessDenied"), getError: undefined },
+    { name: "get-416", result: "unknown", headStatus: 404, getStatus: 416, getBody: errorXml("InvalidRange"), getError: undefined },
+    { name: "get-500", result: "unknown", headStatus: 404, getStatus: 500, getBody: errorXml("InternalError"), getError: undefined },
+    { name: "get-timeout", result: "unknown", headStatus: 404, getStatus: undefined, getBody: undefined,
+      getError: Object.assign(new Error("fixture timeout"), { name: "ResponseTimeoutError" }) },
+    { name: "stalled-body", result: "unknown", headStatus: 404, getStatus: 404, getBody: undefined, getError: undefined },
+    { name: "unterminated-error", result: "unknown", headStatus: 404, getStatus: 404, getBody: undefined, getError: undefined },
+    { name: "head-500", result: "unknown", headStatus: 500, getStatus: undefined, getBody: undefined, getError: undefined },
+  ] as const;
+
+  for (const scenario of scenarios) {
+    const requests: Array<{ method: string; url: string }> = [];
+    const fetchRequests: Array<{ method: string; range: string; url: string }> = [];
+    let cancelledBodies = 0;
+    const response = (status: number) => {
+      const headers = { "x-oss-request-id": `fixture-${scenario.name}` };
+      return {
+        data: Buffer.alloc(0), headers, res: { headers, statusCode: status } as never, status,
+      } as never;
+    };
+    const urllib: AliyunOssUrllib = { async request(url, options = {}) {
+      const method = String(options.method ?? "GET").toUpperCase();
+      requests.push({ method, url });
+      if (method !== "HEAD") throw new Error("unexpected OSS fixture request");
+      return response(scenario.headStatus);
+    } };
+    const fetcher = (async (url, init = {}) => {
+      const headers = new Headers(init.headers);
+      fetchRequests.push({
+        method: String(init.method ?? "GET").toUpperCase(),
+        range: headers.get("range") ?? "",
+        url: String(url),
+      });
+      if (scenario.getError) throw scenario.getError;
+      if (scenario.getStatus === undefined) throw new Error("unexpected signed GET fixture request");
+      const body = scenario.name === "stalled-body" || scenario.name === "unterminated-error"
+        ? new ReadableStream<Uint8Array>({
+            start(controller) {
+              if (scenario.name === "unterminated-error") controller.enqueue(errorXml("NoSuchKey"));
+            },
+            cancel() { cancelledBodies += 1; },
+          })
+        : scenario.name.startsWith("object-exists-")
+          ? new ReadableStream<Uint8Array>({ cancel() { cancelledBodies += 1; } })
+          : scenario.getBody;
+      if (body === undefined) throw new Error("signed GET fixture body is missing");
+      return new Response(body, { status: scenario.getStatus });
+    }) as typeof fetch;
+    const timedBody = scenario.name === "stalled-body" || scenario.name === "unterminated-error";
+    const originalSetTimeout = globalThis.setTimeout;
+    if (timedBody) {
+      globalThis.setTimeout = ((handler: (...args: unknown[]) => void, timeout?: number, ...args: unknown[]) =>
+        originalSetTimeout(handler, timeout === 60_000 ? 20 : timeout, ...args)) as typeof setTimeout;
+    }
+    try {
+      const action = assertUnstagedAliyunOssGenerationObjectAbsent(identity, credentials, {
+        fetcher,
+        urllib,
+        resolver: (async () => [{ address: "93.184.216.34", family: 4 as const }]) as never,
+      });
+      if (scenario.result === "absent") {
+        await action;
+      } else if (scenario.result === "quarantine") {
+        await expect(action).rejects.toBeInstanceOf(AliyunOssPublicationQuarantineError);
+      } else {
+        await expect(action).rejects.toThrow("OSS unstaged object absence could not be confirmed");
+      }
+    } finally {
+      globalThis.setTimeout = originalSetTimeout;
+    }
+    if (timedBody) expect(cancelledBodies).toBe(1);
+    expect(requests.map(({ method }) => method)).toEqual(["HEAD"]);
+    expect(fetchRequests.map(({ method }) => method)).toEqual(
+      scenario.getStatus === undefined && !scenario.getError ? [] : ["GET"],
+    );
+    for (const request of fetchRequests) {
+      expect(request.range).toBe("bytes=0-0");
+      expect(new URL(request.url).searchParams.get("x-oss-signature-version")).toBe("OSS4-HMAC-SHA256");
+      expect(new URL(request.url).searchParams.has("bucketInfo")).toBe(false);
+    }
+    if (scenario.name.startsWith("object-exists-") || scenario.getStatus !== 404) {
+      expect(cancelledBodies).toBe(scenario.name.startsWith("object-exists-") ? 1 : 0);
+    }
+    expect(requests.every(({ method }) => method !== "DELETE")).toBe(true);
+  }
+});
+
+test("an unmaterialized generated OSS publication proves absence, settles, and releases its output slot", async () => {
+  await fixture(async (directory, store) => {
+    const identity = createTask(directory, store);
+    let reservation!: ReturnType<typeof reserveMediaPublication>;
+    let absenceChecks = 0;
+    let deleteCalls = 0;
+    await withGenerationResultSave(identity, async (saveToken) => {
+      bindGenerationOutputSet({
+        ...identity,
+        token: saveToken,
+        outputs: [{ transport: "bytes", kind: "image", bytes: png }],
+      });
+      const assetId = randomUUID();
+      reservation = reserveMediaPublication({
+        contentType: "image/png",
+        finalStorageName: `${assetId}.png`,
+        id: assetId,
+        kind: "image",
+        objectKey: `objects/m108/unmaterialized-${randomUUID()}.png`,
+        ownerId,
+        storageBackend: "oss",
+        storageProfileId: "m108-storage",
+        task: {
+          ...identity,
+          actualCostMicrounits: 1,
+          outputSlot: 0,
+          outputSetCount: 1,
+          saveToken,
+        },
+      });
+      expect(failMediaPublication(reservation, "MEDIA_PUBLICATION_FAILED")).toBe(true);
+    });
+    expect(store.get(identity.taskId)?.state).toBe("running");
+    const pendingDatabase = openAppDatabase(directory);
+    expect(pendingDatabase.prepare(`SELECT state, byte_size, checksum_sha256
+      FROM media_publication_attempts WHERE attempt_id = ?`).get(reservation.attemptId))
+      .toEqual({ state: "compensating", byte_size: 0, checksum_sha256: null });
+    pendingDatabase.close();
+
+    // Model the production deadlock: the first save lease is released while
+    // the publication remains compensating, then the task is recovered under
+    // a fresh lease without creating another Provider attempt.
+    expect(store.transition(identity.taskId, "recovering", {
+      code: "AUTOMATIC_RESULT_RECOVERY",
+      message: "fixture recovery",
+    })?.state).toBe("recovering");
+
+    await withGenerationResultSave(identity, async (saveToken) => {
+      const cleanup = {
+        code: "MEDIA_PUBLICATION_FAILED",
+        profile: fixtureOssProfile(),
+        assertUnstagedExternalObjectAbsent: async () => {
+          absenceChecks += 1;
+        },
+        deleteGeneratedExternalObject: async () => {
+          deleteCalls += 1;
+        },
+      };
+      expect(await compensateMediaPublication({ ...reservation, saveToken }, cleanup)).toBe(true);
+
+      const database = openAppDatabase(directory);
+      try {
+        expect(database.prepare(`
+          SELECT state, byte_size, checksum_sha256
+          FROM media_publication_attempts WHERE attempt_id = ?
+        `).get(reservation.attemptId)).toEqual({
+          state: "failed", byte_size: 0, checksum_sha256: null,
+        });
+        expect(database.prepare(`
+          SELECT COUNT(*) AS n FROM media_assets
+          WHERE owner_id = ? AND kind = 'image' AND id = ?
+        `).get(ownerId, reservation.id)).toEqual({ n: 0 });
+      } finally {
+        database.close();
+      }
+
+      // A failed row with its failed asset removed must no longer occupy the
+      // durable generation output slot.
+      const replacementId = randomUUID();
+      const replacement = reserveMediaPublication({
+        contentType: "image/png",
+        finalStorageName: `${replacementId}.png`,
+        id: replacementId,
+        kind: "image",
+        objectKey: `objects/m108/replacement-${replacementId}.png`,
+        ownerId,
+        storageBackend: "oss",
+        storageProfileId: "m108-storage",
+        task: {
+          ...identity,
+          actualCostMicrounits: 1,
+          outputSlot: 0,
+          outputSetCount: 1,
+          saveToken,
+        },
+      });
+      expect(replacement.disposition).toBe("created");
+    }, { nonBlocking: true, phase: "recovery" });
+    expect(absenceChecks).toBe(1);
+    expect(deleteCalls).toBe(0);
+    const database = openAppDatabase(directory);
+    expect(database.prepare("SELECT COUNT(*) AS n FROM generation_provider_attempts WHERE task_id = ?")
+      .get(identity.taskId)).toEqual({ n: 1 });
+    database.close();
+  });
+});
+
+test("unmaterialized OSS compensation retains the row for an existing object or unknown HEAD", async () => {
+  await fixture(async (directory, store) => {
+    for (const scenario of ["exists", "unknown"] as const) {
+      const identity = createTask(directory, store);
+      let reservation!: ReturnType<typeof reserveMediaPublication>;
+      let deleteCalls = 0;
+      await withGenerationResultSave(identity, async (saveToken) => {
+        bindGenerationOutputSet({
+          ...identity,
+          token: saveToken,
+          outputs: [{ transport: "bytes", kind: "image", bytes: png }],
+        });
+        const assetId = randomUUID();
+        reservation = reserveMediaPublication({
+          contentType: "image/png",
+          finalStorageName: `${assetId}.png`,
+          id: assetId,
+          kind: "image",
+          objectKey: `objects/m108/head-${scenario}-${assetId}.png`,
+          ownerId,
+          storageBackend: "oss",
+          storageProfileId: "m108-storage",
+          task: {
+            ...identity,
+            actualCostMicrounits: 1,
+            outputSlot: 0,
+            outputSetCount: 1,
+            saveToken,
+          },
+        });
+        expect(failMediaPublication(reservation, "MEDIA_PUBLICATION_FAILED")).toBe(true);
+        const cleanup = {
+          code: "MEDIA_PUBLICATION_FAILED",
+          profile: fixtureOssProfile(),
+          assertUnstagedExternalObjectAbsent: async () => {
+            if (scenario === "exists") {
+              throw new AliyunOssPublicationQuarantineError(
+                "IDENTITY_MISMATCH",
+                "fixture object exists without a complete generation identity",
+              );
+            }
+            // A network/OSS error is retryable evidence, not authorization to
+            // delete by key or to mark the publication clean.
+            throw new Error("HEAD_UNKNOWN");
+          },
+          deleteGeneratedExternalObject: async () => {
+            deleteCalls += 1;
+          },
+        };
+        expect(await compensateMediaPublication(reservation, cleanup)).toBe(false);
+      });
+      expect(deleteCalls).toBe(0);
+      const database = openAppDatabase(directory);
+      try {
+        expect(database.prepare(`
+          SELECT state, error_code, byte_size, checksum_sha256
+          FROM media_publication_attempts WHERE attempt_id = ?
+        `).get(reservation.attemptId)).toEqual({
+          state: "compensating",
+          error_code: scenario === "exists"
+            ? "OSS_IDENTITY_QUARANTINED"
+            : "MEDIA_PUBLICATION_FAILED",
+          byte_size: 0,
+          checksum_sha256: null,
+        });
+        expect(database.prepare(`
+          SELECT storage_status, byte_size, checksum_sha256
+          FROM media_assets WHERE owner_id = ? AND kind = 'image' AND id = ?
+        `).get(ownerId, reservation.id)).toEqual({
+          storage_status: "failed", byte_size: 0, checksum_sha256: "",
+        });
+      } finally {
+        database.close();
+      }
+    }
+  });
+});
+
+test("unstaged OSS compensation refuses incomplete or changed recovery identities", async () => {
+  await fixture(async (directory, store) => {
+    const scenarios = [
+      "cancelled-task",
+      "missing-provider-id",
+      "unknown-provider-outcome",
+      "provider-id-changed",
+      "inactive-save-token",
+      "media-object-key-changed",
+      "media-has-bytes",
+      "media-ready",
+      "delete-intent",
+    ] as const;
+    for (const scenario of scenarios) {
+      const identity = createTask(directory, store, 1,
+        scenario === "missing-provider-id" ? null : undefined);
+      let reservation!: ReturnType<typeof reserveMediaPublication>;
+      let absenceChecks = 0;
+      let deleteCalls = 0;
+      let result: boolean | undefined;
+      await withGenerationResultSave(identity, async (saveToken) => {
+        bindGenerationOutputSet({
+          ...identity,
+          token: saveToken,
+          outputs: [{ transport: "bytes", kind: "image", bytes: png }],
+        });
+        const assetId = randomUUID();
+        reservation = reserveMediaPublication({
+          contentType: "image/png",
+          finalStorageName: `${assetId}.png`,
+          id: assetId,
+          kind: "image",
+          objectKey: `objects/m108/strict-${scenario}-${assetId}.png`,
+          ownerId,
+          storageBackend: "oss",
+          storageProfileId: "m108-storage",
+          task: {
+            ...identity,
+            actualCostMicrounits: 1,
+            outputSlot: 0,
+            outputSetCount: 1,
+            saveToken,
+          },
+        });
+        expect(failMediaPublication(reservation, "MEDIA_PUBLICATION_FAILED")).toBe(true);
+
+        const database = openAppDatabase(directory);
+        try {
+          if (scenario === "cancelled-task") {
+            expect(store.transition(identity.taskId, "cancelled", {
+              code: "USER_CANCELLED", message: "fixture cancellation",
+            })?.state).toBe("cancelled");
+          } else if (scenario === "unknown-provider-outcome") {
+            database.prepare(`UPDATE generation_provider_attempts
+              SET outcome = 'outcome-unknown' WHERE task_id = ? AND execution_attempt = ?`)
+              .run(identity.taskId, identity.executionAttempt);
+          } else if (scenario === "provider-id-changed") {
+            database.prepare("UPDATE generation_tasks SET provider_task_id = ? WHERE id = ?")
+              .run("provider-changed", identity.taskId);
+          } else if (scenario === "media-object-key-changed") {
+            database.prepare("UPDATE media_assets SET object_key = ? WHERE owner_id = ? AND kind = ? AND id = ?")
+              .run(`objects/m108/changed-${assetId}.png`, ownerId, "image", assetId);
+          } else if (scenario === "media-has-bytes") {
+            database.prepare("UPDATE media_assets SET byte_size = 1, checksum_sha256 = ? WHERE owner_id = ? AND kind = ? AND id = ?")
+              .run("a".repeat(64), ownerId, "image", assetId);
+          } else if (scenario === "media-ready") {
+            database.prepare("UPDATE media_assets SET storage_status = 'ready', byte_size = ?, checksum_sha256 = ? WHERE owner_id = ? AND kind = ? AND id = ?")
+              .run(png.length, createHash("sha256").update(png).digest("hex"), ownerId, "image", assetId);
+          } else if (scenario === "delete-intent") {
+            const now = new Date().toISOString();
+            database.prepare(`INSERT INTO media_delete_intents
+              (owner_id, kind, asset_id, state, created_at, updated_at)
+              VALUES (?, ?, ?, 'tombstone', ?, ?)`)
+              .run(ownerId, "image", assetId, now, now);
+          }
+        } finally {
+          database.close();
+        }
+
+        const cleanup = {
+          code: "MEDIA_PUBLICATION_FAILED",
+          profile: fixtureOssProfile(),
+          assertUnstagedExternalObjectAbsent: async () => {
+            absenceChecks += 1;
+          },
+          deleteGeneratedExternalObject: async () => {
+            deleteCalls += 1;
+          },
+        };
+        if (scenario !== "inactive-save-token") {
+          result = await compensateMediaPublication(reservation, cleanup);
+        }
+      });
+      if (scenario === "inactive-save-token") {
+        result = await compensateMediaPublication(reservation, {
+          code: "MEDIA_PUBLICATION_FAILED",
+          profile: fixtureOssProfile(),
+          assertUnstagedExternalObjectAbsent: async () => {
+            absenceChecks += 1;
+          },
+          deleteGeneratedExternalObject: async () => {
+            deleteCalls += 1;
+          },
+        });
+      }
+      expect(result).toBe(false);
+      expect(absenceChecks).toBe(0);
+      expect(deleteCalls).toBe(0);
+      const database = openAppDatabase(directory);
+      try {
+        expect(database.prepare(`SELECT state, error_code, byte_size, checksum_sha256
+          FROM media_publication_attempts WHERE attempt_id = ?`).get(reservation.attemptId))
+          .toEqual({
+            state: "compensating", error_code: "MEDIA_PUBLICATION_FAILED",
+            byte_size: 0, checksum_sha256: null,
+          });
+      } finally {
+        database.close();
+      }
+    }
+  });
 });
 
 test("signed URL renewal preserves identity while reordered or changed output sets are refused", async () => {

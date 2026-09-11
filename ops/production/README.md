@@ -24,6 +24,8 @@ A separately authorized release may use `quiesced-active-preservation` under [Ru
 
 ## Schema43 to schema44 release preservation bridge
 
+For an authorized same-schema incident patch whose incomplete workflow/media prevents ordinary capture, [Runbook 5.3](../../RELEASE_RUNBOOK.md#53-同schema补丁的事故现场保全) defines a separate `incident-active-preservation` package and full release gate. It remains `finalCandidate=false`; byte preservation, independent fresh restore, exact rollback rehearsal and complete private cloud GET verification must all pass before it can support the release. This does not change ordinary backup or restore rejection rules, treat failed media as ready, or repair the daily timer. Implementation and independent review are tracked in TASKS; this paragraph does not claim completion.
+
 Production migration to schema44 is confirmed by the current release receipt. Release approval, including the necessary schema43 to schema44 migration and maintenance-only fallback, is owned by TASKS. This contract is not evidence that production has migrated.
 
 - A schema44 candidate backup must be captured only after the schema43→44 transaction has passed the freeze, lease, logical-SHA, integrity, foreign-key, full-ledger and media checks. The quiesced preservation branch accepts an explicit schema43 source or the current schema44 source and keeps unresolved Provider evidence unchanged.
@@ -49,3 +51,5 @@ Future production changes, real OSS upload/delete/restore and paid generation fo
 ## Governance documents
 
 The private server entry is `/opt/unboundry/AGENTS.md`, installed from [the navigation source](GOVERNANCE_AGENT_ENTRY.md). It routes to `/opt/unboundry/governance/current`, an export from an exact GitHub main commit. Its `.governance-manifest.json` owns the deployed document identity and hashes. See [the document synchronization procedure](../../RELEASE_RUNBOOK.md) and [the current task](../../TASKS.md) for execution status. These documents are separate from the immutable product release and are not served publicly.
+
+独立事故包恢复时，先用 `ops/production/incident-envelope.mjs` 的 `readAuthenticatedEnvelopeContext` 与外置恢复私钥、可信签名公钥读出已验签上下文，再将其传给 `verifyRestoreEnvelope` 恢复到新私有目录；原操作临时文件丢失不影响这一步。该读取只验证上下文，完整文件校验仍由 fresh restore 完成；不能恢复覆盖 CURRENT。

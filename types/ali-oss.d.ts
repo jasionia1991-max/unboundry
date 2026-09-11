@@ -23,6 +23,7 @@ declare module "ali-oss" {
     constructor(options: ClientOptions);
     delete(name: string, options?: { versionId?: string }): Promise<RequestResult>;
     head(name: string): Promise<RequestResult>;
+    getBucketInfo(name: string): Promise<RequestResult & { bucket?: { Name?: string } }>;
     put(
       name: string,
       file: string | Buffer | NodeJS.ReadableStream,

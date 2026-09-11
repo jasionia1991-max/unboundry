@@ -66,6 +66,8 @@ export type AliyunOssUrllib = {
 };
 
 export type AliyunOssNetworkDependencies = {
+  /** Raw signed-read seam; production uses the guarded HTTPS transport. */
+  fetcher?: PublicHttpsFetchDependencies["fetcher"];
   requester?: PublicHttpsFetchDependencies["requester"];
   resolver?: DestinationResolver;
   urllib?: AliyunOssUrllib;
@@ -289,6 +291,202 @@ function errorStatus(error: unknown) {
   const record = error as Record<string, unknown>;
   const status = Number(record.status ?? record.statusCode);
   return Number.isFinite(status) ? status : undefined;
+}
+
+const OSS_ABSENCE_RANGE = "bytes=0-0";
+const OSS_ABSENCE_READ_TIMEOUT_MS = 60_000;
+const OSS_ERROR_BODY_MAX_BYTES = 16 * 1024;
+
+function cancelResponseBody(response: Response) {
+  if (!response.body) return;
+  try {
+    void response.body.cancel().catch(() => undefined);
+  } catch {
+    // A body can already be closed when the status has been inspected.
+  }
+}
+
+function abortReason(signal: AbortSignal) {
+  return signal.reason instanceof Error
+    ? signal.reason
+    : new DOMException("OSS absence read timed out", "TimeoutError");
+}
+
+async function abortablePromise<T>(promise: Promise<T>, signal: AbortSignal) {
+  if (signal.aborted) throw abortReason(signal);
+  return await new Promise<T>((resolve, reject) => {
+    const aborted = () => reject(abortReason(signal));
+    signal.addEventListener("abort", aborted, { once: true });
+    if (signal.aborted) {
+      aborted();
+      return;
+    }
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", aborted);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", aborted);
+        reject(error);
+      },
+    );
+  });
+}
+
+async function readResponseChunk(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  signal: AbortSignal,
+) {
+  if (signal.aborted) throw abortReason(signal);
+  return await new Promise<ReadableStreamReadResult<Uint8Array>>((resolve, reject) => {
+    let settled = false;
+    const cancel = () => {
+      if (settled) return;
+      settled = true;
+      try {
+        void reader.cancel().catch(() => undefined);
+      } catch {}
+      reject(abortReason(signal));
+    };
+    signal.addEventListener("abort", cancel, { once: true });
+    if (signal.aborted) {
+      cancel();
+      return;
+    }
+    reader.read().then(
+      (value) => {
+        if (settled) return;
+        settled = true;
+        signal.removeEventListener("abort", cancel);
+        resolve(value);
+      },
+      (error) => {
+        if (settled) return;
+        settled = true;
+        signal.removeEventListener("abort", cancel);
+        reject(error);
+      },
+    );
+  });
+}
+
+/**
+ * Read only a bounded error response. A missing-object proof must not turn a
+ * failed GET into an unbounded object download. The returned bytes belong to
+ * the caller and must be cleared after parsing.
+ */
+async function readBoundedResponseBody(
+  response: Response,
+  maximumBytes: number,
+  signal: AbortSignal,
+): Promise<Buffer | undefined> {
+  if (!response.body) return Buffer.alloc(0);
+  const reader = response.body.getReader();
+  const chunks: Buffer[] = [];
+  const clearChunks = () => {
+    for (const chunk of chunks) chunk.fill(0);
+    chunks.length = 0;
+  };
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await readResponseChunk(reader, signal);
+      if (done) {
+        const result = Buffer.concat(chunks);
+        clearChunks();
+        return result;
+      }
+      if (total + value.byteLength > maximumBytes) {
+        try {
+          void reader.cancel().catch(() => undefined);
+        } catch {}
+        clearChunks();
+        return undefined;
+      }
+      const chunk = Buffer.from(value);
+      total += chunk.length;
+      chunks.push(chunk);
+    }
+  } catch (error) {
+    clearChunks();
+    throw error;
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      // A timed-out pending read may still own the lock until cancellation
+      // finishes; the caller has already failed closed in that case.
+    }
+  }
+}
+
+type ParsedOssErrorNode = {
+  readonly children: ParsedOssErrorNode[];
+  readonly name: string;
+  text: string;
+};
+
+function validXmlText(value: string) {
+  return !/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFD]/.test(value) &&
+    !/&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9A-Fa-f]+);)/.test(value);
+}
+
+/**
+ * Parse the small, fixed OSS error envelope without adding an XML dependency.
+ * We accept only a well-formed Error document with exactly one direct Code
+ * and RequestId. Unknown/empty/malformed responses remain uncertain.
+ */
+function isConfirmedAliyunOssMissingXml(body: Buffer) {
+  if (body.length === 0) return false;
+  let xml = body.toString("utf8").replace(/^\uFEFF/, "").trim();
+  if (!xml || !validXmlText(xml) || xml.includes("<!")) return false;
+  if (xml.startsWith("<?xml")) {
+    const declaration = /^<\?xml\s+version=["']1\.0["'](?:\s+encoding=["'][A-Za-z0-9._-]+["'])?(?:\s+standalone=["'](?:yes|no)["'])?\s*\?>/i.exec(xml);
+    if (!declaration) return false;
+    xml = xml.slice(declaration[0].length).trim();
+  }
+  if (!xml || xml.includes("<?")) return false;
+
+  const tokens = /<[^>]*>|[^<]+/g;
+  const stack: ParsedOssErrorNode[] = [];
+  let root: ParsedOssErrorNode | undefined;
+  let cursor = 0;
+  for (const match of xml.matchAll(tokens)) {
+    if (match.index !== cursor) return false;
+    const token = match[0];
+    cursor += token.length;
+    if (!token.startsWith("<")) {
+      if (!validXmlText(token)) return false;
+      if (!stack.length && token.trim()) return false;
+      if (stack.length) stack[stack.length - 1].text += token;
+      continue;
+    }
+    if (token.startsWith("</")) {
+      const closing = /^<\/([A-Za-z_][A-Za-z0-9_.:-]*)>$/.exec(token);
+      if (!closing || !stack.length || stack[stack.length - 1].name !== closing[1]) return false;
+      stack.pop();
+      continue;
+    }
+    const selfClosing = /^<([A-Za-z_][A-Za-z0-9_.:-]*)\s*\/>$/.exec(token);
+    const opening = selfClosing ?? /^<([A-Za-z_][A-Za-z0-9_.:-]*)>$/.exec(token);
+    if (!opening) return false;
+    const node: ParsedOssErrorNode = { children: [], name: opening[1], text: "" };
+    if (stack.length) stack[stack.length - 1].children.push(node);
+    else if (root) return false;
+    else root = node;
+    if (!selfClosing) stack.push(node);
+  }
+  if (cursor !== xml.length || stack.length || !root || root.name !== "Error") return false;
+  const directText = (name: string) => {
+    const matches = root!.children.filter((child) => child.name === name);
+    if (matches.length !== 1 || matches[0].children.length) return "";
+    const value = matches[0].text.trim();
+    return value.length <= 256 && validXmlText(value) ? value : "";
+  };
+  const code = directText("Code");
+  const requestId = directText("RequestId");
+  return code === "NoSuchKey" && requestId.length > 0;
 }
 
 function aliyunOssObjectMissing(error: unknown) {
@@ -544,6 +742,119 @@ export async function deletePrivateAliyunOssObject(
     throw new Error("Invalid OSS object key");
   }
   await configuredClient(credentials, network).delete(objectKey);
+}
+
+/** Read-only fence for a download which never reached durable staging.
+ * No checksum is invented and this capability can never delete an object. */
+export async function assertUnstagedAliyunOssGenerationObjectAbsent(
+  identity: Omit<AliyunOssGenerationObjectIdentity, "byteSize" | "checksumSha256">,
+  credentials: AliyunOssCredentials,
+  network?: AliyunOssNetworkDependencies,
+) {
+  const bounded = (value: string, maximum: number) =>
+    typeof value === "string" && value.length > 0 && value.length <= maximum && !/[\r\n]/.test(value);
+  if (!identity.objectKey.startsWith("objects/") || identity.objectKey.includes("..") ||
+      !bounded(identity.objectKey, 1_024) || !bounded(identity.ownerId, 120) ||
+      !bounded(identity.storageProfileId, 120) || !bounded(identity.publicationId, 120) ||
+      !bounded(identity.taskId, 120) || !bounded(identity.contentType, 160) ||
+      !/^[a-z0-9]{1,8}$/.test(identity.format) || !["image", "video", "audio"].includes(identity.kind) ||
+      !Number.isSafeInteger(identity.executionAttempt) || identity.executionAttempt < 1) {
+    throw new Error("Invalid unstaged OSS generation identity");
+  }
+  const dependencies = network ?? {};
+  const client = configuredClient(credentials, dependencies);
+  try {
+    await client.head(identity.objectKey);
+  } catch (error) {
+    if (errorStatus(error) !== 404) {
+      // An unavailable bucket, credentials or network is not absence. Leave
+      // the partial download pending so a later recovery sweep can check again.
+      throw new Error("OSS unstaged object absence could not be confirmed", {
+        cause: error,
+      });
+    }
+    // A HEAD 404 is not sufficient: ali-oss can synthesize NoSuchKey for an
+    // empty error body, including a missing bucket. Re-read the same object
+    // through a short, signed GET so the response carries the object scope.
+    let signedUrl: string;
+    try {
+      signedUrl = await client.signatureUrlV4(
+        "GET",
+        60,
+        { headers: { Range: OSS_ABSENCE_RANGE } },
+        identity.objectKey,
+        ["Range"],
+      );
+    } catch (signatureError) {
+      throw new Error("OSS unstaged object absence could not be confirmed", {
+        cause: signatureError,
+      });
+    }
+    const readController = new AbortController();
+    const timeout = setTimeout(() => {
+      readController.abort(new DOMException("OSS absence read timed out", "TimeoutError"));
+    }, OSS_ABSENCE_READ_TIMEOUT_MS);
+    let response: Response;
+    try {
+      response = await abortablePromise(
+        fetchPublicHttps(
+          safeAliyunOssRequestUrl(signedUrl, credentials),
+          {
+            headers: { Range: OSS_ABSENCE_RANGE },
+            method: "GET",
+            redirect: "error",
+            signal: readController.signal,
+          },
+          {
+            fetcher: dependencies.fetcher,
+            requester: dependencies.requester,
+            resolver: dependencies.resolver,
+          },
+        ),
+        readController.signal,
+      );
+    } catch (readError) {
+      clearTimeout(timeout);
+      throw new Error("OSS unstaged object absence could not be confirmed", {
+        cause: readError,
+      });
+    }
+    if (response.status === 200 || response.status === 206) {
+      clearTimeout(timeout);
+      cancelResponseBody(response);
+      throw new AliyunOssPublicationQuarantineError(
+        "IDENTITY_MISMATCH", "OSS object exists without staged identity; all evidence retained",
+      );
+    }
+    if (response.status !== 404) {
+      clearTimeout(timeout);
+      cancelResponseBody(response);
+      throw new Error("OSS unstaged object absence could not be confirmed");
+    }
+    let errorBody: Buffer | undefined;
+    try {
+      errorBody = await readBoundedResponseBody(
+        response,
+        OSS_ERROR_BODY_MAX_BYTES,
+        readController.signal,
+      );
+    } catch (bodyError) {
+      clearTimeout(timeout);
+      throw new Error("OSS unstaged object absence could not be confirmed", {
+        cause: bodyError,
+      });
+    }
+    clearTimeout(timeout);
+    try {
+      if (errorBody && isConfirmedAliyunOssMissingXml(errorBody)) return;
+    } finally {
+      errorBody?.fill(0);
+    }
+    throw new Error("OSS unstaged object absence could not be confirmed");
+  }
+  throw new AliyunOssPublicationQuarantineError(
+    "IDENTITY_MISMATCH", "OSS object exists without staged identity; all evidence retained",
+  );
 }
 
 /**

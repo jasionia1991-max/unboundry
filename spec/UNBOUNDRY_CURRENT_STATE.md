@@ -6,12 +6,14 @@
 
 **最近核验的生产是 v0.7.18 / schema44**。正式站已切换并恢复公网访问；图片保存与后台恢复竞争的修复，以及原结果采用、仅继续未完成节点的功能已部署。程序与所需数据库结构已配套升级，原自动恢复、成功节点保护、错误UI及画布行为保留。
 
-本次四项本地验收为 `LOCAL_USER_PASS`。迁移前后两份停服备份、verify、独立fresh restore，真实Linux隔离新→只读维护→新演练及生产数据核对已通过。公网35个资源已全部逐字节核对通过；迁移前后两份私有加密云备份均完成全部对象和清单GET哈希核验，发布工程检查为 `PRODUCTION_TECHNICAL_PASS`。浏览器刷新后需要登录，未把原缓存画布当作新版本认证画布复验；`PRODUCTION_USER_RECHECK` 保留，未执行真实付费生成。
+v0.7.18发布前四项本地验收为 `LOCAL_USER_PASS`。迁移前后两份停服备份、verify、独立fresh restore，真实Linux隔离新→只读维护→新演练及生产数据核对已通过。公网35个资源已全部逐字节核对通过；迁移前后两份私有加密云备份均完成全部对象和清单GET哈希核验，发布工程检查为 `PRODUCTION_TECHNICAL_PASS`。浏览器刷新后需要登录，未把原缓存画布当作新版本认证画布复验；`PRODUCTION_USER_RECHECK` 保留，未执行真实付费生成。
 
-当前代码包版本：**v0.7.18**（已部署）
-本地候选代码版本：**v0.7.18**（已发布同一产品包，后续文档提交不改变产品身份）
+当前代码包版本：**v0.7.19**（本地发布候选，生产仍为v0.7.18）
+本地候选代码版本：**v0.7.19**。视频下载恢复修复已提交至草稿PR #177，尚未上线。同对象低权限真实云检查已通过，无需修改IAM。现有备份门不能保留本次卡住的现场，事故保全流程正在验证；精确进度由TASKS维护。
 生产观测日期：2026-09-11
-当前产品验收标记：`CURRENT_V0_7_18_USER_RECHECK`
+当前产品验收标记：`CURRENT_V0_7_18_USER_REJECTED_VIDEO_RECOVERY_BLOCKED`
+
+2026-09-11用户正式生成发现新的未解决故障：最新工作流前9个节点成功，视频在下载超时后卡入保存补偿循环，最后一个文字节点因此等待。已由只读生产记录与源码确认，本地修复已通过相关检查，尚未上线；精确身份、测试/复审证据和发布前剩余检查由[当前任务](../TASKS.md)维护。前次发布技术通过不等于这个真实生成案例通过。
 
 ## 数据与已有故障边界
 
@@ -31,4 +33,4 @@
 
 工作树：`/Users/mymy/Documents/unboundry-post-v076-canvas-convergence-2026-09-03`；GitHub：`jasionia1991-max/unboundry`。实际分支/HEAD以Git核对为准。服务器文档与不可变产品包分开，精确文档提交由`/opt/unboundry/governance/current/.governance-manifest.json`拥有。
 
-默认读取[AGENTS](../AGENTS.md)、本页和[当前任务](../TASKS.md)，再按主题读取[生成合同](UNBOUNDRY_GENERATION_ARCHITECTURE.md)、[发布手册](../RELEASE_RUNBOOK.md)、[备份合同](../ops/production/README.md)及[本次方案](MEDIA_PUBLICATION_RECOVERY_REPAIR_PLAN_2026-09-10.md)。
+默认读取[AGENTS](../AGENTS.md)、本页和[当前任务](../TASKS.md)，再按主题读取[生成合同](UNBOUNDRY_GENERATION_ARCHITECTURE.md)、[发布手册](../RELEASE_RUNBOOK.md)、[备份合同](../ops/production/README.md)及[上次发布方案](MEDIA_PUBLICATION_RECOVERY_REPAIR_PLAN_2026-09-10.md)。

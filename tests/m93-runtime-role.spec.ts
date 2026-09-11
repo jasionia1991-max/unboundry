@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import {
   chmod,
   link,
@@ -11,6 +11,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { promisify } from "node:util";
 import { join } from "node:path";
 import { expect, test } from "./safe-test";
 import { createRuntimeLifecycle } from "../server/runtimeLifecycle";
@@ -866,3 +867,127 @@ test("non-active lifecycle exposes its role while denying active capabilities", 
     await rm(paths.root, { force: true, recursive: true });
   }
 });
+
+
+const incidentEnvelopeScenario = String.raw`
+  import assert from "node:assert/strict";
+  import { generateKeyPairSync } from "node:crypto";
+  import { access, chmod, link, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, unlink, writeFile } from "node:fs/promises";
+  import { tmpdir } from "node:os";
+  import { join } from "node:path";
+  import { pathToFileURL } from "node:url";
+  const { captureEnvelope, readAuthenticatedEnvelopeContext, verifyRestoreEnvelope } = await import(pathToFileURL(join(process.cwd(), "ops/production/incident-envelope.mjs")));
+  const mode = process.argv[1];
+  const root = await realpath(await mkdtemp(join(tmpdir(), "m93-incident-envelope-")));
+  const sourceDir = join(root, "source");
+  const targetDir = join(root, "package");
+  const freshRestoreDir = join(root, "restored");
+  const signing = generateKeyPairSync("ed25519");
+  const recovery = generateKeyPairSync("rsa", { modulusLength: 3072 });
+  const context = { operationId: "synthetic-incident", schemaVersion: 44, states: ["outcome-unknown", "compensating"], finalCandidate: false };
+  const fixture = new Map([
+    ["unboundry.sqlite", Buffer.from("synthetic schema44 ledger; original attempt; no state rewriting")],
+    ["library.sqlite", Buffer.from("synthetic library ledger")],
+    ["media/.publication-synthetic.generating", Buffer.alloc(183777, 19)],
+    ["media/ready.mp4", Buffer.from("synthetic completed media")],
+    ["media/empty", Buffer.alloc(0)],
+    ["oss-mirrors/synthetic-cloud-asset", Buffer.from("synthetic cloud-only media bytes")],
+    ["secrets/config-master.key", Buffer.from("SYNTHETIC_MASTER_SECRET_DO_NOT_EXPOSE")],
+    ["secrets/provider-profiles.enc.json", Buffer.from("SYNTHETIC_ENCRYPTED_PROFILES")],
+  ]);
+  const capture = (changes={}) => captureEnvelope({sourceDir, targetDir, signingPrivateKey: signing.privateKey, recoveryPublicKey: recovery.publicKey, context, ...changes});
+  const restore = (changes={}) => verifyRestoreEnvelope({packageDir: targetDir, freshRestoreDir, trustedSigningPublicKey: signing.publicKey, recoveryPrivateKey: recovery.privateKey, expectedContext: context, ...changes});
+  async function absent(path) { await assert.rejects(access(path)); }
+  try {
+    await chmod(root, 0o700);
+    await mkdir(sourceDir, { mode: 0o700 });
+    await mkdir(join(sourceDir, "media"), { mode: 0o700 });
+    await mkdir(join(sourceDir, "secrets"), { mode: 0o700 });
+    await mkdir(join(sourceDir, "oss-mirrors"), { mode: 0o700 });
+    for (const [path, bytes] of fixture) await writeFile(join(sourceDir, path), bytes, {mode:0o600,flag:"wx"});
+    const receipt = await capture();
+    assert.equal(receipt.captureMode, "incident-active-preservation");
+    assert.equal(receipt.finalCandidate, false);
+    assert.equal(receipt.fileCount, fixture.size);
+    if (mode === "roundtrip") {
+      const recoveredContext = await readAuthenticatedEnvelopeContext({packageDir:targetDir,trustedSigningPublicKey:signing.publicKey,recoveryPrivateKey:recovery.privateKey});
+      assert.deepEqual(recoveredContext,context);
+      const result = await restore({expectedContext:recoveredContext});
+      assert.equal(result.fileCount, fixture.size);
+      assert.equal(result.finalCandidate, false);
+      for (const [path, bytes] of fixture) {
+        assert.deepEqual(await readFile(join(freshRestoreDir, path)), bytes);
+        assert.deepEqual(await readFile(join(sourceDir, path)), bytes);
+      }
+      const packageNames = await readdir(targetDir);
+      assert.deepEqual(packageNames.sort(), ["envelope.json", "manifest.bin", "objects"]);
+      for (const name of packageNames.filter(name=>name!=="objects")) {
+        const content = await readFile(join(targetDir, name));
+        assert.equal(content.includes(fixture.get("secrets/config-master.key")), false);
+        assert.equal(content.includes(Buffer.from("original attempt")), false);
+      }
+      for (const name of await readdir(join(targetDir, "objects"))) {
+        const content = await readFile(join(targetDir, "objects", name));
+        assert.equal(content.includes(fixture.get("secrets/config-master.key")), false);
+      }
+      await assert.rejects(restore());
+      for (const [path, bytes] of fixture) assert.deepEqual(await readFile(join(freshRestoreDir, path)), bytes);
+    } else {
+      await assert.rejects(restore({expectedContext:{...context, operationId:"another-incident"}}));
+      await absent(freshRestoreDir);
+      const otherSigning = generateKeyPairSync("ed25519");
+      await assert.rejects(restore({trustedSigningPublicKey:otherSigning.publicKey}));
+      await assert.rejects(readAuthenticatedEnvelopeContext({packageDir:targetDir,trustedSigningPublicKey:otherSigning.publicKey,recoveryPrivateKey:recovery.privateKey}));
+      await absent(freshRestoreDir);
+      const object = join(targetDir, "objects", (await readdir(join(targetDir, "objects")))[0]);
+      const original = await readFile(object);
+      const changed = Buffer.from(original); if (changed.length) changed[0] ^= 1;
+      await writeFile(object, changed.length ? changed : Buffer.from([1]));
+      await assert.rejects(restore()); await absent(freshRestoreDir);
+      await writeFile(object, original);
+      const extra = join(targetDir, "unexpected.txt");
+      await writeFile(extra,"unexpected",{mode:0o600});
+      await assert.rejects(restore()); await absent(freshRestoreDir);
+      await unlink(extra);
+      await unlink(object);
+      await assert.rejects(restore()); await absent(freshRestoreDir);
+      await writeFile(object, original, {mode:0o600,flag:"wx"});
+      await assert.rejects(capture());
+      await assert.rejects(capture({targetDir:join(sourceDir,"nested")}));
+      const alias = join(root,"alias");
+      await symlink(root, alias);
+      await assert.rejects(capture({targetDir:join(alias,"unexpected-parent","package")}));
+      await absent(join(root,"unexpected-parent"));
+      await assert.rejects(restore({freshRestoreDir:join(alias,"restore-through-alias")}));
+      await absent(join(root,"restore-through-alias"));
+      await unlink(alias);
+      await unlink(join(sourceDir,"library.sqlite"));
+      await assert.rejects(capture({targetDir:join(root,"missing-library")}));
+      await absent(join(root,"missing-library"));
+      await writeFile(join(sourceDir,"library.sqlite"),fixture.get("library.sqlite"),{mode:0o600,flag:"wx"});
+      const outside = join(root,"outside");
+      await writeFile(outside,"sentinel",{mode:0o600});
+      const sourceLink = join(sourceDir,"media/link");
+      await symlink(outside,sourceLink);
+      await assert.rejects(capture({targetDir:join(root,"unsafe-link")}));
+      assert.equal(await readFile(outside,"utf8"),"sentinel");
+      await unlink(sourceLink);
+      await link(outside,sourceLink);
+      await assert.rejects(capture({targetDir:join(root,"unsafe-hardlink")}));
+      assert.equal(await readFile(outside,"utf8"),"sentinel");
+      await unlink(sourceLink);
+      await restore();
+      for (const [path,bytes] of fixture) assert.deepEqual(await readFile(join(freshRestoreDir,path)),bytes);
+    }
+    console.log(JSON.stringify({status:"pass", mode, files:fixture.size, providerRequests:0}));
+  } finally { await rm(root,{recursive:true,force:true}); }
+`;
+
+for (const scenario of ["roundtrip", "refusals"] as const) {
+  test(`incident envelope preserves partial downloads and rejects unsafe restore: ${scenario}`, async () => {
+    const result = await promisify(execFile)(process.execPath, [
+      "--input-type=module", "-e", incidentEnvelopeScenario, scenario,
+    ], { cwd: process.cwd(), timeout: 60_000, maxBuffer: 1024 * 1024 });
+    expect(JSON.parse(result.stdout)).toEqual({status: "pass", mode: scenario, files: 8, providerRequests: 0});
+  });
+}
