@@ -27,6 +27,7 @@ import {
   setCanvasPersistenceBarriersForTests,
 } from "../server/canvasPersistence";
 import {
+  closeRuntimeDatabaseTransactions,
   currentSchemaVersion,
   openAppDatabase,
 } from "../server/database";
@@ -118,6 +119,7 @@ async function withDataDirectory<T>(
   try {
     return await operation(directory);
   } finally {
+    closeRuntimeDatabaseTransactions();
     if (previousDirectory === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
     else process.env.UNBOUNDRY_DATA_DIR = previousDirectory;
     if (previousBypass === undefined) {
@@ -178,6 +180,133 @@ function wavFixture(seconds = 0.1, sampleRate = 8_000) {
   bytes.write("data", 36, "ascii");
   bytes.writeUInt32LE(samples * 2, 40);
   return bytes;
+}
+
+function chunkedMediaBody(
+  bytes: Buffer,
+  beforeChunk: (chunkIndex: number) => void | Promise<void>,
+) {
+  const chunkSize = Math.max(1, Math.ceil(bytes.length / 3));
+  const progress = { enqueued: 0 };
+  let offset = 0;
+  let chunkIndex = 0;
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      if (offset >= bytes.length) {
+        controller.close();
+        return;
+      }
+      await beforeChunk(chunkIndex);
+      const end = Math.min(bytes.length, offset + chunkSize);
+      controller.enqueue(new Uint8Array(bytes.subarray(offset, end)));
+      offset = end;
+      chunkIndex += 1;
+      progress.enqueued += 1;
+    },
+  }, { highWaterMark: 0 });
+  return { body, progress };
+}
+
+async function canvasPersistenceFixtureRequest(
+  projectId: string,
+  method: "GET" | "PUT",
+  body?: unknown,
+) {
+  const request = method === "PUT"
+    ? jsonRequest(`/${projectId}`, method, body)
+    : Object.assign(Readable.from([]), {
+      headers: {},
+      method,
+      socket: { remoteAddress: "127.0.0.1" },
+      url: `/${projectId}`,
+    }) as unknown as IncomingMessage;
+  const output = syntheticResponse();
+  let authorized = false;
+  await authGate(request, output.response, () => {
+    authorized = true;
+  });
+  if (!authorized) throw new Error("M88 canvas heartbeat auth fixture failed");
+  await canvasPersistence(request, output.response);
+  const snapshot = output.snapshot();
+  return {
+    body: snapshot.body ? JSON.parse(snapshot.body) as Record<string, unknown> : {},
+    status: snapshot.statusCode,
+  };
+}
+
+async function writeCanvasTaskHeartbeat(
+  directory: string,
+  ownerId: string,
+  projectId: string,
+  taskId: string,
+) {
+  const current = await canvasPersistenceFixtureRequest(projectId, "GET");
+  const currentRevision = typeof current.body.revision === "number"
+    ? current.body.revision
+    : undefined;
+  const currentLoadToken = typeof current.body.loadToken === "string"
+    ? current.body.loadToken
+    : undefined;
+  if (current.status !== 404 && (currentRevision === undefined || !currentLoadToken)) {
+    throw new Error("M88 canvas heartbeat fixture returned an invalid canvas read");
+  }
+  const saveBody: Record<string, unknown> = {
+    edges: [],
+    nodes: [{ id: `m88-heartbeat-${taskId}` }],
+    revision: currentRevision ?? 0,
+    viewport: { x: 0, y: 0, zoom: 1 },
+  };
+  if (currentRevision !== undefined && currentLoadToken) {
+    saveBody.observedLoadToken = currentLoadToken;
+    saveBody.observedRevision = currentRevision;
+  }
+  const saved = await canvasPersistenceFixtureRequest(projectId, "PUT", saveBody);
+  if (saved.status !== 200) {
+    throw new Error(`M88 canvas heartbeat save failed with ${saved.status}`);
+  }
+
+  const database = openAppDatabase(directory);
+  try {
+    database.exec("BEGIN IMMEDIATE");
+    const now = Date.now();
+    const project = database.prepare(`
+      UPDATE project_metadata SET updated_at = ?
+      WHERE owner_id = ? AND id = ?
+    `).run(now, ownerId, projectId);
+    const task = database.prepare(`
+      UPDATE generation_tasks SET updated_at = ?
+      WHERE id = ? AND state = 'running'
+    `).run(new Date(now).toISOString(), taskId);
+    if (project.changes !== 1 || task.changes !== 1) {
+      throw new Error("M88 heartbeat fixture lost its canvas or task");
+    }
+    database.exec("COMMIT");
+  } catch (error) {
+    if (database.isTransaction) database.exec("ROLLBACK");
+    throw error;
+  } finally {
+    database.close();
+  }
+}
+
+function bumpGenerationSaveFence(
+  directory: string,
+  taskId: string,
+  executionAttempt: number,
+) {
+  const database = openAppDatabase(directory);
+  try {
+    const changed = database.prepare(`
+      UPDATE generation_result_save_leases
+      SET fence_epoch = fence_epoch + 1
+      WHERE task_id = ? AND execution_attempt = ? AND released_at IS NULL
+    `).run(taskId, executionAttempt);
+    if (changed.changes !== 1) {
+      throw new Error("M88 fence fixture did not find the active save lease");
+    }
+  } finally {
+    database.close();
+  }
 }
 
 async function pathExists(path: string) {
@@ -6335,5 +6464,213 @@ test("startup upload recovery cutoff cleans old attempts but never same-process 
       action: "failed",
       assetId: newReservation.id,
     }]);
+  });
+});
+
+test("video and audio saves keep the runtime lane open between chunks and abort on cancellation or fencing", async () => {
+  await withDataDirectory("runtime-lane-streams", async (directory) => {
+    const ownerId = "__test__";
+    addOwner(directory, ownerId);
+    await setStorageMediaRouting(false);
+    const store = createGenerationTaskStore(directory);
+    try {
+      const fixtures = [
+        {
+          contentType: "video/mp4" as const,
+          kind: "video" as const,
+          model: "m88-runtime-video-model",
+          providerModelId: "m88-runtime-video-provider",
+          bytes: await readFile(join(
+            process.cwd(),
+            "client",
+            "public",
+            "fixtures",
+            "video-success.mp4",
+          )),
+        },
+        {
+          contentType: "audio/wav" as const,
+          kind: "audio" as const,
+          model: "m88-runtime-audio-model",
+          providerModelId: "m88-runtime-audio-provider",
+          bytes: wavFixture(),
+        },
+      ] as const;
+      const scenarios = ["complete", "cancel", "fence"] as const;
+
+      for (const fixture of fixtures) {
+        for (const scenario of scenarios) {
+          const suffix = `${fixture.kind}-${scenario}`;
+          const projectId = `m88-runtime-${suffix}-project`;
+          addProject(directory, ownerId, projectId);
+          const task = store.create({
+            canvasId: projectId,
+            idempotencyKey: `m88-runtime-${suffix}-task`,
+            kind: fixture.kind,
+            model: fixture.model,
+            modelConfiguration: { providerProtocol: "native" },
+            nodeId: `m88-runtime-${suffix}-node`,
+            ownerId,
+            parameters: {},
+            prompt: `m88 runtime lane ${suffix}`,
+            providerModelId: fixture.providerModelId,
+            providerProfileId: "m88-runtime-provider-profile",
+          }).task;
+          const running = store.transition(task.id, "running");
+          if (!running) throw new Error(`M88 ${suffix} task did not start`);
+          recordProviderAttemptFixture(directory, task.id);
+          const providerTaskId = `m88-runtime-${suffix}-provider-task`;
+          store.attachProviderTaskId({
+            executionAttempt: running.attempt,
+            providerTaskId,
+            taskId: task.id,
+          });
+          store.markProviderResponseReceived({
+            executionAttempt: running.attempt,
+            taskId: task.id,
+          });
+
+          let heartbeatWrites = 0;
+          const stream = chunkedMediaBody(fixture.bytes, async (chunkIndex) => {
+            if (chunkIndex === 1) {
+              await writeCanvasTaskHeartbeat(directory, ownerId, projectId, task.id);
+              heartbeatWrites += 1;
+              return;
+            }
+            if (chunkIndex !== 2) return;
+            if (scenario === "cancel") {
+              const cancelled = store.transition(task.id, "cancelled", {
+                code: "USER_CANCELLED",
+                message: "M88 cancellation between media chunks",
+              });
+              if (cancelled?.state !== "cancelled") {
+                throw new Error("M88 cancellation fixture did not cancel the task");
+              }
+            } else if (scenario === "fence") {
+              bumpGenerationSaveFence(directory, task.id, running.attempt);
+            } else {
+              await writeCanvasTaskHeartbeat(directory, ownerId, projectId, task.id);
+              heartbeatWrites += 1;
+            }
+          });
+
+          const saveInput = {
+            body: stream.body,
+            label: `M88 runtime lane ${suffix}`,
+            ownerId,
+            task: {
+              actualCostMicrounits: 1,
+              executionAttempt: running.attempt,
+              taskId: task.id,
+            },
+          } as const;
+          if (scenario === "complete") {
+            const saved = fixture.kind === "video"
+              ? await saveGeneratedMp4(saveInput)
+              : await saveGeneratedAudio({
+                ...saveInput,
+                contentType: fixture.contentType,
+              });
+            if (!("publicationToken" in saved)) {
+              throw new Error(`M88 ${suffix} did not return a publication token`);
+            }
+            expect(stream.progress.enqueued).toBe(3);
+            expect(heartbeatWrites).toBe(2);
+            expect(commitGenerationMediaResult(saved.publicationToken)).toMatchObject({
+              assetId: saved.assetId,
+              state: "success",
+              taskId: task.id,
+            });
+            await cleanupPublicationStaging(saved.publicationToken);
+            expect(await readFile(mediaPublicationFinalPath(saved.publicationToken)))
+              .toEqual(fixture.bytes);
+            expect(readyMediaForOwner(ownerId, fixture.kind, saved.assetId)).toMatchObject({
+              byteSize: fixture.bytes.length,
+              storageBackend: "local",
+              storageStatus: "ready",
+            });
+            expect(store.get(task.id)).toMatchObject({
+              providerTaskId,
+              resultAssetId: saved.assetId,
+              state: "success",
+            });
+            expect(providerAttemptSnapshot(directory, task.id)).toMatchObject([{
+              execution_attempt: 1,
+              outcome: "completed",
+              provider_task_id: providerTaskId,
+            }]);
+            continue;
+          }
+
+          let saveError: unknown;
+          try {
+            await (fixture.kind === "video"
+              ? saveGeneratedMp4(saveInput)
+              : saveGeneratedAudio({
+                ...saveInput,
+                contentType: fixture.contentType,
+              }));
+          } catch (error) {
+            saveError = error;
+          }
+          expect(saveError).toBeDefined();
+          expect(stream.progress.enqueued).toBe(3);
+          expect(heartbeatWrites).toBe(1);
+          const afterTask = store.get(task.id);
+          expect(afterTask?.state).not.toBe("success");
+          if (scenario === "cancel") {
+            expect(afterTask).toMatchObject({
+              errorCode: "USER_CANCELLED",
+              state: "cancelled",
+            });
+          }
+          const database = openAppDatabase(directory);
+          let attempts: Array<{
+            asset_id: string;
+            final_storage_name: string;
+            staging_name: string;
+            state: string;
+          }>;
+          try {
+            attempts = database.prepare(`
+              SELECT asset_id, final_storage_name, staging_name, state
+              FROM media_publication_attempts
+              WHERE task_id = ?
+            `).all(task.id) as typeof attempts;
+            expect(attempts).toHaveLength(1);
+            expect(attempts.every((attempt) =>
+              !["external-ready", "published"].includes(attempt.state),
+            )).toBe(true);
+          } finally {
+            database.close();
+          }
+          for (const attempt of attempts) {
+            const asset = openAppDatabase(directory);
+            try {
+              expect(asset.prepare(`
+                SELECT COUNT(*) AS count
+                FROM media_assets
+                WHERE owner_id = ? AND kind = ? AND id = ?
+                  AND storage_status = 'ready'
+              `).get(ownerId, fixture.kind, attempt.asset_id)).toEqual({ count: 0 });
+            } finally {
+              asset.close();
+            }
+            expect(await pathExists(join(
+              directory,
+              "media",
+              attempt.final_storage_name,
+            ))).toBe(false);
+          }
+          expect(providerAttemptSnapshot(directory, task.id)).toMatchObject([{
+            execution_attempt: 1,
+            outcome: "response-received",
+            provider_task_id: providerTaskId,
+          }]);
+        }
+      }
+    } finally {
+      store.close();
+    }
   });
 });

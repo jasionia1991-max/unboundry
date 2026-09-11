@@ -17,6 +17,8 @@ export type ProviderRequestDeadlineScheduler = {
 };
 
 export type ProviderRequestDeadlineOverrides = {
+  /** Bounds initial response wait and later time without nonempty body bytes. */
+  idleTimeoutMs?: number;
   scheduler?: ProviderRequestDeadlineScheduler;
   timeoutMs?: number;
 };
@@ -67,6 +69,19 @@ function resolvedTimeoutMs(options: ProviderRequestDeadlineOptions) {
   return timeoutMs;
 }
 
+function resolvedIdleTimeoutMs(options: ProviderRequestDeadlineOptions) {
+  // Result downloads bound both the initial response wait and body inactivity.
+  // Only a nonempty body chunk renews that window. Keeping the
+  // default undefined for submit, poll and cancel preserves their existing
+  // request-only hard-deadline behavior.
+  if (options.operation !== "result-download") return undefined;
+  const idleTimeoutMs = options.idleTimeoutMs ?? 60_000;
+  if (!Number.isSafeInteger(idleTimeoutMs) || idleTimeoutMs < 1) {
+    throw new RangeError("Provider request idle timeout must be a positive integer");
+  }
+  return idleTimeoutMs;
+}
+
 function deadlineReason(
   signal: AbortSignal,
   operation: ProviderRequestOperation,
@@ -85,15 +100,21 @@ export function createProviderRequestDeadline(
   options: ProviderRequestDeadlineOptions,
 ): ProviderRequestDeadline {
   const timeoutMs = resolvedTimeoutMs(options);
+  const idleTimeoutMs = resolvedIdleTimeoutMs(options);
   const scheduler = options.scheduler ?? systemScheduler;
   const controller = new AbortController();
   let completed = false;
   let timer: unknown;
+  let idleTimer: unknown;
 
   const detach = () => {
     if (timer !== undefined) {
       scheduler.clearTimeout(timer);
       timer = undefined;
+    }
+    if (idleTimer !== undefined) {
+      scheduler.clearTimeout(idleTimer);
+      idleTimer = undefined;
     }
     options.signal?.removeEventListener("abort", onCallerAbort);
   };
@@ -103,12 +124,31 @@ export function createProviderRequestDeadline(
     controller.abort(new ProviderRequestDeadlineError(code, options.operation));
   };
   const onCallerAbort = () => abort("CANCELLED");
+  const armIdleTimer = () => {
+    if (
+      idleTimeoutMs === undefined ||
+      completed ||
+      controller.signal.aborted
+    ) {
+      return;
+    }
+    if (idleTimer !== undefined) {
+      scheduler.clearTimeout(idleTimer);
+      idleTimer = undefined;
+    }
+    idleTimer = scheduler.setTimeout(() => abort("TIMEOUT"), idleTimeoutMs);
+    if ((completed || controller.signal.aborted) && idleTimer !== undefined) {
+      scheduler.clearTimeout(idleTimer);
+      idleTimer = undefined;
+    }
+  };
 
   if (options.signal?.aborted) {
     abort("CANCELLED");
   } else {
     options.signal?.addEventListener("abort", onCallerAbort, { once: true });
     timer = scheduler.setTimeout(() => abort("TIMEOUT"), timeoutMs);
+    armIdleTimer();
     if (controller.signal.aborted && timer !== undefined) {
       scheduler.clearTimeout(timer);
       timer = undefined;
@@ -178,6 +218,7 @@ export function createProviderRequestDeadline(
             streamController.close();
             return;
           }
+          if (result.value.byteLength > 0) armIdleTimer();
           streamController.enqueue(result.value);
         } catch (error) {
           if (!settle()) return;

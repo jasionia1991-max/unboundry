@@ -5,8 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { saveGeneratedAudio } from "../server/audioStorage";
 import { validatePng } from "../server/assetStorage";
-import { openAppDatabase } from "../server/database";
-import type { ProviderRequestDeadlineScheduler } from "../server/providerRequestDeadline";
+import { openAppDatabase, closeRuntimeDatabaseTransactions } from "../server/database";
+import {
+  createProviderRequestDeadline,
+  type ProviderRequestDeadlineScheduler,
+} from "../server/providerRequestDeadline";
 import {
   downloadProviderResultMedia,
   safeProviderResultUrl,
@@ -39,24 +42,87 @@ const publicResolver = (async () => [{
   family: 4 as const,
 }]) as any;
 
-function manualDeadline() {
-  let callback: (() => void) | undefined;
+function manualDeadline(config: {
+  idleTimeoutMs?: number;
+  timeoutMs?: number;
+} = { timeoutMs: 10_000 }) {
+  let now = 0;
+  let nextHandle = 0;
+  const timers = new Map<string, {
+    callback: () => void;
+    dueAt: number;
+  }>();
+  const scheduledDurations: number[] = [];
   const scheduler: ProviderRequestDeadlineScheduler = {
-    clearTimeout() {
-      callback = undefined;
+    clearTimeout(handle) {
+      timers.delete(String(handle));
     },
-    setTimeout(value) {
-      callback = value;
-      return "manual-deadline";
+    setTimeout(callback, timeoutMs) {
+      const handle = `manual-deadline-${++nextHandle}`;
+      timers.set(handle, { callback, dueAt: now + timeoutMs });
+      scheduledDurations.push(timeoutMs);
+      return handle;
     },
+  };
+  const advance = (milliseconds: number) => {
+    if (!Number.isSafeInteger(milliseconds) || milliseconds < 0) {
+      throw new RangeError("manual time must advance by a non-negative integer");
+    }
+    const target = now + milliseconds;
+    while (true) {
+      const next = [...timers.entries()]
+        .filter(([, timer]) => timer.dueAt <= target)
+        .sort(([, left], [, right]) => left.dueAt - right.dueAt)[0];
+      if (!next) break;
+      const [handle, timer] = next;
+      now = timer.dueAt;
+      timers.delete(handle);
+      timer.callback();
+    }
+    now = target;
   };
   return {
     expire() {
-      const current = callback;
-      if (!current) throw new Error("deadline is not armed");
-      current();
+      if (config.timeoutMs === undefined) {
+        throw new Error("hard deadline override is not configured");
+      }
+      advance(config.timeoutMs);
     },
-    options: { scheduler, timeoutMs: 10_000 },
+    advance,
+    pendingTimerCount() {
+      return timers.size;
+    },
+    scheduledDurations,
+    options: {
+      scheduler,
+      ...(config.idleTimeoutMs === undefined
+        ? {}
+        : { idleTimeoutMs: config.idleTimeoutMs }),
+      ...(config.timeoutMs === undefined
+        ? {}
+        : { timeoutMs: config.timeoutMs }),
+    },
+  };
+}
+
+function controlledBody() {
+  let streamController: ReadableStreamDefaultController<Uint8Array> | undefined;
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      streamController = controller;
+    },
+  });
+  return {
+    body,
+    close() {
+      streamController?.close();
+    },
+    error(error: unknown) {
+      streamController?.error(error);
+    },
+    push(chunk: Uint8Array) {
+      streamController?.enqueue(chunk);
+    },
   };
 }
 
@@ -287,6 +353,7 @@ test("Provider JPEG and WebP results are decoded into bounded canonical PNG asse
       releaseFirst();
     }
   } finally {
+    closeRuntimeDatabaseTransactions();
     if (previousDataDirectory === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
     else process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
     await rm(directory, { force: true, recursive: true });
@@ -336,6 +403,7 @@ test("Provider result hard deadline covers request and complete body consumption
   const read = downloaded.body.getReader().read();
   bodyTimer.expire();
   await expect(read).rejects.toMatchObject({ code: "TIMEOUT" });
+  expect(bodyTimer.pendingTimerCount()).toBe(0);
 });
 
 test("Provider result stream maps caller abort to CANCELLED", async () => {
@@ -360,6 +428,175 @@ test("Provider result stream maps caller abort to CANCELLED", async () => {
   const read = downloaded.body.getReader().read();
   controller.abort();
   await expect(read).rejects.toMatchObject({ code: "CANCELLED" });
+  expect(timer.pendingTimerCount()).toBe(0);
+});
+
+test("Provider result download uses the 180-second hard default and tolerates steady progress", async () => {
+  const timer = manualDeadline({});
+  const source = controlledBody();
+  const downloaded = await downloadProviderResultMedia({
+    apiKey: "safe-key",
+    deadlineOptions: timer.options,
+    testFetcher: (async () => new Response(source.body, {
+      headers: { "Content-Type": "video/mp4" },
+      status: 200,
+    })) as typeof fetch,
+    kind: "video",
+    resolver: publicResolver,
+    url: "https://cdn.example.test/slow-but-progressing.mp4",
+  });
+  expect(timer.scheduledDurations.slice(0, 2)).toEqual([180_000, 60_000]);
+
+  const reader = downloaded.body.getReader();
+  for (let index = 0; index < 3; index += 1) {
+    const read = reader.read();
+    timer.advance(50_000);
+    source.push(new Uint8Array([index + 1]));
+    const result = await read;
+    expect(result.done).toBe(false);
+  }
+  source.close();
+  const finished = await reader.read();
+  expect(finished.done).toBe(true);
+  expect(timer.pendingTimerCount()).toBe(0);
+});
+
+test("Provider result initial response wait stays bounded by sixty seconds", async () => {
+  const timer = manualDeadline({});
+  let requestSignal: AbortSignal | null | undefined;
+  let entered!: () => void;
+  const started = new Promise<void>((resolve) => { entered = resolve; });
+  const download = downloadProviderResultMedia({
+    apiKey: "safe-key",
+    deadlineOptions: timer.options,
+    testFetcher: ((_url, init) => {
+      requestSignal = init?.signal;
+      entered();
+      return new Promise<Response>(() => undefined);
+    }) as typeof fetch,
+    kind: "video",
+    resolver: publicResolver,
+    url: "https://cdn.example.test/headers-never-arrive.mp4",
+  });
+  await started;
+  timer.advance(59_999);
+  expect(requestSignal?.aborted).toBe(false);
+  timer.advance(1);
+  await expect(download).rejects.toMatchObject({ code: "TIMEOUT" });
+  expect(requestSignal?.aborted).toBe(true);
+  expect(timer.pendingTimerCount()).toBe(0);
+});
+
+test("Provider result download fails an idle body before the hard deadline", async () => {
+  const timer = manualDeadline({});
+  const source = controlledBody();
+  let requestSignal: AbortSignal | null | undefined;
+  const downloaded = await downloadProviderResultMedia({
+    apiKey: "safe-key",
+    deadlineOptions: timer.options,
+    testFetcher: (async (_url, init) => {
+      requestSignal = init?.signal;
+      return new Response(source.body, {
+        headers: { "Content-Type": "video/mp4" },
+        status: 200,
+      });
+    }) as typeof fetch,
+    kind: "video",
+    resolver: publicResolver,
+    url: "https://cdn.example.test/idle-timeout.mp4",
+  });
+  const read = downloaded.body.getReader().read();
+  timer.advance(60_000);
+  await expect(read).rejects.toMatchObject({ code: "TIMEOUT" });
+  expect(requestSignal?.aborted).toBe(true);
+  expect(timer.pendingTimerCount()).toBe(0);
+});
+
+test("Provider result empty chunks do not reset the idle deadline", async () => {
+  const timer = manualDeadline({});
+  const source = controlledBody();
+  const downloaded = await downloadProviderResultMedia({
+    apiKey: "safe-key",
+    deadlineOptions: timer.options,
+    testFetcher: (async () => new Response(source.body, {
+      headers: { "Content-Type": "video/mp4" },
+      status: 200,
+    })) as typeof fetch,
+    kind: "video",
+    resolver: publicResolver,
+    url: "https://cdn.example.test/empty-chunks.mp4",
+  });
+  const reader = downloaded.body.getReader();
+  const first = reader.read();
+  source.push(new Uint8Array(0));
+  expect((await first).value?.byteLength).toBe(0);
+  timer.advance(59_999);
+  const second = reader.read();
+  source.push(new Uint8Array(0));
+  expect((await second).value?.byteLength).toBe(0);
+  const stalled = reader.read();
+  timer.advance(1);
+  await expect(stalled).rejects.toMatchObject({ code: "TIMEOUT" });
+  expect(timer.pendingTimerCount()).toBe(0);
+});
+
+test("Provider result hard deadline never resets while chunks keep arriving", async () => {
+  const timer = manualDeadline({});
+  const source = controlledBody();
+  const downloaded = await downloadProviderResultMedia({
+    apiKey: "safe-key",
+    deadlineOptions: timer.options,
+    testFetcher: (async () => new Response(source.body, {
+      headers: { "Content-Type": "video/mp4" },
+      status: 200,
+    })) as typeof fetch,
+    kind: "video",
+    resolver: publicResolver,
+    url: "https://cdn.example.test/hard-timeout.mp4",
+  });
+  const reader = downloaded.body.getReader();
+  for (let index = 0; index < 3; index += 1) {
+    const read = reader.read();
+    timer.advance(50_000);
+    source.push(new Uint8Array([index + 1]));
+    expect((await read).done).toBe(false);
+  }
+  const finalRead = reader.read();
+  timer.advance(30_000);
+  await expect(finalRead).rejects.toMatchObject({ code: "TIMEOUT" });
+  expect(timer.pendingTimerCount()).toBe(0);
+});
+
+test("Provider result consumer cancellation clears hard and idle timers", async () => {
+  const timer = manualDeadline({});
+  const source = controlledBody();
+  const downloaded = await downloadProviderResultMedia({
+    apiKey: "safe-key",
+    deadlineOptions: timer.options,
+    testFetcher: (async () => new Response(source.body, {
+      headers: { "Content-Type": "video/mp4" },
+      status: 200,
+    })) as typeof fetch,
+    kind: "video",
+    resolver: publicResolver,
+    url: "https://cdn.example.test/consumer-cancel.mp4",
+  });
+  const reader = downloaded.body.getReader();
+  const read = reader.read();
+  await reader.cancel("consumer stopped");
+  await expect(read).resolves.toMatchObject({ done: true });
+  expect(timer.pendingTimerCount()).toBe(0);
+});
+
+test("Provider submit deadlines keep their existing request-only default", () => {
+  const timer = manualDeadline({});
+  const deadline = createProviderRequestDeadline({
+    operation: "submit",
+    scheduler: timer.options.scheduler,
+  });
+  expect(timer.scheduledDurations).toEqual([180_000]);
+  deadline.complete();
+  expect(timer.pendingTimerCount()).toBe(0);
 });
 
 test("Provider result mid-stream failures map to NETWORK instead of leaking raw errors", async () => {
@@ -459,6 +696,7 @@ test("generated WAV reads a complete probe and is saved without a Provider reque
     expect(saved.durationSeconds).toBeGreaterThan(0);
     expect(await readFile(join(directory, "media", saved.assetId))).toEqual(fixture);
   } finally {
+    closeRuntimeDatabaseTransactions();
     if (previousDataDirectory === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
     else process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
     await rm(directory, { force: true, recursive: true });
@@ -533,6 +771,7 @@ test("generated OGG Opus is probed and persisted with its canonical private-medi
       storage_status: "ready",
     });
   } finally {
+    closeRuntimeDatabaseTransactions();
     if (previousDataDirectory === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
     else process.env.UNBOUNDRY_DATA_DIR = previousDataDirectory;
     await rm(directory, { force: true, recursive: true });
