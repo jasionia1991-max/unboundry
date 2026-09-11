@@ -26,6 +26,7 @@ import {
   createPrivateAliyunOssReadUrl,
   deletePrivateAliyunOssObject,
   uploadPrivateAliyunOssObject,
+  type assertUnstagedAliyunOssGenerationObjectAbsent,
 } from "./aliyunOss";
 import { requestIdentity } from "./auth";
 import {
@@ -88,6 +89,7 @@ type saveGeneratedMp4Input = {
   task?: GeneratedPublicationTask;
   /** Test seam for the external-object write; production uses private OSS. */
   uploadObject?: typeof uploadPrivateAliyunOssObject;
+  assertUnstagedExternalObjectAbsent?: typeof assertUnstagedAliyunOssGenerationObjectAbsent;
 };
 
 export async function saveGeneratedMp4(input: saveGeneratedMp4Input) {
@@ -238,7 +240,10 @@ async function saveGeneratedMp4Owned(input: saveGeneratedMp4Input) {
     if (input.task && (staged || error instanceof MediaPublicationEvidenceConflictError)) {
       throw new MediaPublicationDeferredError();
     }
-    await compensateMediaPublication(reservation, { profile: publication.routing.profile });
+    await compensateMediaPublication(reservation, {
+      profile: publication.routing.profile,
+      assertUnstagedExternalObjectAbsent: input.assertUnstagedExternalObjectAbsent,
+    });
     throw error;
   } finally {
     releaseResources?.();

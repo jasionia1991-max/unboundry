@@ -237,3 +237,27 @@ export const canResumeReservedGenerationRequestCommand: TransactionScopedCommand
     `).get(input.taskId, input.ownerId, input.kind, input.executionAttempt));
   },
 };
+
+/** A partial download may be discarded only while the exact original request
+ * remains recoverable. This does not permit another Provider submission. */
+export const canRecoverUnstagedGenerationDownloadCommand: TransactionScopedCommand<Readonly<{
+  taskId: string; executionAttempt: number; ownerId: string;
+  kind: "audio" | "image" | "video";
+}>, boolean> = {
+  execute(scope, input) {
+    return Boolean(scope.prepare(`
+      SELECT 1 FROM generation_tasks AS task
+      JOIN generation_provider_attempts AS attempt
+        ON attempt.task_id = task.id AND attempt.execution_attempt = task.attempt
+          AND attempt.owner_id = task.owner_id AND attempt.kind = task.kind
+          AND attempt.provider_profile_id = task.provider_profile_id
+          AND attempt.provider_model_id = task.provider_model_id
+          AND attempt.credential_revision IS task.credential_revision
+          AND attempt.provider_task_id = task.provider_task_id
+      WHERE task.id = ? AND task.owner_id = ? AND task.kind = ? AND task.attempt = ?
+        AND task.state IN ('running', 'recovering') AND task.result_asset_id IS NULL
+        AND LENGTH(task.provider_task_id) > 0 AND attempt.outcome = 'response-received'
+        AND attempt.failure_code IS NULL
+    `).get(input.taskId, input.ownerId, input.kind, input.executionAttempt));
+  },
+};

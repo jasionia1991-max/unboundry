@@ -14,6 +14,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import { DatabaseSync } from "node:sqlite";
+import {
+  assertUnstagedAliyunOssGenerationObjectAbsent,
+  type AliyunOssUrllib,
+} from "../server/aliyunOss";
 import { assetStorage, saveGeneratedPng } from "../server/assetStorage";
 import { adminTemplatesApi } from "../server/adminTemplates";
 import { audioStorage, saveGeneratedAudio } from "../server/audioStorage";
@@ -81,6 +85,7 @@ import {
   sendPreparedRelayGptImageRequest,
 } from "../server/relayProviderAdapters";
 import { templateCatalogApi } from "../server/templateCatalog";
+import { downloadProviderResultMedia } from "../server/providerResultMedia";
 import {
   activateStorageProfile,
   deleteStorageProfile,
@@ -5440,6 +5445,429 @@ test("generated image video and audio survive OSS failure without Provider resub
       store.close();
     }
   });
+});
+
+test("interrupted original video and audio GETs compensate safely and resume the same Provider attempt", async () => {
+  const testRoot = process.env.UNBOUNDRY_TEST_ROOT;
+  if (!testRoot) throw new Error("safe test root is missing");
+  const directory = await mkdtemp(join(testRoot, "unboundry-m88-stream-recovery-"));
+  const previousDirectory = process.env.UNBOUNDRY_DATA_DIR;
+  const previousBypass = process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+  process.env.UNBOUNDRY_DATA_DIR = directory;
+  process.env.UNBOUNDRY_TEST_AUTH_BYPASS = "1";
+  try {
+    const ownerId = "m88-stream-recovery-owner";
+    addOwner(directory, ownerId);
+    const profile = await saveStorageProfile({
+      accessKeyId: "m88-stream-recovery-key",
+      accessKeySecret: "m88-stream-recovery-secret",
+      bucket: "m88-stream-recovery-bucket",
+      endpoint: "https://oss-cn-shanghai.aliyuncs.com",
+      label: "M88 stream recovery",
+      region: "oss-cn-shanghai",
+    });
+    await markStorageProfileVerified(profile.id);
+    await activateStorageProfile(profile.id);
+    await setStorageMediaRouting(true);
+    const store = createGenerationTaskStore(directory);
+    const ossRequests: Array<{ method: string; bucketInfo: boolean }> = [];
+    const bucketXml = Buffer.from(
+      `<BucketInfo><Bucket><Name>${profile.bucket}</Name></Bucket></BucketInfo>`,
+    );
+    const urllib: AliyunOssUrllib = {
+      async request(url, options = {}) {
+        const method = String(options.method ?? "GET").toUpperCase();
+        const parsed = new URL(url);
+        const bucketInfo = parsed.searchParams.has("bucketInfo");
+        ossRequests.push({ method, bucketInfo });
+        const headers = {
+          "content-type": "application/xml",
+          "x-oss-request-id": "m88-stream-recovery",
+        };
+        if (method === "HEAD") {
+          return {
+            data: Buffer.alloc(0),
+            headers,
+            res: { headers, statusCode: 404 } as never,
+            status: 404,
+          } as never;
+        }
+        if (method === "GET" && bucketInfo) {
+          return {
+            data: bucketXml,
+            headers,
+            res: { headers, statusCode: 200 } as never,
+            status: 200,
+          } as never;
+        }
+        throw new Error("unexpected OSS fixture request");
+      },
+    };
+    const resolver = (async () => [{
+      address: "93.184.216.34",
+      family: 4 as const,
+    }]) as never;
+    try {
+      const fixtures = [
+        {
+          contentType: "video/mp4" as const,
+          kind: "video" as const,
+          model: "m88-stream-video-model",
+          providerModelId: "m88-stream-video-provider",
+          bytes: await readFile(join(
+            process.cwd(),
+            "client",
+            "public",
+            "fixtures",
+            "video-success.mp4",
+          )),
+          url: "https://cdn.example.test/m88-stream-recovery.mp4",
+        },
+        {
+          contentType: "audio/wav" as const,
+          kind: "audio" as const,
+          model: "m88-stream-audio-model",
+          providerModelId: "m88-stream-audio-provider",
+          bytes: wavFixture(),
+          url: "https://cdn.example.test/m88-stream-recovery.wav",
+        },
+      ] as const;
+
+      for (const fixture of fixtures) {
+        const task = store.create({
+          canvasId: `m88-stream-${fixture.kind}-canvas`,
+          idempotencyKey: `m88-stream-${fixture.kind}-task`,
+          kind: fixture.kind,
+          model: fixture.model,
+          modelConfiguration: { providerProtocol: "native" },
+          nodeId: `m88-stream-${fixture.kind}-node`,
+          ownerId,
+          parameters: {},
+          prompt: `recover interrupted ${fixture.kind}`,
+          providerModelId: fixture.providerModelId,
+          providerProfileId: "m88-stream-provider-profile",
+        }).task;
+        const running = store.transition(task.id, "running");
+        if (!running) throw new Error("stream recovery task did not start");
+        recordProviderAttemptFixture(directory, task.id, "boundary-claimed");
+        const providerTaskId = `m88-stream-${fixture.kind}-remote-task`;
+        store.attachProviderTaskId({
+          executionAttempt: running.attempt,
+          providerTaskId,
+          taskId: task.id,
+        });
+        store.markProviderResponseReceived({
+          executionAttempt: running.attempt,
+          taskId: task.id,
+        });
+
+        const fetchMethods: string[] = [];
+        let fetchCalls = 0;
+        const deadline = (() => {
+          let callback: (() => void) | undefined;
+          const scheduler = {
+            clearTimeout() {
+              callback = undefined;
+            },
+            setTimeout(next: () => void) {
+              callback = next;
+              return "m88-stream-deadline";
+            },
+          };
+          return {
+            options: { scheduler, timeoutMs: 10_000 },
+            expire() {
+              const next = callback;
+              if (!next) throw new Error("stream deadline is not armed");
+              next();
+            },
+          };
+        })();
+        let prefixSent = false;
+        const interruptedBody = new ReadableStream<Uint8Array>({
+          pull(controller) {
+            if (fetchCalls !== 1) return;
+            const prefix = fixture.bytes.subarray(0, Math.min(64, fixture.bytes.length));
+            if (!prefixSent) {
+              controller.enqueue(new Uint8Array(prefix));
+              prefixSent = true;
+              return;
+            }
+            queueMicrotask(() => deadline.expire());
+            return new Promise<void>(() => undefined);
+          },
+        }, { highWaterMark: 0 });
+        const fetcher = (async (_url, init) => {
+          fetchCalls += 1;
+          fetchMethods.push(String(init?.method ?? "GET").toUpperCase());
+          if (fetchCalls === 1) {
+            return new Response(interruptedBody, {
+              headers: { "Content-Type": fixture.contentType },
+              status: 200,
+            });
+          }
+          return new Response(fixture.bytes, {
+            headers: { "Content-Type": fixture.contentType },
+            status: 200,
+          });
+        }) as typeof fetch;
+
+        const firstDownload = await downloadProviderResultMedia({
+          apiKey: "m88-stream-provider-secret",
+          deadlineOptions: deadline.options,
+          expectedContentType: fixture.contentType,
+          kind: fixture.kind,
+          resolver,
+          testFetcher: fetcher,
+          url: fixture.url,
+        });
+        const partialBytes: number[] = [];
+        const absenceChecks: Array<Parameters<
+          typeof assertUnstagedAliyunOssGenerationObjectAbsent
+        >[0]> = [];
+        const assertUnstaged = async (
+          identity: Parameters<
+            typeof assertUnstagedAliyunOssGenerationObjectAbsent
+          >[0],
+          credentials: Parameters<
+            typeof assertUnstagedAliyunOssGenerationObjectAbsent
+          >[1],
+        ) => {
+          absenceChecks.push(identity);
+          const entries = await readdir(join(directory, "media"));
+          const staging = entries.find((entry) => entry.endsWith(".generating"));
+          if (!staging) throw new Error("interrupted stream did not stage bytes");
+          const partial = await readFile(join(directory, "media", staging));
+          if (partial.length < 1 || partial.length >= fixture.bytes.length) {
+            throw new Error("interrupted stream fixture was not partial");
+          }
+          partialBytes.push(partial.length);
+          await assertUnstagedAliyunOssGenerationObjectAbsent(
+            identity,
+            credentials,
+            { urllib, resolver },
+          );
+        };
+
+        let firstError: unknown;
+        try {
+          if (fixture.kind === "video") {
+            await saveGeneratedMp4({
+              assertUnstagedExternalObjectAbsent: assertUnstaged,
+              body: firstDownload.body,
+              label: "interrupted original video",
+              ownerId,
+              task: {
+                actualCostMicrounits: 111,
+                executionAttempt: running.attempt,
+                taskId: task.id,
+              },
+              uploadObject: async () => {
+                throw new Error("interrupted stream must not upload");
+              },
+            });
+          } else {
+            await saveGeneratedAudio({
+              assertUnstagedExternalObjectAbsent: assertUnstaged,
+              body: firstDownload.body,
+              contentType: fixture.contentType,
+              label: "interrupted original audio",
+              ownerId,
+              task: {
+                actualCostMicrounits: 222,
+                executionAttempt: running.attempt,
+                taskId: task.id,
+              },
+              uploadObject: async () => {
+                throw new Error("interrupted stream must not upload");
+              },
+            });
+          }
+          throw new Error("interrupted original result unexpectedly saved");
+        } catch (error) {
+          firstError = error;
+        }
+        expect(firstError).toMatchObject({ code: "TIMEOUT" });
+        expect(fetchCalls).toBe(1);
+        expect(partialBytes).toHaveLength(1);
+        expect(absenceChecks).toHaveLength(1);
+        expect(ossRequests.map(({ method }) => method)).toEqual(["HEAD", "GET"]);
+        expect(ossRequests.every(({ method }) => method !== "DELETE")).toBe(true);
+        const failed = openAppDatabase(directory);
+        let firstPublication!: {
+          asset_id: string;
+          output_set_count: number;
+          output_slot: number;
+          staging_name: string;
+          state: string;
+          byte_size: number;
+          checksum_sha256: string | null;
+        };
+        try {
+          firstPublication = failed.prepare(`
+            SELECT asset_id, output_set_count, output_slot, staging_name,
+                   state, byte_size, checksum_sha256
+            FROM media_publication_attempts WHERE task_id = ?
+          `).get(task.id) as typeof firstPublication;
+          expect(firstPublication).toMatchObject({
+            byte_size: 0,
+            checksum_sha256: null,
+            output_set_count: 1,
+            output_slot: 0,
+            state: "failed",
+          });
+          expect(failed.prepare(`
+            SELECT COUNT(*) AS count FROM media_assets
+            WHERE owner_id = ? AND kind = ? AND id = ?
+          `).get(ownerId, fixture.kind, firstPublication.asset_id)).toEqual({ count: 0 });
+        } finally {
+          failed.close();
+        }
+        expect(await pathExists(join(
+          directory,
+          "media",
+          firstPublication.staging_name,
+        ))).toBe(false);
+        expect(store.get(task.id)).toMatchObject({
+          attempt: 1,
+          providerTaskId,
+          state: "running",
+        });
+
+        const secondDownload = await downloadProviderResultMedia({
+          apiKey: "m88-stream-provider-secret",
+          deadlineOptions: { timeoutMs: 10_000 },
+          expectedContentType: fixture.contentType,
+          kind: fixture.kind,
+          resolver,
+          testFetcher: fetcher,
+          url: fixture.url,
+        });
+        let uploads = 0;
+        let recovered: Awaited<ReturnType<typeof saveGeneratedMp4>> | Awaited<
+          ReturnType<typeof saveGeneratedAudio>
+        >;
+        if (fixture.kind === "video") {
+          recovered = await saveGeneratedMp4({
+            assertUnstagedExternalObjectAbsent: assertUnstaged,
+            body: secondDownload.body,
+            label: "recovered original video",
+            ownerId,
+            task: {
+              actualCostMicrounits: 111,
+              executionAttempt: running.attempt,
+              taskId: task.id,
+            },
+            uploadObject: async (input) => {
+              uploads += 1;
+              expect(input.credentials.bucket).toBe(profile.bucket);
+              expect(input.byteSize).toBe(fixture.bytes.length);
+              expect(input.checksumSha256).toBe(checksum(fixture.bytes));
+              expect(await readFile(input.filePath!)).toEqual(fixture.bytes);
+              return {
+                etag: "fixture",
+                requestId: "fixture",
+                status: "created",
+                versionId: "fixture-version",
+              };
+            },
+          });
+        } else {
+          recovered = await saveGeneratedAudio({
+            assertUnstagedExternalObjectAbsent: assertUnstaged,
+            body: secondDownload.body,
+            contentType: fixture.contentType,
+            label: "recovered original audio",
+            ownerId,
+            task: {
+              actualCostMicrounits: 222,
+              executionAttempt: running.attempt,
+              taskId: task.id,
+            },
+            uploadObject: async (input) => {
+              uploads += 1;
+              expect(input.credentials.bucket).toBe(profile.bucket);
+              expect(input.byteSize).toBe(fixture.bytes.length);
+              expect(input.checksumSha256).toBe(checksum(fixture.bytes));
+              expect(await readFile(input.filePath!)).toEqual(fixture.bytes);
+              return {
+                etag: "fixture",
+                requestId: "fixture",
+                status: "created",
+                versionId: "fixture-version",
+              };
+            },
+          });
+        }
+        if (!("publicationToken" in recovered)) {
+          throw new Error("recovered original result has no publication token");
+        }
+        expect(commitGenerationMediaResult(recovered.publicationToken)).toMatchObject({
+          assetId: recovered.assetId,
+          state: "success",
+          taskId: task.id,
+        });
+        await cleanupPublicationStaging(recovered.publicationToken);
+        expect(fetchCalls).toBe(2);
+        expect(fetchMethods).toEqual(["GET", "GET"]);
+        expect(uploads).toBe(1);
+        const media = readyMediaForOwner(ownerId, fixture.kind, recovered.assetId);
+        expect(media).toMatchObject({
+          byteSize: fixture.bytes.length,
+          storageBackend: "oss",
+          storageProfileId: profile.id,
+          storageStatus: "ready",
+        });
+        expect(store.get(task.id)).toMatchObject({
+          attempt: 1,
+          providerTaskId,
+          resultAssetId: recovered.assetId,
+          state: "success",
+        });
+        expect(providerAttemptSnapshot(directory, task.id)).toMatchObject([{
+          execution_attempt: 1,
+          failure_code: null,
+          outcome: "completed",
+          provider_task_id: providerTaskId,
+        }]);
+        const publications = openAppDatabase(directory);
+        try {
+          const rows = publications.prepare(`
+            SELECT state, output_slot, output_set_count, task_execution_attempt
+            FROM media_publication_attempts WHERE task_id = ?
+          `).all(task.id) as Array<{
+            output_set_count: number;
+            output_slot: number;
+            state: string;
+            task_execution_attempt: number;
+          }>;
+          expect(rows).toHaveLength(2);
+          expect(rows.every((row) =>
+            row.output_set_count === 1 && row.output_slot === 0 &&
+            row.task_execution_attempt === 1,
+          )).toBe(true);
+          expect(new Set(rows.map((row) => row.state))).toEqual(
+            new Set(["failed", "published"]),
+          );
+        } finally {
+          publications.close();
+        }
+        expect(await readdir(join(directory, "media"))).toEqual([]);
+        ossRequests.length = 0;
+      }
+    } finally {
+      store.close();
+    }
+  } finally {
+    if (previousDirectory === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
+    else process.env.UNBOUNDRY_DATA_DIR = previousDirectory;
+    if (previousBypass === undefined) {
+      delete process.env.UNBOUNDRY_TEST_AUTH_BYPASS;
+    } else {
+      process.env.UNBOUNDRY_TEST_AUTH_BYPASS = previousBypass;
+    }
+    await rm(directory, { force: true, recursive: true });
+  }
 });
 
 /**

@@ -1,4 +1,4 @@
-import { canResumeReservedGenerationRequestCommand } from "./generationTransactionCommands";
+import { canResumeReservedGenerationRequestCommand, canRecoverUnstagedGenerationDownloadCommand } from "./generationTransactionCommands";
 import { readAppDatabaseSnapshot } from "./database";
 import {
   assertGenerationSaveToken, assertGenerationSaveTokenInTransaction,
@@ -13,6 +13,7 @@ import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
 import {
   AliyunOssPublicationQuarantineError,
+  assertUnstagedAliyunOssGenerationObjectAbsent,
   deleteExactAliyunOssGenerationObject,
   deletePrivateAliyunOssObject,
   uploadPrivateAliyunOssObject,
@@ -974,6 +975,36 @@ function quarantineCompensatingMediaPublication(
   }));
 }
 
+function assertRecoverableUnstagedDownload(reservation: MediaPublicationReservation) {
+  return readAppDatabaseSnapshot((database) => {
+    const attempt = readAttempt(database, reservation, { newIo: true });
+    if (!reservation.saveToken || !attempt || attempt.source !== "generation" ||
+        reservation.saveToken.taskId !== reservation.taskId ||
+        reservation.saveToken.executionAttempt !== reservation.taskExecutionAttempt ||
+        reservation.saveToken.ownerId !== reservation.ownerId || reservation.saveToken.kind !== reservation.kind ||
+        attempt.state !== "compensating" || attempt.byte_size !== 0 ||
+        attempt.checksum_sha256 !== null || attempt.error_code === "OSS_IDENTITY_QUARANTINED" ||
+        !Number.isInteger(attempt.output_slot) || !Number.isInteger(attempt.output_set_count) ||
+        attempt.output_slot! < 0 || attempt.output_slot! >= attempt.output_set_count! ||
+        attempt.output_slot !== reservation.outputSlot || attempt.output_set_count !== reservation.outputSetCount ||
+        !reservation.taskId || !reservation.taskExecutionAttempt ||
+        !executeTransactionScopedCommand(database, canRecoverUnstagedGenerationDownloadCommand, {
+          taskId: reservation.taskId, executionAttempt: reservation.taskExecutionAttempt,
+          ownerId: reservation.ownerId, kind: reservation.kind,
+        })) throw new MediaPublicationStateError("Unstaged download recovery identity is incomplete");
+    const asset = database.prepare(`SELECT 1 FROM media_assets AS media
+      WHERE owner_id = ? AND kind = ? AND id = ? AND storage_status = 'failed'
+        AND byte_size = 0 AND checksum_sha256 = '' AND content_type = ?
+        AND storage_name = ? AND storage_backend = ? AND storage_profile_id IS ? AND object_key = ?
+        AND NOT EXISTS (SELECT 1 FROM media_delete_intents AS deletion
+          WHERE deletion.owner_id = media.owner_id AND deletion.kind = media.kind AND deletion.asset_id = media.id)
+    `).get(reservation.ownerId, reservation.kind, reservation.id, attempt.content_type,
+      reservation.finalStorageName, reservation.storageBackend, reservation.storageProfileId, reservation.objectKey);
+    if (!asset) throw new MediaPublicationStateError("Unstaged download asset identity changed");
+    return attempt;
+  });
+}
+
 async function removeExternal(
   reservation: MediaPublicationReservation,
   media?: MediaRecord,
@@ -982,6 +1013,8 @@ async function removeExternal(
     deletePrivateAliyunOssObject,
   deleteGeneratedExternalObject: typeof deleteExactAliyunOssGenerationObject =
     deleteExactAliyunOssGenerationObject,
+  assertUnstagedExternalObjectAbsent: typeof assertUnstagedAliyunOssGenerationObjectAbsent =
+    assertUnstagedAliyunOssGenerationObjectAbsent,
 ) {
   assertMediaPublicationCleanup(reservation);
   if (reservation.storageBackend === "oss") {
@@ -998,8 +1031,22 @@ async function removeExternal(
         !attempt?.checksum_sha256 || attempt.byte_size < 1 ||
         reservation.taskExecutionAttempt === undefined ||
         !reservation.storageProfileId
-      ) throw new MediaPublicationStateError("OSS generated identity is incomplete");
-      await deleteGeneratedExternalObject({
+      ) {
+        // A stream timeout can occur before stageMediaPublication commits any
+        // bytes. Such a reservation cannot authorize an OSS DELETE. Only an
+        // absent object and the exact still-recoverable request let us retire
+        // its incomplete local download and release the occupied output slot.
+        const partial = assertRecoverableUnstagedDownload(reservation);
+        if (credentials.id !== reservation.storageProfileId) throw new MediaPublicationConflictError();
+        await assertUnstagedExternalObjectAbsent({
+          contentType: partial.content_type, executionAttempt: reservation.taskExecutionAttempt!,
+          format: generatedMediaFormat(reservation), kind: reservation.kind,
+          objectKey: reservation.objectKey, ownerId: reservation.ownerId,
+          publicationId: reservation.attemptId, storageProfileId: reservation.storageProfileId!,
+          taskId: reservation.taskId,
+        }, credentials);
+        assertRecoverableUnstagedDownload(reservation);
+      } else await deleteGeneratedExternalObject({
         byteSize: attempt.byte_size,
         checksumSha256: attempt.checksum_sha256,
         contentType: attempt.content_type,
@@ -1041,6 +1088,7 @@ export async function compensateMediaPublication(
     code?: string;
     deleteExternalObject?: typeof deletePrivateAliyunOssObject;
     deleteGeneratedExternalObject?: typeof deleteExactAliyunOssGenerationObject;
+    assertUnstagedExternalObjectAbsent?: typeof assertUnstagedAliyunOssGenerationObjectAbsent;
     media?: MediaRecord;
     profile?: AliyunStorageProfile;
     assertCancelledTask?: CancelledGenerationTaskVerifier;
@@ -1060,6 +1108,7 @@ export async function compensateMediaPublication(
       input?.profile,
       input?.deleteExternalObject,
       input?.deleteGeneratedExternalObject,
+      input?.assertUnstagedExternalObjectAbsent,
     );
   } catch (error) {
     if (error instanceof AliyunOssPublicationQuarantineError) {

@@ -546,6 +546,48 @@ export async function deletePrivateAliyunOssObject(
   await configuredClient(credentials, network).delete(objectKey);
 }
 
+/** Read-only fence for a download which never reached durable staging.
+ * No checksum is invented and this capability can never delete an object. */
+export async function assertUnstagedAliyunOssGenerationObjectAbsent(
+  identity: Omit<AliyunOssGenerationObjectIdentity, "byteSize" | "checksumSha256">,
+  credentials: AliyunOssCredentials,
+  network?: AliyunOssNetworkDependencies,
+) {
+  const bounded = (value: string, maximum: number) =>
+    typeof value === "string" && value.length > 0 && value.length <= maximum && !/[\r\n]/.test(value);
+  if (!identity.objectKey.startsWith("objects/") || identity.objectKey.includes("..") ||
+      !bounded(identity.objectKey, 1_024) || !bounded(identity.ownerId, 120) ||
+      !bounded(identity.storageProfileId, 120) || !bounded(identity.publicationId, 120) ||
+      !bounded(identity.taskId, 120) || !bounded(identity.contentType, 160) ||
+      !/^[a-z0-9]{1,8}$/.test(identity.format) || !["image", "video", "audio"].includes(identity.kind) ||
+      !Number.isSafeInteger(identity.executionAttempt) || identity.executionAttempt < 1) {
+    throw new Error("Invalid unstaged OSS generation identity");
+  }
+  const client = configuredClient(credentials, network);
+  try {
+    await client.head(identity.objectKey);
+  } catch (error) {
+    if (errorStatus(error) === 404 && ["NoSuchKey", "NoSuchObject"].includes(errorField(error, "code"))) {
+      // ali-oss maps any empty-body HEAD 404 to NoSuchKey, including a missing
+      // bucket. Confirm the same bucket through its structured read API; a
+      // denied or unavailable bucket must preserve the local partial bytes.
+      try {
+        const info = await client.getBucketInfo(credentials.bucket);
+        // getBucketInfo itself accepts only HTTP 200 and parses the XML.
+        // Its public result has no top-level status; do not guess a status
+        // property on urllib's nested Node response object.
+        if (info.bucket?.Name === credentials.bucket) return;
+      } catch {}
+    }
+    // An unavailable bucket, credentials or network is not absence. Leave the
+    // partial download pending so a later recovery sweep can check again.
+    throw new Error("OSS unstaged object absence could not be confirmed");
+  }
+  throw new AliyunOssPublicationQuarantineError(
+    "IDENTITY_MISMATCH", "OSS object exists without staged identity; all evidence retained",
+  );
+}
+
 /**
  * Delete a generated object only after proving that the object still belongs
  * to the exact publication attempt. OSS DeleteObject has no If-Match
