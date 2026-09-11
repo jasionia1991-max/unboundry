@@ -91,7 +91,7 @@ v0.7.17于2026-09-09首次经当次授权使用`quiesced-active-preservation`，
 - 回退禁止 schema44→43 数据库降级、覆盖 CURRENT 或用 schema43 旧解析器打开新表。回退演练只切换代码指针：先停止新应用并保留 CURRENT，再运行只读桥接，确认维护状态，最后启动 schema44 新应用正常 worker；若新应用恢复 staged 结果，只允许使用已有持久证据完成本地保存，不产生第二次 Provider POST。
 - 独立演练必须按“新应用 worker 启动并停止 → 同一 CURRENT 运行只读桥接 → 桥接停止 → 同一 CURRENT 启动新应用 worker”顺序执行，至少核验一个 staged synthetic 结果自动恢复，同时核验 Canvas 草稿、媒体、publication 槽、lease、adoption、continuation 和 outcome-unknown 账本保持约束；Provider POST 计数必须为零。
 
-本节对应 `m110-schema44-readonly-preservation` 和独立桥接脚本。每次新应用运行并停服后均须重新绑定最新CURRENT与桥接manifest；桥接失败保持静态维护，禁止启动schema43应用。当前生产是否已完成新包启动及公网切换仍以 v0.7.18 最终回执为准；本地测试和迁移回执不能替代真实systemd切换或真实Provider验收。
+本节对应 `m110-schema44-readonly-preservation` 和独立桥接脚本。每次新应用运行并停服后均须重新绑定最新CURRENT与桥接manifest；桥接失败保持静态维护，禁止启动schema43应用。当前生产是否已完成新包启动及公网切换，由 CURRENT_STATE 指向的当次实际回执确认；本地测试和历史迁移回执不能替代本次真实systemd切换或真实Provider验收。
 
 ### 5.3 同schema补丁的事故现场保全
 
@@ -100,7 +100,7 @@ v0.7.17于2026-09-09首次经当次授权使用`quiesced-active-preservation`，
 使用独立格式与`captureMode=incident-active-preservation`，明确`finalCandidate=false`，不得冒充普通备份。以下条件全部通过，才可把本次独立保全包及其完整验证证据作为发布前备份依据；单独完成打包、签名或解密均不构成上线准入：
 
 1. 当次操作单绑定精确current、候选提交/包、来源schema、原数据路径和全部允许的活动task/attempt/workflow/publication/slot；既有未知计费任务也逐个列明。任何额外活动链或原请求身份变化均停止，禁止新增Provider请求来验证。
-2. 管理员审计冻结新准入并等待至少60秒；维护隔离、旧PID/startTicks退出及原监听消失均可核验。持有原runtime active lease并保持draining，随后按secret锁、数据库写锁的顺序覆盖全部采集；不能复用过期停服证明。
+2. 管理员审计冻结新准入并等待至少60秒；维护隔离、旧PID/startTicks退出及原监听消失均可核验。持有原runtime active lease并保持draining，随后按secret锁、数据库写锁的顺序覆盖全部采集；不能复用过期停服证明。若应用已停止且旧记录缺失startTicks，禁止编造或重新启动旧应用补采；仅事故保全可使用经当次独立复审的`already-stopped`证明：绑定真实最后应用PID与既有启动/失败停服回执，重新核验服务inactive、MainPID=0、cgroup为空、原监听关闭、最后PID不存在、PID命名空间和当前只读桥/数据身份，随后取得同一既有runtime独占租约并持有至恢复核验结束；前后重新检查停服状态。该证明须明确缺失的历史字段及替代证据，不冒充原PID/startTicks证明，不改变普通备份的拒绝条件。
 3. 原样保全完整数据库、library数据库、媒体树（包括隐藏的下载半成品）、密钥及加密配置；ready OSS素材须逐项完整镜像，以精确profile/objectKey/版本/字节数/哈希绑定到签名清单，单独恢复核验，不能把仅本地文件树当全部素材；拒绝路径别名、软链接、特殊文件和采集中变化。来源schema、integrity/FK、logical SHA、全表与全文件摘要、secret与数据库配置对齐均验证；事故媒体单独标记其真实状态，不运行会改写状态的普通恢复流程。
 4. 使用AES-256-GCM、RSA-OAEP-SHA256及独立Ed25519签名，域分隔的签名覆盖格式、现场身份与全部文件清单。外置恢复/签名密钥不进代码仓库或日志。密文包、恢复目录和证据私有且不覆盖已存在目录；拒绝额外文件、缺失、篡改和路径逃逸。
 5. 全新scratch中验签、解密并逐文件核对，与来源的完整数据库/账本/媒体/半成品/secret摘要一致；保持事故状态而不启动生成。生产CURRENT不得作为恢复目标。全部云端备份对象使用私有、唯一键、禁止覆盖上传，逐对象GET核对完整大小和SHA，清单也核对。
@@ -114,8 +114,8 @@ v0.7.17于2026-09-09首次经当次授权使用`quiesced-active-preservation`，
 
 当前schema44回退约束：
 
-- 当前新包：`/opt/unboundry/releases/v0.7.18-media-publication-20260911`。数据库已按本次配套迁移进入 schema44；精确 commit/tree、操作单、备份/恢复和脚本 SHA 由 v0.7.18 最终发布回执拥有。
-- 当前回退路径是代码层回到 schema44 只读维护桥：停止 v0.7.18 应用，保留 CURRENT 和 schema44 数据，按当次最新停服数据重新生成并绑定 `schema44-preservation-<label>` 桥接包，由 `unboundry-schema44-readonly-bridge.service` 提供维护页；每次新应用停服后都要重新绑定最新数据库/媒体 manifest。桥接包只读，不运行 worker、不调用 Provider/OSS、不接收 POST/写请求。
+- 当前应用包及精确 commit/tree、操作单、备份/恢复和脚本 SHA，由 CURRENT_STATE 指向的当次实际回执拥有；v0.7.18 仅记录数据库进入 schema44 的历史迁移来源。不能从旧版本段落选取当前包。
+- 当前回退路径是代码层回到 schema44 只读维护桥：停止当前应用，保留 CURRENT 和 schema44 数据，按当次最新停服数据重新生成并绑定 `schema44-preservation-<label>` 桥接包，由 `unboundry-schema44-readonly-bridge.service` 提供维护页；每次新应用停服后都要重新绑定最新数据库/媒体 manifest。桥接包只读，不运行 worker、不调用 Provider/OSS、不接收 POST/写请求。
 - 生产桥接回退是否已经实际执行，必须由本次回执中的 `bridge-rollback-complete.json` 及公网/服务核验确认；本手册不预写该事实。桥接重绑或启动失败时继续保持静态维护，不能启动旧 schema43 应用。
 - 禁止 schema44→43 数据库降级、把备份还原覆盖 CURRENT，或让 v0.7.17 直接打开 schema44。恢复正常服务只能启动支持 schema44 的新应用，并重新核验数据与服务状态；旧未知任务和已有媒体不得借回退改写。
 

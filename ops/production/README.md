@@ -1,12 +1,12 @@
 # Production backup contracts
 
-Current snapshot: 2026-09-11, `v0.7.18/schema44`. Product state, release identity and exact backup results are owned by [current authority](../../spec/UNBOUNDRY_CURRENT_STATE.md) and the [v0.7.18 release receipt](../../spec/V0_7_18_PRODUCTION_RECEIPT_2026-09-11.json). The presence of operation sources in a release does not mean the systemd timer uses them.
+Product state, release identity and the latest backup results are owned by [current authority](../../spec/UNBOUNDRY_CURRENT_STATE.md) and its linked release receipt. The [v0.7.18 receipt](../../spec/V0_7_18_PRODUCTION_RECEIPT_2026-09-11.json) records the historical migration to schema44; it is not the current release identity. The presence of operation sources in a release does not mean the systemd timer uses them.
 
-## Observed production state
+## Historical baseline and daily-job boundary
 
-- The application was switched to the exact v0.7.18 package; actual pointer, PID, restart count and verification are in the release receipt rather than duplicated here.
+- The application was previously switched to v0.7.18. Current pointer, PID, restart count and verification belong to the latest release receipt linked by current authority.
 - Daily backup failure remains `USER_DEFERRED`: installed ExecStart still uses `/opt/unboundry/scripts/backup-to-oss.mjs` and its old schema41 validation. The application is schema44; this release did not alter that job.
-- Both the pre-migration schema43 and post-migration schema44 stopped-preservation backups, verify and independent fresh restores passed. Cloud upload/GET status and all counts are owned by the current release receipt; this document does not predeclare cloud completion. The pre-existing nonblocking media warnings remain; a manual backup does not repair or validate the daily timer.
+- Both the pre-migration schema43 and post-migration schema44 stopped-preservation backups, verify and independent fresh restores passed. Those historical results belong to the v0.7.18 receipt; the latest upload/GET status belongs to the current release receipt. This document does not predeclare cloud completion. The pre-existing nonblocking media warnings remain; a manual backup does not repair or validate the daily timer.
 
 The daily job needs a separately implemented and verified current-schema freeze/backup/restore/upload pipeline and an exact installed-unit receipt. Replacing only a path or schema constant does not provide dynamic freeze and logical-SHA evidence.
 
@@ -26,7 +26,7 @@ A separately authorized release may use `quiesced-active-preservation` under [Ru
 
 For an authorized same-schema incident patch whose incomplete workflow/media prevents ordinary capture, [Runbook 5.3](../../RELEASE_RUNBOOK.md#53-同schema补丁的事故现场保全) defines a separate `incident-active-preservation` package and full release gate. It remains `finalCandidate=false`; byte preservation, independent fresh restore, exact rollback rehearsal and complete private cloud GET verification must all pass before it can support the release. This does not change ordinary backup or restore rejection rules, treat failed media as ready, or repair the daily timer. Implementation and independent review are tracked in TASKS; this paragraph does not claim completion.
 
-Production migration to schema44 is confirmed by the current release receipt. Release approval, including the necessary schema43 to schema44 migration and maintenance-only fallback, is owned by TASKS. This contract is not evidence that production has migrated.
+The historical schema43 to schema44 migration is recorded in the v0.7.18 receipt. Current patch authorization and any new data operation are owned by TASKS. The existence of this contract does not prove that another migration or deployment has run.
 
 - A schema44 candidate backup must be captured only after the schema43→44 transaction has passed the freeze, lease, logical-SHA, integrity, foreign-key, full-ledger and media checks. The quiesced preservation branch accepts an explicit schema43 source or the current schema44 source and keeps unresolved Provider evidence unchanged.
 - The standalone compatibility package contains exactly `preservation-manifest.json`, `maintenance.html`, and `schema44-readonly-preservation-runtime.mjs`. The manifest binds the original CURRENT data directory, database identity, database SHA, media-tree SHA, maintenance-page SHA, and executable SHA. The package contains no `unboundry.sqlite`, `media/`, secret or application bootstrap.

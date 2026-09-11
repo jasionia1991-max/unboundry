@@ -1,0 +1,250 @@
+{
+  "ci": {
+    "head": "ccac7564e2ec045d62f8beb675cfeadb18e0f3e9",
+    "main": true,
+    "status": "PASS"
+  },
+  "cloudPreservation": {
+    "manifestGet": "PASS",
+    "objectCount": 938,
+    "status": "PASS"
+  },
+  "date": "2026-09-12",
+  "delta": {
+    "detailTruncated": false,
+    "guardTableDenominator": 41,
+    "rejectedDetailCount": 0,
+    "status": "PASS",
+    "tablesChanged": 18
+  },
+  "evidencePolicy": {
+    "credentials/prompts/objectKeys/signedUrlsEmbedded": false,
+    "liveDatabaseReadByCollector": false,
+    "protectedJsonRead": false,
+    "providerOrOssCalledByCollector": false,
+    "rawReceiptsEmbedded": false
+  },
+  "format": "unboundry-v0720-production-receipt-v1",
+  "historicalBoundary": {
+    "automaticRecovery": "TWO_EXACT_OLD_IMAGE_TASKS_APPENDIX_ONLY",
+    "globalAutomaticRecoveryDisabled": false,
+    "v0719FailedRecords": "RETAINED_IN_CAPTURE_AND_DELTA_BASELINE"
+  },
+  "limitations": [
+    "用户主观验收尚未确认；不写USER_PASS",
+    "采集器未读取实时数据库、未调用Provider或OSS；最终实时门由gate回执负责"
+  ],
+  "linux": {
+    "providerPostCount": 0,
+    "realApplication": true,
+    "status": "PASS"
+  },
+  "localValidation": {
+    "blocked": 0,
+    "evidence": [
+      {
+        "name": "v0720-download-save-regression-r1.log",
+        "passed": 105,
+        "sha256": "d273bab79c0a89c122dc5a2b340f62170efa091cc7bfd3f4c5d97d74e21ba033",
+        "sourceSnapshotSha256": "97e58c9b5847d0818f3f5fd32dfcc0cbc8f939f7ad5f44342a58b6ad23879c8b",
+        "specs": [
+          "m107",
+          "m108",
+          "m26",
+          "m54",
+          "m88"
+        ]
+      },
+      {
+        "name": "v0720-release-doc-regression.log",
+        "passed": 62,
+        "sha256": "f8accfa44214ba68cdd5017429e13856046992b2a5fb7937abc7e65d62cae9a3",
+        "sourceSnapshotSha256": "a67aa3b448715e07923a729aec0e05f20b2b05f1e2c7443d0d8de65d3133efda",
+        "specs": [
+          "m81",
+          "m38"
+        ]
+      }
+    ],
+    "failed": 0,
+    "mode": "FOCUSED_SAFE_SPECS_NOT_FULL",
+    "node": "22.23.1",
+    "npm": "10.9.8",
+    "passed": 167,
+    "retries": 0,
+    "scope": "Local executed logs checked by operator; collector reads sealed production receipts only",
+    "skipped": 0,
+    "status": "PASS"
+  },
+  "observedAt": "2026-09-11T16:49:53.904534+00:00",
+  "operationDate": "2026-09-11",
+  "production": {
+    "currentPointsToCandidate": true,
+    "deployed": true,
+    "finalVerify": "PASS",
+    "migration": {
+      "performed": false,
+      "sourceSchemaVersion": 44,
+      "targetSchemaVersion": 44
+    },
+    "publicAssets": "PASS",
+    "publicTraffic": "RESTORED",
+    "schemaVersion": 44,
+    "trafficRestore": "PASS",
+    "version": "0.7.20"
+  },
+  "refs": {
+    "alreadyStopped": {
+      "name": "already-stopped-complete.json",
+      "sha256": "3f54301f61557cbe0a9c007128b9820acba49393a3d390a35e95425a7589def5",
+      "status": "APPLICATION_ALREADY_STOPPED_PROOF_PASS"
+    },
+    "bridgeProof": {
+      "name": "current-bridge-proof.json",
+      "sha256": "a435faf2dcb61f222f00e808427c9e73a2cd144fda8b16c77d404fd2bc2e087a",
+      "status": "READONLY_BRIDGE_ACTIVE"
+    },
+    "cloudUpload": {
+      "name": "incident-envelope-upload.json",
+      "sha256": "9fb97e2cc10ccbbdf186570552cdbcda8ed7c507b29b25f27caf754735e2178a",
+      "status": "INCIDENT_ENVELOPE_UPLOAD_GET_VERIFY_PASS"
+    },
+    "completionSideEffectsReview": {
+      "name": "completion-side-effects-independent-review.json",
+      "sha256": "4838356c3e4bdc0af5570816eb28e3a59a48cc2c65fe14be058888c4aad4ab1f",
+      "status": "INDEPENDENT_REVIEW_PASS"
+    },
+    "currentDelta": {
+      "name": "current-delta-approved-2.json",
+      "sha256": "8aed137bcd74146a7e8e514610ef9b8825c583b46486e0adaca172381d0d153d",
+      "status": "PASS"
+    },
+    "finalVerify": {
+      "name": "verify-complete-v0720.json",
+      "sha256": "9e3467ee244f5625e199a5cf18b82762963c37587b6d5f7d828c5463e1c95777",
+      "status": "V0720_RELEASE_VERIFY_PASS_TRAFFIC_STILL_HELD"
+    },
+    "freezeAttempt": {
+      "name": "failure-freeze-attempt.json",
+      "sha256": "c6380b463e9ba9e163ef861714b7543a22439cd5e8aed20b82edb4d1bada1def",
+      "status": "PHASE_FAILED_REBIND_REQUIRED"
+    },
+    "freezeComplete": {
+      "name": "freeze-complete.json",
+      "sha256": "00d24c271a8200e2e3e1d56382537001cb4de3f3eefdb58a78667d790636ba1c",
+      "status": "FROZEN_62_SECONDS_V0720"
+    },
+    "freezeRebindFailure": {
+      "name": "failure-freeze-rebind-failed.json",
+      "sha256": "1c025ef685cbd0b9d09271b9ce903265b78f9bf829cd5e2c12141966a498f09e",
+      "status": "PHASE_FAILED_REBIND_FAILED_MAINTENANCE_REMAINS"
+    },
+    "freshRestore": {
+      "name": "preservation-complete.json",
+      "sha256": "47f54208aa74f9efa3bc6c089ca06042c0d30769d6ea00330841d71cc38f3968",
+      "status": "INCIDENT_FRESH_RESTORE_PASS_V0720"
+    },
+    "historicalDeltaReject": {
+      "name": "current-delta-approved-1.json",
+      "sha256": "f742bd1691ae77f2968549d836af9799df3d0206802c752eb2d910a584e46a8f",
+      "status": "REJECT"
+    },
+    "linuxApproval": {
+      "name": "linux-rehearsal-approved.json",
+      "sha256": "7a42919656128bbdf075316c4a91b67ee936eea6b77204678a908af282da4a1c",
+      "status": "PRESENT"
+    },
+    "linuxGuest": {
+      "name": "real-schema44-product-rehearsal.json",
+      "sha256": "396d3b372971a3369e1642912f98a4ed9ae395b05a4f882ca0150b5b9a92e243",
+      "status": "PASS_REAL_PRODUCT_ISOLATED_REHEARSAL"
+    },
+    "linuxHost": {
+      "name": "host-execution.json",
+      "sha256": "b3217a2747d5034150f80bdfe54d0b831996eec12194aacf81a7ee4eabcd3bde",
+      "status": "PASS"
+    },
+    "mainCi": {
+      "name": "main-final-ci.json",
+      "sha256": "c23419964e58109dd4f7739c2c4473ec63dafedb898e2b5e1f878573c0cf1955",
+      "status": "completed"
+    },
+    "operatorBinding": {
+      "name": "operator-binding.json",
+      "sha256": "a0188be10b34679cb43dace6de581a604647d0cb1d2ba0fdfe2e9c9b0c72bc49",
+      "status": "PRESENT"
+    },
+    "preflight": {
+      "name": "preflight.json",
+      "sha256": "b126ae8d03442aa01425b27dfcb9e53469bd01f98750f5e0abc4d9f90e6531b7",
+      "status": "PREFLIGHT_V0720_PASS"
+    },
+    "prepareStartAttempt": {
+      "name": "failure-prepare-start-attempt.json",
+      "sha256": "4cf801c24ff4a85dc14e93acb6f38991d25d438737d78228559ebc24f1c87275",
+      "status": "PHASE_FAILED_REBIND_REQUIRED"
+    },
+    "prepareStartRebindFailure": {
+      "name": "failure-prepare-start-rebind-failed.json",
+      "sha256": "815f1344ea8fa6a2d1e07bd5590f773a4b583a4a5965e45f47197872fcdc410d",
+      "status": "PHASE_FAILED_REBIND_FAILED_MAINTENANCE_REMAINS"
+    },
+    "preservation": {
+      "name": "v0720-incident-20260911-incident-preservation.json",
+      "sha256": "0e563f23f6687de2fd8ecfbd22fe95c6e96b02e37f4569577f762338d4deeb4c",
+      "status": "INCIDENT_PRESERVATION_VERIFIED"
+    },
+    "publicAssets": {
+      "name": "public-assets.json",
+      "sha256": "1cc918fe8e9bfd1a02087e6e4ebe8631650abad57e1f965dfa3b0d0458dd44aa",
+      "status": "PASS"
+    },
+    "release": {
+      "name": "v0720-release-identity.json",
+      "sha256": "c256ab553d27cd645e85e60c21defccac95250aebc285d218e0841116e61ec0b",
+      "status": "PRESENT"
+    },
+    "trafficRestore": {
+      "name": "traffic-restore-new.json",
+      "sha256": "9cfbfedb6f5236f274abced3369a48bcd97a70ae4e982ff75d5d38a450a6e151",
+      "status": "PUBLIC_TRAFFIC_RESTORED"
+    },
+    "workflowFinal": {
+      "name": "workflow-recovery-final.json",
+      "sha256": "4d0a6d03e1e5c0f0d48d4320d0f5e4e740f3cf9a7ea43853b142555dbbc7c804",
+      "status": "ORIGINAL_WORKFLOW_RECOVERY_PASS"
+    }
+  },
+  "release": {
+    "archiveSha256": "970a185ea0e080ce727e23895a4e9e15b72705ea4a856b14afe1e98ef382dd01",
+    "builtFresh": true,
+    "commit": "ccac7564e2ec045d62f8beb675cfeadb18e0f3e9",
+    "exportIdentitySha256": "39e70d45a065b6c587a3a3eeb8852829067fbeea52578a6e3174344bb897b33e",
+    "inventoryFilesVerified": 6218,
+    "inventorySha256": "e9b2b881d3802094a320e9e174d3ed4ae2efbf18300de9826607a361268c1770",
+    "markerSha256": "6a7e5f5b28a6dec7c3dccbbf2df2d21f625c3a8386aabe94eb2d54772ac576ee",
+    "nodeVersion": "22.23.2",
+    "npmVersion": "10.9.8",
+    "schemaVersion": 44,
+    "sourceFiles": 987,
+    "sourceUnchanged": true,
+    "tag": "v0.7.20",
+    "tagObject": "18bdf84b5639632a29ffd35a74ef5e38e2e1f786",
+    "tree": "b3268da12c617e998576fa302b30ec0fba7f35fc",
+    "version": "0.7.20"
+  },
+  "status": "PRODUCTION_TECHNICAL_PASS",
+  "technicalStatus": "PASS",
+  "timezone": "Asia/Shanghai",
+  "userAcceptance": "USER_RECHECK",
+  "userPass": false,
+  "version": "0.7.20",
+  "workflow": {
+    "originalVideoProviderAttempt": 1178,
+    "protectedSuccessNodes": 9,
+    "status": "ORIGINAL_WORKFLOW_RECOVERY_PASS",
+    "tailTextAttemptCount": 1,
+    "tailTextAttemptLimit": 1,
+    "unknownTaskUnchanged": true
+  }
+}
