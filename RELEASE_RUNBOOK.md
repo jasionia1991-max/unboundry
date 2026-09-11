@@ -11,7 +11,7 @@
 - 两份永久保护JSON不得读取、hash、复制、移动、修改、删除或暂存：`spec/public-templates-director-split-revision.json`、`spec/INC_GEN_017_R0_PUBLISHED_MODEL_SNAPSHOT_2026-08-28.json`。所有源码导出/检查使用显式排除。
 - 纯模板数据发布走`上线规矩.md`轻量路径；纯文档同步按下节发布独立文档镜像，不替换产品构建或 bump 产品版本。
 
-当前 v0.7.18/schema44 发布身份、迁移、备份与验证状态统一见 [v0.7.18发布回执](spec/V0_7_18_PRODUCTION_RECEIPT_2026-09-11.json)；旧 v0.7.17 回执只作历史证据，当前回退约束见第6节。每日自动备份仍USER_DEFERRED，不以手动发布备份代替该项验收。
+当前发布身份、迁移、备份与验证状态统一从 [CURRENT_STATE](spec/UNBOUNDRY_CURRENT_STATE.md) 路由到对应回执；旧版本回执只作历史证据，当前回退约束见第6节。每日自动备份仍USER_DEFERRED，不以手动发布备份代替该项验收。
 
 ## 独立文档同步
 
@@ -112,7 +112,7 @@ v0.7.17于2026-09-09首次经当次授权使用`quiesced-active-preservation`，
 
 先准备本次精确新包、精确兼容回退包及数据保持策略，在隔离副本完成真实Linux HTTP保存/刷新和forward→rollback→forward；记录其与真实systemd切换测试的区别。正式维护中保留旧current身份，排空再原子切换；核对服务、版本、ready、数据及静态资源后解除维护。
 
-v0.7.18/schema44 当前回退约束：
+当前schema44回退约束：
 
 - 当前新包：`/opt/unboundry/releases/v0.7.18-media-publication-20260911`。数据库已按本次配套迁移进入 schema44；精确 commit/tree、操作单、备份/恢复和脚本 SHA 由 v0.7.18 最终发布回执拥有。
 - 当前回退路径是代码层回到 schema44 只读维护桥：停止 v0.7.18 应用，保留 CURRENT 和 schema44 数据，按当次最新停服数据重新生成并绑定 `schema44-preservation-<label>` 桥接包，由 `unboundry-schema44-readonly-bridge.service` 提供维护页；每次新应用停服后都要重新绑定最新数据库/媒体 manifest。桥接包只读，不运行 worker、不调用 Provider/OSS、不接收 POST/写请求。
@@ -139,7 +139,7 @@ v0.7.18/schema44 当前回退约束：
 
 ## 8. 收尾
 
-生产回执分别记录源码/CI、定向或full范围、备份/恢复/云端验证、生产数据和UI、未决风险、用户验收；本轮最终状态见 [v0.7.18 发布回执](spec/V0_7_18_PRODUCTION_RECEIPT_2026-09-11.json)，旧 v0.7.17 回执保留为历史。先是技术结果，只有用户明确通过才记对应范围USER_PASS。
+生产回执分别记录源码/CI、定向或full范围、备份/恢复/云端验证、生产数据和UI、未决风险、用户验收；本轮最终状态与回执入口见 [CURRENT_STATE](spec/UNBOUNDRY_CURRENT_STATE.md)，旧版本回执保留为历史。先是技术结果，只有用户明确通过才记对应范围USER_PASS。
 
 更新CURRENT_STATE、TASKS、主题checkpoint、总矩阵及必要架构/操作文档。固定历史JSON、失败记录和tag不改写；演进中的当前回执补上后续验收事实。文档是否commit/push按用户当次授权，不能把旧发布授权扩为永久权限。
 

@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "./safe-test";
-import { openAppDatabase } from "../server/database";
+import { openAppDatabase, closeRuntimeDatabaseTransactions, setDuringCurrentDatabaseOpenForTests } from "../server/database";
 import { createGenerationTaskStore } from "../server/generationTaskStore";
 import { saveGeneratedPng } from "../server/assetStorage";
 import { bindGenerationOutputSet, GenerationOutputSlotBlockedError } from "../server/generationOutputSlots";
@@ -61,6 +61,8 @@ async function fixture(work: (directory: string, store: Store) => Promise<void>)
   const store = createGenerationTaskStore(directory);
   try { await work(directory, store); }
   finally {
+    closeRuntimeDatabaseTransactions();
+    setDuringCurrentDatabaseOpenForTests(undefined);
     store.close();
     if (prior === undefined) delete process.env.UNBOUNDRY_DATA_DIR;
     else process.env.UNBOUNDRY_DATA_DIR = prior;
@@ -931,6 +933,50 @@ function exactCancelledTaskInTransaction(
     task.kind === reservation.kind && task.attempt === reservation.taskExecutionAttempt &&
     task.state === "cancelled" && task.error_code === "USER_CANCELLED");
 }
+
+test("chunk ownership checks reuse the validated connection and see cancellation from another connection", async () => {
+  await fixture(async (directory, store) => {
+    const identity = createTask(directory, store);
+    await withGenerationResultSave(identity, async (saveToken) => {
+      const assetId = randomUUID();
+      const reservation = reserveMediaPublication({
+        id: assetId, ownerId, kind: "image", contentType: "image/png",
+        finalStorageName: `${assetId}.png`, objectKey: `${assetId}.png`,
+        storageBackend: "local",
+        task: { ...identity, saveToken, outputSlot: 0, outputSetCount: 1, actualCostMicrounits: 1 },
+      });
+      // Warm only the first open. Each subsequent chunk must retain live
+      // ownership checks without another whole-database writer inspection.
+      assertMediaPublicationIo(reservation);
+      setDuringCurrentDatabaseOpenForTests((checkpoint) => {
+        if (checkpoint === "before-writer-sidecar-validation") {
+          throw new Error("chunk reopened the entire database");
+        }
+      });
+      try {
+        for (let chunk = 0; chunk < 256; chunk += 1) {
+          assertMediaPublicationIo(reservation);
+          await Promise.resolve();
+          assertMediaPublicationIo(reservation);
+        }
+        expect(store.transition(identity.taskId, "cancelled", {
+          code: "USER_CANCELLED", message: "cancel between chunks",
+        })?.state).toBe("cancelled");
+        expect(() => assertMediaPublicationIo(reservation))
+          .toThrow(GenerationSaveOwnershipError);
+      } finally {
+        setDuringCurrentDatabaseOpenForTests(undefined);
+      }
+      const database = openAppDatabase(directory);
+      try {
+        expect(database.prepare("SELECT COUNT(*) AS n FROM generation_provider_attempts WHERE task_id = ?")
+          .get(identity.taskId)).toEqual({ n: 1 });
+        expect(database.prepare("SELECT state FROM media_publication_attempts WHERE attempt_id = ?")
+          .get(reservation.attemptId)).toEqual({ state: "reserved" });
+      } finally { database.close(); }
+    });
+  });
+});
 
 test("cancellation waits for the active save lease, then compensates only its exact pending publication", async () => {
   await fixture(async (directory, store) => {

@@ -1,0 +1,228 @@
+{
+  "backup": {
+    "evidence": {
+      "file": "incident-envelope-upload.json",
+      "sha256": "755e2e0aa8297f125cedf55faa3d7c57cad4ae9f3b0264b93e3550bd472dd28c",
+      "status": "INCIDENT_ENVELOPE_UPLOAD_GET_VERIFY_PASS"
+    },
+    "finalCandidate": false,
+    "objectCount": 938,
+    "providerRequests": 0,
+    "remoteDeletes": 0,
+    "remoteManifestGetVerified": true,
+    "status": "PASS"
+  },
+  "createdAt": "2026-09-11T12:21:55.688957+00:00",
+  "current": {
+    "application": {
+      "activeState": "inactive",
+      "mainPid": 0,
+      "restarts": 0,
+      "subState": "dead"
+    },
+    "currentDataRetained": true,
+    "databaseReplaced": false,
+    "pointsToCandidate": true,
+    "readOnlyBridge": {
+      "evidence": {
+        "file": "bridge-rollback-complete.json",
+        "sha256": "2783ff9746e9195996a2809bd2cc141f23eeab8060e218b84915b38660705683",
+        "status": "SCHEMA44_BRIDGE_ACTIVE_MAINTENANCE_HELD"
+      },
+      "maintenanceHeld": true,
+      "oldAppStarted": false,
+      "port": 52833,
+      "schemaVersion": 44,
+      "serviceActive": true,
+      "serviceMainPid": 2572481,
+      "status": "READONLY_BRIDGE_ACTIVE"
+    },
+    "target": "/opt/unboundry/releases/v0.7.19-media-download-recovery-20260911"
+  },
+  "evidencePolicy": {
+    "productionMutatedByThisCollector": false,
+    "promptsEmbedded": false,
+    "providerOrOssCalledByThisCollector": false,
+    "rawRowsEmbedded": false,
+    "secretsEmbedded": false,
+    "signedUrlsEmbedded": false,
+    "source": "production OPS read-only receipts"
+  },
+  "format": "unboundry-v0719-failed-release-receipt-v1",
+  "limitations": [
+    "主失败是原视频下载/保存阶段的四次 TIMEOUT，导致原工作流仍未完成。",
+    "停服期限失败发生在上述主失败之后的回退动作中，是独立的操作失败；当前未把它当作原视频主因。",
+    "当前保持 schema44 只读桥和公网维护页，不能视为新版本已上线。",
+    "workflow-recovery-check-3 只核对当时的 9 个成功节点和旧未知任务保护范围，不是全量数据库审计通过。",
+    "938 对象事故保全已完成并通过远端 GET 校验，不能替代业务工作流完成。"
+  ],
+  "preservation": {
+    "activePublicationScope": 1,
+    "activeTaskScope": 2,
+    "activeWorkflowScope": 1,
+    "evidence": [
+      {
+        "file": "v0719-incident-20260911-incident-preservation.json",
+        "sha256": "0b457f66491f17f532047942e7d0fbc97416aa03926ea8e3761324ca00163936",
+        "status": "INCIDENT_PRESERVATION_VERIFIED"
+      },
+      {
+        "file": "preservation-complete.json",
+        "sha256": "1e112edd17afe323eaa412cc5d21c8c2b2443d6cc865ce15c9511245109ab45b",
+        "status": "INCIDENT_FRESH_RESTORE_PASS"
+      }
+    ],
+    "freshRestore": "PASS",
+    "incidentCapture": "PASS",
+    "schemaVersion": 44
+  },
+  "publicTraffic": {
+    "checks": [
+      {
+        "method": "GET",
+        "path": "/",
+        "status": 503
+      },
+      {
+        "method": "GET",
+        "path": "/api/version",
+        "status": 503
+      },
+      {
+        "method": "POST",
+        "path": "/__release_maintenance_probe",
+        "status": 503
+      }
+    ],
+    "evidence": {
+      "file": "maintenance-proof.json",
+      "sha256": "52ba25855f550381fc97de2fa373b29d82db9df6ea3b5b17933d68cabd1c8ad7",
+      "status": "ACTIVE"
+    },
+    "maintenanceHeld": true,
+    "status": "READONLY_BRIDGE_ACTIVE"
+  },
+  "recoveryBoundary": {
+    "candidateShutdownFailed": true,
+    "evidence": [
+      {
+        "file": "candidate-start-command.json",
+        "note": "pre-shutdown candidate health only",
+        "sha256": "505bf32e2b7734517ebbcc88ae3dfe5861fd2ca6e0ba420f6fcee9332a68504d",
+        "status": "V0719_ACTIVE_SERVICE_HEALTHY"
+      },
+      {
+        "file": "linux-rehearsal-approved.json",
+        "sha256": "1cdf1b36202c76fb3265a348dd0f3dea8cac6064af6719b02e6bb08fced471cc",
+        "status": "PASS"
+      }
+    ],
+    "newCandidateStarted": true,
+    "noSchemaDowngrade": true,
+    "noSecondVideoProviderPost": true,
+    "rollbackToReadOnlyBridge": "PASS",
+    "unknownTaskPreserved": true
+  },
+  "release": {
+    "ci": {
+      "mainRunId": 34590340087,
+      "pullRequestAttempt": 2,
+      "pullRequestNumber": 177,
+      "pullRequestRunId": 34583204238
+    },
+    "commit": "6af63dde4c6698b3d57f70dc203f6a36144dff72",
+    "schemaVersion": 44,
+    "sourceFiles": 986,
+    "tag": "v0.7.19",
+    "tree": "14589420457fd800931929106582d6c6c5be15a3",
+    "version": "0.7.19"
+  },
+  "safety": {
+    "evidence": {
+      "file": "restore-safety-result.json",
+      "sha256": "a1f6e4b17fcb39ee5c2cce7148d832fce096ef4dbdd24421e3c207ff864b93cd",
+      "status": "SAFETY_RESTORED"
+    },
+    "globalEnabled": true,
+    "status": "SAFETY_RESTORED"
+  },
+  "status": "RELEASE_NOT_PASSED",
+  "technicalStatus": "RELEASE_NOT_PASSED",
+  "userAcceptance": "USER_NOT_PASS",
+  "workflow": {
+    "businessComplete": false,
+    "evidence": {
+      "file": "workflow-recovery-check-3.json",
+      "sha256": "ce2d3032dba5df387fdee12ee742ba903decdc93313c89303556b1225d644011",
+      "status": "ORIGINAL_WORKFLOW_RECOVERY_PENDING"
+    },
+    "latestCheck": 3,
+    "newVideoProviderAttemptCount": 0,
+    "originalVideoOutcome": "response-received",
+    "originalVideoProviderAttemptId": 1178,
+    "originalVideoResultReady": false,
+    "protectedSuccessNodes": 9,
+    "status": "ORIGINAL_WORKFLOW_RECOVERY_PENDING",
+    "tailProjection": "pending",
+    "unknownTaskUnchanged": true
+  },
+  "primaryFailure": {
+    "phase": "original-video-download-save-retry",
+    "status": "RELEASE_NOT_PASSED",
+    "code": "TIMEOUT",
+    "taskId": "fc2cb668-654d-4c1c-8052-5c450c0ea114",
+    "providerAttemptId": 1178,
+    "retryCount": 4,
+    "reason": "原视频结果在下载/保存阶段连续四次超时，结果未就绪，原工作流未完成；因此本次发布未通过。",
+    "journalEvidence": {
+      "source": "/var/log/syslog",
+      "sourceFormat": "应用写入的 JSON 诊断记录（按目标 task 精确筛选）",
+      "records": [
+        {
+          "timestamp": "2026-09-11T12:00:45.582Z",
+          "stage": "save-retry",
+          "errorCode": "TIMEOUT",
+          "line": 73664,
+          "lineSha256": "abb5dfcd0788883c7700e480c5d40bd83a903d89808a72ed2019cbeac6af94a5"
+        },
+        {
+          "timestamp": "2026-09-11T12:02:09.155Z",
+          "stage": "save-retry",
+          "errorCode": "TIMEOUT",
+          "line": 73865,
+          "lineSha256": "51bd6e9ffb57cf49c609238242f4e539a6574a8361aa19be869ffaa2a2cb849a"
+        },
+        {
+          "timestamp": "2026-09-11T12:03:35.969Z",
+          "stage": "save-retry",
+          "errorCode": "TIMEOUT",
+          "line": 73925,
+          "lineSha256": "4d5ea40437efe61db4e1410f9b378d32dd8a165d81e9d7449690c74f57f0e77a"
+        },
+        {
+          "timestamp": "2026-09-11T12:05:05.131Z",
+          "stage": "save-retry",
+          "errorCode": "TIMEOUT",
+          "line": 73990,
+          "lineSha256": "9b55eee9d1397fcfeca96583b654cab686b5105d5000764a7cfbea7197b1c744"
+        }
+      ],
+      "recordCount": 4
+    }
+  },
+  "shutdownFailure": {
+    "phase": "candidate-shutdown-during-subsequent-rollback",
+    "status": "INDEPENDENT_FAILURE",
+    "code": "RUNTIME_SHUTDOWN_DEADLINE_EXIT_1",
+    "evidence": {
+      "file": "candidate-shutdown-failure-observed.json",
+      "sha256": "9378353ffbc8f82640348295c718132c684390325a727bb4ec0a22f89996d13b"
+    },
+    "observedAt": "2026-09-11T12:08:05.549942+00:00",
+    "originalCandidatePid": 2569070,
+    "processGone": true,
+    "cgroupEmpty": true,
+    "listener4173Closed": true,
+    "reason": "原视频主失败之后，执行回退停候选服务时触发关闭期限并以状态1退出；随后保留维护页并回到只读桥。该失败不替代原视频超时主因。"
+  }
+}

@@ -192,7 +192,11 @@ async function runManaged(command, args, options = {}) {
     cwd: options.cwd ?? repositoryRoot,
     detached: true,
     env: options.env,
-    stdio: capture ? ["ignore", "pipe", "pipe"] : "inherit",
+    // Do not inherit the Codex terminal's descriptors. Node aborts during
+    // startup when sandbox-exec hands it a descriptor whose fstat fails; a
+    // private pipe keeps the child descriptors valid while preserving live
+    // output for non-capturing commands.
+    stdio: ["ignore", "pipe", "pipe"],
   });
   const processGroupId = child.pid;
   if (!Number.isInteger(processGroupId)) fail(`failed to start ${command}`);
@@ -221,6 +225,9 @@ async function runManaged(command, args, options = {}) {
   if (capture) {
     child.stdout.on("data", (chunk) => captureChunk("stdout", chunk));
     child.stderr.on("data", (chunk) => captureChunk("stderr", chunk));
+  } else {
+    child.stdout.pipe(process.stdout, { end: false });
+    child.stderr.pipe(process.stderr, { end: false });
   }
   let timedOut = false;
   const timeout = setTimeout(() => {
@@ -3203,8 +3210,8 @@ process.exit(0);
         })}`,
       );
     }
-    if (discovery.tests !== 1416) {
-      fail(`the frozen 1416-test inventory changed to ${discovery.tests}`);
+    if (discovery.tests !== 1425) {
+      fail(`the frozen 1425-test inventory changed to ${discovery.tests}`);
     }
     const idsByFile = {};
     const { entries } = collectReportEntries(reportFile, sourceRoot);

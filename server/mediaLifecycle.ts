@@ -20,6 +20,7 @@ import {
 } from "./aliyunOss";
 import {
   appDataDirectory,
+  createRuntimeDatabaseTransactionRunner,
   currentSchemaManifest,
   currentSchemaVersion,
   migrationIncompleteMarker,
@@ -640,8 +641,13 @@ async function fsyncPath(path: string) {
 }
 
 /** Physical work always requires a live owner; released tokens only settle metadata. */
+const publicationIoChecks = createRuntimeDatabaseTransactionRunner();
+
 export function assertMediaPublicationIo(reservation: MediaPublicationReservation) {
-  withDatabase((database) => {
+  // Check the live task and lease before/after every I/O operation, using the
+  // existing pinned runtime lane. Reopening a writer here hashes the entire
+  // database twice per chunk and can make a healthy download time out.
+  publicationIoChecks.run((database) => {
     readAttempt(database, reservation, { newIo: true });
   });
 }

@@ -132,7 +132,6 @@ export async function downloadProviderResultMedia(input: {
     ...input.deadlineOptions,
     operation: "result-download",
     signal: input.signal,
-    timeoutMs: input.deadlineOptions?.timeoutMs ?? 60_000,
   });
   const attempt = async () => {
     const response = await deadline.race(fetchPublicHttps(url, {
