@@ -50,7 +50,7 @@
 
 ## 5. 与来源schema配套的备份门
 
-当前使用不可变release内`backup-data.mjs` → `verify-backup.mjs` → `restore-backup.mjs`合同。正式切换前最新快照须持有真实冻结/静默证据并满足locked-exact或已审的第5.1节独立保全模式：显式来源schema、logical SHA、冻结时间、last Provider admission、独立scratch、外置签名/恢复key路径及精确媒体策略。跨schema发布在迁移前后分别备份、verify和fresh restore；旧来源及目标schema必须由当次精确工具明确支持，不能让代码先启动后隐式迁移。
+普通备份使用不可变release内`backup-data.mjs` → `verify-backup.mjs` → `restore-backup.mjs`合同。正式切换前最新快照须持有真实冻结/静默证据并满足locked-exact或已审的第5.1节独立保全模式；已有故障使这些模式明确拒绝时，只可按第5.3节完成独立事故保全的全部发布门。必须显式绑定来源schema、logical SHA、冻结时间、last Provider admission、独立scratch、外置签名/恢复key路径及精确媒体策略。跨schema发布在迁移前后分别备份、verify和fresh restore；旧来源及目标schema必须由当次精确工具明确支持，不能让代码先启动后隐式迁移。
 
 必须先核对当前活动任务、计费结果不明边界和publication，不伪造冻结时间或为通过门清理历史终态记录。备份不通过就不切换。`--external-freeze-non-final`不能冒充final candidate；schema42仅历史恢复，不能作为当前验收schema。
 
@@ -92,6 +92,21 @@ v0.7.17于2026-09-09首次经当次授权使用`quiesced-active-preservation`，
 - 独立演练必须按“新应用 worker 启动并停止 → 同一 CURRENT 运行只读桥接 → 桥接停止 → 同一 CURRENT 启动新应用 worker”顺序执行，至少核验一个 staged synthetic 结果自动恢复，同时核验 Canvas 草稿、媒体、publication 槽、lease、adoption、continuation 和 outcome-unknown 账本保持约束；Provider POST 计数必须为零。
 
 本节对应 `m110-schema44-readonly-preservation` 和独立桥接脚本。每次新应用运行并停服后均须重新绑定最新CURRENT与桥接manifest；桥接失败保持静态维护，禁止启动schema43应用。当前生产是否已完成新包启动及公网切换仍以 v0.7.18 最终回执为准；本地测试和迁移回执不能替代真实systemd切换或真实Provider验收。
+
+### 5.3 同schema补丁的事故现场保全
+
+适用于当次已授权的同schema修复：真实未完成工作流、下载半成品或compensating记录使普通备份与5.1模式拒绝，而修复前必须保留完整现场。不修改任务终态、删除半成品或降低普通媒体校验来过门；不把损坏或未完成素材标为ready。不适用于跨schema迁移或自动备份。
+
+使用独立格式与`captureMode=incident-active-preservation`，明确`finalCandidate=false`，不得冒充普通备份。以下条件全部通过，才可把本次独立保全包及其完整验证证据作为发布前备份依据；单独完成打包、签名或解密均不构成上线准入：
+
+1. 当次操作单绑定精确current、候选提交/包、来源schema、原数据路径和全部允许的活动task/attempt/workflow/publication/slot；既有未知计费任务也逐个列明。任何额外活动链或原请求身份变化均停止，禁止新增Provider请求来验证。
+2. 管理员审计冻结新准入并等待至少60秒；维护隔离、旧PID/startTicks退出及原监听消失均可核验。持有原runtime active lease并保持draining，随后按secret锁、数据库写锁的顺序覆盖全部采集；不能复用过期停服证明。
+3. 原样保全完整数据库、library数据库、媒体树（包括隐藏的下载半成品）、密钥及加密配置；ready OSS素材须逐项完整镜像，以精确profile/objectKey/版本/字节数/哈希绑定到签名清单，单独恢复核验，不能把仅本地文件树当全部素材；拒绝路径别名、软链接、特殊文件和采集中变化。来源schema、integrity/FK、logical SHA、全表与全文件摘要、secret与数据库配置对齐均验证；事故媒体单独标记其真实状态，不运行会改写状态的普通恢复流程。
+4. 使用AES-256-GCM、RSA-OAEP-SHA256及独立Ed25519签名，域分隔的签名覆盖格式、现场身份与全部文件清单。外置恢复/签名密钥不进代码仓库或日志。密文包、恢复目录和证据私有且不覆盖已存在目录；拒绝额外文件、缺失、篡改和路径逃逸。
+5. 全新scratch中验签、解密并逐文件核对，与来源的完整数据库/账本/媒体/半成品/secret摘要一致；保持事故状态而不启动生成。生产CURRENT不得作为恢复目标。全部云端备份对象使用私有、唯一键、禁止覆盖上传，逐对象GET核对完整大小和SHA，清单也核对。
+6. 精确新包在独立Linux环境完成新→当前schema只读维护桥→新演练，保留同一数据目录与原未知请求保护。生产实际切换前，独立代码复审、备份恢复和回退证据必须全部通过。普通备份CLI、locked-exact及5.1的拒绝条件保持原样。
+
+失败即不切换并保留现场、已生成备份和旧包。维护中的服务恢复按当次已验证的同schema代码路径处理，不能倒灌备份覆盖CURRENT。上线后仍须观察原任务的正常恢复；事故保全成功不代表生成已恢复。精确实施和实测结果由当前TASKS及本次回执拥有，本节不是操作已完成的证明。
 
 ## 6. 切换与回退
 

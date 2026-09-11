@@ -5471,15 +5471,14 @@ test("interrupted original video and audio GETs compensate safely and resume the
     await setStorageMediaRouting(true);
     const store = createGenerationTaskStore(directory);
     const ossRequests: Array<{ method: string; bucketInfo: boolean }> = [];
-    const bucketXml = Buffer.from(
-      `<BucketInfo><Bucket><Name>${profile.bucket}</Name></Bucket></BucketInfo>`,
+    const signedReads: Array<{ method: string; range: string; url: string }> = [];
+    const missingXml = Buffer.from(
+      "<Error><Code>NoSuchKey</Code><Message>fixture</Message><RequestId>m88-stream-recovery</RequestId></Error>",
     );
     const urllib: AliyunOssUrllib = {
       async request(url, options = {}) {
         const method = String(options.method ?? "GET").toUpperCase();
-        const parsed = new URL(url);
-        const bucketInfo = parsed.searchParams.has("bucketInfo");
-        ossRequests.push({ method, bucketInfo });
+        ossRequests.push({ method, bucketInfo: false });
         const headers = {
           "content-type": "application/xml",
           "x-oss-request-id": "m88-stream-recovery",
@@ -5492,14 +5491,6 @@ test("interrupted original video and audio GETs compensate safely and resume the
             status: 404,
           } as never;
         }
-        if (method === "GET" && bucketInfo) {
-          return {
-            data: bucketXml,
-            headers,
-            res: { headers, statusCode: 200 } as never,
-            status: 200,
-          } as never;
-        }
         throw new Error("unexpected OSS fixture request");
       },
     };
@@ -5507,6 +5498,15 @@ test("interrupted original video and audio GETs compensate safely and resume the
       address: "93.184.216.34",
       family: 4 as const,
     }]) as never;
+    const absenceFetcher = (async (url, init = {}) => {
+      const headers = new Headers(init.headers);
+      signedReads.push({
+        method: String(init.method ?? "GET").toUpperCase(),
+        range: headers.get("range") ?? "",
+        url: String(url),
+      });
+      return new Response(missingXml, { status: 404 });
+    }) as typeof fetch;
     try {
       const fixtures = [
         {
@@ -5645,7 +5645,7 @@ test("interrupted original video and audio GETs compensate safely and resume the
           await assertUnstagedAliyunOssGenerationObjectAbsent(
             identity,
             credentials,
-            { urllib, resolver },
+            { fetcher: absenceFetcher, urllib, resolver },
           );
         };
 
@@ -5691,7 +5691,11 @@ test("interrupted original video and audio GETs compensate safely and resume the
         expect(fetchCalls).toBe(1);
         expect(partialBytes).toHaveLength(1);
         expect(absenceChecks).toHaveLength(1);
-        expect(ossRequests.map(({ method }) => method)).toEqual(["HEAD", "GET"]);
+        expect(ossRequests.map(({ method }) => method)).toEqual(["HEAD"]);
+        expect(signedReads.map(({ method }) => method)).toEqual(["GET"]);
+        expect(signedReads[0].range).toBe("bytes=0-0");
+        expect(new URL(signedReads[0].url).searchParams.get("x-oss-signature-version")).toBe("OSS4-HMAC-SHA256");
+        expect(new URL(signedReads[0].url).searchParams.has("bucketInfo")).toBe(false);
         expect(ossRequests.every(({ method }) => method !== "DELETE")).toBe(true);
         const failed = openAppDatabase(directory);
         let firstPublication!: {
@@ -5854,6 +5858,7 @@ test("interrupted original video and audio GETs compensate safely and resume the
         }
         expect(await readdir(join(directory, "media"))).toEqual([]);
         ossRequests.length = 0;
+        signedReads.length = 0;
       }
     } finally {
       store.close();

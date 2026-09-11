@@ -39,6 +39,14 @@
       "manualNpmScripts": [
         "data:backup:oss"
       ]
+    },
+    "ops/production/incident-envelope.mjs": {
+      "mode": "behavior-test",
+      "scriptSha256": "6ef06ed6262f589579ad3fa311b27766dd32e21244232154afe5f6db293033e9",
+      "target": "tests/m93-runtime-role.spec.ts",
+      "marker": "incident envelope preserves partial downloads and rejects unsafe restore",
+      "targetSha256": "f3e8f62ebacd162214934c4a4db22b470ef174d93b962816ee9e339f461f36ec",
+      "manualNpmScripts": []
     }
   },
   "operationalScripts": {
@@ -129,7 +137,7 @@
       "scriptSha256": "639f01a6b5cef3606f6bd5bd279c96a21a5493b2fb08f4348f6fef9ecbde4484",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "Full snapshot bridge/final fixtures prove the release closure",
-      "targetSha256": "686d33dad3fd76e470dbdafac6ad2f1a82419314fa3e6e9fba80fe4b2b537a65"
+      "targetSha256": "a6b6ba1195241f92233b790f7dc13743aae059bbe6db753a0354de9fea21f6cb"
     },
     "scripts/check-greenfield.mjs": {
       "mode": "behavior-test",
@@ -143,14 +151,14 @@
       "scriptSha256": "c13a839154006e47341942ceee5e82ef553b975bac9c0ad1708d07844bcbd24a",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "scripts/check-restart-persistence.mjs",
-      "targetSha256": "686d33dad3fd76e470dbdafac6ad2f1a82419314fa3e6e9fba80fe4b2b537a65"
+      "targetSha256": "a6b6ba1195241f92233b790f7dc13743aae059bbe6db753a0354de9fea21f6cb"
     },
     "scripts/check-v051-exact-runtime.mjs": {
       "mode": "behavior-test",
       "scriptSha256": "70b0e027c8dc7de12f644fc120d69736352b35573523777f06dcb2f7e6a4c55d",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "scripts/check-v051-exact-runtime.mjs",
-      "targetSha256": "686d33dad3fd76e470dbdafac6ad2f1a82419314fa3e6e9fba80fe4b2b537a65"
+      "targetSha256": "a6b6ba1195241f92233b790f7dc13743aae059bbe6db753a0354de9fea21f6cb"
     },
     "scripts/deploy.mjs": {
       "mode": "frozen",

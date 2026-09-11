@@ -173,7 +173,7 @@ test("OSS cleanup sends an exact version DELETE and never deletes an unversioned
   }
 });
 
-test("unstaged OSS absence requires a read-only object HEAD and a matching bucket fence", async () => {
+test("unstaged OSS absence requires a signed bounded range read of the same object", async () => {
   const identity = {
     contentType: "video/mp4",
     executionAttempt: 1,
@@ -189,64 +189,101 @@ test("unstaged OSS absence requires a read-only object HEAD and a matching bucke
     accessKeyId: "fixture", accessKeySecret: "fixture", bucket: "fixture-bucket",
     endpoint: "https://oss-cn-hangzhou.aliyuncs.com", region: "oss-cn-hangzhou",
   };
-  const bucketXml = (name: string) => Buffer.from(
-    `<BucketInfo><Bucket><Name>${name}</Name><Location>oss-cn-hangzhou</Location></Bucket></BucketInfo>`,
-  );
   const errorXml = (code: string) => Buffer.from(
     `<Error><Code>${code}</Code><Message>fixture</Message><RequestId>fixture</RequestId></Error>`,
   );
   const scenarios = [
-    { name: "bucket-confirmed-absent", result: "absent", methods: ["HEAD", "GET"] },
-    { name: "object-exists", result: "quarantine", methods: ["HEAD"] },
-    { name: "bucket-404", result: "unknown", methods: ["HEAD", "GET"] },
-    { name: "bucket-403", result: "unknown", methods: ["HEAD", "GET"] },
-    { name: "bucket-500", result: "unknown", methods: ["HEAD", "GET"] },
-    { name: "bucket-timeout", result: "unknown", methods: ["HEAD", "GET"] },
-    { name: "bucket-name-mismatch", result: "unknown", methods: ["HEAD", "GET"] },
-    { name: "head-500", result: "unknown", methods: ["HEAD"] },
+    { name: "object-absent", result: "absent", headStatus: 404, getStatus: 404, getBody: errorXml("NoSuchKey"), getError: undefined },
+    { name: "head-object-exists", result: "quarantine", headStatus: 200, getStatus: undefined, getBody: undefined, getError: undefined },
+    { name: "object-exists-200", result: "quarantine", headStatus: 404, getStatus: 200, getBody: undefined, getError: undefined },
+    { name: "object-exists-206", result: "quarantine", headStatus: 404, getStatus: 206, getBody: undefined, getError: undefined },
+    { name: "empty-404", result: "unknown", headStatus: 404, getStatus: 404, getBody: Buffer.alloc(0), getError: undefined },
+    { name: "wrong-code", result: "unknown", headStatus: 404, getStatus: 404, getBody: errorXml("NoSuchBucket"), getError: undefined },
+    { name: "malformed-xml", result: "unknown", headStatus: 404, getStatus: 404, getBody: Buffer.from("<Error><Code>NoSuchKey</Code>"), getError: undefined },
+    { name: "oversized-error", result: "unknown", headStatus: 404, getStatus: 404, getBody: Buffer.alloc(16 * 1024 + 1, "x"), getError: undefined },
+    { name: "get-403", result: "unknown", headStatus: 404, getStatus: 403, getBody: errorXml("AccessDenied"), getError: undefined },
+    { name: "get-416", result: "unknown", headStatus: 404, getStatus: 416, getBody: errorXml("InvalidRange"), getError: undefined },
+    { name: "get-500", result: "unknown", headStatus: 404, getStatus: 500, getBody: errorXml("InternalError"), getError: undefined },
+    { name: "get-timeout", result: "unknown", headStatus: 404, getStatus: undefined, getBody: undefined,
+      getError: Object.assign(new Error("fixture timeout"), { name: "ResponseTimeoutError" }) },
+    { name: "stalled-body", result: "unknown", headStatus: 404, getStatus: 404, getBody: undefined, getError: undefined },
+    { name: "unterminated-error", result: "unknown", headStatus: 404, getStatus: 404, getBody: undefined, getError: undefined },
+    { name: "head-500", result: "unknown", headStatus: 500, getStatus: undefined, getBody: undefined, getError: undefined },
   ] as const;
 
   for (const scenario of scenarios) {
-    const requests: Array<{ method: string; bucketInfo: boolean; url: string }> = [];
-    const response = (status: number, data = Buffer.alloc(0)) => {
+    const requests: Array<{ method: string; url: string }> = [];
+    const fetchRequests: Array<{ method: string; range: string; url: string }> = [];
+    let cancelledBodies = 0;
+    const response = (status: number) => {
       const headers = { "x-oss-request-id": `fixture-${scenario.name}` };
       return {
-        data, headers, res: { headers, statusCode: status } as never, status,
+        data: Buffer.alloc(0), headers, res: { headers, statusCode: status } as never, status,
       } as never;
     };
     const urllib: AliyunOssUrllib = { async request(url, options = {}) {
       const method = String(options.method ?? "GET").toUpperCase();
-      const parsed = new URL(url);
-      const bucketInfo = parsed.searchParams.has("bucketInfo");
-      requests.push({ method, bucketInfo, url });
-      if (method === "HEAD") {
-        if (scenario.name === "object-exists") return response(200);
-        if (scenario.name === "head-500") return response(500, errorXml("InternalError"));
-        return response(404);
-      }
-      if (method !== "GET" || !bucketInfo) throw new Error("unexpected fixture request");
-      if (scenario.name === "bucket-confirmed-absent") return response(200, bucketXml(credentials.bucket));
-      if (scenario.name === "bucket-name-mismatch") return response(200, bucketXml("another-fixture-bucket"));
-      if (scenario.name === "bucket-404") return response(404, errorXml("NoSuchBucket"));
-      if (scenario.name === "bucket-403") return response(403, errorXml("AccessDenied"));
-      if (scenario.name === "bucket-500") return response(500, errorXml("InternalError"));
-      const timeout = Object.assign(new Error("fixture bucket info timeout"), {
-        code: "ResponseTimeoutError", name: "ResponseTimeoutError", status: -2,
-      });
-      throw timeout;
+      requests.push({ method, url });
+      if (method !== "HEAD") throw new Error("unexpected OSS fixture request");
+      return response(scenario.headStatus);
     } };
-    const action = assertUnstagedAliyunOssGenerationObjectAbsent(identity, credentials, {
-      urllib,
-      resolver: (async () => [{ address: "93.184.216.34", family: 4 as const }]) as never,
-    });
-    if (scenario.result === "absent") {
-      await action;
-    } else if (scenario.result === "quarantine") {
-      await expect(action).rejects.toBeInstanceOf(AliyunOssPublicationQuarantineError);
-    } else {
-      await expect(action).rejects.toThrow("OSS unstaged object absence could not be confirmed");
+    const fetcher = (async (url, init = {}) => {
+      const headers = new Headers(init.headers);
+      fetchRequests.push({
+        method: String(init.method ?? "GET").toUpperCase(),
+        range: headers.get("range") ?? "",
+        url: String(url),
+      });
+      if (scenario.getError) throw scenario.getError;
+      if (scenario.getStatus === undefined) throw new Error("unexpected signed GET fixture request");
+      const body = scenario.name === "stalled-body" || scenario.name === "unterminated-error"
+        ? new ReadableStream<Uint8Array>({
+            start(controller) {
+              if (scenario.name === "unterminated-error") controller.enqueue(errorXml("NoSuchKey"));
+            },
+            cancel() { cancelledBodies += 1; },
+          })
+        : scenario.name.startsWith("object-exists-")
+          ? new ReadableStream<Uint8Array>({ cancel() { cancelledBodies += 1; } })
+          : scenario.getBody;
+      if (body === undefined) throw new Error("signed GET fixture body is missing");
+      return new Response(body, { status: scenario.getStatus });
+    }) as typeof fetch;
+    const timedBody = scenario.name === "stalled-body" || scenario.name === "unterminated-error";
+    const originalSetTimeout = globalThis.setTimeout;
+    if (timedBody) {
+      globalThis.setTimeout = ((handler: (...args: unknown[]) => void, timeout?: number, ...args: unknown[]) =>
+        originalSetTimeout(handler, timeout === 60_000 ? 20 : timeout, ...args)) as typeof setTimeout;
     }
-    expect(requests.map(({ method }) => method)).toEqual(scenario.methods);
+    try {
+      const action = assertUnstagedAliyunOssGenerationObjectAbsent(identity, credentials, {
+        fetcher,
+        urllib,
+        resolver: (async () => [{ address: "93.184.216.34", family: 4 as const }]) as never,
+      });
+      if (scenario.result === "absent") {
+        await action;
+      } else if (scenario.result === "quarantine") {
+        await expect(action).rejects.toBeInstanceOf(AliyunOssPublicationQuarantineError);
+      } else {
+        await expect(action).rejects.toThrow("OSS unstaged object absence could not be confirmed");
+      }
+    } finally {
+      globalThis.setTimeout = originalSetTimeout;
+    }
+    if (timedBody) expect(cancelledBodies).toBe(1);
+    expect(requests.map(({ method }) => method)).toEqual(["HEAD"]);
+    expect(fetchRequests.map(({ method }) => method)).toEqual(
+      scenario.getStatus === undefined && !scenario.getError ? [] : ["GET"],
+    );
+    for (const request of fetchRequests) {
+      expect(request.range).toBe("bytes=0-0");
+      expect(new URL(request.url).searchParams.get("x-oss-signature-version")).toBe("OSS4-HMAC-SHA256");
+      expect(new URL(request.url).searchParams.has("bucketInfo")).toBe(false);
+    }
+    if (scenario.name.startsWith("object-exists-") || scenario.getStatus !== 404) {
+      expect(cancelledBodies).toBe(scenario.name.startsWith("object-exists-") ? 1 : 0);
+    }
     expect(requests.every(({ method }) => method !== "DELETE")).toBe(true);
   }
 });
