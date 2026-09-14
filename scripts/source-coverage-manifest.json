@@ -137,7 +137,7 @@
       "scriptSha256": "639f01a6b5cef3606f6bd5bd279c96a21a5493b2fb08f4348f6fef9ecbde4484",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "Full snapshot bridge/final fixtures prove the release closure",
-      "targetSha256": "ac68c9cdb29485f21cd05cc61ef286c5520da8106baa28175217fb230566d6bb"
+      "targetSha256": "5079a0374cb940117043a6add70da2bee7cd892cba3273726bce39aa90f2be6b"
     },
     "scripts/check-greenfield.mjs": {
       "mode": "behavior-test",
@@ -151,14 +151,14 @@
       "scriptSha256": "c13a839154006e47341942ceee5e82ef553b975bac9c0ad1708d07844bcbd24a",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "scripts/check-restart-persistence.mjs",
-      "targetSha256": "ac68c9cdb29485f21cd05cc61ef286c5520da8106baa28175217fb230566d6bb"
+      "targetSha256": "5079a0374cb940117043a6add70da2bee7cd892cba3273726bce39aa90f2be6b"
     },
     "scripts/check-v051-exact-runtime.mjs": {
       "mode": "behavior-test",
       "scriptSha256": "70b0e027c8dc7de12f644fc120d69736352b35573523777f06dcb2f7e6a4c55d",
       "target": "scripts/run-safe-tests.mjs",
       "marker": "scripts/check-v051-exact-runtime.mjs",
-      "targetSha256": "ac68c9cdb29485f21cd05cc61ef286c5520da8106baa28175217fb230566d6bb"
+      "targetSha256": "5079a0374cb940117043a6add70da2bee7cd892cba3273726bce39aa90f2be6b"
     },
     "scripts/deploy.mjs": {
       "mode": "frozen",
@@ -309,7 +309,14 @@
       "scriptSha256": "280c3942544631a8b0db75b91d7a96c8f67821c2ea783997b9cecfa827865337",
       "target": "tests/m110-schema44-readonly-preservation.spec.ts",
       "marker": "schema44 bridge is an independent read-only process with no data routes",
-      "targetSha256": "f931db790c65877e0ea14dd0f7ca9c9ce140dc0123c2bbab40ad834475a33c00"
+      "targetSha256": "d2e1c5e39c03495928b4beb82246c72d30b0c3c8e61bcccad64ece6640bfb52d"
+    },
+    "scripts/sync-successful-workflow-result.mjs": {
+      "mode": "behavior-test",
+      "scriptSha256": "ab07f57a50d7ab8057d04276c76418f39518a213b7bcbec6ff926367e172f387",
+      "target": "tests/m113-successful-workflow-result-sync.spec.ts",
+      "marker": "historical sync CLI binds dry-run proof to a single write and rejects stale proof",
+      "targetSha256": "a2b6c96fe5791b342b9609159c952a239bed396ed87fa3808b6d745af9a53343"
     }
   }
 }

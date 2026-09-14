@@ -358,6 +358,38 @@ function insertStagedResult(fixture: Fixture) {
   );
 }
 
+/** Storage-only sentinels: the narrow command tests own proof/eligibility checks. */
+function insertQueryRecoveryPreservationEvidence(fixture: Fixture) {
+  const database = new DatabaseSync(databasePath(fixture));
+  const timestamp = "2026-09-13T00:00:00.000Z";
+  const identity = sha256("m110-original-video-projection");
+  const operationId = `server-projection:${identity}`;
+  try {
+    database.prepare(`
+      INSERT INTO canvas_operation_receipts (
+        owner_id, canvas_id, operation_id, payload_sha256, command_type,
+        actor_type, baseline_kind, outcome, http_status, original_request_id,
+        result_document_revision, result_input_revision,
+        result_document_sha256, result_input_sha256, created_at, settled_at,
+        base_document_revision, base_input_revision, baseline_load_token_sha256, baseline_epoch
+      ) VALUES (?, ?, ?, ?, 'server.projection', 'server', 'existing',
+        'APPLIED', 200, 'm110-query-recovery-preservation', 7, 7, ?, ?, ?, ?, 6, 6, ?, 'm110-epoch')
+    `).run(OWNER_ID, CANVAS_ID, operationId, identity, identity, identity,
+      timestamp, timestamp, identity);
+    database.prepare(`
+      UPDATE workflow_run_continuations SET frozen_external_inputs_json = ?,
+        canonical_adoption_receipt_id = NULL
+      WHERE id = 'm110-continuation'
+    `).run(JSON.stringify([{
+      kind: "video", nodeId: "m110-node", source: "successful-task",
+      sourceRunId: "m110-parent-run", sourceTaskId: "m110-completed-source",
+      serverProjectionOperationId: operationId,
+      serverProjectionPayloadSha256: identity,
+    }]));
+    database.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+  } finally { database.close(); }
+}
+
 
 function insertIdlePublishedStagingResult(fixture: Fixture) {
   const timestamp = "2026-09-10T00:00:01.000Z";
@@ -500,7 +532,8 @@ function readSnapshot(fixture: Fixture) {
       stagedAsset: get("SELECT storage_status, storage_name, byte_size, checksum_sha256 FROM media_assets WHERE kind = 'video' AND id = ?", STAGED_ASSET_ID),
       lease: get("SELECT task_id, execution_attempt, phase, fence_epoch, released_at FROM generation_result_save_leases WHERE task_id = ?", UNKNOWN_TASK_ID),
       adoption: get("SELECT id, task_id, incident_digest, receipt_version, receipt_json FROM generation_result_adoptions WHERE id = 'm110-adoption'"),
-      continuation: get("SELECT parent_run_id, child_run_id, canonical_adoption_receipt_id FROM workflow_run_continuations WHERE id = 'm110-continuation'"),
+      continuation: get("SELECT * FROM workflow_run_continuations WHERE id = 'm110-continuation'"),
+      projectionReceipts: all("SELECT * FROM canvas_operation_receipts WHERE owner_id = ? AND canvas_id = ? ORDER BY operation_id", OWNER_ID, CANVAS_ID),
       media: {
         existing: readMedia("m110-existing.mp4"),
         staging: readMedia(".m110-staged-video.mp4.stage"),
@@ -830,6 +863,7 @@ test("schema44 new-app to readonly to new-app preserves ledgers and auto-recover
   let secondApplication: ChildProcess | undefined;
   let bridge: ChildProcess | undefined;
   try {
+    insertQueryRecoveryPreservationEvidence(fixture);
     firstApplication = startActiveApplication(fixture);
     const firstReady = await waitForMessage(firstApplication, "worker-ready");
     expect(firstReady).toMatchObject({
@@ -891,6 +925,7 @@ test("schema44 new-app to readonly to new-app preserves ledgers and auto-recover
     expect(afterRecovery.lease).toEqual(beforeReadonly.lease);
     expect(afterRecovery.adoption).toEqual(beforeReadonly.adoption);
     expect(afterRecovery.continuation).toEqual(beforeReadonly.continuation);
+    expect(afterRecovery.projectionReceipts).toEqual(beforeReadonly.projectionReceipts);
     expect(afterRecovery.stagedTask).toMatchObject({
       state: "success", result_asset_id: STAGED_ASSET_ID,
     });

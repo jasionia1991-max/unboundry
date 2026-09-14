@@ -1,5 +1,115 @@
 import type { TransactionScopedCommand } from "./transactionCommand";
 
+export type HistoricalVideoResultPublicationRow = Readonly<{
+  adopted_at: string | null;
+  adopted_canvas_id: string | null;
+  asset_byte_size: number | null;
+  asset_checksum_sha256: string | null;
+  asset_content_type: string | null;
+  asset_duration_seconds: number | null;
+  asset_duration_source: string | null;
+  asset_duration_status: string | null;
+  asset_kind: string | null;
+  asset_media_height: number | null;
+  asset_media_width: number | null;
+  asset_object_key: string | null;
+  asset_owner_id: string | null;
+  asset_storage_backend: string | null;
+  asset_storage_name: string | null;
+  asset_storage_profile_id: string | null;
+  asset_storage_status: string | null;
+  attempt_id: string;
+  byte_size: number;
+  checksum_sha256: string | null;
+  content_type: string;
+  duration_seconds: number | null;
+  duration_source: string | null;
+  error_code: string | null;
+  final_storage_name: string;
+  kind: string;
+  media_height: number | null;
+  media_width: number | null;
+  object_key: string;
+  output_set_count: number | null;
+  output_slot: number | null;
+  owner_id: string;
+  publication_asset_id: string;
+  source: string;
+  state: string;
+  storage_backend: string;
+  storage_profile_id: string | null;
+  task_execution_attempt: number | null;
+  task_id: string | null;
+}>;
+
+export type HistoricalVideoResultPublicationRead = Readonly<{
+  deletionFound: boolean;
+  rows: readonly HistoricalVideoResultPublicationRow[];
+}>;
+
+/**
+ * Media-owned read port for the narrow historical video result proof.  The
+ * LEFT JOIN intentionally retains a publication whose asset row is missing;
+ * the workflow proof must reject that extra or unmapped output.
+ */
+export const readHistoricalVideoResultPublicationCommand:
+  TransactionScopedCommand<Readonly<{
+    assetId: string;
+    executionAttempt: number;
+    ownerId: string;
+    taskId: string;
+  }>, HistoricalVideoResultPublicationRead> = {
+    execute(scope, input) {
+      const rows = scope.prepare(`
+        SELECT publication.attempt_id, publication.owner_id, publication.kind,
+               publication.asset_id AS publication_asset_id,
+               publication.source, publication.state,
+               publication.storage_backend, publication.final_storage_name,
+               publication.object_key, publication.storage_profile_id,
+               publication.task_id, publication.task_execution_attempt,
+               publication.output_slot, publication.output_set_count,
+               publication.byte_size, publication.checksum_sha256,
+               publication.content_type, publication.duration_seconds,
+               publication.duration_source, publication.media_width,
+               publication.media_height, publication.error_code,
+               publication.adopted_at, publication.adopted_canvas_id,
+               media.owner_id AS asset_owner_id, media.kind AS asset_kind,
+               media.id AS asset_id, media.storage_name AS asset_storage_name,
+               media.byte_size AS asset_byte_size,
+               media.storage_backend AS asset_storage_backend,
+               media.storage_profile_id AS asset_storage_profile_id,
+               media.object_key AS asset_object_key,
+               media.content_type AS asset_content_type,
+               media.checksum_sha256 AS asset_checksum_sha256,
+               media.storage_status AS asset_storage_status,
+               media.duration_seconds AS asset_duration_seconds,
+               media.duration_source AS asset_duration_source,
+               media.duration_status AS asset_duration_status,
+               media.media_width AS asset_media_width,
+               media.media_height AS asset_media_height
+        FROM media_publication_attempts AS publication
+        LEFT JOIN media_assets AS media
+          ON media.owner_id = publication.owner_id
+          AND media.kind = publication.kind
+          AND media.id = publication.asset_id
+        WHERE publication.task_id = ?
+          AND publication.task_execution_attempt = ?
+        ORDER BY publication.attempt_id
+        LIMIT 257
+      `).all(input.taskId, input.executionAttempt) as
+        HistoricalVideoResultPublicationRow[];
+      const deletion = scope.prepare(`
+        SELECT 1 FROM media_delete_intents
+        WHERE owner_id = ? AND kind = 'video' AND asset_id = ?
+        LIMIT 1
+      `).get(input.ownerId, input.assetId);
+      return Object.freeze({
+        deletionFound: Boolean(deletion),
+        rows: Object.freeze(rows),
+      });
+    },
+  };
+
 export const readGenerationPublicationSlotsCommand: TransactionScopedCommand<Readonly<{
   taskId: string; executionAttempt: number;
 }>, readonly Record<string, unknown>[]> = {

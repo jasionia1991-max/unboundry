@@ -49,6 +49,34 @@ export const readGenerationRecoveryCanvasCommand: TransactionScopedCommand<Reado
   },
 };
 
+export type CanvasServerProjectionReceiptRow = Readonly<{
+  actor_type: string;
+  command_type: string;
+  conflict_code: string | null;
+  http_status: number;
+  operation_id: string;
+  outcome: string;
+  payload_sha256: string;
+}>;
+
+/** Exact server.projection receipt identity for a Canvas result proof. */
+export const readCanvasServerProjectionReceiptCommand:
+  TransactionScopedCommand<Readonly<{
+    canvasId: string;
+    operationId: string;
+    ownerId: string;
+  }>, CanvasServerProjectionReceiptRow | undefined> = {
+    execute(scope, input) {
+      return scope.prepare(`
+        SELECT operation_id, payload_sha256, command_type, actor_type,
+               outcome, conflict_code, http_status
+        FROM canvas_operation_receipts
+        WHERE owner_id = ? AND canvas_id = ? AND operation_id = ?
+      `).get(input.ownerId, input.canvasId, input.operationId) as
+        CanvasServerProjectionReceiptRow | undefined;
+    },
+  };
+
 export const readCanvasRevisionCommand: TransactionScopedCommand<Readonly<{
   canvasId: string;
   ownerId: string;

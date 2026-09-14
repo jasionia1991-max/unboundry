@@ -38,8 +38,11 @@ import { assertModelReleaseRevisionIntegrity } from
   "./modelReleaseRevisionStore";
 import {
   canvasGraphRevisionMatchesInTransaction,
+  canvasProjectionPatchMatchesInTransaction,
+  readCanvasServerProjectionReceiptInTransaction,
   projectWorkflowResultInTransaction,
 } from "./canvasWorkflowProjection";
+import { buildCanvasProjectionIdentity } from "./generationCanvasProjection";
 import {
   compileFrozenWorkflowSemanticPlan,
   workflowSemanticDigest,
@@ -49,10 +52,18 @@ import { hasActiveWorkflowRunForCanvas } from "./workflowRunLocks";
 import {
   readReadyMediaAssetIdentityCommand,
   readReadyMediaAssetCommand,
+  readHistoricalVideoResultPublicationCommand,
 } from "./mediaTransactionCommands";
 import { executeTransactionScopedCommand } from "./transactionCommand";
+import { readHistoricalGenerationProviderAttemptInTransaction } from
+  "./generationWorkflowEvidence";
+import {
+  readWorkflowGenerationTaskNotice,
+  type WorkflowGenerationTaskNotice,
+} from "./generationWorkflowEvidence";
 import {
   parseImmutableWorkflowPlan,
+  parseWorkflowContinuationExternalInput,
   WorkflowPlanValidationError,
   type WorkflowContinuationExternalInput,
   type WorkflowContinuationPreview,
@@ -88,8 +99,13 @@ function parsePlan(value: unknown): StoredWorkflowPlan {
   return plan;
 }
 
-function nodeSummaryRows(database: DatabaseSync, runId: string) {
-  return database.prepare(`
+function nodeSummaryRows(
+  database: DatabaseSync,
+  runId: string,
+  ownerId: string,
+  canvasId: string,
+) {
+  const rows = database.prepare(`
     SELECT node_id, kind, state, task_id, projection_state, error_code, error_message
     FROM workflow_run_nodes WHERE run_id = ? ORDER BY plan_index
   `).all(runId) as Array<{
@@ -101,6 +117,23 @@ function nodeSummaryRows(database: DatabaseSync, runId: string) {
     state: WorkflowRunSummary["nodes"][number]["state"];
     task_id: string | null;
   }>;
+  return rows.map((node) => {
+    const taskNotice = node.state === "admitted" && node.task_id
+      ? readWorkflowGenerationTaskNotice(database, {
+          canvasId,
+          kind: node.kind,
+          nodeId: node.node_id,
+          ownerId,
+          taskId: node.task_id,
+        })
+      : undefined;
+    return Object.freeze({
+      ...node,
+      effective_error_code: taskNotice?.errorCode ?? node.error_code,
+      effective_error_message: taskNotice?.errorMessage ?? node.error_message,
+      task_notice: taskNotice,
+    });
+  });
 }
 
 function clientSemanticFingerprint(row: Record<string, unknown>) {
@@ -124,6 +157,26 @@ function summary(database: DatabaseSync, row: Record<string, unknown>): Workflow
   `).all(String(row.id)) as Array<{ node_id: string }>).map(({ node_id }) =>
     node_id
   );
+  const nodes = nodeSummaryRows(
+    database,
+    String(row.id),
+    String(row.owner_id),
+    String(row.canvas_id),
+  );
+  const latestTaskNotice = nodes.reduce<WorkflowGenerationTaskNotice | undefined>(
+    (latest, node) => {
+      const notice = node.task_notice;
+      if (!notice) return latest;
+      return !latest || Date.parse(notice.updatedAt) > Date.parse(latest.updatedAt)
+        ? notice
+        : latest;
+    },
+    undefined,
+  );
+  const updatedAt = latestTaskNotice &&
+      Date.parse(latestTaskNotice.updatedAt) > Date.parse(String(row.updated_at))
+    ? latestTaskNotice.updatedAt
+    : String(row.updated_at);
   return Object.freeze({
     canvasId: String(row.canvas_id),
     clientSemanticFingerprint: clientSemanticFingerprint(row),
@@ -133,10 +186,10 @@ function summary(database: DatabaseSync, row: Record<string, unknown>): Workflow
     groupId: String(row.group_id),
     id: String(row.id),
     lockedNodeIds: Object.freeze(lockedNodeIds),
-    nodes: Object.freeze(nodeSummaryRows(database, String(row.id)).map((node) =>
+    nodes: Object.freeze(nodes.map((node) =>
       Object.freeze({
-        ...(node.error_code ? { errorCode: node.error_code } : {}),
-        ...(node.error_message ? { errorMessage: node.error_message } : {}),
+        ...(node.effective_error_code ? { errorCode: node.effective_error_code } : {}),
+        ...(node.effective_error_message ? { errorMessage: node.effective_error_message } : {}),
         id: node.node_id,
         kind: node.kind,
         projectionState: node.projection_state,
@@ -146,7 +199,7 @@ function summary(database: DatabaseSync, row: Record<string, unknown>): Workflow
     )),
     semanticFingerprint: String(row.semantic_fingerprint),
     state: row.state as WorkflowRunSummary["state"],
-    updatedAt: String(row.updated_at),
+    updatedAt,
   });
 }
 
@@ -561,6 +614,41 @@ type ContinuationBuild = Readonly<{
   selectedNodeIds: readonly string[];
 }>;
 
+type WorkflowProjectionReceiptProof = Readonly<{
+  operationId: string;
+  payloadSha256: string;
+}>;
+
+export type HistoricalWorkflowResultSyncInput = Readonly<{
+  canvasId: string;
+  executionAttempt: number;
+  nodeId: string;
+  ownerId: string;
+  runId: string;
+  taskId: string;
+}>;
+
+export type HistoricalWorkflowResultSyncStatus =
+  | "ready"
+  | "applied"
+  | "already-synced"
+  | "current-node-changed"
+  | "insufficient-evidence"
+  | "conflict"
+  | "sync-failed";
+
+export type HistoricalWorkflowResultSyncResult = Readonly<{
+  canvasId: string;
+  executionAttempt: number;
+  nodeId: string;
+  operationId?: string;
+  payloadSha256?: string;
+  reason?: string;
+  runId: string;
+  status: HistoricalWorkflowResultSyncStatus;
+  taskId: string;
+}>;
+
 function continuationError(code: string, message: string, statusCode = 409): never {
   throw new WorkflowContinuationError(code, message, statusCode);
 }
@@ -853,7 +941,17 @@ function frozenTaskSource(
     adoption.executionAttempt === task.attempt
     ? adoption
     : undefined;
-  if (nodeRow.state !== "success" && !adopted) return undefined;
+  const serverProjection = !adopted && nodeRow.state === "failed"
+    ? successfulWorkflowProjectionReceiptProof({
+        database,
+        nodePlan,
+        nodeRow,
+        parentPlan,
+        runRow,
+        task,
+      })
+    : undefined;
+  if (nodeRow.state !== "success" && !adopted && !serverProjection) return undefined;
   if (nodePlan.kind === "text") {
     if (typeof task.resultText !== "string" || task.resultText.trim().length < 1) {
       return undefined;
@@ -866,6 +964,12 @@ function frozenTaskSource(
       }),
       provenance: Object.freeze({
         ...(adopted ? { adoptionReceiptId: adopted.id } : {}),
+        ...(serverProjection
+          ? {
+              serverProjectionOperationId: serverProjection.operationId,
+              serverProjectionPayloadSha256: serverProjection.payloadSha256,
+            }
+          : {}),
         kind: nodePlan.kind,
         nodeId: nodePlan.id,
         source: adopted ? "adopted-result" as const : "successful-task" as const,
@@ -893,6 +997,12 @@ function frozenTaskSource(
     }),
     provenance: Object.freeze({
       ...(adopted ? { adoptionReceiptId: adopted.id } : {}),
+      ...(serverProjection
+        ? {
+            serverProjectionOperationId: serverProjection.operationId,
+            serverProjectionPayloadSha256: serverProjection.payloadSha256,
+          }
+        : {}),
       kind: nodePlan.kind,
       nodeId: nodePlan.id,
       source: adopted ? "adopted-result" as const : "successful-task" as const,
@@ -1550,6 +1660,169 @@ function exactWorkflowTaskBinding(input: {
     input.task.modelConfiguration.generationOwnershipKey;
 }
 
+type HistoricalVideoResultEvidence = Readonly<{
+  assetId: string;
+  providerTaskId: string;
+  publicationAttemptId: string;
+}>;
+
+/**
+ * The historical sync branch is deliberately narrower than the normal
+ * successful-task path.  It only accepts one completed video attempt whose
+ * remote identity, publication slot and ready media row all describe the
+ * same durable result.  A task's success state or asset id by itself is not
+ * enough to authorize a Canvas write.
+ */
+function historicalVideoResultEvidenceInTransaction(
+  database: DatabaseSync,
+  task: WorkflowTask,
+): HistoricalVideoResultEvidence | undefined {
+  const credentialRevision = task.credentialRevision;
+  if (task.kind !== "video" || task.state !== "success" ||
+      !task.ownerId || !task.providerProfileId || !task.providerModelId ||
+      !task.providerTaskId || !task.resultAssetId ||
+      !Number.isSafeInteger(task.attempt) || task.attempt < 1 ||
+      typeof credentialRevision !== "number" ||
+      !Number.isSafeInteger(credentialRevision) || credentialRevision < 0) {
+    return undefined;
+  }
+  const provider = readHistoricalGenerationProviderAttemptInTransaction(
+    database,
+    { taskId: task.id, executionAttempt: task.attempt },
+  );
+  if (!provider || provider.evidence !== "provider-boundary" || provider.task_id !== task.id ||
+      provider.execution_attempt !== task.attempt ||
+      provider.owner_id !== task.ownerId || provider.kind !== "video" ||
+      provider.provider_profile_id !== task.providerProfileId ||
+      provider.provider_model_id !== task.providerModelId ||
+      Number(provider.credential_revision) !== credentialRevision ||
+      provider.outcome !== "completed" ||
+      provider.provider_task_id !== task.providerTaskId ||
+      typeof provider.provider_task_id !== "string" ||
+      provider.provider_task_id.length < 1 ||
+      typeof provider.finished_at !== "string" ||
+      provider.finished_at.length < 1 || !Number.isFinite(Date.parse(provider.finished_at))) {
+    return undefined;
+  }
+
+  const mediaEvidence = executeTransactionScopedCommand(
+    database,
+    readHistoricalVideoResultPublicationCommand,
+    {
+      assetId: task.resultAssetId,
+      executionAttempt: task.attempt,
+      ownerId: task.ownerId,
+      taskId: task.id,
+    },
+  );
+  const rows = mediaEvidence.rows;
+  // A historical single-output repair cannot choose one row from a set of
+  // candidates.  Any second row, including a failed or unmapped row, is
+  // evidence that the old output set needs a different protected procedure.
+  if (rows.length !== 1) return undefined;
+  const publication = rows[0]!;
+  const checksum = publication.checksum_sha256;
+  const assetChecksum = publication.asset_checksum_sha256;
+  const assetByteSize = publication.asset_byte_size;
+  const byteSizeMatches = Number.isSafeInteger(publication.byte_size) &&
+    publication.byte_size > 0 &&
+    Number(publication.byte_size) === Number(assetByteSize);
+  const assetByteSizeValid = typeof assetByteSize === "number" &&
+    Number.isSafeInteger(assetByteSize) && assetByteSize >= 1;
+  const durationMatches = publication.duration_seconds === publication.asset_duration_seconds;
+  const dimensionsMatch = publication.media_width === publication.asset_media_width &&
+    publication.media_height === publication.asset_media_height;
+  if (
+    publication.owner_id !== task.ownerId || publication.kind !== "video" ||
+    publication.asset_owner_id !== task.ownerId || publication.asset_kind !== "video" ||
+    publication.publication_asset_id !== task.resultAssetId ||
+    publication.source !== "generation" || publication.state !== "published" ||
+    publication.task_id !== task.id ||
+    publication.task_execution_attempt !== task.attempt ||
+    publication.output_slot !== 0 || publication.output_set_count !== 1 ||
+    publication.error_code !== null || publication.adopted_at !== null ||
+    publication.adopted_canvas_id !== null ||
+    publication.asset_storage_status !== "ready" ||
+    publication.storage_backend !== publication.asset_storage_backend ||
+    publication.storage_profile_id !== publication.asset_storage_profile_id ||
+    publication.final_storage_name !== publication.asset_storage_name ||
+    publication.object_key !== publication.asset_object_key ||
+    publication.content_type !== publication.asset_content_type ||
+    !byteSizeMatches || checksum === null || assetChecksum === null ||
+    !/^[0-9a-f]{64}$/.test(checksum) ||
+    !/^[0-9a-f]{64}$/.test(assetChecksum) || checksum !== assetChecksum ||
+    !durationMatches || publication.duration_source !== publication.asset_duration_source ||
+    !dimensionsMatch ||
+    !assetByteSizeValid ||
+    !publication.asset_storage_name || !publication.asset_object_key ||
+    typeof publication.asset_content_type !== "string" ||
+    !publication.asset_content_type.startsWith("video/") ||
+    publication.asset_duration_status === "failed"
+  ) return undefined;
+  if (mediaEvidence.deletionFound) return undefined;
+  return Object.freeze({
+    assetId: task.resultAssetId,
+    providerTaskId: task.providerTaskId,
+    publicationAttemptId: publication.attempt_id,
+  });
+}
+
+function successfulWorkflowProjectionReceiptProof(input: Readonly<{
+  database: DatabaseSync;
+  nodePlan: StoredNodePlan;
+  nodeRow: WorkflowNodeRow;
+  parentPlan: StoredWorkflowPlan;
+  runRow: Record<string, unknown>;
+  task: WorkflowTask;
+}>): WorkflowProjectionReceiptProof | undefined {
+  const ownerId = String(input.runRow.owner_id ?? "");
+  const canvasId = String(input.runRow.canvas_id ?? "");
+  const runId = String(input.runRow.id ?? "");
+  if (!exactWorkflowTaskBinding({
+    nodePlan: input.nodePlan,
+    nodeRow: input.nodeRow as unknown as Record<string, unknown>,
+    plan: input.parentPlan,
+    runRow: input.runRow,
+    task: input.task,
+  })) return undefined;
+  if (!historicalVideoResultEvidenceInTransaction(input.database, input.task)) {
+    return undefined;
+  }
+  const built = buildCanvasProjectionIdentity({
+    canvasId,
+    database: input.database,
+    kind: input.nodePlan.kind,
+    nodeId: input.nodePlan.id,
+    ownerId,
+    runId,
+    taskId: input.task.id,
+  });
+  if (built.status !== "ready" || !built.projection.bindingMatches) return undefined;
+  const projection = built.projection;
+  const receipt = readCanvasServerProjectionReceiptInTransaction(
+    input.database,
+    { canvasId, operationId: projection.operationId, ownerId },
+  );
+  if (!receipt || receipt.operation_id !== projection.operationId ||
+      receipt.actor_type !== "server" || receipt.command_type !== "server.projection" ||
+      !["APPLIED", "NO_OP"].includes(receipt.outcome) ||
+      receipt.conflict_code !== null || Number(receipt.http_status) !== 200 ||
+      receipt.payload_sha256 !== projection.payloadSha256 ||
+      !/^[0-9a-f]{64}$/i.test(receipt.payload_sha256)) return undefined;
+  if (!canvasProjectionPatchMatchesInTransaction({
+    canvasId,
+    database: input.database,
+    kind: projection.kind,
+    nodeId: projection.nodeId,
+    ownerId,
+    patch: projection.patch,
+  })) return undefined;
+  return Object.freeze({
+    operationId: projection.operationId,
+    payloadSha256: projection.payloadSha256,
+  });
+}
+
 /**
  * Read the Workflow side of a historical result-adoption transaction.
  *
@@ -1722,25 +1995,196 @@ function reconcileAdmittingWorkflowNodes(
   }
 }
 
+function continuationMediaIdentityMatchesNode(
+  input: WorkflowContinuationExternalInput,
+  node: StoredWorkflowPlan["externalNodes"][number],
+) {
+  if (input.kind === "text") {
+    if (node.type !== "text") return false;
+    const content = node.data.content;
+    return input.sourceTextSha256 === undefined ||
+      (typeof content === "string" && sha256Text(content) === input.sourceTextSha256);
+  }
+  if (node.type !== input.kind) return false;
+  const data = node.data as Record<string, unknown>;
+  return data.assetId === input.sourceAssetId &&
+    data.sourceAssetByteSize === input.sourceAssetByteSize &&
+    data.sourceAssetContentType === input.sourceAssetContentType &&
+    data.sourceAssetObjectKey === input.sourceAssetObjectKey &&
+    data.sourceAssetSha256 === input.sourceAssetSha256 &&
+    data.sourceAssetStorageBackend === input.sourceAssetStorageBackend &&
+    data.sourceAssetStorageName === input.sourceAssetStorageName &&
+    data.sourceAssetStorageProfileId === input.sourceAssetStorageProfileId;
+}
+
+function assertHistoricalContinuationSources(
+  database: DatabaseSync,
+  ownerId: string,
+  canvasId: string,
+  childRunId: string,
+  externalNodes: StoredWorkflowPlan["externalNodes"],
+) {
+  const relation = database.prepare(`
+    SELECT parent_run_id, canonical_adoption_receipt_id,
+           frozen_external_inputs_json
+    FROM workflow_run_continuations
+    WHERE owner_id = ? AND child_run_id = ?
+  `).get(ownerId, childRunId) as
+    | {
+        canonical_adoption_receipt_id: string | null;
+        frozen_external_inputs_json: string;
+        parent_run_id: string;
+      }
+    | undefined;
+  if (!relation) return;
+  let frozenInputs: WorkflowContinuationExternalInput[];
+  try {
+    const raw = JSON.parse(relation.frozen_external_inputs_json);
+    if (!Array.isArray(raw)) throw new Error("external input list is not an array");
+    frozenInputs = raw.map(parseWorkflowContinuationExternalInput);
+  } catch {
+    throw new Error("后继冻结来源记录无法安全读取，未提交生成");
+  }
+  const nodesById = new Map(externalNodes.map((node) => [node.id, node]));
+  const inputsById = new Map(frozenInputs.map((input) => [input.nodeId, input]));
+  if (nodesById.size !== externalNodes.length ||
+      inputsById.size !== frozenInputs.length ||
+      nodesById.size !== inputsById.size ||
+      [...nodesById.keys()].some((id) => !inputsById.has(id))) {
+    throw new Error("后继冻结来源与执行计划不一致，未提交生成");
+  }
+  for (const input of frozenInputs) {
+    if (input.sourceRunId !== undefined && input.sourceRunId !== relation.parent_run_id) {
+      throw new Error("后继冻结来源整组身份不一致，未提交生成");
+    }
+    const node = nodesById.get(input.nodeId);
+    if (!node || !continuationMediaIdentityMatchesNode(input, node)) {
+      throw new Error("后继冻结媒体身份已变化，未提交生成");
+    }
+    const hasProjectionProof = input.serverProjectionOperationId !== undefined ||
+      input.serverProjectionPayloadSha256 !== undefined;
+    if (!hasProjectionProof) {
+      if (input.source === "successful-task" && input.sourceRunId && input.sourceTaskId) {
+        const parentNode = database.prepare(`
+          SELECT state, task_id FROM workflow_run_nodes
+          WHERE run_id = ? AND owner_id = ? AND node_id = ?
+        `).get(input.sourceRunId, ownerId, input.nodeId) as
+          | { state: string; task_id: string | null }
+          | undefined;
+        if (parentNode?.state === "failed" && parentNode.task_id === input.sourceTaskId) {
+          throw new Error("后继失败节点缺少成功投影证明，未提交生成");
+        }
+      }
+      continue;
+    }
+    if (input.source !== "successful-task" || input.kind !== "video" ||
+        relation.canonical_adoption_receipt_id !== null ||
+        !input.sourceRunId || !input.sourceTaskId || !input.sourceAssetId) {
+      throw new Error("后继成功来源证明身份无效，未提交生成");
+    }
+    const parentRun = database.prepare(`
+      SELECT * FROM workflow_runs WHERE id = ? AND owner_id = ?
+    `).get(input.sourceRunId, ownerId) as Record<string, unknown> | undefined;
+    if (!parentRun || String(parentRun.state) !== "failed" ||
+        String(parentRun.canvas_id) !== canvasId) {
+      throw new Error("后继成功来源原整组身份无效，未提交生成");
+    }
+    let parentPlan: StoredWorkflowPlan;
+    try {
+      parentPlan = parsePlan(parentRun.plan_json);
+    } catch {
+      throw new Error("后继成功来源原计划无效，未提交生成");
+    }
+    const nodePlan = parentPlan.nodes.find(({ id }) => id === input.nodeId);
+    const nodeRow = database.prepare(`
+      SELECT * FROM workflow_run_nodes
+      WHERE run_id = ? AND owner_id = ? AND node_id = ?
+    `).get(input.sourceRunId, ownerId, input.nodeId) as WorkflowNodeRow | undefined;
+    if (!nodePlan || !nodeRow || nodeRow.state !== "failed" ||
+        nodeRow.task_id !== input.sourceTaskId) {
+      throw new Error("后继成功来源原节点身份无效，未提交生成");
+    }
+    const task = generationTaskApplication.readGenerationTaskInTransaction(
+      database,
+      input.sourceTaskId,
+    );
+    const proof = task && successfulWorkflowProjectionReceiptProof({
+      database,
+      nodePlan,
+      nodeRow,
+      parentPlan,
+      runRow: parentRun,
+      task,
+    });
+    if (!proof || proof.operationId !== input.serverProjectionOperationId ||
+        proof.payloadSha256 !== input.serverProjectionPayloadSha256 ||
+        task?.resultAssetId !== input.sourceAssetId) {
+      throw new Error("后继成功来源投影证明已失效，未提交生成");
+    }
+  }
+}
+
 function assertFrozenExternalMediaInputs(
   database: DatabaseSync,
   ownerId: string,
+  canvasId: string,
+  childRunId: string,
   externalNodes: StoredWorkflowPlan["externalNodes"],
 ) {
-  for (const node of externalNodes) {
-    if (node.type === "text" ||
-        !Object.keys(node.data).some((key) => key.startsWith("sourceAsset"))) continue;
-    const expected = mediaIdentityFromExternalNode(
-      node.type,
-      node.data as Record<string, unknown>,
+  const ownsSnapshot = !database.isTransaction;
+  if (ownsSnapshot) database.exec("BEGIN");
+  try {
+    assertHistoricalContinuationSources(
+      database,
+      ownerId,
+      canvasId,
+      childRunId,
+      externalNodes,
     );
-    const actual = expected
-      ? readReadyMediaIdentityInTransaction(database, ownerId, node.type, expected.assetId)
-      : undefined;
-    if (!sameFrozenMediaIdentity(actual, expected)) {
-      throw new Error("冻结媒体输入已变化或无法完整核验，未提交生成");
+    for (const node of externalNodes) {
+      if (node.type === "text" ||
+          !Object.keys(node.data).some((key) => key.startsWith("sourceAsset"))) continue;
+      const expected = mediaIdentityFromExternalNode(
+        node.type,
+        node.data as Record<string, unknown>,
+      );
+      const actual = expected
+        ? readReadyMediaIdentityInTransaction(database, ownerId, node.type, expected.assetId)
+        : undefined;
+      if (!sameFrozenMediaIdentity(actual, expected)) {
+        throw new Error("冻结媒体输入已变化或无法完整核验，未提交生成");
+      }
     }
+    if (ownsSnapshot) database.exec("COMMIT");
+  } catch (error) {
+    if (ownsSnapshot && database.isTransaction) database.exec("ROLLBACK");
+    throw error;
   }
+}
+
+/**
+ * Safe-test seam for exercising the same frozen-source gate used immediately
+ * before workflow task admission.  It is read-only and deliberately absent
+ * outside the isolated test runtime; production callers reach the check only
+ * through admitWorkflowNode.
+ */
+export function assertWorkflowContinuationSourcesForRuntimeTest(input: {
+  canvasId: string;
+  childRunId: string;
+  database: DatabaseSync;
+  externalNodes: StoredWorkflowPlan["externalNodes"];
+  ownerId: string;
+}) {
+  if (process.env.UNBOUNDRY_SAFE_TEST !== "1") {
+    throw new Error("Workflow continuation source test seam is unavailable");
+  }
+  assertFrozenExternalMediaInputs(
+    input.database,
+    input.ownerId,
+    input.canvasId,
+    input.childRunId,
+    input.externalNodes,
+  );
 }
 
 async function admitWorkflowNode(input: {
@@ -1810,6 +2254,8 @@ async function admitWorkflowNode(input: {
   assertFrozenExternalMediaInputs(
     input.database,
     String(input.runRow.owner_id),
+    String(input.runRow.canvas_id),
+    runId,
     input.plan.externalNodes,
   );
   const graphNodes = input.plan.externalNodes.map((node) => {
@@ -1987,6 +2433,8 @@ async function admitWorkflowNode(input: {
   assertFrozenExternalMediaInputs(
     input.database,
     String(input.runRow.owner_id),
+    String(input.runRow.canvas_id),
+    runId,
     input.plan.externalNodes,
   );
   const admitted = admitPreparedGenerationTask({
@@ -2027,6 +2475,8 @@ async function admitWorkflowNode(input: {
     beforeCommit: ({ database }) => assertFrozenExternalMediaInputs(
       database,
       String(input.runRow.owner_id),
+      String(input.runRow.canvas_id),
+      runId,
       input.plan.externalNodes,
     ),
   });
@@ -2051,6 +2501,280 @@ function projectWorkflowNode(database: DatabaseSync, input: {
     ownerId: String(input.runRow.owner_id),
     runId: String(input.runRow.id),
     taskId: input.taskId,
+  });
+}
+
+function historicalResultSyncResult(
+  input: HistoricalWorkflowResultSyncInput,
+  status: HistoricalWorkflowResultSyncStatus,
+  extra: Readonly<Partial<HistoricalWorkflowResultSyncResult>> = {},
+) {
+  return Object.freeze({
+    ...extra,
+    canvasId: input.canvasId,
+    executionAttempt: input.executionAttempt,
+    nodeId: input.nodeId,
+    runId: input.runId,
+    status,
+    taskId: input.taskId,
+  });
+}
+
+/**
+ * Read-only scope and identity gate for the one historical incident shape:
+ * a failed workflow/node whose original task is already successful.  The
+ * Canvas receipt is the proof that lets a continuation freeze that result;
+ * no generation-result adoption row is accepted by this path.
+ */
+export function inspectHistoricalWorkflowResultSyncInTransaction(
+  database: DatabaseSync,
+  input: HistoricalWorkflowResultSyncInput,
+): HistoricalWorkflowResultSyncResult {
+  if (!database.isTransaction) {
+    throw new Error("Historical workflow result inspection requires an active transaction");
+  }
+  const invalidScope = [
+    input.canvasId,
+    input.nodeId,
+    input.ownerId,
+    input.runId,
+    input.taskId,
+  ].some((value) => typeof value !== "string" || value.length < 1 || value.length > 256);
+  if (invalidScope || !Number.isSafeInteger(input.executionAttempt) || input.executionAttempt < 1) {
+    return historicalResultSyncResult(input, "insufficient-evidence", {
+      reason: "历史结果同步范围或尝试次数无效",
+    });
+  }
+  const run = database.prepare(`
+    SELECT * FROM workflow_runs
+    WHERE id = ? AND owner_id = ? AND canvas_id = ?
+  `).get(input.runId, input.ownerId, input.canvasId) as Record<string, unknown> | undefined;
+  if (!run || String(run.state) !== "failed" || Number(run.stop_requested) === 1) {
+    return historicalResultSyncResult(input, "insufficient-evidence", {
+      reason: "原整组执行不是可同步的失败记录",
+    });
+  }
+  let parentPlan: StoredWorkflowPlan;
+  try {
+    parentPlan = parsePlan(run.plan_json);
+  } catch {
+    return historicalResultSyncResult(input, "insufficient-evidence", {
+      reason: "原整组计划无法安全读取",
+    });
+  }
+  if (String(run.semantic_fingerprint) !== parentPlan.semanticFingerprint) {
+    return historicalResultSyncResult(input, "insufficient-evidence", {
+      reason: "原整组计划身份不一致",
+    });
+  }
+  const nodeRow = database.prepare(`
+    SELECT node_id, kind, plan_index, dependencies_json, idempotency_key,
+           state, task_id, projection_state, error_code, error_message
+    FROM workflow_run_nodes
+    WHERE run_id = ? AND owner_id = ? AND node_id = ?
+  `).get(input.runId, input.ownerId, input.nodeId) as WorkflowNodeRow | undefined;
+  const nodePlan = parentPlan.nodes.find(({ id }) => id === input.nodeId);
+  if (!nodeRow || !nodePlan || nodeRow.state !== "failed" ||
+      nodeRow.task_id !== input.taskId) {
+    return historicalResultSyncResult(input, "insufficient-evidence", {
+      reason: "原失败节点与任务范围不一致",
+    });
+  }
+  const task = generationTaskApplication.readGenerationTaskInTransaction(
+    database,
+    input.taskId,
+  );
+  if (!task || task.state !== "success" || task.attempt !== input.executionAttempt ||
+      task.ownerId !== input.ownerId || task.canvasId !== input.canvasId ||
+      task.nodeId !== input.nodeId || task.kind !== nodePlan.kind ||
+      !historicalVideoResultEvidenceInTransaction(database, task) ||
+      !exactWorkflowTaskBinding({
+        nodePlan,
+        nodeRow: nodeRow as unknown as Record<string, unknown>,
+        plan: parentPlan,
+        runRow: run,
+        task,
+      })) {
+    return historicalResultSyncResult(input, "insufficient-evidence", {
+      reason: "成功任务尚未通过完整工作流身份核验",
+    });
+  }
+  let graph;
+  try {
+    graph = readPersistedCanvasGraph({
+      canvasId: input.canvasId,
+      database,
+      ownerId: input.ownerId,
+    });
+  } catch {
+    return historicalResultSyncResult(input, "current-node-changed", {
+      reason: "当前画布无法安全核对",
+    });
+  }
+  if (graph.graphRevision !== Number(run.graph_revision)) {
+    return historicalResultSyncResult(input, "current-node-changed", {
+      reason: "当前画布已变化，原结果保留在任务记录中",
+    });
+  }
+  try {
+    const semantic = compileFrozenWorkflowSemanticPlan({
+      edges: graph.edges,
+      groupId: parentPlan.groupId,
+      nodes: graph.nodes,
+    });
+    if (semantic.semanticFingerprint !== parentPlan.clientSemanticFingerprint) {
+      return historicalResultSyncResult(input, "current-node-changed", {
+        reason: "当前画布输入已变化，原结果保留在任务记录中",
+      });
+    }
+  } catch {
+    return historicalResultSyncResult(input, "current-node-changed", {
+      reason: "当前画布无法与原整组执行匹配",
+    });
+  }
+  const built = buildCanvasProjectionIdentity({
+    canvasId: input.canvasId,
+    database,
+    kind: nodePlan.kind,
+    nodeId: input.nodeId,
+    ownerId: input.ownerId,
+    runId: input.runId,
+    taskId: input.taskId,
+  });
+  if (built.status !== "ready" || !built.projection.bindingMatches) {
+    return historicalResultSyncResult(input, "insufficient-evidence", {
+      reason: built.status === "failed"
+        ? built.reason
+        : "当前画布节点绑定已变化",
+    });
+  }
+  const projection = built.projection;
+  const receipt = readCanvasServerProjectionReceiptInTransaction(
+    database,
+    {
+      canvasId: input.canvasId,
+      operationId: projection.operationId,
+      ownerId: input.ownerId,
+    },
+  );
+  const base = {
+    operationId: projection.operationId,
+    payloadSha256: projection.payloadSha256,
+  };
+  if (receipt) {
+    if (receipt.operation_id !== projection.operationId ||
+        receipt.actor_type !== "server" || receipt.command_type !== "server.projection" ||
+        receipt.payload_sha256 !== projection.payloadSha256 ||
+        !/^[0-9a-f]{64}$/i.test(receipt.payload_sha256) ||
+        !["APPLIED", "NO_OP", "REJECTED_CONFLICT"].includes(receipt.outcome) ||
+        Number(receipt.http_status) !== (receipt.outcome === "REJECTED_CONFLICT" ? 409 : 200) ||
+        (receipt.outcome === "REJECTED_CONFLICT"
+          ? !receipt.conflict_code
+          : receipt.conflict_code !== null)) {
+      return historicalResultSyncResult(input, "insufficient-evidence", {
+        ...base,
+        reason: "Canvas投影收据身份或状态不一致",
+      });
+    }
+    if (receipt.outcome === "REJECTED_CONFLICT") {
+      return historicalResultSyncResult(input, "conflict", {
+        ...base,
+        reason: "Canvas投影已记录冲突，未覆盖当前节点",
+      });
+    }
+    if (!canvasProjectionPatchMatchesInTransaction({
+      canvasId: input.canvasId,
+      database,
+      kind: projection.kind,
+      nodeId: input.nodeId,
+      ownerId: input.ownerId,
+      patch: projection.patch,
+    })) {
+      return historicalResultSyncResult(input, "current-node-changed", {
+        ...base,
+        reason: "投影收据存在，但当前节点内容已变化",
+      });
+    }
+    return historicalResultSyncResult(input, "already-synced", base);
+  }
+  return historicalResultSyncResult(input, "ready", base);
+}
+
+/**
+ * Apply the narrow historical projection after the read-only gate.  It leaves
+ * the failed run/node and generation task ledger untouched; the existing
+ * server.projection gateway owns the Canvas mutation and durable receipt.
+ */
+export function syncHistoricalWorkflowResultInTransaction(
+  database: DatabaseSync,
+  input: HistoricalWorkflowResultSyncInput,
+): HistoricalWorkflowResultSyncResult {
+  if (!database.isTransaction) {
+    throw new Error("Historical workflow result sync requires an active transaction");
+  }
+  const before = inspectHistoricalWorkflowResultSyncInTransaction(database, input);
+  if (before.status !== "ready") return before;
+  const run = database.prepare(`
+    SELECT * FROM workflow_runs WHERE id = ? AND owner_id = ? AND canvas_id = ?
+  `).get(input.runId, input.ownerId, input.canvasId) as Record<string, unknown> | undefined;
+  if (!run) {
+    return historicalResultSyncResult(input, "insufficient-evidence", {
+      ...before,
+      reason: "原整组执行在同步前消失",
+    });
+  }
+  const parentPlan = parsePlan(run.plan_json);
+  const nodePlan = parentPlan.nodes.find(({ id }) => id === input.nodeId);
+  if (!nodePlan) {
+    return historicalResultSyncResult(input, "insufficient-evidence", {
+      ...before,
+      reason: "原整组节点计划在同步前消失",
+    });
+  }
+  database.exec("SAVEPOINT historical_result_sync");
+  let projectionResult: ReturnType<typeof projectWorkflowNode>;
+  try {
+    projectionResult = projectWorkflowNode(database, {
+      nodePlan,
+      runRow: run,
+      taskId: input.taskId,
+    });
+  } catch (error) {
+    database.exec("ROLLBACK TO SAVEPOINT historical_result_sync");
+    database.exec("RELEASE SAVEPOINT historical_result_sync");
+    throw error;
+  }
+  if (projectionResult === "conflict") {
+    database.exec("RELEASE SAVEPOINT historical_result_sync");
+    return historicalResultSyncResult(input, "conflict", {
+      ...before,
+      reason: "Canvas投影检测到当前节点冲突，未覆盖当前内容",
+    });
+  }
+  if (projectionResult !== "applied") {
+    database.exec("RELEASE SAVEPOINT historical_result_sync");
+    return historicalResultSyncResult(input, "sync-failed", {
+      ...before,
+      reason: "Canvas投影未成功完成",
+    });
+  }
+  const after = inspectHistoricalWorkflowResultSyncInTransaction(database, input);
+  if (after.status === "already-synced") {
+    database.exec("RELEASE SAVEPOINT historical_result_sync");
+    return historicalResultSyncResult(input, "applied", {
+      operationId: after.operationId,
+      payloadSha256: after.payloadSha256,
+    });
+  }
+  // A successful gateway write without a matching readback is unsafe.  Keep
+  // the caller's outer transaction alive, but erase both the new Canvas
+  // document and its server.projection receipt before reporting failure.
+  database.exec("ROLLBACK TO SAVEPOINT historical_result_sync");
+  database.exec("RELEASE SAVEPOINT historical_result_sync");
+  return historicalResultSyncResult(input, "sync-failed", {
+    operationId: before.operationId,
+    payloadSha256: before.payloadSha256,
+    reason: after.reason ?? "Canvas投影完成后读回核对失败",
   });
 }
 

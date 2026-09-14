@@ -21,7 +21,12 @@ import {
   latestGenerationProviderAttemptInTransaction,
 } from "./generationAttemptQueries";
 import {
+  originalRecoveryWindow,
+  recoveryPublicationState,
+} from "./generationRecoveryTaskQueries";
+import {
   workflowRunAdmissionAuthorityInTransaction,
+  workflowRunEligibleForAutomaticVideoRecoveryInTransaction,
   workflowRunLockOwnerInTransaction,
 } from "./workflowRunLocks";
 export { generationProviderAttemptCounts } from "./generationAttemptQueries";
@@ -201,6 +206,20 @@ export type GenerationTaskEvent = {
   state: GenerationTaskState;
   taskId: string;
 };
+
+/** Durable task/event codes for an automatic recovery window that ended. */
+export const automaticRecoveryWindowExhaustedCode =
+  "AUTOMATIC_RECOVERY_WINDOW_EXHAUSTED" as const;
+export const automaticRecoveryWindowExhaustedEventCode =
+  "AUTOMATIC_RECOVERY_WINDOW_EXHAUSTED_V1" as const;
+export const automaticRecoveryWindowExhaustedMessage =
+  "平台结果仍未确认；自动恢复窗口已结束，系统已停止自动查询，不会重复提交付费请求" as const;
+export const automaticRecoveryPendingCode =
+  "AUTOMATIC_RECOVERY_PENDING" as const;
+export const automaticRecoveryPendingEventCode =
+  "AUTOMATIC_RECOVERY_PENDING_V1" as const;
+export const automaticRecoveryPendingMessage =
+  "恢复所需的原始期限证据不完整；系统已保留原请求并等待维护处理，不会重复提交付费请求" as const;
 
 type GenerationTaskRow = {
   actual_cost_microunits: number | null;
@@ -930,6 +949,249 @@ export function createGenerationTaskStore(
       task_id, execution_attempt, owner_id, kind, admission_type, created_at
     ) VALUES (?, ?, ?, ?, ?, ?)
   `);
+
+  function recoveryWindowMarkerExists(
+    taskId: string,
+    attempt: number,
+    providerTaskId: string | null,
+  ) {
+    const marker = database.prepare(`
+      SELECT error_message
+      FROM generation_task_events
+      WHERE task_id = ? AND error_code IN (?, ?) AND state = 'recovering'
+      ORDER BY id DESC
+      LIMIT 1
+    `).get(
+      taskId,
+      automaticRecoveryWindowExhaustedEventCode,
+      automaticRecoveryPendingEventCode,
+    ) as
+      | { error_message: string | null }
+      | undefined;
+    if (!marker) return false;
+    if (!marker.error_message || marker.error_message.length > 2_048) return true;
+    try {
+      const payload = JSON.parse(marker.error_message) as Record<string, unknown>;
+      return payload.version === 1 &&
+        [
+          "automatic-recovery-window-exhausted",
+          "automatic-recovery-pending",
+        ].includes(payload.marker as string) &&
+        payload.taskId === taskId &&
+        payload.executionAttempt === attempt &&
+        payload.providerTaskId === providerTaskId;
+    } catch {
+      // A damaged exhaustion marker must fail closed: another automatic GET
+      // is less safe than leaving the task in maintenance for inspection.
+      return true;
+    }
+  }
+
+  /**
+   * The deadline marker is deliberately narrower than generic recovery. It
+   * applies only to a still-running, admitted modern workflow video whose
+   * frozen contract names the relay media-generate protocol. Older protocols,
+   * single-node tasks, terminal runs, and malformed bindings retain their
+   * existing recovery paths.
+   */
+  function isEligibleActiveWorkflowVideoInTransaction(
+    current: GenerationTaskRow,
+  ) {
+    if (
+      current.kind !== "video" || !current.owner_id ||
+      !current.provider_task_id
+    ) return false;
+    let configuration: Record<string, unknown>;
+    try {
+      configuration = parsePersistedRecordJson(
+        current.model_configuration,
+        "任务冻结模型合同",
+      );
+    } catch {
+      return false;
+    }
+    if (
+      configuration.generationIdentityVersion !== 2 ||
+      configuration.providerDriver !== "multi-protocol-relay" ||
+      configuration.providerProtocol !== "media-generate" ||
+      configuration.modelCapability !== "video" ||
+      configuration.providerModelId !== current.provider_model_id ||
+      configuration.providerProfileId !== current.provider_profile_id ||
+      typeof configuration.modelId !== "string" ||
+      typeof configuration.modelConfigurationRevision !== "string" ||
+      typeof configuration.modelInputContractFingerprint !== "string" ||
+      configuration.modelInputContractFingerprint.length < 1 ||
+      !recordValue(configuration.modelReleaseRevision) ||
+      typeof configuration.modelReleaseRevision.revisionId !== "string" ||
+      !recordValue(configuration.workflowBinding)
+    ) return false;
+    const binding = configuration.workflowBinding;
+    const releaseRevision = configuration.modelReleaseRevision.revisionId;
+    if (
+      typeof binding.runId !== "string" || binding.runId.length < 1 ||
+      typeof binding.groupId !== "string" || binding.groupId.length < 1 ||
+      typeof binding.generationInputKey !== "string" ||
+      typeof binding.generationOwnershipKey !== "string" ||
+      typeof binding.modelConfigurationRevision !== "string" ||
+      typeof binding.modelReleaseRevision !== "string" ||
+      typeof binding.reservationId !== "string" ||
+      binding.generationInputKey !== configuration.generationInputKey ||
+      binding.generationOwnershipKey !== configuration.generationOwnershipKey ||
+      binding.modelConfigurationRevision !==
+        configuration.modelConfigurationRevision ||
+      binding.modelReleaseRevision !== releaseRevision ||
+      binding.reservationId.length < 1
+    ) return false;
+    return workflowRunEligibleForAutomaticVideoRecoveryInTransaction({
+      canvasId: current.canvas_id,
+      database,
+      groupId: binding.groupId,
+      nodeId: current.node_id,
+      ownerId: current.owner_id,
+      taskId: current.id,
+      expectedIdempotencyKey: current.idempotency_key,
+      expectedModelConfigurationRevision:
+        configuration.modelConfigurationRevision,
+      expectedModelId: configuration.modelId,
+      expectedModelReleaseRevision: releaseRevision,
+      expectedReservationId: binding.reservationId,
+      runId: binding.runId,
+    });
+  }
+
+  /**
+   * Record the end of the original automatic recovery window in the same
+   * transaction that changes the task message. The marker is only valid for
+   * a task with an exact accepted Provider id and no pending local
+   * publication; unknown/no-id attempts stay on their existing case path.
+   */
+  function markRecoveryWindowExhaustedInTransaction(
+    current: GenerationTaskRow,
+    nowMs: number,
+  ) {
+    const markerExists = recoveryWindowMarkerExists(
+      current.id,
+      current.attempt,
+      current.provider_task_id,
+    );
+    if (
+      current.state !== "recovering" || !current.provider_task_id ||
+      markerExists || !isEligibleActiveWorkflowVideoInTransaction(current)
+    ) return markerExists;
+    const providerTaskId = current.provider_task_id;
+    const pendingTimestamp = new Date(
+      Number.isFinite(nowMs) ? nowMs : Date.now(),
+    ).toISOString();
+    const publication = recoveryPublicationState(database, current.id);
+    if (publication.pending || publication.conflict) return false;
+    const markPending = (reason: string) => {
+      const marker = {
+        executionAttempt: current.attempt,
+        marker: "automatic-recovery-pending",
+        providerTaskId,
+        reason,
+        taskId: current.id,
+        version: 1,
+      };
+      const updated = database.prepare(`
+        UPDATE generation_tasks
+        SET error_code = ?, error_message = ?, updated_at = ?
+        WHERE id = ? AND state = 'recovering' AND attempt = ?
+          AND provider_task_id = ? AND updated_at = ?
+      `).run(
+        automaticRecoveryPendingCode,
+        automaticRecoveryPendingMessage,
+        pendingTimestamp,
+        current.id,
+        current.attempt,
+        providerTaskId,
+        current.updated_at,
+      );
+      if (updated.changes !== 1) return false;
+      recordEvent.run(
+        current.id,
+        "recovering",
+        automaticRecoveryPendingEventCode,
+        JSON.stringify(marker),
+        pendingTimestamp,
+      );
+      return true;
+    };
+    const attempt = providerAttemptForTask(current);
+    if (
+      !attempt || attempt.execution_attempt !== current.attempt ||
+      attempt.provider_task_id !== providerTaskId ||
+      !["accepted", "response-received"].includes(attempt.outcome)
+    ) return markPending("provider-attempt-evidence-unavailable");
+    const window = originalRecoveryWindow(database, current.id);
+    if (!window) return markPending("recovery-deadline-unavailable");
+    const automaticDeadlineMs = window
+      ? Date.parse(window.automaticDeadlineAt)
+      : Number.NaN;
+    const providerDeadlineMs = Date.parse(window.providerDeadlineAt);
+    if (!Number.isFinite(automaticDeadlineMs) ||
+        !Number.isFinite(providerDeadlineMs)) {
+      return markPending("recovery-deadline-invalid");
+    }
+    if (!Number.isFinite(nowMs) || nowMs < automaticDeadlineMs) return false;
+    const timestamp = new Date(nowMs).toISOString();
+    const marker = {
+      automaticDeadlineAt: window.automaticDeadlineAt,
+      attemptStartedAt: window.attemptStartedAt,
+      executionAttempt: current.attempt,
+      marker: "automatic-recovery-window-exhausted",
+      providerDeadlineAt: window.providerDeadlineAt,
+      providerTaskId,
+      taskId: current.id,
+      version: 1,
+    };
+    const updated = database.prepare(`
+      UPDATE generation_tasks
+      SET error_code = ?, error_message = ?, updated_at = ?
+      WHERE id = ? AND state = 'recovering' AND attempt = ?
+        AND provider_task_id = ? AND updated_at = ?
+    `).run(
+      automaticRecoveryWindowExhaustedCode,
+      automaticRecoveryWindowExhaustedMessage,
+      timestamp,
+      current.id,
+      current.attempt,
+      providerTaskId,
+      current.updated_at,
+    );
+    if (updated.changes !== 1) return false;
+    recordEvent.run(
+      current.id,
+      "recovering",
+      automaticRecoveryWindowExhaustedEventCode,
+      JSON.stringify(marker),
+      timestamp,
+    );
+    return true;
+  }
+
+  function isRecoveryWindowExhaustedInTransaction(current: GenerationTaskRow) {
+    return current.state === "recovering" &&
+      current.error_code === automaticRecoveryWindowExhaustedCode &&
+      Boolean(current.provider_task_id) &&
+      recoveryWindowMarkerExists(
+        current.id,
+        current.attempt,
+        current.provider_task_id,
+      );
+  }
+
+  function isAutomaticRecoveryStoppedInTransaction(current: GenerationTaskRow) {
+    return current.state === "recovering" &&
+      (current.error_code === automaticRecoveryWindowExhaustedCode ||
+        current.error_code === automaticRecoveryPendingCode) &&
+      Boolean(current.provider_task_id) &&
+      recoveryWindowMarkerExists(
+        current.id,
+        current.attempt,
+        current.provider_task_id,
+      );
+  }
 
   function hasOriginalRecoveryOnly(taskId: string) {
     const task = readById.get(taskId) as GenerationTaskRow | undefined;
@@ -2454,6 +2716,76 @@ export function createGenerationTaskStore(
       ).map(toTask);
     },
 
+    /** True only after the task and its tamper-evident exhaustion event agree. */
+    isRecoveryWindowExhausted(taskId: string) {
+      if (!identifierPattern.test(taskId) || taskId.length > 120) {
+        throw new Error("Invalid generation task ID");
+      }
+      const current = readById.get(taskId) as GenerationTaskRow | undefined;
+      return current ? isRecoveryWindowExhaustedInTransaction(current) : false;
+    },
+
+    /** True when automatic recovery is durably stopped for this attempt. */
+    isAutomaticRecoveryStopped(taskId: string) {
+      if (!identifierPattern.test(taskId) || taskId.length > 120) {
+        throw new Error("Invalid generation task ID");
+      }
+      const current = readById.get(taskId) as GenerationTaskRow | undefined;
+      return current ? isAutomaticRecoveryStoppedInTransaction(current) : false;
+    },
+
+    /**
+     * The runtime may preserve a post-boundary error only for the exact
+     * modern active-workflow video candidate.  Keep the workflow tables behind
+     * their transaction-scoped port instead of letting generation code infer
+     * eligibility from a task's JSON alone.
+     */
+    isEligibleActiveWorkflowVideo(taskId: string) {
+      if (!identifierPattern.test(taskId) || taskId.length > 120) {
+        throw new Error("Invalid generation task ID");
+      }
+      database.exec("BEGIN");
+      try {
+        const current = readById.get(taskId) as GenerationTaskRow | undefined;
+        const eligible = current
+          ? isEligibleActiveWorkflowVideoInTransaction(current)
+          : false;
+        database.exec("COMMIT");
+        return eligible;
+      } catch (error) {
+        database.exec("ROLLBACK");
+        throw error;
+      }
+    },
+
+    /**
+     * Persist an automatic recovery deadline without terminalizing the task.
+     * This is intentionally a short synchronous write and never holds a
+     * transaction while waiting for a Provider or another worker.
+     */
+    markRecoveryWindowExhaustedIfDue(taskId: string, now: Date | number = new Date()) {
+      if (!identifierPattern.test(taskId) || taskId.length > 120) {
+        throw new Error("Invalid generation task ID");
+      }
+      const nowMs = now instanceof Date ? now.getTime() : Number(now);
+      database.exec("BEGIN IMMEDIATE");
+      try {
+        const current = readById.get(taskId) as GenerationTaskRow | undefined;
+        if (!current || isAutomaticRecoveryStoppedInTransaction(current)) {
+          database.exec("COMMIT");
+          return current ? toTask(current) : undefined;
+        }
+        const marked = markRecoveryWindowExhaustedInTransaction(current, nowMs);
+        database.exec("COMMIT");
+        return marked
+          ? toTask(readById.get(taskId) as GenerationTaskRow)
+          : undefined;
+      } catch (error) {
+        database.exec("ROLLBACK");
+        throw error;
+      }
+    },
+
     listRefundCompensationCandidates() {
       return (database.prepare(`SELECT task.* FROM generation_tasks AS task
         WHERE task.state = 'failed' AND task.error_code = 'PROVIDER_REFUNDED'
@@ -2506,12 +2838,40 @@ export function createGenerationTaskStore(
           database.exec("COMMIT");
           return undefined;
         }
-        const checkpoint = database.prepare(`
-          SELECT COUNT(*) AS count
+        if (isAutomaticRecoveryStoppedInTransaction(current) ||
+            markRecoveryWindowExhaustedInTransaction(current, nowMs)) {
+          database.exec("COMMIT");
+          return undefined;
+        }
+        const eligible = isEligibleActiveWorkflowVideoInTransaction(current);
+        const checkpointRows = database.prepare(`
+          SELECT error_message
           FROM generation_task_events
           WHERE task_id = ? AND error_code = 'AUTOMATIC_RESULT_RECOVERY_CHECKPOINT'
-        `).get(taskId) as { count: number };
-        const checkpointCount = Number(checkpoint.count);
+          ORDER BY id ASC
+        `).all(taskId) as { error_message: string | null }[];
+        // Keep the old backoff cadence for every task outside the narrow new
+        // candidate. Only the candidate's checkpoints carry a bound attempt
+        // and Provider id, so malformed/legacy rows must retain their former
+        // count semantics instead of silently resetting polling.
+        const checkpointCount = eligible
+          ? checkpointRows.reduce((count, row) => {
+            if (!row.error_message || row.error_message.length > 2_048) {
+              return count;
+            }
+            try {
+              const payload = JSON.parse(row.error_message) as Record<string, unknown>;
+              return payload.version === 1 &&
+                payload.taskId === taskId &&
+                payload.executionAttempt === current.attempt &&
+                payload.providerTaskId === (current.provider_task_id ?? null)
+                ? count + 1
+                : count;
+            } catch {
+              return count;
+            }
+          }, 0)
+          : checkpointRows.length;
         const delayMs = checkpointCount === 0
           ? 0
           : Math.min(30_000 * 2 ** Math.min(checkpointCount - 1, 10), 15 * 60_000);
@@ -2519,34 +2879,44 @@ export function createGenerationTaskStore(
           database.exec("COMMIT");
           return undefined;
         }
-        const contract = JSON.parse(current.model_configuration) as Record<string, unknown>;
-        const revision = contract.modelReleaseRevision as Record<string, unknown> | undefined;
-        const document = revision?.document as Record<string, unknown> | undefined;
-        const execution = document?.executionContract as Record<string, unknown> | undefined;
-        const pollPolicy = execution?.pollPolicy as Record<string, unknown> | undefined;
-        const declaredDeadline = Number(pollPolicy?.deadlineMs);
-        const providerWindowMs = Number.isFinite(declaredDeadline) && declaredDeadline > 0
-          ? Math.min(declaredDeadline, 24 * 60 * 60_000)
-          : current.kind === "video" ? 75 * 60_000 : 15 * 60_000;
-        const createdMs = Date.parse(current.created_at);
-        if (Number.isFinite(createdMs) && nowMs > createdMs + providerWindowMs + 24 * 60 * 60_000) {
-          const incident = database.prepare(`
-            UPDATE generation_tasks
-            SET state = 'failed', error_code = 'OPERATOR_INCIDENT',
-              error_message = '系统未能在安全窗口内自动找回结果，已进入管理员处理队列',
-              updated_at = ?
-            WHERE id = ? AND state = 'recovering' AND updated_at = ?
-          `).run(timestamp, taskId, expectedUpdatedAt);
-          if (incident.changes === 1) {
-            recordEvent.run(
-              taskId, "failed", "OPERATOR_INCIDENT",
-              "系统未能在安全窗口内自动找回结果，已进入管理员处理队列",
-              timestamp,
-            );
+        // Keep the historical terminalization contract for protocols and
+        // task shapes outside the narrowly eligible active workflow video.
+        // The new durable recovering marker is reserved for that candidate
+        // and must not silently rewrite other recovery policies.
+        if (!eligible) {
+          const contract = JSON.parse(current.model_configuration) as Record<string, unknown>;
+          const revision = contract.modelReleaseRevision as Record<string, unknown> | undefined;
+          const document = revision?.document as Record<string, unknown> | undefined;
+          const execution = document?.executionContract as Record<string, unknown> | undefined;
+          const pollPolicy = execution?.pollPolicy as Record<string, unknown> | undefined;
+          const declaredDeadline = Number(pollPolicy?.deadlineMs);
+          const providerWindowMs = Number.isFinite(declaredDeadline) && declaredDeadline > 0
+            ? Math.min(declaredDeadline, 24 * 60 * 60_000)
+            : current.kind === "video" ? 75 * 60_000 : 15 * 60_000;
+          const createdMs = Date.parse(current.created_at);
+          if (Number.isFinite(createdMs) && nowMs > createdMs + providerWindowMs + 24 * 60 * 60_000) {
+            const incident = database.prepare(`
+              UPDATE generation_tasks
+              SET state = 'failed', error_code = 'OPERATOR_INCIDENT',
+                error_message = '系统未能在安全窗口内自动找回结果，已进入管理员处理队列',
+                updated_at = ?
+              WHERE id = ? AND state = 'recovering' AND updated_at = ?
+            `).run(timestamp, taskId, expectedUpdatedAt);
+            if (incident.changes === 1) {
+              recordEvent.run(
+                taskId, "failed", "OPERATOR_INCIDENT",
+                "系统未能在安全窗口内自动找回结果，已进入管理员处理队列",
+                timestamp,
+              );
+            }
+            database.exec("COMMIT");
+            return undefined;
           }
-          database.exec("COMMIT");
-          return undefined;
         }
+        const nextDelayMs = Math.min(
+          30_000 * 2 ** Math.min(checkpointCount, 10),
+          15 * 60_000,
+        );
         const claimed = database.prepare(`
           UPDATE generation_tasks
           SET
@@ -2558,7 +2928,14 @@ export function createGenerationTaskStore(
         if (claimed.changes === 1) {
           recordEvent.run(
             taskId, "recovering", "AUTOMATIC_RESULT_RECOVERY_CHECKPOINT",
-            `checkpoint=${checkpointCount + 1};next_delay_ms=${Math.min(30_000 * 2 ** Math.min(checkpointCount, 10), 15 * 60_000)}`,
+            JSON.stringify({
+              count: checkpointCount + 1,
+              executionAttempt: current.attempt,
+              nextDelayMs,
+              providerTaskId: current.provider_task_id ?? null,
+              taskId,
+              version: 1,
+            }),
             timestamp,
           );
         }
@@ -3985,7 +4362,7 @@ export function createGenerationTaskStore(
       return toTask(readById.get(input.taskId) as GenerationTaskRow);
     },
 
-    resume(id: string) {
+    resume(id: string, options: Readonly<{ allowExpiredRecovery?: boolean }> = {}) {
       if (hasOriginalRecoveryOnly(id)) throw new Error("Original-only recovery cannot enter generic execution");
       const timestamp = new Date().toISOString();
       database.exec("BEGIN IMMEDIATE");
@@ -3997,6 +4374,12 @@ export function createGenerationTaskStore(
         }
         if (current.state !== "recovering") {
           throw new GenerationTaskTransitionError(current.state, "running");
+        }
+        if (!options.allowExpiredRecovery &&
+            (isAutomaticRecoveryStoppedInTransaction(current) ||
+              markRecoveryWindowExhaustedInTransaction(current, Date.now()))) {
+          database.exec("COMMIT");
+          return undefined;
         }
         parsePersistedRecordJson(
           current.model_configuration,

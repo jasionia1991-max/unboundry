@@ -506,7 +506,27 @@ export function mergeServerWorkflowRuns(
 export function activeServerWorkflowNodeIds(run: ServerWorkflowRun) {
   return new Set(
     run.nodes
-      .filter(({ state }) => state === "admitted")
+      .filter(({ state, kind, errorCode }) => state === "admitted" &&
+        !(kind === "video" &&
+          (errorCode === "AUTOMATIC_RECOVERY_WINDOW_EXHAUSTED" ||
+          errorCode === "AUTOMATIC_RECOVERY_PENDING")))
+      .map(({ id }) => id),
+  );
+}
+
+/**
+ * A workflow node can remain admitted while its original paid attempt is
+ * durably waiting for maintenance after the automatic recovery window. Keep
+ * the group run and its stop control alive, but let the Canvas clear that
+ * node's active spinner from the persisted server marker.
+ */
+export function stoppedServerWorkflowNodeIds(run: ServerWorkflowRun) {
+  return new Set(
+    run.nodes
+      .filter(({ state, kind, errorCode }) => state === "admitted" &&
+        kind === "video" &&
+        (errorCode === "AUTOMATIC_RECOVERY_WINDOW_EXHAUSTED" ||
+          errorCode === "AUTOMATIC_RECOVERY_PENDING"))
       .map(({ id }) => id),
   );
 }

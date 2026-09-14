@@ -20,6 +20,11 @@ import {
   type CanvasServerClass,
 } from "./canvasObservability";
 import { currentVersion } from "./version";
+import {
+  readCanvasServerProjectionReceiptCommand,
+  readGenerationRecoveryCanvasCommand,
+} from "./canvasTransactionCommands";
+import { executeTransactionScopedCommand } from "./transactionCommand";
 
 export function canvasGraphRevisionMatchesInTransaction(input: {
   canvasId: string;
@@ -34,6 +39,56 @@ export function canvasGraphRevisionMatchesInTransaction(input: {
     | { graph_revision?: unknown }
     | undefined;
   return Boolean(row && Number(row.graph_revision) === input.graphRevision);
+}
+
+/** Read-only Canvas proof that the server projection patch is still present. */
+export function canvasProjectionPatchMatchesInTransaction(input: Readonly<{
+  canvasId: string;
+  database: DatabaseSync;
+  kind: NodeInputKind;
+  nodeId: string;
+  ownerId: string;
+  patch: Readonly<Record<string, unknown>>;
+}>) {
+  try {
+    const snapshot = executeTransactionScopedCommand(
+      input.database,
+      readGenerationRecoveryCanvasCommand,
+      {
+        canvasId: input.canvasId,
+        nodeId: input.nodeId,
+        ownerId: input.ownerId,
+      },
+    );
+    const node = snapshot.canvasNode;
+    const data = node?.data && typeof node.data === "object" &&
+        !Array.isArray(node.data)
+      ? node.data as Record<string, unknown>
+      : undefined;
+    if (!data || node?.type !== input.kind) return false;
+    return Object.entries(input.patch).every(([key, expected]) =>
+      expected === undefined
+        ? data[key] === undefined
+        : stableSha256(data[key]) === stableSha256(expected));
+  } catch {
+    return false;
+  }
+}
+
+/** Read-only receipt lookup owned by the Canvas projection boundary. */
+export function readCanvasServerProjectionReceiptInTransaction(
+  database: DatabaseSync,
+  input: Readonly<{
+    canvasId: string;
+    operationId: string;
+    ownerId: string;
+  }>,
+) {
+  return executeTransactionScopedCommand(
+    database,
+    readCanvasServerProjectionReceiptCommand,
+    input,
+  );
 }
 
 export function projectWorkflowResultInTransaction(input: {

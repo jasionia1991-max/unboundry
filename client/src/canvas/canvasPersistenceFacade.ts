@@ -1458,18 +1458,31 @@ export async function hydrateCanvasPersistence(input: {
       )) {
         throw new Error("Canvas pending replay returned invalid data");
       }
-      const replayedDocument: LoadedCanvasDocument = {
+      const authoritativeReplay = authoritativeCanvasDocument(
+        replayed.body.authoritativeDocument,
+      );
+      if (replayed.body.authoritativeDocument !== undefined &&
+          (!authoritativeReplay ||
+            authoritativeReplay.revision !== replayed.body.revision ||
+            authoritativeReplay.graphRevision !== replayed.body.graphRevision)) {
+        throw new Error("Canvas pending replay returned an invalid authoritative document");
+      }
+      const replayedDocument = {
         currentWriterSequence: replaySequence,
         currentWriterSessionId: runtime.saveSessionId(),
-        edges: pendingSnapshot.edges,
+        // Command replay applies only the recorded user intent. Its response
+        // can also contain results published while the old page was closing.
+        // Hydrating the old whole snapshot would turn those newer results into
+        // apparent user deletions on the next save.
+        edges: authoritativeReplay?.edges ?? pendingSnapshot.edges,
         graphRevision: replayed.body.graphRevision,
         loadToken: replayed.body.loadToken,
-        nodes: pendingSnapshot.nodes,
+        nodes: authoritativeReplay?.nodes ?? pendingSnapshot.nodes,
         revision: replayed.body.revision,
         saveEpoch: fence.saveEpoch,
         sessionHighWaterAttemptId: replayAttemptId,
         sessionHighWaterSequence: replaySequence,
-        viewport: pendingSnapshot.viewport,
+        viewport: authoritativeReplay?.viewport ?? pendingSnapshot.viewport,
       };
       if (!facade.isLoadedDocument(replayedDocument)) {
         throw new Error("Canvas pending replay returned invalid data");

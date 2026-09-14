@@ -126,6 +126,32 @@ let afterDocumentWriteForTests: (() => Promise<void>) | undefined;
 // writers; the queue makes same-process waiters asynchronous.
 let providerDocumentLockQueue: Promise<void> = Promise.resolve();
 
+type ProviderProfileLockCauseCode =
+  | "SQLITE_BUSY"
+  | "SQLITE_LOCKED"
+  | "SQLITE_LOCK_CONTENTION";
+
+function providerProfileLockCauseCode(error: unknown): ProviderProfileLockCauseCode | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const candidate = error as { code?: unknown; message?: unknown };
+  if (candidate.code === "SQLITE_BUSY" || candidate.code === 5) {
+    return "SQLITE_BUSY";
+  }
+  if (candidate.code === "SQLITE_LOCKED" || candidate.code === 6) {
+    return "SQLITE_LOCKED";
+  }
+  if (typeof candidate.message !== "string") return undefined;
+  const message = candidate.message.trim();
+  if (/\bSQLITE_BUSY\b/i.test(message)) return "SQLITE_BUSY";
+  if (/\bSQLITE_LOCKED\b/i.test(message)) return "SQLITE_LOCKED";
+  if (
+    message === "database is locked" ||
+    message === "database table is locked" ||
+    message === "database schema is locked"
+  ) return "SQLITE_LOCK_CONTENTION";
+  return undefined;
+}
+
 function db() {
   const directory = appDataDirectory();
   if (database && databaseDirectory === directory) return database;
@@ -258,12 +284,8 @@ async function acquireDocumentLock() {
   } catch (error) {
     lockDatabase?.close();
     releaseQueue();
-    if (
-      error instanceof Error &&
-      /database is locked|locked|busy/i.test(error.message)
-    ) {
-      throw new Error("Provider configuration is busy");
-    }
+    const causeCode = providerProfileLockCauseCode(error);
+    if (causeCode) throw new ProviderProfileLockBusyError(causeCode, "document-lock");
     throw error;
   }
   let released = false;
@@ -417,7 +439,11 @@ export class ProviderProfileInUseError extends Error {
 export class ProviderProfileLockBusyError extends Error {
   readonly code = "PROVIDER_LOCK_BUSY" as const;
 
-  constructor() {
+  constructor(
+    readonly causeCode: ProviderProfileLockCauseCode = "SQLITE_LOCK_CONTENTION",
+    readonly stage: "document-lock" | "request-lease" | "generation-snapshot" =
+      "request-lease",
+  ) {
     super("平台连接正在处理中，请稍后自动重试");
     this.name = "ProviderProfileLockBusyError";
   }
@@ -1246,11 +1272,14 @@ export async function acquireProviderGenerationRequestLease(
   let lock: Awaited<ReturnType<typeof acquireDocumentLock>>;
   try {
     lock = await acquireDocumentLock();
-  } catch {
+  } catch (error) {
     // A busy document lock means another Provider request or writer is
     // currently holding the same lease. It is a transient contention signal,
     // never a configuration change; callers may retry with bounded backoff.
-    throw new ProviderProfileLockBusyError();
+    if (error instanceof ProviderProfileLockBusyError) throw error;
+    const causeCode = providerProfileLockCauseCode(error);
+    if (causeCode) throw new ProviderProfileLockBusyError(causeCode, "request-lease");
+    throw error;
   }
   try {
     const document = await readDocument();
@@ -1297,11 +1326,14 @@ export async function acquireProviderGenerationSnapshot(
   let lock: Awaited<ReturnType<typeof acquireDocumentLock>>;
   try {
     lock = await acquireDocumentLock();
-  } catch {
+  } catch (error) {
     // A busy document lock means another Provider request or writer is
     // currently holding the same lease. It is a transient contention signal,
     // never a configuration change; callers may retry with bounded backoff.
-    throw new ProviderProfileLockBusyError();
+    if (error instanceof ProviderProfileLockBusyError) throw error;
+    const causeCode = providerProfileLockCauseCode(error);
+    if (causeCode) throw new ProviderProfileLockBusyError(causeCode, "generation-snapshot");
+    throw error;
   }
   try {
     const document = await readDocument();

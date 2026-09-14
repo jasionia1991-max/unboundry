@@ -9,7 +9,8 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, unlink } from "node:fs/promises";
+import { DatabaseSync } from "node:sqlite";
 import { createServer as createHttpServer } from "node:http";
 import { build as viteBuild, createServer } from "vite";
 import { dirname, extname, join, relative, resolve, sep } from "node:path";
@@ -47,19 +48,28 @@ const origin = `http://127.0.0.1:${port}`;
 const packagedVersion = JSON.parse(readFileSync(join(sourceRoot, "package.json"), "utf8")).version;
 const acceptanceScenario = process.env.UNBOUNDRY_TEST_ACCEPTANCE_SCENARIO ?? "generation-status";
 const mediaPublicationScenario = acceptanceScenario === "media-publication";
-if (!["generation-status", "node-recovery", "media-publication", "templates"].includes(acceptanceScenario)) {
+const videoQueryWorkflowScenario = acceptanceScenario === "video-query-workflow";
+const videoQueryWorkflowBaselineOnly = videoQueryWorkflowScenario &&
+  process.env.UNBOUNDRY_VIDEO_QUERY_BASELINE_ONLY === "1";
+if (!["generation-status", "node-recovery", "media-publication", "video-query-workflow", "templates"].includes(acceptanceScenario)) {
   throw new Error(`Unknown local acceptance scenario: ${acceptanceScenario}`);
 }
 const nodeRecoveryScenario = acceptanceScenario === "node-recovery";
-const generationScenario = acceptanceScenario === "generation-status" || nodeRecoveryScenario || mediaPublicationScenario;
+const generationScenario = acceptanceScenario === "generation-status" || nodeRecoveryScenario || mediaPublicationScenario || videoQueryWorkflowScenario;
 // The node-recovery acceptance uses the real local application commands. The
 // fixture and its loopback provider are still synthetic, but the task/case
 // records, recovery commands, Canvas projection, and one-node retry all use
 // the same server modules as the product.
 const nodeRecoveryProductMode = nodeRecoveryScenario;
 const mediaPublicationProductMode = mediaPublicationScenario;
+const videoQueryWorkflowProductMode = videoQueryWorkflowScenario;
 if (nodeRecoveryProductMode || mediaPublicationProductMode) {
   process.env.UNBOUNDRY_TEST_AUTH_BYPASS = "1";
+}
+if (videoQueryWorkflowProductMode) {
+  // Recovery-case reads reject bypass identities. This scenario seeds a real
+  // private session for its temporary owner before serving any product route.
+  process.env.UNBOUNDRY_TEST_AUTH_BYPASS = "0";
 }
 if (nodeRecoveryProductMode) {
   process.env.UNBOUNDRY_GENERATION_RECOVERY_CASES_ENABLED = "1";
@@ -71,10 +81,48 @@ if (nodeRecoveryProductMode) {
 if (mediaPublicationProductMode) {
   process.env.UNBOUNDRY_TEST_RELAY_MEDIA_FETCHER = "1";
 }
-const generationBaselineRoot = generationScenario
+if (videoQueryWorkflowProductMode) {
+  process.env.UNBOUNDRY_TEST_RELAY_MEDIA_FETCHER = "1";
+  process.env.UNBOUNDRY_GENERATION_RECOVERY_CASES_ENABLED = "1";
+  // The product worker owns the 30-second recovery sweep in this scenario;
+  // the acceptance runner waits long enough to observe its real tick.
+  process.env.UNBOUNDRY_DISABLE_GENERATION_RECOVERY_SWEEP = "0";
+}
+if (videoQueryWorkflowScenario) {
+  const nativeConsoleError = console.error.bind(console);
+  console.error = (...args) => {
+    for (const arg of args) {
+      if (typeof arg !== "string") continue;
+      try {
+        const event = JSON.parse(arg);
+        if (event?.event === "generation-diagnostic" && typeof event.stage === "string") {
+          videoQueryWorkflowDiagnosticStageCounts.set(
+            event.stage,
+            (videoQueryWorkflowDiagnosticStageCounts.get(event.stage) ?? 0) + 1,
+          );
+          videoQueryWorkflowDiagnosticEvents.push({
+            taskId: event.taskId ?? null,
+            stage: event.stage,
+            sourceErrorCode: event.sourceErrorCode ?? null,
+            errorName: event.errorName ?? null,
+            errorCode: event.errorCode ?? null,
+            causeCode: event.causeCode ?? null,
+          });
+          if (event.stage === "accepted-video-query-recovery") {
+            videoQueryWorkflowAcceptedRecoveryDiagnosticCount += 1;
+          }
+        }
+      } catch {
+        // Keep ordinary diagnostics untouched; only the structured stage is evidence.
+      }
+    }
+    nativeConsoleError(...args);
+  };
+}
+const generationBaselineRoot = generationScenario && !videoQueryWorkflowScenario
   ? realpathSync(required("UNBOUNDRY_GENERATION_STATUS_BASELINE_ROOT"))
   : undefined;
-const generationBaselineManifest = generationScenario
+const generationBaselineManifest = generationScenario && !videoQueryWorkflowScenario
   ? realpathSync(required("UNBOUNDRY_GENERATION_STATUS_BASELINE_MANIFEST"))
   : undefined;
 const setupToken = randomUUID();
@@ -152,9 +200,20 @@ const nodeRecoveryProviderStats = {
 };
 const mediaPublicationProviderUrl = "https://media-publication-relay.example.test";
 const mediaPublicationProviderResultPath = "/media-publication-child-result.mp4";
+const videoQueryWorkflowFixtureIds = Object.freeze({
+  activeGroupId: "video-query-workflow-active-group",
+  activeVideoNodeId: "video-query-workflow-active-video",
+  activeTailTextNodeId: "video-query-workflow-active-tail-text",
+  historyGroupId: "video-query-workflow-history-group",
+  historyVideoNodeId: "video-query-workflow-history-video",
+  historyTailTextNodeId: "video-query-workflow-history-tail-text",
+});
 let mediaPublicationProvider;
 let mediaPublicationNativeFetch;
 let mediaPublicationProviderPort;
+let videoQueryWorkflowProviderLockDatabase;
+let videoQueryWorkflowProviderLockTimer;
+let videoQueryWorkflowProviderProfileLockInjected = false;
 const mediaPublicationProviderStats = {
   posts: 0,
   videoPosts: 0,
@@ -166,6 +225,30 @@ const mediaPublicationProviderStats = {
   requests: [],
 };
 let mediaPublicationInitialVideoProviderPosts = 0;
+let videoQueryWorkflowProviderStatusFailures = 0;
+let videoQueryWorkflowRunId = "";
+let videoQueryWorkflowHistoricalRunId = "";
+let videoQueryWorkflowHistoricalOriginalTaskId = "";
+let videoQueryWorkflowHistoricalOriginalProviderTaskId = "";
+let videoQueryWorkflowHistoricalContinuationRunId = "";
+let videoQueryWorkflowHistoricalFaultInjected = false;
+let videoQueryWorkflowHistoricalSyncResult;
+let videoQueryWorkflowProviderPhases = new Map();
+let videoQueryWorkflowArkInputVideoSeen = false;
+let videoQueryWorkflowAcceptedRecoveryDiagnosticCount = 0;
+const videoQueryWorkflowDiagnosticStageCounts = new Map();
+const videoQueryWorkflowDiagnosticEvents = [];
+let videoQueryWorkflowInitialCanvas;
+const videoQueryWorkflowChecks = {
+  start: "idle",
+  refresh: "idle",
+  historySync: "idle",
+  historyContinuation: "idle",
+};
+let videoQueryWorkflowHistoryResult;
+let videoQueryWorkflowSemanticFingerprint = "";
+let videoQueryWorkflowHistoricalSemanticFingerprint = "";
+let videoQueryWorkflowGraphRevision = 0;
 const nodeRecoveryProductChecks = {
   original: "idle",
   maintenance: "idle",
@@ -184,7 +267,7 @@ let mediaPublicationAdapter;
 let mediaPublicationProductModules;
 let mediaPublicationLastResults = {};
 const startedAt = new Date();
-const expiresAt = new Date(startedAt.getTime() + (mediaPublicationScenario ? 24 : nodeRecoveryScenario ? 12 : 2) * 60 * 60_000);
+const expiresAt = new Date(startedAt.getTime() + (mediaPublicationScenario ? 24 : (nodeRecoveryScenario || videoQueryWorkflowScenario) ? 12 : 2) * 60 * 60_000);
 const digest = (graph) => createHash("sha256").update(JSON.stringify(graph)).digest("hex");
 const generationBaselineFiles = Object.freeze([
   "client/src/generation/taskPolling.ts",
@@ -238,7 +321,9 @@ async function api(path, method = "GET", body, contentType, extraHeaders = {}) {
   if (!response.ok) {
     const payload = await response.clone().json().catch(() => null);
     const code = typeof payload?.code === "string" ? payload.code : typeof payload?.error?.code === "string" ? payload.error.code : "UNKNOWN";
-    throw new Error(`Acceptance setup API ${path}: HTTP ${response.status}, code=${code}`);
+    const detail = videoQueryWorkflowScenario && path === "/api/workflow-runs"
+      ? `, detail=${JSON.stringify(payload)}` : "";
+    throw new Error(`Acceptance setup API ${path}: HTTP ${response.status}, code=${code}${detail}`);
   }
   return response;
 }
@@ -341,7 +426,7 @@ async function stopNodeRecoveryProductProvider() {
 }
 
 async function startMediaPublicationProvider() {
-  if (!mediaPublicationProductMode || mediaPublicationProvider) return;
+  if (!(mediaPublicationProductMode || videoQueryWorkflowProductMode) || mediaPublicationProvider) return;
   mediaPublicationNativeFetch = globalThis.fetch;
   const resultPath = join(sourceRoot, "client/public/fixtures/video-success.mp4");
   if (!existsSync(resultPath)) throw new Error("Media publication loopback result fixture is missing");
@@ -366,20 +451,93 @@ async function startMediaPublicationProvider() {
             : "unknown";
         request.model = model || "<missing>";
         request.capability = capability;
+        const promptText = typeof body?.prompt === "string"
+          ? body.prompt
+          : typeof body?.input?.prompt === "string"
+            ? body.input.prompt
+            : "";
+        const phase = videoQueryWorkflowProductMode && !videoQueryWorkflowBaselineOnly &&
+          (promptText.includes("历史事故") || mediaPublicationProviderStats.videoPosts === 0)
+          ? "history"
+          : "active";
+        request.phase = videoQueryWorkflowProductMode ? phase : undefined;
         mediaPublicationProviderStats.posts += 1;
         mediaPublicationProviderStats[`${capability}Posts`] += 1;
         const modelKey = model || "<missing>";
         mediaPublicationProviderStats.postsByModel[modelKey] =
           (mediaPublicationProviderStats.postsByModel[modelKey] ?? 0) + 1;
         mediaPublicationProviderStats.requests.push(request);
-        json(res, 200, { task_id: `media-publication-child-provider-${mediaPublicationProviderStats.posts}` });
+        const taskPrefix = videoQueryWorkflowProductMode
+          ? `video-query-workflow-${phase}-provider`
+          : "media-publication-child-provider";
+        const taskId = `${taskPrefix}-${mediaPublicationProviderStats.posts}`;
+        request.providerTaskId = taskId;
+        if (videoQueryWorkflowProductMode) {
+          videoQueryWorkflowProviderPhases.set(taskId, phase);
+          if (phase === "history" && !videoQueryWorkflowHistoricalOriginalProviderTaskId) {
+            videoQueryWorkflowHistoricalOriginalProviderTaskId = taskId;
+          }
+        }
+        json(res, 200, { task_id: taskId });
+        return;
+      }
+      if (method === "POST" && requestUrl.pathname === "/v1/responses") {
+        const chunks = [];
+        for await (const chunk of req) chunks.push(Buffer.from(chunk));
+        let body;
+        try { body = JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch { body = undefined; }
+        const content = Array.isArray(body?.input?.[0]?.content) ? body.input[0].content : [];
+        const prompt = content.find((part) => part?.type === "input_text")?.text;
+        const inputVideo = content.find((part) => part?.type === "input_video");
+        const phase = videoQueryWorkflowProductMode && !videoQueryWorkflowBaselineOnly &&
+          typeof prompt === "string" && prompt.includes("历史事故")
+          ? "history"
+          : "active";
+        // Ark's response id contract permits the `resp_` prefix and only
+        // lower-case letters, digits, dots, colons and dashes afterwards.
+        // Keep the fixture id valid so the real text task can cross the same
+        // response validation boundary as production.
+        const responseId = `resp_video-query-workflow-${phase}-${mediaPublicationProviderStats.requests.length + 1}`;
+        if (videoQueryWorkflowProductMode && inputVideo) videoQueryWorkflowArkInputVideoSeen = true;
+        mediaPublicationProviderStats.requests.push({
+          ...request,
+          capability: "text",
+          model: body?.model ?? "<missing>",
+          phase: videoQueryWorkflowProductMode ? phase : undefined,
+          inputVideo: Boolean(inputVideo),
+        });
+        if (typeof prompt !== "string" || !prompt.trim()) {
+          json(res, 400, { error: { message: "文字请求缺少提示词" } });
+          return;
+        }
+        json(res, 200, {
+          id: responseId,
+          output: [{
+            content: [{ text: "视频查询尾部文字已自动完成", type: "output_text" }],
+            status: "completed",
+            type: "message",
+          }],
+          status: "completed",
+          usage: { total_tokens: 1 },
+        });
         return;
       }
       mediaPublicationProviderStats.requests.push(request);
       if (method === "GET" && requestUrl.pathname === "/v1/media/status") {
         mediaPublicationProviderStats.gets += 1;
-        if (!providerTaskId || !/^media-publication-child-provider-\d+$/.test(providerTaskId)) {
+        const phase = videoQueryWorkflowProviderPhases.get(providerTaskId) ?? "active";
+        request.phase = videoQueryWorkflowProductMode ? phase : undefined;
+        if (!providerTaskId || !/^(?:media-publication-child-provider|video-query-workflow-(?:active|history)-provider)-\d+$/.test(providerTaskId)) {
           json(res, 404, { error: "task not found" });
+          return;
+        }
+        if (phase === "history" && videoQueryWorkflowProductMode && !videoQueryWorkflowHistoricalFaultInjected) {
+          await simulateVideoQueryWorkflowHistoricalFailure(providerTaskId);
+        }
+        if (phase === "active" && videoQueryWorkflowProductMode && videoQueryWorkflowProviderStatusFailures < 2) {
+          videoQueryWorkflowProviderStatusFailures += 1;
+          json(res, 503, { error: "本地模拟的短暂查询中断" });
+          if (videoQueryWorkflowProviderStatusFailures === 1) holdVideoQueryWorkflowProviderProfileLock();
           return;
         }
         json(res, 200, {
@@ -388,6 +546,24 @@ async function startMediaPublicationProvider() {
           result_url: `${mediaPublicationProviderUrl}${mediaPublicationProviderResultPath}`,
           state: "success",
           task_id: providerTaskId,
+        });
+        return;
+      }
+      if (method === "GET" && requestUrl.pathname.startsWith("/v1/responses/")) {
+        const responseId = decodeURIComponent(requestUrl.pathname.slice("/v1/responses/".length));
+        if (!/^resp_video-query-workflow-(?:active|history)-\d+$/.test(responseId)) {
+          json(res, 404, { error: { message: "response not found" } });
+          return;
+        }
+        json(res, 200, {
+          id: responseId,
+          output: [{
+            content: [{ text: "视频查询尾部文字已自动完成", type: "output_text" }],
+            status: "completed",
+            type: "message",
+          }],
+          status: "completed",
+          usage: { total_tokens: 1 },
         });
         return;
       }
@@ -438,6 +614,13 @@ async function startMediaPublicationProvider() {
 }
 
 async function stopMediaPublicationProvider() {
+  if (videoQueryWorkflowProviderLockTimer) {
+    clearTimeout(videoQueryWorkflowProviderLockTimer);
+    videoQueryWorkflowProviderLockTimer = undefined;
+  }
+  try { videoQueryWorkflowProviderLockDatabase?.exec("ROLLBACK"); } catch {}
+  try { videoQueryWorkflowProviderLockDatabase?.close(); } catch {}
+  videoQueryWorkflowProviderLockDatabase = undefined;
   if (mediaPublicationNativeFetch) {
     globalThis.fetch = mediaPublicationNativeFetch;
     mediaPublicationNativeFetch = undefined;
@@ -446,6 +629,29 @@ async function stopMediaPublicationProvider() {
   mediaPublicationProvider = undefined;
   mediaPublicationProviderPort = undefined;
   if (provider) await new Promise((resolve) => provider.close(() => resolve()));
+}
+
+function holdVideoQueryWorkflowProviderProfileLock() {
+  if (!videoQueryWorkflowProductMode || videoQueryWorkflowProviderLockDatabase) return;
+  const lockPath = join(dataRoot, "secrets", "provider-profile-write-lock.sqlite");
+  const lockDatabase = new DatabaseSync(lockPath, { timeout: 0 });
+  lockDatabase.exec("PRAGMA busy_timeout = 0");
+  lockDatabase.exec(`
+    CREATE TABLE IF NOT EXISTS provider_profile_write_lock (
+      id INTEGER PRIMARY KEY CHECK (id = 1), marker INTEGER NOT NULL
+    );
+    INSERT OR IGNORE INTO provider_profile_write_lock (id, marker) VALUES (1, 0);
+  `);
+  lockDatabase.exec("BEGIN IMMEDIATE");
+  videoQueryWorkflowProviderLockDatabase = lockDatabase;
+  videoQueryWorkflowProviderProfileLockInjected = true;
+  videoQueryWorkflowProviderLockTimer = setTimeout(() => {
+    try { lockDatabase.exec("ROLLBACK"); } catch {}
+    try { lockDatabase.close(); } catch {}
+    if (videoQueryWorkflowProviderLockDatabase === lockDatabase) videoQueryWorkflowProviderLockDatabase = undefined;
+    videoQueryWorkflowProviderLockTimer = undefined;
+  }, 6_500);
+  videoQueryWorkflowProviderLockTimer.unref?.();
 }
 
 const generationModelInputs = Object.freeze({
@@ -800,21 +1006,137 @@ function generationDocumentPut(document, source) {
 async function loadMediaPublicationSourceModules() {
   if (mediaPublicationAdapter && mediaPublicationProductModules) return;
   const modulePath = (name) => ssrModuleUrl(join(sourceRoot, name));
-  mediaPublicationAdapter ??= await server.ssrLoadModule(modulePath("server/generationResultAdoptionWorkflowAdapter.ts"));
+  mediaPublicationAdapter ??= await loadAcceptanceSourceModule(modulePath("server/generationResultAdoptionWorkflowAdapter.ts"));
   mediaPublicationProductModules ??= {
-    generationResultCommit: await server.ssrLoadModule(modulePath("server/generationResultCommit.ts")),
-    generationCanvasProjection: await server.ssrLoadModule(modulePath("server/generationCanvasProjection.ts")),
-    generationTaskStore: await server.ssrLoadModule(modulePath("server/generationTaskStore.ts")),
-    generationTasks: await server.ssrLoadModule(modulePath("server/generationTasks.ts")),
-    videoStorage: await server.ssrLoadModule(modulePath("server/videoStorage.ts")),
+    generationResultCommit: await loadAcceptanceSourceModule(modulePath("server/generationResultCommit.ts")),
+    generationCanvasProjection: await loadAcceptanceSourceModule(modulePath("server/generationCanvasProjection.ts")),
+    generationTaskStore: await loadAcceptanceSourceModule(modulePath("server/generationTaskStore.ts")),
+    generationTasks: await loadAcceptanceSourceModule(modulePath("server/generationTasks.ts")),
+    providerMedia: await loadAcceptanceSourceModule(modulePath("server/providerMedia.ts")),
+    workflowRunService: await loadAcceptanceSourceModule(modulePath("server/workflowRunService.ts")),
+    videoStorage: await loadAcceptanceSourceModule(modulePath("server/videoStorage.ts")),
   };
 }
 
 async function readMediaPublicationDatabase(read) {
-  const databaseModule = await server.ssrLoadModule(ssrModuleUrl(join(sourceRoot, "server/database.ts")));
+  const databaseModule = await loadAcceptanceSourceModule(ssrModuleUrl(join(sourceRoot, "server/database.ts")));
   const database = databaseModule.openAppDatabase(dataRoot);
   try { return await read(database); }
   finally { database.close(); }
+}
+
+async function configureVideoQueryWorkflowReferenceStore() {
+  if (!videoQueryWorkflowProductMode) return;
+  await loadMediaPublicationSourceModules();
+  const referenceStoreModule = await loadAcceptanceSourceModule(
+    ssrModuleUrl(join(sourceRoot, "server/mediaProviderReferenceStore.ts")),
+  );
+  // Load the real composition before replacing only the temporary video locator.
+  // The first lazy workflow route must not overwrite this isolated adapter.
+  await loadAcceptanceSourceModule(ssrModuleUrl(join(sourceRoot, "server/applicationComposition.ts")));
+  const fallback = referenceStoreModule.ownerMediaProviderReferenceStore;
+  const providerMedia = mediaPublicationProductModules.providerMedia;
+  providerMedia.configureProviderReferenceStore({
+    async acquire(input) {
+      if (input.ownerId !== MEDIA_PUBLICATION_FIXTURE.ownerId || input.kind !== "video") {
+        return fallback.acquire(input);
+      }
+      const media = await readMediaPublicationDatabase((database) => database.prepare(`
+        SELECT id, byte_size AS byteSize, checksum_sha256 AS checksumSha256,
+          content_type AS contentType, duration_seconds AS durationSeconds,
+          duration_source AS durationSource, duration_status AS durationStatus,
+          media_width AS mediaWidth, media_height AS mediaHeight, storage_status AS storageStatus
+        FROM media_assets WHERE owner_id = ? AND id = ? AND kind = 'video'
+      `).get(input.ownerId, input.assetId));
+      if (!media || media.storageStatus !== "ready") {
+        return fallback.acquire(input);
+      }
+      return {
+        assetId: media.id,
+        byteSize: Number(media.byteSize),
+        checksumSha256: String(media.checksumSha256),
+        contentType: String(media.contentType),
+        durationSeconds: media.durationSeconds == null ? null : Number(media.durationSeconds),
+        durationSource: media.durationSource ?? null,
+        durationStatus: media.durationStatus ?? "ready",
+        kind: "video",
+        leaseId: `video-query-workflow-relay-${randomUUID()}`,
+        locator: {
+          expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+          transport: "signed-url",
+          url: `${mediaPublicationProviderUrl}${mediaPublicationProviderResultPath}`,
+        },
+        mediaHeight: media.mediaHeight == null ? null : Number(media.mediaHeight),
+        mediaWidth: media.mediaWidth == null ? null : Number(media.mediaWidth),
+        ownerId: input.ownerId,
+      };
+    },
+    async release(lease) {
+      if (String(lease.leaseId).startsWith("video-query-workflow-relay-")) return;
+      return fallback.release(lease);
+    },
+  });
+}
+
+async function simulateVideoQueryWorkflowHistoricalFailure(providerTaskId) {
+  if (!videoQueryWorkflowProductMode || videoQueryWorkflowHistoricalFaultInjected ||
+      !videoQueryWorkflowHistoricalRunId || providerTaskId !== videoQueryWorkflowHistoricalOriginalProviderTaskId) {
+    return;
+  }
+  const updatedAt = new Date().toISOString();
+  await readMediaPublicationDatabase((database) => {
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const task = database.prepare(`
+        SELECT task.id, task.state, task.node_id AS nodeId, task.attempt,
+          task.provider_task_id AS providerTaskId
+        FROM generation_tasks AS task JOIN workflow_run_nodes AS node ON node.task_id = task.id
+        WHERE task.owner_id = ? AND task.canvas_id = ? AND node.run_id = ?
+          AND node.node_id = ? AND task.provider_task_id = ?
+      `).get(MEDIA_PUBLICATION_FIXTURE.ownerId, MEDIA_PUBLICATION_FIXTURE.canvasId,
+        videoQueryWorkflowHistoricalRunId, videoQueryWorkflowFixtureIds.historyVideoNodeId, providerTaskId);
+      const run = database.prepare(`
+        SELECT id, state, reservation_id AS reservationId FROM workflow_runs
+        WHERE owner_id = ? AND id = ?
+      `).get(MEDIA_PUBLICATION_FIXTURE.ownerId, videoQueryWorkflowHistoricalRunId);
+      if (!task || task.state === "success" || task.providerTaskId !== providerTaskId || !run || run.state === "failed") {
+        database.exec("ROLLBACK");
+        return;
+      }
+      database.prepare(`
+        UPDATE workflow_run_nodes
+        SET state = 'failed', projection_state = 'pending', error_code = 'GENERATION_FAILED',
+          error_message = '历史运行在 Provider 查询期间意外终止', updated_at = ?
+        WHERE run_id = ? AND node_id = ?
+      `).run(updatedAt, videoQueryWorkflowHistoricalRunId, videoQueryWorkflowFixtureIds.historyVideoNodeId);
+      database.prepare(`
+        UPDATE workflow_run_nodes
+        SET state = 'blocked', projection_state = 'pending', error_code = 'UPSTREAM_FAILED',
+          error_message = '历史视频节点未结算，等待窄范围找回', updated_at = ?
+        WHERE run_id = ? AND node_id = ?
+      `).run(updatedAt, videoQueryWorkflowHistoricalRunId, videoQueryWorkflowFixtureIds.historyTailTextNodeId);
+      database.prepare(`
+        UPDATE workflow_runs
+        SET state = 'failed', stop_requested = 0, error_code = 'GENERATION_FAILED',
+          error_message = '历史运行在 Provider 查询期间意外终止', updated_at = ?
+        WHERE owner_id = ? AND id = ?
+      `).run(updatedAt, MEDIA_PUBLICATION_FIXTURE.ownerId, videoQueryWorkflowHistoricalRunId);
+      database.prepare("DELETE FROM workflow_run_locks WHERE run_id = ?").run(videoQueryWorkflowHistoricalRunId);
+      if (run.reservationId) {
+        database.prepare(`
+          UPDATE media_capacity_reservations
+          SET state = 'released', released_at = COALESCE(released_at, ?), updated_at = ?
+          WHERE id = ?
+        `).run(updatedAt, updatedAt, run.reservationId);
+      }
+      database.exec("COMMIT");
+      videoQueryWorkflowHistoricalOriginalTaskId = task.id;
+      videoQueryWorkflowHistoricalFaultInjected = true;
+    } catch (error) {
+      if (database.isTransaction) database.exec("ROLLBACK");
+      throw error;
+    }
+  });
 }
 
 async function mediaPublicationTaskSnapshot() {
@@ -921,7 +1243,7 @@ function mediaPublicationPreservedFingerprint(canvas) {
     id: node.id, type: node.type, parentId: node.parentId ?? null,
     position: node.position, style: node.style, data: node.data,
   })).sort((left, right) => left.id.localeCompare(right.id));
-  const edges = (canvas?.edges ?? []).filter((edge) => ids.has(edge.source) && ids.has(edge.target))
+  const edges = (canvas?.edges ?? []).filter((edge) => ids.has(edge.source) || ids.has(edge.target))
     .map((edge) => ({ id: edge.id, source: edge.source, target: edge.target, sourceHandle: edge.sourceHandle ?? "", targetHandle: edge.targetHandle ?? "" }))
     .sort((left, right) => left.id.localeCompare(right.id));
   return digest({ nodes, edges });
@@ -1028,6 +1350,429 @@ async function mediaPublicationStatusPayload() {
     },
     expiresAt: expiresAt.toISOString(),
   };
+}
+
+async function videoQueryWorkflowSnapshot() {
+  return readMediaPublicationDatabase((database) => {
+    const targetIds = [
+      videoQueryWorkflowFixtureIds.activeVideoNodeId,
+      videoQueryWorkflowFixtureIds.activeTailTextNodeId,
+      videoQueryWorkflowFixtureIds.historyVideoNodeId,
+      videoQueryWorkflowFixtureIds.historyTailTextNodeId,
+    ];
+    const placeholders = targetIds.map(() => "?").join(",");
+    const tasks = database.prepare(`
+      SELECT id, node_id AS nodeId, kind, state, attempt, result_asset_id AS resultAssetId,
+        result_text AS resultText, error_code AS errorCode, provider_task_id AS providerTaskId
+      FROM generation_tasks
+      WHERE owner_id = ? AND canvas_id = ? AND node_id IN (${placeholders})
+      ORDER BY id
+    `).all(MEDIA_PUBLICATION_FIXTURE.ownerId, MEDIA_PUBLICATION_FIXTURE.canvasId, ...targetIds);
+    const run = videoQueryWorkflowRunId
+      ? database.prepare(`
+          SELECT id, state, graph_revision AS graphRevision, semantic_fingerprint AS semanticFingerprint,
+            error_code AS errorCode, error_message AS errorMessage
+          FROM workflow_runs WHERE owner_id = ? AND id = ?
+        `).get(MEDIA_PUBLICATION_FIXTURE.ownerId, videoQueryWorkflowRunId)
+      : null;
+    const historyRun = videoQueryWorkflowHistoricalRunId
+      ? database.prepare(`
+          SELECT id, state, graph_revision AS graphRevision, semantic_fingerprint AS semanticFingerprint,
+            error_code AS errorCode, error_message AS errorMessage
+          FROM workflow_runs WHERE owner_id = ? AND id = ?
+        `).get(MEDIA_PUBLICATION_FIXTURE.ownerId, videoQueryWorkflowHistoricalRunId)
+      : null;
+    const runNodes = videoQueryWorkflowRunId
+      ? database.prepare(`
+          SELECT run_id AS runId, node_id AS nodeId, kind, plan_index AS planIndex,
+            state, task_id AS taskId, projection_state AS projectionState,
+            error_code AS errorCode, error_message AS errorMessage
+          FROM workflow_run_nodes WHERE run_id = ? ORDER BY plan_index
+        `).all(videoQueryWorkflowRunId)
+      : [];
+    const historyRunNodes = videoQueryWorkflowHistoricalRunId
+      ? database.prepare(`
+          SELECT run_id AS runId, node_id AS nodeId, kind, plan_index AS planIndex,
+            state, task_id AS taskId, projection_state AS projectionState,
+            error_code AS errorCode, error_message AS errorMessage
+          FROM workflow_run_nodes WHERE run_id = ? ORDER BY plan_index
+        `).all(videoQueryWorkflowHistoricalRunId)
+      : [];
+    const canvas = database.prepare(`
+      SELECT revision, graph_revision AS graphRevision, nodes, edges, viewport
+      FROM canvas_documents WHERE owner_id = ? AND id = ?
+    `).get(MEDIA_PUBLICATION_FIXTURE.ownerId, MEDIA_PUBLICATION_FIXTURE.canvasId);
+    const document = canvas
+      ? { ...canvas, nodes: JSON.parse(canvas.nodes), edges: JSON.parse(canvas.edges), viewport: JSON.parse(canvas.viewport) }
+      : null;
+    const taskEvents = (taskId) => taskId
+      ? database.prepare(`
+          SELECT state, error_code AS errorCode, error_message AS errorMessage, created_at AS createdAt
+          FROM generation_task_events WHERE task_id = ? ORDER BY id
+        `).all(taskId)
+      : [];
+    const nodeSummary = (nodeId, taskId) => {
+      const node = document?.nodes?.find((candidate) => candidate.id === nodeId);
+      const task = taskId ? tasks.find((candidate) => candidate.id === taskId) : null;
+      return {
+        task: task ?? null,
+        events: task ? taskEvents(task.id) : [],
+        node: node ? {
+          id: node.id,
+          position: node.position,
+          assetId: node.data?.assetId ?? null,
+          videoSrc: node.data?.videoSrc ?? null,
+          content: node.data?.content ?? null,
+          generating: node.data?.videoGenerating ?? node.data?.textGenerating ?? null,
+          errorCode: node.data?.videoGenerationErrorCode ?? node.data?.textGenerationErrorCode ?? null,
+        } : null,
+      };
+    };
+    const activeVideoRunNode = runNodes.find((node) => node.nodeId === videoQueryWorkflowFixtureIds.activeVideoNodeId);
+    const activeTailRunNode = runNodes.find((node) => node.nodeId === videoQueryWorkflowFixtureIds.activeTailTextNodeId);
+    const historyVideoRunNode = historyRunNodes.find((node) => node.nodeId === videoQueryWorkflowFixtureIds.historyVideoNodeId);
+    const historyTailRunNode = historyRunNodes.find((node) => node.nodeId === videoQueryWorkflowFixtureIds.historyTailTextNodeId);
+    const child = videoQueryWorkflowHistoricalRunId
+      ? database.prepare(`
+          SELECT id, child_run_id AS childRunId, preview_digest AS previewDigest,
+            selected_node_ids_json AS selectedNodeIds, frozen_external_inputs_json AS externalInputs,
+            canonical_adoption_receipt_id AS canonicalAdoptionReceiptId
+          FROM workflow_run_continuations WHERE owner_id = ? AND parent_run_id = ?
+        `).get(MEDIA_PUBLICATION_FIXTURE.ownerId, videoQueryWorkflowHistoricalRunId)
+      : null;
+    const childNodes = child
+      ? database.prepare(`
+          SELECT run_id AS runId, node_id AS nodeId, kind, plan_index AS planIndex,
+            state, task_id AS taskId, projection_state AS projectionState,
+            error_code AS errorCode, error_message AS errorMessage
+          FROM workflow_run_nodes WHERE run_id = ? ORDER BY plan_index
+        `).all(child.childRunId)
+      : [];
+    const continuationTailNode = childNodes.find((node) =>
+      node.nodeId === videoQueryWorkflowFixtureIds.historyTailTextNodeId,
+    );
+    const historyTailTaskId = continuationTailNode?.taskId ?? historyTailRunNode?.taskId;
+    const historicalAdoptionCount = database.prepare(`
+      SELECT COUNT(*) AS count FROM generation_result_adoptions
+      WHERE owner_id = ? AND task_id = ?
+    `).get(MEDIA_PUBLICATION_FIXTURE.ownerId, videoQueryWorkflowHistoricalOriginalTaskId || "").count;
+    return {
+      run: run ?? null,
+      runNodes,
+      historyRun: historyRun ?? null,
+      historyRunNodes,
+      tasks,
+      canvas: document,
+      video: nodeSummary(videoQueryWorkflowFixtureIds.activeVideoNodeId, activeVideoRunNode?.taskId),
+      tailText: nodeSummary(videoQueryWorkflowFixtureIds.activeTailTextNodeId, activeTailRunNode?.taskId),
+      historyVideo: nodeSummary(videoQueryWorkflowFixtureIds.historyVideoNodeId, videoQueryWorkflowHistoricalOriginalTaskId || historyVideoRunNode?.taskId),
+      historyTailText: nodeSummary(videoQueryWorkflowFixtureIds.historyTailTextNodeId, historyTailTaskId),
+      child: child ? {
+        ...child,
+        selectedNodeIds: JSON.parse(child.selectedNodeIds),
+        externalInputs: JSON.parse(child.externalInputs),
+      } : null,
+      childNodes,
+      historicalAdoptionCount: Number(historicalAdoptionCount ?? 0),
+    };
+  });
+}
+
+async function videoQueryWorkflowStatusPayload() {
+  if (!generationFixture || !mediaPublicationFixture || !videoQueryWorkflowSemanticFingerprint) {
+    return { scenario: "video-query-workflow", ready: false, checks: { ...videoQueryWorkflowChecks } };
+  }
+  const snapshot = await videoQueryWorkflowSnapshot();
+  if (videoQueryWorkflowChecks.start === "running" && snapshot.run?.state === "success" &&
+      snapshot.video.task?.state === "success" && snapshot.video.node?.videoSrc &&
+      snapshot.tailText.task?.state === "success" && snapshot.tailText.node?.content) {
+    videoQueryWorkflowChecks.start = "done";
+  }
+  if (videoQueryWorkflowChecks.refresh === "running" && videoQueryWorkflowChecks.start === "done") {
+    videoQueryWorkflowChecks.refresh = "done";
+  }
+  const responseRequests = mediaPublicationProviderStats.requests.filter((request) => request.path === "/v1/responses");
+  const activeVideoPosts = mediaPublicationProviderStats.requests.filter((request) =>
+    request.path === "/v1/media/generate" && request.phase === "active" && request.capability === "video",
+  ).length;
+  const historyVideoPosts = mediaPublicationProviderStats.requests.filter((request) =>
+    request.path === "/v1/media/generate" && request.phase === "history" && request.capability === "video",
+  ).length;
+  const activeTextResponses = responseRequests.filter((request) => request.phase === "active").length;
+  const historyTextResponses = responseRequests.filter((request) => request.phase === "history").length;
+  const preservedCanvas = videoQueryWorkflowInitialCanvas;
+  const currentCanvas = snapshot.canvas;
+  const preservedNodesRemain = Boolean(preservedCanvas && currentCanvas) &&
+    mediaPublicationPreservedFingerprint({
+      nodes: currentCanvas.nodes,
+      edges: currentCanvas.edges,
+    }) === mediaPublicationPreservedFingerprint({
+      nodes: preservedCanvas.nodes,
+      edges: preservedCanvas.edges,
+    });
+  return {
+    scenario: "video-query-workflow",
+    ready,
+    actualProductCommands: true,
+    syntheticOnly: true,
+    paidProviderRequests: 0,
+    canvasId: MEDIA_PUBLICATION_FIXTURE.canvasId,
+    groupId: videoQueryWorkflowFixtureIds.activeGroupId,
+    checks: { ...videoQueryWorkflowChecks },
+    workflow: {
+      runId: videoQueryWorkflowRunId || null,
+      state: snapshot.run?.state ?? "not-started",
+      semanticFingerprint: snapshot.run?.semanticFingerprint ?? videoQueryWorkflowSemanticFingerprint,
+      graphRevision: snapshot.run?.graphRevision ?? videoQueryWorkflowGraphRevision,
+      nodes: snapshot.runNodes,
+    },
+    video: snapshot.video,
+    tailText: snapshot.tailText,
+    history: {
+      runId: videoQueryWorkflowHistoricalRunId || null,
+      state: snapshot.historyRun?.state ?? "not-started",
+      semanticFingerprint: snapshot.historyRun?.semanticFingerprint ?? videoQueryWorkflowHistoricalSemanticFingerprint,
+      graphRevision: snapshot.historyRun?.graphRevision ?? videoQueryWorkflowGraphRevision,
+      status: videoQueryWorkflowChecks.historyContinuation,
+      synchronized: videoQueryWorkflowChecks.historySync === "done",
+      continued: videoQueryWorkflowChecks.historyContinuation === "done",
+      syncStatus: videoQueryWorkflowHistoricalSyncResult?.status ?? null,
+      originalTaskId: videoQueryWorkflowHistoricalOriginalTaskId || null,
+      originalProviderTaskId: videoQueryWorkflowHistoricalOriginalProviderTaskId || null,
+      originalTask: snapshot.historyVideo.task,
+      originalNode: snapshot.historyVideo.node,
+      runNodes: snapshot.historyRunNodes,
+      childRunId: snapshot.child?.childRunId ?? (videoQueryWorkflowHistoricalContinuationRunId || null),
+      childSelectedNodeIds: snapshot.child?.selectedNodeIds ?? [],
+      childExternalInputs: snapshot.child?.externalInputs ?? [],
+      childNodes: snapshot.childNodes,
+      downstreamNodeIds: [videoQueryWorkflowFixtureIds.historyTailTextNodeId],
+      generationResultAdoptions: snapshot.historicalAdoptionCount,
+    },
+    provider: {
+      posts: mediaPublicationProviderStats.posts,
+      videoPosts: mediaPublicationProviderStats.videoPosts,
+      statusGets: mediaPublicationProviderStats.gets,
+      activeVideoPosts,
+      historyVideoPosts,
+      activeTextResponses,
+      historyTextResponses,
+      textResponses: responseRequests.length,
+      arkInputVideoSeen: videoQueryWorkflowArkInputVideoSeen,
+      profileLockInjected: videoQueryWorkflowProviderProfileLockInjected,
+      queryInterruptions: videoQueryWorkflowProviderStatusFailures,
+      acceptedVideoQueryRecoveryDiagnosticCount: videoQueryWorkflowAcceptedRecoveryDiagnosticCount,
+      diagnosticStageCounts: Object.fromEntries(videoQueryWorkflowDiagnosticStageCounts),
+      profileLockBusyObserved: videoQueryWorkflowProviderProfileLockInjected &&
+        videoQueryWorkflowDiagnosticEvents.some((event) => event.taskId === snapshot.video.task?.id &&
+          event.stage === "accepted-video-query-recovery" && event.errorName === "ProviderProfileLockBusyError" &&
+          event.sourceErrorCode === "PROVIDER_LOCK_BUSY" && event.causeCode === "SQLITE_LOCK_CONTENTION"),
+    },
+    preserve: {
+      activeResultVisible: typeof snapshot.video.node?.videoSrc === "string" && snapshot.video.node.videoSrc.length > 0,
+      tailTextVisible: typeof snapshot.tailText.node?.content === "string" && snapshot.tailText.node.content.includes("视频查询尾部文字"),
+      activeNodesRemainInCanvas: Boolean(snapshot.video.node && snapshot.tailText.node),
+      historicalNodesRemainInCanvas: Boolean(snapshot.historyVideo.node && snapshot.historyTailText.node),
+      preservedBaselineUnchanged: preservedNodesRemain,
+      historicalParentUnchanged: snapshot.historyRun?.state === "failed",
+      historyVideoNoSecondProviderPost: historyVideoPosts === 1,
+      historyTailOnly: videoQueryWorkflowChecks.historyContinuation !== "done" ||
+        (snapshot.child?.selectedNodeIds?.length === 1 &&
+          snapshot.child.selectedNodeIds[0] === videoQueryWorkflowFixtureIds.historyTailTextNodeId),
+    },
+    expiresAt: expiresAt.toISOString(),
+  };
+}
+
+async function waitForVideoQueryWorkflowCompletion() {
+  const deadline = Date.now() + 90_000;
+  let last;
+  while (Date.now() < deadline) {
+    last = await videoQueryWorkflowSnapshot();
+    const videoReady = last.video.task?.state === "success" && typeof last.video.node?.videoSrc === "string";
+    const tailReady = last.tailText.task?.state === "success" && typeof last.tailText.node?.content === "string" && last.tailText.node.content.includes("视频查询尾部文字");
+    if (videoReady && tailReady) return last;
+    const failure = [last.video.task, last.tailText.task].find((task) => ["failed", "cancelled"].includes(task?.state));
+    if (failure) throw new AcceptanceControlError(
+      `视频查询恢复未完成：${failure.errorCode ?? failure.state}`,
+      "VIDEO_QUERY_WORKFLOW_FAILED",
+      503,
+    );
+    await acceptanceDelay(250);
+  }
+  throw new AcceptanceControlError("视频查询仍在自动恢复，请稍后查看右侧画布。", "VIDEO_QUERY_WORKFLOW_PENDING", 503);
+}
+
+async function waitForVideoQueryWorkflowHistoricalLifecycle() {
+  const deadline = Date.now() + 90_000;
+  let last;
+  while (Date.now() < deadline) {
+    last = await videoQueryWorkflowSnapshot();
+    const task = last.historyVideo.task;
+    const runFailed = last.historyRun?.state === "failed";
+    const nodeFailed = last.historyRunNodes.find((node) => node.nodeId === videoQueryWorkflowFixtureIds.historyVideoNodeId)?.state === "failed";
+    const tailBlocked = last.historyRunNodes.find((node) => node.nodeId === videoQueryWorkflowFixtureIds.historyTailTextNodeId)?.state === "blocked";
+    if (videoQueryWorkflowHistoricalFaultInjected && runFailed && nodeFailed && tailBlocked &&
+        task?.state === "success" && typeof task.resultAssetId === "string" && task.resultAssetId) {
+      return last;
+    }
+    const failure = task && ["failed", "cancelled"].includes(task.state) ? task : undefined;
+    if (failure) throw new AcceptanceControlError(
+      `历史原视频任务未能保存：${failure.errorCode ?? failure.state}`,
+      "VIDEO_QUERY_WORKFLOW_HISTORY_SEED_FAILED",
+      503,
+    );
+    await acceptanceDelay(250);
+  }
+  throw new AcceptanceControlError(
+    `历史原视频尚未形成可找回证据：${last?.historyRun?.state ?? "无运行状态"}`,
+    "VIDEO_QUERY_WORKFLOW_HISTORY_SEED_PENDING",
+    503,
+  );
+}
+
+async function runVideoQueryWorkflowStart() {
+  if (videoQueryWorkflowChecks.start !== "idle") return videoQueryWorkflowStatusPayload();
+  if (!videoQueryWorkflowSemanticFingerprint) throw new AcceptanceControlError("视频查询验收画布尚未准备完成。", "VIDEO_QUERY_WORKFLOW_NOT_READY", 503);
+  const created = await api("/api/workflow-runs", "POST", {
+    canvasId: MEDIA_PUBLICATION_FIXTURE.canvasId,
+    clientSemanticFingerprint: videoQueryWorkflowSemanticFingerprint,
+    groupId: videoQueryWorkflowFixtureIds.activeGroupId,
+  });
+  const body = await created.json();
+  const runId = body?.run?.id ?? body?.id;
+  if (typeof runId !== "string" || !runId) throw new AcceptanceControlError("本地工作流没有成功启动。", "VIDEO_QUERY_WORKFLOW_START_FAILED", 503);
+  videoQueryWorkflowRunId = runId;
+  videoQueryWorkflowChecks.start = "running";
+  return videoQueryWorkflowStatusPayload();
+}
+
+async function runVideoQueryWorkflowRefresh() {
+  if (!["running", "done"].includes(videoQueryWorkflowChecks.start)) throw new AcceptanceControlError("请先启动第1项自动恢复。", "VIDEO_QUERY_WORKFLOW_ORDER", 409);
+  const before = await videoQueryWorkflowSnapshot();
+  const after = await videoQueryWorkflowSnapshot();
+  if (!after.video.node || !after.tailText.node ||
+      before.video.node?.position?.x !== after.video.node?.position?.x ||
+      before.video.node?.position?.y !== after.video.node?.position?.y ||
+      before.tailText.node?.position?.x !== after.tailText.node?.position?.x ||
+      before.tailText.node?.position?.y !== after.tailText.node?.position?.y) {
+    throw new AcceptanceControlError("刷新后结果或节点位置没有保持。", "VIDEO_QUERY_WORKFLOW_REFRESH_FAILED", 503);
+  }
+  const activeVideoPosts = mediaPublicationProviderStats.requests.filter((request) =>
+    request.path === "/v1/media/generate" && request.phase === "active" && request.capability === "video",
+  ).length;
+  if (activeVideoPosts > 1) {
+    throw new AcceptanceControlError("刷新期间重复提交了视频 Provider 请求。", "VIDEO_QUERY_WORKFLOW_DUPLICATE_ADMIT", 503);
+  }
+  videoQueryWorkflowChecks.refresh = "running";
+  return videoQueryWorkflowStatusPayload();
+}
+
+async function runVideoQueryWorkflowHistorySync() {
+  if (videoQueryWorkflowChecks.refresh !== "done") throw new AcceptanceControlError("请先完成前两项。", "VIDEO_QUERY_WORKFLOW_ORDER", 409);
+  if (videoQueryWorkflowChecks.historySync !== "idle") return videoQueryWorkflowStatusPayload();
+  const before = await videoQueryWorkflowSnapshot();
+  const originalTask = before.historyVideo.task;
+  if (!videoQueryWorkflowHistoricalRunId || !videoQueryWorkflowHistoricalOriginalTaskId ||
+      originalTask?.state !== "success" || !originalTask.resultAssetId) {
+    throw new AcceptanceControlError("历史原视频证据尚未完整保存，请稍后重试。", "VIDEO_QUERY_WORKFLOW_HISTORY_NOT_READY", 409);
+  }
+  await loadMediaPublicationSourceModules();
+  const input = {
+    canvasId: MEDIA_PUBLICATION_FIXTURE.canvasId,
+    executionAttempt: Number(originalTask.attempt),
+    nodeId: videoQueryWorkflowFixtureIds.historyVideoNodeId,
+    ownerId: MEDIA_PUBLICATION_FIXTURE.ownerId,
+    runId: videoQueryWorkflowHistoricalRunId,
+    taskId: videoQueryWorkflowHistoricalOriginalTaskId,
+  };
+  const result = await readMediaPublicationDatabase((database) => {
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const inspected = mediaPublicationProductModules.workflowRunService.inspectHistoricalWorkflowResultSyncInTransaction(database, input);
+      const synced = inspected.status === "ready"
+        ? mediaPublicationProductModules.workflowRunService.syncHistoricalWorkflowResultInTransaction(database, input)
+        : inspected;
+      database.exec("COMMIT");
+      return synced;
+    } catch (error) {
+      if (database.isTransaction) database.exec("ROLLBACK");
+      throw error;
+    }
+  });
+  videoQueryWorkflowHistoricalSyncResult = result;
+  if (!result || !["applied", "already-synced"].includes(result.status)) {
+    throw new AcceptanceControlError(
+      `历史原视频找回未完成：${result?.reason ?? result?.status ?? "未知原因"}`,
+      "VIDEO_QUERY_WORKFLOW_HISTORY_SYNC_FAILED",
+      503,
+    );
+  }
+  const after = await videoQueryWorkflowSnapshot();
+  if (after.historyVideo.node?.assetId !== originalTask.resultAssetId ||
+      typeof after.historyVideo.node?.videoSrc !== "string" ||
+      after.historyVideo.node.videoSrc.length === 0 ||
+      after.historicalAdoptionCount !== 0) {
+    throw new AcceptanceControlError("历史同步没有只投影原视频，未继续后续节点。", "VIDEO_QUERY_WORKFLOW_HISTORY_SYNC_VERIFY_FAILED", 503);
+  }
+  videoQueryWorkflowChecks.historySync = "done";
+  videoQueryWorkflowHistoryResult = result;
+  return videoQueryWorkflowStatusPayload();
+}
+
+async function runVideoQueryWorkflowHistoryContinuation() {
+  if (videoQueryWorkflowChecks.historySync !== "done") throw new AcceptanceControlError("请先点击“找回原视频”。", "VIDEO_QUERY_WORKFLOW_ORDER", 409);
+  if (videoQueryWorkflowChecks.historyContinuation !== "idle") return videoQueryWorkflowStatusPayload();
+  if (!videoQueryWorkflowHistoricalRunId) throw new AcceptanceControlError("历史整组执行尚未准备完成。", "VIDEO_QUERY_WORKFLOW_HISTORY_NOT_READY", 409);
+  const previewResponse = await api(`/api/workflow-runs/${videoQueryWorkflowHistoricalRunId}/continuation-preview`);
+  const preview = await previewResponse.json();
+  if (!Array.isArray(preview?.candidateNodeIds) ||
+      preview.candidateNodeIds.length !== 1 ||
+      preview.candidateNodeIds[0] !== videoQueryWorkflowFixtureIds.historyTailTextNodeId ||
+      !Array.isArray(preview.externalInputs) ||
+      !preview.externalInputs.some((input) => input.nodeId === videoQueryWorkflowFixtureIds.historyVideoNodeId && input.sourceTaskId === videoQueryWorkflowHistoricalOriginalTaskId)) {
+    throw new AcceptanceControlError("继续预览没有锁定历史尾部节点，已停止提交。", "VIDEO_QUERY_WORKFLOW_HISTORY_PREVIEW_FAILED", 503);
+  }
+  const beforeCounts = {
+    historyVideoPosts: mediaPublicationProviderStats.requests.filter((request) => request.path === "/v1/media/generate" && request.phase === "history" && request.capability === "video").length,
+    historyTextResponses: mediaPublicationProviderStats.requests.filter((request) => request.path === "/v1/responses" && request.phase === "history").length,
+  };
+  const intentId = `video-query-workflow-history-${randomUUID()}`;
+  const continued = await api(`/api/workflow-runs/${videoQueryWorkflowHistoricalRunId}/continue`, "POST", {
+    intentId,
+    previewDigest: preview.previewDigest,
+  });
+  const body = await continued.json();
+  const childRunId = body?.run?.id ?? body?.continuation?.childRunId;
+  if (typeof childRunId !== "string" || !childRunId) throw new AcceptanceControlError("历史尾部没有成功进入继续执行。", "VIDEO_QUERY_WORKFLOW_HISTORY_CONTINUE_FAILED", 503);
+  videoQueryWorkflowHistoricalContinuationRunId = childRunId;
+  const deadline = Date.now() + 90_000;
+  let last;
+  while (Date.now() < deadline) {
+    last = await videoQueryWorkflowSnapshot();
+    const tailNode = last.childNodes.find((node) => node.nodeId === videoQueryWorkflowFixtureIds.historyTailTextNodeId);
+    const tailTask = tailNode?.taskId ? last.tasks.find((task) => task.id === tailNode.taskId) : null;
+    if (tailNode?.state === "success" && tailNode.projectionState === "applied" &&
+        tailTask?.state === "success" && typeof last.historyTailText.node?.content === "string" &&
+        last.historyTailText.node.content.includes("视频查询尾部文字")) {
+      const historyVideoPosts = mediaPublicationProviderStats.requests.filter((request) => request.path === "/v1/media/generate" && request.phase === "history" && request.capability === "video").length;
+      const historyTextResponses = mediaPublicationProviderStats.requests.filter((request) => request.path === "/v1/responses" && request.phase === "history").length;
+      if (historyVideoPosts !== beforeCounts.historyVideoPosts || historyTextResponses !== beforeCounts.historyTextResponses + 1 ||
+          !videoQueryWorkflowArkInputVideoSeen) {
+        throw new AcceptanceControlError("继续执行没有满足尾部单次提交或 input_video 证据。", "VIDEO_QUERY_WORKFLOW_HISTORY_CONTINUE_EVIDENCE_FAILED", 503);
+      }
+      videoQueryWorkflowChecks.historyContinuation = "done";
+      return videoQueryWorkflowStatusPayload();
+    }
+    const failure = [tailNode, tailTask].find((item) => ["failed", "cancelled", "blocked"].includes(item?.state));
+    if (failure) throw new AcceptanceControlError(
+      `历史尾部未能完成：${failure.errorCode ?? failure.state}`,
+      "VIDEO_QUERY_WORKFLOW_HISTORY_CONTINUE_FAILED",
+      503,
+    );
+    await acceptanceDelay(250);
+  }
+  throw new AcceptanceControlError("历史尾部仍在保存，请稍后查看右侧画布。", "VIDEO_QUERY_WORKFLOW_HISTORY_CONTINUE_PENDING", 503);
 }
 
 async function runMediaPublicationSaveRace() {
@@ -1644,7 +2389,7 @@ async function buildGenerationClients() {
     build: { ...buildCommon.build, outDir: candidateRoot },
   });
   const candidateHits = candidatePlugin.assertHits();
-  if (nodeRecoveryScenario) return Object.freeze({
+  if (nodeRecoveryScenario || videoQueryWorkflowScenario) return Object.freeze({
     candidateLoaded: candidateHits,
     candidate: { root: realpathSync(candidateRoot), sha256: generationBuildDigest(candidateRoot), manifest: generationBundleManifest(candidateRoot) },
     candidateSource: Object.fromEntries(generationBaselineFiles.map(file => [file,
@@ -1782,8 +2527,30 @@ document.addEventListener('click',async event=>{const button=event.target.closes
 </script></html>`;
 }
 
+function videoQueryWorkflowGuideHtml() {
+  return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>视频查询恢复 · 本地验收</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f4f5f6;color:#262626;font:16px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.layout{display:grid;grid-template-columns:410px 1fr;height:100vh}.guide{overflow:auto;padding:22px}.canvas-area{min-width:0;background:#050505}iframe{border:0;width:100%;height:100%;display:block}h1{font-size:25px;line-height:1.4;margin:0 0 12px}h2{font-size:18px;margin:0 0 8px}p{margin:8px 0}.muted{font-size:14px;color:#666}.safe,.expect{background:#eaf3ed;padding:12px;border-radius:9px}.card{padding:18px;background:white;border:1px solid #ddd;border-radius:12px;margin:16px 0}.card.done{border-color:#80a990}.status{font-size:14px;color:#37644a}.error{padding:12px;background:#fff0ed;color:#9b2929;border-radius:8px;overflow-wrap:anywhere}button{font:inherit;cursor:pointer;padding:9px 12px;border-radius:8px;background:#fff;border:1px solid #aaa;margin:5px 5px 5px 0}button.primary{background:#242424;border-color:#242424;color:white}button:disabled{opacity:.5;cursor:default}button:focus-visible{outline:3px solid #5486c0;outline-offset:3px}details{font-size:13px;color:#666}pre{white-space:pre-wrap;overflow-wrap:anywhere}summary{cursor:pointer}@media(max-width:900px){.layout{grid-template-columns:350px minmax(400px,1fr)}.guide{padding:14px}}
+</style><div class="layout"><main class="guide"><h1>视频查询恢复验收</h1><p class="safe">本页和右侧画布是一套本地测试。只使用模拟平台，不扣费，也不会影响线上数据。</p><p id="ready" class="muted">正在准备测试画布…</p><div id="error" class="error" role="alert" hidden></div>
+<section class="card" id="card-start"><h2>1. 临时中断后，视频和尾文字会自动完成吗？</h2><p>点击一次后，系统会真实创建一组本地工作流。模拟平台会短暂中断查询。请等约1～2分钟，期间不用点重试。</p><button class="primary" data-action="start">开始自动恢复</button><p class="expect"><b>你要看：</b>同一个视频节点自动出现结果，尾部文字也自动完成；页面没有要求你重复提交。</p><p class="status" id="status-start">尚未开始。</p></section>
+<section class="card" id="card-refresh"><h2>2. 刷新后，恢复中的结果还在原位置吗？</h2><p>启动第1项后，立即点下面按钮也可以；它会重新打开右侧画布，仍继续刚才那一次任务。</p><button data-action="refresh" disabled>刷新并检查恢复结果</button><p class="expect"><b>你要看：</b>视频和尾文字仍在原节点，位置和连线没有变化，也没有新增一次平台提交。</p><p class="status" id="status-refresh">请先完成第1项。</p></section>
+<section class="card" id="card-history"><h2>3. 找回历史视频后，只继续尾部节点吗？</h2><p>先点“找回原视频”，确认历史视频回到原节点；再单独点“继续剩余节点”，只生成尾部文字。</p><button class="primary" data-action="history-sync" disabled>找回原视频</button><button data-action="history-continue" disabled>继续剩余节点</button><p class="expect"><b>你要看：</b>历史视频不会再次提交平台请求，只生成尾部文字；已有内容、位置和连线保持不变。</p><p class="status" id="status-history">请先完成第2项。</p></section>
+<p><b>三项都符合后，在对话里回复“3项通过”；哪一项不符合，就告诉我第几项。</b></p><p class="muted">页面的绿色提示只表示本地流程已完成，最终是否符合你的实际使用体验由你确认。</p><details><summary>工程记录（你不用操作）</summary><pre id="evidence"></pre></details><button id="finish">结束本次验收</button></main><div class="canvas-area"><iframe id="canvas" title="视频查询恢复测试画布" src="/__acceptance/generation-entry?variant=candidate"></iframe></div></div>
+<script>
+let state,busy=false,stopped=false,timer;
+const byId=id=>document.getElementById(id);
+async function request(path,body){const r=await fetch(path,{cache:'no-store',...(body===undefined?{}:{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)})});const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||d.message||'本地验收服务暂时不可用');return d;}
+function render(data){state=data;const checks=data.checks||{};byId('ready').textContent=data.ready?'画布已准备好。按1→2→3操作。':'正在准备测试画布…';const startDone=checks.start==='done';const refreshDone=checks.refresh==='done';const syncDone=checks.historySync==='done';const continuationDone=checks.historyContinuation==='done';byId('card-start').classList.toggle('done',startDone);byId('card-refresh').classList.toggle('done',refreshDone);byId('card-history').classList.toggle('done',continuationDone);byId('status-start').textContent=startDone?'视频和尾文字已自动完成，请检查右侧画布。':checks.start==='running'?'正在查询平台结果；遇到短暂中断会自动等待，不用重试。':'尚未开始。';byId('status-refresh').textContent=refreshDone?'刷新后结果仍在原节点，请继续第3项。':checks.refresh==='running'?'画布已重新加载，正在等待原任务结果。':startDone?'可以开始第2项。':'请先开始第1项。';byId('status-history').textContent=continuationDone?'历史视频保留在原节点，只生成了尾部文字。':syncDone?'原视频已找回。现在可以继续剩余节点。':refreshDone?'可以先找回原视频。':'请先完成第2项。';byId('evidence').textContent=JSON.stringify(data,null,2);document.querySelector('[data-action="start"]').disabled=busy||!data.ready||checks.start!=='idle';document.querySelector('[data-action="refresh"]').disabled=busy||!['running','done'].includes(checks.start)||refreshDone;document.querySelector('[data-action="history-sync"]').disabled=busy||!startDone||!refreshDone||checks.historySync!=='idle';document.querySelector('[data-action="history-continue"]').disabled=busy||!syncDone||checks.historyContinuation!=='idle';}
+async function refresh(){clearTimeout(timer);if(stopped||busy)return;try{render(await request('/__acceptance/video-query-workflow/status'));}catch(error){byId('error').hidden=false;byId('error').textContent=error.message;}finally{if(!stopped)timer=setTimeout(refresh,1500);}}
+async function reloadCanvas(focusId){const frame=byId('canvas');await new Promise((resolve,reject)=>{const timeout=setTimeout(()=>{frame.removeEventListener('load',loaded);reject(Error('右侧画布刷新超时，请稍后重试。'));},15000);const loaded=()=>{clearTimeout(timeout);resolve();};frame.addEventListener('load',loaded,{once:true});frame.contentWindow.location.reload();});if(focusId)await focusCanvasNode(focusId);}
+function focusCanvasNode(id){return new Promise((resolve,reject)=>{if(!id){reject(Error('没有找到对应的验收节点。'));return;}const frame=byId('canvas');let attempts=0;const tick=()=>{const doc=frame.contentDocument;const world=doc?.querySelector('[data-testid="canvas-world"][data-persistence-ready="true"]');if(world){const dialog=doc.querySelector('[data-testid="node-search-dialog"]');if(!dialog){doc.querySelector('[data-testid="node-search"]')?.click();}else{const all=Array.from(dialog.querySelectorAll('[aria-label="节点类型"] button')).find(el=>el.textContent.trim()==='全部');const input=dialog.querySelector('input[type="search"]');if(all?.getAttribute('aria-pressed')!=='true')all?.click();if(input?.value){const win=doc.defaultView;Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype,'value').set.call(input,'');input.dispatchEvent(new win.Event('input',{bubbles:true}));}const result=Array.from(dialog.querySelectorAll('[data-testid="node-search-results"] [data-node-id]')).find(el=>el.getAttribute('data-node-id')===id);if(result){result.click();resolve();return;}}}if(++attempts<150)window.setTimeout(tick,100);else reject(Error('未能定位到对应节点，请稍后再试。'));};tick();});}
+document.addEventListener('click',async event=>{const button=event.target.closest('button');if(!button||button.disabled||busy)return;if(button.id==='finish'){await request('/__acceptance/stop',{});stopped=true;document.body.textContent='本次验收已结束，可以关闭页面。';return;}const action=button.dataset.action;if(!action)return;busy=true;const label=button.textContent;button.textContent='系统处理中…';byId('error').hidden=true;try{const data=await request('/__acceptance/video-query-workflow/'+action,{});render(data);const focusId=action==='start'||action==='refresh'?'video-query-workflow-active-video':action==='history-sync'?'video-query-workflow-history-video':action==='history-continue'?'video-query-workflow-history-tail-text':undefined;await reloadCanvas(focusId);}catch(error){byId('error').hidden=false;byId('error').textContent=error.message;}finally{button.textContent=label;busy=false;await refresh();}});window.addEventListener('pagehide',()=>clearTimeout(timer));refresh();
+</script></html>`;
+}
+
 function generationGuideHtmlSimple() {
   if (mediaPublicationScenario) return mediaPublicationGuideHtml();
+  if (videoQueryWorkflowScenario) return videoQueryWorkflowGuideHtml();
   if (nodeRecoveryProductMode) return nodeRecoveryProductGuideHtml();
   if (nodeRecoveryScenario) return nodeRecoveryGuideHtml();
   return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>本地验收 · 按顺序检查三项</title>
@@ -2249,7 +3016,7 @@ async function runNodeRecoveryProductRetry() {
   if (observedChild.state !== "success") {
     throw new AcceptanceControlError("当前视频的新任务已提交，结果仍在保存，请刷新验收页查看原任务和新任务。", "NODE_RECOVERY_PRODUCT_RETRY_PENDING", 503);
   }
-  const fixtureModule = await server.ssrLoadModule(
+  const fixtureModule = await loadAcceptanceSourceModule(
     ssrModuleUrl(join(sourceRoot, "scripts/node-recovery-product-fixture.ts")),
   );
   let verification;
@@ -2299,7 +3066,7 @@ async function initializeNodeRecoveryProductFixture(canvasId, ownerId) {
     throw new Error("Node recovery product fixture requires the bootstrap owner identity");
   }
   nodeRecoveryFixture = readNodeRecoveryFixture();
-  const fixtureModule = await server.ssrLoadModule(
+  const fixtureModule = await loadAcceptanceSourceModule(
     ssrModuleUrl(join(sourceRoot, "scripts/node-recovery-product-fixture.ts")),
   );
   nodeRecoveryProductFixture = await fixtureModule.initializeNodeRecoveryProductFixture({
@@ -2339,8 +3106,8 @@ async function initializeNodeRecoveryFixture(canvasId, ownerId) {
   nodeRecoveryFixture = readNodeRecoveryFixture();
   if (nodeRecoveryProductMode) return initializeNodeRecoveryProductFixture(canvasId, ownerId);
   const moduleUrl = (path) => `/@fs/${path.split(sep).join("/")}`;
-  const modelParameters = await server.ssrLoadModule(moduleUrl(join(sourceRoot, "types/modelParameters.ts")));
-  const workflow = await server.ssrLoadModule(moduleUrl(join(sourceRoot, "client/src/generation/workflowNodeExecutors.ts")));
+  const modelParameters = await loadAcceptanceSourceModule(moduleUrl(join(sourceRoot, "types/modelParameters.ts")));
+  const workflow = await loadAcceptanceSourceModule(moduleUrl(join(sourceRoot, "client/src/generation/workflowNodeExecutors.ts")));
   generationRuntime = {
     defaultParameterValues: modelParameters.defaultParameterValues,
     knownModelParameterSchema: modelParameters.knownModelParameterSchema,
@@ -2544,8 +3311,8 @@ async function initializeGenerationFixture(canvasId, ownerId) {
   if (nodeRecoveryScenario) return initializeNodeRecoveryFixture(canvasId, ownerId);
   generationRuntime = {};
   const moduleUrl = (path) => `/@fs/${path.split(sep).join("/")}`;
-  const modelParameters = await server.ssrLoadModule(moduleUrl(join(sourceRoot, "types/modelParameters.ts")));
-  const workflow = await server.ssrLoadModule(moduleUrl(join(sourceRoot, "client/src/generation/workflowNodeExecutors.ts")));
+  const modelParameters = await loadAcceptanceSourceModule(moduleUrl(join(sourceRoot, "types/modelParameters.ts")));
+  const workflow = await loadAcceptanceSourceModule(moduleUrl(join(sourceRoot, "client/src/generation/workflowNodeExecutors.ts")));
   generationRuntime.defaultParameterValues = modelParameters.defaultParameterValues;
   generationRuntime.knownModelParameterSchema = modelParameters.knownModelParameterSchema;
   generationRuntime.currentWorkflowGenerationBinding = workflow.currentWorkflowGenerationBinding;
@@ -3379,6 +4146,474 @@ async function smokeNodeRecoveryGuide() {
   }
 }
 
+async function videoQueryWorkflowDatabaseIdentity() {
+  return readMediaPublicationDatabase((database) => ({
+    taskIds: database.prepare(`
+      SELECT id FROM generation_tasks WHERE owner_id = ? AND canvas_id = ?
+    `).all(MEDIA_PUBLICATION_FIXTURE.ownerId, MEDIA_PUBLICATION_FIXTURE.canvasId).map((row) => row.id),
+    runIds: database.prepare(`
+      SELECT id FROM workflow_runs WHERE owner_id = ? AND canvas_id = ?
+    `).all(MEDIA_PUBLICATION_FIXTURE.ownerId, MEDIA_PUBLICATION_FIXTURE.canvasId).map((row) => row.id),
+    receiptIds: database.prepare(`
+      SELECT operation_id AS operationId FROM canvas_operation_receipts
+      WHERE owner_id = ? AND canvas_id = ?
+    `).all(MEDIA_PUBLICATION_FIXTURE.ownerId, MEDIA_PUBLICATION_FIXTURE.canvasId).map((row) => row.operationId),
+  }));
+}
+
+function sqlIdList(ids) {
+  return ids.map(() => "?").join(",");
+}
+
+async function resetVideoQueryWorkflowAfterSmoke(saved) {
+  try { videoQueryWorkflowProviderLockDatabase?.exec("ROLLBACK"); } catch {}
+  try { videoQueryWorkflowProviderLockDatabase?.close(); } catch {}
+  videoQueryWorkflowProviderLockDatabase = undefined;
+  if (videoQueryWorkflowProviderLockTimer) {
+    clearTimeout(videoQueryWorkflowProviderLockTimer);
+    videoQueryWorkflowProviderLockTimer = undefined;
+  }
+  const cleanup = await readMediaPublicationDatabase((database) => {
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const baselineTaskIds = new Set(saved.database.taskIds);
+      const baselineRunIds = new Set(saved.database.runIds);
+      const baselineReceiptIds = new Set(saved.database.receiptIds);
+      const currentTasks = database.prepare(`
+        SELECT id, result_asset_id AS resultAssetId FROM generation_tasks
+        WHERE owner_id = ? AND canvas_id = ?
+      `).all(MEDIA_PUBLICATION_FIXTURE.ownerId, MEDIA_PUBLICATION_FIXTURE.canvasId);
+      const dynamicTaskRows = currentTasks.filter((row) => !baselineTaskIds.has(row.id));
+      const dynamicTaskIds = dynamicTaskRows.map((row) => row.id);
+      const dynamicAssetIds = dynamicTaskRows.map((row) => row.resultAssetId).filter(Boolean);
+      const currentRuns = database.prepare(`
+        SELECT id FROM workflow_runs WHERE owner_id = ? AND canvas_id = ?
+      `).all(MEDIA_PUBLICATION_FIXTURE.ownerId, MEDIA_PUBLICATION_FIXTURE.canvasId);
+      const dynamicRunIds = currentRuns.map((row) => row.id).filter((id) => !baselineRunIds.has(id));
+      const continuationWhere = [
+        ...dynamicRunIds,
+        ...(videoQueryWorkflowHistoricalRunId ? [videoQueryWorkflowHistoricalRunId] : []),
+      ];
+      if (continuationWhere.length > 0) {
+        const placeholders = sqlIdList(continuationWhere);
+        database.prepare(`
+          DELETE FROM workflow_run_continuations
+          WHERE owner_id = ? AND (parent_run_id IN (${placeholders}) OR child_run_id IN (${placeholders}))
+        `).run(MEDIA_PUBLICATION_FIXTURE.ownerId, ...continuationWhere, ...continuationWhere);
+      }
+      if (dynamicRunIds.length > 0) {
+        database.prepare(`DELETE FROM workflow_runs WHERE owner_id = ? AND id IN (${sqlIdList(dynamicRunIds)})`)
+          .run(MEDIA_PUBLICATION_FIXTURE.ownerId, ...dynamicRunIds);
+      }
+      if (dynamicTaskIds.length > 0) {
+        database.prepare(`DELETE FROM generation_tasks WHERE owner_id = ? AND id IN (${sqlIdList(dynamicTaskIds)})`)
+          .run(MEDIA_PUBLICATION_FIXTURE.ownerId, ...dynamicTaskIds);
+      }
+      if (saved.historyRunId) {
+        database.prepare(`
+          UPDATE workflow_runs SET state = ?, stop_requested = ?, graph_revision = ?,
+            semantic_fingerprint = ?, error_code = ?, error_message = ?, updated_at = ?
+          WHERE owner_id = ? AND id = ?
+        `).run(
+          saved.historyRun.state,
+          Number(saved.historyRun.stopRequested ?? 0),
+          Number(saved.historyRun.graphRevision),
+          saved.historyRun.semanticFingerprint,
+          saved.historyRun.errorCode,
+          saved.historyRun.errorMessage,
+          new Date().toISOString(),
+          MEDIA_PUBLICATION_FIXTURE.ownerId,
+          saved.historyRunId,
+        );
+        for (const row of saved.historyRunNodes) {
+          database.prepare(`
+            UPDATE workflow_run_nodes SET state = ?, task_id = ?, projection_state = ?,
+              error_code = ?, error_message = ?, updated_at = ?
+            WHERE run_id = ? AND node_id = ?
+          `).run(
+            row.state,
+            row.taskId,
+            row.projectionState,
+            row.errorCode,
+            row.errorMessage,
+            new Date().toISOString(),
+            saved.historyRunId,
+            row.nodeId,
+          );
+        }
+      }
+      const currentReceipts = database.prepare(`
+        SELECT operation_id AS operationId FROM canvas_operation_receipts
+        WHERE owner_id = ? AND canvas_id = ?
+      `).all(MEDIA_PUBLICATION_FIXTURE.ownerId, MEDIA_PUBLICATION_FIXTURE.canvasId);
+      const dynamicReceiptIds = currentReceipts.map((row) => row.operationId).filter((id) => !baselineReceiptIds.has(id));
+      if (dynamicReceiptIds.length > 0) {
+        database.prepare(`
+          DELETE FROM canvas_operation_receipts WHERE owner_id = ? AND canvas_id = ?
+            AND operation_id IN (${sqlIdList(dynamicReceiptIds)})
+        `).run(MEDIA_PUBLICATION_FIXTURE.ownerId, MEDIA_PUBLICATION_FIXTURE.canvasId, ...dynamicReceiptIds);
+      }
+      if (dynamicAssetIds.length > 0) {
+        database.prepare(`DELETE FROM media_assets WHERE owner_id = ? AND id IN (${sqlIdList(dynamicAssetIds)})`)
+          .run(MEDIA_PUBLICATION_FIXTURE.ownerId, ...dynamicAssetIds);
+      }
+      // Fixture reset is not a user save: the real Canvas save command
+      // correctly retains server-owned result fields omitted by a client. Here
+      // restore the exact saved temporary document together with its receipts.
+      database.prepare(`UPDATE canvas_documents SET nodes = ?, edges = ?, viewport = ?,
+        revision = revision + 1, graph_revision = graph_revision + 1, updated_at = ?,
+        save_session_id = ?, save_sequence = 1 WHERE owner_id = ? AND id = ?`).run(
+        JSON.stringify(saved.canvas.nodes), JSON.stringify(saved.canvas.edges), JSON.stringify(saved.canvas.viewport),
+        new Date().toISOString(), `acceptance-reset-${randomUUID()}`, MEDIA_PUBLICATION_FIXTURE.ownerId,
+        MEDIA_PUBLICATION_FIXTURE.canvasId);
+      database.exec("COMMIT");
+      return { dynamicTaskIds, dynamicRunIds, dynamicAssetIds, dynamicReceiptIds };
+    } catch (error) {
+      if (database.isTransaction) database.exec("ROLLBACK");
+      throw error;
+    }
+  });
+  const restoredCanvas = await (await api(`/api/canvas/${generationFixture.canvasId}`)).json();
+  for (const id of [videoQueryWorkflowFixtureIds.activeVideoNodeId, videoQueryWorkflowFixtureIds.historyVideoNodeId]) {
+    const original = saved.canvas.nodes.find((node) => node.id === id);
+    const restored = restoredCanvas.nodes.find((node) => node.id === id);
+    if (JSON.stringify(restored?.data) !== JSON.stringify(original?.data)) {
+      throw new Error("Acceptance reset retained stale generated video fields");
+    }
+  }
+  await readMediaPublicationDatabase((database) => {
+    database.prepare(`
+      UPDATE workflow_runs SET graph_revision = ?, updated_at = ?
+      WHERE owner_id = ? AND id = ?
+    `).run(
+      Number(restoredCanvas.graphRevision ?? restoredCanvas.revision),
+      new Date().toISOString(),
+      MEDIA_PUBLICATION_FIXTURE.ownerId,
+      saved.historyRunId,
+    );
+  });
+  for (const assetId of cleanup.dynamicAssetIds) {
+    const storageName = `${assetId}.mp4`;
+    await unlink(join(dataRoot, "media", storageName)).catch(() => undefined);
+  }
+  videoQueryWorkflowRunId = saved.activeRunId;
+  videoQueryWorkflowHistoricalContinuationRunId = saved.historicalContinuationRunId;
+  videoQueryWorkflowHistoricalSyncResult = saved.historicalSyncResult;
+  videoQueryWorkflowHistoryResult = saved.historyResult;
+  videoQueryWorkflowHistoricalFaultInjected = saved.historicalFaultInjected;
+  videoQueryWorkflowHistoricalOriginalTaskId = saved.historicalOriginalTaskId;
+  videoQueryWorkflowHistoricalOriginalProviderTaskId = saved.historicalOriginalProviderTaskId;
+  videoQueryWorkflowGraphRevision = Number(restoredCanvas.graphRevision ?? restoredCanvas.revision);
+  Object.assign(videoQueryWorkflowChecks, saved.checks);
+  Object.assign(mediaPublicationProviderStats, {
+    posts: saved.providerStats.posts,
+    videoPosts: saved.providerStats.videoPosts,
+    imagePosts: saved.providerStats.imagePosts,
+    unknownPosts: saved.providerStats.unknownPosts,
+    gets: saved.providerStats.gets,
+    mediaGets: saved.providerStats.mediaGets,
+  });
+  mediaPublicationProviderStats.postsByModel = { ...saved.providerStats.postsByModel };
+  mediaPublicationProviderStats.requests.splice(0, mediaPublicationProviderStats.requests.length, ...saved.providerStats.requests);
+  videoQueryWorkflowProviderStatusFailures = saved.providerStatusFailures;
+  videoQueryWorkflowProviderPhases = new Map(saved.providerPhases);
+  videoQueryWorkflowArkInputVideoSeen = saved.arkInputVideoSeen;
+  videoQueryWorkflowProviderProfileLockInjected = saved.providerProfileLockInjected;
+  videoQueryWorkflowAcceptedRecoveryDiagnosticCount = saved.acceptedRecoveryDiagnosticCount;
+  videoQueryWorkflowDiagnosticStageCounts.clear();
+  for (const [stage, count] of saved.diagnosticStageCounts) videoQueryWorkflowDiagnosticStageCounts.set(stage, count);
+  videoQueryWorkflowDiagnosticEvents.splice(0, videoQueryWorkflowDiagnosticEvents.length, ...saved.diagnosticEvents);
+  videoQueryWorkflowInitialCanvas = saved.initialCanvas;
+  return cleanup;
+}
+
+let videoQueryWorkflowProductSmokeStarted = false;
+async function smokeVideoQueryWorkflowGuide() {
+  if (!videoQueryWorkflowScenario || videoQueryWorkflowProductSmokeStarted) return undefined;
+  videoQueryWorkflowProductSmokeStarted = true;
+  const { chromium, expect } = await import("@playwright/test");
+  const before = await videoQueryWorkflowSnapshot();
+  const saved = {
+    activeRunId: videoQueryWorkflowRunId,
+    historicalContinuationRunId: videoQueryWorkflowHistoricalContinuationRunId,
+    historicalSyncResult: videoQueryWorkflowHistoricalSyncResult,
+    historyResult: videoQueryWorkflowHistoryResult,
+    historicalFaultInjected: videoQueryWorkflowHistoricalFaultInjected,
+    historicalOriginalTaskId: videoQueryWorkflowHistoricalOriginalTaskId,
+    historicalOriginalProviderTaskId: videoQueryWorkflowHistoricalOriginalProviderTaskId,
+    checks: { ...videoQueryWorkflowChecks },
+    providerStats: {
+      posts: mediaPublicationProviderStats.posts,
+      videoPosts: mediaPublicationProviderStats.videoPosts,
+      imagePosts: mediaPublicationProviderStats.imagePosts,
+      unknownPosts: mediaPublicationProviderStats.unknownPosts,
+      gets: mediaPublicationProviderStats.gets,
+      mediaGets: mediaPublicationProviderStats.mediaGets,
+      postsByModel: { ...mediaPublicationProviderStats.postsByModel },
+      requests: [...mediaPublicationProviderStats.requests],
+    },
+    providerStatusFailures: videoQueryWorkflowProviderStatusFailures,
+    providerPhases: [...videoQueryWorkflowProviderPhases],
+    arkInputVideoSeen: videoQueryWorkflowArkInputVideoSeen,
+    providerProfileLockInjected: videoQueryWorkflowProviderProfileLockInjected,
+    acceptedRecoveryDiagnosticCount: videoQueryWorkflowAcceptedRecoveryDiagnosticCount,
+    diagnosticStageCounts: [...videoQueryWorkflowDiagnosticStageCounts],
+    diagnosticEvents: [...videoQueryWorkflowDiagnosticEvents],
+    initialCanvas: structuredClone(videoQueryWorkflowInitialCanvas),
+    canvas: structuredClone(before.canvas),
+    database: await videoQueryWorkflowDatabaseIdentity(),
+    historyRunId: videoQueryWorkflowHistoricalRunId,
+    historyRun: before.historyRun ? {
+      state: before.historyRun.state,
+      stopRequested: before.historyRun.stopRequested ?? 0,
+      graphRevision: before.historyRun.graphRevision,
+      semanticFingerprint: before.historyRun.semanticFingerprint,
+      errorCode: before.historyRun.errorCode,
+      errorMessage: before.historyRun.errorMessage,
+    } : null,
+    historyRunNodes: before.historyRunNodes.map((row) => ({ ...row })),
+  };
+  let browser;
+  let context;
+  let page;
+  const forbidden = [];
+  const pageErrors = [];
+  let smokeStage = "launch";
+  try {
+    browser = await chromium.launch({ headless: true });
+    context = await browser.newContext({ viewport: { width: 1600, height: 1000 }, serviceWorkers: "block" });
+    context.on("request", (request) => {
+      if (request.method() !== "POST" || !/\/api\/canvases\/[^/]+\/commands$/.test(new URL(request.url()).pathname)) return;
+      try {
+        const command = request.postDataJSON();
+        console.log("[video-query-canvas-command]", JSON.stringify({
+          kind: command.kind, changes: command.changes, topologyOperation: command.topologyOperation,
+        }));
+      } catch { /* Diagnostic observation never changes the request. */ }
+    });
+    await context.route("**/*", async (route) => {
+      const requestUrl = new URL(route.request().url());
+      if (requestUrl.origin === origin || ["data:", "blob:"].includes(requestUrl.protocol)) return route.continue();
+      forbidden.push(requestUrl.origin);
+      return route.abort("blockedbyclient");
+    });
+    page = await context.newPage();
+    page.setDefaultTimeout(20_000);
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    const frame = page.frameLocator("#canvas");
+    smokeStage = "goto";
+    await page.goto(`${origin}/__acceptance`);
+    await expect(page.getByRole("heading", { name: "视频查询恢复验收", exact: true })).toBeVisible();
+    await expect(frame.getByTestId("canvas-world")).toHaveAttribute("data-persistence-ready", "true", { timeout: 30_000 });
+    smokeStage = "start";
+    const startButton = page.getByRole("button", { name: "开始自动恢复", exact: true });
+    await expect(startButton).toBeEnabled();
+    await startButton.click();
+    smokeStage = "refresh-during-recovery";
+    await expect.poll(async () => (await videoQueryWorkflowSnapshot()).video.task?.state,
+      { timeout: 30_000 }).toBe("recovering");
+    const recoveringIdentity = (await videoQueryWorkflowSnapshot()).video.task;
+    const refreshButton = page.getByRole("button", { name: "刷新并检查恢复结果", exact: true });
+    await expect(refreshButton).toBeEnabled({ timeout: 10_000 });
+    await refreshButton.click();
+    await expect(page.locator("#status-refresh")).toContainText("刷新后结果仍在原节点", { timeout: 90_000 });
+    await expect(refreshButton).toHaveText("刷新并检查恢复结果", { timeout: 30_000 });
+    await expect(frame.getByTestId("canvas-world")).toHaveAttribute("data-persistence-ready", "true");
+    smokeStage = "active-result";
+    await expect(page.locator("#status-start")).toContainText("视频和尾文字已自动完成", { timeout: 90_000 });
+    await expect(frame.locator(`.react-flow__node[data-id="${videoQueryWorkflowFixtureIds.activeVideoNodeId}"]`)).toBeInViewport({ ratio: 0.5, timeout: 20_000 });
+    await expect(frame.locator(`.react-flow__node[data-id="${videoQueryWorkflowFixtureIds.activeVideoNodeId}"]`)).toContainText("临时中断自动视频");
+    const active = await videoQueryWorkflowSnapshot();
+    expect(active.run?.state).toBe("success");
+    expect(active.video.task?.state).toBe("success");
+    expect(active.video.task?.attempt).toBe(1);
+    expect(active.video.task?.id).toBe(recoveringIdentity.id);
+    expect(active.video.task?.providerTaskId).toBe(recoveringIdentity.providerTaskId);
+    expect(active.tailText.task?.state).toBe("success");
+    expect(active.video.node?.videoSrc).toEqual(expect.any(String));
+    const activePlayer = frame.locator(`.react-flow__node[data-id="${videoQueryWorkflowFixtureIds.activeVideoNodeId}"] video`);
+    await expect(activePlayer).toBeVisible();
+    await expect.poll(() => activePlayer.evaluate((video) => video.readyState), { timeout: 15_000 }).toBeGreaterThanOrEqual(2);
+    expect(active.tailText.node?.content).toContain("视频查询尾部文字");
+    expect(videoQueryWorkflowProviderProfileLockInjected).toBe(true);
+    const activeRecoveryEvents = (active.video.events ?? []).filter((event) =>
+      event.state === "recovering" || event.errorCode === "AUTOMATIC_RESULT_RECOVERY",
+    );
+    expect(activeRecoveryEvents.length).toBeGreaterThan(0);
+    expect(videoQueryWorkflowAcceptedRecoveryDiagnosticCount).toBeGreaterThan(0);
+    const activeLockDiagnostic = videoQueryWorkflowDiagnosticEvents.find((event) =>
+      event.taskId === active.video.task.id && event.stage === "accepted-video-query-recovery" &&
+      event.errorName === "ProviderProfileLockBusyError" && event.sourceErrorCode === "PROVIDER_LOCK_BUSY" &&
+      event.causeCode === "SQLITE_LOCK_CONTENTION");
+    expect(activeLockDiagnostic).toBeTruthy();
+    const activeVideoPosts = mediaPublicationProviderStats.requests.filter((request) => request.path === "/v1/media/generate" && request.phase === "active" && request.capability === "video");
+    const activeTextResponses = mediaPublicationProviderStats.requests.filter((request) => request.path === "/v1/responses" && request.phase === "active");
+    expect(activeVideoPosts).toHaveLength(1);
+    expect(activeTextResponses).toHaveLength(1);
+    smokeStage = "history-sync";
+    const syncButton = page.getByRole("button", { name: "找回原视频", exact: true });
+    await expect(syncButton).toBeEnabled({ timeout: 20_000 });
+    await syncButton.click();
+    await expect(page.locator("#status-history")).toContainText("原视频已找回", { timeout: 20_000 });
+    await expect(frame.locator(`.react-flow__node[data-id="${videoQueryWorkflowFixtureIds.historyVideoNodeId}"]`)).toBeInViewport({ ratio: 0.5, timeout: 20_000 });
+    await expect(syncButton).toHaveText("找回原视频", { timeout: 30_000 });
+    await expect(frame.getByTestId("canvas-world")).toHaveAttribute("data-persistence-ready", "true");
+    smokeStage = "history-continue";
+    const continueButton = page.getByRole("button", { name: "继续剩余节点", exact: true });
+    await expect(continueButton).toBeEnabled({ timeout: 20_000 });
+    await continueButton.click();
+    await expect(page.locator("#status-history")).toContainText("只生成了尾部文字", { timeout: 90_000 });
+    await expect(frame.locator(`.react-flow__node[data-id="${videoQueryWorkflowFixtureIds.historyTailTextNodeId}"]`)).toBeInViewport({ ratio: 0.5, timeout: 20_000 });
+    await expect(continueButton).toHaveText("继续剩余节点", { timeout: 30_000 });
+    await expect(frame.getByTestId("canvas-world")).toHaveAttribute("data-persistence-ready", "true");
+    await expect(frame.locator(`.react-flow__node[data-id="${videoQueryWorkflowFixtureIds.historyTailTextNodeId}"]`)).toContainText("视频查询尾部文字已自动完成");
+    const completed = await videoQueryWorkflowSnapshot();
+    const historyVideoPosts = mediaPublicationProviderStats.requests.filter((request) => request.path === "/v1/media/generate" && request.phase === "history" && request.capability === "video");
+    const historyTextResponses = mediaPublicationProviderStats.requests.filter((request) => request.path === "/v1/responses" && request.phase === "history");
+    expect(historyVideoPosts).toHaveLength(1);
+    expect(historyTextResponses).toHaveLength(1);
+    expect(videoQueryWorkflowArkInputVideoSeen).toBe(true);
+    expect(completed.historyVideo.task?.id).toBe(saved.historicalOriginalTaskId);
+    expect(completed.historyVideo.task?.attempt).toBe(1);
+    expect(completed.historyRun?.state).toBe("failed");
+    expect(completed.child?.selectedNodeIds).toEqual([videoQueryWorkflowFixtureIds.historyTailTextNodeId]);
+    expect(completed.historyTailText.task?.state).toBe("success");
+    expect(completed.historyTailText.node?.content).toContain("视频查询尾部文字");
+    expect(completed.historicalAdoptionCount).toBe(0);
+    expect(mediaPublicationPreservedFingerprint(completed.canvas)).toBe(
+      mediaPublicationPreservedFingerprint(saved.initialCanvas),
+    );
+    expect(pageErrors).toEqual([]);
+    expect(forbidden).toEqual([]);
+    const screenshotPath = join(testRoot, "video-query-workflow-product-smoke.png");
+    await page.screenshot({ path: screenshotPath, fullPage: true });
+    const report = {
+      status: "TECHNICAL_PASS",
+      syntheticOnly: true,
+      browser: "isolated-headless",
+      actualProductButtons: true,
+      iframeTested: true,
+      active: {
+        providerVideoPosts: activeVideoPosts.length,
+        tailTextProviderPosts: activeTextResponses.length,
+        queryInterruptions: videoQueryWorkflowProviderStatusFailures,
+        profileLockInjected: videoQueryWorkflowProviderProfileLockInjected,
+        profileLockBusyObserved: Boolean(activeLockDiagnostic),
+        lockDiagnostic: activeLockDiagnostic,
+        acceptedVideoQueryRecoveryDiagnosticCount: videoQueryWorkflowAcceptedRecoveryDiagnosticCount,
+        taskEventEvidence: active.video.events,
+        runState: completed.run?.state,
+        videoTaskId: completed.video.task?.id,
+        videoAttempt: completed.video.task?.attempt,
+        videoProviderTaskId: completed.video.task?.providerTaskId,
+        videoState: completed.video.task?.state,
+        tailTaskId: completed.tailText.task?.id,
+        tailAttempt: completed.tailText.task?.attempt,
+        tailState: completed.tailText.task?.state,
+        videoVisible: Boolean(completed.video.node?.videoSrc),
+        tailVisible: Boolean(completed.tailText.node?.content),
+      },
+      history: {
+        originalTaskId: completed.historyVideo.task?.id,
+        originalAttempt: completed.historyVideo.task?.attempt,
+        originalProviderTaskId: completed.historyVideo.task?.providerTaskId,
+        parentState: completed.historyRun?.state,
+        syncStatus: videoQueryWorkflowHistoricalSyncResult?.status,
+        continuationChildRunId: completed.child?.childRunId,
+        selectedNodeIds: completed.child?.selectedNodeIds,
+        providerVideoPosts: historyVideoPosts.length,
+        tailTextResponses: historyTextResponses.length,
+        arkInputVideoSeen: videoQueryWorkflowArkInputVideoSeen,
+        generationResultAdoptions: completed.historicalAdoptionCount,
+      },
+      preservedBaselineUnchanged: mediaPublicationPreservedFingerprint(completed.canvas) === mediaPublicationPreservedFingerprint(saved.initialCanvas),
+      pageErrors,
+      forbidden,
+      screenshotPath,
+      resetForUser: true,
+    };
+    // A second real admitted request validates the bounded-recovery UI. Only
+    // the deadline command receives a test clock; Provider identity/timestamps
+    // and the worker/client remain real and unchanged.
+    smokeStage = "expiry-reset";
+    await page.goto("about:blank");
+    await resetVideoQueryWorkflowAfterSmoke(saved);
+    await page.goto(`${origin}/__acceptance`);
+    await expect(frame.getByTestId("canvas-world")).toHaveAttribute("data-persistence-ready", "true", { timeout: 30_000 });
+    await page.getByRole("button", { name: "开始自动恢复", exact: true }).click();
+    await expect.poll(async () => (await videoQueryWorkflowSnapshot()).video.task?.state,
+      { timeout: 30_000 }).toBe("recovering");
+    smokeStage = "expiry-durable-marker";
+    const beforeExpiry = await videoQueryWorkflowSnapshot();
+    const recoveryQueries = await loadAcceptanceSourceModule(ssrModuleUrl(join(sourceRoot, "server/generationRecoveryTaskQueries.ts")));
+    const window = await readMediaPublicationDatabase((database) =>
+      recoveryQueries.originalRecoveryWindow(database, beforeExpiry.video.task.id));
+    expect(window?.automaticDeadlineAt).toEqual(expect.any(String));
+    const expiryStore = mediaPublicationProductModules.generationTaskStore.createGenerationTaskStore(dataRoot, { recoverRunning: false });
+    try {
+      const expired = expiryStore.markRecoveryWindowExhaustedIfDue(beforeExpiry.video.task.id,
+        new Date(Date.parse(window.automaticDeadlineAt) + 1));
+      expect(expired?.state).toBe("recovering");
+      expect(expired?.errorCode).toBe("AUTOMATIC_RECOVERY_WINDOW_EXHAUSTED");
+    } finally { expiryStore.close(); }
+    const expiryGets = mediaPublicationProviderStats.gets;
+    const expiryNode = frame.locator(`.react-flow__node[data-id="${videoQueryWorkflowFixtureIds.activeVideoNodeId}"]`);
+    await expect(expiryNode.locator(".provider-error-notice")).toContainText("原请求记录已保留", { timeout: 20_000 });
+    await expect(expiryNode.locator(".video-node-generating")).toHaveCount(0);
+    await expect(expiryNode).not.toContainText("维护人员已跟进");
+    await expect(expiryNode.getByRole("button", { name: /重试|重新检查/ })).toHaveCount(0);
+    await page.getByRole("button", { name: "刷新并检查恢复结果", exact: true }).click();
+    await expect(expiryNode.locator(".provider-error-notice")).toContainText("不会重复付费提交", { timeout: 20_000 });
+    // Include at least one actual 30-second automatic sweep after expiry.
+    await acceptanceDelay(35_000);
+    await expect(expiryNode.locator(".video-node-generating")).toHaveCount(0);
+    await expect(expiryNode).not.toContainText("视频暂时无法显示");
+    await expect(expiryNode.getByRole("button", { name: /重新加载|重新上传/ })).toHaveCount(0);
+    expect(mediaPublicationProviderStats.gets).toBe(expiryGets);
+    const afterExpiry = await videoQueryWorkflowSnapshot();
+    expect(afterExpiry.video.task.id).toBe(beforeExpiry.video.task.id);
+    expect(afterExpiry.video.task.attempt).toBe(1);
+    expect(afterExpiry.video.task.providerTaskId).toBe(beforeExpiry.video.task.providerTaskId);
+    expect(afterExpiry.video.task.state).toBe("recovering");
+    expect(afterExpiry.run.state).toBe("running");
+    expect(afterExpiry.tailText.task).toBeNull();
+    const lockCount = await readMediaPublicationDatabase((database) => database.prepare(
+      "SELECT COUNT(*) AS count FROM workflow_run_locks WHERE run_id = ?").get(afterExpiry.run.id).count);
+    expect(Number(lockCount)).toBeGreaterThan(0);
+    const expiryPosts = mediaPublicationProviderStats.requests.filter((request) =>
+      request.path === "/v1/media/generate" && request.phase === "active").length;
+    expect(expiryPosts).toBe(1);
+    expect(mediaPublicationPreservedFingerprint(afterExpiry.canvas)).toBe(mediaPublicationPreservedFingerprint(saved.initialCanvas));
+    const expiryScreenshot = join(testRoot, "video-query-workflow-expiry-smoke.png");
+    await page.screenshot({ path: expiryScreenshot, fullPage: true });
+    expect(pageErrors).toEqual([]);
+    expect(forbidden).toEqual([]);
+    report.expiryUi = {
+      testClockOnly: true, taskId: afterExpiry.video.task.id, attempt: afterExpiry.video.task.attempt,
+      providerTaskId: afterExpiry.video.task.providerTaskId, state: afterExpiry.video.task.state,
+      errorCode: afterExpiry.video.task.errorCode, videoPosts: expiryPosts, additionalGets: 0,
+      refreshPreserved: true, spinnerStopped: true, honestWaitingNotice: true,
+      runLocksPreserved: true, sweepObservedMs: 35_000, screenshotPath: expiryScreenshot,
+    };
+    writeFileSync(join(testRoot, "video-query-workflow-product-smoke.json"), `${JSON.stringify(report, null, 2)}\n`);
+    console.log(`[video-query-workflow-product-smoke-pass] ${JSON.stringify(report)}`);
+    return report;
+  } catch (error) {
+    console.error("[video-query-workflow-product-smoke-failed]", JSON.stringify({
+      stage: smokeStage,
+      message: String(error),
+      pageErrors,
+      forbidden,
+      snapshot: await videoQueryWorkflowSnapshot().catch(() => null),
+      body: page ? await page.locator("body").innerText().catch(() => "") : "",
+    }));
+    throw error;
+  } finally {
+    try { await context?.close(); } finally { await browser?.close(); }
+    await resetVideoQueryWorkflowAfterSmoke(saved);
+  }
+}
+
 const guide = `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>剩余修复 · 本地验收</title>
 <style>body{margin:0;background:#f5f5f5;color:#242424;font:16px/1.65 -apple-system,BlinkMacSystemFont,sans-serif}main{max-width:900px;margin:40px auto;padding:0 24px}h1{font-size:30px;margin:8px 0}h2{font-size:19px}p{color:#565656}section{background:white;border:1px solid #ddd;border-radius:14px;padding:22px;margin:18px 0}button,a.primary{font:inherit;display:inline-block;border:1px solid #aaa;border-radius:8px;padding:9px 16px;background:white;color:#222;cursor:pointer;text-decoration:none}a.primary{background:#222;color:#fff;border-color:#222}.badge{font-size:13px;letter-spacing:1px}li{margin:10px 0}table{width:100%;border-collapse:collapse;text-align:left}td,th{padding:10px;border-bottom:1px solid #eee;overflow-wrap:anywhere}.tools{display:flex;gap:12px;align-items:center;flex-wrap:wrap}#result{overflow:auto}small{color:#777}button:focus-visible,a:focus-visible{outline:3px solid #555;outline-offset:3px}</style>
 <main><span class="badge">本地验收 · 独立测试数据</span><h1>只需复验图片菜单遮挡</h1><p>你已确认其他项目通过。这次只检查图片顶部「浏览全部」菜单是否完整显示、能够点击。这里使用独立测试数据，修复尚未上线。</p>
@@ -3387,7 +4622,7 @@ const guide = `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta nam
 <script>const slowButton=document.getElementById('slow'), mode=document.getElementById('mode');async function status(){const r=await fetch('/__acceptance/status');if(!r.ok)throw Error('验收服务已停止');const d=await r.json();slowButton.textContent=d.slow?'关闭慢速演示':'开启慢速演示';slowButton.setAttribute('aria-pressed',String(d.slow));mode.textContent=d.slow?'慢速演示已开启':'正常速度';document.getElementById('expiry').textContent='本次临时页面开放至 '+new Date(d.expiresAt).toLocaleTimeString('zh-CN')+'。到时自动关闭。';}slowButton.onclick=async()=>{slowButton.disabled=true;try{const r=await fetch('/__acceptance/toggle-slow',{method:'POST'});if(!r.ok)throw Error('切换失败');await status();}catch(e){mode.textContent=e.message;}finally{slowButton.disabled=false;}};document.getElementById('check').onclick=async()=>{const box=document.getElementById('result');box.textContent='正在读取…';try{const r=await fetch('/__acceptance/results');if(!r.ok)throw Error('读取失败');const d=await r.json();const table=document.createElement('table'),head=table.insertRow();['原模板','当前名称','当前说明','图内容'].forEach(t=>{const th=document.createElement('th');th.textContent=t;head.append(th);});d.items.forEach(item=>{const row=table.insertRow();[item.label,item.title??'模板未找到',item.description??'',item.graphUnchanged?'与初始相同，已保留':'与初始不同，请核对'].forEach(t=>row.insertCell().textContent=t);});box.replaceChildren(table);}catch(e){box.textContent=e.message;}};status().catch(e=>mode.textContent=e.message);</script><script>async function refreshScenarios(){const d=await(await fetch('/__acceptance/status')).json();document.getElementById('canvas-link').href=d.projects[1].url;document.getElementById('tools-mode').textContent=d.toolsAvailable?'可用入口演示（生成未开放）':'不可用演示';}async function toggleScenario(path,box,onSuccess){try{const r=await fetch(path,{method:'POST'});if(!r.ok)throw Error('切换失败，验收服务可能已停止');await onSuccess();}catch(e){document.getElementById(box).textContent=e.message;}}document.getElementById('tools').onclick=()=>toggleScenario('/__acceptance/toggle-tools','tools-mode',refreshScenarios);document.getElementById('maintenance').onclick=()=>toggleScenario('/__acceptance/toggle-maintenance','maintenance-mode',async()=>{document.getElementById('maintenance-mode').textContent='模拟维护中。请回到画布等待，开始后约35～65秒出现更新提示。';});refreshScenarios().catch(e=>document.getElementById('tools-mode').textContent=e.message);document.getElementById('finish').onclick=async()=>{const r=await fetch('/__acceptance/stop',{method:'POST'});if(r.ok)document.body.textContent='本次验收已结束。你可以关闭这些验收标签页；再次双击启动文件会准备一份新的测试数据。';};</script></html>`;
 
 // A second restrictive policy also fences the user's unsandboxed browser.
-const browserPolicy = `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self'; worker-src 'self' blob:; frame-src ${nodeRecoveryScenario || mediaPublicationScenario ? "'self'" : "'none'"}; object-src 'none'; base-uri 'self'; form-action 'self'`;
+const browserPolicy = `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self'; worker-src 'self' blob:; frame-src ${nodeRecoveryScenario || mediaPublicationScenario || videoQueryWorkflowScenario ? "'self'" : "'none'"}; object-src 'none'; base-uri 'self'; form-action 'self'`;
 const plugin = {
   name: "isolated-template-manual-acceptance",
   enforce: "pre",
@@ -3396,12 +4631,12 @@ const plugin = {
       const originalSetHeader = res.setHeader.bind(res);
       res.setHeader = (name, value) => {
         const header = name.toLowerCase();
-        if ((nodeRecoveryScenario || mediaPublicationScenario) && header === "x-frame-options") {
+        if ((nodeRecoveryScenario || mediaPublicationScenario || videoQueryWorkflowScenario) && header === "x-frame-options") {
           return originalSetHeader(name, "SAMEORIGIN");
         }
         if (header === "content-security-policy") {
           const policies = (Array.isArray(value) ? value : [value]).map(policy =>
-            (nodeRecoveryScenario || mediaPublicationScenario)
+            (nodeRecoveryScenario || mediaPublicationScenario || videoQueryWorkflowScenario)
               ? String(policy).replace(/frame-ancestors\s+[^;]+/g, "frame-ancestors 'self'")
               : policy);
           return originalSetHeader(name, [...policies, browserPolicy]);
@@ -3409,7 +4644,7 @@ const plugin = {
         return originalSetHeader(name, value);
       };
       originalSetHeader("Content-Security-Policy", browserPolicy);
-      if (nodeRecoveryScenario || mediaPublicationScenario) originalSetHeader("X-Frame-Options", "SAMEORIGIN");
+      if (nodeRecoveryScenario || mediaPublicationScenario || videoQueryWorkflowScenario) originalSetHeader("X-Frame-Options", "SAMEORIGIN");
       originalSetHeader("Cache-Control", "no-store");
       const url = new URL(req.url ?? "/", origin);
       if (req.headers.host !== `127.0.0.1:${port}` || url.origin !== origin ||
@@ -3432,6 +4667,8 @@ const plugin = {
         /^\/__acceptance\/node-recovery\/(?:original|maintenance|retry|focus|product-smoke)$/.test(url.pathname);
       const mediaPublicationControl = mediaPublicationScenario && method === "POST" &&
         /^\/__acceptance\/media-publication\/(?:start)$/.test(url.pathname);
+      const videoQueryWorkflowControl = videoQueryWorkflowProductMode && method === "POST" &&
+        /^\/__acceptance\/video-query-workflow\/(?:start|refresh|history-sync|history-continue)$/.test(url.pathname);
       const localEdit = templatePath ||
         (url.pathname === "/api/projects" && method === "POST") ||
         (/^\/api\/projects\/[a-z0-9._-]+(?:\/clone)?$/i.test(url.pathname) && ["POST", "DELETE"].includes(method)) ||
@@ -3443,7 +4680,7 @@ const plugin = {
         (/^\/__acceptance\/toggle-(?:slow|tools|maintenance)$/.test(url.pathname) && method === "POST") ||
         (generationScenario && /^\/__acceptance\/generation\/(?:activate|plan|restore|complete|delay|check)$/.test(url.pathname) && method === "POST") ||
         (nodeRecoveryScenario && !nodeRecoveryProductMode && /^\/__acceptance\/node-recovery\/(?:start|retry-mode|mark-unknown|focus|recovery-stage)$/.test(url.pathname) && method === "POST") ||
-        Boolean(nodeRecoveryRetryMatch || nodeRecoveryPreflight || nodeRecoveryRecoveryReadMatch || nodeRecoveryProductControl || nodeRecoveryProductWrite || mediaPublicationControl);
+        Boolean(nodeRecoveryRetryMatch || nodeRecoveryPreflight || nodeRecoveryRecoveryReadMatch || nodeRecoveryProductControl || nodeRecoveryProductWrite || mediaPublicationControl || videoQueryWorkflowControl);
       if (!setup && generationScenario && method === "PUT" && /^\/api\/canvas\/[a-z0-9._-]+$/i.test(url.pathname)) {
         generationCounters.browserCanvasWrites += 1;
         persistGenerationJournal("browserCanvasWrite", { path: url.pathname, source: generationLastWriteSource });
@@ -3461,6 +4698,7 @@ const plugin = {
       if (!setup && generationScenario && method === "POST" && /^\/api\/canvases\/[a-z0-9._-]+\/commands$/i.test(url.pathname)) {
         generationCounters.browserCanvasCommandWrites += 1;
         persistGenerationJournal("browserCanvasCommandWrite", { path: url.pathname, source: generationLastWriteSource });
+
       }
       if (!setup && !["GET", "HEAD"].includes(method) && !localEdit) {
         json(res, 403, { error: "本地验收只开放测试数据编辑，生成与外部操作未开放" }); return;
@@ -3502,7 +4740,7 @@ const plugin = {
       }
       // Synthetic task projection is owned by the persistent acceptance journal.
       // The real Canvas save contract correctly strips client-supplied task state.
-      if (!setup && generationScenario && !nodeRecoveryProductMode && !mediaPublicationProductMode && method === "GET" && url.pathname === `/api/canvas/${generationFixture?.canvasId}`) {
+      if (!setup && generationScenario && !nodeRecoveryProductMode && !mediaPublicationProductMode && !videoQueryWorkflowProductMode && method === "GET" && url.pathname === `/api/canvas/${generationFixture?.canvasId}`) {
         void api(url.pathname).then((response) => response.json()).then((document) => {
           const seen = new Set();
           const nodes = document.nodes.map((node) => {
@@ -3534,10 +4772,10 @@ const plugin = {
         }).catch((error) => { console.error(error); if (!res.headersSent) json(res, 500, { error: "synthetic canvas read failed" }); });
         return;
       }
-      if (!setup && generationScenario && !nodeRecoveryProductMode && !mediaPublicationProductMode && url.pathname === "/api/models" && method === "GET") {
+      if (!setup && generationScenario && !nodeRecoveryProductMode && !mediaPublicationProductMode && !videoQueryWorkflowProductMode && url.pathname === "/api/models" && method === "GET") {
         json(res, 200, generationFixture?.modelCatalog ?? { generationEnabled: false, models: [] }); return;
       }
-      if (!setup && generationScenario && !nodeRecoveryProductMode && !mediaPublicationProductMode && url.pathname === "/api/generation-tasks/status" && method === "GET") {
+      if (!setup && generationScenario && !nodeRecoveryProductMode && !mediaPublicationProductMode && !videoQueryWorkflowProductMode && url.pathname === "/api/generation-tasks/status" && method === "GET") {
         generationCounters.statusReads += 1;
         persistGenerationJournal("capabilityStatusRead");
         json(res, 200, {
@@ -3555,7 +4793,7 @@ const plugin = {
           videoSubmissionEnabled: true,
         }); return;
       }
-      if (!setup && generationScenario && !nodeRecoveryProductMode && !mediaPublicationProductMode && url.pathname === "/api/generation-tasks" && method === "GET") {
+      if (!setup && generationScenario && !nodeRecoveryProductMode && !mediaPublicationProductMode && !videoQueryWorkflowProductMode && url.pathname === "/api/generation-tasks" && method === "GET") {
         json(res, 200, { tasks: [...generationTasks.values()].map(generationTaskPublic) }); return;
       }
       if (!setup && nodeRecoveryScenario && !nodeRecoveryProductMode && url.pathname === "/api/generation-recovery" && method === "GET") {
@@ -3595,7 +4833,7 @@ const plugin = {
         else json(res, 404, { error: 'synthetic task not found', code: 'TASK_NOT_FOUND' });
         return;
       }
-      if (!setup && generationScenario && !nodeRecoveryProductMode && !mediaPublicationProductMode && /^\/api\/generation-tasks\/[^/]+$/.test(url.pathname) && method === "GET") {
+      if (!setup && generationScenario && !nodeRecoveryProductMode && !mediaPublicationProductMode && !videoQueryWorkflowProductMode && /^\/api\/generation-tasks\/[^/]+$/.test(url.pathname) && method === "GET") {
         const taskId = decodeURIComponent(url.pathname.split("/").at(-1));
         const task = generationTasks.get(taskId);
         if (!task) { json(res, 404, { error: "synthetic task not found", code: "TASK_NOT_FOUND" }); return; }
@@ -3624,7 +4862,7 @@ const plugin = {
       }
       if (generationScenario && method === "GET" && url.pathname === "/__acceptance/generation-entry") {
         const variant = url.searchParams.get("variant");
-        if (!(nodeRecoveryScenario ? ["candidate"] : ["candidate", "baseline"]).includes(variant)) { json(res, 400, { error: "未知 client variant" }); return; }
+        if ((nodeRecoveryScenario || videoQueryWorkflowScenario) ? variant !== "candidate" : !["candidate", "baseline"].includes(variant)) { json(res, 400, { error: "未知 client variant" }); return; }
         const cookie = `unboundry_generation_client=${variant}; Path=/; SameSite=Lax`;
         res.writeHead(302, { Location: `/canvas/${generationFixture?.canvasId ?? ""}`, "Set-Cookie": [adminCookie, cookie], "Cache-Control": "no-store" });
         res.end(); return;
@@ -3679,12 +4917,33 @@ const plugin = {
             const body = await readRequestJson(req);
             json(res, 200, await startMediaPublicationAction(body.action)); return;
           }
+          if (videoQueryWorkflowScenario && url.pathname === "/__acceptance/video-query-workflow/status" && method === "GET") {
+            json(res, 200, await videoQueryWorkflowStatusPayload()); return;
+          }
+          if (videoQueryWorkflowScenario && url.pathname === "/__acceptance/video-query-workflow/start" && method === "POST") {
+            await readRequestJson(req);
+            json(res, 200, await runVideoQueryWorkflowStart()); return;
+          }
+          if (videoQueryWorkflowScenario && url.pathname === "/__acceptance/video-query-workflow/refresh" && method === "POST") {
+            await readRequestJson(req);
+            json(res, 200, await runVideoQueryWorkflowRefresh()); return;
+          }
+          if (videoQueryWorkflowScenario && url.pathname === "/__acceptance/video-query-workflow/history-sync" && method === "POST") {
+            await readRequestJson(req);
+            json(res, 200, await runVideoQueryWorkflowHistorySync()); return;
+          }
+          if (videoQueryWorkflowScenario && url.pathname === "/__acceptance/video-query-workflow/history-continue" && method === "POST") {
+            await readRequestJson(req);
+            json(res, 200, await runVideoQueryWorkflowHistoryContinuation()); return;
+          }
           if (url.pathname === "/__acceptance/status" && method === "GET") {
             json(res, 200, generationScenario
               ? nodeRecoveryProductMode
                 ? { ...await nodeRecoveryProductStatusPayload(), slow, toolsAvailable, maintenanceUntil }
                 : mediaPublicationScenario
                   ? { ...await mediaPublicationStatusPayload(), slow, toolsAvailable, maintenanceUntil }
+                  : videoQueryWorkflowScenario
+                    ? { ...await videoQueryWorkflowStatusPayload(), slow, toolsAvailable, maintenanceUntil }
                   : { ...generationStatusPayload(), slow, toolsAvailable, maintenanceUntil }
               : { slow, toolsAvailable, maintenanceUntil, projects, expiresAt: expiresAt.toISOString() }); return;
           }
@@ -3693,6 +4952,8 @@ const plugin = {
               ? await nodeRecoveryProductStatusPayload()
               : mediaPublicationScenario
                 ? await mediaPublicationStatusPayload()
+                : videoQueryWorkflowScenario
+                  ? await videoQueryWorkflowStatusPayload()
                 : generationStatusPayload()); return;
           }
           if (nodeRecoveryScenario && !nodeRecoveryProductMode && url.pathname === "/__acceptance/node-recovery/status" && method === "GET") {
@@ -3793,7 +5054,7 @@ const plugin = {
 
 // Seed the deliberately old-schema fixture before the real application opens
 // its current-schema database and starts workers. This loader has no app plugin.
-if (mediaPublicationScenario) {
+if (mediaPublicationScenario || videoQueryWorkflowScenario) {
   const seedLoader = await createServer({
     configFile: false,
     root: sourceRoot,
@@ -3803,18 +5064,33 @@ if (mediaPublicationScenario) {
   try { await prepareMediaPublicationAcceptance(seedLoader); }
   finally { await seedLoader.close(); }
 }
+// Vite's default config bundler and ssrLoadModule create separate module
+// instances. This scenario uses one loader for the unmodified product config
+// and the local reference adapter so HTTP handlers see the same composition.
+const productRuntimeLoader = videoQueryWorkflowScenario ? await createServer({
+  configFile: false, root: sourceRoot, appType: "custom",
+  server: { middlewareMode: true, host: "127.0.0.1", hmr: false, ws: false, watch: null },
+}) : undefined;
+const productConfigModule = productRuntimeLoader
+  ? await productRuntimeLoader.ssrLoadModule(ssrModuleUrl(join(sourceRoot, "vite.config.ts"))) : undefined;
+const productConfig = productConfigModule
+  ? await productConfigModule.default({ command: "serve", mode: "development", isPreview: false, isSsrBuild: false }) : undefined;
 const server = await createServer({
-  configFile: join(sourceRoot, "vite.config.ts"),
-  plugins: [plugin],
-  server: { host: "127.0.0.1", port, strictPort: true, hmr: false, open: false },
+  ...(productConfig ?? {}),
+  configFile: productConfig ? false : join(sourceRoot, "vite.config.ts"),
+  plugins: [...(productConfig?.plugins ?? []), plugin],
+  server: { ...(productConfig?.server ?? {}), host: "127.0.0.1", port, strictPort: true, hmr: false, open: false },
 });
+function loadAcceptanceSourceModule(path) {
+  return (productRuntimeLoader ?? server).ssrLoadModule(path);
+}
 let stopping;
 async function stop() {
   if (!stopping) {
     for (const stream of [...updateStreams]) stream.end();
     await stopNodeRecoveryProductProvider();
     await stopMediaPublicationProvider();
-    stopping = server.close();
+    stopping = server.close().finally(() => productRuntimeLoader?.close());
   }
   await stopping;
 }
@@ -3854,7 +5130,7 @@ async function prepareMediaPublicationAcceptance(seedLoader) {
   });
   projects.push({
     id: MEDIA_PUBLICATION_FIXTURE.canvasId,
-    title: "媒体发布恢复 · 四项同页验收",
+    title: videoQueryWorkflowScenario ? "视频查询恢复 · 三项本地验收" : "媒体发布恢复 · 四项同页验收",
     url: `/canvas/${MEDIA_PUBLICATION_FIXTURE.canvasId}`,
   });
   generationFixture = {
@@ -3867,17 +5143,326 @@ async function prepareMediaPublicationAcceptance(seedLoader) {
   generationBuilds = await buildGenerationClients();
   generationJournalPath = join(dataRoot, "media-publication-acceptance-journal.json");
   adminCookie = "unboundry-media-acceptance=bypass; Path=/; SameSite=Lax";
+  if (videoQueryWorkflowScenario) {
+    // Owner recovery reads deliberately use normal authentication, not the
+    // generation API test bypass. Give this temporary owner a real local session.
+    const token = randomUUID() + randomUUID();
+    const database = databaseModule.openAppDatabase(dataRoot);
+    try {
+      const now = new Date().toISOString();
+      database.prepare("UPDATE project_metadata SET title = ? WHERE owner_id = ? AND id = ?").run(
+        "视频查询恢复 · 三项本地验收", MEDIA_PUBLICATION_FIXTURE.ownerId, MEDIA_PUBLICATION_FIXTURE.canvasId);
+      database.prepare(`INSERT INTO sessions (id, token_hash, user_id, expires_at, created_at, last_seen_at)
+        VALUES (?, ?, ?, ?, ?, ?)`).run(randomUUID(), createHash("sha256").update(token).digest("hex"),
+        MEDIA_PUBLICATION_FIXTURE.ownerId, expiresAt.toISOString(), now, now);
+    } finally { database.close(); }
+    adminCookie = `unboundry_session=${token}; Path=/; HttpOnly; SameSite=Lax`;
+  }
+}
+
+async function initializeVideoQueryWorkflowFixture() {
+  if (!videoQueryWorkflowProductMode || !mediaPublicationFixture || !generationFixture) return;
+  const semanticModule = await loadAcceptanceSourceModule(ssrModuleUrl(join(sourceRoot, "types/workflowSemanticPlan.ts")));
+  const canvas = await (await api(`/api/canvas/${MEDIA_PUBLICATION_FIXTURE.canvasId}`)).json();
+  const videoModel = mediaPublicationFixture.models.video;
+  const textModel = mediaPublicationFixture.models.text;
+  const makeGroup = (id, title, y) => ({
+    id,
+    type: "group",
+    position: { x: 1240, y },
+    data: { label: "Group", title },
+    style: { width: 760, height: 430 },
+  });
+  const makeVideo = ({ group, id, title, prompt }) => ({
+    id,
+    parentId: group.id,
+    extent: "parent",
+    type: "video",
+    position: { x: 50, y: 100 },
+    data: {
+      label: "Video",
+      title,
+      videoModelId: videoModel.id,
+      // The frozen relay contract for grok-imagine-video-1.5-preview accepts
+      // exactly one image first-frame input. Keep this same persisted input in
+      // the candidate and baseline workflow so an admission rejection cannot
+      // be mistaken for the query-recovery fault.
+      videoParameters: { aspectRatio: "16:9", duration: 5, generateAudio: true, inputMode: "reference", outputCount: 1, resolution: "480p" },
+      videoPrompt: prompt,
+      videoPromptReady: true,
+    },
+    style: { width: 300, height: 220 },
+  });
+  const makeTailText = ({ group, id, title, prompt }) => ({
+    id,
+    parentId: group.id,
+    extent: "parent",
+    type: "text",
+    position: { x: 410, y: 100 },
+    data: {
+      label: "Text",
+      title,
+      textModelId: textModel.id,
+      textPrompt: prompt,
+      textPromptReady: true,
+    },
+    style: { width: 300, height: 220 },
+  });
+  const activeGroup = makeGroup(videoQueryWorkflowFixtureIds.activeGroupId, "视频查询自动恢复验收", 80);
+  const activeVideo = makeVideo({
+    group: activeGroup,
+    id: videoQueryWorkflowFixtureIds.activeVideoNodeId,
+    title: "临时中断自动视频",
+    prompt: "本地验收：模拟查询短暂中断后自动恢复的视频",
+  });
+  const activeTailText = makeTailText({
+    group: activeGroup,
+    id: videoQueryWorkflowFixtureIds.activeTailTextNodeId,
+    title: "自动完成的尾文字",
+    prompt: "本地验收：生成视频后的尾部文字",
+  });
+  const referenceImage = (canvas.nodes ?? []).find((node) =>
+    node.id === MEDIA_PUBLICATION_FIXTURE.pngNodeId &&
+    node.type === "image" &&
+    node.data?.assetId === MEDIA_PUBLICATION_FIXTURE.pngAssetId &&
+    node.data?.imageSrc === `/api/assets/${MEDIA_PUBLICATION_FIXTURE.pngAssetId}`,
+  );
+  if (!referenceImage) {
+    throw new Error("视频查询验收缺少可复用的 ready PNG first-frame reference");
+  }
+  const activeReference = {
+    id: "video-query-active-reference-image",
+    source: referenceImage.id,
+    target: activeVideo.id,
+    data: { inputOrder: 1, inputRole: "first-frame" },
+  };
+  const activeDependency = { id: "video-query-active-to-tail", source: activeVideo.id, target: activeTailText.id };
+  const activeSemantic = semanticModule.compileFrozenWorkflowSemanticPlan({
+    edges: [activeReference, activeDependency],
+    groupId: activeGroup.id,
+    nodes: [referenceImage, activeGroup, activeVideo, activeTailText],
+  });
+  if (!activeSemantic.executableNodeIds.includes(activeVideo.id) || !activeSemantic.executableNodeIds.includes(activeTailText.id) ||
+      activeSemantic.executableNodeIds.length !== 2) {
+    throw new Error("视频查询验收活动工作流没有形成可执行的视频与尾部节点");
+  }
+  videoQueryWorkflowSemanticFingerprint = activeSemantic.semanticFingerprint;
+  const historyDefinitions = videoQueryWorkflowBaselineOnly ? [] : (() => {
+    const historyGroup = makeGroup(videoQueryWorkflowFixtureIds.historyGroupId, "历史视频找回与尾部继续", 600);
+    const historyVideo = makeVideo({
+      group: historyGroup,
+      id: videoQueryWorkflowFixtureIds.historyVideoNodeId,
+      title: "历史事故原视频",
+      prompt: "本地验收：历史事故原视频，保留原任务身份",
+    });
+    const historyTailText = makeTailText({
+      group: historyGroup,
+      id: videoQueryWorkflowFixtureIds.historyTailTextNodeId,
+      title: "历史尾部文字",
+      prompt: "本地验收：历史事故视频后的尾部文字",
+    });
+    const historyReference = {
+      id: "video-query-history-reference-image",
+      source: referenceImage.id,
+      target: historyVideo.id,
+      data: { inputOrder: 1, inputRole: "first-frame" },
+    };
+    const historyDependency = { id: "video-query-history-to-tail", source: historyVideo.id, target: historyTailText.id };
+    const historySemantic = semanticModule.compileFrozenWorkflowSemanticPlan({
+      edges: [historyReference, historyDependency],
+      groupId: historyGroup.id,
+      nodes: [referenceImage, historyGroup, historyVideo, historyTailText],
+    });
+    if (!historySemantic.executableNodeIds.includes(historyVideo.id) || !historySemantic.executableNodeIds.includes(historyTailText.id)) {
+      throw new Error("视频查询历史工作流没有形成可执行的视频与尾部节点");
+    }
+    return { historyGroup, historyVideo, historyTailText, historyReference, historyDependency, historySemantic };
+  })();
+  videoQueryWorkflowHistoricalSemanticFingerprint = historyDefinitions.historySemantic?.semanticFingerprint ?? "";
+  const nodes = [
+    ...(canvas.nodes ?? []),
+    activeGroup,
+    activeVideo,
+    activeTailText,
+    ...(historyDefinitions.historyGroup ? [historyDefinitions.historyGroup, historyDefinitions.historyVideo, historyDefinitions.historyTailText] : []),
+  ];
+  const edges = [
+    ...(canvas.edges ?? []),
+    activeReference,
+    activeDependency,
+    ...(historyDefinitions.historyReference ? [historyDefinitions.historyReference] : []),
+    ...(historyDefinitions.historyDependency ? [historyDefinitions.historyDependency] : []),
+  ];
+  await generationDocumentPut({
+    ...canvas,
+    nodes,
+    edges,
+    viewport: canvas.viewport,
+  }, "control");
+  const committed = await (await api(`/api/canvas/${MEDIA_PUBLICATION_FIXTURE.canvasId}`)).json();
+  // Admission checks the complete persisted graph, including the external
+  // reference's parent and input edges. Compile that exact graph as the UI does.
+  videoQueryWorkflowSemanticFingerprint = semanticModule.compileFrozenWorkflowSemanticPlan({
+    nodes: committed.nodes, edges: committed.edges, groupId: activeGroup.id,
+  }).semanticFingerprint;
+  if (historyDefinitions.historyGroup) {
+    videoQueryWorkflowHistoricalSemanticFingerprint = semanticModule.compileFrozenWorkflowSemanticPlan({
+      nodes: committed.nodes, edges: committed.edges, groupId: historyDefinitions.historyGroup.id,
+    }).semanticFingerprint;
+  }
+  videoQueryWorkflowGraphRevision = Number(committed.graphRevision ?? committed.revision ?? 0);
+  videoQueryWorkflowInitialCanvas = {
+    revision: committed.revision,
+    graphRevision: committed.graphRevision,
+    nodes: committed.nodes,
+    edges: committed.edges,
+    viewport: committed.viewport,
+    preservedNodes: (canvas.nodes ?? []).map((node) => ({ id: node.id, parentId: node.parentId ?? null, position: node.position, style: node.style, data: node.data })).sort((a, b) => a.id.localeCompare(b.id)),
+    preservedEdges: (canvas.edges ?? []).map((edge) => ({ id: edge.id, source: edge.source, target: edge.target, sourceHandle: edge.sourceHandle ?? "", targetHandle: edge.targetHandle ?? "" })).sort((a, b) => a.id.localeCompare(b.id)),
+  };
+}
+
+async function startVideoQueryWorkflowHistoricalRun() {
+  if (!videoQueryWorkflowProductMode || !videoQueryWorkflowHistoricalSemanticFingerprint) return;
+  const created = await api("/api/workflow-runs", "POST", {
+    canvasId: MEDIA_PUBLICATION_FIXTURE.canvasId,
+    clientSemanticFingerprint: videoQueryWorkflowHistoricalSemanticFingerprint,
+    groupId: videoQueryWorkflowFixtureIds.historyGroupId,
+  });
+  const body = await created.json();
+  const runId = body?.run?.id ?? body?.id;
+  if (typeof runId !== "string" || !runId) throw new Error("历史视频验收运行没有成功启动");
+  videoQueryWorkflowHistoricalRunId = runId;
+  const seeded = await waitForVideoQueryWorkflowHistoricalLifecycle();
+  videoQueryWorkflowHistoricalOriginalTaskId = seeded.historyVideo.task?.id ?? "";
+  videoQueryWorkflowHistoricalOriginalProviderTaskId = seeded.historyVideo.task?.providerTaskId ?? videoQueryWorkflowHistoricalOriginalProviderTaskId;
+  if (!videoQueryWorkflowHistoricalOriginalTaskId || !videoQueryWorkflowHistoricalOriginalProviderTaskId) {
+    throw new Error("历史视频验收没有保留原始 task/provider 身份");
+  }
+}
+
+/**
+ * The frozen old server is run in a separate process by run-safe-tests. It
+ * deliberately receives only the active two-node graph: the old workflow
+ * runner can then reproduce the historical split where the accepted Provider
+ * task eventually becomes success while its failed run/node stays blank and
+ * no downstream task is admitted.
+ */
+async function runVideoQueryWorkflowBaselineOnly() {
+  if (!videoQueryWorkflowBaselineOnly) return undefined;
+  await runVideoQueryWorkflowStart();
+  // The original product intentionally leaves failed tasks alone for two
+  // minutes before its 30-second worker retries the accepted request.
+  const deadline = Date.now() + 240_000;
+  let last;
+  while (Date.now() < deadline) {
+    last = await videoQueryWorkflowSnapshot();
+    const videoTask = last.video.task;
+    const videoRunNode = last.runNodes.find((node) => node.nodeId === videoQueryWorkflowFixtureIds.activeVideoNodeId);
+    const tailRunNode = last.runNodes.find((node) => node.nodeId === videoQueryWorkflowFixtureIds.activeTailTextNodeId);
+    const videoVisible = typeof last.video.node?.videoSrc === "string" && last.video.node.videoSrc.length > 0;
+    const tailVisible = typeof last.tailText.node?.content === "string" && last.tailText.node.content.length > 0;
+    const videoProviderPosts = mediaPublicationProviderStats.requests.filter((request) =>
+      request.path === "/v1/media/generate" && request.phase === "active" && request.capability === "video",
+    ).length;
+    const tailProviderPosts = mediaPublicationProviderStats.requests.filter((request) =>
+      (request.path === "/v1/responses" || request.path === "/v1/media/generate") &&
+      request.phase === "active" && request.capability === "text",
+    ).length;
+    const lockDiagnostic = videoQueryWorkflowDiagnosticEvents.find((event) =>
+      event.errorName === "ProviderProfileLockBusyError",
+    );
+    const lockFailureEvent = (last.video.events ?? []).find((event) =>
+      event.errorCode === "RESULT_DELAYED" || event.errorCode === "PROVIDER_LOCK_BUSY",
+    );
+    const oldSplitReproduced = last.run?.state === "failed" &&
+      videoRunNode?.state === "failed" &&
+      videoTask?.state === "success" &&
+      !last.tailText.task &&
+      tailRunNode?.taskId == null &&
+      !videoVisible && !tailVisible &&
+      videoProviderPosts === 1 && tailProviderPosts === 0 &&
+      videoQueryWorkflowProviderProfileLockInjected &&
+      Boolean(lockDiagnostic) && Boolean(lockFailureEvent);
+    if (oldSplitReproduced) break;
+    await acceptanceDelay(250);
+  }
+  if (!last) throw new Error("冻结旧实现没有返回工作流证据");
+  const videoProviderPosts = mediaPublicationProviderStats.requests.filter((request) =>
+    request.path === "/v1/media/generate" && request.phase === "active" && request.capability === "video",
+  ).length;
+  const tailProviderPosts = mediaPublicationProviderStats.requests.filter((request) =>
+    (request.path === "/v1/responses" || request.path === "/v1/media/generate") &&
+    request.phase === "active" && request.capability === "text",
+  ).length;
+  const videoVisible = typeof last.video.node?.videoSrc === "string" && last.video.node.videoSrc.length > 0;
+  const tailVisible = typeof last.tailText.node?.content === "string" && last.tailText.node.content.length > 0;
+  const videoRunNode = last.runNodes.find((node) => node.nodeId === videoQueryWorkflowFixtureIds.activeVideoNodeId);
+  const tailRunNode = last.runNodes.find((node) => node.nodeId === videoQueryWorkflowFixtureIds.activeTailTextNodeId);
+  const lockDiagnostic = videoQueryWorkflowDiagnosticEvents.find((event) =>
+    event.errorName === "ProviderProfileLockBusyError",
+  );
+  const lockFailureEvent = (last.video.events ?? []).find((event) =>
+    event.errorCode === "RESULT_DELAYED" || event.errorCode === "PROVIDER_LOCK_BUSY",
+  );
+  if (last.run?.state !== "failed" || videoRunNode?.state !== "failed" ||
+      last.video.task?.state !== "success" || last.tailText.task || tailRunNode?.taskId != null ||
+      videoVisible || tailVisible || videoProviderPosts !== 1 || tailProviderPosts !== 0 ||
+      !videoQueryWorkflowProviderProfileLockInjected || !lockDiagnostic || !lockFailureEvent) {
+    console.error("[video-query-baseline-incomplete]", JSON.stringify({ run: last.run, video: last.video, tail: last.tailText, videoProviderPosts, tailProviderPosts, lockDiagnostic, lockFailureEvent }));
+    throw new Error("冻结旧实现没有复现已受理任务成功但工作流失败且画布空白的分裂结果");
+  }
+  const diagnostics = Object.fromEntries(videoQueryWorkflowDiagnosticStageCounts);
+  const report = {
+    status: "EXPECTED_FAILURE_REPRODUCED",
+    baselineOnly: true,
+    browser: false,
+    historyStarted: false,
+    activeGroupOnly: true,
+    videoProviderPosts,
+    tailProviderPosts,
+    taskState: last.video.task.state,
+    taskId: last.video.task.id,
+    taskAttempt: last.video.task.attempt,
+    providerTaskId: last.video.task.providerTaskId,
+    runId: last.run?.id ?? videoQueryWorkflowRunId,
+    runState: last.run?.state,
+    videoRunNodeState: videoRunNode?.state ?? null,
+    tailRunNodeState: tailRunNode?.state ?? null,
+    videoVisible,
+    tailVisible,
+    profileLockInjected: videoQueryWorkflowProviderProfileLockInjected,
+    queryInterruptions: videoQueryWorkflowProviderStatusFailures,
+    statusGets: mediaPublicationProviderStats.gets,
+    lockDiagnostic,
+    lockFailureEvent,
+    diagnosticStageCounts: diagnostics,
+    diagnosticEvents: videoQueryWorkflowDiagnosticEvents,
+    paidProviderRequests: 0,
+    resetForUser: true,
+  };
+  writeFileSync(join(testRoot, "video-query-workflow-baseline.json"), `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
+  console.log(`[video-query-workflow-baseline] ${JSON.stringify(report)}`);
+  return report;
 }
 process.once("SIGTERM", () => { void stop().finally(() => process.exit(0)); });
 process.once("SIGINT", () => { void stop().finally(() => process.exit(0)); });
 try {
   await server.listen();
-  if (mediaPublicationScenario) {
+  if (mediaPublicationScenario || videoQueryWorkflowScenario) {
     await startMediaPublicationProvider();
+    if (videoQueryWorkflowScenario) {
+      await initializeVideoQueryWorkflowFixture();
+      if (!videoQueryWorkflowBaselineOnly) {
+        await loadMediaPublicationSourceModules();
+        await configureVideoQueryWorkflowReferenceStore();
+        await startVideoQueryWorkflowHistoricalRun();
+      }
+    }
     mediaPublicationInitialVideoProviderPosts = mediaPublicationProviderStats.videoPosts;
   }
   let ownerId = MEDIA_PUBLICATION_FIXTURE.ownerId;
-  if (!mediaPublicationScenario) {
+  if (!mediaPublicationScenario && !videoQueryWorkflowScenario) {
     const bootstrap = await api("/api/auth/bootstrap", "POST", {
       displayName: "本地验收管理员", loginName: "acceptance", password: `local-${randomUUID()}`,
     });
@@ -3889,7 +5474,7 @@ try {
   if (generationScenario && (typeof ownerId !== "string" || ownerId.length === 0)) {
     throw new Error("Temporary generation acceptance session did not return its owner identity");
   }
-  if (generationScenario && !mediaPublicationScenario) {
+  if (generationScenario && !mediaPublicationScenario && !videoQueryWorkflowScenario) {
     const title = nodeRecoveryScenario
       ? "失败节点恢复 · V4 同页三项本地验收"
       : "状态查询验收 · 四类节点与回退演练";
@@ -3953,8 +5538,12 @@ try {
     fixtures.push({ id: template.id, label: `${letter} · ${fruit}`, graphHash: digest(template.graph) });
   }
   }
+  if (videoQueryWorkflowBaselineOnly) {
+    await runVideoQueryWorkflowBaselineOnly();
+  } else {
   ready = true;
   if (nodeRecoveryScenario && !nodeRecoveryProductMode) await smokeNodeRecoveryGuide();
+  if (videoQueryWorkflowScenario) await smokeVideoQueryWorkflowGuide();
   const receipt = generationScenario
       ? {
         status: "USER_RECHECK",
@@ -3972,10 +5561,16 @@ try {
                   `media-publication-preserved-task-${nodeId.slice(-2)}`),
                 MEDIA_PUBLICATION_FIXTURE.adoptionTaskId,
               ]
+            : videoQueryWorkflowScenario
+              ? [
+                  videoQueryWorkflowHistoricalOriginalTaskId,
+                  videoQueryWorkflowRunId,
+                  videoQueryWorkflowHistoricalRunId,
+                ].filter(Boolean)
             : [...generationTasks.keys()],
         sentinels: generationFixture.sentinels,
         syntheticOnly: true,
-        taskStorage: nodeRecoveryProductMode
+        taskStorage: (nodeRecoveryProductMode || videoQueryWorkflowProductMode)
           ? "temporary application SQLite through real product task/case commands"
           : mediaPublicationScenario
             ? "temporary application SQLite through real workflow/adoption commands"
@@ -4000,6 +5595,18 @@ try {
               providerPosts: mediaPublicationProviderStats.posts,
               paidProviderRequests: 0,
             }
+          : videoQueryWorkflowScenario
+            ? {
+                actualProductCommands: true,
+                preservedSuccessNodeCount: MEDIA_PUBLICATION_FIXTURE.preservedNodeIds.length,
+                recoveryPath: "/api/workflow-runs (real query/recovery/publication) with narrow historical sync then continuation",
+                providerRequests: mediaPublicationProviderStats.posts + mediaPublicationProviderStats.gets + mediaPublicationProviderStats.mediaGets + mediaPublicationProviderStats.requests.filter((request) => request.path === "/v1/responses").length,
+                providerPosts: mediaPublicationProviderStats.posts,
+                activeVideoProviderPosts: mediaPublicationProviderStats.requests.filter((request) => request.path === "/v1/media/generate" && request.phase === "active" && request.capability === "video").length,
+                historicalVideoProviderPosts: mediaPublicationProviderStats.requests.filter((request) => request.path === "/v1/media/generate" && request.phase === "history" && request.capability === "video").length,
+                paidProviderRequests: 0,
+                productSmoke: join(testRoot, "video-query-workflow-product-smoke.json"),
+              }
           : nodeRecoveryScenario
           ? nodeRecoveryProductMode
             ? {
@@ -4029,6 +5636,7 @@ try {
     new Promise((resolve) => { expiryTimer = setTimeout(resolve, Math.max(0, expiresAt.getTime() - Date.now())); }),
   ]);
   clearTimeout(expiryTimer);
+  }
 } finally {
   await stop();
 }
