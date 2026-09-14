@@ -36,6 +36,8 @@ The historical schema43 to schema44 migration is recorded in the v0.7.18 receipt
 
 The exact package and operation scripts must pass independent release review and isolated Linux rehearsal before production operations. Local tests alone do not prove deployment. The latest approval is in TASKS; do not request it again for already covered operations. Timer changes, paid generation and unrelated data operations remain outside that approval.
 
+Publication slot integrity follows the database occupancy contract: failed publication attempts remain intact as history but do not occupy a current output slot. Active or published duplicates, incomplete output sets and invalid slot metadata remain backup-blocking; this distinction does not authorize deleting failed history or weakening media checks.
+
 ## Installation and recovery evidence
 
 Before installing or changing a job, record immutable release commit/tree, wrapper and unit hashes, owner/mode, current-schema freeze/SHA evidence, key identities without key bytes, verify/fresh-restore result, upload/GET verification and timer next-run. Use isolated synthetic/fake tests first. Do not replace CURRENT with a backup or rewrite historical task/attempt records to satisfy quiet gates.

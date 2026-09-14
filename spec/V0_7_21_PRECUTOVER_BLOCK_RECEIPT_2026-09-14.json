@@ -1,0 +1,68 @@
+{
+  "version": "0.7.21",
+  "status": "BLOCKED_BEFORE_CUTOVER_OLD_RELEASE_RESUMED",
+  "candidateCommit": "6b657b12df4f0f7855674f8d2364e04ce8e7bf12",
+  "candidateRelease": "/opt/unboundry/releases/v0.7.21-video-query-recovery-20260914",
+  "productionVersion": "0.7.20",
+  "productionSchema": 44,
+  "newPackageStarted": false,
+  "currentChanged": false,
+  "databaseRestoredOrRepaired": false,
+  "providerPostIssuedByReleaseOperations": 0,
+  "github": {
+    "pullRequest": 180,
+    "mainCI": 34801955863,
+    "tagRetained": "v0.7.21"
+  },
+  "gates": {
+    "localUserAcceptance": "PASS_3_ITEMS",
+    "businessRegressionPassed": 351,
+    "releaseChecksPassed": 62,
+    "exactServerBuild": "PASS",
+    "isolatedLinuxRollback": "PASS",
+    "ossMirrors": {
+      "objects": 670,
+      "bytes": 1721761135,
+      "completeGetVerified": true
+    },
+    "encryptedBackup": "BLOCKED_NO_QUALIFIED_PACKAGE",
+    "cloudBackupUpload": "NOT_STARTED",
+    "productionCutover": "NOT_STARTED"
+  },
+  "blocker": {
+    "codes": [
+      "MEDIA_INTEGRITY_PUBLICATION_SLOT_DUPLICATE",
+      "MEDIA_INTEGRITY_PUBLICATION_SLOT_GAP"
+    ],
+    "taskId": "fc2cb668-654d-4c1c-8052-5c450c0ea114",
+    "successfulPublicationAttempt": "4e0f208c-9831-4fa6-bf9d-3803c1c334d1",
+    "observedRows": {
+      "failedSameSlotHistory": 6,
+      "publishedSameSlot": 1,
+      "slot": 0,
+      "outputSetCount": 1
+    },
+    "cause": "mediaIntegrity included failed publication history in current slot occupancy and completion checks, contrary to the database unique index and generationOutputSlots contract",
+    "sourceDataWasNotChangedToPass": true
+  },
+  "operations": {
+    "freezeAt": "2026-09-14T04:14:06.462Z",
+    "stoppedOldPid": 2644686,
+    "oldServiceResumedAt": "2026-09-14T04:29:48.835446+00:00",
+    "resumedPid": 3489819,
+    "originalSafetyRestored": true,
+    "staticAssetsVerified": 7,
+    "publicVersionVerified": "0.7.20",
+    "publicMaintenanceReleased": true
+  },
+  "evidenceRoot": "/var/lib/unboundry-v0721-video-query-recovery-20260914/evidence",
+  "evidence": [
+    "media-inspection-v0721.json",
+    "resume-old-complete.json",
+    "safety-restored-precutover-abort.json",
+    "quiesce-proof-v0721-v2.json",
+    "linux-host-execution.json"
+  ],
+  "nextRevision": "0.7.22",
+  "productionUserAcceptance": "NOT_APPLICABLE_NEW_RELEASE_NOT_DEPLOYED"
+}
