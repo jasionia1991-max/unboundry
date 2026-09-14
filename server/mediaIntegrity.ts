@@ -564,8 +564,15 @@ export function inspectMediaIntegrity(input: Readonly<{
           severity: "error" as const,
           taskId: first.task_id ?? undefined,
         };
+        // A failed publication is terminal journal evidence for an earlier
+        // save attempt.  It must remain in the integrity input (including
+        // slot/count validation), but it no longer owns a live output slot.
+        // A later published row may therefore legitimately reuse the same
+        // task/attempt/slot after that failed row was cleaned up.
         const mapped = rows.filter((row) => row.output_slot !== null);
         const legacy = rows.filter((row) => row.output_slot === null);
+        const liveMapped = mapped.filter((row) => row.state !== "failed");
+        const liveLegacy = legacy.filter((row) => row.state !== "failed");
         const invalidPair = rows.some((row) =>
           (row.output_slot === null) !== (row.output_set_count === null));
         if (invalidPair) {
@@ -589,7 +596,7 @@ export function inspectMediaIntegrity(input: Readonly<{
           });
         }
         const bySlot = new Map<number, PublicationRow[]>();
-        for (const row of mapped) {
+        for (const row of liveMapped) {
           const slot = safeInteger(row.output_slot!);
           if (slot === undefined) continue;
           const slotRows = bySlot.get(slot) ?? [];
@@ -604,7 +611,7 @@ export function inspectMediaIntegrity(input: Readonly<{
             code: "MEDIA_INTEGRITY_PUBLICATION_SLOT_DUPLICATE",
           });
         }
-        if (legacy.some((row) => row.state === "published") && mapped.length > 0) {
+        if (liveLegacy.some((row) => row.state === "published") && liveMapped.length > 0) {
           add({
             ...context,
             code: "MEDIA_INTEGRITY_PUBLICATION_SLOT_INVALID",
@@ -612,20 +619,26 @@ export function inspectMediaIntegrity(input: Readonly<{
         }
         const slots = [...bySlot.keys()].sort((left, right) => left - right);
         const contiguousPrefix = slots.every((slot, index) => slot === index);
-        if (mapped.length > 0 && !contiguousPrefix) {
+        if (liveMapped.length > 0 && !contiguousPrefix) {
           add({
             ...context,
             code: "MEDIA_INTEGRITY_PUBLICATION_SLOT_GAP",
           });
         }
-        if (task?.state === "success" && mapped.length > 0) {
-          const count = safeInteger(first.output_set_count!);
-          if (
+        if (task?.state === "success") {
+          const hasPublishedLegacy = liveLegacy.some((row) => row.state === "published");
+          const mappedOutputMissing = mapped.length > 0 &&
+            liveMapped.length === 0 && !hasPublishedLegacy;
+          const count = liveMapped.length > 0
+            ? safeInteger(liveMapped[0]!.output_set_count!)
+            : undefined;
+          const mappedOutputIncomplete = liveMapped.length > 0 && (
             count === undefined ||
             slots.length !== count ||
             slots.some((slot, index) => slot !== index) ||
-            mapped.some((row) => row.state !== "published")
-          ) {
+            liveMapped.some((row) => row.state !== "published")
+          );
+          if (mappedOutputMissing || mappedOutputIncomplete) {
             add({
               ...context,
               code: "MEDIA_INTEGRITY_PUBLICATION_SLOT_GAP",

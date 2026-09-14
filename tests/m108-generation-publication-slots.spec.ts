@@ -32,6 +32,7 @@ import { AliyunOssPublicationQuarantineError, assertUnstagedAliyunOssGenerationO
 import type { DatabaseSync } from "node:sqlite";
 import { publishedGenerationMediaCandidateIds as candidates } from "../server/mediaRegistry";
 import { recoverGenerationTasksAtStartupForRuntimeTest } from "../server/generationTasks";
+import { inspectMediaIntegrity } from "../server/mediaIntegrity";
 
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
 const ownerId = "m108-owner";
@@ -93,6 +94,33 @@ function createTask(directory: string, store: Store, count = 1,
   return { taskId: task.id, ownerId, kind: "image" as const, executionAttempt: 1 };
 }
 
+function insertFailedGenerationPublications(
+  database: DatabaseSync,
+  taskId: string,
+  prefix: string,
+) {
+  const insertFailed = database.prepare(`
+    INSERT INTO media_publication_attempts (
+      attempt_id, owner_id, kind, asset_id, source, state,
+      storage_backend, final_storage_name, object_key, staging_name,
+      task_id, task_execution_attempt, output_slot, output_set_count,
+      byte_size, content_type, media_width, media_height, error_code,
+      created_at, updated_at
+    ) VALUES (?, ?, 'image', ?, 'generation', 'failed', 'local',
+      ?, ?, ?, ?, 1, 0, 1, 0, 'image/png', 1, 1,
+      'FIXTURE_PUBLICATION_FAILED', ?, ?)
+  `);
+  for (let index = 0; index < 3; index += 1) {
+    const attemptId = `${prefix}-${randomUUID()}`;
+    const timestamp = new Date().toISOString();
+    insertFailed.run(
+      attemptId, ownerId, `${prefix}-asset-${randomUUID()}`,
+      `${attemptId}.png`, `${attemptId}.png`, `${attemptId}.staging`,
+      taskId, timestamp, timestamp,
+    );
+  }
+}
+
 async function saveSlot(identity: ReturnType<typeof createTask>, token: GenerationSaveToken, slot: number, count: number) {
   const saved = await saveGeneratedPng({ bytes: png, label: "synthetic output", ownerId,
     task: { ...identity, saveToken: token, outputSlot: slot, outputSetCount: count, actualCostMicrounits: 1 },
@@ -138,6 +166,82 @@ test("one, two and four identical-byte outputs keep distinct slots and replay wi
         })).toThrow(GenerationOutputSlotBlockedError);
       });
     }
+  });
+});
+
+test("failed generation publication history does not reserve a reused output slot during backup inspection", async () => {
+  await fixture(async (directory, store) => {
+    const identity = createTask(directory, store);
+    let saved!: Awaited<ReturnType<typeof saveSlot>>;
+    await withGenerationResultSave(identity, async (saveToken) => {
+      bindGenerationOutputSet({ ...identity, token: saveToken,
+        outputs: [{ kind: "image", transport: "bytes", bytes: png }],
+      });
+      saved = await saveSlot(identity, saveToken, 0, 1);
+      expect(commitGenerationMediaOutputSet({
+        ...identity, assetIds: [saved.assetId], saveToken,
+      }).state).toBe("success");
+    });
+    await cleanupPublishedGeneratedMediaStaging();
+
+    const database = openAppDatabase(directory);
+    insertFailedGenerationPublications(database, identity.taskId, "failed-publication");
+    database.close();
+
+    const report = inspectMediaIntegrity({
+      databaseLogicalSha256: "1".repeat(64),
+      databasePath: join(directory, "unboundry.sqlite"),
+      files: [{
+        logicalPath: saved.publicationToken.finalStorageName,
+        sha256: createHash("sha256").update(png).digest("hex"),
+        size: png.length,
+      }],
+      storageProfileIds: [],
+    });
+    expect(report.backupComplete).toBe(true);
+    expect(report.issues.filter((issue) => issue.taskId === identity.taskId &&
+      ["MEDIA_INTEGRITY_PUBLICATION_SLOT_DUPLICATE",
+        "MEDIA_INTEGRITY_PUBLICATION_SLOT_GAP"].includes(issue.code))).toEqual([]);
+    expect(report.counts.publicationAttempts).toBe(4);
+  });
+});
+
+test("a successful task with only failed mapped publication history remains incomplete", async () => {
+  await fixture(async (directory, store) => {
+    const identity = createTask(directory, store);
+    let saved!: Awaited<ReturnType<typeof saveSlot>>;
+    await withGenerationResultSave(identity, async (saveToken) => {
+      bindGenerationOutputSet({ ...identity, token: saveToken,
+        outputs: [{ kind: "image", transport: "bytes", bytes: png }],
+      });
+      saved = await saveSlot(identity, saveToken, 0, 1);
+      expect(commitGenerationMediaOutputSet({
+        ...identity, assetIds: [saved.assetId], saveToken,
+      }).state).toBe("success");
+    });
+    await cleanupPublishedGeneratedMediaStaging();
+
+    const database = openAppDatabase(directory);
+    database.prepare("DELETE FROM media_publication_attempts WHERE task_id = ?")
+      .run(identity.taskId);
+    insertFailedGenerationPublications(database, identity.taskId, "failed-only-publication");
+    database.close();
+
+    const report = inspectMediaIntegrity({
+      databaseLogicalSha256: "1".repeat(64),
+      databasePath: join(directory, "unboundry.sqlite"),
+      files: [{
+        logicalPath: saved.publicationToken.finalStorageName,
+        sha256: createHash("sha256").update(png).digest("hex"),
+        size: png.length,
+      }],
+      storageProfileIds: [],
+    });
+    expect(report.backupComplete).toBe(false);
+    expect(report.issues).toContainEqual(expect.objectContaining({
+      code: "MEDIA_INTEGRITY_PUBLICATION_SLOT_GAP",
+      taskId: identity.taskId,
+    }));
   });
 });
 

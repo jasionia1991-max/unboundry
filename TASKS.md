@@ -8,7 +8,7 @@
 
 用户授权：第2版本地实施及三项本地验收已完成。2026-09-14用户对“发布检查、备份和回退验证，通过后上线”明确回复“授权”，本轮发布流程已获准；随后用户对“本次版本号定为v0.7.21，可以吗”回复“允许发布”，版本和上线范围均已明确。本轮包括commit/push/PR合并/tag/Release、正式备份/fresh restore/云端GET核验、Linux隔离回退演练及通过后的生产切换。发布不包含历史事故回填、真实付费生成或下游收费续跑；既有未知请求不得重发。此前发布及尾文字生成授权不复用。
 
-当前阶段：`RELEASE_PREPARATION`；本地结论保留`LOCAL_AUTO_PASS / LOCAL_USER_PASS`。本地修复、新旧功能回归、撤销演练、独立代码复审及完整浏览器验证完成，尚未上线。方案正文是审查时的冻结快照；当前实施结论以[方案第9节](spec/VIDEO_QUERY_WORKFLOW_RECOVERY_PLAN_2026-09-13.md#9-本地实施记录)为证，不将旧“未实施”叙述当作现在状态。
+当前阶段：`RELEASE_CHECKER_VERIFIED`；本地结论保留`LOCAL_AUTO_PASS / LOCAL_USER_PASS`。本地修复、新旧功能回归、撤销演练、独立代码复审及完整浏览器验证完成，尚未上线。方案正文是审查时的冻结快照；当前实施结论以[方案第9节](spec/VIDEO_QUERY_WORKFLOW_RECOVERY_PLAN_2026-09-13.md#9-本地实施记录)为证，不将旧“未实施”叙述当作现在状态。
 
 ## 已核实与未知
 
@@ -37,4 +37,8 @@
 
 ## 下一步
 
-v0.7.21发布已获用户明确确认。已准备可逆v0.7.21候选（package/lock/精确运行准入及m81版本用例），m81+m38发布检查62/62通过、退出0，日志`/tmp/unboundry-v0721-release-prep-20260914/release-checks.log`，源码SHA `95f8dca7bd5d877be7754b8d17469109ccabb15f273f318c9541156ef59a1c6a`。此前351项业务证据保留，未重复运行。9月14日只读核对生产current仍v0.7.20/schema44，服务active、PID2644686、NRestarts0；main仍300e3e8。无活动workflow或未完成publication；只有原未知视频task 9c93f308-bb77-4935-a4e3-37dd72e6cd28 recovering/attempt1。本事故原task仍success、原run仍failed，未执行回填或重试。旧v0720操作脚本绑定已停服v0719，不能直接复用；准备本轮精确停服保全、新包Linux隔离回退及发布审查，全部门通过后切换。生产当前保持运行，尚未冻结或停服。
+v0.7.21发布已获用户明确确认。PR #180已合并，精确tag指向`6b657b12df4f0f7855674f8d2364e04ce8e7bf12`；PR与main CI均通过，GitHub Release已建立，生产尚未切换。m81+m38发布检查62/62通过，日志`/tmp/unboundry-v0721-release-prep-20260914/release-checks.log`；351项相关业务回归证据仍有效。服务器已从精确tag排除保护路径后fresh build，候选目录`/opt/unboundry/releases/v0.7.21-video-query-recovery-20260914`，Node22.23.2/npm10.9.8，995份源码未变化。
+
+v0.7.21发布在真正切换前被备份检查器误报阻断，原v0.7.20已恢复正常访问；新包从未启动，没有回填、重试或修复生产记录。完整已核实经过由[v0.7.21中止回执](spec/V0_7_21_PRECUTOVER_BLOCK_RECEIPT_2026-09-14.json)拥有，现阶段不适用事故保全5.3绕过检查。继续本轮发布前的直接修复：仅校验器区分failed历史与有效输出槽、补备份回归；保留已公开v0.7.21 tag，修订递增v0.7.22，重新通过精确构建、备份/fresh restore/云端GET、Linux回退及独立复审后上线。原视频恢复功能351项和用户三项验收保留，不扩大为本次新增备份校验已通过。
+
+新增备份校验修正已通过safe runner：m10备份23项、m108输出槽21项、m81发布43项，共87/87，类型/架构/构建与隔离检查通过，日志`/tmp/unboundry-v0722-release-prep-20260914/release-checks-r3.log`。新增两项用例后测试清单对齐1443及其三个运行器哈希，未改变测试保护。最初两次由清单漂移检查拒绝，未运行产品测试；日志r1/r2保留。
