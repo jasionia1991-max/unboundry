@@ -1,0 +1,369 @@
+{
+  "format": "unboundry-v0722-production-receipt-v1",
+  "status": "DEPLOYED_TECHNICAL_PASS_PRODUCTION_USER_RECHECK",
+  "technicalStatus": "PASS",
+  "version": "0.7.22",
+  "date": "2026-09-14",
+  "operationDate": "2026-09-14",
+  "observedAt": "2026-09-14T06:29:20.046177+00:00",
+  "timezone": "Asia/Shanghai",
+  "sourceOfTruth": {
+    "currentState": "spec/UNBOUNDRY_CURRENT_STATE.md",
+    "currentTask": "TASKS.md",
+    "previousReceiptSchema": "spec/V0_7_20_PRODUCTION_RECEIPT_2026-09-12.json",
+    "precutoverBlockReceipt": "spec/V0_7_21_PRECUTOVER_BLOCK_RECEIPT_2026-09-14.json"
+  },
+  "github": {
+    "pullRequest": 181,
+    "mainCI": 34807660927,
+    "mainCIStatus": "PASS",
+    "tag": "v0.7.22",
+    "commit": "c9e82ce6461a4d02599d413e20a60d9b0c685193"
+  },
+  "release": {
+    "version": "0.7.22",
+    "tag": "v0.7.22",
+    "commit": "c9e82ce6461a4d02599d413e20a60d9b0c685193",
+    "tree": "6107bbc95bf585375a05c7b94179180a7232e685",
+    "tagObject": "85207b548c8b105d58970ee85f3cc7b180e7afaa",
+    "archiveSha256": "0618726d8f190990c2eaeb4c3d7983e62fd20d6ae3f62637c9f89cdb574f37c2",
+    "exportIdentitySha256": "1b13f2b9649f8bab02e7a4e620754929b15e4eff29d95140bf97d5160f86586e",
+    "markerSha256": "7667404ba8ebd175799fd4fe544f2d309e5b148eafbf0a38d68e34a3a118b5ae",
+    "inventorySha256": "5c7a402641222c5dc67c5ec8a2d616dfffe86512872632583af6338fc567dc31",
+    "inventoryFilesVerified": 6227,
+    "sourceFiles": 996,
+    "nodeVersion": "22.23.2",
+    "npmVersion": "10.9.8",
+    "schemaVersion": 44,
+    "builtFresh": true,
+    "sourceUnchanged": true
+  },
+  "localValidation": {
+    "status": "PASS",
+    "focusedReleaseTests": {
+      "passed": 87,
+      "failed": 0,
+      "scope": "m10 23 + m108 21 + m81 43",
+      "log": "/tmp/unboundry-v0722-release-prep-20260914/release-checks-r3.log",
+      "logSha256": "b24e329acb52fea86516d9fb815808ea0b5708b67ed05ad040d171345a36e085"
+    },
+    "businessRegression": {
+      "passed": 351,
+      "status": "PASS",
+      "owner": "spec/VIDEO_QUERY_WORKFLOW_RECOVERY_PLAN_2026-09-13.md#9-本地实施记录"
+    },
+    "browserAcceptance": {
+      "status": "LOCAL_USER_PASS",
+      "passedItems": 3,
+      "scope": "本地假平台：自动恢复、刷新后结果保留、历史原视频同步后仅继续尾节点"
+    },
+    "independentReview": {
+      "status": "PASS",
+      "operationsReviewer": "recovery_plan_audit",
+      "operationsConclusion": "NO_BLOCKING_FINDINGS_AFTER_BOUND_ROOT_AGGREGATE_AND_EXACT_GATE_PARAMETER_FIX",
+      "evidence": "/tmp/unboundry-v0722-release-prep-20260914/independent-review.json",
+      "evidenceSha256": "4123e39b82f54d1f724fd42931f7e98a7e0f45bac6691db98a12bdb0f64d2d3a",
+      "finalOperationsScripts": {
+        "verify-history-delta-v0722.py": "87aadc8940d047bd2ab2217ef9dcab92977b8fcc95737f8e05d2028ef52a5fcc",
+        "compare-state-v0722.py": "1de55fba72f05953ee1e32496de746568c15515b52303673f7692b9548c1e800",
+        "gate-release-v0722.py": "f2b0454db8ff321016f1b5bb986f003e1adbc75dfcb3da6a316f4189edb352ee",
+        "upload-quiesced-backup-v0722.mjs": "70e6ec139def2809b56e20065185ed1c33447c455e7795e09753249da668cd89",
+        "verify-existing-cloud-v0722.mjs": "8620b4269be51add6f6f084265d4b735e6a635162fef578dfd2718cca8aaa749",
+        "aggregate-backup-ready-v0722.py": "c966ffd6399c33fec063b46ed87f2379db64ae8f8733b973b076e3998902a929"
+      },
+      "finalOperationsReview": {
+        "reviewer": "recovery_plan_audit",
+        "status": "PASS",
+        "scope": [
+          "Authenticated full GET plus anonymous access denial for all 1033 private backup objects, root source/hash-bound aggregation",
+          "Three explicit SHA-256 length arguments in final history gate; all deployed/local copies and SHA inventory synchronized"
+        ],
+        "runtimeFollowup": {
+          "path": "/var/lib/unboundry-v0722-video-query-recovery-20260914/evidence/verify-complete-v0722.json",
+          "sha256": "5f2fdc0c6a69f841d8ffbbe846d8913c4e0cf2f6619cbbc188b724e1c5445d52"
+        }
+      }
+    }
+  },
+  "preCutover": {
+    "freezeAt": "2026-09-14T05:17:25.952Z",
+    "maintenance": {
+      "status": "ACTIVE_DURING_PRECUTOVER_NOW_RESTORED",
+      "version": "0.7.22",
+      "receiptPath": "/var/lib/unboundry-v0722-video-query-recovery-20260914/evidence/maintenance-proof.json",
+      "receiptSha256": "1ee13be7ff4b514ec48ac93b8a717ccfcc63f4b7ea159048638399d4b2e68f93"
+    },
+    "applicationStop": {
+      "status": "FROZEN_APPLICATION_STOPPED",
+      "listenerClosed": true,
+      "receiptPath": "/var/lib/unboundry-v0722-video-query-recovery-20260914/evidence/application-stop-complete.json",
+      "receiptSha256": "f0883a500c72d91ff723eaba3cf75015aa81a8b2e3f510a2762b92a29b29f570"
+    },
+    "freezeStopDelta": {
+      "status": "V0722_NARROW_HISTORY_DELTA_VERIFIED",
+      "receiptPath": "/var/lib/unboundry-v0722-video-query-recovery-20260914/evidence/freeze-stop-delta.json",
+      "receiptSha256": "f4a4fc6e0321908587116104d10d1e3998edadaa58b48f597b6e692b26570b84"
+    },
+    "bridgePreStart": {
+      "status": "INSTALLED_INACTIVE",
+      "serviceUid": 1000,
+      "serviceGid": 1001,
+      "dataMode": "0700",
+      "databaseMode": "0600",
+      "receiptPath": "/var/lib/unboundry-v0722-video-query-recovery-20260914/evidence/bridge-unit-pre-start-installed.json",
+      "receiptSha256": "93b2ba0262fa939307ba5f83b623da42eddab2063954753ca48f98b7da3378a9"
+    }
+  },
+  "backupPreservation": {
+    "status": "PASS",
+    "backupId": "a153cd81-1c18-4836-afce-9c7c0dcfe1ce",
+    "captureMode": "quiesced-active-preservation",
+    "schemaVersion": 44,
+    "databaseLogicalSha256": "7c5d26bc2766537350b374a369fbf2accbc12e095ac419ca078091b023cbe22a",
+    "mediaFiles": 355,
+    "secretFiles": 3,
+    "ossMirrors": 670,
+    "mediaIntegrity": {
+      "clean": false,
+      "backupBlockingIssues": 0,
+      "issues": 100,
+      "evidenceSha256": "440fbc1822b25e5f3a74d94b08c339f0ab498f5fa49b00d9f05fae67273118a8",
+      "sha256": "96b9dfdd67f17ee9b71031daf71f0ed85bbf7e7abb966dfa542939ba55e7a322"
+    },
+    "freshRestoreVerified": true,
+    "rawReceipts": {
+      "capture": {
+        "path": "/var/lib/unboundry-v0722-video-query-recovery-20260914/evidence/backup-capture-v0722.json",
+        "sha256": "368bd263bb00aec8bc1e187606b7762a5d82f430cdfcdf2163a8063027b670d5"
+      },
+      "verify": {
+        "path": "/var/lib/unboundry-v0722-video-query-recovery-20260914/evidence/backup-verify-v0722.json",
+        "sha256": "5b1f17adf9b5f7f1103f59ef55b32fdd7dc42988bbd2d432139647df66050733"
+      },
+      "restore": {
+        "path": "/var/lib/unboundry-v0722-video-query-recovery-20260914/evidence/backup-restore-v0722.json",
+        "sha256": "6e14a322c7c3947c0c7569b3e382d6d4c1d8b3de5c0c04ff3a976293f6b4dbf2"
+      }
+    },
+    "finalCandidate": false,
+    "contractMode": "quiesced-active-preservation: active unknown task retained; verified fresh restore before switching, never restored over CURRENT"
+  },
+  "linux": {
+    "status": "PASS",
+    "realApplication": true,
+    "providerPostCount": 0,
+    "receiptPath": "/var/lib/unboundry-v0722-video-query-recovery-20260914/evidence/linux-host-execution.json",
+    "receiptSha256": "0924106fe14367b10172f7e07fecce4105da6862af2761cb15f103a8ad7860d0"
+  },
+  "workflow": {
+    "status": "PREEXISTING_INCIDENT_UNTOUCHED",
+    "canvasId": "5ef21c1a-14c9-4c90-8d2a-f42338668c4f",
+    "runId": "04052d0e-6cc8-4df2-8d06-89b20b321fcb",
+    "runStatus": "FAILED_UNTOUCHED",
+    "taskId": "c28aa7cc-e8c5-420c-ac8f-e1529c36d159",
+    "remoteTaskId": "135893903",
+    "remoteTaskStatus": "SUCCESS_OBSERVED_PREEXISTING",
+    "v0722ProviderPostCount": 0,
+    "v0722HistoricalRepairPerformed": false
+  },
+  "historicalBoundary": {
+    "v0721PreCutover": "PRESERVED",
+    "v0721Receipt": "spec/V0_7_21_PRECUTOVER_BLOCK_RECEIPT_2026-09-14.json",
+    "v0721ReceiptSha256": "bab9a01309701ba2376647e002c0780c67d9946b06dc3c6c868539290b75709c",
+    "v0721Status": "BLOCKED_BEFORE_CUTOVER_OLD_RELEASE_RESUMED",
+    "v0721NewPackageStarted": false,
+    "v0721NoHistoricalDataRepair": true,
+    "v0721ProviderPostIssuedByReleaseOperations": 0,
+    "v0721TagRetained": true
+  },
+  "evidencePolicy": {
+    "credentials/prompts/objectKeys/signedUrlsEmbedded": false,
+    "rawReceiptsEmbedded": false
+  },
+  "cloudPreservation": {
+    "objectCount": 1033,
+    "cloudGetVerified": true,
+    "cloudPrivateAclVerified": false,
+    "cloudPrivateAccessVerified": true,
+    "cloudManifestSha256": "ec5a5511348131474f84b12e8c907ec6e2a58261bea0f8673193f821ccbb9fd2",
+    "proofMode": "explicit-private-put-and-anonymous-denied-full-get",
+    "status": "PASS",
+    "receipt": {
+      "path": "/var/lib/unboundry-v0722-video-query-recovery-20260914/evidence/cloud-v0722.json",
+      "sha256": "f0c3cbc30262e1539011392b8ba75e9846252ade7ead7a450c93d5c7b74016c1"
+    },
+    "privatePutCompletionProof": {
+      "path": "/var/lib/unboundry-v0722-video-query-recovery-20260914/evidence/private-put-completion-evidence.json",
+      "sha256": "edb4c0412c3376542c0c9993042acd590c1e8ee3cfb1371acb0803389e70f8e8"
+    },
+    "backupReady": {
+      "path": "/var/lib/unboundry-v0722-video-query-recovery-20260914/evidence/backup-ready-v0722.json",
+      "sha256": "e94ca6856be01aef0889cac1fd2c71213021a7e8ef50147f19a342cee6b15e00"
+    },
+    "aclReadResult": "403 AccessDenied; not reported as successful ACL read",
+    "cloudPermissionChanges": 0,
+    "existingObjectOverwrites": 0,
+    "retentionDeletes": 0,
+    "verification": "Every object authenticated full GET matched bytes and SHA256; every anonymous GET denied with OSS 403 AccessDenied. Original explicit private/no-overwrite PUT proof bound separately."
+  },
+  "delta": {
+    "status": "PASS",
+    "schema": 44,
+    "tableCount": 40,
+    "unknownTaskUnchanged": true,
+    "providerAttemptsUnchanged": true,
+    "admissionEventsUnchanged": true,
+    "canvasUnchanged": true,
+    "safetyRestored": true,
+    "businessTablesUnchanged": false,
+    "businessTablesUnchangedExceptListedHistoricalDelta": true,
+    "mediaAndSecretsUnchanged": true,
+    "libraryUnchanged": true,
+    "fileCount": 967,
+    "filesSha256": "eb8276399743aed769f9ca0f0f96b62d7c4e49fce0a7dddfc42e90cecc41586a",
+    "authorizedAuditIds": [
+      386,
+      387
+    ],
+    "receipt": {
+      "path": "/var/lib/unboundry-v0722-video-query-recovery-20260914/evidence/current-delta-v0722.json",
+      "sha256": "ac50b198526a6809daf6df582491101b7aab8afbd0cc7e5fa9ad157eca8a31f2"
+    },
+    "historyDelta": {
+      "path": "/var/lib/unboundry-v0722-video-query-recovery-20260914/evidence/full-release-history.json",
+      "sha256": "9accd145216a2171542f86cdfb3df1794c3e09bcd68de69fa241b6c814cf3c53"
+    },
+    "historyTaskId": "a6bd74a5-79a8-47d8-acce-f735bfca811e",
+    "historyCycles": 2,
+    "historyEventsAppended": 6,
+    "scope": "Only the reviewed old image task state/error/timestamp and two complete 3-event query cycles; same provider attempt 397, no new Provider/admission records. Two release safety audit rows; original safety values including timestamp restored."
+  },
+  "production": {
+    "currentPointsToCandidate": true,
+    "current": "/opt/unboundry/releases/v0.7.22-video-query-recovery-20260914",
+    "deployed": true,
+    "finalVerify": {
+      "path": "/var/lib/unboundry-v0722-video-query-recovery-20260914/evidence/verify-complete-v0722.json",
+      "sha256": "5f2fdc0c6a69f841d8ffbbe846d8913c4e0cf2f6619cbbc188b724e1c5445d52"
+    },
+    "migration": {
+      "performed": false,
+      "sourceSchemaVersion": 44,
+      "targetSchemaVersion": 44
+    },
+    "schemaVersion": 44,
+    "version": "0.7.22",
+    "service": {
+      "activeState": "active",
+      "mainPid": 3522818,
+      "nRestarts": 0,
+      "processCwd": "/opt/unboundry/releases/v0.7.22-video-query-recovery-20260914",
+      "subState": "running",
+      "workingDirectory": "/opt/unboundry/current"
+    },
+    "publicAssets": {
+      "assetCount": 7,
+      "allExact": true
+    },
+    "loopbackStaticFiles": {
+      "assetCount": 35,
+      "allExact": true
+    },
+    "publicTraffic": "RESTORED",
+    "trafficRestore": {
+      "path": "/var/lib/unboundry-v0722-video-query-recovery-20260914/evidence/traffic-restore-new.json",
+      "sha256": "f142868cda92dc05d91b21dbb2266f9b9ab57d58b89dd9c06a67e64c73cf62c3"
+    },
+    "publicVerify": {
+      "path": "/var/lib/unboundry-v0722-video-query-recovery-20260914/evidence/public-verify-v0722.json",
+      "sha256": "84d6d7c4cd366aa025497ebba3e5379ee0f35f67adb6734d9ef6eb1394efebde"
+    },
+    "publicChecks": {
+      "live": {
+        "bytes": 68,
+        "sha256": "19f662c847ac50d712cfce094f6048d5399741beea8bfa6cd1c288d24b9bd8e2",
+        "status": 200,
+        "statusValue": "live"
+      },
+      "origin": "https://canvas.mymy.ltd",
+      "ready": {
+        "activeLeaseHeld": true,
+        "bytes": 203,
+        "databaseProbe": "read-only",
+        "mode": "active",
+        "mutationsAccepted": true,
+        "runtimeRole": "active",
+        "schemaVersion": 44,
+        "sha256": "bbae5bf73f174d27d14272b894e0f827800fc6da2e01204f6ce41ed4d00bff0e",
+        "status": 200,
+        "statusValue": "ready"
+      },
+      "root": {
+        "bytes": 525,
+        "sha256": "d3ff9e580e785bc353c2d25c0aed999cce6d6f1cd855c909f16a393f5f988165",
+        "status": 200
+      },
+      "version": {
+        "bytes": 20,
+        "schemaVersion": null,
+        "sha256": "46c7e668073de9f08aa37b2dee267c0f6ffa67bb63ee1d495d3a72ea8b471cf9",
+        "status": 200,
+        "version": "0.7.22"
+      }
+    },
+    "switchedAt": "2026-09-14T06:24:38.862613+00:00"
+  },
+  "refs": {
+    "candidateMarker": {
+      "path": "/opt/unboundry/releases/v0.7.22-video-query-recovery-20260914/EXACT-TAG-BUILD.json",
+      "sha256": "7667404ba8ebd175799fd4fe544f2d309e5b148eafbf0a38d68e34a3a118b5ae"
+    },
+    "exportIdentity": {
+      "path": "/var/lib/unboundry-v0722-video-query-recovery-20260914/evidence/export-identity.json",
+      "sha256": "1b13f2b9649f8bab02e7a4e620754929b15e4eff29d95140bf97d5160f86586e"
+    },
+    "backupReady": {
+      "path": "/var/lib/unboundry-v0722-video-query-recovery-20260914/evidence/backup-ready-v0722.json",
+      "sha256": "e94ca6856be01aef0889cac1fd2c71213021a7e8ef50147f19a342cee6b15e00",
+      "status": "V0722_BACKUP_READY"
+    },
+    "finalVerify": {
+      "path": "/var/lib/unboundry-v0722-video-query-recovery-20260914/evidence/verify-complete-v0722.json",
+      "sha256": "5f2fdc0c6a69f841d8ffbbe846d8913c4e0cf2f6619cbbc188b724e1c5445d52",
+      "status": "V0722_RELEASE_VERIFY_PASS_TRAFFIC_STILL_HELD"
+    },
+    "applicationStop": {
+      "path": "/var/lib/unboundry-v0722-video-query-recovery-20260914/evidence/application-stop-complete.json",
+      "sha256": "f0883a500c72d91ff723eaba3cf75015aa81a8b2e3f510a2762b92a29b29f570",
+      "status": "FROZEN_APPLICATION_STOPPED"
+    },
+    "switchStart": {
+      "path": "/var/lib/unboundry-v0722-video-query-recovery-20260914/evidence/switch-start-complete.json",
+      "sha256": "606af9d298cd12e18b6293519f770f867ef2ce385c67a493c195fe5cdd1790f9",
+      "status": "V0722_STARTED_TRAFFIC_STILL_HELD"
+    },
+    "trafficRestore": {
+      "path": "/var/lib/unboundry-v0722-video-query-recovery-20260914/evidence/traffic-restore-new.json",
+      "sha256": "f142868cda92dc05d91b21dbb2266f9b9ab57d58b89dd9c06a67e64c73cf62c3",
+      "status": "PUBLIC_TRAFFIC_RESTORED"
+    },
+    "publicVerify": {
+      "path": "/var/lib/unboundry-v0722-video-query-recovery-20260914/evidence/public-verify-v0722.json",
+      "sha256": "84d6d7c4cd366aa025497ebba3e5379ee0f35f67adb6734d9ef6eb1394efebde",
+      "status": "V0722_PUBLIC_VERIFY_PASS"
+    }
+  },
+  "userAcceptance": "LOCAL_USER_PASS / PRODUCTION_USER_RECHECK",
+  "userPass": false,
+  "deferred": [
+    "每日自动备份：USER_DEFERRED",
+    "视频/音频空工具按钮：USER_DEFERRED"
+  ],
+  "limitations": [
+    "Local three-item USER_PASS uses a simulated provider; production remains USER_RECHECK. No paid generation or historical workflow repair was performed by this release.",
+    "Preexisting incident video task was already successful while its historical workflow remained failed; release alone is not evidence of that old workflow being repaired.",
+    "Backup retains 100 non-blocking historical media warnings, zero backup blockers. Schema44 is unchanged; rollback requires a freshly bound latest-data schema44 read-only bridge, never restore backup over CURRENT.",
+    "Cloud GetObjectACL was denied; audited private PUT evidence plus authenticated full GET/hash and anonymous access denial were used instead, without permission changes.",
+    "Final verification initially failed because three operational gate SHA checks omitted their length argument. Corrected, independently reviewed and rerun successfully; original failure logs retained."
+  ]
+}
