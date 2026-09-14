@@ -139,6 +139,10 @@ const generationErrorCodeMessages: Record<
     "已向模型提交，系统会自动找回结果且不会重复付费提交",
   AUTOMATIC_RESULT_RECOVERY:
     "系统正在自动找回平台结果；不会重复付费提交",
+  AUTOMATIC_RECOVERY_PENDING:
+    "原请求记录已保留，等待后续处理；不会重复付费提交",
+  AUTOMATIC_RECOVERY_WINDOW_EXHAUSTED:
+    "原请求记录已保留，等待后续处理；不会重复付费提交",
   RESULT_SAVE_FAILED_NO_RETRY: (kind) =>
     `${kind === "image" ? "图片" : kind === "video" ? "视频" : "音频"}平台已返回结果，但系统未能安全保存；本轮已自动停止且不会重复提交`,
   PROVIDER_RECOVERY_ATTEMPT_USED: "模型配置更新后的恢复尝试已使用，请等待结果或联系管理员",

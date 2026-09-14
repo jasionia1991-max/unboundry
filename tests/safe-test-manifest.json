@@ -129,7 +129,10 @@
     "tests/m94-immutable-release.spec.ts",
     "tests/m95-release-switch.spec.ts",
     "tests/m96-release-ops.spec.ts",
-    "tests/m99-ark-files-api.spec.ts"
+    "tests/m99-ark-files-api.spec.ts",
+    "tests/m112-video-query-recovery.spec.ts",
+    "tests/m113-successful-workflow-result-sync.spec.ts",
+    "tests/m114-video-query-recovery-ui.spec.ts"
   ],
   "preview": [
     "tests/fixture-production.spec.ts",

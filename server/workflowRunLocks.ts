@@ -34,15 +34,79 @@ export function workflowRunAcceptingAdmissionsInTransaction(input: {
   `).get(input.runId, input.ownerId, input.canvasId));
 }
 
+/**
+ * Checks the complete ownership fence for the narrow automatic recovery
+ * policy.  The generation task store owns task state and attempt evidence;
+ * this module owns the workflow run/node/lock relationship, so callers do
+ * not reach across those table boundaries with ad-hoc SQL.
+ */
+export function workflowRunEligibleForAutomaticVideoRecoveryInTransaction(input: {
+  canvasId: string;
+  database: DatabaseSync;
+  groupId: string;
+  nodeId: string;
+  ownerId: string;
+  taskId: string;
+  expectedIdempotencyKey: string;
+  expectedModelConfigurationRevision: string;
+  expectedModelId: string;
+  expectedModelReleaseRevision: string;
+  expectedReservationId: string;
+  runId: string;
+}) {
+  if (!input.database.isTransaction) {
+    throw new Error("Workflow recovery eligibility requires a transaction");
+  }
+  // Resolve the lock-backed admission authority instead of proving only the
+  // run/group/task relationship.  The task store supplies the frozen task
+  // identity; this port owns the immutable workflow plan, node, lock and
+  // capacity reservation evidence.
+  const authority = workflowRunAdmissionAuthorityInTransaction({
+    canvasId: input.canvasId,
+    database: input.database,
+    nodeId: input.nodeId,
+    ownerId: input.ownerId,
+  });
+  if (!authority) return false;
+  return authority.runId === input.runId &&
+    authority.groupId === input.groupId &&
+    authority.runState === "running" &&
+    authority.stopRequested === 0 &&
+    authority.kind === "video" &&
+    authority.nodeState === "admitted" &&
+    authority.nodeTaskId === input.taskId &&
+    authority.planKind === authority.kind &&
+    authority.planGroupId === authority.groupId &&
+    authority.runSemanticFingerprint.length > 0 &&
+    authority.runSemanticFingerprint === authority.planSemanticFingerprint &&
+    authority.nodeSemanticIdentity.length > 0 &&
+    authority.nodeSemanticIdentity === authority.planSemanticIdentity &&
+    authority.idempotencyKey === input.expectedIdempotencyKey &&
+    authority.planModelId === input.expectedModelId &&
+    authority.planModelConfigurationRevision ===
+      input.expectedModelConfigurationRevision &&
+    authority.planModelReleaseRevision === input.expectedModelReleaseRevision &&
+    authority.reservationState === "active" &&
+    authority.reservationOwnerId === input.ownerId &&
+    authority.reservationRunId === authority.runId &&
+    authority.reservationId === input.expectedReservationId &&
+    /^[0-9a-f-]{36}$/i.test(authority.reservationId) &&
+    Number.isFinite(Date.parse(authority.reservationExpiresAt));
+}
+
 export type WorkflowRunAdmissionAuthority = Readonly<{
   groupId: string;
   idempotencyKey: string;
   kind: string;
+  nodeTaskId: string;
   nodeSemanticIdentity: string;
   nodeState: string;
+  planGroupId: string;
+  planKind: string;
   planModelConfigurationRevision: string;
   planModelId: string;
   planModelReleaseRevision: string;
+  planSemanticFingerprint: string;
   planSemanticIdentity: string;
   reservationExpiresAt: string;
   reservationId: string;
@@ -50,6 +114,7 @@ export type WorkflowRunAdmissionAuthority = Readonly<{
   reservationRunId: string;
   reservationState: string;
   runId: string;
+  runSemanticFingerprint: string;
   runState: string;
   stopRequested: number;
 }>;
@@ -72,10 +137,12 @@ export function workflowRunAdmissionAuthorityInTransaction(input: {
     SELECT
       run.id AS run_id,
       run.group_id,
+      run.semantic_fingerprint AS run_semantic_fingerprint,
       run.state AS run_state,
       run.stop_requested,
       node.kind,
       node.state AS node_state,
+      node.task_id AS node_task_id,
       node.semantic_identity AS node_semantic_identity,
       node.idempotency_key,
       reservation.id AS reservation_id,
@@ -85,6 +152,10 @@ export function workflowRunAdmissionAuthorityInTransaction(input: {
       reservation.expires_at AS reservation_expires_at,
       json_extract(plan_node.value, '$.semanticIdentity')
         AS plan_semantic_identity,
+      json_extract(plan_node.value, '$.kind') AS plan_kind,
+      json_extract(run.plan_json, '$.groupId') AS plan_group_id,
+      json_extract(run.plan_json, '$.semanticFingerprint')
+        AS plan_semantic_fingerprint,
       json_extract(plan_node.value, '$.modelId') AS plan_model_id,
       json_extract(plan_node.value, '$.modelConfigurationRevision')
         AS plan_model_configuration_revision,
@@ -115,13 +186,17 @@ export function workflowRunAdmissionAuthorityInTransaction(input: {
     groupId: String(row.group_id ?? ""),
     idempotencyKey: String(row.idempotency_key ?? ""),
     kind: String(row.kind ?? ""),
+    nodeTaskId: String(row.node_task_id ?? ""),
     nodeSemanticIdentity: String(row.node_semantic_identity ?? ""),
     nodeState: String(row.node_state ?? ""),
+    planGroupId: String(row.plan_group_id ?? ""),
+    planKind: String(row.plan_kind ?? ""),
     planModelConfigurationRevision: String(
       row.plan_model_configuration_revision ?? "",
     ),
     planModelId: String(row.plan_model_id ?? ""),
     planModelReleaseRevision: String(row.plan_model_release_revision ?? ""),
+    planSemanticFingerprint: String(row.plan_semantic_fingerprint ?? ""),
     planSemanticIdentity: String(row.plan_semantic_identity ?? ""),
     reservationExpiresAt: String(row.reservation_expires_at ?? ""),
     reservationId: String(row.reservation_id ?? ""),
@@ -130,6 +205,7 @@ export function workflowRunAdmissionAuthorityInTransaction(input: {
     reservationState: String(row.reservation_state ?? ""),
     runId: String(row.run_id ?? ""),
     runState: String(row.run_state ?? ""),
+    runSemanticFingerprint: String(row.run_semantic_fingerprint ?? ""),
     stopRequested: Number(row.stop_requested),
   });
 }

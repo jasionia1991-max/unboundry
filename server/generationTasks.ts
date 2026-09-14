@@ -758,6 +758,7 @@ function taskStore(launchOptions?: GenerationLaunchOptions) {
               if (
                 recovered?.state === "recovering" &&
                 !store!.hasOriginalRecoveryOnly(taskId) &&
+                !store!.isRecoveryWindowExhausted(taskId) &&
                 recovered.providerTaskId &&
                 taskProviderProtocol(recovered) === "media-generate"
               ) {
@@ -989,6 +990,7 @@ async function runGenerationRecoverySweepOnce(options?: {
         if (
           recovered?.state === "recovering" &&
           !store.hasOriginalRecoveryOnly(taskId) &&
+          !store.isRecoveryWindowExhausted(taskId) &&
           recovered.providerTaskId &&
           taskProviderProtocol(recovered) === "media-generate"
         ) {
@@ -1107,6 +1109,8 @@ async function runGenerationRecoverySweepOnce(options?: {
   };
   for (const task of store.listRecovering()) {
     if (store.hasOriginalRecoveryOnly(task.id)) continue;
+    const recoveryWindowExhausted = store.markRecoveryWindowExhaustedIfDue(task.id);
+    if (recoveryWindowExhausted || store.isRecoveryWindowExhausted(task.id)) continue;
     const providerAttempt = store.getProviderAttemptForTask(task.id);
     const publicationPending = hasPendingPublication(task.id);
     const decision = generationRecoveryDecisionForTask(
@@ -1231,6 +1235,9 @@ function recoverGenerationTasksAtStartup(input: {
 }) {
   for (const task of input.store.listRecovering()) {
     if (input.store.hasOriginalRecoveryOnly(task.id)) continue;
+    const recoveryWindowExhausted =
+      input.store.markRecoveryWindowExhaustedIfDue(task.id);
+    if (recoveryWindowExhausted || input.store.isRecoveryWindowExhausted(task.id)) continue;
     const providerAttempt = input.store.getProviderAttemptForTask(task.id);
     const decision = generationRecoveryDecisionForTask(
       task,
@@ -3004,8 +3011,15 @@ function isPersistenceBusyError(error: unknown) {
   ) {
     return true;
   }
-  return error instanceof Error &&
-    /database is locked|SQLITE_BUSY|busy/i.test(error.message);
+  if (!(error instanceof Error)) return false;
+  const code = "code" in error
+    ? (error as Error & { code?: unknown }).code
+    : undefined;
+  if (code === "SQLITE_BUSY" || code === "SQLITE_LOCKED") return true;
+  const message = error.message.trim();
+  return message === "database is locked" ||
+    message === "database table is locked" ||
+    message === "database schema is locked";
 }
 
 export function isTransientProviderResultSaveError(error: unknown) {
@@ -3120,6 +3134,17 @@ export async function attemptProviderResultSave(input: {
   }
 }
 
+/** Only fixed, non-secret local/configuration codes may enter recovery logs. */
+export function generationDiagnosticSourceErrorCode(error: unknown): string | null {
+  const code = error instanceof Error && "code" in error ? error.code : undefined;
+  return typeof code === "string" && new Set([
+    "EACCES", "EPERM", "ENOENT", "EIO", "ENOSPC", "EROFS", "EMFILE",
+    "SQLITE_BUSY", "SQLITE_LOCKED", "PROVIDER_LOCK_BUSY",
+    "ACCOUNT_CREDENTIAL_CHANGED", "ACCOUNT_CREDENTIAL_INVALID", "ACCOUNT_CREDENTIAL_MISSING",
+    "PROVIDER_CONFIGURATION_MISMATCH", "PROVIDER_PROFILE_MISSING", "PROVIDER_REVERIFY_REQUIRED",
+  ]).has(code) ? code : null;
+}
+
 function logGenerationDiagnostic(
   taskId: string,
   stage: string,
@@ -3153,6 +3178,7 @@ function logGenerationDiagnostic(
       errorCode: failureCode ?? detectedCode ??
         (typeof rawCode === "string" ? rawCode : undefined) ?? null,
       causeCode: typeof rawCauseCode === "string" ? rawCauseCode : null,
+      sourceErrorCode: generationDiagnosticSourceErrorCode(error),
       // Never copy Provider bodies, prompts, or signed URLs into logs.
       message: "Generation operation failed",
     }));
@@ -5056,6 +5082,7 @@ async function executeRelayMediaTask(
   kind: "audio" | "image" | "video",
   controller: AbortController,
   options?: {
+    fetcher?: typeof fetch;
     paramsBuilder?: (
       running: GenerationTask,
       profile: ProviderProfile,
@@ -5093,6 +5120,7 @@ async function executeRelayMediaTask(
   }
   const profile = await taskProviderSnapshotProfile(running, running.ownerId!);
   assertRelayProfile(profile, "media-generate");
+  const fetcher = options?.fetcher ?? fetch;
   let providerTaskId = running.providerTaskId;
   const recoveryContinuation = Boolean(
     providerTaskId && running.errorCode === "AUTOMATIC_RESULT_RECOVERY",
@@ -5112,7 +5140,7 @@ async function executeRelayMediaTask(
         await recheckWorkflowCapacityBeforePaidRequest(running);
         const submission = await withProviderRequestLease({
           expected: profile,
-          fetcher: fetch,
+          fetcher,
           ownerId: ownerId,
           profileId: running.providerProfileId,
           task: running,
@@ -5210,7 +5238,7 @@ async function executeRelayMediaTask(
       try {
         status = await withProviderRequestLease({
           expected: profile,
-          fetcher: fetch,
+          fetcher,
           ownerId: ownerId,
           profileId: running.providerProfileId,
           task: running,
@@ -6140,9 +6168,10 @@ async function executeVideoTask(
     const controller = new AbortController();
     runningVideoRequests.set(taskId, controller);
     try {
-      await executeRelayMediaTask(taskId, "video", controller);
+      await executeRelayMediaTask(taskId, "video", controller, { fetcher });
     } catch (error) {
       if (taskStore().get(taskId)?.state === "cancelled") return;
+      if (preserveAcceptedVideoTaskAfterExecutionError(taskId, error)) return;
       const failure = safeFailure(error, "video");
       logGenerationDiagnostic(taskId, "video-execution", error, failure.code);
       try {
@@ -6331,6 +6360,7 @@ async function executeVideoTask(
       });
       return;
     }
+    if (preserveAcceptedVideoTaskAfterExecutionError(taskId, error)) return;
     const failure = safeFailure(error, "video");
     logGenerationDiagnostic(taskId, "video-execution", error, failure.code);
     try {
@@ -6343,6 +6373,67 @@ async function executeVideoTask(
       runningVideoRequests.delete(taskId);
     }
   }
+}
+
+/**
+ * Once a Provider task id and accepted evidence are durable, a later local
+ * query/normalization/configuration failure cannot prove Provider rejection.
+ * Keep the original attempt in the automatic recovery lane so the worker can
+ * retry the same status read without issuing a second paid submission.
+ */
+function preserveAcceptedVideoTaskAfterExecutionError(
+  taskId: string,
+  error: unknown,
+) {
+  const current = taskStore().get(taskId);
+  if (
+    !current || current.kind !== "video" || current.state !== "running" ||
+    !current.providerTaskId
+  ) return false;
+  if (
+    (error instanceof RelayProviderError && error.code === "CANCELLED") ||
+    (error instanceof VolcengineArkVideoError && error.code === "CANCELLED")
+  ) return false;
+  if (!taskStore().isEligibleActiveWorkflowVideo(taskId)) return false;
+  const attempt = taskStore().getProviderAttemptForTask(taskId);
+  if (
+    !attempt || attempt.executionAttempt !== current.attempt ||
+    attempt.providerTaskId !== current.providerTaskId ||
+    !["accepted", "response-received"].includes(attempt.outcome)
+  ) return false;
+  logGenerationDiagnostic(taskId, "accepted-video-query-recovery", error, "AUTOMATIC_RESULT_RECOVERY");
+  try {
+    taskStore().transition(taskId, "recovering", {
+      code: "AUTOMATIC_RESULT_RECOVERY",
+      message: "系统正在自动找回平台结果；不会重新提交付费请求",
+    });
+    return true;
+  } catch (transitionError) {
+    // A concurrent cancel/terminal transition wins. It is never safe to
+    // replace that newer state with a second failure.
+    logGenerationDiagnostic(
+      taskId,
+      "post-boundary-recovery-transition",
+      transitionError,
+      "AUTOMATIC_RECOVERY_TRANSITION_DEFERRED",
+    );
+    return false;
+  }
+}
+
+/**
+ * Safe-runner seam for the full video execution path. The test must still
+ * provide a task and Provider profile in its temporary database; this only
+ * avoids exposing the production worker launcher to a fixture.
+ */
+export async function executeVideoTaskForRuntimeTest(
+  taskId: string,
+  fetcher: typeof fetch = fetch,
+) {
+  if (process.env.UNBOUNDRY_SAFE_TEST !== "1") {
+    throw new Error("Video execution test seam is unavailable");
+  }
+  await executeVideoTask(taskId, fetcher);
 }
 
 async function waitForAudio(milliseconds: number, signal: AbortSignal) {
@@ -7328,7 +7419,7 @@ configureGenerationRecoveryWorkerPorts({
       await saveOriginalGenerationProviderResult({ task: current, inspection: observation, signal });
     } else if (observation.state === "matched" && current.state === "recovering" &&
         !taskStore().hasOriginalRecoveryOnly(task.id)) {
-      const running = taskStore().resume(task.id);
+      const running = taskStore().resume(task.id, { allowExpiredRecovery: true });
       if (running) launchGenerationTask(running.id, running.kind);
     }
     // Return the current local evidence fence after this admitted operation.

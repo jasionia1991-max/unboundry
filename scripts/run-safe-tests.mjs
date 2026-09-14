@@ -72,10 +72,12 @@ const TEMPLATE_ACCEPTANCE_TIMEOUT = 2 * 60 * 60 * 1_000 + 60_000;
 const GENERATION_STATUS_ACCEPTANCE_SCENARIO = "generation-status";
 const NODE_RECOVERY_ACCEPTANCE_SCENARIO = "node-recovery";
 const MEDIA_PUBLICATION_ACCEPTANCE_SCENARIO = "media-publication";
+const VIDEO_QUERY_WORKFLOW_ACCEPTANCE_SCENARIO = "video-query-workflow";
 const ACCEPTANCE_SCENARIOS = Object.freeze([
   GENERATION_STATUS_ACCEPTANCE_SCENARIO,
   NODE_RECOVERY_ACCEPTANCE_SCENARIO,
   MEDIA_PUBLICATION_ACCEPTANCE_SCENARIO,
+  VIDEO_QUERY_WORKFLOW_ACCEPTANCE_SCENARIO,
   "templates",
 ]);
 const GENERATION_STATUS_BASELINE_HEAD = "955b9d2d89f76f8b91e71dd76cfb37ecad32cdc6";
@@ -614,10 +616,20 @@ function prepareGenerationStatusBaseline(testRoot) {
   });
 }
 
-function prepareGenerationServerTypesBaseline(testRoot) {
-  const manifestPath = join(repositoryRoot, GENERATION_SERVER_TYPES_BASELINE_MANIFEST);
+function prepareGenerationServerTypesBaseline(testRoot, selection = "legacy") {
+  if (!["legacy", "video-query"].includes(selection)) fail("Unknown frozen server baseline");
+  const videoQuery = selection === "video-query";
+  const selectedManifest = videoQuery
+    ? "tests/fixtures/video-query-workflow-baseline.json" : GENERATION_SERVER_TYPES_BASELINE_MANIFEST;
+  const selectedHead = videoQuery
+    ? "300e3e891d87f3d294a4be24b780a07b315bee2a" : GENERATION_SERVER_TYPES_BASELINE_HEAD;
+  const selectedTree = videoQuery
+    ? "72cf7ba54763b55a9f639d9cedcdd68a559eb81a" : GENERATION_SERVER_TYPES_BASELINE_TREE;
+  const selectedFileCount = videoQuery ? 211 : GENERATION_SERVER_TYPES_BASELINE_FILE_COUNT;
+  const selectedDirectory = videoQuery ? "video-query-workflow-baseline" : "generation-server-types-baseline";
+  const manifestPath = join(repositoryRoot, selectedManifest);
   if (!existsSync(manifestPath)) {
-    fail(`generation server/types baseline manifest is missing: ${GENERATION_SERVER_TYPES_BASELINE_MANIFEST}`);
+    fail(`generation server/types baseline manifest is missing: ${selectedManifest}`);
   }
   let manifest;
   try {
@@ -632,11 +644,11 @@ function prepareGenerationServerTypesBaseline(testRoot) {
   if (
     manifest?.schemaVersion !== 1 ||
     manifest?.contract !== "unboundry-generation-server-types-baseline-v1" ||
-    manifest?.head !== GENERATION_SERVER_TYPES_BASELINE_HEAD ||
-    manifest?.tree !== GENERATION_SERVER_TYPES_BASELINE_TREE ||
+    manifest?.head !== selectedHead ||
+    manifest?.tree !== selectedTree ||
     JSON.stringify(manifest?.scope) !== JSON.stringify(["server", "types"]) ||
-    manifest?.fileCount !== GENERATION_SERVER_TYPES_BASELINE_FILE_COUNT ||
-    manifestFiles.length !== GENERATION_SERVER_TYPES_BASELINE_FILE_COUNT ||
+    manifest?.fileCount !== selectedFileCount ||
+    manifestFiles.length !== selectedFileCount ||
     manifestFiles.some((file) =>
       !/^(?:server|types)\/[^/]+(?:\/[^/]+)*$/.test(file) ||
       file.split("/").some((part) => part === "" || part === "." || part === "..") ||
@@ -668,7 +680,7 @@ function prepareGenerationServerTypesBaseline(testRoot) {
   };
   const actualTree = gitResult(["rev-parse", "--verify", `${manifest.head}^{tree}`], "tree")
     .toString("utf8").trim();
-  if (actualTree !== GENERATION_SERVER_TYPES_BASELINE_TREE) {
+  if (actualTree !== selectedTree) {
     fail(`generation server/types baseline tree changed: ${actualTree}`);
   }
   const entries = gitResult([
@@ -695,14 +707,14 @@ function prepareGenerationServerTypesBaseline(testRoot) {
   }).sort((left, right) => left.file.localeCompare(right.file));
   const actualFiles = entries.map(({ file }) => file).sort();
   if (
-    entries.length !== GENERATION_SERVER_TYPES_BASELINE_FILE_COUNT ||
+    entries.length !== selectedFileCount ||
     new Set(actualFiles).size !== actualFiles.length ||
     actualFiles.join("\n") !== manifestFiles.join("\n")
   ) {
     fail("generation server/types baseline file inventory changed");
   }
 
-  const baselineRoot = join(testRoot, "generation-server-types-baseline");
+  const baselineRoot = join(testRoot, selectedDirectory);
   mkdirSync(baselineRoot, { recursive: true, mode: 0o700 });
   const files = {};
   const baselineDirectories = new Set([baselineRoot]);
@@ -1157,15 +1169,15 @@ function preflight() {
     new Set(manifested).size !== manifested.length ||
     manifested.join("\n") !== specs.join("\n")
   ) {
-    fail("safe test manifest must be a duplicate-free exact 139-spec partition");
+    fail("safe test manifest must be a duplicate-free exact 142-spec partition");
   }
-  const expectedModeCounts = { dev: 77, hybrid: 4, node: 45, preview: 2, self: 11 };
+  const expectedModeCounts = { dev: 77, hybrid: 4, node: 48, preview: 2, self: 11 };
   for (const mode of expectedModes) {
     if (manifest[mode].length !== expectedModeCounts[mode]) {
       fail(`unexpected ${mode} spec count ${manifest[mode].length}`);
     }
   }
-  if (specs.length !== 139) fail(`expected 139 isolated specs, found ${specs.length}`);
+  if (specs.length !== 142) fail(`expected 142 isolated specs, found ${specs.length}`);
 
   const packageJson = JSON.parse(
     readFileSync(join(repositoryRoot, "package.json"), "utf8"),
@@ -1614,7 +1626,7 @@ async function runTemplateAcceptancePreview(
 ) {
   const acceptanceTimeout = acceptanceScenario === MEDIA_PUBLICATION_ACCEPTANCE_SCENARIO
     ? 24 * 60 * 60_000 + 60_000
-    : acceptanceScenario === NODE_RECOVERY_ACCEPTANCE_SCENARIO
+    : [NODE_RECOVERY_ACCEPTANCE_SCENARIO, VIDEO_QUERY_WORKFLOW_ACCEPTANCE_SCENARIO].includes(acceptanceScenario)
       ? 12 * 60 * 60_000 + 60_000 : TEMPLATE_ACCEPTANCE_TIMEOUT;
   const testRoot = mkdtempSync(join(suiteRoot, "template-acceptance-preview-"));
   const dataDirectory = join(testRoot, "data");
@@ -1626,6 +1638,8 @@ async function runTemplateAcceptancePreview(
   ].includes(acceptanceScenario)
     ? prepareGenerationStatusBaseline(testRoot)
     : undefined;
+  const videoQueryBaseline = acceptanceScenario === VIDEO_QUERY_WORKFLOW_ACCEPTANCE_SCENARIO
+    ? prepareGenerationServerTypesBaseline(testRoot, "video-query") : undefined;
   const auditFile = join(testRoot, "network-audit.jsonl");
   const reportFile = join(testRoot, "unused-report.json");
   const script = join(sourceRoot, TEMPLATE_ACCEPTANCE_SCRIPT);
@@ -1652,6 +1666,10 @@ async function runTemplateAcceptancePreview(
   // This marker is only visible to the isolated helper. It lets the helper
   // fail closed if someone invokes it outside this fixed runner entrypoint.
   env.UNBOUNDRY_TEST_TEMPLATE_ACCEPTANCE = "1";
+  if (videoQueryBaseline) {
+    env.UNBOUNDRY_VIDEO_QUERY_BASELINE_ROOT = videoQueryBaseline.root;
+    env.UNBOUNDRY_VIDEO_QUERY_BASELINE_MANIFEST = videoQueryBaseline.manifestPath;
+  }
 
   try {
     await validateFileAndCredentialIsolation(sourceRoot, testRoot, env);
@@ -1662,6 +1680,59 @@ async function runTemplateAcceptancePreview(
     await sandboxedNode(sourceRoot, testRoot, env, [
       join(sourceRoot, "scripts/check-source-coverage.mjs"),
     ]);
+    if (videoQueryBaseline) {
+      // Isolate the old server module graph in its own process and database.
+      // All copied paths come from the already protected-file-filtered snapshot;
+      // replace server/types completely with the hash-verified original graph.
+      const baselineApp = join(testRoot, "video-query-baseline-app");
+      const baselineData = join(testRoot, "video-query-baseline-data");
+      mkdirSync(baselineApp, { recursive: true, mode: 0o700 });
+      mkdirSync(baselineData, { recursive: true, mode: 0o700 });
+      const protectedWorkspaceFiles = new Set([
+        "spec/INC_GEN_017_R0_PUBLISHED_MODEL_SNAPSHOT_2026-08-28.json",
+        "spec/public-templates-director-split-revision.json",
+      ]);
+      for (const file of snapshotBaseline.files) {
+        if (file.startsWith("server/") || file.startsWith("types/") ||
+            protectedWorkspaceFiles.has(file)) continue;
+        const destination = join(baselineApp, file);
+        mkdirSync(dirname(destination), { recursive: true, mode: 0o700 });
+        writeFileSync(destination, readRegularFileOnce(join(sourceRoot, file), "baseline app shell").bytes,
+          { flag: "wx", mode: 0o600 });
+      }
+      for (const file of Object.keys(videoQueryBaseline.manifest.files)) {
+        const destination = join(baselineApp, file);
+        mkdirSync(dirname(destination), { recursive: true, mode: 0o700 });
+        writeFileSync(destination, readRegularFileOnce(join(videoQueryBaseline.root, file), "baseline runtime").bytes,
+          { flag: "wx", mode: 0o400 });
+      }
+      symlinkSync(join(sourceRoot, "node_modules"), join(baselineApp, "node_modules"), "dir");
+      const baselineScript = join(baselineApp, TEMPLATE_ACCEPTANCE_SCRIPT);
+      const baselineEnv = {
+        ...env,
+        NODE_OPTIONS: `--import=${join(baselineApp, "scripts/offline-network-guard.mjs")}`,
+        UNBOUNDRY_DATA_DIR: baselineData,
+        UNBOUNDRY_TEST_REPOSITORY_ROOT: baselineApp,
+        UNBOUNDRY_TEST_SPEC: baselineScript,
+        UNBOUNDRY_VITE_CACHE_DIR: join(testRoot, "video-query-baseline-vite-cache"),
+        UNBOUNDRY_VIDEO_QUERY_BASELINE_ONLY: "1",
+      };
+      const baselineResult = await sandboxedNode(baselineApp, testRoot, baselineEnv,
+        [baselineScript], { allowFailure: true, timeout: 300_000,
+          readOnlyRoots: [join(baselineApp, "server"), join(baselineApp, "types"), videoQueryBaseline.root] });
+      await assertPortBindable(port);
+      await assertPortBindable(auxiliaryPort);
+      const evidencePath = join(testRoot, "video-query-workflow-baseline.json");
+      if (baselineResult.status !== 0 || baselineResult.signal || baselineResult.timedOut ||
+          !existsSync(evidencePath)) fail("Original video query failure was not reproduced by the isolated baseline");
+      const evidence = JSON.parse(readFileSync(evidencePath, "utf8"));
+      if (evidence.status !== "EXPECTED_FAILURE_REPRODUCED" || evidence.videoProviderPosts !== 1 ||
+          evidence.tailProviderPosts !== 0 || evidence.taskState !== "success" ||
+          evidence.runState !== "failed" || evidence.videoVisible !== false ||
+          evidence.profileLockInjected !== true) fail("Original video query evidence does not match the frozen failure");
+      assertTrackedSnapshotUnchanged();
+      console.log(`[video-query-baseline-verified] ${JSON.stringify({ head: videoQueryBaseline.manifest.head, files: 211, ...evidence })}`);
+    }
     console.log(
       `[safe-runner] ${acceptanceScenario} acceptance preview (port ${port}, auxiliary ${auxiliaryPort}; max ${acceptanceTimeout}ms)`,
     );
@@ -1670,7 +1741,8 @@ async function runTemplateAcceptancePreview(
       testRoot,
       env,
       [script],
-      { allowFailure: true, timeout: acceptanceTimeout },
+      { allowFailure: true, timeout: acceptanceTimeout,
+        readOnlyRoots: videoQueryBaseline ? [videoQueryBaseline.root] : [] },
     );
     await assertPortBindable(port);
     await assertPortBindable(auxiliaryPort);
@@ -1688,6 +1760,9 @@ async function runTemplateAcceptancePreview(
     }));
   } finally {
     assertTrackedSnapshotUnchanged();
+    for (const directory of videoQueryBaseline?.cleanupDirectories ?? []) {
+      if (existsSync(directory)) chmodSync(directory, 0o700);
+    }
     rmSync(testRoot, { force: true, recursive: true });
   }
 }
@@ -3210,8 +3285,8 @@ process.exit(0);
         })}`,
       );
     }
-    if (discovery.tests !== 1425) {
-      fail(`the frozen 1425-test inventory changed to ${discovery.tests}`);
+    if (discovery.tests !== 1441) {
+      fail(`the frozen 1441-test inventory changed to ${discovery.tests}`);
     }
     const idsByFile = {};
     const { entries } = collectReportEntries(reportFile, sourceRoot);
@@ -4861,6 +4936,7 @@ async function main() {
       (options.command === "acceptance" && [
         NODE_RECOVERY_ACCEPTANCE_SCENARIO,
         MEDIA_PUBLICATION_ACCEPTANCE_SCENARIO,
+        VIDEO_QUERY_WORKFLOW_ACCEPTANCE_SCENARIO,
       ].includes(options.acceptanceScenario)) ||
         (options.command !== "acceptance" && options.command !== "rehearsal" &&
           options.command !== "recovery-rehearsal" &&

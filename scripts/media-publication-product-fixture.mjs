@@ -26,6 +26,12 @@ export const MEDIA_PUBLICATION_FIXTURE = Object.freeze({
     "media-publication-preserved-01",
     "media-publication-preserved-02",
     "media-publication-preserved-03",
+    "media-publication-preserved-04",
+    "media-publication-preserved-05",
+    "media-publication-preserved-06",
+    "media-publication-preserved-07",
+    "media-publication-preserved-08",
+    "media-publication-preserved-09",
   ]),
 });
 
@@ -95,6 +101,16 @@ function seedMediaPublicationProviderProfile(database, dataDirectory) {
     label: "Media publication local relay fixture",
     updatedAt: now,
   };
+  const textProfile = {
+    apiKey: "media-publication-local-text-key",
+    baseUrl: "https://media-publication-relay.example.test/v1",
+    configurationVersion: 1,
+    createdAt: now,
+    driver: "volcengine-ark",
+    id: "55555555-5555-4555-8555-555555555555",
+    label: "Media publication local text relay fixture",
+    updatedAt: now,
+  };
   const secretsDirectory = join(dataDirectory, "secrets");
   mkdirSync(secretsDirectory, { recursive: true, mode: 0o700 });
   const key = randomBytes(32);
@@ -105,7 +121,7 @@ function seedMediaPublicationProviderProfile(database, dataDirectory) {
     });
     writeFileSync(
       join(secretsDirectory, "provider-profiles.enc.json"),
-      encryptedProviderProfileDocument(key, { profiles: [profile], version: 1 }),
+      encryptedProviderProfileDocument(key, { profiles: [profile, textProfile], version: 1 }),
       { flag: "wx", mode: 0o600 },
     );
   } finally {
@@ -124,7 +140,20 @@ function seedMediaPublicationProviderProfile(database, dataDirectory) {
     profile.updatedAt,
     profile.updatedAt,
   );
-  return Object.freeze(profile);
+  database.prepare(`
+    INSERT INTO provider_profiles (
+      id, display_name, driver, status, created_at, updated_at,
+      key_status, key_checked_at, provider_configuration_version
+    ) VALUES (?, ?, ?, 'enabled', ?, ?, 'valid', ?, 1)
+  `).run(
+    textProfile.id,
+    textProfile.label,
+    textProfile.driver,
+    textProfile.createdAt,
+    textProfile.updatedAt,
+    textProfile.updatedAt,
+  );
+  return Object.freeze({ profile: Object.freeze(profile), textProfile: Object.freeze(textProfile) });
 }
 
 function releaseFor(model, capability, modelParameters, releaseDefaults, releaseStore) {
@@ -194,22 +223,22 @@ function nodeData(kind, id, model) {
 
 function graphFor(fixture, models = { text: textModel, image: imageModel, video: videoModel }) {
   const nodes = [
-    { id: fixture.groupId, type: "group", position: { x: 0, y: 0 }, data: { label: "Group", title: "媒体发布恢复验收" }, style: { width: 1180, height: 620 } },
+    { id: fixture.groupId, type: "group", position: { x: 0, y: 0 }, data: { label: "Group", title: "媒体发布恢复验收" }, style: { width: 1180, height: 800 } },
     ...fixture.preservedNodeIds.map((id, index) => ({
       id,
       parentId: fixture.groupId,
       extent: "parent",
       type: "text",
-      position: { x: 60 + index * 260, y: 80 },
+      position: { x: 60 + (index % 3) * 360, y: 50 + Math.floor(index / 3) * 170 },
       data: { ...nodeData("text", id, models.text), content: `已保存的本地文字结果 ${index + 1}` },
-      style: { width: 220, height: 160 },
+      style: { width: 300, height: 140 },
     })),
     {
       id: fixture.adoptionNodeId,
       parentId: fixture.groupId,
       extent: "parent",
       type: "image",
-      position: { x: 60, y: 330 },
+      position: { x: 60, y: 600 },
       data: { ...nodeData("image", fixture.adoptionNodeId, models.image), title: "找回已有图片" },
       style: { width: 250, height: 180 },
     },
@@ -218,11 +247,12 @@ function graphFor(fixture, models = { text: textModel, image: imageModel, video:
       parentId: fixture.groupId,
       extent: "parent",
       type: "image",
-      position: { x: 900, y: 80 },
+      position: { x: 900, y: 600 },
       data: {
         label: "Image",
         title: "本地 PNG 正常显示",
         assetId: fixture.pngAssetId,
+        inputState: "ready",
         imageSrc: `/api/assets/${fixture.pngAssetId}`,
         sourceKind: "image",
         imagePromptReady: true,
@@ -242,7 +272,7 @@ function graphFor(fixture, models = { text: textModel, image: imageModel, video:
       parentId: fixture.groupId,
       extent: "parent",
       type: "video",
-      position: { x: 420, y: 330 },
+      position: { x: 420, y: 600 },
       data: { ...nodeData("video", fixture.pendingNodeId, models.video), title: "未完成视频 1" },
       style: { width: 250, height: 180 },
     },
@@ -251,7 +281,7 @@ function graphFor(fixture, models = { text: textModel, image: imageModel, video:
       parentId: fixture.groupId,
       extent: "parent",
       type: "video",
-      position: { x: 780, y: 330 },
+      position: { x: 780, y: 600 },
       data: { ...nodeData("video", fixture.pendingTailNodeId, models.video), title: "未完成视频 2" },
       style: { width: 250, height: 180 },
     },
@@ -483,8 +513,15 @@ export async function seedMediaPublicationLegacyDatabase({
     // uses the real credential and model-contract commands below. The relay is
     // rewritten to loopback by the acceptance page; setup makes no external
     // request.
-    const profile = seedMediaPublicationProviderProfile(database, dataDirectory);
+    const seededProfiles = seedMediaPublicationProviderProfile(database, dataDirectory);
+    const profile = seededProfiles.profile;
+    const textProfile = seededProfiles.textProfile;
     const runtimeVideoProfileId = profile.id;
+    const runtimeTextProfileId = textProfile.id;
+    const runtimeTextBase = Object.freeze({
+      ...textModel,
+      providerProfileId: runtimeTextProfileId,
+    });
     const runtimeVideoBase = Object.freeze({
       ...videoModel,
       providerProfileId: runtimeVideoProfileId,
@@ -505,6 +542,12 @@ export async function seedMediaPublicationLegacyDatabase({
       providerModelId: runtimeVideoBase.providerModelId,
     });
     if (!videoSchema) throw new Error("media acceptance relay video schema is missing");
+    const textSchema = modelParametersModule.providerParameterSchema({
+      capability: "text",
+      providerDriver: runtimeTextBase.providerDriver,
+      providerModelId: runtimeTextBase.providerModelId,
+    });
+    if (!textSchema) throw new Error("media acceptance Ark text schema is missing");
     database.prepare(`
       UPDATE provider_profiles
       SET status = 'enabled', key_status = 'valid', key_checked_at = ?, updated_at = ?
@@ -541,6 +584,21 @@ export async function seedMediaPublicationLegacyDatabase({
       now,
     );
     database.prepare(`
+      INSERT INTO model_profiles (
+        id, display_name, provider_profile_id, provider_model_id, capability,
+        status, default_parameters, created_at, updated_at, max_cost_microunits,
+        cost_currency, provider_protocol
+      ) VALUES (?, ?, ?, ?, 'text', 'published', ?, ?, ?, 5000000, 'CNY', 'native')
+    `).run(
+      textModel.id,
+      "Media publication local text model",
+      runtimeTextProfileId,
+      runtimeTextBase.providerModelId,
+      JSON.stringify(textSchema),
+      now,
+      now,
+    );
+    database.prepare(`
       INSERT INTO node_model_bindings (
         node_type, model_id, enabled, is_default, sort_order, created_at, updated_at
       ) VALUES ('video', ?, 1, 1, 1, ?, ?)
@@ -550,6 +608,11 @@ export async function seedMediaPublicationLegacyDatabase({
         node_type, model_id, enabled, is_default, sort_order, created_at, updated_at
       ) VALUES ('image', ?, 1, 1, 1, ?, ?)
     `).run(imageModel.id, now, now);
+    database.prepare(`
+      INSERT INTO node_model_bindings (
+        node_type, model_id, enabled, is_default, sort_order, created_at, updated_at
+      ) VALUES ('text', ?, 1, 1, 1, ?, ?)
+    `).run(textModel.id, now, now);
     database.prepare(`
       UPDATE generation_safety_settings
       SET global_enabled = 1, emergency_stop = 0, per_user_concurrency = 10,
@@ -569,6 +632,17 @@ export async function seedMediaPublicationLegacyDatabase({
       SET key_status = 'valid', key_checked_at = ?, updated_at = ?
       WHERE account_id = ? AND provider_profile_id = ?
     `).run(now, now, fixture.ownerId, runtimeVideoProfileId);
+    await accountCredentialsModule.saveAccountCredential(
+      database,
+      fixture.ownerId,
+      runtimeTextProfileId,
+      "media-publication-local-text-account-key",
+    );
+    database.prepare(`
+      UPDATE account_provider_credentials
+      SET key_status = 'valid', key_checked_at = ?, updated_at = ?
+      WHERE account_id = ? AND provider_profile_id = ?
+    `).run(now, now, fixture.ownerId, runtimeTextProfileId);
     const activeVideoRelease = releaseRevisionModule.modelContractState(database, videoModel.id).active;
     if (!activeVideoRelease) throw new Error("media acceptance relay video contract is missing");
     const activeImageRelease = releaseRevisionModule.modelContractState(database, imageModel.id).active;
@@ -609,12 +683,31 @@ export async function seedMediaPublicationLegacyDatabase({
       ...runtimeImageBase,
       configurationRevision: modelCatalogModule.modelConfigurationRevision(imageModelRow),
     });
+    const textModelRow = database.prepare(`
+      SELECT
+        model_profiles.capability,
+        model_profiles.default_parameters,
+        model_profiles.id,
+        model_profiles.updated_at AS model_configuration_updated_at,
+        provider_profiles.driver AS provider_driver,
+        model_profiles.provider_model_id
+      FROM model_profiles
+      JOIN provider_profiles
+        ON provider_profiles.id = model_profiles.provider_profile_id
+      WHERE model_profiles.id = ?
+    `).get(textModel.id);
+    if (!textModelRow) throw new Error("media acceptance Ark text model row is missing");
+    const runtimeTextModel = Object.freeze({
+      ...runtimeTextBase,
+      configurationRevision: modelCatalogModule.modelConfigurationRevision(textModelRow),
+    });
     const releases = {
-      text: releaseFor(textModel, "text", modelParametersModule, releaseDefaultsModule, releaseRevisionModule),
+      text: releaseRevisionModule.modelContractState(database, textModel.id).active,
       image: activeImageRelease,
       video: activeVideoRelease,
     };
-    const graph = graphFor(fixture, { text: textModel, image: runtimeImageModel, video: runtimeVideoModel });
+    if (!releases.text) throw new Error("media acceptance Ark text contract is missing");
+    const graph = graphFor(fixture, { text: runtimeTextModel, image: runtimeImageModel, video: runtimeVideoModel });
     const workflowGraph = {
       nodes: graph.nodes.filter((node) => node.id !== fixture.pngNodeId && node.id !== fixture.saveRaceNodeId),
       edges: graph.edges.filter((edge) => edge.target !== fixture.saveRaceNodeId),
@@ -683,7 +776,7 @@ export async function seedMediaPublicationLegacyDatabase({
 
     const planNodes = semantic.nodes.map((nodePlan) => {
       const node = graph.nodes.find((candidate) => candidate.id === nodePlan.id);
-      const model = { text: textModel, image: runtimeImageModel, video: runtimeVideoModel }[nodePlan.kind];
+      const model = { text: runtimeTextModel, image: runtimeImageModel, video: runtimeVideoModel }[nodePlan.kind];
       const release = releases[nodePlan.kind];
       if (!model || !release) throw new Error(`media acceptance model contract is missing for ${nodePlan.kind}`);
       return Object.freeze({
@@ -891,7 +984,7 @@ export async function seedMediaPublicationLegacyDatabase({
       fixture,
       graph,
       releases,
-      models: Object.freeze({ text: textModel, image: runtimeImageModel, video: runtimeVideoModel }),
+      models: Object.freeze({ text: runtimeTextModel, image: runtimeImageModel, video: runtimeVideoModel }),
       videoCredentialVersion: credential.credentialVersion,
       parentPlan,
       baselineGraphDigest: createHash("sha256").update(JSON.stringify({ nodes: graph.nodes, edges: graph.edges })).digest("hex"),

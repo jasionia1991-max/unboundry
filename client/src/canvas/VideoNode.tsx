@@ -423,7 +423,8 @@ function VideoNodeImpl({
   selected,
 }: NodeProps<ProbeNodeType>) {
   const singleNodeChrome = useSingleNodeChrome(selected, dragging);
-  const { lockedNodeIds } = useWorkflowExecution();
+  const { lockedNodeIds, stoppedNodeIds } = useWorkflowExecution();
+  const workflowRecoveryStopped = stoppedNodeIds.has(id);
   const storedLegacyState = useLegacyTerminalGenerationState(id);
   const legacyState = effectiveLegacyTerminalGenerationState({
     bindingComplete: Boolean(
@@ -435,9 +436,9 @@ function VideoNodeImpl({
     persistedGenerating: data.videoGenerating === true,
     state: storedLegacyState,
   });
-  const displayVideoGenerating = legacyState && legacyState !== "PASSTHROUGH"
+  const displayVideoGenerating = !workflowRecoveryStopped && (legacyState && legacyState !== "PASSTHROUGH"
     ? legacyState === "ACTIVE_CONFIRMED"
-    : Boolean(data.videoGenerating);
+    : Boolean(data.videoGenerating));
   const legacySubmissionBlocked = legacyState === "DETECTING" ||
     legacyState === "ACTIVE_CONFIRMED" || legacyState === "UNKNOWN_BLOCKED";
   const mediaLoad = useMediaLoadRecovery(data.videoSrc);
@@ -533,7 +534,7 @@ function VideoNodeImpl({
   const videoCountParameterKeys = videoParameterSchema.fields.some((field) => field.key === "outputCount")
     ? ["outputCount"]
     : [];
-  const generating = Boolean(data.videoGenerating);
+  const generating = !workflowRecoveryStopped && Boolean(data.videoGenerating);
   const generatedSuccess = Boolean(data.videoSrc && data.videoPromptReady);
   const [activeTaskId, setActiveTaskId] = useState<string>();
   // 页面刷新或组件重挂后 activeTaskId 会丢失，但持久化任务号还在；
@@ -875,9 +876,11 @@ function VideoNodeImpl({
   const videoNoticeMessage = effectiveInputState === "invalid" &&
     inputProblems.length > 0 && !transientUploadError
     ? ""
-    : transientUploadError || submissionFailure || uploadError;
+    : transientUploadError || submissionFailure || (workflowRecoveryStopped
+      ? friendlyGenerationMessage("", "video", "AUTOMATIC_RECOVERY_WINDOW_EXHAUSTED")
+      : uploadError);
   const videoNoticeTone = generationNoticeTone({
-    code: data.videoGenerationErrorCode,
+    code: workflowRecoveryStopped ? "AUTOMATIC_RECOVERY_WINDOW_EXHAUSTED" : data.videoGenerationErrorCode,
     inputBlocked: Boolean(
       modelSwitchProblem ||
       inputPreflight.problems.length ||
@@ -3855,7 +3858,7 @@ function VideoNodeImpl({
         data-asset-id={data.assetId}
         data-testid={`video-node-${id}`}
       >
-        {(transientUploadError || submissionFailure || uploadError || nodeRecoveryCase) && (
+        {(transientUploadError || submissionFailure || uploadError || nodeRecoveryCase || workflowRecoveryStopped) && (
           <div
             className={[
               "image-node-upload-error",
@@ -3868,7 +3871,7 @@ function VideoNodeImpl({
             <ProviderErrorNotice
               diagnostic={submissionFailure || data.videoGenerationError}
               message={videoNoticeMessage}
-              recoveryTaskId={submissionFailure ? undefined : data.videoGenerationTaskId}
+              recoveryTaskId={submissionFailure || workflowRecoveryStopped ? undefined : data.videoGenerationTaskId}
               tone={videoNoticeTone}
             />
             {canReconcileVideo && (
@@ -3880,7 +3883,7 @@ function VideoNodeImpl({
                 retryEnabled={retryGenerationEnabled}
               />
             )}
-            {!canReconcileVideo && retryAvailable && (
+            {!workflowRecoveryStopped && !canReconcileVideo && retryAvailable && (
               <button
                 aria-label="重试生成"
                 disabled={
@@ -3895,9 +3898,9 @@ function VideoNodeImpl({
                 重试
               </button>
             )}
-            {(pollingPausedTaskId ||
+            {(!workflowRecoveryStopped && (pollingPausedTaskId ||
               (unverifiedRecoveryTaskId &&
-                unverifiedRecoveryTaskId === data.videoGenerationTaskId)) && (
+                unverifiedRecoveryTaskId === data.videoGenerationTaskId))) && (
               <button
                 aria-label="重新检查任务状态"
                 onClick={recheckVideoTaskStatus}

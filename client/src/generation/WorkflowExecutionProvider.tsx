@@ -93,6 +93,7 @@ import {
   reattachSubmittedServerWorkflowContinuation,
   reattachSubmittedServerWorkflowRun,
   SERVER_WORKFLOW_RUN_UPDATED_EVENT,
+  stoppedServerWorkflowNodeIds,
   stopServerWorkflowRunAndConfirm,
   type ServerWorkflowRun,
   waitForServerWorkflowRun,
@@ -265,6 +266,8 @@ type WorkflowExecutionValue = {
   executingGroupIds: ReadonlySet<string>;
   groupExecutionPhases: ReadonlyMap<string, WorkflowGroupExecutionPhase>;
   lockedNodeIds: ReadonlySet<string>;
+  /** Nodes whose persisted server marker ended automatic recovery. */
+  stoppedNodeIds: ReadonlySet<string>;
 };
 
 export type WorkflowGroupExecutionPhase =
@@ -282,6 +285,7 @@ const WorkflowExecutionContext = createContext<WorkflowExecutionValue>({
   executingGroupIds: new Set(),
   groupExecutionPhases: new Map(),
   lockedNodeIds: new Set(),
+  stoppedNodeIds: new Set(),
 });
 
 export function WorkflowExecutionProvider({
@@ -362,6 +366,7 @@ export function WorkflowExecutionProvider({
     abortController?: AbortController;
     runId: string;
     nodeIds: readonly string[];
+    stoppedNodeIds: ReadonlySet<string>;
     state?: ServerWorkflowRun["state"];
     stopController?: AbortController;
     stopping?: boolean;
@@ -442,6 +447,9 @@ export function WorkflowExecutionProvider({
   const [lockedNodeIds, setLockedNodeIds] = useState<ReadonlySet<string>>(
     new Set(),
   );
+  const [stoppedNodeIds, setStoppedNodeIds] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
   const [groupExecutionPhases, setGroupExecutionPhases] = useState<
     ReadonlyMap<string, WorkflowGroupExecutionPhase>
   >(new Map());
@@ -489,15 +497,18 @@ export function WorkflowExecutionProvider({
       for (const nodeId of run.nodeIds) nextLocks.add(nodeId);
     }
     const nextActiveNodeIds = new Set<string>();
+    const nextStoppedNodeIds = new Set<string>();
     for (const run of runningGroups.current.values()) {
       for (const nodeId of run.activeNodeIds) nextActiveNodeIds.add(nodeId);
     }
     for (const run of serverWorkflowRuns.current.values()) {
       for (const nodeId of run.activeNodeIds) nextActiveNodeIds.add(nodeId);
+      for (const nodeId of run.stoppedNodeIds) nextStoppedNodeIds.add(nodeId);
     }
     setExecutingGroupIds(nextGroups);
     setGroupExecutionPhases(nextPhases);
     setLockedNodeIds(nextLocks);
+    setStoppedNodeIds(nextStoppedNodeIds);
     onActiveNodeIdsChange(nextActiveNodeIds);
   }, [onActiveNodeIdsChange]);
   useEffect(() => {
@@ -642,6 +653,7 @@ export function WorkflowExecutionProvider({
     const tracked = serverWorkflowRuns.current.get(run.groupId);
     if (!tracked || tracked.runId !== run.id) return;
     tracked.activeNodeIds = activeServerWorkflowNodeIds(run);
+    tracked.stoppedNodeIds = stoppedServerWorkflowNodeIds(run);
     tracked.state = run.state;
     publishActiveRunState();
     publishServerRunUpdate(run);
@@ -756,6 +768,7 @@ export function WorkflowExecutionProvider({
         activeNodeIds: activeServerWorkflowNodeIds(run),
         nodeIds: item.nodeIds,
         runId: item.runId,
+        stoppedNodeIds: stoppedServerWorkflowNodeIds(run),
         state: run.state,
       });
       publishActiveRunState();
@@ -1055,6 +1068,7 @@ export function WorkflowExecutionProvider({
       abortController: pollController,
       nodeIds: [...new Set([created.groupId, ...created.lockedNodeIds])],
       runId: created.id,
+      stoppedNodeIds: stoppedServerWorkflowNodeIds(created),
       state: created.state,
     };
     serverWorkflowRuns.current.set(created.groupId, tracked);
@@ -1358,6 +1372,7 @@ export function WorkflowExecutionProvider({
             abortController: pollController,
             nodeIds: preparation.nodeIds,
             runId: created.id,
+            stoppedNodeIds: stoppedServerWorkflowNodeIds(created),
             state: created.state,
           });
           publishActiveRunState();
@@ -3610,6 +3625,7 @@ export function WorkflowExecutionProvider({
       executingGroupIds,
       groupExecutionPhases,
       lockedNodeIds: effectiveLockedNodeIds,
+      stoppedNodeIds,
     }),
     [
       cancelGroup,
@@ -3618,6 +3634,7 @@ export function WorkflowExecutionProvider({
       executeGroup,
       executingGroupIds,
       groupExecutionPhases,
+      stoppedNodeIds,
     ],
   );
 

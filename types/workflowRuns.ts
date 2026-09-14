@@ -100,6 +100,14 @@ export type WorkflowContinuationExternalInput = Readonly<{
   adoptionReceiptId?: string;
   kind: NodeInputKind;
   nodeId: string;
+  /**
+   * A successful historical workflow task can be used as a frozen successor
+   * input only after the authoritative server projection receipt has been
+   * checked. This is separate from adoptionReceiptId because the historical
+   * sync path does not create a generation-result adoption row.
+   */
+  serverProjectionOperationId?: string;
+  serverProjectionPayloadSha256?: string;
   source: "adopted-result" | "parent-external" | "successful-task";
   sourceAssetByteSize?: number;
   sourceAssetContentType?: string;
@@ -772,7 +780,9 @@ function boundedContinuationInteger(value: unknown, label: string, maximum = 2_0
   return Number(value);
 }
 
-function parseContinuationExternalInput(value: unknown): WorkflowContinuationExternalInput {
+export function parseWorkflowContinuationExternalInput(
+  value: unknown,
+): WorkflowContinuationExternalInput {
   const mediaEvidenceKeys = [
     "sourceAssetByteSize", "sourceAssetContentType", "sourceAssetObjectKey",
     "sourceAssetSha256", "sourceAssetStorageBackend", "sourceAssetStorageName",
@@ -782,7 +792,7 @@ function parseContinuationExternalInput(value: unknown): WorkflowContinuationExt
     "adoptionReceiptId", "kind", "nodeId", "source", "sourceAssetByteSize",
     "sourceAssetContentType", "sourceAssetId", "sourceAssetObjectKey", "sourceAssetSha256",
     "sourceAssetStorageBackend", "sourceAssetStorageName", "sourceAssetStorageProfileId",
-    "sourceRunId",
+    "sourceRunId", "serverProjectionOperationId", "serverProjectionPayloadSha256",
     "sourceTaskId", "sourceTextSha256",
   ])) throw new Error("Workflow continuation external input is invalid");
   const source = value.source === "adopted-result" ||
@@ -795,6 +805,22 @@ function parseContinuationExternalInput(value: unknown): WorkflowContinuationExt
       ? { adoptionReceiptId: String(value.adoptionReceiptId) } : {}),
     kind,
     nodeId: boundedText(value.nodeId, "continuation external node id", 200),
+    ...(optionalSummaryText(
+      value,
+      "serverProjectionOperationId",
+      "continuation server projection operation id",
+      200,
+    )
+      ? { serverProjectionOperationId: String(value.serverProjectionOperationId) }
+      : {}),
+    ...(optionalSummaryText(
+      value,
+      "serverProjectionPayloadSha256",
+      "continuation server projection payload digest",
+      64,
+    )
+      ? { serverProjectionPayloadSha256: String(value.serverProjectionPayloadSha256) }
+      : {}),
     source,
     ...(optionalSummaryText(value, "sourceAssetId", "continuation source asset id", 256)
       ? { sourceAssetId: String(value.sourceAssetId) } : {}),
@@ -805,6 +831,20 @@ function parseContinuationExternalInput(value: unknown): WorkflowContinuationExt
     ...(optionalSummaryText(value, "sourceTextSha256", "continuation source text digest", 128)
       ? { sourceTextSha256: String(value.sourceTextSha256) } : {}),
   } satisfies WorkflowContinuationExternalInput;
+  const hasServerProjectionEvidence =
+    result.serverProjectionOperationId !== undefined ||
+    result.serverProjectionPayloadSha256 !== undefined;
+  if (hasServerProjectionEvidence && source !== "successful-task") {
+    throw new Error("Server projection evidence requires a successful task source");
+  }
+  if (hasServerProjectionEvidence && (
+    result.serverProjectionOperationId === undefined ||
+    result.serverProjectionPayloadSha256 === undefined ||
+    !/^server-projection:[0-9a-f]{64}$/i.test(result.serverProjectionOperationId) ||
+    !/^[0-9a-f]{64}$/i.test(result.serverProjectionPayloadSha256)
+  )) {
+    throw new Error("Server projection evidence is invalid");
+  }
   const hasMediaEvidence = mediaEvidenceKeys.some((key) =>
     Object.prototype.hasOwnProperty.call(value, key)
   );
@@ -880,7 +920,9 @@ export function parseWorkflowContinuationPreview(value: unknown): WorkflowContin
   if (overlap.size !== candidateNodeIds.length + preservedNodeIds.length + blockedNodeIds.length) {
     throw new Error("Workflow continuation node lists overlap");
   }
-  const externalInputs = Object.freeze(value.externalInputs.map(parseContinuationExternalInput));
+  const externalInputs = Object.freeze(
+    value.externalInputs.map(parseWorkflowContinuationExternalInput),
+  );
   unique(externalInputs.map(({ nodeId }) => nodeId), "continuation external node id");
   return Object.freeze({
     blockedNodeIds,

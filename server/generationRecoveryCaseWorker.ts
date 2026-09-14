@@ -1,6 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 import { appDataDirectory, openAppDatabase } from "./database";
-import { createGenerationTaskStore, type GenerationTask } from "./generationTaskStore";
+import {
+  automaticRecoveryPendingCode,
+  createGenerationTaskStore,
+  type GenerationTask,
+} from "./generationTaskStore";
 import { createGenerationRecoveryCaseStore, generationRecoverySystemActorId, GenerationRecoveryCaseError } from "./generationRecoveryCaseStore";
 import { generationRecoveryCasesEnabled } from "./generationRecoveryFeatureFlags";
 import { assertGenerationRecoveryWriteAllowed, recoveryCaseFence } from "./generationRecoveryCaseApplication";
@@ -62,6 +66,15 @@ export async function inspectGenerationRecoveryCase(taskId: string, actorId: str
     if (hasProviderEvidenceConflictForTaskInTransaction(database, task.id)) return;
     const item = getCurrent(cases, task);
     if (!item || item.closedAt || ["success", "cancelled"].includes(task.state)) return;
+    const automaticRecoveryStopped = tasks.isAutomaticRecoveryStopped(task.id);
+    if (automaticRecoveryStopped &&
+        (actorId === generationRecoverySystemActorId || !item.inspectionStartedAt)) {
+      // A durable deadline marker is a hard stop for automatic Provider GETs.
+      // A user who already opened a bounded manual inspection may continue
+      // that inspection under its existing lease; a new automatic check may
+      // never turn the expired task back into background polling.
+      return;
+    }
     const publication = recoveryPublicationState(database, task.id);
     if (!publication.pending && !publication.conflict && ports.recoverPublished?.(task.id)) {
       cases.settleFromTask(recoveryCaseFence(getCurrent(cases, tasks.get(task.id)!)!,
@@ -177,6 +190,7 @@ export function runGenerationRecoveryCasesSweep() {
             catch { /* Failed does not by itself prove a safe new generation. */ }
           }
           if (["success", "cancelled"].includes(task.state)) continue;
+          const automaticRecoveryStopped = tasks.isAutomaticRecoveryStopped(id);
           const attempt = tasks.getProviderAttemptForTask(id);
           if (attempt?.outcome === "completed") {
             cases.ensurePublicationQuarantineCase({
@@ -195,6 +209,8 @@ export function runGenerationRecoveryCasesSweep() {
             : !supported ? "unsupported_recovery"
             : task.errorCode === "OPERATOR_INCIDENT" ? "operator_incident"
             : task.errorCode === "RESULT_SAVE_FAILED_NO_RETRY" ? "result_recovery_pending"
+            : task.errorCode === automaticRecoveryPendingCode ? "missing_attempt_evidence"
+            : automaticRecoveryStopped ? "recovery_window_exhausted"
             : Date.now() >= Date.parse(window.providerDeadlineAt) ? "recovery_window_exhausted" : undefined;
           const item = prior ?? (reason ? cases.ensureCase({ taskId: id, ownerId: task.ownerId,
             executionAttempt: task.attempt, reason, operationId: `case:${id}:${task.attempt}`,

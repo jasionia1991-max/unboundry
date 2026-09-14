@@ -5953,3 +5953,57 @@ test("pending replay PUT headers with an abort-ignoring body fail once and canno
   expect(state.payloads).toHaveLength(1);
   expect(state.generationPosts).toBe(0);
 });
+
+
+test("command pagehide replay hydrates new server results instead of deleting them from an old snapshot", {
+  tag: "@command-v1",
+}, async ({ page }) => {
+  const canvasId = "node.text.empty";
+  const content = "刷新期间生成的原文字结果";
+  const pending = JSON.parse(canvasSavePayload({ canvasTitle: "原节点" }));
+  pending.canvasCommandJournalVersion = 1;
+  pending.canvasCommandJournal = [{ kind: "commit-user-layout", lane: "viewport", viewport: { x: 10, y: 10, zoom: 1 } }];
+  await seedCanvasSaveSession(page, canvasId, {
+    confirmedSequence: 0, saveSequence: 1, saveSessionId: SAVE_SESSION_A,
+    serverEpoch: SAVE_EPOCH_A, storageRevision: 0,
+    pendingPagehide: { attemptId: SAVE_ATTEMPT_A, payload: JSON.stringify(pending), saveSequence: 1, serverEpoch: SAVE_EPOCH_A },
+  });
+  let serverDocument = textDocumentWithData("原节点", 2, { content, contentHtml: `<p>${content}</p>` });
+  const commands: Array<Record<string, unknown>> = [];
+  const generationPosts = generationPostCount(page);
+  await page.route(`**/api/canvas/${canvasId}`, async route => {
+    expect(route.request().method()).toBe("GET");
+    await route.fulfill({ json: serverDocument });
+  });
+  await page.route(`**/api/canvases/${canvasId}/commands`, async route => {
+    const command = route.request().postDataJSON();
+    commands.push(command);
+    // The real command gateway retains generated content when replaying a
+    // viewport-only intent. Model that response, not the old full snapshot.
+    expect(command.kind).toBe("commit-user-layout");
+    serverDocument = { ...serverDocument, revision: serverDocument.revision + 1,
+      loadToken: LOAD_TOKEN_B, viewport: command.viewport ?? serverDocument.viewport,
+      currentWriterSequence: command.saveSequence, currentWriterSessionId: command.saveSessionId,
+      sessionHighWaterSequence: command.saveSequence, sessionHighWaterAttemptId: LOAD_TOKEN_C };
+    await route.fulfill({ json: {
+      authoritativeDocument: serverDocument,
+      currentDocumentRevision: serverDocument.revision, currentInputGraphRevision: serverDocument.graphRevision,
+      currentLoadToken: serverDocument.loadToken, operationId: command.operationId,
+      operationDocumentRevision: serverDocument.revision, operationInputGraphRevision: serverDocument.graphRevision,
+      originalRequestId: "m86-replay-result", requestId: "m86-replay-result", replayed: false,
+      status: "applied", originalStatus: "applied",
+    } });
+  });
+  await page.goto(`/__fixture/${canvasId}`);
+  await expect(page.getByTestId("canvas-world")).toHaveAttribute("data-persistence-state", "ready");
+  await expect(page.getByTestId("text-node-editor")).toHaveText(content);
+  expect(commands).toHaveLength(1);
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true })));
+  await flushBrowserTasks(page);
+  await page.reload();
+  await expect(page.getByTestId("canvas-world")).toHaveAttribute("data-persistence-state", "ready");
+  await expect(page.getByTestId("text-node-editor")).toHaveText(content);
+  expect(commands).toHaveLength(1);
+  expect((await readCanvasSaveSession(page, canvasId))?.pendingPagehide).toBeUndefined();
+  expect(generationPosts()).toBe(0);
+});

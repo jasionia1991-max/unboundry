@@ -2536,6 +2536,15 @@ export async function waitForGenerationTask(
   // failure while the durable server task is still running.
   for (let attempt = 0; attempt < 1800; attempt += 1) {
     const task = await readCurrentTask();
+    // The server persists the deadline marker on the original recovering
+    // task. It deliberately stays non-terminal so maintenance can continue,
+    // but the browser must stop its spinner and wait for that durable state
+    // instead of polling for another 30 minutes.
+    if (
+      task.state === "recovering" &&
+      (task.errorCode === "AUTOMATIC_RECOVERY_WINDOW_EXHAUSTED" ||
+        task.errorCode === "AUTOMATIC_RECOVERY_PENDING")
+    ) return task;
     const projectionPending = task.generationIdentityVersion === 2 &&
       task.state === "success" &&
       (task.canvasProjectionState === "pending" ||

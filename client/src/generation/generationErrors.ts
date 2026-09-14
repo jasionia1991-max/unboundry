@@ -76,7 +76,10 @@ export function generationNoticeTone(input: Readonly<{
     input.code === "TIMEOUT" ||
     input.code === "RESULT_DELAYED" ||
     input.code === "CANVAS_PROJECTION_PENDING" ||
-    input.code === "CANVAS_PROJECTION_FAILED") {
+    input.code === "CANVAS_PROJECTION_FAILED" ||
+    input.code === "AUTOMATIC_RESULT_RECOVERY" ||
+    input.code === "AUTOMATIC_RECOVERY_WINDOW_EXHAUSTED" ||
+    input.code === "AUTOMATIC_RECOVERY_PENDING") {
     return "recovering";
   }
   return "failed";

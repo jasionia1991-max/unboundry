@@ -2,6 +2,39 @@ import type { DatabaseSync } from "node:sqlite";
 import { assertWorkflowMediaDeletionAllowedInTransaction } from
   "./workflowRunLocks";
 import { providerEvidenceConflictEventCode } from "./generationRecoveryTaskQueries";
+import type { TransactionScopedCommand } from "./transactionCommand";
+
+export type HistoricalGenerationProviderAttemptRow = Readonly<{
+  credential_revision: number;
+  evidence: "historical-execution-attempt" | "provider-boundary";
+  execution_attempt: number;
+  finished_at: string | null;
+  kind: string;
+  outcome: string;
+  owner_id: string | null;
+  provider_model_id: string;
+  provider_profile_id: string;
+  provider_task_id: string | null;
+  task_id: string;
+}>;
+
+/** Exact provider-boundary row for a historical-result proof. */
+export const readHistoricalGenerationProviderAttemptCommand:
+  TransactionScopedCommand<Readonly<{
+    executionAttempt: number;
+    taskId: string;
+  }>, HistoricalGenerationProviderAttemptRow | undefined> = {
+    execute(scope, input) {
+      return scope.prepare(`
+        SELECT task_id, execution_attempt, owner_id, kind,
+               provider_profile_id, provider_model_id, credential_revision,
+               outcome, provider_task_id, finished_at, evidence
+        FROM generation_provider_attempts
+        WHERE task_id = ? AND execution_attempt = ?
+      `).get(input.taskId, input.executionAttempt) as
+        HistoricalGenerationProviderAttemptRow | undefined;
+    },
+  };
 
 export type LatestGenerationProviderAttemptRow = Readonly<{
   credential_revision: number;
