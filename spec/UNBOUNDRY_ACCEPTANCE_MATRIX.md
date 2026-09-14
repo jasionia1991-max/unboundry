@@ -1,7 +1,8 @@
-> **当前验收增量（2026-09-12）**：本矩阵为`AUTHORITATIVE_ACCEPTANCE_LEDGER`。v0.7.20已发布，原真实工作流恢复技术核验通过；正式画布仍待用户复验，详见[v0.7.20回执](V0_7_20_PRODUCTION_RECEIPT_2026-09-12.json)。此前媒体保存恢复四项本地用户通过及各历史验收范围保留，不自动扩大为本次USER_PASS。当前生产/待办见[CURRENT_STATE](UNBOUNDRY_CURRENT_STATE.md)。
+> **当前验收增量（2026-09-14）**：本矩阵为`AUTHORITATIVE_ACCEPTANCE_LEDGER`。v0.7.22发布后的正式站用户验收已通过，确认原话与范围由[v0.7.22回执](V0_7_22_PRODUCTION_RECEIPT_2026-09-14.json)的 productionUserConfirmation 字段拥有；不扩大到历史数据回填、付费续跑或暂停项。当前生产/待办见[CURRENT_STATE](UNBOUNDRY_CURRENT_STATE.md)。
 
 | 当前项目 | 判定 | 证据边界 |
 | --- | --- | --- |
+| v0.7.22 视频查询恢复与工作流同步发布 | LOCAL_USER_PASS / PRODUCTION_TECHNICAL_PASS / PRODUCTION_USER_PASS | 本次发布后用户确认通过；原话、证据与范围见[v0.7.22回执](V0_7_22_PRODUCTION_RECEIPT_2026-09-14.json)。历史失败工作流未回填，不推断新增收费调用已验证；旧版本验收记录保留原范围 |
 | v0.7.20 原视频下载保存恢复 | PRODUCTION_TECHNICAL_PASS / PRODUCTION_USER_RECHECK | 167项相关回归、独立复审、最新备份/恢复、938个云对象完整回读、Linux回退演练、41表精确差异及公网35资源核对通过。原视频沿Provider attempt1178找回，未新发视频；尾文字只新增1次原流程请求并成功，前9成功节点和旧未知任务不变。精确证据见[v0.7.20回执](V0_7_20_PRODUCTION_RECEIPT_2026-09-12.json)，用户尚未确认本轮正式站播放与文字 |
 | 媒体保存与自动恢复冲突修复（MEDIA-PUBLICATION-RACE-20260910） | LOCAL_TECHNICAL_PASS / LOCAL_USER_PASS / PRODUCTION_TECHNICAL_PASS / PRODUCTION_USER_RECHECK | 2026-09-11用户在本对话明确回复“全部通过”，覆盖交付页四项：保存恢复视频、原图片找回及刷新、只继续两个未完成视频、原画布白框/菜单/拖线/刷新。工程证据和范围见[方案第8、11节](MEDIA_PUBLICATION_RECOVERY_REPAIR_PLAN_2026-09-10.md#8-本地验收给用户看的四项)。该用户通过仅针对本地合成数据。后续另获本次发布与必要数据库迁移授权，实际部署/备份/回退证据见[v0.7.18回执](V0_7_18_PRODUCTION_RECEIPT_2026-09-11.json)；正式站登录后画布复验与付费生成未执行，不扩大本地USER_PASS |
 | v0.7.17 节点恢复发布 | DEPLOYED / LOCAL_USER_PASS / PRODUCTION_TECHNICAL_PASS / PRODUCTION_USER_RECHECK | v0.7.17/schema43、35个静态资源文件及备份/verify/fresh restore技术证据见[v0.7.17生产回执](V0_7_17_PRODUCTION_RECEIPT_2026-09-09.json)；正式站原画布打开/刷新保持数据、媒体可读；用户实页验收仍待确认。维护功能默认关闭，真实Provider/付费生成不列入本项判定 |
