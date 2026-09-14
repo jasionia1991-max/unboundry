@@ -1,6 +1,6 @@
 {
   "format": "unboundry-v0722-production-receipt-v1",
-  "status": "DEPLOYED_TECHNICAL_PASS_PRODUCTION_USER_RECHECK",
+  "status": "DEPLOYED_TECHNICAL_PASS_PRODUCTION_USER_PASS",
   "technicalStatus": "PASS",
   "version": "0.7.22",
   "date": "2026-09-14",
@@ -353,17 +353,30 @@
       "status": "V0722_PUBLIC_VERIFY_PASS"
     }
   },
-  "userAcceptance": "LOCAL_USER_PASS / PRODUCTION_USER_RECHECK",
-  "userPass": false,
+  "userAcceptance": "LOCAL_USER_PASS / PRODUCTION_USER_PASS",
+  "userPass": true,
   "deferred": [
     "每日自动备份：USER_DEFERRED",
     "视频/音频空工具按钮：USER_DEFERRED"
   ],
   "limitations": [
-    "Local three-item USER_PASS uses a simulated provider; production remains USER_RECHECK. No paid generation or historical workflow repair was performed by this release.",
+    "Local three-item USER_PASS used a simulated provider. Subsequent production USER_PASS is the explicit user confirmation recorded here; no additional paid-generation evidence or historical workflow repair is implied.",
     "Preexisting incident video task was already successful while its historical workflow remained failed; release alone is not evidence of that old workflow being repaired.",
     "Backup retains 100 non-blocking historical media warnings, zero backup blockers. Schema44 is unchanged; rollback requires a freshly bound latest-data schema44 read-only bridge, never restore backup over CURRENT.",
     "Cloud GetObjectACL was denied; audited private PUT evidence plus authenticated full GET/hash and anonymous access denial were used instead, without permission changes.",
     "Final verification initially failed because three operational gate SHA checks omitted their length argument. Corrected, independently reviewed and rerun successfully; original failure logs retained."
-  ]
+  ],
+  "productionUserConfirmation": {
+    "date": "2026-09-14",
+    "source": "current conversation, user reply after v0.7.22 deployment handoff",
+    "quote": "通过   收尾一下",
+    "status": "PRODUCTION_USER_PASS",
+    "scope": "用户确认本次v0.7.22发布后正式站验收通过并要求收尾；未提供额外逐项付费生成记录。",
+    "doesNotExtendTo": [
+      "Historical failed workflow backfill or paid continuation",
+      "Unknown billing request resubmission",
+      "Deferred daily automatic backups and empty video/audio tool buttons"
+    ],
+    "technicalEvidenceAtPublicationRetained": true
+  }
 }
