@@ -985,7 +985,10 @@ export async function fetchPublicHttps(
   dependencies: PublicHttpsFetchDependencies = {},
 ) {
   const url = safePublicHttpsUrl(String(value));
-  const timeoutMs = dependencies.timeoutMs;
+  // A caller without its own signal or timeout still gets an upper bound so
+  // a stalled remote server can never hang the request forever.
+  const timeoutMs = dependencies.timeoutMs ??
+    (init.signal ? undefined : 600_000);
   if (
     timeoutMs !== undefined &&
     (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 600_000)

@@ -886,6 +886,18 @@ export function generationRecoverySweepTimerStateForRuntimeTest() {
   } as const;
 }
 
+let lastGenerationEventCompactionMs = 0;
+
+function compactGenerationTaskEventsDaily(nowMs = Date.now()) {
+  if (nowMs - lastGenerationEventCompactionMs < 24 * 60 * 60_000) return;
+  lastGenerationEventCompactionMs = nowMs;
+  try {
+    taskStore().compactRepetitiveEvents(new Date(nowMs));
+  } catch {
+    // Retention is best-effort housekeeping; the next day retries.
+  }
+}
+
 function ensureGenerationRecoverySweep() {
   if (
     generationRecoverySweepTimer ||
@@ -965,6 +977,7 @@ async function runGenerationRecoverySweepOnce(options?: {
 }) {
   if (!incGen017GenerationEnabled()) return;
   if (!options?.store) void runGenerationRecoveryCasesSweep().catch(() => undefined);
+  if (!options?.store) compactGenerationTaskEventsDaily();
   const launch = options?.launch ?? launchGenerationTask;
   const matchProviderTask = options?.match ?? autoMatchRelayProviderTask;
   const store = options?.store ?? taskStore();
