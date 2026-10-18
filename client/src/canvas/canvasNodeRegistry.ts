@@ -1,4 +1,5 @@
 import type { NodeTypes } from "@xyflow/react";
+import { withNodeErrorBoundary } from "./NodeErrorBoundary";
 import { AudioNode } from "./AudioNode";
 import { GroupNode } from "./GroupNode";
 import { ImageNode } from "./ImageNode";
@@ -35,12 +36,13 @@ export class CanvasNodeRegistry<Kind extends string = CanvasNodeKind> {
   }
 }
 
+// Each renderer is isolated so one broken node cannot blank the whole canvas.
 export const canvasNodeRegistry = new CanvasNodeRegistry()
-  .register("audio", AudioNode)
-  .register("group", GroupNode)
-  .register("image", ImageNode)
-  .register("playlist", PlaylistNode)
-  .register("probe", ProbeNode)
-  .register("storyboard", StoryboardTableNode)
-  .register("text", TextNode)
-  .register("video", VideoNode);
+  .register("audio", withNodeErrorBoundary(AudioNode))
+  .register("group", withNodeErrorBoundary(GroupNode))
+  .register("image", withNodeErrorBoundary(ImageNode))
+  .register("playlist", withNodeErrorBoundary(PlaylistNode))
+  .register("probe", withNodeErrorBoundary(ProbeNode))
+  .register("storyboard", withNodeErrorBoundary(StoryboardTableNode))
+  .register("text", withNodeErrorBoundary(TextNode))
+  .register("video", withNodeErrorBoundary(VideoNode));

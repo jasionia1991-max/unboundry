@@ -2282,6 +2282,8 @@ export function CanvasSurface({
   focusNodeRequest?: { id: string; sequence: number };
   historyAssetRequest?: {
     asset: CanvasLibraryAsset;
+    /** Place the new node beside this node when it is still on the canvas. */
+    nearNodeId?: string;
     sequence: number;
   };
   minimapOpen: boolean;
@@ -4226,6 +4228,22 @@ export function CanvasSurface({
     const bounds = worldRef.current?.getBoundingClientRect();
     if (!bounds) return;
     consumedHistoryAssetSequence.current = historyAssetRequest.sequence;
+    const anchorNode = historyAssetRequest.nearNodeId
+      ? nodesRef.current.find(({ id }) => id === historyAssetRequest.nearNodeId)
+      : undefined;
+    if (anchorNode) {
+      const anchorPosition =
+        flowInstance.current?.getInternalNode(anchorNode.id)?.internals.positionAbsolute ??
+        anchorNode.position;
+      const anchorSize = nodeSize(anchorNode);
+      const zoom = viewportRef.current.zoom;
+      void addDroppedLibraryAsset(historyAssetRequest.asset, {
+        x: bounds.left + viewportRef.current.x +
+          (anchorPosition.x + anchorSize.width + 40) * zoom,
+        y: bounds.top + viewportRef.current.y + anchorPosition.y * zoom,
+      });
+      return;
+    }
     const size = NODE_DEFAULT_SIZES[historyAssetRequest.asset.kind];
     void addDroppedLibraryAsset(historyAssetRequest.asset, {
       x:
