@@ -19,6 +19,7 @@ import {
   migrationIncompleteMarker,
   openAppDatabase,
   readAppDatabaseSnapshot,
+  resetVerifiedCurrentDatabasesForTests,
   setDuringCurrentDatabaseOpenForTests,
   createRuntimeDatabaseTransactionRunner,
   closeRuntimeDatabaseTransactions,
@@ -402,7 +403,13 @@ test("PERF synthetic 50 MiB database separates digest cost from readonly and reu
     const payload = "synthetic-performance-data".repeat(2100);
     for (let i = 0; i < 1000; i += 1) insert.run(`perf-${i}`, payload);
     seed.exec("COMMIT"); seed.close();
-    const baseline: number[] = [], readonly: number[] = [], writes: number[] = [];
+    const fullOpen: number[] = [], baseline: number[] = [], readonly: number[] = [], writes: number[] = [];
+    for (let i = 0; i < 5; i += 1) {
+      resetVerifiedCurrentDatabasesForTests();
+      const start = performance.now();
+      openAppDatabase(directory).close();
+      fullOpen.push(performance.now() - start);
+    }
     for (let i = 0; i < 20; i += 1) {
       const start = performance.now();
       openAppDatabase(directory).close(); openAppDatabase(directory).close();
@@ -422,11 +429,15 @@ test("PERF synthetic 50 MiB database separates digest cost from readonly and reu
       writes.push(performance.now() - start);
     }
     const p95 = (samples: number[]) => [...samples].sort((a,b) => a-b)[18]!;
+    const fullOpenMedian = [...fullOpen].sort((a,b) => a-b)[2]!;
     console.log(JSON.stringify({ performanceEvidence: "synthetic-50MiB", samples: 20,
-      firstWriterMs, baselineP95: p95(baseline), readonlyP95: p95(readonly), writerP95: p95(writes),
-      baseline, readonly, writes }));
-    expect(p95(readonly)).toBeLessThan(p95(baseline) / 2);
-    expect(p95(writes)).toBeLessThan(p95(baseline) / 2);
+      fullOpenMedian, firstWriterMs, baselineP95: p95(baseline), readonlyP95: p95(readonly), writerP95: p95(writes),
+      fullOpen, baseline, readonly, writes }));
+    // Whole-content verification runs once per database identity; routine
+    // reopens, read-only snapshots and the reused writer lane stay well below it.
+    expect(p95(baseline)).toBeLessThan(fullOpenMedian / 2);
+    expect(p95(readonly)).toBeLessThan(fullOpenMedian / 2);
+    expect(p95(writes)).toBeLessThan(fullOpenMedian / 2);
   });
 });
 

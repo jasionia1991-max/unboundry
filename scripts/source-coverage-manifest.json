@@ -185,21 +185,21 @@
       "scriptSha256": "5090797ba194569f47454fda4b4ff0fe0a6fd0fbf70aa470fd4c9a8296ca4a9e",
       "target": "tests/m91-schema-migration.spec.ts",
       "marker": "dry-run and CLI validate exact v37 plus logical SHA without source writes",
-      "targetSha256": "2999de8b79ab512de1f1d00271f380ffe490c9df5199c213c518cc52ca5efbea"
+      "targetSha256": "3b10a2b0d86b6bd040d0898833f60aee3a71f9b60a634f2dfeb7c5b279be5823"
     },
     "scripts/migrate-schema39-to40.mjs": {
       "mode": "behavior-test",
       "scriptSha256": "963cf9ba03417ea5593d9e53d782b24f75d0e6d274dc002c0bed1cd56cea556a",
       "target": "tests/m91-schema-migration.spec.ts",
       "marker": "exact schema 39 dry-run and apply migrate only the v40 trusted-asset boundary",
-      "targetSha256": "2999de8b79ab512de1f1d00271f380ffe490c9df5199c213c518cc52ca5efbea"
+      "targetSha256": "3b10a2b0d86b6bd040d0898833f60aee3a71f9b60a634f2dfeb7c5b279be5823"
     },
     "scripts/migrate-schema40-to41.mjs": {
       "mode": "behavior-test",
       "scriptSha256": "4864b2f6b0e99acbca8efeeddd09b2bc82ec85d0d19f780ec83e8ec35db703d0",
       "target": "tests/m91-schema-migration.spec.ts",
       "marker": "exact schema 40 dry-run and apply migrate only the v41 compliance boundary",
-      "targetSha256": "2999de8b79ab512de1f1d00271f380ffe490c9df5199c213c518cc52ca5efbea"
+      "targetSha256": "3b10a2b0d86b6bd040d0898833f60aee3a71f9b60a634f2dfeb7c5b279be5823"
     },
     "scripts/migrate-schema41-to42.mjs": {
       "mode": "behavior-test",

@@ -48,6 +48,7 @@ import {
   migrationIncompleteMarker,
   openAppDatabase,
   type CurrentDatabaseOpenCheckpoint,
+  resetVerifiedCurrentDatabasesForTests,
   setAfterGreenfieldDatabasePublishForTests,
   setDuringCurrentDatabaseOpenForTests,
   setDuringGreenfieldDatabaseInitializationForTests,
@@ -1246,25 +1247,31 @@ test("ordinary open is current-only while greenfield publication remains atomic"
     snapshotDatabase.close();
     expect(await readdir(currentSnapshotRace)).toEqual(["unboundry.sqlite"]);
     let concurrentSnapshotCommit = 0;
+    const insertConcurrentSnapshotRow = (databasePath: string, id: string) => {
+      const concurrent = new DatabaseSync(databasePath, { timeout: 0 });
+      try {
+        concurrent.prepare(`
+          INSERT INTO project_metadata (
+            owner_id, id, title, updated_at, is_project, created_at,
+            deleted_at
+          ) VALUES (
+            NULL, ?, 'snapshot race', 1, 1, 1, NULL
+          )
+        `).run(id);
+        concurrentSnapshotCommit += 1;
+      } finally {
+        concurrent.close();
+      }
+    };
     setDuringCurrentDatabaseOpenForTests((checkpoint, databasePath) => {
       if (checkpoint === "inspection-schema-validated") {
-        const concurrent = new DatabaseSync(databasePath, { timeout: 0 });
-        try {
-          concurrent.prepare(`
-            INSERT INTO project_metadata (
-              owner_id, id, title, updated_at, is_project, created_at,
-              deleted_at
-            ) VALUES (
-              NULL, 'm91-snapshot-race', 'snapshot race', 1, 1, 1, NULL
-            )
-          `).run();
-          concurrentSnapshotCommit += 1;
-        } finally {
-          concurrent.close();
-        }
+        insertConcurrentSnapshotRow(databasePath, "m91-snapshot-race");
       }
     });
     try {
+      // The first open of a file identity in a process is fully verified and
+      // still rejects any content change between inspection and writer lock.
+      resetVerifiedCurrentDatabasesForTests();
       expect(() => openAppDatabase(currentSnapshotRace)).toThrow(
         "Application database changed while opening",
       );
@@ -1280,6 +1287,31 @@ test("ordinary open is current-only while greenfield publication remains atomic"
       SELECT title FROM project_metadata WHERE id = 'm91-snapshot-race'
     `).get()).toEqual({ title: "snapshot race" });
     snapshotResult.close();
+
+    // Once the same inode has been fully verified, routine reopens keep the
+    // structural checks but tolerate ordinary concurrent writes.
+    openAppDatabase(currentSnapshotRace).close();
+    setDuringCurrentDatabaseOpenForTests((checkpoint, databasePath) => {
+      if (checkpoint === "inspection-schema-validated") {
+        insertConcurrentSnapshotRow(databasePath, "m91-snapshot-reopen");
+      }
+    });
+    try {
+      openAppDatabase(currentSnapshotRace).close();
+    } finally {
+      setDuringCurrentDatabaseOpenForTests(undefined);
+    }
+    expect(concurrentSnapshotCommit).toBe(2);
+    const structuralTamper = new DatabaseSync(
+      join(currentSnapshotRace, "unboundry.sqlite"),
+    );
+    structuralTamper.exec(
+      "ALTER TABLE project_metadata ADD COLUMN m91_tamper TEXT",
+    );
+    structuralTamper.close();
+    expect(() => openAppDatabase(currentSnapshotRace)).toThrow(
+      "Application database is not the exact current schema",
+    );
 
     const injectedDatabase = openAppDatabase(injectedSidecarRace);
     injectedDatabase.close();
