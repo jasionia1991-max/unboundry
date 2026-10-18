@@ -207,6 +207,10 @@ export type GenerationTaskEvent = {
   taskId: string;
 };
 
+/** Bounds for re-diagnosing a failed task that still holds a Provider id. */
+export const automaticFailedRecoveryMaxResumes = 6;
+export const automaticFailedRecoveryMaxAgeMs = 48 * 60 * 60_000;
+
 /** Durable task/event codes for an automatic recovery window that ended. */
 export const automaticRecoveryWindowExhaustedCode =
   "AUTOMATIC_RECOVERY_WINDOW_EXHAUSTED" as const;
@@ -3043,9 +3047,17 @@ export function createGenerationTaskStore(
     /**
      * Failed tasks that still hold an accepted Provider task id. The
      * server-side recovery sweep re-collects the same paid execution attempt;
-     * the local attempt number is therefore not a retry budget.
+     * the local attempt number is therefore not a retry budget. The resume
+     * budget and age window below bound how often the same failed task can
+     * be re-diagnosed, so a Provider that keeps failing cannot loop forever.
      */
-    listFailedAutoRecoverable(olderThan: Date) {
+    listFailedAutoRecoverable(
+      olderThan: Date,
+      options: Readonly<{ createdAfter?: Date; maxResumes?: number }> = {},
+    ) {
+      const createdAfter = options.createdAfter ??
+        new Date(olderThan.getTime() - automaticFailedRecoveryMaxAgeMs);
+      const maxResumes = options.maxResumes ?? automaticFailedRecoveryMaxResumes;
       return (
         database
           .prepare(`
@@ -3056,6 +3068,14 @@ export function createGenerationTaskStore(
               AND provider_task_id IS NOT NULL
               AND error_code != 'OPERATOR_INCIDENT'
               AND updated_at <= ?
+              AND created_at >= ?
+              AND (
+                SELECT COUNT(*)
+                FROM generation_task_events AS resume
+                WHERE resume.task_id = generation_tasks.id
+                  AND resume.state = 'recovering'
+                  AND resume.error_code = 'AUTOMATIC_RESULT_RECOVERY'
+              ) < ?
               AND EXISTS (
                 SELECT 1
                 FROM generation_provider_attempts AS attempt
@@ -3068,8 +3088,76 @@ export function createGenerationTaskStore(
             ORDER BY updated_at ASC, rowid ASC
             LIMIT 200
           `)
-          .all(olderThan.toISOString()) as GenerationTaskRow[]
+          .all(
+            olderThan.toISOString(),
+            createdAfter.toISOString(),
+            maxResumes,
+          ) as GenerationTaskRow[]
       ).map(toTask);
+    },
+
+    /**
+     * Retention for runaway diagnostic loops. Only terminal tasks that have
+     * been quiet for `minQuietMs` and carry more than `threshold` events are
+     * touched; the first and last `keep` events always survive, and only the
+     * repetitive running/recovering/failed loop markers in between are
+     * removed. Recovery checkpoints, evidence and admission rows stay intact.
+     */
+    compactRepetitiveEvents(
+      now: Date,
+      options: Readonly<{ keep?: number; minQuietMs?: number; threshold?: number }> = {},
+    ) {
+      const keep = options.keep ?? 50;
+      const threshold = Math.max(options.threshold ?? 500, keep * 2);
+      const quietBefore = new Date(
+        now.getTime() - (options.minQuietMs ?? 14 * 24 * 60 * 60_000),
+      ).toISOString();
+      const candidates = database.prepare(`
+        SELECT task.id AS id
+        FROM generation_tasks AS task
+        WHERE task.state IN ('success', 'failed', 'cancelled')
+          AND task.updated_at < ?
+          AND (
+            SELECT COUNT(*) FROM generation_task_events AS event
+            WHERE event.task_id = task.id
+          ) > ?
+        ORDER BY task.updated_at ASC
+        LIMIT 50
+      `).all(quietBefore, threshold) as Array<{ id: string }>;
+      let removed = 0;
+      for (const { id } of candidates) {
+        database.exec("BEGIN IMMEDIATE");
+        try {
+          const changed = database.prepare(`
+            DELETE FROM generation_task_events
+            WHERE task_id = ?
+              AND (
+                (state = 'running' AND error_code IS NULL) OR
+                (state = 'recovering' AND error_code = 'AUTOMATIC_RESULT_RECOVERY') OR
+                (state = 'failed' AND error_code = 'GENERATION_FAILED')
+              )
+              AND id NOT IN (
+                SELECT id FROM generation_task_events WHERE task_id = ?
+                ORDER BY id ASC LIMIT ?
+              )
+              AND id NOT IN (
+                SELECT id FROM generation_task_events WHERE task_id = ?
+                ORDER BY id DESC LIMIT ?
+              )
+              AND EXISTS (
+                SELECT 1 FROM generation_tasks
+                WHERE id = ? AND state IN ('success', 'failed', 'cancelled')
+                  AND updated_at < ?
+              )
+          `).run(id, id, keep, id, keep, id, quietBefore);
+          database.exec("COMMIT");
+          removed += Number(changed.changes);
+        } catch (error) {
+          if (database.isTransaction) database.exec("ROLLBACK");
+          throw error;
+        }
+      }
+      return { removed, tasks: candidates.length };
     },
 
     listEvents(id: string) {

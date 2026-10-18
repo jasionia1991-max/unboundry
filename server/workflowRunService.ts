@@ -81,6 +81,51 @@ import {
 } from "./canvasObservability";
 
 const activeRunStates = ["running", "stopping"] as const;
+
+export const workflowNodeDeadlineExceededCode = "WORKFLOW_NODE_DEADLINE_EXCEEDED";
+export const workflowNodeDeadlineExceededMessage =
+  "该节点超过最长等待时间仍未完成，已停止等待；如果稍后生成成功，结果会出现在素材库，不会重复扣费";
+
+/**
+ * Upper bound a workflow waits for one admitted generation task. The task
+ * itself keeps its own recovery rules; only the workflow stops waiting so the
+ * run reaches a visible terminal state instead of running for ever.
+ */
+export function workflowNodeDeadlineMs(task: Readonly<{
+  kind: string;
+  modelConfiguration?: Record<string, unknown>;
+}>) {
+  const baseline = task.kind === "video" ? 8 * 60 * 60_000 : 3 * 60 * 60_000;
+  let declared = Number.NaN;
+  try {
+    const revision = task.modelConfiguration?.modelReleaseRevision as
+      Record<string, unknown> | undefined;
+    const document = revision?.document as Record<string, unknown> | undefined;
+    const execution = document?.executionContract as Record<string, unknown> | undefined;
+    const pollPolicy = execution?.pollPolicy as Record<string, unknown> | undefined;
+    declared = Number(pollPolicy?.deadlineMs);
+  } catch {
+    declared = Number.NaN;
+  }
+  const extended = Number.isFinite(declared) && declared > 0
+    ? Math.min(declared, 24 * 60 * 60_000) + 2 * 60 * 60_000
+    : 0;
+  return Math.max(baseline, extended);
+}
+
+function workflowTaskDeadlineExceeded(
+  task: Readonly<{
+    createdAt: string;
+    kind: string;
+    modelConfiguration?: Record<string, unknown>;
+    state: string;
+  }> | undefined,
+  nowMs = Date.now(),
+) {
+  if (!task || !["queued", "running", "recovering"].includes(task.state)) return false;
+  const createdMs = Date.parse(task.createdAt);
+  return Number.isFinite(createdMs) && nowMs - createdMs > workflowNodeDeadlineMs(task);
+}
 const terminalNodeStates = ["success", "failed", "blocked", "cancelled"] as const;
 
 type ModelRow = NonNullable<ReturnType<typeof generationTaskApplication.resolveModel>>;
@@ -3188,8 +3233,11 @@ function workflowRunNeedsMutation(runId: string) {
     if (nodes.every((node) => !["pending", "admitting", "admitted"].includes(String(node.state)))) return true;
     return nodes.some((node) => {
       if (node.state === "admitting") return true;
-      if (node.state === "admitted" && ["success", "failed", "cancelled", "recovering"].includes(
-          String(generationTaskApplication.taskStore().get(String(node.task_id))?.state))) return true;
+      if (node.state === "admitted") {
+        const task = generationTaskApplication.taskStore().get(String(node.task_id));
+        if (["success", "failed", "cancelled", "recovering"].includes(String(task?.state))) return true;
+        if (workflowTaskDeadlineExceeded(task)) return true;
+      }
       if (node.error_code && !run.error_code) return true;
       if (node.state !== "pending") return false;
       if (Number(run.stop_requested) === 1) return true;
@@ -3329,6 +3377,17 @@ async function processWorkflowRun(runId: string) {
           discardDeferredCanvasObservability(database);
           throw error;
         }
+      } else if (workflowTaskDeadlineExceeded(task)) {
+        settleWorkflowNodeTerminal({
+          code: workflowNodeDeadlineExceededCode,
+          database,
+          expectedState: "admitted",
+          message: workflowNodeDeadlineExceededMessage,
+          nextState: "failed",
+          nodeId: String(node.node_id),
+          runId,
+          timestamp,
+        });
       } else if (task.state === "failed" || task.state === "cancelled") {
         settleWorkflowNodeTerminal({
           code: task.errorCode ?? "GENERATION_FAILED",

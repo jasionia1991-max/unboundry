@@ -735,7 +735,12 @@ export function markExternalMediaPublicationReady(
     if (row.state === "external-ready") return;
     const changed = database.prepare(`
       UPDATE media_publication_attempts
-      SET state = 'external-ready', updated_at = ?
+      SET state = 'external-ready',
+          error_code = CASE
+            WHEN error_code = 'OSS_IDENTITY_QUARANTINED' THEN NULL
+            ELSE error_code
+          END,
+          updated_at = ?
       WHERE attempt_id = ? AND state = 'staged'
     `).run(new Date().toISOString(), reservation.attemptId);
     if (changed.changes !== 1) throw new MediaPublicationStateError();
@@ -1763,6 +1768,27 @@ export async function publishGeneratedOssMediaPublication(input: {
   }
 }
 
+export const quarantinedPublicationMaxReverifications = 6;
+
+/**
+ * A quarantined OSS publication is re-verified a bounded number of times with
+ * backoff. The upload helper first HEADs the exact object: an exact identity
+ * is adopted, a missing object is PUT with forbid-overwrite, and any mismatch
+ * or unknown outcome quarantines it again (incrementing retry_count). No bytes
+ * are deleted or overwritten on any branch.
+ */
+export function quarantinedPublicationReverifyDue(
+  row: Readonly<{ retry_count: number; updated_at: string }>,
+  nowMs = Date.now(),
+) {
+  const retries = Number(row.retry_count);
+  if (!Number.isSafeInteger(retries) || retries < 1 ||
+      retries >= quarantinedPublicationMaxReverifications) return false;
+  const updatedMs = Date.parse(row.updated_at);
+  return Number.isFinite(updatedMs) &&
+    nowMs - updatedMs >= 5 * 60_000 * 2 ** (retries - 1);
+}
+
 async function sha256File(path: string) {
   const hash = createHash("sha256");
   const stream = createReadStream(path);
@@ -1800,7 +1826,8 @@ export async function preparePendingGeneratedMediaPublication(
     if (row.state === "compensating" || row.media_storage_status !== "pending") {
       return { action: "failed" as const, reservation };
     }
-    if (row.error_code === "OSS_IDENTITY_QUARANTINED") {
+    if (row.error_code === "OSS_IDENTITY_QUARANTINED" &&
+        !quarantinedPublicationReverifyDue(row)) {
       return { action: "blocked" as const, reservation };
     }
     if (reservation.storageBackend === "oss") {
