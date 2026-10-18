@@ -3,7 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "./safe-test";
 import { openAppDatabase } from "../server/database";
-import { createGenerationTaskStore, type GenerationTask } from "../server/generationTaskStore";
+import { automaticFailedRecoveryMaxResumes, createGenerationTaskStore, type GenerationTask } from "../server/generationTaskStore";
+import { quarantinedPublicationMaxReverifications, quarantinedPublicationReverifyDue } from "../server/mediaLifecycle";
+import { workflowNodeDeadlineMs } from "../server/workflowRunService";
 import { deferAutomaticRecoveryCheck, listRecoveryTaskIds, originalRecoveryWindow, automaticRecoveryCheckpoint, claimAutomaticRecoveryCheck } from "../server/generationRecoveryTaskQueries";
 import { recoverGenerationTasksAtStartupForRuntimeTest, runGenerationRecoverySweep } from "../server/generationTasks";
 
@@ -144,4 +146,109 @@ test("actual sweep fairly visits 241 unknown requests with four reads in flight 
     else process.env.UNBOUNDRY_GENERATION_RECOVERY_CASES_ENABLED = previous;
     db.close(); tasks.close(); await rm(directory, { recursive: true, force: true });
   }
+});
+
+function failedAcceptedTask(
+  tasks: ReturnType<typeof createGenerationTaskStore>,
+  key: string,
+) {
+  const task = tasks.create({
+    canvasId: "bounds-canvas", nodeId: `node-${key}`, idempotencyKey: `bounds-${key}`,
+    kind: "image", prompt: "Synthetic",
+    providerProfileId: "fake-provider", providerModelId: "fake-model",
+  }).task;
+  tasks.transition(task.id, "running");
+  tasks.recordProviderAttempt(task.id);
+  tasks.setProviderTaskId(task.id, `provider-${key}`);
+  tasks.transition(task.id, "failed", { code: "GENERATION_FAILED", message: "synthetic" });
+  return task;
+}
+
+test("failed auto-recovery is bounded by resume count and task age", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-recovery-bounds-"));
+  const tasks = createGenerationTaskStore(directory); const db = openAppDatabase(directory);
+  try {
+    const fresh = failedAcceptedTask(tasks, "fresh");
+    const looping = failedAcceptedTask(tasks, "looping");
+    const old = failedAcceptedTask(tasks, "old");
+    const insert = db.prepare(`INSERT INTO generation_task_events
+      (task_id,state,error_code,error_message,created_at) VALUES(?,?,?,?,?)`);
+    for (let i = 0; i < automaticFailedRecoveryMaxResumes; i++) {
+      insert.run(looping.id, "recovering", "AUTOMATIC_RESULT_RECOVERY", "loop", new Date().toISOString());
+    }
+    db.prepare("UPDATE generation_tasks SET created_at = ? WHERE id = ?")
+      .run(new Date(Date.now() - 49 * 60 * 60_000).toISOString(), old.id);
+    const later = new Date(Date.now() + 60_000);
+    const listed = tasks.listFailedAutoRecoverable(later).map(({ id }) => id);
+    expect(listed).toContain(fresh.id);
+    expect(listed).not.toContain(looping.id);
+    expect(listed).not.toContain(old.id);
+    expect(tasks.listFailedAutoRecoverable(later, {
+      createdAfter: new Date(0), maxResumes: 1_000,
+    }).map(({ id }) => id)).toEqual(expect.arrayContaining([fresh.id, looping.id, old.id]));
+  } finally { db.close(); tasks.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
+test("event retention compacts only repetitive loop markers of quiet terminal tasks", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "unboundry-event-retention-"));
+  const tasks = createGenerationTaskStore(directory); const db = openAppDatabase(directory);
+  try {
+    const quiet = failedAcceptedTask(tasks, "quiet");
+    const recent = failedAcceptedTask(tasks, "recent");
+    const longAgo = new Date(Date.now() - 30 * 24 * 60 * 60_000).toISOString();
+    const insert = db.prepare(`INSERT INTO generation_task_events
+      (task_id,state,error_code,error_message,created_at) VALUES(?,?,?,?,?)`);
+    for (const task of [quiet, recent]) {
+      for (let i = 0; i < 300; i++) {
+        insert.run(task.id, "running", null, null, longAgo);
+        insert.run(task.id, "recovering", "AUTOMATIC_RESULT_RECOVERY", "loop", longAgo);
+        insert.run(task.id, "failed", "GENERATION_FAILED", "loop", longAgo);
+      }
+      insert.run(task.id, "recovering", "AUTOMATIC_RESULT_RECOVERY_CHECKPOINT", "{}", longAgo);
+    }
+    db.prepare("UPDATE generation_tasks SET updated_at = ? WHERE id = ?").run(longAgo, quiet.id);
+    const count = (id: string) => Number((db.prepare(
+      "SELECT COUNT(*) AS c FROM generation_task_events WHERE task_id = ?",
+    ).get(id) as { c: number }).c);
+    const recentBefore = count(recent.id);
+    const firstQuiet = tasks.listEvents(quiet.id)[0];
+    const result = tasks.compactRepetitiveEvents(new Date());
+    expect(result.tasks).toBe(1);
+    expect(count(recent.id)).toBe(recentBefore);
+    expect(count(quiet.id)).toBeLessThanOrEqual(101);
+    expect(count(quiet.id)).toBeGreaterThanOrEqual(100);
+    const events = tasks.listEvents(quiet.id);
+    expect(events[0]).toEqual(firstQuiet);
+    expect(events.some((event) => event.errorCode === "AUTOMATIC_RESULT_RECOVERY_CHECKPOINT")).toBe(true);
+    expect(tasks.get(quiet.id)?.state).toBe("failed");
+    expect(tasks.compactRepetitiveEvents(new Date()).removed).toBe(0);
+  } finally { db.close(); tasks.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
+test("workflow node deadline and quarantine re-verification are bounded", () => {
+  expect(workflowNodeDeadlineMs({ kind: "image" })).toBe(3 * 60 * 60_000);
+  expect(workflowNodeDeadlineMs({ kind: "video" })).toBe(8 * 60 * 60_000);
+  expect(workflowNodeDeadlineMs({
+    kind: "video",
+    modelConfiguration: { modelReleaseRevision: { document: { executionContract: {
+      pollPolicy: { deadlineMs: 20 * 60 * 60_000 },
+    } } } },
+  })).toBe(22 * 60 * 60_000);
+  expect(workflowNodeDeadlineMs({
+    kind: "video",
+    modelConfiguration: { modelReleaseRevision: { document: { executionContract: {
+      pollPolicy: { deadlineMs: 90 * 24 * 60 * 60_000 },
+    } } } },
+  })).toBe(26 * 60 * 60_000);
+
+  const now = Date.parse("2026-10-18T12:00:00.000Z");
+  const at = (minutesAgo: number) => new Date(now - minutesAgo * 60_000).toISOString();
+  expect(quarantinedPublicationReverifyDue({ retry_count: 1, updated_at: at(4) }, now)).toBe(false);
+  expect(quarantinedPublicationReverifyDue({ retry_count: 1, updated_at: at(5) }, now)).toBe(true);
+  expect(quarantinedPublicationReverifyDue({ retry_count: 3, updated_at: at(19) }, now)).toBe(false);
+  expect(quarantinedPublicationReverifyDue({ retry_count: 3, updated_at: at(20) }, now)).toBe(true);
+  expect(quarantinedPublicationReverifyDue({
+    retry_count: quarantinedPublicationMaxReverifications, updated_at: at(10_000),
+  }, now)).toBe(false);
+  expect(quarantinedPublicationReverifyDue({ retry_count: 0, updated_at: at(10_000) }, now)).toBe(false);
 });
