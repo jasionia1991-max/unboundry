@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   providerErrorParts,
+  sanitizeProviderDiagnostic,
   type GenerationNoticeTone,
 } from "./generationErrors";
 import { recoveryStatusLabel } from "./generationRecoveryClient";
@@ -12,18 +13,26 @@ import {
 
 export function ProviderErrorNotice({
   diagnostic,
+  local = false,
   message,
   recoveryTaskId,
   tone = "failed",
 }: {
   diagnostic?: string;
+  /**
+   * The message came from Unboundry itself (for example a media upload), not
+   * from a model platform, so it is shown as-is without a platform summary.
+   */
+  local?: boolean;
   message: string;
   recoveryTaskId?: string;
   tone?: GenerationNoticeTone;
 }) {
   const [diagnosticOpen, setDiagnosticOpen] = useState(false);
-  const { summary } = providerErrorParts(message);
-  const { raw } = providerErrorParts(diagnostic || message);
+  const summary = local
+    ? sanitizeProviderDiagnostic(message)
+    : providerErrorParts(message).summary;
+  const raw = local ? "" : providerErrorParts(diagnostic || message).raw;
   const recovery = useGenerationRecovery();
   const recoveryCase = useGenerationRecoveryTask(recoveryTaskId);
   useEffect(() => {

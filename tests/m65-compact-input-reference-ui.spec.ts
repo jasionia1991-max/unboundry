@@ -62,7 +62,7 @@ async function seedCanvas(
   modelId: string,
   includeOverflow = false,
   destinationCanvasId = canvasId,
-  generationError = "",
+  promptMissing = false,
 ) {
   await request.delete(`/api/canvas/${destinationCanvasId}`);
   const inputSources = [
@@ -91,7 +91,11 @@ async function seedCanvas(
       ),
       nodes: [
         {
-          data: { content: textSummary, label: "Text", title: textTitle },
+          data: {
+            content: promptMissing ? "" : textSummary,
+            label: "Text",
+            title: textTitle,
+          },
           id: "m65-source-text",
           position: { x: 40, y: 30 },
           style: { height: 180, width: 230 },
@@ -154,9 +158,8 @@ async function seedCanvas(
             label: "Text",
             textModelId: modelId,
             textModelName: modelName,
-            textPrompt: "只做零 Provider 界面检查，不提交生成",
-            textPromptReady: true,
-            ...(generationError ? { textGenerationError: generationError } : {}),
+            textPrompt: promptMissing ? "" : "只做零 Provider 界面检查，不提交生成",
+            textPromptReady: !promptMissing,
             title: "紧凑引用目标文字",
           },
           id: "m65-target-text",
@@ -481,13 +484,10 @@ test.describe.serial("compact upstream references stay one-row and zero Provider
     };
 
     try {
-      await seedCanvas(
-        request,
-        modelId,
-        false,
-        "default",
-        "用于检查创作框只打开一层状态详情",
-      );
+      // Since v0.7.17 a Text generation failure is a separate notice, not an
+      // input problem, so the area-level input blocker comes from a missing
+      // Prompt with no ready upstream Text to replace it.
+      await seedCanvas(request, modelId, false, "default", true);
       await page.goto("/canvas");
       await expect(page.getByTestId("canvas-world"))
         .toHaveAttribute("data-persistence-ready", "true");

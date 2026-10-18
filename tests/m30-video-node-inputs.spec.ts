@@ -735,8 +735,13 @@ test("Video execute transition and interactive switches share Canvas admission",
   expect(generateEnd).toBeGreaterThan(generateStart);
   expect(prepare).toBeGreaterThan(-1);
   expect(transition).toBeGreaterThan(prepare);
-  expect(generate).toContain("const compiled = compileCurrentSubmission({");
-  expect(generate).toContain("expectedBefore: transitionExpectedBefore");
+  const compiled = generate.indexOf(
+    "const compiled = compileCurrentSubmission(submissionModel);",
+  );
+  expect(compiled).toBeGreaterThan(transition);
+  expect(generate).toContain(
+    "expectedBefore: canvasModelTransitionExpectedBefore(currentTransitionSnapshot, id)",
+  );
   expect(source).toContain("canvasModelTransitionExpectedBefore(");
   expect(source).toContain("runWithSingleNodeGenerationAdmission({");
   expect(source).toContain("void applyInteractiveModelTransition({");

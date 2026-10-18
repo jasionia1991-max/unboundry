@@ -1224,7 +1224,9 @@ test("Text failure stays visible, refreshes, and retries the same task until inp
     await page.getByTestId(`rf__node-${nodeId}`).click();
     const creator = page.getByTestId("text-creator");
     await creator.getByRole("button", { name: "Generate" }).click();
-    await expect(creator.getByTestId("upstream-input-problem"))
+    // Since v0.7.17 generation failures use the Text generation notice; the
+    // upstream input-problem area is reserved for input blockers.
+    await expect(creator.locator(".text-node-generation-notice"))
       .toContainText("生成失败：当前平台连接没有该模型的使用权限");
     await expect(creator.getByRole("button", { name: "Retry generation" }))
       .toBeEnabled();
@@ -1243,7 +1245,7 @@ test("Text failure stays visible, refreshes, and retries the same task until inp
 
     await creator.getByRole("button", { name: "Retry generation" }).click();
     await expect.poll(() => taskRetries).toBe(1);
-    await expect(creator.getByTestId("upstream-input-problem"))
+    await expect(creator.locator(".text-node-generation-notice"))
       .toContainText("点击右侧按钮重试原任务");
     expect(taskSubmissions).toBe(1);
 
@@ -1252,7 +1254,7 @@ test("Text failure stays visible, refreshes, and retries the same task until inp
       .toHaveAttribute("data-persistence-ready", "true");
     await page.getByTestId(`rf__node-${nodeId}`).click();
     const restoredCreator = page.getByTestId("text-creator");
-    await expect(restoredCreator.getByTestId("upstream-input-problem"))
+    await expect(restoredCreator.locator(".text-node-generation-notice"))
       .toContainText("当前平台连接没有该模型的使用权限");
     await expect(restoredCreator.getByRole("button", { name: "Retry generation" }))
       .toBeEnabled();
