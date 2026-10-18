@@ -209,7 +209,9 @@ test("Text, Image, Video and Audio stop after the same non-enqueueable preflight
       await expect.poll(() => preflightKinds.length).toBe(index + 1);
       expect(preflightKinds[index]).toBe(check.kind);
       if (check.kind === "text") {
-        await expect(page.getByTestId("upstream-input-problem"))
+        // Since v0.7.17 Text shows generation stops in its generation notice;
+        // the upstream input-problem area is reserved for input blockers.
+        await expect(creator.locator(".text-node-generation-notice"))
           .toContainText(blockedMessage);
       } else {
         await expect(page.locator(`.react-flow__node[data-id="${check.id}"]`)

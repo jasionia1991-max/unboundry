@@ -2183,6 +2183,9 @@ function ImageNodeImpl({
     setRawUploadError(message);
   };
   const [transientUploadError, setTransientUploadError] = useState("");
+  // Local upload rejections are confirmed failures of the user's action, not
+  // generation input blockers, so they keep the failure notice tone.
+  const [uploadFailureMessage, setUploadFailureMessage] = useState("");
   const [librarySaveState, setLibrarySaveState] = useState<
     "idle" | "saving" | "saved"
   >("idle");
@@ -2216,11 +2219,15 @@ function ImageNodeImpl({
     ...inputPreflight.problems,
     ...serverInputProblems,
   ];
+  const uploadFailureNotice = Boolean(transientUploadError) ||
+    Boolean(uploadFailureMessage && uploadError === uploadFailureMessage);
   const imageNoticeMessage = effectiveInputState === "invalid" &&
-    inputProblems.length > 0 && !transientUploadError
+    inputProblems.length > 0 && !uploadFailureNotice
     ? ""
     : transientUploadError || uploadError;
-  const imageNoticeTone = generationNoticeTone({
+  const imageNoticeTone = uploadFailureNotice
+    ? generationNoticeTone({ message: imageNoticeMessage })
+    : generationNoticeTone({
     code: data.imageGenerationErrorCode,
     inputBlocked: Boolean(
       modelSwitchProblem ||
@@ -4508,6 +4515,7 @@ function ImageNodeImpl({
             }
           : node));
         setUploadError(message, "INPUT_INVALID");
+        setUploadFailureMessage(message);
       }
     } finally {
       releaseUploadCheckpoint();
@@ -6291,6 +6299,7 @@ function ImageNodeImpl({
           >
             <ProviderErrorNotice
               diagnostic={data.imageGenerationError}
+              local={uploadFailureNotice}
               message={imageNoticeMessage}
               recoveryTaskId={data.imageGenerationTaskId}
               tone={imageNoticeTone}

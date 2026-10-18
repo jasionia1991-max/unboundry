@@ -639,9 +639,10 @@ function insertPendingGenerationPublication(
         attempt_id, owner_id, kind, asset_id, source, state,
         storage_backend, final_storage_name, object_key,
         storage_profile_id, staging_name, task_id,
-        task_execution_attempt, content_type, created_at, updated_at
+        task_execution_attempt, content_type, created_at, updated_at,
+        output_slot, output_set_count
       ) VALUES (?, ?, ?, ?, 'generation', 'staged',
-        'local', ?, ?, NULL, ?, ?, ?, 'image/png', ?, ?)
+        'local', ?, ?, NULL, ?, ?, ?, 'image/png', ?, ?, 0, 1)
     `).run(
       `fixture-publication-attempt-${suffix}`,
       ownerId,

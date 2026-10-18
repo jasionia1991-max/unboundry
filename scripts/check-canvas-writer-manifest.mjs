@@ -1799,6 +1799,7 @@ function classifyServerV2(hit) {
       "server/canvasPersistence.ts",
       "server/canvasWorkflowProjection.ts",
       "server/generationCanvasProjectionService.ts",
+      "server/generationResultAdoptionApplication.ts",
       "server/generationResultCommit.ts",
       "server/workflowRunService.ts",
     ]);

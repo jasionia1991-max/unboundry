@@ -32,7 +32,8 @@ test("click, Shift-click and four-direction marquee selection", async ({
   await page.mouse.move(1000, 700);
   await expect(a.locator(".node-handle-plus").first()).toHaveCSS("opacity", "1");
   await expect(b.locator(".node-handle-plus").first()).toHaveCSS("opacity", "0");
-  await expect(a).toHaveCSS("z-index", "1000");
+  // CanvasSelectionLayers ranks the selected root above all three nodes.
+  await expect(a).toHaveCSS("z-index", "3");
   await expect(world).toHaveAttribute("data-primary-node", "probe-a");
 
   await b.click({ modifiers: ["Shift"] });
