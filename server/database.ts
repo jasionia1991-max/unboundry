@@ -5060,16 +5060,43 @@ export function databaseHasCompleteLegacyMediaMetadata(database: DatabaseSync) {
   return !unresolved;
 }
 
-function assertExactCurrentDatabase(database: DatabaseSync) {
-  const quickCheck = database.prepare("PRAGMA quick_check").all() as
-    Array<{ quick_check?: unknown }>;
+type CurrentDatabaseVerification = "full" | "structural";
+
+// Full verification (quick_check, foreign_key_check and the whole-content
+// digest) reads every row and costs seconds of main-thread CPU on a production
+// sized database. It runs once per database file identity per process; later
+// opens of the same verified inode keep the structural schema checks only.
+const verifiedCurrentDatabaseIdentities = new Set<string>();
+
+function currentDatabaseIdentityKey(
+  databasePath: string,
+  details: Readonly<{ dev: number | bigint; ino: number | bigint }>,
+) {
+  return `${databasePath}\0${String(details.dev)}\0${String(details.ino)}`;
+}
+
+export function resetVerifiedCurrentDatabasesForTests() {
+  verifiedCurrentDatabaseIdentities.clear();
+}
+
+function assertExactCurrentDatabase(
+  database: DatabaseSync,
+  verification: CurrentDatabaseVerification = "full",
+) {
+  if (verification === "full") {
+    const quickCheck = database.prepare("PRAGMA quick_check").all() as
+      Array<{ quick_check?: unknown }>;
+    if (
+      quickCheck.length !== 1 ||
+      String(quickCheck[0]?.quick_check) !== "ok"
+    ) throw new Error("Application database is not the exact current schema");
+  }
   if (
-    quickCheck.length !== 1 ||
-    String(quickCheck[0]?.quick_check) !== "ok" ||
     !databaseMatchesMigrationManifest(database) ||
     !databaseMatchesSchemaContract(database) ||
     !databaseHasCompleteLegacyMediaMetadata(database) ||
-    database.prepare("PRAGMA foreign_key_check").all().length !== 0
+    (verification === "full" &&
+      database.prepare("PRAGMA foreign_key_check").all().length !== 0)
   ) throw new Error("Application database is not the exact current schema");
 }
 
@@ -5078,6 +5105,15 @@ function inspectExistingCurrentDatabase(
   options: Readonly<{ includeContentDigest?: boolean }> = {},
 ) {
   const details = lstatSync(databasePath);
+  // The verification mode is derived from the same pinned identity that every
+  // later identity assertion compares against, so a replacement file is never
+  // recorded as verified after structural-only checks.
+  const verification: CurrentDatabaseVerification =
+    verifiedCurrentDatabaseIdentities.has(
+      currentDatabaseIdentityKey(databasePath, details),
+    )
+      ? "structural"
+      : "full";
   const owned = typeof process.getuid === "function" &&
     details.uid === process.getuid();
   if (
@@ -5115,19 +5151,21 @@ function inspectExistingCurrentDatabase(
   try {
     inspection.exec("BEGIN");
     transactionOpen = true;
-    assertExactCurrentDatabase(inspection);
+    assertExactCurrentDatabase(inspection, verification);
     duringCurrentDatabaseOpenForTests?.(
       "inspection-schema-validated",
       databasePath,
     );
     return Object.freeze({
-      contentDigest: options.includeContentDigest === false
-        ? undefined
-        : exactCurrentContentDigest(inspection),
+      contentDigest:
+        options.includeContentDigest === false || verification !== "full"
+          ? undefined
+          : exactCurrentContentDigest(inspection),
       database: inspection,
       details,
       release,
       sidecars,
+      verification,
     });
   } catch (error) {
     try {
@@ -6187,10 +6225,13 @@ export function openAppDatabase(
           inspected.sidecars,
         );
         // Close the read-only-check/writer-open TOCTOU under the write lock.
-        assertExactCurrentDatabase(database);
+        const { verification } = inspected;
+        assertExactCurrentDatabase(database, verification);
         if (
-          !inspected.contentDigest ||
-          exactCurrentContentDigest(database) !== inspected.contentDigest
+          verification === "full" && (
+            !inspected.contentDigest ||
+            exactCurrentContentDigest(database) !== inspected.contentDigest
+          )
         ) {
           throw new Error("Application database changed while opening");
         }
@@ -6218,6 +6259,9 @@ export function openAppDatabase(
         database.exec("COMMIT");
         transactionOpen = false;
         assertSameCurrentDatabaseIdentity(databasePath, inspected.details);
+        verifiedCurrentDatabaseIdentities.add(
+          currentDatabaseIdentityKey(databasePath, inspected.details),
+        );
         openedDatabase = database;
       } catch (error) {
         if (transactionOpen && database.isTransaction) {
@@ -6650,6 +6694,9 @@ export function readAppDatabaseSnapshot<T>(
       databasePath,
       inspected.sidecars,
     );
+    verifiedCurrentDatabaseIdentities.add(
+      currentDatabaseIdentityKey(databasePath, inspected.details),
+    );
     result = operation(inspected.database);
     if (
       result &&
@@ -6773,7 +6820,19 @@ export function createRuntimeDatabaseTransactionRunner() {
         const journalMode = (entry.database.prepare("PRAGMA journal_mode").get() as { journal_mode: string }).journal_mode;
         const validatedDataVersion = pragma(entry.database, "data_version");
         if (validatedDataVersion !== entry.dataVersion) {
-          assertExactCurrentDatabase(entry.database);
+          // The pinned identity was fully verified by openAppDatabase; other
+          // connections' commits only need the structural schema checks.
+          assertExactCurrentDatabase(
+            entry.database,
+            verifiedCurrentDatabaseIdentities.has(
+              currentDatabaseIdentityKey(
+                join(directory, "unboundry.sqlite"),
+                entry.identity,
+              ),
+            )
+              ? "structural"
+              : "full",
+          );
         }
         const result = operation(entry.database);
         if (result && (typeof result === "object" || typeof result === "function") &&
