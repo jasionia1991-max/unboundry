@@ -528,6 +528,9 @@ function AudioNodeImpl({
     setRawUploadError(message);
   };
   const [transientUploadError, setTransientUploadError] = useState("");
+  // Local upload rejections are confirmed failures of the user's action, not
+  // generation input blockers, so they keep the failure notice tone.
+  const [uploadFailureMessage, setUploadFailureMessage] = useState("");
   const [retryTaskId, setRetryTaskId] = useState<string>();
   const [newGenerationTaskId, setNewGenerationTaskId] = useState<string>();
   const [newGenerationAllowed, setNewGenerationAllowed] = useState(false);
@@ -794,11 +797,15 @@ function AudioNodeImpl({
     ...inputPreflight.problems,
     ...serverInputProblems,
   ];
+  const uploadFailureNotice = Boolean(transientUploadError) ||
+    Boolean(uploadFailureMessage && uploadError === uploadFailureMessage);
   const audioNoticeMessage = effectiveInputState === "invalid" &&
-    inputProblems.length > 0 && !transientUploadError
+    inputProblems.length > 0 && !uploadFailureNotice
     ? ""
     : transientUploadError || uploadError;
-  const audioNoticeTone = generationNoticeTone({
+  const audioNoticeTone = uploadFailureNotice
+    ? generationNoticeTone({ message: audioNoticeMessage })
+    : generationNoticeTone({
     code: data.audioGenerationErrorCode,
     inputBlocked: Boolean(
       modelSwitchProblem ||
@@ -2715,6 +2722,7 @@ function AudioNodeImpl({
         );
         if (!applied) return;
         setUploadError(preflightError);
+        setUploadFailureMessage(preflightError);
       }
       return;
     }
@@ -2942,6 +2950,7 @@ function AudioNodeImpl({
             }
           : node));
         setUploadError(message);
+        setUploadFailureMessage(message);
       }
     } finally {
       URL.revokeObjectURL(localUrl);
@@ -3389,6 +3398,7 @@ function AudioNodeImpl({
           >
             <ProviderErrorNotice
               diagnostic={data.audioGenerationError}
+              local={uploadFailureNotice}
               message={audioNoticeMessage}
               recoveryTaskId={data.audioGenerationTaskId}
               tone={audioNoticeTone}

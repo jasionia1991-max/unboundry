@@ -269,9 +269,10 @@ test("clicking or resting on a connection shows scissors, which deletes only the
   await expect(edge).toHaveClass(/connected-to-selected-node/);
   await expect(page.locator(".react-flow__edges")).toHaveCSS("z-index", "0");
   await expect(page.locator(".react-flow__nodes")).toHaveCSS("z-index", "1");
+  // CanvasSelectionLayers ranks the selected root above all three nodes.
   await expect(
     page.locator('.react-flow__node[data-id="probe-b"]'),
-  ).toHaveCSS("z-index", "1000");
+  ).toHaveCSS("z-index", "3");
   await page.mouse.click(1000, 700);
   await expect(edge).not.toHaveClass(/connected-to-selected-node/);
   const hitLine = edge.locator(".react-flow__edge-interaction");
@@ -357,7 +358,8 @@ test("formal edges and their cut control stay behind an occluding node", async (
   );
   await page.mouse.up();
   await a.click();
-  await expect(a).toHaveCSS("z-index", "1000");
+  // CanvasSelectionLayers ranks the selected root above all three nodes.
+  await expect(a).toHaveCSS("z-index", "3");
   await expect(edge).toHaveClass(/connected-to-selected-node/);
 
   const cBox = (await c.boundingBox())!;

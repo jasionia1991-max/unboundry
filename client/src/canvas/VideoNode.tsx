@@ -576,6 +576,9 @@ function VideoNodeImpl({
     setUploadError(message, errorCode);
   };
   const [transientUploadError, setTransientUploadError] = useState("");
+  // Local upload rejections are confirmed failures of the user's action, not
+  // generation input blockers, so they keep the failure notice tone.
+  const [uploadFailureMessage, setUploadFailureMessage] = useState("");
   const [retryTaskId, setRetryTaskId] = useState<string>();
   const [newGenerationTaskId, setNewGenerationTaskId] = useState<string>();
   const [newGenerationAllowed, setNewGenerationAllowed] = useState(false);
@@ -873,13 +876,22 @@ function VideoNodeImpl({
     ...inputPreflight.problems,
     ...serverInputProblems,
   ];
+  const uploadFailureNotice = Boolean(transientUploadError) ||
+    Boolean(
+      uploadFailureMessage &&
+      uploadError === uploadFailureMessage &&
+      !submissionFailure &&
+      !workflowRecoveryStopped,
+    );
   const videoNoticeMessage = effectiveInputState === "invalid" &&
-    inputProblems.length > 0 && !transientUploadError
+    inputProblems.length > 0 && !uploadFailureNotice
     ? ""
     : transientUploadError || submissionFailure || (workflowRecoveryStopped
       ? friendlyGenerationMessage("", "video", "AUTOMATIC_RECOVERY_WINDOW_EXHAUSTED")
       : uploadError);
-  const videoNoticeTone = generationNoticeTone({
+  const videoNoticeTone = uploadFailureNotice
+    ? generationNoticeTone({ message: videoNoticeMessage })
+    : generationNoticeTone({
     code: workflowRecoveryStopped ? "AUTOMATIC_RECOVERY_WINDOW_EXHAUSTED" : data.videoGenerationErrorCode,
     inputBlocked: Boolean(
       modelSwitchProblem ||
@@ -3324,6 +3336,7 @@ function VideoNodeImpl({
         setTransientUploadError(message);
       } else {
         setUploadError(message, "INPUT_INVALID");
+        setUploadFailureMessage(message);
         applyViewUpdate((nodes) => nodes.map((node) => node.id === id
           ? { ...node, data: { ...node.data, ...mediaUploadState("invalid", message) } }
           : node));
@@ -3870,6 +3883,7 @@ function VideoNodeImpl({
           >
             <ProviderErrorNotice
               diagnostic={submissionFailure || data.videoGenerationError}
+              local={uploadFailureNotice}
               message={videoNoticeMessage}
               recoveryTaskId={submissionFailure || workflowRecoveryStopped ? undefined : data.videoGenerationTaskId}
               tone={videoNoticeTone}

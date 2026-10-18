@@ -42,6 +42,7 @@ test("the private account contract returns only the current personal scope", asy
     "manage_providers",
     "manage_storage",
     "manage_generation_safety",
+    "manage_generation_recovery",
     "manage_public_templates",
     "manage_permissions",
     "manage_projects",
