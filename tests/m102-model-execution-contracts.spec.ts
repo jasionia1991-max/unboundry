@@ -3242,7 +3242,13 @@ test("GK transport accepts the declared task id with harmless response envelope 
 });
 
 test("admin contract workbench is separate, structured and responsive with zero Provider calls", async ({ page }) => {
-  const app = readFileSync(join(process.cwd(), "client/src/App.tsx"), "utf8");
+  // The admin workbench moved out of App.tsx (pure move); read App.tsx plus the moved admin pages.
+  const app = [
+    "client/src/App.tsx",
+    "client/src/admin/AdminModelContractWorkbench.tsx",
+    "client/src/admin/AdminModelParameterEditor.tsx",
+    "client/src/admin/AdminModels.tsx",
+  ].map((path) => readFileSync(join(process.cwd(), path), "utf8")).join("\n");
   const styles = readFileSync(join(process.cwd(), "client/src/styles.css"), "utf8");
   expect(app).toContain("model-contract-workbench");
   expect(app).toContain("本地验证当前页面｜零写入");
