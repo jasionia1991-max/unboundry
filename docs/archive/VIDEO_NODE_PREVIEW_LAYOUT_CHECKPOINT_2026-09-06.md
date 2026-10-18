@@ -1,6 +1,6 @@
 # 视频节点预览布局：已随v0.7.14验收收口
 
-当前状态：`PRODUCTION_V0_7_14_USER_PASS / CLOSED`。视频裁切补丁与原比例适配一起发布；2026-09-06本地及线上用户均明确通过。最终范围见 [原比例断点](MEDIA_ASPECT_RATIO_LOCAL_CHECKPOINT_2026-09-06.md) 和 [生产回执](V0_7_14_PRODUCTION_RECEIPT_2026-09-06.json)。
+当前状态：`PRODUCTION_V0_7_14_USER_PASS / CLOSED`。视频裁切补丁与原比例适配一起发布；2026-09-06本地及线上用户均明确通过。最终范围见 [原比例断点](MEDIA_ASPECT_RATIO_LOCAL_CHECKPOINT_2026-09-06.md) 和 [生产回执](../../spec/V0_7_14_PRODUCTION_RECEIPT_2026-09-06.json)。
 
 没有新的待发布裁切候选；不再请求本地验收或版本确认。回退必须使用0.7.14-compat.1兼容包，旧0.7.13方案已失效。
 

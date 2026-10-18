@@ -1,4 +1,4 @@
-> **历史方案入口（2026-09-06）**：本文保留原规划/阶段验收，不作为当前实现清单或施工授权。已发布v0.7.14的实际结构、参数与未决项见 [CURRENT_STATE](UNBOUNDRY_CURRENT_STATE.md)、[生成结构](UNBOUNDRY_GENERATION_ARCHITECTURE.md) 和 [文档索引](PROJECT_DOCUMENTATION_INVENTORY_2026-09-06.tsv)。旧“未接入/未部署/等待发布”不得脱离日期直接当当前待办；独立PARTIAL/PAUSED仍需原范围证据。
+> **历史方案入口（2026-09-06）**：本文保留原规划/阶段验收，不作为当前实现清单或施工授权。已发布v0.7.14的实际结构、参数与未决项见 [CURRENT_STATE](../../spec/UNBOUNDRY_CURRENT_STATE.md)、[生成结构](../../spec/UNBOUNDRY_GENERATION_ARCHITECTURE.md) 和 [文档索引](../../spec/PROJECT_DOCUMENTATION_INVENTORY_2026-09-06.tsv)。旧“未接入/未部署/等待发布”不得脱离日期直接当当前待办；独立PARTIAL/PAUSED仍需原范围证据。
 
 # 整组执行（Group Run）实现方案
 
