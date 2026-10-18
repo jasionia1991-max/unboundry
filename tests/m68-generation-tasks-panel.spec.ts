@@ -673,7 +673,7 @@ test("generation task panel explains stuck tasks and shows friendly failures", a
   const stuck = page.getByTestId("tasks-stuck-hint-m68-stuck-recovering");
   await expect(stuck).toContainText("已等待 ");
   await expect(stuck).toContainText("系统仍在自动找回结果");
-  await expect(stuck).toContainText("最长约 1 天后会自动结束");
+  await expect(stuck).toContainText("最长约 2 天后会自动结束");
   await expect(stuck).toContainText("不会重复扣费");
   await expect(page.getByTestId("tasks-stuck-hint-m68-fresh-running")).toHaveCount(0);
 

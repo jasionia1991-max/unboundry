@@ -179,8 +179,8 @@ export function stuckTaskHint(task: GenerationTaskSummary, now = Date.now()) {
   }
   const waited = `已等待 ${formatGenerationDuration(elapsed)}。`;
   return task.state === "recovering"
-    ? `${waited}系统仍在自动找回结果，最长约 1 天后会自动结束；如果平台稍后生成成功，结果会出现在素材库，不会重复扣费。`
-    : `${waited}平台仍在生成，系统会继续等待结果，最长约 1 天后会自动结束；期间不会重复扣费。`;
+    ? `${waited}系统仍在自动找回结果，最长约 2 天后会自动结束；如果平台稍后生成成功，结果会出现在素材库，不会重复扣费。`
+    : `${waited}平台仍在生成，系统会继续等待结果，最长约 2 天后会自动结束；期间不会重复扣费。`;
 }
 
 const projectionRecoverableStates = new Set(["conflict", "failed"]);
