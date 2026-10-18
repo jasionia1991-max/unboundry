@@ -66,7 +66,25 @@ function expectCanonicalCheckboxes(checkboxes: CheckboxGeometry[]) {
 }
 
 test("every Admin checkbox declares the shared control and text inputs stay isolated", async () => {
-  const source = await readFile("client/src/App.tsx", "utf8");
+  // Admin pages were moved out of App.tsx into these modules (pure move).
+  const source = (await Promise.all([
+    "client/src/App.tsx",
+    "client/src/app/AccountForm.tsx",
+    "client/src/app/ChangeOwnPasswordDialog.tsx",
+    "client/src/app/MyConnectionsPage.tsx",
+    "client/src/admin/AdminAccounts.tsx",
+    "client/src/admin/AdminApiContract.tsx",
+    "client/src/admin/AdminCustomParameterBuilder.tsx",
+    "client/src/admin/AdminGenerationSafety.tsx",
+    "client/src/admin/AdminGptImageSizeMapEditor.tsx",
+    "client/src/admin/AdminModelContractWorkbench.tsx",
+    "client/src/admin/AdminModelParameterEditor.tsx",
+    "client/src/admin/AdminModels.tsx",
+    "client/src/admin/AdminProviders.tsx",
+    "client/src/admin/AdminStorage.tsx",
+    "client/src/admin/AdminTemplatesPage.tsx",
+    "client/src/admin/ProviderModelCatalogSection.tsx",
+  ].map((path) => readFile(path, "utf8")))).join("\n");
   const styles = await readFile("client/src/styles.css", "utf8");
   const checkboxInputs = [...source.matchAll(/<input\b[\s\S]*?\/>/g)]
     .map(([input]) => input)
