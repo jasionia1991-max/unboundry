@@ -28,6 +28,7 @@ import {
   readGroupRunStarting,
 } from "../generation/groupRunCheckpoint";
 import { useCompositionSafeText } from "./CompositionSafeText";
+import { userFacingErrorMessage } from "./generationErrorText";
 import { hasInteractionProbeNodes } from "./probeFixtures";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { clearProjectLocalKeys } from "../projects/projectStorage";
@@ -1025,6 +1026,7 @@ export function CanvasShell({
   const [historyPreviewItem, setHistoryPreviewItem] = useState<HistoryAsset>();
   const [historyAssetRequest, setHistoryAssetRequest] = useState<{
     asset: CanvasLibraryAsset;
+    nearNodeId?: string;
     sequence: number;
   }>();
   // 手势诊断埋点：只记录，不改任何交互行为。
@@ -1663,7 +1665,7 @@ export function CanvasShell({
     } catch (error) {
       if (requestSequence === historyLoadSequence.current) {
         setHistoryError(
-          error instanceof Error ? error.message : "历史素材读取失败",
+          userFacingErrorMessage(error, "历史素材读取失败"),
         );
       }
     } finally {
@@ -1977,7 +1979,7 @@ export function CanvasShell({
         setLibraryAssets([]);
         setLibraryAssetTotal(0);
         setLibraryCatalogError(
-          error instanceof Error ? error.message : "素材目录暂时无法读取",
+          userFacingErrorMessage(error, "素材目录暂时无法读取"),
         );
       })
       .finally(() => {
@@ -2039,7 +2041,7 @@ export function CanvasShell({
         setAiCharacters([]);
         setAiCharacterTotal(0);
         setAiCharacterCatalogError(
-          error instanceof Error ? error.message : "角色目录暂时无法读取",
+          userFacingErrorMessage(error, "角色目录暂时无法读取"),
         );
       })
       .finally(() => {
@@ -2356,7 +2358,7 @@ export function CanvasShell({
           requestSequence === historyLoadSequence.current
         ) {
           setHistoryError(
-            error instanceof Error ? error.message : "历史素材读取失败",
+            userFacingErrorMessage(error, "历史素材读取失败"),
           );
         }
       })
@@ -3722,6 +3724,31 @@ export function CanvasShell({
           canvasScopeId={canvasScopeId}
           groupRunScope={groupRunScope}
           key={canvasScopeId}
+          onApplyResultToCanvas={(task) => {
+            const assetId = task.resultAssetId?.trim();
+            const src = task.resultUrl?.trim();
+            if (
+              effectiveCanvasLoadState !== "ready" ||
+              !assetId ||
+              !src ||
+              (task.kind !== "image" && task.kind !== "video" && task.kind !== "audio")
+            ) {
+              return false;
+            }
+            // Same insertion path as adding an asset from the asset library.
+            setHistoryAssetRequest({
+              asset: {
+                id: assetId,
+                kind: task.kind,
+                label: task.prompt?.trim().slice(0, 40) ||
+                  (task.kind === "image" ? "图片结果" : task.kind === "video" ? "视频结果" : "音频结果"),
+                src,
+              },
+              nearNodeId: task.nodeId,
+              sequence: Date.now(),
+            });
+            return true;
+          }}
           onLocateNode={(nodeId) =>
             setFocusNodeRequest((current) => ({
               id: nodeId,

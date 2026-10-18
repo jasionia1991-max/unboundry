@@ -1,4 +1,6 @@
 import { expect, test } from "./safe-test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { openAppDatabase } from "../server/database";
 import { createGenerationTaskStore } from "../server/generationTaskStore";
 
@@ -484,4 +486,321 @@ test("generation task panel shows an empty state and closes with Escape", async 
   await expect(checkpoint).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("tasks-panel")).toHaveCount(0);
+});
+
+type MockTask = Record<string, unknown> & { id: string };
+
+async function mockTaskList(
+  page: import("@playwright/test").Page,
+  tasksFor: (canvasId: string, fixtureScopeId: string) => MockTask[],
+) {
+  const requests: number[] = [];
+  await page.route(
+    (url) => url.pathname === "/api/generation-tasks",
+    async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      const url = new URL(route.request().url());
+      const canvasId = url.searchParams.get("canvasId") ?? "";
+      const fixtureScopeId = url.searchParams.get("fixtureScopeId") ?? "";
+      requests.push(Date.now());
+      await route.fulfill({
+        contentType: "application/json",
+        json: {
+          tasks: tasksFor(canvasId, fixtureScopeId).map((task) => ({
+            attempt: 1,
+            canvasId,
+            costCurrency: "CNY",
+            fixtureScopeId,
+            ...task,
+          })),
+        },
+      });
+    },
+  );
+  return requests;
+}
+
+test("friendly error text and error boundary fallbacks stay plain Chinese", async () => {
+  const { generationTaskErrorText, userFacingErrorMessage } = await import(
+    "../client/src/canvas/generationErrorText"
+  );
+  const deadline = generationTaskErrorText({
+    code: "WORKFLOW_NODE_DEADLINE_EXCEEDED",
+    kind: "video",
+    message: "Error: node deadline exceeded at workflowRunService.ts:120",
+  });
+  expect(deadline.summary).toContain("超过最长等待时间");
+  expect(`${deadline.summary}${deadline.action ?? ""}`).toContain("不会重复扣费");
+  expect(deadline.summary).not.toMatch(/[A-Za-z]{6,}/);
+  expect(deadline.detail).toContain("WORKFLOW_NODE_DEADLINE_EXCEEDED");
+
+  const passthrough = generationTaskErrorText({
+    code: "PROVIDER_FAILED",
+    kind: "image",
+    message: "模型平台未完成本次生成，请重试",
+  });
+  expect(passthrough.summary).toBe("模型平台未完成本次生成，请重试");
+
+  const english = generationTaskErrorText({
+    code: "SOMETHING_NEW",
+    kind: "image",
+    message: "TypeError: Cannot read properties of undefined\n    at foo (bar.js:1:2)",
+  });
+  expect(english.summary).not.toMatch(/TypeError|Cannot read|bar\.js/);
+  expect(english.summary).toMatch(/[\u3400-\u9fff]/);
+  expect(english.detail ?? "").not.toContain("bar.js:1:2");
+
+  const policy = generationTaskErrorText({
+    kind: "image",
+    message: "The request was rejected by content policy (sensitive content)",
+  });
+  expect(policy.summary).toMatch(/[\u3400-\u9fff]/);
+  expect(policy.summary).not.toContain("content policy");
+
+  expect(userFacingErrorMessage(new Error("Failed to fetch"), "素材目录暂时无法读取"))
+    .toBe("素材目录暂时无法读取");
+  expect(userFacingErrorMessage(new Error("素材目录正在维护，请稍后再试"), "兜底"))
+    .toBe("素材目录正在维护，请稍后再试");
+
+  // Error boundaries render friendly fallbacks and node wrappers stay stable.
+  const React = await import("react");
+  const { AppErrorFallback, ErrorBoundary, NodeErrorFallback } = await import(
+    "../client/src/ui/ErrorBoundary"
+  );
+  const { canvasNodeRegistry } = await import("../client/src/canvas/canvasNodeRegistry");
+  // Expands function components and collects visible text, test ids and click
+  // handlers without a DOM (the test runner's JSX objects are plain trees).
+  type TreeNode = { props?: Record<string, unknown>; type?: unknown } | string | number |
+    null | undefined | boolean | TreeNode[];
+  const collect = (node: unknown, out = { clicks: [] as Array<() => void>, testIds: [] as string[], text: "" }) => {
+    if (node === null || node === undefined || typeof node === "boolean") return out;
+    if (typeof node === "string" || typeof node === "number") {
+      out.text += String(node);
+      return out;
+    }
+    if (Array.isArray(node)) {
+      for (const child of node) collect(child, out);
+      return out;
+    }
+    const element = node as Exclude<TreeNode, string | number | null | undefined | boolean | TreeNode[]>;
+    const props = element.props ?? {};
+    if (typeof element.type === "function" && !(element.type as { prototype?: { render?: unknown } }).prototype?.render) {
+      return collect((element.type as (input: unknown) => unknown)(props), out);
+    }
+    if (typeof props["data-testid"] === "string") out.testIds.push(props["data-testid"]);
+    if (typeof props.onClick === "function") out.clicks.push(props.onClick as () => void);
+    return collect(props.children, out);
+  };
+
+  let resets = 0;
+  const boundary = new ErrorBoundary({
+    children: React.createElement("span", null, "正常内容"),
+    fallback: (reset) => React.createElement(NodeErrorFallback, {
+      nodeId: "broken-node",
+      reset: () => {
+        resets += 1;
+        reset();
+      },
+    }),
+  });
+  expect(collect(boundary.render()).text).toBe("正常内容");
+  boundary.state = ErrorBoundary.getDerivedStateFromError(new Error("render failed"));
+  const fallback = collect(boundary.render());
+  expect(fallback.text).toContain("这个节点显示出错，点击重试");
+  expect(fallback.text).not.toContain("render failed");
+  expect(fallback.testIds).toContain("node-error-boundary-broken-node");
+  expect(fallback.clicks).toHaveLength(1);
+  fallback.clicks[0]();
+  expect(resets).toBe(1);
+
+  const app = collect(React.createElement(AppErrorFallback));
+  expect(app.text).toContain("页面出错了，点击刷新");
+  expect(app.text).toContain("刷新页面");
+  expect(app.testIds).toContain("app-error-boundary");
+
+  for (const kind of canvasNodeRegistry.kinds()) {
+    const renderer = canvasNodeRegistry.get(kind) as unknown as {
+      $$typeof?: symbol;
+      type?: { displayName?: string };
+    };
+    expect(renderer.$$typeof).toBe(Symbol.for("react.memo"));
+    expect(renderer.type?.displayName ?? "").toMatch(/^NodeErrorBoundary\(/);
+    expect(canvasNodeRegistry.get(kind)).toBe(renderer);
+  }
+});
+
+test("generation task panel explains stuck tasks and shows friendly failures", async ({
+  page,
+}) => {
+  const fixtureCanvasId = "persistence.final-clean-canvas";
+  const now = Date.now();
+  await mockTaskList(page, () => [
+    {
+      createdAt: new Date(now - 45 * 60_000).toISOString(),
+      id: "m68-stuck-recovering",
+      kind: "video",
+      nodeId: "m68-stuck-node",
+      prompt: "一直在找回结果的视频",
+      state: "recovering",
+      updatedAt: new Date(now - 60_000).toISOString(),
+    },
+    {
+      createdAt: new Date(now - 3 * 60_000).toISOString(),
+      id: "m68-fresh-running",
+      kind: "image",
+      nodeId: "m68-fresh-node",
+      prompt: "刚开始的图片",
+      state: "running",
+      updatedAt: new Date(now - 60_000).toISOString(),
+    },
+    {
+      createdAt: new Date(now - 90 * 60_000).toISOString(),
+      errorCode: "WORKFLOW_NODE_DEADLINE_EXCEEDED",
+      errorMessage: "workflow node deadline exceeded after 5400000ms",
+      id: "m68-deadline-failed",
+      kind: "video",
+      nodeId: "m68-deadline-node",
+      prompt: "超时停止等待的视频",
+      state: "failed",
+      updatedAt: new Date(now - 30 * 60_000).toISOString(),
+    },
+  ]);
+  await page.goto(`/__fixture/${fixtureCanvasId}`);
+  await page.getByTestId("tasks").click();
+  const panel = page.getByTestId("tasks-panel");
+  await expect(panel).toBeVisible();
+
+  const stuck = page.getByTestId("tasks-stuck-hint-m68-stuck-recovering");
+  await expect(stuck).toContainText("已等待 ");
+  await expect(stuck).toContainText("系统仍在自动找回结果");
+  await expect(stuck).toContainText("最长约 1 天后会自动结束");
+  await expect(stuck).toContainText("不会重复扣费");
+  await expect(page.getByTestId("tasks-stuck-hint-m68-fresh-running")).toHaveCount(0);
+
+  const failure = page.getByTestId("tasks-row-error-m68-deadline-failed");
+  await expect(failure.locator("span").first()).toContainText("超过最长等待时间");
+  await expect(failure.locator("span").first()).not.toContainText("5400000ms");
+  const detail = failure.locator("details p");
+  await expect(detail).toBeHidden();
+  await failure.getByText("详情").click();
+  await expect(detail).toBeVisible();
+  await expect(detail).toContainText("WORKFLOW_NODE_DEADLINE_EXCEEDED");
+  await expect(panel.getByRole("alert")).toHaveCount(0);
+});
+
+test("generation task panel places a conflicted successful result onto the canvas", async ({
+  page,
+  request,
+}) => {
+  const canvas = "panel.history.final";
+  const assetId = "m68-apply-result.png";
+  const assetUrl = `/api/assets/${assetId}`;
+  await request.delete(`/api/canvas/${canvas}`);
+  const upload = await request.post(assetUrl, {
+    data: readFileSync(resolve(
+      "spec/reference/upstream-v2.12.2-dense/15-ai-image-creator-result-1280x720.png",
+    )),
+    headers: {
+      "Content-Type": "image/png",
+      "X-File-Name": encodeURIComponent(assetId),
+    },
+  });
+  expect(upload.status()).toBe(201);
+  let anchorNodeId = "";
+  const now = Date.now();
+  await mockTaskList(page, () => anchorNodeId
+    ? [{
+        canvasProjectionState: "conflict",
+        createdAt: new Date(now - 5 * 60_000).toISOString(),
+        id: "m68-conflict-success",
+        kind: "image",
+        nodeId: anchorNodeId,
+        prompt: "画布冲突后未放回的图片",
+        resultAssetId: assetId,
+        resultUrl: assetUrl,
+        state: "success",
+        updatedAt: new Date(now - 60_000).toISOString(),
+      }]
+    : []);
+  try {
+    await page.goto(`/__fixture/${canvas}`);
+    const world = page.getByTestId("canvas-world");
+    await expect(world).toHaveAttribute("data-persistence-ready", "true");
+    await expect(world).toHaveAttribute("data-node-count", "3");
+    anchorNodeId = await page.locator(".react-flow__node").first()
+      .getAttribute("data-id") ?? "";
+    expect(anchorNodeId).not.toBe("");
+    const historyPanel = page.getByTestId("history-panel");
+    if (await historyPanel.count()) {
+      await page.keyboard.press("Escape");
+    }
+    await page.getByTestId("tasks").click();
+    const apply = page.getByTestId("tasks-apply-to-canvas-m68-conflict-success");
+    await expect(apply).toHaveText("放到画布");
+    await apply.click();
+    await expect(world).toHaveAttribute("data-node-count", "4");
+    await expect(
+      page.locator(`.react-flow__node-image img[src="${assetUrl}"]`),
+    ).toHaveCount(1);
+    await expect(apply).toHaveText("再放一份");
+    const anchorBox = await page.locator(
+      `.react-flow__node[data-id="${anchorNodeId}"]`,
+    ).boundingBox();
+    const placedBox = await page.locator(".react-flow__node-image").filter({
+      has: page.locator(`img[src="${assetUrl}"]`),
+    }).boundingBox();
+    expect(anchorBox && placedBox).toBeTruthy();
+    expect(placedBox!.x).toBeGreaterThan(anchorBox!.x + anchorBox!.width);
+    await expect(page.getByTestId("save-status")).toHaveText("已保存到云端");
+  } finally {
+    await request.delete(`/api/canvas/${canvas}`);
+    await request.delete(assetUrl);
+  }
+});
+
+test("generation task panel polls adaptively and pauses while the tab is hidden", async ({
+  page,
+}) => {
+  const fixtureCanvasId = "persistence.nodes-assets-viewport";
+  await page.clock.install();
+  const requests = await mockTaskList(page, () => []);
+  await page.goto(`/__fixture/${fixtureCanvasId}`);
+  await page.getByTestId("tasks").click();
+  await expect(page.getByTestId("tasks-empty")).toBeVisible();
+  const settle = () => page.waitForTimeout(250);
+  const setVisibility = (state: "hidden" | "visible") => page.evaluate((value) => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => value,
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  }, state);
+
+  // Fast cadence right after opening the panel.
+  const opened = requests.length;
+  await page.clock.runFor(3_500);
+  await expect.poll(() => requests.length).toBeGreaterThan(opened);
+
+  // Hidden tab: no polling at all.
+  await setVisibility("hidden");
+  await settle();
+  const hiddenAt = requests.length;
+  await page.clock.runFor(20_000);
+  await settle();
+  expect(requests.length).toBe(hiddenAt);
+
+  // Returning to the tab refreshes immediately.
+  await setVisibility("visible");
+  await expect.poll(() => requests.length).toBeGreaterThan(hiddenAt);
+
+  // Once the fast window ends with nothing active, poll every 15s.
+  await page.clock.runFor(61_000);
+  await page.clock.runFor(3_500);
+  await settle();
+  const idleStart = requests.length;
+  await page.clock.runFor(9_000);
+  await settle();
+  expect(requests.length).toBe(idleStart);
+  await page.clock.runFor(7_000);
+  await expect.poll(() => requests.length).toBeGreaterThan(idleStart);
 });

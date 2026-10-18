@@ -47,9 +47,15 @@ import {
   recoveryStatusLabel,
 } from "../generation/generationRecoveryClient";
 import { useGenerationRecovery } from "../generation/GenerationRecoveryContext";
+import { GENERATION_SUBMIT_SETTLED_EVENT } from "../generation/saveGate";
 import { useWorkflowExecution } from "../generation/WorkflowExecutionProvider";
 import type { RecoveryCaseSummary } from "../../../types/generationRecovery";
 import type { WorkflowContinuationPreview } from "../../../types/workflowRuns";
+import {
+  generationTaskErrorText,
+  isFriendlyChineseMessage,
+  userFacingErrorMessage,
+} from "./generationErrorText";
 
 const kindLabels: Record<GenerationTaskSummary["kind"], string> = {
   audio: "音频",
@@ -138,6 +144,103 @@ function safeTaskResultSource(task: GenerationTaskSummary) {
   return value;
 }
 
+// Polling cadence: fast while something can change soon, slow when idle.
+const activePollIntervalMs = 3_000;
+const idlePollIntervalMs = 15_000;
+// After opening the panel or any local submit, stay fast briefly so a new
+// task appears promptly even before the list shows it as active.
+const fastPollGraceMs = 60_000;
+
+function documentIsVisible() {
+  return typeof document === "undefined" || document.visibilityState !== "hidden";
+}
+
+const stuckRunningThresholdMs: Record<GenerationTaskSummary["kind"], number> = {
+  audio: 10 * 60_000,
+  image: 10 * 60_000,
+  text: 10 * 60_000,
+  video: 20 * 60_000,
+};
+
+/**
+ * Plain explanation for a task that has been waiting unusually long. The
+ * server keeps recovering it automatically and closes it after its safety
+ * window, so the owner is told what is happening instead of seeing a spinner.
+ */
+export function stuckTaskHint(task: GenerationTaskSummary, now = Date.now()) {
+  if (task.state !== "recovering" && task.state !== "running" && task.state !== "retrying") {
+    return undefined;
+  }
+  const started = Date.parse(task.createdAt);
+  if (!Number.isFinite(started)) return undefined;
+  const elapsed = Math.max(0, now - started);
+  if (task.state !== "recovering" && elapsed < stuckRunningThresholdMs[task.kind]) {
+    return undefined;
+  }
+  const waited = `已等待 ${formatGenerationDuration(elapsed)}。`;
+  return task.state === "recovering"
+    ? `${waited}系统仍在自动找回结果，最长约 1 天后会自动结束；如果平台稍后生成成功，结果会出现在素材库，不会重复扣费。`
+    : `${waited}平台仍在生成，系统会继续等待结果，最长约 1 天后会自动结束；期间不会重复扣费。`;
+}
+
+const projectionRecoverableStates = new Set(["conflict", "failed"]);
+
+/** A successful media result that never made it back onto the canvas. */
+export function taskResultNeedsCanvasPlacement(
+  task: GenerationTaskSummary,
+  workflowProjectionState?: string,
+) {
+  return task.state === "success" &&
+    (task.kind === "image" || task.kind === "video" || task.kind === "audio") &&
+    Boolean(task.resultAssetId?.trim()) &&
+    Boolean(safeTaskResultSource(task)) &&
+    (projectionRecoverableStates.has(task.canvasProjectionState ?? "") ||
+      projectionRecoverableStates.has(workflowProjectionState ?? ""));
+}
+
+function TaskErrorLine({
+  conflict,
+  task,
+}: {
+  conflict: boolean;
+  task: GenerationTaskSummary;
+}) {
+  const showError = task.state === "failed" || task.state === "cancelled";
+  if (!conflict && !(showError && (task.errorCode || task.errorMessage))) return null;
+  const text = conflict
+    ? generationTaskErrorText({
+        code: task.canvasProjectionState === "failed"
+          ? "CANVAS_PROJECTION_FAILED"
+          : "CANVAS_SERVER_OWNERSHIP_CONFLICT",
+        kind: task.kind,
+      })
+    : generationTaskErrorText({
+        code: task.errorCode,
+        kind: task.kind,
+        message: task.errorMessage,
+      });
+  return (
+    <div className="tasks-row-error" data-testid={`tasks-row-error-${task.id}`}>
+      <span>{text.summary}</span>
+      {text.action && (
+        <span className="tasks-row-error-action">{`（${text.action}）`}</span>
+      )}
+      {!conflict && text.detail && (
+        <details>
+          <summary>详情</summary>
+          <p>{text.detail}</p>
+        </details>
+      )}
+    </div>
+  );
+}
+
+function groupProblemText(summary: GroupRunSummary) {
+  if (summary.reason && isFriendlyChineseMessage(summary.reason)) return summary.reason;
+  const text = generationTaskErrorText({ code: summary.errorCode, message: summary.reason });
+  return text.action ? `${text.summary}（${text.action}）` : text.summary;
+}
+
 function RecoveryTaskResult({ task }: { task: GenerationTaskSummary }) {
   const source = safeTaskResultSource(task);
   const text = task.resultText?.trim();
@@ -193,10 +296,12 @@ function TaskRow({
   getActionSignal,
   isCurrentScope,
   onActionError,
+  onApplyToCanvas,
   onChanged,
   retryEnabled,
   task,
   waitForCanvasRevision,
+  workflowProjectionState,
 }: {
   canvasId: string;
   canvasScopeId: string;
@@ -207,12 +312,17 @@ function TaskRow({
   ) => AbortSignal | undefined;
   isCurrentScope: (scopeId: string, canvasId: string) => boolean;
   onActionError: (message: string) => void;
+  onApplyToCanvas?: (task: GenerationTaskSummary) => boolean;
   onChanged: () => void;
   retryEnabled: boolean;
   task: GenerationTaskSummary;
   waitForCanvasRevision?: () => Promise<number>;
+  workflowProjectionState?: string;
 }) {
   const [busy, setBusy] = useState(false);
+  const [applied, setApplied] = useState(false);
+  const needsPlacement = taskResultNeedsCanvasPlacement(task, workflowProjectionState);
+  const stuckHint = stuckTaskHint(task);
   const active = activeStates.has(task.state);
   const abandonable = task.state === "failed" && task.abandonAllowed === true;
   const retryable = task.state === "failed" && task.retryAllowed === true;
@@ -261,7 +371,16 @@ function TaskRow({
                 signal,
                 groupRunScope.fixtureScopeId,
               )
-                .catch(() => undefined)
+                .then(() => {
+                  if (isCurrentScope(canvasScopeId, canvasId)) onActionError("");
+                })
+                .catch((error: unknown) => {
+                  if (signal.aborted || !isCurrentScope(canvasScopeId, canvasId)) return;
+                  onActionError(userFacingErrorMessage(
+                    error,
+                    "暂时无法取消该任务，系统会继续自动处理，请稍后再试",
+                  ));
+                })
                 .finally(() => {
                   if (!isCurrentScope(canvasScopeId, canvasId)) return;
                   setBusy(false);
@@ -339,9 +458,7 @@ function TaskRow({
                 .catch((error: unknown) => {
                   if (!isCurrentScope(canvasScopeId, canvasId)) return;
                   onActionError(
-                    error instanceof Error
-                      ? error.message
-                      : "核对结果失败，请稍后再试",
+                    userFacingErrorMessage(error, "核对结果失败，请稍后再试"),
                   );
                 })
                 .finally(() => {
@@ -418,9 +535,7 @@ function TaskRow({
                 .catch((error: unknown) => {
                   if (!isCurrentScope(canvasScopeId, canvasId)) return;
                   onActionError(
-                    error instanceof Error
-                      ? error.message
-                      : "生成任务重试失败，请稍后再试",
+                    userFacingErrorMessage(error, "生成任务重试失败，请稍后再试"),
                   );
                 })
                 .finally(() => {
@@ -443,7 +558,7 @@ function TaskRow({
                 !isCurrentScope(canvasScopeId, canvasId)
               ) return;
               if (!window.confirm(
-                "放弃后将不再尝试恢复该平台结果。本操作不会重新付费，也不会向平台发送新的生成请求。确认放弃平台结果？",
+                "放弃后将不再尝试恢复该平台结果，平台那边如果其实已经生成成功，这个结果可能就找不回来了。本操作不会重新付费，也不会向平台发送新的生成请求。确认放弃平台结果？",
               )) return;
               const signal = getActionSignal(canvasScopeId, canvasId);
               if (!signal) return;
@@ -453,7 +568,16 @@ function TaskRow({
                 signal,
                 groupRunScope.fixtureScopeId,
               )
-                .catch(() => undefined)
+                .then(() => {
+                  if (isCurrentScope(canvasScopeId, canvasId)) onActionError("");
+                })
+                .catch((error: unknown) => {
+                  if (signal.aborted || !isCurrentScope(canvasScopeId, canvasId)) return;
+                  onActionError(userFacingErrorMessage(
+                    error,
+                    "暂时无法放弃该平台结果，请刷新后再试",
+                  ));
+                })
                 .finally(() => {
                   if (!isCurrentScope(canvasScopeId, canvasId)) return;
                   setBusy(false);
@@ -465,7 +589,32 @@ function TaskRow({
             放弃平台结果
           </button>
         )}
+        {needsPlacement && onApplyToCanvas && (
+          <button
+            data-testid={`tasks-apply-to-canvas-${task.id}`}
+            disabled={busy || !rowIsCurrent}
+            onClick={() => {
+              if (!isCurrentScope(canvasScopeId, canvasId)) return;
+              if (onApplyToCanvas(task)) {
+                setApplied(true);
+                onActionError("");
+              } else {
+                onActionError("画布还没准备好，请稍等画布加载完成后再放到画布");
+              }
+            }}
+            title="把素材库里的这个结果作为新节点放到画布上"
+            type="button"
+          >
+            {applied ? "再放一份" : "放到画布"}
+          </button>
+        )}
       </span>
+      {stuckHint && (
+        <span className="tasks-row-stuck-hint" data-testid={`tasks-stuck-hint-${task.id}`}>
+          {stuckHint}
+        </span>
+      )}
+      <TaskErrorLine conflict={needsPlacement} task={task} />
     </li>
   );
 }
@@ -473,6 +622,7 @@ function TaskRow({
 export function GenerationTasksPanel({
   canvasScopeId,
   groupRunScope,
+  onApplyResultToCanvas,
   onLocateNode,
   open,
   panelRef,
@@ -481,6 +631,8 @@ export function GenerationTasksPanel({
 }: {
   canvasScopeId: string;
   groupRunScope: GroupRunSummaryScope;
+  /** Inserts a successful library result as a new canvas node; false when not possible now. */
+  onApplyResultToCanvas?: (task: GenerationTaskSummary) => boolean;
   onLocateNode: (nodeId: string) => void;
   open: boolean;
   panelRef?: Ref<HTMLElement>;
@@ -500,6 +652,8 @@ export function GenerationTasksPanel({
     useState<GroupRunCheckpoint[]>([]);
   const [groupRecoveryPending, setGroupRecoveryPending] = useState(false);
   const [summaryClock, setSummaryClock] = useState(() => Date.now());
+  const [documentVisible, setDocumentVisible] = useState(documentIsVisible);
+  const fastPollUntil = useRef(Date.now() + fastPollGraceMs);
   const [recoveryResultTaskId, setRecoveryResultTaskId] = useState<string>();
   const [recoveryResultTask, setRecoveryResultTask] =
     useState<GenerationTaskSummary>();
@@ -879,15 +1033,9 @@ export function GenerationTasksPanel({
     if (!open || !canvasId) {
       return () => currentActionController.abort("generation-task-scope-closed");
     }
-    const requestedScopeId = canvasScopeId;
-    const requestedCanvasId = canvasId;
-    refresh(requestedScopeId, requestedCanvasId);
-    const timer = window.setInterval(
-      () => refresh(requestedScopeId, requestedCanvasId),
-      3_000,
-    );
+    refresh(canvasScopeId, canvasId);
+    fastPollUntil.current = Date.now() + fastPollGraceMs;
     return () => {
-      window.clearInterval(timer);
       refreshController.current?.abort("generation-task-scope-closed");
       refreshEpoch.current += 1;
       currentActionController.abort("generation-task-scope-closed");
@@ -900,6 +1048,79 @@ export function GenerationTasksPanel({
     groupRunScope.canvasId,
     groupRunScope.fixtureScopeId,
   ]);
+
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+  const needsFastPoll =
+    tasks.some((task) => activeStates.has(task.state)) ||
+    workflowRuns.some((run) => run.state === "running" || run.state === "stopping") ||
+    Boolean(groupSummary && isActiveGroupRunStatus(groupSummary.status)) ||
+    groupRecoveryPending ||
+    Boolean(readError || workflowReadError);
+
+  // Poll quickly only while something can still change; back off when idle
+  // and stop entirely while the browser tab is hidden.
+  useEffect(() => {
+    if (!open || !canvasId || !documentVisible) return;
+    let timer: number | undefined;
+    const schedule = () => {
+      const fast = needsFastPoll || Date.now() < fastPollUntil.current;
+      timer = window.setTimeout(() => {
+        refreshRef.current(canvasScopeId, canvasId);
+        schedule();
+      }, fast ? activePollIntervalMs : idlePollIntervalMs);
+    };
+    schedule();
+    return () => window.clearTimeout(timer);
+  }, [
+    canvasId,
+    canvasScopeId,
+    documentVisible,
+    groupRunScope.accountId,
+    groupRunScope.fixtureScopeId,
+    needsFastPoll,
+    open,
+  ]);
+
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      const visible = documentIsVisible();
+      setDocumentVisible(visible);
+      if (!visible || !open) return;
+      fastPollUntil.current = Date.now() + fastPollGraceMs;
+      refreshRef.current(scope.current.canvasScopeId, scope.current.canvasId);
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    let timer: number | undefined;
+    const onLocalSubmit = () => {
+      fastPollUntil.current = Date.now() + fastPollGraceMs;
+      if (!documentIsVisible()) return;
+      if (timer !== undefined) window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        timer = undefined;
+        refreshRef.current(scope.current.canvasScopeId, scope.current.canvasId);
+      }, 300);
+    };
+    const onRemoteActivity = () => {
+      fastPollUntil.current = Date.now() + fastPollGraceMs;
+    };
+    window.addEventListener(GENERATION_SUBMIT_SETTLED_EVENT, onLocalSubmit);
+    window.addEventListener(GENERATION_TASK_RETRY_ACCEPTED_EVENT, onLocalSubmit);
+    window.addEventListener(SERVER_WORKFLOW_RUN_UPDATED_EVENT, onRemoteActivity);
+    window.addEventListener(GROUP_RUN_SUMMARY_EVENT, onRemoteActivity);
+    return () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      window.removeEventListener(GENERATION_SUBMIT_SETTLED_EVENT, onLocalSubmit);
+      window.removeEventListener(GENERATION_TASK_RETRY_ACCEPTED_EVENT, onLocalSubmit);
+      window.removeEventListener(SERVER_WORKFLOW_RUN_UPDATED_EVENT, onRemoteActivity);
+      window.removeEventListener(GROUP_RUN_SUMMARY_EVENT, onRemoteActivity);
+    };
+  }, [open]);
 
   useEffect(() => {
     const onSummary = (event: Event) => {
@@ -934,11 +1155,16 @@ export function GenerationTasksPanel({
   }, [canvasId, groupRunScope.accountId, groupRunScope.fixtureScopeId]);
 
   useEffect(() => {
-    if (!groupSummary || !isActiveGroupRunStatus(groupSummary.status)) return;
+    if (
+      !open ||
+      !documentVisible ||
+      !groupSummary ||
+      !isActiveGroupRunStatus(groupSummary.status)
+    ) return;
     setSummaryClock(Date.now());
     const timer = window.setInterval(() => setSummaryClock(Date.now()), 1_000);
     return () => window.clearInterval(timer);
-  }, [groupSummary?.runId, groupSummary?.status]);
+  }, [documentVisible, groupSummary?.runId, groupSummary?.status, open]);
 
   useEffect(() => {
     const onCheckpoint = () => {
@@ -980,6 +1206,14 @@ export function GenerationTasksPanel({
   const changed = () => refresh(canvasScopeId, canvasId);
   const visibleError = actionError || workflowReadError || readError;
   const taskById = new Map(tasks.map((task) => [task.id, task]));
+  const workflowProjectionByTaskId = new Map<string, string>();
+  for (const run of workflowRuns) {
+    for (const node of run.nodes) {
+      if (node.taskId && node.projectionState && !workflowProjectionByTaskId.has(node.taskId)) {
+        workflowProjectionByTaskId.set(node.taskId, node.projectionState);
+      }
+    }
+  }
   const openRecoveryResult = (taskId: string) => {
     if (!isCurrentScope(canvasScopeId, canvasId)) return;
     recoveryResultController.current?.abort("generation-recovery-result-superseded");
@@ -1032,9 +1266,7 @@ export function GenerationTasksPanel({
       })
       .catch((error: unknown) => {
         if (!isCurrentScope(canvasScopeId, canvasId)) return;
-        setActionError(
-          error instanceof Error ? error.message : "暂时无法确认停止状态",
-        );
+        setActionError(userFacingErrorMessage(error, "暂时无法确认停止状态"));
       })
       .finally(() => {
         if (!isCurrentScope(canvasScopeId, canvasId)) return;
@@ -1098,7 +1330,7 @@ export function GenerationTasksPanel({
           setContinuationPreviewRetryTick((current) => current + 1);
         }
         setActionError(
-          error instanceof Error ? error.message : "继续未完成节点失败，请稍后再试",
+          userFacingErrorMessage(error, "继续未完成节点失败，请稍后再试"),
         );
       })
       .finally(() => {
@@ -1185,14 +1417,16 @@ export function GenerationTasksPanel({
           {groupSummary.firstFailedNodeId && (
             <p className="tasks-group-summary-problem">
               <span>
-                {`首个失败：${groupSummary.firstFailedNodeTitle ?? groupSummary.firstFailedNodeId}${groupSummary.errorCode ? `（${groupSummary.errorCode}）` : ""}`}
+                {`首个失败：${groupSummary.firstFailedNodeTitle ?? groupSummary.firstFailedNodeId}`}
               </span>
-              {groupSummary.reason && <span>{groupSummary.reason}</span>}
+              {(groupSummary.reason || groupSummary.errorCode) && (
+                <span>{groupProblemText(groupSummary)}</span>
+              )}
             </p>
           )}
           {!groupSummary.firstFailedNodeId && groupSummary.reason && (
             <p className="tasks-group-summary-problem">
-              <span>{groupSummary.reason}</span>
+              <span>{groupProblemText(groupSummary)}</span>
             </p>
           )}
           {isActiveGroupRunStatus(groupSummary.status) && (
@@ -1394,6 +1628,21 @@ export function GenerationTasksPanel({
                 const providerTaskPending = linkedTasks.length - providerTaskBound;
                 const providerTaskUnknown = acceptedTaskCount - linkedTasks.length;
                 const firstFailed = run.nodes.find(({ state }) => state === "failed");
+                const runProblem = run.state === "running" ? undefined : (
+                  firstFailed && (firstFailed.errorCode || firstFailed.errorMessage)
+                    ? generationTaskErrorText({
+                        code: firstFailed.errorCode,
+                        kind: firstFailed.kind,
+                        message: firstFailed.errorMessage,
+                      })
+                    : (run.state === "failed" || run.state === "cancelled") &&
+                        (run.errorCode || run.errorMessage)
+                      ? generationTaskErrorText({
+                          code: run.errorCode,
+                          message: run.errorMessage,
+                        })
+                      : undefined
+                );
                 const applied = run.nodes.filter(
                   ({ projectionState }) => projectionState === "applied",
                 ).length;
@@ -1501,6 +1750,25 @@ export function GenerationTasksPanel({
                         </span>
                       )}
                     </span>
+                    {runProblem && (
+                      <div
+                        className="tasks-row-error"
+                        data-testid={`workflow-run-error-${run.id}`}
+                      >
+                        <span>{runProblem.summary}</span>
+                        {runProblem.action && (
+                          <span className="tasks-row-error-action">
+                            {`（${runProblem.action}）`}
+                          </span>
+                        )}
+                        {runProblem.detail && (
+                          <details>
+                            <summary>详情</summary>
+                            <p>{runProblem.detail}</p>
+                          </details>
+                        )}
+                      </div>
+                    )}
                   </li>
                 );
               })}
@@ -1532,10 +1800,12 @@ export function GenerationTasksPanel({
                     isCurrentScope={isCurrentScope}
                     key={task.id}
                     onActionError={setActionError}
+                    onApplyToCanvas={onApplyResultToCanvas}
                     onChanged={changed}
                     retryEnabled={retryEnabled}
                     task={task}
                     waitForCanvasRevision={waitForCanvasRevision}
+                    workflowProjectionState={workflowProjectionByTaskId.get(task.id)}
                   />
                 ))}
               </ul>
@@ -1557,10 +1827,12 @@ export function GenerationTasksPanel({
                     isCurrentScope={isCurrentScope}
                     key={task.id}
                     onActionError={setActionError}
+                    onApplyToCanvas={onApplyResultToCanvas}
                     onChanged={changed}
                     retryEnabled={retryEnabled}
                     task={task}
                     waitForCanvasRevision={waitForCanvasRevision}
+                    workflowProjectionState={workflowProjectionByTaskId.get(task.id)}
                   />
                 ))}
               </ul>
@@ -1579,10 +1851,12 @@ export function GenerationTasksPanel({
                     isCurrentScope={isCurrentScope}
                     key={task.id}
                     onActionError={setActionError}
+                    onApplyToCanvas={onApplyResultToCanvas}
                     onChanged={changed}
                     retryEnabled={retryEnabled}
                     task={task}
                     waitForCanvasRevision={waitForCanvasRevision}
+                    workflowProjectionState={workflowProjectionByTaskId.get(task.id)}
                   />
                 ))}
               </ul>

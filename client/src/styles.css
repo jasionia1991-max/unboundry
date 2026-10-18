@@ -7582,6 +7582,84 @@ sup {
   font-size: var(--tap-font-secondary);
 }
 
+.tasks-row-error {
+  grid-column: 1 / -1;
+  color: #fca5a5;
+  font-size: var(--tap-font-secondary);
+  line-height: 1.4;
+  white-space: normal;
+}
+
+.tasks-row-error-action {
+  color: #a1a1aa;
+}
+
+.tasks-row-error details {
+  margin-top: 2px;
+  color: #71717a;
+}
+
+.tasks-row-error summary {
+  cursor: pointer;
+}
+
+.tasks-row-error details p {
+  margin: 2px 0 0;
+  word-break: break-all;
+}
+
+.tasks-row-stuck-hint {
+  grid-column: 1 / -1;
+  color: #facc15;
+  font-size: var(--tap-font-secondary);
+  line-height: 1.4;
+  white-space: normal;
+}
+
+.app-error-boundary {
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #e4e4e7;
+  background: #0b0b0c;
+  font-size: var(--tap-font-primary);
+  text-align: center;
+}
+
+.app-error-boundary p {
+  margin: 0;
+  color: #a1a1aa;
+  font-size: var(--tap-font-secondary);
+}
+
+.app-error-boundary button,
+.node-error-boundary button {
+  padding: 6px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  color: #f4f4f5;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: var(--tap-font-secondary);
+  cursor: pointer;
+}
+
+.node-error-boundary {
+  display: flex;
+  min-width: 180px;
+  padding: 12px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  border: 1px solid rgba(248, 113, 113, 0.5);
+  border-radius: 12px;
+  color: #fca5a5;
+  background: #18181b;
+  font-size: var(--tap-font-secondary);
+}
+
 .top-right {
   position: absolute;
   top: 16px;

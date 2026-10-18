@@ -76,12 +76,25 @@ function runExclusiveCanvasSubmitLane<T>(
   return runInProcessCanvasSubmit(key, work, signal);
 }
 
+/** Fired after a single-node submit/retry/reconcile settles so task lists can refresh promptly. */
+export const GENERATION_SUBMIT_SETTLED_EVENT = "unboundry:generation-submit-settled";
+
+function notifyGenerationSubmitSettled(canvasId: string) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(GENERATION_SUBMIT_SETTLED_EVENT, {
+    detail: { canvasId },
+  }));
+}
+
 export function runExclusiveCanvasSubmit<T>(
   canvasId: string,
   work: () => Promise<T>,
   signal?: AbortSignal,
 ): Promise<T> {
-  return runExclusiveCanvasSubmitLane(canvasId, work, "generation", signal);
+  const result = runExclusiveCanvasSubmitLane(canvasId, work, "generation", signal);
+  const notify = () => notifyGenerationSubmitSettled(canvasId);
+  void result.then(notify, notify);
+  return result;
 }
 
 /**
