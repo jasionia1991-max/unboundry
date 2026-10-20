@@ -2662,6 +2662,22 @@ test("AR sizing mode, adoption and layout have one durable authority", async () 
         expect(applyGenerationProjectionInTransaction(args)).toBe("applied");
         expect(generationCanvasRow(database,canvasId)).toEqual(saved);
         expect(database.prepare("SELECT COUNT(*) AS n FROM generation_provider_attempts").get()).toMatchObject({n:0});
+        // A canvas-side parameter edit made after admission (for example the
+        // panel flipping the aspect ratio) must not orphan the frozen
+        // submission: the binding falls back to the parameters frozen at
+        // admission, while tampering with that frozen snapshot still rejects.
+        const aspectField = projectionSchema.fields.find((field) => field.key === "aspectRatio" && field.options.length > 1);
+        const driftedRatio = aspectField?.options.map((option) => option.value).find((value) => value !== semantic.aspectRatio);
+        if (aspectField && driftedRatio !== undefined) {
+          const canvasPolicy = (target.data as Record<string, unknown>)[`${kind}Parameters`] as Record<string, unknown>;
+          const driftedTarget = { ...target, data: { ...target.data, [`${kind}Parameters`]: { ...canvasPolicy, aspectRatio: driftedRatio }, ...(kind === "image" ? { imageAspectRatio: driftedRatio } : {}) } };
+          database.prepare("UPDATE canvas_documents SET nodes=? WHERE owner_id=? AND id=?").run(JSON.stringify([driftedTarget]), generationOwnerId, canvasId);
+          const realigned = buildCanvasProjectionIdentity({ database,canvasId,kind,nodeId,ownerId:generationOwnerId,taskId:"ar-task",...(scope === "workflow" ? {runId:"ar-run"} : {}) });
+          expect(realigned).toMatchObject({status:"ready",projection:{bindingMatches:true}});
+          database.prepare("UPDATE generation_tasks SET prompt=? WHERE id='ar-task'").run(`${resolved.finalPrompt} tampered`);
+          const tamperedSubmission = buildCanvasProjectionIdentity({ database,canvasId,kind,nodeId,ownerId:generationOwnerId,taskId:"ar-task",...(scope === "workflow" ? {runId:"ar-run"} : {}) });
+          expect(tamperedSubmission).toMatchObject({status:"ready",projection:{bindingMatches:false}});
+        }
       } finally { database.exec("ROLLBACK"); }
     });
   }
