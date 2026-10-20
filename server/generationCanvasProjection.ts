@@ -464,31 +464,6 @@ function currentBindingMatches(input: {
     const currentModel = targetModelId(task.kind, data);
     const currentConfigurationRevision =
       targetModelConfigurationRevision(task.kind, data);
-    const parameters = targetParameterValues(task.kind, data, schema);
-    const resolved = resolvePersistedNodeInputs({
-      bypass: false,
-      canvasId: task.canvas_id,
-      database,
-      modelSchema: schema,
-      modelReleaseRevision: releaseRevision,
-      ownerId: task.owner_id!,
-      parameters,
-      targetId: task.node_id,
-      targetKind: task.kind,
-    });
-    const semanticParameters = submissionParameterValues(
-      schema,
-      resolved.normalizedParameters ?? parameters,
-    ) as Record<string, ModelParameterValue>;
-    const currentInputKey = generationInputKey({
-      inputs: resolved.inputs,
-      modelConfigurationRevision,
-      modelId,
-      modelReleaseRevision: releaseRevision,
-      ownPrompt: resolved.persistedOwnPrompt,
-      parameters: semanticParameters,
-      prompt: resolved.finalPrompt,
-    });
     const taskParameters = parseRecord(task.parameters);
     if (!taskParameters) return false;
     const imageTool = storedImageGenerationTool(taskParameters.imageTool);
@@ -497,39 +472,86 @@ function currentBindingMatches(input: {
       ? persistedMultiAngleParameters(data.imageMultiAngleParameters)
       : undefined;
     if (imageTool?.operation === "multi-angle" && !multiAngleParameters) return false;
-    const currentOwnershipKey = generationOwnershipKey(imageTool
-      ? imageGenerationToolOwnershipEvidence({
-          accountId: task.owner_id!,
-          aspectRatio: typeof semanticParameters.aspectRatio === "string"
-            ? semanticParameters.aspectRatio
-            : undefined,
-          canvasId: task.canvas_id,
-          imageTool,
-          modelId,
-          modelParameters: semanticParameters,
-          ...(multiAngleParameters ? { multiAngleParameters } : {}),
-          prompt: resolved.persistedOwnPrompt,
-          quality: typeof semanticParameters.quality === "string"
-            ? semanticParameters.quality
-            : undefined,
-        })
-      : generationOwnershipEvidence({
-          contractFingerprint: resolved.contractFingerprint ?? "",
-          inputs: resolved.inputs,
-          kind: task.kind,
-          modelConfigurationRevision,
-          modelId,
-          modelReleaseRevision: releaseRevision,
-          parameters: semanticParameters,
-          prompt: resolved.persistedOwnPrompt,
-        }));
-    return currentModel === modelId &&
-      (currentConfigurationRevision === undefined ||
-        currentConfigurationRevision === modelConfigurationRevision) &&
-      resolved.contractFingerprint === contractFingerprint &&
-      resolved.finalPrompt === task.prompt &&
-      currentInputKey === expectedInputKey &&
-      currentOwnershipKey === expectedOwnershipKey;
+    if (
+      currentModel !== modelId ||
+      (currentConfigurationRevision !== undefined &&
+        currentConfigurationRevision !== modelConfigurationRevision)
+    ) return false;
+    const submittedEvidenceMatches = (
+      parameters: Record<string, ModelParameterValue>,
+    ) => {
+      const resolved = resolvePersistedNodeInputs({
+        bypass: false,
+        canvasId: task.canvas_id,
+        database,
+        modelSchema: schema,
+        modelReleaseRevision: releaseRevision,
+        ownerId: task.owner_id!,
+        parameters,
+        targetId: task.node_id,
+        targetKind: task.kind,
+      });
+      const semanticParameters = submissionParameterValues(
+        schema,
+        resolved.normalizedParameters ?? parameters,
+      ) as Record<string, ModelParameterValue>;
+      const currentInputKey = generationInputKey({
+        inputs: resolved.inputs,
+        modelConfigurationRevision,
+        modelId,
+        modelReleaseRevision: releaseRevision,
+        ownPrompt: resolved.persistedOwnPrompt,
+        parameters: semanticParameters,
+        prompt: resolved.finalPrompt,
+      });
+      const currentOwnershipKey = generationOwnershipKey(imageTool
+        ? imageGenerationToolOwnershipEvidence({
+            accountId: task.owner_id!,
+            aspectRatio: typeof semanticParameters.aspectRatio === "string"
+              ? semanticParameters.aspectRatio
+              : undefined,
+            canvasId: task.canvas_id,
+            imageTool,
+            modelId,
+            modelParameters: semanticParameters,
+            ...(multiAngleParameters ? { multiAngleParameters } : {}),
+            prompt: resolved.persistedOwnPrompt,
+            quality: typeof semanticParameters.quality === "string"
+              ? semanticParameters.quality
+              : undefined,
+          })
+        : generationOwnershipEvidence({
+            contractFingerprint: resolved.contractFingerprint ?? "",
+            inputs: resolved.inputs,
+            kind: task.kind,
+            modelConfigurationRevision,
+            modelId,
+            modelReleaseRevision: releaseRevision,
+            parameters: semanticParameters,
+            prompt: resolved.persistedOwnPrompt,
+          }));
+      return resolved.contractFingerprint === contractFingerprint &&
+        resolved.finalPrompt === task.prompt &&
+        currentInputKey === expectedInputKey &&
+        currentOwnershipKey === expectedOwnershipKey;
+    };
+    if (submittedEvidenceMatches(targetParameterValues(task.kind, data, schema))) {
+      return true;
+    }
+    // Canvas JSON is browser-owned: the saved parameter bag can drift from the
+    // legacy mirror fields (imageAspectRatio/imageQuality) without changing what
+    // was really submitted. Re-derive the same evidence from the frozen
+    // admission parameters so harmless drift cannot strand a finished result in
+    // the library, while prompt, reference or model edits still fail the fence.
+    const frozenParameters = submissionParameterValues(
+      schema,
+      Object.fromEntries(
+        schema.fields
+          .filter((field) => taskParameters[field.key] !== undefined)
+          .map((field) => [field.key, taskParameters[field.key]]),
+      ),
+    );
+    return submittedEvidenceMatches(frozenParameters);
   } catch {
     return false;
   }
